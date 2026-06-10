@@ -103,7 +103,6 @@ jobs:
             ':!package-lock.json'
             ':!yarn.lock'
             ':!**/CHANGELOG.md'
-            ':!tmp/ship/**'
             ':!dist/**'
             ':!build/**'
             ':!.next/**'
@@ -111,15 +110,27 @@ jobs:
             ':!node_modules/**'
             ':!.codex/**'
             ':!.agents/skills/pr-context/**'
-            ':!specs/**'
             ':!reports/**'
             ':!tech-probes/**'
             ':!stories/**'
             ':!projects/**'
             ':!strategy/**'
+            ':!bun.lockb'
+            ':!**/__snapshots__/**'
+            ':!*.snap'
+            ':!tmp/**'
           )
 
           BASE="origin/${{ steps.pr.outputs.base_ref }}"
+
+          # specs/ exclusion keeps SPEC.md reviewable: a feature's SPEC.md is
+          # load-bearing grounding for reviewers, while spec sub-artifacts
+          # (evidence/, meta/, analyses) are research noise. Pathspecs cannot
+          # re-include after an exclude, so enumerate changed spec files NOT
+          # named SPEC.md and exclude them by exact path.
+          while IFS= read -r spec_file; do
+            [ -n "$spec_file" ] && EXCLUDE_PATTERNS+=(":!$spec_file")
+          done < <(git diff --name-only "$BASE"...HEAD -- 'specs/' 2>/dev/null | grep -v '/SPEC\.md$' || true)
 
           DIFF=$(git diff "$BASE"...HEAD -- . "${EXCLUDE_PATTERNS[@]}")
           DIFF_SIZE=${#DIFF}
@@ -392,7 +403,6 @@ jobs:
                 ':!package-lock.json'
                 ':!yarn.lock'
                 ':!**/CHANGELOG.md'
-                ':!tmp/ship/**'
                 ':!dist/**'
                 ':!build/**'
                 ':!.next/**'
@@ -400,13 +410,22 @@ jobs:
                 ':!node_modules/**'
                 ':!.codex/**'
                 ':!.agents/skills/pr-context/**'
-                ':!specs/**'
                 ':!reports/**'
                 ':!tech-probes/**'
                 ':!stories/**'
                 ':!projects/**'
                 ':!strategy/**'
+                ':!bun.lockb'
+                ':!**/__snapshots__/**'
+                ':!*.snap'
+                ':!tmp/**'
               )
+              # Keep SPEC.md reviewable in the delta too (same rationale as
+              # EXCLUDE_PATTERNS above).
+              while IFS= read -r spec_file; do
+                [ -n "$spec_file" ] && DIFF_EXCLUDE+=(":!$spec_file")
+              done < <(git diff --name-only "$LAST_REVIEW_SHA".."$PR_HEAD" -- 'specs/' 2>/dev/null | grep -v '/SPEC\.md$' || true)
+
               SINCE_REVIEW_LOG=$(git log --oneline "$LAST_REVIEW_SHA".."$PR_HEAD")
               SINCE_REVIEW_STATS=$(git diff --stat "$LAST_REVIEW_SHA".."$PR_HEAD" -- . "${DIFF_EXCLUDE[@]}")
               SINCE_REVIEW_FILES=$(git diff --name-only "$LAST_REVIEW_SHA".."$PR_HEAD" -- . "${DIFF_EXCLUDE[@]}")
