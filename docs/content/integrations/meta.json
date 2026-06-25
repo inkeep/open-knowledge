@@ -1,5 +1,5 @@
 {
   "title": "Integrations",
   "icon": "LuPlug",
-  "pages": ["claude-code", "cursor", "codex"]
+  "pages": ["claude-code", "cursor", "codex", "copilot"]
 }

@@ -28,6 +28,11 @@ const HOSTS_WITH_USER_SKILL_DIR: ReadonlyArray<{
   { hostDir: '.claude', editorId: 'claude' },
   { hostDir: '.cursor', editorId: 'cursor' },
   { hostDir: '.agents', editorId: 'codex' },
+  // Copilot CLI reads project skills from .github/skills, so that is its project
+  // host dir. It has no ~/.github user skill dir, so the user sweep reports
+  // skipped-host-absent; its user-level discovery skill is served by the central
+  // ~/.agents/skills write (Copilot CLI also reads ~/.agents/skills).
+  { hostDir: '.github', editorId: 'copilot' },
 ];
 
 const USER_SKILL_DIR_NAME = 'open-knowledge-discovery';

@@ -54,14 +54,26 @@ describe('writeProjectAiIntegrations — installs MCP config AND the project ski
     );
   });
 
-  test('all editors: 2 outcomes per editor; claude-desktop skips both as unsupported', () => {
+  test('all editors: 2 outcomes per editor; global-only editors skip the MCP config', () => {
     const result = writeProjectAiIntegrations(projectDir, ALL_EDITOR_IDS);
 
     expect(result.integrations).toHaveLength(ALL_EDITOR_IDS.length * 2);
 
-    const desktop = result.integrations.filter((o) => o.editorId === 'claude-desktop');
-    expect(desktop).toHaveLength(2);
-    for (const outcome of desktop) expect(outcome.action).toBe('skipped-unsupported');
+    // claude-desktop is fully global-only (no project MCP config and no project
+    // skill), so both its project integrations report skipped-unsupported.
+    const claudeDesktop = result.integrations.filter((o) => o.editorId === 'claude-desktop');
+    expect(claudeDesktop).toHaveLength(2);
+    for (const outcome of claudeDesktop) expect(outcome.action).toBe('skipped-unsupported');
+
+    // Copilot CLI has no repo-local MCP config (global-only), but it DOES read a
+    // project skill from .github/skills — so the skill is written and only the
+    // MCP config is skipped.
+    const copilot = result.integrations.filter((o) => o.editorId === 'copilot');
+    expect(copilot.find((o) => o.integration === 'mcp-config')?.action).toBe('skipped-unsupported');
+    expect(copilot.find((o) => o.integration === 'project-skill')?.action).toBe('written');
+    expect(existsSync(join(projectDir, '.github', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+      true,
+    );
   });
 
   test('empty selection returns no integrations and no launch.json', () => {

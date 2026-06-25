@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { join } from 'node:path';
 import {
+  buildCopilotServerEntry,
   buildManagedServerEntry,
   CHAIN_V1,
   CHAIN_VERSION_SENTINEL,
@@ -9,6 +11,7 @@ import {
   resolveClaudeCodeConfigPath,
   resolveClaudeDesktopConfigPath,
   resolveCodexConfigPath,
+  resolveCopilotCliConfigPath,
   resolveCursorConfigPath,
   resolveEditorTargets,
 } from './editors.ts';
@@ -141,6 +144,28 @@ describe('resolveCodexConfigPath', () => {
   });
 });
 
+describe('resolveCopilotCliConfigPath', () => {
+  it('builds the default Copilot CLI config path', () => {
+    expect(
+      resolveCopilotCliConfigPath({
+        home: '/Users/alice',
+        platformName: 'darwin',
+        env: {},
+      }),
+    ).toBe('/Users/alice/.copilot/mcp-config.json');
+  });
+
+  it('honors COPILOT_HOME when present', () => {
+    expect(
+      resolveCopilotCliConfigPath({
+        home: '/Users/alice',
+        platformName: 'darwin',
+        env: { COPILOT_HOME: '/tmp/custom-copilot-home' },
+      }),
+    ).toBe('/tmp/custom-copilot-home/mcp-config.json');
+  });
+});
+
 describe('CHAIN_V1', () => {
   it('starts with the version sentinel', () => {
     expect(CHAIN_V1.startsWith(CHAIN_VERSION_SENTINEL)).toBe(true);
@@ -225,7 +250,7 @@ describe('buildManagedServerEntry', () => {
     expect((b.args as unknown[]).length).toBe(3);
   });
 
-  it('every editor target produces the byte-identical chain entry', () => {
+  it('every chain-shaped editor target produces the byte-identical chain entry', () => {
     const editors: EditorId[] = ['claude', 'claude-desktop', 'cursor', 'codex'];
     const baseline = buildManagedServerEntry({ mode: 'published' });
     for (const id of editors) {
@@ -233,6 +258,57 @@ describe('buildManagedServerEntry', () => {
       const built = target.buildEntry('', { mode: 'published' });
       expect(built).toEqual(baseline);
     }
+  });
+});
+
+describe('buildCopilotServerEntry', () => {
+  const originalArgv1 = process.argv[1];
+  beforeEach(() => {
+    process.argv[1] = '/repo/packages/cli/src/cli.ts';
+  });
+  afterEach(() => {
+    process.argv[1] = originalArgv1;
+  });
+
+  it('wraps the published chain in a Copilot local-server envelope', () => {
+    expect(buildCopilotServerEntry({ mode: 'published' })).toEqual({
+      type: 'local',
+      command: '/bin/sh',
+      args: ['-l', '-c', CHAIN_V1],
+      tools: ['*'],
+    });
+  });
+
+  it('wraps the dev chain (preserving env) in a Copilot local-server envelope', () => {
+    expect(buildCopilotServerEntry({ mode: 'dev' })).toEqual({
+      type: 'local',
+      command: 'node',
+      args: ['/repo/packages/cli/dist/cli.mjs', 'mcp'],
+      env: { MCP_DEBUG: '1', OK_LOG_FILE: '/tmp/ok-mcp.log' },
+      tools: ['*'],
+    });
+  });
+
+  it('is the entry the copilot EDITOR_TARGET emits', () => {
+    const target = resolveEditorTargets(['copilot'])[0];
+    expect(target.buildEntry('', { mode: 'published' })).toEqual(
+      buildCopilotServerEntry({ mode: 'published' }),
+    );
+  });
+
+  it('installs a project skill at .github/skills but has no repo-local MCP config', () => {
+    const target = resolveEditorTargets(['copilot'])[0];
+    // Copilot CLI reads project skills from .github/skills (like claude-code reads
+    // .claude/skills), but it has no repo-local MCP config — only the global
+    // ~/.copilot/mcp-config.json — so projectConfigPath is intentionally undefined.
+    expect(target.projectConfigPath).toBeUndefined();
+    expect(target.projectSkillPath?.('/x')).toBe(
+      join('/x', '.github', 'skills', 'open-knowledge', 'SKILL.md'),
+    );
+  });
+
+  it('keeps the chain command/args so isEntryUpToDate still recognizes it', () => {
+    expect(isEntryUpToDate(buildCopilotServerEntry({ mode: 'published' }))).toBe(true);
   });
 });
 

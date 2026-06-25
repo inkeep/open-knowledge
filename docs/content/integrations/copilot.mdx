@@ -1,0 +1,28 @@
+---
+title: GitHub Copilot CLI
+description: Use OpenKnowledge with the GitHub Copilot CLI.
+---
+
+OpenKnowledge plugs into the [GitHub Copilot CLI](https://github.com/github/copilot-cli) through MCP.
+
+## Install
+
+<McpInstall editor="GitHub Copilot CLI" />
+
+The entry is written to your global Copilot CLI config at `~/.copilot/mcp-config.json` (or `$COPILOT_HOME/mcp-config.json` if you've set `COPILOT_HOME`). It's registered as a `local` server with every tool pre-approved (`"tools": ["*"]`), so Copilot can call the OpenKnowledge `exec` tool without an extra per-tool prompt.
+
+Unlike Claude Code, Cursor, and Codex, the Copilot CLI **MCP config** is **global only** — there's no project-local `mcp-config.json`. The single global entry applies to every project you open with `copilot`.
+
+## Project skill
+
+When you run `ok init` in a project (or `ok start`, which refreshes skills), OpenKnowledge installs a project skill at `.github/skills/open-knowledge/SKILL.md`. This is the same project skill Claude Code gets at `.claude/skills/open-knowledge/`, and it teaches the agent how to read and write OpenKnowledge content in the repo.
+
+The Copilot CLI discovers project skills from `.github/skills`, `.claude/skills`, and `.agents/skills`, so if you also select Claude Code, Cursor, or Codex during `ok init`, Copilot may see the same skill from more than one directory — that's expected and harmless.
+
+## Verify
+
+Start the Copilot CLI in your project and ask:
+
+<VerifyExec subject="Copilot CLI" />
+
+If you don't see the tool, restart the Copilot CLI so it reloads `mcp-config.json`.

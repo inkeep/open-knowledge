@@ -22,6 +22,7 @@ import {
   resolveClaudeCodeConfigPath,
   resolveClaudeDesktopConfigPath,
   resolveCodexConfigPath,
+  resolveCopilotCliConfigPath,
   resolveCursorConfigPath,
 } from './editors.ts';
 
@@ -574,6 +575,9 @@ describe('runInit', () => {
       mkdirSync(dirname(resolveClaudeDesktopConfigPath({ home: fakeHome })), { recursive: true });
       mkdirSync(dirname(cursorConfigPath()), { recursive: true });
       mkdirSync(dirname(codexConfigPath()), { recursive: true });
+      mkdirSync(dirname(resolveCopilotCliConfigPath({ home: fakeHome, env: {} })), {
+        recursive: true,
+      });
 
       const result = await runInitForTest({ editors: [...ALL_EDITOR_IDS] });
 
@@ -586,6 +590,7 @@ describe('runInit', () => {
       expect(existsSync(resolveClaudeDesktopConfigPath({ home: fakeHome }))).toBe(true);
       expect(existsSync(cursorConfigPath())).toBe(true);
       expect(existsSync(codexConfigPath())).toBe(true);
+      expect(existsSync(resolveCopilotCliConfigPath({ home: fakeHome, env: {} }))).toBe(true);
     });
 
     it('overwrites across all targeted editors', async () => {
@@ -1606,11 +1611,23 @@ describe('detectInstalledEditors', () => {
     expect(detected).not.toContain('claude-desktop');
   });
 
+  it('detects Copilot CLI when ~/.copilot exists', async () => {
+    mkdirSync(join(fakeHome, '.copilot'), { recursive: true });
+    const detected = detectInstalledEditors(testDir, fakeHome);
+    expect(detected).toContain('copilot');
+  });
+
+  it('does NOT detect Copilot CLI when ~/.copilot is absent', async () => {
+    const detected = detectInstalledEditors(testDir, fakeHome);
+    expect(detected).not.toContain('copilot');
+  });
+
   it('returns all supported editors when all editor config dirs exist', async () => {
     mkdirSync(join(fakeHome, '.claude'), { recursive: true });
     mkdirSync(dirname(resolveClaudeDesktopConfigPath({ home: fakeHome })), { recursive: true });
     mkdirSync(dirname(cursorConfigPath()), { recursive: true });
     mkdirSync(dirname(codexConfigPath()), { recursive: true });
+    mkdirSync(join(fakeHome, '.copilot'), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
     expect(detected).toEqual(expect.arrayContaining([...ALL_EDITOR_IDS]));
     expect(detected).toHaveLength(ALL_EDITOR_IDS.length);
@@ -1621,8 +1638,9 @@ describe('detectInstalledEditors', () => {
     mkdirSync(dirname(resolveClaudeDesktopConfigPath({ home: fakeHome })), { recursive: true });
     mkdirSync(dirname(cursorConfigPath()), { recursive: true });
     mkdirSync(dirname(codexConfigPath()), { recursive: true });
+    mkdirSync(join(fakeHome, '.copilot'), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
-    expect(detected).toEqual(['claude', 'claude-desktop', 'cursor', 'codex']);
+    expect(detected).toEqual(['claude', 'claude-desktop', 'cursor', 'codex', 'copilot']);
   });
 
   it('returns empty list when the cwd itself does not exist (zero-detected edge case)', () => {

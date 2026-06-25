@@ -88,6 +88,19 @@ export function buildManagedServerEntry(options: McpInstallOptions = {}): Record
   };
 }
 
+/** GitHub Copilot CLI wraps each stdio MCP server in a `type: 'local'`
+ *  envelope and reads a `tools` allowlist (`['*']` = all tools). The launch
+ *  command/args/env are the shared managed-server chain, so Copilot stays in
+ *  lock-step with the other editors and the desktop startup repair (which only
+ *  inspects `command`/`args` via `isEntryUpToDate`). */
+export function buildCopilotServerEntry(options: McpInstallOptions = {}): Record<string, unknown> {
+  return {
+    type: 'local',
+    ...buildManagedServerEntry(options),
+    tools: ['*'],
+  };
+}
+
 interface AppSupportOptions {
   home?: string;
   platformName?: NodeJS.Platform;
@@ -162,6 +175,18 @@ export function resolveCodexConfigPath(options: AppSupportOptions = {}): string 
   return pathApiForPlatform(platformName).join(resolveCodexHomePath(options), 'config.toml');
 }
 
+function resolveCopilotHomePath(options: AppSupportOptions = {}): string {
+  const platformName = options.platformName ?? process.platform;
+  const home = options.home ?? homedir();
+  const env = options.env ?? process.env;
+  return env.COPILOT_HOME ?? pathApiForPlatform(platformName).join(home, '.copilot');
+}
+
+export function resolveCopilotCliConfigPath(options: AppSupportOptions = {}): string {
+  const platformName = options.platformName ?? process.platform;
+  return pathApiForPlatform(platformName).join(resolveCopilotHomePath(options), 'mcp-config.json');
+}
+
 export interface EditorMcpTarget {
   id: EditorId;
   label: string;
@@ -226,6 +251,21 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> = {
     detectPath: (_cwd, home) => dirname(resolveCodexConfigPath({ home })),
     projectConfigPath: (cwd) => join(cwd, '.codex', 'config.toml'),
     projectSkillPath: (cwd) => join(cwd, '.agents', 'skills', 'open-knowledge', 'SKILL.md'),
+  },
+  copilot: {
+    id: 'copilot',
+    label: EDITOR_LABELS.copilot,
+    configPath: (_cwd, home) => resolveCopilotCliConfigPath({ home }),
+    format: 'json',
+    topLevelKey: 'mcpServers',
+    serverName: () => MCP_SERVER_NAME,
+    buildEntry: (_cwd, options) => buildCopilotServerEntry(options),
+    scope: 'global',
+    detectPath: (_cwd, home) => resolveCopilotHomePath({ home }),
+    // Copilot CLI has no repo-local MCP config (it reads only the global
+    // ~/.copilot/mcp-config.json), so there is no projectConfigPath. It does read
+    // project skills from .github/skills, so it gets a project skill like claude-code.
+    projectSkillPath: (cwd) => join(cwd, '.github', 'skills', 'open-knowledge', 'SKILL.md'),
   },
 };
 
