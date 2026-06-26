@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { buildGitEnv, createGitInstance } from './git-handle.ts';
+import { applyGitEnv, buildGitEnv, createGitInstance, type GitHandle } from './git-handle.ts';
 import { withParentLock } from './git-mutex.ts';
 
 describe('buildGitEnv', () => {
@@ -17,6 +17,24 @@ describe('buildGitEnv', () => {
     } finally {
       if (saved === undefined) delete process.env[key];
       else process.env[key] = saved;
+    }
+  }
+
+  function withEnvEntries(entries: Record<string, string | undefined>, fn: () => void): void {
+    const saved = new Map<string, string | undefined>();
+    for (const key of Object.keys(entries)) {
+      saved.set(key, process.env[key]);
+      const value = entries[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    try {
+      fn();
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
     }
   }
 
@@ -33,6 +51,36 @@ describe('buildGitEnv', () => {
   test('preserves PATH so a bare-command credential helper resolves', () => {
     withEnv('PATH', '/custom/bin:/usr/bin', () => {
       expect(buildGitEnv().PATH).toBe('/custom/bin:/usr/bin');
+    });
+  });
+
+  test('preserves user and SSH auth environment for Git transports', () => {
+    withEnvEntries(
+      {
+        HOME: '/Users/alice',
+        USERPROFILE: 'C:\\Users\\alice',
+        HOMEDRIVE: 'C:',
+        HOMEPATH: '\\Users\\alice',
+        ProgramData: 'C:\\ProgramData',
+        ALLUSERSPROFILE: 'C:\\ProgramData',
+        SSH_AUTH_SOCK: '/tmp/ssh-agent.sock',
+      },
+      () => {
+        const env = buildGitEnv();
+        expect(env.HOME).toBe('/Users/alice');
+        expect(env.USERPROFILE).toBe('C:\\Users\\alice');
+        expect(env.HOMEDRIVE).toBe('C:');
+        expect(env.HOMEPATH).toBe('\\Users\\alice');
+        expect(env.ProgramData).toBe('C:\\ProgramData');
+        expect(env.ALLUSERSPROFILE).toBe('C:\\ProgramData');
+        expect(env.SSH_AUTH_SOCK).toBe('/tmp/ssh-agent.sock');
+      },
+    );
+  });
+
+  test('does not pass through GIT_SSH_COMMAND without explicit simple-git opt-in', () => {
+    withEnv('GIT_SSH_COMMAND', 'ssh -vv', () => {
+      expect('GIT_SSH_COMMAND' in buildGitEnv()).toBe(false);
     });
   });
 
@@ -62,6 +110,11 @@ describe('buildGitEnv', () => {
 describe('createGitInstance (credential.helper config)', () => {
   let tmpDir: string;
 
+  function readEnv(handle: GitHandle): Record<string, string> {
+    // biome-ignore lint/suspicious/noExplicitAny: probing internal simple-git executor for spawn-env assertion
+    return ((handle.git as any)._executor?.env ?? {}) as Record<string, string>;
+  }
+
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ok-git-handle-test-'));
     execSync('git init -q', { cwd: tmpDir });
@@ -77,6 +130,27 @@ describe('createGitInstance (credential.helper config)', () => {
     });
     const version = await handle.git.raw(['--version']);
     expect(version).toContain('git version');
+  });
+
+  test('merges author overrides without dropping git auth env', () => {
+    const savedUserProfile = process.env.USERPROFILE;
+    process.env.USERPROFILE = 'C:\\Users\\alice';
+    try {
+      const handle = createGitInstance(tmpDir, { gitIndexFile: '.git/custom-index' });
+      applyGitEnv(handle, {
+        GIT_AUTHOR_NAME: 'Alice',
+        GIT_AUTHOR_EMAIL: 'alice@example.com',
+      });
+
+      const env = readEnv(handle);
+      expect(env.USERPROFILE).toBe('C:\\Users\\alice');
+      expect(env.GIT_INDEX_FILE).toBe(join(tmpDir, '.git/custom-index'));
+      expect(env.GIT_AUTHOR_NAME).toBe('Alice');
+      expect(env.GIT_AUTHOR_EMAIL).toBe('alice@example.com');
+    } finally {
+      if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = savedUserProfile;
+    }
   });
 });
 

@@ -18,6 +18,7 @@ export interface GitHandle {
   git: SimpleGit;
   projectDir: string;
   credentialArgs: string[];
+  env: Record<string, string>;
 }
 
 type CredentialHelperUnsafeGitOptions = SimpleGitOptions & {
@@ -26,19 +27,54 @@ type CredentialHelperUnsafeGitOptions = SimpleGitOptions & {
   };
 };
 
+const GIT_AUTH_ENV_KEYS = [
+  'HOME',
+  'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'ProgramData',
+  'ALLUSERSPROFILE',
+  'SystemRoot',
+  'WINDIR',
+  'windir',
+  'ComSpec',
+  'TEMP',
+  'TMP',
+  'USERNAME',
+  'USERDOMAIN',
+  'PATHEXT',
+  'SSH_AUTH_SOCK',
+  'ELECTRON_RUN_AS_NODE',
+] as const;
+
 export function buildGitEnv(ghToken?: RelayGhToken): Record<string, string> {
   const env: Record<string, string> = { LANG: 'C', LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0' };
-  if (process.env.PATH !== undefined) {
-    env.PATH = process.env.PATH;
+  const path = process.env.PATH ?? process.env.Path;
+  if (path !== undefined) {
+    env.PATH = path;
   }
-  if (process.env.ELECTRON_RUN_AS_NODE !== undefined) {
-    env.ELECTRON_RUN_AS_NODE = process.env.ELECTRON_RUN_AS_NODE;
+  for (const key of GIT_AUTH_ENV_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
   }
   if (ghToken) {
     env.OK_GH_TOKEN = ghToken.token;
     env.OK_GH_TOKEN_HOST = ghToken.host;
   }
   return env;
+}
+
+export function applyGitEnv(
+  handle: GitHandle,
+  overrides: Record<string, string | undefined>,
+): SimpleGit {
+  const env = { ...handle.env };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value !== undefined) env[key] = value;
+  }
+  return handle.git.env(env);
 }
 
 export function createGitInstance(projectDir: string, options: GitHandleOptions = {}): GitHandle {
@@ -59,5 +95,5 @@ export function createGitInstance(projectDir: string, options: GitHandleOptions 
 
   const git = simpleGit(gitOptions as Partial<SimpleGitOptions>).env(env as Record<string, string>);
 
-  return { git, projectDir, credentialArgs };
+  return { git, projectDir, credentialArgs, env: env as Record<string, string> };
 }

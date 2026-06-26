@@ -21,7 +21,7 @@ import {
   type UserFacingErrorCode,
 } from './error-classification.ts';
 import { createGhTokenSource, type GhTokenSource } from './gh-token-source.ts';
-import { createGitInstance, type GitHandle, withParentLock } from './git-handle.ts';
+import { applyGitEnv, createGitInstance, type GitHandle, withParentLock } from './git-handle.ts';
 import { resolveGitIdentity } from './git-identity.ts';
 import {
   type CheckPushPermissionOptions,
@@ -1045,7 +1045,7 @@ export class SyncEngine {
         const authorName = identity?.name ?? 'OpenKnowledge';
         const authorEmail = identity?.email ?? 'sync@open-knowledge.local';
 
-        handle.git.env({
+        applyGitEnv(handle, {
           GIT_AUTHOR_NAME: authorName,
           GIT_AUTHOR_EMAIL: authorEmail,
           GIT_COMMITTER_NAME: authorName,
@@ -1198,7 +1198,7 @@ export class SyncEngine {
       const identity = await resolveGitIdentity(this.projectDir);
       const authorName = identity?.name ?? 'OpenKnowledge';
       const authorEmail = identity?.email ?? 'sync@open-knowledge.local';
-      isoHandle.git.env({
+      applyGitEnv(isoHandle, {
         GIT_AUTHOR_NAME: authorName,
         GIT_AUTHOR_EMAIL: authorEmail,
         GIT_COMMITTER_NAME: authorName,
