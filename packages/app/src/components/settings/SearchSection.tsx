@@ -99,6 +99,11 @@ export function SearchSection() {
     if (write(true)) setConfirmOpen(false);
   }
 
+  function commitBaseUrlInput(input: HTMLInputElement): void {
+    const normalized = normalizeBaseUrl(input.value);
+    if (writeBaseUrl(input.value)) input.value = normalized;
+  }
+
   const serverEnabled = status?.enabled ?? false;
   const keyPresent = status?.keyPresent ?? false;
   const ready = status?.ready ?? false;
@@ -180,15 +185,11 @@ export function SearchSection() {
           key={configuredBaseUrl}
           id="settings-search-base-url"
           defaultValue={configuredBaseUrl}
-          onBlur={(e) => {
-            const normalized = normalizeBaseUrl(e.currentTarget.value);
-            if (writeBaseUrl(e.currentTarget.value)) e.currentTarget.value = normalized;
-          }}
+          onBlur={(e) => commitBaseUrlInput(e.currentTarget)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              const normalized = normalizeBaseUrl(e.currentTarget.value);
-              if (writeBaseUrl(e.currentTarget.value)) e.currentTarget.value = normalized;
+              commitBaseUrlInput(e.currentTarget);
             }
           }}
           placeholder={DEFAULT_EMBEDDINGS_BASE_URL}
