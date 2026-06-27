@@ -1062,6 +1062,10 @@ msgstr ""
 msgid "Clear {keyName}"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Clear the field to reset back to the default OpenAI endpoint."
+msgstr ""
+
 #: src/components/FolderTimelineCard.tsx
 msgid "cleared folder properties"
 msgstr ""
@@ -2321,6 +2325,10 @@ msgid "Embed an image with optional alt text."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
+msgid "Embeddings API endpoint"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
 msgstr ""
 
@@ -2650,6 +2658,10 @@ msgstr ""
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Failed to update property"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to update the embeddings endpoint — {detail}"
 msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
@@ -6681,6 +6693,10 @@ msgstr ""
 msgid "Use lowercase letters, digits, and hyphens only."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
+msgstr ""
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
 msgstr ""
@@ -6909,6 +6925,10 @@ msgstr ""
 msgid "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
 msgstr ""
 
+#: src/components/settings/EmbeddingsKeySection.tsx
+msgid "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -6920,10 +6940,6 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
-msgstr ""
-
-#: src/components/settings/EmbeddingsKeySection.tsx
-msgid "Your OpenAI API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search."
 msgstr ""
 
 #: src/components/CloneDialog.tsx

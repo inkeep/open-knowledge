@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { Config, ConfigBinding, SemanticIndexStatus } from '@inkeep/open-knowledge-core';
+import {
+  type Config,
+  type ConfigBinding,
+  DEFAULT_EMBEDDINGS_BASE_URL,
+  type SemanticIndexStatus,
+} from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -44,8 +49,10 @@ mock.module('@/lib/config-provider', () => ({
 
 const { SearchSection } = await import('./SearchSection');
 
-function configWithSemanticEnabled(enabled: boolean): Config {
-  return { search: { semantic: { enabled } } } as unknown as Config;
+function configWithSemantic({ enabled, baseUrl }: { enabled: boolean; baseUrl?: string }): Config {
+  return {
+    search: { semantic: { enabled, ...(baseUrl ? { baseUrl } : {}) } },
+  } as unknown as Config;
 }
 
 function makeBinding(): { binding: ConfigBinding; calls: unknown[] } {
@@ -87,7 +94,7 @@ describe('SearchSection', () => {
   test('off: switch is unchecked, body says no content leaves, no coverage panel', () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(false);
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
 
     render(<SearchSection />);
 
@@ -115,7 +122,7 @@ describe('SearchSection', () => {
     const user = userEvent.setup();
     const { binding, calls } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(false);
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
 
     render(<SearchSection />);
 
@@ -133,7 +140,7 @@ describe('SearchSection', () => {
     const user = userEvent.setup();
     const { binding, calls } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(true);
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
     mockStatus = {
       enabled: true,
       keyPresent: true,
@@ -155,7 +162,7 @@ describe('SearchSection', () => {
   test('on + keyed + warmed + capable: shows read-only coverage', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(true);
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
     mockStatus = {
       enabled: true,
       keyPresent: true,
@@ -175,7 +182,7 @@ describe('SearchSection', () => {
   test('on + capable but nothing embedded yet: shows the lazy-warm hint', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(true);
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
     mockStatus = {
       enabled: true,
       keyPresent: true,
@@ -195,7 +202,7 @@ describe('SearchSection', () => {
   test('on + NO key: shows the needs-a-key hint pointing at Account (instant, no warm)', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(true);
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
     mockStatus = {
       enabled: true,
       keyPresent: false,
@@ -218,7 +225,7 @@ describe('SearchSection', () => {
   test('on + key present but provider rejected it: shows the provider-error hint', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(true);
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
     mockStatus = {
       enabled: true,
       keyPresent: true,
@@ -239,7 +246,7 @@ describe('SearchSection', () => {
   test('on + keyed but not warmed: shows the pending state', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(true);
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
     mockStatus = {
       enabled: true,
       keyPresent: true,
@@ -261,7 +268,7 @@ describe('SearchSection', () => {
   test('on but server not yet settled: shows the applying state', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(true);
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
     mockStatus = {
       enabled: false,
       keyPresent: false,
@@ -285,7 +292,7 @@ describe('SearchSection', () => {
     const user = userEvent.setup();
     const { binding, calls } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(false);
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
 
     render(<SearchSection />);
 
@@ -305,7 +312,7 @@ describe('SearchSection', () => {
       patch: () => ({ ok: false, error: { code: 'noop', message: 'fail' } }),
     } as unknown as ConfigBinding;
     mockProjectLocalBinding = failBinding;
-    mockProjectLocalConfig = configWithSemanticEnabled(false);
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
 
     render(<SearchSection />);
 
@@ -313,5 +320,55 @@ describe('SearchSection', () => {
     await user.click(await screen.findByTestId('settings-search-confirm-enable'));
 
     expect(await screen.findByTestId('settings-search-confirm')).toBeDefined();
+  });
+
+  test('shows the default endpoint when no custom provider is configured', () => {
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
+
+    render(<SearchSection />);
+
+    expect((screen.getByTestId('settings-search-base-url') as HTMLInputElement).value).toBe(
+      DEFAULT_EMBEDDINGS_BASE_URL,
+    );
+  });
+
+  test('blurring the endpoint field writes the trimmed custom base URL', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
+
+    render(<SearchSection />);
+
+    const input = screen.getByTestId('settings-search-base-url');
+    await user.clear(input);
+    await user.type(input, '  https://azure.example.com/openai/v1/  ');
+    await user.tab();
+
+    expect(calls).toContainEqual({
+      search: { semantic: { baseUrl: 'https://azure.example.com/openai/v1/' } },
+    });
+  });
+
+  test('clearing the endpoint field resets it to the default OpenAI endpoint', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({
+      enabled: false,
+      baseUrl: 'https://azure.example.com/openai/v1',
+    });
+
+    render(<SearchSection />);
+
+    const input = screen.getByTestId('settings-search-base-url');
+    await user.clear(input);
+    await user.tab();
+
+    expect(calls).toContainEqual({
+      search: { semantic: { baseUrl: DEFAULT_EMBEDDINGS_BASE_URL } },
+    });
   });
 });
