@@ -594,9 +594,6 @@
     "FEr96N": ["Theme"],
     "FNTx6u": ["Search \"", ["semanticSubmitQuery"], "\" by meaning"],
     "FOGD7m": ["Create something great."],
-    "FOyCTr": [
-      "Your OpenAI API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search."
-    ],
     "FRYB1Q": ["/api/config returned a malformed body"],
     "FRqZ9v": ["Couldn't update skill: ", ["0"]],
     "FTUGgh": ["Enter a repository URL or owner/repo"],
@@ -770,6 +767,7 @@
     "KujtjC": ["Find"],
     "L-rMC9": ["Reset to default"],
     "L1ZE3M": ["Document statistics"],
+    "L1rRuU": ["Embeddings API endpoint"],
     "L3CEC1": ["this item"],
     "L4Cdd9": ["or create a new file <0/>"],
     "L6Hhh6": ["(root)"],
@@ -1403,6 +1401,7 @@
     "eG8Jsg": ["Toggle source tab focus mode"],
     "eJitUk": ["Upload from computer"],
     "eKThTQ": ["Failed to reorder"],
+    "eLl1VX": ["Failed to update the embeddings endpoint — ", ["detail"]],
     "eNQGRb": ["Inline LaTeX math rendered with KaTeX."],
     "ePK91l": ["Edit"],
     "eQkgKV": ["Installed"],
@@ -1618,6 +1617,7 @@
     "l8G3S9": ["Auto-sync is off — you don't have permission to push to this repo"],
     "lAiyU_": ["Only the current document uses <0>#", ["tag"], "</0>."],
     "lGs_bQ": ["Page <0>*</0>"],
+    "lHCR4I": ["Clear the field to reset back to the default OpenAI endpoint."],
     "lHwYMr": ["Server error: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["Use letters, digits, <0>_</0> and <1>-</1> only."],
     "lIn9L9": ["Disable sync"],
@@ -1785,6 +1785,9 @@
     "pha01Y": ["Project-level pages with no incoming graph edges."],
     "pkAft1": ["Search failed."],
     "pmKdif": ["Failed: ", ["loadError"]],
+    "pmOGtg": [
+      "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
+    ],
     "pmUArF": ["Workspace"],
     "ppDgFi": ["Restart with this app's version"],
     "pzutoc": ["Italic"],
@@ -2002,6 +2005,9 @@
     "wXO4Tg": [["hrs"], "h ago"],
     "wbv9xO": ["Create new project"],
     "wbwHYD": ["Enable sync"],
+    "wccmX0": [
+      "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
+    ],
     "weP6me": ["Couldn't load docs — type @ again to retry"],
     "wlwXUk": [
       "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."

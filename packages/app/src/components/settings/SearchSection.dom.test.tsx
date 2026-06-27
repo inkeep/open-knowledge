@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import {
-  DEFAULT_EMBEDDINGS_BASE_URL,
   type Config,
   type ConfigBinding,
+  DEFAULT_EMBEDDINGS_BASE_URL,
   type SemanticIndexStatus,
 } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -49,14 +49,10 @@ mock.module('@/lib/config-provider', () => ({
 
 const { SearchSection } = await import('./SearchSection');
 
-function configWithSemantic({
-  enabled,
-  baseUrl,
-}: {
-  enabled: boolean;
-  baseUrl?: string;
-}): Config {
-  return { search: { semantic: { enabled, ...(baseUrl ? { baseUrl } : {}) } } } as unknown as Config;
+function configWithSemantic({ enabled, baseUrl }: { enabled: boolean; baseUrl?: string }): Config {
+  return {
+    search: { semantic: { enabled, ...(baseUrl ? { baseUrl } : {}) } },
+  } as unknown as Config;
 }
 
 function makeBinding(): { binding: ConfigBinding; calls: unknown[] } {

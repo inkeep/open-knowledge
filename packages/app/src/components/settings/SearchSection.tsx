@@ -25,7 +25,6 @@ export function SearchSection() {
   const { projectLocalConfig, projectLocalSynced, projectLocalBinding } = useConfigContext();
   const { status, refresh } = useSemanticSearchStatus();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [baseUrlInput, setBaseUrlInput] = useState(DEFAULT_EMBEDDINGS_BASE_URL);
   const settleTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
   useEffect(
@@ -37,10 +36,6 @@ export function SearchSection() {
 
   const configuredBaseUrl =
     projectLocalConfig?.search?.semantic?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL;
-
-  useEffect(() => {
-    setBaseUrlInput(configuredBaseUrl);
-  }, [configuredBaseUrl]);
 
   const enabled = projectLocalConfig?.search?.semantic?.enabled ?? false;
   const bindingReady = projectLocalSynced && projectLocalBinding !== null;
@@ -70,23 +65,23 @@ export function SearchSection() {
     return true;
   }
 
+  function normalizeBaseUrl(next: string): string {
+    return next.trim() || DEFAULT_EMBEDDINGS_BASE_URL;
+  }
+
   function writeBaseUrl(next: string): boolean {
     if (projectLocalBinding === null) {
       toast.error(t`Search settings not yet loaded — try again in a moment`);
       return false;
     }
-    const normalized = next.trim() || DEFAULT_EMBEDDINGS_BASE_URL;
-    if (normalized === configuredBaseUrl) {
-      setBaseUrlInput(normalized);
-      return true;
-    }
+    const normalized = normalizeBaseUrl(next);
+    if (normalized === configuredBaseUrl) return true;
     const result = projectLocalBinding.patch({ search: { semantic: { baseUrl: normalized } } });
     if (!result.ok) {
       const detail = humanFormat(result.error);
       toast.error(t`Failed to update the embeddings endpoint — ${detail}`);
       return false;
     }
-    setBaseUrlInput(normalized);
     refresh();
     scheduleSettleRefresh();
     return true;
@@ -102,10 +97,6 @@ export function SearchSection() {
 
   function onConfirm() {
     if (write(true)) setConfirmOpen(false);
-  }
-
-  function onBaseUrlBlur() {
-    writeBaseUrl(baseUrlInput);
   }
 
   const serverEnabled = status?.enabled ?? false;
@@ -186,14 +177,18 @@ export function SearchSection() {
           </p>
         </div>
         <Input
+          key={configuredBaseUrl}
           id="settings-search-base-url"
-          value={baseUrlInput}
-          onChange={(e) => setBaseUrlInput(e.target.value)}
-          onBlur={onBaseUrlBlur}
+          defaultValue={configuredBaseUrl}
+          onBlur={(e) => {
+            const normalized = normalizeBaseUrl(e.currentTarget.value);
+            if (writeBaseUrl(e.currentTarget.value)) e.currentTarget.value = normalized;
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              writeBaseUrl(baseUrlInput);
+              const normalized = normalizeBaseUrl(e.currentTarget.value);
+              if (writeBaseUrl(e.currentTarget.value)) e.currentTarget.value = normalized;
             }
           }}
           placeholder={DEFAULT_EMBEDDINGS_BASE_URL}
