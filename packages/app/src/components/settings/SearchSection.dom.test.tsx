@@ -272,7 +272,7 @@ describe('SearchSection', () => {
   test('on but server not yet settled: shows the applying state', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
-    mockProjectLocalConfig = configWithSemanticEnabled(true);
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
     mockStatus = {
       enabled: false,
       keyPresent: false,
