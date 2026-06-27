@@ -1,4 +1,4 @@
-import { humanFormat } from '@inkeep/open-knowledge-core';
+import { DEFAULT_EMBEDDINGS_BASE_URL, humanFormat } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -13,6 +13,7 @@ import {
   Dialog as DialogRoot,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
 import { useConfigContext } from '@/lib/config-provider';
@@ -24,6 +25,7 @@ export function SearchSection() {
   const { projectLocalConfig, projectLocalSynced, projectLocalBinding } = useConfigContext();
   const { status, refresh } = useSemanticSearchStatus();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [baseUrlInput, setBaseUrlInput] = useState(DEFAULT_EMBEDDINGS_BASE_URL);
   const settleTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
   useEffect(
@@ -32,6 +34,13 @@ export function SearchSection() {
     },
     [],
   );
+
+  const configuredBaseUrl =
+    projectLocalConfig?.search?.semantic?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL;
+
+  useEffect(() => {
+    setBaseUrlInput(configuredBaseUrl);
+  }, [configuredBaseUrl]);
 
   const enabled = projectLocalConfig?.search?.semantic?.enabled ?? false;
   const bindingReady = projectLocalSynced && projectLocalBinding !== null;
@@ -61,6 +70,28 @@ export function SearchSection() {
     return true;
   }
 
+  function writeBaseUrl(next: string): boolean {
+    if (projectLocalBinding === null) {
+      toast.error(t`Search settings not yet loaded — try again in a moment`);
+      return false;
+    }
+    const normalized = next.trim() || DEFAULT_EMBEDDINGS_BASE_URL;
+    if (normalized === configuredBaseUrl) {
+      setBaseUrlInput(normalized);
+      return true;
+    }
+    const result = projectLocalBinding.patch({ search: { semantic: { baseUrl: normalized } } });
+    if (!result.ok) {
+      const detail = humanFormat(result.error);
+      toast.error(t`Failed to update the embeddings endpoint — ${detail}`);
+      return false;
+    }
+    setBaseUrlInput(normalized);
+    refresh();
+    scheduleSettleRefresh();
+    return true;
+  }
+
   function onToggleRequest(next: boolean) {
     if (next) {
       setConfirmOpen(true);
@@ -71,6 +102,10 @@ export function SearchSection() {
 
   function onConfirm() {
     if (write(true)) setConfirmOpen(false);
+  }
+
+  function onBaseUrlBlur() {
+    writeBaseUrl(baseUrlInput);
   }
 
   const serverEnabled = status?.enabled ?? false;
@@ -136,6 +171,41 @@ export function SearchSection() {
             total={total}
           />
         ) : null}
+      </div>
+
+      <div className="space-y-2 rounded-md border p-3">
+        <div className="space-y-1">
+          <label htmlFor="settings-search-base-url" className="text-sm font-medium">
+            <Trans>Embeddings API endpoint</Trans>
+          </label>
+          <p className="text-muted-foreground text-1sm">
+            <Trans>
+              Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for
+              Azure or a self-hosted provider.
+            </Trans>
+          </p>
+        </div>
+        <Input
+          id="settings-search-base-url"
+          value={baseUrlInput}
+          onChange={(e) => setBaseUrlInput(e.target.value)}
+          onBlur={onBaseUrlBlur}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              writeBaseUrl(baseUrlInput);
+            }
+          }}
+          placeholder={DEFAULT_EMBEDDINGS_BASE_URL}
+          disabled={!bindingReady}
+          spellCheck={false}
+          autoComplete="off"
+          data-testid="settings-search-base-url"
+          className="h-8 font-mono text-sm"
+        />
+        <p className="text-muted-foreground text-1sm" data-testid="settings-search-base-url-help">
+          <Trans>Clear the field to reset back to the default OpenAI endpoint.</Trans>
+        </p>
       </div>
 
       <EnableSemanticSearchConfirmDialog
