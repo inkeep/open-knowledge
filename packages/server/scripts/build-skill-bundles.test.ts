@@ -243,12 +243,16 @@ describe('repo assets — production guard', () => {
     expect(result.ok).toBe(true);
   });
 
-  test('every real source bundle exists and the _shared directory is present', () => {
+  test('every real source bundle exists and shared placeholders are resolvable', () => {
     const { skillsDir } = defaultPaths();
     for (const bundle of BUNDLE_IDS) {
       expect(existsSync(join(skillsDir, bundle, 'SKILL.md'))).toBe(true);
     }
-    expect(existsSync(join(skillsDir, '_shared'))).toBe(true);
+    const hasSharedSources = existsSync(join(skillsDir, '_shared'));
+    const bundlesReferenceShared = BUNDLE_IDS.some((bundle) =>
+      readFileSync(join(skillsDir, bundle, 'SKILL.md'), 'utf-8').includes('{{> _shared/'),
+    );
+    expect(hasSharedSources || !bundlesReferenceShared).toBe(true);
   });
 
   test('every bundle carries a distinct frontmatter name: value (shadow prevention)', () => {

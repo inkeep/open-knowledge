@@ -420,7 +420,9 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
   async function setupDivergence(remoteAction: 'modify' | 'delete'): Promise<void> {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
-    await simpleGit(bareDir).init(true);
+    const bare = simpleGit(bareDir);
+    await bare.init(true);
+    await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const sisterDir = join(tmpDir, 'sister');
     mkdirSync(sisterDir, { recursive: true });
