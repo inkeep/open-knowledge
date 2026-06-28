@@ -156,10 +156,12 @@ describe('handleUploadAsset', () => {
   let contentDir: string;
   let server: import('node:http').Server;
   let port: number;
+  let attachmentFolderPath: string;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), 'upload-test-'));
     contentDir = join(tmpDir, 'content');
+    attachmentFolderPath = './';
     mkdirSync(contentDir, { recursive: true });
     mkdirSync(join(contentDir, 'docs'), { recursive: true });
     writeFileSync(join(contentDir, 'docs', 'guide.md'), '# Guide');
@@ -176,6 +178,7 @@ describe('handleUploadAsset', () => {
       contentDir,
       getFileIndex: () => new Map(),
       serverInstanceId: 'test-instance',
+      getAttachmentFolderPath: () => attachmentFolderPath,
     });
 
     const { createServer } = await import('node:http');
@@ -236,6 +239,19 @@ describe('handleUploadAsset', () => {
     expect(body.deduped).toBe(false);
     expect(existsSync(join(contentDir, 'docs', 'screenshot.png'))).toBe(true);
     expect((body as Record<string, unknown>).ok).toBeUndefined();
+  });
+
+  test('stores upload in configured content-relative attachments folder', async () => {
+    attachmentFolderPath = 'attachments';
+
+    const res = await uploadImage(createPngBuffer(), 'screenshot.png', 'docs/guide.md');
+    const body = (await res.json()) as { src: string; path: string; deduped: boolean };
+    expect(res.status).toBe(200);
+    expect(body.src).toBe('../attachments/screenshot.png');
+    expect(body.path).toBe('attachments/screenshot.png');
+    expect(body.deduped).toBe(false);
+    expect(existsSync(join(contentDir, 'attachments', 'screenshot.png'))).toBe(true);
+    expect(existsSync(join(contentDir, 'docs', 'screenshot.png'))).toBe(false);
   });
 
   test('rejects missing parentDocName', async () => {

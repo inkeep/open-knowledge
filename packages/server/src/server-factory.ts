@@ -12,6 +12,7 @@ import {
   CONFIG_DOC_NAME_USER,
   CONFIG_DOC_NAMES,
   createBasenameIndex,
+  DEFAULT_ATTACHMENT_FOLDER_PATH,
   humanFormat,
   type MarkdownManager,
   type Principal,
@@ -270,6 +271,21 @@ export function createServer(options: ServerOptions): ServerInstance {
       );
     }
     return project.value.autoSync?.default === true;
+  }
+
+  function readProjectAttachmentFolderPath(): string {
+    const project = readConfigSafely({
+      absPath: resolveConfigPath('project', projectDir),
+      sideline: false,
+      warn: (message) => log.warn({ message }, '[config] could not read project config'),
+    });
+    if (!project.valid) {
+      log.warn(
+        {},
+        '[config] content.attachmentFolderPath unavailable (project config invalid) — defaulting to current page folder',
+      );
+    }
+    return project.value.content?.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH;
   }
 
   function readSemanticSearchConfig(): ResolvedSemanticConfig {
@@ -731,6 +747,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       getSyncEngine: () => syncEngine,
       localOpCliArgs,
       projectDir,
+      getAttachmentFolderPath: readProjectAttachmentFolderPath,
       resolveEmbed,
       getPrincipal: () => loadedPrincipal,
       homeDirOverride: configHomedirOverride,

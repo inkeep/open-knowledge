@@ -145,6 +145,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .sort();
     expect(projectStrict).toEqual([
       'autoSync.default',
+      'content.attachmentFolderPath',
       'content.dir',
       'telemetry.localSink.attributeDenylist',
       'telemetry.localSink.enabled',

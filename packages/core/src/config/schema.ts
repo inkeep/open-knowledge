@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
 import { fieldRegistry } from './field-registry.ts';
 
 export const DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST: readonly string[] = Object.freeze([
@@ -31,9 +32,20 @@ export const ConfigSchema = z.looseObject({
             'Folder OpenKnowledge reads and writes documents under, relative to the project root (the folder that contains .ok/). Defaults to the project root. Exclude paths with .okignore.',
         })
         .default('.'),
+      attachmentFolderPath: z
+        .string()
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          defaultScope: 'project',
+          description:
+            'Folder pasted or dropped assets are written to. Use ./ for the current page folder, / for the content root, ./attachments beside each page, or attachments for a fixed content-relative folder.',
+        })
+        .default(DEFAULT_ATTACHMENT_FOLDER_PATH),
     })
     .default({
       dir: '.',
+      attachmentFolderPath: DEFAULT_ATTACHMENT_FOLDER_PATH,
     }),
   appearance: z
     .looseObject({

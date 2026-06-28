@@ -34,6 +34,16 @@ const FIXTURES: Fixture[] = [
     shouldAccept: true,
   },
   {
+    name: 'content.attachmentFolderPath=attachments accepted',
+    input: { content: { attachmentFolderPath: 'attachments' } },
+    shouldAccept: true,
+  },
+  {
+    name: 'content.attachmentFolderPath non-string rejected',
+    input: { content: { attachmentFolderPath: 12345 } },
+    shouldAccept: false,
+  },
+  {
     name: 'content with non-string dir rejected',
     input: { content: { dir: 12345 } },
     shouldAccept: false,

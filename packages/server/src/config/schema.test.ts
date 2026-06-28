@@ -5,6 +5,7 @@ describe('ConfigSchema', () => {
   test('empty object returns all defaults', () => {
     const config = ConfigSchema.parse({});
     expect(config.content.dir).toBe('.');
+    expect(config.content.attachmentFolderPath).toBe('./');
     expect(config.appearance.theme).toBeUndefined();
     expect(config.editor.wordWrap).toBe(true);
     expect(config.autoSync.enabled).toBeNull();
@@ -64,6 +65,23 @@ describe('ConfigSchema', () => {
       content: { dir: 'docs' },
     });
     expect(config.content.dir).toBe('docs');
+  });
+
+  test('content.attachmentFolderPath is preserved', () => {
+    const config = ConfigSchema.parse({
+      content: { attachmentFolderPath: 'attachments' },
+    });
+    expect(config.content.attachmentFolderPath).toBe('attachments');
+  });
+
+  test('content.attachmentFolderPath rejects non-string values', () => {
+    const result = ConfigSchema.safeParse({
+      content: { attachmentFolderPath: 12345 },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toContain('attachmentFolderPath');
+    }
   });
 });
 

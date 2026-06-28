@@ -1791,6 +1791,7 @@ export interface ApiExtensionOptions {
   semanticSearch?: SemanticSearchService;
   getSemanticSimilarityFloor?: () => number | undefined;
   embeddingsSecretsFile?: string;
+  getAttachmentFolderPath?: () => string;
 }
 
 interface WorkspaceSearchCacheEntry {
@@ -1886,6 +1887,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     semanticSearch,
     getSemanticSimilarityFloor,
     embeddingsSecretsFile,
+    getAttachmentFolderPath = () => DEFAULT_ATTACHMENT_FOLDER_PATH,
     ephemeral = false,
   } = options;
 
@@ -8172,9 +8174,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     const resolvedContentDir = resolve(contentDir);
     const destDir = resolveUploadDestDir(
       parentDocName,
-      DEFAULT_ATTACHMENT_FOLDER_PATH,
+      getAttachmentFolderPath(),
       resolvedContentDir,
     );
+    const uploadSrcFor = (assetRelPath: string) => {
+      const parentDir = dirname(parentDocName);
+      return toPosix(relative(parentDir, assetRelPath)) || basename(assetRelPath);
+    };
     if (!isWithinContentDir(destDir, resolvedContentDir)) {
       cleanupTempfile();
       errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
@@ -8263,6 +8269,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       if (existing) {
         cleanupTempfile();
         const relPath = toPosix(relative(contentDir, resolve(destDir, existing)));
+        const src = uploadSrcFor(relPath);
         log.info(
           {
             event: 'upload',
@@ -8281,7 +8288,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           res,
           200,
           UploadAssetSuccessSchema,
-          { src: existing, path: relPath, deduped: true },
+          { src, path: relPath, deduped: true },
           { handler: 'upload-asset' },
         );
         return;
@@ -8307,6 +8314,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     try {
       const destFilename = linkTempToFinalWithCollisionRetry(tempPath, destDir, finalFilename);
       const relPath = toPosix(relative(contentDir, resolve(destDir, destFilename)));
+      const src = uploadSrcFor(relPath);
       log.info(
         {
           event: 'upload',
@@ -8325,7 +8333,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         res,
         200,
         UploadAssetSuccessSchema,
-        { src: destFilename, path: relPath, deduped: false },
+        { src, path: relPath, deduped: false },
         { handler: 'upload-asset' },
       );
     } catch (e) {
