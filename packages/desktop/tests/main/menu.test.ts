@@ -51,7 +51,7 @@ describe('buildMenuTemplate', () => {
   test('empty recents → "No recent projects" disabled placeholder', () => {
     const deps = makeDeps();
     const template = buildMenuTemplate(deps);
-    const openRecent = findByLabel(template, 'Open recent');
+    const openRecent = findByLabel(template, 'Recent project');
     expect(openRecent).toBeDefined();
     const sub = openRecent?.submenu as MenuItemConstructorOptions[] | undefined;
     expect(Array.isArray(sub)).toBe(true);
@@ -67,7 +67,7 @@ describe('buildMenuTemplate', () => {
     ];
     const deps = makeDeps({ getRecentProjects: () => recents });
     const template = buildMenuTemplate(deps);
-    const openRecent = findByLabel(template, 'Open recent');
+    const openRecent = findByLabel(template, 'Recent project');
     const sub = openRecent?.submenu as MenuItemConstructorOptions[] | undefined;
     expect(sub?.length).toBe(4);
     expect(sub?.[0]?.label).toBe('alpha');
@@ -84,7 +84,7 @@ describe('buildMenuTemplate', () => {
     }));
     const deps = makeDeps({ getRecentProjects: () => recents });
     const template = buildMenuTemplate(deps);
-    const openRecent = findByLabel(template, 'Open recent');
+    const openRecent = findByLabel(template, 'Recent project');
     const sub = openRecent?.submenu as MenuItemConstructorOptions[] | undefined;
     expect(sub?.length).toBe(12);
     expect(sub?.[0]?.label).toBe('project-0');
@@ -100,7 +100,7 @@ describe('buildMenuTemplate', () => {
       openProject,
     });
     const template = buildMenuTemplate(deps);
-    const openRecent = findByLabel(template, 'Open recent');
+    const openRecent = findByLabel(template, 'Recent project');
     const sub = openRecent?.submenu as MenuItemConstructorOptions[] | undefined;
     const row = sub?.[0];
     (row?.click as (() => void) | undefined)?.();
@@ -543,55 +543,67 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
   });
 });
 
-describe('buildMenuTemplate — Create new project… menu item', () => {
+describe('buildMenuTemplate — New project… menu item', () => {
   test('renders enabled when onNewProject dep is provided', () => {
     const template = buildMenuTemplate(makeDeps({ onNewProject: mock(() => {}) }));
-    const item = findByLabel(template, 'Create new project…');
+    const item = findByLabel(template, 'New project…');
     expect(item).toBeDefined();
     expect(item?.enabled).toBe(true);
   });
 
   test('DISABLED when onNewProject dep is omitted (unit-test default = unwired)', () => {
     const template = buildMenuTemplate(makeDeps());
-    expect(findByLabel(template, 'Create new project…')?.enabled).toBe(false);
+    expect(findByLabel(template, 'New project…')?.enabled).toBe(false);
   });
 
   test('enabled regardless of activeTarget scope (project-scope-independent)', () => {
     const template = buildMenuTemplate(
       makeDeps({ activeTarget: { kind: null }, onNewProject: mock(() => {}) }),
     );
-    expect(findByLabel(template, 'Create new project…')?.enabled).toBe(true);
+    expect(findByLabel(template, 'New project…')?.enabled).toBe(true);
   });
 
   test('click dispatches deps.onNewProject()', () => {
     const onNewProject = mock(() => {});
     const template = buildMenuTemplate(makeDeps({ onNewProject }));
-    const item = findByLabel(template, 'Create new project…');
+    const item = findByLabel(template, 'New project…');
     (item?.click as (() => void) | undefined)?.();
     expect(onNewProject).toHaveBeenCalledTimes(1);
   });
 
   test('click is a safe no-op when onNewProject dep is omitted', () => {
     const template = buildMenuTemplate(makeDeps());
-    const item = findByLabel(template, 'Create new project…');
+    const item = findByLabel(template, 'New project…');
     expect(() => (item?.click as (() => void) | undefined)?.()).not.toThrow();
   });
 
-  test('heads the project cluster — appears before Switch project… in the File submenu', () => {
+  test('project section mirrors the ProjectSwitcher order and sits right after New from template…', () => {
     const template = buildMenuTemplate(makeDeps({ onNewProject: mock(() => {}) }));
     const fileMenu = template.find((t) => t.label === 'File');
     const sub = fileMenu?.submenu as MenuItemConstructorOptions[] | undefined;
     if (!sub) throw new Error('File submenu missing');
-    const createIdx = sub.findIndex((i) => i.label === 'Create new project…');
-    const switchIdx = sub.findIndex((i) => i.label === 'Switch project…');
-    expect(createIdx).toBeGreaterThanOrEqual(0);
-    expect(switchIdx).toBeGreaterThan(createIdx);
+    const idx = (label: string) => sub.findIndex((i) => i.label === label);
+    const newFromTemplateIdx = idx('New from template…');
+    const recentIdx = idx('Recent project');
+    const newProjectIdx = idx('New project…');
+    const switchIdx = idx('Switch project…');
+    const openFolderIdx = idx('Open folder…');
+    const duplicateIdx = idx('Duplicate');
+    expect(newFromTemplateIdx).toBeGreaterThanOrEqual(0);
+    expect(recentIdx).toBeGreaterThan(newFromTemplateIdx);
+    expect(newProjectIdx).toBeGreaterThan(recentIdx);
+    expect(switchIdx).toBeGreaterThan(newProjectIdx);
+    expect(openFolderIdx).toBeGreaterThan(switchIdx);
+    expect(duplicateIdx).toBeGreaterThan(openFolderIdx);
+    expect(newProjectIdx - recentIdx).toBe(1);
+    expect(switchIdx - newProjectIdx).toBe(1);
+    expect(openFolderIdx - switchIdx).toBe(1);
   });
 
   test('does NOT reintroduce the ambiguous "New Project…" label (regression guard)', () => {
     const template = buildMenuTemplate(makeDeps({ onNewProject: mock(() => {}) }));
     expect(findByLabel(template, 'New Project…')).toBeUndefined();
-    expect(findByLabel(template, 'Create new project…')).toBeDefined();
+    expect(findByLabel(template, 'New project…')).toBeDefined();
   });
 });
 
