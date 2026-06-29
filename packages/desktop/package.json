@@ -1,7 +1,7 @@
 {
   "name": "@inkeep/open-knowledge-desktop",
   "productName": "OpenKnowledge",
-  "version": "0.19.2",
+  "version": "0.20.0",
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",

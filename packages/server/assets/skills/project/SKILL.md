@@ -3,7 +3,7 @@ name: open-knowledge
 description: "Authoritative agent-runtime contract for working inside an OpenKnowledge project — a markdown-CRDT knowledge base exposed over MCP. Use whenever reading, listing, searching, or editing any `.md` or `.mdx` file in the project, and before any `mcp__open-knowledge__*` tool call (`exec`, `search`, `write`, `edit`, and the rest). Installed by `ok init`, so its presence means this is an OpenKnowledge project and it governs every markdown file here. Covers the read/write tool surface, grounding and linking rules, folder/template conventions, the live browser preview, and the rule that OK's MCP tools — never native file tools — handle in-scope markdown."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server + code execution."
 metadata:
-  version: "0.19.2"
+  version: "0.20.0"
   author: "Inkeep"
   repository: "https://github.com/inkeep/open-knowledge"
 ---
