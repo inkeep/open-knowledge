@@ -347,6 +347,53 @@ describe('BacklinkIndex', () => {
     }
   });
 
+  test('getDeadLinks does not flag a freshly-indexed target missing from the admitted set', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-links-fresh-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      index.updateDocument('report', [
+        { target: 'evidence/new-target', anchor: null, snippet: 'see new target' },
+      ]);
+      index.updateDocument('evidence/new-target', []);
+
+      expect(index.getBacklinkCount('evidence/new-target')).toBe(1);
+      expect(index.getDeadLinks(['report'])).toEqual([]);
+
+      index.updateDocument('report', [
+        { target: 'evidence/new-target', anchor: null, snippet: 'see new target' },
+        { target: 'evidence/ghost', anchor: null, snippet: 'see ghost' },
+      ]);
+      expect(index.getDeadLinks(['report']).map((entry) => entry.target)).toEqual([
+        'evidence/ghost',
+      ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('getDeadLinks reports a target as dead again after deleteDocument removes its forward node', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-after-delete-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      index.updateDocument('report', [
+        { target: 'evidence/new-target', anchor: null, snippet: 'see new target' },
+      ]);
+      index.updateDocument('evidence/new-target', []);
+      expect(index.getDeadLinks(['report'])).toEqual([]);
+
+      index.deleteDocument('evidence/new-target');
+      expect(index.getDeadLinks(['report']).map((entry) => entry.target)).toEqual([
+        'evidence/new-target',
+      ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test('rebuilds from disk and persists cache per branch', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-project-'));
     const contentDir = join(projectDir, 'content');
