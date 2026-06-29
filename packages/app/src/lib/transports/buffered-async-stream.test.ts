@@ -124,7 +124,8 @@ describe('createBufferedAsyncStream', () => {
   });
 
   test('cancel() before any consumer iteration still drains', async () => {
-    const stream = createBufferedAsyncStream<TestEvent>(() => {});
+    const stream = createBufferedAsyncStream<TestEvent>(() => {
+    });
     stream.cancel();
     const events = await collectAll(stream.events);
     expect(events).toEqual([]);

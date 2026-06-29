@@ -1,3 +1,4 @@
+
 import { DOCUMENT_OPEN_BYTE_LIMIT } from '@inkeep/open-knowledge-core';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
@@ -150,6 +151,7 @@ test.describe('docs-open — hybrid navigation UX', () => {
     ).toBe(false);
   });
 
+
   test('F1: warm-nav preserves content atomically (scroll position survives A→B→A)', async ({
     page,
     api,
@@ -195,6 +197,7 @@ test.describe('docs-open — hybrid navigation UX', () => {
       })
       .toBeGreaterThan(scrollBeforeNav - 50); // allow minor rounding; position must not reset to 0
   });
+
 
   test('F3: cold-nav paints EditorSkeleton immediately (no content-continuity flash)', async ({
     page,
@@ -481,6 +484,7 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await expect(errorAlert).toHaveAttribute('aria-labelledby', 'document-error-title');
   });
 
+
   test('QA-022: error → retry succeeds → continue editing (compositional)', async ({
     page,
     api,
@@ -667,6 +671,7 @@ test.describe('docs-open — hybrid navigation UX', () => {
     ).toBeVisible();
   });
 });
+
 
 test.describe('docs-open — WS-interception scenarios', () => {
   test('QA-014: pre-sync WS close → PreSyncDisconnectError → "Connection dropped"', async ({

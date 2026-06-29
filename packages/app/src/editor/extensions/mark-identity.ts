@@ -1,9 +1,11 @@
+
 import type { Mark, Node as PmNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 
 interface PositionMapper {
   map(pos: number, assoc?: number): number;
 }
+
 
 export interface MarkInfo {
   id: string;
@@ -26,6 +28,7 @@ interface MarkIdentityPluginParams {
 }
 
 export const markIdentityKey = new PluginKey<MarkIdentityState>('markIdentity');
+
 
 export function initialMarkIdentityState(): MarkIdentityState {
   return { byId: new Map(), counter: 0 };
@@ -140,6 +143,7 @@ export function diffMarkIdentity(
   }
   return nextIds;
 }
+
 
 export function markIdentityPlugin(params: MarkIdentityPluginParams): Plugin<MarkIdentityState> {
   const { markTypes, predicate, onRegister, onDeregister } = params;

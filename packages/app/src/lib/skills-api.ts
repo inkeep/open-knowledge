@@ -6,6 +6,7 @@ import type {
 import { emitSkillsChanged } from '@/lib/documents-events';
 import { parseApiError } from '@/lib/parse-api-error';
 
+
 async function readErrorBody(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as unknown;
   return parseApiError(body) ?? `HTTP ${res.status}`;

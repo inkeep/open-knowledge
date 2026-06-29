@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { runHealthChecks } from './diagnose-health.ts';
 import type { CheckDefinition, CheckResult } from './diagnose-health-checks/index.ts';
@@ -225,7 +226,9 @@ describe('runHealthChecks', () => {
         checks: [
           {
             name: 'git',
-            run: async () => new Promise(() => {}),
+            run: async () =>
+              new Promise(() => {
+              }),
           },
         ],
         timeoutMs: 50,

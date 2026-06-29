@@ -274,6 +274,7 @@ describe('isotonicSmooth (PAV)', () => {
 });
 
 describe('findKnee — bimodal CDF input (US-010)', () => {
+
   test('returns an inflection point on a bimodal CDF', () => {
     const samples = [
       ...Array.from({ length: 50 }, (_, i) => 25 + i * 0.2), // 25..35ms

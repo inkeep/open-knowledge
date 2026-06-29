@@ -1,8 +1,10 @@
+
 import { lstatSync, realpathSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { errorResponse } from './http/error-response.ts';
+
 
 const ALLOWED_URL_PATTERNS: RegExp[] = [
   /^https?:\/\//i,
@@ -24,6 +26,7 @@ export function isAllowedGitUrl(url: string): boolean {
   if (BLOCKED_URL_PATTERNS.some((p) => p.test(url))) return false;
   return ALLOWED_URL_PATTERNS.some((p) => p.test(url));
 }
+
 
 export function expandTilde(p: string): string {
   if (p === '~') return homedir();
@@ -132,6 +135,7 @@ export function isSafeLocalPath(dirPath: string): boolean {
   return isPathWithinHome(dirPath, homedir());
 }
 
+
 export function isLoopbackRequest(req: IncomingMessage): boolean {
   const addr = req.socket.remoteAddress;
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
@@ -180,6 +184,7 @@ export function checkLocalOpSecurity(
   }
   return true;
 }
+
 
 interface ConcurrencyGuard {
   tryAcquire(key: string): boolean;

@@ -107,7 +107,8 @@ describe('readCanonicalGitHubRemoteUrl (filesystem round-trip)', () => {
   });
 
   test('returns null when .git/config is absent (not a git repo)', () => {
-    const result = withTempProject(() => {});
+    const result = withTempProject(() => {
+    });
     expect(result).toBeNull();
   });
 

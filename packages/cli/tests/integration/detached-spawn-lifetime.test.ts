@@ -140,7 +140,8 @@ setTimeout(() => process.exit(0), 300);
     } finally {
       try {
         process.kill(state.pid, 'SIGKILL');
-      } catch {}
+      } catch {
+      }
     }
   }, 20_000); // bun test timeout: 5s sleep + setup + safety margin
 });

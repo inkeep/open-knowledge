@@ -1,3 +1,4 @@
+
 import {
   collectFootnoteIdentifiers,
   findFootnoteDefinitionInsertPos,

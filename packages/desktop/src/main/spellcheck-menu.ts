@@ -1,3 +1,4 @@
+
 import type { BrowserWindow, EditFlags, Menu, MenuItemConstructorOptions } from 'electron';
 
 export interface SpellcheckMenuParams {

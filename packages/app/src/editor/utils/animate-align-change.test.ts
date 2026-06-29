@@ -1,3 +1,4 @@
+
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { runWithAlignAnimation } from './animate-align-change';
 

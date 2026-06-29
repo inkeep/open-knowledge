@@ -1,3 +1,4 @@
+
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
 const PROD_BASE = 'https://openknowledge.ai';
@@ -92,6 +93,7 @@ export function parseRedeemRequestUrl(
     nonce: url.searchParams.get(REDEEM_NONCE_PARAM),
   };
 }
+
 
 export interface HandoffHttpResponse {
   statusCode: number;

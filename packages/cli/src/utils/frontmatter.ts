@@ -1,3 +1,4 @@
+
 import { stripFrontmatter, unwrapFrontmatterFences } from '@inkeep/open-knowledge-core';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { output, ZodType } from 'zod';
@@ -20,7 +21,8 @@ export function parseFrontmatter<S extends ZodType = ZodType<Record<string, unkn
       }
       return parsed as Resolve<output<S>>;
     }
-  } catch {}
+  } catch {
+  }
   return null;
 }
 

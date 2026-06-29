@@ -1,3 +1,4 @@
+
 import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { REQUIRED_FIXTURE_ENTRY_NAMES } from './fixtures.ts';

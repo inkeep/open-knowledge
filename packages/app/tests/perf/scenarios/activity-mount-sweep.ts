@@ -188,7 +188,8 @@ async function runSweepCell(args: RunSweepArgs): Promise<SweepResult> {
     });
     try {
       await waitForVisibleProseMirrorForDoc(page, doc, 30_000);
-    } catch {}
+    } catch {
+    }
   }
   await page.goto(`${target}/#/${encodeURIComponent(TARGET_DOC)}`, {
     waitUntil: 'domcontentloaded',

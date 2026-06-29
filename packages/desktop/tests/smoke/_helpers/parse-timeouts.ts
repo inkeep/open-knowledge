@@ -1,3 +1,4 @@
+
 import { readFileSync } from 'node:fs';
 
 const TIMEOUT_LITERAL_RE = /\btimeout:\s*(\d+(?:_\d+)*)/g;

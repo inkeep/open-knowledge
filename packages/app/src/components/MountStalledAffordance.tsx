@@ -1,3 +1,4 @@
+
 import { Trans } from '@lingui/react/macro';
 import { type ReactElement, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';

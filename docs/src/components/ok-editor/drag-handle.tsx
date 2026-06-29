@@ -68,7 +68,8 @@ export const BlockDragHandle = Extension.create({
       if (curPos < 0) return;
       try {
         editor.chain().focus().setNodeSelection(curPos).run();
-      } catch {}
+      } catch {
+      }
     });
 
     return [

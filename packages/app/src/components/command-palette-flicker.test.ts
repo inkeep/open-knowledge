@@ -1,5 +1,7 @@
+
 import { describe, expect, test } from 'bun:test';
 import type { WorkspaceEntry, WorkspaceSearchEntry } from './command-palette-search';
+
 
 interface VisibleSearchResultsHelperArgs {
   searchResults: readonly WorkspaceSearchEntry[];

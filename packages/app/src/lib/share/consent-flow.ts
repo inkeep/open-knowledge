@@ -1,3 +1,4 @@
+
 export interface ConsentFlowSeed {
   readonly candidatePath: string;
   readonly branch: string;

@@ -1,4 +1,6 @@
+
 import type { CDPSession } from '@playwright/test';
+
 
 export interface CdpTraceEvent {
   name: string;
@@ -25,6 +27,7 @@ export interface TraceSummary {
   cumulativeLayoutShift: number;
 }
 
+
 export const TRACE_CATEGORIES: readonly string[] = [
   'cc',
   'gpu',
@@ -36,6 +39,9 @@ export const TRACE_CATEGORIES: readonly string[] = [
   'disabled-by-default-devtools.timeline',
   'disabled-by-default-v8.cpu_profiler',
 ] as const;
+
+
+
 
 // biome-ignore lint/suspicious/noExplicitAny: Playwright's dataCollectedPayload is mistyped; cast at the boundary.
 type DataCollectedHandler = (payload: any) => void;
@@ -103,6 +109,7 @@ function coerceEvent(raw: Record<string, unknown>): CdpTraceEvent | null {
     ...(typeof raw.pid === 'number' ? { pid: raw.pid } : {}),
   };
 }
+
 
 export const LONG_TASK_THRESHOLD_MS = 50;
 
@@ -197,6 +204,7 @@ function roundMs(v: number): number {
   if (!Number.isFinite(v)) return 0;
   return Math.round(v * 100) / 100;
 }
+
 
 export interface PerfMetricsDelta {
   layoutMs: number;

@@ -1,4 +1,6 @@
+
 import { type FC, useEffect, useState } from 'react';
+
 
 interface InteractionLayerEditor {
   editorView?: { dom: HTMLElement };
@@ -45,12 +47,14 @@ interface CreateInteractionLayerParams {
   editor: InteractionLayerEditor;
 }
 
+
 const HOVER_OPEN_DELAY = 300;
 /** Grace period after pointer leaves chip/popover before closing — lets the
  *  user move diagonally between chip and popover without the panel flickering
  *  closed. Matches the Notion/Linear popover convention. */
 const HOVER_CLOSE_DELAY = 150;
 const LONG_PRESS_DELAY = 500;
+
 
 interface LayerSnapshot {
   activeNodeId: string | null;
@@ -125,6 +129,7 @@ export class InteractionLayerStore {
   }
 }
 
+
 interface ResolverNode {
   getAttribute?: (key: string) => string | null;
   parentElement?: ResolverNode | null;
@@ -163,6 +168,7 @@ function isLayerSpawnedDialogOpen(): boolean {
   return document.querySelector('[data-ok-layer-spawned]') !== null;
 }
 
+
 interface InteractionLayerRootProps {
   store: InteractionLayerStore;
 }
@@ -194,6 +200,7 @@ const InteractionLayerRoot: FC<InteractionLayerRootProps> = ({ store }) => {
     </>
   );
 };
+
 
 function getEditorDom(editor: InteractionLayerEditor): HTMLElement | null {
   return editor.editorView?.dom ?? null;
@@ -311,6 +318,7 @@ export function createInteractionLayer(
       restoreFocusTo(dom as HTMLElement);
     }
   });
+
 
   const onPointerDown = (ev: Event): void => {
     const pe = ev as PointerEvent;

@@ -1,3 +1,4 @@
+
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { tracedMkdirSync } from './fs-traced.ts';
@@ -38,7 +39,8 @@ export async function startConfigFileWatcher(
   let lastContent: string | null = null;
   try {
     lastContent = readFileSync(absPath, 'utf-8');
-  } catch {}
+  } catch {
+  }
   const handlePath = (path: string, logMissing = true): void => {
     if (path !== absPath) return;
     let content: string;

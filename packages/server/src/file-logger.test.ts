@@ -136,6 +136,7 @@ describe('file logger', () => {
     await expect(flushFileLogger(undefined)).resolves.toBeUndefined();
   });
 
+
   function makeFakeLogger(stream: unknown): PinoLoggerInstance {
     return { [pino.symbols.streamSym]: stream } as unknown as PinoLoggerInstance;
   }
@@ -169,7 +170,8 @@ describe('file logger', () => {
       flushSync: () => {
         flushed = true;
       },
-      once: (_event: string, _cb: () => void) => {},
+      once: (_event: string, _cb: () => void) => {
+      },
     };
 
     const start = Date.now();

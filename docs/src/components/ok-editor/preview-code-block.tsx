@@ -9,6 +9,7 @@ import {
 } from '@tiptap/react';
 import { Trash2 } from 'lucide-react';
 
+
 const THEME_VARS = PREVIEW_THEME_TOKENS.map((t) => `${t.name}:${t.light}`).join(';');
 
 const CHART_PALETTE = [

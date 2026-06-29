@@ -190,6 +190,7 @@ describe('WikiEmbedImage.serialize — source-form mdast emit', () => {
   });
 });
 
+
 describe('WikiEmbedVideo descriptor — registration', () => {
   test('is registered in builtInComponents as a compat descriptor', () => {
     expect(wikiEmbedVideo).toBeDefined();
@@ -368,6 +369,7 @@ describe('WikiEmbedVideo.serialize — source-form mdast emit', () => {
   });
 });
 
+
 describe('WikiEmbedAudio descriptor — registration', () => {
   test('is registered in builtInComponents as a compat descriptor', () => {
     expect(wikiEmbedAudio).toBeDefined();
@@ -545,6 +547,7 @@ describe('WikiEmbedAudio.serialize — source-form mdast emit', () => {
     expect(cast.data.target).toBe('');
   });
 });
+
 
 describe('WikiEmbedFile descriptor — registration', () => {
   test('is registered in builtInComponents as a compat descriptor', () => {

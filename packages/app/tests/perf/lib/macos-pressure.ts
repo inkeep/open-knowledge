@@ -1,3 +1,4 @@
+
 const SYSCTL_BIN = '/usr/sbin/sysctl';
 const SYSCTL_KEY = 'kern.memorystatus_vm_pressure_level';
 

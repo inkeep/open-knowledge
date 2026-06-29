@@ -1010,6 +1010,7 @@ describe('POST /api/agent-write-md (write_document) — nested frontmatter accep
 });
 
 describe('POST /api/agent-write-md — telemetry refusal-class split (PRD-6947, Q-X7)', () => {
+
   function collectRefusalEvents(
     spy: ReturnType<typeof spyOn<typeof console, 'warn'>>,
   ): Array<Record<string, unknown>> {

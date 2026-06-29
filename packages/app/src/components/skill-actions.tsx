@@ -37,6 +37,7 @@ import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { duplicateSkill, installSkill, uninstallSkill } from '@/lib/skills-api';
 import { useWorkspace } from '@/lib/use-workspace';
 
+
 export interface SkillActions {
   installingName: string | null;
   install: (

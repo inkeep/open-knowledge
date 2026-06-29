@@ -1,3 +1,4 @@
+
 import { findParentNode, InputRule, mergeAttributes, Node, wrappingInputRule } from '@tiptap/core';
 import type { NodeType, Node as PmNode } from '@tiptap/pm/model';
 import { liftListItem as pmLiftListItem, wrapInList as pmWrapInList } from '@tiptap/pm/schema-list';
@@ -13,6 +14,7 @@ declare module '@tiptap/core' {
     };
   }
 }
+
 
 function isBulletList(node: PmNode): boolean {
   return node.type.name === 'list' && !node.attrs.ordered;
@@ -95,6 +97,7 @@ function toggleListKind(
   });
   return result;
 }
+
 
 export const ListNode = Node.create({
   name: 'list',
@@ -255,6 +258,7 @@ export const ListNode = Node.create({
     };
   },
 });
+
 
 export const ListItemNode = Node.create({
   name: 'listItem',

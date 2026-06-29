@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test } from './_helpers';
@@ -74,6 +75,7 @@ async function flushRaf(page: Page) {
   );
 }
 
+
 test('AC24: TextSelection inside a Callout body leaves data-selected unset and ::after opacity = 0', async ({
   page,
   api,
@@ -89,6 +91,7 @@ test('AC24: TextSelection inside a Callout body leaves data-selected unset and :
   const opacityStr = await callout.evaluate((el) => window.getComputedStyle(el, '::after').opacity);
   expect(Number.parseFloat(opacityStr)).toBe(0);
 });
+
 
 test('AC25: grip-click on a Callout sets data-selected=true and the halo paints (opacity > 0)', async ({
   page,
@@ -108,6 +111,7 @@ test('AC25: grip-click on a Callout sets data-selected=true and the halo paints 
   const opacityStr = await callout.evaluate((el) => window.getComputedStyle(el, '::after').opacity);
   expect(Number.parseFloat(opacityStr)).toBeGreaterThan(0);
 });
+
 
 test('AC26 forward: nested Callout>Accordion, NodeSelect inner Accordion → outer Callout has data-has-child-selected and not data-selected', async ({
   page,
@@ -134,6 +138,7 @@ test('AC26 forward: nested Callout>Accordion, NodeSelect inner Accordion → out
   expect(await innerAccordion.getAttribute('data-has-child-selected')).toBeNull();
 });
 
+
 test('AC26 inverse: TextSelection inside Callout body — chain-leaf Callout has no data-has-child-selected', async ({
   page,
   api,
@@ -148,6 +153,7 @@ test('AC26 inverse: TextSelection inside Callout body — chain-leaf Callout has
   expect(await callout.getAttribute('data-selected')).toBeNull();
   expect(await callout.getAttribute('data-has-child-selected')).toBeNull();
 });
+
 
 test('AC27: SelectionAnnouncer aria-live updates through TextSelection-inside → outside → NodeSelection-on transitions', async ({
   page,
@@ -175,6 +181,7 @@ test('AC27: SelectionAnnouncer aria-live updates through TextSelection-inside �
   await expect(callout).toHaveAttribute('data-selected', 'true', { timeout: 2_000 });
   await expect(liveRegion).toContainText('Selected: Callout', { timeout: 2_000 });
 });
+
 
 test('AC30: NodeSelect → gear → drift → Esc — halo re-paints after FR16 rAF restore', async ({
   page,
@@ -211,6 +218,7 @@ test('AC30: NodeSelect → gear → drift → Esc — halo re-paints after FR16 
   const opacityStr = await callout.evaluate((el) => window.getComputedStyle(el, '::after').opacity);
   expect(Number.parseFloat(opacityStr)).toBeGreaterThan(0);
 });
+
 
 test('AC31: range covering exactly one Callout paints background (soft), not border-color (full)', async ({
   page,

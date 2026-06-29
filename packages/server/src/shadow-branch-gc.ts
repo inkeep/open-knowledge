@@ -1,3 +1,4 @@
+
 import { parseWriterId } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { getLogger } from './logger.ts';
@@ -178,7 +179,8 @@ export async function gcShadowBranches(
             }
 
             await sg.raw('update-ref', '-d', ref);
-          } catch {}
+          } catch {
+          }
         }
         if (!result.retainedBranches.includes(orphanedBranch)) {
           result.deletedBranches.push(orphanedBranch);

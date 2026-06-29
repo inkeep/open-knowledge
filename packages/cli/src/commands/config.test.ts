@@ -6,6 +6,7 @@ import { REMOVED_KEYS } from '@inkeep/open-knowledge-core';
 import { CONFIG_FILENAME, OK_DIR } from '../constants.ts';
 import { buildClearPatchForTest, DROPPED_FIELD_PATHS, runMigrate, runValidate } from './config.ts';
 
+
 function makeTempProject(): { cwd: string; userHome: string; cleanup: () => void } {
   const root = mkdtempSync(join(tmpdir(), 'ok-config-test-'));
   const cwd = join(root, 'project');
@@ -18,7 +19,8 @@ function makeTempProject(): { cwd: string; userHome: string; cleanup: () => void
     cleanup: () => {
       try {
         rmSync(root, { recursive: true, force: true });
-      } catch {}
+      } catch {
+      }
     },
   };
 }

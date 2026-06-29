@@ -1,3 +1,4 @@
+
 export interface PageListCacheSnapshot {
   readonly pages: ReadonlySet<string>;
   readonly folderPaths: ReadonlySet<string>;

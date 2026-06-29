@@ -1,3 +1,4 @@
+
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import {
@@ -39,6 +40,7 @@ import {
 } from './metrics.ts';
 import { type ShadowHandle, saveInMemoryCheckpoint } from './shadow-repo.ts';
 import { setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
+
 
 export const OBSERVER_SYNC_ORIGIN = {
   source: 'local',
@@ -132,6 +134,8 @@ function applyMapDrivenSplice(ytext: Y.Text, splice: YTextMapDrivenSplice): void
   if (deleteLength > 0) ytext.delete(splice.spliceStart, deleteLength);
   if (splice.newSlice.length > 0) ytext.insert(splice.spliceStart, splice.newSlice);
 }
+
+
 
 type ShadowAccessor = () => ShadowHandle | undefined;
 
@@ -501,6 +505,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       recordSettledBaselines('');
     }
   }
+
 
   let priorFmForTelemetry = readCurrentFm();
   const runObserverBSyncImpl = (): void => {

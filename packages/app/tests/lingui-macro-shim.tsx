@@ -36,6 +36,8 @@ function resolveMessage(arg: MacroArg, values: readonly unknown[]): string {
   return isTemplateStrings(arg) ? interpolate(arg, values) : fromDescriptor(arg);
 }
 
+
+
 export function t(arg: MacroArg, ...values: unknown[]): string {
   return resolveMessage(arg, values);
 }
@@ -58,6 +60,7 @@ export function select(value: string, options: Record<string, string>): string {
 }
 
 export const selectOrdinal = select;
+
 
 export function Trans({
   children,

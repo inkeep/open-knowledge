@@ -3,6 +3,7 @@ import { extractOriginUrl as extractFromCli } from '../../../cli/src/github/fold
 import { extractOriginUrl as extractFromServer } from '../../../server/src/share/git-context';
 import { extractOriginUrl as extractFromDesktop } from '../../src/main/git-remote';
 
+
 interface Fixture {
   readonly name: string;
   readonly input: string;

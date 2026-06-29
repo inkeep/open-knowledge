@@ -7,6 +7,7 @@ import { type Browser, type CDPSession, chromium, type Page } from '@playwright/
 import { computeLeakRateMbPerCycle, forceGc, readHeapMb } from '../lib/cell-measurement';
 import { markerFor } from '../lib/doc-markers';
 
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TARGET = 'http://localhost:5173';
 const DEFAULT_DOC = 'PROJECT';
@@ -19,6 +20,7 @@ const DEFAULT_OUT_DIR = resolve(
 const WAIT_CONTENT_MS = 60_000;
 const HEAP_SNAPSHOT_TIMEOUT_MS = 120_000;
 const PROBE_SCHEMA_VERSION = 1 as const;
+
 
 export interface ProbeOptions {
   readonly target: string;
@@ -58,6 +60,7 @@ export interface ProbeResult {
   readonly hypothesizedFixPath: 'local' | 'fork-required' | 'undetermined';
   readonly hypothesizedFixNotes: string;
 }
+
 
 interface CdpHeapSnapshotChunkEvent {
   readonly chunk: string;
@@ -139,6 +142,7 @@ async function captureTopRetainedConstructors(
   return sorted.slice(0, topN);
 }
 
+
 async function tryMemlabEnrichment(): Promise<MemlabFindings> {
   try {
     const memlab = (await import('memlab').catch(() => null)) as {
@@ -172,6 +176,7 @@ async function tryMemlabEnrichment(): Promise<MemlabFindings> {
   }
 }
 
+
 async function waitForVisibleProseMirror(
   page: Page,
   doc: string,
@@ -204,6 +209,7 @@ async function mountAndDestroyOnce(page: Page, target: string, doc: string): Pro
   await waitForVisibleProseMirror(page, doc, WAIT_CONTENT_MS);
   await page.goto(`${target}/#/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 }
+
 
 function classifyFixPath(topConstructors: ReadonlyArray<ConstructorBucket>): {
   path: 'local' | 'fork-required' | 'undetermined';
@@ -254,6 +260,7 @@ function classifyFixPath(topConstructors: ReadonlyArray<ConstructorBucket>): {
   };
 }
 
+
 export async function runProbe(options: ProbeOptions): Promise<ProbeResult> {
   const errors: string[] = [];
   let browser: Browser | null = null;
@@ -298,7 +305,8 @@ export async function runProbe(options: ProbeOptions): Promise<ProbeResult> {
     if (browser) {
       try {
         await browser.close();
-      } catch {}
+      } catch {
+      }
     }
   }
 
@@ -323,6 +331,7 @@ export async function runProbe(options: ProbeOptions): Promise<ProbeResult> {
     hypothesizedFixNotes,
   };
 }
+
 
 interface CliArgs {
   readonly target: string;

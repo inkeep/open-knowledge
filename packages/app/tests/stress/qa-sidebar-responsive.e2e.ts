@@ -1,3 +1,4 @@
+
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 
@@ -227,7 +228,8 @@ test.describe('non-embedded UA', () => {
     api,
     context,
   }) => {
-    await context.addInitScript(() => {});
+    await context.addInitScript(() => {
+    });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await seedDoc(api, 'qa-016a');
     await page.setViewportSize(WIDE);

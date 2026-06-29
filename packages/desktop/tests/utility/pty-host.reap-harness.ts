@@ -1,3 +1,4 @@
+
 import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -27,7 +28,8 @@ async function main(): Promise<void> {
   process.on('exit', () => {
     try {
       rmSync(tmp, { recursive: true, force: true });
-    } catch {}
+    } catch {
+    }
   });
 
   let data = '';

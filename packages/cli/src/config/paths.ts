@@ -1,3 +1,4 @@
+
 import { resolve } from 'node:path';
 import { getLocalDir } from '@inkeep/open-knowledge-server';
 import type { Config } from './schema.ts';

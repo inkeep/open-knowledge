@@ -1,4 +1,6 @@
+
 import { describe, expect, test } from 'bun:test';
+
 
 interface DescriptorFixture {
   name: string;
@@ -82,6 +84,7 @@ const FIXTURES: DescriptorFixture[] = [
   },
 ];
 
+
 function applyDomPurifyStrict(html: string): string {
   return html
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
@@ -130,6 +133,7 @@ const PROFILES: Profile[] = [
   { name: 'gmail', apply: applyGmailProxy },
   { name: 'github', apply: applyGitHubProxy },
 ];
+
 
 describe('sanitizer-proxy hermetic tests — walker output survives 5 destination profiles', () => {
   for (const fixture of FIXTURES) {

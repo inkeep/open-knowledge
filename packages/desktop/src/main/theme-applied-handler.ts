@@ -1,3 +1,4 @@
+
 interface ApplyThemeAppliedDeps {
   fireThemeApplied: (window: object) => void;
   applyReducedTransparency: (reduced: boolean) => void;

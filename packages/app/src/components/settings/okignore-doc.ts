@@ -1,3 +1,4 @@
+
 export interface PatternLine {
   kind: 'pattern';
   raw: string;

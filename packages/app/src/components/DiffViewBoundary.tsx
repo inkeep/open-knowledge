@@ -38,7 +38,8 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
         const payload = (await res.json()) as { detail?: unknown; title?: unknown };
         if (typeof payload.detail === 'string') detail = payload.detail;
         else if (typeof payload.title === 'string') detail = payload.title;
-      } catch {}
+      } catch {
+      }
       console.warn(
         JSON.stringify({
           event: 'conflict-content-fetch-failed',
