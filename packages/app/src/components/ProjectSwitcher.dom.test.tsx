@@ -125,17 +125,17 @@ describe('ProjectSwitcher dropdown behavior', () => {
     await openMenu();
 
     const menuText = screen.getByTestId('project-switcher-menu').textContent ?? '';
-    const openFolderIndex = menuText.indexOf('Open folder');
-    const switchProjectIndex = menuText.indexOf('Switch project');
     const newProjectIndex = menuText.indexOf('New project');
-    expect(openFolderIndex).toBeGreaterThan(-1);
-    expect(switchProjectIndex).toBeGreaterThan(openFolderIndex);
-    expect(newProjectIndex).toBeGreaterThan(switchProjectIndex);
+    const switchProjectIndex = menuText.indexOf('Switch project');
+    const openFolderIndex = menuText.indexOf('Open folder');
+    expect(newProjectIndex).toBeGreaterThan(-1);
+    expect(switchProjectIndex).toBeGreaterThan(newProjectIndex);
+    expect(openFolderIndex).toBeGreaterThan(switchProjectIndex);
 
     for (const testId of [
-      'project-switcher-open-folder',
-      'project-switcher-switch-project',
       'project-switcher-new-project',
+      'project-switcher-switch-project',
+      'project-switcher-open-folder',
     ]) {
       expect(screen.getByTestId(testId).querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     }
