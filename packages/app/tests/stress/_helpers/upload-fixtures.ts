@@ -1,4 +1,3 @@
-
 export function createPngBuffer(salt?: string): Buffer {
   const base = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAABJRElEQrkJggg==',

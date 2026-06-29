@@ -1,4 +1,3 @@
-
 import {
   acquireProcessLock,
   type LockKind,

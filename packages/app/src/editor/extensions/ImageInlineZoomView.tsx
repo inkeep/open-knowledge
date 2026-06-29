@@ -1,4 +1,3 @@
-
 import { normalizeDocRelativeAssetUrl, toDesktopAssetHref } from '@inkeep/open-knowledge-core';
 import type { NodeViewProps } from '@tiptap/core';
 import { NodeViewWrapper } from '@tiptap/react';

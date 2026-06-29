@@ -102,6 +102,7 @@ mock.module('./AutoSyncOnboardingDialog', () => ({
 async function renderEditorPane() {
   const { EditorPane } = await import('./EditorPane');
   render(<EditorPane />);
+  await act(async () => {});
 }
 
 describe('EditorPane auto-sync onboarding gate', () => {
@@ -226,7 +227,9 @@ describe('EditorPane auto-sync onboarding gate', () => {
   });
 });
 
-function makeOkDesktopStub() {
+function makeOkDesktopStub(
+  getDockState: () => Promise<{ visible: boolean }> = async () => ({ visible: false }),
+) {
   const menuHandlers: Array<(action: string) => void> = [];
   const viewMenuPushes: Array<{ terminalVisible?: boolean }> = [];
   return {
@@ -246,6 +249,9 @@ function makeOkDesktopStub() {
         notifyViewMenuStateChanged(state: { terminalVisible?: boolean }) {
           viewMenuPushes.push(state);
         },
+      },
+      terminal: {
+        getDockState,
       },
     },
   };
@@ -370,6 +376,37 @@ describe('EditorPane terminal dock wiring', () => {
 
     act(() => desk.dispatchMenuAction('toggle-terminal')); // hidden → open again
     expect(terminalOpenedCalls).toHaveLength(2);
+  });
+
+  test('desktop: a reload re-expands a dock that was open before it (retained visibility is not clobbered)', async () => {
+    let retainedDockVisible = true;
+    (window as { okDesktop?: unknown }).okDesktop = {
+      onMenuAction: () => () => {},
+      editor: {
+        notifyViewMenuStateChanged(state: { terminalVisible?: boolean }) {
+          if (state.terminalVisible !== undefined) retainedDockVisible = state.terminalVisible;
+        },
+      },
+      terminal: {
+        getDockState: async () => ({ visible: retainedDockVisible }),
+      },
+    };
+
+    await renderEditorPane();
+
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('true');
+    expect(terminalOpenedCalls).toHaveLength(0);
+  });
+
+  test('desktop: a rejecting getDockState still settles the gate so the view-menu push converges', async () => {
+    const desk = makeOkDesktopStub(async () => {
+      throw new Error('ipc boom');
+    });
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+
+    expect(desk.viewMenuPushes.at(-1)).toEqual({ terminalVisible: false });
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
   });
 
   test('web host: a Cmd/Ctrl+J keydown is intercepted (the toggle handler is wired)', async () => {

@@ -39,6 +39,8 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const [autoSyncOnboardingDismissed, setAutoSyncOnboardingDismissed] = useState(false);
   const desktopBridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const [terminalVisible, setTerminalVisible] = useState(false);
+  const [dockRestoreSettled, setDockRestoreSettled] = useState(false);
+  const restoreRevealRef = useRef(false);
   const [terminalLaunch, setTerminalLaunch] = useState<TerminalLaunchIntent | null>(null);
   const launchNonceRef = useRef(0);
 
@@ -108,11 +110,42 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
 
   useEffect(() => {
     if (window.okDesktop == null) return;
+    if (!dockRestoreSettled) return;
     window.okDesktop.editor.notifyViewMenuStateChanged({ terminalVisible });
-  }, [terminalVisible]);
+  }, [terminalVisible, dockRestoreSettled]);
+
+  useEffect(() => {
+    const bridge = window.okDesktop;
+    if (bridge == null) return;
+    if (typeof bridge.terminal?.getDockState !== 'function') {
+      setDockRestoreSettled(true);
+      return;
+    }
+    let cancelled = false;
+    void bridge.terminal
+      .getDockState()
+      .then((state) => {
+        if (cancelled || !state.visible) return;
+        restoreRevealRef.current = true;
+        setTerminalVisible(true);
+      })
+      .catch((err) => {
+        console.error('[terminal] dock-state restore failed; staying hidden:', err);
+      })
+      .finally(() => {
+        if (!cancelled) setDockRestoreSettled(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (window.okDesktop == null) return;
+    if (restoreRevealRef.current) {
+      restoreRevealRef.current = false;
+      return;
+    }
     if (terminalVisible) recordTerminalOpened();
   }, [terminalVisible]);
 

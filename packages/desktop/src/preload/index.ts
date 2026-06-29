@@ -1,4 +1,3 @@
-
 import { contextBridge, type IpcRendererEvent, ipcRenderer } from 'electron';
 import type {
   OkDesktopBridge,
@@ -510,6 +509,9 @@ const bridge: OkDesktopBridge = {
     drain: (ptyId, bytes) => {
       invoke('ok:pty:drain', { ptyId, bytes }).catch(() => {});
     },
+    list: () => invoke('ok:pty:list'),
+    adopt: (ptyId) => invoke('ok:pty:adopt', { ptyId }),
+    getDockState: () => invoke('ok:terminal:dock-state'),
     onData(cb) {
       const listener = (_event: IpcRendererEvent, msg: OkPtyData) => cb(msg);
       // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)

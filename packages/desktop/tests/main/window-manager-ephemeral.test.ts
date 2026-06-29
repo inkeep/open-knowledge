@@ -9,7 +9,6 @@ import {
   type WindowManagerDeps,
 } from '../../src/main/window-manager.ts';
 
-
 interface FakeWindow extends BrowserWindowLike {
   fireClose: () => void;
   fireDomReady: () => void;

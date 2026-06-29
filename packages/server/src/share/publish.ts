@@ -1,4 +1,3 @@
-
 import type {
   SharePublishErrorCode,
   SharePublishNameCheckResponse,
@@ -9,7 +8,6 @@ import type {
 } from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
 
-
 export const SHARE_PUBLISH_OWNERS_HANDLER_TAG = 'share-publish-owners';
 export const SHARE_PUBLISH_NAME_CHECK_HANDLER_TAG = 'share-publish-name-check';
 export const SHARE_PUBLISH_HANDLER_TAG = 'share-publish';
@@ -19,7 +17,6 @@ export const SHARE_PUBLISH_NAME_CHECK_KEY = '/api/share/publish/name-check';
 export const SHARE_PUBLISH_KEY = '/api/share/publish';
 
 export const SHARE_PUBLISH_TIMEOUT_MS = 30_000;
-
 
 export function isValidShareRepoName(name: string): boolean {
   if (name.length === 0 || name.length > 100) return false;
@@ -34,7 +31,6 @@ export function isValidShareOwnerName(owner: string): boolean {
   return /^[A-Za-z0-9-]+$/.test(owner);
 }
 
-
 export function pickTerminalJsonLine(stdout: string): Record<string, unknown> | null {
   const lines = stdout
     .split('\n')
@@ -46,12 +42,10 @@ export function pickTerminalJsonLine(stdout: string): Record<string, unknown> | 
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         return parsed as Record<string, unknown>;
       }
-    } catch {
-    }
+    } catch {}
   }
   return null;
 }
-
 
 export function parseOwnersEvent(
   event: Record<string, unknown> | null,
@@ -83,7 +77,6 @@ function isOwnersErrorCode(value: unknown): value is SharePublishOwnersErrorCode
   return value === 'auth-required' || value === 'network';
 }
 
-
 export function parseNameCheckEvent(
   event: Record<string, unknown> | null,
 ): SharePublishNameCheckResponse {
@@ -97,7 +90,6 @@ export function parseNameCheckEvent(
   }
   return { ok: false, error: 'network' };
 }
-
 
 const PUBLISH_ERROR_CODES: ReadonlySet<SharePublishErrorCode> = new Set([
   'name-conflict',
@@ -131,7 +123,6 @@ export function parsePublishEvent(event: Record<string, unknown> | null): ShareP
   }
   return { ok: false, error: 'network' };
 }
-
 
 export function emitSharePublishLog(
   action: 'owners-list' | 'name-check' | 'publish-create',

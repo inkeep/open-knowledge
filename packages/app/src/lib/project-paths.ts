@@ -1,4 +1,3 @@
-
 export function relativeToProject(projectDir: string, picked: string): string | null {
   const normalize = (p: string): string =>
     p.replace(/\\/g, '/').replace(/\/+$/, '') || (p.startsWith('/') ? '/' : '');

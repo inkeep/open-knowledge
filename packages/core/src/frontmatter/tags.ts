@@ -1,4 +1,3 @@
-
 import { parseFrontmatterYaml } from './yaml-codec.ts';
 
 export const FRONTMATTER_TAG_VALUE_RE = /^[a-zA-Z0-9][\w/-]*$/;

@@ -1,6 +1,5 @@
 'use client';
 
-
 import {
   Tab as FumadocsTab,
   Tabs as FumadocsTabs,

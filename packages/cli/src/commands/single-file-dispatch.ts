@@ -1,4 +1,3 @@
-
 const VALUE_TAKING_GLOBAL_FLAGS = new Set(['--cwd', '--log-level']);
 
 export interface ScannedRootArgv {

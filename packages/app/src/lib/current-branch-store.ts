@@ -30,8 +30,7 @@ export function createBranchStore(deps: BranchStoreDeps): BranchStore {
     try {
       const next = await deps.fetchBranch();
       setBranch(next);
-    } catch {
-    }
+    } catch {}
   }
 
   return {

@@ -28,6 +28,7 @@ interface TerminalPanelProps {
   readonly onExit?: (info: { readonly exitCode: number; readonly signal: number | null }) => void;
   readonly onTitleChange?: (title: string) => void;
   readonly launch?: TerminalLaunchIntent | null;
+  readonly adoptPtyId?: string | null;
 }
 
 export function TerminalPanel({
@@ -37,10 +38,12 @@ export function TerminalPanel({
   onExit,
   onTitleChange,
   launch = null,
+  adoptPtyId = null,
 }: TerminalPanelProps) {
   const { t } = useLingui();
   const { resolvedTheme } = useTheme();
   const [restartKey, setRestartKey] = useState(0);
+  const adoptForThisMount = restartKey === 0 ? adoptPtyId : null;
   return (
     <section
       aria-label={t`Terminal`}
@@ -58,6 +61,7 @@ export function TerminalPanel({
           onTitleChange={onTitleChange}
           onRestart={() => setRestartKey((k) => k + 1)}
           launch={launch}
+          adoptPtyId={adoptForThisMount}
         />
       </div>
     </section>
@@ -73,6 +77,9 @@ interface TerminalSessionProps {
   readonly onTitleChange?: (title: string) => void;
   readonly onRestart: () => void;
   readonly launch?: TerminalLaunchIntent | null;
+  /** Surviving PTY to adopt on mount instead of spawning a fresh shell; `null`
+   *  spawns fresh (the normal path). */
+  readonly adoptPtyId?: string | null;
 }
 
 function TerminalSession({
@@ -82,6 +89,7 @@ function TerminalSession({
   onTitleChange,
   onRestart,
   launch = null,
+  adoptPtyId = null,
 }: TerminalSessionProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const onExitRef = useRef(onExit);
@@ -213,36 +221,9 @@ function TerminalSession({
       return false;
     });
 
-    void (async () => {
-      let result: Awaited<ReturnType<typeof bridge.terminal.create>>;
-      try {
-        result = await bridge.terminal.create({ cols: term.cols, rows: term.rows });
-      } catch (err) {
-        console.error('[terminal] create() failed:', err);
-        if (cancelled) return;
-        setExitInfo({
-          exitCode: 1,
-          signal: null,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        setStatus('exited');
-        return;
-      }
-
-      if (cancelled) {
-        if (result.ok)
-          void bridge.terminal
-            .kill(result.ptyId)
-            .catch((err) => console.warn('[terminal] kill after cancelled mount failed:', err));
-        return;
-      }
-      if (!result.ok) {
-        setStatus(result.reason === 'not-consented' ? 'not-consented' : 'no-project');
-        return;
-      }
-
-      ptyId = result.ptyId;
-      ptyIdRef.current = result.ptyId;
+    const attachSession = (livePtyId: string) => {
+      ptyId = livePtyId;
+      ptyIdRef.current = livePtyId;
       setStatus('running');
 
       term.onData((data) => {
@@ -281,6 +262,54 @@ function TerminalSession({
         .finally(() => {
           if (!cancelled) setPreflightDone(true);
         });
+    };
+
+    void (async () => {
+      if (adoptPtyId !== null) {
+        let adopted: Awaited<ReturnType<typeof bridge.terminal.adopt>>;
+        try {
+          adopted = await bridge.terminal.adopt(adoptPtyId);
+        } catch (err) {
+          console.error('[terminal] adopt() failed:', err);
+          adopted = { ok: false, reason: 'unknown-session' };
+        }
+        if (cancelled) return;
+        if (adopted.ok) {
+          if (adopted.replay) term.write(adopted.replay);
+          attachSession(adoptPtyId);
+          bridge.terminal.resize(adoptPtyId, term.cols, term.rows);
+          return;
+        }
+      }
+
+      let result: Awaited<ReturnType<typeof bridge.terminal.create>>;
+      try {
+        result = await bridge.terminal.create({ cols: term.cols, rows: term.rows });
+      } catch (err) {
+        console.error('[terminal] create() failed:', err);
+        if (cancelled) return;
+        setExitInfo({
+          exitCode: 1,
+          signal: null,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        setStatus('exited');
+        return;
+      }
+
+      if (cancelled) {
+        if (result.ok)
+          void bridge.terminal
+            .kill(result.ptyId)
+            .catch((err) => console.warn('[terminal] kill after cancelled mount failed:', err));
+        return;
+      }
+      if (!result.ok) {
+        setStatus(result.reason === 'not-consented' ? 'not-consented' : 'no-project');
+        return;
+      }
+
+      attachSession(result.ptyId);
     })();
 
     return () => {
@@ -297,7 +326,7 @@ function TerminalSession({
           .kill(ptyId)
           .catch((err) => console.warn('[terminal] kill on unmount failed:', err));
     };
-  }, [bridge]);
+  }, [bridge, adoptPtyId]);
 
   useEffect(() => {
     const term = termRef.current;
@@ -307,6 +336,7 @@ function TerminalSession({
 
   useEffect(() => {
     if (launch === null) return;
+    if (adoptPtyId !== null) return;
     if (status !== 'running') return;
     if (!firstOutputSeen) return;
     if (lastLaunchedNonceRef.current === launch.nonce) return;
@@ -393,7 +423,7 @@ function TerminalSession({
     return () => {
       cancelled = true;
     };
-  }, [bridge, launch, status, firstOutputSeen, preflightDone, readiness]);
+  }, [bridge, launch, status, firstOutputSeen, preflightDone, readiness, adoptPtyId]);
 
   return (
     <div className="flex h-full w-full flex-col">

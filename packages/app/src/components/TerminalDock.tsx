@@ -25,6 +25,9 @@ interface TerminalSessionDescriptor {
   readonly id: string;
   readonly launch: TerminalLaunchIntent | null;
   readonly title: string | null;
+  /** The surviving PTY this tab reconnects to after a renderer reload, or `null`
+   *  for a freshly-opened tab that spawns its own shell. */
+  readonly adoptPtyId: string | null;
 }
 
 function makeSessionId(counter: number): string {
@@ -62,20 +65,31 @@ export function TerminalDock({
   const editorRegionRef = useRef<HTMLDivElement | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(!visible);
 
+  const canRehydrate = typeof bridge.terminal?.list === 'function';
+
   const [sessions, setSessions] = useState<readonly TerminalSessionDescriptor[]>(() =>
-    visible ? [{ id: makeSessionId(1), launch, title: null }] : [],
+    !canRehydrate && visible
+      ? [{ id: makeSessionId(1), launch, title: null, adoptPtyId: null }]
+      : [],
   );
-  const [activeSessionId, setActiveSessionId] = useState(() => (visible ? makeSessionId(1) : ''));
+  const [activeSessionId, setActiveSessionId] = useState(() =>
+    !canRehydrate && visible ? makeSessionId(1) : '',
+  );
+  const [rehydrationSettled, setRehydrationSettled] = useState(!canRehydrate);
+  const rehydratedRef = useRef(false);
   const activeSessionIdRef = useRef(activeSessionId);
   const sessionsRef = useRef(sessions);
-  const sessionCounterRef = useRef(visible ? 1 : 0);
+  const sessionCounterRef = useRef(!canRehydrate && visible ? 1 : 0);
   const lastHandledLaunchNonceRef = useRef<number | null>(visible && launch ? launch.nonce : null);
   const prevVisibleRef = useRef(visible);
 
   function openSession(launchForSession: TerminalLaunchIntent | null) {
     sessionCounterRef.current += 1;
     const id = makeSessionId(sessionCounterRef.current);
-    setSessions((prev) => [...prev, { id, launch: launchForSession, title: null }]);
+    setSessions((prev) => [
+      ...prev,
+      { id, launch: launchForSession, title: null, adoptPtyId: null },
+    ]);
     setActiveSessionId(id);
   }
 
@@ -143,6 +157,8 @@ export function TerminalDock({
   );
 
   useEffect(() => {
+    if (!rehydrationSettled) return;
+
     const wasVisible = prevVisibleRef.current;
     prevVisibleRef.current = visible;
 
@@ -154,7 +170,40 @@ export function TerminalDock({
     if (visible && !wasVisible && sessions.length === 0) {
       openSessionRef.current(null);
     }
-  }, [visible, launch, sessions.length]);
+  }, [visible, launch, sessions.length, rehydrationSettled]);
+
+  useEffect(() => {
+    if (typeof bridge.terminal?.list !== 'function') return;
+    if (rehydratedRef.current) return;
+    rehydratedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      let survivors: readonly { ptyId: string }[] = [];
+      try {
+        survivors = (await bridge.terminal.list()) ?? [];
+      } catch (err) {
+        console.error('[terminal] reload session list() failed; cold-starting:', err);
+        survivors = [];
+      }
+      if (cancelled) return;
+      if (survivors.length > 0) {
+        const recovered = survivors.map((entry, index) => ({
+          id: makeSessionId(index + 1),
+          launch: null,
+          title: null,
+          adoptPtyId: entry.ptyId,
+        }));
+        sessionCounterRef.current = recovered.length;
+        setSessions(recovered);
+        setActiveSessionId(recovered[0]?.id ?? '');
+      }
+      setRehydrationSettled(true);
+    })();
+    return () => {
+      cancelled = true;
+      rehydratedRef.current = false;
+    };
+  }, [bridge]);
 
   useEffect(() => {
     return bridge.onMenuAction((action) => {
@@ -292,6 +341,7 @@ export function TerminalDock({
                 <TerminalGate
                   bridge={bridge}
                   launch={session.launch}
+                  adoptPtyId={session.adoptPtyId}
                   onTitleChange={(title) => setSessionTitle(session.id, title)}
                   onClose={() => closeSession(session.id)}
                 />

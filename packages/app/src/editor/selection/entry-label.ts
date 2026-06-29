@@ -1,4 +1,3 @@
-
 import type { BlockChainEntry } from '../extensions/selection-state-plugin.ts';
 import { getDescriptor } from '../registry/index.ts';
 

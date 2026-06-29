@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -187,7 +186,6 @@ describe('evaluateRegression (R4 synthetic gate)', () => {
     expect(text).toContain('parseMs');
   });
 });
-
 
 describe('loadBaseline / loadFreshResults finite-value validation', () => {
   function writeTmp(name: string, data: unknown): string {

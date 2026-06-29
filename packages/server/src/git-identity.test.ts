@@ -1,11 +1,9 @@
-
 import { describe, expect, test } from 'bun:test';
 import {
   type GitConfigReader,
   type GitIdentityTokenStore,
   resolveGitIdentity,
 } from './git-identity.ts';
-
 
 function mockReader(
   values: Partial<Record<string, Partial<Record<'worktree' | 'local' | 'global', string | null>>>>,
@@ -19,7 +17,6 @@ function makeTokenStore(entry: { login: string; name?: string; email?: string } 
   };
   return store;
 }
-
 
 describe('resolveGitIdentity chain order', () => {
   test('Step 1 (worktree): per-worktree identity wins over local + global', async () => {

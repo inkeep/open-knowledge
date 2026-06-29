@@ -1,4 +1,3 @@
-
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
@@ -61,6 +60,5 @@ export function releaseLock(shadowDir: string): void {
   const lockPath = resolve(shadowDir, 'lock');
   try {
     unlinkSync(lockPath);
-  } catch {
-  }
+  } catch {}
 }

@@ -1,10 +1,8 @@
-
 import { describe, expect, test } from 'bun:test';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { getPmStats, type PmStats } from './get-pm-stats';
-
 
 const schema = new Schema({
   nodes: {
@@ -53,7 +51,6 @@ function makeEditor(state: EditorState, view?: ViewStub) {
   return { state, view: view ?? {} };
 }
 
-
 describe('getPmStats — empty doc', () => {
   test('paragraph-only doc with no text content', () => {
     const doc = schema.node('doc', null, [schema.node('paragraph', null, [])]);
@@ -70,7 +67,6 @@ describe('getPmStats — empty doc', () => {
   });
 });
 
-
 describe('getPmStats — single-node doc', () => {
   test('one paragraph with plain text', () => {
     const doc = buildDoc([{ type: 'paragraph', runs: [{ text: 'hello' }] }]);
@@ -82,7 +78,6 @@ describe('getPmStats — single-node doc', () => {
     expect(stats.markCount).toBe(0);
   });
 });
-
 
 describe('getPmStats — multi-mark doc', () => {
   test('text with one link mark contributes 1 to markCount', () => {
@@ -144,7 +139,6 @@ describe('getPmStats — multi-mark doc', () => {
   });
 });
 
-
 describe('getPmStats — nodeViewCount', () => {
   test('view with two registered NodeView constructors', () => {
     const doc = buildDoc([{ type: 'paragraph', runs: [{ text: 'x' }] }]);
@@ -177,7 +171,6 @@ describe('getPmStats — nodeViewCount', () => {
     expect(stats.nodeViewCount).toBe(0);
   });
 });
-
 
 const keyedPluginA = new PluginKey('decoTestA');
 const keyedPluginB = new PluginKey('decoTestB');
@@ -322,7 +315,6 @@ describe('getPmStats — decoration counts', () => {
     expect(keys[0]?.startsWith('decoTestA')).toBe(true);
   });
 });
-
 
 describe('getPmStats — combined sanity', () => {
   test('realistic doc with marks + plugins + nodeViews matches expected counts', () => {

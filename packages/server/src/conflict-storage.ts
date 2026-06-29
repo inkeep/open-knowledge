@@ -1,4 +1,3 @@
-
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { getLocalDir } from './config/paths.ts';
@@ -6,7 +5,6 @@ import { getLogger } from './logger.ts';
 import { isWithinDir } from './path-utils.ts';
 
 const log = getLogger('conflict-storage');
-
 
 export interface ConflictEntry {
   file: string;
@@ -24,7 +22,6 @@ interface ConflictsJson {
   conflicts: ConflictEntry[];
 }
 
-
 export class ConflictStore {
   private readonly storePath: string;
   private readonly projectDir: string;
@@ -37,7 +34,6 @@ export class ConflictStore {
     this.branch = branch;
     this.load();
   }
-
 
   load(): void {
     if (!existsSync(this.storePath)) {
@@ -112,7 +108,6 @@ export class ConflictStore {
   setBranch(branch: string): void {
     this.branch = branch;
   }
-
 
   async resolveConflict(
     file: string,

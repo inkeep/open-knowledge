@@ -1,4 +1,4 @@
-
+import type { OkPtyAdoptResult, OkPtyListEntry } from '../shared/bridge-contract.ts';
 import type { SendableWebContents } from '../shared/ipc-send.ts';
 import type { PtyHostIncomingMessage, PtyHostOutgoingMessage } from '../utility/pty-host.ts';
 
@@ -24,6 +24,9 @@ export interface TerminalManagerDeps {
   coalesceMs?: number;
   highWaterBytes?: number;
   lowWaterBytes?: number;
+  /** Cap on the per-session reload-replay ring (retained screen + scrollback the
+   *  reloaded renderer repaints on adopt). Default 256 KiB. */
+  replayCapBytes?: number;
   logger?: { warn: (o: Record<string, unknown>) => void };
   recordShellExit?: (info: { crashed: boolean }) => void;
   recordTerminalSession?: () => void;
@@ -43,12 +46,19 @@ interface TerminalAddressedRequest {
   ptyId: string;
 }
 
+interface TerminalAdoptRequest {
+  windowId: number;
+  ptyId: string;
+  webContents: SendableWebContents;
+}
+
 type CreateResult =
   | { readonly ok: true; readonly ptyId: string }
   | { readonly ok: false; readonly reason: 'no-project' | 'not-consented' };
 
 interface SessionState {
   outbound: string;
+  replay: string;
   flushToken: TimerToken | null;
   pendingBytes: number;
   paused: boolean;
@@ -64,6 +74,7 @@ interface PtyWindowHandle {
 const DEFAULT_COALESCE_MS = 12;
 const DEFAULT_HIGH_WATER = 1024 * 1024;
 const DEFAULT_LOW_WATER = 256 * 1024;
+const DEFAULT_REPLAY_CAP = 256 * 1024;
 
 export const DEFAULT_PTY_COLS = 80;
 export const DEFAULT_PTY_ROWS = 24;
@@ -88,6 +99,8 @@ export interface TerminalManager {
   resize(req: TerminalAddressedRequest & { cols: number; rows: number }): void;
   kill(req: TerminalAddressedRequest): void;
   drain(req: TerminalAddressedRequest & { bytes: number }): void;
+  listSessions(windowId: number): OkPtyListEntry[];
+  adoptSession(req: TerminalAdoptRequest): OkPtyAdoptResult;
   killForWindow(windowId: number): void;
   killAll(): void;
 }
@@ -96,6 +109,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
   const coalesceMs = deps.coalesceMs ?? DEFAULT_COALESCE_MS;
   const highWater = deps.highWaterBytes ?? DEFAULT_HIGH_WATER;
   const lowWater = deps.lowWaterBytes ?? DEFAULT_LOW_WATER;
+  const replayCap = deps.replayCapBytes ?? DEFAULT_REPLAY_CAP;
   const handles = new Map<number, PtyWindowHandle>();
 
   /** Kill a host without letting a throw abort a multi-window reap loop. The
@@ -186,6 +200,10 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     switch (message.type) {
       case 'data':
         session.outbound += message.data;
+        session.replay += message.data;
+        if (session.replay.length > replayCap) {
+          session.replay = session.replay.slice(session.replay.length - replayCap);
+        }
         scheduleFlush(windowId, message.ptyId, session);
         break;
       case 'exit': {
@@ -266,6 +284,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       const ptyId = deps.newPtyId();
       handle.sessions.set(ptyId, {
         outbound: '',
+        replay: '',
         flushToken: null,
         pendingBytes: 0,
         paused: false,
@@ -316,6 +335,38 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         handle.utility.postMessage({ type: 'resume', ptyId: req.ptyId });
         session.paused = false;
       }
+    },
+
+    listSessions(windowId): OkPtyListEntry[] {
+      const handle = handles.get(windowId);
+      if (!handle) return [];
+      return [...handle.sessions.keys()].map((ptyId) => ({ ptyId }));
+    },
+
+    adoptSession(req): OkPtyAdoptResult {
+      const handle = handles.get(req.windowId);
+      const session = handle?.sessions.get(req.ptyId);
+      if (!handle || !session) return { ok: false, reason: 'unknown-session' };
+      clearFlush(session);
+      session.outbound = '';
+      session.pendingBytes = 0;
+      session.paused = false;
+      try {
+        handle.utility.postMessage({ type: 'resume', ptyId: req.ptyId });
+      } catch (err) {
+        const code = (err as { code?: string } | null)?.code;
+        if (code !== 'ESRCH') {
+          deps.logger?.warn({
+            event: 'terminal-manager-adopt-resume-failed',
+            code: code ?? 'unknown',
+            windowId: req.windowId,
+            ptyId: req.ptyId,
+          });
+        }
+        return { ok: false, reason: 'unknown-session' };
+      }
+      handle.webContents = req.webContents;
+      return { ok: true, replay: session.replay };
     },
 
     killForWindow(windowId): void {

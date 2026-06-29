@@ -1,4 +1,3 @@
-
 import {
   DEFAULT_EMBEDDINGS_DIMENSIONS,
   type Embedder,

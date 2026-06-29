@@ -129,12 +129,10 @@ export function proxyUpgrade(
     }
     try {
       upstreamSocket.destroy();
-    } catch {
-    }
+    } catch {}
     try {
       clientSocket.destroy();
-    } catch {
-    }
+    } catch {}
   };
 
   upstreamSocket.once('connect', () => {
@@ -225,8 +223,7 @@ export async function startProxyServer(opts: StartProxyOptions): Promise<ProxySe
         for (const sock of upgradeSockets) {
           try {
             sock.destroy();
-          } catch {
-          }
+          } catch {}
         }
         upgradeSockets.clear();
         httpServer.close(() => done());
@@ -278,18 +275,15 @@ function forwardRequest(
           'Proxy request exceeded the per-request deadline.',
           `Slow-loris-class: client did not finish within ${DEFAULT_REQUEST_TIMEOUT_MS / 1000}s.`,
         );
-      } catch {
-      }
+      } catch {}
     } else {
       try {
         res.end();
-      } catch {
-      }
+      } catch {}
     }
     try {
       req.socket?.destroy();
-    } catch {
-    }
+    } catch {}
   });
 
   const upstreamReq = httpRequest(
@@ -310,8 +304,7 @@ function forwardRequest(
       upstreamRes.once('error', () => {
         try {
           res.end();
-        } catch {
-        }
+        } catch {}
       });
     },
   );
@@ -329,8 +322,7 @@ function forwardRequest(
       } else {
         try {
           res.end();
-        } catch {
-        }
+        } catch {}
       }
       upstreamReq.destroy();
     });
@@ -348,8 +340,7 @@ function forwardRequest(
     } else {
       try {
         res.end();
-      } catch {
-      }
+      } catch {}
     }
   });
 

@@ -1,4 +1,3 @@
-
 export function buildWikiBody(contentDir: string): string {
   return `# Codebase Wiki — Generate + Refresh
 

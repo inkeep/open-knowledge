@@ -1,4 +1,3 @@
-
 import { resolve } from 'node:path';
 import { humanFormat } from '@inkeep/open-knowledge-core';
 import { writeConfigPatch } from '@inkeep/open-knowledge-core/server';

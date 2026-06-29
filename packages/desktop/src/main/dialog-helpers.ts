@@ -1,4 +1,3 @@
-
 interface DialogLike {
   showOpenDialog(opts: {
     properties: (

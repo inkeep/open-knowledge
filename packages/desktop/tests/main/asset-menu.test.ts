@@ -1,4 +1,3 @@
-
 import { describe, expect, mock, test } from 'bun:test';
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
 import {

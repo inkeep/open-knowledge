@@ -1,4 +1,3 @@
-
 import { realpath as fsRealpath } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';

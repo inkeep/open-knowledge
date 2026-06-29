@@ -12,7 +12,6 @@ import {
   setupUtility,
 } from '../../src/utility/server-entry.ts';
 
-
 interface MockParentPort {
   on: ReturnType<typeof mock>;
   postMessage: ReturnType<typeof mock>;
@@ -831,7 +830,6 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
     env = buildEnv();
     tmpRoot = mkdtempSync(resolve(tmpdir(), 'ok-utility-prelude-'));
   });
-
 
   test('loads real .ok/config.yml + resolves content.dir via the production prelude', async () => {
     mkdirSync(resolve(tmpRoot, '.git'), { recursive: true });

@@ -1,4 +1,3 @@
-
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
@@ -332,8 +331,7 @@ function probeWsUpgrade(url: string, timeoutMs: number): Promise<boolean> {
       settled = true;
       try {
         ws.close();
-      } catch {
-      }
+      } catch {}
       resolveProbe(ok);
     };
     const ws = new WebSocket(url);
@@ -428,6 +426,7 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
 let navigatorWindow: BrowserWindowLike | null = null;
 let wm: WindowManager;
 let terminalReaper: TerminalReaper | null = null;
+const dockVisibleForWindow = new Map<number, boolean>();
 const showGate: ShowGateRegistry = createShowGateRegistry({
   log: {
     warn: (obj, msg) => {
@@ -482,8 +481,7 @@ function runDriverBootSmokeInProduction(): void {
     quit: () => {
       try {
         app.quit();
-      } catch {
-      }
+      } catch {}
     },
     setTimeout: (fn, ms) => {
       setTimeout(fn, ms);
@@ -550,7 +548,10 @@ function ensureWindowManager() {
       });
       applyCascadePosition(win);
       attachSpellcheckMenuToWindow(win);
-      if (terminalReaper) wireWindowTerminalReap(win, terminalReaper);
+      if (terminalReaper)
+        wireWindowTerminalReap(win, terminalReaper, (windowId) =>
+          dockVisibleForWindow.delete(windowId),
+        );
       return win as unknown as BrowserWindowLike;
     },
     forkUtility: (entry, args, opts) => {
@@ -624,8 +625,7 @@ function ensureWindowManager() {
             } catch (spawnErr) {
               try {
                 closeSync(spawnErrorLogFd);
-              } catch {
-              }
+              } catch {}
               throw Object.assign(
                 new Error(
                   `spawnDetachedServer: child_process.spawn threw synchronously: ${
@@ -666,8 +666,7 @@ function ensureWindowManager() {
             } finally {
               try {
                 closeSync(spawnErrorLogFd);
-              } catch {
-              }
+              } catch {}
             }
             childRef.unref();
             const pid = childRef.pid;
@@ -1303,7 +1302,6 @@ async function runApplicationMenuRefresh(): Promise<void> {
   });
 }
 
-
 function sendMenuActionToFocused(action: OkMenuAction): void {
   const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
   if (!target) return;
@@ -1596,6 +1594,27 @@ function registerIpcHandlers() {
     if (win) terminalManager.drain({ windowId: win.id, ptyId: req.ptyId, bytes: req.bytes });
     return undefined;
   });
+  handle('ok:pty:list', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win ? terminalManager.listSessions(win.id) : [];
+  });
+  handle('ok:pty:adopt', async (event, req) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:pty:adopt',
+        reason: 'unknown-session',
+        handler: 'adoptPty',
+      });
+      return { ok: false, reason: 'unknown-session' };
+    }
+    return terminalManager.adoptSession({
+      windowId: win.id,
+      ptyId: req.ptyId,
+      webContents: win.webContents,
+    });
+  });
   handle('ok:terminal:claude-assist', async (event, req) => {
     let rewireError: string | undefined;
     if (req.action === 'rewire' && process.platform === 'darwin' && app.isPackaged) {
@@ -1627,6 +1646,11 @@ function registerIpcHandlers() {
       return { onPath: 'unknown' };
     }
     return resolveTerminalCliOnPath(req.cli);
+  });
+
+  handle('ok:terminal:dock-state', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return { visible: win ? (dockVisibleForWindow.get(win.id) ?? false) : false };
   });
 
   handle('ok:dialog:open-folder', async (_event, opts) => {
@@ -1888,8 +1912,12 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  handle('ok:editor:view-menu-state-changed', async (_event, state) => {
+  handle('ok:editor:view-menu-state-changed', async (event, state) => {
     editorViewMenuState = mergeViewMenuState(editorViewMenuState, state);
+    if (state.terminalVisible !== undefined) {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (win) dockVisibleForWindow.set(win.id, state.terminalVisible);
+    }
     refreshApplicationMenu();
     return undefined;
   });
@@ -2132,7 +2160,6 @@ function registerIpcHandlers() {
       return { ok: false, reason: 'other' };
     }
   });
-
 
   handle('ok:fs:default-projects-root', async () => {
     return resolveDefaultProjectsRoot(appState.lastUsedProjectParent, app.getPath('documents'));
@@ -2448,7 +2475,6 @@ installStdioBrokenPipeGuard(process, {
     );
   },
 });
-
 
 if (!app.isPackaged && process.env.OK_INSTANCE) {
   const relocatedUserData = deriveInstanceUserDataDir(
@@ -2904,6 +2930,7 @@ function bootPrimaryInstance(): void {
   app.on('will-quit', () => {
     getLogger('lifecycle').info({}, 'will-quit');
     terminalReaper?.killAll();
+    dockVisibleForWindow.clear();
     autoUpdaterHandle?.destroy();
     autoUpdaterHandle = null;
     bundleReplaceWatcherHandle?.stop();

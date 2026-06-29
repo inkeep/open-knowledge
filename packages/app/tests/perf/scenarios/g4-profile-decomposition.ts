@@ -1,4 +1,3 @@
-
 import type { CDPSession } from '@playwright/test';
 import {
   capturePerfMetricsWindow,
@@ -80,8 +79,7 @@ async function getPmStatsInPage(
             pluginCount += set.find().length;
           });
         }
-      } catch {
-      }
+      } catch {}
       decorationCountByPlugin[keyStr] = pluginCount;
       decorationCount += pluginCount;
     }

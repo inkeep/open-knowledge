@@ -291,7 +291,6 @@ describe('handleRenamePath (kind: file) — agentId-guarded attribution', () => 
 });
 
 describe('handleRollback — agentId-guarded attribution (regression gate)', () => {
-
   test('no agentId → body parses and short-circuits the attribution branch', async () => {
     const response = await callApi(tmpDir, '/api/rollback', {
       docName: 'test-doc',
@@ -317,7 +316,6 @@ describe('handleRollback — agentId-guarded attribution (regression gate)', () 
 });
 
 describe('leak-fix regression', () => {
-
   test('handleRenamePath (file) with agentId triggers flushGitCommit after recordContributor', async () => {
     writeFileSync(join(tmpDir, 'notes.md'), '# Notes\n', 'utf-8');
     const spy = createFlushGitCommitSpy();

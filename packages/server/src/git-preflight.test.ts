@@ -19,7 +19,6 @@ import {
   resolveOnPath,
 } from './git-preflight.ts';
 
-
 describe('parseGitVersion', () => {
   test('parses canonical Linux/macOS output', () => {
     expect(parseGitVersion('git version 2.39.3\n')).toBe('2.39.3');
@@ -47,7 +46,6 @@ describe('parseGitVersion', () => {
     expect(parseGitVersion('git version 2.39')).toBeNull(); // incomplete triple
   });
 });
-
 
 describe('compareSemver', () => {
   test('returns negative when a < b', () => {
@@ -77,7 +75,6 @@ describe('compareSemver', () => {
     expect(compareSemver('2.31.0', '2.31.abc')).toBe(0);
   });
 });
-
 
 describe('detectLinuxFamily', () => {
   test('detects Ubuntu from ID', () => {
@@ -154,7 +151,6 @@ ID_LIKE='debian'`;
   });
 });
 
-
 describe('fallbackPaths', () => {
   test('macOS includes Apple Silicon brew path first', () => {
     const paths = fallbackPaths('darwin');
@@ -183,7 +179,6 @@ describe('fallbackPaths', () => {
     expect(paths).toContain('/usr/bin/git');
   });
 });
-
 
 describe('buildGuidance', () => {
   test('macOS guidance always includes xcode-select as a fallback', () => {
@@ -225,7 +220,6 @@ describe('buildGuidance', () => {
     }
   });
 });
-
 
 describe('GitNotAvailableError', () => {
   test('carries code, platform, and guidance fields', () => {
@@ -273,7 +267,6 @@ describe('GitNotAvailableError', () => {
   });
 });
 
-
 describe('GitTooOldError', () => {
   test('carries code, platform, detected, required, and resolvedPath fields', () => {
     const guidance = buildGuidance('darwin');
@@ -307,7 +300,6 @@ describe('GitTooOldError', () => {
     expect(err instanceof GitNotAvailableError).toBe(false);
   });
 });
-
 
 describe('resolveOnPath', () => {
   test('resolves a tool known to exist on the runner (git, where on win, sh elsewhere)', () => {
@@ -347,7 +339,6 @@ describe('resolveOnPath', () => {
   });
 });
 
-
 describe('detectGit (integration)', () => {
   test('returns a GitDetected when git is present (the common case)', () => {
     const detected: GitDetected = detectGit();
@@ -380,14 +371,12 @@ describe('detectGit (integration)', () => {
   });
 });
 
-
 describe('assertGitAvailable (integration)', () => {
   test('passes when runner git ≥ MIN_GIT_VERSION', () => {
     const detected = assertGitAvailable();
     expect(compareSemver(detected.version, MIN_GIT_VERSION)).toBeGreaterThanOrEqual(0);
   });
 });
-
 
 describe('MIN_GIT_VERSION', () => {
   test('is a valid semver triple', () => {
@@ -398,7 +387,6 @@ describe('MIN_GIT_VERSION', () => {
     expect(compareSemver(MIN_GIT_VERSION, '2.20.0')).toBeGreaterThanOrEqual(0);
   });
 });
-
 
 describe('detectLinuxFamily fixtures', () => {
   test('parses a fixture file written to disk via the os-release argument', () => {

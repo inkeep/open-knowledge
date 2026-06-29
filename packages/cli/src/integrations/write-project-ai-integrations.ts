@@ -1,4 +1,3 @@
-
 import type { EditorId, McpInstallOptions } from '../commands/editors.ts';
 import { type LaunchJsonResult, scaffoldLaunchJson } from '../commands/init.ts';
 import {

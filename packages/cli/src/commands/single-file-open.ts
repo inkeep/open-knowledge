@@ -1,4 +1,3 @@
-
 import { spawn as nodeSpawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
@@ -126,12 +125,10 @@ async function runSingleFileBrowserOpen(
     tornDown = true;
     try {
       await booted?.destroy();
-    } catch {
-    }
+    } catch {}
     try {
       await rm(projectDir, { recursive: true, force: true });
-    } catch {
-    }
+    } catch {}
   };
 
   const onSignal = (): void => {

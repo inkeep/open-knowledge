@@ -1,4 +1,3 @@
-
 import { type AssetViewerRegistry, assetViewerRegistry } from './registry.ts';
 import type { AssetClickContext } from './types.ts';
 

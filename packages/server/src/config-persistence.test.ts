@@ -63,8 +63,7 @@ function makeFixture(): Fixture {
     cleanup: () => {
       try {
         rmSync(root, { recursive: true, force: true });
-      } catch {
-      }
+      } catch {}
     },
   };
 }
@@ -247,7 +246,6 @@ describe('storeConfigDoc — happy path', () => {
 });
 
 describe('storeConfigDoc — cross-process reconciliation (file lock)', () => {
-
   function makeSecondCtxSharingHomedir(primary: Fixture): {
     ctx: ConfigPersistenceCtx;
     rejections: Array<{ docName: string; error: ConfigValidationError }>;
@@ -667,8 +665,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
         lastTransactionOrigin: undefined,
         // biome-ignore lint/suspicious/noExplicitAny: minimal Hocuspocus shim
       } as any);
-    } catch {
-    }
+    } catch {}
 
     expect(rejections).toHaveLength(0);
   });

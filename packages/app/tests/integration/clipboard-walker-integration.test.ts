@@ -1,4 +1,3 @@
-
 import { describe, expect, mock, test } from 'bun:test';
 import { createClipboardHtmlSerializer } from '../../src/editor/clipboard/serialize.ts';
 

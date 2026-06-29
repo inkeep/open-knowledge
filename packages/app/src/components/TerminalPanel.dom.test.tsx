@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type {
@@ -97,7 +96,16 @@ type CreateResult =
 
 const WIRED: ClaudeReadiness = { claude: 'present', mcp: 'wired' };
 
-function makeBridge(createResult: CreateResult, preflight: ClaudeReadiness = WIRED) {
+function makeBridge(
+  createResult: CreateResult,
+  preflight: ClaudeReadiness = WIRED,
+  adopt: (
+    id: string,
+  ) => Promise<{ ok: true; replay?: string } | { ok: false; reason: string }> = async () => ({
+    ok: true,
+    replay: '',
+  }),
+) {
   const dataSubs: Array<(m: OkPtyData) => void> = [];
   const exitSubs: Array<(m: OkPtyExit) => void> = [];
   const unsubData = mock(() => {});
@@ -106,6 +114,7 @@ function makeBridge(createResult: CreateResult, preflight: ClaudeReadiness = WIR
   const rewireClaudeMcp = mock(async () => preflight);
   const terminal = {
     create: mock(async () => createResult),
+    adopt: mock(adopt),
     input: mock((_id: string, _d: string) => {}),
     resize: mock((_id: string, _c: number, _r: number) => {}),
     kill: mock(async (_id: string) => {}),
@@ -174,6 +183,70 @@ describe('TerminalPanel', () => {
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(terminal.create).toHaveBeenCalledWith({ cols: 80, rows: 24 });
+  });
+
+  test('reload rehydration: adopts a surviving session instead of spawning a fresh one', async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-fresh' });
+    render(<TerminalPanel bridge={bridge} adoptPtyId="pty-survivor" />);
+
+    await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor'));
+    expect(terminal.create).not.toHaveBeenCalled();
+    expect(terminal.resize).toHaveBeenCalledWith('pty-survivor', 80, 24);
+  });
+
+  test('reload rehydration: writes the adopted session replay into xterm so the screen repaints', async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-fresh' }, WIRED, async () => ({
+      ok: true,
+      replay: 'REPLAYED-SCREEN-BYTES',
+    }));
+    render(<TerminalPanel bridge={bridge} adoptPtyId="pty-survivor" />);
+
+    await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor'));
+    expect(lastTerm?.write).toHaveBeenCalledWith('REPLAYED-SCREEN-BYTES');
+    expect(terminal.create).not.toHaveBeenCalled();
+  });
+
+  test('reload rehydration: a refused adopt (session died in the gap) falls through to a fresh create', async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-fresh' }, WIRED, async () => ({
+      ok: false,
+      reason: 'unknown-session',
+    }));
+    render(<TerminalPanel bridge={bridge} adoptPtyId="pty-gone" />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(terminal.adopt).toHaveBeenCalledWith('pty-gone');
+    expect(terminal.resize).not.toHaveBeenCalled();
+  });
+
+  test('reload rehydration: an adopt that throws is caught and falls through to a fresh create', async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-fresh' }, WIRED, async () => {
+      throw new Error('ipc boom');
+    });
+    render(<TerminalPanel bridge={bridge} adoptPtyId="pty-survivor" />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor');
+    expect(terminal.resize).not.toHaveBeenCalled();
+  });
+
+  test('reload rehydration: an unmount mid-adopt leaves the surviving session alive (does not kill it)', async () => {
+    let releaseAdopt: (() => void) | null = null;
+    const { bridge, terminal } = makeBridge(
+      { ok: true, ptyId: 'pty-fresh' },
+      WIRED,
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          releaseAdopt = () => resolve({ ok: true });
+        }),
+    );
+    const { unmount } = render(<TerminalPanel bridge={bridge} adoptPtyId="pty-survivor" />);
+
+    await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor'));
+    unmount();
+    releaseAdopt?.();
+    await act(async () => {});
+
+    expect(terminal.kill).not.toHaveBeenCalled();
   });
 
   test('forwards xterm OSC 0/2 title changes to onTitleChange', async () => {

@@ -16,9 +16,18 @@ interface TerminalGateProps {
   readonly onClose?: () => void;
   readonly onTitleChange?: (title: string) => void;
   readonly launch?: TerminalLaunchIntent | null;
+  /** Surviving PTY to adopt after a renderer reload, forwarded to the session;
+   *  `null` for a freshly-opened tab. */
+  readonly adoptPtyId?: string | null;
 }
 
-export function TerminalGate({ bridge, onClose, onTitleChange, launch = null }: TerminalGateProps) {
+export function TerminalGate({
+  bridge,
+  onClose,
+  onTitleChange,
+  launch = null,
+  adoptPtyId = null,
+}: TerminalGateProps) {
   const { enabled, synced } = useTerminalConsentState();
   const writer = useTerminalEnabledWriter();
   const { t } = useLingui();
@@ -53,6 +62,7 @@ export function TerminalGate({ bridge, onClose, onTitleChange, launch = null }: 
             onClose={onClose}
             onTitleChange={onTitleChange}
             launch={launch}
+            adoptPtyId={adoptPtyId}
           />
         </Suspense>
       </ErrorBoundary>

@@ -1,4 +1,3 @@
-
 import { Node } from '@tiptap/core';
 
 declare module '@tiptap/core' {

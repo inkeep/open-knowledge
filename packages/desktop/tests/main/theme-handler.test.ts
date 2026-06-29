@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { applyThemeSource, isOkThemeSource } from '../../src/main/theme-handler.ts';
 import type { OkThemeSource } from '../../src/shared/bridge-contract.ts';

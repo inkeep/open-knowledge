@@ -1,4 +1,3 @@
-
 import { readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import {
   readdir as nodeReaddir,
@@ -47,12 +46,10 @@ async function sweepStaleTmps(absPath: string): Promise<void> {
         try {
           const st = await nodeStat(full);
           if (st.mtimeMs < cutoff) await nodeUnlink(full);
-        } catch {
-        }
+        } catch {}
       }),
     );
-  } catch {
-  }
+  } catch {}
 }
 
 function sweepStaleTmpsSync(absPath: string): void {
@@ -66,11 +63,9 @@ function sweepStaleTmpsSync(absPath: string): void {
       try {
         const st = statSync(full);
         if (st.mtimeMs < cutoff) unlinkSync(full);
-      } catch {
-      }
+      } catch {}
     }
-  } catch {
-  }
+  } catch {}
 }
 
 export async function atomicWriteFile(
@@ -87,8 +82,7 @@ export async function atomicWriteFile(
   } catch (e) {
     try {
       unlinkSync(tmpPath);
-    } catch {
-    }
+    } catch {}
     throw e;
   }
 }
@@ -106,8 +100,7 @@ export function atomicWriteFileSync(
   } catch (e) {
     try {
       unlinkSync(tmpPath);
-    } catch {
-    }
+    } catch {}
     throw e;
   }
 }

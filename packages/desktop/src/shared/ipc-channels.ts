@@ -1,4 +1,3 @@
-
 import type {
   BranchInfoResponse,
   CheckoutResponse,
@@ -24,7 +23,9 @@ import type {
   OkDesktopConfig,
   OkLocalOpAuthReposResponse,
   OkLocalOpAuthStatusResponse,
+  OkPtyAdoptResult,
   OkPtyCreateResult,
+  OkPtyListEntry,
   OkServerRestartOutcome,
   OkSharePayloadFields,
   OkThemeSource,
@@ -494,6 +495,14 @@ export interface RequestChannels {
     args: [req: { ptyId: string; bytes: number }];
     result: undefined;
   };
+  'ok:pty:list': {
+    args: [];
+    result: OkPtyListEntry[];
+  };
+  'ok:pty:adopt': {
+    args: [req: { ptyId: string }];
+    result: OkPtyAdoptResult;
+  };
   'ok:terminal:claude-assist': {
     args: [req: { action: 'preflight' | 'rewire' }];
     result: ClaudeReadiness;
@@ -501,5 +510,9 @@ export interface RequestChannels {
   'ok:terminal:cli-preflight': {
     args: [req: { cli: TerminalCli }];
     result: CliReadiness;
+  };
+  'ok:terminal:dock-state': {
+    args: [];
+    result: { visible: boolean };
   };
 }

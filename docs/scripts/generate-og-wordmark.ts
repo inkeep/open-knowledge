@@ -1,7 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-
 const root = path.resolve(import.meta.dirname, '..');
 const svg = readFileSync(path.join(root, 'public', 'ok-wordmark.svg'));
 const dataUrl = `data:image/svg+xml;base64,${svg.toString('base64')}`;

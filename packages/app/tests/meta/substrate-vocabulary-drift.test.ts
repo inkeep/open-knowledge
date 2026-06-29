@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, type Stats, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';

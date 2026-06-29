@@ -1,4 +1,3 @@
-
 import { createEnsureSingleFileSession } from '../../ensure-single-file-session.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import { getCurrentMcpLogger, type McpLogger } from '../logger.ts';

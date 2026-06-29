@@ -431,6 +431,14 @@ export type OkPtyCreateResult =
   | { readonly ok: true; readonly ptyId: string }
   | { readonly ok: false; readonly reason: 'no-project' | 'not-consented' };
 
+export interface OkPtyListEntry {
+  readonly ptyId: string;
+}
+
+export type OkPtyAdoptResult =
+  | { readonly ok: true; readonly replay: string }
+  | { readonly ok: false; readonly reason: 'unknown-session' };
+
 export interface OkPtyData {
   readonly ptyId: string;
   readonly data: string;
@@ -722,6 +730,9 @@ export interface OkDesktopBridge {
     resize(ptyId: string, cols: number, rows: number): void;
     kill(ptyId: string): Promise<void>;
     drain(ptyId: string, bytes: number): void;
+    list(): Promise<OkPtyListEntry[]>;
+    adopt(ptyId: string): Promise<OkPtyAdoptResult>;
+    getDockState(): Promise<{ visible: boolean }>;
     onData(cb: (msg: OkPtyData) => void): OkUnsubscribe;
     onExit(cb: (msg: OkPtyExit) => void): OkUnsubscribe;
     claudePreflight(): Promise<ClaudeReadiness>;

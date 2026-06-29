@@ -1,4 +1,3 @@
-
 import type { BridgeToleranceClass, CC1Channel } from '@inkeep/open-knowledge-core';
 
 export type MapDrivenSpliceFallbackReason =

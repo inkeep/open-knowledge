@@ -5,7 +5,6 @@ import {
   searchWorkspaceDocuments,
 } from './workspace-search.ts';
 
-
 describe('tier-dominant ranking — identity beats body relevance', () => {
   const exact = createWorkspaceSearchDocument({
     kind: 'page',

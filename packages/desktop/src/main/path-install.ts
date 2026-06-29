@@ -263,8 +263,7 @@ function replaceSymlinkAtomic(link: string, wrapper: string, fs: PathInstallFsOp
   } catch (err) {
     try {
       fs.unlinkSync(tmp);
-    } catch {
-    }
+    } catch {}
     throw err;
   }
 }

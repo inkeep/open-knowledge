@@ -1,4 +1,3 @@
-
 import { type FrontmatterValue, isFrontmatterValueEmpty } from '@inkeep/open-knowledge-core';
 
 export type FrontmatterRecord = Record<string, unknown>;

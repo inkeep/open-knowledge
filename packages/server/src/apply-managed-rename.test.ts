@@ -220,7 +220,6 @@ describe('applyRenameMap — multi-entry rewrites', () => {
 });
 
 describe('applyRenameMap — outbound link recomputation when source doc moves', () => {
-
   test('recomputes outbound markdown link to non-renamed target when source moves folders', () => {
     const result = applyRenameMap(
       'See [Picasso](./picasso.md).\n',

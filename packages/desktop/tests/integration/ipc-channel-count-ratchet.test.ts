@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -6,7 +5,7 @@ import { join } from 'node:path';
 const SRC_PATH = join(__dirname, '..', '..', 'src', 'shared', 'ipc-channels.ts');
 const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
 
-const REQUEST_CHANNEL_CAP = 71;
+const REQUEST_CHANNEL_CAP = 74;
 
 function extractInterfaceBody(src: string, interfaceName: string): string {
   const re = new RegExp(`(^|\\n)export\\s+interface\\s+${interfaceName}\\s*\\{`);

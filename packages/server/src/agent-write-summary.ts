@@ -1,4 +1,3 @@
-
 export const MAX_SUMMARY_LENGTH = 80;
 
 const ELLIPSIS = '…';

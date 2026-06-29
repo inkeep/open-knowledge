@@ -1,4 +1,3 @@
-
 import { isAbsolute } from 'node:path';
 import { MANAGED_ARTIFACT_SCOPES, SKILL_NAME_REGEX } from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
@@ -261,8 +260,7 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       if (args.armPaneTarget && routeFragment) {
         try {
           armPaneTarget(lockDir, routeFragment);
-        } catch {
-        }
+        } catch {}
       }
 
       const armNote =

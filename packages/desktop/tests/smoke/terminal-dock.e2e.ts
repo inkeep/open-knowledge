@@ -1,4 +1,3 @@
-
 import {
   chmodSync,
   existsSync,
@@ -204,8 +203,7 @@ test.describe('Docked terminal — live Electron', () => {
     for (const target of cleanup.splice(0)) {
       try {
         rmSync(target, { recursive: true, force: true });
-      } catch {
-      }
+      } catch {}
     }
   });
 
@@ -483,5 +481,29 @@ test.describe('Docked terminal — live Electron', () => {
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(banner).toContainText('OpenKnowledge tools');
     await expect(page.getByRole('button', { name: 'Connect tools' })).toBeVisible();
+  });
+
+  test('a renderer reload preserves the open terminal and its live session', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('reload-survival', { consent: true });
+    track(s.tmpHome, s.projectDir);
+    const app = await launchApp(s, { restrictPath: true });
+    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    await openTerminal(app, page);
+    await waitForStatus(page, 'running', 25_000);
+
+    await typeInTerminal(page, 'export OK_RELOAD_MARKER=OKRELOAD_SURVIVED_351\r');
+
+    await page.reload();
+
+    await expect(terminalSection(page)).toBeVisible({ timeout: 20_000 });
+    await waitForStatus(page, 'running', 25_000);
+
+    await typeInTerminal(page, 'echo "marker=[$OK_RELOAD_MARKER]"\r');
+    await expect
+      .poll(() => readTerminalText(page), { timeout: 15_000 })
+      .toContain('marker=[OKRELOAD_SURVIVED_351]');
   });
 });

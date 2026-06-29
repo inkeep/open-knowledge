@@ -15,7 +15,6 @@ const CLIENT_ORIGIN = { client: 'simulated-y-prosemirror-client' };
 const SOURCE = 'Para one.\n\n<Foo>broken</Bar>\n\nPara two.\n';
 const BROKEN_BLOCK = '<Foo>broken</Bar>';
 
-
 const ENV_KEYS = ['NODE_ENV', 'OK_BRIDGE_THROW_ON_VIOLATION', 'OK_RETHROW_BRIDGE_LOSS'] as const;
 let savedEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>;
 
@@ -41,7 +40,6 @@ afterEach(() => {
     }
   }
 });
-
 
 interface PmJson {
   type: string;
@@ -70,7 +68,6 @@ function writeFragment(doc: Y.Doc, xmlFragment: Y.XmlFragment, json: PmJson): vo
     updateYFragment(doc, xmlFragment, pmNode, meta);
   }, CLIENT_ORIGIN);
 }
-
 
 type DivergenceShape = (fallback: PmJson) => void;
 
@@ -125,7 +122,6 @@ function makeDegradedManager(diverge: DivergenceShape, fault?: SerializeFault): 
   });
 }
 
-
 function loadDivergentDoc(
   diverge: DivergenceShape,
   onDispatch?: (kind: ObserverDispatchKind) => void,
@@ -177,7 +173,6 @@ function appendToLastParagraph(doc: Y.Doc, xmlFragment: Y.XmlFragment, suffix: s
   textNode.text += suffix;
   writeFragment(doc, xmlFragment, json);
 }
-
 
 describe('divergent rawMdxFallback must not become authoritative source', () => {
   test('S4: typing twice into a divergent fallback preserves the source bytes it stands for', async () => {
