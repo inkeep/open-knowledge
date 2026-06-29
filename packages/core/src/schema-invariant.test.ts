@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { getSchema } from '@tiptap/core';
 import { sharedExtensions } from './extensions/shared.ts';
 
+
 interface AttrShape {
   hasDefault: boolean;
 }
@@ -75,12 +76,14 @@ function captureSchemaShape(): SchemaSnapshot {
   return { nodes, marks, extensionOrder };
 }
 
+
 const SNAPSHOT_PATH = new URL('./schema-snapshot.json', import.meta.url).pathname;
 
 function loadSnapshot(): SchemaSnapshot | null {
   if (!existsSync(SNAPSHOT_PATH)) return null;
   return JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf-8')) as SchemaSnapshot;
 }
+
 
 interface AllowedNarrowing {
   nodeType: string;
@@ -161,6 +164,7 @@ function isAllowedNarrowing(
     (a) => a.nodeType === nodeType && a.kind === kind && a.attrName === attrName,
   );
 }
+
 
 describe('R10: schema add-only invariant', () => {
   const current = captureSchemaShape();

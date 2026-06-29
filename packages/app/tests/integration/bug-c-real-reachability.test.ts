@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { HocuspocusProvider } from '@hocuspocus/provider';
@@ -11,6 +12,7 @@ import {
   testReset,
   waitForSync,
 } from './test-harness';
+
 
 function applyMarkdownToFragment(doc: Y.Doc, fragment: Y.XmlFragment, md: string): void {
   const parsed = mdManager.parse(md);
@@ -56,6 +58,7 @@ async function createNoObserverPeer(
     },
   };
 }
+
 
 describe('Bug-C real reachability: no-observer peer B → Observer B on A destroys content', () => {
   const DOC_NAME = 'test-doc';

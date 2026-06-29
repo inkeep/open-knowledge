@@ -7,6 +7,7 @@ import {
   OK_FULLNAME_ROW_ATTR,
 } from './file-tree-extension-badge';
 
+
 interface PierreRowInit {
   path: string;
   filename: string;

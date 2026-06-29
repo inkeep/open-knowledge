@@ -1,3 +1,4 @@
+
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -41,6 +42,7 @@ if (useFile && (usePatch || useMarkdown || rapidIndex >= 0)) {
   console.error('Error: --file is mutually exclusive with --patch, --markdown, and --rapid.');
   process.exit(1);
 }
+
 
 type WriteResult = { ok: boolean; timestamp?: string; error?: string; type?: string };
 
@@ -127,6 +129,7 @@ async function readDocument(): Promise<{ ok: boolean; content?: string; error?: 
   };
 }
 
+
 async function doWrite(index: number) {
   const timestamp = new Date().toISOString();
   try {
@@ -152,6 +155,7 @@ async function doWrite(index: number) {
     return { ok: false, error: message };
   }
 }
+
 
 const PATCH_TEMPLATE = `# Test Document
 
@@ -249,6 +253,7 @@ async function runPatchMode() {
   console.log('\nPatch sequence complete.');
 }
 
+
 async function runFileMode() {
   const filePath = resolve(contentDir, `${docName}.md`);
 
@@ -293,7 +298,8 @@ async function runFileMode() {
 
     try {
       content = readFileSync(filePath, 'utf8');
-    } catch {}
+    } catch {
+    }
 
     if (content.includes(find)) {
       const updated = content.replace(find, replace);
@@ -313,6 +319,7 @@ async function runFileMode() {
   console.log('\nFile edit sequence complete.');
   console.log('The file watcher will propagate changes to Y.Text asynchronously.');
 }
+
 
 if (usePatch) {
   await runPatchMode();

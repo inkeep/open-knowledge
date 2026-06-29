@@ -1,3 +1,4 @@
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Extension } from '@tiptap/core';
 import {
@@ -14,7 +15,8 @@ interface ParentScope {
 function clearMeasures(): void {
   try {
     performance.clearMeasures();
-  } catch {}
+  } catch {
+  }
 }
 
 function getMarkNames(): string[] {
@@ -260,6 +262,7 @@ describe('shouldInstallColdMountInstrumentation (D18 PROD-build override)', () =
 });
 
 describe('wrapMethod — error propagation contract', () => {
+
   beforeEach(() => {
     getCollector()?.reset();
     clearMeasures();
@@ -298,7 +301,8 @@ describe('wrapMethod — error propagation contract', () => {
     });
     try {
       (target.method as () => void)();
-    } catch {}
+    } catch {
+    }
     expect(propsBuilderInvocations).toBe(0);
   });
 
@@ -334,7 +338,8 @@ describe('wrapMethod — error propagation contract', () => {
     (successTarget.ok as () => number)();
     try {
       (throwTarget.bad as () => void)();
-    } catch {}
+    } catch {
+    }
 
     const successMark = getCollector()
       ?.marks.toArray()

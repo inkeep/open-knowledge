@@ -1,3 +1,4 @@
+
 import { Command } from 'commander';
 import { createTokenStore } from '../../auth/token-store.ts';
 import { shareNameCheckCommand } from './name-check.ts';

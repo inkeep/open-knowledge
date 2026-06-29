@@ -1,3 +1,4 @@
+
 import { Extension } from '@tiptap/core';
 
 export const TabFocusTrap = Extension.create({

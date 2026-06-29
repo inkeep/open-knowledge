@@ -5,6 +5,7 @@ import {
   extractWikilinkTarget,
 } from './wiki-link-source';
 
+
 describe('buildPageNameSet', () => {
   test('empty input → empty set', () => {
     expect(buildPageNameSet([]).size).toBe(0);

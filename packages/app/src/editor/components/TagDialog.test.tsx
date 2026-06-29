@@ -64,4 +64,5 @@ describe('TagDialogBody', () => {
     expect(rowMatches).not.toBeNull();
     expect(rowMatches?.length).toBe(2);
   });
+
 });

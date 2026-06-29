@@ -1,3 +1,4 @@
+
 import { DEFAULT_EMBEDDINGS_BASE_URL, DEFAULT_EMBEDDINGS_MODEL } from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 

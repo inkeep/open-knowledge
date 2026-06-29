@@ -1,3 +1,4 @@
+
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -110,6 +111,7 @@ export async function withCheckpoint<TInput, TOutput>(
 
   return outputs;
 }
+
 
 interface InMemoryEntry<TOutput> {
   readonly output: TOutput;

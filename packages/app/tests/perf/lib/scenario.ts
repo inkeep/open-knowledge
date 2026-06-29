@@ -1,6 +1,8 @@
+
 import type { Browser, BrowserContext, CDPSession, Page } from '@playwright/test';
 import type { ProfilerRenderEvent } from '../../../src/lib/perf/types';
 import type { TraceSummary } from './cdp-tracer';
+
 
 export interface ScenarioOptions {
   target: string;
@@ -69,6 +71,7 @@ export interface ScenarioResult {
   metrics: Record<string, number | string | boolean | null>;
   notes: string[];
 }
+
 
 export interface ScenarioDefinition {
   name: string;

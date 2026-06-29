@@ -1,3 +1,4 @@
+
 import type { ServerResponse } from 'node:http';
 import { stripDocExtension } from './doc-extensions.ts';
 import { errorResponse } from './http/error-response.ts';

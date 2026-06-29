@@ -9,6 +9,7 @@ import { RENDERER_BABEL_OPTIONS } from '../app/vite.react-babel';
 
 injectAppVersionEnv();
 
+
 const appRoot = resolve(__dirname, '../app');
 
 process.env.LINGUI_CONFIG ??= resolve(appRoot, 'lingui.config.ts');

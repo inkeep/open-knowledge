@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {
@@ -30,6 +31,7 @@ async function openFreshDoc(api: ApiHelpers, page: Page, label: string): Promise
 
 const sourceToggle = (page: Page) => page.getByRole('radio', { name: 'Markdown source' });
 const visualToggle = (page: Page) => page.getByRole('radio', { name: 'Visual editor' });
+
 
 test('source mode: real pointer click + keystrokes land in CodeMirror', async ({ page, api }) => {
   await openFreshDoc(api, page, 'source-hit-test');
@@ -342,6 +344,7 @@ test('markdown link edit dialog preserves page mode while clearing and updates t
     { timeout: 10_000 },
   );
 });
+
 
 test('LINK-CLICK-ANCHOR: bare click on in-page anchor chip updates location hash to anchor', async ({
   page,

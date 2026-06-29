@@ -1,3 +1,4 @@
+
 import type { Page } from '@playwright/test';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
@@ -142,7 +143,8 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             }
           }
         }
-      } catch {}
+      } catch {
+      }
       const res = await originalFetch(input, init);
       try {
         const url =
@@ -154,7 +156,8 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         if (url.includes('/api/installed-agents')) {
           mocks.installedAgentsFetchResolved = true;
         }
-      } catch {}
+      } catch {
+      }
       return res;
     };
     window.fetch = wrappedFetch as unknown as typeof window.fetch;
@@ -169,7 +172,8 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           mocks.anchorClicks.push(this.href);
           return;
         }
-      } catch {}
+      } catch {
+      }
       return originalAnchorClick.call(this);
     };
 
@@ -376,7 +380,8 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
       // biome-ignore lint/suspicious/noExplicitAny: matches production resolution in cowork-skill-install.ts.
       const ver = (window as any).okDesktop?.appVersion ?? 'unknown';
       window.localStorage.setItem(`ok:skill:cowork:installed:v${ver}`, '1');
-    } catch {}
+    } catch {
+    }
   }, cfg);
 }
 

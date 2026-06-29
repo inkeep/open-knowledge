@@ -18,7 +18,8 @@ function parseFrontmatterRaw(content: string): Record<string, unknown> | null {
     if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
       return parsed as Record<string, unknown>;
     }
-  } catch {}
+  } catch {
+  }
   return null;
 }
 

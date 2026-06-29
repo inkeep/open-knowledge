@@ -1,3 +1,4 @@
+
 import type { ChildProcess } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { expect as baseExpect, test as baseTest, type ElectronApplication } from '@playwright/test';
@@ -40,7 +41,8 @@ export const test = baseTest.extend<SmokeFixtures>({
     for (const dir of cleanupDirs) {
       try {
         rmSync(dir, { recursive: true, force: true });
-      } catch {}
+      } catch {
+      }
     }
   },
 });

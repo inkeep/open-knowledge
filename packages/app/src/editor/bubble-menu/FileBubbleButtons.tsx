@@ -1,3 +1,4 @@
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';

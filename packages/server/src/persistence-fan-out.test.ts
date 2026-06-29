@@ -1,3 +1,4 @@
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -100,6 +101,7 @@ describe('persistence L2 fan-out (US-014)', () => {
     const wipRefs = (await sg.raw('for-each-ref', '--format=%(refname)', 'refs/wip/')).trim();
     expect(wipRefs).toBeTruthy(); // at least one ref exists
   });
+
 
   test('applyExternalChange → commit on refs/wip/<branch>/file-system', async () => {
     const projectDir = tmpDir;

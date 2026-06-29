@@ -1,3 +1,4 @@
+
 import { markInputRule } from '@tiptap/core';
 import Bold, {
   starInputRegex as boldStarRe,

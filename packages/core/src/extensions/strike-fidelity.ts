@@ -1,3 +1,4 @@
+
 import Strike from '@tiptap/extension-strike';
 
 export const StrikeFidelity = Strike.extend({

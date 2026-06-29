@@ -1,3 +1,4 @@
+
 import { extname } from 'node:path';
 import {
   DEFAULT_DOC_EXTENSION,

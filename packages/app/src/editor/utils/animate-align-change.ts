@@ -1,3 +1,4 @@
+
 const ALIGN_TARGET_SELECTOR = 'img, .ok-embed, .ok-video';
 
 const FLIP_DURATION_MS = 220;

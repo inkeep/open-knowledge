@@ -52,7 +52,8 @@ afterEach(() => {
   for (const p of providers) {
     try {
       p.destroy();
-    } catch {}
+    } catch {
+    }
   }
   providers = [];
 });
@@ -351,6 +352,7 @@ describe('rejectSyncPromise (BridgeSetupError surface)', () => {
 });
 
 describe('syncPromiseHasResolved (warm-reopen overlay gate)', () => {
+
   test('returns false when no entry exists', () => {
     expect(syncPromiseHasResolved('never-mounted')).toBe(false);
   });
@@ -547,6 +549,7 @@ describe('tab-sleep resilience (__reapTimedOutEntries)', () => {
 });
 
 describe('mountId payload (US-006 / FR5 / AC13 — cross-namespace correlation)', () => {
+
   test('every ok/sync/* mark carries the mountId from the registry (warm-path resolve)', async () => {
     const collector = getCollector();
     if (!collector) {
@@ -584,6 +587,7 @@ describe('mountId payload (US-006 / FR5 / AC13 — cross-namespace correlation)'
 });
 
 describe('ok/sync/resolve-elapsed-ms histogram (cap-graduation sweep substrate)', () => {
+
   beforeEach(() => {
     getCollector()?.reset();
   });
@@ -670,6 +674,7 @@ describe('ok/sync/resolve-elapsed-ms histogram (cap-graduation sweep substrate)'
 });
 
 describe('cold-mount span finalization on reject paths', () => {
+
   beforeEach(() => {
     __resetColdMountSpans();
   });

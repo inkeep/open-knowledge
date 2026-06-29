@@ -72,7 +72,8 @@ export function EmptyEditorState({ terminalVisible = false }: { terminalVisible?
           setDocumentCount(countEntries(success.data.documents));
         }
       })
-      .catch(() => {});
+      .catch(() => {
+      });
   }
 
   const messageReady = documentCount !== null;

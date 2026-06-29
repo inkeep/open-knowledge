@@ -1,3 +1,4 @@
+
 import { getFileExtension } from '@/components/file-tree-rename-validation';
 
 export const OK_EXT_BADGE_ATTR = 'data-ok-ext-badge';

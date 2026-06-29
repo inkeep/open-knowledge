@@ -1,3 +1,4 @@
+
 import { hashFromDocName } from '@/lib/doc-hash';
 
 interface SeedInitialDocHashOptions {

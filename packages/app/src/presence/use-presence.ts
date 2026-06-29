@@ -15,6 +15,7 @@ import {
   participantsEqual,
 } from './participant-model.ts';
 
+
 export type { AgentParticipant, HumanParticipant, Participant } from './participant-model.ts';
 
 const TTL_TICK_MS = 1_000;

@@ -1,3 +1,4 @@
+
 export function buildDiscoverBody(contentDir: string): string {
   return `# Discover — Project Convention Extraction + Link Graph Activation
 

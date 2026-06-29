@@ -94,6 +94,7 @@ describe('handleAuthStart idempotent against stale slot', () => {
     expect(staleController).toBeDefined();
     expect(deps.state.authInFlight?.streamId).toBe(first.streamId);
 
+
     const second = handleAuthStart(deps, makeSender());
     expect(second.ok).toBe(true);
     if (!second.ok) return;

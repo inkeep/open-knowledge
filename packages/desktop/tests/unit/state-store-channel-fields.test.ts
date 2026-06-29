@@ -7,6 +7,7 @@ import {
   parseAppState,
 } from '../../src/main/state-store.ts';
 
+
 describe('AppState schema-version field — defaults', () => {
   test('emptyState defaults schemaVersion to CURRENT_SCHEMA_VERSION', () => {
     expect(emptyState().schemaVersion).toBe(CURRENT_SCHEMA_VERSION);

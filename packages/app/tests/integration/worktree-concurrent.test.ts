@@ -1,3 +1,4 @@
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -92,7 +93,8 @@ describe('Two linked worktrees boot in parallel with isolated state (D13)', () =
     } finally {
       try {
         await bootedB.destroy();
-      } catch {}
+      } catch {
+      }
     }
   });
 });

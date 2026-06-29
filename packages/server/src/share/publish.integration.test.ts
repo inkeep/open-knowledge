@@ -1,3 +1,4 @@
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -106,6 +107,7 @@ async function postJson(
   return { status: res.status, body: await res.json() };
 }
 
+
 describe('GET /api/share/publish/owners', () => {
   let rig: TestRig;
   afterEach(async () => {
@@ -162,6 +164,7 @@ describe('GET /api/share/publish/owners', () => {
   });
 });
 
+
 describe('GET /api/share/publish/name-check', () => {
   let rig: TestRig;
   afterEach(async () => {
@@ -214,6 +217,7 @@ describe('GET /api/share/publish/name-check', () => {
     expect(res.status).toBe(400);
   });
 });
+
 
 describe('POST /api/share/publish', () => {
   let rig: TestRig;

@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState, type Plugin } from '@tiptap/pm/state';
@@ -8,6 +9,7 @@ import {
   markIdentityDecorationKey,
   markIdentityDecorationPlugin,
 } from './mark-identity-decoration';
+
 
 const schema = new Schema({
   nodes: {
@@ -76,6 +78,7 @@ function makeState(doc: ReturnType<typeof buildDoc>): EditorState {
   });
 }
 
+
 describe('markIdentityDecorationPlugin — exports', () => {
   test('markIdentityDecorationKey is a stable PluginKey', () => {
     expect(markIdentityDecorationKey).toBeDefined();
@@ -91,6 +94,7 @@ describe('markIdentityDecorationPlugin — exports', () => {
     expect(plugin.spec.key).toBe(markIdentityDecorationKey);
   });
 });
+
 
 describe('markIdentityDecorationPlugin — decoration emission', () => {
   test('empty doc → no decorations', () => {
@@ -145,6 +149,7 @@ describe('markIdentityDecorationPlugin — decoration emission', () => {
     expect(specs === null || specs.length === 0).toBe(true);
   });
 });
+
 
 describe('markIdentityDecorationPlugin — safe degradation', () => {
   test('without markIdentityPlugin installed → decorations returns null', () => {

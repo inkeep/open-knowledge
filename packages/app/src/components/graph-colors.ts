@@ -1,3 +1,4 @@
+
 const DARK_PALETTE = [
   '#60a5fa', // Blue      - Knowledge, concepts, structure
   '#a78bfa', // Violet    - Research, analysis, methodology

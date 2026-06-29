@@ -29,7 +29,8 @@ export function CopyablePromptList({ scenario, className }: CopyablePromptListPr
         clearTimeout(resetTimerRef.current);
         resetTimerRef.current = setTimeout(() => setCopiedId(null), 1600);
       })
-      .catch(() => {});
+      .catch(() => {
+      });
   }
 
   return (

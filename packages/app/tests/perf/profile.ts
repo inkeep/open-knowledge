@@ -18,10 +18,12 @@ import type {
   WebVitalRecord,
 } from './lib/scenario';
 
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TARGET = 'http://localhost:5173';
 const DEFAULT_OUT_DIR = resolve(HERE, 'results');
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
+
 
 interface CliArgs {
   scenario: string;
@@ -84,6 +86,7 @@ function usageAndExit(err: string | null): never {
   process.exit(err ? 1 : 0);
 }
 
+
 async function loadScenario(name: string): Promise<ScenarioDefinition> {
   const path = resolve(HERE, 'scenarios', `${name}.ts`);
   let mod: { default?: unknown };
@@ -101,6 +104,7 @@ async function loadScenario(name: string): Promise<ScenarioDefinition> {
   }
   return scen;
 }
+
 
 async function runScenario(args: CliArgs): Promise<void> {
   const scen = await loadScenario(args.scenario);
@@ -187,7 +191,8 @@ async function runScenario(args: CliArgs): Promise<void> {
   } finally {
     try {
       await browser?.close();
-    } catch {}
+    } catch {
+    }
   }
 
   const outPath = resolve(
@@ -213,6 +218,7 @@ async function runScenario(args: CliArgs): Promise<void> {
     process.exit(2);
   }
 }
+
 
 function buildMetadata(args: CliArgs): ScenarioResultMetadata {
   return {
@@ -326,6 +332,7 @@ function round2(v: number): number {
   if (!Number.isFinite(v)) return 0;
   return Math.round(v * 100) / 100;
 }
+
 
 if (import.meta.main) {
   const args = parseArgs(process.argv.slice(2));

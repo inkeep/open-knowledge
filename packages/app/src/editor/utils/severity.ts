@@ -1,3 +1,4 @@
+
 type Severity = 'info' | 'warn' | 'error';
 
 export function classifySeverity(reason: string | undefined): Severity {
