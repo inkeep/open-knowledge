@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test } from './_helpers';
@@ -82,6 +83,7 @@ async function driftSelectionIntoFirstJsxBody(page: Page, componentName: string)
   }, componentName);
 }
 
+
 test('AC14: Backspace deletes a NodeSelected Accordion when focus is on <summary>', async ({
   page,
   api,
@@ -128,6 +130,7 @@ test('AC14: Delete key deletes a NodeSelected Accordion when focus is on <summar
   await expect.poll(() => jsxNodeCount(page, 'Accordion'), { timeout: 2_000 }).toBe(0);
 });
 
+
 test('AC15: gear-click → Esc-close restores NodeSelection (FR16 round-trip)', async ({
   page,
   api,
@@ -155,6 +158,7 @@ test('AC15: gear-click → Esc-close restores NodeSelection (FR16 round-trip)', 
 
   await expect.poll(() => selectionType(page), { timeout: 2_000 }).toBe('NodeSelection');
 });
+
 
 test('AC16: programmatic close restores NodeSelection on the wrapper', async ({ page, api }) => {
   await setupDoc(page, api, '<Accordion title="D">\n\nbody\n\n</Accordion>\n\nafter\n');
@@ -215,6 +219,7 @@ test('AC16: selection-still-inside guard does NOT restore when click-outside mov
   expect(await selectionType(page)).toBe('TextSelection');
 });
 
+
 test('AC17: Backspace deletes a NodeSelected Callout when focus is on a chrome button', async ({
   page,
   api,
@@ -234,6 +239,7 @@ test('AC17: Backspace deletes a NodeSelected Callout when focus is on a chrome b
 
   await expect.poll(() => jsxNodeCount(page, 'Callout'), { timeout: 2_000 }).toBe(0);
 });
+
 
 test('FR17 regression: cursor in a regular paragraph + Backspace deletes one character', async ({
   page,
@@ -264,6 +270,8 @@ test('FR17 regression: cursor in a regular paragraph + Backspace deletes one cha
   expect(firstParagraphText).toBe('hello worl');
   expect(await jsxNodeCount(page, 'Callout')).toBe(1);
 });
+
+
 
 interface PortalKeyCase {
   readonly key: 'Backspace' | 'Delete';

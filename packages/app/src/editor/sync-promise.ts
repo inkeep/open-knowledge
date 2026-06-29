@@ -1,3 +1,4 @@
+
 import type { HocuspocusProvider, onCloseParameters } from '@hocuspocus/provider';
 import { mark } from '@/lib/perf';
 import { readNumericOverride } from '@/lib/perf/env-override';
@@ -7,6 +8,7 @@ import { getMountId } from './mount-id-registry';
 export function getSyncTimeoutMs(): number {
   return readNumericOverride('SYNC_TIMEOUT_MS', 30_000);
 }
+
 
 export class SyncTimeoutError extends Error {
   readonly docName: string;

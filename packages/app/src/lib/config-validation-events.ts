@@ -1,3 +1,4 @@
+
 import type { CC1ConfigValidationRejectedPayload } from '@inkeep/open-knowledge-core';
 
 type Listener = (event: CC1ConfigValidationRejectedPayload) => void;

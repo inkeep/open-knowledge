@@ -1,7 +1,9 @@
+
 import type { Node as PmNode } from '@tiptap/pm/model';
 import type { Nodes as HastNodes } from 'hast';
 import type { Nodes as MdastNodes } from 'mdast';
 import type { ComponentRegistry } from './index.ts';
+
 
 export interface PropDefBase {
   name: string;
@@ -51,6 +53,7 @@ export type PropDef =
   | PropDefEnum
   | PropDefReactNode;
 
+
 export interface SerializeContext {
   all: (node: PmNode) => MdastNodes[];
   registry: Pick<ComponentRegistry, 'getOrWildcard'>;
@@ -58,6 +61,7 @@ export interface SerializeContext {
 }
 
 type TranslateProps = (compatProps: Record<string, unknown>) => Record<string, unknown>;
+
 
 interface JsxComponentMetaBase {
   name: string;

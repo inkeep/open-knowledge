@@ -784,6 +784,7 @@ describe('arch-bounded vs cap-bounded tagging (AC d, D18 LOCKED)', () => {
   });
 });
 
+
 function buildSyntheticFixtureCells(fixture: WorkloadFixtureRef): SweepCellResult[] {
   const cells: SweepCellResult[] = [];
   for (let i = 0; i < CAP_AXIS_MAX_POOL.length; i++) {

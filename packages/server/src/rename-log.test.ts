@@ -454,6 +454,7 @@ describe('buildSeeds — monotonicity property', () => {
   });
 });
 
+
 describe('rename-log read primitives (shadow-repo backed)', () => {
   let projectRoot: string;
   let shadow: ShadowHandle;

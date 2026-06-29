@@ -1,3 +1,4 @@
+
 import {
   type Config,
   type ConfigBinding,
@@ -33,6 +34,7 @@ export function useConfigForm(binding: ConfigBinding): UseConfigFormResult {
 
   return { form, commitField };
 }
+
 
 export type ApplyExternalUpdateForm<T extends Config = Config> = Pick<UseFormReturn<T>, 'reset'>;
 

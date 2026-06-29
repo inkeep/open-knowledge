@@ -1,3 +1,4 @@
+
 import {
   type TargetData,
   TERMINAL_CLI_IDS,
@@ -185,7 +186,8 @@ export function BottomComposer({
           if (overlap <= 0) return;
           const scroller = view.dom.closest('.editor-doc-scroll');
           if (scroller instanceof HTMLElement) scroller.scrollTop += overlap;
-        } catch {}
+        } catch {
+        }
       });
     };
     const card = cardRef.current;

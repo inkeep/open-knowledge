@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { builtInComponents, createRegistry } from './index.ts';
 import type { CompatMeta, JsxComponentMeta } from './types.ts';
@@ -129,4 +130,5 @@ describe('compat descriptors — prop-set is a subset of canonical', () => {
       expect(canonicalNames.has(p.name)).toBe(true);
     }
   });
+
 });

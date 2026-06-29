@@ -1,3 +1,4 @@
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import { GitBranch, Loader2, MapPin } from 'lucide-react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';

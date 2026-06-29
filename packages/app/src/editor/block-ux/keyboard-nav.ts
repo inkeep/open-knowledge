@@ -1,3 +1,4 @@
+
 import { incrementJsxArrowNodeSelectFailed } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/core';
 import { Extension } from '@tiptap/core';

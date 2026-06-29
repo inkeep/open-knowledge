@@ -1,3 +1,4 @@
+
 import { describe, expect, mock, test } from 'bun:test';
 import type { SharePublishOwner } from '@inkeep/open-knowledge-core';
 import {
@@ -396,6 +397,7 @@ describe('submitPublishRequest', () => {
     ).rejects.toThrow('publish response shape mismatch');
   });
 });
+
 
 function makeJsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

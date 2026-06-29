@@ -110,7 +110,8 @@ export function spawnOkUi(opts: SpawnOkUiOptions): ChildProcess {
   } finally {
     try {
       closeSync(stderrFd);
-    } catch {}
+    } catch {
+    }
   }
 }
 
@@ -161,7 +162,8 @@ export async function connectUiSibling(opts: ConnectUiSiblingOptions): Promise<v
     forwardedShutdown = true;
     try {
       child.kill(signal);
-    } catch {}
+    } catch {
+    }
   };
   const forwardSigint = () => forward('SIGINT');
   const forwardSigterm = () => forward('SIGTERM');

@@ -1,3 +1,4 @@
+
 import { LINEAGE_EPOCH_KEY } from '@inkeep/open-knowledge-core';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import * as Y from 'yjs';
@@ -108,7 +109,8 @@ class ClientPersistenceImpl implements ClientPersistenceProvider {
           reject(err instanceof Error ? err : new Error(String(err)));
           try {
             tx.abort();
-          } catch {}
+          } catch {
+          }
         }
       };
       tx.oncomplete = () => resolve();

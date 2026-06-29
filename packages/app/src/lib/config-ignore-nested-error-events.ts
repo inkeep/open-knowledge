@@ -1,3 +1,4 @@
+
 import type { CC1ConfigIgnoreNestedErrorPayload } from '@inkeep/open-knowledge-core';
 
 type Listener = (event: CC1ConfigIgnoreNestedErrorPayload) => void;

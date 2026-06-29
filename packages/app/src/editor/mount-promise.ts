@@ -1,3 +1,4 @@
+
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Editor } from '@tiptap/core';
 import type * as Y from 'yjs';
@@ -11,6 +12,7 @@ import {
   readEditorUndoManager,
   type TiptapCacheEntry,
 } from './editor-cache';
+
 
 interface ConstructedTiptapBundle {
   editor: Editor;
@@ -38,6 +40,7 @@ export class MountAbortError extends Error {
 function getStalledThresholdMs(): number {
   return readNumericOverride('MOUNT_STALLED_THRESHOLD_MS', 10_000);
 }
+
 
 interface MountPromiseEntry {
   promise: Promise<TiptapCacheEntry>;
@@ -72,6 +75,7 @@ function emitStalledOnce(entry: MountPromiseEntry, docName: string, now: number)
 
 const cache = new Map<string, MountPromiseEntry>();
 
+
 type StalledSubscriber = (docName: string, mountId: string) => void;
 const stalledSubscribers = new Set<StalledSubscriber>();
 
@@ -81,7 +85,8 @@ export function subscribeMountStalled(callback: StalledSubscriber): () => void {
     if (entry.stalledMarkEmitted && !entry.settled) {
       try {
         callback(docName, entry.mountId);
-      } catch {}
+      } catch {
+      }
     }
   }
   return () => {
@@ -93,9 +98,11 @@ function fanOutStalled(docName: string, entry: MountPromiseEntry): void {
   for (const sub of stalledSubscribers) {
     try {
       sub(docName, entry.mountId);
-    } catch {}
+    } catch {
+    }
   }
 }
+
 
 let visibilityHandlerInstalled = false;
 
@@ -131,6 +138,7 @@ export function __reapStalledOnVisible(now: number): void {
     fanOutStalled(docName, entry);
   }
 }
+
 
 export function mountTiptapEditorPromise(
   params: MountTiptapEditorPromiseParams,
@@ -247,6 +255,7 @@ export function invalidateMountPromise(docName: string): void {
   entry.controller.abort();
 }
 
+
 interface MountBodyParams {
   docName: string;
   construct: () => ConstructedTiptapBundle;
@@ -310,6 +319,7 @@ async function runMountBody(params: MountBodyParams): Promise<void> {
     resolveFn(v2HitEntry);
     return;
   }
+
 
   await scheduler.yield();
 
@@ -409,6 +419,7 @@ async function runMountBody(params: MountBodyParams): Promise<void> {
   );
   finalizeColdMountSpan(entry.mountId, nowMs);
 }
+
 
 export function __resetMountPromiseCache(): void {
   for (const entry of cache.values()) {

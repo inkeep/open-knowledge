@@ -1,3 +1,4 @@
+
 export interface Workspace {
   readonly contentDir: string;
   readonly pathSeparator: '/' | '\\';

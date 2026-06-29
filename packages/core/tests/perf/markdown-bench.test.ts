@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cpus, hostname, totalmem } from 'node:os';
@@ -11,12 +12,15 @@ import {
 } from '../../src/markdown/fixtures/index.ts';
 import { MarkdownManager } from '../../src/markdown/index.ts';
 
+
 const BENCH_ENABLED = process.env.RUN_BENCH === '1' || process.env.RUN_BENCH === 'true';
 
 const describeBench = BENCH_ENABLED ? describe : describe.skip;
 
+
 const WARMUP_ITERS = 10;
 const MEASURED_ITERS = 10;
+
 
 interface Stats {
   mean: number;
@@ -43,6 +47,7 @@ function stats(samples: number[]): Stats {
     p99: pct(99),
   };
 }
+
 
 function readGitSha(): string {
   try {
@@ -81,6 +86,7 @@ function runnerInfo(): RunnerInfo {
     runnerClass: process.env.BENCH_RUNNER_CLASS ?? 'local',
   };
 }
+
 
 function measure(op: () => void, n: number): number[] {
   const samples: number[] = [];
@@ -129,6 +135,7 @@ function benchmarkBlockCount(mm: MarkdownManager, blockCount: PerfBlockCount): B
     roundTripMs: stats(roundTripSamples),
   };
 }
+
 
 const HARNESS_DIR = dirname(fileURLToPath(import.meta.url));
 

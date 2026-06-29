@@ -1,3 +1,4 @@
+
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import type { Config } from '@inkeep/open-knowledge-server';

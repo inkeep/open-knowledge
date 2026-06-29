@@ -1,3 +1,4 @@
+
 interface BufferedAsyncStreamHandle<E> {
   readonly events: AsyncIterable<E>;
   cancel(): void;

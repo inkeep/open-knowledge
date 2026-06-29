@@ -1,3 +1,4 @@
+
 import type { Editor } from '@tiptap/core';
 import { useEffect, useRef } from 'react';
 import { useBlockSelection } from '../../editor/hooks/use-block-selection.ts';

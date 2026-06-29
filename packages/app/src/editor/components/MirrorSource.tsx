@@ -1,3 +1,4 @@
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import { CopyPlus } from 'lucide-react';
 

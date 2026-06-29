@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+
 import { EDITOR_TARGETS } from '../../../src/commands/editors.ts';
 import { writeEditorMcpConfig } from '../../../src/commands/init.ts';
 

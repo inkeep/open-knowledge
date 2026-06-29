@@ -1,3 +1,4 @@
+
 import { execSync } from 'node:child_process';
 import {
   existsSync,
@@ -137,7 +138,8 @@ test.describe('Consent-dialog smoke', () => {
     for (const target of cleanupTargets.splice(0)) {
       try {
         rmSync(target, { recursive: true, force: true });
-      } catch {}
+      } catch {
+      }
     }
   });
 

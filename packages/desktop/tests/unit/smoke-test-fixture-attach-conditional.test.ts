@@ -80,6 +80,7 @@ describe('smoke-test fixture: shouldAttachStderr predicate', () => {
       expect(shouldAttachStderr(ti('timedOut', 0, 2))).toBe(false);
 
       expect(shouldAttachStderr(ti('passed', 1, 2))).toBe(false);
+
     });
 
     test('genuine failure scenario — final attempt failure surfaces stderr for triage', () => {

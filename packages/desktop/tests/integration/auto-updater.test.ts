@@ -1,3 +1,4 @@
+
 import { describe, expect, mock, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import type { OutgoingHttpHeaders } from 'node:http';
@@ -29,6 +30,7 @@ import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
 interface SendTarget {
   webContents: SendableWebContents;
 }
+
 
 class FakeUpdater extends EventEmitter implements UpdaterLike {
   autoDownload = false;
@@ -226,6 +228,7 @@ function makeRig(
   return { rig, handle };
 }
 
+
 const CLASSIFIED_CODES: readonly string[] = [
   'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND',
   'ERR_UPDATER_LATEST_VERSION_NOT_FOUND',
@@ -243,6 +246,7 @@ const CLASSIFIED_CODES: readonly string[] = [
   'HTTP_ERROR_500',
 ];
 
+
 describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', () => {
   test('sets autoDownload=false, autoInstallOnAppQuit=true, channel=latest', () => {
     const { rig } = makeRig();
@@ -250,6 +254,7 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
     expect(rig.updater.autoInstallOnAppQuit).toBe(true);
     expect(rig.updater.channel).toBe('latest');
   });
+
 
   test('feedUrl opt → updater.setFeedURL(url) called before first check', () => {
     const { rig } = makeRig({ feedUrl: 'http://127.0.0.1:54321' } as Partial<AppState> & {
@@ -454,6 +459,7 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
   });
 });
 
+
 describe('cross-channel veto on update-available', () => {
   test('beta build offered a stable version → veto records the check as successful (mirrors update-not-available)', () => {
     const priorCheckAt = '2026-05-01T00:00:00.000Z';
@@ -536,6 +542,7 @@ describe('cross-channel veto on update-available', () => {
   });
 });
 
+
 describe('schemaVersion boot-incompatibility check (US-007 AC5)', () => {
   test('persisted schemaVersion > MAX_SUPPORTED → incompatible diagnostic', () => {
     const persisted = { ...emptyState(), schemaVersion: 999 };
@@ -562,6 +569,7 @@ describe('schemaVersion boot-incompatibility check (US-007 AC5)', () => {
     expect(result.status).toBe('incompatible');
   });
 });
+
 
 describe('persist-before-emit ordering (Finding #2)', () => {
   test('update-downloaded: writeState failure → NO Toast A dispatch', () => {
@@ -643,6 +651,7 @@ describe('persist-before-emit ordering (Finding #2)', () => {
   });
 });
 
+
 describe('event subscription surface (AC2)', () => {
   test('registers listeners for the six AC2 events', () => {
     const { rig } = makeRig();
@@ -661,6 +670,7 @@ describe('event subscription surface (AC2)', () => {
     expect(rig.updater.listenerCount('appimage-filename-updated')).toBe(0);
   });
 });
+
 
 describe('update-downloaded → Toast A (AC6)', () => {
   test('first dispatch for a new version fires ok:update:downloaded + records versionPendingInstall', () => {
@@ -701,6 +711,7 @@ describe('update-downloaded → Toast A (AC6)', () => {
     expect(rig.dispatches).toContain('update-downloaded-empty-version' as DispatchKind);
   });
 });
+
 
 describe('error routing (AC3, D5)', () => {
   test.each(CLASSIFIED_CODES)('classified err.code %s → bracket log, no IPC dispatch', (code) => {
@@ -747,6 +758,7 @@ describe('error routing (AC3, D5)', () => {
     expect(isClassifiedUpdaterError('string')).toBe(false);
   });
 });
+
 
 describe('stuck-hint logic (AC17, D12)', () => {
   test('update-not-available updates lastSuccessfulCheckAt', () => {
@@ -839,6 +851,7 @@ describe('stuck-hint logic (AC17, D12)', () => {
   });
 });
 
+
 describe('first-launch version notice (Toast B — AC7, D9)', () => {
   test('lastSeenVersion differs from current → dispatch whats-new + update state', () => {
     const { rig } = makeRig({ lastSeenVersion: '0.3.0', appVersion: '0.3.1' });
@@ -882,6 +895,7 @@ describe('first-launch version notice (Toast B — AC7, D9)', () => {
     );
   });
 });
+
 
 describe('boot-time stale versionPendingInstall reconciliation', () => {
   test('running version equals pending → cleared on boot (install-on-quit case)', () => {
@@ -939,6 +953,7 @@ describe('boot-time stale versionPendingInstall reconciliation', () => {
     expect(dispatches).not.toContain('stale-pending-cleared' as DispatchKind);
   });
 });
+
 
 describe('boot-time failed-install detection', () => {
   test('attempted not reached (same-MMP beta) → relaunch-failed w/ downloadUrl, re-arm, stays armed', () => {
@@ -1142,6 +1157,7 @@ describe('installReached (prerelease-aware compare)', () => {
   });
 });
 
+
 describe('versionAtLeast (MMP compare)', () => {
   test('equal versions → true', () => {
     expect(versionAtLeast('0.4.1', '0.4.1')).toBe(true);
@@ -1177,6 +1193,7 @@ describe('versionAtLeast (MMP compare)', () => {
     expect(versionAtLeast('0.4.1', undefined as unknown as string)).toBe(false);
   });
 });
+
 
 describe('multi-window delivery: relaunch banner and "updated to" notice both reach every window', () => {
   test('ok:update:downloaded (relaunch banner) reaches every open window', () => {
@@ -1225,6 +1242,7 @@ describe('multi-window delivery: relaunch banner and "updated to" notice both re
   });
 });
 
+
 describe('release-notes cross-window dismiss + late-window delivery', () => {
   test('registers the whats-new-dismiss IPC handler', () => {
     const { rig } = makeRig();
@@ -1267,6 +1285,7 @@ describe('release-notes cross-window dismiss + late-window delivery', () => {
     expect(handle.getActiveWhatsNew()).toMatchObject({ version: '0.3.1' });
   });
 });
+
 
 describe('periodic check singleton + jitter (AC10, D10)', () => {
   test('registers exactly one timer after the first launch check resolves', async () => {
@@ -1385,6 +1404,7 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
     expect(logger.debug).toHaveBeenCalled();
   });
 });
+
 
 describe('ok:update:relaunch-now IPC handler (AC18)', () => {
   test('registers the handler on startup', () => {
@@ -1550,6 +1570,7 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
     expect(rig.logger.warn).toHaveBeenCalled();
   });
 });
+
 
 describe('async relaunch failure — error event + no-quit watchdog', () => {
   test('clean quitAndInstall return arms the watchdog at RELAUNCH_WATCHDOG_MS (packaged)', async () => {
@@ -1931,6 +1952,7 @@ describe('handle.checkForUpdatesNow() routes the menu through runMenuDrivenCheck
   });
 });
 
+
 describe('dev-mode guard (isPackaged=false)', () => {
   test('skips first-launch checkForUpdates when isPackaged=false and forceDevBypass=false', async () => {
     const { rig } = makeRig({ isPackaged: false });
@@ -1978,6 +2000,7 @@ describe('dev-mode guard (isPackaged=false)', () => {
   });
 });
 
+
 describe('download-progress (log-only, no UI surface)', () => {
   test('emits debug log without IPC dispatch or state write', () => {
     const { rig } = makeRig();
@@ -1988,6 +2011,7 @@ describe('download-progress (log-only, no UI surface)', () => {
     expect(rig.logger.debug).toHaveBeenCalled();
   });
 });
+
 
 describe('destroy() teardown', () => {
   test('detaches all 6 event listeners', () => {
@@ -2009,6 +2033,7 @@ describe('destroy() teardown', () => {
     expect(toastA).toHaveLength(0);
   });
 });
+
 
 describe('single-window dispatch (Finding #1 guard)', () => {
   test('update-downloaded sends to exactly one target even when primary changes between dispatches', () => {
@@ -2069,6 +2094,7 @@ describe('single-window dispatch (Finding #1 guard)', () => {
     expect(state.versionPendingInstall).toBe('0.3.3');
   });
 });
+
 
 describe('markCheckSucceeded routes through persistSafely (Critical #1)', () => {
   test('update-available: writeState throws → caught, no rethrow', () => {
@@ -2133,6 +2159,7 @@ describe('markCheckSucceeded routes through persistSafely (Critical #1)', () => 
     expect(state.lastSuccessfulCheckAt).toBeNull();
   });
 });
+
 
 describe('Toast B persist-before-emit + whenRendererReady (Major #1)', () => {
   test('persist failure on lastSeenVersion advance → no Toast B broadcast', () => {
@@ -2224,6 +2251,7 @@ describe('Toast B persist-before-emit + whenRendererReady (Major #1)', () => {
   });
 });
 
+
 describe('relaunch-now idempotency (Major #2)', () => {
   test('second invocation sees cleared versionPendingInstall → no second quitAndInstall', () => {
     const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
@@ -2264,6 +2292,7 @@ describe('relaunch-now idempotency (Major #2)', () => {
     expect(state.versionPendingInstall).toBe('0.3.2');
   });
 });
+
 
 describe('bootAutoUpdater catch-path (Major #5)', () => {
   test('dynamic-import failure → returns null + logs error, no throw', async () => {
@@ -2357,6 +2386,7 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
     expect(handle).toBeNull();
     expect(logger.error).toHaveBeenCalled();
   });
+
 
   test('resolveAutoUpdater handles .default.autoUpdater shape (real CJS-from-ESM)', async () => {
     const fakeUpdater = new FakeUpdater();

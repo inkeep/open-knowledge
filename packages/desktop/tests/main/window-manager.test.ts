@@ -9,6 +9,7 @@ import {
   type WindowManagerDeps,
 } from '../../src/main/window-manager.ts';
 
+
 interface MockUtility extends UtilityProcessLike {
   fire: (msg: unknown) => void;
   fireExit: (code: number | null) => void;
@@ -547,6 +548,7 @@ describe('WindowManager', () => {
     await p;
     expect(() => env.utilities[0]?.fireExit(1)).not.toThrow();
   });
+
 
   describe('attach mode', () => {
     const liveLock: ServerLockMetadataLike = {

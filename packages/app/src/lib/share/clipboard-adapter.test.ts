@@ -1,3 +1,4 @@
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { isPermissionsPolicyRefusal, scheduleClipboardWrite } from './clipboard-adapter';
 

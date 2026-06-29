@@ -79,6 +79,7 @@ describe('T2: Multi-client fast restart', () => {
       50,
     );
 
+
     const postRestartClientIdSets = ctx.pools.map((p) => {
       const entry = p.getActive();
       if (!entry) throw new Error('pool has no active entry post-restart');
@@ -134,7 +135,8 @@ describe('T2: Multi-client fast restart', () => {
           resumeSync: () => {
             throw new Error('unused');
           },
-          cleanup: async () => {},
+          cleanup: async () => {
+          },
         },
         serverDoc,
         `client ${i}`,

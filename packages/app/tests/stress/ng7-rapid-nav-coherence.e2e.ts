@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import { expect, filterCriticalErrors, type LogEntry, test } from './_helpers';
 
@@ -71,19 +72,21 @@ test.describe('NG7 Pattern D — rapid-nav coherence', () => {
           entry.name === 'ok/mount/resolve' ||
           entry.name === 'ok/mount/reject' ||
           entry.name === 'ok/cache/hit';
-        return performance
-          .getEntriesByType('measure')
-          .filter(isMountSettle)
-          .filter((m) => m.startTime >= since)
-          .map((m) => {
-            const detail = (m as unknown as { detail?: { devtools?: { properties?: unknown } } })
-              .detail;
-            const props = (detail?.devtools?.properties ?? []) as Array<[string, string]>;
-            const docName = props.find(([k]) => k === 'docName')?.[1];
-            const reason = props.find(([k]) => k === 'reason')?.[1];
-            return { name: m.name, docName, reason };
-          })
-          .filter((m) => m.docName === targetDoc);
+        return (
+          performance
+            .getEntriesByType('measure')
+            .filter(isMountSettle)
+            .filter((m) => m.startTime >= since)
+            .map((m) => {
+              const detail = (m as unknown as { detail?: { devtools?: { properties?: unknown } } })
+                .detail;
+              const props = (detail?.devtools?.properties ?? []) as Array<[string, string]>;
+              const docName = props.find(([k]) => k === 'docName')?.[1];
+              const reason = props.find(([k]) => k === 'reason')?.[1];
+              return { name: m.name, docName, reason };
+            })
+            .filter((m) => m.docName === targetDoc)
+        );
       },
       { targetDoc: docA, since: navStartTime },
     );

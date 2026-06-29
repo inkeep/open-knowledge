@@ -5,6 +5,7 @@ import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import type * as Y from 'yjs';
 import { mark } from '../lib/perf/mark';
 
+
 export interface WedgeDetail {
   externalSeq: number;
   appliedSeq: number;

@@ -1,3 +1,4 @@
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { buildSourceModeHtml, handleCopyOrCut, handlePaste } from './source-clipboard.ts';
 

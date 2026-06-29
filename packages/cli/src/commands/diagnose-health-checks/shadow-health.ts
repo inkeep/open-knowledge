@@ -1,3 +1,4 @@
+
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseCheckpoint, resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
@@ -47,7 +48,8 @@ async function defaultReadFacts(shadowDir: string, cwd: string): Promise<ShadowH
     if (existsSync(p)) {
       try {
         lastPackedAtMs = Math.max(lastPackedAtMs ?? 0, statSync(p).mtimeMs);
-      } catch {}
+      } catch {
+      }
     }
   }
 
@@ -78,7 +80,8 @@ async function defaultReadFacts(shadowDir: string, cwd: string): Promise<ShadowH
         break; // sorted newest-first
       }
     }
-  } catch {}
+  } catch {
+  }
 
   return {
     looseObjects: objects.looseObjects,
