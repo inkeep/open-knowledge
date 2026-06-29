@@ -212,9 +212,9 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
             </>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={onOpenFolder} data-testid="project-switcher-open-folder">
-            <FolderOpen aria-hidden="true" className="text-muted-foreground" />
-            <Trans>Open folder</Trans>
+          <DropdownMenuItem onSelect={onCreateProject} data-testid="project-switcher-new-project">
+            <Plus aria-hidden="true" className="text-muted-foreground" />
+            <Trans>New project</Trans>
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={onSwitchProject}
@@ -223,9 +223,9 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
             <LayoutGrid aria-hidden="true" className="text-muted-foreground" />
             <Trans>Switch project</Trans>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onCreateProject} data-testid="project-switcher-new-project">
-            <Plus aria-hidden="true" className="text-muted-foreground" />
-            <Trans>New project</Trans>
+          <DropdownMenuItem onSelect={onOpenFolder} data-testid="project-switcher-open-folder">
+            <FolderOpen aria-hidden="true" className="text-muted-foreground" />
+            <Trans>Open folder</Trans>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

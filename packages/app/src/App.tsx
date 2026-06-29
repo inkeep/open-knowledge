@@ -365,7 +365,7 @@ function AppBody() {
             inert), so the Cmd-, route handler isn't mounted. */}
         {!singleFile && <SettingsShortcutHandler />}
         {SHOW_INSTALL_SKILL && <InstallInClaudeDesktopTrigger />}
-        {/* File → Create New Project… opens CreateProjectDialog here.
+        {/* File → New project… opens CreateProjectDialog here.
             Desktop-only — the `new-project` menu action never fires in
             the web host, so the dialog stays unmounted there. */}
         {desktopBridge ? <CreateProjectMenuTrigger bridge={desktopBridge} /> : null}
