@@ -13,7 +13,6 @@ const AGENT = {
   clientName: 'claude' as const,
 };
 
-
 async function saveVersion(baseURL: string): Promise<void> {
   let res: Response;
   try {
@@ -70,7 +69,6 @@ function expandButtons(page: Page) {
 function diffPanels(page: Page) {
   return page.locator('[data-testid="timeline-entry-diff"]');
 }
-
 
 test.describe('Timeline inline diff — side pane', () => {
   test('AC-D1: click entry expands inline diff; click again collapses; main editor untouched', async ({

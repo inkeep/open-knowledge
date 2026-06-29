@@ -1,4 +1,3 @@
-
 import type { SendableWebContents } from '../shared/ipc-send.ts';
 import type { PtyHostIncomingMessage, PtyHostOutgoingMessage } from '../utility/pty-host.ts';
 

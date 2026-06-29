@@ -1,4 +1,3 @@
-
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core';
 import { renderToString } from 'react-dom/server';

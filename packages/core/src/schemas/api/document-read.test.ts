@@ -29,7 +29,6 @@ describe('ProblemTypeSchema cluster C URN tokens', () => {
   });
 });
 
-
 describe('DocumentReadSuccessSchema', () => {
   test('parses a flat success body with lifecycle: null (no status set)', () => {
     expect(

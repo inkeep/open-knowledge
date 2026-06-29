@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import {
   EDITOR_MODE_VALUES,
@@ -8,7 +7,6 @@ import {
   readInitialMode,
   readPersistedMode,
 } from './use-editor-mode';
-
 
 interface FakeStorage {
   getItem: ReturnType<typeof mock>;
@@ -39,7 +37,6 @@ function storageThatThrowsOnSet(err: Error = new Error('quota exceeded')): FakeS
     }),
   };
 }
-
 
 describe('isEditorModeValue — type guard', () => {
   test("accepts 'wysiwyg'", () => {
@@ -77,7 +74,6 @@ describe('isEditorModeValue — type guard', () => {
     expect([...EDITOR_MODE_VALUES].sort()).toEqual(['source', 'wysiwyg']);
   });
 });
-
 
 describe('readPersistedMode — localStorage read with validation', () => {
   let warnSpy: ReturnType<typeof spyOn> | undefined;
@@ -149,7 +145,6 @@ describe('readPersistedMode — localStorage read with validation', () => {
   });
 });
 
-
 describe('readInitialMode — precedence: window global > storage > default', () => {
   let warnSpy: ReturnType<typeof spyOn> | undefined;
   beforeEach(() => {
@@ -213,7 +208,6 @@ describe('readInitialMode — precedence: window global > storage > default', ()
   });
 });
 
-
 describe('persistMode — localStorage write with error swallow + warn logging', () => {
   let warnSpy: ReturnType<typeof spyOn> | undefined;
 
@@ -257,7 +251,6 @@ describe('persistMode — localStorage write with error swallow + warn logging',
     expect(() => persistMode('source', storage)).not.toThrow();
   });
 });
-
 
 describe('module exports — type-level shape', () => {
   test('EDITOR_MODE_VALUES is frozen at the type level via `as const` (runtime readonly)', () => {

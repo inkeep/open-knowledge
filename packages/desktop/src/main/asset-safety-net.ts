@@ -1,4 +1,3 @@
-
 import { ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core';
 import type { AssetOpenResult } from './asset-allowlist.ts';
 

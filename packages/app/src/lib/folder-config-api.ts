@@ -1,4 +1,3 @@
-
 import { emitTemplatesChanged } from './documents-events.ts';
 import { parseApiError } from './parse-api-error.ts';
 

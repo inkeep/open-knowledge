@@ -1,4 +1,3 @@
-
 import { type Document, isCollection, type ParsedNode } from 'yaml';
 import type { ConfigIssue } from './errors.ts';
 import type { ConfigPatch } from './schema.ts';

@@ -667,7 +667,6 @@ describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
     expect((s as unknown as { ui?: unknown }).ui).toBeUndefined();
   });
 
-
   test('mcp-tool-path-traversal: `ls ../etc/` does not enrich a directory outside cwd', async () => {
     const project = await bootstrap();
     const result = (await buildExecResult(

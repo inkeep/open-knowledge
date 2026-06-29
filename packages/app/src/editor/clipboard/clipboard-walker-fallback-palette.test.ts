@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { classifyUrlPortability } from './clipboard-sanitize.ts';
 import {
@@ -66,7 +65,6 @@ describe('toneForType — type-to-tone lookup with prototype-pollution guard', (
     }
   });
 });
-
 
 describe('paletteUrlReason — portability decision', () => {
   test('returns null for fragment-only refs', () => {

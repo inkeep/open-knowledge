@@ -37,7 +37,6 @@ function mergeThreeWayImpl(baseline: string, userText: string, agentText: string
   return parts.join('\n');
 }
 
-
 export type BridgeMergeContentLossSide = 'user' | 'agent';
 
 export type BridgeMergeContentLossWhich = 'substring' | 'order';

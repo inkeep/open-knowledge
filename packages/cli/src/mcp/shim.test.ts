@@ -14,7 +14,6 @@ import {
   startMcpShim,
 } from './shim.ts';
 
-
 interface FakeTransport {
   onerror: ((err: Error) => void) | undefined;
   onclose: (() => void) | undefined;
@@ -291,7 +290,6 @@ describe('MCP stdio shim server resolution', () => {
   });
 });
 
-
 describe('bridgeStdioToHttpMcp error paths', () => {
   test('notification-forward failure logs to stderr and leaves bridge alive', async () => {
     const stderr = makeStderr();
@@ -365,7 +363,6 @@ describe('bridgeStdioToHttpMcp error paths', () => {
     await bridge.close();
   });
 });
-
 
 describe('startMcpShim lifecycle', () => {
   let tmp: string;

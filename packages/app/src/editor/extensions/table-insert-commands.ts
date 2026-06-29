@@ -1,4 +1,3 @@
-
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { addColumn, addRow, findTable, TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';

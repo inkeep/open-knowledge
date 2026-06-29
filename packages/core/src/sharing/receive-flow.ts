@@ -1,4 +1,3 @@
-
 export interface HeadBranchInfo {
   readonly currentBranch: string | null;
   readonly headSha: string | null;

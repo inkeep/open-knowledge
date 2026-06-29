@@ -33,8 +33,7 @@ export function writeDocPanelWidth(px: number, storage?: WidthStorage): void {
   try {
     const s = storage ?? localStorage;
     s.setItem(DOC_PANEL_WIDTH_KEY, String(clamp(px)));
-  } catch {
-  }
+  } catch {}
 }
 
 export function getInitialDocPanelWidth(): number {

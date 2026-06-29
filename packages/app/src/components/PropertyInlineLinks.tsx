@@ -1,4 +1,3 @@
-
 import type { ReactNode } from 'react';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { cn } from '@/lib/utils';

@@ -1,4 +1,3 @@
-
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState, type Plugin } from '@tiptap/pm/state';
@@ -9,7 +8,6 @@ import {
   chunkWrapperDecorationPlugin,
   OK_CHUNK_WRAPPER_CLASS,
 } from './chunk-wrapper-decoration';
-
 
 const schema = new Schema({
   nodes: {

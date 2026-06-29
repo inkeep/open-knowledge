@@ -1,4 +1,3 @@
-
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 const store = await import('./relaunch-store');

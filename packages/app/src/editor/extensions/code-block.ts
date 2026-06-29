@@ -1,4 +1,3 @@
-
 import { CodeBlockFidelity as BaseCodeBlockFidelity } from '@inkeep/open-knowledge-core';
 import { textblockTypeInputRule } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
@@ -9,7 +8,6 @@ import { type LowlightLike, LowlightPlugin } from './code-block-lowlight-plugin'
 const lowlight = createLowlight(common) as unknown as LowlightLike;
 
 export const CodeBlockFidelity = BaseCodeBlockFidelity.extend({
-
   addOptions() {
     return {
       ...this.parent?.(),

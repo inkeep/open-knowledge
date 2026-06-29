@@ -1,4 +1,3 @@
-
 import { describe, expect, spyOn, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import * as Y from 'yjs';
@@ -288,8 +287,7 @@ describe('createClientPersistence', () => {
       warnSpy.mockRestore();
       try {
         blocker.close();
-      } catch {
-      }
+      } catch {}
       docA.destroy();
     }
   });

@@ -1,4 +1,3 @@
-
 import { toDesktopAssetHref } from '@inkeep/open-knowledge-core';
 import type { ImgHTMLAttributes } from 'react';
 import Zoom from 'react-medium-image-zoom';

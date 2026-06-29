@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { isProcessAlive } from '@inkeep/open-knowledge-server';
 
-
 const NODE = Bun.which('node');
 const HARNESS = new URL('./pty-host.reap-harness.ts', import.meta.url).pathname;
 
@@ -48,8 +47,7 @@ async function assertNoOrphan(killSignal: 'SIGTERM' | 'SIGKILL'): Promise<void> 
     if (shellPid !== null && isProcessAlive(shellPid)) {
       try {
         process.kill(shellPid, 'SIGKILL');
-      } catch {
-      }
+      } catch {}
     }
     proc.kill('SIGKILL');
     await proc.exited;

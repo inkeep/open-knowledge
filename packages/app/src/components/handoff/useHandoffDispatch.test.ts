@@ -1,4 +1,3 @@
-
 import { describe, expect, mock, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import type { HandoffOutcome, HandoffPayload, HandoffTarget } from '@inkeep/open-knowledge-core';

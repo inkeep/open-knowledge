@@ -1,4 +1,3 @@
-
 const FIXED_HUB_BASENAMES: readonly string[] = ['INDEX', 'README', 'REPORT', 'SPEC'];
 
 const MAX_CANDIDATES = 3;

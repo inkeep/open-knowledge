@@ -1,4 +1,3 @@
-
 function isVimeoHost(hostname: string): boolean {
   const h = hostname.toLowerCase();
   return h === 'vimeo.com' || h === 'www.vimeo.com' || h === 'player.vimeo.com';

@@ -1,4 +1,3 @@
-
 import { useEffect, useSyncExternalStore } from 'react';
 import '@/lib/desktop-bridge-types';
 

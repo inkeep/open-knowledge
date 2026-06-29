@@ -1,4 +1,3 @@
-
 import { spawn as nodeSpawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
@@ -13,6 +12,8 @@ import {
 } from '@inkeep/open-knowledge-server';
 import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
 import { createRealOpenDeps, runOpen } from './open.ts';
+
+const EPHEMERAL_IDLE_SHUTDOWN_MS = 10 * 60 * 1000;
 
 /** Injectable surface so `cli.test.ts` can drive the dispatch matrix without a
  *  real desktop / server / browser. */
@@ -124,12 +125,10 @@ async function runSingleFileBrowserOpen(
     tornDown = true;
     try {
       await booted?.destroy();
-    } catch {
-    }
+    } catch {}
     try {
       await rm(projectDir, { recursive: true, force: true });
-    } catch {
-    }
+    } catch {}
   };
 
   const onSignal = (): void => {
@@ -151,6 +150,7 @@ async function runSingleFileBrowserOpen(
       singleFile: plan.canonicalFilePath,
       serveContentAssets: true,
       reactShellDistDir,
+      idleThresholdMs: EPHEMERAL_IDLE_SHUTDOWN_MS,
     });
   } catch (err) {
     await teardown();
@@ -161,9 +161,14 @@ async function runSingleFileBrowserOpen(
   }
 
   const url = `http://${host}:${booted.port}/#/${encodeDocName(plan.docName)}`;
-  process.stdout.write(`Opening ${plan.singleDocRelPath} in your browser: ${url}\n`);
-  process.stdout.write('Press Ctrl-C to close the session.\n');
-  openBrowser(url);
+  const headless = process.env.OK_SINGLE_FILE_NO_OPEN === '1';
+  if (headless) {
+    process.stdout.write(`Serving ${plan.singleDocRelPath} (headless) at: ${url}\n`);
+  } else {
+    process.stdout.write(`Opening ${plan.singleDocRelPath} in your browser: ${url}\n`);
+    process.stdout.write('Press Ctrl-C to close the session.\n');
+    openBrowser(url);
+  }
 
   await new Promise<never>(() => {});
 }

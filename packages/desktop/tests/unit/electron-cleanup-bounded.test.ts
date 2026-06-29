@@ -4,7 +4,6 @@ import { EventEmitter } from 'node:events';
 import type { ElectronApplication } from '@playwright/test';
 import { captureAppProcess, closeAppBounded } from '../smoke/_helpers/electron-cleanup';
 
-
 interface MockProc extends EventEmitter {
   pid: number | undefined;
   killed: boolean;

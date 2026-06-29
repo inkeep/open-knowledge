@@ -1,4 +1,3 @@
-
 import {
   mapConsoleLevel,
   parseStructuredConsoleMessage,
@@ -47,7 +46,6 @@ export function attachRendererConsoleCapture(
         ...(event.lineNumber !== undefined ? { lineNumber: event.lineNumber } : {}),
       };
       resolveLogger('renderer')[level](data, structured?.event ?? message);
-    } catch {
-    }
+    } catch {}
   });
 }

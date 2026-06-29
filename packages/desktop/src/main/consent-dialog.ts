@@ -1,4 +1,3 @@
-
 import type { Dirent } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';

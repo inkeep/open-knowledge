@@ -1,4 +1,3 @@
-
 import { afterAll, describe, expect, mock, test } from 'bun:test';
 
 const store = await import('./update-notices-store');

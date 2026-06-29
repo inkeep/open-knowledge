@@ -1,4 +1,3 @@
-
 import { Command } from 'commander';
 import pc from 'picocolors';
 import {
@@ -9,7 +8,6 @@ import {
   processUsage,
 } from '../utils/process-scan.ts';
 import { inspectLock, type LockState } from './lock-state.ts';
-
 
 interface PsEntry {
   directory: string;
@@ -42,7 +40,6 @@ export function isDesktopCommand(command: string | null): boolean {
   );
 }
 
-
 export function timeAgo(isoString: string, now = Date.now()): string {
   const then = new Date(isoString).getTime();
   if (Number.isNaN(then)) return '—';
@@ -56,7 +53,6 @@ export function timeAgo(isoString: string, now = Date.now()): string {
   const diffDay = Math.floor(diffHr / 24);
   return `${diffDay}d ago`;
 }
-
 
 function buildEntry(
   _lockDir: string,
@@ -101,7 +97,6 @@ function buildEntry(
     isDesktop: isDesktopCommand(command),
   };
 }
-
 
 type DisplayStatus = 'running' | 'desktop' | 'foreign' | 'stale' | 'ui-orphan';
 
@@ -218,7 +213,6 @@ export function renderTable(entries: PsEntry[]): string {
   return [headerLine, ...dataLines, '', hint].join('\n');
 }
 
-
 interface RunPsDeps {
   discover?: () => Promise<string[]>;
   inspect?: (lockDir: string, name: 'server' | 'ui') => LockState;
@@ -272,7 +266,6 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
 
   log(renderTable(filtered));
 }
-
 
 export function psCommand(): Command {
   return new Command('ps')

@@ -319,6 +319,13 @@ export {
   updateProcessLockPort,
 } from './process-lock.ts';
 export {
+  discoverLockDirs,
+  extractOkBinaryPath,
+  type ProcessUsage,
+  processCommand,
+  processUsage,
+} from './process-scan.ts';
+export {
   type EnsureProjectGitResult,
   ensureProjectGit,
   ProjectGitInitError,

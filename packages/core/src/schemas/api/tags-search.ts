@@ -1,4 +1,3 @@
-
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { MANAGED_ARTIFACT_SCOPES } from '../../constants/cc1.ts';
@@ -156,7 +155,6 @@ export const TemplateMoveSuccessSchema = z
   })
   .strict() satisfies StandardSchemaV1;
 export type TemplateMoveSuccess = z.infer<typeof TemplateMoveSuccessSchema>;
-
 
 /** Skill scope: `project` (shared via git) or `global` (user store).
  *  Derived from the canonical `MANAGED_ARTIFACT_SCOPES` (cc1.ts) — do not
@@ -520,4 +518,3 @@ export const SkillInstallStateSuccessSchema = z
   })
   .loose() satisfies StandardSchemaV1;
 export type SkillInstallStateSuccess = z.infer<typeof SkillInstallStateSuccessSchema>;
-

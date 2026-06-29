@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 import { Project, SyntaxKind } from 'ts-morph';

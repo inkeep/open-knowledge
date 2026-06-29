@@ -1,4 +1,3 @@
-
 import type { PackId } from './starter.ts';
 
 export interface FileEntry {

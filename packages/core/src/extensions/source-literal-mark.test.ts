@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { isValidSourceLiteralRaw } from './source-literal-mark.ts';
 

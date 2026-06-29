@@ -28,6 +28,7 @@ import {
   startCommand,
   tryDescribeLockCollision,
   type UiSpawnDecision,
+  withEphemeralTempDirReap,
 } from './start.ts';
 import { closeHttpServers, startUiServer, type UiServerHandle } from './ui.ts';
 
@@ -403,7 +404,6 @@ describe('spawnOkUi', () => {
   });
 });
 
-
 function makeTestConfig(): Config {
   return ConfigSchema.parse({});
 }
@@ -606,8 +606,7 @@ describe('bootStartServer (integration)', () => {
     if (booted) {
       try {
         await booted.destroy();
-      } catch {
-      }
+      } catch {}
       booted = null;
     }
     if (originalHome === undefined) {
@@ -1024,7 +1023,6 @@ describe('bootStartServer (integration)', () => {
     for (const c of captured) expect(c.reclaimDisableEnv).toBeNull();
   });
 
-
   test('serveContentAssets: false (default) — content paths return the SPA-pointer 404', async () => {
     writeFileSync(join(tmpDir, 'fixture-asset.png'), 'fake-png-bytes', 'utf-8');
 
@@ -1159,8 +1157,7 @@ describe('bootStartServer — no auto git-init from ok start (US-004)', () => {
     if (booted) {
       try {
         await booted.destroy();
-      } catch {
-      }
+      } catch {}
       booted = null;
     }
     if (originalHome === undefined) {
@@ -1200,7 +1197,6 @@ describe('bootStartServer — no auto git-init from ok start (US-004)', () => {
     }
   });
 });
-
 
 describe('bootStartServer — rejects with init-required when .ok/config.yml is absent', () => {
   let tmpDir: string;
@@ -1296,7 +1292,6 @@ describe('bootStartServer — rejects with init-required when .ok/config.yml is 
   });
 });
 
-
 describe('awaitUiSiblingPort', () => {
   test('returns the bound port immediately when ui.lock has port > 0 on first read', async () => {
     const port = await awaitUiSiblingPort({
@@ -1363,7 +1358,6 @@ describe('awaitUiSiblingPort', () => {
   });
 });
 
-
 describe('bootStartServer — resolvedUiPort tracks the port ok ui actually binds', () => {
   let tmpDir: string;
   let booted: BootedStartServer | null = null;
@@ -1386,8 +1380,7 @@ describe('bootStartServer — resolvedUiPort tracks the port ok ui actually bind
     if (booted) {
       try {
         await booted.destroy();
-      } catch {
-      }
+      } catch {}
       booted = null;
     }
     if (uiHandle) {
@@ -1683,5 +1676,51 @@ describe('tryDescribeLockCollision', () => {
     const err = new Error('any');
     const result = tryDescribeLockCollision(err, '/tmp/proj', fm);
     expect(result).toBeNull();
+  });
+});
+
+describe('withEphemeralTempDirReap', () => {
+  test('runs the inner handler, then removes the temp projectDir', async () => {
+    const order: string[] = [];
+    const handler = async () => {
+      order.push('handler');
+    };
+    const removed: string[] = [];
+    const wrapped = withEphemeralTempDirReap(handler, '/tmp/ok-ephemeral-x', async (dir) => {
+      order.push('rm');
+      removed.push(dir);
+    });
+    await wrapped();
+    expect(order).toEqual(['handler', 'rm']);
+    expect(removed).toEqual(['/tmp/ok-ephemeral-x']);
+  });
+
+  test('swallows a rm failure (best-effort) — the handler still completes', async () => {
+    let handled = false;
+    const wrapped = withEphemeralTempDirReap(
+      async () => {
+        handled = true;
+      },
+      '/tmp/ok-ephemeral-y',
+      async () => {
+        throw new Error('EBUSY');
+      },
+    );
+    await expect(wrapped()).resolves.toBeUndefined();
+    expect(handled).toBe(true);
+  });
+  test('reaps the temp dir even when the inner handler throws (finally)', async () => {
+    const removed: string[] = [];
+    const wrapped = withEphemeralTempDirReap(
+      async () => {
+        throw new Error('destroy failed');
+      },
+      '/tmp/ok-ephemeral-throw',
+      async (dir) => {
+        removed.push(dir);
+      },
+    );
+    await expect(wrapped()).rejects.toThrow('destroy failed');
+    expect(removed).toEqual(['/tmp/ok-ephemeral-throw']);
   });
 });

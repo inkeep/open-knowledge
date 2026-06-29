@@ -28,8 +28,7 @@ const KEYRING_SERVICE = 'open-knowledge';
 function safeDiag(fn: () => void): void {
   try {
     fn();
-  } catch {
-  }
+  } catch {}
 }
 
 export interface TokenStoreDiagnostics {
@@ -40,7 +39,6 @@ export interface TokenStoreDiagnostics {
   }) => void;
   onBackendSelected?: (info: { backend: 'keyring' | 'file'; reason?: string }) => void;
 }
-
 
 class KeyringBackend implements TokenStore {
   readonly backend = 'keyring' as const;
@@ -95,11 +93,9 @@ class KeyringBackend implements TokenStore {
     try {
       const entry = new Entry(KEYRING_SERVICE, host);
       entry.deletePassword();
-    } catch {
-    }
+    } catch {}
   }
 }
-
 
 export class FileBackend implements TokenStore {
   readonly backend = 'file' as const;
@@ -151,7 +147,6 @@ export class FileBackend implements TokenStore {
   }
 }
 
-
 class KeychainWithFileFallback implements TokenStore {
   readonly backend = 'keyring' as const;
   constructor(
@@ -176,8 +171,7 @@ class KeychainWithFileFallback implements TokenStore {
       process.stderr.write(
         `[auth] migrated ${host} credential from ~/.ok/auth.yml to the OS keychain\n`,
       );
-    } catch {
-    }
+    } catch {}
     return fromFile;
   }
 
@@ -195,7 +189,6 @@ class KeychainWithFileFallback implements TokenStore {
     if ((await this.file.get(host)) != null) await this.file.clear(host);
   }
 }
-
 
 export async function createTokenStore(
   authFile?: string,
@@ -299,8 +292,7 @@ export async function clearTokenFromAllBackends(
       await keyring.clear(host);
       touched.push('keychain');
     }
-  } catch {
-  }
+  } catch {}
 
   return { touched };
 }

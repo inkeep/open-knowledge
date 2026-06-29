@@ -1,4 +1,3 @@
-
 import { type AnyExtension, Editor } from '@tiptap/core';
 import type { Plugin } from '@tiptap/pm/state';
 import { EditorView, type NodeViewConstructor } from '@tiptap/pm/view';
@@ -52,8 +51,7 @@ export function wrapMethod<T extends Record<string, unknown>>(
           { durationMs: Math.round(durationMs * 1000) / 1000, threw: !succeeded, ...extraProps },
           { startTime: start, duration: durationMs },
         );
-      } catch {
-      }
+      } catch {}
     }
   };
   // biome-ignore lint/suspicious/noExplicitAny: prototype patch
@@ -402,8 +400,7 @@ export function installColdMountInstrumentation(): void {
       });
       obs.observe({ type: 'paint', buffered: true });
     }
-  } catch {
-  }
+  } catch {}
 
   (globalThis as unknown as Record<string, unknown>).__okColdMountInstrumented = true;
 }

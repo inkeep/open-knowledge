@@ -1,9 +1,7 @@
-
 import { resolve } from 'node:path';
 import simpleGit, { type SimpleGit, type SimpleGitOptions } from 'simple-git';
 
 export { withParentLock } from './git-mutex.ts';
-
 
 export interface RelayGhToken {
   token: string;
@@ -28,7 +26,6 @@ type CredentialHelperUnsafeGitOptions = SimpleGitOptions & {
     allowUnsafeCredentialHelper?: boolean;
   };
 };
-
 
 const GIT_AUTH_ENV_KEYS = [
   'HOME',

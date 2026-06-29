@@ -27,7 +27,6 @@ function makeLocalSinkOpts(projectDir: string): LocalSinkOptions {
   };
 }
 
-
 describe('Telemetry', () => {
   let tmp: string;
   beforeEach(async () => {

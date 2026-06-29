@@ -1,4 +1,3 @@
-
 import type * as Y from 'yjs';
 import type { ConfigValidationError } from './errors.ts';
 import type { Err, Ok, Result } from './result.ts';

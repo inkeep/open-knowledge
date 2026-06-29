@@ -26,8 +26,7 @@ function makeFixture(): Fixture {
     cleanup: () => {
       try {
         rmSync(root, { recursive: true, force: true });
-      } catch {
-      }
+      } catch {}
     },
   };
 }
@@ -52,8 +51,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) {
     try {
       await cleanup();
-    } catch {
-    }
+    } catch {}
   }
   fx.cleanup();
 });
@@ -184,8 +182,7 @@ describe('startMultiPathConfigFileWatcher', () => {
       cleanup: () => {
         try {
           rmSync(root, { recursive: true, force: true });
-        } catch {
-        }
+        } catch {}
       },
     };
   }

@@ -1,4 +1,3 @@
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   bindFrontmatterDoc,

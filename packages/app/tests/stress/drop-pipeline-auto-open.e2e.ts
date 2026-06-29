@@ -1,4 +1,3 @@
-
 import type { Page } from '@playwright/test';
 import {
   createMp3Buffer,
@@ -8,7 +7,6 @@ import {
   test,
   waitForActiveProviderSynced as waitForProvider,
 } from './_helpers';
-
 
 const PROP_PANEL_TIMEOUT = 1_500;
 
@@ -59,7 +57,6 @@ async function getSourceText(page: Page): Promise<string> {
     return provider?.document?.getText('source')?.toString() ?? '';
   });
 }
-
 
 const cases = [
   {

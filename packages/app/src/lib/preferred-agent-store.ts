@@ -1,4 +1,3 @@
-
 import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import {

@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import type { Editor } from '@tiptap/core';
 import { type Mark, Schema } from '@tiptap/pm/model';
@@ -15,7 +14,6 @@ import {
   buildMarkInteractionBridge,
   getCurrentMarkInfo,
 } from './mark-interaction-bridge';
-
 
 const schema = new Schema({
   nodes: {
@@ -81,8 +79,7 @@ function makeFakeLayer(): FakeLayer {
     getRegistration(id) {
       return store.getRegistration(id);
     },
-    destroy() {
-    },
+    destroy() {},
     store,
     registerCalls,
     deregisterCalls,
@@ -104,7 +101,6 @@ function makeMarkInfo(overrides: Partial<MarkInfo> = {}): MarkInfo {
     ...overrides,
   };
 }
-
 
 describe('getCurrentMarkInfo', () => {
   test('returns null when markIdentityPlugin is not installed', () => {
@@ -143,7 +139,6 @@ describe('getCurrentMarkInfo', () => {
     expect(m2?.attrs).toEqual({ href: '/b' });
   });
 });
-
 
 describe('buildMarkBridgeHandlers — onRegister', () => {
   test('onRegister forwards to layer.register with type + nodeId from MarkInfo', () => {
@@ -228,7 +223,6 @@ interface MarkPropPanelCtxCapture {
   deactivate: () => void;
 }
 
-
 describe('buildMarkBridgeHandlers — onDeregister', () => {
   test('onDeregister forwards the ID to layer.deregister', () => {
     const editor = makeFakeEditor(stateWithIdentity([]));
@@ -256,7 +250,6 @@ describe('buildMarkBridgeHandlers — onDeregister', () => {
     expect(layer.deregisterCalls).toEqual(['m1', 'm2', 'm3']);
   });
 });
-
 
 describe('buildMarkInteractionBridge', () => {
   test('returns a Plugin keyed by markIdentityKey', () => {

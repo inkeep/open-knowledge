@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { WINDOW_MIN_SIZE } from './window-min-size.ts';
 
-
 describe('WINDOW_MIN_SIZE constants', () => {
   test('declares EDITOR with a usable minimum width', () => {
     expect(WINDOW_MIN_SIZE.EDITOR.width).toBeGreaterThanOrEqual(320);

@@ -1,4 +1,3 @@
-
 import { afterEach, describe, expect, test } from 'bun:test';
 import { execSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -9,7 +8,6 @@ import { ensureProjectGit } from '@inkeep/open-knowledge-server';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import { createRestartableServer, getServerState, pollUntil, schema } from './test-harness';
-
 
 interface PmJsonNode {
   type?: string;
@@ -62,8 +60,7 @@ describe('T17: branch switch with `![[photo.png]]` doc — reseed-before-reset',
     cleanups.push(() => {
       try {
         rmSync(contentDir, { recursive: true, force: true });
-      } catch {
-      }
+      } catch {}
     });
 
     writeRel(contentDir, 'test-doc.md', DOC_BODY);

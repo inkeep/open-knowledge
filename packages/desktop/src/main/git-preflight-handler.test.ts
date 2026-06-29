@@ -1,4 +1,3 @@
-
 import { describe, expect, mock, test } from 'bun:test';
 import {
   GitNotAvailableError,
@@ -366,9 +365,7 @@ describe('ensureGitAvailable', () => {
     const assertGitAvailable = mock(() => {
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     });
-    const { fn: showMessageBox } = showMessageBoxSequence([
-      -1,
-    ]);
+    const { fn: showMessageBox } = showMessageBoxSequence([-1]);
     const openExternal = mock(async () => {});
     const warn = mock((_msg: string, _obj?: unknown) => {});
 

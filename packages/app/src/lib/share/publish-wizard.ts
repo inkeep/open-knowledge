@@ -1,4 +1,3 @@
-
 import type {
   SharePublishErrorCode,
   SharePublishNameCheckResponse,
@@ -91,7 +90,6 @@ export function presentPublishError(
   }
 }
 
-
 export async function fetchPublishOwners(
   fetchFn: typeof fetch = fetch,
 ): Promise<SharePublishOwnersResponse> {
@@ -145,7 +143,6 @@ export async function submitPublishRequest(
   return parsed.data;
 }
 
-
 export type NameCheckStatus =
   | { kind: 'idle' }
   | { kind: 'pending' }
@@ -179,6 +176,5 @@ export function canSubmitPublish(input: {
   if (input.sanitizedName.length === 0) return false;
   return input.nameCheck.kind === 'available';
 }
-
 
 export type { SharePublishOwner, SharePublishRequest, SharePublishVisibility };

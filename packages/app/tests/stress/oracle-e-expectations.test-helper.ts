@@ -1,4 +1,3 @@
-
 export type OracleEOp =
   | { kind: 'wysiwyg-type'; marker: string }
   | { kind: 'source-type'; marker: string }

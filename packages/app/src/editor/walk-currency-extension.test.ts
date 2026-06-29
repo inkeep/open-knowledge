@@ -1,4 +1,3 @@
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
@@ -39,7 +38,6 @@ afterEach(() => {
   __resetMountPromiseCache();
   __resetCacheForTests();
 });
-
 
 function makeProvider(docName: string): {
   ydoc: Y.Doc;
@@ -109,7 +107,6 @@ function captureWarnings<T>(fn: () => T): { result: T; warnings: string[] } {
   }
 }
 
-
 describe('disarm branch', () => {
   /** Build a stale editor whose ySync state is supplied by a stand-in (no
    *  real Collaboration — its real binding would occupy the seam under
@@ -167,7 +164,6 @@ describe('disarm branch', () => {
   });
 });
 
-
 describe('never-mounted cleanup', () => {
   test('invalidating the mount during the yield window destroys the pre-mount editor and unhooks the observer', async () => {
     const docName = `never-mounted-${randomUUID()}`;
@@ -214,7 +210,6 @@ describe('never-mounted cleanup', () => {
     }
   });
 });
-
 
 describe('non-stale fast path', () => {
   test('a quiet construct→mount gap triggers no rerender and the prebuilt mapping survives into the binding', async () => {
@@ -278,7 +273,6 @@ describe('non-stale fast path', () => {
     }
   });
 });
-
 
 describe('wiring arms', () => {
   test('no prebuiltMapping → walk-currency extension absent from the extension list', () => {
