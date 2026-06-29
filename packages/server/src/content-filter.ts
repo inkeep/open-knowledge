@@ -1,3 +1,4 @@
+
 import { execFile as execFileCb, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { readdir, readFile as readFileAsync } from 'node:fs/promises';
@@ -101,6 +102,7 @@ function pathHasAlwaysSkipSegment(relativePath: string): boolean {
   }
   return false;
 }
+
 
 function isSkillContentFile(relativePath: string): boolean {
   return relativePath.startsWith(`${SKILL_CONTENT_ROOT}/`);
@@ -255,7 +257,8 @@ async function resolveGlobalExcludesfileAsync(projectDir: string): Promise<strin
     );
     const raw = stdout.trim();
     if (raw) return raw;
-  } catch {}
+  } catch {
+  }
   return xdgGlobalIgnoreDefault();
 }
 

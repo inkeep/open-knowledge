@@ -1,3 +1,4 @@
+
 import { incrementJsxRenderFailure } from '@inkeep/open-knowledge-core';
 import { Trans } from '@lingui/react/macro';
 import { Search } from 'lucide-react';

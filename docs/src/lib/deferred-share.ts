@@ -1,3 +1,4 @@
+
 export const PENDING_SHARE_COOKIE = 'ok_pending_share';
 
 export const PENDING_SHARE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;

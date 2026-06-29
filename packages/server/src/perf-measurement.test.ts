@@ -83,6 +83,7 @@ describe('captureServerMemorySnapshot', () => {
     expect(snap.snapshot.heapUsedMb).toBeGreaterThan(0);
     expect(snap.snapshot.externalMb).toBeGreaterThanOrEqual(0);
     expect(snap.snapshot.arrayBuffersMb).toBeGreaterThanOrEqual(0);
+
   });
 
   test('two successive captures produce monotonically-non-decreasing timestamps', () => {

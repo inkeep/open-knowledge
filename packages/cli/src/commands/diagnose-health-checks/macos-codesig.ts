@@ -1,3 +1,4 @@
+
 import { spawnSync } from 'node:child_process';
 import type { CheckDefinition, CheckResult } from './types.ts';
 

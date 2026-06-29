@@ -1,3 +1,4 @@
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import {

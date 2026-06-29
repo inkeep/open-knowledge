@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import type { TagSummaryEntry } from '../editor/extensions/tag-suggestion.ts';
 import { filterTagList, parseTagPaletteQuery } from './command-palette-tag-search.ts';

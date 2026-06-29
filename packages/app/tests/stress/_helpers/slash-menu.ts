@@ -1,3 +1,4 @@
+
 import { expect, type Locator, type Page } from '@playwright/test';
 
 const MENU_SELECTOR = '[role="listbox"][aria-label="Slash commands"]';

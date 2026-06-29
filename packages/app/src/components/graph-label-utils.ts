@@ -110,6 +110,7 @@ function clampMiddleByCharacters(
     return '';
   }
 
+
   const maxKeep = Math.max(1, Math.floor((text.length - ellipsis.length) / 2));
   for (let keep = maxKeep; keep >= 1; keep--) {
     if (text[keep] !== ' ' || text[text.length - keep - 1] !== ' ') continue;

@@ -44,6 +44,7 @@ function writeWorkspaceConfigAt(dir: string, yaml: string) {
 }
 
 describe('loadConfig', () => {
+
   test('no config files → all defaults resolve', () => {
     const { config, sources } = loadConfig(testDir);
 
@@ -107,6 +108,7 @@ describe('loadConfig', () => {
     const expectedPath = resolve(testDir, OK_DIR, 'config.yml');
     expect(msg).toMatch(new RegExp(`${expectedPath.replace(/[/\\.]/g, '\\$&')}:\\d+:\\d+`));
   });
+
 
   test('project config overrides a single field, other defaults preserved', () => {
     writeWorkspaceConfig('content:\n  dir: docs\n');
@@ -229,10 +231,12 @@ appearance:
     expect(caught?.message).toContain('WYSIWYG');
   });
 
+
   test('appearance.theme outside the enum throws', () => {
     writeWorkspaceConfig('appearance:\n  theme: midnight\n');
     expect(() => loadConfig(testDir)).toThrow('Invalid configuration');
   });
+
 
   test('unknown top-level keys are silently ignored (forward-compat)', () => {
     writeWorkspaceConfig('future_feature:\n  enabled: true\n');
@@ -253,6 +257,7 @@ appearance:
     const { config } = loadConfig(testDir);
     expect(config.content.dir).toBe('.');
   });
+
 
   test('schema-invalid project config emits file:line:col in error message', () => {
     const yaml = `appearance:

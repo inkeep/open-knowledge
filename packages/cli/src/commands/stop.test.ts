@@ -158,6 +158,7 @@ describe('runStop', () => {
   });
 });
 
+
 describe('buildStopPlan with foreign-host states', () => {
   test('foreign-host + locally-live PID → targeted (hostname drift)', () => {
     const plan = buildStopPlan(foreign(100, 3001), foreign(200, 3000), {

@@ -22,6 +22,7 @@ describe('resolveLeafSchema', () => {
     const leaf = resolveLeafSchema(ConfigSchema, ['nonExistentSection']);
     expect(leaf).toBeUndefined();
   });
+
 });
 
 describe('getLeafFieldMeta', () => {
@@ -34,6 +35,7 @@ describe('getLeafFieldMeta', () => {
       description: expect.any(String),
     });
   });
+
 
   test('returns metadata for the user-scope appearance.theme leaf', () => {
     const meta = getLeafFieldMeta(ConfigSchema, ['appearance', 'theme']);

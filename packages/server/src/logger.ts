@@ -192,6 +192,7 @@ export class PinoLogger {
     }
   }
 
+
   error(data: unknown, message: string): void {
     this.pinoInstance.error(data, message);
   }
@@ -266,6 +267,7 @@ export const loggerFactory = new LoggerFactory();
 export function getLogger(name: string): PinoLogger {
   return loggerFactory.getLogger(name);
 }
+
 
 export function createTestLogger(name = 'test'): PinoLogger {
   return new PinoLogger(name, { options: { level: 'silent' } });

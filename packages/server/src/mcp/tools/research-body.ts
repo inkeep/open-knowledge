@@ -1,3 +1,4 @@
+
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 
 export function buildResearchBody(topic: string, contentDir: string): string {

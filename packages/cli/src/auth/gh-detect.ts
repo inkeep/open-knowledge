@@ -38,7 +38,8 @@ export function detectGh(host?: string, options: DetectGhOptions = {}): GhDetect
         .toString()
         .trim();
       if (token.length > 0) return { available: true, token };
-    } catch {}
+    } catch {
+    }
   }
   return { available: false };
 }

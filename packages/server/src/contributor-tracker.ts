@@ -1,3 +1,4 @@
+
 interface ActorMetadata {
   principalId?: string;
   agentType?: string;

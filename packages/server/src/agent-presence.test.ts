@@ -259,6 +259,7 @@ describe('AgentPresenceBroadcaster', () => {
     expect(map['uuid-returning'].ts).toBe(now);
   });
 
+
   test('contract: handler try/finally pattern — throw between setPresence and transact reaches touchMode', () => {
     const agentId = 'uuid-throw-during-transact';
     const thrown: Error[] = [];

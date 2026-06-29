@@ -1,3 +1,4 @@
+
 import { closeSync, openSync, statSync, unlinkSync } from 'node:fs';
 
 export interface WithFileLockOptions {
@@ -59,7 +60,8 @@ export async function withFileLock<T>(
         try {
           unlinkSync(lockPath);
           cleared = true;
-        } catch {}
+        } catch {
+        }
       }
 
       if (cleared) continue;
@@ -75,17 +77,20 @@ export async function withFileLock<T>(
     } finally {
       try {
         closeSync(fd);
-      } catch {}
+      } catch {
+      }
       try {
         unlinkSync(lockPath);
-      } catch {}
+      } catch {
+      }
     }
   }
 }
 
 function sleepSyncBusy(ms: number): void {
   const target = Date.now() + ms;
-  while (Date.now() < target) {}
+  while (Date.now() < target) {
+  }
 }
 
 export function withFileLockSync<T>(
@@ -124,7 +129,8 @@ export function withFileLockSync<T>(
         try {
           unlinkSync(lockPath);
           cleared = true;
-        } catch {}
+        } catch {
+        }
       }
 
       if (cleared) continue;
@@ -140,10 +146,12 @@ export function withFileLockSync<T>(
     } finally {
       try {
         closeSync(fd);
-      } catch {}
+      } catch {
+      }
       try {
         unlinkSync(lockPath);
-      } catch {}
+      } catch {
+      }
     }
   }
 }

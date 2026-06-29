@@ -93,11 +93,13 @@ async function pollHistoryOnce(
   }
 }
 
+
 interface TimelineContentProps {
   docName: string;
   diffLayout: DiffLayout;
   onDiffLayoutChange: (layout: DiffLayout) => void;
 }
+
 
 function formatRelativeTime(isoString: string): string {
   const date = new Date(isoString);
@@ -194,6 +196,7 @@ function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: bool
   return <User className={iconClass} />;
 }
 
+
 export function allSummariesFor(entry: TimelineEntry): string[] {
   const out: string[] = [];
   for (const c of entry.contributors) {
@@ -248,6 +251,7 @@ function SummaryBullets({ summaries }: SummaryBulletsProps) {
   );
 }
 
+
 interface EntryDiffPanelProps {
   sha: string;
   docName: string;
@@ -287,6 +291,7 @@ function EntryDiffPanel({ sha, docName, cache, diffLayout, panelId }: EntryDiffP
     </div>
   );
 }
+
 
 interface EntryRowProps {
   entry: TimelineEntry;
@@ -376,7 +381,8 @@ function EntryRow({
       try {
         const problem = ProblemDetailsSchema.safeParse(await res.json());
         if (problem.success) detail = problem.data.title;
-      } catch {}
+      } catch {
+      }
       console.error('[timeline] rollback failed', {
         docName,
         sha: entry.sha,
@@ -523,6 +529,7 @@ function EntryRow({
     </>
   );
 }
+
 
 export function TimelineContent({ docName, diffLayout, onDiffLayoutChange }: TimelineContentProps) {
   const { t } = useLingui();

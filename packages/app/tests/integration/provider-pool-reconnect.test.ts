@@ -289,7 +289,8 @@ describe('ProviderPool reconnects', () => {
         resumeSync: () => {
           throw new Error('resumeSync not available');
         },
-        cleanup: async () => {},
+        cleanup: async () => {
+        },
       },
       serverDoc,
       'post fast-restart',
@@ -325,6 +326,7 @@ describe('ProviderPool reconnects', () => {
     cleanups.unshift(() => server.shutdown());
 
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 10_000, 50);
+
 
     await pollUntil(
       () =>

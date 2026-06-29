@@ -1,3 +1,4 @@
+
 import { parsePdfAnchor, toDesktopAssetHref } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Check, ChevronDown, PanelLeft, ZoomIn, ZoomOut } from 'lucide-react';
@@ -219,7 +220,8 @@ export function Pdf(props: PdfProps) {
       if (activeRenderTask) {
         try {
           activeRenderTask.cancel();
-        } catch {}
+        } catch {
+        }
         activeRenderTask = null;
       }
     };
@@ -264,7 +266,8 @@ export function Pdf(props: PdfProps) {
       if (activeRenderTask) {
         try {
           activeRenderTask.cancel();
-        } catch {}
+        } catch {
+        }
         activeRenderTask = null;
       }
     };

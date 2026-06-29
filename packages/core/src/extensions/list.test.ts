@@ -147,6 +147,7 @@ describe('list fidelity attrs', () => {
 });
 
 describe('list pipeline round-trip (via new MarkdownManager)', () => {
+
   const { MarkdownManager } = require('../markdown/index.ts');
 
   const mdManager = new MarkdownManager({ extensions });

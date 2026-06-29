@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test } from './_helpers';
@@ -30,6 +31,7 @@ async function setupDocWithTrailingEmptyParagraph(
   });
   return docName;
 }
+
 
 test('placeholder hides when Callout prop panel opens; restores on close', async ({
   page,
@@ -64,6 +66,7 @@ test('placeholder hides when Callout prop panel opens; restores on close', async
     .toContain("Type '/' for commands");
 });
 
+
 test('placeholder hides when Accordion prop panel opens; restores on close', async ({
   page,
   api,
@@ -96,6 +99,7 @@ test('placeholder hides when Accordion prop panel opens; restores on close', asy
     .poll(() => placeholderContent(page), { timeout: 2_000 })
     .toContain("Type '/' for commands");
 });
+
 
 test('placeholder still paints when a Radix popover sibling to JSX chrome is open', async ({
   page,

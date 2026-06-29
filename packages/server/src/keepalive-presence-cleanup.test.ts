@@ -64,7 +64,8 @@ afterAll(async () => {
   for (const s of servers) {
     try {
       await tearDown(s);
-    } catch {}
+    } catch {
+    }
   }
 });
 

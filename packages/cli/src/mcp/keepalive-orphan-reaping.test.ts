@@ -1,3 +1,4 @@
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -22,7 +23,8 @@ function killQuietly(pid: number | undefined): void {
   if (pid === undefined) return;
   try {
     process.kill(pid, 'SIGKILL');
-  } catch {}
+  } catch {
+  }
 }
 
 async function pollUntil(
@@ -45,7 +47,8 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
     for (const fn of cleanups.splice(0).reverse()) {
       try {
         fn();
-      } catch {}
+      } catch {
+      }
     }
   });
 

@@ -1,3 +1,4 @@
+
 import { resolve as resolvePath } from 'node:path';
 import { isProjectSkillManaged, writeSkillManagement } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';

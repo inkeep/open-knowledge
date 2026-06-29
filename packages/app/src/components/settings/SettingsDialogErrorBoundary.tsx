@@ -1,3 +1,4 @@
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import { Button } from '@/components/ui/button';

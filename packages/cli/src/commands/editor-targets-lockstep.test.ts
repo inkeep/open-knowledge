@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { ALL_EDITOR_IDS, EDITOR_PROJECT_SKILL_ROOT } from '@inkeep/open-knowledge-core';
 import { EDITOR_TARGETS } from './editors.ts';

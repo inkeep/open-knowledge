@@ -1,3 +1,4 @@
+
 import {
   existsSync,
   mkdirSync,
@@ -117,7 +118,8 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
   } catch (err) {
     try {
       unlinkSync(tmpPath);
-    } catch {}
+    } catch {
+    }
     return {
       ok: false,
       error: {
@@ -129,6 +131,7 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
 
   return { ok: true, path: relPathOf(input.skillsRoot, filePath), created, warnings };
 }
+
 
 /** Per-file byte cap for a skill bundle file. Single source — the API handler
  *  (`/api/skill-file` PUT) imports this rather than re-stating the literal. */
@@ -277,7 +280,8 @@ export function applySkillBundleFileWrite(
   } catch (err) {
     try {
       unlinkSync(tmpPath);
-    } catch {}
+    } catch {
+    }
     return {
       ok: false,
       error: {
@@ -321,7 +325,8 @@ export function applySkillBundleFileDelete(input: BundleFileInput): BundleFileDe
     if (parent !== skillDir && isEmpty(parent)) {
       try {
         rmdirSync(parent);
-      } catch {}
+      } catch {
+      }
     }
   }
   return { ok: true, path: relPathOf(input.skillsRoot, abs), existed };
@@ -408,6 +413,7 @@ export async function applySkillMove(input: MoveSkillInput): Promise<SkillMoveRe
     committed,
   };
 }
+
 
 function validateBase(
   skillsRoot: string,
@@ -533,13 +539,15 @@ function cleanEmptyDirs(skillsRoot: string): void {
   if (existsSync(skillsRoot) && isEmpty(skillsRoot)) {
     try {
       rmdirSync(skillsRoot);
-    } catch {}
+    } catch {
+    }
   }
   const okDir = normalize(join(skillsRoot, '..'));
   if (okDir.endsWith(`${sep}.ok`) && existsSync(okDir) && isEmpty(okDir)) {
     try {
       rmdirSync(okDir);
-    } catch {}
+    } catch {
+    }
   }
 }
 

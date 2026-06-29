@@ -57,7 +57,8 @@ export function writeTerminalHeight(
     const s = storage ?? localStorage;
     const vh = viewportHeight ?? currentViewportHeight();
     s.setItem(TERMINAL_HEIGHT_KEY, String(clamp(px, vh)));
-  } catch {}
+  } catch {
+  }
 }
 
 export function getInitialTerminalHeight(): number {

@@ -2,6 +2,7 @@ import { ChunkedInsertError, HtmlPayloadTooLargeError } from '@inkeep/open-knowl
 import type { UrlPortabilityReason } from './clipboard-sanitize.ts';
 import type { ClipboardSource } from './detect-source.ts';
 
+
 type ClipboardEventName =
   | 'clipboard-slow-op'
   | 'clipboard-source-detected'

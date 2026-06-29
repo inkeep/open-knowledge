@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { classifyUploadErrno, uploadStatusFor, uploadTitleFor } from './upload-errors.ts';
 
@@ -43,6 +44,7 @@ describe('classifyUploadErrno', () => {
 });
 
 describe('uploadStatusFor', () => {
+
   test('malformed-upload → 400', () => {
     expect(uploadStatusFor('urn:ok:error:malformed-upload')).toBe(400);
   });
@@ -65,6 +67,7 @@ describe('uploadStatusFor', () => {
 });
 
 describe('uploadTitleFor', () => {
+
   test('malformed-upload title is sentence-shaped + period-terminated', () => {
     expect(uploadTitleFor('urn:ok:error:malformed-upload')).toBe('Upload payload is malformed.');
   });

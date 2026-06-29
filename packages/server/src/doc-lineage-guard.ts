@@ -1,3 +1,4 @@
+
 import type * as Y from 'yjs';
 import { HocuspocusAuthRejection, LINEAGE_EPOCH_KEY } from './auth-token-schema.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';

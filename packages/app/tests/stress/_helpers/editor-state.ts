@@ -1,3 +1,4 @@
+
 import type { Page } from '@playwright/test';
 
 export async function selectAllAndWaitForSelection(page: Page, selector: string): Promise<void> {

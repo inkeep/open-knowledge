@@ -101,6 +101,7 @@ describe('buildOkignorePatternFromTarget — invariants', () => {
 });
 
 describe('buildOkignorePatternFromTarget — glob-metacharacter escaping', () => {
+
   test('filename with [bracket] segment is escaped so the literal file matches', () => {
     const pattern = buildOkignorePatternFromTarget({
       kind: 'file',

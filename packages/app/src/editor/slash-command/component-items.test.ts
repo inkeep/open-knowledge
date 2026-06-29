@@ -1,3 +1,4 @@
+
 import { describe, expect, spyOn, test } from 'bun:test';
 import {
   builtInComponents,
@@ -140,6 +141,7 @@ describe('createChildNode — default props on slash insert', () => {
 });
 
 describe('agent-surface ↔ slash-menu filter parity', () => {
+
   function broadCanonicalSet(): Set<string> {
     return new Set(getCanonicalDescriptors().map((d) => d.name));
   }

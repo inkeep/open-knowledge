@@ -9,6 +9,7 @@ import {
   type WindowManagerDeps,
 } from '../../src/main/window-manager.ts';
 
+
 interface FakeWindow extends BrowserWindowLike {
   fireClose: () => void;
   fireDomReady: () => void;
@@ -334,6 +335,27 @@ describe('createEphemeralWindow', () => {
 
     expect(env.killCalls).toContainEqual({ pid: 42001, signal: 'SIGTERM' });
     expect(env.removedDirs).toEqual(['/tmp/ok-ephemeral-1']);
+  });
+
+  test('signalStopAllOwnedServers (before-quit-for-update) SIGTERMs detached + ephemeral pids and drains the detached map', async () => {
+    const wm = new WindowManager(env.deps);
+    (wm as unknown as { spawnedDetachedPids: Map<string, number> }).spawnedDetachedPids.set(
+      '/proj/detached',
+      77001,
+    );
+    await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    }); // ephemeral server pid = 42001
+
+    wm.signalStopAllOwnedServers();
+
+    expect(env.killCalls).toContainEqual({ pid: 77001, signal: 'SIGTERM' });
+    expect(env.killCalls).toContainEqual({ pid: 42001, signal: 'SIGTERM' });
+
+    wm.signalStopAllOwnedServers();
+    expect(env.killCalls.filter((k) => k.pid === 77001 && k.signal === 'SIGTERM')).toHaveLength(1);
   });
 
   test('requires the ephemeral deps to be wired', async () => {

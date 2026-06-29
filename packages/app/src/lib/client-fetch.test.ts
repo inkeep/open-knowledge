@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { installClientFetchWrapper } from './client-fetch';
 
+
 type GlobalLike = {
   window?: Window;
   fetch?: typeof fetch;
@@ -35,7 +36,8 @@ function header(call: Recorded | undefined, name: string): string | null | undef
 }
 
 describe('installClientFetchWrapper', () => {
-  beforeAll(() => {});
+  beforeAll(() => {
+  });
 
   afterAll(() => {
     if (originalWindow === undefined) delete g.window;
