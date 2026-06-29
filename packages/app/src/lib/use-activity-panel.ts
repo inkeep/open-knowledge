@@ -13,6 +13,7 @@ import { hasAgentPresenceShape } from '@/lib/agent-presence';
 import { subscribeToDocumentsChanged } from '@/lib/documents-events';
 import { LruStringCache } from '@/lib/lru-string-cache';
 
+
 export type BurstData = ActivityBurst;
 export type FileData = ActivityFile;
 
@@ -36,6 +37,7 @@ interface UseActivityPanelResult {
 const REFETCH_DEBOUNCE_MS = 500;
 
 const BURST_DIFF_CACHE_LIMIT = 64;
+
 
 async function fetchAgentActivity(connectionId: string): Promise<{
   sessionAlive: boolean;
@@ -110,6 +112,7 @@ async function fetchBurstDiffHttp(
   }
   return success.data.diff;
 }
+
 
 export function useActivityPanel(connectionId: string | null): UseActivityPanelResult {
   const { systemProvider } = useDocumentContext();
@@ -216,6 +219,7 @@ export function useActivityPanel(connectionId: string | null): UseActivityPanelR
 
   return { data, status, error, reload, fetchBurstDiff };
 }
+
 
 function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
   if (a.size !== b.size) return false;

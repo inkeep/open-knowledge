@@ -1,3 +1,4 @@
+
 const YOUTUBE_VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
 function isYouTubeHost(hostname: string): boolean {

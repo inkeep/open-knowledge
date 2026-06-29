@@ -1,3 +1,4 @@
+
 import type { CheckName } from './names.ts';
 
 export type CheckStatus = 'pass' | 'fail' | 'warn';

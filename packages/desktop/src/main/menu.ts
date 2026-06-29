@@ -1,3 +1,4 @@
+
 import { MENU_LABELS, SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
 import type { Dialog, MenuItemConstructorOptions } from 'electron';
 import type { EntryPoint } from '../shared/entry-point.ts';

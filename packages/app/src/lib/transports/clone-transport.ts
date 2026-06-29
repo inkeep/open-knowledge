@@ -1,3 +1,4 @@
+
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import type { OkDesktopBridge, OkLocalOpCloneEvent } from '@/lib/desktop-bridge-types';
 import { createBufferedAsyncStream } from './buffered-async-stream';
@@ -42,7 +43,8 @@ export function httpCloneTransport(): CloneTransport {
                 const body = (await res.json()) as unknown;
                 const result = ProblemDetailsSchema.safeParse(body);
                 if (result.success) message = `Clone failed: ${result.data.title}`;
-              } catch {}
+              } catch {
+              }
               push({ type: 'error', message });
               return;
             }

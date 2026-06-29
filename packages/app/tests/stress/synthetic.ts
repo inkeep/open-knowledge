@@ -1,3 +1,4 @@
+
 interface GenerateMarkdownOptions {
   unicode?: boolean;
   noTrailingNewline?: boolean;

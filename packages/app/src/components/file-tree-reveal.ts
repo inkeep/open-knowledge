@@ -1,3 +1,4 @@
+
 import type { FileTree as PierreFileTreeModel } from '@pierre/trees';
 
 type RevealModel = Pick<PierreFileTreeModel, 'getFocusedPath' | 'scrollToPath'>;

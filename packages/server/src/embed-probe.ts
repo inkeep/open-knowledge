@@ -1,3 +1,4 @@
+
 import { UA_PATTERNS } from '@inkeep/open-knowledge-core';
 
 export type EmbedProbeEntry = {
@@ -61,11 +62,13 @@ export function recordEmbedProbe(entry: EmbedProbeEntry): void {
   embedProbeRing.push(entry);
 }
 
+
 const CURSOR_UA_RE = UA_PATTERNS.cursor;
 const CODEX_UA_RE = UA_PATTERNS.codex;
 const CLAUDE_UA_RE = UA_PATTERNS['claude-desktop'];
 
 const CURSOR_REFERER_STRATEGY_LITERAL = '?strategy=C_iframe';
+
 
 type DetectedApp = 'cursor' | 'codex' | 'claude' | null;
 

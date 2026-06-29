@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { subscribeToTemplatesChanged } from '@/lib/documents-events';
 import { parseApiError } from '@/lib/parse-api-error';
 
+
 interface FolderConfig {
   path: string;
   type: 'directory';

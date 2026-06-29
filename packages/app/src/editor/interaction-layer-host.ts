@@ -1,3 +1,4 @@
+
 import type { Editor } from '@tiptap/core';
 import { createInteractionLayer, type InteractionLayerHandle } from './interaction-layer';
 

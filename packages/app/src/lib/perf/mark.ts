@@ -1,3 +1,4 @@
+
 import { recordCounter, recordHistogram, recordMark } from './collector';
 import type { DevToolsTrackEntry, PerfMarkDetail } from './types';
 
@@ -75,7 +76,8 @@ function markImpl(name: string, props?: Record<string, unknown>, opts?: MarkOpti
       duration,
       detail,
     });
-  } catch {}
+  } catch {
+  }
 
   recordMark({
     name,

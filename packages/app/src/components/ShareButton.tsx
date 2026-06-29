@@ -1,3 +1,4 @@
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import { CircleHelp, Share2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';

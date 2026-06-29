@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {
@@ -11,6 +12,7 @@ import {
   waitForSlashMenuFirstOption,
   waitForSlashMenuOpen,
 } from './_helpers';
+
 
 async function resetEditor(_api: ApiHelpers, page: Page, docName: string) {
   await page.goto(`/#/${docName}`);
@@ -104,6 +106,7 @@ async function getCursorRect(page: Page) {
   });
 }
 
+
 test.describe('slash command — triggering and filtering', () => {
   let docName: string;
 
@@ -179,6 +182,7 @@ test.describe('slash command — triggering and filtering', () => {
     expect(await getEditorState(page).then((s) => s.text)).toContain('/xyz');
   });
 });
+
 
 test.describe('slash command — item insertion', () => {
   let docName: string;
@@ -310,6 +314,7 @@ test.describe('slash command — item insertion', () => {
   });
 });
 
+
 test.describe('slash command — keyboard navigation', () => {
   let docName: string;
 
@@ -433,6 +438,7 @@ test.describe('slash command — keyboard navigation', () => {
     await page.keyboard.press('Escape');
   });
 });
+
 
 test.describe('slash command — accessibility', () => {
   let docName: string;
@@ -583,6 +589,7 @@ test.describe('slash command — accessibility', () => {
   });
 });
 
+
 test.describe('slash command — menu positioning', () => {
   let docName: string;
 
@@ -649,4 +656,5 @@ test.describe('slash command — menu positioning', () => {
     expect(maxHeightPx).toBeLessThanOrEqual(viewport * 0.5);
     await page.keyboard.press('Escape');
   });
+
 });

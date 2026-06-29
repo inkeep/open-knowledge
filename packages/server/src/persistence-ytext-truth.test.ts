@@ -1,3 +1,4 @@
+
 import { describe as _bunDescribe, afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
@@ -305,6 +306,7 @@ describe('FR-33: full round-trip preserves user-form bytes', () => {
 });
 
 describe('Quiescence gate via direct counter manipulation', () => {
+
   let fixture: Fixture;
 
   beforeEach(async () => {
@@ -484,6 +486,7 @@ describe('Quiescence gate via direct counter manipulation', () => {
 });
 
 describe('Pre-write sanity check: divergence at persistence-fire time', () => {
+
   let fixture: Fixture;
   let originalNodeEnv: string | undefined;
 
@@ -556,6 +559,7 @@ describe('Pre-write sanity check: divergence at persistence-fire time', () => {
 
       expect(getMetrics().bridgeInvariantViolations).toBeGreaterThan(0);
 
+
       conn.disconnect();
     } finally {
       console.warn = originalWarn;
@@ -622,6 +626,7 @@ describe('Pre-write sanity check: divergence at persistence-fire time', () => {
       const payload = JSON.parse(serializeFailEvents[0] ?? '{}') as Record<string, unknown>;
       expect(payload.event).toBe('persistence-sanity-check-serialize-failed');
       expect(payload['doc.name']).toBe(docName);
+
 
       conn.disconnect();
     } finally {

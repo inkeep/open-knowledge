@@ -1,3 +1,4 @@
+
 import { realpathSync } from 'node:fs';
 import { type CheckoutFailureReason, isBranchNotFoundGitError } from '@inkeep/open-knowledge-core';
 import { dirtyFilesOverlapWith } from './git-dirty.ts';

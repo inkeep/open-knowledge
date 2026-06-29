@@ -1,9 +1,11 @@
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { type RunDiagnoseBundleDeps, runDiagnoseBundle } from './diagnose.ts';
+
 
 const tmpDirs: string[] = [];
 
@@ -69,6 +71,7 @@ function readZipEntries(zipPath: string): string[] {
     .sort();
 }
 
+
 describe('runDiagnoseBundle — tracer bullet', () => {
   test('writes a zip to the default path with no server running and --yes', async () => {
     const contentDir = makeTmpDir();
@@ -89,6 +92,7 @@ describe('runDiagnoseBundle — tracer bullet', () => {
     expect(entries).toContain('state/server-status.txt');
   });
 });
+
 
 describe('runDiagnoseBundle — no running server', () => {
   test('manifest.serverStatus is not-running; state/server-status.txt confirms', async () => {
@@ -111,6 +115,7 @@ describe('runDiagnoseBundle — no running server', () => {
     expect(allLogs).toContain('server not running');
   });
 });
+
 
 describe('runDiagnoseBundle — --pid integration', () => {
   test('--pid runs process-diagnose into a tmp dir and includes process/ in the zip', async () => {
@@ -140,6 +145,7 @@ describe('runDiagnoseBundle — --pid integration', () => {
     expect(entries).toContain('process/lsof.txt');
   });
 });
+
 
 describe('runDiagnoseBundle — prompt + summary', () => {
   test('prints a content summary before the prompt', async () => {
@@ -203,6 +209,7 @@ describe('runDiagnoseBundle — prompt + summary', () => {
   });
 });
 
+
 describe('runDiagnoseBundle — --out flag', () => {
   test('--out with existing parent directory writes the zip there', async () => {
     const contentDir = makeTmpDir();
@@ -225,6 +232,7 @@ describe('runDiagnoseBundle — --out flag', () => {
     expect(existsSync(targetPath)).toBe(false);
   });
 });
+
 
 describe('runDiagnoseBundle — --redact', () => {
   test('hashes doc names and strips contentDir in zipped JSONLs; manifest carries inverse map', async () => {

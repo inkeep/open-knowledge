@@ -1,3 +1,4 @@
+
 export const SUBSTITUTION_ALLOWLIST = ['date', 'user'] as const;
 
 type SubstitutionToken = (typeof SUBSTITUTION_ALLOWLIST)[number];

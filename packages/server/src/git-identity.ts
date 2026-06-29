@@ -1,5 +1,7 @@
+
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+
 
 interface GitIdentity {
   name: string;
@@ -16,6 +18,7 @@ export type GitConfigReader = (
   scope: 'worktree' | 'local' | 'global',
 ) => string | null;
 
+
 const defaultGitConfigReader: GitConfigReader = (projectDir, key, scope) => {
   const scopeFlag =
     scope === 'worktree' ? '--worktree' : scope === 'local' ? '--local' : '--global';
@@ -27,6 +30,7 @@ const defaultGitConfigReader: GitConfigReader = (projectDir, key, scope) => {
   if (result.status !== 0 || !result.stdout) return null;
   return result.stdout.trim() || null;
 };
+
 
 function isLinkedWorktree(projectDir: string): boolean {
   const gd = spawnSync('git', ['rev-parse', '--git-dir'], {
@@ -64,6 +68,7 @@ function ensureWorktreeConfigExtension(projectDir: string): void {
     throw new Error(`failed to enable extensions.worktreeConfig: ${stderr}${spawnErr}`);
   }
 }
+
 
 export async function resolveGitIdentity(
   projectDir: string,

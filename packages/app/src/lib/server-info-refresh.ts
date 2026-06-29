@@ -1,3 +1,4 @@
+
 import { ServerInfoSuccessSchema } from '@inkeep/open-knowledge-core';
 import { handleBranchSwitched } from '../editor/branch-invalidation';
 import type { ProviderPool } from '../editor/provider-pool';
@@ -63,7 +64,8 @@ export async function refreshServerInfo(pool: ProviderPool, baseUrl = ''): Promi
     for (const [docName, svBase64] of Object.entries(result.data.currentDiskAckSVs)) {
       try {
         decoded[docName] = base64ToBytes(svBase64);
-      } catch {}
+      } catch {
+      }
     }
     pool.observeDiskAckBatch(decoded);
   }

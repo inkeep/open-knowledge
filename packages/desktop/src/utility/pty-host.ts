@@ -1,3 +1,4 @@
+
 const DARWIN_FALLBACK_SHELL = '/bin/zsh';
 
 const STRIPPED_ENV_MARKERS = ['OK_ELECTRON_PROTOCOL_HOST', 'OK_LOCK_KIND'] as const;

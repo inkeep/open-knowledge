@@ -1,9 +1,11 @@
+
 import type { CDPSession, Page } from '@playwright/test';
 import type { CapRegime, WorkloadFixtureRef } from '../fixtures/cache-regime-rotation/types';
 import { bcaConfidenceInterval } from './bootstrap';
 import { type PressureLevel, samplePressureDuring } from './macos-pressure';
 
 export type { CapRegime, WorkloadFixtureRef };
+
 
 export type SampleAxis =
   | 'coldMount'
@@ -89,6 +91,7 @@ export interface BootstrapCiOptions {
   readonly random?: () => number;
 }
 
+
 export async function forceGc(cdp: CDPSession): Promise<void> {
   await cdp.send('HeapProfiler.collectGarbage');
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -101,6 +104,7 @@ export async function readHeapMb(page: Page): Promise<number> {
   });
   return bytes / (1024 * 1024);
 }
+
 
 export async function drainSubstrateSignals(
   page: Page,
@@ -170,12 +174,14 @@ export async function drainSubstrateSignals(
   }, jankFrameMs);
 }
 
+
 export function computeLeakRateMbPerCycle(heapMbSamples: ReadonlyArray<number>): number {
   if (heapMbSamples.length < 2) return 0;
   const first = heapMbSamples[0] as number;
   const last = heapMbSamples[heapMbSamples.length - 1] as number;
   return (last - first) / (heapMbSamples.length - 1);
 }
+
 
 export function bootstrapCi(
   samples: ReadonlyArray<number>,
@@ -240,6 +246,7 @@ function percentile(samples: ReadonlyArray<number>, q: number): number {
   const upper = sorted[upperIdx] as number;
   return lower + (upper - lower) * fraction;
 }
+
 
 export async function measureCell(input: MeasureCellInput): Promise<CellMeasurement> {
   const { page, cdp, capRegime, fixture, workload } = input;

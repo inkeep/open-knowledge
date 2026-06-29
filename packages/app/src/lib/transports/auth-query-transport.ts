@@ -1,3 +1,4 @@
+
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import type {
   OkDesktopBridge,
@@ -11,7 +12,8 @@ async function extractProblemTitle(res: Response): Promise<string | undefined> {
     const body = (await res.json()) as unknown;
     const result = ProblemDetailsSchema.safeParse(body);
     if (result.success) return result.data.title;
-  } catch {}
+  } catch {
+  }
   return undefined;
 }
 
@@ -37,7 +39,8 @@ function lastJsonLine(text: string): Record<string, unknown> | null {
     try {
       const v = JSON.parse(line);
       if (v && typeof v === 'object') return v as Record<string, unknown>;
-    } catch {}
+    } catch {
+    }
   }
   return null;
 }

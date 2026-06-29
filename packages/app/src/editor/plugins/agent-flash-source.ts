@@ -114,7 +114,8 @@ export function createAgentFlashSourceExtension(doc: Y.Doc): Extension {
     document.addEventListener('visibilitychange', visibilityHandler);
 
     return {
-      update(_update: ViewUpdate) {},
+      update(_update: ViewUpdate) {
+      },
       destroy() {
         destroyed = true;
         activityMap.unobserve(activityObserver);

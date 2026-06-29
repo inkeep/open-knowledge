@@ -1,3 +1,4 @@
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { ServerResponse } from 'node:http';
 import { DocInConflictError, respondDocInConflict } from './conflict-errors.ts';

@@ -1,3 +1,4 @@
+
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
 import type * as Y from 'yjs';
 import { incrementEffectDiffCaptureFailures } from './metrics.ts';

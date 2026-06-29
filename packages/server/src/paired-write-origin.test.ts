@@ -1,8 +1,10 @@
+
 import { describe, test } from 'bun:test';
 import type { AGENT_WRITE_ORIGIN } from './agent-sessions.ts';
 import type { MANAGED_RENAME_ORIGIN, ROLLBACK_ORIGIN } from './api-extension.ts';
 import type { FILE_WATCHER_ORIGIN } from './external-change.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
+
 
 type Assignable<X, Y> = X extends Y ? true : never;
 
@@ -35,5 +37,6 @@ const _pairedFalseRejected = {
 void _pairedFalseRejected;
 
 describe('PairedWriteOrigin (compile-time assertions)', () => {
-  test('all four paired origins carry the type-level brand', () => {});
+  test('all four paired origins carry the type-level brand', () => {
+  });
 });

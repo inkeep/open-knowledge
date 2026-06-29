@@ -1,3 +1,4 @@
+
 import { classifyMarkdownHref, resolveAssetProjectPath } from '@inkeep/open-knowledge-core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';

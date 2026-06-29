@@ -1,3 +1,4 @@
+
 import {
   describe as _bunDescribe,
   afterEach,
@@ -103,6 +104,7 @@ describe('FR-34: serializeDoc returns ytext bytes verbatim', () => {
       await server.destroy();
     }
   });
+
 });
 
 describe('FR-35: setReconciledBase stores raw bytes uniformly across all paths', () => {

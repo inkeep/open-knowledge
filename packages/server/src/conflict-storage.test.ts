@@ -1,8 +1,10 @@
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import { type ConflictEntry, ConflictStore } from './conflict-storage.ts';
+
 
 let tmpDir = '';
 let projectDir = '';
@@ -33,6 +35,7 @@ function makeEntry(file: string, overrides: Partial<ConflictEntry> = {}): Confli
 function readStore(): { version: number; branch: string; conflicts: ConflictEntry[] } {
   return JSON.parse(readFileSync(storePath, 'utf-8'));
 }
+
 
 describe('ConflictStore CRUD', () => {
   test('starts empty when no conflicts.json exists', () => {
@@ -140,6 +143,7 @@ describe('ConflictStore CRUD', () => {
     expect(readStore().branch).toBe('feat/new-branch');
   });
 });
+
 
 describe('ConflictStore resolveConflict()', () => {
   test('throws when file is not tracked as a conflict', async () => {

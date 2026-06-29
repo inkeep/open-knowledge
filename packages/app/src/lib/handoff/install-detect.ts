@@ -1,3 +1,4 @@
+
 import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
 import { KNOWN_TARGETS } from './targets.ts';
 

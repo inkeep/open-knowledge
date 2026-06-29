@@ -1,9 +1,11 @@
+
 import { describe, expect, test } from 'bun:test';
 import { prependFrontmatter, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
 
 import { mdManager, schema } from './test-harness';
+
 
 function syncTextToFragmentLocal(doc: Y.Doc, ytext: Y.Text, xmlFragment: Y.XmlFragment): void {
   const fullText = ytext.toString();
@@ -40,6 +42,7 @@ function applyToFragment(
     updateYFragment(doc, xmlFragment, pmNode, meta);
   }, origin);
 }
+
 
 describe('Bug-D mechanism isolation', () => {
   test('D-iso-1: syncTextToFragment with stale Y.Text destroys XmlFragment content', () => {
@@ -92,6 +95,7 @@ describe('Bug-D mechanism isolation', () => {
     expect(fragFinal).not.toContain('user typed this in WYSIWYG');
     expect(fragFinal).toContain('original paragraph');
   });
+
 
   test('D-iso-2: V0-14 flow — post-undo syncTextToFragment destroys new user XmlFragment keystroke', () => {
     const doc = new Y.Doc();

@@ -85,7 +85,8 @@ async function seedRealMergeConflict(projectDir: string, files: string[]): Promi
   await execFileAsync('git', ['checkout', 'main'], opts);
   for (const file of files) writeFileSync(join(projectDir, file), 'ours\n', 'utf-8');
   await execFileAsync('git', ['commit', '-am', 'ours'], opts);
-  await execFileAsync('git', ['merge', 'theirs-branch'], opts).catch(() => {});
+  await execFileAsync('git', ['merge', 'theirs-branch'], opts).catch(() => {
+  });
 }
 
 describe('FR1 + FR2: lifecycle swap-in / swap-out (server-observable contract)', () => {

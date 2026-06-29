@@ -1,6 +1,7 @@
 import { reactCompilerPreset } from '@vitejs/plugin-react';
 import type { PluginOptions } from 'babel-plugin-react-compiler';
 
+
 const reactCompilerConfig: PluginOptions = {
   panicThreshold: 'all_errors',
   environment: {

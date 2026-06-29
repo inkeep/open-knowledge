@@ -1,3 +1,4 @@
+
 interface SecretPattern {
   name: string;
   regex: RegExp;

@@ -8,6 +8,7 @@ import {
   installClientLogForwarder,
 } from './install-client-log-forwarder';
 
+
 let handle: ClientLogForwarderHandle | undefined;
 afterEach(() => {
   handle?.uninstall();

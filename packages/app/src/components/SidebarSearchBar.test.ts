@@ -15,6 +15,7 @@ describe('SidebarSearchBar module', () => {
 });
 
 describe('onPillRenderError — Pattern C runtime observability emission', () => {
+
   let warnSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {

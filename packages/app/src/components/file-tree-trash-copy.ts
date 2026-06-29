@@ -1,3 +1,4 @@
+
 import type { FileTreeTarget } from '@/components/file-tree-operations';
 
 interface TrashConfirmCopy {

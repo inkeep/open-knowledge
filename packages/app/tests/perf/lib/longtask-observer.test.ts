@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import type { Page } from '@playwright/test';
 import { installLongtaskObserver, type LongTaskRecord, readLongtasks } from './longtask-observer';

@@ -6,6 +6,7 @@ import {
   startBundleReplaceWatcher,
 } from '../../src/main/bundle-replace-detector.ts';
 
+
 afterEach(() => {
   mock.restore();
 });

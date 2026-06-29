@@ -1,3 +1,4 @@
+
 import { execSync } from 'node:child_process';
 import {
   existsSync,
@@ -353,7 +354,8 @@ test.describe('QA extended create-new-project', () => {
     await submit.click();
     try {
       await submit.click({ timeout: 1_000, force: true });
-    } catch {}
+    } catch {
+    }
 
     await expect
       .poll(() => countWindowsByMode(app, 'editor'), { timeout: 30_000 })

@@ -1,3 +1,4 @@
+
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { ALLOWED_IMAGE_MIME_TYPES, type PropDef } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render } from '@testing-library/react';

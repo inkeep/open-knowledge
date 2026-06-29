@@ -1,3 +1,4 @@
+
 import {
   existsSync as fsExistsSync,
   mkdirSync as fsMkdirSync,
@@ -120,7 +121,8 @@ export function writeMcpStatusMarker(
   } catch (err) {
     try {
       fs.unlinkSync(tmpPath);
-    } catch {}
+    } catch {
+    }
     throw err;
   }
 }
@@ -138,6 +140,7 @@ function formatPartialFailureMessage(
   const successHint = okCount > 0 ? ` ${okCount} succeeded.` : '';
   return `${summary}${successHint} The dialog will reappear on next launch so you can retry.`;
 }
+
 
 function isPermittedSender(
   event: Pick<IpcMainInvokeEvent, 'sender'>,
@@ -325,7 +328,8 @@ export function checkAndRepairMcpWiringOnStartup(
     let migrateConfigPath = '';
     try {
       migrateConfigPath = cli.editorTargets[editor]?.configPath('', home) ?? '';
-    } catch {}
+    } catch {
+    }
     logger.event(
       buildMcpConfigMigrateEvent({
         scope: 'user',
@@ -632,6 +636,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringOpts): RunMcpWiringH
     return { ok: true };
   };
 
+
   const dispatchShowAndBind = (target: McpWiringDispatchTarget): boolean => {
     try {
       sendToRenderer(target, 'ok:mcp-wiring:show', {
@@ -651,7 +656,8 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringOpts): RunMcpWiringH
     capturedSenderId = target.id;
     try {
       ipcMain.removeHandler('ok:mcp-wiring:renderer-ready');
-    } catch {}
+    } catch {
+    }
     return true;
   };
 

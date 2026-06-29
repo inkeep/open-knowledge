@@ -1,3 +1,4 @@
+
 import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -21,6 +22,7 @@ import scenario, {
   runSweepCampaign,
   SCENARIO_NAME,
 } from './sweep-cache-regime';
+
 
 function synthesizeMeasurement(capRegime: SweepCellInput['capRegime']): VerdictMeasurement {
   const poolHeadroom = Math.min(capRegime.maxPool, 20);
@@ -96,6 +98,7 @@ const SMOKE_HOST: HostClassFingerprint = {
   osVersion: 'darwin',
   identifier: 'smoke-16gb-darwin',
 };
+
 
 describe('sweep-cache-regime scenario — module exports', () => {
   it('default-exports a ScenarioDefinition with the canonical name', () => {
@@ -177,6 +180,7 @@ describe('parseSweepRunOptions', () => {
     expect(options.prodValidation).toBe(false);
   });
 });
+
 
 describe('sweep-cache-regime scenario — end-to-end smoke (synthetic runCell)', () => {
   it('produces a well-formed Stage-1 MAX_POOL=5 SweepCellResult for the tight fixture', async () => {

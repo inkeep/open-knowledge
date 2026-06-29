@@ -1,3 +1,4 @@
+
 import { Trans } from '@lingui/react/macro';
 import { isMacOS } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';

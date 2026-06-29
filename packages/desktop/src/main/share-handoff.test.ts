@@ -144,6 +144,7 @@ describe('url helpers', () => {
   });
 });
 
+
 class FakeResponse implements HandoffHttpResponse {
   statusCode = 200;
   headers: Record<string, string> = {};

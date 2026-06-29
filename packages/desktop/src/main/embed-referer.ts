@@ -1,3 +1,4 @@
+
 const EMBED_REFERER = 'https://inkeep.com/';
 
 const EMBED_HOST_PATTERNS: readonly string[] = [

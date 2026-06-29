@@ -1,3 +1,4 @@
+
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 
 const FILE_TREE_MENU_ACTION_DELETE_EVENT = 'open-knowledge:file-tree-menu-action-delete';

@@ -1,3 +1,4 @@
+
 export interface BridgeWorktreeEntry {
   readonly path: string;
   readonly branch: string | null;

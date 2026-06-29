@@ -1,3 +1,4 @@
+
 import type { Counter, Histogram } from '@opentelemetry/api';
 import { getLogger } from './logger.ts';
 import { getMeter } from './telemetry.ts';
@@ -185,6 +186,7 @@ export async function checkPushPermission(
   recordProbeTelemetry(result, performance.now() - start);
   return result;
 }
+
 
 interface ProbeOutcomeAttributes extends Record<string, string> {
   outcome: PushPermission['kind'];

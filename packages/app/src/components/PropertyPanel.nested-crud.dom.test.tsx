@@ -1,3 +1,4 @@
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { readFmMap } from '@inkeep/open-knowledge-core';
@@ -44,7 +45,8 @@ afterEach(() => {
   for (const p of providers.splice(0)) {
     try {
       p.destroy();
-    } catch {}
+    } catch {
+    }
   }
 });
 

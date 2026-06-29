@@ -1,3 +1,4 @@
+
 import { EDITOR_LABELS } from '@inkeep/open-knowledge-core';
 import { toast as sonnerToast } from 'sonner';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';

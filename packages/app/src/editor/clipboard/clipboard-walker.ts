@@ -1,3 +1,4 @@
+
 import { normalizeNullableString, wikiLinkHref } from '@inkeep/open-knowledge-core';
 import type { Node as PmNode, Slice } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
@@ -81,6 +82,7 @@ export const ATTR_BLOCKLIST: ReadonlySet<string> = new Set([
   'contenteditable',
   'data-pm-slice',
 ]);
+
 
 export interface ComputedStyleLike {
   getPropertyValue(prop: string): string;
@@ -339,6 +341,7 @@ function walkPair(live: Element, clone: Element, env: WalkerEnv): void {
   }
 }
 
+
 export function applyWikiLinkTransform(root: Element): void {
   const spans = root.querySelectorAll('span[data-wiki-link]');
   for (const span of Array.from(spans)) {
@@ -357,6 +360,7 @@ export function applyWikiLinkTransform(root: Element): void {
     span.replaceWith(a);
   }
 }
+
 
 type WalkerUrlLeafTag = Exclude<WalkerUrlSourceTag, 'picture'>;
 

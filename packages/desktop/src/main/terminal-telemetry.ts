@@ -1,3 +1,4 @@
+
 import { withSpanSync } from '@inkeep/open-knowledge-server';
 
 export function recordShellExit(info: { crashed: boolean }): void {

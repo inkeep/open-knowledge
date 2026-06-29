@@ -1,3 +1,4 @@
+
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -104,7 +105,8 @@ async function findWindow(
 function rmSafe(p: string): void {
   try {
     rmSync(p, { recursive: true, force: true });
-  } catch {}
+  } catch {
+  }
 }
 
 test.describe('Navigator size screenshots (dev-only)', () => {

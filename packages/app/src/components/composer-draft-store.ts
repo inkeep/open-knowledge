@@ -1,3 +1,4 @@
+
 import type { JSONContent } from '@tiptap/core';
 
 const DRAFT_STORAGE_KEY = 'ok-ask-ai-draft-v2';
@@ -66,7 +67,8 @@ function persistDoc(doc: JSONContent | null): void {
   try {
     if (doc && !docIsEmpty(doc)) storage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(doc));
     else storage.removeItem(DRAFT_STORAGE_KEY);
-  } catch {}
+  } catch {
+  }
 }
 
 function notify(): void {

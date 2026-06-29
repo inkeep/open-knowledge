@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { ALL_EDITOR_IDS } from '../commands/editors.ts';
 import { writeProjectAiIntegrations } from './write-project-ai-integrations.ts';
 
+
 let tmpRoot: string;
 let projectDir: string;
 
