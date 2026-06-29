@@ -40,13 +40,47 @@ function jsonResponse(payload: unknown, status = 200) {
 }
 
 describe('pickLatestBetaDmgUrl', () => {
-  test('picks the DMG from the first published beta (API order is newest-first)', () => {
+  test('picks the highest-versioned published beta', () => {
     const url = pickLatestBetaDmgUrl([
       release('v0.12.0-beta.7'),
       release('v0.12.0-beta.6'),
       release('v0.11.0', { prerelease: false }),
     ]);
     expect(url).toBe(dmgUrl('v0.12.0-beta.7'));
+  });
+
+  test('ranks by version, not the array order GitHub returns (older beta listed first)', () => {
+    const url = pickLatestBetaDmgUrl([
+      release('v0.20.0-beta.9'),
+      release('v0.20.0-beta.8'),
+      release('v0.20.0-beta.13'),
+      release('v0.20.0-beta.12'),
+      release('v0.20.0-beta.10'),
+    ]);
+    expect(url).toBe(dmgUrl('v0.20.0-beta.13'));
+  });
+
+  test('beta.10 outranks beta.9 (no lexical tag compare)', () => {
+    const url = pickLatestBetaDmgUrl([release('v0.20.0-beta.9'), release('v0.20.0-beta.10')]);
+    expect(url).toBe(dmgUrl('v0.20.0-beta.10'));
+  });
+
+  test('ranks across base versions (minor/patch), not just the beta counter', () => {
+    const url = pickLatestBetaDmgUrl([
+      release('v0.20.0-beta.99'),
+      release('v0.21.0-beta.1'),
+      release('v0.20.1-beta.2'),
+    ]);
+    expect(url).toBe(dmgUrl('v0.21.0-beta.1'));
+  });
+
+  test('skips the newest beta when its DMG is missing, ranking the next-newest', () => {
+    const url = pickLatestBetaDmgUrl([
+      release('v0.20.0-beta.13', { assetNames: ['beta-mac.yml'] }),
+      release('v0.20.0-beta.12'),
+      release('v0.20.0-beta.9'),
+    ]);
+    expect(url).toBe(dmgUrl('v0.20.0-beta.12'));
   });
 
   test('skips stable releases even when they appear first', () => {
