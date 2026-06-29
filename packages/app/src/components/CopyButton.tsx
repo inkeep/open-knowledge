@@ -1,4 +1,3 @@
-
 import { useLingui } from '@lingui/react/macro';
 import { Check, Copy } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -40,8 +39,7 @@ export function CopyButton({
       .then(() => clipboardWrite(copyContent))
       .then(
         () => setCopyTick((n) => n + 1),
-        () => {
-        },
+        () => {},
       );
   };
 

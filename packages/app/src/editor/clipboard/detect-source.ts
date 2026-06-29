@@ -1,4 +1,3 @@
-
 export type ClipboardSource =
   | 'vscode'
   | 'gfm'

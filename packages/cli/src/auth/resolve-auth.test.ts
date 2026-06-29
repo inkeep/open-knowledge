@@ -27,7 +27,6 @@ describe('resolveAuth', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-
   test('Tier A: gh available → returns credential.helper=!gh auth git-credential', async () => {
     const store = makeStore(tmpDir);
     const result = await resolveAuth('github.com', store, {}, ghAvailable());
@@ -41,7 +40,6 @@ describe('resolveAuth', () => {
     const result = await resolveAuth('github.com', store, {}, ghAvailable());
     expect(result.tier).toBe('A');
   });
-
 
   test('Tier B: stored token (https protocol) → credential.helper relay', async () => {
     const store = makeStore(tmpDir);
@@ -61,7 +59,6 @@ describe('resolveAuth', () => {
     expect(result.tier).toBe('B');
   });
 
-
   test('Tier C: stored token with ssh protocol', async () => {
     const store = makeStore(tmpDir);
     await store.set('github.com', 'alice', 'gho_abc', { gitProtocol: 'ssh' });
@@ -72,7 +69,6 @@ describe('resolveAuth', () => {
       'credential.helper=!open-knowledge auth git-credential',
     ]);
   });
-
 
   test('none: no gh, no stored token', async () => {
     const store = makeStore(tmpDir);
@@ -87,7 +83,6 @@ describe('resolveAuth', () => {
     expect(result.tier).toBe('none');
     expect(result.credentialArgs).toEqual([]);
   });
-
 
   test('token for different host returns none', async () => {
     const store = makeStore(tmpDir);

@@ -389,8 +389,7 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
 
       try {
         await storeDocument(persistence, document, docName);
-      } catch {
-      }
+      } catch {}
       const forceFlushesAfterSecond = warnings.filter((w) =>
         w.includes('"event":"persistence-force-flush-during-burst"'),
       ).length;
@@ -479,8 +478,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
       if (!line.includes(`"event":"${eventName}"`)) continue;
       try {
         matches.push(JSON.parse(line) as Record<string, unknown>);
-      } catch {
-      }
+      } catch {}
     }
     return matches;
   }

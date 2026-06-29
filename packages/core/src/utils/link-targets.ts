@@ -141,7 +141,6 @@ export function resolveAssetProjectPath(href: string, sourceDocName: string): st
   return dirParts.join('/');
 }
 
-
 export function buildRelativeMarkdownHref(
   sourceDocName: string,
   targetDocName: string,

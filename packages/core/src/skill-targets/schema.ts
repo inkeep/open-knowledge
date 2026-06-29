@@ -1,4 +1,3 @@
-
 import { z } from 'zod';
 import { type EditorId, PROJECT_SKILL_EDITOR_IDS } from '../constants/editors.ts';
 import { OK_DIR } from '../constants/ok-dir.ts';

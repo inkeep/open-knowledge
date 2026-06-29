@@ -11,7 +11,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-
 type TrashFailureReason = 'not-found' | 'permission-denied' | 'system-error' | 'path-escape';
 
 const TRASH_FAILURE_REASONS: ReadonlyArray<TrashFailureReason> = [
@@ -43,7 +42,6 @@ interface TrashFailureModalProps {
   onRetry: () => Promise<void> | void;
   onCancel: () => void;
 }
-
 
 function trashReasonLabel(reason: TrashFailureReason): string {
   switch (reason) {

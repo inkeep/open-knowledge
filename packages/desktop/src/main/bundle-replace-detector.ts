@@ -1,4 +1,3 @@
-
 import { statSync as nodeStatSync, readFileSync } from 'node:fs';
 import type { App, Dialog } from 'electron';
 

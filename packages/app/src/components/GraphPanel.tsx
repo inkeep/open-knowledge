@@ -67,8 +67,7 @@ function saveBoolPref(key: string, value: boolean): void {
     } else {
       window.localStorage.removeItem(key);
     }
-  } catch {
-  }
+  } catch {}
 }
 
 type FullscreenGraphMode = 'explore' | 'orphans' | 'hubs';

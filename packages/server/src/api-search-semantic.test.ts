@@ -17,7 +17,6 @@ import { createApiExtension } from './api-extension.ts';
 import { createConceptEmbedder, type Embedder, SemanticSearchService } from './embeddings/index.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 
-
 const CONCEPTS = [
   { id: 'auth', terms: ['auth', 'credential', 'session token', 'login', 'secret', 'sign-in'] },
   { id: 'retry', terms: ['retry', 'retries', 'refresh', 're-issue', 'rotation', 'backoff'] },

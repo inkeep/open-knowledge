@@ -1,4 +1,3 @@
-
 interface YpsCounters {
   block: number;
   inline: number;

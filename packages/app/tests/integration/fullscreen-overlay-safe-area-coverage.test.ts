@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,9 +29,7 @@ const CLASS_PATTERNS: readonly ClassPattern[] = [
   },
 ];
 
-const SAFE_AREA_AFFORDANCE_MARKERS = [
-  'pl-[var(--ok-titlebar-reserve-left,1rem)]',
-];
+const SAFE_AREA_AFFORDANCE_MARKERS = ['pl-[var(--ok-titlebar-reserve-left,1rem)]'];
 
 const SAFE_AREA_WRAPPER_FILES = new Set<string>();
 

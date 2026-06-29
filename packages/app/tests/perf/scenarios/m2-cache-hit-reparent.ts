@@ -1,4 +1,3 @@
-
 import { markerFor } from '../lib/doc-markers';
 import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer';
 import { defineScenario } from '../lib/scenario';

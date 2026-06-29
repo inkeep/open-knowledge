@@ -125,4 +125,3 @@ describe('Cross-document stale cache (epoch-scoped IDB)', () => {
     }
   }, 35_000);
 });
-

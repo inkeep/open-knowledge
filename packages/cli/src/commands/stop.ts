@@ -1,4 +1,3 @@
-
 import { resolve } from 'node:path';
 import { type Config, isProcessAlive, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';

@@ -176,8 +176,7 @@ export function flushFileLogger(
     const flushAndDone = (): void => {
       try {
         stream.flushSync?.();
-      } catch {
-      }
+      } catch {}
       done();
     };
     const timer = setTimeout(done, timeoutMs);

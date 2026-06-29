@@ -1,4 +1,3 @@
-
 const OPEN_ASK_AI_COMPOSER_EVENT = 'open-knowledge:open-ask-ai-composer';
 
 export function emitOpenAskAiComposer(

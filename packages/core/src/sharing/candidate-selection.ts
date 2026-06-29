@@ -1,4 +1,3 @@
-
 import type { BridgeWorktreeEntry } from '../git/worktree-list-parser.ts';
 import {
   classifyBranchMatch,

@@ -1,4 +1,3 @@
-
 export type CssLengthValidationResult =
   | { valid: true }
   | { valid: false; reason: 'empty' | 'malformed-syntax' | 'unknown-unit' };

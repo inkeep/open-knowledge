@@ -1,4 +1,3 @@
-
 export const FRONTMATTER_RE = /^---[ \t]*\r?\n([\s\S]*?\r?\n)?---[ \t]*(\r?\n|$)/;
 
 export const FM_FENCE_LINE_RE = /^---[ \t]*$/;

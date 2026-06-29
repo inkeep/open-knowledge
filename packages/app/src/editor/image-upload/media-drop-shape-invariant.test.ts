@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { MarkdownManager } from '@inkeep/open-knowledge-core';
 import { sharedExtensions } from '../extensions/shared';

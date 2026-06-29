@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState } from '@tiptap/pm/state';
@@ -10,7 +9,6 @@ import {
   markIdentityKey,
   markIdentityPlugin,
 } from './mark-identity';
-
 
 const schema = new Schema({
   nodes: {
@@ -28,7 +26,6 @@ const schema = new Schema({
     strong: {},
   },
 });
-
 
 function doc(runs: Array<{ text: string; marks?: Mark[] }>) {
   const paragraph = schema.node(
@@ -48,7 +45,6 @@ function wikiMark(page: string): Mark {
 function strongMark(): Mark {
   return schema.mark('strong');
 }
-
 
 describe('computeMarkIdentity — initial assignment', () => {
   test('empty doc → empty state', () => {
@@ -233,7 +229,6 @@ describe('computeMarkIdentity — ID carryover via mapping', () => {
   });
 });
 
-
 describe('diffMarkIdentity — register/deregister transitions', () => {
   test('new ID fires onRegister once', () => {
     const prev = new Set<string>();
@@ -307,7 +302,6 @@ describe('diffMarkIdentity — register/deregister transitions', () => {
     expect(deregistered).toEqual(['m3']);
   });
 });
-
 
 describe('markIdentityPlugin — EditorState integration', () => {
   test('init walks doc and populates plugin state', () => {

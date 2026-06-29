@@ -1,4 +1,3 @@
-
 import { type Config, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { inspectLock, type LockState } from './lock-state.ts';

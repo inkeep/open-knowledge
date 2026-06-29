@@ -886,7 +886,6 @@ describe('ContentFilter', () => {
   });
 
   describe('isPathIgnored', () => {
-
     test('admits asset in directory without sibling .md (D11 not applied)', () => {
       mkdirSync(join(projectDir, 'assets'));
 

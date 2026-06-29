@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import { parseYouTubeUrl, youtubeEmbedUrl } from './youtube-embed.ts';
 
 describe('youtubeEmbedUrl', () => {
-
   test.each([
     ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'https://www.youtube.com/embed/dQw4w9WgXcQ'],
     ['https://youtube.com/watch?v=dQw4w9WgXcQ', 'https://www.youtube.com/embed/dQw4w9WgXcQ'],
@@ -19,7 +18,6 @@ describe('youtubeEmbedUrl', () => {
   ])('converts %s → %s', (input, expected) => {
     expect(youtubeEmbedUrl(input)).toBe(expected);
   });
-
 
   test('preserves ?t=<seconds> as ?start=<seconds>', () => {
     expect(youtubeEmbedUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42')).toBe(
@@ -74,7 +72,6 @@ describe('youtubeEmbedUrl', () => {
     );
   });
 
-
   test('returns null for non-YouTube hosts', () => {
     expect(youtubeEmbedUrl('https://vimeo.com/123456789')).toBeNull();
     expect(youtubeEmbedUrl('https://example.com/watch?v=dQw4w9WgXcQ')).toBeNull();
@@ -111,7 +108,6 @@ describe('youtubeEmbedUrl', () => {
 });
 
 describe('parseYouTubeUrl', () => {
-
   test('extracts id from /watch URLs', () => {
     expect(parseYouTubeUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toEqual({
       id: 'dQw4w9WgXcQ',

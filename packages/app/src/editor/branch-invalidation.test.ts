@@ -118,7 +118,6 @@ describe('handleBranchSwitched', () => {
     expect(clear2).toHaveBeenCalledTimes(1);
   });
 
-
   test('swallows clearData failures and still recycles', async () => {
     pool = new ProviderPool(3, DUMMY_WS);
     pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);

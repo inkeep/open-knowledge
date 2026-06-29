@@ -1,4 +1,3 @@
-
 import { Table, TableCell, TableHeader } from '@tiptap/extension-table';
 
 export const TableFidelity = Table.extend({

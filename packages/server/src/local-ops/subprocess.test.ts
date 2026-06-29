@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { delimiter as PATH_DELIMITER } from 'node:path';
 import { runSubprocess } from './subprocess.ts';

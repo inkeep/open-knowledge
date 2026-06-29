@@ -218,7 +218,6 @@ describe('symlink-safe atomic write', () => {
   });
 });
 
-
 describe('resolveWriterFromOrigin', () => {
   test('local origin with session_id → agent-<sessionId> writer', () => {
     const origin = {
@@ -360,7 +359,6 @@ describe('resolveWriterFromOrigin', () => {
   });
 });
 
-
 describe('captureDocSnapshotForPersistence', () => {
   test('returns sv and json together, both reflecting doc state at call time', () => {
     const doc = new Y.Doc();
@@ -374,7 +372,6 @@ describe('captureDocSnapshotForPersistence', () => {
   });
 
   test('captured sv is a snapshot — does NOT reflect updates applied after capture', () => {
-
     const docBefore = new Y.Doc();
     docBefore.getText('source').insert(0, 'BEFORE');
     const beforeUpdate = Y.encodeStateAsUpdate(docBefore);

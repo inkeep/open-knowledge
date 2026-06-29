@@ -25,5 +25,4 @@ describe('<ProfilerBoundary>', () => {
     );
     expect(node).toBeDefined();
   });
-
 });

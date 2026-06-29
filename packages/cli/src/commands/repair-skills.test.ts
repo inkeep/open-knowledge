@@ -967,10 +967,8 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
       writeFileSync: () => {
         throw new Error('synthetic: every write fails');
       },
-      mkdirSync: () => {
-      },
-      rmSync: () => {
-      },
+      mkdirSync: () => {},
+      rmSync: () => {},
     };
 
     const written: Array<{ home: string; version: string }> = [];

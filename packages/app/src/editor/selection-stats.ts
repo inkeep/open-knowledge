@@ -1,4 +1,3 @@
-
 import type { EditorView } from '@codemirror/view';
 import type { Editor } from '@tiptap/core';
 import { computeSelectionStats, type DocumentStats } from '@/lib/document-stats';

@@ -1,4 +1,3 @@
-
 import { existsSync, readFileSync } from 'node:fs';
 import { parseDocument } from 'yaml';
 import { resolveConfigPath } from './write-config-patch.ts';

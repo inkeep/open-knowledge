@@ -1,4 +1,3 @@
-
 import type { Node as PmNode } from '@tiptap/pm/model';
 import type { MdxJsxAttribute, MdxJsxExpressionAttribute, MdxJsxFlowElement } from 'mdast-util-mdx';
 import type { PropDef, SerializeContext } from '../registry/types.ts';

@@ -93,7 +93,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     expect(merged.content?.dir).toBe('./project');
   });
 
-
   test("scope: 'project-local' (autoSync.enabled) returns project-local, ignoring project + user", () => {
     const user = makeConfig({ autoSync: { enabled: false } });
     const project = makeConfig({ autoSync: { enabled: false } });

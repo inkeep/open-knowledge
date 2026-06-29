@@ -1,4 +1,3 @@
-
 import {
   type ClientLogEntry,
   parseStructuredConsoleMessage,
@@ -66,8 +65,7 @@ function estimateEntryBytes(entry: ClientLogEntry): number {
   if (entry.fields) {
     try {
       n += JSON.stringify(entry.fields).length;
-    } catch {
-    }
+    } catch {}
   }
   return n;
 }
@@ -123,8 +121,7 @@ export function installClientLogForwarder(
         headers: { 'content-type': 'application/json' },
         keepalive: true,
         body: JSON.stringify({ entries }),
-      }).catch(() => {
-      });
+      }).catch(() => {});
     } catch {
     } finally {
       inForward = false;
@@ -170,8 +167,7 @@ export function installClientLogForwarder(
         ...(structured?.event ? { event: structured.event } : {}),
         ...(fields ? { fields } : {}),
       });
-    } catch {
-    }
+    } catch {}
   }
 
   for (const method of CONSOLE_METHODS) {

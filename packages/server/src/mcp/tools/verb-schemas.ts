@@ -1,4 +1,3 @@
-
 import {
   FrontmatterValueSchema,
   MANAGED_ARTIFACT_SCOPES,
@@ -62,7 +61,6 @@ export function resolveTemplatePath(
   return { ok: true, folder, name };
 }
 
-
 export const SKILL_NAME_DESCRIBE =
   'Skill name — the skill\'s identity AND its directory under `.ok/skills/<name>/`. Lowercase letters, digits, hyphens only (≤64 chars; no slashes, dots, spaces, or uppercase). Example: "trip-log".';
 export const SKILL_DESCRIPTION_DESCRIBE =
@@ -90,7 +88,6 @@ export function resolveSkillName(
   }
   return { ok: true, name };
 }
-
 
 export const SKILL_FILES_DESCRIBE =
   'Bundle files to write beside `SKILL.md`, as an ARRAY of `{ path, content }` (consistent with `documents`/`asset`). ' +

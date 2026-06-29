@@ -1,4 +1,3 @@
-
 export interface SemanticModeState {
   query: string;
   firedQuery: string | null;

@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -6,7 +5,6 @@ import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 
 import { createTestClient, createTestServer, type TestServer } from './test-harness';
-
 
 const WORKTREE_ROOT = join(import.meta.dirname, '..', '..', '..', '..');
 
@@ -24,7 +22,6 @@ const CORPUS_FILES = [
     source: join(WORKTREE_ROOT, 'specs', '2026-04-07-bidirectional-observer-sync', 'SPEC.md'),
   },
 ];
-
 
 interface ParsedWarning {
   raw: string;
@@ -64,7 +61,6 @@ function findBridgeViolationsFor(docName: string): ParsedWarning[] {
     );
   });
 }
-
 
 describe('persistence-site bridge invariant — cold load of in-repo corpus (sub-bug 2)', () => {
   let server: TestServer | undefined;

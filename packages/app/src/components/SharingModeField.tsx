@@ -1,4 +1,3 @@
-
 import { Trans } from '@lingui/react/macro';
 import { ConfigSharingInfoTooltip } from '@/components/ConfigSharingInfoTooltip';
 import { Label } from '@/components/ui/label';

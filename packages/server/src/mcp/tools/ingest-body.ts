@@ -1,4 +1,3 @@
-
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 
 export function buildIngestBody(source: string, contentDir: string): string {

@@ -1,4 +1,3 @@
-
 import {
   ALL_EDITOR_IDS,
   CREATE_NEW_PROJECT_FAILURE_REASONS,
@@ -309,8 +308,7 @@ export function CreateProjectDialog({ open, onOpenChange, bridge }: CreateProjec
     if (banner === null) return;
     if (firedBanners.current.has(banner)) return;
     firedBanners.current.add(banner);
-    bridge.project.recordCreateNewBannerShown(banner).catch(() => {
-    });
+    bridge.project.recordCreateNewBannerShown(banner).catch(() => {});
   }, [open, cascade, bridge]);
 
   const rawName = name;

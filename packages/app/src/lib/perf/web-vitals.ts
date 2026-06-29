@@ -1,4 +1,3 @@
-
 import { recordVital } from './collector';
 import { mark } from './mark';
 import type { WebVitalName, WebVitalsMark } from './types';

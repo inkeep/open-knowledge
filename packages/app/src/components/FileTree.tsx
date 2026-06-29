@@ -234,8 +234,7 @@ function focusEditorAfterRename(docName: string): void {
     if (!editor || editor.isDestroyed) return;
     try {
       editor.commands.focus();
-    } catch {
-    }
+    } catch {}
   });
 }
 
@@ -293,16 +292,14 @@ const MARKDOWN_FILE_ICON_SYMBOL = `<symbol id="${MARKDOWN_FILE_ICON_ID}" viewBox
 type IconNode = [string, Record<string, string>][];
 
 function iconNodeToSvg(iconNode: IconNode): string {
-  return (
-    iconNode
-      .map(([tag, { key: _, ...attrs }]) => {
-        const attrString = Object.entries(attrs)
-          .map(([k, v]) => `${k}="${v}"`)
-          .join(' ');
-        return `<${tag} ${attrString} />`;
-      })
-      .join('')
-  );
+  return iconNode
+    .map(([tag, { key: _, ...attrs }]) => {
+      const attrString = Object.entries(attrs)
+        .map(([k, v]) => `${k}="${v}"`)
+        .join(' ');
+      return `<${tag} ${attrString} />`;
+    })
+    .join('');
 }
 
 function createLucideSpriteSymbol(id: string, iconNode: IconNode): string {

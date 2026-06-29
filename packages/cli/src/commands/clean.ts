@@ -1,4 +1,3 @@
-
 import { unlinkSync } from 'node:fs';
 import { type Config, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';

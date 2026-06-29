@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -10,7 +9,6 @@ import { createApiExtension } from './api-extension.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { contributorCount, hasContributor, swapContributors } from './contributor-tracker.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
-
 
 function makeReq(method: string, body: unknown): IncomingMessage {
   const raw = JSON.stringify(body);
@@ -69,7 +67,6 @@ async function callCreatePage(
   return captured;
 }
 
-
 let tmpDir: string;
 
 function setupTmpDir(): string {
@@ -85,11 +82,9 @@ afterEach(() => {
   if (tmpDir) {
     try {
       rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-    }
+    } catch {}
   }
 });
-
 
 describe('POST /api/create-page', () => {
   test('creates a file and returns flat { docName } success body', async () => {

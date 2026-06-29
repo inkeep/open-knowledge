@@ -1,4 +1,3 @@
-
 import { type Document, isCollection, isNode, type Node } from 'yaml';
 import type { ConfigIssueSource } from './errors.ts';
 

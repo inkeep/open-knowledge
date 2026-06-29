@@ -1,4 +1,3 @@
-
 export type RendererLogLevel = 'info' | 'warn' | 'error';
 
 export const RENDERER_LOG_MAX_ENTRIES = 100;

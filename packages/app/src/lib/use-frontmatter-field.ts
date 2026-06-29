@@ -1,4 +1,3 @@
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { bindFrontmatterDoc } from '@inkeep/open-knowledge-core';
 import { useEffect, useRef, useState } from 'react';

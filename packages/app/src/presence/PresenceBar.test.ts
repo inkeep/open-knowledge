@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { ANIMAL_ICON_NAMES, pickHumanAvatarKind, WRITING_PULSE_MIN_MS } from './PresenceBar';
 

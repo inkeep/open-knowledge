@@ -1,4 +1,3 @@
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { type ReactNode, use } from 'react';
 import { syncPromise } from '@/editor/sync-promise';

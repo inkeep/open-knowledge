@@ -1,4 +1,3 @@
-
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
 export const TOAST_A_ACTION = 'Relaunch';

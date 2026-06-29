@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-
 if (process.argv.includes('--no-color')) {
   process.env.NO_COLOR = '1';
   delete process.env.FORCE_COLOR;

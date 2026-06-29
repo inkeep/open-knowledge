@@ -1,4 +1,3 @@
-
 import { existsSync } from 'node:fs';
 import { resolveHelperBundleBinary } from '@inkeep/open-knowledge-core/helper-bundle';
 

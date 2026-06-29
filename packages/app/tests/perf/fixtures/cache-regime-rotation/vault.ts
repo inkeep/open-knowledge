@@ -1,4 +1,3 @@
-
 import { buildCorpus } from './generator';
 import type { DocSpec, SizeMix } from './types';
 

@@ -1,4 +1,3 @@
-
 type RenameDestinationValidation = { kind: 'allow'; destinationPath: string };
 const SUPPORTED_DOCUMENT_EXTENSIONS = new Set(['.md', '.mdx']);
 

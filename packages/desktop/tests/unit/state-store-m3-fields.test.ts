@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { emptyState, parseAppState } from '../../src/main/state-store.ts';
 
-
 describe('AppState M3 fields — defaults', () => {
   test('emptyState has the four M3 defaults', () => {
     const s = emptyState();

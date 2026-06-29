@@ -1,4 +1,3 @@
-
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { realpathSync, statSync } from 'node:fs';
@@ -215,8 +214,7 @@ export async function startGlobalMcpServer(
     try {
       stderr.write(`[mcp] ${msg}\n`);
       await server.server.sendLoggingMessage({ level: 'warning', data: msg });
-    } catch {
-    }
+    } catch {}
   };
 
   const resolveCwd = async (explicit?: string): Promise<string> => {

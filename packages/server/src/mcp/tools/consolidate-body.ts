@@ -1,4 +1,3 @@
-
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 
 export function buildConsolidateBody(topic: string, contentDir: string): string {

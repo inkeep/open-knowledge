@@ -1,4 +1,3 @@
-
 import { describe, expect, mock, test } from 'bun:test';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { fireEvent, render, screen } from '@testing-library/react';

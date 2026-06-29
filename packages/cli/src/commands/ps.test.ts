@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { extractOkBinaryPath } from '../utils/process-scan.ts';
 import type { LockState } from './lock-state.ts';
@@ -6,7 +5,6 @@ import { isDesktopCommand, renderTable, runPs, timeAgo } from './ps.ts';
 
 const ELECTRON_UTILITY_COMMAND =
   '/path/to/Electron Helper.app/Contents/MacOS/Electron Helper --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US';
-
 
 function makeAliveServer(overrides?: {
   worktreeRoot?: string;
@@ -76,7 +74,6 @@ const corruptLock: LockState = {
   lockPath: '/tmp/notes/.ok/ui.lock',
 };
 
-
 describe('timeAgo', () => {
   test('returns seconds when diff < 60s', () => {
     const now = new Date('2026-05-05T10:00:30.000Z').getTime();
@@ -102,7 +99,6 @@ describe('timeAgo', () => {
     expect(timeAgo('not-a-date')).toBe('—');
   });
 });
-
 
 describe('runPs default (alive + foreign-host)', () => {
   test('shows alive server, hides dead-pid server', async () => {
@@ -169,7 +165,6 @@ describe('runPs default (alive + foreign-host)', () => {
   });
 });
 
-
 describe('runPs --all', () => {
   test('includes dead-pid entries', async () => {
     const aliveServerState = makeAliveServer({ worktreeRoot: '/tmp/notes' });
@@ -212,7 +207,6 @@ describe('runPs --all', () => {
     expect(output).toContain('foreign');
   });
 });
-
 
 describe('isDesktopCommand', () => {
   test('returns true for Electron utility process with NodeService sub-type', () => {
@@ -328,7 +322,6 @@ describe('runPs desktop labeling', () => {
     expect(output).not.toContain('desktop');
   });
 });
-
 
 describe('runPs --json', () => {
   test('includes all statuses unconditionally', async () => {
@@ -465,7 +458,6 @@ describe('runPs --json', () => {
   });
 });
 
-
 describe('PORTS column', () => {
   test('server port 0 shows (starting)', async () => {
     const startingServer = makeAliveServer({ worktreeRoot: '/tmp/starting', port: 0 });
@@ -545,7 +537,6 @@ describe('PORTS column', () => {
     expect(output).toContain('5173 / 3001');
   });
 });
-
 
 describe('ui-orphan label', () => {
   function makeAliveUi(overrides?: { pid?: number; port?: number }): LockState {
@@ -664,7 +655,6 @@ describe('ui-orphan label', () => {
   });
 });
 
-
 describe('server lock missing/corrupt discards entry', () => {
   test('missing server lock: entry discarded', async () => {
     const lines: string[] = [];
@@ -690,7 +680,6 @@ describe('server lock missing/corrupt discards entry', () => {
     expect(output).toBe('No open-knowledge servers found.');
   });
 });
-
 
 describe('renderTable', () => {
   test('renders header row', () => {
@@ -729,7 +718,6 @@ describe('renderTable', () => {
     expect(output).toContain('/tmp/open-knowledge/packages/cli/src/cli.ts');
   });
 });
-
 
 describe('extractOkBinaryPath', () => {
   test('extracts source cli path from node invocation', () => {
