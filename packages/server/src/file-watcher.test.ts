@@ -170,7 +170,6 @@ describe('isSelfWrite', () => {
   });
 });
 
-
 describe('classifyEvents', () => {
   let tmpDir: string;
   let contentDir: string;
@@ -353,7 +352,6 @@ describe('classifyEvents', () => {
     }
   });
 });
-
 
 describe('startWatcher file index', () => {
   let tmpDir: string;
@@ -691,7 +689,6 @@ describe('startWatcher file index', () => {
   });
 });
 
-
 describe('reconcileFileIndexAfterFilterRebuild', () => {
   let tmpDir: string;
   let contentDir: string;
@@ -832,7 +829,6 @@ describe('reconcileFileIndexAfterFilterRebuild', () => {
     expect(prunedFolders).toBe(0);
   });
 });
-
 
 describe('file-watcher ContentFilter refcount hooks', () => {
   let tmpDir: string;
@@ -1082,7 +1078,6 @@ describe('file-watcher ContentFilter refcount hooks', () => {
     expect(nestedCreates).toHaveLength(1);
   });
 });
-
 
 describe('startWatcher symlink handling', () => {
   let tmpDir: string;

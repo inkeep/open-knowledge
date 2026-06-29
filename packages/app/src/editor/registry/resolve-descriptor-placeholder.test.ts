@@ -118,4 +118,3 @@ describe('resolveDescriptorPlaceholder', () => {
     ).toBe(Box);
   });
 });
-

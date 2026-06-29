@@ -1,4 +1,3 @@
-
 import { toDesktopAssetHref } from '@inkeep/open-knowledge-core';
 
 interface AudioProps {

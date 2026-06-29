@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import { safeSubdir } from './api-extension.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 
-
 function listDocuments(
   index: ReadonlyMap<string, FileIndexEntry>,
   dir?: string,
@@ -95,7 +94,6 @@ describe('document listing from file index', () => {
     }
   });
 });
-
 
 describe('safeSubdir', () => {
   test('resolves valid subdirectory', () => {

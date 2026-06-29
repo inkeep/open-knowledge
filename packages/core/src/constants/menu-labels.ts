@@ -2,6 +2,8 @@ export const MENU_LABELS = {
   newFile: 'New file',
   newFolder: 'New folder',
   newFromTemplate: 'New from template',
+  newProject: 'New project',
+  openFolder: 'Open folder',
   duplicate: 'Duplicate',
   rename: 'Rename',
   revealInFinder: 'Reveal in Finder',

@@ -1,4 +1,3 @@
-
 import { findFencedRegions, isInsideFence } from './fence-regions.ts';
 
 const INDENTED_BLOCK_JSX_CLOSE_RE = /^([ ]{1,3})(<\/[A-Z][A-Za-z0-9_]*\s*>)([ \t]*)$/gm;

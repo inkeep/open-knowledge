@@ -1,4 +1,3 @@
-
 export const ALLOWED_SCHEMES: ReadonlySet<string> = new Set([
   'https:',
   'http:',

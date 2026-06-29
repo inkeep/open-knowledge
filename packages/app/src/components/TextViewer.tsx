@@ -1,4 +1,3 @@
-
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { codeLanguageForExtension } from '@inkeep/open-knowledge-core';

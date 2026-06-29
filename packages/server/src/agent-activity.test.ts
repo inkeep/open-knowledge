@@ -7,7 +7,6 @@ import {
 } from './agent-activity.ts';
 import type { AgentSessionManager } from './agent-sessions.ts';
 
-
 function makeUMPair(_doc: Y.Doc, text: Y.Text) {
   const origin = Object.freeze({
     source: 'local' as const,
@@ -26,7 +25,6 @@ function makeUMPair(_doc: Y.Doc, text: Y.Text) {
   });
   return { origin, undoOrigin, um };
 }
-
 
 describe('synthesizeStackItemDiff', () => {
   test('single insert — reports insertion span, no deletions', () => {
@@ -110,7 +108,6 @@ describe('synthesizeStackItemDiff', () => {
   });
 });
 
-
 describe('synthesizeStackItemDiffText', () => {
   test('returns empty string when before === after', () => {
     const doc = new Y.Doc();
@@ -141,7 +138,6 @@ describe('synthesizeStackItemDiffText', () => {
     expect(diff).toContain('new line');
   });
 });
-
 
 function makeSessionManager(sessions: Map<string, unknown>): AgentSessionManager {
   return {

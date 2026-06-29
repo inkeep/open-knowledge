@@ -45,7 +45,6 @@ function docTexts(state: EditorState): string[] {
   return result;
 }
 
-
 describe('currentTopLevelBlock', () => {
   test('returns block boundaries for cursor in first paragraph', () => {
     const state = makeState(['Hello', 'World']);
@@ -64,7 +63,6 @@ describe('currentTopLevelBlock', () => {
     expect(currentTopLevelBlock(fakeState)).toBeNull();
   });
 });
-
 
 describe('moveBlockUp', () => {
   test('returns false when cursor is in the first block (no-op)', () => {
@@ -94,7 +92,6 @@ describe('moveBlockUp', () => {
     expect((sel.$cursor as NonNullable<typeof sel.$cursor>).before(1)).toBe(0);
   });
 });
-
 
 describe('moveBlockDown', () => {
   test('returns false when cursor is in the last block (no-op)', () => {

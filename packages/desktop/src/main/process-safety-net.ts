@@ -1,4 +1,3 @@
-
 const GUARDED = Symbol.for('ok.desktop.stdio-broken-pipe-guard');
 
 const BROKEN_PIPE_CODES = new Set(['EPIPE', 'ERR_STREAM_DESTROYED']);

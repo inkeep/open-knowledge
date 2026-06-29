@@ -102,8 +102,6 @@ describe('ConfigSchema', () => {
     });
     expect(config.content.dir).toBe('docs');
   });
-
-
 });
 
 describe('ConfigSchema (upload surface removed per 2026-04-24 amendment)', () => {

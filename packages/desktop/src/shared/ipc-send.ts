@@ -1,4 +1,3 @@
-
 import type { EventChannels } from './ipc-events.ts';
 
 export interface SendableWebContents {

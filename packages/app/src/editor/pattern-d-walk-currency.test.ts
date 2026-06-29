@@ -1,4 +1,3 @@
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
@@ -32,7 +31,6 @@ afterAll(() => {
   restoreDomGlobals?.();
   restoreDomGlobals = null;
 });
-
 
 interface GapMountHarness {
   docName: string;
@@ -113,7 +111,6 @@ afterEach(() => {
   __resetMountPromiseCache();
   __resetCacheForTests();
 });
-
 
 describe('Pattern D walk currency (construct→mount gap)', () => {
   test('a remote update landing between construct and mount survives into the mounted PM doc', async () => {

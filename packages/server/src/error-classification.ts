@@ -1,10 +1,8 @@
-
 import {
   classifyGitAuthError,
   type GitAuthFailureSubclass,
   type SyncErrorCode,
 } from '@inkeep/open-knowledge-core';
-
 
 type NetworkSubclass = 'dns' | 'timeout' | '5xx' | '429' | 'connection-refused' | 'unknown-network';
 type AuthSubclass =
@@ -84,7 +82,6 @@ export function deriveUserFacingCode(
   return null;
 }
 
-
 function extractStderr(error: Error): string {
   const raw = (error as unknown as Record<string, unknown>).git?.toString() ?? error.message ?? '';
   return raw;
@@ -94,7 +91,6 @@ function matchesAny(haystack: string, patterns: RegExp[]): boolean {
   return patterns.some((re) => re.test(haystack));
 }
 
-
 const AUTH_SUBCLASS_MESSAGES: Record<GitAuthFailureSubclass, string> = {
   'no-credential': 'No GitHub credential available — reconnect to resume syncing',
   '401': 'Authentication failed — token may be expired',
@@ -103,7 +99,6 @@ const AUTH_SUBCLASS_MESSAGES: Record<GitAuthFailureSubclass, string> = {
   'ssh-auth': 'SSH authentication failed — check your SSH key or host-key trust',
   'unknown-auth': 'Authentication failed',
 };
-
 
 const NON_FAST_FORWARD_PATTERNS: RegExp[] = [
   /non-fast-forward/i,
@@ -136,7 +131,6 @@ const MERGE_CONFLICT_PATTERNS: RegExp[] = [
   /(?:^|\n)CONFLICTS:\s/i,
 ];
 
-
 const LFS_PATTERNS: RegExp[] = [/lfs.*quota/i, /exceeded.*bandwidth/i, /lfs storage/i];
 
 const LARGE_FILE_PATTERNS: RegExp[] = [
@@ -158,7 +152,6 @@ const SECRET_DETECTED_PATTERNS: RegExp[] = [
   /leaking.*credentials/i,
   /token.*detected/i,
 ];
-
 
 const INDEX_LOCK_PATTERNS: RegExp[] = [
   /\.git\/index\.lock/i,
@@ -183,7 +176,6 @@ const DISK_FULL_PATTERNS: RegExp[] = [
   /disk quota exceeded/i,
   /ENOSPC/i,
 ];
-
 
 const NETWORK_PATTERNS: RegExp[] = [
   /could not resolve host/i,
@@ -214,7 +206,6 @@ const HTTP_429_PATTERNS: RegExp[] = [
   /rate.?limit/i,
   /too many requests/i,
 ];
-
 
 type ClassifiedErrorBase = Omit<ClassifiedError, 'userFacingCode'>;
 

@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import {
   classifyUrlPortability,
@@ -408,7 +407,6 @@ describe('OPT_OUT_ATTR — descriptor opt-out marker', () => {
 });
 
 describe('classifyUrlPortability — single-pass classification with reason bucket', () => {
-
   describe('portable inputs (reason absent)', () => {
     test('fragment-only refs return { portable: true }', () => {
       expect(classifyUrlPortability('#section')).toEqual({ portable: true });

@@ -1,4 +1,3 @@
-
 import { describe, expect, mock, test } from 'bun:test';
 import type { IpcMain, IpcMainInvokeEvent, IpcRenderer } from 'electron';
 import { openAssetSafely, revealAssetSafely } from '../../src/main/asset-allowlist.ts';

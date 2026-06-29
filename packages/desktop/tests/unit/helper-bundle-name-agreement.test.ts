@@ -7,7 +7,6 @@ import {
   HELPER_EXECUTABLE_NAME,
 } from '@inkeep/open-knowledge-core/helper-bundle';
 
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, '../..');
 const helperPlistPath = resolve(desktopRoot, 'build/helper-bundle/Info.plist');

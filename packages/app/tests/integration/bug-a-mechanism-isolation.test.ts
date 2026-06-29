@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
@@ -12,7 +11,6 @@ import {
   type TestServer,
   testReset,
 } from './test-harness';
-
 
 function applyMarkdownToFragment(client: TestClient, md: string): void {
   const parsed = mdManager.parse(md);
@@ -45,7 +43,6 @@ function captureServerState(
   console.log(`[${label}] server.frag  (${frag.length}): ${JSON.stringify(frag.slice(0, 300))}`);
   return { ytext, frag };
 }
-
 
 describe('Bug-A mechanism isolation: server stomp via syncTextToFragment', () => {
   let server: TestServer;

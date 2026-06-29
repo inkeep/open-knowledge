@@ -19,12 +19,10 @@ import {
 } from './ui/dialog';
 import { Input } from './ui/input';
 
-
 async function copyToClipboard(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
-  } catch {
-  }
+  } catch {}
 }
 
 interface AuthSuccessResult {
@@ -43,7 +41,6 @@ interface AuthModalProps {
   transport?: AuthTransport;
   queryTransport?: AuthQueryTransport;
 }
-
 
 interface DeviceFlowPanelProps {
   onSuccess: (result: AuthSuccessResult) => void;
@@ -205,7 +202,6 @@ function DeviceFlowPanel({ onSuccess, transport }: DeviceFlowPanelProps) {
   );
 }
 
-
 interface IdentityBodyProps {
   login: string;
   name: string;
@@ -240,7 +236,6 @@ function IdentityBody({ login, name, onNameChange, email, onEmailChange }: Ident
     </div>
   );
 }
-
 
 type AuthStep = 'checking' | 'auth' | 'identity' | 'done';
 
@@ -328,8 +323,7 @@ export function AuthModal({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email }),
-    }).catch(() => {
-    });
+    }).catch(() => {});
 
     const result = { ...(authResult ?? { login: '' }), name, email };
     setStep('done');

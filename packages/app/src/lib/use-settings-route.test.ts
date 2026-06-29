@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { isSettingsHashOpen, isSettingsShortcut, SETTINGS_OPEN_HASH } from './use-settings-route';
 

@@ -1,4 +1,3 @@
-
 import { Node } from '@tiptap/core';
 
 export const LinkRefDefFidelity = Node.create({

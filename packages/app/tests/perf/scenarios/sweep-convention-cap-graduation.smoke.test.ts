@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import type { TempoQueryResult } from '../lib/tempo-client';
 import {
@@ -27,7 +26,6 @@ import {
   TEMPO_PROFILE_ABORT_THRESHOLD,
   type TempoQueryFn,
 } from './sweep-convention-cap-graduation';
-
 
 describe('LATENCY_PROFILES', () => {
   test('has exactly 5 profiles', () => {
@@ -72,7 +70,6 @@ describe('LATENCY_PROFILES', () => {
     );
   });
 });
-
 
 function uniformSamples(count: number, value: number): number[] {
   return Array.from({ length: count }, () => value);
@@ -139,7 +136,6 @@ describe('analyzeCalibration', () => {
   });
 });
 
-
 describe('buildScaffoldCellResults', () => {
   test('emits scenario name + schemaVersion + profile list', () => {
     const result = buildScaffoldCellResults({
@@ -186,7 +182,6 @@ describe('buildScaffoldCellResults', () => {
   });
 });
 
-
 describe('percentile', () => {
   test('returns null on empty input', () => {
     expect(percentile([], 0.5)).toBeNull();
@@ -211,7 +206,6 @@ describe('percentile', () => {
     expect(() => percentile([1, 2, 3], -0.1)).toThrow(/p must be in/);
   });
 });
-
 
 function makeSyntheticDriver(opts: {
   syncMsByProfile?: Partial<Record<LatencyProfileName, number>>;
@@ -421,7 +415,6 @@ describe('buildFullCellResults — JSON assembly', () => {
     expect(parsed.perCycle.length).toBe(2);
   });
 });
-
 
 describe('isTempoRunning', () => {
   test('returns true when the Tempo container row is present and running', () => {
@@ -669,7 +662,6 @@ describe('enrichCyclesWithTempo', () => {
   });
 });
 
-
 import {
   computeSyncMethodology,
   DEFAULT_SYNC_METHODOLOGY_LEVERS,
@@ -870,7 +862,6 @@ describe('computeSyncMethodology', () => {
     expect(result.globalBcaUpperRecommendationMs).toBe(3100);
   });
 });
-
 
 import {
   buildMountTimeCdf,
@@ -1084,7 +1075,6 @@ describe('computeMountMethodology', () => {
   });
 });
 
-
 import {
   computeDifferentials,
   DEPLOYMENT_TOPOLOGY_FAIL_THRESHOLD,
@@ -1294,7 +1284,6 @@ describe('buildFullCellResults — full end-to-end shape (US-011)', () => {
   });
 });
 
-
 describe('computeSyncMethodology — two-tier reject-rate gates', () => {
   function makeProfilePair(opts: {
     profile: LatencyProfileName;
@@ -1437,7 +1426,6 @@ describe('computeSyncMethodology — two-tier reject-rate gates', () => {
   });
 });
 
-
 describe('computeSyncMethodology — slow-3g warm-path spot-check', () => {
   function healthyProfile(): PerProfileSummary {
     return {
@@ -1505,7 +1493,6 @@ describe('computeSyncMethodology — slow-3g warm-path spot-check', () => {
     expect(result.stopIfFlags).not.toContain('warm-path-tail-exceeds-cold-tail-on-slow-3g');
   });
 });
-
 
 describe('computeSyncMethodology — post-rejection retry aggregation', () => {
   test('retryAfterRejectionMsP99 is null when no cycles produced a retry sample', () => {

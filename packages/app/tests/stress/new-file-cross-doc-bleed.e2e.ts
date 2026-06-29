@@ -1,4 +1,3 @@
-
 import { randomUUID } from 'node:crypto';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';

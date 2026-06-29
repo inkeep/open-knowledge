@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-
 const SKILL_PATH = join(import.meta.dir, '../assets/skills/project/SKILL.md');
 const LINKING_PATH = join(import.meta.dir, '../assets/skills/project/references/linking.md');
 const CORE_CONCEPTS_PATH = join(

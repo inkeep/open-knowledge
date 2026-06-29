@@ -1,4 +1,3 @@
-
 import { isRelativeUrl, SAFE_URL_SCHEME_RE } from '@inkeep/open-knowledge-core';
 import * as ipaddr from 'ipaddr.js';
 
@@ -77,7 +76,6 @@ export function sanitizeStyleAttrValue(value: string): string {
   if (DANGEROUS_STYLE_EXPRESSION_RE.test(value)) return '';
   return value;
 }
-
 
 function parseColorBody(body: string): [number, number, number, number | null] | null {
   const slashIdx = body.indexOf('/');
@@ -182,7 +180,6 @@ export function convertCssColors(value: string): string {
     return alpha === null ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
   });
 }
-
 
 const PORTABLE_NAVIGATION_SCHEMES: ReadonlySet<string> = new Set([
   'mailto',

@@ -104,7 +104,6 @@ describe('runDocLineageGuard', () => {
     expect(() => runDocLineageGuard('notes/a', 'epoch-1', deps)).not.toThrow();
   });
 
-
   test('increments the mismatch counter on each rejection arm', () => {
     expectRejection(() => runDocLineageGuard('notes/a', 'epoch-1', depsFor(undefined)));
     expect(getMetrics().authDocLineageMismatchCount).toBe(1);

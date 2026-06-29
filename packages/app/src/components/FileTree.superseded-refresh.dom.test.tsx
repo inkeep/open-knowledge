@@ -68,7 +68,6 @@ function makeFetchMock() {
   });
 }
 
-
 class StubItem {
   expanded = false;
   selected = false;

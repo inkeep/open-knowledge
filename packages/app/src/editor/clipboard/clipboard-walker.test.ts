@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import {
@@ -183,7 +182,6 @@ describe('buildInlineStyleFrom — modern CSS color downgrade', () => {
 });
 
 describe('selectionPartiallyCoversTopLevelNode — selection-bound containment guard', () => {
-
   const schema = new Schema({
     nodes: {
       doc: { content: 'block+' },
@@ -299,7 +297,6 @@ describe('glyphForLucide — pure lookup for cross-app icon substitution', () =>
   });
 });
 
-
 function fakeElementWithClosest(closestResults: Record<string, Element | null>): Element {
   return {
     closest: (selector: string) => closestResults[selector] ?? null,
@@ -318,7 +315,6 @@ describe('chooseEmissionClass — paragraph-content-model rule', () => {
     expect(chooseEmissionClass(el)).toBe('mdx-component');
   });
 });
-
 
 interface FakeNode {
   tagName: string;
@@ -501,7 +497,6 @@ describe('applyWikiLinkTransform — wiki-link rewrite', () => {
     expect(root.children[0].attrs.href).toBe('#cafe-menu-pate-selection');
   });
 });
-
 
 interface PostPassFakeElement {
   tagName: string;

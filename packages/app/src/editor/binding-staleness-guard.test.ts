@@ -1,4 +1,3 @@
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { getSchema } from '@tiptap/core';
@@ -14,7 +13,6 @@ import {
   rateCapAllows,
 } from './binding-staleness-guard';
 import { sharedExtensions } from './extensions/shared';
-
 
 function installDomGlobals(): () => void {
   const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
@@ -73,7 +71,6 @@ afterAll(() => {
   restoreDomGlobals?.();
   restoreDomGlobals = null;
 });
-
 
 const schema = getSchema(sharedExtensions);
 
@@ -248,7 +245,6 @@ function createHarness(options: HarnessOptions = {}): GuardHarness {
   return harness;
 }
 
-
 describe('pure helpers', () => {
   test('isDiverged is true exactly when external is ahead of applied', () => {
     expect(isDiverged(0, 0)).toBe(false);
@@ -278,7 +274,6 @@ describe('pure helpers', () => {
     );
   });
 });
-
 
 describe('counter semantics', () => {
   test('a wedged external burst is reported once, deferred, with the full backlog', async () => {
@@ -329,7 +324,6 @@ describe('counter semantics', () => {
     expect(harness.localType()).toBe(true);
   });
 });
-
 
 describe('publication gate', () => {
   test('while diverged, every transaction without y-sync meta is blocked — including selection-only', async () => {
@@ -382,7 +376,6 @@ describe('publication gate', () => {
     expect(harness.wedgedCalls).toHaveLength(0);
   });
 });
-
 
 describe('wedge trigger', () => {
   test('fires once per divergence episode across repeated wedged bumps; the gate keeps blocking', async () => {
@@ -456,7 +449,6 @@ describe('wedge trigger', () => {
     expect(fired).toEqual([true, true, true, false]);
   });
 });
-
 
 describe('binding write-back seam', () => {
   /** What the vendored ySyncPlugin's pluginView `update` callback does
@@ -541,7 +533,6 @@ describe('binding write-back seam', () => {
     expect(errors.some((e) => e.includes('staleness guard disarmed'))).toBe(true);
   });
 });
-
 
 describe('no false positives on healthy bindings', () => {
   for (const order of ['registered-before-guard', 'registered-after-guard'] as const) {

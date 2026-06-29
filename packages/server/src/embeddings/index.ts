@@ -1,4 +1,3 @@
-
 export { createConceptEmbedder } from './concept-embedder.ts';
 export {
   DEFAULT_EMBEDDINGS_DIMENSIONS,

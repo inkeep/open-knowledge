@@ -1,4 +1,3 @@
-
 import {
   classifyWikiLinkTarget,
   getWikiLinkText,
@@ -53,7 +52,6 @@ import {
   isResolvedWikiLinkTarget,
   resolveWikiLinkAssetTarget,
 } from './wiki-link-helpers';
-
 
 interface EditWikiLinkDialogProps {
   open: boolean;
@@ -258,7 +256,6 @@ function EditWikiLinkDialog({
     </Dialog>
   );
 }
-
 
 interface WikiLinkPropPanelProps {
   editor: Editor;

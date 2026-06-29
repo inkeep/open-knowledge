@@ -1,4 +1,3 @@
-
 interface IpcErrorLogPayload {
   readonly event: 'ipc.error';
   readonly channel: string;

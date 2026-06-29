@@ -1,4 +1,3 @@
-
 import { MANAGED_ARTIFACT_SCOPES, SKILL_NAME_REGEX } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { AutoStartDisabledError } from '../../autostart.ts';
@@ -180,8 +179,7 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       if (args.armPaneTarget && routeFragment) {
         try {
           armPaneTarget(lockDir, routeFragment);
-        } catch {
-        }
+        } catch {}
       }
 
       const armNote =

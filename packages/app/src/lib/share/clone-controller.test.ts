@@ -1,4 +1,3 @@
-
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualSonner from 'sonner';
 import type { OkLocalOpCloneEvent } from '@/lib/desktop-bridge-types';
@@ -12,7 +11,6 @@ const toast = {
 };
 
 mock.module('sonner', () => ({ ...actualSonner, toast }));
-
 
 type CloneEvent = OkLocalOpCloneEvent | { type: 'complete'; port: number; dir: string };
 

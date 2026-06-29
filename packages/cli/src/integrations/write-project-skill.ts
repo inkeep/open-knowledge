@@ -3,7 +3,6 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { resolveBundledSkillDir } from '@inkeep/open-knowledge-server';
 import type { EditorId, EditorMcpTarget } from '../commands/editors.ts';
 
-
 export function assertProjectPathSafe(targetPath: string, cwd: string): void {
   let realCwd: string;
   try {
@@ -46,7 +45,6 @@ export function assertProjectPathSafe(targetPath: string, cwd: string): void {
     );
   }
 }
-
 
 export interface ProjectSkillResult {
   readonly editorId: EditorId;

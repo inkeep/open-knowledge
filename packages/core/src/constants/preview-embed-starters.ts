@@ -1,4 +1,3 @@
-
 export interface PreviewEmbedStarter {
   readonly id: 'chart' | 'stat-cards' | 'custom-svg' | 'interactive-control';
   readonly title: string;

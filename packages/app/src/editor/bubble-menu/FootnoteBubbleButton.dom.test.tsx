@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { cleanup, render } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';

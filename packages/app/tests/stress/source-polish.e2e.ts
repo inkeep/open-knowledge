@@ -1,4 +1,3 @@
-
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {
@@ -9,7 +8,6 @@ import {
   test,
   waitForActiveProviderSynced as waitForProvider,
 } from './_helpers';
-
 
 async function seedMarkdown(api: ApiHelpers, docName: string, markdown: string) {
   await api.replaceDoc(docName, markdown);
@@ -26,7 +24,6 @@ async function switchToSource(page: Page) {
     timeout: 5_000,
   });
 }
-
 
 const errors: LogEntry[] = [];
 
@@ -53,7 +50,6 @@ test.afterEach(() => {
   expect(filterCriticalErrors(errors), 'Expected zero critical console errors').toEqual([]);
 });
 
-
 test.describe('§6.2 Strikethrough', () => {
   test('~~text~~ renders cm-del on content only, not delimiters', async ({ page, api }) => {
     await seedMarkdown(api, testDocName, '~~deprecated~~ text');
@@ -69,7 +65,6 @@ test.describe('§6.2 Strikethrough', () => {
     expect(lineText).toContain('~~deprecated~~');
   });
 });
-
 
 test.describe('§6.3 List hanging-indent', () => {
   test('wrapped bullet list line left edge aligns with plain paragraph (marker not pushed off-screen)', async ({
@@ -95,7 +90,6 @@ test.describe('§6.3 List hanging-indent', () => {
     expect(Math.abs(listLineBox?.x - plainBox?.x)).toBeLessThan(50);
   });
 });
-
 
 test.describe('§6.5 Code wrap-preserve-indent', () => {
   test('source indent is visible (not flattened)', async ({ page, api }) => {
@@ -132,7 +126,6 @@ test.describe('§6.5 Code wrap-preserve-indent', () => {
   });
 });
 
-
 test.describe('§6.1 Broken wikilink', () => {
   test('[[NonexistentPage]] gets cm-wiki-link-broken after cache warms', async ({ page, api }) => {
     await seedMarkdown(api, testDocName, '[[DefinitelyNotAPage12345]]');
@@ -153,7 +146,6 @@ test.describe('§6.1 Broken wikilink', () => {
     await expect(brokenLink).toHaveCount(0);
   });
 });
-
 
 test.describe('§6.6 Tables (structure/layout only)', () => {
   test('header + row + delimiter get structural classes; no styling', async ({ page, api }) => {
@@ -228,7 +220,6 @@ test.describe('§6.6 Tables (structure/layout only)', () => {
     expect(rowSeen).toBe(1);
   });
 });
-
 
 test.describe('§6.7 Cross-cutting', () => {
   test('Cmd+A → Cmd+C is byte-identical to source doc state', async ({ page, api }) => {

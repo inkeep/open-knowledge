@@ -1,4 +1,3 @@
-
 import { Extension } from '@tiptap/core';
 import type { EditorState } from '@tiptap/pm/state';
 import { Plugin, PluginKey } from '@tiptap/pm/state';

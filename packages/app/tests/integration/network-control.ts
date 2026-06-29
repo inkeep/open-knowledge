@@ -1,4 +1,3 @@
-
 type MessageCallback = (event: MessageEvent) => void;
 
 export class ControllableWebSocket {
@@ -42,7 +41,6 @@ export class ControllableWebSocket {
       if (msg) this.deliverMessage(msg);
     }
   }
-
 
   get url(): string {
     return this.inner.url;

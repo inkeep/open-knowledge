@@ -1,4 +1,3 @@
-
 export type BundleId = 'discovery' | 'project' | 'write-skill';
 
 export const BUNDLE_SKILL_NAME: Record<BundleId, string> = {

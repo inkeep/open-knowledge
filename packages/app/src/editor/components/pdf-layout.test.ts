@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { computeBaseScale, type PdfPageInfo } from './pdf-layout.ts';
 

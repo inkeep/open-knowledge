@@ -243,8 +243,7 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
     for (const sock of upgradeSocketsForShutdown) {
       try {
         sock.destroy();
-      } catch {
-      }
+      } catch {}
     }
     upgradeSocketsForShutdown.clear();
   };
@@ -307,8 +306,7 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
     await tearDownPartialBinds();
     try {
       releaseUiLock(lockDir);
-    } catch {
-    }
+    } catch {}
     throw err;
   }
 
@@ -337,8 +335,7 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
     lockReleased = true;
     try {
       releaseUiLock(lockDir);
-    } catch {
-    }
+    } catch {}
   };
 
   const armSafetyNet = (): void => {
@@ -352,14 +349,12 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
       console.warn(`[ui] safety-net (${safetyNetMs}ms) reached — shutting down (D-025 backstop)`);
       try {
         opts.onSafetyNet?.();
-      } catch {
-      }
+      } catch {}
       drainUpgradeSockets();
       for (const server of httpServers) {
         try {
           server.close();
-        } catch {
-        }
+        } catch {}
       }
       release();
     }, safetyNetMs);

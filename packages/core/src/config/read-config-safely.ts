@@ -1,4 +1,3 @@
-
 import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { type Document, parseDocument } from 'yaml';
 import { type ConfigIssue, type ConfigValidationError, humanFormat } from './errors.ts';
