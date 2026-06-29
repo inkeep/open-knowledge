@@ -105,3 +105,4 @@ describe('disk-persistence failure surfacing — version rollback (/api/rollback
     expect(body.type).toBe('urn:ok:error:storage-full');
   });
 });
+

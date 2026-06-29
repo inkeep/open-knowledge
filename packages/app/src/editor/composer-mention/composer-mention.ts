@@ -1,3 +1,4 @@
+
 import { t } from '@lingui/core/macro';
 import { type Editor, Extension, mergeAttributes, Node } from '@tiptap/core';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -38,6 +39,7 @@ export function pageItemToPath(item: PageItem): string {
   if (item.kind === 'folder') return item.docName;
   return docNameToRelativePath(item.docName);
 }
+
 
 const ComposerDoc = Node.create({ name: 'doc', topNode: true, content: 'paragraph+' });
 

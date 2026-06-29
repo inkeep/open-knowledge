@@ -1,3 +1,4 @@
+
 import { describe, expect, it } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -99,6 +100,7 @@ function setupTmp(label: string): string {
 }
 
 describe('CHAIN_V1 POSIX shell grammar (cross-platform)', () => {
+
   it('bundle missing, no npx, no version-manager dirs → exit 127 + stderr', () => {
     const tmpHome = setupTmp('nofall');
     try {
@@ -198,6 +200,7 @@ describe('CHAIN_V1 POSIX shell grammar (cross-platform)', () => {
 });
 
 describe.skipIf(SKIP_PERSONA)('CHAIN_V1 macOS persona behavior (darwin only)', () => {
+
   it('bundle missing, npx on login PATH → npx branch fires', () => {
     const tmpHome = setupTmp('npx');
     try {

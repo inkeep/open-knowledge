@@ -1,3 +1,4 @@
+
 import { fileEntryToTreePath } from './file-tree-adapter';
 import type { FileEntry } from './file-tree-utils';
 

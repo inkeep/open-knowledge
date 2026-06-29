@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -67,6 +68,8 @@ async function pasteWithMimes(
   );
 }
 
+
+
 test.describe('V1 paste baseline — text/plain content through WYSIWYG', () => {
   let docName: string;
 
@@ -126,6 +129,7 @@ test.describe('V1 paste baseline — text/plain content through WYSIWYG', () => 
   });
 });
 
+
 test.describe('Copy-side: simulateCopyAndRead captures MIME map', () => {
   let docName: string;
 
@@ -184,6 +188,7 @@ test.describe('Copy-side: simulateCopyAndRead captures MIME map', () => {
     expect(out.plain === '' || typeof out.plain === 'string').toBe(true);
   });
 });
+
 
 test.describe('Paste from vendor HTML → structured content through Branch D', () => {
   let docName: string;
@@ -275,6 +280,7 @@ test.describe('Paste from vendor HTML → structured content through Branch D', 
   });
 });
 
+
 test.describe('WYSIWYG FR-specific paste behavior', () => {
   let docName: string;
 
@@ -337,6 +343,7 @@ test.describe('WYSIWYG FR-specific paste behavior', () => {
     expect(out.html).toMatch(/<code[\s>]/);
   });
 });
+
 
 async function pasteHtmlInSource(page: Page, html: string, plain: string) {
   await page.evaluate(
@@ -401,6 +408,7 @@ test.describe('FR-21 large-paste chunked insertion (Source view)', () => {
   });
 });
 
+
 test.describe('FR-22 drag-and-drop MIME parity (dragstart uses same hooks as copy)', () => {
   let docName: string;
 
@@ -444,6 +452,7 @@ test.describe('FR-22 drag-and-drop MIME parity (dragstart uses same hooks as cop
     expect(out.html).toContain('data-pm-slice');
   });
 });
+
 
 test.describe('Vendor HTML fixtures → structured content through Branch D', () => {
   let docName: string;
@@ -519,6 +528,7 @@ test.describe('Vendor HTML fixtures → structured content through Branch D', ()
   });
 });
 
+
 test.describe('Source-view copy output (FR-4, D4 byte-parity)', () => {
   let docName: string;
 
@@ -570,6 +580,7 @@ test.describe('Source-view copy output (FR-4, D4 byte-parity)', () => {
   });
 });
 
+
 test.describe('FR-11 fallback: oversized text/html falls through to text/plain', () => {
   let docName: string;
 
@@ -608,6 +619,7 @@ test.describe('FR-11 fallback: oversized text/html falls through to text/plain',
     expect(sawTooLarge).toBe(true);
   });
 });
+
 
 test.describe('FR-20 URL scheme sanitization on copy', () => {
   let docName: string;
@@ -649,6 +661,7 @@ test.describe('FR-20 URL scheme sanitization on copy', () => {
     expect(out.html).toContain('data-leak');
   });
 });
+
 
 test.describe('FR-16 drag-and-drop scenarios beyond dragstart MIME parity', () => {
   let docName: string;
@@ -703,6 +716,7 @@ test.describe('FR-16 drag-and-drop scenarios beyond dragstart MIME parity', () =
   });
 });
 
+
 test.describe('FR-12 WYSIWYG cut writes MIMEs AND deletes selection', () => {
   let docName: string;
 
@@ -729,6 +743,7 @@ test.describe('FR-12 WYSIWYG cut writes MIMEs AND deletes selection', () => {
     }).toPass({ timeout: 5_000 });
   });
 });
+
 
 test.describe('FR-21 chunked insertion maintains 60fps frame budget', () => {
   let docName: string;
@@ -832,6 +847,7 @@ test.describe('FR-21 chunked insertion maintains 60fps frame budget', () => {
   });
 });
 
+
 test.describe('FR-17 + FR-12/FR-15 Source-view clipboard parity', () => {
   let docName: string;
 
@@ -924,6 +940,7 @@ test.describe('FR-17 + FR-12/FR-15 Source-view clipboard parity', () => {
     expect(out.html).toBe('');
   });
 });
+
 
 test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
   let docName: string;
@@ -1056,6 +1073,7 @@ test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
     }).toPass({ timeout: 5_000 });
   });
 });
+
 
 test.describe('Clipboard component contract — OK→OK descriptor identity (US-009)', () => {
   let docName: string;

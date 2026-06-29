@@ -1,3 +1,4 @@
+
 import { resolve } from 'node:path';
 import { LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';
 import { acquireServerLock, updateServerLockPort } from '../../server-lock.ts';

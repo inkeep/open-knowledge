@@ -26,7 +26,8 @@ export function CopyPrompt({ children }: CopyPromptProps) {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    } catch {
+    }
   };
 
   return (

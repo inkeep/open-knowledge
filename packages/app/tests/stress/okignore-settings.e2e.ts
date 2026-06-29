@@ -1,3 +1,4 @@
+
 import { expect, test } from './_helpers';
 
 test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / US-010 / US-011 / US-012 / US-013)', () => {
@@ -219,7 +220,8 @@ test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / 
     await page.evaluate(() => {
       try {
         window.localStorage.removeItem('okignore-show-advanced');
-      } catch {}
+      } catch {
+      }
     });
     await page.reload();
     await expect(page.getByTestId('settings-okignore-section')).toBeVisible({ timeout: 10_000 });
@@ -259,7 +261,8 @@ test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / 
     await page.evaluate(() => {
       try {
         window.localStorage.removeItem('okignore-show-advanced');
-      } catch {}
+      } catch {
+      }
     });
     await page.reload();
     await expect(page.getByTestId('settings-okignore-section')).toBeVisible({ timeout: 10_000 });
@@ -301,7 +304,8 @@ test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / 
     await page.evaluate(() => {
       try {
         window.localStorage.removeItem('okignore-show-advanced');
-      } catch {}
+      } catch {
+      }
     });
     await page.reload();
     await expect(page.getByTestId('settings-okignore-section')).toBeVisible({ timeout: 10_000 });
@@ -332,7 +336,8 @@ test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / 
     await page.evaluate(() => {
       try {
         window.localStorage.removeItem('okignore-show-advanced');
-      } catch {}
+      } catch {
+      }
     });
     await page.reload();
     await expect(page.getByTestId('settings-okignore-section')).toBeVisible({ timeout: 10_000 });
@@ -521,3 +526,4 @@ test.describe('FileTree right-click → Hide this file/folder (US-013)', () => {
     await expect(row).toHaveValue(`/${folder}/`);
   });
 });
+

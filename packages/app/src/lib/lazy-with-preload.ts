@@ -1,3 +1,4 @@
+
 import { type ComponentType, type LazyExoticComponent, lazy } from 'react';
 
 // biome-ignore lint/suspicious/noExplicitAny: matches React.lazy's own factory signature; the generic preserves caller-side prop inference on the returned LazyExoticComponent

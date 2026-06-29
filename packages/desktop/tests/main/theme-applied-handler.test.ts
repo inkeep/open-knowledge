@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { applyThemeApplied } from '../../src/main/theme-applied-handler.ts';
 

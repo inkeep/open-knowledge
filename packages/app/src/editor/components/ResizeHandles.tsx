@@ -1,3 +1,4 @@
+
 import { useLingui } from '@lingui/react/macro';
 import { useRef } from 'react';
 import { cn } from '@/lib/utils';
@@ -123,7 +124,8 @@ export function ResizeHandles({ targetRef, onResize, onResizeEnd, bounds }: Resi
     const captureTarget = e.currentTarget;
     try {
       captureTarget.setPointerCapture(e.pointerId);
-    } catch {}
+    } catch {
+    }
     document.body.style.setProperty('cursor', handle.cursor);
     document.body.style.setProperty('user-select', 'none');
     function onPointerMove(ev: PointerEvent) {

@@ -26,6 +26,7 @@ import {
   discoverProject,
 } from './folder-admission.ts';
 
+
 let tmpRoot: string;
 
 beforeEach(() => {
@@ -35,7 +36,8 @@ beforeEach(() => {
 afterEach(() => {
   try {
     chmodSync(tmpRoot, 0o755);
-  } catch {}
+  } catch {
+  }
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 

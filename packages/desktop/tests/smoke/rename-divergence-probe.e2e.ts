@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -146,7 +147,8 @@ async function runProbe(
     for (const dir of [contentDir, userDataDir]) {
       try {
         rmSync(dir, { recursive: true, force: true });
-      } catch {}
+      } catch {
+      }
     }
   }
 }

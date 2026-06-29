@@ -1,3 +1,4 @@
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { ALLOWED_IMAGE_MIME_TYPES } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';

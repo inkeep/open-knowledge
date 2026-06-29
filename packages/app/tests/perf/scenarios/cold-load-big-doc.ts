@@ -1,3 +1,4 @@
+
 import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer';
 import { defineScenario } from '../lib/scenario';
 

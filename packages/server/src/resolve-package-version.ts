@@ -27,7 +27,8 @@ export async function resolvePackageVersion(
         if (parsed.name === packageName && typeof parsed.version === 'string') {
           return parsed.version;
         }
-      } catch {}
+      } catch {
+      }
     }
     const parent = dirname(dir);
     if (parent === dir) return undefined;

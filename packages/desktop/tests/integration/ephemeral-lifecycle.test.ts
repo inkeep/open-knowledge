@@ -1,3 +1,4 @@
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -64,7 +65,8 @@ describe('ephemeral single-file lifecycle (real CLI)', () => {
     if (serverPid !== null && isProcessAlive(serverPid)) {
       try {
         process.kill(serverPid, 'SIGKILL');
-      } catch {}
+      } catch {
+      }
       await wait(200);
     }
     serverPid = null;

@@ -1,3 +1,4 @@
+
 import {
   closeSync,
   existsSync,
@@ -155,7 +156,8 @@ export function acquireProcessLock(opts: {
 
     try {
       unlinkSync(lockPath);
-    } catch {}
+    } catch {
+    }
   }
 
   throw new Error(
@@ -244,7 +246,8 @@ export function readProcessLock(opts: {
   if (!isProcessAlive(existing.pid)) {
     try {
       unlinkSync(lockPath);
-    } catch {}
+    } catch {
+    }
     return null;
   }
 
@@ -300,7 +303,8 @@ export function readProcessLockDetailed(opts: {
   if (!isProcessAlive(lock.pid)) {
     try {
       unlinkSync(lockPath);
-    } catch {}
+    } catch {
+    }
     return { status: 'stale', lock };
   }
 

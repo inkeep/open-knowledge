@@ -1447,7 +1447,8 @@ if (import.meta.hot) {
         delete (window as { __test_rejectSyncPromise?: unknown }).__test_rejectSyncPromise;
         delete (window as { __test_armPendingRejection?: unknown }).__test_armPendingRejection;
         delete (window as { __test_closeActiveWebSocket?: unknown }).__test_closeActiveWebSocket;
-      } catch {}
+      } catch {
+      }
     }
   });
 }

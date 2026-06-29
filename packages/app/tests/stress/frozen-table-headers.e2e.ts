@@ -1,3 +1,4 @@
+
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 
 const LONG_TABLE_MARKDOWN = `# Metric Tracker

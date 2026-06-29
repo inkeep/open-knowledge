@@ -104,6 +104,7 @@ afterAll(async () => {
   await server.cleanup();
 });
 
+
 test('write surfaces broken outbound links (doubling + escape-root + broken wiki) in the same response', async () => {
   const session = await openMcpSession(server.port);
   const folder = `wiki-${randomUUID().slice(0, 8)}`;

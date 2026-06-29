@@ -1,3 +1,4 @@
+
 import { Command } from 'commander';
 import { sharingShareCommand } from './share.ts';
 import { sharingStatusCommand } from './status.ts';

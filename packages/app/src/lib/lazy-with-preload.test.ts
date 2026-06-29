@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import type { ComponentType } from 'react';
 import { lazyWithPreload } from './lazy-with-preload';

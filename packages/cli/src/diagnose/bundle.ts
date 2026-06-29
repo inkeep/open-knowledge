@@ -1,3 +1,4 @@
+
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -23,6 +24,8 @@ import { parse as parseYaml } from 'yaml';
 import { ZipFile } from 'yazl';
 import { PACKAGE_VERSION } from '../constants.ts';
 import { type RedactStagedBundleResult, redactStagedBundle } from './bundle-redact.ts';
+
+
 
 type BundleSchemaVersion = 1;
 
@@ -75,6 +78,7 @@ interface BundleManifest {
   files: BundleFileEntry[];
 }
 
+
 export interface CollectBundleOpts {
   contentDir: string;
   projectDir?: string;
@@ -112,10 +116,13 @@ export interface CollectedBundle {
   cleanup: () => void;
 }
 
+
 export interface WriteBundleOpts {
   collected: CollectedBundle;
   outputPath: string;
 }
+
+
 
 const TELEMETRY_REL = ['.ok', 'local', 'telemetry'] as const;
 const LOGS_REL = ['.ok', 'local', 'logs'] as const;
@@ -146,6 +153,7 @@ export const _pathHelpersForTests = {
   logsCurrentPath,
   logsPreviousPath,
 };
+
 
 const AGENT_PRESENCE_TIMEOUT_MS = 1000;
 const SHADOW_GIT_LOG_LIMIT = 50;
@@ -199,6 +207,7 @@ function defaultReadRuntime(): { nodeVersion: string; platform: string; arch: st
 function defaultIsOtlpPushEnabled(): boolean {
   return process.env.OTEL_SDK_DISABLED === 'false';
 }
+
 
 interface LocalSinkBlock {
   enabled: boolean;
@@ -260,6 +269,7 @@ function resolveLocalSinkBlock(projectDir: string): LocalSinkBlock {
   return { enabled, spansMaxBytes, logsMaxBytes };
 }
 
+
 function hashContentDirPath(absolutePath: string): string {
   return createHash('sha256').update(absolutePath).digest('hex');
 }
@@ -320,6 +330,7 @@ function shouldCountLines(relPath: string): boolean {
 function relativeZipPath(stagingDir: string, absPath: string): string {
   return relative(stagingDir, absPath).split(sep).join('/');
 }
+
 
 export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedBundle> {
   const contentDir = resolve(opts.contentDir);
@@ -499,6 +510,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
 
   return { stagingDir, manifest, summary, redactionMapPayload, cleanup };
 }
+
 
 export async function writeBundle(opts: WriteBundleOpts): Promise<string> {
   const { collected, outputPath } = opts;

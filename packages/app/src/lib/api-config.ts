@@ -1,3 +1,4 @@
+
 interface ApiConfig {
   collabUrl: string | null;
   previewUrl: string | null;

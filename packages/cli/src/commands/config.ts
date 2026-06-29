@@ -1,3 +1,4 @@
+
 import { existsSync, readFileSync } from 'node:fs';
 import { type ConfigPatch, humanFormat, REMOVED_KEYS } from '@inkeep/open-knowledge-core';
 import { resolveConfigPath, writeConfigPatch } from '@inkeep/open-knowledge-core/server';

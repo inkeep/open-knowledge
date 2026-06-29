@@ -1,3 +1,4 @@
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { CreateScenario, InstallState } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -76,6 +77,7 @@ mock.module('@/components/handoff/useHandoffDispatch', () => ({
 }));
 
 mock.module('sonner', () => ({ toast: { error: () => {}, success: () => {} } }));
+
 
 type Handle = {
   focus: () => void;
@@ -214,7 +216,8 @@ const { CreatePromptComposer } = await import('./empty-state/CreatePromptCompose
 beforeEach(() => {
   try {
     window.localStorage.clear();
-  } catch {}
+  } catch {
+  }
   __resetComposerDraftForTests();
 });
 

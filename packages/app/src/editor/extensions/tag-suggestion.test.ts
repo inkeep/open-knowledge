@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { buildTagSuggestionItems, type TagSummaryEntry, tagMatcher } from './tag-suggestion.ts';
 
@@ -31,7 +32,10 @@ describe('buildTagSuggestionItems — filter + rank', () => {
       'front',
     );
     const tagsOnly = out.filter((i) => i.kind === 'tag').map((i) => i.kind === 'tag' && i.value);
-    expect(tagsOnly).toEqual(['frontend', 'Frontend-mobile']);
+    expect(tagsOnly).toEqual([
+      'frontend',
+      'Frontend-mobile',
+    ]);
     expect(tagsOnly).not.toContain('backend');
   });
 

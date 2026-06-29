@@ -17,6 +17,7 @@ import {
 import { useSkills } from '@/hooks/use-skills';
 import { cn } from '@/lib/utils';
 
+
 const INSTALL_EDITORS: readonly SkillTargetEditor[] = SkillTargetEditorSchema.options;
 
 export function SkillEditorActions({ scope, name }: { scope: SkillScope; name: string }) {

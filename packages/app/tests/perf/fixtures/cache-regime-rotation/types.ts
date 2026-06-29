@@ -1,3 +1,4 @@
+
 export type WorkloadFixtureRef = 'tight' | 'broad' | 'asymmetric';
 
 export interface CapRegime {

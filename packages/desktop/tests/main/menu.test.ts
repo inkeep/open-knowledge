@@ -693,6 +693,7 @@ describe('buildMenuTemplate — View menu visibility toggles + tree-scoped expan
 });
 
 describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
+
   test('renders "Hide sidebar" when sidebarVisible is true (or undefined default)', () => {
     const expanded = buildMenuTemplate(
       makeDeps({ onToggleSidebar: mock(() => {}), sidebarVisible: true }),
@@ -809,6 +810,7 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
 });
 
 describe('buildMenuTemplate — View → Show/Hide Terminal', () => {
+
   test('renders "Show Terminal" when terminalVisible is unset or false', () => {
     const unsetDeps = buildMenuTemplate(makeDeps({ onToggleTerminal: mock(() => {}) }));
     expect(findByLabel(unsetDeps, 'Show Terminal')).toBeDefined();
@@ -874,6 +876,7 @@ describe('buildMenuTemplate — View → Show/Hide Terminal', () => {
 });
 
 describe('buildMenuTemplate — top-level Terminal menu (New / Kill)', () => {
+
   test('inserts a Terminal menu between View and Window', () => {
     const labels = buildMenuTemplate(makeDeps()).map((t) => t.label);
     const viewIdx = labels.indexOf('View');

@@ -34,7 +34,8 @@ export function PageMarkdownActions({
       await navigator.clipboard.writeText(await res.text());
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    } catch {
+    }
   };
 
   const prompt = `Read ${markdownUrl} so I can ask questions about it.`;

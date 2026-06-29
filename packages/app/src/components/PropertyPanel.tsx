@@ -92,6 +92,7 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   usePublishFrontmatterSelection(panelRef, docName);
 
+
   function commitPatch(patch: FrontmatterPatch): PatchResult {
     if (!binding) {
       return { ok: false, error: t`Connecting` };

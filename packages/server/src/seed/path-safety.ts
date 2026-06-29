@@ -1,3 +1,4 @@
+
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { SeedRootDirError } from './types.ts';

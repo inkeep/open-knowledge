@@ -6,6 +6,7 @@ import { FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
 import { notarize } from '@electron/notarize';
 import { expectedFuseState, fuseStateName, targetFuses } from './target-fuses.mjs';
 
+
 function collectMissing(required) {
   return Object.entries(required)
     .filter(([, value]) => !value)

@@ -1,3 +1,4 @@
+
 import { execFile } from 'node:child_process';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { InstalledAgentsSuccessSchema } from '@inkeep/open-knowledge-core';
@@ -84,7 +85,8 @@ export function isLocalWebHost(req: IncomingMessage): boolean {
     try {
       const { hostname } = new URL(`http://${hostHeader}/`);
       return isLoopbackHostname(hostname);
-    } catch {}
+    } catch {
+    }
   }
   const origin = req.headers.origin;
   if (typeof origin === 'string' && origin.length > 0) {

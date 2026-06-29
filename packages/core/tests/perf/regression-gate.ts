@@ -1,5 +1,7 @@
+
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
 
 interface OpStats {
   mean: number;
@@ -70,6 +72,7 @@ interface RegressionReport {
   extraFresh: number[]; // block counts present in fresh but not tracked in baseline
 }
 
+
 const OP_NAMES: OpName[] = ['parseMs', 'serializeMs', 'roundTripMs'];
 
 export function evaluateRegression(baseline: Baseline, fresh: FreshResults): RegressionReport {
@@ -114,6 +117,7 @@ export function evaluateRegression(baseline: Baseline, fresh: FreshResults): Reg
   return { pass, rows, missingFresh, extraFresh };
 }
 
+
 export function formatReport(report: RegressionReport): string {
   const lines: string[] = [];
   lines.push(`perf regression gate: ${report.pass ? 'PASS' : 'FAIL'}`);
@@ -136,6 +140,7 @@ export function formatReport(report: RegressionReport): string {
   }
   return lines.join('\n');
 }
+
 
 function assertFiniteStats(
   ctx: string,
@@ -199,6 +204,7 @@ export function loadFreshResults(path: string): FreshResults {
   }
   return raw as FreshResults;
 }
+
 
 async function main(): Promise<void> {
   const [, , baselineArg, freshArg] = process.argv;

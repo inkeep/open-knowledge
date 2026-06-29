@@ -1,3 +1,4 @@
+
 import { chmodSync, existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -99,7 +100,8 @@ export class FileEmbeddingsBackend implements EmbeddingsSecretStore {
       if (Object.keys(data).length === 0) {
         try {
           tracedUnlinkSync(this.secretsFile);
-        } catch {}
+        } catch {
+        }
       } else {
         this.write(data);
       }

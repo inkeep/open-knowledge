@@ -1,3 +1,4 @@
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,6 +8,7 @@ import { ensureProjectGit } from '@inkeep/open-knowledge-server';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import { createRestartableServer, getServerState, pollUntil, schema } from './test-harness';
+
 
 interface PmJsonNode {
   type?: string;
@@ -43,7 +45,8 @@ describe('asset-move embed re-resolution — head-watcher-independent fallback',
     cleanups.push(() => {
       try {
         rmSync(contentDir, { recursive: true, force: true });
-      } catch {}
+      } catch {
+      }
     });
 
     writeRel(contentDir, 'test-doc.md', DOC_BODY);
@@ -127,7 +130,8 @@ describe('asset-move embed re-resolution — head-watcher-independent fallback',
     cleanups.push(() => {
       try {
         rmSync(contentDir, { recursive: true, force: true });
-      } catch {}
+      } catch {
+      }
     });
 
     writeRel(contentDir, 'test-doc.md', DOC_BODY);

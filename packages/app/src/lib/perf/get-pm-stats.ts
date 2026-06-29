@@ -1,3 +1,4 @@
+
 import type { Editor } from '@tiptap/core';
 import type { EditorState, Plugin } from '@tiptap/pm/state';
 import type { DecorationSet, DecorationSource, EditorView } from '@tiptap/pm/view';

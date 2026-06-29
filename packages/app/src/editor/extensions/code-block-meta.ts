@@ -1,3 +1,4 @@
+
 const TOKEN_RE = /(?:"[^"]*"|'[^']*'|[^\s"'])+/g;
 
 export function splitMetaTokens(meta: string | null | undefined): string[] {

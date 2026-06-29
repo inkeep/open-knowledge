@@ -1,3 +1,4 @@
+
 import type { HandoffOutcome } from '@inkeep/open-knowledge-core';
 
 interface OpenExternalDeps {

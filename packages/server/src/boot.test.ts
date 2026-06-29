@@ -295,6 +295,7 @@ describe('bootServer — idle-shutdown runs full destroy', () => {
 });
 
 describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
+
   test('writes ui.lock with the bound port when --react-shell-dist-dir is set and no live holder exists', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-shell-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
@@ -507,6 +508,7 @@ describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
 });
 
 describe('bootServer — reactShellDistDir end-to-end HTTP shape', () => {
+
   test('serves the React shell, bundled assets, content assets, and API on one port', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'shell-e2e-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
@@ -729,6 +731,7 @@ describe('bootServer — ok.boot OTel span attributes', () => {
   });
 
   test('cross-invocation: main first, linked second — kinds flip correctly with no state leakage', async () => {
+
     const mainDir = mkdtempSync(resolve(tmpDir, 'flip-main-'));
     await execFileAsync('git', ['init', '--initial-branch=main', mainDir]);
     seedOkScaffold(mainDir);

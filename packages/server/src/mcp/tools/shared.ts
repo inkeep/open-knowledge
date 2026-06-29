@@ -1,3 +1,4 @@
+
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -28,6 +29,7 @@ export function agentIdentityFields(identity: AgentIdentity | undefined): Record
 export const ROUTED_CWD_DESCRIPTION =
   'Absolute host path inside the target OpenKnowledge project. Required when the MCP server is registered globally (e.g. `npx @inkeep/open-knowledge mcp` once at the host level, routing per call), unless the MCP client advertises exactly one root via the `roots` capability — that single root is then used as the implicit `cwd`. Optional when the server is anchored to a single project (the per-project HTTP MCP server defaults to its configured project root).';
 
+
 const SUMMARY_TRANSPORT_CAP = 200;
 
 export const summaryArgSchema = z
@@ -46,6 +48,7 @@ export const versionInputSchema = z
   .length(40)
   .regex(/^[0-9a-f]+$/i)
   .describe(VERSION_FIELD_DESCRIBE);
+
 
 export const previewUrlOutputField = z
   .string()
@@ -158,6 +161,7 @@ export function textPlusStructured<T>(text: string, structured: T, isError?: boo
 
 export const HOCUSPOCUS_NOT_RUNNING_ERROR =
   'Error: Hocuspocus server is not running. Start it with `ok start`, then retry.\nFor disk-only writes without real-time sync, use your native Edit tool directly.';
+
 
 type WorkflowRole = 'ingest' | 'research' | 'consolidate';
 

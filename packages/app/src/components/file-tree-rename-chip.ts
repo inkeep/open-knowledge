@@ -1,3 +1,4 @@
+
 import {
   getFileExtension,
   hasSupportedDocumentExtension,
