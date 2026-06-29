@@ -1,4 +1,5 @@
 
+import { createEnsureSingleFileSession } from '../../ensure-single-file-session.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import { getCurrentMcpLogger, type McpLogger } from '../logger.ts';
 import { createLoggedServer } from '../tool-logging.ts';
@@ -142,6 +143,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     config: opts.config,
     resolveCwd: named('preview_url'),
     serverUrl: opts.serverUrl,
+    ...(opts.serverUrl ? { ensureSingleFileSession: createEnsureSingleFileSession() } : {}),
   });
   registerConflicts(registrationServer, {
     serverUrl: opts.serverUrl,

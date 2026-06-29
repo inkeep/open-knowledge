@@ -28,6 +28,7 @@ import {
   startCommand,
   tryDescribeLockCollision,
   type UiSpawnDecision,
+  withEphemeralTempDirReap,
 } from './start.ts';
 import { closeHttpServers, startUiServer, type UiServerHandle } from './ui.ts';
 
@@ -1683,5 +1684,51 @@ describe('tryDescribeLockCollision', () => {
     const err = new Error('any');
     const result = tryDescribeLockCollision(err, '/tmp/proj', fm);
     expect(result).toBeNull();
+  });
+});
+
+describe('withEphemeralTempDirReap', () => {
+  test('runs the inner handler, then removes the temp projectDir', async () => {
+    const order: string[] = [];
+    const handler = async () => {
+      order.push('handler');
+    };
+    const removed: string[] = [];
+    const wrapped = withEphemeralTempDirReap(handler, '/tmp/ok-ephemeral-x', async (dir) => {
+      order.push('rm');
+      removed.push(dir);
+    });
+    await wrapped();
+    expect(order).toEqual(['handler', 'rm']);
+    expect(removed).toEqual(['/tmp/ok-ephemeral-x']);
+  });
+
+  test('swallows a rm failure (best-effort) — the handler still completes', async () => {
+    let handled = false;
+    const wrapped = withEphemeralTempDirReap(
+      async () => {
+        handled = true;
+      },
+      '/tmp/ok-ephemeral-y',
+      async () => {
+        throw new Error('EBUSY');
+      },
+    );
+    await expect(wrapped()).resolves.toBeUndefined();
+    expect(handled).toBe(true);
+  });
+  test('reaps the temp dir even when the inner handler throws (finally)', async () => {
+    const removed: string[] = [];
+    const wrapped = withEphemeralTempDirReap(
+      async () => {
+        throw new Error('destroy failed');
+      },
+      '/tmp/ok-ephemeral-throw',
+      async (dir) => {
+        removed.push(dir);
+      },
+    );
+    await expect(wrapped()).rejects.toThrow('destroy failed');
+    expect(removed).toEqual(['/tmp/ok-ephemeral-throw']);
   });
 });

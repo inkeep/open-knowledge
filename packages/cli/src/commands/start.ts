@@ -4,6 +4,7 @@ import {
   spawn as nativeSpawn,
 } from 'node:child_process';
 import { closeSync, existsSync as fsExistsSync, mkdirSync as fsMkdirSync, openSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import type { Server as HttpServer } from 'node:http';
 import { basename, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -228,6 +229,26 @@ interface BuildIdleShutdownHandlerInput {
  * pause, downstream fetch hang) doesn't stall idle-shutdown indefinitely. */
 const DEFAULT_SIGTERM_GRACE_MS = SHARED_DEFAULT_SIGTERM_GRACE_MS;
 const DEFAULT_SIGTERM_POLL_MS = SHARED_DEFAULT_SIGTERM_POLL_MS;
+
+export function withEphemeralTempDirReap(
+  handler: () => Promise<void>,
+  projectDir: string,
+  rmFn: (dir: string) => Promise<void> = (dir) => rm(dir, { recursive: true, force: true }),
+): () => Promise<void> {
+  return async () => {
+    try {
+      await handler();
+    } finally {
+      try {
+        await rmFn(projectDir);
+      } catch (err) {
+        process.stderr.write(
+          `[start] ephemeral temp dir reap failed for ${projectDir}: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+      }
+    }
+  };
+}
 
 export function buildIdleShutdownHandler(
   input: BuildIdleShutdownHandlerInput,
@@ -458,8 +479,8 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     idleShutdownMs: idleThresholdMs,
     skipAutoInit: true, // Guard already ran above; no scaffold fn to pass
     ...(attachUiSibling ? { spawnUiSiblingFn } : {}),
-    idleShutdownHandler: (destroyServer) =>
-      buildIdleShutdownHandler({
+    idleShutdownHandler: (destroyServer) => {
+      const handler = buildIdleShutdownHandler({
         readUiLock: () => readUiLock(booted.lockDir),
         isAlive: isProcessAlive,
         killPid: (pid, signal) => {
@@ -467,7 +488,9 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
         },
         destroy: destroyServer,
         log,
-      }),
+      });
+      return ephemeral ? withEphemeralTempDirReap(handler, ephemeralProjectDir) : handler;
+    },
     log,
     ...(opts.serveContentAssets ? { serveContentAssets: true } : {}),
     ...(opts.reactShellDistDir ? { reactShellDistDir: opts.reactShellDistDir } : {}),

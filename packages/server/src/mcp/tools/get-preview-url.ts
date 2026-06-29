@@ -1,8 +1,15 @@
 
+import { isAbsolute } from 'node:path';
 import { MANAGED_ARTIFACT_SCOPES, SKILL_NAME_REGEX } from '@inkeep/open-knowledge-core';
+import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { z } from 'zod';
 import { AutoStartDisabledError } from '../../autostart.ts';
 import { resolveLockDir } from '../../config/paths.ts';
+import {
+  createOffCwdResolverDeps,
+  type OffCwdResolverDeps,
+  resolveOffCwdTarget,
+} from '../../off-cwd-resolver.ts';
 import { armPaneTarget } from '../../pane-target.ts';
 import { isProcessAlive } from '../../process-alive.ts';
 import { readServerLock } from '../../server-lock.ts';
@@ -28,14 +35,17 @@ const DESCRIPTION = [
   '',
   'Per-response `previewUrl` fields on read/write tools are ROUTE-ONLY (`/#/<doc>`, no host:port) — they identify which doc to preview, not a URL to open by itself. Call this tool to get the full, openable URL.',
   '',
-  'Use this when YOUR host opens the URL itself: navigate your in-app browser to the returned `url`, or — only on a stdio host with no browser tool — `open` it in the system browser. Hosts with a preview pane (Claude Code Desktop) call `preview_start("open-knowledge-ui")` instead; the Claude Code CLI uses `ok open <doc>` to open in the OK Desktop app.',
+  'This is THE way to open a doc OR a loose file in a browser, and the only way to force a browser when the OK Desktop app is installed (the `ok open` CLI prefers Desktop). Use it when YOUR host opens the URL itself: navigate your in-app / embedded browser to the returned `url`, or — only on a stdio host with no browser tool — `open` it in the system browser. Do not hunt for the URL via `ok ps`/`ok status` or by guessing a port — this tool returns it. Hosts with a preview pane (Claude Code Desktop) call `preview_start("open-knowledge-ui")` instead; a pure stdio CLI with no browser uses `ok open <doc>` to open in the OK Desktop app.',
   '',
   'Returns `{ url: null, baseUrl: null, running: false, autoOpen }` + a recovery hint only when no UI could be reached (auto-start disabled via `OK_MCP_AUTOSTART=0`, no spawn authority in this registration, or the UI did not bind in time) — the hint names the right command for the actual state.',
   '',
+  'To open a single markdown file that may live OUTSIDE any Open Knowledge project (a loose file, or a doc in a different git worktree), pass `file` with an absolute path: the tool finds the running session whose content directory contains it and returns that session’s URL, then navigate your in-app browser there. `document`/`folder` are for a doc in the current project; `file` is the out-of-project form.',
+  '',
   '**Parameters:**',
-  '- `document` (optional) — Extension-less doc path (e.g. `specs/foo/SPEC`). Omit for the UI root URL.',
-  '- `folder` (optional) — Folder path (e.g. `specs/foo`); returns the `…/#/<folder>/` route. Mutually exclusive with `document`.',
-  '- `skill` (optional) — A skill to open in the editor: `{ name, scope? }` (scope `project` default). Returns the `…/#/__skill__/<scope>/<name>` route. Mutually exclusive with `document`/`folder`.',
+  '- `document` (optional) — Extension-less doc path in the current project (e.g. `specs/foo/SPEC`). Omit for the UI root URL.',
+  '- `folder` (optional) — Folder path in the current project (e.g. `specs/foo`); returns the `…/#/<folder>/` route. Mutually exclusive with `document`.',
+  '- `skill` (optional) — A skill to open in the editor: `{ name, scope? }` (scope `project` default). Returns the `…/#/__skill__/<scope>/<name>` route. Mutually exclusive with `document`/`folder`/`file`.',
+  '- `file` (optional) — Absolute path to a single markdown file, including one outside any project. Resolves to the running single-file / worktree session serving it. Mutually exclusive with `document`/`folder`/`skill`; `cwd` is ignored when set.',
   '- `armPaneTarget` (optional) — When true with a `document`/`folder`/`skill`, writes a small TTL-bounded (~30s) state file under `.ok/local/` so a later Claude-pane base-open lands on that target. Independent of server state; omit it and the call writes nothing.',
   '- `cwd` (optional) — Project root (see `cwd` description below).',
 ].join('\n');
@@ -45,6 +55,9 @@ interface GetPreviewUrlDeps {
   resolveCwd: (explicit?: string) => Promise<string>;
   serverUrl?: ServerUrlOrResolver;
   uiBindWait?: { timeoutMs?: number; pollIntervalMs?: number };
+  offCwdResolverDeps?: OffCwdResolverDeps;
+  ensureSingleFileSession?: (absFile: string) => Promise<boolean>;
+  resolveUserAutoOpen?: () => boolean;
 }
 
 const UI_BIND_WAIT_TIMEOUT_MS = 3000;
@@ -78,7 +91,13 @@ const InputSchema = {
     })
     .optional()
     .describe(
-      'Skill to resolve an editor preview URL for; returns the `…/#/__skill__/<scope>/<name>` route. Mutually exclusive with `document`/`folder`.',
+      'Skill to resolve an editor preview URL for; returns the `…/#/__skill__/<scope>/<name>` route. Mutually exclusive with `document`/`folder`/`file`.',
+    ),
+  file: z
+    .string()
+    .optional()
+    .describe(
+      'Absolute path to a single markdown file to open, including one OUTSIDE any Open Knowledge project. Resolves to the running single-file (or worktree) session whose content directory contains it and returns that session’s `url`. Mutually exclusive with `document` / `folder` / `skill`. When `file` is set, `cwd` is ignored.',
     ),
   armPaneTarget: z
     .boolean()
@@ -115,6 +134,25 @@ const NO_UI_SERVER_RUNNING_MESSAGE =
 const NO_SERVER_MESSAGE =
   'No OpenKnowledge server is running for this project. Start it with `ok start` (also starts the preview UI), use `preview_start("open-knowledge-ui")` (Claude Code Desktop), or open the project in OK Electron.';
 const AUTOSTART_DISABLED_NOTE = ' Auto-start is disabled (OK_MCP_AUTOSTART=0).';
+function readUserAutoOpen(): boolean {
+  try {
+    const cfg = readConfigSafely({
+      absPath: resolveConfigPath('user', process.cwd()),
+      sideline: false,
+      warn: () => {},
+    });
+    return cfg.value.appearance?.preview?.autoOpen ?? true;
+  } catch (err) {
+    process.stderr.write(
+      `[preview-url] readUserAutoOpen failed: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return true;
+  }
+}
+
+function noSingleFileSessionMessage(file: string): string {
+  return `No Open Knowledge session is serving ${file} yet. On a host with a terminal, \`ok open ${file}\` starts one; otherwise open ${file} in the OK Desktop app. Then retry.`;
+}
 
 function isServerLive(lockDir: string): boolean {
   try {
@@ -144,20 +182,63 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       document?: string;
       folder?: string;
       skill?: { name: string; scope?: 'project' | 'global' };
+      file?: string;
       armPaneTarget?: boolean;
       cwd?: string;
     }) => {
-      if ([args.document, args.folder, args.skill].filter((t) => t != null).length > 1) {
+      if ([args.document, args.folder, args.skill, args.file].filter((t) => t != null).length > 1) {
         return {
           isError: true,
           content: [
             {
               type: 'text' as const,
-              text: 'Error: document, folder, and skill are mutually exclusive — pass at most one.',
+              text: 'Error: document, folder, skill, and file are mutually exclusive — pass at most one.',
             },
           ],
         };
       }
+
+      if (args.file) {
+        if (!isAbsolute(args.file)) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text' as const,
+                text: 'Error: file must be an absolute path (a loose file outside a project has no cwd to anchor a relative path).',
+              },
+            ],
+          };
+        }
+        const fileAutoOpen = (deps.resolveUserAutoOpen ?? readUserAutoOpen)();
+        const resolverDeps = deps.offCwdResolverDeps ?? createOffCwdResolverDeps();
+        let hit = await resolveOffCwdTarget(args.file, resolverDeps);
+        if (hit === null && deps.ensureSingleFileSession) {
+          const booted = await deps.ensureSingleFileSession(args.file).catch((err) => {
+            process.stderr.write(
+              `[preview-url] ensureSingleFileSession failed for ${args.file}: ${err instanceof Error ? err.message : String(err)}\n`,
+            );
+            return false;
+          });
+          if (booted) hit = await resolveOffCwdTarget(args.file, resolverDeps);
+        }
+        if (hit !== null) {
+          const url = `${hit.baseUrl}/#/${encodeDocName(hit.docName)}`;
+          return textPlusStructured(`Preview URL: ${url}`, {
+            url,
+            baseUrl: hit.baseUrl,
+            running: true,
+            autoOpen: fileAutoOpen,
+          });
+        }
+        return textPlusStructured(noSingleFileSessionMessage(args.file), {
+          url: null,
+          baseUrl: null,
+          running: false,
+          autoOpen: fileAutoOpen,
+        });
+      }
+
       const context = await resolveProjectConfigContext(deps.resolveCwd, deps.config, args.cwd);
       if (!context.ok) {
         return {

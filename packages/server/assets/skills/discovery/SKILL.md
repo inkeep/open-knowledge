@@ -14,9 +14,13 @@ directory of `.md` / `.mdx` files into a live, multi-writer knowledge base:
 agents and humans edit the same documents in real time, every change is
 attributed, and a browser preview renders edits as they land.
 
-This skill is **discovery-only**. It explains what OpenKnowledge is and how
-to set it up. It carries **no runtime rules** for reading or editing markdown
-— that guidance ships separately (see *Working inside a project* below).
+This skill covers **discovery, install, and opening OpenKnowledge files** —
+including single files that are not part of a project (see *Opening a file
+outside a project* below). It does **not** carry the in-project read/write
+runtime contract (the STOP rules for native file tools, the grounding and
+linking rules, the MCP routing table) — that ships separately as the
+project-local skill installed by `ok init` (see *Working inside a project*
+below).
 
 ## Install OpenKnowledge on a repository
 
@@ -70,6 +74,51 @@ OK Desktop is the standalone macOS app (`@inkeep/open-knowledge-desktop`). It
 bundles its own CLI, opens a project as an editor + preview window, and keeps
 the project's MCP wiring and skills current on every launch. Download DMGs
 from the releases page.
+
+## Opening a file outside a project
+
+OpenKnowledge can open a single markdown file that is **not** part of an OK
+project — a loose `.md` / `.mdx`, **or a file that lives inside a regular
+repo/folder which was never `ok init`'d**. It opens in a throwaway session (a
+temp project in the OS temp dir — your repo is never touched, no `.ok/` is
+written into it) with the same live preview you get inside a project.
+
+**Never run `ok init` just to view or open a file.** `ok init` turns a repo
+into a shared OpenKnowledge project; it is not a prerequisite for opening one
+file. Opening a file needs no project, no `.ok/`, and no server already
+running — each path below boots the session itself.
+
+When asked to open or preview such a file, **decide by the viewing surface you
+actually have** — check the tool, not the host name. Only open a browser when
+you genuinely have one; never pop a browser tab on a host that has none.
+
+- **You have an in-app / built-in browser** (Cursor, Codex, and similar) — this
+  is the default: call the **`preview_url` MCP tool** with `file` set to the
+  absolute path (it finds, or boots on demand, the session and returns a full
+  `url`), then **immediately open that `url` in your in-app browser**. "Open it"
+  means navigate your browser — don't just print the URL and stop. This is also
+  the only way to view it in a browser when the OK Desktop app is installed
+  (`ok open` prefers the Desktop app). Get the URL from `preview_url` only —
+  never hunt for it via `ok ps` / `ok status` / `ok ui` / `ok start` or a guessed
+  port.
+- **You have a Claude Code Desktop preview *pane* but no general browser** — the
+  pane is project-only: it shows in-project docs via `preview_start`, but it
+  **cannot host a file from outside the project**. For such a file run
+  `ok open /abs/path/to/file.md` (the Desktop app) instead; don't try to force
+  the file into the pane.
+- **No in-app browser and no pane** (a pure-stdio CLI) — run
+  `ok open /abs/path/to/file.md`: it opens the Desktop app when installed, else a
+  browser, and boots the session itself. Don't force a browser tab the user
+  didn't ask for; `ok open` is the right default here. If `ok` isn't on PATH,
+  `npx @inkeep/open-knowledge open /abs/path/to/file.md` does the same.
+
+If the OK MCP server isn't wired into this host there is no `preview_url` to
+call — use the `ok open` path above. Don't reconstruct what `preview_url` does
+by hand (spawning `ok mcp` yourself, scraping ports from `ok ps`).
+
+The path must be absolute (a file outside a project has no cwd to anchor a
+relative path). Re-opening the same file lands on the same session. Never
+construct or guess the URL — use the one `preview_url` returns.
 
 ## Working inside a project — use the project-local skill, not this one
 
