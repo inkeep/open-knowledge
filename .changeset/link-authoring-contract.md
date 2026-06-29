@@ -1,5 +1,0 @@
----
-"@inkeep/open-knowledge": minor
----
-
-Write-time broken-link validation in the Open Knowledge MCP. `write`/`edit` now return `brokenLinks` in the same response — outbound links that don't resolve are surfaced at write time, report-only so the write still lands and you can author a doc before its link target exists. Validation covers **every** local link, not just docs: the `./`-onto-a-content-root-path doubling footgun and missing `[[wiki]]` / markdown doc targets (`no-such-doc`), root-escaping paths from one `../` too many (`unresolvable`), and links to assets or source files (`[src](../../foo.py)`) that don't exist on disk at the resolved path (`no-such-file`). That last reason closes the gap a real codebase-wiki run hit: wrong-depth source-file links that 404 silently because the doc-only link graph never tracked them. The platform and pack skills are updated to point agents at `brokenLinks` as the primary write-time check and to clarify that a same-pass forward-reference reports as `no-such-doc` until its target lands (the `links({ kind: "dead" })` audit is the authoritative end-state check).
