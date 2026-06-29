@@ -139,6 +139,31 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         },
         { type: 'separator' },
         {
+          label: 'Recent project',
+          submenu: recentSubmenu,
+        },
+        {
+          label: `${MENU_LABELS.newProject}\u2026`,
+          enabled: deps.onNewProject !== undefined,
+          click: () => deps.onNewProject?.(),
+        },
+        {
+          label: SWITCH_PROJECT_LABEL_WITH_ELLIPSIS,
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => deps.openNavigator(),
+        },
+        {
+          label: `${MENU_LABELS.openFolder}\u2026`,
+          accelerator: 'CmdOrCtrl+O',
+          click: async () => {
+            const picked = await promptForExistingFolder(deps.dialog);
+            if (picked) {
+              await deps.openProject(picked, 'pick-existing');
+            }
+          },
+        },
+        { type: 'separator' },
+        {
           label: MENU_LABELS.duplicate,
           accelerator: 'CmdOrCtrl+D',
           enabled:
@@ -190,32 +215,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
               click: () => deps.onCopyRelativePath?.(),
             },
           ],
-        },
-        { type: 'separator' },
-        {
-          label: 'Create new project…',
-          enabled: deps.onNewProject !== undefined,
-          click: () => deps.onNewProject?.(),
-        },
-        {
-          label: SWITCH_PROJECT_LABEL_WITH_ELLIPSIS,
-          accelerator: 'CmdOrCtrl+Shift+P',
-          click: () => deps.openNavigator(),
-        },
-        {
-          label: 'Open folder\u2026',
-          accelerator: 'CmdOrCtrl+O',
-          click: async () => {
-            const picked = await promptForExistingFolder(deps.dialog);
-            if (picked) {
-              await deps.openProject(picked, 'pick-existing');
-            }
-          },
-        },
-        { type: 'separator' },
-        {
-          label: 'Open recent',
-          submenu: recentSubmenu,
         },
         { type: 'separator' },
         ...(deps.reconfigureMcpWiring
