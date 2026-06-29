@@ -131,3 +131,67 @@ describe('folder rename enumerates descendant docs from disk', () => {
     expect(indexBody).toContain('[[guides/page]]');
   });
 });
+
+describe('folder rename rewrites every inbound link shape and preserves intra-folder links', () => {
+  test('rewrites nested `../` inbound links and leaves no stale folder references', async () => {
+    seed(contentDir, 'foods/apple.md', '# Apple\n');
+    seed(contentDir, 'foods/sub/banana.md', '# Banana\n');
+
+    seed(contentDir, 'top-wiki.md', 'See [[foods/apple]].\n');
+    seed(contentDir, 'top-root.md', 'See [apple](/foods/apple.md).\n');
+    seed(contentDir, 'top-dotrel.md', 'See [apple](./foods/apple.md).\n');
+    seed(contentDir, 'one/note.md', 'See [apple](../foods/apple.md).\n');
+    seed(contentDir, 'one/two/note.md', 'See [banana](../../foods/sub/banana.md).\n');
+
+    const { status } = await renameFolder(contentDir, 'foods', 'recipes');
+    expect(status).toBe(200);
+
+    const read = (p: string) => readFileSync(join(contentDir, p), 'utf-8');
+    for (const p of [
+      'top-wiki.md',
+      'top-root.md',
+      'top-dotrel.md',
+      'one/note.md',
+      'one/two/note.md',
+    ]) {
+      expect(read(p)).not.toContain('foods');
+    }
+    expect(read('top-wiki.md')).toContain('[[recipes/apple]]');
+    expect(read('top-root.md')).toContain('(/recipes/apple.md)');
+    expect(read('top-dotrel.md')).toContain('(./recipes/apple.md)');
+    expect(read('one/note.md')).toContain('(../recipes/apple.md)');
+    expect(read('one/two/note.md')).toContain('(../../recipes/sub/banana.md)');
+    expect(existsSync(join(contentDir, 'recipes/apple.md'))).toBe(true);
+    expect(existsSync(join(contentDir, 'recipes/sub/banana.md'))).toBe(true);
+    expect(existsSync(join(contentDir, 'foods'))).toBe(false);
+  });
+
+  test('preserves relative links authored INSIDE the renamed folder (no orphans)', async () => {
+    seed(
+      contentDir,
+      'foods/apple.md',
+      '# Apple\n\nSee [banana](./sub/banana.md) and [carrot](../veg/carrot.md).\n',
+    );
+    seed(
+      contentDir,
+      'foods/sub/banana.md',
+      '# Banana\n\nSee [apple](../apple.md) and [carrot](../../veg/carrot.md).\n',
+    );
+    seed(contentDir, 'veg/carrot.md', '# Carrot\n');
+
+    const { status } = await renameFolder(contentDir, 'foods', 'recipes');
+    expect(status).toBe(200);
+
+    const apple = readFileSync(join(contentDir, 'recipes/apple.md'), 'utf-8');
+    const banana = readFileSync(join(contentDir, 'recipes/sub/banana.md'), 'utf-8');
+
+    expect(apple).toContain('[banana](sub/banana.md)');
+    expect(apple).toContain('[carrot](../veg/carrot.md)');
+    expect(banana).toContain('[apple](../apple.md)');
+    expect(banana).toContain('[carrot](../../veg/carrot.md)');
+
+    expect(existsSync(join(contentDir, 'recipes/apple.md'))).toBe(true);
+    expect(existsSync(join(contentDir, 'recipes/sub/banana.md'))).toBe(true);
+    expect(existsSync(join(contentDir, 'veg/carrot.md'))).toBe(true);
+  });
+});

@@ -1,7 +1,14 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
   getMetrics,
@@ -66,6 +73,26 @@ async function renamePath(
   return { status: res.status, body };
 }
 
+async function renameFolder(
+  port: number,
+  fromPath: string,
+  toPath: string,
+): Promise<{
+  status: number;
+  body: { ok: boolean; renamed?: Array<{ fromDocName: string; toDocName: string }> };
+}> {
+  const res = await fetch(`http://127.0.0.1:${port}/api/rename-path`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind: 'folder', fromPath, toPath }),
+  });
+  const body = (await res.json()) as {
+    ok: boolean;
+    renamed?: Array<{ fromDocName: string; toDocName: string }>;
+  };
+  return { status: res.status, body };
+}
+
 async function deletePath(
   port: number,
   path: string,
@@ -94,13 +121,24 @@ async function createPage(
 }
 
 async function seedDoc(server: TestServer, docName: string, content = '# seed\n'): Promise<void> {
-  writeFileSync(join(server.contentDir, `${docName}.md`), content, 'utf-8');
+  const filePath = join(server.contentDir, `${docName}.md`);
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, content, 'utf-8');
   await pollUntilAsync(async () => {
     const res = await fetch(`http://127.0.0.1:${server.port}/api/documents`);
     if (!res.ok) return false;
     const data = (await res.json()) as { documents?: Array<{ docName: string }> };
     return data.documents?.some((d) => d.docName === docName) === true;
   }, 8000);
+}
+
+async function writeMd(server: TestServer, docName: string, markdown: string): Promise<void> {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ docName, markdown, position: 'replace' }),
+  });
+  if (!res.ok) throw new Error(`agent-write-md failed for ${docName}: ${res.status}`);
 }
 
 async function pollUntilGuardSettled(
@@ -216,6 +254,39 @@ describe('removalRedirectGuard — auth-rejection mechanism', () => {
     expect(existsSync(join(server.contentDir, `${a}.md`))).toBe(false);
     expect(existsSync(join(server.contentDir, `${b}.md`))).toBe(false);
     expect(existsSync(join(server.contentDir, `${c}.md`))).toBe(true);
+  }, 30_000);
+
+  test('QA-FOLDER: folder rename arms the cache for every descendant doc (no duplicate folder)', async () => {
+    const fromFolder = `foods-${crypto.randomUUID()}`;
+    const toFolder = `recipes-${crypto.randomUUID()}`;
+    await writeMd(server, `${fromFolder}/apple`, '# Apple\n\nbody-apple\n');
+    await writeMd(server, `${fromFolder}/sub/banana`, '# Banana\n\nbody-banana\n');
+
+    const res = await renameFolder(server.port, fromFolder, toFolder);
+    expect(res.status).toBe(200);
+    expect(res.body.renamed?.map((r) => r.fromDocName).sort()).toEqual([
+      `${fromFolder}/apple`,
+      `${fromFolder}/sub/banana`,
+    ]);
+
+    expect(existsSync(join(server.contentDir, `${fromFolder}/apple.md`))).toBe(false);
+    expect(readFileSync(join(server.contentDir, `${toFolder}/apple.md`), 'utf-8')).toContain(
+      'body-apple',
+    );
+    expect(readFileSync(join(server.contentDir, `${toFolder}/sub/banana.md`), 'utf-8')).toContain(
+      'body-banana',
+    );
+
+    for (const [oldName, newName] of [
+      [`${fromFolder}/apple`, `${toFolder}/apple`],
+      [`${fromFolder}/sub/banana`, `${toFolder}/sub/banana`],
+    ]) {
+      const rejection = await runAuthGuard(server, oldName);
+      expect(rejection).toBeInstanceOf(HocuspocusAuthRejection);
+      const parsed = parseAuthRejectionWire((rejection as HocuspocusAuthRejection).reason);
+      expect(parsed.kind).toBe('rename-redirect');
+      expect(parsed.payload).toBe(newName);
+    }
   }, 30_000);
 
   test('QA-016: system + config docNames bypass the guard entirely', async () => {
