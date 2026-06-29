@@ -1,4 +1,3 @@
-
 import { parseWikiLink } from '@inkeep/open-knowledge-core';
 
 export type PropertyInlineSegment =

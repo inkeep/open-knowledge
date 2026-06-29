@@ -1,4 +1,3 @@
-
 import { useLingui } from '@lingui/react/macro';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useJsxComponentHost } from './jsx-host-context.tsx';

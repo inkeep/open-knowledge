@@ -1,4 +1,3 @@
-
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';

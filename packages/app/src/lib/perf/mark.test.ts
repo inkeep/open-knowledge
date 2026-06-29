@@ -34,8 +34,7 @@ describe('mark', () => {
   afterEach(() => {
     try {
       performance.clearMeasures();
-    } catch {
-    }
+    } catch {}
   });
 
   test('creates a performance entry with the given name', () => {

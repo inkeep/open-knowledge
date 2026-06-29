@@ -1,4 +1,3 @@
-
 import { statSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -34,9 +33,7 @@ export class RotatingAppender {
   }
 
   append(data: string | Uint8Array): Promise<void> {
-    const next = this.#writeChain
-      .catch(() => undefined)
-      .then(() => this.#doAppend(data));
+    const next = this.#writeChain.catch(() => undefined).then(() => this.#doAppend(data));
     this.#writeChain = next;
     return next;
   }
@@ -185,8 +182,7 @@ export class ScrubbingSpanProcessor implements SpanProcessor {
     this.#maxValueBytes = opts.maxValueBytes ?? DEFAULT_MAX_VALUE_BYTES;
   }
 
-  onStart(_span: Span, _parentContext: Context): void {
-  }
+  onStart(_span: Span, _parentContext: Context): void {}
 
   onEnd(span: ReadableSpan): void {
     scrubAttributes(
@@ -214,11 +210,9 @@ export class ScrubbingSpanProcessor implements SpanProcessor {
     }
   }
 
-  async forceFlush(): Promise<void> {
-  }
+  async forceFlush(): Promise<void> {}
 
-  async shutdown(): Promise<void> {
-  }
+  async shutdown(): Promise<void> {}
 }
 
 const LOGS_SUBDIR = ['.ok', 'local', 'logs'] as const;

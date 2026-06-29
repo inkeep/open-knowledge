@@ -1,4 +1,3 @@
-
 import { isMap, type ParsedNode, parseDocument } from 'yaml';
 import type * as Y from 'yjs';
 import type { ConfigValidationError, WriteScope } from './errors.ts';

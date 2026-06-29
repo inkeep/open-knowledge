@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
@@ -7,7 +6,6 @@ import { EditorState, TextSelection } from '@tiptap/pm/state';
 import { computeArrowIntoTargetAtBoundary } from './raw-mdx-fallback';
 
 const schema = getSchema(sharedExtensions);
-
 
 function p(text: string): PMNode {
   return schema.node('paragraph', null, text ? [schema.text(text)] : []);
@@ -38,7 +36,6 @@ function stateWithRange(doc: PMNode, anchor: number, head: number): EditorState 
     selection: TextSelection.create(doc, anchor, head),
   });
 }
-
 
 describe('computeArrowIntoTargetAtBoundary', () => {
   describe('paragraph → fallback (forward: down/right)', () => {

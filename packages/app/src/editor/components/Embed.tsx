@@ -1,4 +1,3 @@
-
 import { rewriteEmbedUrl } from '@inkeep/open-knowledge-core';
 import { useEffect, useRef } from 'react';
 import { useJsxComponentHost } from './jsx-host-context.tsx';

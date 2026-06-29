@@ -1,4 +1,3 @@
-
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -139,7 +138,6 @@ test.describe('share-receive multi-worktree smoke (US-014 / J1 silent dispatch)'
         `no window dispatched to feat-bar worktree yet (expected ${fixture.featBarWorktree})`,
       );
     }).toPass({ timeout: 20_000 });
-
   });
 
   test.skip('J2 consent dialog dispatch — deferred until E2E harness boots a per-test OK server', () => {});

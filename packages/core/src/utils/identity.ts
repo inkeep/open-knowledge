@@ -1,6 +1,5 @@
 import type { Identity } from '../types/identity';
 
-
 export const AGENT_COLORS = [
   '#D97757', // claude
   '#1B1912', // cursor
@@ -119,7 +118,6 @@ export function displayNameFromClientName(name?: string): string {
   return BRAND_NAME[iconFromClientName(trimmed)] ?? trimmed;
 }
 
-
 function hexToHsl(hex: string): [number, number, number] {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -185,7 +183,6 @@ const ANIMALS = [
 const LS_NAME_KEY = 'ok-user-name-v3';
 const LS_COLOR_KEY = 'ok-user-color-v3';
 
-
 function randomElement<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -198,7 +195,6 @@ export function generateRandomColor(): string {
   return randomElement(HUMAN_COLORS);
 }
 
-
 function safeLocalStorageGet(key: string): string | null {
   try {
     return localStorage.getItem(key);
@@ -210,8 +206,7 @@ function safeLocalStorageGet(key: string): string | null {
 function safeLocalStorageSet(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
-  } catch {
-  }
+  } catch {}
 }
 
 export function getIdentity(): Identity {

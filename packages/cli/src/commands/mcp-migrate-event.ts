@@ -1,4 +1,3 @@
-
 export type McpConfigMigrateScope = 'user' | 'project';
 
 export interface McpConfigMigrateInput {

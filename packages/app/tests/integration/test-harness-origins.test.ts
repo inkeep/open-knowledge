@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
 import { isPairedWriteOrigin } from '@inkeep/open-knowledge-server';
@@ -92,8 +91,7 @@ describe('US-028: test harness migration — structural isPairedWriteOrigin', ()
       doc.transact(() => {
         ytext.insert(0, 'typing');
       }, undefined);
-    } catch {
-    }
+    } catch {}
 
     detach();
     doc.destroy();

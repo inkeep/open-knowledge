@@ -28,8 +28,7 @@ afterEach(() => {
   for (const p of providers.splice(0)) {
     try {
       p.destroy();
-    } catch {
-    }
+    } catch {}
   }
 });
 

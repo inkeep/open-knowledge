@@ -1,4 +1,3 @@
-
 import { Mark } from '@tiptap/core';
 
 declare module '@tiptap/core' {

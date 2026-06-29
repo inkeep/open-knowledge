@@ -1,4 +1,3 @@
-
 import type { ConfigValidationError, FieldScope, WriteScope } from './errors.ts';
 import { type ConfigPatch, ConfigSchema } from './schema.ts';
 import { getLeafFieldMeta } from './schema-leaf.ts';

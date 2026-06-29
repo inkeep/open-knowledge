@@ -7,7 +7,6 @@ import { getMetrics, resetMetrics } from './metrics.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import { runRemovalRedirectGuard } from './removal-redirect-guard.ts';
 
-
 interface Harness {
   contentDir: string;
   cache: RecentlyRemovedDocs;
@@ -62,8 +61,7 @@ function makeHarness(opts: { fileExists?: (filePath: string) => boolean } = {}):
       console.warn = originalWarn;
       try {
         rmSync(contentDir, { recursive: true, force: true });
-      } catch {
-      }
+      } catch {}
     },
   };
 }
@@ -79,7 +77,6 @@ describe('runRemovalRedirectGuard', () => {
     harness.cleanup();
   });
 
-
   test('system docs short-circuit at entry (no cache lookup, no redirect)', async () => {
     harness.cache.setDeleted('__system__');
     const thrown = await harness.run('__system__');
@@ -91,7 +88,6 @@ describe('runRemovalRedirectGuard', () => {
     const thrown = await harness.run('__config__/project');
     expect(thrown).toBeNull();
   });
-
 
   test('recreation collision (G5) admits — cache invalidated by create-page upstream', async () => {
     writeFileSync(join(harness.contentDir, 'foo.md'), '# foo');
@@ -128,7 +124,6 @@ describe('runRemovalRedirectGuard', () => {
     expect(thrown).toBeNull();
   });
 
-
   test('single-hop rename redirect: file at newDocName → throws rename-redirect with payload', async () => {
     writeFileSync(join(harness.contentDir, 'bar.md'), '# bar');
     harness.cache.setRenamed('foo', 'bar');
@@ -142,7 +137,6 @@ describe('runRemovalRedirectGuard', () => {
     expect(getMetrics().authRenameRedirectCount).toBe(1);
   });
 
-
   test('single-hop delete: cache says deleted, no file → throws doc-deleted', async () => {
     harness.cache.setDeleted('foo');
 
@@ -155,7 +149,6 @@ describe('runRemovalRedirectGuard', () => {
     expect(getMetrics().authDocDeletedCount).toBe(1);
     expect(getMetrics().authRenameRedirectCount).toBe(0);
   });
-
 
   test('multi-hop chain walk terminates at file-exists target', async () => {
     writeFileSync(join(harness.contentDir, 'C.md'), '# C');
@@ -204,7 +197,6 @@ describe('runRemovalRedirectGuard', () => {
     expect((thrown as HocuspocusAuthRejection).payload).toBe('B');
   });
 
-
   test('pathological cycle (A → B → A) admits with structured warn (no infinite loop)', async () => {
     harness.cache.setRenamed('A', 'B');
     harness.cache.setRenamed('B', 'A');
@@ -216,7 +208,6 @@ describe('runRemovalRedirectGuard', () => {
     expect(cycleWarns[0]).toContain('"documentName":"A"');
     expect(getMetrics().removalRedirectChainCycles).toBe(1);
   });
-
 
   test('internal error from cache lookup falls through to admit + structured warn + counter', async () => {
     const throwingHarness = makeHarness({
@@ -252,7 +243,6 @@ describe('runRemovalRedirectGuard', () => {
     expect(thrown).toBeInstanceOf(HocuspocusAuthRejection);
   });
 
-
   test('counters increment exactly once per rejection emit', async () => {
     writeFileSync(join(harness.contentDir, 'b.md'), '# b');
     harness.cache.setRenamed('a', 'b');
@@ -264,7 +254,6 @@ describe('runRemovalRedirectGuard', () => {
     expect(getMetrics().authRenameRedirectCount).toBe(1);
     expect(getMetrics().authDocDeletedCount).toBe(1);
   });
-
 
   test('docName with .. fragment short-circuits as if no file (no cache hit → admit)', async () => {
     const thrown = await harness.run('../escape');

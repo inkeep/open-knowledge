@@ -1,9 +1,6 @@
-
 import { expect, test, waitForActiveProviderSynced, waitForSlashMenuFirstOption } from './_helpers';
 
-
 const PROP_PANEL_TIMEOUT = 1_000;
-
 
 test('SLASH-AUTOOPEN-IMG: slash-inserting Image auto-opens its PropPanel', async ({
   page,

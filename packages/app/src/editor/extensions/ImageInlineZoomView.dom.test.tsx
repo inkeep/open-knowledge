@@ -27,10 +27,7 @@ mock.module('react-medium-image-zoom', () => ({
 const { ImageInlineZoomView } = await import('./ImageInlineZoomView');
 const { setEditorDocName } = await import('./doc-context.ts');
 
-function makeNode(
-  attrs: { src?: string; alt?: string; title?: string },
-  editor?: object,
-) {
+function makeNode(attrs: { src?: string; alt?: string; title?: string }, editor?: object) {
   // biome-ignore lint/suspicious/noExplicitAny: test stub
   return { node: { attrs }, editor } as any;
 }
@@ -92,7 +89,6 @@ describe('ImageInlineZoomView — inline-image lightbox wrap', () => {
     const img = document.querySelector('img');
     expect(img?.getAttribute('src')).toContain('/assets/pic.png');
   });
-
 
   test('resolves a `./`-relative inline src against the document folder, not the SPA root', () => {
     const editor = makeEditorWithDocName('fishing-log/2026-05-16-wind-river-springer');

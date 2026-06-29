@@ -1,4 +1,3 @@
-
 import { ChevronRight } from 'lucide-react';
 import { resolveLucideIcon } from './lucide-icon-allowlist.ts';
 

@@ -1,4 +1,3 @@
-
 import { SITE_NAME } from './site';
 
 const SHARE_URL_VERSION_V1 = 0x01;

@@ -18,8 +18,7 @@ function makeFakeCtx(): FakeMetricsCtx {
     recordMetric(key: string, value: number | string | boolean | null) {
       metrics[key] = value;
     },
-    note(_line: string) {
-    },
+    note(_line: string) {},
   } satisfies ScenarioCtx;
   return { ctx, __metrics: metrics };
 }

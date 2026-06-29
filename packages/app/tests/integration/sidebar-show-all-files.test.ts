@@ -89,7 +89,6 @@ describe('/api/documents?showAll=true', () => {
 
     expect(docNames).toContain('drafts/wip');
 
-
     expect(docNames).not.toContain('node_modules/pkg/README');
   });
 

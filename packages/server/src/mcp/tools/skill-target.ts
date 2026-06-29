@@ -1,4 +1,3 @@
-
 import type { SkillScope } from '@inkeep/open-knowledge-core';
 import type { AgentIdentity } from '../agent-identity.ts';
 import { resolveSkillPreviewUrl } from './preview-url.ts';
@@ -97,7 +96,6 @@ export async function fetchSkill(
     files,
   };
 }
-
 
 export async function writeSkillFile(
   url: string | undefined,

@@ -81,7 +81,6 @@ describe('validateMediaUrl — extensionless CDN URLs (no false positive)', () =
 });
 
 describe('validateMediaUrl — YouTube accepted for video kind (Video dispatches to iframe)', () => {
-
   test('accepts youtube.com/watch URLs', () => {
     expect(
       validateMediaUrl('https://www.youtube.com/watch?v=rekaSOwGMu0&pp=ugUHEgVlbi1H', 'video'),
@@ -145,7 +144,6 @@ describe('validateMediaUrl — YouTube accepted for video kind (Video dispatches
 });
 
 describe('validateMediaUrl — Vimeo accepted for video kind (Video dispatches to iframe)', () => {
-
   test('accepts canonical vimeo.com URLs', () => {
     expect(validateMediaUrl('https://vimeo.com/76979871', 'video')).toEqual({ valid: true });
     expect(validateMediaUrl('https://www.vimeo.com/76979871', 'video')).toEqual({ valid: true });
@@ -171,7 +169,6 @@ describe('validateMediaUrl — Vimeo accepted for video kind (Video dispatches t
 });
 
 describe('validateMediaUrl — Loom accepted for video kind (Video dispatches to iframe)', () => {
-
   test('accepts canonical share URLs', () => {
     expect(validateMediaUrl('https://www.loom.com/share/abc123def456ghi789jk', 'video')).toEqual({
       valid: true,
@@ -208,7 +205,6 @@ describe('validateMediaUrl — Loom accepted for video kind (Video dispatches to
 });
 
 describe('validateMediaUrl — embed-provider rejection (image / audio kinds for every provider)', () => {
-
   test('YouTube rejected for image and audio kinds', () => {
     expect(validateMediaUrl('https://youtu.be/dQw4w9WgXcQ', 'image')).toEqual({
       valid: false,

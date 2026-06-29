@@ -1,4 +1,3 @@
-
 import { defaultSkillInstaller, type SkillInstaller } from '@/lib/handoff/skill-installer';
 import '@/lib/desktop-bridge-types';
 

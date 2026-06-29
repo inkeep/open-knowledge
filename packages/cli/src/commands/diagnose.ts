@@ -1,4 +1,3 @@
-
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -20,7 +19,6 @@ import {
 } from '../utils/process-scan.ts';
 import { healthCommand } from './diagnose-health.ts';
 import { inspectLock, type LockState } from './lock-state.ts';
-
 
 interface ProcessStat {
   ts: string;
@@ -52,7 +50,6 @@ function sampleProcessStat(pid: number): ProcessStat | null {
   return { ts: new Date().toISOString(), pid, cpuPercent, memPercent, rssKb, vszKb };
 }
 
-
 function collectLsof(pid: number): string | null {
   const r = spawnSync('lsof', ['-p', String(pid)], { encoding: 'utf-8', timeout: 5000 });
   return r.error || !r.stdout ? null : r.stdout;
@@ -70,7 +67,6 @@ function localhostListenPorts(lsofOutput: string): number[] {
   return ports;
 }
 
-
 function getInspectorEndpoints(port: number): unknown[] | null {
   const r = spawnSync('curl', ['-s', '--max-time', '2', `http://127.0.0.1:${port}/json/list`], {
     encoding: 'utf-8',
@@ -84,7 +80,6 @@ function getInspectorEndpoints(port: number): unknown[] | null {
     return null;
   }
 }
-
 
 function writeCdpScript(wsUrl: string, profileMs: number, outputPath: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'ok-cdp-'));
@@ -146,12 +141,10 @@ async function runProfiler(
 
   try {
     rmSync(join(scriptPath, '..'), { recursive: true, force: true });
-  } catch {
-  }
+  } catch {}
 
   return succeeded;
 }
-
 
 type CpuProfile = {
   nodes: Array<{
@@ -228,7 +221,6 @@ function summarizeProfile(profileJson: string): string {
   return lines.join('\n');
 }
 
-
 interface DiagnoseProcessDeps {
   discover?: () => Promise<string[]>;
   inspect?: (lockDir: string, name: 'server' | 'ui') => LockState;
@@ -255,7 +247,6 @@ interface RunDiagnoseOpts {
   output?: string;
   noInspector?: boolean;
 }
-
 
 export async function runDiagnose(
   opts: RunDiagnoseOpts,
@@ -405,7 +396,6 @@ export async function runDiagnose(
   log(`Bundle: ${pc.bold(outDir)}`);
 }
 
-
 export interface RunDiagnoseBundleOpts {
   contentDir: string;
   projectDir?: string;
@@ -543,12 +533,10 @@ export async function runDiagnoseBundle(
     if (processDir !== undefined) {
       try {
         rmSync(processDir, { recursive: true, force: true });
-      } catch {
-      }
+      } catch {}
     }
   }
 }
-
 
 export function diagnoseCommand(): Command {
   const root = new Command('diagnose').description(

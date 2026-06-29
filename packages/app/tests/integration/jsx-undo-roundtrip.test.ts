@@ -1,4 +1,3 @@
-
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { normalizeBridge } from '@inkeep/open-knowledge-core';
@@ -89,7 +88,6 @@ describe('O4 — undo round-trip on an indented multi-Step doc', () => {
       expect(ytext.toString()).not.toContain('O4-UNDOABLE-EDIT');
       expect(normalizeBridge(ytext.toString())).toBe(normalizeBridge(preEdit));
       assertBridgeInvariant(ytext, sess.dc.document.getXmlFragment('default'));
-
     } finally {
       await sm.closeSession(docName, connectionId).catch(() => {});
     }

@@ -38,7 +38,6 @@ export interface PropRow {
   value: string;
 }
 
-
 let propRowSeq = 0;
 function nextRowId(): string {
   propRowSeq += 1;

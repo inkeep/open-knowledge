@@ -31,7 +31,6 @@ function countLeadingIndent(text: string): number {
   return indent;
 }
 
-
 import { FM_FENCE_LINE_RE } from '@inkeep/open-knowledge-core';
 
 export { FM_FENCE_LINE_RE };

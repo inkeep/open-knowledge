@@ -1,4 +1,3 @@
-
 let shiftHeldLatch = false;
 let listenersAttached = false;
 

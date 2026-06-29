@@ -1,4 +1,3 @@
-
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 
 const TERMINAL_LAUNCH_EVENT = 'open-knowledge:terminal-launch';

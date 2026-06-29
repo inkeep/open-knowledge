@@ -1,4 +1,3 @@
-
 const SHARE_URL_VERSION_V1 = 0x01;
 
 export interface DecodedShare {

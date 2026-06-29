@@ -1,4 +1,3 @@
-
 import CodeBlock from '@tiptap/extension-code-block';
 
 export const CodeBlockFidelity = CodeBlock.extend({

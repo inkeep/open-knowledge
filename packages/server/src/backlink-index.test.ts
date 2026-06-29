@@ -347,6 +347,53 @@ describe('BacklinkIndex', () => {
     }
   });
 
+  test('getDeadLinks does not flag a freshly-indexed target missing from the admitted set', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-links-fresh-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      index.updateDocument('report', [
+        { target: 'evidence/new-target', anchor: null, snippet: 'see new target' },
+      ]);
+      index.updateDocument('evidence/new-target', []);
+
+      expect(index.getBacklinkCount('evidence/new-target')).toBe(1);
+      expect(index.getDeadLinks(['report'])).toEqual([]);
+
+      index.updateDocument('report', [
+        { target: 'evidence/new-target', anchor: null, snippet: 'see new target' },
+        { target: 'evidence/ghost', anchor: null, snippet: 'see ghost' },
+      ]);
+      expect(index.getDeadLinks(['report']).map((entry) => entry.target)).toEqual([
+        'evidence/ghost',
+      ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('getDeadLinks reports a target as dead again after deleteDocument removes its forward node', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-after-delete-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      index.updateDocument('report', [
+        { target: 'evidence/new-target', anchor: null, snippet: 'see new target' },
+      ]);
+      index.updateDocument('evidence/new-target', []);
+      expect(index.getDeadLinks(['report'])).toEqual([]);
+
+      index.deleteDocument('evidence/new-target');
+      expect(index.getDeadLinks(['report']).map((entry) => entry.target)).toEqual([
+        'evidence/new-target',
+      ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test('rebuilds from disk and persists cache per branch', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-project-'));
     const contentDir = join(projectDir, 'content');
@@ -586,7 +633,6 @@ describe('BacklinkIndex', () => {
   });
 });
 
-
 describe('BacklinkIndex structural skill-bundle edges', () => {
   const SKILL = '.ok/skills/demo/SKILL';
   const REF = '.ok/skills/demo/references/notes';
@@ -720,7 +766,6 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
     }
   });
 });
-
 
 describe('BacklinkIndex GLOBAL structural skill-bundle edges', () => {
   const G_SKILL = '__skill__/global/demo';
@@ -872,7 +917,6 @@ describe('BacklinkIndex GLOBAL structural skill-bundle edges', () => {
   });
 });
 
-
 describe('resolveMarkdownHref', () => {
   test('resolves same-directory relative link', () => {
     expect(resolveMarkdownHref('./other', 'notes')).toBe('other');
@@ -924,7 +968,6 @@ describe('resolveMarkdownHref', () => {
     expect(resolveMarkdownHref('../../../way-out.md', 'deep/a/b')).toBeNull();
   });
 });
-
 
 describe('extractMarkdownLinksFromMarkdown', () => {
   test('extracts relative inline markdown links', () => {
@@ -1009,7 +1052,6 @@ describe('extractMarkdownLinksFromMarkdown', () => {
     expect(extractMarkdownLinksFromMarkdown('[ext](https://example.com)', 'notes')).toEqual([]);
   });
 });
-
 
 describe('BacklinkIndex with markdown links', () => {
   test('updateDocumentFromMarkdown indexes markdown links alongside wiki links', () => {
@@ -1217,7 +1259,6 @@ describe('reconcileWithDisk', () => {
   });
 });
 
-
 describe('computeBrokenOutboundLinks', () => {
   test('returns [] when every outbound link resolves (AC2.1)', () => {
     const md = 'See [sibling](./real.md) and [root](/docs/guide.md) and [[Existing]].';
@@ -1317,7 +1358,6 @@ describe('computeBrokenOutboundLinks', () => {
     const md = 'See [self](./a.md).';
     expect(computeBrokenOutboundLinks(md, 'notes/a', new Set(['notes/a']))).toEqual([]);
   });
-
 
   const fileOracle = (existing: string[]) => {
     const set = new Set(existing);

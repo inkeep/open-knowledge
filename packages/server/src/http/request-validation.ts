@@ -1,4 +1,3 @@
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { z } from 'zod';
 import { errorResponse } from './error-response.ts';

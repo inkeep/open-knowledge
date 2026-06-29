@@ -1,4 +1,3 @@
-
 import type { OkDesktopBridge, OkShareReceivedPayload } from '@/lib/desktop-bridge-types';
 
 export interface ShareReceiveStore {

@@ -1,4 +1,3 @@
-
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { ShareNavigatorPayload } from './url-scheme.ts';

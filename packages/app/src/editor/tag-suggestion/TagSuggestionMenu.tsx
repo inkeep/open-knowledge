@@ -1,4 +1,3 @@
-
 import { plural, t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useId, useRef } from 'react';

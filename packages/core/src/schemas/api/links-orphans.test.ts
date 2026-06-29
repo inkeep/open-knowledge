@@ -201,4 +201,3 @@ describe('SuggestLinksSuccessSchema', () => {
     ).toBe(true);
   });
 });
-

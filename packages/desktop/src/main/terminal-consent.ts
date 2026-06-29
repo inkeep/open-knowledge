@@ -1,4 +1,3 @@
-
 import { existsSync, readFileSync } from 'node:fs';
 import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { parse as parseYaml } from 'yaml';

@@ -1,4 +1,3 @@
-
 import { markerFor } from '../lib/doc-markers';
 import { installLongtaskObserver } from '../lib/longtask-observer';
 import { defineScenario } from '../lib/scenario';
@@ -202,8 +201,7 @@ export default defineScenario({
         });
         try {
           await waitForVisibleProseMirrorForDoc(page, next, 30_000);
-        } catch {
-        }
+        } catch {}
       }
       await forceGc(cdp);
       const stageDMb = await readHeapMb(page);

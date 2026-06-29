@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
 import {
@@ -367,7 +366,6 @@ describe('computeEditorMountGate — invariant: at least one editor rendered', (
     }
   });
 });
-
 
 describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
   test('large doc, both editors rendering, not yet emitted → emit', () => {

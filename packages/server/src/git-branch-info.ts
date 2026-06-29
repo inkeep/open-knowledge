@@ -1,4 +1,3 @@
-
 import { isValidBranchName } from '@inkeep/open-knowledge-core';
 import { type DirtyOverlapResult, dirtyFilesOverlapWith } from './git-dirty.ts';
 import { createGitInstance } from './git-handle.ts';

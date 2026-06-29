@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { initProseMirrorDoc } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';

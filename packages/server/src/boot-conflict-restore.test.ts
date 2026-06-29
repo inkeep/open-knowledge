@@ -1,4 +1,3 @@
-
 import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'bun:test';
 
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
@@ -53,8 +52,7 @@ async function seedRealMergeConflict(projectDir: string, filePath: string): Prom
   await execFileAsync('git', ['checkout', 'main'], opts);
   writeFileSync(resolve(projectDir, filePath), 'ours\n', 'utf-8');
   await execFileAsync('git', ['commit', '-am', 'ours'], opts);
-  await execFileAsync('git', ['merge', 'theirs-branch'], opts).catch(() => {
-  });
+  await execFileAsync('git', ['merge', 'theirs-branch'], opts).catch(() => {});
 }
 
 let tmpDir: string;

@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { sharedExtensions } from './shared';
 import { TabFocusTrap } from './tab-focus-trap';

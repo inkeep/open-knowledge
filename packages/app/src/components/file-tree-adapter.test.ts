@@ -273,7 +273,6 @@ describe('file-tree-adapter', () => {
     ).toBe('docs/photo.png');
   });
 
-
   test('treeItemToTarget(item, documents) returns the entry-authoritative docExt for an extensionless .md tree path', () => {
     const item: ContextMenuItem = {
       kind: 'file',

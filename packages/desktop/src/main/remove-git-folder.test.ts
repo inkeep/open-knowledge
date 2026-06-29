@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
@@ -22,8 +21,7 @@ beforeEach(() => {
 afterEach(() => {
   try {
     rmSync(tmpRoot, { recursive: true, force: true });
-  } catch {
-  }
+  } catch {}
 });
 
 describe('removeGitFolder — pure helper backing ok:fs:remove-git-folder', () => {

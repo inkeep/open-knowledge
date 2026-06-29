@@ -1,4 +1,3 @@
-
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import * as Y from 'yjs';
@@ -10,7 +9,6 @@ import {
   type TestClient,
   type TestServer,
 } from '../integration/test-harness';
-
 
 function createPRNG(seed: number) {
   let state = seed | 0 || 1;
@@ -27,7 +25,6 @@ function createPRNG(seed: number) {
   };
 }
 
-
 function wysiwygAppend(client: TestClient, text: string): void {
   const paragraph = new Y.XmlElement('paragraph');
   const ytext = new Y.XmlText();
@@ -41,7 +38,6 @@ function sourceAppend(client: TestClient, text: string): void {
     client.ytext.insert(client.ytext.length, `\n\n${text}\n`);
   });
 }
-
 
 async function driveToConvergence(
   clients: TestClient[],
@@ -85,7 +81,6 @@ async function driveToConvergence(
   return null;
 }
 
-
 function findDuplicates(ytext: string, markers: Set<string>): string[] {
   const duplicates: string[] = [];
   for (const marker of markers) {
@@ -99,7 +94,6 @@ function findDuplicates(ytext: string, markers: Set<string>): string[] {
   }
   return duplicates;
 }
-
 
 describe('server-authoritative stress (US-013)', () => {
   let server: TestServer;

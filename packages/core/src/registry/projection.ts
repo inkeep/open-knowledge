@@ -1,4 +1,3 @@
-
 import type { Nodes as MdastNodes, RootContent } from 'mdast';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { MdxJsxAttribute, MdxJsxFlowElement } from 'mdast-util-mdx';

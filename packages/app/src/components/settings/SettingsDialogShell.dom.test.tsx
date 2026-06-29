@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';

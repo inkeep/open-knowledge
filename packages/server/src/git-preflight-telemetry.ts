@@ -1,4 +1,3 @@
-
 import { type GitNotAvailableError, GitTooOldError } from './git-preflight.ts';
 import { withSpanSync } from './telemetry.ts';
 

@@ -505,7 +505,6 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
     expect(body).toEqual({ claude: true, codex: false, cursor: true });
   });
 
-
   test('remote-web (Host: example.com) → all-true and probe NOT called', async () => {
     const res = await fetch(`http://127.0.0.1:${port}/api/installed-agents`, {
       headers: {

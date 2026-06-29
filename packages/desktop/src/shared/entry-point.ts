@@ -1,4 +1,3 @@
-
 export type EntryPoint =
   | 'create-new'
   | 'create-new-nested-redirect'

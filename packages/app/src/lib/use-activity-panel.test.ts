@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core';
 import { computeWritingDocs } from './use-activity-panel';

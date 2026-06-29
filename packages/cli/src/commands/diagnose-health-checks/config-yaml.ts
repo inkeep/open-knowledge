@@ -1,4 +1,3 @@
-
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from '../../config/loader.ts';

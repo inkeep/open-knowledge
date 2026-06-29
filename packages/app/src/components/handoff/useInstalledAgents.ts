@@ -1,4 +1,3 @@
-
 import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
 import { useEffect, useRef, useState } from 'react';
 import {

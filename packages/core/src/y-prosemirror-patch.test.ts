@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -23,8 +22,7 @@ function resolveInstalledPackageDir(packageName: string): string {
     try {
       const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as { name?: string };
       if (pkg.name === packageName) return dir;
-    } catch {
-    }
+    } catch {}
 
     const parent = dirname(dir);
     if (parent === dir) break;
@@ -64,8 +62,7 @@ function walkInstalledPackageDirs(
     let pkgDir = full;
     try {
       pkgDir = realpathSync(full);
-    } catch {
-    }
+    } catch {}
     if (visited.has(pkgDir)) continue;
     visited.add(pkgDir);
     visitPackageDir(pkgDir);

@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { buildUtilityForkEnv } from './utility-fork-env.ts';
 
-
 describe('buildUtilityForkEnv', () => {
   test('sets OK_ELECTRON_PROTOCOL_HOST=1', () => {
     const env = buildUtilityForkEnv({});

@@ -1,4 +1,3 @@
-
 export interface BootstrapConfidenceInterval {
   readonly lo: number;
   readonly hi: number;
@@ -68,7 +67,6 @@ export function bcaConfidenceInterval(
 
   return { lo, hi, estimate };
 }
-
 
 function arithmeticMean(samples: ReadonlyArray<number>): number {
   if (samples.length === 0) return 0;

@@ -1,4 +1,3 @@
-
 export { makeBunCheck } from './bun.ts';
 export { makeConfigYamlCheck } from './config-yaml.ts';
 export { makeContentDirCheck } from './content-dir.ts';

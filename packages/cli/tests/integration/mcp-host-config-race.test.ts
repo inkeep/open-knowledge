@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { spawn as nativeSpawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -26,8 +25,7 @@ function spawnConfigWriter(configPath: string, serverKey: string): Promise<Worke
     const timeoutHandle = setTimeout(() => {
       try {
         proc.kill('SIGKILL');
-      } catch {
-      }
+      } catch {}
       rejectSpawn(
         new Error(`config-race-worker(${serverKey}) timed out after ${WORKER_TIMEOUT_MS}ms`),
       );

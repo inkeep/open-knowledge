@@ -1,4 +1,3 @@
-
 import ignore, { type Ignore } from 'ignore';
 
 export const PREVIEW_CACHE_LIMIT = 256;

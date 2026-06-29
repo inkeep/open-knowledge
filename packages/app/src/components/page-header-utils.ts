@@ -1,4 +1,3 @@
-
 import { IMAGE_EXTENSIONS, isSafeUrl, toDesktopAssetHref } from '@inkeep/open-knowledge-core';
 
 /** Hard cap on raw frontmatter value length we'll classify — anything

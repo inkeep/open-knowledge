@@ -89,8 +89,7 @@ function seedState(userDataDir, project, name) {
   if (existsSync(statePath)) {
     try {
       state = { ...state, ...JSON.parse(readFileSync(statePath, 'utf-8')) };
-    } catch {
-    }
+    } catch {}
   }
   const now = new Date().toISOString();
   const recents = Array.isArray(state.recentProjects) ? state.recentProjects : [];

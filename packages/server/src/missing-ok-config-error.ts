@@ -1,4 +1,3 @@
-
 export type MissingOkConfigKind = 'okdir' | 'config';
 
 export const MISSING_OK_CONFIG_MESSAGE =

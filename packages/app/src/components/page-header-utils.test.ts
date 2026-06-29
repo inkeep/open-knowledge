@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { resolvePageCover, resolvePageIcon } from './page-header-utils';
 
-
 describe('resolvePageIcon', () => {
   test('classifies a single emoji as emoji', () => {
     expect(resolvePageIcon('📝')).toEqual({ kind: 'emoji', value: '📝' });
@@ -112,7 +111,6 @@ describe('resolvePageIcon', () => {
     expect(resolvePageIcon('assets/icon.webp').kind).toBe('path');
   });
 });
-
 
 describe('resolvePageCover', () => {
   test('rejects emoji (covers require an image)', () => {

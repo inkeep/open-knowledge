@@ -1,4 +1,3 @@
-
 export const DOC_MARKERS: Record<string, string> = {
   README: 'Local-first knowledge base',
   PROJECT: 'Build an agent-native knowledge platform',

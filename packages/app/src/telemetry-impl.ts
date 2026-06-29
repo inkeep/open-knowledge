@@ -65,8 +65,7 @@ export function install(): void {
     // eslint-disable-next-line no-console
     console.warn('[otel] frontend telemetry init failed — continuing without', err);
     if (registered && provider) {
-      void provider.shutdown().catch(() => {
-      });
+      void provider.shutdown().catch(() => {});
     }
     installed = false;
   }

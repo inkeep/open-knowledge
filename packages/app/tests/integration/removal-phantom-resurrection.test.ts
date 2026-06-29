@@ -1,4 +1,3 @@
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -24,7 +23,6 @@ async function pollUntilAsync(
   }
   throw new Error(`pollUntilAsync timed out after ${timeoutMs}ms`);
 }
-
 
 interface RemovalRedirectGuardLike {
   onAuthenticate: (payload: { documentName: string }) => Promise<void>;
@@ -131,7 +129,6 @@ beforeEach(() => {
   resetMetrics();
 });
 
-
 describe('removalRedirectGuard — auth-rejection mechanism', () => {
   test('QA-001: rename A → B rejects any reconnect to A and prevents resurrection', async () => {
     const fromName = `rename-${crypto.randomUUID()}`;
@@ -228,7 +225,6 @@ describe('removalRedirectGuard — auth-rejection mechanism', () => {
     expect(getMetrics().authDocDeletedCount).toBe(0);
   });
 });
-
 
 describe('RecentlyRemovedDocs — cache lifecycle', () => {
   test('QA-008 spine populate: rename via /api/rename-path arms the cache as renamed', async () => {
