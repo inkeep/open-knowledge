@@ -1,3 +1,4 @@
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -34,6 +35,7 @@ async function awaitFolderPathsIndexed(
   );
 }
 
+
 describe('/api/documents empty folder — boot-time', () => {
   let server: TestServer;
 
@@ -67,6 +69,7 @@ describe('/api/documents empty folder — boot-time', () => {
     expect(folderPaths).toContain('nested/empty-child');
   });
 });
+
 
 describe('/api/documents empty folder — live creation', () => {
   let server: TestServer;

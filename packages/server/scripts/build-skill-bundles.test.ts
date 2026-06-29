@@ -27,7 +27,8 @@ afterEach(() => {
     if (p) {
       try {
         rmSync(p, { recursive: true, force: true });
-      } catch {}
+      } catch {
+      }
     }
   }
 });

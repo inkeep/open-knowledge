@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { applyChannelSettings, channelFromVersion } from '../../src/main/auto-updater.ts';
 
+
 interface Bag {
   channel: string | null;
   allowPrerelease: boolean;

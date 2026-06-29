@@ -12,13 +12,15 @@ import {
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
 import type { PtyHostIncomingMessage } from '../../src/utility/pty-host.ts';
 
+
 class FakeUtility {
   posted: PtyHostIncomingMessage[] = [];
   killed = 0;
   postMessage(m: PtyHostIncomingMessage): void {
     this.posted.push(m);
   }
-  on(_event: 'message' | 'exit', _cb: (arg: never) => void): void {}
+  on(_event: 'message' | 'exit', _cb: (arg: never) => void): void {
+  }
   kill(): boolean {
     this.killed += 1;
     return true;

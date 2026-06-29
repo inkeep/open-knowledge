@@ -1,3 +1,4 @@
+
 export const SUPPORTED_EXTENSIONS = ['.md', '.mdx'] as const;
 export type DocExtension = (typeof SUPPORTED_EXTENSIONS)[number];
 

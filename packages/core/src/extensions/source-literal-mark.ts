@@ -1,3 +1,4 @@
+
 import { Mark } from '@tiptap/core';
 import { decodeInlineWhitespaceNumericCharRefRun } from '../markdown/whitespace-char-ref.ts';
 

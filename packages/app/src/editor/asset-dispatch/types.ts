@@ -1,3 +1,4 @@
+
 export interface AssetClickContext {
   readonly url: string;
   readonly projectRelPath: string;

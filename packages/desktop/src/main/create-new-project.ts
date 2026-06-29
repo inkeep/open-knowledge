@@ -1,3 +1,4 @@
+
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -123,6 +124,7 @@ export interface RunCreateNewDeps {
     opts: DiscoverProjectOptions,
   ) => Promise<DiscoverProjectResult>;
 }
+
 
 export type CreateNewSharingOutcome =
   | { kind: 'shared' }

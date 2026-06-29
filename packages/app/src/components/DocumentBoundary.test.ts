@@ -1,3 +1,4 @@
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { __resetSyncPromiseCache, syncPromise } from '@/editor/sync-promise';
@@ -25,7 +26,8 @@ afterEach(() => {
   for (const p of providers) {
     try {
       p.destroy();
-    } catch {}
+    } catch {
+    }
   }
   providers = [];
 });

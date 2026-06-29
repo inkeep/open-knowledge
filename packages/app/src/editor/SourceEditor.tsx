@@ -111,6 +111,7 @@ export function SourceEditor({
     sourceModeActiveRef.current = isSourceModeActive;
   }, [isSourceModeActive]);
 
+
   const cmEntryRef = useRef<CmCacheEntry | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   useEffect(() => {

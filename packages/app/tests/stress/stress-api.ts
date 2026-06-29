@@ -8,6 +8,7 @@ import { generateMarkdown } from './synthetic';
 const BASE = process.env.STRESS_BASE_URL ?? 'http://localhost:5173';
 const WS_URL = `${BASE.replace('http', 'ws')}/collab`;
 
+
 interface Tier {
   name: string;
   lines: number;
@@ -19,6 +20,7 @@ const TIERS: Tier[] = [
   { name: 'medium-realistic', lines: 2000, timeout: 30_000 },
   { name: 'large-realistic', lines: 10000, timeout: 60_000 },
 ];
+
 
 async function resetServer(): Promise<void> {
   const res = await fetch(`${BASE}/api/test-reset`, { method: 'POST' });
@@ -80,6 +82,7 @@ async function waitForSync(provider: HocuspocusProvider, timeoutMs = 10_000): Pr
   });
 }
 
+
 interface ScenarioResult {
   scenario: string;
   tier: string;
@@ -123,6 +126,7 @@ async function runScenario(
     await wait(200);
   }
 }
+
 
 async function runS1(tier: Tier, doc: Y.Doc): Promise<void> {
   const content = generateMarkdown(tier.lines);
@@ -188,6 +192,7 @@ async function runS8(tier: Tier, doc: Y.Doc): Promise<void> {
     throw new Error('Y.Text does not contain expected Unicode content');
   }
 }
+
 
 async function main(): Promise<void> {
   console.log(`\n[stress-api] Starting HTTP + server-side CRDT stress tests`);

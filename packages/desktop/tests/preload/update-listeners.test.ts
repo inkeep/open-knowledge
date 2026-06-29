@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test';
 
+
 type FakeListener = (_event: unknown, payload: unknown) => void;
 
 interface FakeIpcRenderer {

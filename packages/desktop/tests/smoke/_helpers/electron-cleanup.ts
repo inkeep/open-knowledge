@@ -1,3 +1,4 @@
+
 import type { ChildProcess } from 'node:child_process';
 import type { ElectronApplication } from '@playwright/test';
 
@@ -28,7 +29,8 @@ export async function closeAppBounded(
   if (typeof proc.pid === 'number' && Number.isInteger(proc.pid) && proc.pid > 0) {
     try {
       killFn(-proc.pid, 'SIGKILL');
-    } catch {}
+    } catch {
+    }
   }
 }
 

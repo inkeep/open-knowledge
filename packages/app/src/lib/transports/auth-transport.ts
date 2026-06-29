@@ -1,3 +1,4 @@
+
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { consumeAuthEventStream } from '@/components/auth-event-stream';
 import type { OkDesktopBridge, OkLocalOpAuthEvent } from '@/lib/desktop-bridge-types';
@@ -32,7 +33,8 @@ export function httpAuthTransport(): AuthTransport {
                 const body = (await res.json()) as unknown;
                 const result = ProblemDetailsSchema.safeParse(body);
                 if (result.success) message = result.data.title;
-              } catch {}
+              } catch {
+              }
               push({ type: 'error', message });
               return;
             }

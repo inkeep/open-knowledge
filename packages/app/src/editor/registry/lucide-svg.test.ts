@@ -14,6 +14,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { lucideIconToSvgString } from './lucide-svg.ts';
 
+
 /** The inner body (children of `<svg>`) lucide renders for an icon, normalized to
  *  match the curated strings: self-closing tags (`</path>` → `/>`) and no XML ns
  *  attrs, so only the geometry is compared. */

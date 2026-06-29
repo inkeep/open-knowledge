@@ -8,6 +8,7 @@ import {
   startBundleIdentityWatcher,
 } from './bundle-identity.ts';
 
+
 const DARWIN: NodeJS.Platform = 'darwin';
 const ANCHOR_PATH = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
 const REAL_ANCHOR_PATH = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
@@ -439,6 +440,7 @@ describe('startBundleIdentityWatcher', () => {
 });
 
 describe('captureBootIdentity', () => {
+
   test('returns { resolvedPath, inode } when both fs probes succeed', () => {
     const logs: string[] = [];
     const result = captureBootIdentity(

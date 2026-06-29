@@ -1,3 +1,4 @@
+
 import type { EditorView } from '@codemirror/view';
 import type { ComposeSelection } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/core';

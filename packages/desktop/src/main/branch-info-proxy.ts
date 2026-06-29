@@ -1,3 +1,4 @@
+
 import { resolve as joinPath } from 'node:path';
 
 import type { BranchInfoResponse, CheckoutResponse } from '@inkeep/open-knowledge-core';

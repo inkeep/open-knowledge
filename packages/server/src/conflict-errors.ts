@@ -1,3 +1,4 @@
+
 import type { ServerResponse } from 'node:http';
 import type { Document } from '@hocuspocus/server';
 import type { ResolveStrategy } from './conflict-storage.ts';

@@ -1,3 +1,4 @@
+
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { CONFIG_SCHEMA_MAJOR_PATH, LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';

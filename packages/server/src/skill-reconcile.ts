@@ -1,3 +1,4 @@
+
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
@@ -91,7 +92,8 @@ function parseSkillManifest(md: string): { fm: Record<string, unknown>; body: st
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         fm = parsed as Record<string, unknown>;
       }
-    } catch {}
+    } catch {
+    }
   }
   return { fm, body };
 }

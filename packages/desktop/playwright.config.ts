@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
+
 export default defineConfig({
   testDir: './tests/smoke',
   testMatch: /.*\.e2e\.ts$/,

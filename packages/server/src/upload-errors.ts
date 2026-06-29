@@ -1,3 +1,4 @@
+
 import { assertNeverProblemType, type ProblemType } from '@inkeep/open-knowledge-core';
 import type { HttpErrorStatus } from './http/error-response.ts';
 

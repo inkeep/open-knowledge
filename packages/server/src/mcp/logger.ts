@@ -1,3 +1,4 @@
+
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
@@ -24,6 +25,7 @@ export class McpLogger {
     this.corrId = randomUUID().slice(0, 8);
     this.component = component;
   }
+
 
   info(msg: string, ctx: Record<string, unknown> = {}): void {
     this.emit('info', msg, ctx);
@@ -52,6 +54,7 @@ export class McpLogger {
   asCallback(): (msg: string) => void {
     return (msg: string) => this.info(msg);
   }
+
 
   private emit(
     level: 'debug' | 'info' | 'warn' | 'error',

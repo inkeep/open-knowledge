@@ -1,3 +1,4 @@
+
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -69,7 +70,8 @@ async function findNavigator(app: ElectronApplication, timeoutMs = 20_000): Prom
 function rmSafe(p: string): void {
   try {
     rmSync(p, { recursive: true, force: true });
-  } catch {}
+  } catch {
+  }
 }
 
 test.describe('Navigator empty-state screenshot (dev-only)', () => {

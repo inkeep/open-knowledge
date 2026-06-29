@@ -51,7 +51,8 @@ export async function snapshotMtimes(
         const s = await stat(full);
         snapshot.set(relative(root, full), s.mtimeMs);
         count++;
-      } catch {}
+      } catch {
+      }
     }
   }
 

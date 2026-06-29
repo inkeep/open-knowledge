@@ -1,3 +1,4 @@
+
 import { lazy, Suspense, useSyncExternalStore } from 'react';
 import { mcpConsentStore } from '@/lib/mcp-consent-store';
 

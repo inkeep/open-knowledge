@@ -1,3 +1,4 @@
+
 import type { CreateNewBannerKind } from '@inkeep/open-knowledge-core';
 import { withSpanSync } from '@inkeep/open-knowledge-server';
 import type { EntryPoint } from '../shared/entry-point.ts';

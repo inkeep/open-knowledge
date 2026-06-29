@@ -1,3 +1,4 @@
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { EditorState, NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
@@ -70,6 +71,7 @@ function findJsxComponentPos(state: EditorState, componentName: string): number 
   return found;
 }
 
+
 let server: TestServer;
 
 beforeAll(async () => {
@@ -79,6 +81,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await server.cleanup();
 });
+
 
 describe('SelectionStatePlugin integration', () => {
   test('T1: top-level NodeSelection on a 5-pack descriptor produces single-entry ancestorChain', async () => {

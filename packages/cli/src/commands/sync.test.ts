@@ -6,6 +6,7 @@ import type { Config } from '@inkeep/open-knowledge-server';
 import { RUNTIME_VERSION } from '@inkeep/open-knowledge-server';
 import { runSync } from './sync.ts';
 
+
 function headerOf(init: RequestInit | undefined, name: string): string | undefined {
   const h = init?.headers;
   if (h instanceof Headers) return h.get(name) ?? undefined;

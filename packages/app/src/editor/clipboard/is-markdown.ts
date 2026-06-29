@@ -1,3 +1,4 @@
+
 const FENCE_RE = /^```/m;
 const HEADING_RE = /^#{1,6} /m;
 const BULLET_RE = /^[-*+] /m;

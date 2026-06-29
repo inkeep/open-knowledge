@@ -1,3 +1,4 @@
+
 import { type DocumentListEntry, DocumentListEntrySchema } from '@inkeep/open-knowledge-core';
 
 export const SHOW_ALL_NDJSON_ACCEPT = { Accept: 'application/x-ndjson, application/json' } as const;

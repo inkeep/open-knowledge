@@ -1,3 +1,4 @@
+
 import { expect, test } from './_helpers';
 
 test('renderer boots without Yjs dual-import warning', async ({ page }) => {

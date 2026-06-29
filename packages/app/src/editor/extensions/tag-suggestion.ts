@@ -1,3 +1,4 @@
+
 import type { Editor } from '@tiptap/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
 import { PluginKey } from '@tiptap/pm/state';

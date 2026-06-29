@@ -1,3 +1,4 @@
+
 export interface DeviceVerificationEvent {
   type: 'verification';
   user_code: string;

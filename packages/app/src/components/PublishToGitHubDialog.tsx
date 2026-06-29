@@ -1,3 +1,4 @@
+
 import type { SharePublishOwner } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { CheckCircle2, Copy, ExternalLink, Loader2, XCircle } from 'lucide-react';

@@ -1,3 +1,4 @@
+
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { parseApiError } from '../parse-api-error.ts';
 
@@ -77,7 +78,8 @@ export function httpSkillInstaller(opts: HttpSkillInstallerOptions = {}): SkillI
           const errBody = (await response.json()) as unknown;
           const detail = parseApiError(errBody);
           if (detail) message = detail;
-        } catch {}
+        } catch {
+        }
         return { ok: false, reason: 'http-error', message };
       }
       let body: ServerSkillInstallResponse;

@@ -1,5 +1,7 @@
+
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
+
 
 /** ~30 paragraphs of filler — enough to push the trailing chip well below
  *  the first viewport (~720 px on the default Playwright viewport). */
@@ -28,6 +30,7 @@ async function rectOf(_page: Page, locator: ReturnType<Page['locator']>) {
   if (!box) throw new Error('locator has no bounding box');
   return box;
 }
+
 
 test('CHIP-POS-WIKI: wiki-link PropPanel anchors to chip rect when scrolled past first viewport', async ({
   page,

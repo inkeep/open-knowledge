@@ -1,3 +1,4 @@
+
 import { classifyMarkdownHref, resolveAssetProjectPath } from '@inkeep/open-knowledge-core';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';
 import type { PageListCacheSnapshot } from '../page-list-cache';

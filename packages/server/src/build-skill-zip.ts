@@ -1,3 +1,4 @@
+
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, statSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
@@ -14,6 +15,7 @@ export type { BundleId };
  *  Current baseline is ~10 KB DEFLATE — 100 KB gives an order of magnitude
  *  of headroom without permitting a runaway regression. */
 const MAX_ZIP_BYTES = 102_400;
+
 
 export interface BuildSkillZipOptions {
   bundle?: BundleId;

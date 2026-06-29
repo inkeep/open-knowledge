@@ -1,3 +1,4 @@
+
 import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -224,7 +225,8 @@ export function saveAppStateToDir(
       });
       try {
         fs.unlinkSync(tmpPath);
-      } catch {}
+      } catch {
+      }
       return false;
     }
   } catch (err) {

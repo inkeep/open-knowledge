@@ -168,6 +168,7 @@ describe('CC1 broadcast — L1 integration', () => {
   });
 
   test('skip surface: no __system__ state in any subsystem', async () => {
+
     expect(existsSync(join(server.contentDir, '__system__.md'))).toBe(false);
 
     const docsRes = await fetch(`http://127.0.0.1:${server.port}/api/documents`);
@@ -352,7 +353,8 @@ describe('CC1 broadcast — L1 integration', () => {
         try {
           const parsed = JSON.parse(payload) as CC1DerivedViewPayload;
           arrivals.push({ seq: parsed.seq, at: performance.now() });
-        } catch {}
+        } catch {
+        }
       },
     });
     try {

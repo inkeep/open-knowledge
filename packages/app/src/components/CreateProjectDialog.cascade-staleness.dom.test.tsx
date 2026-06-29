@@ -511,6 +511,7 @@ describe('CreateProjectDialog cascade staleness (Tier-3 mount)', () => {
   });
 
   test('PRD-6649: 5 s polling skips probeNonce bump while a probe is in-flight (race-prevention gate)', async () => {
+
     const stub = makeStubBridge(FIRST_GIT_RESULT, PARENT);
 
     const setIntervalSpy = spyOn(globalThis, 'setInterval');

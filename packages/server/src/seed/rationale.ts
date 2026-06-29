@@ -1,3 +1,4 @@
+
 import type { StarterFolder, StarterPack } from './starter.ts';
 
 export const PACK_INSPIRATION_NOTE = [

@@ -1,3 +1,4 @@
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { Editor } from '@tiptap/core';
 import type * as Y from 'yjs';
@@ -23,6 +24,7 @@ afterAll(() => {
   restoreDomGlobals?.();
   restoreDomGlobals = null;
 });
+
 
 interface MountedPatternDHarness {
   editor: Editor;
@@ -59,6 +61,7 @@ async function mountPatternDEditor(
   };
   return { editor, ydoc, fragment, cleanup };
 }
+
 
 describe('Pattern D schema-instance identity (post-mount incremental updates)', () => {
   test('an unchanged sibling paragraph survives a post-mount remote paragraph insert', async () => {

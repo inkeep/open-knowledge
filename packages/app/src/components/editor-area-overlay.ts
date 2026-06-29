@@ -1,3 +1,4 @@
+
 interface OverlayDecisionInput {
   activeDocName: string | null;
   deferredActiveDocName: string | null;

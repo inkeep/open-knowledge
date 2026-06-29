@@ -1,3 +1,4 @@
+
 import { isAbsolute } from 'node:path';
 import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 

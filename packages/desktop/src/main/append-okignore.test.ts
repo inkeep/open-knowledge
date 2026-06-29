@@ -14,7 +14,8 @@ describe('appendOkIgnoreSync', () => {
   afterEach(() => {
     try {
       rmSync(dir, { recursive: true, force: true });
-    } catch {}
+    } catch {
+    }
   });
 
   test('empty-string patterns is a no-op (file is not created)', () => {

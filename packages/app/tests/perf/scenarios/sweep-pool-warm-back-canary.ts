@@ -1,3 +1,4 @@
+
 import { defineSweep } from '../lib/define-sweep';
 
 interface CellResult {
