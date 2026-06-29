@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import { encodeShareUrl } from '@inkeep/open-knowledge-core';
 import { parseOpenKnowledgeUrl, parseScreenUrl, parseShareUrl } from './url-scheme.ts';
 
-
 describe('parseOpenKnowledgeUrl — valid inputs', () => {
   test('parses well-formed open/project/doc URL', () => {
     const result = parseOpenKnowledgeUrl('openknowledge://open?project=/abs/path&doc=foo.md');

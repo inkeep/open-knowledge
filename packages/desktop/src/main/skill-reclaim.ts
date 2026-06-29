@@ -1,4 +1,3 @@
-
 import {
   existsSync as fsExistsSync,
   mkdirSync as fsMkdirSync,
@@ -24,7 +23,6 @@ const DEFAULT_LOGGER: SkillReclaimLogger = {
   event: (payload) => console.warn(JSON.stringify(payload)),
   warn: (message, ctx) => console.warn('[skill-reclaim]', message, ctx ?? ''),
 };
-
 
 const OK_MCP_MARKER = '# ok-mcp-v1';
 
@@ -99,7 +97,6 @@ function removeLegacyUserSkillDirs(home: string, fs: SkillFsOps, logger: SkillRe
     }
   }
 }
-
 
 type UserSkillReclaimEntry =
   | { kind: 'central'; path: string; status: 'written' | 'overwritten' | 'failed'; error?: string }
@@ -281,8 +278,7 @@ export async function reclaimUserSkillsOnLaunch(
         outcome: 'failed',
         reason: `bundle-missing:${lastResolveError}`,
       })
-      .catch(() => {
-      });
+      .catch(() => {});
     return { status: 'skipped', reason: 'bundle-missing' };
   }
 
@@ -353,7 +349,6 @@ export async function reclaimUserSkillsOnLaunch(
 
   return { status: 'done', version, entries };
 }
-
 
 type ProjectSkillReclaimEntry = {
   editorId: string;

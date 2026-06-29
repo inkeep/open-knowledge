@@ -1,4 +1,3 @@
-
 import type { AssetViewer, AssetViewerLookupResult } from './types.ts';
 
 export class AssetViewerRegistry {

@@ -114,6 +114,5 @@ describe('CloneTransport contract — shape symmetry between HTTP + IPC', () => 
     expect(captured[0]?.url).toBe(request.url);
     expect(captured[0]?.dir).toBe(request.dir);
     expect(captured[0]?.branch).toBe('feat/foo');
-
   });
 });

@@ -1,4 +1,3 @@
-
 import {
   type FromProseMirrorOptions,
   fromProseMirror,

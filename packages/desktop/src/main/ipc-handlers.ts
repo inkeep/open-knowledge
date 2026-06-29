@@ -1,4 +1,3 @@
-
 import { execFile } from 'node:child_process';
 import { join, posix as pathPosix, win32 as pathWin32 } from 'node:path';
 import {
@@ -75,14 +74,12 @@ export async function detectProtocol(
       if (info.name && info.path) {
         return { installed: true, displayName: info.name };
       }
-    } catch {
-    }
+    } catch {}
     if (deps.platform === 'darwin' && isInstalledAgentScheme(scheme)) {
       const probe = deps.runMacOsProbe ?? macOsProbeReal;
       try {
         if (await probe(scheme)) return { installed: true };
-      } catch {
-      }
+      } catch {}
     }
     return { installed: false };
   }
@@ -107,7 +104,6 @@ interface SpawnCursorDeps {
   resolveTimeoutMs?: number;
   spawnTimeoutMs?: number;
 }
-
 
 export function validateSpawnPath(path: string, platform: NodeJS.Platform): boolean {
   if (!path || typeof path !== 'string') return false;
@@ -147,7 +143,6 @@ export function isPathWithinProject(
     return false;
   }
 }
-
 
 export async function spawnCursor(deps: SpawnCursorDeps, path: string): Promise<SpawnOutcome> {
   if (!validateSpawnPath(path, deps.platform)) {

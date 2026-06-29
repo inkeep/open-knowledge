@@ -1,4 +1,3 @@
-
 import {
   chmodSync,
   existsSync,
@@ -100,13 +99,11 @@ function forceRemove(pathsToRestore: readonly string[], dir: string): void {
   for (const p of pathsToRestore) {
     try {
       chmodSync(p, 0o755);
-    } catch {
-    }
+    } catch {}
   }
   try {
     rmSync(dir, { recursive: true, force: true });
-  } catch {
-  }
+  } catch {}
 }
 
 test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
@@ -117,11 +114,9 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
     `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
   );
 
-  test.skip('F2 (cold-start deep-link) — deferred until signed DMG enables Launch Services binding', () => {
-  });
+  test.skip('F2 (cold-start deep-link) — deferred until signed DMG enables Launch Services binding', () => {});
 
-  test.skip('AC2.6 (fresh-Mac P1 E2E with signed DMG) — creds-gated on Apple notarization', () => {
-  });
+  test.skip('AC2.6 (fresh-Mac P1 E2E with signed DMG) — creds-gated on Apple notarization', () => {});
 
   test('happy-path — Add writes marker + Claude config with resilient chain MCP entry', async ({
     captureStderrFor,

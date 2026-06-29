@@ -1,4 +1,3 @@
-
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tracedMkdirSync, tracedUnlinkSync, tracedWriteFileSync } from './fs-traced.ts';
@@ -52,6 +51,5 @@ export function clearArmedPaneTarget(localDir: string): void {
   if (!existsSync(path)) return;
   try {
     tracedUnlinkSync(path);
-  } catch {
-  }
+  } catch {}
 }

@@ -1,4 +1,3 @@
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react';
@@ -154,11 +153,9 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
     };
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text).then(flipSuccess, () => {
-        });
+        navigator.clipboard.writeText(text).then(flipSuccess, () => {});
       }
-    } catch {
-    }
+    } catch {}
   };
 
   const handleDelete = () => {

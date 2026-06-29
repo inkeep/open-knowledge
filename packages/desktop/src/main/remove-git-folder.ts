@@ -1,4 +1,3 @@
-
 import { existsSync, promises as fsPromises, realpathSync } from 'node:fs';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 

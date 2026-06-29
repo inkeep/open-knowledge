@@ -42,10 +42,7 @@ export function AutoSyncOnboardingDialog({ open, onResolved }: AutoSyncOnboardin
   }
 
   return (
-    <DialogRoot
-      open={open}
-      onOpenChange={() => {}}
-    >
+    <DialogRoot open={open} onOpenChange={() => {}}>
       <DialogContent className="sm:max-w-lg" showCloseButton={false}>
         <DialogHeader>
           <AutoSyncEnableDialogIntro />

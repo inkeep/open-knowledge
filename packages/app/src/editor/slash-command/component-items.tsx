@@ -1,4 +1,3 @@
-
 import type { MessageDescriptor } from '@lingui/core';
 import { msg, t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';

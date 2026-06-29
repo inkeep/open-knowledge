@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState, type Transaction } from '@tiptap/pm/state';
@@ -15,7 +14,6 @@ import {
   linkResolutionDecorationPlugin,
 } from './link-resolution-decoration';
 import { type MarkInfo, markIdentityPlugin } from './mark-identity';
-
 
 const schema = new Schema({
   nodes: {
@@ -56,7 +54,6 @@ function seedCache(pages: string[] = [], folderPaths: string[] = []): PageListCa
   return snap;
 }
 
-
 beforeEach(() => {
   __resetPageListCacheForTests();
 });
@@ -64,7 +61,6 @@ beforeEach(() => {
 afterEach(() => {
   __resetPageListCacheForTests();
 });
-
 
 describe('computeLinkResolutionDecorations (pure helper)', () => {
   const trackedTypes: ReadonlySet<string> = new Set(['link']);
@@ -214,7 +210,6 @@ describe('computeLinkResolutionDecorations (pure helper)', () => {
   });
 });
 
-
 describe('linkResolutionDecorationPlugin — factory & key', () => {
   test('factory returns a Plugin keyed by linkResolutionDecorationKey', () => {
     const plugin = linkResolutionDecorationPlugin({
@@ -237,7 +232,6 @@ describe('linkResolutionDecorationPlugin — factory & key', () => {
     expect(pluginState).toEqual({ version: 0 });
   });
 });
-
 
 describe('linkResolutionDecorationPlugin — refresh meta', () => {
   test('refresh meta transaction increments version', () => {
@@ -285,7 +279,6 @@ describe('linkResolutionDecorationPlugin — refresh meta', () => {
     expect(pluginState?.version).toBe(0);
   });
 });
-
 
 describe('linkResolutionDecorationPlugin — integration with markIdentityPlugin', () => {
   test('with markIdentityPlugin + tracked marks → decorations emitted', () => {
@@ -356,7 +349,6 @@ describe('linkResolutionDecorationPlugin — integration with markIdentityPlugin
     expect(f2[0]?.type.attrs?.['data-resolution-state']).toBe('resolved');
   });
 });
-
 
 interface FakeViewBag {
   view: EditorView;

@@ -1,4 +1,3 @@
-
 import { mergeAttributes } from '@tiptap/core';
 import Image from '@tiptap/extension-image';
 import { toDesktopAssetHref } from '../utils/asset-href.ts';

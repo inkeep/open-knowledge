@@ -1,4 +1,3 @@
-
 import { statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { OK_PROJECT_MARKER } from '@inkeep/open-knowledge-core';

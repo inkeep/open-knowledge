@@ -1,4 +1,3 @@
-
 export type WheelButton = 64 | 65;
 
 export interface WheelReportOptions {

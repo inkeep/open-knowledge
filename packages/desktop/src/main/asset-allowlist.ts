@@ -1,4 +1,3 @@
-
 import { realpathSync, statSync } from 'node:fs';
 import * as pathPosix from 'node:path/posix';
 import * as pathWin32 from 'node:path/win32';

@@ -11,7 +11,6 @@ import {
   type WorkloadDriver,
 } from './cell-measurement';
 
-
 interface CdpSendCall {
   readonly method: string;
   readonly params?: unknown;
@@ -105,7 +104,6 @@ function makeSeededRandom(seed: number): () => number {
   };
 }
 
-
 describe('forceGc', () => {
   test('sends HeapProfiler.collectGarbage to CDP', async () => {
     const cdp = new MockCdp();
@@ -144,7 +142,6 @@ describe('readHeapMb', () => {
     expect(mb).toBe(0);
   });
 });
-
 
 describe('drainSubstrateSignals', () => {
   test('cacheHitCount counts ok/cache/hit ONLY; other substrate marks do not contribute', async () => {
@@ -246,7 +243,6 @@ describe('drainSubstrateSignals', () => {
   });
 });
 
-
 describe('computeLeakRateMbPerCycle', () => {
   test('returns mean per-cycle delta (matches memory-per-editor.ts:320-323 formula)', () => {
     const samples = [100, 120, 140, 160, 175, 200, 220, 235, 255, 270];
@@ -264,7 +260,6 @@ describe('computeLeakRateMbPerCycle', () => {
     expect(computeLeakRateMbPerCycle(samples)).toBe(-50);
   });
 });
-
 
 describe('bootstrapCi', () => {
   test('returns zero-shape for empty input', () => {
@@ -327,7 +322,6 @@ describe('bootstrapCi', () => {
     expect(ci.axis).toBe('tabSwitchActivityHiddenToVisible');
   });
 });
-
 
 describe('measureCell', () => {
   let originalSetInterval: typeof globalThis.setInterval;

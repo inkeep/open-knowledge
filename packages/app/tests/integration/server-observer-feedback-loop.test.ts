@@ -1,4 +1,3 @@
-
 import { afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { getMetrics, resetMetrics } from '@inkeep/open-knowledge-server';

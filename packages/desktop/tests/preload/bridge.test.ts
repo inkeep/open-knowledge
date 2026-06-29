@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInvoker } from '../../src/shared/ipc-invoke.ts';
 
-
 describe('createInvoker (typed IPC factory)', () => {
   test('forwards channel + args to ipcRenderer.invoke verbatim', async () => {
     const invoke = mock((channel: string, ...args: unknown[]) =>

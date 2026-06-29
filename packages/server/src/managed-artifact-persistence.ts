@@ -1,4 +1,3 @@
-
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, sep } from 'node:path';

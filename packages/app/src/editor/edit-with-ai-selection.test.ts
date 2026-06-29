@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/react';

@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { CreateProjectDialog } from '@/components/CreateProjectDialog';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';

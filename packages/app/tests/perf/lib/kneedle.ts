@@ -1,4 +1,3 @@
-
 export interface KneePoint {
   readonly x: number;
   readonly y: number;
@@ -79,7 +78,6 @@ export function findKnee(
     confidence,
   };
 }
-
 
 function autoDetectDirection(
   sorted: ReadonlyArray<{ readonly x: number; readonly y: number }>,

@@ -1,6 +1,5 @@
 import { Code, Sparkles } from 'lucide-react';
 
-
 const RINGS = [56, 82, 108] as const;
 const RING_CENTER = { x: 80, y: 45 };
 

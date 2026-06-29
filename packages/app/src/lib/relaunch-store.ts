@@ -1,4 +1,3 @@
-
 import { useSyncExternalStore } from 'react';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 

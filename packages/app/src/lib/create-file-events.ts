@@ -1,4 +1,3 @@
-
 const CREATE_TOP_LEVEL_FILE_EVENT = 'open-knowledge:create-top-level-file';
 
 export interface CreateFileRequest {

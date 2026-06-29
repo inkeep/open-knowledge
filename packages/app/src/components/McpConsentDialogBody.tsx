@@ -1,4 +1,3 @@
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useId, useState } from 'react';
 import { toast as sonnerToast } from 'sonner';

@@ -1,4 +1,3 @@
-
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import type { ApiHelpers } from './_helpers';
@@ -22,7 +21,6 @@ async function setupDoc(page: Page, api: ApiHelpers, markdown: string): Promise<
   await page.waitForSelector('.ProseMirror');
   return docName;
 }
-
 
 test('S20: unregistered <UnknownWidget> auto-converts to rawMdxFallback on mount', async ({
   page,

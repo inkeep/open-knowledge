@@ -1,4 +1,3 @@
-
 import { fnv1aDigest } from './hash-util.ts';
 
 export type BridgeInvariantSite = 'observer-b' | 'persistence' | 'test-harness';

@@ -1,4 +1,3 @@
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import { FolderOpenIcon, GitBranch, Loader2Icon, PlusIcon, XIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';

@@ -1,4 +1,3 @@
-
 import {
   MANAGED_ARTIFACT_PREFIX_TEMPLATE,
   projectSkillContentDocName,
@@ -7,7 +6,6 @@ import {
 } from '@inkeep/open-knowledge-core';
 
 export { projectSkillContentDocName, skillLiveDocName };
-
 
 export function templateDocName(folder: string, name: string): string {
   const trimmed = folder.replace(/^\/+|\/+$/g, '');

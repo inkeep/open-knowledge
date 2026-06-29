@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { EditorState as CMEditorState } from '@codemirror/state';
 import type { EditorView as CMEditorView } from '@codemirror/view';
@@ -21,7 +20,6 @@ function makeCMView(doc: string, selPos: number | { anchor: number; head: number
   const state = CMEditorState.create({ doc, selection });
   return { state } as unknown as CMEditorView;
 }
-
 
 const pmSchema = getSchema(sharedExtensions);
 
@@ -372,7 +370,6 @@ describe('computeCMSelectionForwarding', () => {
     });
   });
 });
-
 
 describe('tryParseUpgrade', () => {
   const upgradeSchema = getSchema(sharedExtensions);

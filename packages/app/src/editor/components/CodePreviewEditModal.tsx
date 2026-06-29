@@ -1,4 +1,3 @@
-
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { css } from '@codemirror/lang-css';
 import { html } from '@codemirror/lang-html';
@@ -183,9 +182,7 @@ export function CodePreviewEditModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="flex h-[85vh] max-h-[900px] flex-col gap-3 p-4 sm:max-w-[1400px]"
-      >
+      <DialogContent className="flex h-[85vh] max-h-[900px] flex-col gap-3 p-4 sm:max-w-[1400px]">
         <DialogHeader className="gap-1">
           <DialogTitle>{title}</DialogTitle>
           {description ? (

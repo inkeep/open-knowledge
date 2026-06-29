@@ -1,4 +1,3 @@
-
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test } from './_helpers';
@@ -80,7 +79,6 @@ async function selectRangeOverFirstJsx(page: Page, componentName: string) {
   }, componentName);
 }
 
-
 test('AC11: TextSelection range covering one Callout sets data-range-selected with opacity>0', async ({
   page,
   api,
@@ -109,7 +107,6 @@ test('AC11: TextSelection range covering one Callout sets data-range-selected wi
     .toBeGreaterThan(0);
 });
 
-
 test('AC12: Cmd+A populates data-range-selected on every JSX wrapper in the doc', async ({
   page,
   api,
@@ -134,7 +131,6 @@ test('AC12: Cmd+A populates data-range-selected on every JSX wrapper in the doc'
   expect(await callout.getAttribute('data-selected')).toBeNull();
   expect(await accordion.getAttribute('data-selected')).toBeNull();
 });
-
 
 test('AC13: soft range halo paints a distinct background from the full ring halo', async ({
   page,

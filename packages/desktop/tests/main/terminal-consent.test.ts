@@ -7,7 +7,6 @@ import {
   isTerminalConsentedWithGrace,
 } from '../../src/main/terminal-consent.ts';
 
-
 const created: string[] = [];
 
 function makeProject(localConfigYaml: string | null): string {

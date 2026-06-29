@@ -1,4 +1,3 @@
-
 import type { Page } from '@playwright/test';
 
 export interface LongTaskRecord {
@@ -18,8 +17,7 @@ export async function installLongtaskObserver(page: Page): Promise<void> {
         }
       });
       obs.observe({ type: 'longtask', buffered: true });
-    } catch {
-    }
+    } catch {}
   });
 }
 

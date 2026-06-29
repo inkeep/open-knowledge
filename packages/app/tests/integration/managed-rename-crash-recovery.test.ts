@@ -77,7 +77,6 @@ describe('Managed rename — crash recovery via boot-time initAsync (QA-006)', (
     expect(existsSync(join(contentDir, 'essays', 'category'))).toBe(false);
     expect(existsSync(join(contentDir, 'essays'))).toBe(false);
     expect(existsSync(managedRenameJournalPath(contentDir))).toBe(false);
-
   }, 30_000);
 
   test('subsequent rename attempt on the same source succeeds after recovery', async () => {

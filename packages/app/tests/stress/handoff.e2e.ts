@@ -1,4 +1,3 @@
-
 import { realpathSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';

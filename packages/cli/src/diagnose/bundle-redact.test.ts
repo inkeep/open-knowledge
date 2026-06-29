@@ -1,4 +1,3 @@
-
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -35,7 +34,6 @@ function readStaged(stagingDir: string, relPath: string): string {
   return readFileSync(join(stagingDir, relPath), 'utf-8');
 }
 
-
 describe('redactStagedBundle — tracer bullet', () => {
   test('hashes the OTLP attribute-pair `doc.name` stringValue', () => {
     const stagingDir = makeStagingDir();
@@ -69,7 +67,6 @@ describe('redactStagedBundle — tracer bullet', () => {
     expect(hashed).toMatch(/^doc:[a-f0-9]{8}$/);
   });
 });
-
 
 describe('redactStagedBundle — Pino + nested shapes', () => {
   test('hashes a Pino flat-key `doc.name` value in a log record', () => {
@@ -224,7 +221,6 @@ describe('redactStagedBundle — Pino + nested shapes', () => {
     expect(result.docNameMap).toEqual({});
   });
 });
-
 
 describe('redactStagedBundle — contentDir substitution', () => {
   test('replaces contentDir prefix in span string-value attributes', () => {

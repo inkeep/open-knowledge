@@ -1,4 +1,3 @@
-
 import type { Config } from './schema.ts';
 import { ConfigSchema } from './schema.ts';
 import { getLeafFieldMeta } from './schema-leaf.ts';

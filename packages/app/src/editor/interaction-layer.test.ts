@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   createInteractionLayer,
@@ -7,7 +6,6 @@ import {
   type RegisterParams,
   resolveClickTargetNodeId,
 } from './interaction-layer';
-
 
 interface FakeElement {
   attrs: Record<string, string>;
@@ -34,7 +32,6 @@ function makeControls(): InteractionControls {
 function makeReg(nodeId: string, type = 'internalLink'): RegisterParams {
   return { nodeId, type, controls: makeControls() };
 }
-
 
 describe('InteractionLayerStore — register / deregister round-trip', () => {
   test('fresh store has no active and no registrations', () => {
@@ -200,7 +197,6 @@ describe('InteractionLayerStore — clear()', () => {
   });
 });
 
-
 describe('resolveClickTargetNodeId — event-delegation walk', () => {
   test('returns null when target is null', () => {
     const s = new InteractionLayerStore();
@@ -263,12 +259,9 @@ describe('resolveClickTargetNodeId — event-delegation walk', () => {
   });
 });
 
-
 describe('createInteractionLayer — handle API without DOM', () => {
-  beforeEach(() => {
-  });
-  afterEach(() => {
-  });
+  beforeEach(() => {});
+  afterEach(() => {});
 
   test('handle exposes register / deregister / setActiveNode / destroy', () => {
     const editor = { editorView: { dom: null as unknown as HTMLElement } }; // DOM unavailable
@@ -328,7 +321,6 @@ describe('createInteractionLayer — handle API without DOM', () => {
     layer.destroy();
   });
 });
-
 
 describe('InteractionControls — extension-point shape', () => {
   test('register accepts a controls bag with just propPanel (V2 default)', () => {

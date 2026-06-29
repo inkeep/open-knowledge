@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { initProseMirrorDoc } from '@tiptap/y-tiptap';

@@ -1,6 +1,5 @@
 import type { TemplateMenuEntry } from '@/hooks/use-folder-config';
 
-
 const SCOPE_ORDER: Record<TemplateMenuEntry['scope'], number> = {
   local: 0,
   inherited: 1,

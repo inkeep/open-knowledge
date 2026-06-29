@@ -1,4 +1,3 @@
-
 import { spawn as nodeSpawn } from 'node:child_process';
 
 export type SpawnDetachedOutcome =
@@ -39,8 +38,7 @@ export function spawnDetached(
         if (settled) return;
         try {
           child.unref();
-        } catch {
-        }
+        } catch {}
         clearTimeout(timer);
         settle({ ok: true });
       });

@@ -592,12 +592,7 @@ export function EditorTabs() {
       )}
       onWheel={scrollTabListOnWheel}
     >
-      <div
-        className={cn(
-          'flex items-end gap-1',
-          isElectronHost && '[-webkit-app-region:no-drag]',
-        )}
-      >
+      <div className={cn('flex items-end gap-1', isElectronHost && '[-webkit-app-region:no-drag]')}>
         <DndContext
           sensors={sensors}
           autoScroll={TAB_REORDER_AUTO_SCROLL}

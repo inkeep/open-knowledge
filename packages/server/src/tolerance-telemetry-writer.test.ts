@@ -24,8 +24,7 @@ afterEach(async () => {
   await teardownToleranceTelemetryWriter();
   try {
     rmSync(tmpProjectDir, { recursive: true, force: true });
-  } catch {
-  }
+  } catch {}
 });
 
 describe('isToleranceTelemetryEnabled', () => {

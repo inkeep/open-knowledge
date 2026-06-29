@@ -1,7 +1,5 @@
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 
-
-
 export interface ReconcileInput {
   docName: string;
   base: string;
@@ -23,16 +21,13 @@ export type ReconcileOutcome =
   | { kind: 'refused'; reason: string }
   | { kind: 'noop' };
 
-
 export const MAX_LCS_CELLS = 4_000_000;
-
 
 export const CONFLICT_MARKER_RE = /^(<{7} |={7}$|>{7} |\|{7} )/m;
 
 export function containsConflictMarkers(content: string): boolean {
   return CONFLICT_MARKER_RE.test(content);
 }
-
 
 export function splitMarkdownBlocks(md: string): string[] {
   const normalized = md.replace(/\n+$/, '');
@@ -63,7 +58,6 @@ export function splitMarkdownBlocks(md: string): string[] {
   }
   return blocks;
 }
-
 
 export function reconcile(input: ReconcileInput): ReconcileOutcome {
   if (isSystemDoc(input.docName) || isConfigDoc(input.docName)) return { kind: 'noop' };
@@ -159,7 +153,6 @@ function mergeBlocks(
 
   return { kind: 'merged', newContent, mergedBlocks: merged.length };
 }
-
 
 interface EditOp {
   action: 'keep' | 'modify' | 'delete';

@@ -1,4 +1,3 @@
-
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { resolveLockDir } from '@inkeep/open-knowledge-server';

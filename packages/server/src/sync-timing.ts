@@ -1,4 +1,3 @@
-
 export function computeRemainingMs(
   lastUtc: string | null,
   intervalSeconds: number,

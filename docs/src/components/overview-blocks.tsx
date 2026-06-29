@@ -1,7 +1,6 @@
 import { ArrowRight, Bot, Database, type LucideIcon, NotebookPen } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-
 interface Layer {
   k: string;
   Icon: LucideIcon;

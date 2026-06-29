@@ -1,4 +1,3 @@
-
 import { defineScenario, type ScenarioCtx, type ScenarioDefinition } from './scenario';
 
 export type AxesValues<TAxes extends Record<string, readonly unknown[]>> = {

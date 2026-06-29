@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { setTimeout } from 'node:timers/promises';
 import { MarkdownManager } from '@inkeep/open-knowledge-core';
@@ -125,8 +124,7 @@ describe('Observer B: Y.Text → XmlFragment', () => {
     cleanup();
   });
 
-  test.skip('Observer B renders broken MDX as rawMdxFallback (G9 always-live) and recovers on next valid write', async () => {
-  });
+  test.skip('Observer B renders broken MDX as rawMdxFallback (G9 always-live) and recovers on next valid write', async () => {});
 });
 
 describe('WikiLink bridge regression', () => {
@@ -422,7 +420,6 @@ describe('Y.Text CRDT foundation', () => {
   });
 });
 
-
 describe('Concurrent edit race conditions (regression)', () => {
   test.skip('Observer B defers while user is typing to avoid destroying in-flight edits', async () => {});
 
@@ -439,11 +436,9 @@ describe('Remote write baseline staleness (regression)', () => {
   test.skip('typing state is isolated per Y.Doc', async () => {});
 });
 
-
 describe('R7: source-mode typing defers Observer B', () => {
   test.skip('markUserTyping(doc) from source-mode events defers tree replacement', async () => {});
 });
-
 
 describe('Observer A: remote transaction baseline refresh', () => {
   test.skip('remote write propagates, then next local edit computes delta from refreshed baseline', async () => {});
@@ -451,13 +446,11 @@ describe('Observer A: remote transaction baseline refresh', () => {
   test.skip('remote delete refreshes baseline so next local add does not resurrect deleted content', async () => {});
 });
 
-
 describe('applyUserDelta: divergence preservation', () => {
   test.skip('user adds a paragraph — agent content already in Y.Text is preserved', async () => {});
   test.skip('user deletes a baseline paragraph — agent content is preserved, deletion applied', async () => {});
   test.skip('user modifies a baseline line — agent content is preserved, modification applied', async () => {});
 });
-
 
 describe('FR-1: content-comparison gate skips no-op replacements', () => {
   test('Observer A produces zero ORIGIN_TREE_TO_TEXT mutations (server-authoritative)', async () => {
@@ -492,7 +485,6 @@ describe('FR-1: content-comparison gate skips no-op replacements', () => {
   test.skip('Path A multi-hunk diff with length-changing first hunk produces correct ytext', async () => {});
 });
 
-
 describe('FR-2: applyUserDelta DMP three-way merge', () => {
   test.skip('B1: same-line collision merges both edits', async () => {});
   test.skip('B2: prepend + append preserves both', async () => {});
@@ -502,18 +494,15 @@ describe('FR-2: applyUserDelta DMP three-way merge', () => {
   test.skip('early return produces zero CRDT mutations when merged text equals agent text', async () => {});
 });
 
-
 describe('FR-7: onMergeFailed diagnostic', () => {
   test.skip('no diagnostic on successful three-way merge', async () => {});
   test.skip('diagnostic fires on failed patches (unmatchable agent text)', async () => {});
 });
 
-
 describe('FR-4: Observer A preserves agent-origin CRDT Items', () => {
   test.skip('Path A: content-gate preserves agent Items (UM stack survives sync)', async () => {});
   test.skip('Path B: DMP merge preserves agent Items in non-overlapping regions', async () => {});
 });
-
 
 describe('A1: middle-region replacement preserves outer agent Items', () => {
   test('middle-region replacement preserves outer agent Items', () => {
@@ -556,7 +545,6 @@ describe('A1: middle-region replacement preserves outer agent Items', () => {
   });
 });
 
-
 describe('markUserTyping — global keystroke timestamp (US-006)', () => {
   test('getLastUserKeystroke advances on markUserTyping', () => {
     const before = getLastUserKeystroke();
@@ -570,8 +558,7 @@ describe('markUserTyping — global keystroke timestamp (US-006)', () => {
     markUserTyping();
     const ts1 = getLastUserKeystroke();
     const wait = Date.now() + 1;
-    while (Date.now() < wait) {
-    }
+    while (Date.now() < wait) {}
     markUserTyping();
     const ts2 = getLastUserKeystroke();
     expect(ts2).toBeGreaterThan(ts1);

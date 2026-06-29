@@ -1,4 +1,3 @@
-
 import { contextBridge, type IpcRendererEvent, ipcRenderer } from 'electron';
 import type {
   OkDesktopBridge,

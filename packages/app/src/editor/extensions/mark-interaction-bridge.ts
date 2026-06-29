@@ -1,4 +1,3 @@
-
 import type { Editor } from '@tiptap/core';
 import type { Mark } from '@tiptap/pm/model';
 import type { EditorState, Plugin } from '@tiptap/pm/state';
@@ -6,7 +5,6 @@ import type { ReactNode } from 'react';
 import type { InteractionLayerHandle } from '../interaction-layer';
 import { getInteractionLayer } from '../interaction-layer-host';
 import { type MarkInfo, markIdentityKey, markIdentityPlugin } from './mark-identity';
-
 
 interface MarkPropPanelContext {
   editor: Editor;
@@ -36,12 +34,10 @@ interface BuildMarkInteractionBridgeParams extends MarkInteractionBridgeParams {
   layer: InteractionLayerHandle;
 }
 
-
 export function getCurrentMarkInfo(state: EditorState, markId: string): MarkInfo | null {
   const pluginState = markIdentityKey.getState(state);
   return pluginState?.byId.get(markId) ?? null;
 }
-
 
 interface MarkBridgeHandlers {
   onRegister: (info: MarkInfo) => void;
@@ -78,7 +74,6 @@ export function buildMarkBridgeHandlers(params: {
     },
   };
 }
-
 
 export function buildMarkInteractionBridge(params: BuildMarkInteractionBridgeParams): Plugin {
   const { editor, layer, markTypes, predicate, renderPropPanel, handlePrimary } = params;

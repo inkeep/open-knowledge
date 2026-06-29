@@ -1,4 +1,3 @@
-
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../constants/doc-extensions.ts';

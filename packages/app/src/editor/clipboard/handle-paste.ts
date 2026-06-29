@@ -1,4 +1,3 @@
-
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import { htmlToMdast, mdastToMarkdown } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';

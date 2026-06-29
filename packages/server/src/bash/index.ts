@@ -5,7 +5,6 @@ const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
 
 export { shellEscape } from './shell-escape.ts';
 
-
 interface ExecBashResult {
   stdout: string;
   stderr: string;

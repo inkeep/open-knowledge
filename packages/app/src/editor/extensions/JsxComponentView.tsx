@@ -85,7 +85,6 @@ import { formatContainerAriaLabel } from '../utils/editor-strings.ts';
 import { reconstructSource } from '../utils/reconstruct-source.ts';
 import { sanitizeComponentProps } from '../utils/sanitize-url.ts';
 
-
 interface ComponentErrorBoundaryProps {
   children: ReactNode;
   /** Flips when we want to force a retry (prop change, node-name change,
@@ -140,7 +139,6 @@ function ComponentErrorBoundary(props: ComponentErrorBoundaryProps) {
   );
 }
 
-
 export function stableHash(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value);
@@ -174,7 +172,6 @@ interface ElementJsxAttrs extends Record<string, unknown> {
 export function getElementJsxAttrs(attrs: Record<string, unknown>): ElementJsxAttrs | null {
   return attrs.kind === 'element' ? (attrs as ElementJsxAttrs) : null;
 }
-
 
 const MAX_AUTO_CONVERT_RETRIES = 3;
 

@@ -1,4 +1,3 @@
-
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
 
 type AssetMenuKind = 'asset' | 'wiki-link' | 'image';

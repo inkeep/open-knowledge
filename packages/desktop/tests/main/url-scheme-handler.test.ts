@@ -9,7 +9,6 @@ import type {
 } from '../../src/main/url-scheme.ts';
 import { parseOpenKnowledgeFileUrl, registerProtocolHandler } from '../../src/main/url-scheme.ts';
 
-
 type AppEvent = 'open-url' | 'second-instance' | 'before-quit' | 'continue-activity';
 type OpenUrlListener = (event: { preventDefault: () => void }, url: string) => void;
 type SecondInstanceListener = (event: unknown, argv: readonly string[]) => void;

@@ -1,4 +1,3 @@
-
 import type { Editor } from '@tiptap/core';
 import { useEffect, useState } from 'react';
 import { type BlockSelection, getBlockSelection } from '../extensions/selection-state-plugin.ts';

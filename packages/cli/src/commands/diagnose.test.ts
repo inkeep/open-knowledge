@@ -1,11 +1,9 @@
-
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { runDiagnose } from './diagnose.ts';
 import type { LockState } from './lock-state.ts';
-
 
 function makeTmpDir(): string {
   return mkdtempSync(resolve(tmpdir(), 'ok-diagnose-test-'));
@@ -69,7 +67,6 @@ function makeFakeProfile(): string {
   });
 }
 
-
 let tmpDirs: string[] = [];
 
 afterEach(() => {
@@ -78,7 +75,6 @@ afterEach(() => {
   }
   tmpDirs = [];
 });
-
 
 describe('runDiagnose', () => {
   test('exits early when pid does not exist', async () => {
