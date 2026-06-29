@@ -3,6 +3,7 @@ import { setImmediate as runMicrotasks } from 'node:timers/promises';
 import type { KeepaliveScheduler, MinimalWebSocket } from './keepalive.ts';
 import { startKeepalive } from './keepalive.ts';
 
+
 interface ManualScheduler extends KeepaliveScheduler {
   advance: (ms: number) => void;
   pending: () => number;
@@ -39,6 +40,7 @@ function createScheduler(): ManualScheduler {
     pending: () => queue.length,
   };
 }
+
 
 class FakeWebSocket implements MinimalWebSocket {
   readyState = 0; // CONNECTING

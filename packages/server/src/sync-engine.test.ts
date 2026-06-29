@@ -1,3 +1,4 @@
+
 import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'bun:test';
 
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
@@ -12,10 +13,12 @@ import type { DetectGhFn } from './github-permissions.ts';
 import type { SyncState } from './sync-engine.ts';
 import { SyncEngine } from './sync-engine.ts';
 
+
 const stubContentFilter = {
   isExcluded: (_path: string) => false,
   isDirExcluded: (_path: string) => false,
 };
+
 
 let tmpDir = '';
 let projectDir = '';
@@ -44,6 +47,7 @@ function makeEngine(opts: { syncEnabled?: boolean; onStateChange?: (s: SyncState
     onStateChange: opts.onStateChange,
   });
 }
+
 
 async function initGitWithOrigin(originUrl = 'https://github.com/inkeep/open-knowledge.git') {
   const git = simpleGit(projectDir);
@@ -97,6 +101,7 @@ async function waitForPushPermissionResolved(engine: SyncEngine, timeoutMs = 100
   }
 }
 
+
 describe('SyncEngine initial state', () => {
   test('starts in dormant state', () => {
     const engine = makeEngine();
@@ -132,6 +137,7 @@ describe('SyncEngine destroy()', () => {
     expect(engine.getStatus().state).toBe('dormant');
   });
 });
+
 
 describe('SyncEngine state persistence round-trip', () => {
   const statePath = () => join(okDir, 'sync-state.json');
@@ -220,7 +226,8 @@ describe('SyncEngine state persistence round-trip', () => {
     await git.commit('main changes');
     try {
       await git.merge(['feature']);
-    } catch {}
+    } catch {
+    }
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
@@ -416,6 +423,7 @@ describe('SyncEngine state persistence round-trip', () => {
   });
 });
 
+
 describe('SyncEngine ConflictStore admission (content-only)', () => {
   async function setupDivergence(remoteAction: 'modify' | 'delete'): Promise<void> {
     const bareDir = join(tmpDir, 'bare.git');
@@ -548,6 +556,7 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
     }
   });
 });
+
 
 describe('SyncEngine delete/modify dirty content conflicts', () => {
   async function setupRemoteModifyLocalDelete(): Promise<void> {
@@ -687,6 +696,7 @@ describe('SyncEngine delete/modify dirty content conflicts', () => {
   });
 });
 
+
 describe('SyncEngine getStatus()', () => {
   test('returns all required fields in dormant state', () => {
     const engine = makeEngine();
@@ -703,6 +713,7 @@ describe('SyncEngine getStatus()', () => {
   });
 });
 
+
 describe('SyncEngine no-remote detection', () => {
   test('stays dormant if project dir has no git remote (no .git/)', async () => {
     const engine = makeEngine();
@@ -711,6 +722,7 @@ describe('SyncEngine no-remote detection', () => {
     expect(engine.getStatus().hasRemote).toBe(false);
   });
 });
+
 
 describe('SyncEngine refreshRemote()', () => {
   test('is a no-op when hasRemote is already true', async () => {
@@ -792,6 +804,7 @@ describe('SyncEngine refreshRemote()', () => {
   });
 });
 
+
 describe('SyncEngine setEnabled() — unconditional remote re-probe', () => {
   test('setEnabled(true) demotes to dormant when remote was removed since boot', async () => {
     const git = simpleGit(projectDir);
@@ -831,6 +844,7 @@ describe('SyncEngine setEnabled() — unconditional remote re-probe', () => {
   });
 });
 
+
 describe('SyncEngine updateCurrentBranch()', () => {
   test('transitions to disabled when branch is null (detached HEAD)', () => {
     const states: SyncState[] = [];
@@ -840,6 +854,7 @@ describe('SyncEngine updateCurrentBranch()', () => {
     expect(states).toEqual([]);
   });
 });
+
 
 describe('SyncEngine backoff thresholds via persisted state', () => {
   const statePath = () => join(okDir, 'sync-state.json');
@@ -893,6 +908,7 @@ describe('SyncEngine backoff thresholds via persisted state', () => {
     expect(engine.getStatus().consecutiveFailures).toBe(0);
   });
 });
+
 
 describe('SyncEngine lifecycle edge cases', () => {
   test('double start() is idempotent (second call is no-op)', async () => {
@@ -968,6 +984,7 @@ describe('SyncEngine lifecycle edge cases', () => {
     expect(reloaded.pausedReason).toBeUndefined();
   });
 });
+
 
 describe('SyncEngine push cycle pushes existing commits when local is ahead of origin', () => {
   test('pushes existing HEAD when local is ahead of origin and tree is clean', async () => {
@@ -1114,6 +1131,7 @@ describe('SyncEngine per-operation error isolation', () => {
     }
   });
 });
+
 
 describe('SyncEngine push-permission probe', () => {
   test('does NOT run when there is no remote', async () => {
@@ -1283,6 +1301,7 @@ describe('SyncEngine push-permission probe', () => {
     expect(engine.getStatus().pushPermission).toBeUndefined();
   });
 
+
   test('FR7: pushPermission is absent during the probe window (cold-start latency)', async () => {
     await initGitWithOrigin();
     let resolveProbe: (p: import('./github-permissions.ts').PushPermission) => void = () => {};
@@ -1353,6 +1372,7 @@ describe('SyncEngine getStatus() with restored state', () => {
     expect(status.lastPushedSha).toBe('abc123');
   });
 });
+
 
 interface InternalState {
   state: SyncState;
@@ -1437,6 +1457,7 @@ describe('SyncEngine auth-error recovery', () => {
     expect(engine.getStatus().state).toBe(before);
   });
 });
+
 
 function recordDetectGh(result: ReturnType<DetectGhFn>): {
   fn: DetectGhFn;

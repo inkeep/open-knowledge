@@ -1,3 +1,4 @@
+
 export interface AgentIdentity {
   connectionId: string;
   clientInfo?: {

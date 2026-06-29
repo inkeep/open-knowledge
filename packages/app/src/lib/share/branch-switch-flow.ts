@@ -1,3 +1,4 @@
+
 import type { BranchInfoResponse, CheckoutResponse } from '@inkeep/open-knowledge-core';
 
 export type BranchSwitchVariant =

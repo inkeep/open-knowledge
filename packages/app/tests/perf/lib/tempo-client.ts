@@ -1,3 +1,4 @@
+
 const DEFAULT_TEMPO_BASE_URL = 'http://localhost:3200';
 const DEFAULT_FETCH_TIMEOUT_MS = 2000;
 const DEFAULT_LIMIT = 100;
@@ -10,6 +11,7 @@ const SPAN_NAMES = {
   syncHandshake: 'sync.handshake',
   persistenceLoadDocument: 'persistence.onLoadDocument',
 } as const;
+
 
 export interface ServerSpanTimings {
   syncHandshakeMs: number | null;
@@ -41,6 +43,7 @@ export interface TempoSearchOptions {
   fetchTimeoutMs?: number;
   limit?: number;
 }
+
 
 interface TempoSpanAttributeValue {
   stringValue?: string;
@@ -74,6 +77,7 @@ interface TempoTrace {
 export interface TempoSearchResponse {
   traces?: TempoTrace[];
 }
+
 
 export async function queryTempoByMountId(opts: TempoSearchOptions): Promise<TempoQueryResult> {
   const baseUrl = opts.tempoBaseUrl ?? DEFAULT_TEMPO_BASE_URL;
@@ -119,6 +123,7 @@ export async function queryTempoByMountId(opts: TempoSearchOptions): Promise<Tem
 
   return parseTempoTimings(body as TempoSearchResponse, opts.mountId);
 }
+
 
 export function parseTempoTimings(
   response: TempoSearchResponse,

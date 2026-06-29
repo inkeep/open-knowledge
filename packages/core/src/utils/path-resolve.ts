@@ -1,3 +1,4 @@
+
 export interface BasenameIndex {
   add(path: string): void;
   remove(path: string): void;

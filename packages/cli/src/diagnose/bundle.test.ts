@@ -1,9 +1,11 @@
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { ZipFile } from 'yazl';
 import { type CollectBundleDeps, collectBundle, writeBundle } from './bundle.ts';
+
 
 const tmpDirs: string[] = [];
 
@@ -43,6 +45,7 @@ function writeAt(contentDir: string, relPath: string, body: string): void {
   writeFileSync(full, body);
 }
 
+
 describe('collectBundle — smoke', () => {
   test('produces a v1 manifest on a fresh content-dir with no server', async () => {
     const contentDir = makeTmpDir();
@@ -68,6 +71,7 @@ describe('collectBundle — smoke', () => {
     expect(existsSync(collected.stagingDir)).toBe(false);
   });
 });
+
 
 describe('collectBundle — file inventory', () => {
   test('lists staged spans-current.jsonl with correct bytes + lines', async () => {
@@ -181,6 +185,7 @@ describe('collectBundle — file inventory', () => {
   });
 });
 
+
 describe('collectBundle — contentDir.pathSha256', () => {
   test('is 64-hex SHA-256 of the absolute path', async () => {
     const contentDir = makeTmpDir();
@@ -194,6 +199,7 @@ describe('collectBundle — contentDir.pathSha256', () => {
     collected.cleanup();
   });
 });
+
 
 describe('collectBundle — server status', () => {
   test('lock present + agent-presence 2xx → running, agent-presence.json staged', async () => {
@@ -269,6 +275,7 @@ describe('collectBundle — server status', () => {
   });
 });
 
+
 describe('collectBundle — state files', () => {
   test('shadow-head.txt is written when readShadowHead returns content', async () => {
     const contentDir = makeTmpDir();
@@ -328,6 +335,7 @@ describe('collectBundle — state files', () => {
   });
 });
 
+
 describe('collectBundle — process/ subdir', () => {
   test('copies processDir contents under process/ when supplied', async () => {
     const contentDir = makeTmpDir();
@@ -357,6 +365,7 @@ describe('collectBundle — process/ subdir', () => {
     collected.cleanup();
   });
 });
+
 
 describe('collectBundle — summary', () => {
   test('docNameCount counts "doc.name" occurrences across telemetry JSONLs', async () => {
@@ -398,6 +407,7 @@ describe('collectBundle — summary', () => {
     collected.cleanup();
   });
 });
+
 
 async function readZipEntries(zipPath: string): Promise<string[]> {
   const { execSync } = await import('node:child_process');

@@ -50,7 +50,8 @@ afterEach(() => {
     ) {
       try {
         process.kill(-proc.pid, 'SIGKILL');
-      } catch {}
+      } catch {
+      }
     }
   }
   spawnedProcs.length = 0;

@@ -1,3 +1,4 @@
+
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -38,6 +39,7 @@ export type PublishResult =
   | { kind: 'ok'; value: PublishSuccess }
   | { kind: 'error'; code: PublishErrorCode };
 
+
 interface OctokitErrorShape {
   status?: number;
   message?: string;
@@ -74,6 +76,7 @@ export function classifyOctokitError(err: unknown): PublishErrorCode {
   }
   return 'network';
 }
+
 
 interface CreateRepoArgs {
   octokit: Octokit;
@@ -122,10 +125,12 @@ async function tryFetchExistingRepo(
   }
 }
 
+
 async function probeOwnerKind(octokit: Octokit, ownerLogin: string): Promise<'user' | 'org'> {
   const me = await octokit.users.getAuthenticated();
   return me.data.login.toLowerCase() === ownerLogin.toLowerCase() ? 'user' : 'org';
 }
+
 
 type CredentialHelperUnsafeGitOptions = SimpleGitOptions & {
   unsafe?: NonNullable<SimpleGitOptions['unsafe']> & {
@@ -162,6 +167,7 @@ const DEFAULT_DEPS: PublishGitDeps = {
   },
   gitFactory: makeGit,
 };
+
 
 export interface PublishParams {
   octokit: Octokit;
@@ -273,7 +279,8 @@ export async function runPublishFlow(params: PublishParams): Promise<PublishResu
 
   try {
     await git.raw(['update-ref', `refs/remotes/origin/${created.defaultBranch}`, 'HEAD']);
-  } catch {}
+  } catch {
+  }
 
   return {
     kind: 'ok',
@@ -285,6 +292,7 @@ export async function runPublishFlow(params: PublishParams): Promise<PublishResu
     },
   };
 }
+
 
 function emitPublishEvent(json: boolean, result: PublishResult): void {
   if (!json) {

@@ -139,5 +139,6 @@ export function getRootDesktopLogger(): pino.Logger {
 export function flushDesktopLogger(): void {
   try {
     rootDest?.flushSync();
-  } catch {}
+  } catch {
+  }
 }

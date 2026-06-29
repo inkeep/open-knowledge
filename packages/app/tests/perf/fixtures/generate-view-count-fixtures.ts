@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { MarkdownManager, OK_DIR, sharedExtensions } from '@inkeep/open-knowledge-core';
 
+
 const TARGET_BYTES = 50_000;
 
 const TOLERANCE_RATIO = 0.05; // ±5%
@@ -15,6 +16,7 @@ const MAX_ITERATIONS = 12;
 const CANONICAL_TARGETS = [25, 50, 100, 200, 400] as const;
 
 const FIXTURE_DIR_PREFIX = 'views-';
+
 
 const PROSE_STANZAS = [
   'The architecture remains stable across iterations of the schema.',
@@ -42,6 +44,7 @@ function makeFiller(targetBytes: number): string {
   }
   return stanzas.join('\n');
 }
+
 
 interface BuildArgs {
   chips: number;
@@ -84,6 +87,7 @@ function buildFixtureMarkdown(args: BuildArgs): string {
     .join('\n\n')}\n`;
 }
 
+
 interface PmJson {
   type?: string;
   marks?: { type: string }[];
@@ -101,6 +105,7 @@ function countViewsInPmJson(node: PmJson): number {
   }
   return count;
 }
+
 
 interface ConvergeResult {
   markdown: string;
@@ -137,6 +142,7 @@ function convergeOnTarget(targetViews: number): ConvergeResult {
   return lastResult;
 }
 
+
 const OK_CONFIG_YML = `content:
   dir: .
   include:
@@ -149,6 +155,7 @@ function writeFixture(outDir: string, markdown: string): void {
   writeFileSync(resolve(outDir, 'FIXTURE.md'), markdown);
   writeFileSync(resolve(outDir, OK_DIR, 'config.yml'), OK_CONFIG_YML);
 }
+
 
 interface Args {
   targetViews?: number;

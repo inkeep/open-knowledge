@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced as waitForProvider } from './_helpers';
@@ -108,7 +109,8 @@ test.describe('editor-mode-persistence — SPEC §8.3', () => {
     await context.addInitScript((key) => {
       try {
         localStorage.setItem(key, 'garbage-from-manual-tampering-or-old-schema');
-      } catch {}
+      } catch {
+      }
     }, STORAGE_KEY);
 
     await page.goto(`/#/${docName}`);
@@ -155,7 +157,8 @@ test.describe('editor-mode-persistence — SPEC §8.3', () => {
     await context.addInitScript((key) => {
       try {
         localStorage.setItem(key, 'source');
-      } catch {}
+      } catch {
+      }
     }, STORAGE_KEY);
 
     await page.goto(`/#/${docName}`);

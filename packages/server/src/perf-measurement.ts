@@ -1,3 +1,4 @@
+
 import type { ServerResponse } from 'node:http';
 import type { Extension, Hocuspocus } from '@hocuspocus/server';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';

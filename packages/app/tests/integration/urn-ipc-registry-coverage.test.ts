@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { ProblemTypeSchema, URN_HTTP_ONLY, URN_IPC_REGISTRY } from '@inkeep/open-knowledge-core';
 

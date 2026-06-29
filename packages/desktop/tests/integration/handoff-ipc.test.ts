@@ -1,3 +1,4 @@
+
 import { describe, expect, mock, test } from 'bun:test';
 import type { IpcMain, IpcMainInvokeEvent, IpcRenderer } from 'electron';
 import {
@@ -378,7 +379,8 @@ describe("'ok:shell:record-handoff' round-trips the stats append", () => {
           appendFile: async () => {
             throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
           },
-          mkdir: async () => {},
+          mkdir: async () => {
+          },
           warn: (m) => warnings.push(m),
         },
         line,

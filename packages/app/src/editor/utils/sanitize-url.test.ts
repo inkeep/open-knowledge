@@ -178,7 +178,8 @@ describe('sanitizeComponentProps — dangerous prop denylist', () => {
   test('drops onClick / onError / onMouseDown', () => {
     const input = {
       onClick: 'alert(1)',
-      onError: () => {},
+      onError: () => {
+      },
       onMouseDown: 'alert(2)',
       title: 'safe',
     };

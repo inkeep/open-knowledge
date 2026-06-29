@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { buildShiftKeyframes, computeFreezeRange } from './frozen-table-headers.ts';
 
 describe('computeFreezeRange (scroll-driven animation ranges)', () => {
+
   it('returns null for a single-row table (header is the whole table)', () => {
     expect(computeFreezeRange(0, 0, 100, 40, 40)).toBeNull();
   });

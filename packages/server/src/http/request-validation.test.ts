@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
@@ -35,7 +36,8 @@ interface MockReqOptions {
 function makeMockReq(opts: MockReqOptions = {}): IncomingMessage {
   return {
     method: opts.method ?? 'POST',
-    destroy(_err?: Error) {},
+    destroy(_err?: Error) {
+    },
     [Symbol.asyncIterator]: async function* () {
       if (opts.throwOnRead) {
         throw opts.throwOnRead;

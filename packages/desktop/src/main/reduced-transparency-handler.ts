@@ -1,3 +1,4 @@
+
 export type VibrancyMaterial = 'sidebar' | 'window';
 
 export interface BrowserWindowVibrancyTarget {

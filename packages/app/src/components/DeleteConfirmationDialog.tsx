@@ -43,7 +43,9 @@ export function DeleteConfirmationDialog({
     <DialogContent>
       <DialogHeader>
         <DialogTitle>{customTitle ?? t`Delete ${itemName}`}</DialogTitle>
-        <DialogDescription className="whitespace-pre-wrap">
+        <DialogDescription
+          className="whitespace-pre-wrap"
+        >
           {customDescription ??
             t`Are you sure you want to delete ${itemName}? This action cannot be undone.`}
         </DialogDescription>

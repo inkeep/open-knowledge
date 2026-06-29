@@ -17,6 +17,7 @@ function applyMarkdown(doc: Y.Doc, fragment: Y.XmlFragment, md: string) {
   updateYFragment(doc, fragment, pmNode, meta);
 }
 
+
 describe('Shimmer prevention', () => {
   test('S01: single XmlFragment edit → bounded observer firings', async () => {
     const doc = new Y.Doc();

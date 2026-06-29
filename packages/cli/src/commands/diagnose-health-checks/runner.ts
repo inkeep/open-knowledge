@@ -1,3 +1,4 @@
+
 import type { CheckContext, CheckDefinition, CheckResult } from './types.ts';
 
 export const DEFAULT_CHECK_TIMEOUT_MS = 5000;
@@ -28,7 +29,8 @@ export async function runCheck(
 
     const checkPromise = def.run(ctx);
     const result = await Promise.race([checkPromise, timeoutPromise]);
-    checkPromise.catch(() => {});
+    checkPromise.catch(() => {
+    });
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

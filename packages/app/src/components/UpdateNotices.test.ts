@@ -1,3 +1,4 @@
+
 import { describe, expect, mock, test } from 'bun:test';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
@@ -115,6 +116,7 @@ function castBridge(fake: FakeBridge): OkDesktopBridge {
   return fake as unknown as OkDesktopBridge;
 }
 
+
 describe('copy helpers (minimal-wording revision)', () => {
   test('toastABody formats the version-specific pending-install string', () => {
     expect(toastABody('0.1.1')).toBe('Version 0.1.1 ready to install');
@@ -177,6 +179,7 @@ describe('appendErrorDetail', () => {
   });
 });
 
+
 describe('attachUpdateSubscribers — registration', () => {
   test('subscribes to all six update channels on the bridge', () => {
     const bridge = makeFakeBridge();
@@ -203,6 +206,7 @@ describe('attachUpdateSubscribers — registration', () => {
     expect(bridge._stuckHintUnsub).toHaveBeenCalledTimes(1);
   });
 });
+
 
 describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
   test('swaps the update-downloaded card to the button-less in-progress card', () => {
@@ -303,6 +307,7 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
     expect(reArmed.dismissible).toBeUndefined();
   });
 });
+
 
 describe('Notice A — ok:update:downloaded', () => {
   test('emits notice with canonical copy + relaunch action on dispatch', () => {
@@ -464,6 +469,7 @@ describe('Notice A — ok:update:downloaded', () => {
   });
 });
 
+
 describe('Notice B — ok:update:whats-new', () => {
   test('emits notice with version-specific copy + release URL action', () => {
     const bridge = makeFakeBridge();
@@ -552,6 +558,7 @@ describe('Notice B — ok:update:whats-new', () => {
   });
 });
 
+
 describe('Notice C — ok:update:stuck-hint', () => {
   test('emits notice with D12 copy + download URL action', () => {
     const bridge = makeFakeBridge();
@@ -579,6 +586,7 @@ describe('Notice C — ok:update:stuck-hint', () => {
     expect(ids).toEqual(['update-stuck-hint', 'update-stuck-hint']);
   });
 });
+
 
 describe('Notice E — schema-incompatibility refuse-downgrade', () => {
   const diagnostic = {
@@ -663,6 +671,7 @@ describe('Notice E — schema-incompatibility refuse-downgrade', () => {
     expect(ids).toEqual(['schema-incompatibility-2', 'schema-incompatibility-2']);
   });
 });
+
 
 describe('pickActiveNotice', () => {
   const a: UpdateNotice = { id: 'a', body: 'A', priority: 2 };

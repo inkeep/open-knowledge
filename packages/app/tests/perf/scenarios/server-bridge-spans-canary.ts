@@ -1,3 +1,4 @@
+
 import { defineScenario } from '../lib/scenario';
 
 export default defineScenario({

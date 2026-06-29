@@ -128,6 +128,7 @@ describe('multi-project lock isolation (A1)', () => {
   });
 });
 
+
 const LOCK_WORKER_PATH = resolve(__dirname, '_helpers', 'lock-worker.ts');
 const WORKER_READY_TIMEOUT_MS = 5_000;
 const WORKER_EXIT_TIMEOUT_MS = 3_000;
@@ -198,7 +199,8 @@ function spawnLockWorker(
       if (!resolved) {
         try {
           proc.kill('SIGKILL');
-        } catch {}
+        } catch {
+        }
         reject(
           new Error(
             `lock-worker did not emit READY within ${WORKER_READY_TIMEOUT_MS}ms (lockDir=${lockDir}, stderr=${stderrBuffer || '(empty)'})`,
@@ -221,11 +223,13 @@ function stopLockWorker(handle: WorkerHandle): Promise<void> {
     handle.proc.once('exit', onExit);
     try {
       handle.proc.kill('SIGTERM');
-    } catch {}
+    } catch {
+    }
     const killTimeout = setTimeout(() => {
       try {
         handle.proc.kill('SIGKILL');
-      } catch {}
+      } catch {
+      }
     }, WORKER_EXIT_TIMEOUT_MS);
   });
 }

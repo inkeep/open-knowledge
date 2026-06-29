@@ -113,7 +113,8 @@ export function OkBubbleMenu({ editor }: { editor: Editor }) {
           popup.style.left = `${x}px`;
           popup.style.top = `${y}px`;
         })
-        .catch(() => {});
+        .catch(() => {
+        });
     });
   };
 

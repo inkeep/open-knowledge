@@ -25,6 +25,7 @@ import {
   subscribeMountStalled,
 } from './mount-promise';
 
+
 interface FakeNode {
   parentElement: FakeNode | null;
   scrollTop: number;
@@ -41,7 +42,8 @@ function makeNode(): FakeNode {
     scrollTop: 0,
     children: [],
     style: {},
-    setAttribute(_key, _value) {},
+    setAttribute(_key, _value) {
+    },
     appendChild(child) {
       if (child.parentElement) child.parentElement.removeChild(child);
       node.children.push(child);
@@ -81,7 +83,8 @@ function makeFakeTiptap(dom: FakeNode): {
       scrollDOM: dom,
     },
     commands: {
-      focus() {},
+      focus() {
+      },
     },
     mount(target: FakeNode) {
       spies.mountCalls++;
@@ -104,13 +107,16 @@ function makeFakeTiptap(dom: FakeNode): {
 function makeFakeProvider(ydoc: Y.Doc): HocuspocusProvider {
   return {
     document: ydoc,
-    destroy() {},
+    destroy() {
+    },
     connect() {
       return Promise.resolve();
     },
-    disconnect() {},
+    disconnect() {
+    },
   } as unknown as HocuspocusProvider;
 }
+
 
 interface MountPromiseHarness {
   docName: string;
@@ -160,8 +166,10 @@ function installDocumentStub(): void {
   // biome-ignore lint/suspicious/noExplicitAny: minimal test-only stub for `document.createElement`
   (globalThis as any).document = {
     createElement: (_tag: string) => makeNode(),
-    addEventListener: (_event: string, _handler: () => void) => {},
-    removeEventListener: (_event: string, _handler: () => void) => {},
+    addEventListener: (_event: string, _handler: () => void) => {
+    },
+    removeEventListener: (_event: string, _handler: () => void) => {
+    },
   };
   documentStubInstalled = true;
 }
@@ -192,6 +200,7 @@ afterEach(async () => {
     delete (globalThis as any).window;
   }
 });
+
 
 describe('cache HIT short-circuit (V2 cache pre-populated)', () => {
   test('V2 cache HIT: resolves to the same entry without calling construct', async () => {
@@ -283,7 +292,8 @@ describe('concurrent-call promise reference stability', () => {
     expect(b).toBe(c);
     expect(__mountPromiseCacheSize()).toBe(1);
 
-    a.catch(() => {});
+    a.catch(() => {
+    });
   });
 
   test('repeated calls after resolution return the same resolved promise', async () => {
@@ -325,8 +335,10 @@ describe('concurrent-call promise reference stability', () => {
     expect(pa).not.toBe(pb);
     expect(__mountPromiseCacheSize()).toBe(2);
 
-    pa.catch(() => {});
-    pb.catch(() => {});
+    pa.catch(() => {
+    });
+    pb.catch(() => {
+    });
   });
 });
 
@@ -452,7 +464,8 @@ describe('mount-failure error path', () => {
       mountId: 'test-id',
       construct: h.construct,
     });
-    await first.catch(() => {});
+    await first.catch(() => {
+    });
 
     const second = mountTiptapEditorPromise({
       docName: h.docName,
@@ -475,7 +488,8 @@ describe('mount-failure error path', () => {
       mountId: 'test-id',
       construct: h.construct,
     });
-    await first.catch(() => {});
+    await first.catch(() => {
+    });
 
     invalidateMountPromise(h.docName);
     expect(__mountPromiseCacheSize()).toBe(0);
@@ -566,6 +580,7 @@ describe('mount-failure error path', () => {
       scheduler.yield = origYield;
     }
   });
+
 });
 
 describe('invalidateMountPromise', () => {
@@ -622,9 +637,11 @@ describe('error class shape', () => {
     expect(err.docName).toBe('some-doc');
     expect(err.message).toContain('some-doc');
   });
+
 });
 
 describe('stalled-but-pending observability (D27 LOCKED, precedent 41)', () => {
+
   beforeEach(() => {
     if (typeof globalThis.window === 'undefined') {
       // biome-ignore lint/suspicious/noExplicitAny: minimal test-only window stub
@@ -659,7 +676,8 @@ describe('stalled-but-pending observability (D27 LOCKED, precedent 41)', () => {
         mountId: 'test-id',
         construct: h.construct,
       });
-      promise.catch(() => {});
+      promise.catch(() => {
+      });
       await new Promise<void>((resolve) => setTimeout(resolve, 80));
       expect(__mountPromiseStalledEmitted(h.docName)).toBe(true);
       expect(__mountPromiseSettled(h.docName)).toBe(false);
@@ -684,7 +702,8 @@ describe('stalled-but-pending observability (D27 LOCKED, precedent 41)', () => {
         mountId: 'test-id',
         construct: h.construct,
       });
-      promise.catch(() => {});
+      promise.catch(() => {
+      });
       __reapStalledOnVisible(Date.now() + 10_000);
       expect(__mountPromiseStalledEmitted(h.docName)).toBe(true);
       expect(__mountPromiseSettled(h.docName)).toBe(false);
@@ -728,6 +747,7 @@ describe('stalled-but-pending observability (D27 LOCKED, precedent 41)', () => {
 });
 
 describe('D27 no-timer-reject regression guard', () => {
+
   test('no ok/mount/reject mark with reason "timeout" ever fires', async () => {
     const h = makeHarness('d27-no-timer-reject');
     const origYield = scheduler.yield.bind(scheduler);
@@ -775,6 +795,7 @@ describe('D27 no-timer-reject regression guard', () => {
 });
 
 describe('mountId payload (US-006 / FR5 / AC13 — cross-namespace correlation)', () => {
+
   test('every ok/mount/* mark carries the mountId from the call', async () => {
     const h = makeHarness('mountid-payload');
     const collector = getCollector();
@@ -958,6 +979,7 @@ describe('visibility handler lifecycle (idempotent install/uninstall)', () => {
 });
 
 describe('mountPromiseHasResolved (warm-reopen overlay gate)', () => {
+
   test('returns false when no entry exists', () => {
     expect(mountPromiseHasResolved('never-mounted')).toBe(false);
   });
@@ -1129,6 +1151,7 @@ describe('scheduler.yield wiring', () => {
 });
 
 describe('unhandled-throw backstop — body must reject, never hang', () => {
+
   test('pre-construct scheduler.yield throwing → consumer promise rejects, construct skipped, no editor leak', async () => {
     const h = makeHarness('doc-pre-construct-yield-throws');
 
@@ -1277,7 +1300,8 @@ describe('unhandled-throw backstop — body must reject, never hang', () => {
       mountId: 'test-id',
       construct: h.construct,
     });
-    promise.catch(() => {});
+    promise.catch(() => {
+    });
     invalidateMountPromise(h.docName);
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -1291,6 +1315,7 @@ describe('unhandled-throw backstop — body must reject, never hang', () => {
 });
 
 describe('ok/mount/resolve-elapsed-ms histogram (cap-graduation sweep substrate)', () => {
+
   beforeEach(() => {
     getCollector()?.reset();
   });
@@ -1374,6 +1399,7 @@ describe('ok/mount/resolve-elapsed-ms histogram (cap-graduation sweep substrate)
 });
 
 describe('cold-mount span finalization on reject paths', () => {
+
   beforeEach(() => {
     __resetColdMountSpans();
   });

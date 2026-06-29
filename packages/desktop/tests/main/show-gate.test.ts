@@ -5,6 +5,7 @@ import {
   type ShowGateRegistry,
 } from '../../src/main/show-gate.ts';
 
+
 interface CapturedTimer {
   cb: () => void;
   ms: number;

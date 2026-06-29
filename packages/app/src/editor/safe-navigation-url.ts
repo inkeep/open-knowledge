@@ -1,3 +1,4 @@
+
 const NAVIGATION_ALLOWED_SCHEMES: ReadonlySet<string> = new Set([
   'http:',
   'https:',

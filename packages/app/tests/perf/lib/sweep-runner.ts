@@ -1,6 +1,8 @@
+
 import type { CapRegime, WorkloadFixtureRef } from '../fixtures/cache-regime-rotation/types';
 import { findKnee } from './kneedle';
 import { withCheckpoint } from './with-checkpoint';
+
 
 export type { CapRegime, WorkloadFixtureRef };
 
@@ -428,6 +430,7 @@ export function classifyCellVerdict(
   };
 }
 
+
 async function runStageWithCheckpoint(
   inputs: ReadonlyArray<SweepCellInput>,
   options: RunCampaignOptions,
@@ -586,6 +589,7 @@ function toBaselineFloor(cell: SweepCellResult, host: HostClassFingerprint): Bas
   };
 }
 
+
 type AxisCriteria = { excellent: number; good: number; acceptable: number };
 
 function classifyLatencyAxis(value: number, criteria: AxisCriteria): UxAxisClass {
@@ -651,6 +655,7 @@ function tagAgainstBaseline(
   }
   return 'arch-bounded';
 }
+
 
 function findStageWinner(
   cells: ReadonlyArray<SweepCellResult>,

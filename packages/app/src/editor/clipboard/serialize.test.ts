@@ -1,3 +1,4 @@
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { JSONContent } from '@tiptap/core';
 import type { Fragment } from '@tiptap/pm/model';
@@ -86,6 +87,7 @@ describe('createClipboardTextSerializer', () => {
 });
 
 describe('createClipboardHtmlSerializer — walker→markdown tier dispatch', () => {
+
   function emptyFragment(): Fragment {
     return { firstChild: null } as unknown as Fragment;
   }
@@ -180,6 +182,7 @@ describe('createClipboardHtmlSerializer — walker→markdown tier dispatch', ()
 });
 
 describe('createClipboardHtmlSerializer — walker env wires markdown reconstruction', () => {
+
   let warnCalls: string[];
   let innerOrigWarn: typeof console.warn;
   beforeEach(() => {
@@ -261,6 +264,7 @@ function wrapDescriptor(el: FakeDescriptorElement): Element {
 }
 
 describe('findDescriptorRoot — outermost-wrapper selection', () => {
+
   test('(a) bare element with only ProseMirror parent → returns null', () => {
     const proseMirror = makeDescriptorEl({ classes: ['ProseMirror'] });
     const img = makeDescriptorEl();
@@ -337,6 +341,7 @@ describe('findDescriptorRoot — outermost-wrapper selection', () => {
 });
 
 describe('sliceToDocJson — inline-first wrapping branch', () => {
+
   const inlineImageSchema = new Schema({
     nodes: {
       doc: { content: 'block+' },

@@ -1,3 +1,4 @@
+
 export interface LongTaskInput {
   startTime: number;
   duration: number;

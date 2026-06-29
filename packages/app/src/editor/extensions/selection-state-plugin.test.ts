@@ -1,3 +1,4 @@
+
 import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState, NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
@@ -12,6 +13,7 @@ import {
   SELECTION_ORIGIN_META_KEY,
   selectionStatePluginKey,
 } from './selection-state-plugin.ts';
+
 
 const schema = new Schema({
   nodes: {
@@ -91,6 +93,7 @@ function makeStateFromDoc(doc: ReturnType<Schema['node']>) {
   return EditorState.create({ doc, plugins: [makeStubPlugin()] });
 }
 
+
 const p = (text = ''): ReturnType<Schema['node']> =>
   text ? schema.node('paragraph', null, [schema.text(text)]) : schema.node('paragraph');
 
@@ -98,6 +101,7 @@ const jsx = (
   componentName: string,
   children: ReturnType<Schema['node']>[] = [],
 ): ReturnType<Schema['node']> => schema.node('jsxComponent', { componentName }, children);
+
 
 describe('deriveAncestorChain', () => {
   test('returns empty chain when selection is outside any jsxComponent', () => {
@@ -224,6 +228,7 @@ describe('deriveBlockSelection', () => {
 });
 
 describe('computeSelectionApply (real plugin apply path)', () => {
+
   const seed = (origin: BlockSelection['selectionOrigin']): BlockSelection => ({
     ...EMPTY,
     selectionOrigin: origin,
@@ -314,7 +319,11 @@ describe('rangeEncompassedBlockIds (range-encompass soft halo derivation)', () =
     const accordion = jsx('Accordion', [p('d')]);
     const doc = schema.node('doc', null, [p('a'), callout, p('c'), accordion, p('e')]);
     const state = makeStateWithBridgeIds(doc);
-    const sel = deriveBlockSelection(state, EMPTY, { origin: 'programmatic' });
+    const sel = deriveBlockSelection(
+      state,
+      EMPTY,
+      { origin: 'programmatic' },
+    );
     expect(sel.rangeEncompassedBlockIds.size).toBe(0);
     const tr = state.tr.setSelection(TextSelection.create(state.doc, 0, state.doc.content.size));
     const next = state.apply(tr);

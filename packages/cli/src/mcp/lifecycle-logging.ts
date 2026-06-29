@@ -1,3 +1,4 @@
+
 export interface LifecycleLoggingTransport {
   onclose?: (() => void) | undefined;
 }
@@ -22,7 +23,8 @@ export function attachLifecycleLogging(deps: LifecycleLoggingDeps): void {
   const safeLog = (msg: string): void => {
     try {
       deps.log(msg);
-    } catch {}
+    } catch {
+    }
   };
 
   const prevOnClose = deps.transport.onclose;

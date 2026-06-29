@@ -1,3 +1,4 @@
+
 import type { ElectronApplication, TestInfo } from '@playwright/test';
 
 export interface ElectronStderrCapture {

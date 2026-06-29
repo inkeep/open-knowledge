@@ -14,6 +14,7 @@ import {
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
 
+
 interface FakePty extends PtyProcessLike {
   writes: string[];
   resizes: Array<[number, number]>;
