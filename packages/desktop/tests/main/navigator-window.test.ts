@@ -4,7 +4,6 @@ import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import type { ShareNavigatorPayload } from '../../src/main/url-scheme.ts';
 import type { BrowserWindowLike } from '../../src/main/window-manager.ts';
 
-
 interface MockNav extends BrowserWindowLike {
   closeMock: ReturnType<typeof mock>;
   setDestroyed: (v: boolean) => void;

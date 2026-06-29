@@ -1,4 +1,3 @@
-
 const SMOKE_SERVICE = 'open-knowledge-smoke';
 const SMOKE_ACCOUNT = 'test-user';
 
@@ -63,8 +62,7 @@ export async function runKeyringSmoke(deps: RunKeyringSmokeDeps = {}): Promise<K
     if (entry) {
       try {
         entry.deletePassword();
-      } catch {
-      }
+      } catch {}
     }
   }
 }

@@ -4,7 +4,6 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, '../..');
 const builderYml = resolve(desktopRoot, 'electron-builder.yml');
@@ -46,8 +45,7 @@ describe('asarUnpack covers @parcel/watcher runtime deps', () => {
     const yml = readFileSync(builderYml, 'utf8');
     const config = parse(yml) as { asarUnpack?: string[] };
     patterns = config.asarUnpack ?? [];
-  } catch {
-  }
+  } catch {}
 
   test('builder yml + parcel package.json both exist (premise check)', () => {
     expect(existsSync(builderYml)).toBe(true);
@@ -57,8 +55,7 @@ describe('asarUnpack covers @parcel/watcher runtime deps', () => {
   let runtimeDeps: string[] = [];
   try {
     runtimeDeps = [...collectRuntimeDeps(parcelPkgDir)].sort();
-  } catch {
-  }
+  } catch {}
 
   test('runtime dep set is non-empty (cwd / install sanity)', () => {
     expect(runtimeDeps.length).toBeGreaterThan(0);

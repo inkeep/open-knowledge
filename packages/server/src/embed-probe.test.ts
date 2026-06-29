@@ -64,8 +64,7 @@ function makeRes(): {
     writeHead(status: number) {
       captured.status = status;
     },
-    setHeader() {
-    },
+    setHeader() {},
     end(body?: string) {
       captured.body = body ?? '';
     },
@@ -153,7 +152,6 @@ describe('deriveDetection — eager OR-of-globally-unique classification', () =>
     });
   });
 
-
   test('classifies Cursor eagerly when UA regex fires alone', () => {
     const out = deriveDetection(entry({ ua: 'Mozilla/5.0 Cursor/3.4.20 Electron/39.8.1' }));
     expect(out.app).toBe('cursor');
@@ -186,7 +184,6 @@ describe('deriveDetection — eager OR-of-globally-unique classification', () =>
     expect(out.signals_fired).toContain('cursor_ua_regex');
   });
 
-
   test('classifies Codex eagerly via UA regex', () => {
     const out = deriveDetection(entry({ ua: 'Codex/0.42.1 (Macintosh; arm64)' }));
     expect(out.app).toBe('codex');
@@ -199,7 +196,6 @@ describe('deriveDetection — eager OR-of-globally-unique classification', () =>
     expect(out.signals_fired).toContain('codex_ua_regex');
   });
 
-
   test('classifies Claude eagerly via UA regex', () => {
     const out = deriveDetection(entry({ ua: 'Claude/0.13.0 (claude-code; cli)' }));
     expect(out.app).toBe('claude');
@@ -211,7 +207,6 @@ describe('deriveDetection — eager OR-of-globally-unique classification', () =>
     expect(out.app).toBe('claude');
     expect(out.signals_fired).toContain('claude_ua_regex');
   });
-
 
   test('plain Chrome UA → app: null', () => {
     const out = deriveDetection(
@@ -250,7 +245,6 @@ describe('deriveDetection — eager OR-of-globally-unique classification', () =>
     expect(out.app).toBeNull();
   });
 
-
   test('precedence: Cursor wins over Claude when both UA markers fire', () => {
     const out = deriveDetection(entry({ ua: 'Mozilla/5.0 Cursor/3.4.20 Claude/1.0.0' }));
     expect(out.app).toBe('cursor');
@@ -272,7 +266,6 @@ describe('deriveDetection — eager OR-of-globally-unique classification', () =>
     expect(out.signals_fired).not.toContain('codex_ua_regex');
   });
 
-
   test('empirical Codex(Dev) live capture (Spike B 2026-05-21): app=codex', () => {
     const out = deriveDetection(
       entry({
@@ -284,7 +277,6 @@ describe('deriveDetection — eager OR-of-globally-unique classification', () =>
     expect(out.app).toBe('codex');
     expect(out.signals_fired).toContain('codex_ua_regex');
   });
-
 
   test('empirical Cursor live capture (Spike A 2026-05-21): app=cursor with both signals', () => {
     const out = deriveDetection(

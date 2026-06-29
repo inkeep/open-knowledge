@@ -1,4 +1,3 @@
-
 import type { Editor } from '@tiptap/react';
 import { sliceToDocJson } from './clipboard/serialize.ts';
 import { getSharedMarkdownManager } from './utils/md-singleton.ts';

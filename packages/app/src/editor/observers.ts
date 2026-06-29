@@ -1,4 +1,3 @@
-
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import type { Schema } from '@tiptap/pm/model';
@@ -16,7 +15,6 @@ export const ORIGIN_TEXT_TO_TREE = {
   context: { origin: 'sync-from-text' },
 } as const satisfies LocalTransactionOrigin;
 
-
 let lastGlobalUserKeystrokeMs = 0;
 
 export function getLastUserKeystroke(): number {
@@ -26,7 +24,6 @@ export function getLastUserKeystroke(): number {
 export function markUserTyping(): void {
   lastGlobalUserKeystrokeMs = Date.now();
 }
-
 
 interface ObserverDeps {
   doc: Y.Doc;
@@ -40,11 +37,9 @@ interface ObserverDeps {
 export function setupObservers(deps: ObserverDeps): () => void {
   const { xmlFragment, ytext } = deps;
 
-  const observerA = (_events: Y.YEvent<Y.XmlFragment>[], _transaction: Y.Transaction): void => {
-  };
+  const observerA = (_events: Y.YEvent<Y.XmlFragment>[], _transaction: Y.Transaction): void => {};
 
-  const observerB = (_event: Y.YTextEvent, _transaction: Y.Transaction): void => {
-  };
+  const observerB = (_event: Y.YTextEvent, _transaction: Y.Transaction): void => {};
 
   xmlFragment.observeDeep(observerA);
   ytext.observe(observerB);

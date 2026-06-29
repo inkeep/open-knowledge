@@ -1,4 +1,3 @@
-
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -195,8 +194,7 @@ export function appendRenameLogEntry(
           `[rename-log] WARN: file size ${size} exceeds hard cap ${RENAME_LOG_HARD_CAP_BYTES}; forcing GC sweep`,
         );
       }
-    } catch {
-    }
+    } catch {}
   }
   tracedAppendFileSync(path, serialized, { flag: 'a' });
   indexInsert(index, validated);
@@ -241,7 +239,6 @@ export function serializeIndexToString(index: RenameLogIndex): string {
   }
   return lines.length > 0 ? `${lines.join('\n')}\n` : '';
 }
-
 
 function parseGitTimeoutMs(): number {
   const raw = process.env.OK_GIT_TIMEOUT_MS;
@@ -405,8 +402,7 @@ async function revListReachable(shadow: ShadowHandle, refs: string[]): Promise<s
       settled = true;
       try {
         child.kill('SIGKILL');
-      } catch {
-      }
+      } catch {}
       rejectPromise(new Error(`git rev-list --stdin timed out after ${timeoutMs}ms`));
     }, timeoutMs);
     child.on('error', (err) => {
@@ -466,8 +462,7 @@ export async function logSeededReachable(
       settled = true;
       try {
         child.kill('SIGKILL');
-      } catch {
-      }
+      } catch {}
       rejectPromise(new Error(`git log --stdin timed out after ${timeoutMs}ms`));
     }, timeoutMs);
     child.on('error', (err) => {
@@ -574,8 +569,7 @@ export function batchCheckExistence(
       );
       try {
         child.kill('SIGKILL');
-      } catch {
-      }
+      } catch {}
       settle(allFalse());
     }, timeoutMs);
 
@@ -638,8 +632,7 @@ function rewriteJsonlAtomically(shadowDir: string, index: RenameLogIndex): void 
     console.warn('[rename-log] WARN: atomic rewrite failed; index ahead of disk:', err);
     try {
       if (existsSync(tmp)) tracedUnlinkSync(tmp);
-    } catch {
-    }
+    } catch {}
   }
 }
 

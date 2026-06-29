@@ -1,4 +1,3 @@
-
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 
 export interface EmbeddingsKeyTransport {
@@ -10,8 +9,7 @@ async function extractProblemTitle(res: Response): Promise<string | undefined> {
   try {
     const result = ProblemDetailsSchema.safeParse(await res.json());
     if (result.success) return result.data.title;
-  } catch {
-  }
+  } catch {}
   return undefined;
 }
 

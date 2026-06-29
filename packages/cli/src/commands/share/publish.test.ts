@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { execSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -7,7 +6,6 @@ import { join } from 'node:path';
 import type { Octokit } from '@octokit/rest';
 import simpleGit from 'simple-git';
 import { classifyOctokitError, runPublishFlow } from './publish.ts';
-
 
 interface FakeOctokitOptions {
   authLogin?: string;
@@ -89,7 +87,6 @@ function makeFakeOctokit(opts: FakeOctokitOptions = {}): Octokit {
   } as any;
 }
 
-
 describe('classifyOctokitError', () => {
   test('422 with "name already exists" → name-conflict', () => {
     const code = classifyOctokitError({
@@ -168,7 +165,6 @@ describe('classifyOctokitError', () => {
     expect(code).toBe('name-conflict');
   });
 });
-
 
 describe('runPublishFlow (error branches)', () => {
   let tmpDir: string;
@@ -293,7 +289,6 @@ describe('runPublishFlow (error branches)', () => {
     expect(result).toEqual({ kind: 'error', code: 'init-failed' });
   });
 });
-
 
 describe('runPublishFlow (e2e against bare repo)', () => {
   let workspace: string;

@@ -1,4 +1,3 @@
-
 import type { PropDef } from '@inkeep/open-knowledge-core';
 
 const pluralRules = new Intl.PluralRules('en-US');

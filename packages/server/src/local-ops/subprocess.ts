@@ -1,4 +1,3 @@
-
 import { spawn } from 'node:child_process';
 import { delimiter as PATH_DELIMITER } from 'node:path';
 
@@ -123,8 +122,7 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
       if (!child.killed) {
         try {
           child.kill('SIGTERM');
-        } catch {
-        }
+        } catch {}
       }
     },
   };

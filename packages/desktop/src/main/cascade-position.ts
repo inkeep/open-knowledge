@@ -1,4 +1,3 @@
-
 export const CASCADE_OFFSET_PX = 28;
 
 interface CascadeRect {

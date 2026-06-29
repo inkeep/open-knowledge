@@ -15,7 +15,6 @@ import {
   isSafeLocalPath,
 } from './local-op-security.ts';
 
-
 function makeReq(remoteAddress: string, origin?: string): IncomingMessage {
   const req = new EventEmitter() as unknown as IncomingMessage;
   req.socket = { remoteAddress } as IncomingMessage['socket'];
@@ -58,7 +57,6 @@ function makeRes(): {
   return { res, calls };
 }
 
-
 describe('isLoopbackRequest', () => {
   test('allows 127.0.0.1', () => {
     expect(isLoopbackRequest(makeReq('127.0.0.1'))).toBe(true);
@@ -76,7 +74,6 @@ describe('isLoopbackRequest', () => {
     expect(isLoopbackRequest(makeReq('2001:db8::1'))).toBe(false);
   });
 });
-
 
 describe('hasValidLocalOpOrigin', () => {
   test('allows absent origin', () => {
@@ -98,7 +95,6 @@ describe('hasValidLocalOpOrigin', () => {
     expect(hasValidLocalOpOrigin(makeReq('127.0.0.1', 'http://192.168.1.1:3000'))).toBe(false);
   });
 });
-
 
 describe('isAllowedGitUrl', () => {
   test('allows https URL', () => {
@@ -139,7 +135,6 @@ describe('isAllowedGitUrl', () => {
   });
 });
 
-
 describe('isSafeLocalPath', () => {
   const home = homedir();
 
@@ -165,7 +160,6 @@ describe('isSafeLocalPath', () => {
     expect(isSafeLocalPath(`${home}/../etc`)).toBe(false);
   });
 });
-
 
 describe('isPathWithinHome — symlink containment', () => {
   let fakeHome: string;
@@ -229,7 +223,6 @@ describe('isPathWithinHome — symlink containment', () => {
     expect(isPathWithinHome(fakeHome, fakeHome)).toBe(true);
   });
 });
-
 
 describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   let fakeHome: string;
@@ -406,7 +399,6 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   });
 });
 
-
 describe('isPathWithinHome — fail-closed defensive guards', () => {
   let fakeHome: string;
 
@@ -494,7 +486,6 @@ describe('isPathWithinHome — fail-closed defensive guards', () => {
   });
 });
 
-
 describe('checkLocalOpSecurity', () => {
   test('allows loopback request with no origin', () => {
     const { res, calls } = makeRes();
@@ -540,7 +531,6 @@ describe('checkLocalOpSecurity', () => {
     expect(body.status).toBe(403);
   });
 });
-
 
 describe('createConcurrencyGuard', () => {
   test('tryAcquire succeeds first time', () => {

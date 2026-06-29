@@ -1,4 +1,3 @@
-
 const TAG_HIERARCHY_SEPARATOR = '/';
 
 export function expandTagToHierarchy(tag: string): string[] {

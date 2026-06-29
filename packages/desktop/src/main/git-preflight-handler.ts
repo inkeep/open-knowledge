@@ -1,4 +1,3 @@
-
 import {
   emitPreflightFailureSpan,
   type GitDetected,

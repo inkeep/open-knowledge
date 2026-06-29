@@ -1,4 +1,3 @@
-
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { type EditorId, PROJECT_SKILL_EDITOR_IDS } from '@inkeep/open-knowledge-core';

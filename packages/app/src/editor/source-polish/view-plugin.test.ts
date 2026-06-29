@@ -4,7 +4,6 @@ import { EditorState } from '@codemirror/state';
 import { GFM } from '@lezer/markdown';
 import { buildDecorationsForRanges } from './view-plugin';
 
-
 function createState(doc: string): EditorState {
   return EditorState.create({
     doc,

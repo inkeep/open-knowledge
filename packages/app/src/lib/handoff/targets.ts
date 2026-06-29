@@ -1,4 +1,3 @@
-
 import type { TargetData } from '@inkeep/open-knowledge-core';
 
 export const KNOWN_TARGETS = [

@@ -81,6 +81,5 @@ describe('applyAgentMarkdownWrite(replace) — CRDT-level convergence (PRD-6667)
     expect(serverFinal).toBe(peerFinal);
 
     expect(serverFinal).toContain(agentPayload);
-
   });
 });

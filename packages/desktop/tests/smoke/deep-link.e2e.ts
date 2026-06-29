@@ -1,4 +1,3 @@
-
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -26,8 +25,7 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
     `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
   );
 
-  test.skip('cold-start Apple-Event delivery — deferred until signed DMG enables Launch Services binding', () => {
-  });
+  test.skip('cold-start Apple-Event delivery — deferred until signed DMG enables Launch Services binding', () => {});
 
   test('open(1) shell-out post-launch routes extension-less docName to renderer hash', async ({
     captureStderrFor,

@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -106,7 +105,6 @@ describe('MCP outputSchema strictness — every registerTool+textPlusStructured 
 });
 
 describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no new tools may regress)', () => {
-
   interface RegisterToolCapture {
     name: string;
     outputSchema?: unknown;
@@ -118,8 +116,7 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
       registerTool(name: string, cfg: { outputSchema?: unknown }, _handler: unknown) {
         captured.push({ name, outputSchema: cfg.outputSchema });
       },
-      tool() {
-      },
+      tool() {},
     } as unknown as ServerInstance;
     registerAllTools(server, {
       config: BASE_CONFIG,

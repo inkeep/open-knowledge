@@ -1,4 +1,3 @@
-
 import { spawnSync } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

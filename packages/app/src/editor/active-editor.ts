@@ -1,4 +1,3 @@
-
 import type { Editor } from '@tiptap/core';
 
 const editors = new Map<string, Editor>();

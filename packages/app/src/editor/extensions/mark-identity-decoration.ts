@@ -1,4 +1,3 @@
-
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { markIdentityKey } from './mark-identity';

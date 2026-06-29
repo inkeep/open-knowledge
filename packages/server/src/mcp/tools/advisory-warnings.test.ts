@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import type { BrokenLink, RenderWarning, WriteWarning } from '@inkeep/open-knowledge-core';
 import {
@@ -122,7 +121,6 @@ describe('render-family bounds phrasing', () => {
     expect(formatRenderWarningsBrief(warnings)).toContain('10+');
   });
 });
-
 
 const noSuchDoc: BrokenLink = {
   href: './wiki/x',

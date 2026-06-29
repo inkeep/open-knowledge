@@ -1,4 +1,3 @@
-
 export interface KeepaliveScheduler {
   setTimeout: (cb: () => void, ms: number) => ReturnType<typeof globalThis.setTimeout>;
   clearTimeout: (handle: ReturnType<typeof globalThis.setTimeout>) => void;
@@ -70,8 +69,7 @@ export function startKeepalive(opts: KeepaliveOptions): KeepaliveHandle {
       } else {
         legacyLog?.(msg);
       }
-    } catch {
-    }
+    } catch {}
   }
 
   function scheduleReconnect(): void {
@@ -169,8 +167,7 @@ export function startKeepalive(opts: KeepaliveOptions): KeepaliveHandle {
       if (ws) {
         try {
           ws.close();
-        } catch {
-        }
+        } catch {}
         ws = null;
       }
     },

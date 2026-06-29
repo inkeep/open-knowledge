@@ -1,4 +1,3 @@
-
 import { dirname, isAbsolute } from 'node:path';
 import {
   assertGitAvailable,

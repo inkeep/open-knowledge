@@ -385,8 +385,7 @@ describe('resolveShadowDir', () => {
     try {
       readFileSync(gitPath, 'utf-8');
       stillReadable = true;
-    } catch {
-    }
+    } catch {}
     if (stillReadable) {
       chmodSync(gitPath, 0o644);
       return;
@@ -415,8 +414,7 @@ describe('resolveShadowDir', () => {
     try {
       readFileSync(resolve(project, '.git'), 'utf-8');
       stillStattable = true;
-    } catch {
-    }
+    } catch {}
     if (stillStattable) {
       chmodSync(project, 0o755);
       return;
@@ -588,8 +586,7 @@ describe('getShadowRepoPath', () => {
     try {
       readFileSync(resolve(project, '.git'), 'utf-8');
       stillStattable = true;
-    } catch {
-    }
+    } catch {}
     if (stillStattable) {
       chmodSync(project, 0o755);
       return;
@@ -726,7 +723,6 @@ describe('parseCheckpoint / formatCheckpointBodyLine (bridge-correctness SPEC §
     expect(checkpoint?.kind).toBe('bridge-merge-loss');
   });
 
-
   test('round-trips auto-consolidation with foldedRefs + trigger', () => {
     const line = formatCheckpointBodyLine({
       kind: 'auto-consolidation',
@@ -777,7 +773,6 @@ describe('parseCheckpoint / formatCheckpointBodyLine (bridge-correctness SPEC §
     expect(JSON.parse(line.slice('ok-checkpoint-v1: '.length)).kind).toBe('auto-consolidation');
   });
 });
-
 
 describe('formatWipSubject', () => {
   test('empty docs → wip: auto-save', () => {
@@ -899,7 +894,6 @@ describe('parseOkActor / formatOkActor (US-015, FR-8, D13)', () => {
     expect(parsed?.color_seed).toBe('unknown');
   });
 });
-
 
 describe('OkActorEntry writer_id field + derivation back-compat', () => {
   test('formatOkActor emits writer_id inline', () => {
@@ -1302,7 +1296,6 @@ describe('readContributors (dispatcher: prefers ok-actor, falls back to ok-contr
     expect(readContributors('wip: test\n\njust a plain body')).toEqual([]);
   });
 });
-
 
 describe('Subject-prefix format helpers (D53, FR-13)', () => {
   test('formatReconcileSubject', () => {

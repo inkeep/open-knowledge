@@ -5,7 +5,6 @@ import type { Duplex } from 'node:stream';
 import type { Scheduler } from '@inkeep/open-knowledge-core';
 import { attachIdleShutdown } from './idle-shutdown';
 
-
 interface ManualScheduler extends Scheduler {
   advanceTime(ms: number): void;
   pendingCount(): number;
@@ -57,7 +56,6 @@ function emitUpgrade(server: HttpServer, url: string, socket: Duplex): void {
   const req = { url } as unknown as IncomingMessage;
   (server as unknown as EventEmitter).emit('upgrade', req, socket);
 }
-
 
 describe('attachIdleShutdown', () => {
   test('fires onShutdown after thresholdMs when zero WebSocket clients', () => {

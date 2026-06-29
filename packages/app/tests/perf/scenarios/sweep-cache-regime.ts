@@ -1,4 +1,3 @@
-
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Browser, Page } from '@playwright/test';
@@ -27,7 +26,6 @@ export const ALL_STAGES: ReadonlyArray<SweepStage> = [1, 2, 3, 4];
 
 const CELL_COUNT_PER_FIXTURE = 22;
 const CELL_COUNT_DRIFT_TOLERANCE = 5;
-
 
 export interface SweepRunOptions {
   readonly fixtures: ReadonlyArray<WorkloadFixtureRef>;
@@ -85,7 +83,6 @@ function detectHostClass(): HostClassFingerprint {
     identifier: `${Number.isFinite(totalRamGb) ? totalRamGb : 16}gb-${osVersion}`,
   };
 }
-
 
 export interface BuildRunCellOptions {
   readonly browser: Browser;
@@ -219,7 +216,6 @@ function toRunnerMeasurement(m: CellMeasurement): VerdictMeasurement {
   };
 }
 
-
 export interface SweepCampaignOutcome {
   readonly campaign: CampaignVerdict;
   readonly cellResultsPath: string;
@@ -299,7 +295,6 @@ export async function runSweepCampaign(
 
   return { campaign, cellResultsPath, allCells };
 }
-
 
 export default defineScenario({
   name: SCENARIO_NAME,

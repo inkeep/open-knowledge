@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { builtInComponents, type PropDef } from '@inkeep/open-knowledge-core';
 import { renderToString } from 'react-dom/server';
@@ -7,7 +6,6 @@ import type { JsxComponentDescriptor } from '../registry/types.ts';
 const { countAdvancedSet, PropPanel, persistAdvancedOpenState, readAdvancedOpenState } =
   await import('./PropPanel.tsx');
 const { getAutoFocusedPropName } = await import('../utils/editor-strings.ts');
-
 
 interface FakeStorage {
   store: Record<string, string>;
@@ -49,7 +47,6 @@ function withFakeStorage<T>(fn: (s: FakeStorage) => T): T {
   }
 }
 
-
 function NoopComponent() {
   return null;
 }
@@ -66,7 +63,6 @@ function makeCanonicalDescriptor(name: string, props: PropDef[]): JsxComponentDe
     reactNodePropNames: new Set(),
   };
 }
-
 
 describe('countAdvancedSet', () => {
   test('returns 0 when no advanced props are set away from default', () => {
@@ -155,7 +151,6 @@ describe('localStorage round-trip', () => {
     }
   });
 });
-
 
 describe('PropPanel — Advanced collapsible section', () => {
   test('(a) descriptor with no advanced props renders no Collapsible', () => {
@@ -344,7 +339,6 @@ describe('PropPanel — autoFocus marker on string Input', () => {
     expect(html).not.toContain('data-prop-autofocus');
   });
 });
-
 
 function findBuiltIn(name: string): JsxComponentDescriptor {
   const meta = builtInComponents.find((m) => m.name === name);
@@ -961,4 +955,3 @@ describe('PropPanel — colorPicker branch', () => {
     expect(filledHtml).toContain('data-color-picker-clear');
   });
 });
-

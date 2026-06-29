@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 
-
 const NODE = Bun.which('node');
 const HARNESS = new URL('./pty-host.real-io-harness.ts', import.meta.url).pathname;
 

@@ -1,4 +1,3 @@
-
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type { RequestChannels } from './ipc-channels.ts';
 

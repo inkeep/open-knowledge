@@ -1,4 +1,3 @@
-
 import type { PropDef } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
@@ -52,8 +51,7 @@ export function persistAdvancedOpenState(descriptorName: string, open: boolean):
   try {
     if (typeof localStorage === 'undefined') return;
     localStorage.setItem(advancedOpenStateKey(descriptorName), open ? 'true' : 'false');
-  } catch {
-  }
+  } catch {}
 }
 
 export function countAdvancedSet(
@@ -493,8 +491,7 @@ function PropUploadButton({
           setUploading(true);
           try {
             await runUpload(file, accept, onUploaded);
-          } catch {
-          }
+          } catch {}
           setUploading(false);
           if (inputRef.current) inputRef.current.value = '';
         }}

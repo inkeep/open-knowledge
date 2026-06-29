@@ -1,4 +1,3 @@
-
 import { startKeepalive as defaultStartKeepalive } from '@inkeep/open-knowledge-core/keepalive';
 import { useEffect, useRef } from 'react';
 import { tryElectronBridge } from '@/lib/use-collab-url';

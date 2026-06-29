@@ -2,7 +2,6 @@
 import { chmodSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-
 const SHIPPED_ARCH = 'darwin-arm64';
 
 const prebuildsDirFor = (resourcesDir) =>

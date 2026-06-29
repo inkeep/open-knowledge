@@ -1,4 +1,3 @@
-
 import { resolveLeafSchema } from '@inkeep/open-knowledge-core';
 import type { z } from 'zod';
 
@@ -19,7 +18,6 @@ export function buildPatch(
   }
   return { [String(head)]: buildPatch(rest, value) };
 }
-
 
 export function getFieldDefault(schema: AnyZ): unknown {
   let cur: unknown = schema;

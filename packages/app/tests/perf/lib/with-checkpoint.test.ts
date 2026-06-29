@@ -240,8 +240,7 @@ describe('withCheckpoint', () => {
           try {
             await readCheckpointFile(checkpointPath);
             midRunFileExistedAfterCellA.value = true;
-          } catch {
-          }
+          } catch {}
         }
         return { id: input.id, axis: input.axis, computed: input.axis * 10 };
       },

@@ -1,4 +1,3 @@
-
 type OkignoreWarningCode =
   | 'trailing-backslash'
   | 'unmatched-bracket'

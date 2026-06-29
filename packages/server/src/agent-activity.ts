@@ -4,7 +4,6 @@ import type * as Y from 'yjs';
 import { ContentString, Item, iterateDeletedStructs } from 'yjs';
 import type { AgentSessionManager } from './agent-sessions.ts';
 
-
 interface YjsDeleteSetShape {
   clients: Map<number, Array<{ clock: number; len: number }>>;
 }
@@ -38,7 +37,6 @@ function* walkYTextItems(ytext: Y.Text): IterableIterator<Item> {
   }
 }
 
-
 interface DiffSpan {
   position: number;
   content: string;
@@ -49,7 +47,6 @@ interface StackItemDiff {
   insertions: DiffSpan[];
   deletions: DiffSpan[];
 }
-
 
 export function synthesizeStackItemDiff(
   stackItem: YjsStackItemShape,
@@ -109,7 +106,6 @@ export function synthesizeStackItemDiffText(
   if (before === after) return '';
   return createPatch(docName, before, after, undefined, undefined, { context: 3 });
 }
-
 
 interface BurstStat {
   stackIndex: number;

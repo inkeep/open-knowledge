@@ -1,4 +1,3 @@
-
 export interface HostLivenessScheduler {
   setInterval: (cb: () => void, ms: number) => ReturnType<typeof globalThis.setInterval>;
   clearInterval: (handle: ReturnType<typeof globalThis.setInterval>) => void;

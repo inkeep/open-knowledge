@@ -5,7 +5,6 @@ import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import type * as Y from 'yjs';
 import { mark } from '../lib/perf/mark';
 
-
 export interface WalkCurrencyExtensionOptions {
   /** The fragment the pre-warm walk derived `content`/`mapping` from — the
    *  same fragment Collaboration binds (`provider.document`, field 'default'). */

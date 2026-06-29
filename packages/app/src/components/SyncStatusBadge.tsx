@@ -1,4 +1,3 @@
-
 import type { PushPermissionWire, SyncErrorCode } from '@inkeep/open-knowledge-core';
 import { plural, t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
@@ -26,7 +25,6 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Switch } from './ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
-
 function formatRelative(iso: string | null): string {
   if (!iso) return t`never`;
   const diff = Date.now() - new Date(iso).getTime();
@@ -49,7 +47,6 @@ async function triggerSync(op: 'sync' | 'push' | 'pull'): Promise<void> {
     body: JSON.stringify({ op }),
   });
 }
-
 
 interface BadgeIconProps {
   status: GitSyncStatus;
@@ -102,7 +99,6 @@ function badgeLabel(status: GitSyncStatus): string {
       return '';
   }
 }
-
 
 function stateLabel(state: GitSyncStatus['state']): string {
   switch (state) {
@@ -497,7 +493,6 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
     </div>
   );
 }
-
 
 interface SyncStatusBadgeProps {
   onSignIn?: () => void;

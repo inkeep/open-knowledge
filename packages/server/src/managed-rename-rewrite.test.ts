@@ -195,7 +195,6 @@ describe('rewriteMarkdownLinksForDocumentRename', () => {
 });
 
 describe('rewriteMarkdownLinksForDocumentRename — image refs (FR-7)', () => {
-
   test('cross-dir source-doc move recomputes bare-name image-ref to a `../` path', () => {
     const result = rewriteMarkdownLinksForDocumentRename(
       '![first draft](first-draft.png)\n',

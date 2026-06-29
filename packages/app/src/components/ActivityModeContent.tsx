@@ -12,7 +12,6 @@ import { AgentIcon } from './icons/AgentIcon';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
-
 async function postAgentUndo(body: {
   connectionId: string;
   docName: string;
@@ -32,7 +31,6 @@ async function postAgentUndo(body: {
   }
 }
 
-
 function hashFromDocName(docName: string): string {
   return `#/${docName
     .split('/')
@@ -44,7 +42,6 @@ function navigateToDoc(docName: string): void {
   if (typeof window === 'undefined') return;
   window.location.hash = hashFromDocName(docName);
 }
-
 
 function LoadingState(): React.JSX.Element {
   return (
@@ -199,7 +196,6 @@ function AgentAvatar({
   );
 }
 
-
 interface ActivityModeBodyProps {
   data: ReturnType<typeof useActivityPanel>['data'];
   status: ReturnType<typeof useActivityPanel>['status'];
@@ -307,7 +303,6 @@ function ActivityModeBody({
     </section>
   );
 }
-
 
 export function ActivityModeContent({
   showBackButton = true,

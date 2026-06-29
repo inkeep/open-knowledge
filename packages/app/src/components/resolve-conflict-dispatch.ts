@@ -1,4 +1,3 @@
-
 type ResolveStrategy = 'mine' | 'theirs' | 'content' | 'delete';
 
 interface DispatchResult {
@@ -28,8 +27,7 @@ async function dispatchResolve(
       const payload = (await res.json()) as { detail?: unknown; title?: unknown };
       if (typeof payload.detail === 'string') detail = payload.detail;
       else if (typeof payload.title === 'string') detail = payload.title;
-    } catch {
-    }
+    } catch {}
     return { ok: false, detail };
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);

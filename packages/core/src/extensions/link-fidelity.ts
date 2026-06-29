@@ -1,4 +1,3 @@
-
 import Link from '@tiptap/extension-link';
 import { SAFE_URL_SCHEMES } from '../markdown/safe-url.ts';
 

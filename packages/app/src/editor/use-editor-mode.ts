@@ -26,8 +26,7 @@ export function readPersistedMode(
     if (raw === null) return DEFAULT_MODE;
     if (isEditorModeValue(raw)) return raw;
     console.warn('[editor-mode] invalid persisted value, falling back to default', { raw });
-  } catch {
-  }
+  } catch {}
   return DEFAULT_MODE;
 }
 

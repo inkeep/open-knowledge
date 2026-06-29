@@ -43,12 +43,10 @@ function shutdown(signal: NodeJS.Signals): void {
   shuttingDown = true;
   try {
     serverHandle?.release();
-  } catch {
-  }
+  } catch {}
   try {
     uiHandle?.release();
-  } catch {
-  }
+  } catch {}
   process.exit(signal === 'SIGINT' ? 130 : 0);
 }
 
