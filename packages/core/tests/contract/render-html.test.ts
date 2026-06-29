@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { markdownToHtml, mdastToHtml } from '../../src/index.ts';
 

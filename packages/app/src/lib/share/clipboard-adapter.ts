@@ -1,4 +1,3 @@
-
 type OkDesktopClipboard = { writeText: (text: string) => Promise<void> };
 
 interface OkDesktopHost {

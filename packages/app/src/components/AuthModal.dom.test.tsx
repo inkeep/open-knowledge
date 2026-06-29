@@ -1,4 +1,3 @@
-
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import type { OkLocalOpAuthEvent, OkLocalOpAuthStatusResponse } from '@/lib/desktop-bridge-types';

@@ -1,4 +1,3 @@
-
 import type { IpcRenderer } from 'electron';
 import type { RequestChannels } from './ipc-channels.ts';
 

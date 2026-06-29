@@ -1,4 +1,3 @@
-
 import { Compartment } from '@codemirror/state';
 import { EditorView as CMEditorView, keymap } from '@codemirror/view';
 import { useLingui } from '@lingui/react/macro';

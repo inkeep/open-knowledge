@@ -17,7 +17,6 @@ import {
   type PushPermission,
 } from './github-permissions.ts';
 
-
 function mockFetch(handler: (url: string, init?: RequestInit) => Response): {
   fetch: FetchFn;
   calls: Array<{ url: string; init?: RequestInit }>;
@@ -61,7 +60,6 @@ function fakeStore(token: string | null): { store: ProbeTokenStore; hosts: strin
 function authHeader(init?: RequestInit): string | undefined {
   return (init?.headers as Record<string, string> | undefined)?.Authorization;
 }
-
 
 describe('checkPushPermission — classification', () => {
   const cases: Array<{
@@ -223,7 +221,6 @@ describe('checkPushPermission — classification', () => {
   });
 });
 
-
 describe('checkPushPermission — token resolution', () => {
   test('Tier A: gh token is used and the credential store is not consulted', async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(200, { permissions: { push: true } }));
@@ -297,7 +294,6 @@ describe('checkPushPermission — token resolution', () => {
   });
 });
 
-
 describe('checkPushPermission — request shape', () => {
   test('hits api.github.com/repos/OWNER/REPO with the GitHub user-agent + accept', async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(200, { permissions: { push: true } }));
@@ -359,7 +355,6 @@ describe('checkPushPermission — request shape', () => {
     expect(calls).toHaveLength(1);
   });
 });
-
 
 interface MetricHarness {
   exporter: InMemoryMetricExporter;

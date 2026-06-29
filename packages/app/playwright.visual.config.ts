@@ -1,6 +1,5 @@
 import { defineConfig } from '@playwright/test';
 
-
 const isCI = !!process.env.CI;
 
 export default defineConfig({

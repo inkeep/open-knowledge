@@ -1,4 +1,3 @@
-
 import type {
   BranchInfoResponse,
   BridgeWorktreeEntry,

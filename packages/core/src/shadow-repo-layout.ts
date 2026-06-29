@@ -259,12 +259,10 @@ export function parseContributors(body: string): ShadowContributor[] {
         }
         contributors.push(parsed as ShadowContributor);
       }
-    } catch {
-    }
+    } catch {}
   }
   return contributors;
 }
-
 
 const OK_CHECKPOINT_PREFIX = 'ok-checkpoint-v1: ';
 
@@ -372,7 +370,6 @@ export function formatCheckpointBodyLine(parsed: ParsedCheckpoint): string {
   if (parsed.size !== null) payload.size = parsed.size;
   return `${OK_CHECKPOINT_PREFIX}${JSON.stringify(payload)}`;
 }
-
 
 export interface OkActorEntry {
   v: 1;
@@ -518,7 +515,6 @@ export function readContributors(body: string): ShadowContributor[] {
   return parseContributors(body);
 }
 
-
 export function formatWipSubject(docs: string[]): string {
   if (docs.length === 0) return 'wip: auto-save';
   if (docs.length === 1) return `wip: ${docs[0]}`;
@@ -550,7 +546,6 @@ export function formatImportSubject(oldHead: string | null, newHead: string): st
     ? `import: from ${oldHead.slice(0, 8)}..${newHead.slice(0, 8)}`
     : `import: initial at ${newHead.slice(0, 8)}`;
 }
-
 
 export const COMMIT_SUBJECT_MAX_LEN = 72;
 

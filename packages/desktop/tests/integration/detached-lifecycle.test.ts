@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -36,8 +35,7 @@ async function waitForLock(lockDir: string): Promise<ServerLockMetadata> {
         if (typeof parsed.port === 'number' && parsed.port > 0) {
           return parsed;
         }
-      } catch {
-      }
+      } catch {}
     }
     await wait(LOCK_POLL_INTERVAL_MS);
   }
@@ -111,8 +109,7 @@ describe('detached-server lifecycle integration', () => {
       if (lock !== null) {
         try {
           process.kill(lock.pid, 'SIGKILL');
-        } catch {
-        }
+        } catch {}
         await wait(200);
       }
     }

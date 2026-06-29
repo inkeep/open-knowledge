@@ -1,4 +1,3 @@
-
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -9,7 +8,6 @@ import { findKnee } from '../lib/kneedle';
 import { defineScenario, type ScenarioCtx } from '../lib/scenario';
 import { queryTempoByMountId, type TempoQueryResult } from '../lib/tempo-client';
 import { withCheckpoint } from '../lib/with-checkpoint';
-
 
 export interface LatencyProfile {
   readonly name: 'localhost' | 'fast-wifi' | 'cafe-lte' | 'slow-4g' | 'slow-3g';
@@ -67,7 +65,6 @@ export function getLatencyProfile(name: LatencyProfileName): LatencyProfile {
   return profile;
 }
 
-
 export type StopIfReason =
   | 'throttling-method-mismatch'
   | 'server-ceiling-bound'
@@ -82,7 +79,6 @@ export type StopIfReason =
   | 'sync-tier-1-pre-sync-disconnect-rate-exceeded'
   | 'sync-tier-2-projected-reject-rate-exceeded'
   | 'warm-path-tail-exceeds-cold-tail-on-slow-3g';
-
 
 export interface CalibrationSamples {
   readonly cdpLocalhostMs: ReadonlyArray<number>;
@@ -164,7 +160,6 @@ export function analyzeCalibration(samples: CalibrationSamples): CalibrationVerd
   return { kind: 'ok', medians };
 }
 
-
 export async function applyCdpProfile(cdp: CDPSession, profile: LatencyProfile): Promise<void> {
   await cdp.send('Network.enable').catch(() => undefined);
   await cdp.send('Network.emulateNetworkConditions', {
@@ -174,7 +169,6 @@ export async function applyCdpProfile(cdp: CDPSession, profile: LatencyProfile):
     uploadThroughput: profile.uploadKbps * 1024,
   });
 }
-
 
 export const SCENARIO_NAME = 'sweep-convention-cap-graduation';
 
@@ -298,7 +292,6 @@ async function measureSingleColdSync(opts: ColdSyncMeasurementOptions): Promise<
   return outcome.kind === 'success' ? outcome.syncElapsedMs : Number.NaN;
 }
 
-
 interface SweepCycleOptions {
   readonly browser: Browser;
   readonly baseTarget: string;
@@ -355,8 +348,7 @@ export async function driveSweepCycle(opts: SweepCycleOptions): Promise<CycleOut
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ path }),
             });
-          } catch {
-          }
+          } catch {}
         },
         { url: createUrl, path: `${opts.docName}.md` },
       );
@@ -466,7 +458,6 @@ export function buildSweepDocUrl(baseTarget: string, docName: string): string {
   return `${trimmed}/#/${encoded}`;
 }
 
-
 export interface Slow3gWarmPathSamples {
   readonly coldMs: ReadonlyArray<number>;
   readonly warmMs: ReadonlyArray<number>;
@@ -543,8 +534,7 @@ async function captureColdThenWarmInOneContext(input: {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path }),
               });
-            } catch {
-            }
+            } catch {}
           }
         },
         { url: createUrl, paths: [`${input.docName}.md`, `${input.altDocName}.md`] },
@@ -666,7 +656,6 @@ export function buildScaffoldCellResults(calibration: CalibrationVerdict): CellR
     profiles: LATENCY_PROFILES,
   };
 }
-
 
 export interface PerCycleRow {
   readonly mountId: string;
@@ -950,7 +939,6 @@ export interface CellResultsFull {
   readonly hostFingerprint?: HostFingerprint;
 }
 
-
 export interface PerProfileDifferentials {
   readonly profile: LatencyProfileName;
   readonly serverProcessingShareOfP99: number | null;
@@ -1067,7 +1055,6 @@ export function computeDifferentials(opts: {
   };
 }
 
-
 export interface HostFingerprint {
   readonly cpu: string;
   readonly ramGb: number;
@@ -1104,7 +1091,6 @@ export function detectHostFingerprint(env: HostFingerprintEnv = process.env): Ho
     fixtureDocSizeBytes,
   };
 }
-
 
 export interface SyncMethodologyLevers {
   readonly percentile: 'p99';
@@ -1398,7 +1384,6 @@ export function buildFullCellResults(
   };
 }
 
-
 export type LgtmPreflightResult =
   | { kind: 'available' }
   | { kind: 'unavailable'; reason: 'lgtm-stack-unavailable'; detail: string };
@@ -1592,7 +1577,6 @@ export function classifyProfileTempoHealth(opts: {
   return flags;
 }
 
-
 export interface MountMethodologyLevers {
   readonly nnFloorMs: number;
   readonly nnCeilingMs: number;
@@ -1730,7 +1714,6 @@ export function computeMountMethodology(opts: {
     nnFloorContributingProfileCount,
   };
 }
-
 
 /** Per-cycle wall-clock budget for the production driver, in ms.
  *  Covers navigation + cold-sync wait. Padding above the in-app

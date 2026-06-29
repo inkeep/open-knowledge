@@ -16,7 +16,6 @@ type GitSyncState =
   | 'auth-error'
   | 'disabled';
 
-
 export interface GitSyncStatus {
   state: GitSyncState;
   lastSyncUtc: string | null;

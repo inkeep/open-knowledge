@@ -1,4 +1,3 @@
-
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';

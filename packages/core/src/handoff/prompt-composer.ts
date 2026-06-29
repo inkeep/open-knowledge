@@ -345,7 +345,6 @@ export function composeAskPrompt(
   return composeAskBody(safePath, fitted, autoOpen);
 }
 
-
 const OPEN_EDITOR_DIRECTIVE = 'Open the OK editor in web view.';
 
 export type ComposeSelection =

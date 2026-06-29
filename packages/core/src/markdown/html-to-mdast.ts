@@ -1,4 +1,3 @@
-
 import type { Root as HastRoot } from 'hast';
 import type { Root as MdastRoot } from 'mdast';
 import rehypeParse from 'rehype-parse';
@@ -75,8 +74,7 @@ export function htmlToMdast(html: string, options?: HtmlToMdastOptions): MdastRo
     throw new HtmlPayloadTooLargeError(html.length, maxBytes);
   }
 
-  const processor = unified()
-    .use(rehypeParse, { fragment: true });
+  const processor = unified().use(rehypeParse, { fragment: true });
 
   for (const plugin of cleanupPlugins) {
     processor.use(plugin);

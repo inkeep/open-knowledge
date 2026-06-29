@@ -10,7 +10,6 @@ import {
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
 import type { PtyHostIncomingMessage } from '../../src/utility/pty-host.ts';
 
-
 class FakeUtility {
   posted: PtyHostIncomingMessage[] = [];
   killed = 0;

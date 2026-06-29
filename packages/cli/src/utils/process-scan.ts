@@ -1,4 +1,3 @@
-
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';

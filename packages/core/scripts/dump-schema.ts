@@ -1,4 +1,3 @@
-
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { argv, exit } from 'node:process';

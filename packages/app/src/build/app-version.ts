@@ -12,8 +12,7 @@ export function resolveAppVersion(): string {
     if (typeof pkg.version === 'string' && pkg.version.length > 0) {
       return pkg.version;
     }
-  } catch {
-  }
+  } catch {}
   return '0.0.0-unknown';
 }
 

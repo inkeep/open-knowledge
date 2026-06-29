@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { ConfigSchema } from '@inkeep/open-knowledge-core';
 import {

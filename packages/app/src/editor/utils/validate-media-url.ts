@@ -1,4 +1,3 @@
-
 import {
   AUDIO_EXTENSIONS,
   IMAGE_EXTENSIONS,

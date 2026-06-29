@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -63,7 +62,6 @@ describe('mock.module factory completeness (process-global leak guard)', () => {
 });
 
 describe('guard self-test (bidirectional + planted-positive)', () => {
-
   test('extractMockModuleCalls: finds every call (planted-positive), nothing in clean source', () => {
     const twoCalls = [
       "mock.module('sonner', () => ({ toast }));",

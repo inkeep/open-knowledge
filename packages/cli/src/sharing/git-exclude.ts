@@ -1,4 +1,3 @@
-
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -57,8 +56,7 @@ export function getOkArtifactPaths(projectRoot: string): readonly string[] {
           }
         }
       }
-    } catch {
-    }
+    } catch {}
   }
 
   return Array.from(new Set(paths));
@@ -215,8 +213,7 @@ export function probeTrackedOkPaths(
         stdio: ['ignore', 'ignore', 'ignore'],
       });
       tracked.push(p);
-    } catch {
-    }
+    } catch {}
   }
   return { tracked };
 }
@@ -242,7 +239,6 @@ export function formatTrackedRemediation(tracked: readonly string[]): string {
   );
   return lines.join('\n');
 }
-
 
 type ResolveExcludePathResult =
   | { kind: 'ok'; path: string }

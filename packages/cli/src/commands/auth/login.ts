@@ -68,8 +68,7 @@ async function runLogin(
       name = user.name ?? undefined;
       email = user.email ?? undefined;
     }
-  } catch {
-  }
+  } catch {}
 
   await tokenStore.set(host, login, result.token, {
     gitProtocol: 'https',

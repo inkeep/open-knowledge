@@ -1,4 +1,3 @@
-
 import { randomUUID } from 'node:crypto';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { type Editor, Extension } from '@tiptap/core';

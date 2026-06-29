@@ -1,11 +1,9 @@
-
 import { type Editor, Extension } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState, Selection } from '@tiptap/pm/state';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { bridgeIdPluginKey } from './bridge-id-plugin.ts';
-
 
 type SelectionOrigin = 'keyboard' | 'pointer' | 'programmatic';
 
@@ -26,7 +24,6 @@ export interface BlockSelection {
   readonly rangeEncompassedBlockIds: ReadonlySet<string>;
 }
 
-
 /** PM transaction meta key — consumers that want to override origin
  *  classification set `tr.setMeta(SELECTION_ORIGIN_META_KEY, 'programmatic')`.
  *  The plugin's `apply` checks this before consulting the DOM-event-derived
@@ -46,7 +43,6 @@ export const SELECTION_ORIGIN_META_KEY = 'selectionStatePlugin/origin';
  *  to surface a runtime change" from "the user did something" and not
  *  consume `pendingOrigin` on these passes. */
 const SELECTION_REFRESH_META_KEY = 'selectionStatePlugin/refresh';
-
 
 export const selectionStatePluginKey = new PluginKey<BlockSelection>('selectionState');
 
@@ -72,7 +68,6 @@ export function getBlockSelection(editor: Editor): BlockSelection {
   const state = selectionStatePluginKey.getState(editor.state);
   return state ?? EMPTY_SELECTION;
 }
-
 
 export function deriveAncestorChain(
   state: EditorState,
@@ -167,7 +162,6 @@ function blockSelectionEqual(a: BlockSelection, b: BlockSelection): boolean {
   }
   return true;
 }
-
 
 export interface PluginRuntime {
   pendingOrigin: SelectionOrigin | null;
@@ -302,7 +296,6 @@ function scheduleRefresh(editor: Editor): void {
     try {
       const tr = editor.state.tr.setMeta(SELECTION_REFRESH_META_KEY, true);
       editor.view.dispatch(tr);
-    } catch {
-    }
+    } catch {}
   });
 }

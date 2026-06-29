@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensureNodePtySpawnHelperExecutable } from '../../scripts/ensure-node-pty-exec.mjs';
 
-
 const tmpRoots: string[] = [];
 
 function helperPath(resourcesDir: string, arch: string): string {

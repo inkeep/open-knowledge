@@ -14,7 +14,6 @@ import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
 import { SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
 import { useSettingsRoute } from '@/lib/use-settings-route';
 
-
 interface ScopeGroupChrome {
   title: ReactNode;
   blurb: ReactNode;

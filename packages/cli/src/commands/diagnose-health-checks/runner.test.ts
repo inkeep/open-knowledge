@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { type CheckDefinition, DEFAULT_CHECK_TIMEOUT_MS, runCheck } from './index.ts';
 
@@ -17,9 +16,7 @@ describe('runCheck', () => {
   test('surfaces a fail when the check exceeds the timeout', async () => {
     const def: CheckDefinition = {
       name: 'git',
-      run: async () =>
-        new Promise(() => {
-        }),
+      run: async () => new Promise(() => {}),
     };
     const result = await runCheck(def, fakeCtx, { timeoutMs: 50 });
     expect(result.name).toBe('git');

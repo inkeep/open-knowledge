@@ -1,4 +1,3 @@
-
 import { Trans } from '@lingui/react/macro';
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';

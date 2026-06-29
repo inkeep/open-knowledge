@@ -76,7 +76,6 @@ describe('initShadowRepo', () => {
     await git.raw('config', 'user.email', 'test@test.com');
 
     await initShadowRepo(projectRoot);
-
   });
 
   test('is idempotent — second call does not error', async () => {
@@ -651,7 +650,6 @@ describe('saveVersion', () => {
     expect(parents).toContain(checkpoint1Sha);
   });
 
-
   test('D21: every checkpoint adopts the latest prior checkpoint as a parent (even with WIP activity)', async () => {
     writeFileSync(resolve(contentDir, 'intro.md'), '# v1\n');
     await commitWip(shadow, human, 'content/docs', 'WIP: v1');
@@ -1035,7 +1033,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
       .filter(Boolean);
     expect(refs).toContain(`refs/checkpoints/main/${untypedSha}`);
   });
-
 
   async function writeAutoConsolidationCheckpoint(
     s: ShadowHandle,

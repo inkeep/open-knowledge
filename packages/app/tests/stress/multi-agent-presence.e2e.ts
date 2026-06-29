@@ -1,4 +1,3 @@
-
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 
 function agentId(label: string): string {
@@ -170,5 +169,4 @@ test.describe('multi-agent presence — sectioned PresenceBar (FR-9)', () => {
     await expect.poll(() => page.url()).toContain(`#/${docBar}`);
     await expect(panel).toBeVisible({ timeout: 10_000 });
   });
-
 });

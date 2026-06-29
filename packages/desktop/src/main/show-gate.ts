@@ -1,4 +1,3 @@
-
 import type { BrowserWindowLike } from './window-manager.ts';
 
 interface ShowGateLogger {

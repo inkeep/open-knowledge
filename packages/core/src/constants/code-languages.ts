@@ -1,4 +1,3 @@
-
 export const CODE_FILE_EXTENSIONS_TO_LANGUAGE: Readonly<Record<string, string>> = {
   sh: 'bash',
   zsh: 'bash',

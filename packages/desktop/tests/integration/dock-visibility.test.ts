@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -46,7 +45,6 @@ describe('detached-server spawn: macOS Dock visibility regression guard', () => 
   });
 
   test('runtime pin — resolveDetachedSpawnArgs() returns a structurally safe shape on darwin packaged', () => {
-
     const parentAppPath = '/Applications/OpenKnowledge.app';
     const parentExecPath = `${parentAppPath}/Contents/MacOS/OpenKnowledge`;
     const bundleCliMjsPath = `${parentAppPath}/Contents/Resources/app.asar.unpacked/node_modules/@inkeep/open-knowledge/dist/cli.mjs`;

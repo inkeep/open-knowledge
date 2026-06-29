@@ -1,4 +1,3 @@
-
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { AwarenessUser } from '../../src/presence/identity';
@@ -134,8 +133,7 @@ describe('presence dedupe — same principalId', () => {
       await clientA.cleanup();
       try {
         await clientB.cleanup();
-      } catch {
-      }
+      } catch {}
     }
   });
 });

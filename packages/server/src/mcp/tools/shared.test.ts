@@ -44,7 +44,6 @@ describe('textResult', () => {
 });
 
 describe('textPlusStructured', () => {
-
   test('wraps body in MCP content array AND mirrors it under structuredContent.text', () => {
     const result = textPlusStructured('hello', { previewUrl: null });
     expect(result.content).toEqual([{ type: 'text', text: 'hello' }]);
@@ -100,7 +99,6 @@ describe('textPlusStructured', () => {
 });
 
 describe('outputSchemaWithText — PRD-6655 / PRD-6656 schema-level mirror declaration', () => {
-
   test('declares `text` alongside the caller-supplied fields without mutating them', () => {
     const base = {
       result: z.string(),
@@ -310,7 +308,6 @@ describe('resolveProjectServerContext', () => {
   });
 });
 
-
 let testServer: ReturnType<typeof Bun.serve>;
 let baseUrl: string;
 
@@ -465,7 +462,6 @@ describe('httpPost', () => {
   });
 });
 
-
 describe('normalizeResponse — RFC 9457 + flat success', () => {
   test('RFC 9457 problem+json: surfaces title as error', async () => {
     const result = await httpGet(baseUrl, '/rfc9457-not-found');
@@ -574,7 +570,6 @@ describe('normalizeResponse — RFC 9457 + flat success', () => {
 });
 
 describe('parseRenameCollidingPairs — defensive parsing at trust boundary', () => {
-
   test('non-array input → empty array', () => {
     expect(parseRenameCollidingPairs(undefined)).toEqual([]);
     expect(parseRenameCollidingPairs(null)).toEqual([]);

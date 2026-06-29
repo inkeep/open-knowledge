@@ -222,8 +222,7 @@ describe('config-edit OTel spans', () => {
       const ctx = {
         projectDir: testDir,
         lkgCache,
-        onConfigRejected: () => {
-        },
+        onConfigRejected: () => {},
       };
 
       const outcome = await storeConfigDoc(ydoc, CONFIG_DOC_NAME_PROJECT, undefined, ctx);

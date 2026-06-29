@@ -1,4 +1,3 @@
-
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import {
   createDefaultFetchSnapshot,
@@ -402,7 +401,6 @@ describe('defaultReadLocalStorageGuard — production scanner', () => {
 });
 
 describe('validateSkillInstallStateSnapshot — shape-drift defense', () => {
-
   test('null body → null (not an object)', () => {
     expect(validateSkillInstallStateSnapshot(null)).toBeNull();
   });

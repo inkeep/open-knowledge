@@ -1,4 +1,3 @@
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useUpdateChannel } from '@/hooks/use-update-channel';
 import { Badge } from './ui/badge';

@@ -1,7 +1,5 @@
-
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import * as Y from 'yjs';
-
 
 export interface HumanProfile {
   kind: 'human';
@@ -32,7 +30,6 @@ export interface NodePeerSimulatorHandle {
   getFireCounts(): Record<number, number>;
   readonly count: number;
 }
-
 
 interface PeerState {
   index: number;
@@ -92,7 +89,6 @@ function scheduleAgentProfile(peer: PeerState, profile: AgentProfile): void {
   peer.timers.add(interval);
 }
 
-
 export function createNodePeerSimulator(params: NodePeerSimulatorParams): NodePeerSimulatorHandle {
   if (params.count < 0) {
     throw new Error('[node-peer-simulator] count must be >= 0');
@@ -145,8 +141,7 @@ export function createNodePeerSimulator(params: NodePeerSimulatorParams): NodePe
           peers.map(async (peer) => {
             try {
               peer.provider.destroy();
-            } catch {
-            }
+            } catch {}
             peer.ydoc.destroy();
           }),
         );

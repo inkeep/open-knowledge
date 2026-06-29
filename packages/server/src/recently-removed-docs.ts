@@ -1,4 +1,3 @@
-
 const DEFAULT_CAPACITY = 10_000;
 
 export type RemovalEntry =

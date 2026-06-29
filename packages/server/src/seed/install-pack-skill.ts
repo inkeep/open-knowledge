@@ -1,4 +1,3 @@
-
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -67,8 +66,7 @@ export async function installPackSkill(projectDir: string, packId: string): Prom
         scripts: existsSync(join(okSkillDir, 'scripts')),
         installedAt: new Date().toISOString(),
       });
-    } catch {
-    }
+    } catch {}
   }
 
   return installed;

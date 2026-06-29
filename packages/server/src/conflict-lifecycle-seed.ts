@@ -1,4 +1,3 @@
-
 import { join, relative } from 'node:path';
 import type { Extension } from '@hocuspocus/server';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';

@@ -119,8 +119,7 @@ function runSpawn(
     const timer = setTimeout(() => {
       try {
         child.kill('SIGTERM');
-      } catch {
-      }
+      } catch {}
       settle({ kind: 'timeout', stderr });
     }, timeoutMs);
   });
@@ -131,8 +130,7 @@ async function anyLegacyUserSkillExists(home: string): Promise<boolean> {
     try {
       const info = await stat(join(home, hostDir, 'skills', LEGACY_USER_SKILL_NAME));
       if (info.isDirectory()) return true;
-    } catch {
-    }
+    } catch {}
   }
   return false;
 }
@@ -311,7 +309,6 @@ export async function installUserSkill(
   return 'failed';
 }
 
-
 const DOWNLOADS_DIR = 'Downloads';
 const SKILL_FILENAME = 'openknowledge.skill';
 
@@ -327,11 +324,7 @@ export interface BuildAndOpenSkillOptions {
   logger?: SkillInstallLogger;
 }
 
-export type BuildAndOpenSkillStatus =
-  | 'installed'
-  | 'built'
-  | 'failed'
-  | 'skip-current';
+export type BuildAndOpenSkillStatus = 'installed' | 'built' | 'failed' | 'skip-current';
 
 export interface BuildAndOpenSkillResult {
   status: BuildAndOpenSkillStatus;

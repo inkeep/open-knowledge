@@ -1,4 +1,3 @@
-
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { defaultScheduler, type Scheduler } from '@inkeep/open-knowledge-core';

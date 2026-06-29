@@ -1,4 +1,3 @@
-
 import { Trans } from '@lingui/react/macro';
 import { Settings } from 'lucide-react';
 import { type FC, useEffect, useRef } from 'react';

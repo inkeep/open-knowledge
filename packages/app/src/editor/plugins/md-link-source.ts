@@ -17,7 +17,6 @@ import {
 import type { PageListCacheSnapshot } from '../page-list-cache';
 import { getPageListCache, subscribePageListCache } from '../page-list-cache';
 
-
 const MD_LINK_RE =
   /\[([^\]\n]*)\]\((<[^>\n]+>|[^)\s\n]+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\)/g;
 
@@ -90,8 +89,7 @@ const mdLinkDecorations = ViewPlugin.fromClass(
         queueMicrotask(() => {
           try {
             view.dispatch({});
-          } catch {
-          }
+          } catch {}
         });
       });
     }
@@ -108,7 +106,6 @@ const mdLinkDecorations = ViewPlugin.fromClass(
   },
   { decorations: (v) => v.decorations },
 );
-
 
 const mdLinkClickHandler = EditorView.domEventHandlers({
   mousedown(event: MouseEvent, view: EditorView) {
@@ -149,7 +146,6 @@ const mdLinkClickHandler = EditorView.domEventHandlers({
   },
 });
 
-
 const mdLinkTheme = EditorView.theme({
   '.cm-md-internal-link': {
     color: 'oklch(52.7% 0.154 228.4)', // sky-700 — same as cm-wiki-link
@@ -160,7 +156,6 @@ const mdLinkTheme = EditorView.theme({
     cursor: 'pointer',
   },
 });
-
 
 export function createMdLinkSourceExtension(): Extension {
   return [mdLinkDecorations, mdLinkClickHandler, mdLinkTheme];

@@ -10,7 +10,6 @@ import {
   SyntaxKind,
 } from 'ts-morph';
 
-
 const SANCTIONED_PRIMITIVES = new Set<string>([
   'composeAndWriteRawBody',
   'replaceRawBody',
@@ -44,7 +43,6 @@ const KNOWN_PAIRED_WRITE_ORIGIN_PROPS = new Set<string>([
   'session.undoOrigin',
   'templateSession.origin',
 ]);
-
 
 interface TransactCall {
   readonly file: string;
@@ -143,7 +141,6 @@ function bodyCallsSanctionedPrimitive(body: Node | undefined): {
   });
   return { matched, matchedName };
 }
-
 
 describe('paired-write enforcement', () => {
   let sources: ReadonlyArray<readonly [string, SourceFile]>;

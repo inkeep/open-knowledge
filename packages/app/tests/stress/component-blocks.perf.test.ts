@@ -1,11 +1,9 @@
-
 import { describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 import { sharedExtensions } from '../../../../packages/core/src/extensions/shared.ts';
 import { MarkdownManager } from '../../../../packages/core/src/markdown/index.ts';
 
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });
-
 
 const REGRESSION_RATIO = 3;
 const MAX_CATASTROPHIC_MS = 500;
@@ -69,7 +67,6 @@ describe('PF03: parseWithFallback cycle time under load', () => {
   });
 });
 
-
 describe('PF05: Y.Item growth under jsxInline typing', () => {
   test('100-keystroke typing in jsxInline content — Y.Item delta ≤ keystroke_count + constant', () => {
     const ydoc = new Y.Doc();
@@ -111,4 +108,3 @@ describe('PF05: Y.Item growth under jsxInline typing', () => {
     expect(itemDelta).toBeLessThan(KEYSTROKE_COUNT * 2);
   });
 });
-

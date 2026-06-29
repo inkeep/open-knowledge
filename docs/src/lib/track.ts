@@ -1,6 +1,5 @@
 import { after } from 'next/server';
 
-
 const POSTHOG_CAPTURE_URL = 'https://us.i.posthog.com/capture/';
 const CAPTURE_TIMEOUT_MS = 3_000;
 

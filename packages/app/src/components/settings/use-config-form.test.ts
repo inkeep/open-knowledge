@@ -1,4 +1,3 @@
-
 import { describe, expect, mock, test } from 'bun:test';
 import type {
   Config,
@@ -14,7 +13,6 @@ import {
   type RunCommitForm,
   runCommit,
 } from './use-config-form';
-
 
 describe('applyExternalUpdate', () => {
   test('calls form.reset with keepDirtyValues + keepDirty + keepTouched', () => {
@@ -36,7 +34,6 @@ describe('applyExternalUpdate', () => {
     });
   });
 });
-
 
 interface MockedRunCommitForm extends RunCommitForm<Config> {
   reset?: never;
@@ -312,7 +309,6 @@ describe('runCommit — failure path', () => {
   });
 });
 
-
 describe('pickFirstIssueForPath', () => {
   test('returns the issue.message when an issue path matches the field name', () => {
     const error: ConfigValidationError = {
@@ -368,7 +364,6 @@ describe('pickFirstIssueForPath', () => {
     expect(out).toContain('something the current client does not know about');
   });
 });
-
 
 describe('useConfigForm module shape', () => {
   test('exports useConfigForm as a function', async () => {

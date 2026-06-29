@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import { installStdioBrokenPipeGuard, isBrokenPipeError } from './process-safety-net.ts';
 
-
 function makeStdioStub() {
   const stdout = new EventEmitter();
   const stderr = new EventEmitter();

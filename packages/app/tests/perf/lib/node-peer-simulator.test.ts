@@ -1,4 +1,3 @@
-
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createNodePeerSimulator, type NodePeerSimulatorHandle } from './node-peer-simulator';
 

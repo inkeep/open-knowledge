@@ -1,4 +1,3 @@
-
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test } from './_helpers';
@@ -92,7 +91,6 @@ async function resetSelectionToDocStart(page: Page): Promise<void> {
   });
 }
 
-
 test('AC22: grip click NodeSelects a paragraph', async ({ page, api }) => {
   await setupDoc(page, api, 'paragraph one\n\nparagraph two\n');
   await resetSelectionToDocStart(page);
@@ -174,7 +172,6 @@ test('AC22: grip click NodeSelects an img (self-closing leaf)', async ({ page, a
   await expect(wrapper).toHaveAttribute('data-selected', 'true');
 });
 
-
 test('AC23: grip drag still moves block (drag past dragstart threshold)', async ({ page, api }) => {
   await setupDoc(page, api, 'first paragraph\n\nsecond paragraph\n\nthird paragraph\n');
   await resetSelectionToDocStart(page);
@@ -228,7 +225,6 @@ test('AC23: grip drag still moves block (drag past dragstart threshold)', async 
     )
     .toEqual(['second paragraph', 'third paragraph', 'first paragraph']);
 });
-
 
 test('AC29: sub-threshold pointer movement still fires click → NodeSelect (no threshold)', async ({
   page,

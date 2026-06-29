@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState, NodeSelection, TextSelection } from '@tiptap/pm/state';
@@ -73,7 +72,6 @@ describe('BridgeIdPlugin.init', () => {
 });
 
 describe('BridgeIdPlugin.apply (no-doc-change branch)', () => {
-
   test('selection-change tx preserves IDs at the same positions', () => {
     const doc = schema.node('doc', null, [jsx('Card', [p('hello')])]);
     const state = makeState(doc);
@@ -142,7 +140,6 @@ describe('BridgeIdPlugin.apply (doc-change branch)', () => {
 });
 
 describe('Production unreachability of selection-state-plugin pos-N fallback', () => {
-
   test('every jsxComponent in a freshly-init state resolves to a b{N} ID via getWrapperBridgeId', async () => {
     const { getWrapperBridgeId } = await import('./selection-state-plugin.ts');
     const doc = schema.node('doc', null, [

@@ -6,7 +6,6 @@ import { Readable, Writable } from 'node:stream';
 import { FileBackend } from '../../auth/token-store.ts';
 import { type CredentialGetLogContext, handleCredentialGet } from './git-credential.ts';
 
-
 function makeStream(content: string): Readable {
   return Readable.from([Buffer.from(content, 'utf-8')]);
 }
@@ -28,7 +27,6 @@ function makeOutput(): { writable: Writable; result: () => string } {
 function makeStore(tmpDir: string) {
   return new FileBackend(join(tmpDir, 'auth.yml'));
 }
-
 
 describe('handleCredentialGet', () => {
   let tmpDir: string;
@@ -125,7 +123,6 @@ describe('handleCredentialGet', () => {
     expect(lines[2]).toBe('');
   });
 });
-
 
 interface LogCall {
   level: 'debug' | 'warn';
@@ -259,7 +256,6 @@ describe('handleCredentialGet diagnostic logging', () => {
     expect(result()).toBe('username=alice\npassword=gho_abc\n');
   });
 });
-
 
 describe('handleCredentialGet gh-token relay', () => {
   let tmpDir: string;
