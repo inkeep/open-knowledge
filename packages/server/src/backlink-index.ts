@@ -1174,7 +1174,7 @@ export class BacklinkIndex {
 
     return [...state.backward.entries()]
       .filter(([target, sources]) => {
-        if (admittedDocSet.has(target)) return false;
+        if (admittedDocSet.has(target) || state.forward.has(target)) return false;
         if (!sourceDocSet) return sources.size > 0;
         for (const source of sources.keys()) {
           if (sourceDocSet.has(source)) return true;
