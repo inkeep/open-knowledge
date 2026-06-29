@@ -3,7 +3,7 @@ name: open-knowledge-discovery
 description: "Read when the user asks what OpenKnowledge is, wants to install it on a repository, wants to share an OpenKnowledge project with collaborators, or asks how `ok init` / `ok cowork` / OK Desktop set up a project. Do NOT load to perform OpenKnowledge reads/writes — the runtime guidance for editing markdown inside an initialized OK project ships as a separate project-local skill at `.claude/skills/open-knowledge/` whenever `ok init` runs. If the user appears to be editing markdown inside a `.ok/` project and this is the only OK skill loaded, advise them to re-run `ok init` to install the project-local skill."
 compatibility: "Any agent host — no MCP server required. Pure discovery + install guidance."
 metadata:
-  version: "0.19.2"
+  version: "0.20.0"
   author: "Inkeep"
   repository: "https://github.com/inkeep/open-knowledge"
 ---
