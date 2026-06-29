@@ -2808,7 +2808,7 @@ function bootPrimaryInstance(): void {
         feedUrl: process.env.OK_UPDATER_FEED_URL || undefined,
         proxyFeed: {
           base: 'https://openknowledge.ai/updates',
-          channels: new Set<UpdateChannel>(['beta']),
+          channels: new Set<UpdateChannel>(['beta', 'latest']),
         },
         whenRendererReady: (fn) => {
           const tryFire = (win: BrowserWindow): void => {
