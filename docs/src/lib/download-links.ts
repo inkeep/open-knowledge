@@ -10,7 +10,16 @@ export const RELEASES_PAGE_URL = 'https://github.com/inkeep/open-knowledge/relea
 
 const ASSET_URL_PREFIX = 'https://github.com/inkeep/open-knowledge/releases/download/';
 
-const BETA_TAG_PATTERN = /^v\d+\.\d+\.\d+-beta\.\d+$/;
+const BETA_TAG_PATTERN = /^v(\d+)\.(\d+)\.(\d+)-beta\.(\d+)$/;
+
+type BetaRank = readonly [number, number, number, number];
+
+function compareBetaRank(a: BetaRank, b: BetaRank): number {
+  for (let i = 0; i < 4; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+}
 
 const LKG_TTL_MS = 300_000;
 
@@ -37,16 +46,22 @@ export function pickLatestBetaDmgUrl(payload: unknown): string | null {
     return null;
   }
 
+  let best: { rank: BetaRank; url: string } | null = null;
   for (const release of parsed.data) {
     if (release.draft || !release.prerelease) continue;
-    if (!BETA_TAG_PATTERN.test(release.tag_name)) continue;
+    const parts = BETA_TAG_PATTERN.exec(release.tag_name);
+    if (!parts) continue;
     const dmg = release.assets.find(
       (asset) =>
         asset.name === DMG_ASSET_NAME && asset.browser_download_url.startsWith(ASSET_URL_PREFIX),
     );
-    if (dmg) return dmg.browser_download_url;
+    if (!dmg) continue;
+    const rank: BetaRank = [Number(parts[1]), Number(parts[2]), Number(parts[3]), Number(parts[4])];
+    if (!best || compareBetaRank(rank, best.rank) > 0) {
+      best = { rank, url: dmg.browser_download_url };
+    }
   }
-  return null;
+  return best?.url ?? null;
 }
 
 export type BetaRedirect =
