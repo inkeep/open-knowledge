@@ -687,6 +687,71 @@ describe('SyncEngine delete/modify dirty content conflicts', () => {
   });
 });
 
+describe('SyncEngine non-ASCII filename conflicts', () => {
+  const fileName = 'hyvää yötä.md';
+
+  async function setupRemoteModifyLocalDeleteNonAscii(): Promise<void> {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    const bare = simpleGit(bareDir);
+    await bare.init(true);
+
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    writeFileSync(join(sisterDir, fileName), 'base\n', 'utf-8');
+    await sister.add([fileName]);
+    await sister.commit('base');
+    await sister.addRemote('origin', bareDir);
+    await sister.push(['--set-upstream', 'origin', 'main']);
+    await bare.raw(['symbolic-ref', 'HEAD', 'refs/heads/main']);
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir, ['--branch', 'main']);
+    mkdirSync(okDir, { recursive: true });
+
+    const project = simpleGit(projectDir);
+    await project.raw('config', 'user.name', 'Project');
+    await project.raw('config', 'user.email', 'project@test.com');
+
+    writeFileSync(join(sisterDir, fileName), 'remote edit\n', 'utf-8');
+    await sister.add([fileName]);
+    await sister.commit('remote modify');
+    await sister.push('origin', 'main');
+
+    rmSync(join(projectDir, fileName), { force: true });
+  }
+
+  test('surfaces a content conflict with the real UTF-8 path', async () => {
+    await setupRemoteModifyLocalDeleteNonAscii();
+
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      syncEnabled: true,
+      pullIntervalSeconds: 99999,
+      pushIntervalSeconds: 99999,
+    });
+    try {
+      await engine.start();
+      await engine.trigger('sync');
+
+      const status = engine.getStatus();
+      expect(status.state).toBe('conflict');
+      expect(status.conflictCount).toBe(1);
+      expect(status.pausedReason).toBeUndefined();
+      expect(engine.getConflicts().map((c) => c.file)).toEqual([fileName]);
+      expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(true);
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
 describe('SyncEngine getStatus()', () => {
   test('returns all required fields in dormant state', () => {
     const engine = makeEngine();
@@ -1030,6 +1095,54 @@ describe('SyncEngine push cycle pushes existing commits when local is ahead of o
       const status = engine.getStatus();
       expect(status.lastPushedSha).toBe(head);
       expect(status.lastSyncUtc).not.toBeNull();
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
+describe('SyncEngine push cycle with non-ASCII filenames', () => {
+  const fileName = 'hyvää yötä.md';
+
+  test('commits and pushes the deletion of a file with a non-ASCII name', async () => {
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(projectDir, 'README.md'), '# Test\n');
+    writeFileSync(join(projectDir, fileName), 'sisältö\n');
+    await git.add('.');
+    await git.commit('add non-ascii file');
+
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await git.addRemote('origin', bareDir);
+    await git.push(['--set-upstream', 'origin', 'main']);
+
+    rmSync(join(projectDir, fileName));
+
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      syncEnabled: true,
+    });
+    try {
+      await engine.start();
+      await engine.trigger('push');
+
+      const headPaths = (await git.raw(['ls-tree', '-r', '--name-only', '-z', 'HEAD']))
+        .split('\0')
+        .filter(Boolean);
+      expect(headPaths).toContain('README.md');
+      expect(headPaths).not.toContain(fileName);
+
+      const subject = (await git.raw(['log', '--format=%s', '--max-count=1'])).trim();
+      expect(subject).toContain(fileName);
+
+      const remoteHead = (await git.revparse(['origin/main'])).trim();
+      expect(remoteHead).toBe((await git.revparse(['HEAD'])).trim());
     } finally {
       await engine.destroy();
     }

@@ -173,11 +173,9 @@ export class ConflictStore {
         const detectedAt = new Date().toISOString();
         let reAdded = false;
         try {
-          const raw = await handle.git.raw(['diff', '--name-only', '--diff-filter=U']);
-          const unmerged = raw
-            .split('\n')
-            .map((s) => s.trim())
-            .filter(Boolean);
+          const { splitNulSeparatedPaths } = await import('./git-handle.ts');
+          const raw = await handle.git.raw(['diff', '--name-only', '--diff-filter=U', '-z']);
+          const unmerged = splitNulSeparatedPaths(raw);
           for (const f of unmerged) {
             this.addConflict({ file: f, detectedAt });
           }

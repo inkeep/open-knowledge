@@ -186,6 +186,38 @@ describe('dirtyFilesOverlapWith', () => {
     expect(result.conflicts).toBe(true);
     expect(result.files).toEqual(['a.md']);
   });
+
+  test('non-ASCII filename in the overlap is reported with its real name', async () => {
+    write('hyvää yötä.md', 'base\n');
+    commitAll('init');
+    run('git checkout -q -b feature');
+    write('hyvää yötä.md', 'feature edit\n');
+    commitAll('feature edits non-ascii file');
+    run('git checkout -q main');
+
+    write('hyvää yötä.md', 'dirty\n');
+
+    const result = await dirtyFilesOverlapWith(projectDir, 'feature');
+
+    expect(result.conflicts).toBe(true);
+    expect(result.files).toEqual(['hyvää yötä.md']);
+  });
+
+  test('staged rename reports the new path, not the original', async () => {
+    write('old-name.md', 'base\n');
+    commitAll('init');
+    run('git checkout -q -b feature');
+    write('new-name.md', 'feature version\n');
+    commitAll('feature adds new-name');
+    run('git checkout -q main');
+
+    run('git mv old-name.md new-name.md');
+
+    const result = await dirtyFilesOverlapWith(projectDir, 'feature');
+
+    expect(result.conflicts).toBe(true);
+    expect(result.files).toEqual(['new-name.md']);
+  });
 });
 
 void beforeEach;

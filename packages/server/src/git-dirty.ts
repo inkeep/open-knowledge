@@ -1,4 +1,4 @@
-import { createGitInstance } from './git-handle.ts';
+import { createGitInstance, splitNulSeparatedPaths } from './git-handle.ts';
 
 export interface DirtyOverlapResult {
   conflicts: boolean;
@@ -6,22 +6,17 @@ export interface DirtyOverlapResult {
 }
 
 function parsePorcelainPaths(porcelain: string): string[] {
+  // -z porcelain: NUL-separated "XY PATH" records; a rename/copy emits the
+  // original path as the following record, without a status prefix.
   const paths: string[] = [];
-  for (const line of porcelain.split('\n')) {
-    if (line.length < 4) continue;
-    const rest = line.slice(3);
-    const renameIdx = rest.indexOf(' -> ');
-    const path = renameIdx >= 0 ? rest.slice(renameIdx + 4) : rest;
-    if (path.length > 0) paths.push(path);
+  const records = porcelain.split('\0');
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i] ?? '';
+    if (record.length < 4) continue;
+    paths.push(record.slice(3));
+    if (record[0] === 'R' || record[0] === 'C') i++;
   }
   return paths;
-}
-
-function parseDiffPaths(diffOutput: string): string[] {
-  return diffOutput
-    .split('\n')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
 }
 
 export async function dirtyFilesOverlapWith(
@@ -31,14 +26,14 @@ export async function dirtyFilesOverlapWith(
   const { git } = createGitInstance(cwd);
 
   const [porcelain, diff] = await Promise.all([
-    git.raw(['status', '--porcelain']),
-    git.raw(['diff', '--name-only', `HEAD..${targetRef}`]),
+    git.raw(['status', '--porcelain', '-z']),
+    git.raw(['diff', '--name-only', '-z', `HEAD..${targetRef}`]),
   ]);
 
   const dirty = new Set(parsePorcelainPaths(porcelain));
   if (dirty.size === 0) return { conflicts: false, files: [] };
 
-  const changed = parseDiffPaths(diff);
+  const changed = splitNulSeparatedPaths(diff);
   if (changed.length === 0) return { conflicts: false, files: [] };
 
   const overlap = new Set<string>();

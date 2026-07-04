@@ -21,7 +21,13 @@ import {
   type UserFacingErrorCode,
 } from './error-classification.ts';
 import { createGhTokenSource, type GhTokenSource } from './gh-token-source.ts';
-import { applyGitEnv, createGitInstance, type GitHandle, withParentLock } from './git-handle.ts';
+import {
+  applyGitEnv,
+  createGitInstance,
+  type GitHandle,
+  splitNulSeparatedPaths,
+  withParentLock,
+} from './git-handle.ts';
 import { resolveGitIdentity } from './git-identity.ts';
 import {
   type CheckPushPermissionOptions,
@@ -317,15 +323,8 @@ export class SyncEngine {
     } else if (this.conflictCount > 0 && mergeInProgress) {
       try {
         const handle = this.gitHandle();
-        const out = (await handle.git.raw(['diff', '--name-only', '--diff-filter=U'])).trim();
-        const stillUnmerged = new Set(
-          out
-            ? out
-                .split('\n')
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : [],
-        );
+        const out = await handle.git.raw(['diff', '--name-only', '--diff-filter=U', '-z']);
+        const stillUnmerged = new Set(splitNulSeparatedPaths(out));
         const before = this.conflictCount;
         for (const entry of this.conflictStore.list()) {
           if (!stillUnmerged.has(entry.file)) {
@@ -683,15 +682,8 @@ export class SyncEngine {
     } else {
       try {
         const handle = this.gitHandle();
-        const out = (await handle.git.raw(['diff', '--name-only', '--diff-filter=U'])).trim();
-        const stillUnmerged = new Set(
-          out
-            ? out
-                .split('\n')
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : [],
-        );
+        const out = await handle.git.raw(['diff', '--name-only', '--diff-filter=U', '-z']);
+        const stillUnmerged = new Set(splitNulSeparatedPaths(out));
         for (const entry of this.conflictStore.list()) {
           if (!stillUnmerged.has(entry.file)) {
             this.conflictStore.removeConflict(entry.file);
@@ -1011,16 +1003,20 @@ export class SyncEngine {
         let changedProjectRelPaths: string[] = [];
         let changedContentRelPaths: string[] = [];
         try {
-          const diffOut = (
-            await handle.git.raw(['diff-tree', '--name-only', '-r', headSha, newTreeSha])
-          ).trim();
-          if (diffOut) {
+          const diffOut = await handle.git.raw([
+            'diff-tree',
+            '--name-only',
+            '-z',
+            '-r',
+            headSha,
+            newTreeSha,
+          ]);
+          const diffPaths = splitNulSeparatedPaths(diffOut);
+          if (diffPaths.length > 0) {
             const contentFileByProjRel = new Map(
               contentFiles.map((f) => [f.projectRelPath, f.contentRelPath]),
             );
-            for (const line of diffOut.split('\n')) {
-              const projRelPath = line.trim();
-              if (!projRelPath) continue;
+            for (const projRelPath of diffPaths) {
               changedProjectRelPaths.push(projRelPath);
               const contentRelPath =
                 contentFileByProjRel.get(projRelPath) ??
@@ -1182,15 +1178,15 @@ export class SyncEngine {
       if (newTreeSha === headTreeSha) return null;
       let changedProjectRelPaths: string[] = [];
       try {
-        const diffOut = (
-          await isoHandle.git.raw(['diff-tree', '--name-only', '-r', headSha, newTreeSha])
-        ).trim();
-        changedProjectRelPaths = diffOut
-          ? diffOut
-              .split('\n')
-              .map((p) => p.trim())
-              .filter(Boolean)
-          : [];
+        const diffOut = await isoHandle.git.raw([
+          'diff-tree',
+          '--name-only',
+          '-z',
+          '-r',
+          headSha,
+          newTreeSha,
+        ]);
+        changedProjectRelPaths = splitNulSeparatedPaths(diffOut);
       } catch {
         changedProjectRelPaths = contentFiles.map((f) => f.projectRelPath).concat(deleted);
       }
@@ -1240,31 +1236,22 @@ export class SyncEngine {
   ): Promise<{ proceed: boolean; needsStashPop: boolean }> {
     let dirtyOut = '';
     try {
-      dirtyOut = (await handle.git.raw(['diff-index', '--name-only', 'HEAD'])).trim();
+      dirtyOut = await handle.git.raw(['diff-index', '--name-only', '-z', 'HEAD']);
     } catch (err) {
       log.warn({ err, branch }, '[sync] diff-index failed — allowing merge attempt');
       return { proceed: true, needsStashPop: false };
     }
-    if (!dirtyOut) return { proceed: true, needsStashPop: false };
-    const dirtyPaths = dirtyOut
-      .split('\n')
-      .map((p) => p.trim())
-      .filter(Boolean);
+    const dirtyPaths = splitNulSeparatedPaths(dirtyOut);
     if (dirtyPaths.length === 0) return { proceed: true, needsStashPop: false };
 
     let mergeOut = '';
     try {
-      mergeOut = (await handle.git.raw(['diff', '--name-only', `HEAD..origin/${branch}`])).trim();
+      mergeOut = await handle.git.raw(['diff', '--name-only', '-z', `HEAD..origin/${branch}`]);
     } catch (err) {
       log.warn({ err, branch }, '[sync] merge-path diff failed — allowing merge attempt');
       return { proceed: true, needsStashPop: false };
     }
-    const mergePaths = new Set(
-      mergeOut
-        .split('\n')
-        .map((p) => p.trim())
-        .filter(Boolean),
-    );
+    const mergePaths = new Set(splitNulSeparatedPaths(mergeOut));
     const blocking = dirtyPaths.filter((p) => mergePaths.has(p));
 
     if (blocking.length > 0) {
@@ -1334,10 +1321,8 @@ export class SyncEngine {
   private async listHeadContentPaths(handle: GitHandle, headSha: string): Promise<Set<string>> {
     const paths = new Set<string>();
     try {
-      const lsOut = (await handle.git.raw(['ls-tree', '-r', '--name-only', headSha])).trim();
-      for (const line of lsOut ? lsOut.split('\n') : []) {
-        const projRelPath = line.trim();
-        if (!projRelPath) continue;
+      const lsOut = await handle.git.raw(['ls-tree', '-r', '--name-only', '-z', headSha]);
+      for (const projRelPath of splitNulSeparatedPaths(lsOut)) {
         const absPath = join(this.projectDir, projRelPath);
         const contentRelPath = toPosix(relative(this.contentDir, absPath));
         if (!contentRelPath.startsWith('..') && !this.contentFilter.isExcluded(contentRelPath)) {
@@ -1386,13 +1371,8 @@ export class SyncEngine {
 
     let conflictedFiles: string[] = [];
     try {
-      const out = (await handle.git.raw(['diff', '--name-only', '--diff-filter=U'])).trim();
-      conflictedFiles = out
-        ? out
-            .split('\n')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
+      const out = await handle.git.raw(['diff', '--name-only', '--diff-filter=U', '-z']);
+      conflictedFiles = splitNulSeparatedPaths(out);
     } catch (e) {
       log.error(
         { err: e },

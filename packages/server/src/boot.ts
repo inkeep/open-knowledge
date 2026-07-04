@@ -21,6 +21,7 @@ import type { Config } from './config/schema.ts';
 import { ConflictStore } from './conflict-storage.ts';
 import { stripDocExtension } from './doc-extensions.ts';
 import { normalizeFsPath } from './fs-traced.ts';
+import { splitNulSeparatedPaths } from './git-handle.ts';
 import {
   assertGitAvailable,
   type GitDetected,
@@ -622,15 +623,8 @@ export async function restoreLifecycleFromConflictsJson(args: {
       return;
     }
     const pg = simpleGit({ baseDir: projectDir, timeout: { block: 5_000 } });
-    const out = (await pg.raw(['diff', '--name-only', '--diff-filter=U'])).trim();
-    stillUnmerged = new Set(
-      out
-        ? out
-            .split('\n')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [],
-    );
+    const out = await pg.raw(['diff', '--name-only', '--diff-filter=U', '-z']);
+    stillUnmerged = new Set(splitNulSeparatedPaths(out));
   } catch (err) {
     log.warn(
       { err, projectDir },
