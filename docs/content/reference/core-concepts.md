@@ -8,7 +8,10 @@ This page is the precise reference for the ideas the rest of the docs build on. 
 
 ## Three layers
 
-OpenKnowledge is three layers working together: a surface you edit, an engine that keeps it consistent, and the files underneath.
+OpenKnowledge has three layers working together:
+- a surface you edit
+- an engine that keeps it consistent
+- the files underneath
 
 ```html preview
 <div style="padding:18px">
