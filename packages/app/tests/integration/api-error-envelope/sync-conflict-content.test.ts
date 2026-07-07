@@ -1,3 +1,7 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleSyncConflictContent`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -15,6 +19,11 @@ afterAll(async () => {
 
 describe('sync-conflict-content envelope (RFC 9457)', () => {
   test('untracked file returns 404 no-conflict-tracked', async () => {
+    // No conflict tracked in the test server's ConflictStore → 404.
+    // This is the contract the conflicts({ kind: 'content' }) tool description
+    // promises agents; without the gate, the handler used to silently
+    // 200 with empty stages — misleading data on stale/post-resolution
+    // queries.
     const res = await fetch(`http://127.0.0.1:${server.port}/api/sync/conflict-content?file=a.md`);
     expect(res.status).toBe(404);
     expect(res.headers.get('content-type')).toBe('application/problem+json');

@@ -10,6 +10,7 @@ const SRC_ROOT = resolve(APP_ROOT, 'src');
 const OUT_DIR = resolve(APP_ROOT, 'tmp', 'strings-audit');
 const VIEWER_TEMPLATE = resolve(SCRIPT_DIR, 'viewer-template.html');
 
+// JSX attribute names that carry user-facing copy. Conservative — extend with care.
 const USER_FACING_ATTRS = new Set([
   'title',
   'placeholder',
@@ -47,6 +48,7 @@ const USER_FACING_ATTRS = new Set([
   'name', // some Radix triggers, FormField name, etc. — high signal but some FP
 ]);
 
+// Callees whose first arg is a user-facing message.
 const TOAST_CALLEES = new Set([
   'toast',
   'toast.success',
@@ -65,6 +67,7 @@ const TOAST_CALLEES = new Set([
   'showToast',
 ]);
 
+// Reject obviously non-UI strings.
 const REJECT_PATTERNS: RegExp[] = [
   /^https?:\/\//i,
   /^\/[a-z0-9_-]/i, // path-like
@@ -78,6 +81,11 @@ const REJECT_PATTERNS: RegExp[] = [
 
 const MIN_DISPLAYABLE_LEN = 1;
 
+// View bucketing — top-level path segment under src/, with a second segment when meaningful.
+// Rules use the `/i` flag where lowercase + uppercase forms might both exist on
+// disk (folders like `components/settings/` vs files like `components/Settings*.tsx`)
+// so one rule covers both. Order is significant — first match wins, so the more-
+// specific patterns come before the catchall `^components/` at the end.
 const VIEW_GROUP_RULES: Array<[RegExp, string]> = [
   [/^components\/settings/i, 'Settings'],
   [/^components\/handoff/i, 'Handoff (Open in agent)'],
@@ -196,7 +204,11 @@ function isAcceptable(raw: string): { ok: boolean; reason?: string } {
   for (const rx of REJECT_PATTERNS) {
     if (rx.test(trimmed)) return { ok: false, reason: rx.source };
   }
+  // Require at least one letter or a space-separated phrase
   if (!/[A-Za-z]/.test(trimmed)) return { ok: false, reason: 'no-letters' };
+  // Single token with no whitespace AND no apostrophes/spaces — probably a CSS class or identifier
+  // (but allow short words like "OK", "Save" — they have letters; this is for things like
+  // 'flex-1', 'px-2', etc.). We already filter most of those via REJECT_PATTERNS.
   if (/^[a-z][a-z0-9]*-[a-z0-9-]+$/.test(trimmed)) return { ok: false, reason: 'kebab-token' };
   return { ok: true };
 }
@@ -248,7 +260,10 @@ function findEnclosingComponent(node: Node): string | undefined {
 }
 
 function extractFromTemplate(node: Node): string {
+  // Return a placeholder-normalized form: `Failed to load ${...}` becomes `Failed to load ${...}`
+  // (we keep `${...}` so audit reviewers can see template shapes).
   const raw = node.getText();
+  // Strip outer backticks
   if (raw.startsWith('`') && raw.endsWith('`')) {
     return raw.slice(1, -1).replace(/\$\{[^}]+\}/g, '${...}');
   }
@@ -261,6 +276,7 @@ function visitFile(sf: SourceFile, relPath: string, relForView: string) {
   sf.forEachDescendant((node) => {
     const kind = node.getKind();
 
+    // JSX text
     if (kind === SyntaxKind.JsxText) {
       const text = (node as any).getLiteralText?.() ?? node.getText();
       if (!text.trim()) return;
@@ -279,6 +295,7 @@ function visitFile(sf: SourceFile, relPath: string, relForView: string) {
       return;
     }
 
+    // JSX attributes
     if (kind === SyntaxKind.JsxAttribute) {
       const attr = node as any;
       const name = attr.getNameNode()?.getText();
@@ -286,6 +303,7 @@ function visitFile(sf: SourceFile, relPath: string, relForView: string) {
       const init = attr.getInitializer();
       if (!init) return;
 
+      // Plain string literal: foo="bar"
       if (init.getKind() === SyntaxKind.StringLiteral) {
         const val = init.getLiteralText();
         const start = sf.getLineAndColumnAtPos(init.getStart());
@@ -304,6 +322,7 @@ function visitFile(sf: SourceFile, relPath: string, relForView: string) {
         return;
       }
 
+      // Expression: foo={...} — pick up bare string literal and template w/o expressions
       if (init.getKind() === SyntaxKind.JsxExpression) {
         const exprNode = init.getExpression?.();
         if (!exprNode) return;
@@ -358,6 +377,7 @@ function visitFile(sf: SourceFile, relPath: string, relForView: string) {
       return;
     }
 
+    // JSX expression containing a string literal (e.g. <Foo>{"Save"}</Foo>) — rare but real
     if (kind === SyntaxKind.JsxExpression) {
       const parentKind = node.getParent()?.getKind();
       if (parentKind === SyntaxKind.JsxElement || parentKind === SyntaxKind.JsxFragment) {
@@ -410,6 +430,7 @@ function visitFile(sf: SourceFile, relPath: string, relForView: string) {
       return;
     }
 
+    // Toast / notify / showError calls
     if (kind === SyntaxKind.CallExpression) {
       const call = node as any;
       const expr = call.getExpression();
@@ -519,6 +540,7 @@ for (const sf of project.getSourceFiles()) {
 
 console.error(`[audit-strings] scanned ${scanned} files in ${Date.now() - t0}ms`);
 
+// Build stats
 const stringList = Array.from(records.values());
 
 const byView = new Map<
@@ -553,6 +575,8 @@ stringList.sort((a, b) => b.occurrences.length - a.occurrences.length || b.charC
 const catalog = {
   generatedAt: new Date().toISOString(),
   srcRoot: relative(resolve(APP_ROOT, '..'), SRC_ROOT),
+  // Absolute path that, when joined with each occurrence's `file`, yields the
+  // absolute filesystem path — viewer uses this to build cursor:// URLs.
   fileBaseAbsolute: resolve(APP_ROOT, '..'),
   fileCount: scanned,
   attrAllowlist: Array.from(USER_FACING_ATTRS).sort(),
@@ -596,6 +620,7 @@ const catalogPath = join(OUT_DIR, 'catalog.json');
 writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
 console.error(`[audit-strings] wrote ${catalogPath}`);
 
+// Emit viewer.html with embedded data
 let template: string;
 try {
   template = readFileSync(VIEWER_TEMPLATE, 'utf8');

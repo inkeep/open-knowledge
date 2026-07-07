@@ -4,6 +4,8 @@ import { countVisibleEntries } from './onboarding-document-count';
 
 type Entry = DocumentListSuccess['documents'][number];
 
+// The wire entry carries several always-present fields; the counting rule only
+// reads `kind` / `docName` / `path`, so the rest are inert defaults.
 const base = {
   docExt: '.md',
   size: 0,

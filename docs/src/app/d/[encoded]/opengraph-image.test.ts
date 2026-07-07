@@ -1,5 +1,15 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 
+/**
+ * The OG image route uses `next/og`'s `ImageResponse` which spins up satori
+ * + resvg to render PNG bytes — heavy, network-dependent (it fetches the
+ * DM Sans TTF from Google Fonts), and not the contract this test cares
+ * about. We stub `next/og` here so the test asserts the route's plumbing
+ * (Content-Type header, body has bytes, route maps each view kind to a
+ * sensible body) without fighting third-party machinery. The actual PNG
+ * fidelity gets verified in Playwright browser verification at story
+ * landing time.
+ */
 const recordedCalls: Array<{
   body: unknown;
   options: { fonts?: unknown; headers?: Record<string, string>; width?: number; height?: number };

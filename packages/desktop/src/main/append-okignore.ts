@@ -35,6 +35,34 @@ export function appendOkIgnoreSync(projectDir: string, patterns: string): void {
   writeFileSync(path, `${existing + sep + toAppend}\n`, 'utf8');
 }
 
+/**
+ * Drop lines from `patterns` whose trimmed form already appears in `existing`.
+ * Trim-equality (vs. byte-equality) suppresses near-duplicates that differ
+ * only in surrounding whitespace (leading or trailing). Reachability via the
+ * consent dialog is essentially zero; preserving leading whitespace would
+ * matter for hand-authored gitignore syntax where `  foo` (with two leading
+ * spaces) matches a path that literally starts with two spaces.
+ *
+ * The set is flat over trimmed strings — line kinds (`pattern`, `comment`,
+ * `blank`) are not preserved separately. Two consequences worth knowing:
+ *
+ *   - Any blank line the user typed inside `patterns` is dropped whenever
+ *     `existing` contains a newline. The split-on-`\n` inserts `''` into the
+ *     set even for the trailing newline alone, so user-typed blanks always
+ *     collide. Intentional: separator semantics already produce the visual
+ *     gap at the boundary, and pattern semantics survive (gitignore ignores
+ *     blank lines).
+ *   - A bare `#` divider line in `patterns` collides with any bare `#` in
+ *     `existing`. Same trade-off — gitignore semantics survive (comment-only
+ *     lines are inert) but the visual structure of a fresh comment block
+ *     loses its interior dividers.
+ *
+ * This is asymmetric with `okignore-doc.ts:classifyLine`, which preserves
+ * `blank`/`comment` as first-class structural metadata. The asymmetry is
+ * intentional for the consent-write append path — the goal here is "don't
+ * stack duplicate content"; full structural preservation belongs to the
+ * Settings list editor that round-trips byte-identically.
+ */
 function filterDuplicateLines(existing: string, patterns: string): string {
   const existingLines = new Set(existing.split('\n').map((l) => l.trim()));
   return patterns

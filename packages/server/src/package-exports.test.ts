@@ -1,3 +1,41 @@
+/**
+ * Pins the dev-boot mechanism: a `predev` hook in `packages/app/package.json`
+ * builds `@inkeep/open-knowledge-core` and `@inkeep/open-knowledge-server`
+ * before Vite starts, so the config bundler can resolve their `default →
+ * ./dist/*.mjs` entries on a fresh checkout.
+ *
+ * Background.
+ *
+ *   Vite's `vite.config.ts` bundler (`nodeResolveWithVite` in
+ *   `vite/dist/node/chunks/node.js`) uses conditions `['node', ...optional
+ *   'module-sync']`. It does NOT see `development` (runtime-only). A fresh
+ *   checkout has no `dist/`, so resolution falls through to `default → dist`
+ *   → ENOENT → vite-plugin-externalize-deps throws "Failed to resolve entry
+ *   for package @inkeep/open-knowledge-server".
+ *
+ * Why predev (not a `node` exports condition).
+ *
+ *   A `node → ./src/index.ts` entry IS read by Vite's bundler — but it is
+ *   ALSO read at packaged-Electron-main runtime. `electron.vite.config.ts`
+ *   sets `main.build.externalizeDeps: true`, so packaged main ships
+ *   `import '@inkeep/open-knowledge-server'` verbatim. Node 22 (Electron 41
+ *   main) matches the `node` condition first and returns `./src/index.ts`,
+ *   which it cannot load → `ERR_UNKNOWN_FILE_EXTENSION` on app startup. The
+ *   predev hook side-steps the conflict by ensuring `dist/` exists; the
+ *   config bundler then resolves via `default → dist`, and packaged main
+ *   does the same.
+ *
+ * What we pin here.
+ *
+ *   1. `packages/app/package.json` has a `predev` script that builds both
+ *      workspace deps. Removing it would re-introduce the fresh-checkout
+ *      boot failure.
+ *   2. The `exports` map of both packages has `default → ./dist/*.mjs` so
+ *      the post-predev resolve has a target.
+ *   3. There is NO `node` condition on these export entries (would break
+ *      packaged Electron main).
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

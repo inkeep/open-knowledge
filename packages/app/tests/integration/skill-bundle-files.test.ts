@@ -3,6 +3,16 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createTestServer, pollUntil, type TestServer } from './test-harness.ts';
 
+/**
+ * End-to-end proof through the real server that the skill BUNDLE-FILE surface
+ * (`/api/skill-file`) routes correctly by scope × type:
+ *  - a PROJECT `.md` reference is a real CRDT content doc — it persists to
+ *    `.ok/skills/<name>/references/<x>.md` AND participates in the link graph
+ *    (a wiki-link FROM the reference resolves to a backlink on its target),
+ *    which is the load-bearing requirement (reuse of the content path).
+ *  - a SCRIPT and any bundle file round-trip through the universal per-file
+ *    read (`GET /api/skill-file`) without any native `cat`.
+ */
 describe('skill bundle files via /api/skill-file', () => {
   let server: TestServer;
 
@@ -36,6 +46,8 @@ describe('skill bundle files via /api/skill-file', () => {
   test('a project .md reference persists as a content doc and joins the link graph', async () => {
     await putSkill('demo', 'a demo skill', '# Demo\n\nSee references.\n');
 
+    // A reference whose body links OUT to a target doc — proves the ref is a
+    // graph-participating content doc (its forward link resolves).
     const refRes = await putSkillFile(
       'demo',
       'references/notes.md',
@@ -44,12 +56,17 @@ describe('skill bundle files via /api/skill-file', () => {
     expect(refRes.ok).toBe(true);
     const refBody = (await refRes.json()) as { kind: string; content: boolean; path: string };
     expect(refBody.kind).toBe('reference');
+    // `content: true` flags that the write was routed through the CRDT content
+    // doc (project `.md` reference), not the fs-direct path.
     expect(refBody.content).toBe(true);
 
+    // It persists to disk at the expected skill-relative path.
     const refFile = resolve(server.contentDir, '.ok', 'skills', 'demo', 'references', 'notes.md');
     await pollUntil(() => existsSync(refFile));
     expect(readFileSync(refFile, 'utf-8')).toContain('[[target-doc]]');
 
+    // Create the link target, then assert the reference shows up as a backlink
+    // source — the project `.md` reference is a first-class graph citizen.
     const target = await fetch(`${base()}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -86,6 +103,15 @@ describe('skill bundle files via /api/skill-file', () => {
     return Array.isArray(data.backlinks) ? data.backlinks.map((b) => b.source) : [];
   }
 
+  /**
+   * A skill RENAME git-mv's the dir and rewrites only SKILL.md fs-direct, so the
+   * relocated `.md` references never re-enter the link graph at their new doc
+   * names — they fall out of the backlink index until a manual rescan. This
+   * exercises the LIVE move→index path (no `/api/test-rescan-*`): after the
+   * rename the moved reference must STILL resolve as a backlink on its target,
+   * at its NEW ref doc name, and the stale old-name source must be gone.
+   *
+   */
   test('a renamed skill re-indexes its moved .md references into the link graph (no rescan)', async () => {
     await putSkill('demo3', 'a demo skill', '# Demo\n\nSee references.\n');
     const refRes = await putSkillFile(
@@ -102,16 +128,21 @@ describe('skill bundle files via /api/skill-file', () => {
     });
     expect(target.ok).toBe(true);
 
+    // Pre-move sanity: the reference resolves at its original doc name.
     await pollUntil(async () =>
       (await backlinkSources('move-target')).includes('.ok/skills/demo3/references/notes'),
     );
 
+    // RENAME the skill — refs are git-mv'd on disk; nothing rewrites them
+    // through the CRDT path, so they must be re-indexed by the move handler.
     const moved = await renameSkill('demo3', 'demo3-renamed');
     expect(moved.ok).toBe(true);
 
+    // The moved reference resolves at its NEW ref doc name…
     await pollUntil(async () =>
       (await backlinkSources('move-target')).includes('.ok/skills/demo3-renamed/references/notes'),
     );
+    // …and the stale old-name source is gone (not a duplicate).
     const sources = await backlinkSources('move-target');
     expect(sources).not.toContain('.ok/skills/demo3/references/notes');
   }, 20000);
@@ -123,8 +154,10 @@ describe('skill bundle files via /api/skill-file', () => {
     expect(put.ok).toBe(true);
     const putBody = (await put.json()) as { kind: string; content: boolean };
     expect(putBody.kind).toBe('script');
+    // Scripts are fs-direct (never CRDT) — content routing flag is false.
     expect(putBody.content).toBe(false);
 
+    // Read it back via the universal per-file read.
     const params = new URLSearchParams({
       name: 'runner',
       scope: 'project',
@@ -137,6 +170,13 @@ describe('skill bundle files via /api/skill-file', () => {
     expect(got.text).toBe(scriptText);
   });
 
+  /**
+   * A skill REFERENCE graph node is extension-less, so the client reconstructs
+   * the read path with a hardcoded `.md`. When the on-disk file is `.mdx`, the
+   * GET must fall back to the sibling supported doc extension instead of 404ing
+   * (otherwise a `.mdx` reference is unopenable from the graph / links panel).
+   *
+   */
   test('a .mdx reference opens when requested as .md (extension-less node fallback)', async () => {
     await putSkill('mdxskill', 'has an mdx ref', '# Mdx\n');
     const put = await putSkillFile('mdxskill', 'references/guide.mdx', '# Guide\n\nMDX body.\n');
@@ -152,6 +192,7 @@ describe('skill bundle files via /api/skill-file', () => {
     );
     await pollUntil(() => existsSync(onDisk));
 
+    // Requested as `.md`, but the file is `.mdx` — the server resolves it.
     const params = new URLSearchParams({
       name: 'mdxskill',
       scope: 'project',
@@ -161,6 +202,7 @@ describe('skill bundle files via /api/skill-file', () => {
     expect(get.ok).toBe(true);
     const got = (await get.json()) as { path: string; kind: string; text: string };
     expect(got.text).toContain('MDX body.');
+    // The response reports the REAL resolved path (`.mdx`), not the requested `.md`.
     expect(got.path).toBe('references/guide.mdx');
     expect(got.kind).toBe('reference');
   });

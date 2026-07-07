@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the `/api/documents` single-flight coordinator. Proves
+ * concurrent callers coalesce onto one request, that it is single-flight (not a
+ * result cache — sequential calls refetch), that a rejection releases the slot,
+ * and the `{ ok, status, body }` shaping (including the not-JSON → null path).
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { __resetDocumentListInflightForTests, fetchDocumentListShared } from './documents-fetch';
 

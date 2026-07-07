@@ -67,7 +67,9 @@ function saveBoolPref(key: string, value: boolean): void {
     } else {
       window.localStorage.removeItem(key);
     }
-  } catch {}
+  } catch {
+    // quota exceeded / private mode — ignore, stays in-memory
+  }
 }
 
 type FullscreenGraphMode = 'explore' | 'orphans' | 'hubs';
@@ -343,6 +345,9 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
         })
       : null;
   const selectedDocDisplayState = selectedNodeIntent?.displayState ?? 'doc';
+  // Kind-aware hash for the selected node: a global skill bundle reference routes
+  // to the read-only skill-file viewer (`#/__skill-file__/…`); everything else
+  // falls back to the standard `#/<doc>` hash.
   const hashForSelectedNode = (
     selection: Parameters<typeof getHashForGraphDocSelection>[0],
   ): string => selectedNodeIntent?.hash ?? getHashForGraphDocSelection(selection);
@@ -450,6 +455,10 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
           data-slot="graph-controls"
           className={cn(
             'ml-auto flex items-center gap-2',
+            // Opt the controls back out of the header drag region so clicks on
+            // the mode toggle / globe / expand buttons fire instead of starting
+            // a window drag. Each direct child (ToggleGroup, the icon-button
+            // group) is a single DOM node, mirroring EditorHeader's right zone.
             isExpanded && isElectronHost && '[&>*]:[-webkit-app-region:no-drag]',
           )}
         >

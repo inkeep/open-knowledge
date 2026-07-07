@@ -1,3 +1,17 @@
+/**
+ * `ok diagnose process <pid>` — capture a diagnostic bundle for a running
+ * open-knowledge server process without modifying production code or killing
+ * the process.
+ *
+ * Captures by default:
+ *   metadata.json          — process info, binary, content dir, lock state
+ *   lsof.txt               — all open files and network connections
+ *   inspector-endpoints.json — Node inspector /json/list response
+ *   cpu.cpuprofile         — V8 CPU profile (15 s by default)
+ *   stacks.txt             — human-readable top call stacks
+ *   process-stats.jsonl    — CPU/MEM/RSS samples taken during profiling
+ */
+
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,6 +33,10 @@ import {
 } from '../utils/process-scan.ts';
 import { healthCommand } from './diagnose-health.ts';
 import { inspectLock, type LockState } from './lock-state.ts';
+
+// ---------------------------------------------------------------------------
+// Process stats
+// ---------------------------------------------------------------------------
 
 interface ProcessStat {
   ts: string;
@@ -50,11 +68,16 @@ function sampleProcessStat(pid: number): ProcessStat | null {
   return { ts: new Date().toISOString(), pid, cpuPercent, memPercent, rssKb, vszKb };
 }
 
+// ---------------------------------------------------------------------------
+// lsof
+// ---------------------------------------------------------------------------
+
 function collectLsof(pid: number): string | null {
   const r = spawnSync('lsof', ['-p', String(pid)], { encoding: 'utf-8', timeout: 5000 });
   return r.error || !r.stdout ? null : r.stdout;
 }
 
+/** Parse localhost LISTEN ports from `lsof` output. */
 function localhostListenPorts(lsofOutput: string): number[] {
   const ports: number[] = [];
   for (const line of lsofOutput.split('\n')) {
@@ -66,6 +89,10 @@ function localhostListenPorts(lsofOutput: string): number[] {
   }
   return ports;
 }
+
+// ---------------------------------------------------------------------------
+// Inspector endpoint discovery
+// ---------------------------------------------------------------------------
 
 function getInspectorEndpoints(port: number): unknown[] | null {
   const r = spawnSync('curl', ['-s', '--max-time', '2', `http://127.0.0.1:${port}/json/list`], {
@@ -80,6 +107,10 @@ function getInspectorEndpoints(port: number): unknown[] | null {
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// CDP profiler
+// ---------------------------------------------------------------------------
 
 function writeCdpScript(wsUrl: string, profileMs: number, outputPath: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'ok-cdp-'));
@@ -141,10 +172,16 @@ async function runProfiler(
 
   try {
     rmSync(join(scriptPath, '..'), { recursive: true, force: true });
-  } catch {}
+  } catch {
+    // best-effort tmpdir cleanup
+  }
 
   return succeeded;
 }
+
+// ---------------------------------------------------------------------------
+// Stacks summary
+// ---------------------------------------------------------------------------
 
 type CpuProfile = {
   nodes: Array<{
@@ -221,6 +258,10 @@ function summarizeProfile(profileJson: string): string {
   return lines.join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// Injectable deps + options (for testing)
+// ---------------------------------------------------------------------------
+
 interface DiagnoseProcessDeps {
   discover?: () => Promise<string[]>;
   inspect?: (lockDir: string, name: 'server' | 'ui') => LockState;
@@ -248,6 +289,10 @@ interface RunDiagnoseOpts {
   noInspector?: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Core logic
+// ---------------------------------------------------------------------------
+
 export async function runDiagnose(
   opts: RunDiagnoseOpts,
   deps: DiagnoseProcessDeps = {},
@@ -268,6 +313,7 @@ export async function runDiagnose(
         process.kill(p, 0);
         return true;
       } catch (err) {
+        // EPERM: process exists but we lack signal permission — still alive
         return (err as NodeJS.ErrnoException).code === 'EPERM';
       }
     });
@@ -279,11 +325,13 @@ export async function runDiagnose(
   const sleepFn = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const profileMs = cpuProfileSecs * 1000;
 
+  // Verify process is alive
   if (!isAlive(pid)) {
     log(pc.red(`No process with pid ${pid} found.`));
     return;
   }
 
+  // Discover lock to get content dir (single pass — also used for lockInfo in metadata)
   const lockDirs = await discover();
   let contentDir: string | null = null;
   let lockInfo: unknown = null;
@@ -296,6 +344,7 @@ export async function runDiagnose(
     }
   }
 
+  // Output directory
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const outDir = opts.output
     ? opts.output
@@ -320,6 +369,7 @@ export async function runDiagnose(
     log(`  wrote ${name}`);
   };
 
+  // 1. Metadata
   const command = resolveCmd(pid);
   const usage = resolveUsage(pid);
   write(
@@ -331,11 +381,13 @@ export async function runDiagnose(
     ),
   );
 
+  // 2. lsof
   log('  sampling lsof');
   const lsofOutput = lsofFn(pid);
   if (lsofOutput) write('lsof.txt', lsofOutput);
 
   if (!noInspector) {
+    // 3. Find inspector port from lsof (Node inspector always binds 127.0.0.1)
     const inspectorPort = lsofOutput
       ? (localhostListenPorts(lsofOutput).find((p) => p >= 9229 && p <= 9299) ?? 9229)
       : 9229;
@@ -380,6 +432,7 @@ export async function runDiagnose(
     }
   }
 
+  // Privacy warning
   log('');
   log(pc.yellow('⚠  Before sharing, review what each file contains:'));
   log(
@@ -396,25 +449,57 @@ export async function runDiagnose(
   log(`Bundle: ${pc.bold(outDir)}`);
 }
 
+// ---------------------------------------------------------------------------
+// `ok diagnose bundle` — telemetry/logs/state zip for bug reports
+// ---------------------------------------------------------------------------
+
 export interface RunDiagnoseBundleOpts {
+  /** Project content directory (where `.ok/local/` lives). */
   contentDir: string;
+  /**
+   * Project root (where `.ok/config.yml` lives). Defaults to `contentDir`.
+   * Forwarded to the collector so the manifest's `telemetry.localSink` block
+   * reads from the project root rather than the content directory.
+   */
   projectDir?: string;
+  /** Optional PID — when set, runs `ok diagnose process <pid>` into a tmp dir and includes the output under `process/`. */
   pid?: number;
+  /** Optional output path. Defaults to `<contentDir>/.ok/local/diagnostics/bundle-<ISO ts>.zip`. */
   out?: string;
+  /** Skip the y/N prompt and write unconditionally. */
   yes?: boolean;
+  /**
+   * Apply `--redact`: hash `doc.name` attribute values in staged JSONLs and
+   * replace the absolute content-dir prefix with the literal `<CONTENT_DIR>`
+   * token. Originals under `<contentDir>/.ok/local/` are NOT modified — the
+   * redactor mutates only the staged copies inside the bundle.
+   */
   redact?: boolean;
 }
 
 export interface RunDiagnoseBundleResult {
+  /** Absolute path to the written zip, or `null` if the user declined the prompt. */
   outputPath: string | null;
+  /** True iff the user said no to the prompt. */
   declined: boolean;
 }
 
 export interface RunDiagnoseBundleDeps {
+  /** Prints a single line to the terminal. */
   log?: (msg: string) => void;
+  /** Asks the user for one trimmed line of input (production reads stdin). */
   prompt?: (question: string) => Promise<string>;
+  /**
+   * Invokes the existing process-diagnose flow into a fresh tmp dir and
+   * returns the dir. Tests stub this to skip CDP/lsof side effects.
+   */
   runProcessDiagnose?: (pid: number) => Promise<string>;
+  /** Injected into `collectBundle` — see `CollectBundleDeps`. */
   collectDeps?: CollectBundleDeps;
+  /**
+   * Override for the timestamp used in the default output filename. Defaults
+   * to `new Date()`. Tests pin this so the output path is deterministic.
+   */
   now?: () => Date;
 }
 
@@ -433,6 +518,11 @@ async function defaultRunProcessDiagnose(pid: number): Promise<string> {
   return dir;
 }
 
+/**
+ * Format bytes as a short human string (e.g. "1.2 MB"). For the y/N prompt
+ * summary only — not parsed downstream. KiB-style binary units match what
+ * macOS Finder + most CLI tools show.
+ */
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
@@ -442,6 +532,11 @@ function formatBytes(bytes: number): string {
   return `${(mb / 1024).toFixed(1)} GB`;
 }
 
+/**
+ * y / yes (case-insensitive, leading/trailing whitespace trimmed). Anything
+ * else — including empty input from a bare Enter — counts as decline. Matches
+ * the y/N convention spelled out in the prompt.
+ */
 function isAffirmative(answer: string): boolean {
   const a = answer.trim().toLowerCase();
   return a === 'y' || a === 'yes';
@@ -481,6 +576,9 @@ export async function runDiagnoseBundle(
   const runProcess = deps.runProcessDiagnose ?? defaultRunProcessDiagnose;
   const now = deps.now ?? (() => new Date());
 
+  // Resolve the default output path (or honor --out). When --out is supplied,
+  // validate the parent BEFORE collecting — fail fast so we don't stage a
+  // bundle the user will never see.
   let outputPath: string;
   if (opts.out !== undefined) {
     outputPath = opts.out;
@@ -497,6 +595,8 @@ export async function runDiagnoseBundle(
     outputPath = join(defaultDir, `bundle-${ts}.zip`);
   }
 
+  // If --pid passed, run process diagnose into a tmp dir first; pass the
+  // resulting dir to collectBundle so it lands under `process/`.
   let processDir: string | undefined;
   if (opts.pid !== undefined) {
     log(pc.dim(`Running ok diagnose process ${opts.pid} into a temp dir`));
@@ -530,13 +630,23 @@ export async function runDiagnoseBundle(
     return { outputPath, declined: false };
   } finally {
     collected.cleanup();
+    // Best-effort cleanup of the process-diagnose tmp dir. If a custom
+    // `runProcessDiagnose` returned a caller-owned dir, this still tries to
+    // remove it — the contract is "tmp dir owned by the runner."
     if (processDir !== undefined) {
       try {
         rmSync(processDir, { recursive: true, force: true });
-      } catch {}
+      } catch {
+        // The collector already snapshotted the contents into staging; a
+        // failure to remove the tmp dir is not actionable for the user.
+      }
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Commander command
+// ---------------------------------------------------------------------------
 
 export function diagnoseCommand(): Command {
   const root = new Command('diagnose').description(

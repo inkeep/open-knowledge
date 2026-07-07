@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the editor spellcheck context-menu template + pop dispatch.
+ * Covers section composition per `ContextMenuParams` (edit roles, spellcheck
+ * rows, Look Up / Search), separator omission for empty sections, and callback
+ * dispatch wiring. Mirrors `asset-menu.test.ts` — template shape is exercised
+ * without mounting Electron's Menu.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
 import {
@@ -42,6 +50,7 @@ function build(
   return buildSpellcheckMenuTemplate({ params, spellCheckEnabled, actions });
 }
 
+/** Project a template to a comparable shape: role, label, or separator marker. */
 function shapeOf(template: MenuItemConstructorOptions[]): string[] {
   return template.map((e) => e.role ?? e.label ?? `[${e.type}]`);
 }
@@ -112,6 +121,9 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
   });
 
   test('flagged word with checking off → Enable row only, no suggestion rows', () => {
+    // `spellCheckEnabled` is OK's persisted flag while `misspelledWord` comes
+    // from Chromium — a toggle racing a right-click can deliver both, so this
+    // pins which branch wins: the disabled state.
     const params = makeParams({ misspelledWord: 'teh', dictionarySuggestions: ['the', 'tech'] });
     const template = build(params, false, makeActions());
     expect(shapeOf(template)).toEqual([
@@ -250,6 +262,9 @@ describe('buildSpellcheckMenuTemplate — callback dispatch', () => {
 
   test('query truncation never splits a surrogate pair (encodeURIComponent-safe)', () => {
     const actions = makeActions();
+    // 199 BMP chars + an astral emoji straddling the 200-code-unit query cap —
+    // a naive slice leaves a trailing lone surrogate, which encodeURIComponent
+    // rejects with URIError at the search-URL sink.
     const template = build(makeParams({ selectionText: `${'x'.repeat(199)}😀` }), true, actions);
     clickRow(template, 'Search with Google');
     const query = actions.search.mock.calls[0]?.[0] ?? '';
@@ -259,6 +274,7 @@ describe('buildSpellcheckMenuTemplate — callback dispatch', () => {
 
   test('label truncation never splits a surrogate pair', () => {
     const actions = makeActions();
+    // 49 BMP chars + an astral emoji straddling the 50-code-unit label cap.
     const template = build(
       makeParams({ selectionText: `${'y'.repeat(49)}😀${'z'.repeat(10)}` }),
       true,

@@ -79,6 +79,9 @@ describe('recordOnboardingFileStep', () => {
     const fetchSpy = mock(() => Promise.resolve(new Response('{}', { status: 200 })));
     globalThis.fetch = fetchSpy as never;
     const store = freshStore();
+    // activate() first so `initialized` is true — otherwise the guard's
+    // `!initialized` arm would pass this test even if the `steps.file` arm were
+    // removed. This isolates the already-complete branch.
     store.activate();
     store.markStepComplete('file');
     await recordOnboardingFileStep(store);

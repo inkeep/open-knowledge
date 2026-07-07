@@ -1,3 +1,15 @@
+/**
+ * Wiring test: selecting an external URL node in the fullscreen graph and
+ * clicking "Open link" routes through the desktop bridge
+ * (`okDesktop.shell.openExternal`) on Electron, and through `window.open`
+ * on web — never opening a new in-app window on desktop.
+ *
+ * This exercises the real `GraphPanel` "Open link" call site, complementing
+ * the isolated `openExternalUrl` unit test in `lib/external-link.test.ts`.
+ * The force-graph canvas can't be clicked in jsdom, so the graph selection
+ * is driven through the captured `onSelectNode` handler instead.
+ */
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -36,6 +48,8 @@ mock.module('@/components/PageListContext', () => ({
 
 type ExternalSelection = { kind: 'external'; id: string; label: string; url: string };
 
+// Capture GraphView's `onSelectNode` so the test can simulate selecting an
+// external node without rendering the real force-graph canvas.
 const graphHarness: { select?: (sel: ExternalSelection) => void } = {};
 
 mock.module('@/components/GraphView', () => ({
@@ -78,7 +92,10 @@ describe('GraphPanel — external "Open link" routes to the OS browser', () => {
         <GraphPanel activeDocName="docs/Active" />
       </TooltipProvider>,
     );
+    // Selection is only wired in the expanded (fullscreen) graph.
     await userEvent.click(screen.getByRole('button', { name: 'Expand graph' }));
+    // Drive an external-node selection through the captured handler; the
+    // selected-node card with the "Open link" button then renders.
     act(() => {
       graphHarness.select?.({
         kind: 'external',

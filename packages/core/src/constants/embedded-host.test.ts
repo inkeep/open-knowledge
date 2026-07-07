@@ -36,6 +36,8 @@ describe('detectEmbeddedHostFromBrowser', () => {
     });
 
     test('Cursor with hyphenated flavor (e.g. Nightly-2)', () => {
+      // Regex must accept hyphens, dots, spaces inside the parenthetical —
+      // [^)]+ rather than \w+ (which is alnum+underscore only).
       expect(detectFromUA(`${CHROME_VANILLA} Cursor(Nightly-2)/1.0`)).toBe('cursor');
     });
   });

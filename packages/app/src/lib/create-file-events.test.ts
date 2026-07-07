@@ -40,6 +40,11 @@ afterEach(() => {
 });
 
 describe('create-file event bridge', () => {
+  // The emit/subscribe pair is a one-shot imperative command — no retry path,
+  // no self-healing follow-up. Drift on the event-name constant would silently
+  // break the EmptyEditorState "start from scratch" CTA with no signal.
+  // These tests pin the wiring so a future split / rename trips the suite
+  // instead of the user.
   test('subscriber receives the emitted request', () => {
     installFakeWindow();
     let calls = 0;

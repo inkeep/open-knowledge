@@ -15,6 +15,7 @@ describe('resolveAppVersion', () => {
   test('returns the real packages/app/package.json version, not a sentinel', () => {
     const version = resolveAppVersion();
     expect(version).toBe(appPkgVersion);
+    // A build must never silently inject a placeholder.
     expect(version).not.toBe('dev');
     expect(version).not.toBe('0.0.0-unknown');
   });
@@ -37,6 +38,12 @@ describe('injectAppVersionEnv', () => {
   });
 });
 
+// guard: the injection must be wired into EVERY build path or the browser
+// silently falls back to the sentinel. The two configs cannot be imported in
+// the unit tier (vite.config pulls in the full server via hocuspocusPlugin;
+// electron.vite runs a top-level `await babel()` and needs the electron-vite
+// runner) — runtime coverage here is infeasible, so we assert the wiring at the
+// source level instead.
 describe('build-path wiring (R-3)', () => {
   const repoConfigs = [
     resolve(here, '..', '..', 'vite.config.ts'),

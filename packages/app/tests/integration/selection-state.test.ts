@@ -1,3 +1,26 @@
+/**
+ * Selection-state integration tests.
+ *
+ * Exercises SelectionStatePlugin against a real Hocuspocus harness:
+ *   - Agent writes JSX content through the full persistence → observer →
+ *     fragment path.
+ *   - Client-side: construct an EditorState from the synced Y.XmlFragment,
+ *     install the plugin, dispatch a NodeSelection, read plugin state.
+ *   - Verify bridge invariant holds after every selection-state change
+ *     (plugin is read-only over the PM doc — mutation would be a
+ *     regression of SC-INV-1).
+ *
+ * Does NOT spin up a full TipTap Editor — the test runtime lacks a DOM
+ * shim. Instead, we instantiate the PM plugin directly via a mirror-stub
+ * that wraps the exported pure deriveBlockSelection function. This
+ * exercises the same state-derivation code path as production, but
+ * without React/DOM machinery.
+ *
+ * Per-test docName isolation via createTestClient(port). Bridge invariant
+ * asserted via assertBridgeInvariant from the harness (established
+ * convention).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { EditorState, NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
@@ -29,7 +52,7 @@ const EMPTY: BlockSelection = {
 /** Minimal stub plugin mirroring the real plugin's state derivation —
  *  tests the pure `deriveBlockSelection` function without React/DOM.
  *  Origin classification via DOM events is out of scope here (covered by
- *  E2E in US-010); tr-meta overrides work via SELECTION_ORIGIN_META_KEY. */
+ *  E2E); tr-meta overrides work via SELECTION_ORIGIN_META_KEY. */
 function makeStubPlugin() {
   return new Plugin<BlockSelection>({
     key: selectionStatePluginKey,
@@ -70,6 +93,8 @@ function findJsxComponentPos(state: EditorState, componentName: string): number 
   return found;
 }
 
+// ── Fixtures ─────────────────────────────────────────────────────────────
+
 let server: TestServer;
 
 beforeAll(async () => {
@@ -79,6 +104,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await server.cleanup();
 });
+
+// ── Tests ────────────────────────────────────────────────────────────────
 
 describe('SelectionStatePlugin integration', () => {
   test('T1: top-level NodeSelection on a 5-pack descriptor produces single-entry ancestorChain', async () => {
@@ -102,6 +129,7 @@ describe('SelectionStatePlugin integration', () => {
       expect(sel?.ancestorChain).toHaveLength(1);
       expect(sel?.ancestorChain[0].componentName).toBe('Callout');
 
+      // Bridge invariant: plugin is read-only; fragment untouched.
       assertBridgeInvariant(client.ytext, client.fragment);
     } finally {
       await client.cleanup();
@@ -132,6 +160,7 @@ describe('SelectionStatePlugin integration', () => {
       expect(sel?.ancestorChain).toHaveLength(2);
       expect(sel?.ancestorChain[0].componentName).toBe('Callout');
       expect(sel?.ancestorChain[1].componentName).toBe('Accordion');
+      // selectedBlockId is the innermost (Accordion).
       expect(sel?.selectedBlockId).toBe(sel?.ancestorChain[1].bridgeId);
 
       assertBridgeInvariant(client.ytext, client.fragment);
@@ -158,11 +187,14 @@ describe('SelectionStatePlugin integration', () => {
       );
       expect(selectionStatePluginKey.getState(withSelection)?.selectedBlockId).not.toBeNull();
 
+      // Delete the selection — state must reconcile to empty without throwing.
       const afterDelete = withSelection.apply(withSelection.tr.deleteSelection());
       const sel = selectionStatePluginKey.getState(afterDelete);
       expect(sel?.selectedBlockId).toBeNull();
       expect(sel?.ancestorChain).toEqual([]);
 
+      // Client's fragment is untouched by our in-memory state apply —
+      // bridge still valid.
       assertBridgeInvariant(client.ytext, client.fragment);
     } finally {
       await client.cleanup();
@@ -182,6 +214,9 @@ describe('SelectionStatePlugin integration', () => {
       const calloutPos = findJsxComponentPos(editorState, 'Callout');
       expect(calloutPos).toBeGreaterThanOrEqual(0);
 
+      // Position inside the Callout's content hole — first interior text pos.
+      // Callout opens at calloutPos; first content at calloutPos + 2 (wrapper +
+      // first paragraph open).
       const textPos = calloutPos + 2;
       const withSelection = editorState.apply(
         editorState.tr.setSelection(TextSelection.create(editorState.doc, textPos)),

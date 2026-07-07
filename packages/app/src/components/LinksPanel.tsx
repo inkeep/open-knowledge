@@ -138,16 +138,36 @@ function ShowMoreButton({
 interface LinkRowProps {
   icon: ReactNode;
   iconColorClass?: string;
+  /** Tooltip shown on hover/focus of the entire row. Use for state hints that should be discoverable from anywhere in the row. */
   rowTooltip?: string;
   title: string;
+  /** Secondary mono path line. Omitted when equal to title. */
   path?: string;
   anchor?: string | null;
   snippet?: string | null;
+  /** Native title attribute on the title line — used for browser tooltip on truncation. */
   titleHover?: string;
   ariaLabel?: string;
+  /**
+   * If set, the row's primary action is navigation: renders an `<a href>`. The link's
+   * `::after` pseudo-element expands its hit area to cover the whole row (linkbox
+   * pattern), so the user gets native browser features (Cmd/Ctrl-click → new tab,
+   * right-click → context menu, drag-and-drop URL, visited state) without nested
+   * interactive elements.
+   *
+   * If unset, the row's primary action is treated as a non-navigation action (e.g. opening
+   * a dialog) and renders a `<button>` instead.
+   */
   href?: string;
+  /** When `href` is external, opens in a new tab with `rel="noopener noreferrer"`. */
   external?: boolean;
   disabled?: boolean;
+  /**
+   * Primary action handler. Required when `href` is unset (button mode); optional when
+   * `href` is set (called alongside native navigation, useful for telemetry). Native
+   * link semantics handle navigation on their own — don't `preventDefault` from this
+   * handler unless you intentionally mean to suppress navigation.
+   */
   onClick?: () => void;
 }
 
@@ -171,6 +191,11 @@ function LinkRow({
     <span className={cn('mt-0.5 shrink-0', iconColorClass ?? 'text-muted-foreground')}>{icon}</span>
   );
 
+  // The primary interactive sits inside the title slot. Its `::after` expands the
+  // clickable hit area to fill the relatively-positioned row container, so clicking
+  // anywhere in the row triggers the action. The visible content (path, snippet) lives
+  // in normal flow; the secondary [+] button uses `relative z-10` to stack above the
+  // overlay and remain independently clickable.
   const overlayClassName =
     'block w-full truncate text-left font-medium text-foreground no-underline outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring';
   const primaryInteractive = href ? (
@@ -385,6 +410,10 @@ function ForwardLinksSection({ docName }: { docName: string }) {
     const titleEqualsDocName = link.title === link.docName;
     const displayTitle = titleEqualsDocName ? path : link.title;
     const key = `doc:${link.docName}:${link.anchor ?? ''}`;
+    // Resolved & folder rows navigate; missing rows fall back to the raw docName which
+    // never produces a usable href (we render as a button instead). A
+    // skill-file target carries a kind-aware viewer hash (`#/__skill-file__/…`) that
+    // can't be expressed as a docName hash, so prefer it when present.
     const navigateHashDocName =
       linkIntent.kind === 'navigate' ? linkIntent.hashDocName : link.docName;
     const navigateHref =

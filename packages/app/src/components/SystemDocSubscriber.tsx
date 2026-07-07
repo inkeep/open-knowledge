@@ -21,6 +21,10 @@ export function SystemDocSubscriber() {
     refreshServerInfo,
   } = useDocumentContext();
 
+  // Ref pattern: dispatchers are re-created per-render in DocumentContext's `value`
+  // literal. Capturing them by closure inside `onStateless` would tie the main
+  // effect's lifecycle to every render. One ref over an object holds all five
+  // dispatchers; a no-deps effect refreshes the snapshot after every render.
   const handlersRef = useRef({
     updateServerInstanceId,
     onBranchSwitched,
@@ -46,6 +50,10 @@ export function SystemDocSubscriber() {
       name: SYSTEM_DOC_NAME,
       document: doc,
       onStateless: ({ payload }: { payload: string }) => {
+        // CC1 stateless channel multiplexes payload-bearing shapes via
+        // the shared dispatcher in `@/lib/cc1` — adding a new channel
+        // is a one-place edit there, not parallel updates here + the
+        // integration harness's `attachSystemDocSubscriber`.
         dispatchCC1Stateless(payload, {
           onServerInfo: (info) => {
             handlersRef.current.updateServerInstanceId(info.serverInstanceId);
@@ -92,6 +100,15 @@ export function SystemDocSubscriber() {
       }
     });
 
+    // Track first-sync vs subsequent-sync via the shared
+    // `createSyncedReconnectGate` helper — same semantics as the
+    // integration harness's `attachSystemDocSubscriber`, single
+    // source of truth for the "fire-on-reconnect-only" wire-up. The
+    // boot fetch (DocumentContext) already covers the initial sync,
+    // so we skip the first one to avoid a redundant request. After
+    // that, every `synced` is a real WebSocket reconnect — re-fetch
+    // /api/server-info to recover any disk-ack / server-info /
+    // branch-switched frames missed during the WS drop.
     const onReconnectSynced = createSyncedReconnectGate(() => {
       void handlersRef.current.refreshServerInfo();
     });
@@ -100,6 +117,10 @@ export function SystemDocSubscriber() {
       onReconnectSynced();
     });
 
+    // One-shot per-clientID warning when a stale bundled client still publishes
+    // `user.type === 'agent'`. `AwarenessUser.type` is narrowed to `'human'`
+    // — anything else is a rollout drift signal. Gated on
+    // NODE_ENV !== 'test' to avoid test-environment noise.
     const warnedStaleAgentClients = new Set<number>();
     const handleAwarenessChange = (): void => {
       if (process.env.NODE_ENV === 'test' || !provider.awareness) return;
@@ -115,6 +136,9 @@ export function SystemDocSubscriber() {
       }
     };
     provider.awareness?.on('change', handleAwarenessChange);
+    // Lift the provider into DocumentContext so presence-bar consumers
+    // (use-presence) can read the __system__ awareness without
+    // re-materializing a second provider.
     setSystemProvider(provider);
 
     return () => {

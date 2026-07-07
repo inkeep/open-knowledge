@@ -1,3 +1,16 @@
+/**
+ * Tests for the sourceLiteral mark's safety invariant.
+ *
+ * `sourceRaw` is emitted verbatim during markdown serialization, bypassing
+ * the standard escape machinery. Without a consistency check, a caller that
+ * can mutate the PM document could pin one byte sequence as visible text and
+ * a different sequence in `sourceRaw`, persisting bytes the user never saw —
+ * a hidden-content injection vector. `isValidSourceLiteralRaw` is the gate
+ * that bounds legitimate divergence to: markdown backslash escapes, NBSP
+ * normalization, and an inline-whitespace numeric char-ref run (`&#x20;`/`&#x9;`)
+ * whose decoded space(s)/tab(s) equal the visible text.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { isValidSourceLiteralRaw } from './source-literal-mark.ts';
 
@@ -16,16 +29,21 @@ describe('isValidSourceLiteralRaw — legitimate cases', () => {
   });
 
   test('trailing backslash run: raw has one extra trailing \\ vs visible', () => {
+    // Source `text \\\` parses as visible `text \\` (one escape pair + lone \).
     expect(isValidSourceLiteralRaw('text \\\\\\', 'text \\\\')).toBe(true);
+    // Source `\\\\` (4) -> visible `\\` (one from escape pair, one more from a second pair).
     expect(isValidSourceLiteralRaw('\\\\\\\\', '\\\\')).toBe(true);
   });
 
   test('escaped bracket plus trailing backslash', () => {
+    // Source `\[text\` -> visible `[text\`
     expect(isValidSourceLiteralRaw('\\[text\\', '[text\\')).toBe(true);
   });
 
   test('NBSP in raw normalizes to space for comparison', () => {
+    // U+00A0 (NBSP) on the raw side; U+0020 (regular space) on the visible side.
     expect(isValidSourceLiteralRaw('foo\u00A0bar', 'foo bar')).toBe(true);
+    // Both sides NBSP works too.
     expect(isValidSourceLiteralRaw('foo\u00A0bar', 'foo\u00A0bar')).toBe(true);
   });
 
@@ -83,6 +101,9 @@ describe('isValidSourceLiteralRaw — rejects hidden injections', () => {
 });
 
 describe('isValidSourceLiteralRaw — inline-whitespace numeric char-ref divergence class', () => {
+  // The byte-fidelity serializer mints `&#x20;`/`&#x9;` for a phrasing-boundary
+  // space/tab; the editor shows the real space/tab while sourceRaw keeps the
+  // bytes. This divergence is legitimate ONLY for inline whitespace.
   test('accepts a whitespace numeric ref whose decoded char is the visible text', () => {
     expect(isValidSourceLiteralRaw('&#x20;', ' ')).toBe(true); // hex space
     expect(isValidSourceLiteralRaw('&#X20;', ' ')).toBe(true); // capital X
@@ -104,6 +125,8 @@ describe('isValidSourceLiteralRaw — inline-whitespace numeric char-ref diverge
   });
 
   test('rejects a VERTICAL-whitespace ref displayed as the control char (structure smuggle)', () => {
+    // Newline / CR / VT / FF are NOT inline whitespace — decoding them into an
+    // inline text node would smuggle structure. The gate keeps rejecting them.
     expect(isValidSourceLiteralRaw('&#xA;', '\n')).toBe(false);
     expect(isValidSourceLiteralRaw('&#10;', '\n')).toBe(false);
     expect(isValidSourceLiteralRaw('&#xD;', '\r')).toBe(false);
@@ -111,6 +134,8 @@ describe('isValidSourceLiteralRaw — inline-whitespace numeric char-ref diverge
   });
 
   test('rejects a non-whitespace numeric ref displayed as its decoded char', () => {
+    // `&#x41;` → "A" must NOT pass the gate as a decoded display; non-whitespace
+    // refs stay literal.
     expect(isValidSourceLiteralRaw('&#x41;', 'A')).toBe(false);
     expect(isValidSourceLiteralRaw('&#38;', '&')).toBe(false);
   });

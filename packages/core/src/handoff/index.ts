@@ -1,3 +1,11 @@
+/**
+ * Public surface of the Open-in-Agent handoff subsystem.
+ *
+ * Core is "shared, no React, no Node APIs" — this barrel re-exports only
+ * pure string I/O and type shapes. Dispatch orchestration, UI, and the
+ * `KNOWN_TARGETS` data constant live in `packages/app/src/lib/handoff/`.
+ */
+
 export { buildClaudeUrl } from './claude-url.ts';
 export { buildCodexUrl } from './codex-url.ts';
 export { buildCursorUrl } from './cursor-url.ts';

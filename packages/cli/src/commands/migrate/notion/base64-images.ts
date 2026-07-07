@@ -1,5 +1,18 @@
+/**
+ * Extract inline base64 `data:` images to real files.
+ *
+ * Notion sometimes exports images inline as base64 `data:` URIs, and as
+ * empty-text links (`[](data:image/png;base64,...)`) rather than image embeds —
+ * so they neither render nor round-trip, and they bloat the file (a single line
+ * can be ~180 KB). We decode each blob to a sibling image file and rewrite the
+ * reference as an image embed `![](file)`. With `strip`, the blob is removed
+ * instead. Pure: returns a plan (rewritten markdown + assets to write); the
+ * driver performs the writes. Idempotent — no `data:` blobs remain afterward.
+ */
+
 export interface Base64Result {
   markdown: string;
+  /** Extracted image files; `filename` is relative to the page's directory. */
   assets: Array<{ filename: string; bytes: Uint8Array }>;
 }
 
@@ -24,6 +37,11 @@ function slugify(name: string): string {
   );
 }
 
+/**
+ * @param markdown page contents
+ * @param pageName the page's filename (used to derive deterministic asset names)
+ * @param opts.strip when true, delete the blob instead of extracting it
+ */
 export function extractBase64Images(
   markdown: string,
   pageName: string,

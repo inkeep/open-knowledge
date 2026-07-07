@@ -32,6 +32,7 @@ describe('buildWorkspaceEntries', () => {
       { kind: 'file', path: 'notes/zebra', name: 'zebra' },
     ]);
   });
+  // non-markdown files are first-class omnibar entries.
   test('admits non-markdown filePaths as kind:file entries with bodyIndexed:false', () => {
     const entries = buildWorkspaceEntries(
       new Set(['notes/guide']),
@@ -76,6 +77,11 @@ describe('buildWorkspaceEntries', () => {
       docExt: '.mdx',
     });
   });
+  // Pages take precedence on path collision — a markdown page `notes/foo` (no
+  // extension) would never collide with a non-markdown `notes/foo.csv`, but
+  // the filePaths set MAY redundantly include a path that's already a page
+  // when the wire bytes drift (the server is the source of truth on this
+  // partition; the dedup is defensive).
   test('skips a non-markdown file already present in pages', () => {
     const entries = buildWorkspaceEntries(
       new Set(['data/example.csv']),
@@ -89,6 +95,9 @@ describe('buildWorkspaceEntries', () => {
 });
 
 describe('searchWorkspaceEntries with non-markdown files', () => {
+  // a tracked non-markdown file is findable in ⌘K by name AND partial
+  // path/folder. Exercised against the local corpus (per-keystroke), the
+  // path /api/search backs at higher latency.
   const entries = buildWorkspaceEntries(
     new Set(['notes/guide', 'roadmap']),
     new Set(['notes', 'docs']),
@@ -117,6 +126,13 @@ describe('searchWorkspaceEntries with non-markdown files', () => {
   });
 
   test('a markdown page maps to the page tier and outranks a lexically-tied non-markdown sibling', () => {
+    // Pins the default-page mapping in the corpus builder: a markdown
+    // WorkspaceEntry (no bodyIndexed) must enter as a page, NOT a file. Both
+    // entries share the basename `alpha`, so the lexical match is identical
+    // and only the canonical-first kind demotion decides order. If the mapping
+    // inverted (markdown -> file), the markdown page would take the demotion
+    // and the non-markdown file would rank first. The non-markdown entry is
+    // listed first to prove ordering is by rank, not input order.
     const tieEntries: WorkspaceEntry[] = [
       { kind: 'file', path: 'data/alpha', name: 'alpha', bodyIndexed: false },
       { kind: 'file', path: 'notes/alpha', name: 'alpha' },
@@ -160,6 +176,8 @@ describe('searchWorkspaceEntries', () => {
   });
 });
 
+// the search-hint affordance classifier. Pin the four modes
+// the omnibar branches on so the rendered hint is auditable from one site.
 describe('classifyOmnibarSearchHint', () => {
   test('idle on empty / whitespace query regardless of results', () => {
     expect(classifyOmnibarSearchHint('', [])).toBe('idle');
@@ -209,6 +227,10 @@ describe('classifyOmnibarSearchHint', () => {
     expect(classifyOmnibarSearchHint('excerpt', results)).toBe('content');
   });
 
+  // truncation observability: when /api/search reports the corpus hit
+  // the `OK_SEARCH_MAX_ENTRIES` cap, the classifier returns `'truncated'` in
+  // preference to `'name-only'` / `'content'` — a user looking for a missing
+  // file needs the cap signal regardless of how the surviving results rank.
   test('truncated:true overrides name-only when there are results', () => {
     const results: WorkspaceEntry[] = [{ kind: 'file', path: 'notes/foo', name: 'foo' }];
     expect(classifyOmnibarSearchHint('foo', results, { truncated: true })).toBe('truncated');
@@ -270,6 +292,10 @@ describe('fetchWorkspaceSearchEntries', () => {
       requestBody = JSON.parse(String(init?.body));
       return new Response(
         JSON.stringify({
+          // flat success body — no `{ ok: true }` wrapper. The MCP
+          // shim's normalizeResponse synthesizes `ok: true` for in-process
+          // consumers, but the wire is flat. Mirrors the actual server
+          // contract emitted by handleSearch.
           results: [
             {
               kind: 'page',
@@ -290,7 +316,11 @@ describe('fetchWorkspaceSearchEntries', () => {
     expect(requestBody).toEqual({
       query: 'homepage',
       intent: 'full_text',
+      // Per-keystroke nav ranks name-first over the full_text candidate set.
       ranking: 'navigation',
+      // `'file'` joins the scope set so /api/search returns
+      // name-only non-markdown rows alongside the existing page / folder /
+      // content tiers.
       scopes: ['page', 'folder', 'content', 'file'],
       limit: 50,
       source: 'omnibar',
@@ -321,7 +351,10 @@ describe('fetchWorkspaceSearchEntries', () => {
     expect(requestBody).toEqual({
       query: 'auth retries',
       intent: 'full_text',
+      // The deliberate "by meaning" submit keeps the body-weighted ranking.
       ranking: 'relevance',
+      // `'file'` is part of the omnibar's scope set so the
+      // server's name-only `kind:'file'` corpus tier surfaces results.
       scopes: ['page', 'folder', 'content', 'file'],
       limit: 50,
       source: 'omnibar',
@@ -329,6 +362,11 @@ describe('fetchWorkspaceSearchEntries', () => {
     });
   });
 
+  // the server's `kind:'file'` row (a tracked non-markdown
+  // file from the all-files corpus) collapses into the same client
+  // `kind:'file'` entry as a markdown page. Without this mapping every
+  // non-markdown hit returned by /api/search would silently drop on the
+  // client.
   test('maps a kind:file server row to a client kind:file name-only entry', async () => {
     globalThis.fetch = (async () =>
       new Response(
@@ -360,6 +398,11 @@ describe('fetchWorkspaceSearchEntries', () => {
   });
 
   test('threads `truncated:true` from the server response into the result', async () => {
+    // truncation observability: when the corpus build hit
+    // `OK_SEARCH_MAX_ENTRIES` and dropped deepest-tail paths, the wire payload
+    // carries `truncated: true`. The omnibar uses it to surface a "results
+    // capped" hint via `classifyOmnibarSearchHint({ truncated })` so a missing
+    // file reads as a cap artifact rather than a typo. Default is false.
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ results: [], truncated: true }), {
         status: 200,

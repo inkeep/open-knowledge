@@ -103,6 +103,8 @@ export function resolveFileTreeSelectionAction(
     return { kind: 'folder', path: appPath };
   }
 
+  // Inline rename can briefly select the not-yet-created destination path.
+  // Dropping that transient file selection avoids opening an empty CRDT doc.
   if (!entries.some((item) => isDocumentEntry(item) && item.docName === appPath)) {
     return { kind: 'none' };
   }

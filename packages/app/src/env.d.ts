@@ -55,7 +55,7 @@ declare namespace globalThis {
   /**
    * DEV-only: TipTap `Editor` instance of the currently-active pooled doc.
    * Playwright reads `editor.state.selection` to close the PM-selection-sync
-   * race described in precedent §20(a) category C. Tree-shaken from production
+   * race. Tree-shaken from production
    * bundles by the `import.meta.env.DEV` guard in `DocumentContext.tsx`.
    */
   var __activeEditor: Editor | null;
@@ -78,7 +78,7 @@ declare namespace globalThis {
     | undefined;
   /**
    * Test-only hook: close the active HocuspocusProvider's WebSocket to exercise
-   * post-sync reconnect paths (F8 acceptance criterion).
+   * post-sync reconnect paths.
    */
   var __test_closeActiveWebSocket: (() => boolean) | undefined;
 }

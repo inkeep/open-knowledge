@@ -13,9 +13,14 @@ import {
 
 interface Props {
   folderPath: string;
+  /**
+   * Template names already resolving for this folder via the cascade — used to
+   * warn when a new template would shadow an inherited one of the same name.
+   */
   existingNames: ReadonlySet<string>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called after a successful create with the new template's filename. */
   onCreated: (createdName: string) => void;
 }
 
@@ -28,6 +33,13 @@ const EMPTY_INITIAL = {
 
 const BODY_PLACEHOLDER = '## Overview\n\n(Replace with the starting content for new documents.)\n';
 
+/**
+ * Create a new template for `folderPath`. Field validation (name required,
+ * filename grammar, shadow warning) lives in `TemplateForm` + the server.
+ *
+ * `Body` is mounted/unmounted with `open` so the form state resets across
+ * cancel/reopen cycles — `useTemplateForm` seeds from `initial` on mount.
+ */
 export function NewTemplateDialog({
   folderPath,
   existingNames,
@@ -90,6 +102,8 @@ function Body({
         <Button
           variant="outline"
           className="font-mono uppercase"
+          // Keep focus on the active field so dismissing doesn't fire
+          // blur-driven validation (mirrors the close-X in DialogContent).
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onOpenChange(false)}
           disabled={form.isSaving}

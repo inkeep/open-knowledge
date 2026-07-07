@@ -70,19 +70,14 @@
       "plugins": ["./biome-plugins/path-conditional-map-driven-origin.grit"]
     },
     {
-      // Codemod handler TODO-stub grep. The substrate-adapter codemod seeds
-      // per-substrate handler scaffolds under
-      // packages/md-conformance/src/substrates/<id>/handlers/{mdast-to-pm,
-      // pm-to-mdast-node,pm-to-mdast-mark}/<key>.ts, each containing
-      // `throw new Error("TODO: implement <substrate>:<dir>/<key>")`. This rule
-      // greps for stubs that survive to lint time so an unfinished handler
-      // can't pass review. It is NOT an exhaustiveness check: the per-substrate
-      // node-set traversal belongs to a suite-self-consistency gate, and the
-      // handlers-table type check against ICstEngine is the compile-time
-      // backstop for missing methods. Scoped narrowly to the handlers/ subtree
-      // under any substrate dir, so the codemod implementation + harness tests +
-      // oracles (which legitimately produce strings containing "TODO: implement"
-      // in their own contexts) are out of scope.
+      // Handler TODO-stub grep: scaffolded handlers are seeded with
+      // `throw new Error("TODO: implement …")`, and this rule flags any stub
+      // that survives to lint time so an unfinished handler can't pass
+      // review. It is NOT an exhaustiveness check — type checks are the
+      // compile-time backstop for missing methods. Scoped narrowly to the
+      // handlers/ subtrees so harness tests and oracles (which legitimately
+      // produce "TODO: implement" strings in their own contexts) are out of
+      // scope.
       "includes": [
         "packages/md-conformance/src/substrates/*/handlers/**/*.ts",
         "biome-plugins/__fixtures__/cst-pm-handler-todo-stub.fixture.tsx"
@@ -90,15 +85,13 @@
       "plugins": ["./biome-plugins/cst-pm-handler-todo-stub.grit"]
     },
     {
-      // Class-proof DSL registration discipline. Per the dsl.ts contract
-      // (`defineClassProof` from packages/md-conformance/src/class-proofs/dsl.ts),
-      // class-proof registrations MUST live in the canonical proofs/ dir so
-      // run-all.ts's manifest stays the single source of truth, and EVERY
-      // registration MUST pass `predicate` + `proof` options. The plugin's
-      // override scope EXCLUDES the canonical proofs/ dir — inside the dir,
-      // TypeScript's `ClassProofOptions<M>` signature is the missing-args
-      // backstop. Outside the dir, any `defineClassProof(...)` call fires
-      // (= wrong location), and missing-args fires an additional diagnostic.
+      // Class-proof DSL registration discipline: registrations MUST live in
+      // the canonical proofs/ dir (one manifest as the single source of
+      // truth) and EVERY registration MUST pass `predicate` + `proof`
+      // options. The override scope EXCLUDES the canonical dir — inside it,
+      // the TypeScript signature is the missing-args backstop; outside it,
+      // any `defineClassProof(...)` call fires (= wrong location), and
+      // missing args fire an additional diagnostic.
       "includes": [
         "**/*.ts",
         "**/*.tsx",
@@ -179,17 +172,14 @@
       }
     },
     {
-      // lume-qa is a macOS-VM E2E test harness (Electron CDP + AX driver).
-      // It deliberately uses post-guard non-null assertions — e.g.
-      // `scenario.verification!.rungs!` after a `hasRungs` predicate, and
-      // `app.axBundleId!` after `getAxApp()` has already validated the field —
-      // because the guards live one call-frame up and the compiler can't see
-      // through them. It also assembles shell-command strings via `+`
-      // concatenation in a few spots where a template literal reads no better.
-      // These are test-harness style allowances, not production code; the
-      // assertions encode invariants the surrounding guards enforce, so
-      // stripping the `!` (or rewriting to `?.`) would change semantics.
-      // Correctness rules (e.g. noUnusedVariables) stay ON for this tree.
+      // This E2E-harness tree deliberately uses post-guard non-null
+      // assertions (the guards live one call-frame up, where the compiler
+      // can't see through them) and assembles shell-command strings via `+`
+      // concatenation where a template literal reads no better. Test-harness
+      // style allowances, not production code: the assertions encode
+      // invariants the surrounding guards enforce, so stripping the `!` (or
+      // rewriting to `?.`) would change semantics. Correctness rules (e.g.
+      // noUnusedVariables) stay ON for this tree.
       "includes": ["packages/desktop/tests/lume-qa/**"],
       "linter": {
         "rules": {
@@ -201,19 +191,15 @@
       }
     },
     {
-      // Byte-fidelity round-trip oracle ban, scoped to the public-mirrored test
-      // surface. `serialize(parse(x))` (or the MarkdownManager method form)
-      // asserted equal to the same `x` is the engine's byte-identity correctness
-      // oracle. It legitimately lives in the engine fidelity suite
-      // (packages/app/tests/fidelity), the markdown + bridge precision suites, and
-      // the enumerated byte-oracle tests; those are excluded from this override's
-      // scope so the oracle stays allowed there but forbidden on the public
-      // surface.
-      // packages/md-conformance is the private conformance estate
-      // (also mirror-excluded). The fixture is in scope so its planted oracle
-      // drives the fixture-file test; the Bridge-invariant comparator
-      // `normalizeBridge(a) === normalizeBridge(b)` (precedent #38) is the public
-      // contract and is left untouched by the rule, not by this scope.
+      // Byte-fidelity round-trip oracle ban. `serialize(parse(x))` (or the
+      // MarkdownManager method form) asserted equal to the same `x` is the
+      // engine's byte-identity correctness oracle; it is owned by internal
+      // suites excluded from this override's scope, so a test on this
+      // surface can't reintroduce it. The fixture is in scope so its planted
+      // oracle drives the fixture-file test; the Bridge-invariant comparator
+      // `normalizeBridge(a) === normalizeBridge(b)` (precedent #38) is the
+      // public contract and is left untouched by the rule, not by this
+      // scope.
       "includes": [
         "packages/**/*.test.ts",
         "packages/**/*.test.tsx",
@@ -228,17 +214,15 @@
       "plugins": ["./biome-plugins/no-roundtrip-identity-oracle.grit"]
     },
     {
-      // Inline bridge normalization-class value ban, scoped to the
-      // public-mirrored test surface. BRIDGE_TOLERANCE_CLASSES
-      // (packages/core/src/bridge/normalize.ts) is the bridge normalizer's class
-      // catalog; importing it into a public test is blocked by
-      // check-mirror-test-policy Check B, and this rule blocks the complementary
-      // inline re-encoding. The catalog legitimately lives in the bridge tests,
-      // the markdown precision suite, the fidelity suite, and the byte-oracle
-      // one-offs — excluded from this override's scope (as they are from the
-      // plugin pass) so the catalog stays allowed there but the inline form is
-      // forbidden on the public surface. The fixture is in scope so its planted
-      // literals drive the fixture-file test.
+      // Inline bridge normalization-class value ban. BRIDGE_TOLERANCE_CLASSES
+      // (packages/core/src/bridge/normalize.ts) is the bridge normalizer's
+      // class catalog; importing it into a test on this surface is blocked by
+      // check-mirror-test-policy Check B, and this rule blocks the
+      // complementary inline re-encoding. The catalog is owned by internal
+      // suites excluded from this override's scope (as they are from the
+      // plugin pass), so the inline form can't come back through a new test.
+      // The fixture is in scope so its planted literals drive the
+      // fixture-file test.
       "includes": [
         "packages/**/*.test.ts",
         "packages/**/*.test.tsx",
@@ -292,24 +276,16 @@
       "!**/tests/perf/playwright-results",
       "!packages/desktop/out",
       "!packages/desktop/dist-desktop",
-      // The md-audit framework was folded under packages/md-conformance/md-audit/
-      // but is a self-contained unit with its own tsconfig + conventions; it was
-      // never OK-biome-formatted (it lived outside the lint scan targets before
-      // the fold) and ships a generated docs/byte-preservation-audit.json. Its
-      // own typecheck + tests run via `bun --cwd packages/md-conformance/md-audit`
-      // and the md-conformance test task; keep it out of OK's biome format scan.
+      // Self-contained internal unit with its own tsconfig, conventions, and
+      // test entry points; never OK-biome-formatted, so it stays out of the
+      // format scan.
       "!packages/md-conformance/md-audit",
-      // Mechanically generated by scripts/enumerate-conformance.ts (JSON.stringify);
-      // its byte format is owned by the generator, not biome (biome would collapse
-      // the short per-entry testTier arrays the generator emits expanded). Content
-      // correctness is enforced by check-conformance-fresh.ts (sha256 pin), so the
-      // format scan adds nothing. Path is copybara-excluded, like the md-audit line.
+      // Mechanically generated artifacts: byte format is owned by their
+      // generators, not biome (biome would collapse arrays the generators
+      // emit expanded), and content correctness is enforced by dedicated
+      // freshness gates — the format scan adds nothing. Both paths are
+      // mirror-excluded.
       "!packages/md-conformance/conformance-catalog.json",
-      // Mechanically extracted by src/corpora/authoring/extract-gfm-extensions.ts
-      // (JSON.stringify); its byte format is owned by the extractor, not biome
-      // (biome would collapse the single-element `extensions` arrays the extractor
-      // emits expanded). Content correctness is enforced by the re-extraction
-      // freshness gate (gfm-extensions-freshness.test.ts). Path is copybara-excluded.
       "!packages/md-conformance/corpora/gfm-extensions.json"
     ]
   }

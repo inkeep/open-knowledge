@@ -1,0 +1,118 @@
+---
+title: Writing pipeline
+icon: LuPenTool
+description: "Three folders that move a piece of writing from idea to published: catch ideas before they slip away, draft with an AI while every revision is saved automatically, and leave finished pieces untouched. Built on the Writing pipeline starter pack."
+---
+A **writing pipeline** is the shortest honest path from a premise to a published piece: three folders, one direction of travel. Ideas you capture before they fade, drafts you actually work on, and published work you leave alone. No named-revision folders, no ceremony — the CRDT history covers your revisions, and an agent nudges pieces along so nothing stalls.
+
+```html preview
+<div style="padding:18px">
+  <div id="pipe" style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch"></div>
+  <div class="cap">One direction of travel. A premise gets promoted to a draft when you commit to it; a draft gets published when it ships — and then it's immutable.</div>
+</div>
+<style>
+#pipe .node{flex:1;min-width:130px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--card);transition:box-shadow .3s,border-color .3s;cursor:pointer}
+#pipe .node .t{font-weight:600;font-size:13px}
+#pipe .node .s{color:var(--muted-foreground);font-size:11.5px;margin-top:3px;line-height:1.35}
+#pipe .node.on{border-color:var(--primary);box-shadow:0 0 0 3px var(--accent-soft)}
+#pipe .node.on .t{color:var(--accent-ink)}
+#pipe .arrow{align-self:center;color:var(--muted-foreground);font-size:12px;text-align:center;min-width:64px}
+.cap{margin-top:12px;color:var(--muted-foreground);font-size:12.5px}
+.cap::before{content:"\2192  ";color:var(--primary);font-weight:700}
+@media (prefers-reduced-motion:reduce){#pipe .node{transition:none}}
+</style>
+<script>
+var steps=[["ideas/","one-line premises, captured before they fade"],["drafts/","active prose; CRDT history covers revisions"],["published/","shipped work — treat as immutable"]];
+var edges=["commit to it","ship it"];
+var pipe=document.getElementById("pipe"),nodes=[];
+steps.forEach(function(s,i){
+  if(i){var a=document.createElement("div");a.className="arrow";a.innerHTML="→<br><span style='font-size:10px'>"+edges[i-1]+"</span>";pipe.appendChild(a);}
+  var d=document.createElement("div");d.className="node";
+  var t=document.createElement("div");t.className="t";t.textContent=s[0];
+  var sub=document.createElement("div");sub.className="s";sub.textContent=s[1];
+  d.appendChild(t);d.appendChild(sub);
+  d.onclick=function(){pinned=true;set(i);};
+  pipe.appendChild(d);nodes.push(d);
+});
+var cur=0,pinned=false;
+function set(i){cur=i;nodes.forEach(function(n,j){n.classList.toggle("on",j===i);});}
+set(0);
+if(!matchMedia("(prefers-reduced-motion:reduce)").matches){setInterval(function(){if(!pinned)set((cur+1)%nodes.length);},1600);}
+</script>
+```
+
+The point is to keep the friction where it belongs. Capturing an idea should cost one line. Drafting should feel like writing, not file management. And publishing should be a deliberate step that freezes the piece — to revise later, you copy it back to a new draft rather than editing history.
+
+Essayists and newsletter writers get a frictionless place to capture premises before good ideas escape. Drafting with an AI collaborator happens on the actual piece, every revision in the timeline, instead of scattered across chat windows. And shipped work stays separate from work in progress — a clean record of published pieces with canonical URLs and channels.
+
+## The flow
+
+```
+ideas/      one-line premises, headlines, fragments — kept short on purpose
+   ↓ commit to writing it
+drafts/     active prose; frontmatter tracks status, word count, parent idea
+   ↓ ship
+published/  shipped work; carries published_at, canonical_url, channel — immutable
+```
+
+The pack ships an `idea`, `draft`, and `published` template. Structure only — the meaning of each stage lives in the folder guidance the agent reads, so your prose stays uncluttered.
+
+## The scenario
+
+A thought hits you on a walk: *"the best abstraction is the one you didn't write."* You drop it into `ideas/` as a single line. Two weeks later you commit to it:
+
+<CopyPrompt>Promote the "best abstraction is the one you didn't write" idea into a draft. Pull the premise into the draft template and set status: drafting.</CopyPrompt>
+
+You write it with your agent over a few sessions — every revision captured in the [timeline](../features/timeline-and-recovery.mdx), no manual versioning. When it's ready you publish, and the piece moves to `published/` with its canonical URL filled in. The draft's full history stays intact; the published copy is frozen.
+
+## What's in your project after seeding
+
+Pick **Writing pipeline** in the starter-pack picker, or run:
+
+```bash
+ok seed --pack writing-pipeline
+```
+
+By default the pack nests under a `writing/` subfolder:
+
+```
+your-project/
+└── writing/
+    ├── ideas/       one file per premise, flat
+    ├── drafts/      active prose; status: drafting | review
+    └── published/   shipped, immutable
+```
+
+Each folder carries its `.ok/frontmatter.yml` guidance and templates. If a draft needs research notes, the agent creates `drafts/<slug>/research/` on demand rather than cluttering the top level.
+
+<Callout type="info" title="Seeding also installs a skill">
+  `ok seed --pack writing-pipeline` installs the **Writing pipeline** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance behind the behaviors below — the stage promotions, the idle-draft nudges, the publish-time URL fill — read automatically, and editable like any other doc. It lands as a real `SKILL.md` committed to your repo, one per detected editor. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+</Callout>
+
+## What the agent does for you
+
+_These behaviors are encoded in the pack skill and run **when you prompt the agent** — they are not background automations that fire on a timer._
+
+| When you ask | The agent |
+| --- | --- |
+| An idea sits idle > 30 days | Surfaces it to park or promote — so `ideas/` stays a live shortlist, not a graveyard |
+| A draft sits idle > 14 days | Nudges it; for drafts in `review`, suggests publication targets based on `target_form` |
+| A draft needs sources | Creates `drafts/<slug>/research/` on demand instead of a top-level folder |
+| You publish | Auto-fills `canonical_url` when you paste a Substack / Ghost / Mirror URL into the file |
+
+## Cadence
+
+| When | Do |
+| --- | --- |
+| Whenever a premise strikes | One line into `ideas/`. That's the whole capture step |
+| When you commit to a piece | Promote the idea into `drafts/`; write with your agent, revisions tracked automatically |
+| On ship | Move to `published/`; let the agent fill `canonical_url` and `channel` |
+| To revise a published piece | Copy it back to a new draft — never edit `published/` in place |
+| Monthly | Ask the agent to surface stale ideas and stalled drafts |
+
+## Further reading
+
+- **[LLM wiki workflow](./karpathy-llm-wiki.mdx).** If your writing is source-grounded research rather than original prose, the source-curation posture fits better.
+- **[Editor](../features/editor.mdx).** The WYSIWYG surface you'll actually draft in.
+- **[Timeline and recovery](../features/timeline-and-recovery.mdx).** Where your draft revisions live — the reason there are no named-revision folders.
+- **[Claude Code](../integrations/claude-code.mdx)**, **[Cursor](../integrations/cursor.mdx)**, **[Codex](../integrations/codex.mdx).** MCP-capable agent hosts.

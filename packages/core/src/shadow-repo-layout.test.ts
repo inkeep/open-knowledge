@@ -129,6 +129,8 @@ describe('parseContributors', () => {
     expect(parseContributors(body)).toEqual([]);
   });
 
+  // `summaries?: string[]` is additive; malformed values
+  // drop JUST the field (deliberate divergence from whole-entry-skip).
   test('legacy commit (no summaries field) parses with summaries undefined', () => {
     const body = '\nok-contributors: {"id":"agent-a","name":"Claude","docs":["foo.md"]}';
     const result = parseContributors(body);
@@ -205,6 +207,7 @@ describe('parseWriterId (D34 taxonomy)', () => {
     expect(p.isAgent).toBe(null);
   });
 
+  // Legacy ids → unknown (eligible for GC by the allowlist sweep)
   test('legacy "human-<id>" → unknown (D34: human- prefix dropped)', () => {
     const p = parseWriterId('human-tim');
     expect(p.classification).toBe('unknown');
@@ -287,6 +290,11 @@ describe('resolveGitDir', () => {
   });
 
   test('resolves a relative gitdir: pointer against the project root', () => {
+    // `git worktree add --relative-paths` (Git 2.36+) writes the gitdir
+    // pointer relative to the worktree's `.git` file. Manual edits can also
+    // produce relative pointers. `resolve(projectRoot, match[1])` handles
+    // both — this test locks the contract so an accidental switch to
+    // `path.resolve(match[1])` (which would resolve relative to cwd) fails.
     const project = resolve(tmp, 'relative-wt');
     const realGitDir = resolve(tmp, 'real-git-relative');
     mkdirSync(project, { recursive: true });
@@ -376,16 +384,25 @@ describe('resolveShadowDir', () => {
   });
 
   test('threads the underlying readFileSync error as `cause` when the .git pointer is unreadable', () => {
+    // EACCES on the .git pointer file is the same error class as a parse
+    // failure from the consumer's perspective ('malformed-pointer'), but the
+    // recovery is different (chmod / ACL fix vs `git worktree prune`).
+    // Threading the original error as `cause` keeps the diagnostic signal
+    // available on the chained error without changing the typed surface.
     const project = resolve(tmp, 'unreadable');
     mkdirSync(project, { recursive: true });
     const gitPath = resolve(project, '.git');
     writeFileSync(gitPath, 'gitdir: /tmp/whatever\n');
     chmodSync(gitPath, 0o000);
+    // Skip when chmod 0o000 is bypassed (root-owned environments such as
+    // some Docker containers); the assertion would be vacuous there.
     let stillReadable = false;
     try {
       readFileSync(gitPath, 'utf-8');
       stillReadable = true;
-    } catch {}
+    } catch {
+      // expected — readFileSync should refuse with EACCES
+    }
     if (stillReadable) {
       chmodSync(gitPath, 0o644);
       return;
@@ -396,25 +413,42 @@ describe('resolveShadowDir', () => {
     } catch (err) {
       caught = err;
     } finally {
+      // Restore mode so afterEach's rmSync can clean up.
       chmodSync(gitPath, 0o644);
     }
     expect(caught).toBeInstanceOf(MalformedGitPointerError);
     const e = caught as MalformedGitPointerError & { cause?: unknown };
     expect(e.cause).toBeDefined();
     const causeCode = (e.cause as NodeJS.ErrnoException | undefined)?.code;
+    // Linux/macOS surface EACCES; some sandboxes can surface EPERM here.
     expect(['EACCES', 'EPERM']).toContain(causeCode);
   });
 
   test('throws GitDirAccessError (not MalformedGitPointerError) when statSync fails with non-ENOENT', () => {
+    // EACCES on the .git path itself (e.g., parent directory denies read /
+    // execute) leaves the SHAPE of .git undetermined — could be a directory,
+    // could be a pointer file. The right typed error is GitDirAccessError,
+    // not MalformedGitPointerError, because the recovery is different
+    // (filesystem permissions vs `git worktree prune`).
     const project = resolve(tmp, 'unstattable');
     mkdirSync(project, { recursive: true });
     writeFileSync(resolve(project, '.git'), 'gitdir: /tmp/whatever\n');
+    // chmod the parent directory 0o000 so statSync of the child path fails
+    // before it can determine isFile/isDirectory. The chmod must run on the
+    // PARENT (not the .git file) — otherwise statSync would still succeed
+    // because POSIX statSync returns metadata regardless of the file's own
+    // mode bits.
     chmodSync(project, 0o000);
     let stillStattable = false;
     try {
+      // Probe whether the chmod actually denied access. Some sandboxes (root,
+      // some Docker overlays) bypass mode bits and would render the
+      // assertion vacuous.
       readFileSync(resolve(project, '.git'), 'utf-8');
       stillStattable = true;
-    } catch {}
+    } catch {
+      // expected — readFileSync should refuse with EACCES on the child
+    }
     if (stillStattable) {
       chmodSync(project, 0o755);
       return;
@@ -425,17 +459,22 @@ describe('resolveShadowDir', () => {
     } catch (err) {
       caught = err;
     } finally {
+      // Restore mode so afterEach's rmSync can clean up.
       chmodSync(project, 0o755);
     }
     expect(caught).toBeInstanceOf(GitDirAccessError);
+    // Specifically NOT a MalformedGitPointerError — the typed-error split is
+    // load-bearing for the recovery hint:
     expect(caught).not.toBeInstanceOf(MalformedGitPointerError);
     const e = caught as GitDirAccessError & { cause?: unknown };
     expect(e.gitPath).toBe(resolve(project, '.git'));
     expect(e.cause).toBeDefined();
     const causeCode = (e.cause as NodeJS.ErrnoException | undefined)?.code;
     expect(['EACCES', 'EPERM']).toContain(causeCode);
+    // Message names filesystem permissions, not `git worktree prune`:
     expect(e.message).toContain('Check filesystem permissions');
     expect(e.message).not.toContain('git worktree prune');
+    // Errno code is included in the message for at-a-glance triage:
     expect(e.message).toContain(`(${causeCode})`);
   });
 
@@ -455,6 +494,12 @@ describe('resolveShadowDir', () => {
     expect(() => resolveShadowDir(project)).not.toThrow();
   });
 
+  // ── Ancestor walk-up (subfolder of existing repo) ──
+  //
+  // Pre-fix bug: `ok start` / desktop launch from a subfolder of an existing
+  // git repo materialized a shell `<subfolder>/.git/ok/`, which on next boot
+  // tricked `ensureProjectGit`'s shell-repair into running `git init` and
+  // fragmenting the user's history into a nested repo.
   test('subfolder of repo with directory .git at ancestor: shadow lives under ancestor with ok-<slug>', () => {
     const repo = resolve(tmp, 'repo');
     const sub = resolve(repo, 'docs');
@@ -476,6 +521,9 @@ describe('resolveShadowDir', () => {
   });
 
   test('subfolder that already has its own .git wins over ancestor walk-up (precedence)', () => {
+    // Real nested repo OR a pre-existing shell-`.git/` from the old bug —
+    // either way we MUST keep using the subfolder's own .git/ok so existing
+    // shadow history is preserved on upgrade.
     const repo = resolve(tmp, 'repo');
     const sub = resolve(repo, 'docs');
     mkdirSync(resolve(repo, '.git'), { recursive: true });
@@ -505,6 +553,9 @@ describe('resolveShadowDir', () => {
 
   test('long sub-paths trigger slug truncation and two paths with same long prefix get distinct shadows', () => {
     const repo = resolve(tmp, 'repo');
+    // Both paths share a 70+ char prefix when slugified (separator → '-').
+    // slugifyShadowSubPath caps at 64 chars with an 8-hex djb2 suffix, so
+    // they must produce distinct shadow dirs despite the shared prefix.
     const longPrefix = 'packages/very-long-package-name-that-exceeds-sixty-four-characters';
     const subA = resolve(repo, `${longPrefix}-alpha`);
     const subB = resolve(repo, `${longPrefix}-beta`);
@@ -513,9 +564,12 @@ describe('resolveShadowDir', () => {
     mkdirSync(subB, { recursive: true });
     const shadowA = resolveShadowDir(subA);
     const shadowB = resolveShadowDir(subB);
+    // Must be distinct (no collision despite shared prefix)
     expect(shadowA).not.toBe(shadowB);
+    // Both must be nested under the ancestor gitdir
     expect(shadowA.startsWith(resolve(repo, '.git/ok-'))).toBe(true);
     expect(shadowB.startsWith(resolve(repo, '.git/ok-'))).toBe(true);
+    // Both slugs must be ≤ 64+3 chars ("ok-" prefix + ≤64 char slug)
     const slugA = shadowA.slice(resolve(repo, '.git/ok-').length);
     const slugB = shadowB.slice(resolve(repo, '.git/ok-').length);
     expect(slugA.length).toBeLessThanOrEqual(64);
@@ -523,6 +577,9 @@ describe('resolveShadowDir', () => {
   });
 
   test('walk-up still legacy-fallthroughs when no ancestor .git is found within bound', () => {
+    // tmpdir() is not inside a git work tree on standard CI runners, so a
+    // project nested under tmp with no `.git` anywhere walks to the root /
+    // homedir bound and returns absent → legacy `<projectRoot>/.git/ok`.
     const project = resolve(tmp, 'orphan/deep/nest');
     mkdirSync(project, { recursive: true });
     expect(resolveShadowDir(project)).toBe(resolve(project, '.git/ok'));
@@ -543,8 +600,12 @@ describe('getShadowRepoPath', () => {
 
   test('never returns legacy .git/openknowledge/ path (single-mode layout)', () => {
     const project = resolve(tmp, 'project');
+    // Simulate old integrated-mode location — layout helper does NOT see it
     mkdirSync(resolve(project, '.git/openknowledge'), { recursive: true });
     writeFileSync(resolve(project, '.git/openknowledge/HEAD'), 'ref: refs/heads/main\n');
+    // Legacy path is ignored — getShadowRepoPath reads through resolveShadowDir
+    // which always returns .git/ok/. The rename shim in
+    // initShadowRepo handles the on-disk migration at server start.
     expect(getShadowRepoPath(project)).toBe(null);
   });
 
@@ -562,6 +623,10 @@ describe('getShadowRepoPath', () => {
   });
 
   test('returns null on stale .git pointer instead of throwing — preserves string|null contract', () => {
+    // resolveShadowDir throws MalformedGitPointerError on this input (boot-path
+    // surface). The probe-shaped getShadowRepoPath must not — its sole
+    // caller (readShadowLog) reads its `string|null` return verbatim and
+    // propagating an exception silently degrades MCP read-path enrichment.
     const project = resolve(tmp, 'stale-probe');
     mkdirSync(project, { recursive: true });
     writeFileSync(resolve(project, '.git'), `gitdir: ${resolve(tmp, 'gone')}\n`);
@@ -578,6 +643,10 @@ describe('getShadowRepoPath', () => {
   });
 
   test('swallows GitDirAccessError, returns null — preserves string|null contract on EACCES', () => {
+    // Symmetric with the MalformedGitPointerError swallow test above. The
+    // read path (readShadowLog / enrichPath) MUST get a `null` it can
+    // gracefully fall back from. The boot path keeps the typed error via the
+    // direct `resolveShadowDir` call, so the actionable signal isn't lost.
     const project = resolve(tmp, 'eaccess-probe');
     mkdirSync(project, { recursive: true });
     writeFileSync(resolve(project, '.git'), 'gitdir: /tmp/whatever\n');
@@ -586,7 +655,9 @@ describe('getShadowRepoPath', () => {
     try {
       readFileSync(resolve(project, '.git'), 'utf-8');
       stillStattable = true;
-    } catch {}
+    } catch {
+      // expected
+    }
     if (stillStattable) {
       chmodSync(project, 0o755);
       return;
@@ -622,6 +693,8 @@ describe('GitDirAccessError', () => {
   });
 
   test('message omits the errno parenthetical when cause has no code field', () => {
+    // Defensive: arbitrary throwables (a non-Error value, an Error without
+    // `.code`) must not produce `(undefined)` in the user-facing message.
     const err = new GitDirAccessError('/tmp/proj/.git', { cause: new Error('unknown') });
     expect(err.message).not.toContain('(undefined)');
     expect(err.message).not.toContain('()');
@@ -672,6 +745,9 @@ describe('parseCheckpoint / formatCheckpointBodyLine (bridge-correctness SPEC §
   });
 
   test('backward-compat: pre-enrichment body without docName/size returns nulls', () => {
+    // Simulates a checkpoint commit written before the docName/size enrichment.
+    // The rescue read path's fallback
+    // branch handles this case via ls-tree.
     const legacyLine =
       'ok-checkpoint-v1: {"kind":"external-change-rescue","metadata":{"incomingDiskSha":"abc"}}';
     const body = `checkpoint: Legacy\n\n${legacyLine}`;
@@ -702,6 +778,7 @@ describe('parseCheckpoint / formatCheckpointBodyLine (bridge-correctness SPEC §
   });
 
   test('returns null when metadata shape does not match kind', () => {
+    // bridge-merge-loss expects lostSubstrings; missing it → null
     expect(
       parseCheckpoint('\nok-checkpoint-v1: {"kind":"bridge-merge-loss","metadata":{"other":"x"}}'),
     ).toBe(null);
@@ -722,6 +799,8 @@ describe('parseCheckpoint / formatCheckpointBodyLine (bridge-correctness SPEC §
     const checkpoint = parseCheckpoint(body);
     expect(checkpoint?.kind).toBe('bridge-merge-loss');
   });
+
+  // ─── auto-consolidation kind ───────────────────
 
   test('round-trips auto-consolidation with foldedRefs + trigger', () => {
     const line = formatCheckpointBodyLine({
@@ -753,6 +832,8 @@ describe('parseCheckpoint / formatCheckpointBodyLine (bridge-correctness SPEC §
   });
 
   test('auto-consolidation: trigger parses as a bare string (forward-compat with new triggers)', () => {
+    // A future trigger value an old reader does not know about must still parse,
+    // not fall through to null — the trigger is read back as an opaque string.
     const parsed = parseCheckpoint(
       '\nok-checkpoint-v1: {"kind":"auto-consolidation","metadata":{"foldedRefs":1,"trigger":"some-future-trigger"}}',
     );
@@ -763,6 +844,13 @@ describe('parseCheckpoint / formatCheckpointBodyLine (bridge-correctness SPEC §
   });
 
   test('D22: a reader lacking the auto-consolidation branch treats it as untyped (null)', () => {
+    // Pin the old-client contract: a parser predating this kind hits the
+    // unknown-kind fallback and returns null, so the checkpoint renders as a plain
+    // (untyped) Save Version — visible but data-safe. We simulate "old parser" by
+    // the SAME unknown-kind path the existing 'something-else' test exercises:
+    // any kind the parser does not branch on → null. This documents that the
+    // on-disk format carries the discriminator in `kind`, exactly where an old
+    // parser's switch falls through.
     const line = formatCheckpointBodyLine({
       kind: 'auto-consolidation',
       docName: null,
@@ -773,6 +861,8 @@ describe('parseCheckpoint / formatCheckpointBodyLine (bridge-correctness SPEC §
     expect(JSON.parse(line.slice('ok-checkpoint-v1: '.length)).kind).toBe('auto-consolidation');
   });
 });
+
+// ─── parseOkActor / formatOkActor / formatWipSubject ─────────────────
 
 describe('formatWipSubject', () => {
   test('empty docs → wip: auto-save', () => {
@@ -883,6 +973,7 @@ describe('parseOkActor / formatOkActor (US-015, FR-8, D13)', () => {
     ].join('\n');
     const parsed = parseOkActor(body);
     expect(parsed?.display_name).toBe('Claude (abc1)');
+    // contributor parsing is unaffected
     const contributors = parseContributors(body);
     expect(contributors).toHaveLength(1);
     expect(contributors[0]?.id).toBe('agent-abc');
@@ -894,6 +985,8 @@ describe('parseOkActor / formatOkActor (US-015, FR-8, D13)', () => {
     expect(parsed?.color_seed).toBe('unknown');
   });
 });
+
+// ─── writer_id + summaries consolidation (ok-contributors retirement) ────────
 
 describe('OkActorEntry writer_id field + derivation back-compat', () => {
   test('formatOkActor emits writer_id inline', () => {
@@ -947,6 +1040,7 @@ describe('OkActorEntry writer_id field + derivation back-compat', () => {
   });
 
   test('explicit writer_id in stored JSON wins over any derivation', () => {
+    // Even if fields look principal-shaped, explicit writer_id is authoritative.
     const line =
       'ok-actor: {"v":1,"writer_id":"custom-writer","principal":"principal-ignored","display_name":"X","docs":[]}';
     const parsed = parseOkActor(line);
@@ -1151,6 +1245,7 @@ describe('OkActorEntry previous_paths field (timeline rename-history mitigation)
   });
 
   test('formatOkActor elides previous_paths when every element is malformed', () => {
+    // Drops every element → empty array → elided to preserve byte-identity intent.
     const line =
       'ok-actor: {"v":1,"writer_id":"agent-a","display_name":"Claude","docs":["a.md"],"previous_paths":[{"from":42},{"to":99}]}';
     const parsed = parseOkActor(line);
@@ -1297,6 +1392,8 @@ describe('readContributors (dispatcher: prefers ok-actor, falls back to ok-contr
   });
 });
 
+// ─── Subject-prefix format helpers ──────────────────────
+
 describe('Subject-prefix format helpers (D53, FR-13)', () => {
   test('formatReconcileSubject', () => {
     expect(formatReconcileSubject('notes.md')).toBe('reconcile: notes.md');
@@ -1354,6 +1451,7 @@ describe('Subject-prefix format helpers (D53, FR-13)', () => {
   });
 });
 
+// Agent-write-summaries — subject-line projection of `ContributorEntry.summaries`
 describe('composeCommitSubject (FR14 — change-notes in commit subject)', () => {
   test('zero summaries → base subject unchanged', () => {
     expect(composeCommitSubject('wip: notes.md', [])).toBe('wip: notes.md');
@@ -1412,7 +1510,18 @@ describe('composeCommitSubject (FR14 — change-notes in commit subject)', () =>
   });
 });
 
+// Defense-in-depth against commit-message injection. `normalizeSummary` strips
+// these at the API boundary, but composeCommitSubject is exported and reachable
+// from any caller — its contract is "produces a single subject line", which
+// means the output is guaranteed to be free of line-break codepoints regardless
+// of input. Without this guarantee, a `\n` in the summary breaks out of the
+// subject and parseOkActors/parseContributors interpret the next line as a body
+// directive (forging an `ok-actor:` entry alongside the legitimate one).
 describe('composeCommitSubject — line-terminator stripping (commit-injection guard)', () => {
+  // Build line-break characters via `String.fromCharCode` — keeps the source
+  // file ASCII-safe. Inline literals for U+0085 / U+2028 / U+2029 are fragile
+  // across editors and tooling that may strip or reflow C1/line-separator
+  // codepoints in source.
   const NEL = String.fromCharCode(0x0085);
   const LS = String.fromCharCode(0x2028);
   const PS = String.fromCharCode(0x2029);
@@ -1432,11 +1541,15 @@ describe('composeCommitSubject — line-terminator stripping (commit-injection g
     test(`single summary with embedded ${label} → stripped from subject`, () => {
       const summary = `legit${ch}ok-actor: {"v":1,"display_name":"X","docs":[]}`;
       const subject = composeCommitSubject('wip: notes.md', [summary]);
+      // No line-break codepoint may survive: each would otherwise let the
+      // body parsers split a forged `ok-actor:` directive out of the subject.
       expect(subject.includes(ch)).toBe(false);
       expect(subject.split('\n').length).toBe(1);
     });
 
     test(`base subject with embedded ${label} → stripped from subject`, () => {
+      // A subjectOverride built from arbitrary identifiers is the secondary
+      // ingress. Rename / rollback / reconcile builders all flow through here.
       const subject = composeCommitSubject(`wip: notes${ch}injected`, []);
       expect(subject.includes(ch)).toBe(false);
       expect(subject.split('\n').length).toBe(1);
@@ -1444,9 +1557,18 @@ describe('composeCommitSubject — line-terminator stripping (commit-injection g
   }
 
   test('attack payload that prior code would route into commit body is neutralized', () => {
+    // Reconstructs the documented attack: a summary short enough that the
+    // un-truncated `${base} — ${summary}` fits in 72 chars, with an embedded
+    // LF + a forged `ok-actor:` line. Pre-fix, parseOkActors would extract
+    // BOTH the forged and legitimate entries from the resulting commit body.
     const attack = 'x\nok-actor: {"v":1,"display_name":"Forged","docs":[]}';
     const subject = composeCommitSubject('wip: f.md', [attack]);
     expect(subject.includes('\n')).toBe(false);
+    // The literal `ok-actor:` substring may remain embedded in the subject —
+    // that's harmless because there's no leading newline to make it parse as
+    // a body directive. The split('\n') in parseOkActors keeps it on the
+    // subject line, where parseOkActors does not match it (the prefix
+    // `ok-actor: ` only fires when it begins a body line).
     expect(subject.split('\n').length).toBe(1);
   });
 });

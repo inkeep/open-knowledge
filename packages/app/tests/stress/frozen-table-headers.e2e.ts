@@ -1,3 +1,20 @@
+/**
+ * E2E coverage for the FrozenTableHeaders extension + first-column sticky CSS.
+ *
+ * These tests drive REAL user scrolling. That matters because the failure modes
+ * they guard against only reproduce at the surface:
+ *  - Vertical freeze regression: applying per-scroll inline styles to
+ *    PM-managed header cells triggers ProseMirror's DOMObserver on every frame;
+ *    under concurrent transactions that loop wedged the renderer outright (rAF
+ *    starvation — the page stops responding). The extension now applies effects
+ *    via zero-duration fill-forwards Web Animations, which mutate no DOM
+ *    attribute. The scroll steps below hang, not fail, if that regresses.
+ *  - Horizontal freeze regression: `position: sticky` cells constrain to the
+ *    nearest scroll container. `.ProseMirror table { overflow: hidden }` made
+ *    the table itself that container, so the sticky first column never engaged.
+ *    Now `overflow: clip` (clips without creating a scrollport).
+ */
+
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 
 const LONG_TABLE_MARKDOWN = `# Metric Tracker
@@ -49,6 +66,10 @@ const WIDE_TABLE_MARKDOWN = `# Monthly KPIs
 | Theta | 184 | 189 | 194 | 199 | 204 | 970 |
 `;
 
+// Long doc: prose above and below a 200-row table. Top-level blocks are
+// content-visibility:auto chunks (chunk-wrapper-decoration.ts) — with this
+// much content, offscreen chunks are skipped, exercising the freeze against
+// the virtualization.
 const VIRTUALIZED_TABLE_MARKDOWN = `# Long Report
 
 ${Array.from({ length: 40 }, (_, i) => `Intro paragraph ${i + 1} above the table.`).join('\n\n')}
@@ -64,6 +85,8 @@ ${Array.from({ length: 200 }, (_, i) => `| Row-${i + 1} | ${i} | ${i * 2} | ${i 
 ${Array.from({ length: 40 }, (_, i) => `Closing paragraph ${i + 1} below the table.`).join('\n\n')}
 `;
 
+// The user-reported sliver doc shape: substantial prose ABOVE the table,
+// multi-line (tall) table rows, prose below.
 const PROSE_ABOVE_MARKDOWN = `# Spec Doc
 
 ## Background
@@ -82,6 +105,7 @@ ${Array.from({ length: 28 }, (_, i) => `Appendix paragraph ${i + 1} below the ta
 `;
 
 const SCROLL_SELECTOR = '[data-testid="editor-scroll-container"]';
+// Mirrors TOOLBAR_HEIGHT in frozen-table-headers.ts.
 const TOOLBAR_HEIGHT = 56;
 
 /** Decode a screenshot in-browser and verify the band just above the pinned
@@ -111,6 +135,8 @@ async function scanSlotPixels(page: Parameters<typeof test>[1]['page']): Promise
       c.height = img.naturalHeight;
       const ctx = c.getContext('2d') as CanvasRenderingContext2D;
       ctx.drawImage(img, 0, 0);
+      // Rows from 12px above the header down to 2px above it. A clean
+      // background band has near-zero luminance variance; glyphs spike it.
       let maxStd = 0;
       for (let y = band.headerTop - 12; y <= band.headerTop - 2; y++) {
         const d = ctx.getImageData(
@@ -138,10 +164,12 @@ const twoFrames = (page: Parameters<typeof test>[1]['page']) =>
     () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
   );
 
+/** Wait until the doc stops mutating — scrollHeight stable across consecutive polls. */
 async function waitForQuiescence(
   page: Parameters<typeof test>[1]['page'],
   selector: string,
 ): Promise<void> {
+  // Reset poll state so back-to-back calls within one test start fresh.
   await page.evaluate(() => {
     const w = window as unknown as { __okPrevH?: number; __okStable?: number };
     w.__okPrevH = undefined;
@@ -182,6 +210,14 @@ async function scrollAndReadFreeze(
   pinErrorPx: number;
   syncShiftErrorPx: number | null;
 }> {
+  // Scroll, then wait IN ONE in-page task until the pin converges, returning
+  // the qualifying frame's numbers atomically. Scrolling can materialize
+  // content-visibility chunks (their contain-intrinsic-size estimates differ
+  // from real heights), which shifts content and triggers the extension's
+  // ResizeObserver / drift recompute — eventually-consistent by design, so a
+  // separate poll-then-read would race the next rebuild. This loop also
+  // proves the renderer is alive: if the DOMObserver loop ever comes back,
+  // rAF stops firing and the evaluate times the test out.
   const settled = await page.evaluate(
     ({ sel, top, toolbarHeight }) =>
       new Promise<{ shiftPx: number; pinErrorPx: number }>((resolve) => {
@@ -200,6 +236,7 @@ async function scrollAndReadFreeze(
           const t = getComputedStyle(cell).transform;
           const shiftPx = t === 'none' ? 0 : new DOMMatrixReadOnly(t).m42;
           const expectedTop = scrollEl.getBoundingClientRect().top + toolbarHeight;
+          // The cell's rect includes its transform — the visual position.
           const pinErrorPx = Math.abs(cell.getBoundingClientRect().top - expectedTop);
           if (pinErrorPx < 2 || performance.now() - started > 5_000) {
             resolve({ shiftPx, pinErrorPx });
@@ -212,6 +249,12 @@ async function scrollAndReadFreeze(
     { sel: SCROLL_SELECTOR, top, toolbarHeight: TOOLBAR_HEIGHT },
   );
 
+  // Frame-sync probe: a further small scroll must be reflected in the
+  // computed transform ONE frame later — no scroll-event → rAF → style-write
+  // round trip. This is the "no shake" contract. The shift/scroll slope is 1
+  // by construction, so the expected delta is the ACTUAL scroll delta. A
+  // chunk materialization can rebuild the mapping mid-probe (intercept
+  // shifts); retry a couple of times — a clean frame pair must exist.
   let syncShiftErrorPx = Number.POSITIVE_INFINITY;
   for (let attempt = 0; attempt < 3 && !(syncShiftErrorPx < 1.5); attempt++) {
     syncShiftErrorPx = await page.evaluate(
@@ -243,6 +286,8 @@ async function scrollAndReadFreeze(
     );
   }
 
+  // Re-converge after the probe so callers (screenshots included) observe a
+  // settled state — the probe's extra scroll can race a drift rebuild.
   const final = await page.evaluate(
     ({ sel, toolbarHeight }) =>
       new Promise<{ shiftPx: number; pinErrorPx: number }>((resolve) => {
@@ -291,6 +336,9 @@ test('no freeze before the table reaches the toolbar', async ({
   await page.locator('table').first().waitFor({ state: 'visible' });
   await waitForQuiescence(page, SCROLL_SELECTOR);
   await twoFrames(page);
+  // No freeze before scrolling. With the scroll-driven path the animation
+  // holds translateY(0) (identity matrix) before its range; without it the
+  // computed transform is 'none'. Either way the shift must be 0.
   const shiftPx = await page.evaluate(() => {
     const cell = document.querySelector('.ProseMirror .tableWrapper > table > tbody tr > th');
     if (!cell) return Number.NaN;
@@ -298,6 +346,7 @@ test('no freeze before the table reaches the toolbar', async ({
     return t === 'none' ? 0 : new DOMMatrixReadOnly(t).m42;
   });
   expect(shiftPx).toBe(0);
+  // Occluder hidden while not frozen — content above the table stays visible.
   const occluderOpacity = await page.evaluate(() => {
     const cell = document.querySelector('.ProseMirror .tableWrapper > table > tbody tr > th');
     return cell ? getComputedStyle(cell, '::before').opacity : '';
@@ -319,7 +368,14 @@ test('header row pins below the toolbar on mid-table scroll', async ({
   const state = await scrollAndReadFreeze(page, 260);
   expect(state.frozen).toBe(true);
   expect(state.pinErrorPx).toBeLessThan(2);
+  // No scroll shake: the transform is already correct at style-resolution
+  // time, before any rAF (scroll-driven path only; null = fallback path).
   if (state.syncShiftErrorPx !== null) expect(state.syncShiftErrorPx).toBeLessThan(1.5);
+  // Scrolled-past rows must not show in the slot above the pinned header.
+  // The occluder ::before on each header cell must be revealed and tall
+  // enough to cover the slot, and — pixel-level — the band above the header
+  // must be visually flat (computed style cannot see a compositor-side
+  // desync; a screenshot can).
   const occluder = await page.evaluate(() => {
     const cell = (
       document.querySelector('.ProseMirror .tableWrapper > table > tbody tr') as HTMLTableRowElement
@@ -349,6 +405,8 @@ test('header row stays pinned on deep scroll and releases past the table', async
   if (state.syncShiftErrorPx !== null) expect(state.syncShiftErrorPx).toBeLessThan(1.5);
   await page.screenshot({ path: testInfo.outputPath('frozen-deep.png') });
 
+  // Scroll far past the table: the header must hold at maxShift (pinned to
+  // the table's last row, offscreen) — never beyond the table.
   await page.evaluate((sel) => {
     const el = document.querySelector(sel) as HTMLElement | null;
     el?.scrollTo({ top: 5_000, behavior: 'instant' as ScrollBehavior });
@@ -381,6 +439,11 @@ test('first column stays pinned during horizontal scroll after column resize', a
   await page.locator('table').first().waitFor({ state: 'visible' });
   await waitForQuiescence(page, SCROLL_SELECTOR);
 
+  // A markdown table never overflows on its own (`table-layout: fixed` squeezes
+  // columns to fit), so horizontal scroll + sticky first column only exists
+  // after a user widens columns. Do what the user does: drag column borders
+  // via prosemirror-tables' column-resize handles. Right-to-left so each
+  // border's pre-drag position (computed fresh per iteration) stays in view.
   for (const colIndex of [5, 4, 3, 2, 1, 0]) {
     const border = await page.evaluate((idx) => {
       const row = document
@@ -400,6 +463,8 @@ test('first column stays pinned during horizontal scroll after column resize', a
     await page.mouse.up();
     await twoFrames(page);
   }
+  // Park the pointer mid-cell (away from any border) so the resize-handle
+  // decoration clears before the screenshot.
   const cellCenter = await page.evaluate(() => {
     const row = document
       .querySelector('.ProseMirror .tableWrapper > table > tbody')
@@ -410,6 +475,8 @@ test('first column stays pinned during horizontal scroll after column resize', a
   if (cellCenter) await page.mouse.move(cellCenter.x, cellCenter.y);
   await waitForQuiescence(page, SCROLL_SELECTOR);
 
+  // Now the table overflows: scroll the wrapper and verify the first column
+  // stays pinned (pure CSS position: sticky) while other columns shift.
   const sticky = await page.evaluate(() => {
     const wrapper = document.querySelector('.tableWrapper') as HTMLElement | null;
     if (!wrapper) return null;
@@ -428,6 +495,7 @@ test('first column stays pinned during horizontal scroll after column resize', a
   expect(sticky).not.toBeNull();
   expect(sticky?.overflow ?? 0).toBeGreaterThan(100);
   expect(sticky?.scrollLeft ?? 0).toBeGreaterThan(100);
+  // First column must not move while its neighbor shifts by the scroll amount.
   expect(sticky?.stickyDriftPx ?? 99).toBeLessThan(2);
   expect(sticky?.neighborShiftPx ?? 0).toBeGreaterThan(100);
   await twoFrames(page);
@@ -445,6 +513,16 @@ test('virtualized long doc: both freezes hold on a 200-row table', async ({
   await page.locator('table').first().waitFor({ state: 'attached' });
   await waitForQuiescence(page, SCROLL_SELECTOR);
 
+  // The chunk virtualization mechanism must be present on the table: the
+  // tableWrapper is itself an .ok-chunk-wrapper with computed
+  // content-visibility: auto. Whether Chromium actually SKIPS offscreen
+  // chunks is a runtime decision that does not engage in headless test runs
+  // (verified empirically: a row 4000px below the fold still reports
+  // checkVisibility() === true here) — the skip state is logged for
+  // diagnosis, not asserted. The extension is designed for both states: no
+  // per-scroll-frame geometry reads, a contentvisibilityautostatechange
+  // listener per table, content-size ResizeObserver, and scroll-burst drift
+  // recomputes.
   const chunkState = await page.evaluate(() => {
     const wrappers = document.querySelectorAll<HTMLElement>('.ProseMirror .ok-chunk-wrapper');
     const tableChunk = document.querySelector<HTMLElement>(
@@ -465,6 +543,8 @@ test('virtualized long doc: both freezes hold on a 200-row table', async ({
   expect(chunkState.tableIsChunk).toBe(true);
   expect(chunkState.tableCv).toBe('auto');
 
+  // Scroll the table's header into view, widen columns so the table overflows
+  // horizontally (drags happen while the header is at its natural position).
   const tableDocTop = await page.evaluate((sel) => {
     const scrollEl = document.querySelector(sel) as HTMLElement;
     const table = document.querySelector('.ProseMirror .tableWrapper > table') as HTMLElement;
@@ -496,11 +576,14 @@ test('virtualized long doc: both freezes hold on a 200-row table', async ({
   }
   await waitForQuiescence(page, SCROLL_SELECTOR);
 
+  // Deep into the table: header frozen, scroll-synchronous, no shake.
   const vertical = await scrollAndReadFreeze(page, tableDocTop + 2_000);
   expect(vertical.frozen).toBe(true);
   expect(vertical.pinErrorPx).toBeLessThan(2);
   if (vertical.syncShiftErrorPx !== null) expect(vertical.syncShiftErrorPx).toBeLessThan(1.5);
 
+  // Horizontal scroll while the header row is frozen: the first column must
+  // hold, the corner cell must layer above both frozen planes.
   const combined = await page.evaluate(() => {
     const wrapper = document.querySelector('.tableWrapper') as HTMLElement | null;
     if (!wrapper) return null;
@@ -548,6 +631,8 @@ test('slot above pinned header stays clean in a prose-heavy doc (pixel-verified)
     );
   }, SCROLL_SELECTOR);
 
+  // Several freeze-window positions: settle at each, then pixel-verify the
+  // band above the pinned header shows no content.
   for (const delta of [120, 320, 520]) {
     const state = await scrollAndReadFreeze(page, tableDocTop + delta);
     expect(state.frozen).toBe(true);

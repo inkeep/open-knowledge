@@ -4,6 +4,16 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// Exercise the insert-only upsert/remove + symlink-resolution across the real
+// JS<->Rust boundary by loading the built `.node` directly. The Rust unit tests
+// cover the engine's document + path semantics exhaustively; this guards the
+// napi marshalling the Rust tests cannot reach — the `McpEditResult` /
+// `SymlinkWritePaths` struct return shapes (including `Option<String>` ->
+// `undefined`), string in/out, and the throw on malformed input. It
+// hard-requires the addon (rather than skipping when absent) so a gate that
+// failed to build the binding fails loudly instead of vacuously passing,
+// matching `toml-config-engine.test.ts`.
+
 interface McpEditResult {
   text: string;
   changed: boolean;
@@ -81,6 +91,9 @@ describe('native mcp toml-edit binding', () => {
   test('resolveSymlinkWritePath marshals a cyclic chain as an undefined readPath', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-resolve-'));
     try {
+      // config -> a -> b -> a: the resolver breaks the cycle by declining a
+      // read target and writing through the original path. The absent
+      // `read_path` must cross the boundary as `undefined`, not an empty string.
       symlinkSync('b.toml', join(dir, 'a.toml'));
       symlinkSync('a.toml', join(dir, 'b.toml'));
       const config = join(dir, 'config.toml');

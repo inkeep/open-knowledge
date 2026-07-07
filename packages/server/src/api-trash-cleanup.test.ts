@@ -1,3 +1,20 @@
+/**
+ * Tests for `POST /api/trash/cleanup` — Step 2 of the two-step Option B
+ * Trash flow.
+ *
+ * Asserts the cleanup contract:
+ *   - File index: synchronous purge of the affected docName(s)
+ *   - Folder index: synchronous purge for `kind: 'folder'`
+ *   - recentlyRemovedDocs: setDeleted invoked per docName
+ *   - CC1 broadcast: signalChannel('files') emitted
+ *   - Hocuspocus docs: closed via captureAndCloseDocuments / closeAllForDoc
+ *   - Disk: untouched (file is already in Trash from Step 1 IPC; the handler
+ *     must NOT call unlinkSync / rmSync)
+ *   - extractActorIdentity: threaded (agentId → agent,
+ *     getPrincipal() → principal, neither → anonymous; invalid-summary → 400)
+ *   - Idempotent: 200 + empty array when fileIndex no longer has the entries
+ *   - Validation: reserved docName, invalid path, malformed body all 400
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
@@ -202,6 +219,11 @@ describe('POST /api/trash/cleanup — file kind', () => {
     const result = await callApi(dir, { kind: 'file', path: 'still-here' }, { fileIndex });
 
     expect(result.status).toBe(200);
+    // Handler MUST NOT call unlinkSync — verify the on-disk file is still
+    // there even though the index entry was purged. In the production flow,
+    // Step 1's `shell.trashItem` moves the file to ~/.Trash before this
+    // handler runs; in tests, we leave the disk file in place to prove the
+    // handler doesn't unlink it itself.
     expect(existsSync(join(dir, 'still-here.md'))).toBe(true);
   });
 
@@ -317,6 +339,8 @@ describe('POST /api/trash/cleanup — folder kind', () => {
 describe('POST /api/trash/cleanup — idempotency', () => {
   test('returns 200 + empty deletedDocNames when fileIndex already lacks the entry (watcher ran first)', async () => {
     const dir = setupTmpDir();
+    // No file on disk, no entry in index — simulates the case where the
+    // file-watcher beat the cleanup HTTP call.
     const fileIndex = new Map<string, FileIndexEntry>();
 
     const result = await callApi(dir, { kind: 'file', path: 'already-purged' }, { fileIndex });
@@ -376,6 +400,9 @@ describe('POST /api/trash/cleanup — validation', () => {
   test('rejects invalid summary type (non-string) with 400', async () => {
     const dir = setupTmpDir();
     writeFileSync(join(dir, 'x.md'), '# X\n', 'utf-8');
+    // summaryField permits string | undefined; passing a number bypasses Zod
+    // (the field is loose) and gets caught at extractActorIdentity which
+    // returns { kind: 'invalid-summary' }.
     const result = await callApi(dir, { kind: 'file', path: 'x', summary: 42 });
     expect(result.status).toBe(400);
     const body = JSON.parse(result.body) as { type: string; detail?: string };
@@ -405,6 +432,7 @@ describe('POST /api/trash/cleanup — attribution threading (extractActorIdentit
     );
 
     expect(result.status).toBe(200);
+    // extractActorIdentity calls getPrincipal exactly once during threading.
     expect(principalCalls).toBe(1);
   });
 
@@ -430,6 +458,9 @@ describe('POST /api/trash/cleanup — attribution threading (extractActorIdentit
     );
 
     expect(result.status).toBe(200);
+    // extractActorIdentity still calls getPrincipal to populate
+    // `actor.principalId` for the agent-on-behalf-of-principal audit trail
+    // even when the body has an agentId.
     expect(principalCalls).toBe(1);
   });
 

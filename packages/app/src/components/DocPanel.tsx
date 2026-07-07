@@ -19,6 +19,7 @@ export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
   { id: 'timeline', icon: Clock },
 ];
 
+/** Localized display label for a doc-panel tab. */
 function tabLabel(id: PanelTab): string {
   if (id === 'outline') return t`Outline`;
   if (id === 'links') return t`Links`;
@@ -26,6 +27,15 @@ function tabLabel(id: PanelTab): string {
   return t`Timeline`;
 }
 
+/**
+ * Top-level mode for the DocPanel container. Two values:
+ *   - `'doc'`:   existing per-document info tabs (outline / links / …).
+ *   - `'agent'`: Agent Activity view keyed to a `connectionId`.
+ *
+ * The mode is a drill-in, not a persistent toggle: agent avatar click enters
+ * `'agent'` mode; the back arrow (shown only in `'agent'` mode) returns to
+ * `'doc'` mode via `closeActivityPanel()`.
+ */
 type DocPanelMode = 'doc' | 'agent';
 
 function loadGraphPanelModule() {
@@ -47,6 +57,7 @@ interface DocPanelProps {
   isSourceMode: boolean;
   activeTab: PanelTab;
   onActiveTabChange: (tab: PanelTab) => void;
+  /** Active mode — controlled by presence-bar avatar clicks + the back arrow. */
   mode: DocPanelMode;
 }
 
@@ -57,8 +68,15 @@ export function DocPanel({
   onActiveTabChange,
   mode,
 }: DocPanelProps) {
+  // Lifted from TimelineContent so the choice survives sub-tab switches —
+  // TimelineContent unmounts when activeTab leaves 'timeline'.
   const { t } = useLingui();
   const [diffLayout, setDiffLayout] = useState<DiffLayout>('unified');
+  // Single-file `ok <file>` keeps only the Outline tab. Links/Graph need a
+  // multi-doc knowledge base, and Timeline is git history — all empty or inert
+  // for a lone git-off file. Coerce a persisted links/graph/timeline selection
+  // back to outline so the rail never renders a now-hidden panel, and drop the
+  // one-item tab strip entirely.
   const singleFile = useSingleFileMode();
   const tabs = singleFile ? TABS.filter((tab) => tab.id === 'outline') : TABS;
   const effectiveTab: PanelTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'outline';
@@ -106,6 +124,9 @@ export function DocPanel({
 
       {mode === 'doc' ? (
         <div
+          // Tabpanel semantics only apply when the tab strip (tablist) is shown.
+          // In single-file mode the strip is dropped, so the Outline renders as
+          // a plain region with no dangling `aria-labelledby` to a missing tab.
           {...(showTabStrip
             ? {
                 role: 'tabpanel' as const,

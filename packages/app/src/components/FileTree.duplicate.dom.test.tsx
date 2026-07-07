@@ -206,6 +206,11 @@ let duplicateStatus = 200;
 let duplicateGate: Promise<void> | null = null;
 let duplicateFetchError: Error | null = null;
 let fetchCalls: FetchCall[] = [];
+// Root-level entries the server "grows" mid-test (e.g. a folder the duplicate
+// just created on disk). The post-duplicate docs refresh re-reads the disk
+// walk, so a duplicated root folder surfaces here — the lazy splice keeps a
+// client optimistic add only for children of folders the server still returns,
+// not for a brand-new top-level folder.
 let extraDocuments: FileEntry[] = [];
 let okignoreBindingMock: {
   current: () => string;
@@ -257,6 +262,8 @@ function makeFetchMock() {
     if (url === '/api/duplicate-path') {
       if (duplicateGate) await duplicateGate;
       if (duplicateFetchError) throw duplicateFetchError;
+      // A folder duplicate creates the copy on disk; the next disk-walk listing
+      // returns it (the file-watcher round-trip, simulated).
       const dup = duplicateResponse as { kind?: string; path?: string } | undefined;
       if (duplicateStatus === 200 && dup?.kind === 'folder' && typeof dup.path === 'string') {
         extraDocuments = [
@@ -445,6 +452,8 @@ describe('FileTree duplicate action runtime behavior', () => {
     extraDocuments = [];
     okignoreBindingMock = null;
     projectLocalBindingMock = null;
+    // These duplicate/rename tests don't depend on visibility config; the
+    // tree loads through the default disk-walk listing.
     mergedConfigMock = null;
     globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
     toastSuccessMock.mockClear();

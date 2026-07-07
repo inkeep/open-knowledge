@@ -1,3 +1,10 @@
+/**
+ * Handler-level coverage for `palette`. Pins the three-section
+ * payload (markdown-native component forms, themed embed starters, injected
+ * tokens), the markdown-vs-jsx authoring split, and the registry grounding —
+ * every registry-backed authoring form must name a live canonical descriptor.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import {
   getAgentCanonicalDescriptors,
@@ -80,6 +87,7 @@ describe('palette tool', () => {
     expect(mermaid?.authoring).toBe('markdown');
     expect(mermaid?.example).toContain('```mermaid');
 
+    // Tabs is the lone JSX-only canonical.
     const tabs = byId.get('Tabs');
     expect(tabs?.authoring).toBe('jsx');
     expect(tabs?.example).toContain('<Tabs>');
@@ -90,12 +98,17 @@ describe('palette tool', () => {
     const { structuredContent } = await handler({});
     const mermaid = structuredContent?.components.find((c) => c.id === 'Mermaid');
     expect(mermaid).toBeDefined();
+    // Sequence-family terminators + their escapes, flowchart-label quoting,
+    // and the write/edit feedback channel must all be present — agents are
+    // told fenced blocks "don't need a fetch", so this entry is the single
+    // place the pitfalls live.
     expect(mermaid?.guidance).toContain('`;`');
     expect(mermaid?.guidance).toContain('`#`');
     expect(mermaid?.guidance).toContain('#59;');
     expect(mermaid?.guidance).toContain('#35;');
     expect(mermaid?.guidance).toContain('label (with) punctuation');
     expect(mermaid?.guidance).toContain('mermaid-parse-error');
+    // The example demonstrates both sharp-edge families.
     expect(mermaid?.example).toContain('sequenceDiagram');
     expect(mermaid?.example).toContain('#59;');
     expect(mermaid?.example).toContain('"Start (label with punctuation)"');
@@ -105,6 +118,9 @@ describe('palette tool', () => {
     const handler = captureRegistration();
     const { structuredContent } = await handler({});
     const canonicalNames = new Set(getAgentCanonicalDescriptors().map((d) => d.name));
+    // Callout / Accordion / Math / Tabs are registry-backed; their id must
+    // still resolve to a canonical so the palette can't advertise a dropped
+    // component. (Mermaid + wiki-embed are intentionally not registry-backed.)
     for (const id of ['Callout', 'Accordion', 'Math', 'Tabs']) {
       expect(canonicalNames.has(id)).toBe(true);
       expect(structuredContent?.components.some((c) => c.id === id)).toBe(true);
@@ -121,6 +137,7 @@ describe('palette tool', () => {
     for (const pattern of patterns) {
       expect(pattern.snippet.startsWith('```html preview')).toBe(true);
       expect(pattern.snippet.trimEnd().endsWith('```')).toBe(true);
+      // Starters are theme-wired — they must reference the injected tokens.
       expect(pattern.snippet).toContain('var(--');
     }
   });

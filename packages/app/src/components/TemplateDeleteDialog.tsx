@@ -7,11 +7,19 @@ import type { TemplateMenuEntry } from '@/hooks/use-folder-config';
 import { deleteTemplate } from '@/lib/folder-config-api';
 
 interface Props {
+  /** The template to delete; `null` keeps the dialog closed. */
   template: TemplateMenuEntry | null;
   onOpenChange: (open: boolean) => void;
+  /** Called after a successful delete so the parent re-fetches. */
   onDeleted: () => void;
 }
 
+/**
+ * Confirm and delete a template. The delete targets the template's owning
+ * folder (`source_folder`) — which, for an `inherited` template, is an
+ * ancestor; the confirmation calls that consequence out. Shared by the
+ * folder-overview card and the Settings template manager.
+ */
 export function TemplateDeleteDialog({ template, onOpenChange, onDeleted }: Props) {
   const { t } = useLingui();
   const [deleting, setDeleting] = useState(false);

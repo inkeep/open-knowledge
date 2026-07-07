@@ -10,9 +10,21 @@ interface SplashDownloadSplitButtonProps {
   githubUrl: string;
   installCommand: string;
   cloneCommand: string;
+  /** Forwarded onto the download segment so the cluster can focus it on a failed handoff. */
   downloadRef?: Ref<HTMLAnchorElement>;
 }
 
+/**
+ * Segmented (split) download button: a primary "Download the app" face plus a
+ * caret that opens the shared CLI popover (copyable commands + View on GitHub).
+ * Condenses what used to be three sibling CTAs (download / CLI / GitHub) into
+ * one control while keeping the deep-link "Open in macOS app" button primary.
+ *
+ * Each segment owns its border + rounding (left rounds left, caret rounds
+ * right; the caret's lighter left border is the divider) so each hover fill is
+ * bounded by its own pill corner. The Download segment is a plain
+ * server-rendered <a> that works without JS; only the popover is JS-gated.
+ */
 export function SplashDownloadSplitButton({
   downloadUrl,
   githubUrl,

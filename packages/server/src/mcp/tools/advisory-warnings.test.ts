@@ -1,3 +1,9 @@
+/**
+ * Relay coverage for the unified advisory channel: wire parsing (tolerant of
+ * absent / malformed / unrecognized payloads) and the `⚠` text lines that
+ * make every advisory family visible to text-only MCP consumers.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type { BrokenLink, RenderWarning, WriteWarning } from '@inkeep/open-knowledge-core';
 import {
@@ -121,6 +127,8 @@ describe('render-family bounds phrasing', () => {
     expect(formatRenderWarningsBrief(warnings)).toContain('10+');
   });
 });
+
+// ── brokenLinks relay (write-time link validation) ──────────────────────
 
 const noSuchDoc: BrokenLink = {
   href: './wiki/x',

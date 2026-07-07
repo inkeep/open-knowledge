@@ -1,3 +1,21 @@
+/**
+ * Filesystem writer for a single folder's `<folder>/.ok/frontmatter.yml`.
+ *
+ * Open-shape (any key, any supported value type), exactly like a doc's
+ * frontmatter — it describes the folder itself and does NOT cascade into
+ * child docs (templates own new-doc starting values). Merge-patch via the
+ * shared `mergePatch` primitive, so folder and doc frontmatter behave
+ * identically: a key present REPLACES; `null` / `''` / `[]` DROPS; clearing
+ * every key removes the file and auto-cleans an empty `.ok/`.
+ *
+ * A folder is addressed by its own content-root-relative path. There is no
+ * glob/match layer — one call writes exactly one folder.
+ *
+ * Writes are atomic (tmp + rename). When the merged frontmatter is empty
+ * (every key cleared, or an empty patch), the file is removed and `.ok/` is
+ * auto-cleaned (`templates/` may still be there; that case keeps `.ok/`).
+ */
+
 import {
   existsSync,
   mkdirSync,
@@ -13,8 +31,21 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { type FrontmatterRecord, mergePatch } from './frontmatter-merge.ts';
 
 export interface FolderFrontmatterPatchInput {
+  /**
+   * Absolute anchor directory the folder path resolves against. Both the MCP
+   * `write` / `edit` folder targets and the `/api/folder-config` route pass the
+   * resolved content directory, so folder frontmatter lands beside the folder
+   * regardless of `content.dir`. For the universal `content.dir = '.'` case it
+   * coincides with the project root.
+   */
   anchorDir: string;
+  /** Anchor-relative folder path. `''` targets the anchor directory itself. */
   folderRel: string;
+  /**
+   * Merge-patch — open-shape, like a doc's frontmatter. A key present
+   * REPLACES the existing value; `null` / `''` / `[]` DROPS the key. An empty
+   * patch (`{}`) deletes the file.
+   */
   patch: FrontmatterRecord;
 }
 
@@ -92,6 +123,9 @@ export function applyFolderFrontmatterPatch(
 
 function readExistingFrontmatter(absPath: string): FrontmatterRecord {
   if (!existsSync(absPath)) return {};
+  // File exists — re-throw on read AND parse failure so the caller surfaces it
+  // as WRITE_ERROR. Returning `{}` on a parse error would silently truncate a
+  // hand-edited file to just the patch fields during the merge.
   const content = readFileSync(absPath, 'utf-8');
   const parsed: unknown = parseYaml(content);
   if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
@@ -109,7 +143,9 @@ function autoCleanOkDir(okAbsDir: string): void {
   if (entries.length === 0) {
     try {
       rmdirSync(okAbsDir);
-    } catch {}
+    } catch {
+      // Race or permission; leave it.
+    }
   }
 }
 

@@ -1,3 +1,9 @@
+/**
+ * `open-knowledge push` — push only.
+ *
+ * Delegates to POST /api/sync/trigger { op: 'push' } when a live server is
+ * running. Falls back to simple-git push when no server is found.
+ */
 import type { Config } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { runSync } from './sync.ts';

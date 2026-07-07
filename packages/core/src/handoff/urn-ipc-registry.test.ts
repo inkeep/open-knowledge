@@ -1,3 +1,16 @@
+/**
+ * Behavioral coverage for `lookupUrnInRegistry` — pins the four return
+ * shapes against the registry contract.
+ *
+ * The colocated `urn-ipc-registry-coverage.test.ts` meta-test asserts data
+ * completeness (every URN has a decision: mapped or HTTP-only). This file
+ * asserts behavior — that the function actually produces the right
+ * discriminated-union shape per input. Both layers matter: a regression in
+ * the lookup function (e.g., a wrong field name on the `mapped` variant, a
+ * branch swap between `http-only` and `unknown`) would silently produce
+ * wrong reason translations downstream.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { lookupUrnInRegistry } from './urn-ipc-registry.ts';
 
@@ -15,6 +28,8 @@ describe('lookupUrnInRegistry', () => {
   });
 
   test('shared URN (path-escape) resolves to channel-specific reason', () => {
+    // path-escape exists in cursor's channel map as 'invalid-path' — verifies
+    // the channel-keyed shape preserves bespoke per-channel translations.
     const result = lookupUrnInRegistry('urn:ok:error:path-escape', 'ok:shell:spawn-cursor');
     expect(result.kind).toBe('mapped');
     if (result.kind === 'mapped') {

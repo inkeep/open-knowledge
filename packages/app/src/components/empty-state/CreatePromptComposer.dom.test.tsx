@@ -1,3 +1,14 @@
+/**
+ * Behavioral tests for the empty-state CreatePromptComposer's chevron dropdown:
+ * the "Desktop" section (app-agent rows) and the desktop-gated "Terminal" section
+ * (the "Claude" CLI row). Every row SELECTS a create target — Desktop picks an app
+ * agent, Terminal picks the docked Claude CLI — and the primary Create button
+ * performs the selected target (app deep-link or terminal launch), reusing the same
+ * create-scope handoff input. Pins selection -> button reflection, that the CLI
+ * launch carries the typed brief verbatim, section gating, and the visible-text vs
+ * accessible-name split.
+ */
+
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { CreateScenario, InstallState } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -27,12 +38,17 @@ mock.module('@/lib/use-workspace', () => ({
   useWorkspace: () => workspaceValue,
 }));
 
+// Stub the brand-icon helper so the test doesn't pull next-themes / SVG vendor
+// icons — the composer only needs *an* icon per row, not the themed artwork.
 mock.module('@/components/handoff/OpenInAgentMenuItem', () => ({
   TargetIcon: ({ id }: { id: string }) => (
     <svg data-testid={`target-icon-${id}`} aria-hidden="true" />
   ),
 }));
 
+// Passthrough the dropdown primitives so jsdom doesn't fight Radix's portal +
+// modal pointer-events trap; the composer's section gating + click handlers are
+// what's under test, not Radix's open/close.
 type MenuChild = {
   children?: ReactNode;
   disabled?: boolean;
@@ -47,6 +63,9 @@ mock.module('@/components/ui/dropdown-menu', () => ({
       {children}
     </div>
   ),
+  // Transparent passthrough — the real role="group" semantics are exercised
+  // against real Radix in OpenInAgentMenu/OpenInAgentTerminalRow .dom tests;
+  // here the dropdown is fully mocked, so asserting the role would test the mock.
   DropdownMenuGroup: ({ children }: MenuChild) => <>{children}</>,
   DropdownMenuItem: ({ children, disabled, onSelect, ...props }: MenuChild) => (
     <button type="button" role="menuitem" disabled={disabled} onClick={onSelect} {...props}>
@@ -57,7 +76,13 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuSeparator: () => <hr data-testid="menu-separator" />,
 }));
 
+// Mentions the mock input returns from getContent(); reset per test.
 let mockMentions: string[] = [];
+// Textarea double for the rich `@`-mention input: exposes the same imperative
+// handle CreatePromptComposer drives (getContent / setText / focus) and routes
+// Enter -> onSubmit, mirroring the real ComposerMentionInput contract. The real
+// `@`-typeahead is exercised against the live editor in ComposerMentionInput's
+// own tests; here we cover the create composer's wiring.
 type MentionHandle = {
   focus: () => void;
   blur: () => void;
@@ -135,6 +160,8 @@ async function renderComposer(
       <CreatePromptComposer scenario={opts.scenario ?? 'new-project'} />
     </TerminalLaunchProvider>,
   );
+  // The smart-default effect resolves a selected agent once the install probe
+  // settles; the chevron dropdown only mounts then.
   await waitFor(() => {
     expect(screen.getByTestId('create-with-agent-menu')).toBeTruthy();
   });
@@ -156,6 +183,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
 
     expect(screen.getByText('Desktop')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
+    // Terminal-first: the Terminal section label precedes the Desktop one.
     expect(
       screen.getByText('Terminal').compareDocumentPosition(screen.getByText('Desktop')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -184,6 +212,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
       target: { value: 'Build a competitor wiki' },
     });
 
+    // Selecting the CLI row reflects in the primary button and does NOT launch yet.
     fireEvent.click(screen.getByTestId('create-with-cli-claude'));
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain(
@@ -192,6 +221,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     });
     expect(launchCalls).toEqual([]);
 
+    // Clicking Create performs the docked-terminal launch with the create-scope input.
     fireEvent.click(screen.getByTestId('create-with-agent'));
     expect(launchCalls).toEqual([
       {
@@ -210,6 +240,8 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     workspaceValue = null; // buildCreateHandoffInput returns null until the workspace resolves.
     await renderComposer({ withTerminal: true });
 
+    // Give it intent so the input-required gate passes — the only thing blocking
+    // the launch here is the unresolved workspace.
     fireEvent.change(screen.getByLabelText('Describe the project you want to create'), {
       target: { value: 'Build a wiki' },
     });
@@ -260,6 +292,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
       );
     });
 
+    // Plain Enter submits (Shift+Enter newlines) — matches the bottom composer.
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(launchCalls).toEqual([
       {
@@ -285,6 +318,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
       );
     });
 
+    // Switching back to a Desktop agent must clear CLI mode (chooseAgent -> setCliMode(false)).
     fireEvent.click(screen.getByTestId('create-agent-option-codex'));
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain('Create with Codex');
@@ -332,6 +366,8 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
     await renderComposer({ withTerminal: true });
 
+    // Nothing is shown while empty until the user actually attempts to create —
+    // the requirement is opt-in, not a permanent label.
     expect(screen.queryByTestId('create-input-required')).toBeNull();
 
     fireEvent.click(screen.getByTestId('create-with-cli-claude')); // CLI mode
@@ -341,6 +377,8 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
       );
     });
 
+    // Enter on an empty field surfaces the validation error (role=alert,
+    // announced to screen readers) and does NOT launch.
     fireEvent.keyDown(screen.getByLabelText('Describe the project you want to create'), {
       key: 'Enter',
     });
@@ -350,12 +388,15 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     expect(enterError.getAttribute('role')).toBe('alert');
     expect(enterError.className).toContain('text-destructive');
 
+    // Clicking the (clickable) Create primary with empty input also surfaces the
+    // error and does not launch — a natively-disabled button couldn't.
     fireEvent.click(screen.getByTestId('create-with-agent'));
     expect(launchCalls).toEqual([]);
     expect(screen.getByTestId('create-input-required').textContent).toBe(
       'Describe what you want to create to continue',
     );
 
+    // Typing a valid brief clears the error.
     fireEvent.change(screen.getByLabelText('Describe the project you want to create'), {
       target: { value: 'Build a wiki' },
     });
@@ -363,6 +404,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
       expect(screen.queryByTestId('create-input-required')).toBeNull();
     });
 
+    // Enter now launches with the typed brief — create works.
     fireEvent.keyDown(screen.getByLabelText('Describe the project you want to create'), {
       key: 'Enter',
     });

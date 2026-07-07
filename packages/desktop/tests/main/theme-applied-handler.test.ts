@@ -1,3 +1,32 @@
+/**
+ * Pins the composition of the `ok:theme:applied` IPC handler:
+ *
+ *   1. The renderer's per-window show-gate signal — fireThemeApplied is
+ *      called only when the sender resolves to a BrowserWindow. A
+ *      destroyed-window race (sender exists, fromWebContents → null)
+ *      emits a structured warn so the 5 s show-gate timeout's downstream
+ *      `missing: 'theme-applied'` warn isn't the only diagnostic trail.
+ *
+ *   2. The cross-window vibrancy fan-out — applyReducedTransparency runs
+ *      only when `opts.reducedTransparency` is explicitly defined. Without
+ *      the `!== undefined` guard, the cold-launch theme-applied signal
+ *      (which carries no reducedTransparency on first fire) would coerce
+ *      `undefined` to falsy and re-set every window's vibrancy on every
+ *      fire — observable as a flicker on cold-launch.
+ *
+ *   3. The win-null × reducedTransparency-defined edge case — vibrancy
+ *      fan-out must still run for OTHER windows even when the signal's
+ *      sender window is gone, because the fan-out targets all open
+ *      windows, not the sender alone.
+ *
+ * The handler body in `index.ts` is 6 lines and the individual building
+ * blocks (`showGate.fireThemeApplied`, `applyReducedTransparency`) are
+ * exhaustively unit-tested. Pinning the composition here matches the
+ * pattern set by `applyThemeSource` and `applyReducedTransparency` —
+ * pure DI'd handler, structural collaborators, mutation-pass via the
+ * public interface.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { applyThemeApplied } from '../../src/main/theme-applied-handler.ts';
 
@@ -99,6 +128,13 @@ describe('applyThemeApplied — composition edge cases', () => {
   });
 
   test('vibrancy fan-out fires before show-gate when both apply', () => {
+    // Order is load-bearing for cold-launch correctness: a user with macOS
+    // Reduce Transparency enabled supplies `reducedTransparency: true` on
+    // the first fire of `ok:theme:applied`. If show-gate releases first,
+    // window.show() composites one frame with the default 'sidebar'
+    // vibrancy material before setVibrancy(null) lands — the exact
+    // cold-launch staleness class the dual-signal gate is built to
+    // eliminate. Apply vibrancy first, then release the gate.
     const { deps, trace } = makeDeps();
     applyThemeApplied(deps, { id: 'win-1' }, { reducedTransparency: true });
     const sequence = trace
@@ -108,6 +144,9 @@ describe('applyThemeApplied — composition edge cases', () => {
   });
 
   test('narrow dep surface — the handler does not require any dep beyond fireThemeApplied / applyReducedTransparency / warn', () => {
+    // Lock: future drift that grows the dep surface (e.g., adds a
+    // setBackgroundColor fan-out, or a state.json write) trips this
+    // assertion at the type level.
     const { deps } = makeDeps();
     expect(new Set(Object.keys(deps))).toEqual(
       new Set(['fireThemeApplied', 'applyReducedTransparency', 'warn']),

@@ -42,6 +42,12 @@ function SelectTrigger({
   );
 }
 
+/**
+ * SelectContent carries `data-ok-layer-spawned=""` so the editor's
+ * interaction-layer outside-click handler treats portaled clicks as
+ * layer-affiliated rather than dismissing the active PropPanel. See
+ * `editor/interaction-layer.tsx` (`onOutsideClick`).
+ */
 function SelectContent({
   className,
   children,

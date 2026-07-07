@@ -1,3 +1,11 @@
+/**
+ * `shadow-repo` check — resolves the shadow gitdir for the project and
+ * verifies its `HEAD` ref is readable. Warn (not fail) when the project
+ * isn't initialized OR no shadow repo exists yet — same posture as the
+ * `config-yaml` check. Fail surfaces the typed errors
+ * `MalformedGitPointerError` / `GitDirAccessError` thrown by `resolveShadowDir`.
+ */
+
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
@@ -5,6 +13,7 @@ import { GitDirAccessError, MalformedGitPointerError } from '@inkeep/open-knowle
 import type { CheckContext, CheckDefinition, CheckResult } from './types.ts';
 
 interface ShadowRepoCheckDeps {
+  /** Replaceable so tests can simulate alternative shadow gitdir layouts. */
   resolve?: (projectRoot: string) => string;
 }
 

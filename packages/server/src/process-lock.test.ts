@@ -19,6 +19,15 @@ import { PROTOCOL_VERSION, RUNTIME_VERSION } from './version-constants';
 
 const LOCK_NAME: LockName = 'ui';
 
+/**
+ * Pick a PID that is alive on this host AND passes `isValidLockPid` (≥ 2,
+ * not our own pid). Uses `process.ppid` when it's > 1; otherwise falls
+ * back to scanning a small range above process.pid for a live one.
+ *
+ * Tests previously used `pid: 1` (init/launchd) as a "known alive" stand-
+ * in for a foreign holder. The security validator now rejects pid ≤ 1, so
+ * tests that rely on a real collision/live-lock state need a real PID.
+ */
 function aliveForeignPid(): number {
   if (process.ppid > 1 && process.ppid !== process.pid) return process.ppid;
   for (let candidate = process.pid + 1; candidate < process.pid + 5000; candidate++) {
@@ -137,6 +146,10 @@ describe('acquireProcessLock', () => {
       lockDir,
       metadata: { port: 0, worktreeRoot: '/seed' },
     });
+    // Use process.ppid — a real PID that passes isValidLockPid (rejects 0/1)
+    // and is alive for the duration of the test. PID 1 (launchd/init) is
+    // explicitly refused by the security validator, so a "known alive" lock
+    // holder must be ≥ 2.
     const livePid = aliveForeignPid();
     const live: ProcessLockMetadata = {
       pid: livePid,
@@ -472,6 +485,14 @@ describe('releaseProcessLock', () => {
     expect(md.pid).toBe(1);
   });
 
+  // Refcounting protects the Vite dev plugin's per-`configureServer`
+  // createServer lifecycle: pass-1's destroy runs releaseProcessLock at the
+  // moment pass-2's createServer has already idempotently re-acquired the
+  // lock. Without refcounting, pass-1's release unlinks the lock file out
+  // from under pass-2 — silently breaking (cross-process collision).
+  // The pre-fix variant would FAIL the "still exists after single release"
+  // expectation below; the post-fix variant keeps the file until the LAST
+  // release.
   test('double acquire then single release keeps lock file in place', () => {
     acquireProcessLock({
       lockName: LOCK_NAME,
@@ -487,6 +508,9 @@ describe('releaseProcessLock', () => {
 
     releaseProcessLock({ lockName: LOCK_NAME, lockDir });
 
+    // Other active acquire still holds the lock — file must remain so
+    // a foreign-process acquire (`ok start` against the same contentDir)
+    // still throws ProcessLockCollisionError.
     expect(existsSync(lockPath)).toBe(true);
     const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
     expect(md.pid).toBe(process.pid);
@@ -511,6 +535,9 @@ describe('releaseProcessLock', () => {
   });
 
   test('release without prior acquire is a no-op (untracked release path)', () => {
+    // Process-exit handlers may fire after the close-handler path already
+    // drained the refcount — those untracked releases must remain
+    // ownership-guarded but otherwise no-op.
     expect(existsSync(lockPath)).toBe(false);
     releaseProcessLock({ lockName: LOCK_NAME, lockDir });
     expect(existsSync(lockPath)).toBe(false);
@@ -606,12 +633,16 @@ describe('readProcessLockDetailed', () => {
   });
 
   test('returns incompatible.missing-fields for a live lock missing protocolVersion', () => {
+    // Hand-craft a lock as if a pre-version-constants binary wrote it.
+    // Use a real alive foreign pid so liveness passes — pid 1 is now
+    // refused by the isValidLockPid validator.
     const versionless = {
       pid: aliveForeignPid(),
       hostname: hostname(),
       port: 6000,
       startedAt: new Date().toISOString(),
       worktreeRoot: '/legacy',
+      // No protocolVersion, no runtimeVersion — simulates a v0.x lock.
     };
     require('node:fs').mkdirSync(lockDir, { recursive: true });
     writeFileSync(lockPath, JSON.stringify(versionless), 'utf-8');
@@ -630,6 +661,7 @@ describe('readProcessLockDetailed', () => {
       startedAt: new Date().toISOString(),
       worktreeRoot: '/legacy',
       protocolVersion: 1,
+      // No runtimeVersion.
     };
     require('node:fs').mkdirSync(lockDir, { recursive: true });
     writeFileSync(lockPath, JSON.stringify(partial), 'utf-8');
@@ -676,6 +708,8 @@ describe('readProcessLockDetailed', () => {
 
   test('returns stale (without cleanup) on cross-host lock', () => {
     const remote: ProcessLockMetadata = {
+      // Real alive pid (validator rejects pid 1) so the host check is the
+      // only reason this classifies as stale.
       pid: aliveForeignPid(),
       hostname: 'some-other-host',
       port: 7100,
@@ -689,11 +723,17 @@ describe('readProcessLockDetailed', () => {
 
     const result = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
     expect(result.status).toBe('stale');
+    // We do NOT unlink cross-host locks (they're owned by another machine).
     expect(existsSync(lockPath)).toBe(true);
   });
 });
 
 describe('lock-pid security validation', () => {
+  // Hostile-lock cases: a `<lockDir>/server.lock` whose `pid` field cannot
+  // refer to a real OpenKnowledge holder must NEVER feed signal-sending
+  // code paths. acquireProcessLock + readProcessLock + readProcessLockDetailed
+  // all classify these as corrupt/incompatible so the desktop's auto-kill
+  // path cannot trust the pid value.
   const HOSTILE_PIDS: ReadonlyArray<{ pid: unknown; label: string }> = [
     { pid: 0, label: 'PID 0 (process group)' },
     { pid: 1, label: 'PID 1 (init/launchd)' },
@@ -722,6 +762,8 @@ describe('lock-pid security validation', () => {
       };
       writeFileSync(lockPath, JSON.stringify(hostile), 'utf-8');
 
+      // Must not throw a collision — hostile pid is treated as corrupt
+      // and the lock gets atomically replaced with our own.
       acquireProcessLock({
         lockName: LOCK_NAME,
         lockDir,
@@ -777,6 +819,9 @@ describe('lock-pid security validation', () => {
     expect(isValidLockPid(0x80000000)).toBe(false);
     expect(isValidLockPid('123')).toBe(false);
     expect(isValidLockPid(null)).toBe(false);
+    // Own pid is structurally valid — the lock-acquire idempotent rewrite
+    // path stores process.pid in our own lock. The "do not signal self"
+    // guard is the responsibility of the desktop kill site, not the parser.
     expect(isValidLockPid(process.pid)).toBe(true);
     expect(isValidLockPid(process.ppid > 1 ? process.ppid : 12345)).toBe(true);
   });

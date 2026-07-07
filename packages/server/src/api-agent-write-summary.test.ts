@@ -102,6 +102,7 @@ describe('summary parameter — three agent-write endpoints (US-003)', () => {
       );
       expect(response.status).toBe(200);
       const parsed = JSON.parse(response.body);
+      // success body is flat — no `ok: true` wrapper.
       expect(parsed.timestamp).toBeDefined();
       expect(parsed.summary).toBeUndefined();
       const m = getMetrics();
@@ -196,6 +197,8 @@ describe('summary parameter — three agent-write endpoints (US-003)', () => {
         },
       );
       expect(response.status).toBe(400);
+      // schema rejects non-string summary at validateBody —
+      // RFC 9457 problem+json shape (pre-identity, anonymous).
       const parsed = JSON.parse(response.body);
       expect(parsed.type).toBe('urn:ok:error:invalid-request');
       expect(parsed.status).toBe(400);
@@ -228,6 +231,9 @@ describe('summary parameter — three agent-write endpoints (US-003)', () => {
     });
 
     test('summary 80 chars exact → stored as-is, no hint (D20 edge)', async () => {
+      // Exactly-at-cap must NOT emit `truncatedFrom` or `hint`.
+      // Guards against off-by-one regressions in `normalizeSummary` (e.g.
+      // `raw.length >= MAX_SUMMARY_LENGTH` vs `> MAX_SUMMARY_LENGTH`).
       const s = 'z'.repeat(80);
       const response = await callApi(
         hocuspocus,
@@ -271,6 +277,7 @@ describe('summary parameter — three agent-write endpoints (US-003)', () => {
       const m = getMetrics();
       expect(m.summariesProvided).toBe(0);
       expect(m.summariesTruncated).toBe(0);
+      // Underlying contributor row should NOT carry a whitespace summary.
       expect(formatContributorsForTest()).not.toContain('"summaries"');
     });
 
@@ -333,6 +340,8 @@ describe('summary parameter — three agent-write endpoints (US-003)', () => {
 
   describe('/api/agent-patch', () => {
     test('404 "not found" does NOT increment counters or fire contributor', async () => {
+      // Seed a doc first — post-foundation getSession returns a SessionRecord
+      // wrapping the DirectConnection + per-session origin (precedent #24).
       const session = await sessionManager.getSession('test-doc');
       session.dc.document.transact(() => {
         applyAgentMarkdownWrite(session.dc.document, '# H\n', 'replace');

@@ -1,3 +1,13 @@
+/**
+ * the agent write/edit/frontmatter-patch handlers register
+ * the doc they just persisted into the file index synchronously, instead of
+ * relying solely on the file-watcher (whose create FSEvent can be permanently
+ * dropped for a file written into a freshly-created subdir — see file-watcher.ts).
+ *
+ * These drive the lightweight bare-Hocuspocus + `createApiExtension` harness
+ * (no persistence extension, no watcher) and spy on `mutateFileIndex`, so what
+ * they observe is the handler's own registration, not the watcher's.
+ */
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -75,6 +85,8 @@ describe('agent write self-registers the file index (PRD-7201)', () => {
       });
 
       expect(captured.status).toBe(200);
+      // The handler registered the doc into the file index without any watcher
+      // event — closing the dropped-FSEvent gap at the write source.
       const docEvents = events.filter(
         (e) => 'docName' in e && (e as { docName?: string }).docName === 'evidence/new-target',
       );
@@ -87,6 +99,10 @@ describe('agent write self-registers the file index (PRD-7201)', () => {
   });
 
   test('a write to a doc already in the file index registers as kind:update', async () => {
+    // The other tests wire an empty file index, so they only exercise the
+    // `kind: 'create'` branch. Pre-seed the doc so the upsert takes the
+    // `kind: 'update'` branch (the watcher dropped a later event for a doc it
+    // had already indexed — re-registration must not flip it to a create).
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-write-file-index-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -218,6 +234,10 @@ describe('agent write self-registers the file index (PRD-7201)', () => {
   });
 
   test('does NOT register a content-scope-excluded doc (mirrors the watcher gate)', async () => {
+    // The write handlers don't reject okignore'd targets (only reserved system/
+    // config names), so an agent CAN write to one. The watcher would never index
+    // it; the synchronous registration must skip it the same way, or its on-disk
+    // title would leak through the admitted set the link/title endpoints read.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-write-file-index-excluded-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -244,6 +264,7 @@ describe('agent write self-registers the file index (PRD-7201)', () => {
         position: 'replace',
       });
 
+      // The write itself still succeeds — only the file-index registration is gated.
       expect(captured.status).toBe(200);
       const docEvents = events.filter(
         (e) => 'docName' in e && (e as { docName?: string }).docName === 'secret',

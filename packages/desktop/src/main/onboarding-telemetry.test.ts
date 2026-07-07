@@ -1,3 +1,10 @@
+/**
+ * Onboarding-telemetry — assert the span emitter wraps `withSpanSync` with
+ * the canonical span name and attribute shape, and that the `warnings_count`
+ * cap+floor clamp is correctly applied. `withSpanSync` is mocked at the
+ * module boundary so the assertions are independent of whether the OTel SDK
+ * is enabled.
+ */
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { EntryPoint } from '../shared/entry-point.ts';
 

@@ -1,3 +1,8 @@
+/**
+ * Tests for extractPageTitle — the title extraction logic used by GET /api/pages.
+ *
+ * Priority: frontmatter `title:` field → first `# heading` line → filename without extension.
+ */
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -43,12 +48,15 @@ describe('extractPageTitle', () => {
   });
 
   test('handles frontmatter with no closing delimiter gracefully — falls to heading', () => {
+    // Malformed frontmatter: no closing ---
     const content = '---\ntitle: Orphaned\n\n# Heading\n\nBody.';
+    // No closing ---, so frontmatter is not recognized — falls to heading
     expect(extractPageTitle(content, 'filename')).toBe('Heading');
   });
 
   test('trims ## and deeper headings — only # heading used', () => {
     const content = '## Second Level\n\n### Third Level\n\nBody.';
+    // No # heading, falls to filename
     expect(extractPageTitle(content, 'filename')).toBe('filename');
   });
 
@@ -98,6 +106,9 @@ describe('extractHeadings', () => {
   });
 
   test('ignores `#` comments inside fenced code blocks (parity with TipTap DOM output)', () => {
+    // Mirrors a case where
+    // a `# electron-builder.yml` YAML comment inside a ```yaml fence was being
+    // mis-counted as a level-1 heading, shifting every subsequent outline index by one.
     const content = [
       '# Top',
       '',
@@ -135,6 +146,9 @@ describe('extractHeadings', () => {
   });
 
   test('strips frontmatter whose opening fence carries a trailing space', () => {
+    // `--- ` is one in-tolerance keystroke away from `---`; FM recognition
+    // must not flip on it. A YAML comment line inside the FM block would
+    // otherwise leak into the outline as a level-1 heading.
     const content = [
       '--- ',
       'title: Fence hazard',
@@ -165,6 +179,9 @@ describe('extractHeadings', () => {
   });
 
   test('strips frontmatter whose closing fence carries trailing whitespace', () => {
+    // `extractHeadings` routes through core `stripFrontmatter`; pins that a
+    // `--- ` closing line still partitions as FM so YAML comment lines never
+    // leak into the outline.
     const content = [
       '---',
       'title: Fence hazard',
@@ -252,6 +269,8 @@ async function callPagesWithIndex(
 }
 
 async function callPages(contentDir: string, method = 'GET'): Promise<CapturedResponse> {
+  // buildFileIndex leaves title/icon unset, so this exercises handlePages'
+  // disk-read fallback path (the pre-cache behavior).
   return callPagesWithIndex(contentDir, buildFileIndex(contentDir), method);
 }
 
@@ -277,6 +296,7 @@ describe('GET /api/pages', () => {
           expect.objectContaining({ docName: 'root', title: 'Root' }),
         ]),
       );
+      // Verify new fields are present
       for (const page of body.pages ?? []) {
         expect(typeof page.size).toBe('number');
         expect(typeof page.modified).toBe('string');
@@ -299,6 +319,8 @@ describe('GET /api/pages', () => {
       };
       const byName = new Map((body.pages ?? []).map((p) => [p.docName, p]));
       expect(byName.get('with-icon')?.icon).toBe('📝');
+      // Absent icon: the field is either undefined or missing — both
+      // are valid JSON-on-the-wire shapes per the optional schema.
       const noIconEntry = byName.get('no-icon');
       expect(noIconEntry).toBeDefined();
       expect(noIconEntry?.icon ?? undefined).toBeUndefined();
@@ -310,6 +332,10 @@ describe('GET /api/pages', () => {
   test('serves cached title/icon from the index without reading disk', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-pages-cache-'));
     try {
+      // No file exists on disk. If handlePages re-read the file, the ENOENT
+      // catch would fall the title back to the docName ('ghost'). The enriched
+      // entry (title present) must instead be served straight from memory —
+      // the cache hit is what keeps GET /api/pages O(n)-in-memory, not O(n)-disk.
       const index = new Map<string, FileIndexEntry>([
         [
           'ghost',
@@ -342,6 +368,9 @@ describe('GET /api/pages', () => {
   test('bare entry whose file is missing falls back to the docName title (ENOENT path)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-pages-bare-'));
     try {
+      // Bare entry (no cached title) → handlePages takes the disk-read fallback;
+      // the file does not exist, so the ENOENT catch defaults the title to the
+      // docName and leaves the icon absent. Pins the safe-default branch.
       const index = new Map<string, FileIndexEntry>([
         [
           'orphan',

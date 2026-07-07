@@ -15,6 +15,8 @@ export type ShortcutCategory =
 interface ShortcutMatchOptions {
   mod?: boolean;
   anyMod?: boolean;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
   altKey?: boolean;
   shiftKey?: boolean;
   allowShiftKey?: boolean;
@@ -185,6 +187,78 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
         mac: '⌘ L',
         windowsLinux: 'Ctrl L',
         match: { key: 'l', mod: true },
+      },
+    ],
+  },
+  {
+    id: 'tab-new',
+    category: 'navigation',
+    title: msg`New tab`,
+    description: msg`Open a blank editor tab.`,
+    scope: msg`Global`,
+    bindings: [
+      {
+        mac: '⌘ T',
+        windowsLinux: 'Ctrl T',
+        match: { key: 't', mod: true },
+      },
+    ],
+  },
+  {
+    id: 'tab-next',
+    category: 'navigation',
+    title: msg`Next tab`,
+    description: msg`Activate the next editor tab.`,
+    scope: msg`Global`,
+    bindings: [
+      {
+        mac: '⌃ Tab',
+        windowsLinux: 'Ctrl Tab',
+        match: { key: 'Tab', ctrlKey: true },
+      },
+    ],
+  },
+  {
+    id: 'tab-previous',
+    category: 'navigation',
+    title: msg`Previous tab`,
+    description: msg`Activate the previous editor tab.`,
+    scope: msg`Global`,
+    bindings: [
+      {
+        mac: '⌃⇧ Tab',
+        windowsLinux: 'Ctrl Shift Tab',
+        match: { key: 'Tab', ctrlKey: true, shiftKey: true },
+      },
+    ],
+  },
+  {
+    id: 'tab-jump',
+    category: 'navigation',
+    title: msg`Jump to tab 1-8`,
+    description: msg`Activate one of the first eight editor tabs.`,
+    scope: msg`Global`,
+    bindings: [{ mac: '⌘ 1-8', windowsLinux: 'Ctrl 1-8' }],
+  },
+  {
+    id: 'tab-jump-last',
+    category: 'navigation',
+    title: msg`Jump to last tab`,
+    description: msg`Activate the last editor tab.`,
+    scope: msg`Global`,
+    bindings: [{ mac: '⌘ 9', windowsLinux: 'Ctrl 9' }],
+  },
+  {
+    id: 'tab-reopen-closed',
+    category: 'navigation',
+    title: msg`Reopen closed tab`,
+    description: msg`Reopen the most recently closed editor tab.`,
+    scope: msg`Global`,
+    bindings: [
+      {
+        mac: '⇧⌘ T',
+        windowsLinux: 'Ctrl Shift T',
+        match: { key: 't', mod: true, shiftKey: true },
       },
     ],
   },
@@ -793,8 +867,8 @@ function matchesBinding(
   if (match.key && event.key.toLowerCase() !== match.key.toLowerCase()) return false;
   if (match.code && event.code !== match.code) return false;
 
-  const expectedMeta = match.mod ? platform === 'mac' : false;
-  const expectedCtrl = match.mod ? platform === 'windowsLinux' : false;
+  const expectedMeta = match.metaKey ?? (match.mod ? platform === 'mac' : false);
+  const expectedCtrl = match.ctrlKey ?? (match.mod ? platform === 'windowsLinux' : false);
   const expectedAlt = match.altKey ?? false;
   const expectedShift = match.shiftKey ?? false;
 

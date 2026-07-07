@@ -5,6 +5,10 @@ export type SidebarState = 'open' | 'collapsed';
 export type SidebarSide = 'left' | 'right';
 
 export const LEFT_COLLAPSE_THRESHOLD = 1024;
+// Staggered with the left's 1024 (Tailwind `lg`) so the right panel collapses
+// FIRST as the viewport narrows — editor breathing room arrives before the
+// left disappears. ≥1280: both expanded; 1024–1279: right collapsed, left
+// expanded; <1024: both collapsed.
 export const RIGHT_COLLAPSE_THRESHOLD = 1280;
 
 const THRESHOLDS = {

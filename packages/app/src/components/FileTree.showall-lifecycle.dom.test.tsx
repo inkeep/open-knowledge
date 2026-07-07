@@ -1,3 +1,28 @@
+/**
+ * Show All notice lifecycle + failure interplay:
+ *
+ *   - error && truncation are INDEPENDENT header state: a child-fetch failure
+ *     while a truncation banner is up renders BOTH rows (alert above status)
+ *     without contradiction — only the ROOT refresh's HTTP-error path clears
+ *     the truncation count.
+ *   - banner lifecycle is per-refresh-cycle ("most recent capped listing"):
+ *     an UNtruncated child load does not clear another level's banner; the
+ *     next root refresh resets banner state from the root response.
+ *   - an NDJSON root seed that dies mid-stream surfaces the unreachable-server
+ *     alert (no silently-partial tree presented as complete) and the next
+ *     refresh recovers fully.
+ *   - deep-link drill-down: the active-doc ancestor auto-expand subscriber
+ *     composes with the lazy expansion detector — each auto-expanded ancestor
+ *     fetches its one level, the chain terminates via the per-cycle cache, and
+ *     the target row lands in the model.
+ *   - lazy-fetch failure diagnostics carry the folder scope to the console
+ *     (the banner shows only the title).
+ *
+ * Same harness as FileTree.showall-lazy.dom.test.tsx (recording Pierre stub;
+ * `mock.module` is safe per-file under the runner's `--isolate`), plus a
+ * mutable `activeDocName` so the drill-down test can mount with a deep link
+ * active.
+ */
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { i18n } from '@lingui/core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -17,6 +42,8 @@ let mergedConfig: unknown = { appearance: { sidebar: {} } };
 let showAllResponseFactory: () => Response = () => jsonResponse({ documents: [] });
 let responseByUrl = new Map<string, (init?: RequestInit) => Response | Promise<Response>>();
 const fetchUrls: string[] = [];
+// Mutable so the deep-link test can mount with a doc active; null matches the
+// sibling suites' default.
 let activeDocNameForTest: string | null = null;
 
 function lazyDirUrl(dir: string): string {
@@ -300,6 +327,8 @@ describe('FileTree showAll notice lifecycle', () => {
     await renderSeededTree();
     await expandCappedFolderToTruncation();
 
+    // A DIFFERENT folder's level fails: error state raises the alert without
+    // touching the truncation count — only the root refresh path clears it.
     responseByUrl.set(lazyDirUrl('uncapped'), () =>
       jsonResponse({ title: 'Folder walk failed' }, 500),
     );
@@ -308,14 +337,20 @@ describe('FileTree showAll notice lifecycle', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent ?? '').toContain('Folder walk failed');
     });
+    // Both notices are up simultaneously and stay individually truthful.
     const alert = screen.getByRole('alert');
     const status = screen.getByRole('status');
     expect(status.textContent ?? '').toContain('Showing the first 2 items');
+    // The header renders the error row above the truncation row — a stable
+    // reading order rather than an arbitrary stack.
     expect(alert.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Both carry the contained-row treatment; neither crashed the tree.
     expect(alert.className).toContain('rounded-md');
     expect(status.className).toContain('rounded-md');
     expect(model.items.has('capped/one.md')).toBe(true);
 
+    // The failure was console-traceable to its folder (the banner shows only
+    // the title — the log is the scope carrier).
     const scopedWarn = consoleWarnSpy.mock.calls.find(
       (call) =>
         typeof call[0] === 'string' &&
@@ -335,6 +370,8 @@ describe('FileTree showAll notice lifecycle', () => {
     model.getItem('uncapped/')?.expand();
     await waitFor(() => expect(model.items.has('uncapped/fine.md')).toBe(true));
 
+    // The banner still describes the most recent CAPPED listing — the
+    // untruncated load neither clears it nor rewrites its count.
     expect(screen.getByRole('status').textContent ?? '').toContain('Showing the first 2 items');
   });
 
@@ -342,10 +379,14 @@ describe('FileTree showAll notice lifecycle', () => {
     await renderSeededTree();
     await expandCappedFolderToTruncation();
 
+    // Collapse the capped folder so the refresh's expanded-dir revalidation
+    // does not re-fetch (and re-truncate) it; the root response is the only
+    // input to the new cycle's banner state.
     model.getItem('capped/')?.collapse();
     emitDocumentsChanged(['files']);
 
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    // The tree itself survived the refresh.
     expect(model.items.has('capped/')).toBe(true);
   });
 
@@ -389,6 +430,7 @@ describe('FileTree showAll interrupted NDJSON seed', () => {
     consoleWarnSpy.mockRestore();
   });
 
+  /** An NDJSON Response whose stream flushes one entry line then dies. */
   function dyingSeedResponse(): Response {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
@@ -415,11 +457,16 @@ describe('FileTree showAll interrupted NDJSON seed', () => {
     };
     render(<FileTree />);
 
+    // With no prior documents the death lands on the empty-tree error state —
+    // an honest "Could not reach server", never the flushed prefix presented
+    // as a complete listing (no tree, no ghost row, no truncation banner).
     await screen.findByText('Could not reach server');
     expect(model.items.has('ghost/')).toBe(false);
     expect(screen.queryByTestId('fake-pierre-tree')).toBeNull();
     expect(screen.queryByRole('status')).toBeNull();
 
+    // Server comes back; the next refresh cycle restores a correct tree and
+    // clears the error.
     window.dispatchEvent(new Event('focus'));
     await waitFor(() => expect(model.items.has('team/')).toBe(true));
     expect(model.items.has('README.md')).toBe(true);
@@ -441,6 +488,9 @@ describe('FileTree showAll interrupted NDJSON seed', () => {
     render(<FileTree />);
     await waitFor(() => expect(model.items.has('team/')).toBe(true));
 
+    // Mid-session refresh dies: the previously-loaded tree stays visible and
+    // the failure surfaces as the header alert — degraded, not blanked, and
+    // the dead stream's partial prefix never replaces the good listing.
     window.dispatchEvent(new Event('focus'));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent ?? '').toContain('Could not reach server');
@@ -448,6 +498,8 @@ describe('FileTree showAll interrupted NDJSON seed', () => {
     expect(model.items.has('README.md')).toBe(true);
     expect(model.items.has('ghost/')).toBe(false);
 
+    // Connectivity returns: the next cycle clears the alert and the tree is
+    // fully restored.
     window.dispatchEvent(new Event('focus'));
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     expect(model.items.has('team/')).toBe(true);
@@ -479,6 +531,9 @@ describe('FileTree showAll deep-link progressive drill-down', () => {
   });
 
   test('opening a doc 3 levels deep auto-expands and lazily loads each ancestor level exactly once (QA-026)', async () => {
+    // Deep link active from mount: the ancestor auto-expand subscriber
+    // composes with the expansion detector — expand → one depth-1 fetch →
+    // splice → next ancestor appears → expand → … until the doc's level.
     activeDocNameForTest = 'a/b/c/doc';
     responseByUrl.set(lazyDirUrl('a'), () =>
       jsonResponse({ documents: [folderEntry('a/b', true)], truncated: false }),
@@ -491,11 +546,14 @@ describe('FileTree showAll deep-link progressive drill-down', () => {
     );
     render(<FileTree />);
 
+    // The chain walks itself open level by level until the target row exists.
     await waitFor(() => expect(model.items.has('a/b/c/doc.md')).toBe(true));
     expect(model.getItem('a/')?.isExpanded()).toBe(true);
     expect(model.getItem('a/b/')?.isExpanded()).toBe(true);
     expect(model.getItem('a/b/c/')?.isExpanded()).toBe(true);
 
+    // Exactly one depth-1 fetch per ancestor level — no refetch storm, no
+    // recursive-walk fallback.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchUrls.filter((url) => url === lazyDirUrl('a'))).toHaveLength(1);
     expect(fetchUrls.filter((url) => url === lazyDirUrl('a/b'))).toHaveLength(1);
@@ -504,6 +562,8 @@ describe('FileTree showAll deep-link progressive drill-down', () => {
       [],
     );
 
+    // The chain TERMINATED: no further document fetches after the target
+    // level loaded (the per-cycle cache absorbs the post-splice re-expands).
     const settledCount = fetchUrls.filter((url) => url.startsWith('/api/documents')).length;
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(fetchUrls.filter((url) => url.startsWith('/api/documents')).length).toBe(settledCount);

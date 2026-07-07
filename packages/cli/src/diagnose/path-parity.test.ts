@@ -1,3 +1,17 @@
+/**
+ * Cross-package path-helper equivalence guard.
+ *
+ * `bundle.ts` inlines path constants for `<contentDir>/.ok/local/telemetry/*`
+ * and `<contentDir>/.ok/local/logs/*` rather than importing them from
+ * `@inkeep/open-knowledge-server` — the on-disk layout is a stable
+ * contract and the CLI should not reach into server internals for runtime
+ * code (see the block comment near `bundle.ts`'s path-helper region). The
+ * trade-off: if a filename or subdirectory changes in `telemetry-file-sink.ts`,
+ * `bundle.ts`'s inlined copies silently desync and bundles stop finding the
+ * files. This test guards against that by computing both sets of paths and
+ * asserting equivalence — when they drift, this test fails.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import {
   logsCurrentPath as serverLogsCurrentPath,

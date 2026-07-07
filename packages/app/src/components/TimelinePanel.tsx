@@ -1,4 +1,36 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+/**
+ * TimelinePanel — document edit history content for the DocPanel timeline tab.
+ *
+ * Fetches GET /api/history on mount, polls every 10s while mounted. The
+ * timeline surfaces only actor/system commits — WIP writes from agents,
+ * principals, the file watcher, the service, plus upstream syncs — as a flat
+ * reverse-chronological list. Checkpoint rows are filtered out: checkpoints
+ * are now produced solely by background cleanup jobs (shadow-branch GC,
+ * auto-consolidation, silent rescue) and are not user-facing history. The
+ * WIP commits those checkpoints fold over remain visible (the server walks
+ * their ancestry), so dropping the checkpoint rows loses no edit history.
+ *
+ * Per-row UX (shape parity with AgentActivityPanel's burst rows):
+ *   - Click anywhere on a row except the Restore icon → toggle inline expand.
+ *     Expanded rows render <ActivityPanelDiffView> below the header showing
+ *     the diff between that commit and the live Y.Text. Multi-expand is
+ *     supported; the displayed diff is a snapshot at expand time. Expansion
+ *     state is lifted to TimelineContent (Set<sha>), so a successful restore
+ *     can collapse every row in one place — no per-row signal counter, no
+ *     late-mount no-op effects.
+ *   - The per-row Restore icon (lucide Undo2, ghost variant, hover-destructive
+ *     on the icon) sits in the row header and is always visible — both
+ *     collapsed and expanded states. Click → shadcn Dialog confirmation →
+ *     POST /api/rollback. Cancel aborts the in-flight fetch via
+ *     AbortController so a mid-confirm cancel is honored. On success the row
+ *     collapses and any other expanded rows from this mount also collapse —
+ *     their cached `current` baseline is now stale.
+ *   - The diff renderer is loaded lazily under React.Suspense so the
+ *     react-diff-view bundle + CSS only land in the editor route once a user
+ *     actually expands a Timeline entry — matching the AgentActivityPanel
+ *     burst-row precedent.
+ */
 import {
   AGENT_ICON_COLORS,
   AGENT_ICON_COLORS_DARK,
@@ -58,9 +90,21 @@ const LazyActivityPanelDiffView = lazy(async () => {
   return { default: mod.ActivityPanelDiffView };
 });
 
+// History poll cadence. The loop is SELF-SCHEDULING: the
+// next poll is armed only after the previous one settles, so a slow query on a
+// degraded repo can never stack requests into a self-inflicted load storm.
 const TIMELINE_POLL_BASE_MS = 10_000;
+// Errors back off exponentially up to this cap (no tight error loop); a success
+// resets the cadence to the base interval.
 const TIMELINE_POLL_MAX_BACKOFF_MS = 60_000;
 
+/**
+ * Run one history poll. Lives at module scope — NOT nested in the component —
+ * because the React Compiler cannot lower a `try`/`finally` (it errors on the
+ * finalizer clause) and it compiles every function nested inside a component.
+ * The `finally`-based loading cleanup is legal here; the component passes its
+ * state setters and the localized error string in via `handlers`.
+ */
 async function pollHistoryOnce(
   docName: string,
   signal: AbortSignal,
@@ -80,24 +124,36 @@ async function pollHistoryOnce(
       return 'error';
     }
     const data = (await res.json()) as { entries: TimelineEntry[] };
+    // Drop checkpoint rows: they're background-cleanup artifacts now, not
+    // user history. The WIP commits they fold over are returned independently
+    // (the server walks checkpoint ancestry), so this loses no edit history.
+    // Exclude-by-type (not an allowlist) keeps any future actor/system entry
+    // type visible by default.
     handlers.setEntries((data.entries ?? []).filter((e) => e.type !== 'checkpoint'));
     handlers.setError(null);
     return 'ok';
   } catch (e) {
+    // Re-throw an abort (unmount / doc-nav) so the loop treats it as a
+    // cancellation, not an error to back off from.
     if (e instanceof DOMException && e.name === 'AbortError') throw e;
     handlers.setError(handlers.unavailableMessage);
     console.error('[timeline]', e);
     return 'error';
   } finally {
+    // Guard against setState after the poll was aborted (unmount).
     if (!signal.aborted) handlers.setLoading(false);
   }
 }
+
+// ─── Public props ────────────────────────────────────────────────────────────
 
 interface TimelineContentProps {
   docName: string;
   diffLayout: DiffLayout;
   onDiffLayoutChange: (layout: DiffLayout) => void;
 }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatRelativeTime(isoString: string): string {
   const date = new Date(isoString);
@@ -134,10 +190,12 @@ function shortSha(sha: string): string {
   return sha.slice(0, 7);
 }
 
+/** Map internal author names to user-friendly display names. Uses structured contributors when available. */
 function displayAuthor(entry: TimelineEntry): string {
   if (entry.type === 'upstream') return t`Upstream sync`;
   if (entry.contributors.length === 1) return entry.contributors[0].name;
   if (entry.contributors.length > 1) return entry.contributors.map((c) => c.name).join(', ');
+  // Pre-attribution fallback
   if (entry.author === 'openknowledge-server' || entry.author === 'server') return t`Auto-save`;
   return entry.author;
 }
@@ -152,6 +210,7 @@ function AgentBrandIcon({ icon, ...props }: { icon?: string } & SVGProps<SVGSVGE
   return <Sparkles strokeWidth={1.5} {...(props as LucideProps)} />;
 }
 
+/** Icon for a timeline entry contributor. Brand icons for agents, lucide icons for system writers. */
 function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: boolean }) {
   const iconClass = 'size-3.5 shrink-0 text-muted-foreground';
 
@@ -166,20 +225,24 @@ function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: bool
       : AGENT_ICON_COLORS[icon];
     const color = brandColor ?? colorFromSeed(seed);
 
+    // Known agent brand → brand icon with brand color (dark override when available)
     if (icon !== 'bot') {
       return (
         <AgentBrandIcon icon={icon} width={14} height={14} className="shrink-0" style={{ color }} />
       );
     }
 
+    // Classified system writers
     if (c.name === 'File System') return <HardDrive className={iconClass} />;
     if (c.name === 'OpenKnowledge (service)' || c.name === 'Git (upstream)') {
       return <ArrowDownToLine className={iconClass} />;
     }
 
+    // Human or unknown contributor
     return <User className={iconClass} />;
   }
 
+  // Pre-attribution fallback
   if (
     entry.authorEmail.includes('agent') ||
     entry.author.includes('agent') ||
@@ -194,6 +257,19 @@ function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: bool
   return <User className={iconClass} />;
 }
 
+// ─── Summary bullets ──────────────────────────────────────────────────────────
+//
+// Agent-provided summaries render as a collapsible bullet list under the author
+// line. First bullet inline, further bullets behind a "Show N more" expander.
+// The doc-list line ALWAYS renders alongside — it stays ground truth;
+// bullets enrich, they don't replace.
+
+/**
+ * Flatten summaries across contributors (flat shape) preserving insertion
+ * order. Multi-contributor commits coalesce into one flat list — per-bullet
+ * contributor identity is deliberately deferred. Exported so the test suite
+ * can lock the flatten invariant without touching React.
+ */
 export function allSummariesFor(entry: TimelineEntry): string[] {
   const out: string[] = [];
   for (const c of entry.contributors) {
@@ -207,8 +283,36 @@ interface SummaryBulletsProps {
   summaries: string[];
 }
 
+/**
+ * Collapsible bullet renderer. Default is collapsed so coalesced-heavy rows
+ * don't dominate the panel. The expander is a real `<button>` — this works
+ * because EntryRow is a `<div role="button">` (nested `<button>` inside a
+ * `<button>` is invalid HTML; see EntryRow comment). The expander's
+ * onClick stops propagation so the row's onSelect doesn't also fire.
+ *
+ * Markup shape: a SINGLE `<ul>` containing the always-visible first bullet
+ * AND the expanded rest (conditionally rendered) — screen-reader list
+ * navigation (VoiceOver rotor, JAWS list mode, NVDA) treats every bullet as
+ * part of the same list instead of seeing the first as a free-floating
+ * paragraph. The expander lives OUTSIDE the `<ul>` because `<button>` is not
+ * a valid `<ul>` child per HTML spec.
+ *
+ * Keys combine the bullet's positional index with its text. The contributor
+ * accumulator explicitly permits duplicate summaries within a debounce window
+ * (`contributor-tracker.ts:87-91` — "No dedup: an agent may legitimately log
+ * the same summary twice"), so a text-only key would collide on duplicates
+ * and trigger React's "two children with the same key" warning + subtly wrong
+ * reconciliation. The list is append-only with no reorder within a row, so a
+ * positional component is safe.
+ */
 function SummaryBullets({ summaries }: SummaryBulletsProps) {
   const [expanded, setExpanded] = useState(false);
+  // `useId` is React 19's idiomatic source for associating the expander
+  // `<button aria-controls>` with its `<ul>` — each row instance gets its own
+  // unique id, so multiple TimelinePanel rows mounted on one page don't
+  // collide. NVDA and JAWS use this association to announce which region
+  // just grew/shrank when the user activates "Show N more"; without it the
+  // user only hears "expanded" with no cue about what changed.
   const listId = useId();
   if (summaries.length === 0) return null;
   const [first, ...rest] = summaries;
@@ -248,6 +352,8 @@ function SummaryBullets({ summaries }: SummaryBulletsProps) {
   );
 }
 
+// ─── Inline diff panel ───────────────────────────────────────────────────────
+
 interface EntryDiffPanelProps {
   sha: string;
   docName: string;
@@ -256,6 +362,14 @@ interface EntryDiffPanelProps {
   panelId: string;
 }
 
+/**
+ * Renders only when its parent expanded the row. Splitting this out from
+ * EntryRow keeps the `useTimelineEntryDiff` subscription off collapsed rows
+ * — no `useDocumentContext` subscription, no effect on activeProvider
+ * churn. The lazy-loaded diff renderer also lives inside this gated subtree
+ * so the react-diff-view bundle never lands for users who don't expand
+ * Timeline rows.
+ */
 function EntryDiffPanel({ sha, docName, cache, diffLayout, panelId }: EntryDiffPanelProps) {
   const result = useTimelineEntryDiff(sha, docName, cache);
 
@@ -287,6 +401,8 @@ function EntryDiffPanel({ sha, docName, cache, diffLayout, panelId }: EntryDiffP
     </div>
   );
 }
+
+// ─── Entry row ────────────────────────────────────────────────────────────────
 
 interface EntryRowProps {
   entry: TimelineEntry;
@@ -321,6 +437,8 @@ function EntryRow({
   const abortRef = useRef<AbortController | null>(null);
   const diffPanelId = useId();
 
+  // Aborting an in-flight restore on unmount avoids state writes on a
+  // disposed component if the response lands after the user navigated away.
   useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
@@ -328,6 +446,8 @@ function EntryRow({
   const handleActivate = () => onToggleExpanded(entry.sha);
 
   function handleCancelDialog() {
+    // Cancel honors the user's intent: any in-flight rollback is aborted so
+    // the document is not silently rewritten after they "Cancel".
     abortRef.current?.abort();
     abortRef.current = null;
     setRestoring(false);
@@ -376,7 +496,9 @@ function EntryRow({
       try {
         const problem = ProblemDetailsSchema.safeParse(await res.json());
         if (problem.success) detail = problem.data.title;
-      } catch {}
+      } catch {
+        // non-JSON body; keep status detail
+      }
       console.error('[timeline] rollback failed', {
         docName,
         sha: entry.sha,
@@ -524,6 +646,8 @@ function EntryRow({
   );
 }
 
+// ─── Main content (no Sheet wrapper) ─────────────────────────────────────────
+
 export function TimelineContent({ docName, diffLayout, onDiffLayoutChange }: TimelineContentProps) {
   const { t } = useLingui();
   const { resolvedTheme } = useTheme();
@@ -534,6 +658,9 @@ export function TimelineContent({ docName, diffLayout, onDiffLayoutChange }: Tim
   const [cache] = useState(() => new LruStringCache(HISTORICAL_CONTENT_CACHE_LIMIT));
   const [expandedShas, setExpandedShas] = useState<Set<string>>(() => new Set());
 
+  // Reset expansion + cache on doc nav. The parent intentionally does not key
+  // <TimelineContent> on docName (it would force a re-mount on every nav and
+  // throw away the polling timer), so we clear locally.
   // biome-ignore lint/correctness/useExhaustiveDependencies: cache is a stable useState-initialized instance — including it in deps would not change behavior but reads as a noisier signal of "this effect depends on the cache" when in fact it depends only on the active doc.
   useEffect(() => {
     setExpandedShas(new Set());
@@ -563,6 +690,7 @@ export function TimelineContent({ docName, diffLayout, onDiffLayoutChange }: Tim
     const loop = createSelfSchedulingPoll({
       baseMs: TIMELINE_POLL_BASE_MS,
       maxBackoffMs: TIMELINE_POLL_MAX_BACKOFF_MS,
+      // Hidden tab issues zero requests — the loop parks until re-shown.
       isPaused: () => typeof document !== 'undefined' && document.visibilityState === 'hidden',
       poll: (signal) =>
         pollHistoryOnce(docName, signal, {

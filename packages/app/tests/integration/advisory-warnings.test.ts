@@ -1,3 +1,12 @@
+/**
+ * L1 integration coverage for the unified advisory channel on the agent
+ * write path: `POST /api/agent-write-md` and `POST /api/agent-patch` report
+ * post-write mermaid parse failures (and co-occurring write-integrity
+ * advisories) as `warnings` entries without affecting the write itself
+ * (storage stays byte-faithful; advisory only). The deprecated single-valued
+ * `warning` field never carries render entries.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { AdvisoryWarning } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
@@ -65,6 +74,7 @@ describe('advisory warnings on POST /api/agent-write-md', () => {
     expect(w.fenceFirstLine).toBe('sequenceDiagram');
     expect(w.message).toContain('Parse error');
     expect(w.line).toBeGreaterThan(0);
+    // Render entries never ride the deprecated single-valued `warning` slot.
     expect(body.warning).toBeUndefined();
   });
 
@@ -80,6 +90,8 @@ describe('advisory warnings on POST /api/agent-write-md', () => {
 
   test('append composition is validated on the post-write state', async () => {
     const docName = uniqueDoc('rw-append');
+    // An unclosed fence is valid mermaid on its own (CommonMark runs it to
+    // EOF) — the appended prose lands INSIDE the fence body and breaks it.
     const first = await writeMd('```mermaid\ngraph LR\n  A-->B', docName);
     expect(first.body.warnings).toBeUndefined();
 
@@ -96,6 +108,8 @@ describe('advisory warnings on POST /api/agent-write-md', () => {
     expect(status).toBe(200);
     expect(typeof body.timestamp).toBe('string');
     const state = getServerState(server, docName);
+    // The invalid fence is stored exactly as written — the `;` that breaks
+    // the grammar is preserved (storage never sanitizes).
     expect(state?.ytext.toString()).toContain('A->>B: payload + nonce; cookie cleared');
     expect(state?.ytext.toString()).toBe(INVALID_SEQUENCE_FENCE);
   });
@@ -135,16 +149,20 @@ describe('advisory co-occurrence (the unification win: no masking)', () => {
     const { join } = await import('node:path');
     const docName = uniqueDoc('rw-cooccur');
     await writeMd('# V1\n\nbody-v1\n', docName);
+    // Wait for the L1 store so the doc exists on disk before the native edit.
     const pollDelay = (ms: number) => new Promise((r) => setTimeout(r, ms));
     for (let i = 0; i < 100; i++) {
       if (getServerState(server, docName)?.ytext.toString().includes('body-v1')) break;
       await pollDelay(20);
     }
+    // Native out-of-band edit straight to disk, bypassing OK; the next agent
+    // write must reconcile it (disk-edit-reconciled advisory).
     writeFileSync(
       join(server.contentDir, `${docName}.md`),
       '# V2 NATIVE OUT-OF-BAND EDIT\n\nbody-v2-native\n',
       'utf-8',
     );
+    // The agent append also carries a grammar-broken mermaid fence.
     const { status, body } = await writeMd(
       '\n```mermaid\nsequenceDiagram\n  A->>B: hi; there\n```\n',
       docName,
@@ -153,6 +171,8 @@ describe('advisory co-occurrence (the unification win: no masking)', () => {
     expect(status).toBe(200);
     const kinds = (body.warnings ?? []).map((w) => w.kind).sort();
     expect(kinds).toEqual(['disk-edit-reconciled', 'mermaid-parse-error']);
+    // The deprecated single slot carries only its highest-precedence
+    // integrity entry — the render entry exists ONLY in `warnings`.
     expect(body.warning?.kind).toBe('disk-edit-reconciled');
   });
 });
@@ -171,6 +191,8 @@ describe('advisory warnings on POST /api/agent-patch', () => {
   test('an unrelated edit surfaces a pre-existing broken fence with its locator', async () => {
     const docName = uniqueDoc('rw-preexisting');
     await writeMd(`${INVALID_SEQUENCE_FENCE}\nTrailing prose paragraph.\n`, docName);
+    // Edit only the prose — the broken fence predates this edit, and the
+    // locator fields point the agent at it (deliberate surfacing semantics).
     const { status, body } = await patchDoc(docName, 'Trailing prose', 'Edited prose');
     expect(status).toBe(200);
     expect(body.warnings).toHaveLength(1);

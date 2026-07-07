@@ -1,3 +1,10 @@
+/**
+ * Tests for the `onAgentWrite` callback wired through `createApiExtension`.
+ *
+ * Asserts the callback fires from both agent-write paths (write_document →
+ * /api/agent-write-md, edit_document → /api/agent-patch). The CLI layer uses
+ * this signal to auto-open the browser on the first agent edit per session.
+ */
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';

@@ -21,10 +21,23 @@ import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
 interface Props {
   folderPath: string;
   state: AsyncState<FolderConfigSnapshot>;
+  /** Called after a successful create/update/delete so the parent re-fetches. */
   onChange: () => void;
+  /**
+   * Optional pre-fetched folder-config handle forwarded to this card's
+   * `NewItemDialog`, so the dialog can dedup its own `useFolderConfig` fetch
+   * when the parent is already fetching the same path. Omit to let the dialog
+   * self-fetch.
+   */
   folderConfigHandle?: FolderConfigHandle;
 }
 
+/**
+ * Templates menu for a folder — what an agent or the New File dialog can pick
+ * from when creating a doc here. Resolves leaf -> root (`local` when owned by
+ * this folder, `inherited` from an ancestor; closest wins on filename
+ * collision). Rows, edit, and delete are the shared template-list components.
+ */
 export function TemplatesCard({ folderPath, state, onChange, folderConfigHandle }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<TemplateMenuEntry | null>(null);
   const [createFromTemplate, setCreateFromTemplate] = useState<string | null>(null);

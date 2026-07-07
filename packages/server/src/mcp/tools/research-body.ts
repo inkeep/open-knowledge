@@ -1,3 +1,13 @@
+/**
+ * `research` MCP workflow tool — analyze a topic by gathering external sources,
+ * reading them alongside existing content, and writing provisional findings
+ * to the project's content directory.
+ *
+ * Principle: provisional, not canonical. Research articles capture findings,
+ * trade-offs, and open questions at a point in time. Promoted to canonical
+ * articles via the `consolidate` tool only when decisions solidify.
+ */
+
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 
 export function buildResearchBody(topic: string, contentDir: string): string {

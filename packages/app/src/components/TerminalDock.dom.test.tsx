@@ -1,3 +1,20 @@
+/**
+ * Behavioral tests for TerminalDock's multi-session orchestration.
+ *
+ * The resizable layout library (`react-resizable-panels` via `@/components/ui/
+ * resizable`) and the terminal height store are mocked at the module boundary —
+ * jsdom has no layout engine, so the real vertical split / drag / collapse is the
+ * browser rung. TerminalGate is stubbed with a session stand-in that creates a
+ * PTY on mount (as the real session does) and exposes its launch nonce, so the
+ * assertions pin what the dock owns: the session collection, create/switch/close
+ * wiring, all-sessions-stay-mounted isolation, close-last collapse, launch→new
+ * tab routing, menu kill, liveness reporting, and focus. The real tab strip +
+ * Radix Tabs render so the tablist/tabpanel a11y wiring is exercised here.
+ *
+ * Per-PTY byte demux (input/output addressed by ptyId) is TerminalPanel's seam,
+ * covered in TerminalPanel.dom.test.tsx.
+ */
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -57,6 +74,17 @@ mock.module('@/components/ui/resizable', () => ({
   ),
 }));
 
+// A session stand-in mirroring the real TerminalGate→TerminalSession lifecycle
+// the dock orchestrates: spawn a PTY on mount, reap it on unmount. Capturing the
+// reap makes "closing a tab kills only that session's PTY" observable at the dock
+// boundary. It renders xterm's focus-sink so the dock's per-session focus
+// assertions resolve. The real gate's consent + heavy/lazy xterm path is covered
+// in TerminalGate/TerminalPanel dom tests.
+// Per-PTY title emitters, populated by the stub once its create() resolves.
+// `emitTitle(ptyId, title)` drives the real TerminalGate→onTitleChange channel
+// (xterm's OSC 0/2 → onTitleChange) so the dock's title→tab-label binding is
+// exercised without a real xterm. Returns false until the emitter is registered,
+// so tests can `waitFor` past the async create.
 const titleEmitters = new Map<string, (title: string) => void>();
 function emitTitle(ptyId: string, title: string): boolean {
   const emit = titleEmitters.get(ptyId);
@@ -70,6 +98,8 @@ mock.module('./TerminalGate', () => ({
   TerminalGate: ({ bridge, launch, onTitleChange, onPtyId }: any) => {
     const ptyIdRef = useRef<string | null>(null);
     const cancelledRef = useRef(false);
+    // Latest-ref so a re-rendered onTitleChange identity (a fresh closure from
+    // the dock's session map) is reachable without re-registering the emitter.
     const onTitleChangeRef = useRef(onTitleChange);
     const onPtyIdRef = useRef(onPtyId);
     useEffect(() => {
@@ -81,9 +111,14 @@ mock.module('./TerminalGate', () => ({
       void Promise.resolve(bridge?.terminal?.create?.({ cols: 80, rows: 24 })).then(
         (result: { ok?: boolean; ptyId?: string } | undefined) => {
           if (!result?.ok || result.ptyId == null) return;
+          // Unmounted while create() was in flight → reap the orphan, as the
+          // real session does; otherwise hold the id so unmount can reap it.
           if (cancelledRef.current) bridge?.terminal?.kill?.(result.ptyId);
           else {
             ptyIdRef.current = result.ptyId;
+            // Report the live PTY up (as the real panel does) so the host's reuse
+            // map is populated — this is what makes an "Ask AI" launch write into
+            // the open terminal instead of opening a new tab.
             onPtyIdRef.current?.(result.ptyId);
             titleEmitters.set(result.ptyId, (title: string) => onTitleChangeRef.current?.(title));
           }
@@ -120,12 +155,16 @@ const { TerminalSessionsHost } = await import('./TerminalSessionsHost');
 function makeBridge() {
   const menuHandlers: Array<(action: string) => void> = [];
   const viewMenuPushes: Array<{ terminalLive?: boolean }> = [];
+  // Hand each session a distinct PTY id (pty-1, pty-2, …) so a close can assert
+  // exactly which session's PTY was reaped — the demux the dock owns.
   let ptyCounter = 0;
   const create = mock(async () => {
     ptyCounter += 1;
     return { ok: true as const, ptyId: `pty-${ptyCounter}` };
   });
   const kill = mock(async (_id: string) => {});
+  // Observes PTY writes at the dock boundary — a launch must never write into an
+  // existing PTY (it opens its own tab), so tests assert `input` stays unused.
   const input = mock((_ptyId: string, _data: string) => {});
   const bridge = {
     onMenuAction(cb: (action: string) => void) {
@@ -154,6 +193,13 @@ function makeBridge() {
   };
 }
 
+// Mini-harness mirroring how EditorArea wires the two pieces: the TerminalDock
+// shell exposes the bottom mount + editor-region elements, and the once-mounted
+// TerminalSessionsHost portals the live sessions into that container. `isShowing`
+// is gated on the container so focus never targets a detached host (the same
+// invariant EditorArea enforces). Session behavior is bottom-dock only —
+// right-dock placement is covered by EditorArea + the live-Electron smoke; the
+// `dock` knob here exercises only the shell's handle gating across positions.
 // biome-ignore lint/suspicious/noExplicitAny: test harness props
 function DockHarness({ v, l, onVisibleChange, bridge, onReveal, dock = 'bottom' }: any) {
   const [bottomContainer, setBottomContainer] = useState<HTMLDivElement | null>(null);
@@ -234,6 +280,9 @@ function activePanelId(): string | null {
   return active?.getAttribute('data-terminal-session') ?? null;
 }
 
+// The launch nonce the session in a given panel was handed ('none' when it
+// carries no launch). The stub surfaces it via `data-launch` so the dock's
+// launch→new-tab routing is observable per session.
 function launchNonceOf(panelId: string | null): string | null {
   if (panelId === null) return null;
   return (
@@ -249,6 +298,9 @@ function editorRegion(): HTMLElement {
   return region;
 }
 
+// Adds a plain-shell tab via the New-chat split button's "Terminal" option — the
+// path that replaced the standalone "New terminal tab" button. Opens a bare shell
+// (no CLI launch), the same session the old button created.
 async function addTerminalTab(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Choose CLI for new chat' }));
   await user.click(await screen.findByRole('menuitem', { name: 'Terminal' }));
@@ -269,8 +321,11 @@ describe('TerminalDock multi-session', () => {
 
   test('tab strip exposes the dock-toggle + collapse buttons and no drag grip', () => {
     renderDock(true);
+    // The dock-toggle button is the dock-move affordance now (dragging removed).
+    // The harness is bottom-docked, so the toggle offers "move to the right".
     expect(screen.getByRole('button', { name: 'Dock terminal to the right' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Collapse terminal' })).not.toBeNull();
+    // The old drag grip is gone.
     expect(screen.queryByRole('button', { name: 'Drag to dock the terminal' })).toBeNull();
   });
 
@@ -281,6 +336,7 @@ describe('TerminalDock multi-session', () => {
     act(() => view.rerender(true));
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
 
+    // Hide is not kill: the session survives a collapse.
     act(() => view.rerender(false));
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
   });
@@ -304,6 +360,7 @@ describe('TerminalDock multi-session', () => {
     await addTerminalTab(user);
 
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
+    // The freshly opened tab becomes active and spawned a second PTY.
     expect(activePanelId()).not.toBe(firstActive);
     expect(view.create).toHaveBeenCalledTimes(2);
   });
@@ -328,9 +385,11 @@ describe('TerminalDock multi-session', () => {
     await addTerminalTab(user);
     const secondActive = activePanelId();
 
+    // Switch back to the first tab.
     await user.click(screen.getByRole('tab', { name: 'Terminal 1' }));
 
     expect(activePanelId()).not.toBe(secondActive);
+    // Both sessions remain mounted — switching is show/hide, never unmount.
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
   });
 
@@ -339,6 +398,9 @@ describe('TerminalDock multi-session', () => {
     renderDock(true);
     await addTerminalTab(user);
 
+    // Each session is a distinct mounted instance; exactly one panel is active
+    // (shown) at a time, so input/output route to a single session's surface.
+    // The byte-level demux by ptyId is TerminalPanel's covered seam.
     expect(sessionPanels()).toHaveLength(2);
     const activeCount = document.querySelectorAll(
       '[data-terminal-session][data-state="active"]',
@@ -368,9 +430,11 @@ describe('TerminalDock multi-session', () => {
     await addTerminalTab(user);
     const activeBefore = activePanelId();
 
+    // Close the (inactive) first tab.
     await user.click(screen.getByRole('button', { name: 'Close Terminal 1' }));
 
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
+    // The active session is untouched.
     expect(activePanelId()).toBe(activeBefore);
   });
 
@@ -380,8 +444,10 @@ describe('TerminalDock multi-session', () => {
     await addTerminalTab(user);
     await waitFor(() => expect(view.create).toHaveBeenCalledTimes(2));
 
+    // The program in the first session (pty-1) sets its title via OSC 0/2.
     act(() => emitTitle('pty-1', 'claude — repo'));
 
+    // That tab relabels; the sibling keeps its positional default.
     expect(screen.getByRole('tab', { name: 'claude — repo' })).toBeDefined();
     expect(screen.getByRole('tab', { name: 'Terminal 2' })).toBeDefined();
   });
@@ -405,6 +471,7 @@ describe('TerminalDock multi-session', () => {
     act(() => emitTitle('pty-1', 'busy'));
     expect(screen.getByRole('tab', { name: 'busy' })).toBeDefined();
 
+    // Some programs emit an empty title on exit — fall back to `Terminal 1`.
     act(() => emitTitle('pty-1', ''));
     expect(screen.getByRole('tab', { name: 'Terminal 1' })).toBeDefined();
   });
@@ -416,6 +483,8 @@ describe('TerminalDock multi-session', () => {
     act(() => emitTitle('pty-1', 'busy'));
     expect(screen.getByRole('tab', { name: 'busy' })).toBeDefined();
 
+    // Whitespace-only is treated as cleared (trim()), same as empty — pins that
+    // normalization against a future simplification to `title === ''`.
     act(() => emitTitle('pty-1', '   '));
     expect(screen.getByRole('tab', { name: 'Terminal 1' })).toBeDefined();
   });
@@ -424,11 +493,13 @@ describe('TerminalDock multi-session', () => {
     const user = userEvent.setup();
     const view = renderDock(true);
     await addTerminalTab(user);
+    // Two live sessions: Terminal 1 → pty-1, Terminal 2 → pty-2.
     await waitFor(() => expect(view.create).toHaveBeenCalledTimes(2));
     expect(view.kill).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'Close Terminal 1' }));
 
+    // Only the closed session's PTY is reaped; the survivor keeps its PTY.
     await waitFor(() => expect(view.kill).toHaveBeenCalledWith('pty-1'));
     expect(view.kill).not.toHaveBeenCalledWith('pty-2');
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
@@ -439,12 +510,14 @@ describe('TerminalDock multi-session', () => {
     renderDock(true);
     await addTerminalTab(user);
     await addTerminalTab(user);
+    // Active is the third tab; switch to the middle one and close it.
     await user.click(screen.getByRole('tab', { name: 'Terminal 2' }));
     const middle = activePanelId();
 
     await user.click(screen.getByRole('button', { name: 'Close Terminal 2' }));
 
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
+    // Left neighbor (Terminal 1) becomes active.
     const nowActive = activePanelId();
     expect(nowActive).not.toBe(middle);
     expect(screen.getByRole('tab', { name: 'Terminal 1' }).getAttribute('aria-selected')).toBe(
@@ -456,6 +529,7 @@ describe('TerminalDock multi-session', () => {
     const user = userEvent.setup();
     renderDock(true);
     await addTerminalTab(user);
+    // Activate the leftmost tab — it has no left neighbor to fall back to.
     await user.click(screen.getByRole('tab', { name: 'Terminal 1' }));
     const closedId = activePanelId();
     const rightNeighborId =
@@ -474,10 +548,13 @@ describe('TerminalDock multi-session', () => {
     renderDock(true);
     await addTerminalTab(user);
     await addTerminalTab(user);
+    // Activate the middle tab, then close it.
     await user.click(screen.getByRole('tab', { name: 'Terminal 2' }));
 
     await user.click(screen.getByRole('button', { name: 'Close Terminal 2' }));
 
+    // Focus is not stranded on <body>: it lands in the now-active neighbor's
+    // terminal input, since the close control just unmounted.
     const nowActive = activePanelId();
     const focusSink = document.querySelector<HTMLElement>(
       `[data-terminal-session="${nowActive}"] .xterm-helper-textarea`,
@@ -502,14 +579,17 @@ describe('TerminalDock multi-session', () => {
     const view = renderDock(true);
     await addTerminalTab(user);
     await addTerminalTab(user);
+    // Make a non-default tab active so a reset-to-first regression would show.
     await user.click(screen.getByRole('tab', { name: 'Terminal 2' }));
     const activeBeforeHide = activePanelId();
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(3);
 
+    // Hide (Cmd+J / Close): hide is not kill, so every session survives.
     act(() => view.rerender(false));
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(3);
     expect(view.kill).not.toHaveBeenCalled();
 
+    // Reopen: all three survive and the last-active tab is restored.
     act(() => view.rerender(true));
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(3);
     expect(activePanelId()).toBe(activeBeforeHide);
@@ -525,11 +605,14 @@ describe('TerminalDock multi-session', () => {
     act(() => view.rerender(true, { prompt: 'work on docs', nonce: 7 }));
 
     const session = screen.getByTestId('terminal-session');
+    // Exactly one session, and it carries the launch (no extra empty tab).
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
     expect(session.getAttribute('data-launch')).toBe('7');
   });
 
   test('cold-start with visible=true seeds exactly one session carrying the launch intent', () => {
+    // Distinct from the false->true effect path above: this exercises the
+    // useState initializer (visible=true at mount). Both must seed one session.
     renderDock(true, { prompt: 'work on docs', nonce: 9 });
     const sessions = screen.getAllByTestId('terminal-session');
     expect(sessions).toHaveLength(1);
@@ -538,12 +621,18 @@ describe('TerminalDock multi-session', () => {
 
   test('a launch always opens its own tab, even when a terminal is already live', async () => {
     const view = renderDock(true);
+    // Wait until the seed session's PTY is live and reported up (the emitter is
+    // registered right after create() resolves + onPtyId fires).
     await waitFor(() => expect(emitTitle('pty-1', 'zsh')).toBe(true));
     const runningId = activePanelId();
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
 
+    // "Create with CLI" / "Open in terminal" fires while that shell is live.
     act(() => view.rerender(true, { prompt: 'work on docs', cli: 'claude', nonce: 1 }));
 
+    // A launch never hijacks the running shell — it opens its own tab, which
+    // becomes active, and writes nothing into the existing PTY. (Reuse of an open
+    // terminal is the selection-bubble path only, a separate input channel.)
     const sessions = screen.getAllByTestId('terminal-session');
     expect(sessions).toHaveLength(2);
     const launchedId = activePanelId();
@@ -554,14 +643,21 @@ describe('TerminalDock multi-session', () => {
 
   test('the selection input reuses the live terminal — raw PTY write, no new tab', async () => {
     const view = renderDock(true);
+    // Wait until the seed session's PTY is live and reported up into the reuse map.
     await waitFor(() => expect(emitTitle('pty-1', 'zsh')).toBe(true));
     const runningId = activePanelId();
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
 
+    // The selection-bubble channel fires while that shell is live (the other half
+    // of the design: launches open their own tab, the selection reuses the open
+    // one).
     await act(async () => {
       requestActiveTerminalInput('explain this');
     });
 
+    // Reused, not respawned: the raw selection text goes straight into the live
+    // PTY (no `<bin> '<prompt>'` wrapping), no new tab, and the running shell
+    // stays active.
     await waitFor(() => expect(view.input).toHaveBeenCalledWith('pty-1', 'explain this'));
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
     expect(activePanelId()).toBe(runningId);
@@ -572,6 +668,7 @@ describe('TerminalDock multi-session', () => {
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
     const seedId = activePanelId();
 
+    // Fire the launch synchronously, before the seed session's create() resolves.
     act(() => view.rerender(true, { prompt: 'work on docs', cli: 'claude', nonce: 1 }));
 
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
@@ -587,6 +684,7 @@ describe('TerminalDock multi-session', () => {
     act(() => view.rerender(true, { prompt: 'a', cli: 'claude', nonce: 1 }));
     act(() => view.rerender(true, { prompt: 'b', cli: 'claude', nonce: 2 }));
 
+    // Two distinct launches → two new tabs on top of the seed. No PTY writes.
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(3);
     expect(view.input).not.toHaveBeenCalled();
   });
@@ -598,6 +696,9 @@ describe('TerminalDock multi-session', () => {
     act(() => view.rerender(true, { prompt: 'a', cli: 'claude', nonce: 1 }));
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
 
+    // A re-render carrying the already-handled nonce (an unrelated parent
+    // re-render, not a fresh click) must not open a second tab — the per-nonce
+    // dedup is what makes one click mean exactly one new terminal.
     act(() => view.rerender(true, { prompt: 'a', cli: 'claude', nonce: 1 }));
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
   });
@@ -609,6 +710,8 @@ describe('TerminalDock multi-session', () => {
 
     act(() => view.dispatchMenuAction('new-terminal'));
 
+    // New Terminal opens a fresh tab (not just a reveal), which becomes active
+    // and spawns its own PTY — the same path as the strip's + control.
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
     expect(activePanelId()).not.toBe(firstActive);
     expect(view.create).toHaveBeenCalledTimes(2);
@@ -622,7 +725,22 @@ describe('TerminalDock multi-session', () => {
 
     act(() => view.dispatchMenuAction('kill-terminal'));
 
+    // One session killed (the active one); the other survives.
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
+  });
+
+  test('⌘W (close-active-tab-or-window) is NOT handled by the dock — the editor owns it', async () => {
+    const user = userEvent.setup();
+    const view = renderDock(true);
+    await addTerminalTab(user);
+    expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
+
+    act(() => view.dispatchMenuAction('close-active-tab-or-window'));
+
+    // In the editor window ⌘W closes the active DOC tab (DocumentContext); the
+    // docked terminal must not also close a session, or one keystroke would
+    // close two things. Only the standalone terminal window handles this action.
+    expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
   });
 
   test('Cmd+number jumps to the matching tab while the terminal is focused', async () => {
@@ -630,11 +748,14 @@ describe('TerminalDock multi-session', () => {
     renderDock(true);
     await addTerminalTab(user);
     await addTerminalTab(user);
+    // Three tabs; Terminal 3 is active. Put the caret in its terminal as if the
+    // user were typing in the shell.
     const panels = sessionPanels();
     const thirdSink = panels[2]?.querySelector<HTMLElement>('.xterm-helper-textarea');
     act(() => thirdSink?.focus());
     expect(activePanelId()).toBe(panels[2]?.getAttribute('data-terminal-session'));
 
+    // Cmd+1 jumps straight to the first tab without leaving the terminal.
     const event = new KeyboardEvent('keydown', {
       key: '1',
       metaKey: true,
@@ -645,6 +766,7 @@ describe('TerminalDock multi-session', () => {
       window.dispatchEvent(event);
     });
 
+    // The chord is consumed (it never reaches the shell) and the first tab is now active.
     expect(event.defaultPrevented).toBe(true);
     expect(screen.getByRole('tab', { name: 'Terminal 1' }).getAttribute('aria-selected')).toBe(
       'true',
@@ -656,6 +778,7 @@ describe('TerminalDock multi-session', () => {
     const user = userEvent.setup();
     renderDock(true);
     await addTerminalTab(user);
+    // Two tabs; the second is active. Focus its terminal.
     const panels = sessionPanels();
     act(() => panels[1]?.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus());
     const before = activePanelId();
@@ -670,6 +793,8 @@ describe('TerminalDock multi-session', () => {
       window.dispatchEvent(event);
     });
 
+    // No fifth tab — the chord is not consumed (so the shell may use it) and the
+    // active tab is unchanged.
     expect(event.defaultPrevented).toBe(false);
     expect(activePanelId()).toBe(before);
   });
@@ -681,6 +806,7 @@ describe('TerminalDock multi-session', () => {
     await user.click(screen.getByRole('tab', { name: 'Terminal 1' }));
     const before = activePanelId();
 
+    // Move focus to the editor column, outside the dock.
     act(() => editorRegion().focus());
     const event = new KeyboardEvent('keydown', {
       key: '2',
@@ -692,6 +818,8 @@ describe('TerminalDock multi-session', () => {
       window.dispatchEvent(event);
     });
 
+    // The digit chord is free outside the dock: the terminal tab is untouched
+    // and the event is not consumed.
     expect(event.defaultPrevented).toBe(false);
     expect(activePanelId()).toBe(before);
   });
@@ -703,11 +831,14 @@ describe('TerminalDock multi-session', () => {
     const before = activePanelId();
     act(() => sessionPanels()[0]?.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus());
 
+    // Escape carries no ⌘ — the tab-switch handler must ignore it so the shell
+    // receives it.
     const escapeEvent = new KeyboardEvent('keydown', {
       key: 'Escape',
       cancelable: true,
       bubbles: true,
     });
+    // A plain digit (no ⌘) is likewise shell input, never a tab switch.
     const digitEvent = new KeyboardEvent('keydown', {
       key: '1',
       cancelable: true,
@@ -743,6 +874,7 @@ describe('TerminalDock multi-session', () => {
     const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
     const tabs = within(tablist).getAllByRole('tab');
     expect(tabs).toHaveLength(2);
+    // Each tab's aria-controls resolves to a rendered panel (no dangling ref).
     for (const tab of tabs) {
       const panelId = tab.getAttribute('aria-controls');
       expect(panelId).toBeTruthy();
@@ -764,9 +896,11 @@ describe('TerminalDock multi-session', () => {
     const view = renderDock(true);
     const session = screen.getByTestId('terminal-session');
 
+    // Collapse → focus returns to the editor.
     act(() => view.rerender(false));
     expect(document.activeElement).toBe(editorRegion());
 
+    // Reveal → focus lands back in the active session's input.
     act(() => view.rerender(true));
     expect(document.activeElement).toBe(session);
   });
@@ -775,9 +909,13 @@ describe('TerminalDock multi-session', () => {
     const onReveal = mock(() => {});
     const view = renderDock(false, null, onReveal);
 
+    // Hidden → the reveal tab is present, and lives inside the editor region (not
+    // the doc panel), since a bottom-docked terminal slides up from there.
     const reveal = screen.getByRole('button', { name: 'Show terminal' });
     expect(editorRegion().contains(reveal)).toBe(true);
 
+    // Visible → the reveal tab is gone (the tab strip's collapse control is the
+    // hide affordance while open).
     act(() => view.rerender(true));
     expect(screen.queryByRole('button', { name: 'Show terminal' })).toBeNull();
   });
@@ -799,8 +937,10 @@ describe('TerminalDock multi-session', () => {
 
   test('disables the resize handle while hidden so there is no drag-to-open', () => {
     const view = renderDock(false);
+    // Hidden: dragging up to open is gone (the reveal tab is the single way in).
     expect(screen.getByTestId('terminal-resize-handle').getAttribute('data-disabled')).toBe('true');
 
+    // Open: the handle is live again — resize + drag-all-the-way-down-to-collapse.
     act(() => view.rerender(true));
     expect(screen.getByTestId('terminal-resize-handle').getAttribute('data-disabled')).toBe(
       'false',
@@ -808,18 +948,28 @@ describe('TerminalDock multi-session', () => {
   });
 
   test('hides the grabber while right-docked and restores it on return to bottom', () => {
+    // Right-docked, terminal visible: `visible` stays true but the bottom panel is
+    // collapsed and empty — the handle must not render its grabber nor accept a
+    // drag (which would pull up an empty panel).
     const view = renderDock(true);
     act(() => view.rerender(true, null, 'right'));
     const handle = () => screen.getByTestId('terminal-resize-handle');
     expect(handle().getAttribute('data-disabled')).toBe('true');
     expect(handle().getAttribute('data-with-handle')).toBe('false');
 
+    // Dock back to bottom: the grabber returns and the handle drags again.
     act(() => view.rerender(true, null, 'bottom'));
     expect(handle().getAttribute('data-disabled')).toBe('false');
     expect(handle().getAttribute('data-with-handle')).toBe('true');
   });
 });
 
+// Regression: the focus-return effect must distinguish a genuine hide (⌘J /
+// collapse / close-last → `visible` false) from a dock move, where `visible` stays
+// true but `isShowing` transiently dips to false for one commit while the
+// destination container's callback ref attaches. The dock-toggle button lives
+// inside the portaled host, so a move starts with focus inside the host — without
+// the `visible` guard, the transient dip would yank focus to the editor mid-move.
 describe('TerminalSessionsHost focus-return gating across a dock move', () => {
   afterEach(() => cleanup());
 
@@ -867,16 +1017,112 @@ describe('TerminalSessionsHost focus-return gating across a dock move', () => {
     );
     const { rerender } = render(ui(true, true));
 
+    // One session is seeded (visible at mount); put focus inside the portaled host.
     const sink = document.querySelector<HTMLElement>(
       '[data-terminal-session] .xterm-helper-textarea',
     );
     act(() => sink?.focus());
     expect(onEditorFocus).not.toHaveBeenCalled();
 
+    // Dock-move transient: isShowing dips to false while visible stays true. Focus
+    // must NOT be yanked to the editor.
     act(() => rerender(ui(false, true)));
     expect(onEditorFocus).not.toHaveBeenCalled();
 
+    // Genuine hide: visible flips false → focus returns to the editor.
     act(() => rerender(ui(false, false)));
     expect(onEditorFocus).toHaveBeenCalled();
+  });
+});
+
+// The behavior-preservation contract for the terminal session model
+// (TerminalSessionsHost, shared by the dock and the standalone terminal
+// window): these five behaviors (close-last collapse, seed-on-reveal,
+// single-tab-per-launch-nonce, Cmd+number tab switch, close-active-neighbor
+// focus) are the ones most easily broken when the dock's container wiring and
+// the shared session core drift out of lockstep. Kept as a discrete, minimal
+// block — distinct from the broader suite above — so the dock and the window
+// share one stable, referenceable set to validate against.
+describe('TerminalDock extraction pins', () => {
+  beforeEach(() => {
+    terminalPanelProps = null;
+    panelHandle.collapse.mockClear();
+    panelHandle.resize.mockClear();
+    panelHandle.expand.mockClear();
+    sharedPanelRef.current = panelHandle;
+  });
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('pin: closing the last tab collapses the dock and returns focus to the editor', async () => {
+    const user = userEvent.setup();
+    const view = renderDock(true);
+    act(() => screen.getByTestId('terminal-session').focus());
+
+    await user.click(screen.getByRole('button', { name: 'Close Terminal 1' }));
+
+    expect(screen.queryAllByTestId('terminal-session')).toHaveLength(0);
+    expect(view.onVisibleChange).toHaveBeenCalledWith(false);
+    expect(document.activeElement).toBe(editorRegion());
+  });
+
+  test('pin: the dock seeds exactly one session when it becomes visible', () => {
+    const view = renderDock(false);
+    expect(screen.queryAllByTestId('terminal-session')).toHaveLength(0);
+
+    act(() => view.rerender(true));
+
+    expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
+    expect(view.create).toHaveBeenCalledTimes(1);
+  });
+
+  test('pin: a repeated launch nonce does not open a second tab', () => {
+    const view = renderDock(true);
+
+    act(() => view.rerender(true, { prompt: 'work', nonce: 1 }));
+    expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
+
+    // An unrelated re-render carrying the already-handled nonce must not spawn
+    // another tab — one launch click means exactly one new tab.
+    act(() => view.rerender(true, { prompt: 'work', nonce: 1 }));
+    expect(screen.getAllByTestId('terminal-session')).toHaveLength(2);
+  });
+
+  test('pin: Cmd+number switches the active tab while the terminal is focused', async () => {
+    const user = userEvent.setup();
+    renderDock(true);
+    await addTerminalTab(user);
+    const panels = sessionPanels();
+    act(() => panels[1]?.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus());
+
+    const event = new KeyboardEvent('keydown', {
+      key: '1',
+      metaKey: true,
+      cancelable: true,
+      bubbles: true,
+    });
+    act(() => {
+      window.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(activePanelId()).toBe(panels[0]?.getAttribute('data-terminal-session'));
+  });
+
+  test('pin: closing the active tab moves focus to a surviving neighbor', async () => {
+    const user = userEvent.setup();
+    renderDock(true);
+    await addTerminalTab(user);
+    await addTerminalTab(user);
+    await user.click(screen.getByRole('tab', { name: 'Terminal 2' }));
+
+    await user.click(screen.getByRole('button', { name: 'Close Terminal 2' }));
+
+    const nowActive = activePanelId();
+    const focusSink = document.querySelector<HTMLElement>(
+      `[data-terminal-session="${nowActive}"] .xterm-helper-textarea`,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(focusSink));
   });
 });

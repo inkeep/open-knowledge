@@ -132,6 +132,7 @@ describe('graph endpoints', () => {
         },
       ]);
 
+      // Bulk backlink-count lookup for slim enrichment (exec ls/grep/find).
       const counts = JSON.parse(
         (
           await callRoute(
@@ -207,6 +208,8 @@ describe('graph endpoints', () => {
         links: Array<{ source: string; target: string }>;
       };
 
+      // Every scanned doc gets a forward entry (possibly empty), so nodes include pages
+      // with no outbound wikilinks (e.g. gamma) as well as edge endpoints.
       expect(linkGraph.nodes.map((n) => n.id).sort()).toEqual(['alpha', 'beta', 'gamma']);
       expect(linkGraph.nodes.find((n) => n.id === 'alpha')?.label).toBe('Alpha');
       expect(linkGraph.nodes.find((n) => n.id === 'beta')?.label).toBe('Beta');
@@ -389,6 +392,13 @@ describe('graph endpoints', () => {
   });
 
   test('link/title consumers resolve a graph-indexed doc the file index is missing (PRD-7201)', async () => {
+    // The file-watcher dropped (or hasn't yet emitted) the create event for a
+    // sibling written into a freshly-created subdir — the inotify subwatch race
+    // documented in file-watcher.ts. The backlink graph indexed it in-process
+    // regardless, so `collectAdmittedDocNames()` must union the graph's forward
+    // nodes: the link/title consumers then agree with the dead-link endpoint
+    // (which already folds in the same set). fixed only the dead-link
+    // path; this pins the generalization to forward-links and the rest.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-graph-api-prd7201-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(join(contentDir, 'evidence'), { recursive: true });
@@ -400,9 +410,12 @@ describe('graph endpoints', () => {
       );
       writeFileSync(join(contentDir, 'evidence', 'beta.md'), '# Beta\n\nBody.\n', 'utf-8');
 
+      // Graph holds both docs as forward nodes (mirrors onStoreDocument firing
+      // on the in-session write).
       const backlinkIndex = new BacklinkIndex({ projectDir, contentDir });
       await backlinkIndex.rebuildFromDisk();
 
+      // File index lists only `alpha` — `evidence/beta`'s create event was lost.
       const fileIndex = new Map<string, FileIndexEntry>([
         [
           'alpha',
@@ -416,6 +429,7 @@ describe('graph endpoints', () => {
         ],
       ]);
 
+      // Title resolves to the doc's real title, not the raw redlink docName.
       const forward = JSON.parse(
         (await callRoute(contentDir, '/api/forward-links?docName=alpha', fileIndex, backlinkIndex))
           .body,
@@ -424,6 +438,7 @@ describe('graph endpoints', () => {
         expect.objectContaining({ kind: 'doc', docName: 'evidence/beta', title: 'Beta' }),
       ]);
 
+      // …and the dead-link endpoint agrees: the sibling is not flagged dead.
       const dead = JSON.parse(
         (await callRoute(contentDir, '/api/dead-links', fileIndex, backlinkIndex)).body,
       ) as { deadLinks: Array<{ target: string }> };
@@ -450,6 +465,20 @@ describe('graph endpoints', () => {
   });
 
   test('forward-links / hubs / link-graph fall back to docName for excluded targets', async () => {
+    // Wiki-link targets parsed from indexed docs may name a doc that is
+    // itself excluded from the content scope (e.g. by `.gitignore` /
+    // `.okignore`). Reading the on-disk title for those targets would leak
+    // the title (a heading authored after the file was excluded) through
+    // forward-links / hubs / link-graph endpoints. The admission gate forces
+    // a docName fallback for those targets.
+    //
+    // The graph here DOES hold `secret` as a forward node (its BacklinkIndex has
+    // no contentFilter, so `rebuildFromDisk` indexed it) — the production
+    // equivalent is an agent writing to an okignore'd path, which the write
+    // handlers don't reject, so onStoreDocument indexes it.
+    // `collectAdmittedDocNames` graph union must NOT let that forward node leak
+    // its title: the content-scope gate (mirroring the watcher) keeps it
+    // unadmitted. So this also pins the union gate, not just the file-index path.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-graph-api-excluded-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -462,6 +491,9 @@ describe('graph endpoints', () => {
         'utf-8',
       );
 
+      // `secret.md` is on disk and BacklinkIndex sees the wiki-link target (and
+      // indexes the file itself as a forward node — no contentFilter wired here),
+      // but the file index — the watcher's view — only contains `public`.
       const fileIndex = new Map<string, FileIndexEntry>([
         [
           'public',
@@ -477,6 +509,9 @@ describe('graph endpoints', () => {
       const backlinkIndex = new BacklinkIndex({ projectDir, contentDir });
       await backlinkIndex.rebuildFromDisk();
 
+      // The api-extension's ContentFilter is the content-scope authority — it
+      // excludes `secret.md` via the `.okignore` above, so the union gate drops
+      // the `secret` forward node from the admitted set.
       const contentFilter = createContentFilter({ projectDir, contentDir });
 
       const forward = JSON.parse(
@@ -570,11 +605,15 @@ describe('POST /api/test-rescan-backlinks', () => {
     mkdirSync(contentDir, { recursive: true });
 
     try {
+      // Simulate the "dropped create event" case: files are on disk but the
+      // backlink index hasn't observed them yet (no rebuildFromDisk / no
+      // file-watcher dispatch).
       writeFileSync(join(contentDir, 'alpha.md'), '# Alpha\n\nLinks to [[beta]].\n', 'utf-8');
       writeFileSync(join(contentDir, 'beta.md'), '# Beta\n\nBody.\n', 'utf-8');
 
       const fileIndex = new Map<string, FileIndexEntry>();
       const backlinkIndex = new BacklinkIndex({ projectDir, contentDir });
+      // Intentionally do NOT call rebuildFromDisk — mirrors the dropped-event state.
       expect(backlinkIndex.getBacklinks('beta')).toEqual([]);
 
       const rescanResp = await callRoute(
@@ -590,6 +629,7 @@ describe('POST /api/test-rescan-backlinks', () => {
       expect(rescanResp.status).toBe(200);
       expect(JSON.parse(rescanResp.body)).toEqual({});
 
+      // Backlink index now reflects disk state.
       const backlinks = backlinkIndex.getBacklinks('beta');
       expect(backlinks.map((b) => b.source)).toEqual(['alpha']);
     } finally {
@@ -615,7 +655,13 @@ describe('POST /api/test-rescan-backlinks', () => {
           method: 'POST',
         },
       );
+      // Unregistered route → dispatch fallback emits an
+      // explicit RFC 9457 404 problem+json. the dispatch fell
+      // through silently and status stayed 0; that silent-fallthrough was
+      // the bug closes.
       expect(resp.status).toBe(404);
+      // Test mock preserves header casing (real Node would lowercase via
+      // getHeader); errorResponse emits 'Content-Type'.
       expect(resp.headers['Content-Type']).toBe('application/problem+json');
       const body = JSON.parse(resp.body);
       expect(body.type).toBe('urn:ok:error:not-found');
@@ -656,6 +702,8 @@ describe('POST /api/test-rescan-backlinks', () => {
     mkdirSync(contentDir, { recursive: true });
 
     try {
+      // A doc links to a project skill by its on-disk path; skills are content
+      // docs, so the link resolves to the `.ok/skills/<name>/SKILL` content doc.
       writeFileSync(
         join(contentDir, 'alpha.md'),
         '# Alpha\n\nSee [[.ok/skills/my-skill/SKILL]].\n',
@@ -676,6 +724,8 @@ describe('POST /api/test-rescan-backlinks', () => {
             aliases: [],
           },
         ],
+        // Skills-as-content: the project skill is a real indexed content doc, so
+        // a link to it resolves like any other page (title from the file).
         [
           '.ok/skills/my-skill/SKILL',
           {
@@ -696,6 +746,8 @@ describe('POST /api/test-rescan-backlinks', () => {
       ) as { forwardLinks: Array<{ kind: string; docName: string; title: string }> };
 
       const skillLink = forward.forwardLinks.find((l) => l.docName === '.ok/skills/my-skill/SKILL');
+      // The skill is admitted (not dropped as out-of-scope) AND its title is
+      // read from the skill file's H1, not the raw path.
       expect(skillLink).toBeDefined();
       expect(skillLink?.title).toBe('My Skill');
     } finally {

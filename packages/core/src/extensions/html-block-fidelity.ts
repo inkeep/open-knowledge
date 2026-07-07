@@ -1,3 +1,12 @@
+/**
+ * HtmlBlock custom node for source-text fidelity.
+ *
+ * Atom node that stores raw HTML block content verbatim.
+ * In WYSIWYG, renders as raw source text (no rich preview).
+ *
+ * Markdown parsing/serialization is handled by the unified pipeline (packages/core/src/markdown/).
+ */
+
 import { Node } from '@tiptap/core';
 
 export const HtmlBlockFidelity = Node.create({

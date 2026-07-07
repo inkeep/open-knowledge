@@ -39,9 +39,11 @@ describe('metaDescription', () => {
   test('prefers a word boundary — does not cut mid-word when a space is available', () => {
     const s = `${'alpha '.repeat(40)}END`; // long, spaced
     const out = metaDescription(s);
+    // The kept portion (sans ellipsis) ends on a whole word, not a partial.
     const body = out.replace(/…$/, '');
     expect(body.endsWith(' ')).toBe(false);
     expect(body).toBe(body.trimEnd());
+    // Every retained token is the complete word "alpha", never a fragment.
     for (const token of body.split(' ')) {
       expect(token).toBe('alpha');
     }

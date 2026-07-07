@@ -1,3 +1,16 @@
+/**
+ * Tab — unit coverage for the strip-label contract + ARIA wiring.
+ *
+ * The Tabs strip is rendered by the PARENT Tabs component via a DOM walk
+ * that reads `data-tab-label` + `data-tab-id` from each Tab's `<section>`.
+ * Those attributes are the cross-NodeView contract — break them and the
+ * strip silently falls back to numeric placeholder labels with no ARIA
+ * pairing.
+ *
+ * Repo convention: no @testing-library, no happy-dom. Structural cases via
+ * `renderToString`.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
 import { Tab } from './Tab.tsx';
@@ -47,10 +60,16 @@ describe('Tab — ARIA wiring', () => {
         body
       </Tab>,
     );
+    // Tabs.tsx renders the matching pill as <button id="manual-setup-tab">,
+    // so the section's aria-labelledby must point there for the WAI-APG
+    // tabpanel→tab back-reference to resolve.
     expect(html).toContain('aria-labelledby="manual-setup-tab"');
   });
 
   test('omitted id still produces a stable panel id (useId-derived fallback)', () => {
+    // Without a user-provided id we synthesize one via React's useId() so
+    // every Tab carries aria-labelledby — the ARIA pair must not be
+    // contingent on the author opting into a deep-link id.
     const html = renderToString(<Tab label="x">body</Tab>);
     expect(html).toMatch(/id="tab-panel-[^"]+"/);
     expect(html).toMatch(/aria-labelledby="tab-panel-[^"]+-tab"/);

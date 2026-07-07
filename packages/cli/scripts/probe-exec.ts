@@ -1,3 +1,10 @@
+/**
+ * End-to-end probe: buildExecResult through the full pipeline
+ * (parseCommand → just-bash → extractPaths → enrichPath → dual-channel
+ * response). Hand-runnable — not part of the test suite.
+ *
+ * Run via: `bun run packages/cli/scripts/probe-exec.ts`
+ */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -34,6 +41,7 @@ async function main(): Promise<void> {
     '---\ntitle: SSO\ntags:\n  - auth\n---\n\n# SSO\n\noauth provider...\n',
   );
 
+  // Shadow-repo activity
   const shadow = await initShadowRepo(root);
   const branch = (await simpleGit(root).revparse(['--abbrev-ref', 'HEAD'])).trim();
   const agent: WriterIdentity = { id: 'agent-claude-7x', name: 'Claude (Tim)', email: 'a@ok.test' };

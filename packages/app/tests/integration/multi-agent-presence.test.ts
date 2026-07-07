@@ -1,4 +1,28 @@
+/**
+ * Regression gate — N-agent presence survives the
+ * __system__ broadcaster without stomping.
+ *
+ * Pre-fix (when agents published per-doc awareness), two writes from
+ * distinct agentIds collapsed into one presence entry. The bar dropped
+ * the earlier writer's icon. This test spins real server-side writes
+ * with distinct `agentId` / `agentName` / `clientName` values and asserts
+ * the broadcaster's map carries ALL agents.
+ *
+ * Covers:
+ *   - two agents on same doc → two entries in `getPresenceMap()`
+ *   - agent B moves to a different doc → B's `currentDoc` updates, A's
+ *     stays pinned to the original doc
+ *   - after every write, `mode === 'idle'` (end-state — the finally
+ *     block in `handleAgentWriteMd` ran)
+ *   - handleAgentWrite (simple variant) also publishes — closes the
+ *     pre-existing gap where the simple handler did not populate presence
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+// toBroadcasterKey is the canonical raw-id → map-key transform; importing
+// from the server package rather than re-declaring it locally keeps this
+// test aligned with the production `extractAgentIdentity` contract. If
+// the server ever changes the prefix, this test follows automatically.
 import { toBroadcasterKey } from '@inkeep/open-knowledge-server';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { agentWriteMd, createTestServer, type TestServer } from './test-harness';
@@ -40,6 +64,7 @@ describe('multi-agent presence — Tier 1 regression gate (FR-8)', () => {
     expect(map[keyA]).toBeDefined();
     expect(map[keyB]).toBeDefined();
 
+    // Shape: both entries fully populated with expected icon/color derivation.
     expect(map[keyA].displayName).toBe('Claude');
     expect(map[keyA].icon).toBe('claude');
     expect(map[keyA].currentDoc).toBe(doc);
@@ -52,6 +77,7 @@ describe('multi-agent presence — Tier 1 regression gate (FR-8)', () => {
     expect(map[keyB].currentDoc).toBe(doc);
     expect(map[keyB].mode).toBe('idle');
 
+    // ts is monotonic — agent B wrote after agent A.
     expect(map[keyB].ts).toBeGreaterThanOrEqual(map[keyA].ts);
   });
 
@@ -76,6 +102,7 @@ describe('multi-agent presence — Tier 1 regression gate (FR-8)', () => {
       clientName: 'cursor',
     });
 
+    // Agent B moves to bar.md
     await agentWriteMd(server.port, '# B on bar', {
       docName: docBar,
       position: 'replace',
@@ -149,6 +176,10 @@ describe('multi-agent presence — Tier 1 regression gate (FR-8)', () => {
   });
 
   test('GET /api/metrics/agent-presence rejects DNS-rebinding Host with 403 (RFC 9457)', async () => {
+    // Mirrors the /api/workspace test: TCP peer is loopback (127.0.0.1) but
+    // Host header names an attacker-controlled domain. The host-allowlist
+    // must refuse even though the peer passes the loopback check — matches
+    // the ASVS DNS-rebinding mitigation used by /api/workspace.
     const res = await fetch(`http://127.0.0.1:${server.port}/api/metrics/agent-presence`, {
       headers: { Host: 'attacker.example.com' },
     });

@@ -19,6 +19,7 @@ describe('createWorktreeStore', () => {
     expect(fetchModel).toHaveBeenCalledTimes(1);
     expect(store.getSnapshot()?.mainRoot).toBe('/repo');
 
+    // A second subscriber does not re-fetch — the cache is shared.
     store.subscribe(() => {});
     await flush();
     expect(fetchModel).toHaveBeenCalledTimes(1);
@@ -60,6 +61,7 @@ describe('createWorktreeStore', () => {
     result = null;
     store.refresh();
     await flush();
+    // Snapshot unchanged — a null result does not blank the cache.
     expect(store.getSnapshot()?.mainRoot).toBe('/repo');
   });
 
@@ -69,6 +71,7 @@ describe('createWorktreeStore', () => {
     const fetchModel = mock(() => {
       call += 1;
       if (call === 1) {
+        // Hold the bootstrap load open so refresh() lands mid-flight.
         return new Promise<WorktreeSelectorModel>((r) => {
           resolveFirst = r;
         });
@@ -78,10 +81,12 @@ describe('createWorktreeStore', () => {
     const store = createWorktreeStore({ fetchModel });
     store.subscribe(() => {});
     await flush();
+    // Bootstrap is in-flight; a create-triggered refresh must not be dropped.
     store.refresh();
     resolveFirst?.(model('/repo'));
     await flush();
     await flush();
+    // The queued reload ran after the first settled → the newer model wins.
     expect(fetchModel).toHaveBeenCalledTimes(2);
     expect(store.getSnapshot()?.mainRoot).toBe('/repo-after-create');
   });

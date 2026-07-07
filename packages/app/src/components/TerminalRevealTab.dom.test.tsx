@@ -7,6 +7,8 @@ import { TerminalRevealTab } from './TerminalRevealTab';
 function renderTab(dockPosition: 'bottom' | 'right') {
   const onReveal = mock(() => {});
   render(
+    // The app mounts a root TooltipProvider (main.tsx); supply one here so the
+    // reveal tab's tooltip has its context in isolation.
     <TooltipProvider>
       <TerminalRevealTab dockPosition={dockPosition} onReveal={onReveal} />
     </TooltipProvider>,

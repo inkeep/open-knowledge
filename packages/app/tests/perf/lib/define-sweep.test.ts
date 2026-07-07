@@ -9,6 +9,7 @@ interface FakeMetricsCtx {
 
 function makeFakeCtx(): FakeMetricsCtx {
   const metrics: Record<string, number | string | boolean | null> = {};
+  // Stub the unused fields with `unknown`-cast — tests never touch them.
   const ctx = {
     page: {} as ScenarioCtx['page'],
     context: {} as ScenarioCtx['context'],
@@ -18,7 +19,9 @@ function makeFakeCtx(): FakeMetricsCtx {
     recordMetric(key: string, value: number | string | boolean | null) {
       metrics[key] = value;
     },
-    note(_line: string) {},
+    note(_line: string) {
+      // noop
+    },
   } satisfies ScenarioCtx;
   return { ctx, __metrics: metrics };
 }
@@ -31,7 +34,9 @@ describe('cartesian', () => {
       c: [true, false] as const,
     });
     expect(cells.length).toBe(12);
+    // First cell is the outer-first / inner-last order: a=1, b='x', c=true.
     expect(cells[0]).toEqual({ a: 1, b: 'x', c: true });
+    // Last cell flips inner-first.
     expect(cells[11]).toEqual({ a: 3, b: 'y', c: false });
   });
 
@@ -61,6 +66,7 @@ describe('defineSweep', () => {
     const fake = makeFakeCtx();
     await sweep.run(fake.ctx);
     expect(calls.length).toBe(4);
+    // Stash check: cells count metric is recorded.
     expect(fake.__metrics['sweep.sweep-multi.cells']).toBe(4);
     const payload = JSON.parse(String(fake.__metrics['sweep.sweep-multi.payload']));
     expect(payload.name).toBe('sweep-multi');
@@ -87,6 +93,7 @@ describe('defineSweep', () => {
     expect(payload.cells.length).toBe(3);
     const errCell = payload.cells.find((c: { axesValues: { n: number } }) => c.axesValues.n === 2);
     expect(errCell?.errors?.[0]).toContain('cell-2-fault');
+    // The two non-faulting cells still ran and have results.
     const okCells = payload.cells.filter(
       (c: { axesValues: { n: number } }) => c.axesValues.n !== 2,
     );

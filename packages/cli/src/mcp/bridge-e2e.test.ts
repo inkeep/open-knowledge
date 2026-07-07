@@ -164,6 +164,13 @@ afterEach(async () => {
 });
 
 test('stdio shim forwards connectionId via x-ok-connection-id header through real HTTP transport', async () => {
+  // The shim's `connectionId` option flows through the real
+  // `StreamableHTTPClientTransport({ requestInit: { headers: ... } })`
+  // constructor — a path that the unit tests in shim.test.ts bypass via
+  // their `createHttpTransport` factory override. Without an integration
+  // test here, a regression that drops the requestInit spread or
+  // misspells `MCP_CONNECTION_ID_HEADER` would silently break presence-
+  // icon stickiness on the next release with no test signal.
   const harness = await startHttpMcpServer();
   const stdin = new PassThrough();
   const stdout = new PassThrough();
@@ -171,6 +178,10 @@ test('stdio shim forwards connectionId via x-ok-connection-id header through rea
   const reader = createMessageReader(stdout);
   const expectedConnectionId = 'shim-fwd-cid-1234';
 
+  // Wrap the harness http server with a header-capture passthrough.
+  // We can't intercept at the handler boundary because `createMcpHttpHandler`
+  // owns the request — capture by replaying a fetch shim that observes
+  // `req.headers` before delegating.
   const capturedConnectionIds: string[] = [];
   const capturedVersionHeaders: Array<Record<string, string | undefined>> = [];
   harness.httpServer.removeAllListeners('request');
@@ -225,9 +236,14 @@ test('stdio shim forwards connectionId via x-ok-connection-id header through rea
     const initialize = await reader.waitFor((message) => message.id === 1);
     expect(initialize.error).toBeUndefined();
 
+    // Header was sent on the very first request — proves the bridge wired
+    // `requestInit: { headers: { [MCP_CONNECTION_ID_HEADER]: connectionId } }`
+    // correctly through the real `StreamableHTTPClientTransport` constructor.
     expect(capturedConnectionIds.length).toBeGreaterThan(0);
     expect(capturedConnectionIds[0]).toBe(expectedConnectionId);
 
+    // the same real-transport path carries client version metadata on
+    // every /mcp request, alongside the connection-id header.
     expect(capturedVersionHeaders[0]).toEqual({
       protocol: '1',
       runtime: RUNTIME_VERSION,
@@ -274,6 +290,8 @@ test('stdio shim proxies initialize and tool calls to the HTTP MCP server', asyn
     stdin.write(encodeMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }));
     await wait(25);
 
+    // Use `exec("grep …")` instead of the retired `grep` MCP tool — the OK
+    // MCP tool consolidation dropped the typed `grep` tool; exec subsumes it.
     stdin.write(
       encodeMessage({
         jsonrpc: '2.0',
@@ -295,6 +313,10 @@ test('stdio shim proxies initialize and tool calls to the HTTP MCP server', asyn
     expect(isRecord(toolResult)).toBe(true);
     if (!isRecord(toolResult)) throw new Error('tool result was not an object');
     expect(toolResult.isError ?? false).toBe(false);
+    // exec returns enrichedPaths + raw stdout; the structured content key
+    // shape is different from the retired grep tool's matchCount surface.
+    // We assert the marker is present in either the text or the structured
+    // body — that's the bridge contract.
     expect(JSON.stringify(toolResult)).toContain('stdio-http-bridge-marker');
   } finally {
     await bridge.close();

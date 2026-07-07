@@ -225,6 +225,9 @@ describe('GET /api/git/branch-info', () => {
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.branchIsLocal).toBe(false);
     expect(json.currentBranch).toBe('main');
+    // Without a local ref, dirty-overlap can't resolve targetRef; the
+    // endpoint surfaces dirtyConflicts as no-conflict in that case (no
+    // change set to intersect against).
     expect(json.dirtyConflicts).toEqual({ conflicts: false, files: [] });
   });
 
@@ -329,6 +332,7 @@ describe('GET /api/git/branch-info', () => {
 
   test('non-git directory returns 500 with structured error envelope', async () => {
     rig = await bootRig((projectDir) => {
+      // Directory exists, no git init.
       mkdirSync(projectDir, { recursive: true });
     });
 
@@ -359,6 +363,7 @@ describe('GET /api/git/branch-info', () => {
     const res = await getBranchInfo(rig.port, 'main', 'docs/guides', 'folder');
     expect(res.status).toBe(200);
     const json = (await res.json()) as Record<string, unknown>;
+    // `git cat-file -e <ref>:docs/guides` resolves the tree object.
     expect(json.shareTargetExists).toBe(true);
   });
 
@@ -382,6 +387,8 @@ describe('GET /api/git/branch-info', () => {
       commitAll(projectDir, 'init');
     });
 
+    // Empty path is the folder-root sentinel — the content-root tree always
+    // exists, so the cat-file probe is skipped and shareTargetExists is true.
     const res = await fetch(
       `http://127.0.0.1:${rig.port}/api/git/branch-info?branch=main&path=&kind=folder`,
     );
@@ -397,6 +404,7 @@ describe('GET /api/git/branch-info', () => {
       commitAll(projectDir, 'init');
     });
 
+    // No `kind` -> defaults to 'doc', for which empty path is invalid.
     const res = await fetch(`http://127.0.0.1:${rig.port}/api/git/branch-info?branch=main&path=`);
     expect(res.status).toBe(400);
   });

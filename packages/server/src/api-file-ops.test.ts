@@ -298,11 +298,23 @@ describe('file operation API routes', () => {
   });
 
   test('GET /api/document returns 404 for missing docs (does not create a phantom Y.Doc)', async () => {
+    // Repro for the upstream cause of the rename phantom-file bug:
+    // `openDirectConnection` on a missing path adds an empty Y.Doc to
+    // `Hocuspocus.documents` and (because auto-unload is suppressed) leaves
+    // it sitting there. The persistence-layer phantom-doc guard blocks the
+    // 0-byte file write, but the lingering in-memory Y.Doc is the
+    // precondition for downstream phantom-file creation if anything later
+    // populates it with content (rename rewrite spine, mistaken agent
+    // write, etc.).
+    //
+    // Guard: `/api/document` checks the on-disk file BEFORE opening a
+    // connection. Missing → 404, no Y.Doc created.
     const dir = setupTmpDir();
     writeFileSync(join(dir, 'real-doc.md'), '# Real\n', 'utf-8');
 
     const hocuspocus = new Hocuspocus({ quiet: true });
 
+    // Sanity: no in-memory Y.Doc for the missing name before the request.
     expect(hocuspocus.documents.has('nonexistent-doc')).toBe(false);
 
     const result = await callApi(
@@ -319,24 +331,51 @@ describe('file operation API routes', () => {
     expect(parsed.title).toContain('Document not found');
     expect(parsed.title).toContain('nonexistent-doc');
 
+    // Critical: NO empty Y.Doc was materialized in `Hocuspocus.documents`
+    // for the missing name. The downstream phantom-file path that depends
+    // on a lingering in-memory Y.Doc cannot fire.
     expect(hocuspocus.documents.has('nonexistent-doc')).toBe(false);
 
+    // Sibling positive case: real doc returns 200 (the existsSync gate
+    // doesn't block legitimate reads). The bare-hocuspocus harness has
+    // no persistence extension wired, so content is not asserted here —
+    // the loaded-Y.Doc path is covered by `managed rename updates an
+    // already-loaded referring document`.
     const ok = await callApi(dir, '/api/document?docName=real-doc', 'GET', {}, { hocuspocus });
     expect(ok.status).toBe(200);
     expect((JSON.parse(ok.body) as { docName: string }).docName).toBe('real-doc');
   });
 
   test('rename does NOT materialize a phantom file for an in-memory-only backlink source', async () => {
+    // Repro for the user-reported bug: editor pre-warms or hovers over a
+    // redlink (`[X](./missing.md)`), which calls `openDirectConnection` and
+    // creates an empty Y.Doc for `missing` — but the file itself never
+    // existed on disk. If the backlink index nonetheless lists this in-
+    // memory-only docName as a backlink source of the rename target, the
+    // rewrite spine would feed the Y.Doc through `applyRenameMap` and
+    // `writeManagedRenameDocumentToDisk` would `tracedMkdirSync +
+    // tracedWriteFileSync` a brand-new file at the docName's path.
+    //
+    // Guard: the rename spine must require an on-disk file before treating
+    // a docName as a legitimate backlink source. In-memory-only Y.Docs
+    // get classified as missing and the stale index entry is purged.
     const dir = setupTmpDir();
     writeFileSync(join(dir, 'notes.md'), '# Notes\n', 'utf-8');
     writeFileSync(join(dir, 'journal.md'), '# Journal\n\nSee [[notes]].\n', 'utf-8');
 
+    // Build the backlink index from disk (picks up journal → notes).
+    // Then manually inject a backlink edge from a docName that has NO
+    // disk file — simulating the in-memory phantom scenario without
+    // having to hover-pre-warm in the test.
     const backlinkIndex = await buildBacklinkIndex(dir);
     backlinkIndex.updateDocumentFromMarkdown('phantom-doc', '# Phantom\n\nSee [[notes]].\n');
     expect(
       backlinkIndex.getBacklinks('notes').some((entry) => entry.source === 'phantom-doc'),
     ).toBe(true);
 
+    // Open a real Y.Doc for the phantom name with content matching the
+    // injected backlink. This is the state `openDirectConnection` would
+    // produce for a redlink the editor pre-warms.
     const hocuspocus = new Hocuspocus({ quiet: true });
     const conn = await hocuspocus.openDirectConnection('phantom-doc');
     const document = (conn as unknown as { document: Y.Doc }).document;
@@ -359,13 +398,19 @@ describe('file operation API routes', () => {
 
       expect(result.status).toBe(200);
 
+      // The on-disk rename + disk-backed backlink rewrite happen normally.
       expect(existsSync(join(dir, 'renamed-notes.md'))).toBe(true);
       expect(readFileSync(join(dir, 'journal.md'), 'utf-8')).toBe(
         '# Journal\n\nSee [[renamed-notes]].\n',
       );
 
+      // Critical: NO phantom file at `phantom-doc.md`. The in-memory Y.Doc
+      // gets classified as missing and skipped — the stale backlink index
+      // entry is purged via `deleteDocument`.
       expect(existsSync(join(dir, 'phantom-doc.md'))).toBe(false);
 
+      // The phantom is also removed from the backlink index so future
+      // operations don't re-trigger the same path.
       expect(
         backlinkIndex.getBacklinks('renamed-notes').some((entry) => entry.source === 'phantom-doc'),
       ).toBe(false);
@@ -420,6 +465,8 @@ describe('file operation API routes', () => {
     ].join('\n');
     expect(destContent).toBe(expectedDest);
 
+    // Hard duplication guards: a duplicated body would double the byte count
+    // and double the count of marker substrings.
     expect(destContent.length).toBe(expectedDest.length);
     expect(destContent.match(/# Some File/g)?.length).toBe(1);
     expect(destContent.match(/End of file\./g)?.length).toBe(1);
@@ -610,6 +657,9 @@ describe('file operation API routes', () => {
   });
 
   test('managed rename with kind:folder on an existing file returns 400 (type mismatch)', async () => {
+    // The path is used verbatim for kind:'folder', so passing a `.md` path
+    // resolves to the on-disk file. statSync says it's not a directory →
+    // ManagedRenameSourceTypeMismatchError → 400.
     const dir = setupTmpDir();
     writeFileSync(join(dir, 'notes.md'), '# Notes\n', 'utf-8');
 
@@ -634,6 +684,9 @@ describe('file operation API routes', () => {
   });
 
   test('managed rename with kind:file on a .md-named directory returns 400 (type mismatch)', async () => {
+    // For kind:'file', the resolver keeps the path verbatim when it already
+    // carries a supported extension. A directory named `looks-like.md` then
+    // exists but stats as a directory → ManagedRenameSourceTypeMismatchError.
     const dir = setupTmpDir();
     mkdirSync(join(dir, 'looks-like.md'));
 
@@ -724,6 +777,8 @@ describe('file operation API routes', () => {
     expect(result.status).toBe(404);
     const notFoundBody = JSON.parse(result.body) as Record<string, unknown>;
     expect(notFoundBody.type).toBe('urn:ok:error:doc-not-found');
+    // Title wording may vary ("file does not exist" / "Document does not exist")
+    // depending on handler-side phrasing; the URN is the load-bearing assertion.
     expect(typeof notFoundBody.title).toBe('string');
     expect(String(notFoundBody.title).toLowerCase()).toContain('does not exist');
   });
@@ -2038,6 +2093,8 @@ describe('file operation API routes', () => {
     expect(result.status).toBe(200);
     expect(existsSync(join(dir, 'New Folder'))).toBe(true);
     expect(existsSync(join(dir, 'New Folder/index.md'))).toBe(false);
+    // RFC 9457 success bodies drop the `{ ok: true }` wrapper — body
+    // is the success schema's flat shape.
     const body = JSON.parse(result.body) as { path: string };
     expect(body.path).toBe('New Folder');
     expect((body as Record<string, unknown>).ok).toBeUndefined();
@@ -2565,6 +2622,8 @@ describe('file operation API routes', () => {
     const result = await callApi(dir, '/api/create-folder', 'POST', {});
 
     expect(result.status).toBe(400);
+    // RFC 9457 problem+json: missing required field rejected by withValidation
+    // surfaces as urn:ok:error:invalid-request with Zod's parse-issue detail.
     expect(JSON.parse(result.body)).toMatchObject({
       type: 'urn:ok:error:invalid-request',
       status: 400,
@@ -2676,6 +2735,7 @@ describe('file operation API routes', () => {
     });
 
     expect(result.status).toBe(200);
+    // RFC 9457 success body — no `ok` discriminator.
     const body = JSON.parse(result.body) as {
       documents: Array<{ kind: string; path?: string }>;
     };

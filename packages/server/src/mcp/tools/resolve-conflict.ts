@@ -1,3 +1,21 @@
+/**
+ * `resolve_conflict` MCP tool — write a chosen merge resolution to disk
+ * and commit.
+ *
+ * Thin wrapper over `POST /api/sync/resolve-conflict`. Strategies mirror
+ * `ResolveStrategy` server-side: `mine` runs `git checkout --ours -- <file>`
+ * then `git add` (the committed ours stage, stage 2), `theirs` runs
+ * `git checkout --theirs -- <file>` then `git add` (their stage 3), `content` writes the explicit
+ * `content` argument (the UI "Keep mine" path uses `content` with bytes
+ * sourced from the live Y.Text), and `delete` runs `git rm <file>` then commits
+ * the deletion (honoring deletion intent for delete-modify / modify-delete
+ * shapes where one stage is missing).
+ *
+ * Annotated `destructiveHint: true` + `idempotentHint: false` so MCP-aware
+ * clients render an appropriate confirm UI. The concurrent-resolve contract
+ * is best-effort and non-atomic — see the tool description.
+ */
+
 import { z } from 'zod';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
@@ -94,6 +112,11 @@ export function register(server: ServerInstance, deps: ResolveConflictDeps): voi
 
       const result = await httpPost(url, '/api/sync/resolve-conflict', body);
       if (!result.ok) {
+        // Surface the server's `detail` (RFC 9457 §3.1, often the git stderr
+        // text wrapped by `ConflictStore.resolveConflict`) when present so
+        // the agent can distinguish a hook-rejected commit from a transient
+        // outage. `error` is the envelope `title` — keep both, server-side
+        // detail wins where available.
         const error = result.error as string;
         const detail = typeof result.detail === 'string' ? result.detail : undefined;
         const message = detail ? `${error} — ${detail}` : error;

@@ -38,7 +38,7 @@ async function negatives() {
   expect(await rows.boundingBox()).toBeTruthy();
   // N5: count read assigned to a variable, then asserted in a separate
   // statement — the documented two-statement escape hatch (GritQL cannot
-  // correlate across statements; see the plugin docblock); must NOT fire.
+  // correlate across statements); must NOT fire.
   const c = await rows.count();
   expect(c).toBe(2);
 }

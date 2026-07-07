@@ -7,8 +7,18 @@ import { cn } from '@/lib/utils';
 
 interface SplashCliBlockProps {
   installCommand: string;
+  /** Omitted on the fallback screen, which has no resolved repo to clone. */
   cloneCommand?: string;
+  /**
+   * Wrapper spacing. Defaults to the `mt-12` that aligns the Linux CLI-primary
+   * block with the macOS cluster; the dropdown-panel embed passes `''` to drop
+   * the top margin.
+   */
   wrapperClassName?: string;
+  /**
+   * Render the "Open with CLI" header above the code surface. Shared by the
+   * macOS dropdown panel and the Linux inline path so the two stay identical.
+   */
   showHeading?: boolean;
 }
 
@@ -24,10 +34,16 @@ export function SplashCliBlock({
   showHeading,
 }: SplashCliBlockProps) {
   const [status, setStatus] = useState<CopyStatus>('idle');
+  // Whether the failure fallback actually selected the command text. Drives the
+  // aria-live label so it never announces "text is selected" when selection was
+  // skipped (codeRef null) — the announcement is the AT user's only feedback.
   const [failureSelected, setFailureSelected] = useState(false);
   const codeRef = useRef<HTMLPreElement>(null);
   const resetTimerRef = useRef<number | null>(null);
 
+  // Clear the status auto-reset timer on unmount — the parent can swap this
+  // block out (macOS popover ↔ Linux inline) on the post-hydration OS
+  // reclassification, unmounting it mid-timer.
   useEffect(
     () => () => {
       if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
@@ -43,6 +59,9 @@ export function SplashCliBlock({
     }, ms);
   }
 
+  // Both commands paste as one block — a single shell paste runs them in
+  // order. Composed from server-supplied props; never recomputed client-side.
+  // The clone line is absent on the fallback screen (no resolved repo).
   const payload = cloneCommand ? `${installCommand}\n${cloneCommand}` : installCommand;
 
   const handleCopy = async () => {
@@ -58,6 +77,8 @@ export function SplashCliBlock({
       scheduleStatusReset(COPY_RESET_MS);
       return;
     }
+    // Select the command text so manual copy is one keystroke (Cmd/Ctrl+C).
+    // Never a silent no-op when the clipboard API rejects.
     let selected = false;
     if (codeRef.current) {
       const range = document.createRange();

@@ -10,6 +10,7 @@ export const source = loader({
   icon(iconName) {
     if (!iconName) return;
 
+    // Brand logos (e.g. `custom/Claude`) resolve against the local registry.
     if (iconName.startsWith('custom/')) {
       const key = iconName.slice('custom/'.length) as BrandIconName;
       const Brand = brandIcons[key];

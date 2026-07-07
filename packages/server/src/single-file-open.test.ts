@@ -69,6 +69,10 @@ describe('prepareSingleFileOpen', () => {
     expect(plan.docName).toBe('guides/intro');
   });
 
+  // the load-bearing case. A symlink in a non-project dir whose
+  // realpath lives in a real project MUST route to project mode (detection runs
+  // on the realpath), not ephemeral mode (which would clobber the project's
+  // file on the same inode through a second server).
   test('symlink whose realpath is inside a project → project mode (realpath before detection)', () => {
     const root = tmp('sfo-real-proj-');
     makeProject(root);
@@ -94,6 +98,7 @@ describe('prepareSingleFileOpen', () => {
 
     const plan = prepareSingleFileOpen(join(loose, 'link.md'));
     if (plan.mode !== 'ephemeral') throw new Error('expected ephemeral mode');
+    // contentDir + singleDocRelPath follow the REALPATH (where write-back lands).
     expect(plan.contentDir).toBe(real);
     expect(plan.singleDocRelPath).toBe('notes.md');
   });
@@ -125,7 +130,11 @@ describe('createEphemeralProjectDir', () => {
     expect(existsSync(join(projectDir, '.ok', 'config.yml'))).toBe(true);
     expect(existsSync(join(projectDir, '.ok', '.gitignore'))).toBe(true);
     const cfg = readFileSync(join(projectDir, '.ok', 'config.yml'), 'utf-8');
+    // content.dir records the real parent (honesty); JSON-quoted so paths with
+    // spaces are valid YAML.
     expect(cfg).toContain(JSON.stringify(contentDir));
+    // The throwaway dir is an `ok-ephemeral-*` mkdtemp under os.tmpdir, NOT the
+    // user's content dir.
     expect(basename(projectDir).startsWith('ok-ephemeral-')).toBe(true);
     expect(projectDir).not.toBe(contentDir);
   });

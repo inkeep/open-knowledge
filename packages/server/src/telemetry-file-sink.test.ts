@@ -31,6 +31,7 @@ function makeProvider(exporter: FileSpanExporter): BasicTracerProvider {
 function readLines(filePath: string): string[] {
   const body = readFileSync(filePath, 'utf-8');
   if (body.length === 0) return [];
+  // Trailing newline produces an empty last segment; drop it.
   const segments = body.split('\n');
   if (segments.at(-1) === '') segments.pop();
   return segments;
@@ -89,6 +90,7 @@ describe('FileSpanExporter', () => {
 
     for (let i = 0; i < 3; i++) {
       tracer.startSpan(`span-${i}`).end();
+      // Force-flush per span so SimpleSpanProcessor's chain finishes.
       await provider.forceFlush();
     }
 
@@ -117,6 +119,8 @@ describe('FileSpanExporter', () => {
   });
 
   test('rotates current → prev once size exceeds maxBytes', async () => {
+    // Cap at 50 bytes — one span's serialized envelope is far larger,
+    // so every export triggers rotation post-write.
     const exporter = new FileSpanExporter({ projectDir: tmp, maxBytes: 50 });
     const provider = makeProvider(exporter);
     const tracer = provider.getTracer('test');
@@ -126,6 +130,7 @@ describe('FileSpanExporter', () => {
     tracer.startSpan('first').end();
     await provider.forceFlush();
 
+    // After rotation, current was renamed to prev and is now absent.
     expect(existsSync(currentPath)).toBe(false);
     expect(existsSync(previousPath)).toBe(true);
     const firstPrev = readLines(previousPath);
@@ -137,6 +142,7 @@ describe('FileSpanExporter', () => {
     tracer.startSpan('second').end();
     await provider.forceFlush();
 
+    // Prev now holds the second batch (replaced the first), current was rotated again.
     expect(existsSync(currentPath)).toBe(false);
     expect(existsSync(previousPath)).toBe(true);
     const secondPrev = readLines(previousPath);
@@ -149,6 +155,8 @@ describe('FileSpanExporter', () => {
   });
 
   test('keeps current under threshold across multiple appends before rotating', async () => {
+    // Generous-enough cap to fit multiple span batches; only force
+    // rotation after many appends.
     const cap = 2_000;
     const exporter = new FileSpanExporter({ projectDir: tmp, maxBytes: cap });
     const provider = makeProvider(exporter);
@@ -156,16 +164,20 @@ describe('FileSpanExporter', () => {
     const currentPath = spansCurrentPath(tmp);
     const previousPath = spansPreviousPath(tmp);
 
+    // Append spans until we've definitely rotated at least once.
     for (let i = 0; i < 50; i++) {
       tracer.startSpan(`span-${i}`).end();
       await provider.forceFlush();
     }
 
     expect(existsSync(previousPath)).toBe(true);
+    // Current should be present (a fresh post-rotation file with whatever
+    // landed after the most recent rotation) and ≤ cap.
     if (existsSync(currentPath)) {
       expect(statSync(currentPath).size).toBeLessThanOrEqual(cap);
     }
     expect(statSync(previousPath).size).toBeGreaterThan(0);
+    // Both files contain only valid JSON lines.
     if (existsSync(currentPath)) {
       for (const line of readLines(currentPath)) {
         expect(() => JSON.parse(line)).not.toThrow();
@@ -179,8 +191,13 @@ describe('FileSpanExporter', () => {
   });
 
   test('appends cleanly even when the existing file has a partial trailing line', async () => {
+    // Simulate a SIGKILL leaving a partial trailing line: write a malformed
+    // chunk WITHOUT a terminal newline. The exporter must still append the
+    // next batch without throwing; the partial line is the reader's
+    // problem to discard.
     const exporter = new FileSpanExporter({ projectDir: tmp, maxBytes: 1_000_000 });
     const currentPath = spansCurrentPath(tmp);
+    // Ensure parent dir exists so we can pre-seed the file.
     await new Promise<void>((resolve, reject) => {
       const provider = makeProvider(exporter);
       provider.getTracer('seed').startSpan('seed').end();
@@ -189,6 +206,7 @@ describe('FileSpanExporter', () => {
         resolve();
       }, reject);
     });
+    // Append a malformed partial line (no terminating newline).
     writeFileSync(currentPath, 'NOT-JSON-AT-ALL', { flag: 'a' });
 
     const exporter2 = new FileSpanExporter({ projectDir: tmp, maxBytes: 1_000_000 });
@@ -196,6 +214,9 @@ describe('FileSpanExporter', () => {
     provider2.getTracer('test').startSpan('after-partial').end();
     await provider2.forceFlush();
 
+    // The append succeeded — file ends with the new JSON line. Some
+    // line in the file remains corrupt; readers discard those, valid
+    // ones still parse.
     const lines = readLines(currentPath);
     const parsed = lines
       .map((line) => {
@@ -221,7 +242,10 @@ describe('FileSpanExporter', () => {
 
     await exporter.shutdown();
 
+    // Direct call (bypassing the processor) confirms the shutdown gate.
     await new Promise<void>((resolve) => {
+      // Cast through unknown to construct a minimal ReadableSpan-shaped
+      // object — the gate short-circuits before we'd ever dereference it.
       exporter.export(
         [
           {
@@ -242,6 +266,7 @@ describe('FileSpanExporter', () => {
     const provider = makeProvider(exporter);
     const tracer = provider.getTracer('test');
     tracer.startSpan('to-flush').end();
+    // Concurrent forceFlushes should resolve without errors.
     await Promise.all([exporter.forceFlush(), provider.forceFlush()]);
 
     const lines = readLines(spansCurrentPath(tmp));
@@ -262,17 +287,21 @@ describe('RotatingAppender (shared rotation primitive)', () => {
     expect(existsSync(join(tmp, 'logs'))).toBe(false);
 
     await appender.append('hello\n');
+    // hello\n = 6 bytes < 20 — no rotation yet.
     expect(existsSync(currentPath)).toBe(true);
     expect(existsSync(previousPath)).toBe(false);
 
     await appender.append('worldworldworld\n');
+    // Total ~22 bytes > 20 — rotation triggers after this append.
     expect(existsSync(currentPath)).toBe(false);
     expect(existsSync(previousPath)).toBe(true);
     expect(readFileSync(previousPath, 'utf-8')).toBe('hello\nworldworldworld\n');
 
+    // Smaller payload — well under cap — lands in a fresh current.
     await appender.append('next\n');
     expect(existsSync(currentPath)).toBe(true);
     expect(readFileSync(currentPath, 'utf-8')).toBe('next\n');
+    // Prev still holds the first generation.
     expect(readFileSync(previousPath, 'utf-8')).toBe('hello\nworldworldworld\n');
   });
 
@@ -303,6 +332,7 @@ describe('RotatingAppender (shared rotation primitive)', () => {
       previousPath,
       maxBytes: 10_000,
     });
+    // Fire-and-forget several appends.
     void appender.append('1\n');
     void appender.append('2\n');
     void appender.append('3\n');
@@ -313,6 +343,11 @@ describe('RotatingAppender (shared rotation primitive)', () => {
 
 describe('ScrubbingSpanProcessor', () => {
   function makeSpan(attrs: Record<string, unknown>): ReadableSpan {
+    // Minimal ReadableSpan-shape for direct onEnd() testing — onEnd walks
+    // span.attributes, span.events[].attributes, and span.links[].attributes,
+    // so empty arrays satisfy the iteration contract for tests that only
+    // care about top-level attribute scrubbing. Cast through unknown so we
+    // don't have to satisfy every readonly field.
     return {
       attributes: { ...attrs },
       events: [],
@@ -363,6 +398,7 @@ describe('ScrubbingSpanProcessor', () => {
     expect(attrs['http.request.headers.Authorization']).toBe(REDACTED_SENTINEL);
     expect(attrs['http.request.headers.cookie']).toBe(REDACTED_SENTINEL);
     expect(attrs['http.request.headers.X-API-Key']).toBe(REDACTED_SENTINEL);
+    // Non-denylisted attrs untouched.
     expect(attrs['http.method']).toBe('POST');
     expect(attrs['http.url']).toBe('https://example.com/api');
   });
@@ -372,15 +408,25 @@ describe('ScrubbingSpanProcessor', () => {
       attributeDenylist: ['authorization', 'cookie', 'set-cookie', 'password'],
     });
     const span = makeSpan({
+      // Exact match.
       authorization: 'bare-key-secret',
+      // Dotted OTel namespace — boundary `.`.
       'http.request.headers.authorization': 'Bearer xyz',
+      // Slash variant — boundary `/`.
       'headers/authorization': 'header-style',
+      // Underscore variant — boundary `_`.
       db_password: 'db-creds',
+      // Hyphenated entry on its own.
       'set-cookie': 'sid=123',
+      // Hyphen-suffix nested.
       'http.response.headers.set-cookie': 'sid=456',
+      // Different word ending in the entry — NO match.
       'unset-cookie': 'still safe',
+      // Tail-of-word but no boundary — NO match.
       mypassword: 'unrelated',
+      // Mid-word denylist string — NO match.
       'password-related': 'irrelevant',
+      // Safe.
       'http.method': 'POST',
     });
     proc.onEnd(span);
@@ -391,6 +437,7 @@ describe('ScrubbingSpanProcessor', () => {
     expect(attrs.db_password).toBe(REDACTED_SENTINEL);
     expect(attrs['set-cookie']).toBe(REDACTED_SENTINEL);
     expect(attrs['http.response.headers.set-cookie']).toBe(REDACTED_SENTINEL);
+    // Non-matches preserved.
     expect(attrs['unset-cookie']).toBe('still safe');
     expect(attrs.mypassword).toBe('unrelated');
     expect(attrs['password-related']).toBe('irrelevant');
@@ -429,6 +476,7 @@ describe('ScrubbingSpanProcessor', () => {
     });
     proc.onEnd(span);
     const attrs = span.attributes as Record<string, unknown>;
+    // > cap, not >= cap.
     expect(attrs['at.cap']).toBe(justUnderCap);
     expect(attrs['over.cap']).toBe('[TRUNCATED:4097]');
   });
@@ -501,6 +549,7 @@ describe('ScrubbingSpanProcessor', () => {
       maxValueBytes: 16,
     });
     const provider = new BasicTracerProvider({
+      // Scrubber FIRST so it mutates the span before the simple exporter sees it.
       spanProcessors: [proc, new SimpleSpanProcessor(exporter)],
     });
     const tracer = provider.getTracer('test');
@@ -512,11 +561,15 @@ describe('ScrubbingSpanProcessor', () => {
     await provider.forceFlush();
 
     const fileBody = readFileSync(spansCurrentPath(tmp), 'utf-8');
+    // Credentials never appear in the file.
     expect(fileBody).not.toContain('s3cr3t-token-x');
+    // The redacted sentinel is present in its place.
     expect(fileBody).toContain('[REDACTED]');
+    // The oversize string is replaced with the truncation marker.
     expect(fileBody).toContain(
       `[TRUNCATED:${Buffer.byteLength('a long string longer than sixteen bytes', 'utf-8')}]`,
     );
+    // Safe attribute passes through.
     expect(fileBody).toContain('"GET"');
 
     await provider.shutdown();
@@ -656,5 +709,8 @@ describe('ScrubbingSpanProcessor', () => {
   });
 });
 
+// Reference the OTel api imports so they're not pruned — both `trace` and
+// `context` are exercised transitively by BasicTracerProvider but the
+// linter prefers explicit usage.
 void trace.getTracer;
 void context.active;

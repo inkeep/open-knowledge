@@ -99,6 +99,8 @@ describe('todayIsoUtc', () => {
   });
 
   it('uses UTC, not local time', () => {
+    // 2026-01-01T00:30:00Z is 2025-12-31T19:30 in America/New_York.
+    // We assert UTC, so January is the answer.
     expect(todayIsoUtc(new Date('2026-01-01T00:30:00Z'))).toBe('2026-01-01');
   });
 });

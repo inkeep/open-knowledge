@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the advisory mermaid validator: fence extraction, the
+ * diagram-type sweep (doubles as the mermaid/happy-dom dep-bump guard — if a
+ * bump changes parse-time DOM needs, this fails loud), transient-globals
+ * hygiene, input caps, error classification, and failure containment.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
   extractMermaidFences,
@@ -58,6 +65,7 @@ describe('extractMermaidFences', () => {
     const fences = extractMermaidFences('```mermaid\r\ngraph LR\r\n  A-->B\r\n```\r\nafter');
     expect(fences).toHaveLength(1);
     expect(fences[0]?.firstLine).toBe('graph LR');
+    // Body bytes stay verbatim (CR included) — only boundary matching strips CR.
     expect(fences[0]?.body).toBe('graph LR\r\n  A-->B\r');
   });
 });
@@ -190,6 +198,7 @@ describe('validateMermaidFences — containment (seamed parser)', () => {
         parsed++;
       },
     }));
+    // Single long line exceeds MAX_FENCE_BYTES (100_000) without crossing MAX_FENCE_LINES
     const bigBody = `sequenceDiagram\n${'A'.repeat(100_001)}`;
     const hugeFence = `\`\`\`mermaid\n${bigBody}\n\`\`\``;
     const warnings = await validateMermaidFences(hugeFence, 'byte-cap');
@@ -235,6 +244,7 @@ describe('validateMermaidFences — containment (seamed parser)', () => {
     }));
     const oversized = `\`\`\`mermaid\ngraph LR\n${'  A-->B\n'.repeat(2_100)}\`\`\`\n`;
     const invalid = '```mermaid\nINVALID\n```\n';
+    // 25 oversized fences (skipped, parse budget untouched) then one invalid.
     const warnings = await validateMermaidFences(oversized.repeat(25) + invalid, 'budget-skip');
     expect(warnings).toHaveLength(1);
     expect(parsed).toBe(1);

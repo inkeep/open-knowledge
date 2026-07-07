@@ -26,10 +26,16 @@ afterEach(() => {
 });
 
 describe('seedBasenameIndex — initial walk (no filter)', () => {
+  // When no ContentFilter is provided, seedBasenameIndex admits every file
+  // with a LINKABLE_ASSET_EXTENSIONS extension regardless of sibling-markdown
+  // presence. Production uses the filter.
   test('admits asset extensions; ignores markdown and unknown', async () => {
     write('docs/meeting.md');
     write('docs/photo.png');
     write('docs/diagram.svg');
+    // Genuinely unknown extension (outside LINKABLE_ASSET_EXTENSIONS). `.txt` is now
+    // in the widened asset set, so use `.xyz` as a
+    // novel-extension placeholder.
     write('docs/arbitrary.xyz');
     write('archive/old.png');
 
@@ -63,6 +69,10 @@ describe('seedBasenameIndex — initial walk (no filter)', () => {
 });
 
 describe('seedBasenameIndex — initial walk (with ContentFilter sibling-asset admission)', () => {
+  // Production wiring: `startWatcher` populates ContentFilter's dirCount
+  // (via incrementMdDir) during its own startup walk, so by the time
+  // seedBasenameIndex runs the filter admits asset files in dirs that
+  // have markdown siblings. We simulate that ordering in the test.
   test('admits assets only in markdown-neighbored directories', async () => {
     write('docs/meeting.md');
     write('docs/photo.png');
@@ -73,6 +83,7 @@ describe('seedBasenameIndex — initial walk (with ContentFilter sibling-asset a
       projectDir: baseDir,
       contentDir,
     });
+    // Prime dirCount the same way the file-watcher does for every .md found.
     contentFilter.incrementMdDir('docs');
     await seedBasenameIndex({ contentDir, contentFilter, basenameIndex: idx });
 
@@ -92,6 +103,8 @@ describe('seedBasenameIndex — initial walk (with ContentFilter sibling-asset a
       contentDir,
     });
     contentFilter.incrementMdDir('docs');
+    // 'secret/' doesn't have a markdown doc, AND the .okignore exclusion
+    // wins regardless.
     await seedBasenameIndex({ contentDir, contentFilter, basenameIndex: idx });
 
     expect(idx.resolveEmbed('photo.png', 'docs/meeting.md')).toBe('docs/photo.png');
@@ -106,7 +119,9 @@ describe('seedBasenameIndex — symlink safety', () => {
     const outside = join(baseDir, 'outside');
     mkdirSync(outside, { recursive: true });
     writeFileSync(join(outside, 'evil.png'), 'bytes', 'utf-8');
+    // Symlink INSIDE contentDir pointing OUTSIDE — the walker must refuse.
     symlinkSync(outside, join(contentDir, 'docs', 'linked-outside'));
+    // Symlink pointing to a sibling path INSIDE contentDir — walker follows.
     mkdirSync(join(contentDir, 'alias-target'), { recursive: true });
     writeFileSync(join(contentDir, 'alias-target', 'aliased.png'), 'bytes', 'utf-8');
     symlinkSync(join(contentDir, 'alias-target'), join(contentDir, 'docs', 'alias'));
@@ -116,6 +131,7 @@ describe('seedBasenameIndex — symlink safety', () => {
 
     expect(idx.resolveEmbed('real.png', 'docs/meeting.md')).toBe('docs/real.png');
     expect(idx.resolveEmbed('aliased.png', 'docs/meeting.md')).not.toBeNull();
+    // evil.png must NOT land in the index.
     expect(idx.resolveEmbed('evil.png', 'docs/meeting.md')).toBeNull();
   });
 });

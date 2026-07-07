@@ -1,3 +1,13 @@
+/**
+ * markIdentityPlugin — unit tests. Covers the pure logic surfaces
+ * (`computeMarkIdentity`, `diffMarkIdentity`) + plugin integration at the
+ * `EditorState.apply(tr)` level — both feasible in Bun without a live
+ * DOM (PM's state machine is DOM-free).
+ *
+ * Full editor-mount + user-typing behavior is covered by Playwright E2E
+ * (InternalLink port).
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState } from '@tiptap/pm/state';
@@ -9,6 +19,10 @@ import {
   markIdentityKey,
   markIdentityPlugin,
 } from './mark-identity';
+
+// ---------------------------------------------------------------------------
+// Test schema — minimal doc with two mark types to simulate link + wikiLink
+// ---------------------------------------------------------------------------
 
 const schema = new Schema({
   nodes: {
@@ -23,10 +37,16 @@ const schema = new Schema({
     wikiLink: {
       attrs: { page: {} },
     },
+    // A non-tracked mark to verify the filter
     strong: {},
   },
 });
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Build a doc from a plain description. */
 function doc(runs: Array<{ text: string; marks?: Mark[] }>) {
   const paragraph = schema.node(
     'paragraph',
@@ -45,6 +65,10 @@ function wikiMark(page: string): Mark {
 function strongMark(): Mark {
   return schema.mark('strong');
 }
+
+// ---------------------------------------------------------------------------
+// computeMarkIdentity — pure logic
+// ---------------------------------------------------------------------------
 
 describe('computeMarkIdentity — initial assignment', () => {
   test('empty doc → empty state', () => {
@@ -124,6 +148,8 @@ describe('computeMarkIdentity — initial assignment', () => {
 
 describe('computeMarkIdentity — contiguous span merging', () => {
   test('single mark applied to consecutive text nodes merges into one info', () => {
+    // PM may or may not split marks across nodes; we manually construct the
+    // split case here to verify the merge logic.
     const m = linkMark('/same');
     const paragraph = schema.node('paragraph', null, [
       schema.text('hello ', [m]),
@@ -133,12 +159,14 @@ describe('computeMarkIdentity — contiguous span merging', () => {
     const next = computeMarkIdentity(d, initialMarkIdentityState(), new Set(['link']), undefined);
     expect(next.byId.size).toBe(1);
     const info = [...next.byId.values()][0];
+    // The span covers "hello world" — nodes at positions 1..7 + 7..12
     expect(info.from).toBe(1);
     expect(info.to).toBe(12);
   });
 });
 
 describe('computeMarkIdentity — ID carryover via mapping', () => {
+  // Identity mapping — simulates a no-doc-change transition.
   const identityMapping = { map: (pos: number) => pos };
 
   test('same doc + identity mapping → all IDs carry forward', () => {
@@ -148,10 +176,12 @@ describe('computeMarkIdentity — ID carryover via mapping', () => {
     const next = computeMarkIdentity(d, prev, new Set(['link']), undefined, identityMapping);
     expect(next.byId.size).toBe(1);
     expect([...next.byId.keys()][0]).toBe(prevId);
+    // Counter does NOT advance.
     expect(next.counter).toBe(prev.counter);
   });
 
   test('insertion in unmarked region → existing mark ID preserved', () => {
+    // Prev: "link" with link mark, then " tail"
     const prev = computeMarkIdentity(
       doc([{ text: 'link', marks: [linkMark('/a')] }, { text: ' tail' }]),
       initialMarkIdentityState(),
@@ -160,7 +190,13 @@ describe('computeMarkIdentity — ID carryover via mapping', () => {
     );
     const prevId = [...prev.byId.keys()][0];
 
+    // New doc: same link + more tail. Mapping shifts by +5 at position >5
+    // (we insert " more" at offset 10 — after the link).
     const newDoc = doc([{ text: 'link', marks: [linkMark('/a')] }, { text: ' more tail' }]);
+    // Insertion at pos 10 (after " tail" start). Mapping:
+    //   pos <= 10 → unchanged
+    //   pos > 10 → pos + 5
+    // For the link at pos 1..5, both from (1→1) and to (5→5) are <= 10, so unchanged.
     const mapping = {
       map: (pos: number) => (pos <= 10 ? pos : pos + 5),
     };
@@ -178,13 +214,16 @@ describe('computeMarkIdentity — ID carryover via mapping', () => {
     );
     expect(prev.byId.size).toBe(1);
 
+    // Deleted — doc is now empty paragraph.
     const newDoc = schema.node('doc', null, [schema.node('paragraph')]);
+    // Mapping: deletion collapses from=1,to=5 to from=1,to=1
     const mapping = { map: (pos: number) => (pos <= 1 ? pos : 1) };
     const next = computeMarkIdentity(newDoc, prev, new Set(['link']), undefined, mapping);
     expect(next.byId.size).toBe(0);
   });
 
   test('different attrs → fresh ID even if range aligns (treat as new mark)', () => {
+    // Prev: link to /a
     const prev = computeMarkIdentity(
       doc([{ text: 'link', marks: [linkMark('/a')] }]),
       initialMarkIdentityState(),
@@ -193,6 +232,7 @@ describe('computeMarkIdentity — ID carryover via mapping', () => {
     );
     const prevId = [...prev.byId.keys()][0];
 
+    // Same range, different href → new ID.
     const newDoc = doc([{ text: 'link', marks: [linkMark('/different')] }]);
     const identityMapping = { map: (pos: number) => pos };
     const next = computeMarkIdentity(newDoc, prev, new Set(['link']), undefined, identityMapping);
@@ -202,6 +242,7 @@ describe('computeMarkIdentity — ID carryover via mapping', () => {
   });
 
   test('per-editor-instance counter never re-uses IDs even after all marks deleted', () => {
+    // Add → delete → add. Counter continues upward.
     let state = initialMarkIdentityState();
     state = computeMarkIdentity(
       doc([{ text: 'a', marks: [linkMark('/1')] }]),
@@ -216,6 +257,7 @@ describe('computeMarkIdentity — ID carryover via mapping', () => {
       map: (p: number) => (p <= 1 ? p : 1),
     });
     expect(state.byId.size).toBe(0);
+    // counter retained
     expect(state.counter).toBe(1);
 
     state = computeMarkIdentity(
@@ -228,6 +270,10 @@ describe('computeMarkIdentity — ID carryover via mapping', () => {
     expect([...state.byId.keys()][0]).toBe('m2');
   });
 });
+
+// ---------------------------------------------------------------------------
+// diffMarkIdentity — register/deregister callback firing
+// ---------------------------------------------------------------------------
 
 describe('diffMarkIdentity — register/deregister transitions', () => {
   test('new ID fires onRegister once', () => {
@@ -303,6 +349,10 @@ describe('diffMarkIdentity — register/deregister transitions', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Plugin integration — driven by EditorState apply
+// ---------------------------------------------------------------------------
+
 describe('markIdentityPlugin — EditorState integration', () => {
   test('init walks doc and populates plugin state', () => {
     const d = doc([{ text: 'link', marks: [linkMark('/a')] }]);
@@ -318,6 +368,7 @@ describe('markIdentityPlugin — EditorState integration', () => {
     const plugin = markIdentityPlugin({ markTypes: ['link'] });
     const state1 = EditorState.create({ doc: d, plugins: [plugin] });
     const mis1 = markIdentityKey.getState(state1);
+    // A metadata-only transaction.
     const tr = state1.tr.setMeta('noop', true);
     const state2 = state1.apply(tr);
     const mis2 = markIdentityKey.getState(state2);
@@ -330,6 +381,7 @@ describe('markIdentityPlugin — EditorState integration', () => {
     const state1 = EditorState.create({ doc: d, plugins: [plugin] });
     expect(markIdentityKey.getState(state1)?.byId.size).toBe(0);
 
+    // Apply a mark to the existing text.
     const tr = state1.tr.addMark(1, 6, linkMark('/new'));
     const state2 = state1.apply(tr);
     const mis2 = markIdentityKey.getState(state2);

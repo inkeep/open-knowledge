@@ -1,3 +1,10 @@
+/**
+ * `move` MCP tool — move or rename a document, folder, or asset via
+ * `POST /api/rename-path`. The tool probes the content directory to decide
+ * whether `from` is a doc (`.md`/`.mdx`), a folder, or an asset (any other
+ * file), then sets `kind` accordingly. Inbound wiki-links + inline links are
+ * rewritten so nothing breaks.
+ */
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MANAGED_ARTIFACT_SCOPES } from '@inkeep/open-knowledge-core';
@@ -112,6 +119,13 @@ function pluralize(count: number, singular: string, plural = `${singular}s`): st
   return count === 1 ? singular : plural;
 }
 
+/**
+ * Probe whether `from` is a doc, folder, or asset under the content dir:
+ * - 'folder' — `<contentDir>/<from>` is a directory
+ * - 'file'   — `<from>(.md|.mdx)` exists (a managed doc)
+ * - 'asset'  — `<from>` exists as a file with any other extension
+ * - null     — neither resolves (or `from` escapes the root)
+ */
 function resolveMoveKind(contentDir: string, from: string): 'file' | 'folder' | 'asset' | null {
   const contained = resolveWithinRoot(contentDir, from);
   if (!contained.ok) return null;
@@ -245,6 +259,10 @@ export function register(server: ServerInstance, deps: MoveDeps): void {
       const { cwd, config, url } = context;
       if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
 
+      // Template move/rename — nested target. A flat path can't disambiguate a
+      // template under `.ok/templates/` from a same-named doc, so the
+      // `template` key is the disambiguator. Routes to the managed
+      // `/api/template` move endpoint (git mv + auto-clean), not rename-path.
       if (args.template !== undefined) {
         if (args.from !== undefined || args.to !== undefined) {
           return textResult(
@@ -281,6 +299,10 @@ export function register(server: ServerInstance, deps: MoveDeps): void {
         );
       }
 
+      // Skill move/rename — nested target (a flat path can't disambiguate a
+      // skill under `.ok/skills/` from a same-named doc). Within one level,
+      // `moveSkill` routes to POST /api/skill (git mv + frontmatter sync); across
+      // levels, `moveSkillCrossScope` composes write-dest + delete-source.
       if (args.skill !== undefined) {
         if (args.from !== undefined || args.to !== undefined) {
           return textResult(
@@ -289,6 +311,8 @@ export function register(server: ServerInstance, deps: MoveDeps): void {
           );
         }
         const fromScope = args.skill.scope ?? 'project';
+        // A `toScope` that differs from the source level is the cross-level
+        // signal; otherwise (omitted or equal) it's a within-level rename.
         if (args.skill.toScope !== undefined && args.skill.toScope !== fromScope) {
           return moveSkillCrossScope(url, {
             fromScope,
@@ -318,6 +342,8 @@ export function register(server: ServerInstance, deps: MoveDeps): void {
       const contentDir = join(cwd, config.content.dir);
       const kind = resolveMoveKind(contentDir, args.from);
       if (kind === null) {
+        // A flat path that resolves to a template is the "reached for `move` by
+        // analogy" footgun — point at the nested template target.
         const split = resolveTemplatePath(args.from);
         if (
           split.ok &&
@@ -334,6 +360,7 @@ export function register(server: ServerInstance, deps: MoveDeps): void {
         );
       }
 
+      // Resolve from/to path shapes by kind.
       let fromPath = args.from;
       let toPath = args.to;
       if (kind === 'file') {

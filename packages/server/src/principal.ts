@@ -22,6 +22,19 @@ async function readGitConfig(
   }
 }
 
+/**
+ * Load (or create) the principal record at `<projectDir>/.ok/local/principal.json`.
+ *
+ * First call: synthesizes a stable UUID, reads git config for display fields,
+ * persists, and returns. Subsequent calls: keeps id + created_at immutable;
+ * refreshes display_name and display_email from git config on each load.
+ *
+ * Lives under `projectDir`, not `contentDir`: the principal record is per-project
+ * runtime state (one identity per repo), independent of where content sub-folders
+ * are configured. With `content.dir` set to a sub-folder of the project, the
+ * principal still belongs at the project root so a single repo presents one
+ * `.ok/local/` directory regardless of `content.dir`.
+ */
 export async function loadPrincipal(projectDir: string): Promise<Principal> {
   const okDir = getLocalDir(projectDir);
   const principalPath = resolve(okDir, PRINCIPAL_FILE);
@@ -69,6 +82,7 @@ export async function loadPrincipal(projectDir: string): Promise<Principal> {
     return updated;
   }
 
+  // First run: create
   mkdirSync(okDir, { recursive: true });
   const id = `principal-${randomUUID()}`;
   const shortId = id.slice('principal-'.length, 'principal-'.length + 8);

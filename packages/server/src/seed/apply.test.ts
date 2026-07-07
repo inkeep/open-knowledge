@@ -18,6 +18,8 @@ describe('applySeed — nested .ok/ era', () => {
 
   beforeEach(async () => {
     projectDir = await mkdtemp(join(tmpdir(), 'seed-apply-'));
+    // planSeed's gate requires `.ok/config.yml`. Seed it so apply tests can
+    // exercise the post-gate plan/apply flow.
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(join(projectDir, '.ok', 'config.yml'), '', 'utf-8');
   });
@@ -56,6 +58,7 @@ describe('applySeed — nested .ok/ era', () => {
         join(projectDir, folder.path, '.ok', 'frontmatter.yml'),
         'utf-8',
       );
+      // Title + description quoted-or-not depending on content; check substring.
       expect(fmContent).toContain(folder.title);
       expect(fmContent).toContain(folder.description.slice(0, 30));
       for (const tag of folder.tags) {
@@ -92,22 +95,27 @@ describe('applySeed — nested .ok/ era', () => {
     const secondPlan = await planSeed({ projectDir });
     const secondResult = await applySeed(secondPlan, { projectDir });
     expect(secondResult.errors).toEqual([]);
+    // Second pass should have nothing left to create.
     expect(secondPlan.created).toEqual([]);
     expect(secondResult.applied).toBe(0);
   });
 
   test('user-edited frontmatter.yml is preserved across reseed', async () => {
+    // First seed.
     const plan1 = await planSeed({ projectDir });
     await applySeed(plan1, { projectDir });
 
+    // User edits one of the frontmatter files.
     const fmPath = join(projectDir, 'external-sources', '.ok', 'frontmatter.yml');
     const userEdit =
       'title: My Custom External Sources\ndescription: edited by user\ntags:\n  - mine\n';
     writeFileSync(fmPath, userEdit, 'utf-8');
 
+    // Re-seed.
     const plan2 = await planSeed({ projectDir });
     await applySeed(plan2, { projectDir });
 
+    // User content survives.
     expect(readFileSync(fmPath, 'utf-8')).toBe(userEdit);
   });
 
@@ -137,6 +145,8 @@ describe('applySeed — nested .ok/ era', () => {
   });
 
   test('reports an error for unknown template ids without crashing', async () => {
+    // Hand-craft a plan with an entry that points at a template id we don't
+    // ship — apply should record an error rather than write empty content.
     const result = await applySeed(
       {
         created: [
@@ -159,6 +169,11 @@ describe('applySeed — nested .ok/ era', () => {
 });
 
 describe('applySeed — codebase-wiki nested folder paths + wiki/-prefixed rootFiles', () => {
+  // Regression guard for the `resolveFileContent` resolver: the `codebase-wiki`
+  // pack is the only one whose folder paths nest (`wiki/architecture`) and whose
+  // rootFiles keys carry a folder prefix (`wiki/OVERVIEW.md`). A resolver that
+  // only matched single-segment folder ids (or required bare-filename rootFiles)
+  // would record "No content template registered" errors and write nothing.
   let projectDir: string;
   const WIKI_PACK = STARTER_PACKS['codebase-wiki'];
 
@@ -180,6 +195,7 @@ describe('applySeed — codebase-wiki nested folder paths + wiki/-prefixed rootF
     expect(result.applied).toBe(plan.created.length);
 
     for (const folder of WIKI_PACK.folders) {
+      // folder.path is e.g. `wiki/architecture` — the nested case.
       expect(existsSync(join(projectDir, folder.path, '.ok', 'frontmatter.yml'))).toBe(true);
       expect(
         existsSync(

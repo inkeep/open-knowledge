@@ -4,7 +4,7 @@
  *
  * Covered surfaces:
  *   (a) `schemeStatesToTargetStates` — per-scheme → per-target mapping with
- *       web-host Cursor override (E4 DIRECTED).
+ *       web-host Cursor override.
  *   (b) `initialTargetStates` — pre-probe snapshot shape per host.
  *   (c) `probeViaElectron` — parallel IPC fan-out with per-scheme rejection
  *       tolerance.
@@ -69,10 +69,17 @@ describe('schemeStatesToTargetStates', () => {
       now: () => FIXED_NOW,
     });
     expect(out.codex.lastChecked).toBe(FIXED_NOW);
+    // Unprobed entries don't get a timestamp.
     expect(out['claude-cowork'].lastChecked).toBeUndefined();
   });
 
   test('web-host Cursor reflects the probe result (no force-disabled override)', () => {
+    // Cursor on web is now supported via the loopback `/api/spawn-cursor`
+    // fetch fallback in `cursor-two-step.ts`. The previous force-disabled
+    // override at this layer was removed because the renderer no longer
+    // needs to short-circuit a row that would fail on click — both transports
+    // share the same `SpawnCursor` shape and the server-side probe is the
+    // single source of truth for "is Cursor installed."
     const states: SchemeStates = {
       'cursor:': { installed: true, displayName: 'Cursor' },
     };
@@ -107,6 +114,8 @@ describe('initialTargetStates', () => {
   });
 
   test('web-host: every target is loading (Cursor no longer pre-disabled)', () => {
+    // Cursor now has a web-host transport (`POST /api/spawn-cursor`), so the
+    // pre-probe state matches every other target — wait for the actual probe.
     const out = initialTargetStates({ isElectronHost: false, now: () => 0 });
     expect(out['claude-cowork'].installed).toBe(null);
     expect(out['claude-code'].installed).toBe(null);
@@ -123,14 +132,24 @@ describe('probeViaElectron', () => {
       return { installed: true, displayName: `App-${schemeName}` };
     };
     const out = await probeViaElectron({ detectProtocol: detector });
+    // The IPC contract is scheme NAME (no colon) — the handler's shell-injection
+    // sanitizer at packages/desktop/src/main/ipc-handlers.ts rejects `:`. This
+    // assertion is the regression guard for the case where the hook used
+    // to pass the colonful form and every row rendered "Not installed".
     expect(new Set(calls)).toEqual(new Set(['claude', 'codex', 'cursor']));
     expect(calls.length).toBe(3);
+    // But the output map is still keyed by the colonful scheme to align with
+    // `KNOWN_TARGETS.schemes` + the `URL.protocol` / `ALLOWED_SCHEMES` convention.
     expect(out['claude:']?.installed).toBe(true);
     expect(out['codex:']?.installed).toBe(true);
     expect(out['cursor:']?.installed).toBe(true);
   });
 
   test('IPC contract: detector receives no-colon scheme name (shell-injection sanitizer matches)', async () => {
+    // Tight regression test: if the hook ever regresses to passing `'claude:'`,
+    // the main-process handler's `^[a-z][a-z0-9+.-]*$` sanitizer would return
+    // `{installed:false}` short-circuit and the dropdown would render every
+    // row disabled in production. Lock in the stripped form.
     const detector = async (schemeName: string) => {
       expect(schemeName).not.toContain(':');
       expect(/^[a-z][a-z0-9+.-]*$/i.test(schemeName)).toBe(true);
@@ -331,6 +350,8 @@ describe('createProbeCoordinator — throttle, dedup, subscribe, cancel', () => 
       handle.probe(),
       handle.probe(),
     ];
+    // All five callers picked up the same inflight promise; underlying probe
+    // ran exactly once.
     expect(callCount).toBe(1);
     expect(resolveProbe).not.toBeNull();
     resolveProbe?.(HEALTHY_ALL_INSTALLED);
@@ -354,6 +375,7 @@ describe('createProbeCoordinator — throttle, dedup, subscribe, cancel', () => 
     expect(afterFirst).toBe(1);
     clock = 100;
     await handle.probe();
+    // Identical state → no additional notify.
     expect(received.length).toBe(afterFirst);
     handle.cancel();
   });
@@ -422,6 +444,8 @@ describe('createProbeCoordinator — throttle, dedup, subscribe, cancel', () => 
   });
 
   test('web-host coordinator: Cursor target reflects probe result (no force-override)', async () => {
+    // Web hosts now have a real Cursor transport, so the renderer trusts the
+    // server-side probe just like every other target.
     const received: Array<Record<string, unknown>> = [];
     const handle = createProbeCoordinator({
       probe: async () => HEALTHY_ALL_INSTALLED,
@@ -453,6 +477,7 @@ describe('createProbeCoordinator — throttle, dedup, subscribe, cancel', () => 
     });
     await handle.probe();
     expect(callCount).toBe(1);
+    // No clock advance — but throttle should not gate retries after an error.
     shouldThrow = false;
     await handle.probe();
     expect(callCount).toBe(2);
@@ -465,6 +490,7 @@ describe('createProbeCoordinator — throttle, dedup, subscribe, cancel', () => 
       isElectronHost: () => true,
       now: () => 0,
     });
+    // Before any probe — initial state (all null).
     const initial = handle.getTargetStates();
     expect(initial['claude-cowork'].installed).toBe(null);
     await handle.probe();

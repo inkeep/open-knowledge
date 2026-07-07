@@ -105,6 +105,10 @@ describe('reconciliation metrics', () => {
     resetMetrics();
     const m = getMetrics();
     for (const [key, value] of Object.entries(m)) {
+      // Map-shaped metrics reset to {} (empty record) — cc1LastSeq tracks
+      // CC1 channel watermarks; bridgeToleranceApplied tracks per-class
+      // tolerance counts; mapDrivenSpliceFallback tracks per-reason splice
+      // fallbacks. All are populated keyed by string at runtime.
       if (
         key === 'cc1LastSeq' ||
         key === 'bridgeToleranceApplied' ||
@@ -142,6 +146,11 @@ describe('collab-socket error filter (precedent §23)', () => {
   });
 
   test('handleCollabSocketError does NOT filter other error codes', () => {
+    // Exhaustive list of codes that are NOT the known-safe kernel TCP-teardown
+    // signals from precedent §23. Each one should surface (return false) so the
+    // caller's normal logging path fires. Adding a new known-safe code means
+    // adding it BOTH to `handleCollabSocketError` AND to this test's filtered
+    // set — the contract is mechanically enforced here.
     resetMetrics();
     const codes = [
       'ETIMEDOUT',
@@ -160,6 +169,7 @@ describe('collab-socket error filter (precedent §23)', () => {
       const filtered = handleCollabSocketError(err);
       expect(filtered).toBe(false);
     }
+    // And none of these bumped the filtered-error counters.
     const m = getMetrics();
     expect(m.collabSocketEpipeCount).toBe(0);
     expect(m.collabSocketEconnresetCount).toBe(0);
@@ -193,6 +203,11 @@ describe('collab-socket error filter (precedent §23)', () => {
   });
 
   test('getMetrics snapshot includes collab-socket fields (wire contract for /api/metrics/reconciliation)', () => {
+    // The /api/metrics/reconciliation endpoint returns `getMetrics()` directly,
+    // so this test verifies the wire contract: operators
+    // querying the endpoint WILL see the two new counters with the documented
+    // names. If the names change, this test fails and the endpoint's consumers
+    // (dashboards, alerting) need explicit review.
     resetMetrics();
     const m = getMetrics();
     expect(m).toHaveProperty('collabSocketEpipeCount');

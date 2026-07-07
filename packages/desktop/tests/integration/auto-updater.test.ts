@@ -1,3 +1,22 @@
+/**
+ * auto-updater unit + integration tests.
+ *
+ * Drives the full `startAutoUpdater(...)` event flow via a fake
+ * `UpdaterLike` (event-stub pattern) + fake `ipcMain` + fake `WebContents` sink + injected
+ * clock. No Electron runtime needed — tests run under `bun test`.
+ *
+ * Coverage map:
+ *   - 6 events wired + dispatch shape (channel names, payloads)
+ *   - 13 ERR_UPDATER_* / HTTP_ERROR_* codes route to classified log
+ *   - Bare Error (no .code) routes to unclassified log
+ *   - Successful check updates lastSuccessfulCheckAt + resets stuckHintShown
+ *   - Stuck-hint fires once per installation; resets on success; re-arms
+ *   - First-launch post-update (Toast B) once per version transition
+ *   - Periodic check singleton via injectable clock
+ *   - Relaunch-now IPC calls quitAndInstall
+ *   - Dev-mode guard skips first-launch check but keeps handlers wired
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import type { OutgoingHttpHeaders } from 'node:http';
@@ -27,9 +46,14 @@ import {
 } from '../../src/main/state-store.ts';
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
 
+/** Narrow window-like shape used in tests — mirrors the production `getPrimaryWindow` return type. */
 interface SendTarget {
   webContents: SendableWebContents;
 }
+
+// ————————————————————————————————————————————————————————
+// Fakes
+// ————————————————————————————————————————————————————————
 
 class FakeUpdater extends EventEmitter implements UpdaterLike {
   autoDownload = false;
@@ -99,8 +123,11 @@ function makeFakeWindow(captured: CapturedSend[]): SendTarget {
 interface FakeClock {
   setTimeout: ReturnType<typeof mock>;
   clearTimeout: ReturnType<typeof mock>;
+  /** Most recently registered timer callback — fire it to simulate a tick. */
   lastCallback: (() => void) | null;
+  /** Most recently returned timer handle. */
   lastHandle: unknown;
+  /** ms the last setTimeout call was configured for (base interval + jitter). */
   lastMs: number | null;
 }
 
@@ -133,6 +160,12 @@ interface TestRig {
   ipc: FakeIpc;
   clock: FakeClock;
   captured: CapturedSend[];
+  /**
+   * Per-window broadcast captures used to assert multi-window state-sync.
+   * `windows[0]` is always the primary window (same buffer as `captured`, so
+   * existing tests asserting on `captured` remain unaffected). Additional
+   * entries hold extra windows registered via `extraWindowCount`.
+   */
   windows: CapturedSend[][];
   state: AppState;
   dispatches: DispatchKind[];
@@ -152,10 +185,36 @@ function makeRig(
     forceDevBypass?: boolean;
     feedUrl?: string;
     proxyFeed?: { base: string; channels: ReadonlySet<'latest' | 'beta'> };
+    /** Configure the FakeUpdater before startAutoUpdater runs (e.g. a rejecting first check). */
     updaterSetup?: (u: FakeUpdater) => void;
+    /**
+     * Number of EXTRA windows beyond the primary that the relaunch-banner
+     * (Toast A) fan-out should observe. Defaults to 0 — when 0, the fixture
+     * omits `getAllWindows` entirely so Toast A falls back to the single
+     * primary window.
+     */
     extraWindowCount?: number;
+    /**
+     * Pre-relaunch teardown hook — fires synchronously from the
+     * `relaunch-now` IPC handler immediately before
+     * `autoUpdater.quitAndInstall()`. Production wires this to a hard
+     * SIGKILL of project-window utilities so Squirrel.Mac's pre-swap
+     * pgrep doesn't see stale processes.
+     */
     prepareForRelaunch?: () => void;
+    /**
+     * Menu-driven check-result dispatcher — production renders a
+     * `dialog.showMessageBox`. Tests pass a spy to assert the
+     * discriminated-union shape that lands per outcome.
+     */
     showCheckNowResult?: Parameters<typeof startAutoUpdater>[0]['showCheckNowResult'];
+    /**
+     * RNG for the periodic-check jitter. Defaults to `() => 0` so the
+     * scheduled delay is exactly `UPDATE_CHECK_INTERVAL_MS` in tests that
+     * don't care about jitter; pass a custom stub to exercise the jitter
+     * window (`() => 0.5` → floor + half) or per-fire re-randomization
+     * (a stub returning a fresh value each call).
+     */
     random?: () => number;
   },
 ): {
@@ -182,6 +241,9 @@ function makeRig(
     clock: makeFakeClock(),
     captured: primaryCaptured,
     windows: [primaryCaptured],
+    // Most updater tests exercise event-specific dispatch after boot. Seed
+    // lastSeenVersion to the fixture appVersion so the new first-launch
+    // version notice only appears in tests that opt into that branch.
     state: { ...emptyState(), lastSeenVersion: appVersion, ...stateOverrides },
     dispatches: [],
     now: new Date('2026-04-21T12:00:00.000Z'),
@@ -227,6 +289,10 @@ function makeRig(
   return { rig, handle };
 }
 
+// ————————————————————————————————————————————————————————
+// Constants used across tests
+// ————————————————————————————————————————————————————————
+
 const CLASSIFIED_CODES: readonly string[] = [
   'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND',
   'ERR_UPDATER_LATEST_VERSION_NOT_FOUND',
@@ -244,13 +310,27 @@ const CLASSIFIED_CODES: readonly string[] = [
   'HTTP_ERROR_500',
 ];
 
+// ————————————————————————————————————————————————————————
+// Invariant: configuration is locked at startup
+// ————————————————————————————————————————————————————————
+
 describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', () => {
   test('sets autoDownload=false, autoInstallOnAppQuit=true, channel=latest', () => {
+    // autoDownload is `false` so the cross-channel veto in `onUpdateAvailable`
+    // can run BEFORE electron-updater downloads. We trigger `downloadUpdate()`
+    // explicitly once the channel-match check passes.
     const { rig } = makeRig();
     expect(rig.updater.autoDownload).toBe(false);
     expect(rig.updater.autoInstallOnAppQuit).toBe(true);
     expect(rig.updater.channel).toBe('latest');
   });
+
+  // smoke plumbing regression. Added when manual `bun run dev` revealed that
+  // `OK_UPDATER_FEED_URL` was documented in the PR body but never actually
+  // wired into main — feedUrl would be set but setFeedURL was never called,
+  // and `forceDevUpdateConfig` was never flipped so the check gate blocked
+  // network access anyway. These tests lock in the full contract so
+  // a future refactor can't silently break the manual smoke.
 
   test('feedUrl opt → updater.setFeedURL(url) called before first check', () => {
     const { rig } = makeRig({ feedUrl: 'http://127.0.0.1:54321' } as Partial<AppState> & {
@@ -284,6 +364,10 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
   });
 
   test('stable build version → channel=latest, allowPrerelease=false, allowDowngrade=false', () => {
+    // The channel is derived from `app.getVersion()`. A plain `X.Y.Z` is
+    // stable. `allowDowngrade` is `false` on both branches under the
+    // install-time-sticky model — cross-channel moves are user-initiated
+    // reinstalls, not auto-update events.
     const { rig } = makeRig({ appVersion: '0.4.0' });
     expect(rig.updater.channel).toBe('latest');
     expect(rig.updater.allowPrerelease).toBe(false);
@@ -298,6 +382,10 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
   });
 
   test('channel is build-derived only — no persisted preference is consulted', () => {
+    // The legacy sticky `updateChannel` preference has been removed. A stable
+    // build always configures `channel=latest`; a beta build always
+    // configures `channel=beta`. To switch channels the user uninstalls and
+    // reinstalls the other DMG.
     const stable = makeRig({ appVersion: '0.4.0' });
     expect(stable.rig.updater.channel).toBe('latest');
     expect(stable.rig.updater.allowPrerelease).toBe(false);
@@ -374,6 +462,7 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
         });
       },
     });
+    // Let the boot check's rejection + the revert microtasks flush.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(rig.updater.setFeedURL).toHaveBeenCalledWith({
       provider: 'github',
@@ -381,6 +470,8 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
       repo: 'open-knowledge',
     });
     expect(rig.updater.requestHeaders).toBeNull();
+    // The boot .catch() that reverts the feed must still arm the periodic
+    // timer — a proxy failure can't leave the session without update checks.
     expect(rig.clock.setTimeout).toHaveBeenCalledTimes(1);
   });
 
@@ -389,12 +480,17 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
       appVersion: '0.4.0-beta.7',
       proxyFeed: { base: PROXY_BASE, channels: new Set(['beta']) },
     });
+    // Proxy feed is the active source: setFeedURL chose the generic provider
+    // (not GitHub) and the version/channel headers are set.
     expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
       url: `${PROXY_BASE}/beta`,
     });
     expect(rig.updater.requestHeaders).not.toBeNull();
 
+    // electron-updater delivers feed/manifest failures primarily through the
+    // `error` event, not a checkForUpdates() rejection. That common path must
+    // still trip the GitHub-direct fallback.
     rig.updater.emit(
       'error',
       Object.assign(new Error('proxy 503'), { code: 'ERR_UPDATER_INVALID_RELEASE_FEED' }),
@@ -419,9 +515,12 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
       Object.assign(new Error('proxy 503'), { code: 'ERR_UPDATER_INVALID_RELEASE_FEED' }),
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
+    // boot generic feed + the one-shot GitHub fallback = 2 setFeedURL calls.
     const callsAfterFallback = rig.updater.setFeedURL.mock.calls.length;
     expect(callsAfterFallback).toBe(2);
 
+    // The guard (`!usingProxyFeed || proxyFallbackTried`) makes every later
+    // error event inert — no second setFeedURL, no re-check storm.
     rig.updater.emit(
       'error',
       Object.assign(new Error('still broken'), { code: 'ERR_UPDATER_INVALID_RELEASE_FEED' }),
@@ -450,13 +549,37 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
       Object.assign(new Error('proxy 503'), { code: 'ERR_UPDATER_INVALID_RELEASE_FEED' }),
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
+    // The throw is caught and logged; the load-bearing `return` prevents a
+    // re-check against the mis-configured updater.
     expect(rig.updater.checkForUpdates.mock.calls.length).toBe(checksBeforeError);
     expect(rig.logger.error).toHaveBeenCalled();
   });
 });
 
+// ————————————————————————————————————————————————————————
+// Cross-channel veto on update-available
+// ————————————————————————————————————————————————————————
+//
+// electron-updater's GitHubProvider can deliver a stable manifest to a beta
+// client when `beta-mac.yml` 404s on the latest release (the
+// `beta-mac.yml`→`latest-mac.yml` cascade).
+// Channels are install-time-sticky: a beta DMG only auto-updates to a newer
+// beta DMG, a stable DMG only to a newer stable DMG. We enforce that at the
+// app layer by setting `autoDownload = false` and gating `downloadUpdate()`
+// on a channel-match check inside `onUpdateAvailable`.
+
 describe('cross-channel veto on update-available', () => {
   test('beta build offered a stable version → veto records the check as successful (mirrors update-not-available)', () => {
+    // The bug scenario: a stable v0.5.0 cut while a v0.5.0-beta.5 client is
+    // running. electron-updater cascades and offers the stable version; our
+    // gate vetoes the install.
+    //
+    // The check pipeline itself succeeded (manifest fetched + parsed); only
+    // the install is gated by channel policy. Mirror `onUpdateNotAvailable`
+    // and advance `lastSuccessfulCheckAt` so the 7-day stuck-hint gate
+    // doesn't fire on a beta cohort during a long stable-only window. Seed
+    // a prior ISO so the assertion pins ADVANCE-semantics (timestamp moved
+    // forward to rig.now), not just the no-op default.
     const priorCheckAt = '2026-05-01T00:00:00.000Z';
     const { rig } = makeRig({
       appVersion: '0.5.0-beta.5',
@@ -483,6 +606,13 @@ describe('cross-channel veto on update-available', () => {
   });
 
   test('beta receiving stable-only offers for 8 days does NOT fire stuck-hint on a transient error', () => {
+    // Regression for the false-stuck-hint scenario: a beta cohort during a
+    // long stable-only release window receives only cross-channel offers.
+    // The veto must advance `lastSuccessfulCheckAt` (per
+    // `markCheckSucceeded`), so the 7-day stuck-hint gate stays disarmed
+    // when a transient error lands. Without the advance, Toast C would
+    // fire incorrectly: the updater is healthy, there's just nothing for
+    // beta channel.
     const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
     const { rig } = makeRig({
       appVersion: '0.5.0-beta.5',
@@ -524,10 +654,17 @@ describe('cross-channel veto on update-available', () => {
       kind: 'not-available',
       currentVersion: '0.5.0-beta.5',
     });
+    // The download gate lives in `onUpdateAvailable` and is independent of
+    // the menu-check feedback path; pin both behaviors so a future regression
+    // that suppresses the veto when a menu check is in flight can't pass.
     expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
   });
 
   test('empty version is treated as a veto (no download, check still recorded as successful)', () => {
+    // Empty / non-string `info.version` from electron-updater is a malformed-
+    // emitter case; classified by `classifyOffer` as `'empty-version'` which
+    // hits the same veto branch as `'channel-mismatch'`. The check pipeline
+    // still succeeded (we received the event), so `markCheckSucceeded` fires.
     const priorCheckAt = '2026-05-01T00:00:00.000Z';
     const { rig } = makeRig({ appVersion: '0.3.1', lastSuccessfulCheckAt: priorCheckAt });
     rig.updater.emit('update-available', {});
@@ -536,6 +673,14 @@ describe('cross-channel veto on update-available', () => {
     expect(rig.state.lastSuccessfulCheckAt).toBe(rig.now.toISOString());
   });
 });
+
+// ————————————————————————————————————————————————————————
+// schemaVersion boot-incompatibility check. The pure
+// helper is exhaustively unit-tested in tests/unit/state-store-channel-fields,
+// but the AC asks the integration suite to also pin the contract that
+// the auto-updater feature relies on so a regression in either side
+// (helper drift, MAX bump without callsite update) surfaces here.
+// ————————————————————————————————————————————————————————
 
 describe('schemaVersion boot-incompatibility check (US-007 AC5)', () => {
   test('persisted schemaVersion > MAX_SUPPORTED → incompatible diagnostic', () => {
@@ -564,11 +709,15 @@ describe('schemaVersion boot-incompatibility check (US-007 AC5)', () => {
   });
 });
 
+// persist-before-emit ordering
+// ————————————————————————————————————————————————————————
+
 describe('persist-before-emit ordering (Finding #2)', () => {
   test('update-downloaded: writeState failure → NO Toast A dispatch', () => {
     const { rig, handle } = makeRig();
     handle.destroy(); // detach and re-wire with throwing writeState
 
+    // Wire a fresh instance with writeState that always throws.
     const updater = new FakeUpdater();
     const ipc = makeFakeIpc();
     const clock = makeFakeClock();
@@ -599,11 +748,14 @@ describe('persist-before-emit ordering (Finding #2)', () => {
     });
 
     updater.emit('update-downloaded', { version: '0.3.2' });
+    // Gate did not arm → no toast dispatched
     expect(captured.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(0);
     expect(dispatches).not.toContain('update-downloaded-toast-a' as DispatchKind);
     expect(state.versionPendingInstall).toBeNull();
     expect(logger.error).toHaveBeenCalled();
+    // A re-fire must get another shot (state still unarmed).
     expect(state.versionPendingInstall).toBeNull();
+    // rig unused here — pin compile-time reference so TS doesn't complain about unused binding.
     void rig;
   });
 
@@ -644,10 +796,17 @@ describe('persist-before-emit ordering (Finding #2)', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// 6 events subscribed, 3 events NOT subscribed
+// ————————————————————————————————————————————————————————
+
 describe('event subscription surface (AC2)', () => {
   test('registers listeners for the six AC2 events', () => {
     const { rig } = makeRig();
     expect(rig.updater.listenerCount('checking-for-update')).toBe(1);
+    // Two listeners on update-available: the primary handler (log +
+    // markCheckSucceeded), and a separate menu-check feedback listener that
+    // surfaces a result dialog when `ok:update:check-now` was the trigger.
     expect(rig.updater.listenerCount('update-available')).toBe(2);
     expect(rig.updater.listenerCount('update-not-available')).toBe(1);
     expect(rig.updater.listenerCount('download-progress')).toBe(1);
@@ -662,6 +821,10 @@ describe('event subscription surface (AC2)', () => {
     expect(rig.updater.listenerCount('appimage-filename-updated')).toBe(0);
   });
 });
+
+// ————————————————————————————————————————————————————————
+// Toast A dispatch + once-per-pending-version gate
+// ————————————————————————————————————————————————————————
 
 describe('update-downloaded → Toast A (AC6)', () => {
   test('first dispatch for a new version fires ok:update:downloaded + records versionPendingInstall', () => {
@@ -699,9 +862,15 @@ describe('update-downloaded → Toast A (AC6)', () => {
     const toastA = rig.captured.filter((c) => c.channel === 'ok:update:downloaded');
     expect(toastA).toHaveLength(0);
     expect(rig.state.versionPendingInstall).toBeNull();
+    // empty-version branch emits its own
+    // DispatchKind so tests can observe the malformed-payload path.
     expect(rig.dispatches).toContain('update-downloaded-empty-version' as DispatchKind);
   });
 });
+
+// ————————————————————————————————————————————————————————
+// error classification — silent log, no dispatch
+// ————————————————————————————————————————————————————————
 
 describe('error routing (AC3, D5)', () => {
   test.each(CLASSIFIED_CODES)('classified err.code %s → bracket log, no IPC dispatch', (code) => {
@@ -709,6 +878,10 @@ describe('error routing (AC3, D5)', () => {
     const err = Object.assign(new Error(`failure ${code}`), { code });
     rig.updater.emit('error', err);
     expect(rig.captured.some((c) => c.channel.startsWith('ok:update:error'))).toBe(false);
+    // ERR_CHECKSUM_MISMATCH in the table doesn't start with ERR_UPDATER_ or
+    // HTTP_ERROR_ — treats it as classified via an observed code
+    // prefix but the module's `isClassifiedUpdaterError` is strict. Accept
+    // the pragmatic outcome: strict prefix → unclassified, otherwise → classified.
     const isClassified = code.startsWith('ERR_UPDATER_') || code.startsWith('HTTP_ERROR_');
     expect(
       rig.dispatches.includes(
@@ -749,6 +922,10 @@ describe('error routing (AC3, D5)', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// stuck-hint gate
+// ————————————————————————————————————————————————————————
+
 describe('stuck-hint logic (AC17, D12)', () => {
   test('update-not-available updates lastSuccessfulCheckAt', () => {
     const { rig } = makeRig();
@@ -776,6 +953,7 @@ describe('stuck-hint logic (AC17, D12)', () => {
     });
     rig.now = new Date();
 
+    // First error — fires stuck-hint.
     rig.updater.emit('error', new Error('network'));
     const hint = rig.captured.filter((c) => c.channel === 'ok:update:stuck-hint');
     expect(hint).toHaveLength(1);
@@ -783,6 +961,7 @@ describe('stuck-hint logic (AC17, D12)', () => {
     expect(rig.state.stuckHintShown).toBe(true);
     expect(rig.dispatches).toContain('stuck-hint-toast-c' as DispatchKind);
 
+    // Second error — must NOT fire a second stuck-hint.
     rig.updater.emit('error', new Error('network again'));
     const hint2 = rig.captured.filter((c) => c.channel === 'ok:update:stuck-hint');
     expect(hint2).toHaveLength(1);
@@ -817,6 +996,7 @@ describe('stuck-hint logic (AC17, D12)', () => {
     expect(rig.state.stuckHintShown).toBe(false);
     expect(rig.state.lastSuccessfulCheckAt).toBe(rig.now.toISOString());
 
+    // Simulate another 8-day silent window → error fires again.
     rig.state.lastSuccessfulCheckAt = new Date(
       rig.now.getTime() - 8 * 24 * 60 * 60 * 1000,
     ).toISOString();
@@ -839,6 +1019,10 @@ describe('stuck-hint logic (AC17, D12)', () => {
     expect(STUCK_HINT_THRESHOLD_MS).toBe(7 * 24 * 60 * 60 * 1000);
   });
 });
+
+// ————————————————————————————————————————————————————————
+// first-launch version notice detection (Toast B)
+// ————————————————————————————————————————————————————————
 
 describe('first-launch version notice (Toast B — AC7, D9)', () => {
   test('lastSeenVersion differs from current → dispatch whats-new + update state', () => {
@@ -884,6 +1068,13 @@ describe('first-launch version notice (Toast B — AC7, D9)', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// Boot-time stale-pending reconciliation: clear versionPendingInstall when the
+// running version has caught up. Covers the install-on-quit cycle where
+// autoInstallOnAppQuit applies the update without going through the relaunch-
+// now IPC that clears the gate.
+// ————————————————————————————————————————————————————————
+
 describe('boot-time stale versionPendingInstall reconciliation', () => {
   test('running version equals pending → cleared on boot (install-on-quit case)', () => {
     const { rig } = makeRig({ versionPendingInstall: '0.4.1', appVersion: '0.4.1' });
@@ -910,6 +1101,10 @@ describe('boot-time stale versionPendingInstall reconciliation', () => {
   });
 
   test('persist failure → state unchanged, no dispatch (gate not silently broken)', () => {
+    // Mirror the pattern — direct startAutoUpdater wiring with a
+    // throwing writeState. The reconcile attempt MUST NOT fire onDispatch when
+    // the write fails, because the on-disk state still contains the stale
+    // value and the next boot needs another chance to clear it.
     const updater = new FakeUpdater();
     const ipc = makeFakeIpc();
     const clock = makeFakeClock();
@@ -941,6 +1136,16 @@ describe('boot-time stale versionPendingInstall reconciliation', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// Boot-time failed-install detection. `attemptedInstall` records the
+// version the app committed to install; at boot, if the running version did not
+// reach it, the install silently failed (e.g. Squirrel.Mac's post-quit ShipIt
+// never ran) and we surface the richer "Retry / Download manually" notice via
+// the relaunch-failed channel with a downloadUrl. This is the ONLY detector for
+// a clean-quit failure: the sync-throw path and the no-quit watchdog both need
+// the process to still be alive.
+// ————————————————————————————————————————————————————————
+
 describe('boot-time failed-install detection', () => {
   test('attempted not reached (same-MMP beta) → relaunch-failed w/ downloadUrl, re-arm, stays armed', () => {
     const { rig } = makeRig({
@@ -953,6 +1158,10 @@ describe('boot-time failed-install detection', () => {
       version: '0.16.0-beta.3',
       downloadUrl: STUCK_HINT_DOWNLOAD_URL,
     });
+    // versionPendingInstall re-armed so the notice's Retry can re-trigger the
+    // still-staged update through relaunch-now. attemptedInstall STAYS armed:
+    // relaunch-now does not re-set it, so clearing here would make a second
+    // (post-Retry) failure silent. It persists until the install actually takes.
     expect(rig.state.attemptedInstall).toBe('0.16.0-beta.3');
     expect(rig.state.versionPendingInstall).toBe('0.16.0-beta.3');
     expect(rig.dispatches).toContain('install-failed-on-boot' as DispatchKind);
@@ -960,6 +1169,9 @@ describe('boot-time failed-install detection', () => {
   });
 
   test('persistent failure across reboots keeps re-surfacing (attemptedInstall not consumed)', () => {
+    // Simulate two boots on the old version with the same staged-but-failing
+    // update: the failure notice must fire BOTH times (a broken ShipIt does not
+    // self-heal). Shared mutable state mirrors a real state.json across boots.
     const state: AppState = {
       ...emptyState(),
       lastSeenVersion: '0.16.0-beta.1',
@@ -1008,6 +1220,7 @@ describe('boot-time failed-install detection', () => {
     const failed = rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed');
     expect(failed).toHaveLength(0);
     expect(rig.state.attemptedInstall).toBeNull();
+    // Success reconcile also resets the surface counter for the next attempt.
     expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
     expect(rig.dispatches).toContain('attempted-install-reconciled' as DispatchKind);
     expect(rig.dispatches).not.toContain('install-failed-on-boot' as DispatchKind);
@@ -1039,7 +1252,15 @@ describe('boot-time failed-install detection', () => {
     expect(rig.state.attemptedInstall).toBe('0.16.0-beta.3');
   });
 
+  // Cross-channel residue: stable and beta builds share one state.json (same
+  // appId/productName → same Electron userData dir), so a version armed by one
+  // channel poisons the other channel's boot check — the running channel can
+  // never reach it (cross-channel veto), so without this guard the card re-fires
+  // every boot forever.
   test('cross-channel residue (stable attempted, beta running) → silently cleared, no notice', () => {
+    // Higher-MMP stable attempted so the MMP-only stale-pending reconciliation
+    // does NOT pre-clear versionPendingInstall; this exercises the cross-channel
+    // branch's own clear of the stale pending marker.
     const { rig } = makeRig({
       attemptedInstall: '0.24.0',
       versionPendingInstall: '0.24.0',
@@ -1047,6 +1268,8 @@ describe('boot-time failed-install detection', () => {
     });
     expect(rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed')).toHaveLength(0);
     expect(rig.state.attemptedInstall).toBeNull();
+    // The stale cross-channel pending marker is dropped too — no phantom
+    // "ready to install" banner survives on the beta build.
     expect(rig.state.versionPendingInstall).toBeNull();
     expect(rig.dispatches).toContain('attempted-install-cross-channel' as DispatchKind);
     expect(rig.dispatches).not.toContain('install-failed-on-boot' as DispatchKind);
@@ -1054,6 +1277,9 @@ describe('boot-time failed-install detection', () => {
   });
 
   test('cross-channel residue (beta attempted, older stable running) → silently cleared', () => {
+    // Stable 0.22.0 has NOT reached beta 0.23.0-beta.5, so this is not a success
+    // reconcile; the channels differ, so it is cross-channel residue, not a
+    // same-channel failure notice.
     const { rig } = makeRig({
       attemptedInstall: '0.23.0-beta.5',
       appVersion: '0.22.0',
@@ -1076,6 +1302,9 @@ describe('boot-time failed-install detection', () => {
   });
 
   test('retry budget exhausted → gives up, clears the record incl. pending marker', () => {
+    // Higher-MMP attempted than running (the phantom-banner case): the
+    // MMP-only stale-pending reconciliation cannot clear versionPendingInstall,
+    // so the giveup branch must clear it itself.
     const { rig } = makeRig({
       attemptedInstall: '0.17.0-beta.1',
       versionPendingInstall: '0.17.0-beta.1',
@@ -1085,12 +1314,15 @@ describe('boot-time failed-install detection', () => {
     expect(rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed')).toHaveLength(0);
     expect(rig.state.attemptedInstall).toBeNull();
     expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
+    // No phantom "ready to install" banner left behind after giving up.
     expect(rig.state.versionPendingInstall).toBeNull();
     expect(rig.dispatches).toContain('install-failed-giveup' as DispatchKind);
     expect(rig.dispatches).not.toContain('install-failed-on-boot' as DispatchKind);
   });
 
   test('surfaces exactly INSTALL_FAILURE_MAX_SURFACES times across reboots, then gives up', () => {
+    // Shared mutable state mirrors a real state.json across boots (same as the
+    // "persistent failure" test above, but carried to the cap).
     const state: AppState = {
       ...emptyState(),
       lastSeenVersion: '0.16.0-beta.1',
@@ -1127,12 +1359,14 @@ describe('boot-time failed-install detection', () => {
       expect(b.dispatches).toContain('install-failed-on-boot' as DispatchKind);
     }
     expect(state.attemptedInstallSurfacedCount).toBe(INSTALL_FAILURE_MAX_SURFACES);
+    // Budget spent: give up, clear the record, no more cards.
     const giveup = boot();
     expect(giveup.captured.filter((c) => c.channel === 'ok:update:relaunch-failed')).toHaveLength(
       0,
     );
     expect(giveup.dispatches).toContain('install-failed-giveup' as DispatchKind);
     expect(state.attemptedInstall).toBeNull();
+    // Record cleared → the next boot is a no-op.
     const after = boot();
     expect(after.dispatches).not.toContain('install-failed-on-boot' as DispatchKind);
     expect(after.dispatches).not.toContain('install-failed-giveup' as DispatchKind);
@@ -1144,13 +1378,20 @@ describe('boot-time failed-install detection', () => {
       appVersion: '0.16.0-beta.1',
       attemptedInstallSurfacedCount: 1,
     });
+    // Boot surfaced the failure once more (1 → 2), record still armed.
     expect(rig.state.attemptedInstallSurfacedCount).toBe(2);
+    // A newer beta downloads: a fresh attempt gets a fresh budget.
     rig.updater.emit('update-downloaded', { version: '0.16.0-beta.5' });
     expect(rig.state.attemptedInstall).toBe('0.16.0-beta.5');
     expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
   });
 
   test('update-downloaded of the SAME version preserves the surface counter', () => {
+    // Models a re-download of the still-attempted version after relaunch-now
+    // cleared versionPendingInstall. isPackaged:false skips the boot surface
+    // branch (which would otherwise re-arm versionPendingInstall and trigger the
+    // dedup path), isolating the arming preserve logic. Re-arming the SAME
+    // version must NOT reset the budget, or a stuck install could nag forever.
     const { rig } = makeRig({
       isPackaged: false,
       attemptedInstall: '0.16.0-beta.3',
@@ -1158,6 +1399,8 @@ describe('boot-time failed-install detection', () => {
       attemptedInstallSurfacedCount: 2,
     });
     rig.updater.emit('update-downloaded', { version: '0.16.0-beta.3' });
+    // versionPendingInstall becoming the version proves the arm ran (not a dev
+    // no-op); the counter staying at 2 proves the same-version preserve.
     expect(rig.state.versionPendingInstall).toBe('0.16.0-beta.3');
     expect(rig.state.attemptedInstall).toBe('0.16.0-beta.3');
     expect(rig.state.attemptedInstallSurfacedCount).toBe(2);
@@ -1267,6 +1510,10 @@ describe('boot-time failed-install detection', () => {
   });
 
   test('persist failure on the success branch → attemptedInstall stays armed, no dispatch', () => {
+    // Symmetric with the failure-branch test: a write failure on the success
+    // path must NOT clear attemptedInstall in memory, so the next boot
+    // reconciles again. Guards against a refactor that moves `state = next`
+    // outside the persistSafely gate.
     const state: AppState = {
       ...emptyState(),
       lastSeenVersion: '0.16.0-beta.3',
@@ -1337,6 +1584,13 @@ describe('installReached (prerelease-aware compare)', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// Pure-helper unit tests for versionAtLeast — the MMP compare used by the
+// boot-time reconciliation. Covers parse-shape correctness and the malformed-
+// returns-false contract that keeps a parse failure from dropping a genuinely
+// staged update.
+// ————————————————————————————————————————————————————————
+
 describe('versionAtLeast (MMP compare)', () => {
   test('equal versions → true', () => {
     expect(versionAtLeast('0.4.1', '0.4.1')).toBe(true);
@@ -1373,6 +1627,11 @@ describe('versionAtLeast (MMP compare)', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// Multi-window delivery: the relaunch banner (Toast A) fans out to EVERY
+// open window; the "updated to version" notice (Toast B) stays single-window
+// ————————————————————————————————————————————————————————
+
 describe('multi-window delivery: relaunch banner and "updated to" notice both reach every window', () => {
   test('ok:update:downloaded (relaunch banner) reaches every open window', () => {
     const { rig } = makeRig({ extraWindowCount: 2 });
@@ -1383,6 +1642,7 @@ describe('multi-window delivery: relaunch banner and "updated to" notice both re
       expect(toastA).toHaveLength(1);
       expect(toastA[0]?.payload).toEqual({ version: '0.3.2' });
     }
+    // Fan-out is delivery-only: one state write, one dispatch — not N.
     expect(rig.state.versionPendingInstall).toBe('0.3.2');
     expect(rig.dispatches.filter((d) => d === 'update-downloaded-toast-a')).toHaveLength(1);
   });
@@ -1401,11 +1661,14 @@ describe('multi-window delivery: relaunch banner and "updated to" notice both re
       extraWindowCount: 2,
     });
     expect(rig.windows).toHaveLength(3);
+    // Every window gets the notice — the cross-window dismiss makes fanning it
+    // out safe (dismissing in one clears all).
     for (const win of rig.windows) {
       const whatsNew = win.filter((c) => c.channel === 'ok:update:whats-new');
       expect(whatsNew).toHaveLength(1);
       expect(whatsNew[0]?.payload).toMatchObject({ version: '0.3.1' });
     }
+    // Fan-out is delivery-only: one dispatch, not N.
     expect(rig.dispatches.filter((d) => d === 'whats-new-toast-b')).toHaveLength(1);
   });
 
@@ -1419,6 +1682,10 @@ describe('multi-window delivery: relaunch banner and "updated to" notice both re
     expect(rig.dispatches).toContain('update-downloaded-deduped' as DispatchKind);
   });
 });
+
+// ————————————————————————————————————————————————————————
+// Release-notes cross-window dismiss + late-window delivery
+// ————————————————————————————————————————————————————————
 
 describe('release-notes cross-window dismiss + late-window delivery', () => {
   test('registers the whats-new-dismiss IPC handler', () => {
@@ -1463,17 +1730,26 @@ describe('release-notes cross-window dismiss + late-window delivery', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// periodic check singleton + jitter
+// ————————————————————————————————————————————————————————
+
 describe('periodic check singleton + jitter (AC10, D10)', () => {
   test('registers exactly one timer after the first launch check resolves', async () => {
     const { rig } = makeRig();
+    // The module awaits checkForUpdates().then(startPeriodicChecks).
+    // Yield the event loop so that the then-callback fires.
     await rig.updater.checkForUpdates();
     await Promise.resolve();
     await Promise.resolve();
     expect(rig.clock.setTimeout).toHaveBeenCalledTimes(1);
+    // makeRig's default RNG is `() => 0`, so the scheduled delay is the
+    // exact base-interval floor with no jitter.
     expect(rig.clock.lastMs).toBe(UPDATE_CHECK_INTERVAL_MS);
   });
 
   test('scheduled delay = UPDATE_CHECK_INTERVAL_MS + floor(random() * UPDATE_CHECK_JITTER_MS)', async () => {
+    // Half the jitter window — exact, deterministic.
     const half = makeRig({ random: () => 0.5 });
     await half.rig.updater.checkForUpdates();
     await Promise.resolve();
@@ -1483,6 +1759,8 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
     );
     expect(half.rig.clock.lastMs).toBeGreaterThan(UPDATE_CHECK_INTERVAL_MS);
 
+    // Top of the jitter window — still strictly below interval + jitter
+    // (jitter is `[0, JITTER)`, never the full JITTER).
     const top = makeRig({ random: () => 0.999_999 });
     await top.rig.updater.checkForUpdates();
     await Promise.resolve();
@@ -1492,6 +1770,7 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
   });
 
   test('jitter is re-drawn on every fire (no fleet lockstep)', async () => {
+    // RNG returns a fresh value each call → each reschedule gets a new delay.
     const values = [0, 0.25, 0.75, 0.5];
     let i = 0;
     const { rig } = makeRig({ random: () => values[i++ % values.length] ?? 0 });
@@ -1499,6 +1778,7 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
     await Promise.resolve();
     await Promise.resolve();
     const observed: Array<number | null> = [rig.clock.lastMs];
+    // Fire the timer a few times; each tick re-schedules with a fresh jitter.
     for (let tick = 0; tick < 3; tick++) {
       rig.clock.lastCallback?.();
       observed.push(rig.clock.lastMs);
@@ -1509,6 +1789,8 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
       UPDATE_CHECK_INTERVAL_MS + Math.floor(0.75 * UPDATE_CHECK_JITTER_MS),
       UPDATE_CHECK_INTERVAL_MS + Math.floor(0.5 * UPDATE_CHECK_JITTER_MS),
     ]);
+    // Still a single timer at any instant — re-scheduling replaces, it does
+    // not accumulate. setTimeout was called once per (re)schedule: initial + 3.
     expect(rig.clock.setTimeout).toHaveBeenCalledTimes(4);
   });
 
@@ -1521,6 +1803,7 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
     rig.clock.setTimeout.mockClear();
     rig.clock.lastCallback?.();
     expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
+    // The tick re-schedules itself so the cadence continues.
     expect(rig.clock.setTimeout).toHaveBeenCalledTimes(1);
   });
 
@@ -1534,12 +1817,29 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
   });
 
   test('UPDATE_CHECK_INTERVAL_MS is the short pre-release cadence; jitter is a small fraction of it', () => {
+    // Currently 5 min (intentionally short while the update flow is being
+    // validated pre-release; restore to hourly before GA — see the constant's
+    // JSDoc). When that flips, bump this expectation alongside it.
     expect(UPDATE_CHECK_INTERVAL_MS).toBe(5 * 60 * 1000);
+    // Jitter: seconds-to-a-minute scale, and always a small fraction of the
+    // base interval so "every N minutes" still roughly holds.
     expect(UPDATE_CHECK_JITTER_MS).toBeGreaterThanOrEqual(5 * 1000);
     expect(UPDATE_CHECK_JITTER_MS).toBeLessThanOrEqual(60 * 1000);
     expect(UPDATE_CHECK_JITTER_MS).toBeLessThan(UPDATE_CHECK_INTERVAL_MS);
   });
 
+  /**
+   * Regression.
+   *
+   * `startAutoUpdater` kicks off with `updater.checkForUpdates()` and in its
+   * .catch() still calls `startPeriodicChecks()` so a transient first-launch
+   * failure (network down at boot, 404 on the manifest) doesn't leave the
+   * user stuck without auto-update for the entire session. Without this
+   * test, a refactor that early-returns on the catch path — or deletes the
+   * .catch entirely and falls through to the default rejection handler —
+   * would silently break the recovery guarantee and only be caught by real
+   * users on flaky networks.
+   */
   test('first-launch check rejection still registers the periodic timer', async () => {
     const updater = new FakeUpdater();
     const ipc = makeFakeIpc();
@@ -1571,6 +1871,7 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
       random: () => 0,
       logger,
     });
+    // Let both the rejected promise + the chained .catch() run.
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -1580,6 +1881,10 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
     expect(logger.debug).toHaveBeenCalled();
   });
 });
+
+// ————————————————————————————————————————————————————————
+// ok:update:relaunch-now IPC handler
+// ————————————————————————————————————————————————————————
 
 describe('ok:update:relaunch-now IPC handler (AC18)', () => {
   test('registers the handler on startup', () => {
@@ -1603,6 +1908,10 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
   });
 
   test('broadcasts ok:update:relaunching to EVERY open window so all swap in lockstep', () => {
+    // The screenshot bug: clicking Relaunch in one window left the others
+    // showing a stale "…ready to install [Relaunch]" banner. The commit fans a
+    // relaunching signal to every window so they all swap to the in-progress
+    // card. Delivery-only fan-out: one dispatch, not N.
     const { rig } = makeRig({ versionPendingInstall: '0.3.2', extraWindowCount: 2 });
     expect(rig.windows).toHaveLength(3);
     rig.ipc.invoke('ok:update:relaunch-now');
@@ -1615,6 +1924,12 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
   });
 
   test('quitAndInstall throw → state restored + every window re-armed via ok:update:downloaded + invoke rejects', async () => {
+    // Failure recovery for the cross-window swap: after the relaunching
+    // broadcast, every window shows a button-less, non-dismissible
+    // "Relaunching…" card. Only the clicked window has a rejection handler,
+    // so main must re-arm the others — restore versionPendingInstall and
+    // re-broadcast the downloaded banner (same notice id replaces the stuck
+    // card in place), then rethrow for the clicked window's error notice.
     const { rig } = makeRig({ versionPendingInstall: '0.3.2', extraWindowCount: 2 });
     rig.updater.quitAndInstall = mock(() => {
       throw new Error('SQRLInstallerErrorDomain Code=-9');
@@ -1636,6 +1951,7 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
       });
     }
     expect(rig.dispatches).toContain('relaunch-failed-rearm' as DispatchKind);
+    // The restored gate makes a retry click work end-to-end.
     rig.updater.quitAndInstall = mock(() => {});
     await rig.ipc.invoke('ok:update:relaunch-now');
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
@@ -1651,6 +1967,10 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
   });
 
   test('broadcasts ok:update:relaunching BEFORE the prepareForRelaunch teardown runs', async () => {
+    // Windows must swap to "Relaunching…" at the START of the relaunch, not
+    // after the up-to-10s server teardown — otherwise the stale banner lingers
+    // for those seconds (the exact symptom). Assert the broadcast is already
+    // captured by the time the teardown hook is invoked.
     const captured: CapturedSend[] = [];
     const ipc = makeFakeIpc();
     let state: AppState = { ...emptyState(), versionPendingInstall: '0.3.2' };
@@ -1710,6 +2030,10 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
       getPrimaryWindow: () => makeFakeWindow(captured),
       getAppVersion: () => '0.3.1',
       isPackaged: true,
+      // prepareForRelaunch is now awaited by the handler so a two-phase
+      // shutdown (SIGTERM → poll → SIGKILL via `stopAllOwnedServers`) can
+      // complete before `quitAndInstall`. Returning a resolved Promise keeps
+      // this test exercising the async path.
       prepareForRelaunch: async () => {
         calls.push('prepareForRelaunch');
       },
@@ -1746,19 +2070,31 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// Async relaunch-failure surfacing: error-event fast path + no-quit watchdog
+// ————————————————————————————————————————————————————————
+
 describe('async relaunch failure — error event + no-quit watchdog', () => {
   test('clean quitAndInstall return arms the watchdog at RELAUNCH_WATCHDOG_MS (packaged)', async () => {
     const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    // Drain the boot microtask (checkForUpdates().then(startPeriodicChecks))
+    // FIRST so the single-slot fake clock's last-timer tracking points at the
+    // watchdog armed below, not the periodic-check timer.
     await Promise.resolve();
     await Promise.resolve();
     expect(rig.clock.lastMs).toBe(UPDATE_CHECK_INTERVAL_MS);
     await rig.ipc.invoke('ok:update:relaunch-now');
+    // The single-slot fake clock now tracks the watchdog (armed after the
+    // boot-time periodic check was scheduled).
     expect(rig.clock.lastMs).toBe(RELAUNCH_WATCHDOG_MS);
     expect(rig.clock.lastCallback).not.toBeNull();
   });
 
   test('watchdog fire → state restored + every window re-armed + relaunch-failed broadcast', async () => {
     const { rig } = makeRig({ versionPendingInstall: '0.3.2', extraWindowCount: 1 });
+    // Drain the boot microtask (checkForUpdates().then(startPeriodicChecks))
+    // FIRST so the single-slot fake clock's last-timer tracking points at the
+    // watchdog armed below, not the periodic-check timer.
     await Promise.resolve();
     await Promise.resolve();
     expect(rig.clock.lastMs).toBe(UPDATE_CHECK_INTERVAL_MS);
@@ -1780,6 +2116,9 @@ describe('async relaunch failure — error event + no-quit watchdog', () => {
 
   test('updater error while in flight → fast fail with the error detail, watchdog cleared', async () => {
     const { rig } = makeRig({ versionPendingInstall: '0.3.2', extraWindowCount: 1 });
+    // Drain the boot microtask (checkForUpdates().then(startPeriodicChecks))
+    // FIRST so the single-slot fake clock's last-timer tracking points at the
+    // watchdog armed below, not the periodic-check timer.
     await Promise.resolve();
     await Promise.resolve();
     expect(rig.clock.lastMs).toBe(UPDATE_CHECK_INTERVAL_MS);
@@ -1792,12 +2131,21 @@ describe('async relaunch failure — error event + no-quit watchdog', () => {
       expect(failed[0]?.payload).toEqual({ version: '0.3.2', message: 'ShipIt swap failed' });
     }
     expect(rig.dispatches.filter((d) => d === 'relaunch-error-event')).toHaveLength(1);
+    // Dispatch is intentionally additive: the same error also takes the
+    // generic error path (operator log) — 'relaunch-error-event' reports the
+    // recovery, not a replacement.
     expect(rig.dispatches.filter((d) => d === 'error-unclassified')).toHaveLength(1);
+    // failRelaunch cleared the watchdog — the single-slot fake clock nulls
+    // its tracked callback on a matching clearTimeout, so no later "fire"
+    // can double-report the same failure.
     expect(rig.clock.lastCallback).toBeNull();
     expect(rig.dispatches).not.toContain('relaunch-watchdog-fired' as DispatchKind);
   });
 
   test('CLASSIFIED error while in flight → additive error-classified + relaunch-error-event', async () => {
+    // Pins the additive invariant on the classified branch too: a future
+    // refactor that calls failRelaunch only from the unclassified else-arm
+    // would silently drop recovery for ERR_UPDATER_* / HTTP_ERROR_* failures.
     const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
     await Promise.resolve();
     await Promise.resolve();
@@ -1823,6 +2171,12 @@ describe('async relaunch failure — error event + no-quit watchdog', () => {
   });
 
   test('updater error AFTER the watchdog already fired → no second relaunch-failed broadcast', async () => {
+    // The realistic Squirrel sequence for a slow failure: the no-quit
+    // watchdog declares the relaunch failed at 15s, then ShipIt's error
+    // event trickles in later. The watchdog's failRelaunch disarmed the
+    // in-flight gate, so onError must treat the late error as an ordinary
+    // updater error — exactly one relaunch-failed notice per attempt, and
+    // the surviving notice keeps the watchdog's message.
     const { rig } = makeRig({ versionPendingInstall: '0.3.2', extraWindowCount: 1 });
     await Promise.resolve();
     await Promise.resolve();
@@ -1845,6 +2199,11 @@ describe('async relaunch failure — error event + no-quit watchdog', () => {
   });
 
   test('restore-persist failure inside failRelaunch → relaunch-failed still broadcasts, re-arm skipped', async () => {
+    // The split is deliberate: the downloaded re-arm follows
+    // persist-before-emit (skipped when the restore write fails), but the
+    // failure notice is unconditional — the user must learn the relaunch
+    // failed even on a failing disk. Pin it so a refactor can't fold the
+    // failure broadcast into the persist-gated block.
     const captured: CapturedSend[] = [];
     const win = makeFakeWindow(captured);
     const clock = makeFakeClock();
@@ -1894,13 +2253,19 @@ describe('async relaunch failure — error event + no-quit watchdog', () => {
   test('watchdog NOT armed when isPackaged=false (dev quitAndInstall no-op is not a failure)', async () => {
     const { rig } = makeRig({ versionPendingInstall: '0.3.2', isPackaged: false });
     await rig.ipc.invoke('ok:update:relaunch-now');
+    // Dev boot never schedules the periodic check either, so the single-slot
+    // clock saw no setTimeout at all.
     expect(rig.clock.lastCallback).toBeNull();
+    // And a later updater error is NOT misattributed to a relaunch.
     rig.updater.emit('error', new Error('dev error'));
     expect(rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed')).toHaveLength(0);
   });
 
   test('destroy() clears the armed watchdog', async () => {
     const { rig, handle } = makeRig({ versionPendingInstall: '0.3.2' });
+    // Drain the boot microtask (checkForUpdates().then(startPeriodicChecks))
+    // FIRST so the single-slot fake clock's last-timer tracking points at the
+    // watchdog armed below, not the periodic-check timer.
     await Promise.resolve();
     await Promise.resolve();
     expect(rig.clock.lastMs).toBe(UPDATE_CHECK_INTERVAL_MS);
@@ -1993,6 +2358,17 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
   });
 
   test('ERR_UPDATER_CHANNEL_FILE_NOT_FOUND routes to not-available (cascade-fallback path)', () => {
+    // electron-updater's GitHubProvider raises this code when the channel
+    // manifest 404s on the latest matching release. Residual triggers
+    // (the steady-state release-cut race is closed by the --draft +
+    // promote-after-upload workflow flow):
+    //   - ~60s .atom-feed propagation delay after draft→published flip
+    //   - Real-world transient errors (5xx, network, asset-CDN latency)
+    //   - Manual rollbacks or out-of-band release edits
+    // The provider's allowPrerelease fallback also tries `latest-mac.yml`,
+    // so the final 404 names `latest-mac.yml` even on the beta channel.
+    // Functionally: there is no installable update right now → surface the
+    // friendly "up to date" dialog instead of a scary HTTP-404 dump.
     const showCheckNowResult = mock(() => {});
     const { rig } = makeRig({ appVersion: '0.5.0-beta.21', showCheckNowResult });
     rig.ipc.invoke('ok:update:check-now');
@@ -2011,6 +2387,10 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
   });
 
   test('other classified updater errors still surface kind=error (channel-file-not-found is the only narrow case)', () => {
+    // Lock the narrow scope: only ERR_UPDATER_CHANNEL_FILE_NOT_FOUND gets
+    // remapped. Other classified codes (HTTP_ERROR_500, ZIP_FILE_NOT_FOUND,
+    // CHECKSUM_MISMATCH, …) still surface as error dialogs — they describe
+    // real failures, not a transient empty-release state.
     const showCheckNowResult = mock(() => {});
     const { rig } = makeRig({ showCheckNowResult });
     rig.ipc.invoke('ok:update:check-now');
@@ -2046,6 +2426,7 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
     const { rig } = makeRig({ showCheckNowResult });
     rig.updater.checkForUpdates = mock(() => Promise.reject(new Error('feed not reachable')));
     rig.ipc.invoke('ok:update:check-now');
+    // Wait for the .catch handler in runMenuDrivenCheck to settle.
     await new Promise((r) => setTimeout(r, 0));
     expect(showCheckNowResult).toHaveBeenCalledWith({
       kind: 'error',
@@ -2054,6 +2435,12 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
   });
 
   test('checkForUpdates synchronous reject with ERR_UPDATER_CHANNEL_FILE_NOT_FOUND routes to not-available', async () => {
+    // Defends against a future electron-updater that delivers
+    // ERR_UPDATER_CHANNEL_FILE_NOT_FOUND via promise rejection instead of the
+    // `error` event. The shared `buildCheckNowResultFromError` helper keeps
+    // both paths aligned. Today this path is rare (the error normally lands
+    // on the event bus), but the unit test pins the contract so a refactor
+    // that drops the helper's special-case fails loud.
     const showCheckNowResult = mock(() => {});
     const { rig } = makeRig({ appVersion: '0.5.0-beta.21', showCheckNowResult });
     const err = Object.assign(new Error('Cannot find latest-mac.yml ...: HttpError: 404'), {
@@ -2069,6 +2456,11 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
   });
 });
 
+// `buildCheckNowResultFromError` is the shared helper used by BOTH the
+// `error` event handler (`onError`) and the synchronous-reject `.catch` in
+// `runMenuDrivenCheck`. Unit-test the helper directly so the contract is
+// pinned independently of either call-site's wiring — keeping the remap
+// centralized prevents the two paths from drifting in a future change.
 describe('buildCheckNowResultFromError', () => {
   test('ERR_UPDATER_CHANNEL_FILE_NOT_FOUND maps to not-available with currentVersion', () => {
     const err = Object.assign(new Error('Cannot find …'), {
@@ -2112,6 +2504,12 @@ describe('buildCheckNowResultFromError', () => {
   });
 });
 
+// The application-menu "Check for Updates…" entry goes through
+// `handle.checkForUpdatesNow()` (NOT the IPC), and must surface the same
+// result dialog as the IPC path. Both delegate to `runMenuDrivenCheck`, so the
+// per-outcome behavior (available / not-available / error / sync-reject) is
+// already covered by the `ok:update:check-now` IPC tests above — the one
+// invariant unique to the menu seam is "it routes through that same path".
 describe('handle.checkForUpdatesNow() routes the menu through runMenuDrivenCheck', () => {
   test('a menu click arms menuCheckPending so the result reaches showCheckNowResult', () => {
     const showCheckNowResult = mock(() => {});
@@ -2125,6 +2523,10 @@ describe('handle.checkForUpdatesNow() routes the menu through runMenuDrivenCheck
     });
   });
 });
+
+// ————————————————————————————————————————————————————————
+// dev-mode guard
+// ————————————————————————————————————————————————————————
 
 describe('dev-mode guard (isPackaged=false)', () => {
   test('skips first-launch checkForUpdates when isPackaged=false and forceDevBypass=false', async () => {
@@ -2167,11 +2569,17 @@ describe('dev-mode guard (isPackaged=false)', () => {
 
   test('event handlers stay wired in dev-mode so unit tests can drive them', () => {
     const { rig } = makeRig({ isPackaged: false });
+    // Emit update-downloaded — handler must still fire the Toast A dispatch.
     rig.updater.emit('update-downloaded', { version: '0.3.2' });
     const toastA = rig.captured.filter((c) => c.channel === 'ok:update:downloaded');
     expect(toastA).toHaveLength(1);
   });
 
+  // Boot-time update notices ("Update to X didn't install" + the what's-new
+  // toast) are a production-only surface — in an unpackaged dev build with no
+  // OK_UPDATER_FORCE_DEV they must not fire, even when stale persisted state
+  // would otherwise trigger them. `forceDevBypass` re-enables them so the manual
+  // update smoke can still observe a toast in a dev build.
   test('boot-time failed-install notice suppressed when isPackaged=false', () => {
     const { rig } = makeRig({
       isPackaged: false,
@@ -2190,6 +2598,8 @@ describe('dev-mode guard (isPackaged=false)', () => {
     });
     expect(rig.captured.filter((c) => c.channel === 'ok:update:whats-new')).toHaveLength(0);
     expect(rig.dispatches).not.toContain('whats-new-toast-b' as DispatchKind);
+    // Silent advance is load-bearing: it keeps the toast suppressed on the next
+    // boot rather than re-evaluating the same version as "new" every launch.
     expect(rig.state.lastSeenVersion).toBe('0.3.1');
   });
 
@@ -2217,6 +2627,10 @@ describe('dev-mode guard (isPackaged=false)', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// download-progress: log only, no UI
+// ————————————————————————————————————————————————————————
+
 describe('download-progress (log-only, no UI surface)', () => {
   test('emits debug log without IPC dispatch or state write', () => {
     const { rig } = makeRig();
@@ -2227,6 +2641,10 @@ describe('download-progress (log-only, no UI surface)', () => {
     expect(rig.logger.debug).toHaveBeenCalled();
   });
 });
+
+// ————————————————————————————————————————————————————————
+// destroy() teardown
+// ————————————————————————————————————————————————————————
 
 describe('destroy() teardown', () => {
   test('detaches all 6 event listeners', () => {
@@ -2249,6 +2667,17 @@ describe('destroy() teardown', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// Single-window dispatch (regression guard — multi-window fix)
+//
+// Under the multi-window model ("every project pick spawns a new editor
+// window"), fanning out
+// update events to `BrowserWindow.getAllWindows()` produced N visible
+// toasts with N independent "Relaunch now" buttons. The module now targets
+// a single primary window via `getPrimaryWindow()`. These tests lock the
+// new contract and catch any regression back to fan-out semantics.
+// ————————————————————————————————————————————————————————
+
 describe('single-window dispatch (Finding #1 guard)', () => {
   test('update-downloaded sends to exactly one target even when primary changes between dispatches', () => {
     const updater = new FakeUpdater();
@@ -2258,6 +2687,7 @@ describe('single-window dispatch (Finding #1 guard)', () => {
     const capturedB: CapturedSend[] = [];
     const windowA = makeFakeWindow(capturedA);
     const windowB = makeFakeWindow(capturedB);
+    // Simulate "user focuses window B between two downloaded events"
     let primary: SendTarget = windowA;
     let state: AppState = emptyState();
     startAutoUpdater({
@@ -2280,6 +2710,7 @@ describe('single-window dispatch (Finding #1 guard)', () => {
 
     primary = windowB;
     updater.emit('update-downloaded', { version: '0.3.4' });
+    // windowA still has the first toast only; windowB receives the second.
     expect(capturedA.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(1);
     expect(capturedB.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(1);
   });
@@ -2305,9 +2736,22 @@ describe('single-window dispatch (Finding #1 guard)', () => {
       });
       updater.emit('update-downloaded', { version: '0.3.3' });
     }).not.toThrow();
+    // Even though no window received the toast, the state gate must still
+    // arm so the event doesn't re-fire repeatedly once a window opens.
     expect(state.versionPendingInstall).toBe('0.3.3');
   });
 });
+
+// ————————————————————————————————————————————————————————
+// markCheckSucceeded routes through persistSafely
+//
+// The peer sites all gate on persistSafely; this site used to bypass it and
+// `writeState` throws on disk-save failure (see main/index.ts's rollback
+// pattern — the throw is how persistSafely's catch registers the failure).
+// An uncaught throw inside `update-available` / `update-not-available`
+// propagates out of electron-updater's `emit()` and breaks the check
+// pipeline before `autoDownload` can trigger.
+// ————————————————————————————————————————————————————————
 
 describe('markCheckSucceeded routes through persistSafely (Critical #1)', () => {
   test('update-available: writeState throws → caught, no rethrow', () => {
@@ -2337,8 +2781,13 @@ describe('markCheckSucceeded routes through persistSafely (Critical #1)', () => 
       now: () => new Date(),
       logger,
     });
+    // Emitting update-available MUST NOT propagate the writeState throw
+    // out to the caller. electron-updater's emit is synchronous — a
+    // throwing listener breaks the check pipeline.
     expect(() => updater.emit('update-available', { version: '0.3.2' })).not.toThrow();
+    // persistSafely logged the failure at error level.
     expect(logger.error).toHaveBeenCalled();
+    // lastSuccessfulCheckAt stays null — the write failed.
     expect(state.lastSuccessfulCheckAt).toBeNull();
   });
 
@@ -2373,6 +2822,10 @@ describe('markCheckSucceeded routes through persistSafely (Critical #1)', () => 
   });
 });
 
+// ————————————————————————————————————————————————————————
+// Toast B persist-before-emit + renderer-mount race
+// ————————————————————————————————————————————————————————
+
 describe('Toast B persist-before-emit + whenRendererReady (Major #1)', () => {
   test('persist failure on lastSeenVersion advance → no Toast B broadcast', () => {
     const updater = new FakeUpdater();
@@ -2400,8 +2853,11 @@ describe('Toast B persist-before-emit + whenRendererReady (Major #1)', () => {
         debug: mock(() => {}),
       },
     });
+    // Persist failed → no Toast B.
     const whatsNew = captured.filter((c) => c.channel === 'ok:update:whats-new');
     expect(whatsNew).toHaveLength(0);
+    // lastSeenVersion stays stale since the writeState rollback pattern
+    // (on the production main/index.ts side) reverts on failure.
     expect(state.lastSeenVersion).toBe('0.3.0');
   });
 
@@ -2429,10 +2885,12 @@ describe('Toast B persist-before-emit + whenRendererReady (Major #1)', () => {
       clock,
       now: () => new Date(),
     });
+    // State advances immediately (persist-before-emit), but broadcast is queued.
     expect(state.lastSeenVersion).toBe('0.3.1');
     const beforeFire = captured.filter((c) => c.channel === 'ok:update:whats-new');
     expect(beforeFire).toHaveLength(0);
     expect(deferredFn).not.toBeNull();
+    // Simulate did-finish-load firing.
     deferredFn?.();
     const afterFire = captured.filter((c) => c.channel === 'ok:update:whats-new');
     expect(afterFire).toHaveLength(1);
@@ -2463,12 +2921,18 @@ describe('Toast B persist-before-emit + whenRendererReady (Major #1)', () => {
   });
 });
 
+// ————————————————————————————————————————————————————————
+// relaunch-now idempotent under double-invoke
+// ————————————————————————————————————————————————————————
+
 describe('relaunch-now idempotency (Major #2)', () => {
   test('second invocation sees cleared versionPendingInstall → no second quitAndInstall', () => {
     const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
     rig.ipc.invoke('ok:update:relaunch-now');
+    // Simulate rapid double-click — sonner does not debounce action buttons.
     rig.ipc.invoke('ok:update:relaunch-now');
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    // State is cleared after first invocation.
     expect(rig.state.versionPendingInstall).toBeNull();
   });
 
@@ -2500,9 +2964,14 @@ describe('relaunch-now idempotency (Major #2)', () => {
     });
     ipc.invoke('ok:update:relaunch-now');
     expect(updater.quitAndInstall).not.toHaveBeenCalled();
+    // State stays pending since persist failed — user can click again.
     expect(state.versionPendingInstall).toBe('0.3.2');
   });
 });
+
+// ————————————————————————————————————————————————————————
+// bootAutoUpdater catch-path coverage
+// ————————————————————————————————————————————————————————
 
 describe('bootAutoUpdater catch-path (Major #5)', () => {
   test('dynamic-import failure → returns null + logs error, no throw', async () => {
@@ -2515,6 +2984,7 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
     const captured: CapturedSend[] = [];
     const primaryWindow = makeFakeWindow(captured);
     const state: AppState = emptyState();
+    // Simulate the node_modules/electron-updater corruption path.
     const handle = await bootAutoUpdater(
       () => Promise.reject(new Error('Cannot find module electron-updater')),
       {
@@ -2531,6 +3001,7 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
     );
     expect(handle).toBeNull();
     expect(logger.error).toHaveBeenCalled();
+    // Error log includes the failure message for triage.
     const errorCall = logger.error.mock.calls[0];
     expect(errorCall?.[1]).toMatchObject({
       message: expect.stringContaining('Cannot find module'),
@@ -2559,6 +3030,7 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
     expect(handle).not.toBeNull();
     expect(typeof handle?.destroy).toBe('function');
     handle?.destroy();
+    // Clean teardown — no throw.
     expect(clock.clearTimeout).toHaveBeenCalled();
   });
 
@@ -2569,6 +3041,9 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
       error: mock(() => {}),
       debug: mock(() => {}),
     };
+    // A fake updater whose `.on(...)` throws simulates an API-shape drift
+    // inside startAutoUpdater's wire-up (future electron-updater major
+    // version bumps that rename event contracts).
     const hostileUpdater = {
       autoDownload: false,
       autoInstallOnAppQuit: false,
@@ -2597,9 +3072,21 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
     expect(logger.error).toHaveBeenCalled();
   });
 
+  // Regression: electron-updater's `autoUpdater` export is installed via
+  // `Object.defineProperty(exports, 'autoUpdater', { get: ... })` — a dynamic
+  // getter that Node's CJS → ESM interop exposes under `.default`, NOT on the
+  // module namespace root. The original bootAutoUpdater destructured
+  // `{ autoUpdater }` off the top level, got `undefined`, and the subsequent
+  // `updater.autoDownload = true` threw "Cannot set properties of undefined".
+  // In dev this looked like a caught error; in packaged builds it meant zero
+  // auto-updates ever. Fix: `resolveAutoUpdater` checks `.default.autoUpdater`
+  // first and falls back to the top-level for flat test mocks.
+
   test('resolveAutoUpdater handles .default.autoUpdater shape (real CJS-from-ESM)', async () => {
     const fakeUpdater = new FakeUpdater();
     const handle = await bootAutoUpdater(
+      // Mirror the real electron-updater ESM namespace: autoUpdater is only
+      // reachable via `.default`, NOT on the top-level module namespace.
       () => Promise.resolve({ default: { autoUpdater: fakeUpdater } }),
       {
         ipcMain: makeFakeIpc(),
@@ -2613,6 +3100,8 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
       },
     );
     expect(handle).not.toBeNull();
+    // The fake received the configuration lock-down — proves the boot path
+    // actually called `startAutoUpdater` rather than catching silently.
     expect(fakeUpdater.autoDownload).toBe(false);
     expect(fakeUpdater.autoInstallOnAppQuit).toBe(true);
     expect(fakeUpdater.channel).toBe('latest');
@@ -2644,6 +3133,8 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
       debug: mock(() => {}),
     };
     const handle = await bootAutoUpdater(
+      // A degenerate module that has neither shape — simulates a future
+      // major-version rename of `autoUpdater` without anyone updating our code.
       () => Promise.resolve({ default: {} }) as unknown as Promise<{ autoUpdater: UpdaterLike }>,
       {
         ipcMain: makeFakeIpc(),

@@ -15,6 +15,8 @@ import { SITE_NAME } from '@/lib/site';
 export const dynamic = 'force-static';
 export const size = OG_SIZE;
 export const contentType = OG_CONTENT_TYPE;
+// Action-oriented for share pages (vs. the brand headline on the root card),
+// but still derives the product name from SITE_NAME.
 export const alt = `Open in ${SITE_NAME}`;
 
 interface OgImageProps {
@@ -28,6 +30,15 @@ export default async function OgImage({ params }: OgImageProps) {
   return renderShareOgImage(view, await loadDmSans());
 }
 
+/**
+ * Render the splash OG card. Happy-path views get the bespoke ShareCard
+ * (shared eyebrow + filename + repo path); fallback views (invalid /
+ * unsupported-version) collapse to the generic BrandCard so the site
+ * speaks one visual voice when the share itself can't be rendered.
+ *
+ * Exported for the co-located test so it can drive the route's image
+ * generation without going through Next.js's segment runtime.
+ */
 export function renderShareOgImage(view: SplashView, fonts: FontPair | null): ImageResponse {
   const body =
     view.kind === 'ok' ? (

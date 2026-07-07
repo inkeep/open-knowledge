@@ -17,12 +17,27 @@ import { createApiExtension } from './api-extension.ts';
 import { createConceptEmbedder, type Embedder, SemanticSearchService } from './embeddings/index.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 
+/**
+ * End-to-end semantic-search behavior through `POST /api/search`. Uses the
+ * deterministic concept embedder so the suite exercises the real engine + cache
+ * + ranking + handler wiring without the network.
+ *
+ * Central contract: semantic is OPT-IN. `semantic: true` (the MCP tool sets it by
+ * default; the omnibar sets it only on a deliberate "by meaning" submit) opts a
+ * call into vector fusion; omitting the field — the omnibar's per-keystroke call
+ * shape — or `semantic: false` stays pure-lexical and byte-identical to the
+ * pre-embeddings response. `source` only tags telemetry and never alters results.
+ */
+
 const CONCEPTS = [
   { id: 'auth', terms: ['auth', 'credential', 'session token', 'login', 'secret', 'sign-in'] },
   { id: 'retry', terms: ['retry', 'retries', 'refresh', 're-issue', 'rotation', 'backoff'] },
   { id: 'bread', terms: ['bread', 'sourdough', 'ferment', 'dough'] },
 ];
 
+// A doc that is semantically about auth+retry but shares ZERO tokens with the
+// query "auth retries" in title / path / content — only the vector
+// candidate-source can retrieve it.
 const FILES: Record<string, string> = {
   'guides/credential-rotation.md':
     '# Credential Rotation\n\nThe credential rotation flow re-issues secrets when they expire.\n',
@@ -163,6 +178,7 @@ describe('POST /api/search — semantic (opt-in)', () => {
       ).toBeDefined();
       expect(typeof rotation?.signals.vector).toBe('number');
       expect(rotation?.signals.vector ?? 0).toBeGreaterThan(0.3);
+      // The non-content coverage block is present and reports the signal applied.
       expect(semantic?.capable).toBe(true);
       expect(semantic?.applied).toBe(true);
       expect(semantic?.coverage.total).toBe(3);
@@ -176,6 +192,9 @@ describe('POST /api/search — semantic (opt-in)', () => {
     try {
       const fileIndex = buildFileIndex(dir);
       const service = await makeService(fileIndex, { enabled: true });
+      // The exact body the omnibar's "By meaning" submit POSTs: full_text +
+      // semantic:true + source:'omnibar'. Same fusion as the MCP tool; `source`
+      // only tags telemetry and must not alter results.
       const { results, semantic } = await searchPost(
         dir,
         fileIndex,
@@ -194,6 +213,10 @@ describe('POST /api/search — semantic (opt-in)', () => {
     try {
       const fileIndex = buildFileIndex(dir);
       const service = await makeService(fileIndex, { enabled: true });
+      // No `semantic` field — exactly what the cmd-K omnibar's per-keystroke call
+      // sends (it carries `source: 'omnibar'` but never `semantic`). Even with the
+      // service enabled, this must NOT opt in: no vector, no zero-overlap doc, no
+      // semantic status block (so the response equals the pre-embeddings shape).
       const { results, semantic } = await searchPost(
         dir,
         fileIndex,
@@ -249,6 +272,7 @@ describe('POST /api/search — semantic (opt-in)', () => {
     try {
       const fileIndex = buildFileIndex(dir);
       const service = await makeService(fileIndex, { enabled: true });
+      // 2 chars — below SEMANTIC_MIN_QUERY_LENGTH → no vector contribution.
       const { results, semantic } = await searchPost(
         dir,
         fileIndex,

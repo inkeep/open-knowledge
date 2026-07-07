@@ -1,3 +1,13 @@
+// Verifies the GoogleChromeLabs `scheduler-polyfill` IIFE installs
+// `globalThis.scheduler.yield()` after side-effect import. Bun's runtime has
+// no native `scheduler` (mirrors Safari/older-Firefox), so importing the shim
+// runs the full polyfill install branch.
+//
+// We do NOT retest the polyfill's internal scheduling semantics here — that's
+// the polyfill's own contract. We verify our wiring: after `import
+// './scheduler-polyfill-shim'`, the consumer (mount-promise.ts at the
+// construction-mount yield-point) sees a callable `scheduler.yield()`.
+
 import { describe, expect, test } from 'bun:test';
 import './scheduler-polyfill-shim';
 

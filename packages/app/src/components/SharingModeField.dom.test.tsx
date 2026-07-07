@@ -14,6 +14,7 @@ mock.module('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
+/** Controlled wrapper so clicks actually move the selection. */
 function Harness({
   initial = 'shared',
   disabled = false,

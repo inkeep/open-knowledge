@@ -5,6 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveHarnessWritePaths, type SymlinkWritePaths } from './symlink-resolve.ts';
 
+// One contract suite run against BOTH backends — the pure-JS mirror and the
+// native (conformance-tested) resolver loaded from the built `.node` — so the
+// two implementations cannot drift: any divergence in chain-following or
+// cycle-breaking fails the same assertions for one backend but not the other.
+// The native binding is hard-required (not skipped when absent) so a gate that
+// failed to build the addon fails loudly, matching the sibling binding tests.
+
 interface NativeSymlinkBinding {
   resolveSymlinkWritePath(path: string): { readPath?: string | null; writePath: string };
 }
@@ -74,6 +81,8 @@ function describeResolver(label: string, resolve: (path: string) => SymlinkWrite
     });
 
     test.skipIf(!unix)('breaks a cycle: no read target, writes through the original path', () => {
+      // config -> a -> b -> a loops; the resolver declines a read target and
+      // writes a fresh regular file at the original path to break the link.
       symlinkSync('b.toml', join(dir, 'a.toml'));
       symlinkSync('a.toml', join(dir, 'b.toml'));
       const config = join(dir, 'config.toml');

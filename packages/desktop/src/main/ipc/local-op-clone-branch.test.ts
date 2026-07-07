@@ -1,3 +1,23 @@
+/**
+ * Coverage for branch threading in the IPC clone transport path.
+ *
+ * Symmetry contract with the HTTP clone path: when a share-receive flow
+ * passes `branch` through `bridge.localOp.clone.start({url, dir, branch})`,
+ * the main-process handler MUST forward it to `runCloneSubprocess` (so the
+ * CLI runs `ok clone -b <branch>`), and MUST forward CLI-emitted
+ * `branch-fallback` events to the renderer (so the share-receive controller
+ * can render the "Branch X no longer exists" toast).
+ *
+ * The HTTP path already does both — branch threads through
+ * `/api/local-op/clone` and `branch-fallback` flows back via the NDJSON
+ * stream. Without the IPC path doing the same, share-receive in the
+ * Navigator window silently clones the default branch.
+ *
+ * The module under test is `handleCloneStart` — its `runCloneSubprocess`
+ * dependency is mocked at the module boundary so these tests never spawn a
+ * subprocess. Each mock invocation captures `branch` + `onEvent` so we can
+ * assert both the spawn-time wire and the runtime event forwarding.
+ */
 import { describe, expect, mock, test } from 'bun:test';
 import type { CloneEvent } from '@inkeep/open-knowledge-server';
 
@@ -79,6 +99,8 @@ describe('handleCloneStart — branch threading (IPC symmetry with HTTP path)', 
     });
     expect(result.ok).toBe(true);
     expect(cloneSpawns).toHaveLength(1);
+    // Treated as "no branch" — either undefined or null is acceptable
+    // (legacy back-compat invariant).
     const wired = cloneSpawns[0]?.branch;
     expect(wired === undefined || wired === null).toBe(true);
   });

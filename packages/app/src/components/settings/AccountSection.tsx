@@ -1,3 +1,12 @@
+/**
+ * Settings → Account — shows the GitHub connection state and lets the user
+ * connect (opens the existing AuthModal) or disconnect. Disconnect clears
+ * OpenKnowledge's own token through the same relay used for status/repos.
+ *
+ * Transports are caller-injected and default to the HTTP path (editor window
+ * + web distribution). The Project Navigator window, which has no backing API
+ * server, injects the IPC transports — mirroring CloneDialog / AuthModal.
+ */
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
 import { AuthModal } from '@/components/AuthModal';
@@ -17,7 +26,12 @@ type StatusState =
   | { phase: 'check-failed' };
 
 interface AccountSectionProps {
+  /**
+   * One-shot status / signout transport. Defaults to the HTTP path; the
+   * Navigator window passes an IPC transport.
+   */
   authQueryTransport?: AuthQueryTransport;
+  /** Device-flow transport handed to the AuthModal. Defaults to HTTP. */
   authTransport?: AuthTransport;
 }
 
@@ -28,6 +42,8 @@ export function AccountSection({ authQueryTransport, authTransport }: AccountSec
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  // Synchronous re-entry guard: `disabled` only takes effect after a re-render,
+  // so a same-tick double-click could otherwise spawn two relay signouts.
   const disconnectingRef = useRef(false);
 
   async function loadStatus() {
@@ -35,8 +51,15 @@ export function AccountSection({ authQueryTransport, authTransport }: AccountSec
     try {
       const result = await resolvedQuery.status();
       setStatus({ phase: 'loaded', result });
+      // Seed the shared cache the Clone dialog reads on open, so connecting or
+      // disconnecting here repaints that surface without a relaunch.
       setLastKnownSignedIn(result.authenticated);
     } catch (err) {
+      // The status query crosses the relay subprocess seam (HTTP fetch / IPC).
+      // A thrown rejection means we couldn't reach it — distinct from a
+      // definitive "not connected" answer, which resolves with authenticated:false.
+      // Leave the shared cache untouched: an unreachable check is not a signal
+      // to flip other surfaces to signed-out.
       console.warn('[AccountSection] GitHub status check failed', err);
       setStatus({ phase: 'check-failed' });
     }
@@ -50,21 +73,37 @@ export function AccountSection({ authQueryTransport, authTransport }: AccountSec
   async function handleDisconnect() {
     if (disconnectingRef.current) return;
     disconnectingRef.current = true;
+    // Tear down any in-flight connect before clearing: closing the modal
+    // unmounts the device-flow panel, whose cleanup cancels the poll, so a
+    // connect can't complete and re-store a token after the clear.
     setAuthModalOpen(false);
     setDisconnecting(true);
     setDisconnectError(null);
     let failure: string | null = null;
     try {
+      // Only the HTTP transport implements signout; AccountSection always
+      // resolves to it (the IPC/Navigator window has no disconnect surface),
+      // so the optional is present in practice — guard keeps the contract honest.
       const result = resolvedQuery.signout
         ? await resolvedQuery.signout()
         : { ok: false as const, error: t`Couldn't disconnect — please try again.` };
+      // Show the server's specific reason when present; otherwise a localized
+      // fallback (the transport no longer emits an English default).
       if (!result.ok) failure = result.error ?? t`Couldn't disconnect — please try again.`;
     } catch (err) {
+      // The signout crosses the relay subprocess seam (HTTP fetch / IPC); a
+      // thrown rejection means we couldn't reach it.
       console.warn('[AccountSection] GitHub disconnect failed', err);
       failure = t`Couldn't disconnect — please try again.`;
     }
+    // Paint from a re-run status rather than assuming the clear succeeded: on
+    // success status reports not-connected; on failure it stays connected, so
+    // a failed clear can never paint "Not connected".
     await loadStatus();
     if (failure) setDisconnectError(failure);
+    // Release the in-flight guard once the painted state has settled. No
+    // try/finally: the only throw source is the awaited signout (caught above),
+    // and React Compiler's BuildHIR does not lower try-without-catch.
     setDisconnecting(false);
     disconnectingRef.current = false;
   }
@@ -114,6 +153,8 @@ export function AccountSection({ authQueryTransport, authTransport }: AccountSec
         </div>
       ) : status.result.authenticated ? (
         status.result.tier === 'A' ? (
+          // Tier A means the credential is delegated from the gh CLI. OpenKnowledge
+          // stored no token of its own, so there is nothing for it to disconnect.
           <GhCliRow login={status.result.login} />
         ) : (
           <ConnectedRow

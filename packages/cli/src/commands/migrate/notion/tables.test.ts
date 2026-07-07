@@ -29,6 +29,7 @@ describe('renderCsvTable', () => {
     const { table } = renderCsvTable('Title,Status\nMy Row,Done\n', {
       linkForTitle: (t) => (t === 'My Row' ? 'DB/My Row abc.md' : null),
     });
+    // Target has spaces -> angle-bracket wrapped.
     expect(table).toContain('| [My Row](<DB/My Row abc.md>) | Done |');
   });
 

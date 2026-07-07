@@ -1,3 +1,20 @@
+/**
+ * useEditorMode — unit tests for the pure-logic surfaces:
+ *   - `isEditorModeValue` (type-guard)
+ *   - `readPersistedMode` (storage read + validation + throw swallow)
+ *   - `readInitialMode` (window-global > storage > default precedence)
+ *   - `persistMode` (storage write + throw swallow with console.warn)
+ *
+ * Repo convention (see NavigatorApp.test.ts / interaction-layer.test.ts): no
+ * @testing-library/react, no happy-dom. The React state-transition behavior
+ * (useState init, localStorage load-time read) is exercised by the Playwright
+ * E2E suite (`editor-mode-persistence.e2e.ts` tests T1, T2,
+ * T3, T6, T8).
+ *
+ * These unit tests cover the entire input-validation + storage-interaction
+ * surface so the Playwright tier focuses on user-facing behavior.
+ */
+
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import {
   EDITOR_MODE_VALUES,
@@ -7,6 +24,10 @@ import {
   readInitialMode,
   readPersistedMode,
 } from './use-editor-mode';
+
+// ---------------------------------------------------------------------------
+// Fake storage (minimal `getItem` / `setItem` surface)
+// ---------------------------------------------------------------------------
 
 interface FakeStorage {
   getItem: ReturnType<typeof mock>;
@@ -38,6 +59,10 @@ function storageThatThrowsOnSet(err: Error = new Error('quota exceeded')): FakeS
   };
 }
 
+// ---------------------------------------------------------------------------
+// isEditorModeValue
+// ---------------------------------------------------------------------------
+
 describe('isEditorModeValue — type guard', () => {
   test("accepts 'wysiwyg'", () => {
     expect(isEditorModeValue('wysiwyg')).toBe(true);
@@ -64,6 +89,11 @@ describe('isEditorModeValue — type guard', () => {
     expect(isEditorModeValue({})).toBe(false);
   });
 
+  // Drift-prevention: the guard and the type are derived from the same
+  // `EDITOR_MODE_VALUES` const array, so adding a new mode (e.g. 'hybrid')
+  // updates both atomically. This test fails loudly on structural drift —
+  // if someone adds a value to the const but forgets to update the type
+  // (or vice versa), the compiler + this test both trip.
   test('every EDITOR_MODE_VALUES entry is accepted by the guard', () => {
     for (const value of EDITOR_MODE_VALUES) {
       expect(isEditorModeValue(value)).toBe(true);
@@ -74,6 +104,10 @@ describe('isEditorModeValue — type guard', () => {
     expect([...EDITOR_MODE_VALUES].sort()).toEqual(['source', 'wysiwyg']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// readPersistedMode — storage read + validation + throw swallow
+// ---------------------------------------------------------------------------
 
 describe('readPersistedMode — localStorage read with validation', () => {
   let warnSpy: ReturnType<typeof spyOn> | undefined;
@@ -90,6 +124,7 @@ describe('readPersistedMode — localStorage read with validation', () => {
   test("returns 'wysiwyg' when storage is empty (default fallback — FR-3)", () => {
     const storage = storageWith(null);
     expect(readPersistedMode(storage)).toBe('wysiwyg');
+    // First-time user; no warn — only the invalid-value branch logs.
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
@@ -110,6 +145,9 @@ describe('readPersistedMode — localStorage read with validation', () => {
     expect(readPersistedMode(storage)).toBe('wysiwyg');
   });
 
+  // spec requirement that invalid persisted values
+  // produce a diagnostic warn so "my preference doesn't persist" reports are
+  // traceable to the invalid-value path (vs. the silent storage-throw path).
   test("logs '[editor-mode] invalid persisted value' warn on invalid value (FR-8 'Warning logged')", () => {
     const storage = storageWith('garbage-from-manual-tampering-or-old-schema');
     expect(readPersistedMode(storage)).toBe('wysiwyg');
@@ -122,6 +160,7 @@ describe('readPersistedMode — localStorage read with validation', () => {
   test("falls back to 'wysiwyg' AND warns when storage holds 'diff' (diff mode never persisted — SPEC §6 FR-6)", () => {
     const storage = storageWith('diff');
     expect(readPersistedMode(storage)).toBe('wysiwyg');
+    // 'diff' is not a persistable value — treat it as an invalid value and warn.
     expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -129,6 +168,8 @@ describe('readPersistedMode — localStorage read with validation', () => {
     const storage = storageThatThrowsOnGet();
     expect(readPersistedMode(storage)).toBe('wysiwyg');
     expect(storage.getItem).toHaveBeenCalledTimes(1);
+    // Privacy-mode throws are a normal environmental condition, not a bug —
+    // only the invalid-value branch warns.
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
@@ -145,7 +186,15 @@ describe('readPersistedMode — localStorage read with validation', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// readInitialMode — window-global > storage > default precedence
+// ---------------------------------------------------------------------------
+
 describe('readInitialMode — precedence: window global > storage > default', () => {
+  // Some of these tests exercise the invalid-value branch of
+  // `readPersistedMode` which now logs a bracket-prefix warn. Suppress
+  // it here so we don't leak warn output into CI logs; dedicated tests
+  // above verify the warn's message + shape.
   let warnSpy: ReturnType<typeof spyOn> | undefined;
   beforeEach(() => {
     warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -159,6 +208,7 @@ describe('readInitialMode — precedence: window global > storage > default', ()
     const win = { __OK_EDITOR_MODE__: 'source' as const };
     const storage = storageWith('wysiwyg'); // even if storage says wysiwyg
     expect(readInitialMode(win, storage)).toBe('source');
+    // The preload bypasses storage read entirely — no getItem call.
     expect(storage.getItem).not.toHaveBeenCalled();
   });
 
@@ -208,6 +258,10 @@ describe('readInitialMode — precedence: window global > storage > default', ()
   });
 });
 
+// ---------------------------------------------------------------------------
+// persistMode — storage write + throw swallow + [editor-mode] warn prefix
+// ---------------------------------------------------------------------------
+
 describe('persistMode — localStorage write with error swallow + warn logging', () => {
   let warnSpy: ReturnType<typeof spyOn> | undefined;
 
@@ -241,19 +295,36 @@ describe('persistMode — localStorage write with error swallow + warn logging',
     const ok = persistMode('source', storage);
     expect(ok).toBe(false);
     expect(warnSpy).toHaveBeenCalledTimes(1);
+    // Bracket-prefix format.
     const firstCall = warnSpy?.mock.calls[0];
     expect(firstCall?.[0]).toBe('[editor-mode] persist failed');
+    // Second arg is the error — included for observability, not a structured JSON event.
     expect(firstCall?.[1]).toBeInstanceOf(Error);
   });
 
   test('write throw is fully swallowed — caller never sees the exception', () => {
     const storage = storageThatThrowsOnSet();
+    // Must not throw; return value alone communicates failure.
     expect(() => persistMode('source', storage)).not.toThrow();
   });
 });
 
+// ---------------------------------------------------------------------------
+// Module shape — type-level `as const` drift guard
+//
+// A `typeof X === 'function'` enumeration over named function exports was
+// removed because it was purely tautological: the compile-time `import`
+// statement above already guarantees each identifier is a function; a runtime
+// `typeof` re-check adds no signal that the import doesn't already provide.
+// Only the type-level `as const` drift guard remains — it compiles iff
+// `EDITOR_MODE_VALUES` retains its tuple-literal shape (losing the `as const`
+// would widen the type to `string[]` and fail this assignment).
+// ---------------------------------------------------------------------------
+
 describe('module exports — type-level shape', () => {
   test('EDITOR_MODE_VALUES is frozen at the type level via `as const` (runtime readonly)', () => {
+    // Type-only assertion: the `as const` produces `readonly [...]`; this line
+    // compiles iff the constant keeps its tuple-literal shape.
     const values: readonly EditorModeValue[] = EDITOR_MODE_VALUES;
     expect(values).toHaveLength(2);
   });

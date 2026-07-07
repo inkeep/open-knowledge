@@ -1,3 +1,26 @@
+/**
+ * Browser-safe OTel helpers for config-edit spans.
+ *
+ * Imports only `@opentelemetry/api` (no SDK deps) so this module is reachable
+ * from both the server (Bun + Node, real SDK initialized in
+ * `packages/server/src/telemetry.ts`) and the app (browser, real SDK
+ * initialized in `packages/app/src/telemetry-impl.ts`).
+ *
+ * The `@opentelemetry/api` package returns a no-op tracer when no SDK is
+ * registered — spans are inert with zero overhead when OTel is off. The
+ * server's `OTEL_SDK_DISABLED=false` gate and the app's
+ * `VITE_OTEL_ENABLED=true` gate decide whether real SDKs register.
+ *
+ * Span set:
+ *   `config.bind`     — every `bindConfigDoc` invocation (binding lifetime)
+ *   `config.patch`    — every `ConfigBinding.patch` and `writeConfigPatch`
+ *   `config.validate` — each Zod safeParse pass (L1 / L2 / L3)
+ *   `config.persist`  — server persistence-hook write
+ *   `config.revert`   — L3 revert-to-LKG transaction
+ *
+ * Bounded enum attributes ONLY — Zod issue paths go in span events, never
+ * attributes (cardinality risk on histograms / high-volume span attributes).
+ */
 import type { Attributes, Span, SpanOptions } from '@opentelemetry/api';
 import { SpanStatusCode, trace } from '@opentelemetry/api';
 
@@ -41,6 +64,7 @@ export async function withConfigSpan<T>(
   });
 }
 
+/** Synchronous variant — same shape, no await. */
 export function withConfigSpanSync<T>(
   name: string,
   attributes: ConfigSpanAttributes | undefined,
@@ -73,6 +97,7 @@ export function addConfigSpanEvent(name: string, attributes?: Attributes): void 
   if (span) span.addEvent(name, attributes);
 }
 
+/** Record an outcome attribute on the currently active span. */
 export function setConfigOutcome(outcome: ConfigOutcome): void {
   const span = trace.getActiveSpan();
   if (span) span.setAttribute('config.outcome', outcome);

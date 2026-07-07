@@ -1,3 +1,17 @@
+/**
+ * Unit tests for `POST /api/spawn-cursor`. Loopback gating is applied at the
+ * route registration layer in `api-extension.ts` and tested separately
+ * through the integration smoke tests; these tests focus on the handler
+ * body — body parsing, path containment, binary resolution, spawn dispatch —
+ * with all I/O injected.
+ *
+ * Wire shape: 200 success returns `{}` with `Content-Type: application/json`;
+ * every failure mode emits `application/problem+json` per RFC 9457 with the
+ * matching `urn:ok:error:*` URN. The renderer adapter at
+ * `packages/app/src/lib/handoff/cursor-two-step.ts` translates the wire
+ * shape back to the in-process `SpawnCursorOutcome` discriminated union.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
@@ -259,6 +273,14 @@ describe('handleSpawnCursor — spawn dispatch', () => {
   });
 
   test('spawn returns invalid-path reason → 403 path-escape problem+json', async () => {
+    // Closes the DU-switch coverage gap: the handler runs path-containment
+    // ahead of spawn, but if the spawn primitive itself produces an
+    // `invalid-path` outcome (a future spawn implementation may surface
+    // its own path validation), the switch must surface as 403 path-escape
+    // for SDK-consumer parity with the pre-spawn gate. Pins the
+    // exhaustiveness contract — without this test, an `assertNeverSpawnReason`
+    // refactor that accidentally drops the `invalid-path` arm would slip
+    // past CI.
     const { res, captured } = makeRes();
     await handleSpawnCursor(
       makeReq('POST', { path: VALID_PATH }),
@@ -275,6 +297,9 @@ describe('handleSpawnCursor — Cursor binary discovery (per-platform)', () => {
   test('macOS: bundle-path probe finds the shim without `which`', async () => {
     let whichCalled = false;
     const spawnDetached = mock(async (exec: string, _args: ReadonlyArray<string>) => {
+      // /Applications/Cursor.app exists in production tests on developer
+      // Macs; we mock the resolver to return its bundle path explicitly so
+      // the test is hermetic regardless of the host machine's installs.
       expect(exec).toBe('/usr/bin/open');
       return { ok: true } as SpawnCursorOutcome;
     });
@@ -284,6 +309,9 @@ describe('handleSpawnCursor — Cursor binary discovery (per-platform)', () => {
       res,
       makeDeps({
         platform: 'darwin',
+        // resolveCursorBinary returns a `.app` bundle path so resolveSpawnInvocation
+        // routes through `/usr/bin/open -a` — same path the macOS production
+        // bundle-path probe takes.
         resolveCursorBinary: async () => {
           whichCalled = true;
           return '/Applications/Cursor.app';
@@ -302,6 +330,8 @@ describe('handleSpawnCursor — Cursor binary discovery (per-platform)', () => {
     let capturedExec = '';
     let capturedArgs: ReadonlyArray<string> = [];
     const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+      // A bare `spawn('cursor.cmd', …, {shell:false})` throws EINVAL on Windows;
+      // the invocation must wrap the shim in `cmd.exe /d /c`.
       capturedExec = exec;
       capturedArgs = [...args];
       return { ok: true } as SpawnCursorOutcome;
@@ -324,6 +354,10 @@ describe('handleSpawnCursor — Cursor binary discovery (per-platform)', () => {
   });
 
   test('linux: PATH lookup is the only viable strategy (no bundle paths registered)', async () => {
+    // Linux installs vary by method (AppImage, .deb, Snap, Flatpak) with no
+    // canonical bundle path — the production resolver skips bundle probing
+    // entirely on linux and goes straight to `which`. Tests stub
+    // `resolveCursorBinary` directly to mirror that contract.
     const spawnDetached = mock(
       async (_exec: string, _args: ReadonlyArray<string>) => ({ ok: true }) as SpawnCursorOutcome,
     );

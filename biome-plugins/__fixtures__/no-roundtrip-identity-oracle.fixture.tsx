@@ -34,46 +34,46 @@ declare const input: string;
 declare const expected: string;
 
 function positives() {
-  // P1-P3: expect(serialize(parse(x))) against the SAME x, three equality
+  // expect(serialize(parse(x))) against the SAME x, three equality
   // matchers — the canonical byte-identity oracle.
   expect(serialize(parse(md))).toBe(md);
   expect(serialize(parse(md))).toEqual(md);
   expect(serialize(parse(md))).toStrictEqual(md);
-  // P4-P6: the MarkdownManager method equivalent, same three matchers.
+  // the MarkdownManager method equivalent, same three matchers.
   expect(mgr.serialize(mgr.parse(md))).toBe(md);
   expect(mgr.serialize(mgr.parse(md))).toEqual(md);
   expect(mgr.serialize(mgr.parse(md))).toStrictEqual(md);
-  // P7-P8: the `===` identity comparison, both operand orders.
+  // the `===` identity comparison, both operand orders.
   const idA = serialize(parse(md)) === md;
   const idB = md === serialize(parse(md));
-  // P9-P10: the MarkdownManager `===` identity comparison, both orders.
+  // the MarkdownManager `===` identity comparison, both orders.
   const idC = mgr.serialize(mgr.parse(md)) === md;
   const idD = md === mgr.serialize(mgr.parse(md));
   return { idA, idB, idC, idD };
 }
 
 function negatives() {
-  // N1: contract assertion — expected is a FIXED literal that differs from the
+  // contract assertion — expected is a FIXED literal that differs from the
   // parse input (the serializer normalizes `# H` to `# H\n`). Different
   // expected than input, so it is not an identity oracle.
   expect(serialize(parse('# H'))).toBe('# H\n');
-  // N2: the Bridge-invariant comparator (precedent #38) — the documented public
+  // the Bridge-invariant comparator (precedent #38) — the documented public
   // contract, NOT a leak. No `serialize(parse(...))`, two different inputs.
   expect(normalizeBridge(a)).toBe(normalizeBridge(b));
-  // N3: the normalizing-construct DETECTOR — `!==`, the opposite assertion,
+  // the normalizing-construct DETECTOR — `!==`, the opposite assertion,
   // used to find constructs the serializer rewrites. Different operator.
   const normalizes = serialize(parse(md)) !== md;
-  // N4: two-statement round-trip — the round-trip flows through an intermediate
+  // two-statement round-trip — the round-trip flows through an intermediate
   // variable; GritQL cannot correlate the parse input with the matcher value
   // across statements.
   const out = serialize(parse(md));
   expect(out).toBe(md);
-  // N5: helper-wrapped round-trip identity (the real fidelity-suite shape) —
+  // helper-wrapped round-trip identity (the real fidelity-suite shape) —
   // the inline call is `normalize(mdRoundTrip(...))`, not `serialize(parse(...))`.
   expect(normalize(mdRoundTrip(md))).toBe(normalize(md));
-  // N6: MarkdownManager contract — expected differs from the parse input.
+  // MarkdownManager contract — expected differs from the parse input.
   expect(mgr.serialize(mgr.parse(input))).toBe(expected);
-  // N7: two DIFFERENT managers — not a single round trip, so the manager
+  // two DIFFERENT managers — not a single round trip, so the manager
   // metavariable reuse rejects it.
   expect(m1.serialize(m2.parse(md))).toBe(md);
   return { normalizes, out };

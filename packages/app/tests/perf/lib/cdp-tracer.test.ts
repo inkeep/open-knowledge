@@ -1,3 +1,12 @@
+/**
+ * Unit tests for `aggregateTrace` — the pure CDP-events → summary function.
+ *
+ * Tests run under `bun test` against hand-crafted event arrays, so no
+ * Playwright/CDP/browser dependency is pulled in. This is the only piece of
+ * the scenario framework that's unit-testable; `traceStart` / `traceEnd` +
+ * `profile.ts` require a real CDP session (exercised via scenario runs).
+ */
+
 import { describe, expect, test } from 'bun:test';
 import {
   aggregateTrace,
@@ -11,6 +20,11 @@ import {
   TRACE_CATEGORIES,
 } from './cdp-tracer';
 
+/**
+ * Hand-rolled mock CDP client that scripts a sequence of `Performance.getMetrics`
+ * responses. `enable` is a no-op; each successive `getMetrics` returns the next
+ * scripted snapshot.
+ */
 function mockCdp(snapshots: Array<Record<string, number>>): {
   client: MinimalCdpClient;
   enableCalls: number;
@@ -78,6 +92,7 @@ describe('aggregateTrace', () => {
   });
 
   test('RunTask events ≥ 50ms count as long tasks; taskDurationMs sums all', () => {
+    // 30ms (short), 60ms (long), 150ms (long)
     const events: CdpTraceEvent[] = [
       ev('RunTask', 'disabled-by-default-devtools.timeline', 30_000),
       ev('RunTask', 'disabled-by-default-devtools.timeline', 60_000),
@@ -90,6 +105,7 @@ describe('aggregateTrace', () => {
   });
 
   test('LONG_TASK_THRESHOLD_MS is the 50ms inclusive boundary', () => {
+    // Exactly 50ms = long task; 49.99ms = not.
     const events: CdpTraceEvent[] = [
       ev('RunTask', 'disabled-by-default-devtools.timeline', LONG_TASK_THRESHOLD_MS * 1000),
       ev(
@@ -180,9 +196,13 @@ describe('aggregateTrace', () => {
 
   test('malformed events skipped without throwing', () => {
     const events = [
+      // name not a string
       { name: undefined, cat: 'x', ts: 0, ph: 'X', dur: 100 } as unknown as CdpTraceEvent,
+      // dur NaN
       ev('RunTask', 'disabled-by-default-devtools.timeline', Number.NaN),
+      // dur Infinity
       ev('RunTask', 'disabled-by-default-devtools.timeline', Number.POSITIVE_INFINITY),
+      // valid one
       ev('RunTask', 'disabled-by-default-devtools.timeline', 200_000),
     ];
     const s = aggregateTrace(events);

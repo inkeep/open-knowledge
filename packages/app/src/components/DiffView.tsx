@@ -79,10 +79,30 @@ interface DiffViewProps {
   oldContent: string;
   newContent: string;
   layout: DiffLayout;
+  /** When true, renders a conflict-resolution editor with per-hunk Accept/Reject. */
   conflictMode?: boolean;
+  /**
+   * When true, renders `newContent` as a plain read-only CodeMirror surface
+   * — no diff against `oldContent`, no hunks, no merge controls. Used by the
+   * delete-vs-modify resolution surfaces in `DiffViewBoundary` to preview
+   * the surviving file content without diff coloring (the user is choosing
+   * between "keep this file" and "delete this file"; the changes-since-base
+   * view added noise without informing the decision). When set, `layout`
+   * and `conflictMode` are ignored; `oldContent` is unused.
+   */
   previewMode?: boolean;
+  /**
+   * When provided, replaces `newContent` as the bytes shown in the `ours`
+   * pane. Lets the conflict-mode caller surface the in-memory Y.Text snapshot
+   * (what the user typed mid-conflict, including pre-conflict unflushed
+   * edits) instead of the git-index `:2:` bytes — so what the user SEES in
+   * the diff IS what a `strategy: 'content'` resolve would write. When
+   * omitted the component behaves identically to before.
+   */
   oursOverride?: string;
+  /** Called with the merged document when all hunks are resolved. */
   onResolve?: (content: string) => void;
+  /** Called when the user aborts the merge. */
   onAbort?: () => void;
 }
 
@@ -97,6 +117,12 @@ export function DiffView({
   onAbort,
 }: DiffViewProps) {
   const { t } = useLingui();
+  // When the caller hands us an explicit `ours` snapshot (the Y.Text bytes
+  // the user has been seeing in the editor), it takes precedence over the
+  // legacy `newContent` prop. This keeps the displayed `ours` pane equal
+  // to what a `strategy: 'content'` resolve would write — closing the
+  // byte-divergence vs `git show :2:` for any loaded doc with unflushed
+  // pre-conflict Y.Text edits.
   const effectiveNewContent = oursOverride ?? newContent;
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<MergeView | EditorView | null>(null);
@@ -104,8 +130,12 @@ export function DiffView({
   const { resolvedTheme } = useTheme();
   const onResolveRef = useRef(onResolve);
   const onAbortRef = useRef(onAbort);
+  // Tracks unresolved hunk count in conflictMode so the "Save resolution"
+  // button can gate on it. null = pre-init (no view yet).
   const [chunksRemaining, setChunksRemaining] = useState<number | null>(null);
   const [mergeControls, setMergeControls] = useState<MergeControlPortal[]>([]);
+  // Keeps the floating Ask AI composer stacked above the conflict footer —
+  // see the contract note in use-conflict-footer-height.ts.
   const conflictFooterRef = useConflictFooterHeightVar(conflictMode === true);
   useEffect(() => {
     onResolveRef.current = onResolve;
@@ -133,12 +163,22 @@ export function DiffView({
     const readOnly = [EditorView.editable.of(false), EditorState.readOnly.of(true)];
     const sharedExtensions = [basicSetup, markdown(), ...readOnly, theme, EditorView.lineWrapping];
 
+    // Clear any previous view
     if (viewRef.current) {
       viewRef.current.destroy();
       viewRef.current = null;
     }
 
     if (previewMode) {
+      // Preview mode: plain read-only CodeMirror surface for `newContent`.
+      // No `unifiedMergeView` extension — no diff against `oldContent`,
+      // no hunk markers, no gutter chrome. Used by the delete-vs-modify
+      // resolution surfaces to show the surviving file as-is; the user
+      // is choosing whether to keep or delete it, not which hunks to
+      // accept. Resets `chunksRemaining` to null since the concept does
+      // not apply here — the merge-resolution footer (rendered below in
+      // conflictMode) is intentionally hidden in this mode by the
+      // `conflictMode && ...` guards at the JSX layer.
       const view = new EditorView({
         doc: effectiveNewContent,
         extensions: sharedExtensions,
@@ -147,6 +187,8 @@ export function DiffView({
       viewRef.current = view;
       setChunksRemaining(null);
     } else if (conflictMode) {
+      // Conflict mode: unified diff with per-hunk Accept/Reject buttons.
+      // editable=false prevents typing; readOnly is NOT set so merge ops can mutate the doc.
       const renderMergeControl = createMergeControlRenderer({
         addControl: (control) => {
           if (disposed) return;
@@ -175,6 +217,10 @@ export function DiffView({
           collapseUnchanged: { margin: 3, minSize: 4 },
         }),
         EditorView.updateListener.of((update) => {
+          // @codemirror/merge's acceptChunk dispatches effects-only (no doc
+          // change), so we cannot gate on update.docChanged. Re-read chunks
+          // on every update and let the explicit "Save resolution" button
+          // drive completion.
           const result = getChunks(update.state);
           setChunksRemaining(result ? result.chunks.length : 0);
         }),
@@ -185,6 +231,7 @@ export function DiffView({
         parent: root,
       });
       viewRef.current = view;
+      // Seed initial hunk count (updateListener only fires on subsequent updates).
       const initial = getChunks(view.state);
       setChunksRemaining(initial ? initial.chunks.length : 0);
     } else if (layout === 'split') {

@@ -35,6 +35,10 @@ describe('detectProjectShape', () => {
   });
 
   test('returns "fresh" when only lockDir exists (lockDir is NOT an adoption signal)', () => {
+    // Regression: `initContent` and `acquireServerLock` both create `.ok/`
+    // before the manifest check runs. If lockDir-existence triggered "adopt",
+    // every fresh project would misclassify and stamp schema-0. Only the shadow
+    // repo signals adoption.
     const { lockDir, shadowRepoDir, cleanup } = makeTmp();
     try {
       mkdirSync(lockDir, { recursive: true });
@@ -66,6 +70,9 @@ describe('detectProjectShape', () => {
   });
 
   test('only the configured shadowRepoDir triggers adopt — unrelated dirs nearby do not leak', () => {
+    // Existence of unrelated directories under `.git/` (e.g. left over from a
+    // prior tooling layout) MUST NOT affect the signal — `detectProjectShape`
+    // checks only the path it was passed.
     const root = mkdtempSync(join(tmpdir(), 'state-manifest-shadow-only-'));
     try {
       const lockDir = join(root, '.ok', LOCAL_DIR);
@@ -158,6 +165,7 @@ describe('assertCompatibleStateManifest', () => {
       expect(result.createdBy.adoptedAt).toBeUndefined();
       expect(result.createdAt).toBe('2026-04-27T12:00:00.000Z');
 
+      // Manifest is now persisted.
       const re = readStateManifest(lockDir);
       expect(re.status).toBe('present');
     } finally {
@@ -186,6 +194,10 @@ describe('assertCompatibleStateManifest', () => {
   });
 
   test('writes fresh manifest when only .ok dir exists (no shadow repo)', () => {
+    // Regression for the smoke-test bug: `initContent` / `acquireServerLock`
+    // create `.ok/` before the manifest check runs. That alone is
+    // NOT adoption — only the shadow repo signals durable pre-version-field
+    // state. This is the user's exact scenario from the smoke test.
     const { lockDir, shadowRepoDir, cleanup } = makeTmp();
     try {
       mkdirSync(lockDir, { recursive: true });
@@ -226,6 +238,7 @@ describe('assertCompatibleStateManifest', () => {
       expect(result.lastWriteBy?.runtimeVersion).toBe('0.2.1'); // updated
       expect(result.lastWriteBy?.at).toBe('2026-04-27T13:00:00.000Z');
 
+      // Persisted on disk.
       const re = readStateManifest(lockDir);
       if (re.status !== 'present') throw new Error('expected present');
       expect(re.manifest.lastWriteBy?.runtimeVersion).toBe('0.2.1');
@@ -273,6 +286,11 @@ describe('assertCompatibleStateManifest', () => {
   });
 
   test('schema-0 manifest is readable by v1 binary (adoption path round-trips)', () => {
+    // the isCompatibleSchema table in state-manifest.ts:
+    // schema-0 is the pre-manifest adoption sentinel; v1 was the first
+    // manifest-aware schema. v1 binaries MUST accept schema-0 manifests on
+    // re-boot, otherwise the adoption path self-incompatibilizes after one
+    // write. This test guards that compatibility.
     const { lockDir, shadowRepoDir, cleanup } = makeTmp();
     try {
       const adopted: StateManifestRecord = {
@@ -295,6 +313,8 @@ describe('assertCompatibleStateManifest', () => {
         now: () => new Date('2026-04-27T13:00:00.000Z'),
       });
 
+      // Schema-0 is preserved (NOT silently bumped to 1) — adoption stays
+      // recorded. lastWriteBy is updated.
       expect(result.stateSchemaVersion).toBe(0);
       expect(result.createdBy.adoptedAt).toBe('2026-04-27T12:00:00.000Z');
       expect(result.lastWriteBy?.runtimeVersion).toBe('0.2.1');
@@ -325,6 +345,10 @@ describe('assertCompatibleStateManifest', () => {
 
 describe('backward compatibility', () => {
   test('reads manifests written before the protocolVersion field existed', () => {
+    // Pre-protocolVersion shipped binaries wrote manifests with only
+    // `runtimeVersion` in `createdBy`. The schema check must still accept
+    // those records — refusing them would brick every existing project
+    // when the protocolVersion-aware binary rolls out.
     const { lockDir, cleanup } = makeTmp();
     try {
       mkdirSync(lockDir, { recursive: true });
@@ -348,6 +372,9 @@ describe('backward compatibility', () => {
   });
 
   test('opportunistic update backfills protocolVersion onto a legacy manifest', () => {
+    // The compat path must do more than read — it should also stamp the
+    // current protocolVersion into `lastWriteBy` so subsequent boots see
+    // the value (and any future migration logic can use it).
     const { lockDir, shadowRepoDir, cleanup } = makeTmp();
     try {
       mkdirSync(lockDir, { recursive: true });

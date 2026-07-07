@@ -92,6 +92,11 @@ function collectLockDir(cwd: string): { files: string[]; dir: string | null } {
   return { files: found, dir: lockDir };
 }
 
+// Server-side diagnostic logs from the runtime pino file sink — including the
+// `renderer` subsystem fed by the web client-log ingest (`/api/client-logs`).
+// Path + filenames mirror `logsCurrentPath`/`logsPreviousPath` in
+// `packages/server/src/telemetry-file-sink.ts`; hardcoded here so the CLI
+// bug-report path doesn't pull in the server module graph.
 function collectLocalSinkLogs(cwd: string): { files: string[]; dir: string | null } {
   const logsDir = join(cwd, '.ok', 'local', 'logs');
   if (!existsSync(logsDir)) return { files: [], dir: null };

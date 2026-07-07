@@ -3,6 +3,11 @@ import { format } from 'date-fns';
 import { parseFromInput } from './PropertyWidgets';
 
 describe('PropertyWidgets — parseFromInput', () => {
+  // Regression: `new Date('2026-04-24')` interprets the ISO 8601 date-only
+  // string as UTC midnight; `format(d,'yyyy-MM-dd')` then formats the local
+  // time, producing off-by-one in negative-UTC-offset timezones.
+  // `date-fns/parse` parses every format in local time, matching the rest of
+  // the widget's local presentation.
   test('ISO 8601 date round-trips losslessly via local-time format', () => {
     const parsed = parseFromInput('2026-04-24');
     expect(parsed).toBeDefined();
@@ -43,6 +48,9 @@ describe('PropertyWidgets — parseFromInput', () => {
   });
 
   test('returns undefined on browser-loose formats not in the explicit set (avoids drift)', () => {
+    // `new Date('2026/04/24')` would parse this as local time on most
+    // browsers — but accepting browser-dependent formats was the bug.
+    // The explicit-format approach rejects rather than guess.
     expect(parseFromInput('2026/04/24')).toBeUndefined();
   });
 });

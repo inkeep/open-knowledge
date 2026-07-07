@@ -93,6 +93,8 @@ describe('shouldShowPreview', () => {
     expect(shouldShowPreview('HTML', 'preview')).toBe(true);
   });
   test('xml (normalized form of html) + preview meta → true', () => {
+    // `normalizeCodeLanguage('html')` resolves to `xml` (highlight.js canonical),
+    // and the NodeView passes the normalized form into shouldShowPreview.
     expect(shouldShowPreview('xml', 'preview')).toBe(true);
   });
   test('html without preview meta → false', () => {
@@ -170,6 +172,9 @@ describe('parsePreviewHeight', () => {
     expect(parsePreviewHeight('h=')).toBeNull();
   });
   test('zero and zero-shaped values → null', () => {
+    // `h=0` parses cleanly but the CSS min-height floor (8rem) would clamp
+    // the rendered height anyway, leaving the meta lying. Drop to null and
+    // let the CSS default win.
     expect(parsePreviewHeight('h=0')).toBeNull();
     expect(parsePreviewHeight('h=0px')).toBeNull();
     expect(parsePreviewHeight('h=0.0')).toBeNull();
@@ -279,13 +284,25 @@ describe('setMetaTitle', () => {
     expect(getMetaTitle(after)).toBe('my Title');
   });
 
+  // The bare-`title=` gap: the
+  // strip regex's old `\S+` alternative didn't match a value-less `title=`,
+  // so the stray token survived the dedup pass and accumulated alongside
+  // the new `title="…"` on every edit.
   test('strips a bare `title=` (no value) so successive edits do not accumulate stray tokens', () => {
     expect(setMetaTitle('title= preview', 'new')).toBe('title="new" preview');
+    // Pure bare-title removal should also leave no stray.
     expect(setMetaTitle('title=', null)).toBeNull();
+    // Mixed bare + valued — both go, replaced by one canonical front-emit.
     expect(setMetaTitle('title= title="old" preview', 'new')).toBe('title="new" preview');
   });
 });
 
+// The bystander-op class:
+// before `splitMetaTokens` was quote-aware, any sibling meta op (add /
+// remove / setKeyValue) on a fence carrying `title="hello  world"` would
+// whitespace-split the interior of the quoted value, then re-join with
+// collapsed single spaces. These tests pin the invariant: interior
+// whitespace inside `title="…"` survives every sibling op end-to-end.
 describe('title-preserving round-trips through bystander meta ops', () => {
   test('add → remove preview token preserves multi-space title (pullfrog reproducer)', () => {
     const meta = 'title="hello  world"';

@@ -68,6 +68,9 @@
   "overrides": {
     "mdast-util-mdx-jsx": "3.2.0"
   },
+  "puppeteer": {
+    "skipDownload": true
+  },
   "patchedDependencies": {
     "@handlewithcare/remark-prosemirror@0.1.5": "patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch",
     "y-prosemirror@1.3.7": "patches/y-prosemirror@1.3.7.patch",

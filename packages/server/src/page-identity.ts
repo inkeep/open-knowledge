@@ -14,6 +14,8 @@ export interface PageIdentity {
 
 function splitFrontmatterLines(frontmatter: string): string[] {
   if (!frontmatter) return [];
+  // Unwrap via the core helper rather than local fence-strip replaces so the
+  // fence shape (incl. trailing-whitespace tolerance) stays owned by core.
   return unwrapFrontmatterFences(frontmatter).split(/\r?\n/);
 }
 
@@ -118,6 +120,14 @@ export function extractPageAliases(content: string): string[] {
   return [];
 }
 
+/**
+ * Extract a human-readable title from a markdown file's content.
+ *
+ * Priority:
+ *  1. `title:` field in YAML frontmatter (between leading `---` delimiters)
+ *  2. First `# heading` line in the file body
+ *  3. filename (without extension, as provided by the caller)
+ */
 export function extractPageTitle(content: string, filename: string): string {
   const { frontmatter, body } = stripFrontmatter(content);
   const title = extractFrontmatterScalar(frontmatter, 'title');
@@ -131,6 +141,15 @@ export function extractPageTitle(content: string, filename: string): string {
   return filename;
 }
 
+/**
+ * Extract the raw `icon:` scalar from a markdown file's frontmatter, or
+ * `undefined` when absent / blank. The classification step (emoji vs.
+ * URL vs. content-relative path vs. unsupported) happens client-side —
+ * the server ships the unvalidated string. Kept symmetric with
+ * `extractPageTitle`'s zero-dependency YAML walk so `handlePages` can
+ * read both from the same `readFileSync` without pulling in a YAML
+ * parser.
+ */
 /** Mirrors `MAX_VALUE_LENGTH` in `packages/app/src/components/page-header-utils.ts`
  * and `.max(2048)` on `PageEntrySchema.icon`. Server-side cap is the
  * load-bearing one: `successResponse` runs `safeParse` on every `/api/pages`
@@ -153,6 +172,11 @@ export interface FrontmatterMetadata {
   tags: string[] | undefined;
 }
 
+/**
+ * Parse frontmatter metadata fields relevant to graph display.
+ * Accepts the raw YAML string (with or without `---` delimiters).
+ * Uses regex-based extraction — no yaml dependency.
+ */
 export function parseFrontmatterMetadata(rawYaml: string): FrontmatterMetadata {
   if (!rawYaml?.trim()) {
     return { cluster: undefined, category: undefined, tags: undefined };

@@ -25,6 +25,19 @@ function replaceDocParagraph(document: Y.Doc, text: string): void {
   replaceDocParagraphs(document, [text]);
 }
 
+/**
+ * Mutates BOTH the XmlFragment and Y.Text under the same transaction so the
+ * Y.Text-is-truth contract sees consistent state. In a real server,
+ * Observer A would mirror fragment → ytext after a browser-origin write;
+ * these tests don't wire up the observer bridge, so the helper has to
+ * produce both sides itself.
+ *
+ * The body bytes match `mdManager.serialize(parse(body))` for paragraph
+ * blocks: "para 1\n\npara 2\n" — newline-separated with trailing newline.
+ * That keeps the bridge invariant comparator happy on the persistence
+ * pre-write sanity check and satisfies the markdownSemanticallyUnchanged
+ * gate's normalizeBridge comparison against reconciledBase.
+ */
 function replaceDocParagraphs(document: Y.Doc, texts: string[]): void {
   const body = `${texts.join('\n\n')}\n`;
   const fragment = document.getXmlFragment('default');
@@ -341,6 +354,13 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
   });
 
   test('disk-write error in force-flush path resets deferCount so next cycle resumes the gate', async () => {
+    // Regression: when the quiescence gate force-flushes (deferCount >=
+    // QUIESCENCE_MAX_DEFER) and tracedRename throws, the cleanup at
+    // `persistenceDeferCounts.delete(documentName)` is unreachable
+    // — the catch re-throws past it. Without explicit cleanup in the catch,
+    // every subsequent cycle sees deferCount stuck and force-flushes again,
+    // emitting `persistence-force-flush-during-burst` in a loop instead of
+    // resuming normal gate semantics on the next cycle.
     const docName = 'force-flush-disk-error';
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'initial\n', 'utf-8');
@@ -355,6 +375,11 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
     await loadDocument(persistence, document, docName);
     document.transact(() => replaceDocParagraph(document, 'edited body'), BROWSER_ORIGIN);
 
+    // Pin the gate to non-quiescent so each store cycle defers (or, after the
+    // cap, force-flushes). Yjs's afterAllTransactions fires synchronously
+    // after every drain, so a naturally non-quiescent moment doesn't survive
+    // event-loop ticks — the override is the only way to drive the
+    // force-flush path from a single-loop test.
     __setQuiescentOverrideForTests(document, false);
 
     const warnings: string[] = [];
@@ -364,6 +389,9 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
     };
 
     try {
+      // QUIESCENCE_MAX_DEFER is 8 in persistence.ts. Stores 1..8 take the
+      // skip path (deferCount increments from 0 → 8). Each emits a structured
+      // persistence-skip-non-quiescent telemetry event.
       for (let i = 0; i < 8; i++) {
         await storeDocument(persistence, document, docName);
       }
@@ -372,6 +400,10 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
       ).length;
       expect(skipsBeforeFlush).toBe(8);
 
+      // 9th store: deferCount=8, NOT < 8 → falls through to force-flush.
+      // Make tracedRename fail by replacing the doc file with a directory at
+      // the same path. realpath/mkdir/write succeed, but rename(file → dir)
+      // fails with EISDIR/EEXIST. The catch re-throws the error.
       rmSync(docPath, { force: true });
       mkdirSync(docPath);
 
@@ -387,9 +419,18 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
       ).length;
       expect(forceFlushesAfterFirst).toBe(1);
 
+      // 10th store. With cleanup in place, deferCount was reset on the
+      // disk-write error path, so the gate sees deferCount=0 and skips
+      // normally (emitting persistence-skip-non-quiescent). Without
+      // cleanup, deferCount is still 8 and the gate force-flushes again
+      // (emitting persistence-force-flush-during-burst, then either
+      // succeeding or throwing on the still-broken disk path).
       try {
         await storeDocument(persistence, document, docName);
-      } catch {}
+      } catch {
+        // Swallowed in this assertion's scope — the test is about gate
+        // accounting, not about whether the disk write recovered.
+      }
       const forceFlushesAfterSecond = warnings.filter((w) =>
         w.includes('"event":"persistence-force-flush-during-burst"'),
       ).length;
@@ -397,6 +438,8 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
         w.includes('"event":"persistence-skip-non-quiescent"'),
       ).length;
 
+      // Bug-free: cycle resumed gate semantics — no second force-flush, one
+      // additional skip event (skipsBeforeFlush + 1 = 9).
       expect(forceFlushesAfterSecond).toBe(1);
       expect(skipsAfterSecond).toBe(9);
     } finally {
@@ -407,6 +450,27 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
   });
 });
 
+/**
+ * wiring smoke tests — CI-runnable.
+ *
+ * The full contract suite lives in `persistence-ytext-truth.test.ts`
+ * but those tests boot `createServer → initShadowRepo`, which spawns
+ * git subprocesses that hit oven-sh/bun#11892 on Linux CI runners. These
+ * lightweight tests piggyback on the deferred-store harness (no shadow
+ * repo, no git subprocess, no createServer) so the load-bearing wiring
+ * — "disk bytes come from ytext.toString(), NOT serialize(fragment)" —
+ * has CI coverage.
+ *
+ * Source-form bytes that distinguish the two readers:
+ *   - `__foo__\n`  (ytext bytes)            ← what we wrote via composeAndWriteRawBody
+ *   - `**foo**\n`  (canonical fragment)     ← what serialize(fragment) would emit
+ *                                             after the parser canonicalizes `__` → `**`
+ *                                             absent the sourceDelimiter attr
+ *
+ * If a wiring regression makes persistence read fragment instead of
+ * ytext, the disk bytes flip from `__foo__` to `**foo**` (or get
+ * canonicalized away entirely) and these tests fail loudly.
+ */
 describe('Y.Text-is-truth wiring (FR-33 / FR-35)', () => {
   let tmpDir: string;
 
@@ -435,6 +499,10 @@ describe('Y.Text-is-truth wiring (FR-33 / FR-35)', () => {
     const document = new Y.Doc();
     await loadDocument(persistence, document, docName);
 
+    // Source-form bytes that the parser would canonicalize: `__foo__` →
+    // `**foo**` absent the sourceDelimiter attr (which the bare
+    // composeAndWriteRawBody path doesn't populate). Whichever side
+    // persistence reads, the disk bytes prove it.
     document.transact(() => {
       composeAndWriteRawBody(document, '__foo__\n', 'agent');
     });
@@ -443,6 +511,8 @@ describe('Y.Text-is-truth wiring (FR-33 / FR-35)', () => {
 
     const diskBytes = readFileSync(docPath, 'utf-8');
     expect(diskBytes).toContain('__foo__');
+    // Negative assertion: if persistence had read serialize(fragment),
+    // the canonicalized `**foo**` form would have landed instead.
     expect(diskBytes).not.toContain('**foo**');
     document.destroy();
   });
@@ -450,6 +520,9 @@ describe('Y.Text-is-truth wiring (FR-33 / FR-35)', () => {
   test('FR-35: cold-load setReconciledBase stores raw disk bytes', async () => {
     const docName = 'fr35-cold-load';
     const docPath = join(tmpDir, `${docName}.md`);
+    // Pre-write source-form bytes to disk before loading. The
+    // cold-load path stores these raw bytes as the reconciledBase — NOT
+    // the canonicalized post-parse-serialize form.
     writeFileSync(docPath, '__cold__\n', 'utf-8');
 
     const persistence = createPersistenceExtension({
@@ -462,11 +535,33 @@ describe('Y.Text-is-truth wiring (FR-33 / FR-35)', () => {
 
     const base = getReconciledBase(docName);
     expect(base).toBe('__cold__\n');
+    // Negative assertion: a regression to canonical-form storage would
+    // surface as `**cold**\n` here.
     expect(base).not.toContain('**cold**');
     document.destroy();
   });
 });
 
+/**
+ * `flushDeferredStores` deferred-drain failure observability.
+ *
+ * Pattern C tests: real fault injected at
+ * a real boundary (`tracedRename` returns a failure, OR throws a malformed
+ * error whose property access trips the classifier). Assertions are on the
+ * user-visible structured event + counter — the operator-facing outcomes
+ * dashboards consume. Pattern A (mock storeDocumentNow → throw → assert
+ * catch fired) is forbidden.
+ *
+ * The disk-write failure path uses the file-as-directory trick (rename
+ * target replaced with a directory pre-rename) — same fault injection
+ * surface as the `force-flush-disk-error` test in the gate-cleanup describe
+ * ; the kernel-surfaced ErrnoException is what production would see
+ * during a real disk outage. The classifier-failure path uses a
+ * spy-on-`tracedRename`-throws-Proxy injection because no naturally-
+ * occurring production error has property accessors that throw — the inner
+ * try/catch around the classifier is built to absorb that
+ * exotic shape so the structured event still emits.
+ */
 describe('FR-9 — deferred-store-failed event + counter', () => {
   let tmpDir: string;
   let warnSpy: ReturnType<typeof spyOn>;
@@ -478,7 +573,10 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
       if (!line.includes(`"event":"${eventName}"`)) continue;
       try {
         matches.push(JSON.parse(line) as Record<string, unknown>);
-      } catch {}
+      } catch {
+        // Non-JSON warn lines from other observers are ignored — this
+        // event-shape contract is exact (single JSON.stringify per emit).
+      }
     }
     return matches;
   }
@@ -520,6 +618,9 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     await storeDocument(persistence, document, docName);
     setBatchInProgress(false);
 
+    // Replace the doc file with a directory so the deferred drain's rename
+    // operation surfaces an ErrnoException (EISDIR/EEXIST/ENOTEMPTY
+    // depending on platform) — a real disk-failure shape, not a mocked one.
     rmSync(docPath, { force: true });
     mkdirSync(docPath);
 
@@ -534,10 +635,15 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     const ev = events[0] as Record<string, unknown>;
     expect(ev.event).toBe('deferred-store-failed');
     expect(ev['doc.name']).toBe(docName);
+    // Either disk-write (most kernels) or traced-rename (when the Node fs
+    // error message contains 'rename') — both are correct disk-layer bins;
+    // the test pins a real-fault outcome rather than a brittle exact label.
     expect(ev.errorClass).toMatch(/^(disk-write|traced-rename)$/);
     expect(typeof ev.errorMessageHash).toBe('string');
     expect((ev.errorMessageHash as string).length).toBe(8); // FNV-1a 32-bit hex
     expect(typeof ev.timestamp).toBe('string');
+    // Default redaction: raw errorMessage MUST NOT be present unless
+    // OK_TELEMETRY_VERBOSE=1 is set.
     expect(ev.errorMessage).toBeUndefined();
 
     document.destroy();
@@ -571,6 +677,9 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     const ev = events[0] as Record<string, unknown>;
     expect(typeof ev.errorMessage).toBe('string');
     expect((ev.errorMessage as string).length).toBeGreaterThan(0);
+    // Hash must STILL be present alongside the raw message — operator
+    // pipelines may pivot off the hash even when verbose is on, so the
+    // hash is unconditional.
     expect(typeof ev.errorMessageHash).toBe('string');
 
     document.destroy();
@@ -593,6 +702,13 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     await storeDocument(persistence, document, docName);
     setBatchInProgress(false);
 
+    // Inject a malformed error whose `code` accessor throws. The classifier
+    // accesses `e.code` via `typeof e.code === 'string'` — that property
+    // read invokes the throwing getter, breaking the classifier. The outer
+    // try/catch around `classifyDeferredStoreError(err)`
+    // must absorb the throw and emit `deferred-store-classifier-failed`
+    // alongside the outer `deferred-store-failed` event with
+    // errorClass='unknown'.
     const renameSpy = spyOn(fsTraced, 'tracedRename').mockImplementation(async () => {
       const malformed = Object.create(Error.prototype) as Error & { name: string };
       Object.defineProperty(malformed, 'message', { value: 'malformed-error', enumerable: true });
@@ -618,6 +734,8 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
       expect(cev['doc.name']).toBe(docName);
       expect(typeof cev.classifyErrorHash).toBe('string');
       expect((cev.classifyErrorHash as string).length).toBe(8);
+      // Default-redacted: classifyErrorMessage MUST NOT appear unless
+      // OK_TELEMETRY_VERBOSE=1 (mirrors the outer event's redaction shape).
       expect(cev.classifyErrorMessage).toBeUndefined();
 
       const outerEvents = findEventLines('deferred-store-failed');
@@ -625,6 +743,10 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
       const oev = outerEvents[0] as Record<string, unknown>;
       expect(oev['doc.name']).toBe(docName);
       expect(oev.errorClass).toBe('unknown');
+      // Correlation field: classifier-failed carries the same
+      // errorMessageHash as the outer deferred-store-failed event so
+      // triage can pivot from inner to outer when both fire on the same
+      // doc within a drain.
       expect(typeof cev.errorMessageHash).toBe('string');
       expect((cev.errorMessageHash as string).length).toBe(8);
       expect(cev.errorMessageHash).toBe(oev.errorMessageHash);
@@ -635,6 +757,17 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
   });
 
   test('throwing `.message` getter is caught by the rawMessage extraction guard (mirror of classifier `.code`-throws path)', async () => {
+    // Symmetric with the `.code`-throws test. The classifier's outer
+    // try/catch is the documented observability boundary for exotic error
+    // shapes, but `.message` is extracted
+    // via a SEPARATE path (the rawMessage hash + verbose passthrough)
+    // BEFORE the classifier runs. Without an equivalent guard there, a
+    // throwing `.message` getter would propagate up and bypass
+    // incrementDeferredStoreFailures + the deferred-store-failed event,
+    // erasing the failure signal — the silent-loss class is built
+    // to prevent. This test pins that the rawMessage-extraction guard
+    // absorbs the throw and that the outer event still emits with an
+    // empty errorMessageHash (hash of the empty fallback string).
     const docName = 'fr9-message-getter-throws';
     const docPath = join(tmpDir, `${docName}.md`);
     writeFileSync(docPath, 'initial\n', 'utf-8');
@@ -667,8 +800,11 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
       const before = getMetrics().deferredStoreFailures;
       await persistence.flushDeferredStores('within-branch');
       const after = getMetrics().deferredStoreFailures;
+      // Counter MUST increment — the failure signal isn't lost.
       expect(after).toBe(before + 1);
 
+      // Outer event MUST emit. errorMessageHash is the hash of the empty
+      // fallback string (the guard's `rawMessage = ''` branch).
       const outerEvents = findEventLines('deferred-store-failed');
       expect(outerEvents.length).toBeGreaterThanOrEqual(1);
       const oev = outerEvents[0] as Record<string, unknown>;
@@ -721,6 +857,8 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
       const classifierEvents = findEventLines('deferred-store-classifier-failed');
       expect(classifierEvents.length).toBeGreaterThanOrEqual(1);
       const cev = classifierEvents[0] as Record<string, unknown>;
+      // Verbose opt-in: raw classifyErrorMessage IS present alongside
+      // the unconditional classifyErrorHash.
       expect(typeof cev.classifyErrorMessage).toBe('string');
       expect(cev.classifyErrorMessage).toBe('classifier-trip getter');
       expect(typeof cev.classifyErrorHash).toBe('string');
@@ -732,6 +870,26 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
   });
 });
 
+/**
+ * classifier behavioral pin (Pattern B).
+ *
+ * Pins the classifier's actual return domain — the four bins it currently
+ * routes errors to (`disk-write`, `traced-rename`, `serialize`, `unknown`).
+ * Pattern B (behavioral pin): tests the
+ * public API, asserts on the return value, no observable I/O.
+ *
+ * Coverage scope (read this before adding bins or new test cases):
+ * `DEFERRED_STORE_ERROR_CLASSES` declares 6 members, but only
+ * the 4 above are reachable via `classifyDeferredStoreError`. The remaining
+ * two (`reconcile`, `parse-fallback`) are forward-compat dashboard slots —
+ * see `classifyDeferredStoreError`'s JSDoc for why they exist
+ * even though no current code path returns them. Adding a test that asserts
+ * those bins return through the classifier would lie about the contract;
+ * adding a new bin to the type without wiring a classifier path leaves it
+ * in the same forward-compat state and is intentionally not gated here.
+ * The lockstep enforcement, when a contributor wires a NEW reachable bin,
+ * is reviewer attention — not this test.
+ */
 describe('FR-9 — classifyDeferredStoreError behavior', () => {
   test('symlink-escape errors classify as disk-write', () => {
     const err = new Error('symlink-escape: /a resolves to /etc/passwd outside /content');
@@ -751,6 +909,9 @@ describe('FR-9 — classifyDeferredStoreError behavior', () => {
   });
 
   test('BridgeInvariantViolationError instances classify as serialize', () => {
+    // Pins the production contract: actual `BridgeInvariantViolationError`
+    // instances (the only shape that ever reaches this catch from
+    // `storeDocumentNow`'s pre-write sanity check) classify as serialize.
     const err = new BridgeInvariantViolationError({
       site: 'persistence',
       ytextSnapshot: '',
@@ -762,6 +923,12 @@ describe('FR-9 — classifyDeferredStoreError behavior', () => {
   });
 
   test('non-instance error with matching name classifies as unknown (instanceof contract)', () => {
+    // Pins the strictness of the `instanceof` check vs the prior
+    // string-name match: an impostor `Error` with `.name` set to
+    // `'BridgeInvariantViolationError'` has no actual bridge-invariant
+    // context (no .violation field, not the real class). Routing it to
+    // the `serialize` bin would mis-attribute non-bridge failures to
+    // the bridge in dashboards. The instanceof check filters those out.
     const err = Object.assign(new Error('bridge'), { name: 'BridgeInvariantViolationError' });
     expect(classifyDeferredStoreError(err)).toBe('unknown');
   });

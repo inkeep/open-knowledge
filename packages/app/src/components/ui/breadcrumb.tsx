@@ -57,6 +57,17 @@ function BreadcrumbPage({
   className,
   ...props
 }: React.ComponentProps<'span'> & { current?: boolean }) {
+  // Plain <span> follows the W3C APG breadcrumb pattern — no role="link"
+  // because there's no href and the element is not focusable / activatable.
+  // Departs from shadcn's upstream default (which carries role="link" +
+  // aria-disabled) to satisfy the biome a11y rule that flags a link
+  // without focusability.
+  //
+  // `current` defaults to true so default usage matches the W3C APG
+  // pattern (one current-page element per breadcrumb). Callers that
+  // render non-current segments — e.g. folder-path hierarchies where the
+  // current page isn't displayed — should pass `current={false}` so
+  // assistive tech doesn't announce every hierarchy step as "current page".
   return (
     <span
       data-slot="breadcrumb-page"

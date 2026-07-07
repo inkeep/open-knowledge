@@ -1,3 +1,66 @@
+/**
+ * Resume-after-crash primitive for long-running operations.
+ *
+ * Sweep campaigns and similar long-running probes run for hours; a
+ * mid-run crash (Bun panic, OS reboot, terminal kill) should not force
+ * the engineer to restart from input 0. This primitive flushes each
+ * successful operation's result to disk so a re-run skips-replays
+ * completed work and resumes from the missing inputs.
+ *
+ * Sweep-agnostic by design — `defineSweep` is the first consumer,
+ * but any operation
+ * with a stable per-input key qualifies: fuzz/stress harnesses,
+ * replication probes, batch transcoders. The primitive intentionally
+ * takes a generic `operation: (input) => Promise<output>` and a
+ * `keyOf(input)` so it composes with anything that has stable inputs.
+ *
+ * Architectural contract:
+ *
+ *   - Inputs are processed in order; the returned array order matches
+ *     `inputs` (NOT checkpoint-file order). Resume merges loaded
+ *     entries into the in-memory map and the iteration order drives
+ *     the output array, so the contract holds regardless of how the
+ *     checkpoint file was written.
+ *
+ *   - Atomic writes (write-to-`.tmp` + rename) protect prior progress
+ *     from partial-write corruption. A SIGKILL during flush leaves
+ *     either the old file intact or the new file present — never a
+ *     half-written file.
+ *
+ *   - `flushAfterEach: true` is the sweep-cell mode: every successful
+ *     op flushes immediately. Survives SIGKILL between cells. Pay one
+ *     fs.rename per cell.
+ *
+ *   - `flushAfterEach: false` is the sub-cell-replication mode:
+ *     accumulate in memory, flush once at the end. Cheaper I/O when
+ *     the inner unit is sub-second; ALSO flushes on error so prior
+ *     successes are durable before the throw bubbles.
+ *
+ *   - On error from `operation`, the error is re-thrown to the caller
+ *     AFTER prior successes are flushed. The caller does NOT get a
+ *     partial result array — partial state lives on disk only.
+ *
+ *   - Corrupted / wrong-schema / missing-required-field checkpoint
+ *     files are rejected with an actionable error referencing the
+ *     path. The primitive never silently treats malformed state as a
+ *     cold start — that risk would be far worse than the explicit
+ *     "delete this file to start fresh" affordance.
+ *
+ *   - Output values must be JSON-serializable. `undefined` is rejected
+ *     at flush time (cannot round-trip through `JSON.stringify`).
+ *     `Date` instances serialize as ISO strings (caller's responsibility
+ *     to revive on read if needed). Functions / symbols / circular
+ *     references will throw.
+ *
+ * Naming + path convention:
+ *
+ *   `<outDir>/<harness>.<baselineKey>.checkpoint.json`
+ *
+ *   The caller constructs the path. The substrate primitive does NOT
+ *   construct paths from harness/baselineKey — that's the consumer's
+ *   responsibility, mirroring `defineSweep`'s `baselineKey` ownership.
+ */
+
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -15,10 +78,28 @@ interface CheckpointFile<TOutput> {
 }
 
 export interface WithCheckpointConfig<TInput> {
+  /**
+   * Absolute path to the checkpoint file. Caller-constructed
+   * (`<outDir>/<harness>.<baselineKey>.checkpoint.json` is the
+   * convention). Parent directory is auto-created on first flush.
+   */
   readonly checkpointPath: string;
 
+  /**
+   * Map an input to its stable identifying string. The key MUST be
+   * unique across the entire `inputs` array (collisions surface as a
+   * caller-bug error). Stable across runs — that's how resume
+   * identifies which inputs are already done.
+   */
   readonly keyOf: (input: TInput) => string;
 
+  /**
+   * `true`  — flush after every successful operation (sweep-cell mode;
+   *           survives SIGKILL between cells; one fs.rename per op).
+   * `false` — accumulate in memory, flush once at end (or on error).
+   *           Cheaper for high-frequency inner units; loses partial
+   *           progress on SIGKILL.
+   */
   readonly flushAfterEach: boolean;
 }
 
@@ -92,6 +173,19 @@ export async function withCheckpoint<TInput, TOutput>(
     }
   }
 
+  // flushAfterEach=false: we've accumulated all results in memory;
+  // flush exactly once at the end (or before the throw bubbles).
+  // flushAfterEach=true:  per-cell flushes already covered the
+  // success path. On error mid-stream, the LAST successful cell's
+  // flush is durable; no extra write needed.
+  //
+  // If both pendingError AND the final flush fail (e.g. ENOSPC during
+  // flush after an upstream operation threw), we surface both — losing
+  // the original operation error to a downstream filesystem failure
+  // would force the engineer to fix the disk, re-run the campaign, and
+  // re-discover the operation failure with no diagnostic trail. The
+  // AggregateError carries both causes so a single inspection surfaces
+  // root-cause + secondary-failure.
   if (!config.flushAfterEach) {
     try {
       await flushCheckpoint(config.checkpointPath, inputKeysInOrder, completed);
@@ -110,6 +204,8 @@ export async function withCheckpoint<TInput, TOutput>(
 
   return outputs;
 }
+
+// ──────────────────────────── Helpers ─────────────────────────────
 
 interface InMemoryEntry<TOutput> {
   readonly output: TOutput;

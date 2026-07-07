@@ -1,3 +1,14 @@
+/**
+ * E2E coverage for realtime frontmatter entries.
+ *
+ * Verifies the user-visible outcomes:
+ *   - rename preserves position (driver-bug fix).
+ *   - drag-to-reorder commits the new order to disk.
+ *   - keyboard-accessible drag (space + arrow + space).
+ *   - duplicate-name rows render with a marker on each.
+ *   - malformed YAML region produces an inline banner.
+ */
+
 import { expect, test } from './_helpers';
 
 const BASE_FM_DOC = `---
@@ -25,11 +36,14 @@ test.describe('PropertyPanel — realtime frontmatter (FR1, FR2, FR4, FR6, FR9)'
       .evaluateAll((rows) => rows.map((r) => (r as HTMLElement).dataset.key ?? ''));
     expect(initialOrder).toEqual(['title', 'status', 'cluster']);
 
+    // Rename "title" → "titles" by clicking the name button, typing, blurring.
     await page.getByTestId('property-name-button').filter({ hasText: 'title' }).click();
     const renameInput = page.getByTestId('property-name-rename-input');
     await renameInput.fill('titles');
     await renameInput.press('Enter');
 
+    // The row at position 0 must still be the renamed key — not pushed to the
+    // bottom (the driver-bug regression).
     const orderAfter = await panel
       .locator('[data-testid="property-row"]')
       .evaluateAll((rows) => rows.map((r) => (r as HTMLElement).dataset.key ?? ''));
@@ -44,6 +58,10 @@ test.describe('PropertyPanel — realtime frontmatter (FR1, FR2, FR4, FR6, FR9)'
     const panel = page.getByTestId('property-panel');
     await expect(panel).toBeVisible();
 
+    // Drag the first row's handle past the second row to swap them.
+    // @dnd-kit's PointerSensor activates on 4px movement; the drop point
+    // needs to land below the second row's center for closestCenter to
+    // pick it as the over target.
     const handles = panel.getByTestId('property-drag-handle');
     const first = handles.nth(0);
     const second = handles.nth(1);
@@ -74,6 +92,9 @@ test.describe('PropertyPanel — realtime frontmatter (FR1, FR2, FR4, FR6, FR9)'
     const panel = page.getByTestId('property-panel');
     await expect(panel).toBeVisible();
 
+    // Focus first drag handle, press space to lift, ArrowDown to move past
+    // second row, space to drop. @dnd-kit's KeyboardSensor uses
+    // sortableKeyboardCoordinates so ArrowDown picks the next sortable item.
     const firstHandle = panel.getByTestId('property-drag-handle').nth(0);
     await firstHandle.focus();
     await page.keyboard.press('Space');

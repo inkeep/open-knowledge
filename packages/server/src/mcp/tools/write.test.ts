@@ -1,8 +1,21 @@
+/**
+ * Unit coverage for `composeWithFrontmatter` — the inline YAML-block composer
+ * used when `write({ document })` carries both literal `content` and a
+ * `frontmatter` param.
+ *
+ * when `content` already opened with its own
+ * `---…---` block AND a `frontmatter` param was supplied, the composer
+ * prepended a SECOND block, stacking two frontmatter blocks on disk. The fix
+ * merges the embedded block with the param (param wins) into a single block.
+ */
 import { describe, expect, it } from 'bun:test';
 import { stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { composeWithFrontmatter } from './write.ts';
 
+/** Count leading-or-anywhere `---` fence lines that open a frontmatter block. */
 function frontmatterBlockCount(markdown: string): number {
+  // A doubled block is `---\n…---\n---\n…---`. Re-strip after removing the
+  // first block; a second strip that still finds a block means doubling.
   let remaining = markdown;
   let count = 0;
   while (true) {
@@ -29,6 +42,7 @@ describe('composeWithFrontmatter', () => {
     const result = composeWithFrontmatter({ title: 'Doubled FM', tags: ['demo'] }, content);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    // The bug produced 2; the fix must produce exactly 1.
     expect(frontmatterBlockCount(result.markdown)).toBe(1);
     expect(result.markdown).toContain('# Doubled FM');
     expect(result.markdown).toContain('Real body line.');
@@ -83,6 +97,8 @@ describe('composeWithFrontmatter', () => {
   });
 
   it('strips the embedded block entirely when the param clears its only key', () => {
+    // Distinct from the plain-body empty-merge case: here an embedded block
+    // exists but every key it carries is cleared, so the fence is removed too.
     const content = '---\nstatus: draft\n---\n\nBody.';
     const result = composeWithFrontmatter({ status: null }, content);
     expect(result.ok).toBe(true);

@@ -1,4 +1,37 @@
 #!/usr/bin/env bun
+/**
+ * `bun run tests/perf/profile.ts --scenario=<name>` — scenario driver.
+ *
+ * Loads `./scenarios/<name>.ts`, launches a dedicated Chromium (headless by
+ * default), attaches a CDP session + Tracing domain, calls
+ * `scenario.run(ctx)`, drains the `globalThis.__ok_perf` collector, and
+ * writes `results/<scenario>.<timestamp>.json`.
+ *
+ * Headless is the default because multi-cell sweeps that lose foreground
+ * focus mid-run hit Chromium setTimeout/rAF throttling that turns into
+ * false-positive cold-load timeouts. Single-scenario runs that need
+ * paint/GPU diagnosis can opt in with `--headed` or `OK_PERF_HEADED=1`.
+ *
+ * Standalone Bun entry point — NO `@playwright/test` runner (retries /
+ * fixtures fight perf-measurement stability). Mirrors the
+ * `packages/core/tests/perf/run-regression-gate.ts` pattern.
+ *
+ * CLI:
+ *   --scenario=<name>         Required. Matches file at ./scenarios/<name>.ts
+ *   --target=<url>            Base URL. Default: http://localhost:5173
+ *   --out=<dir>               Results dir. Default: ./results
+ *   --headed                  Launch with a visible browser window (paint/GPU
+ *                             diagnosis). Default: headless. Equivalent to
+ *                             OK_PERF_HEADED=1 in the environment.
+ *   --headless                Launch headless (the default — explicit only
+ *                             when overriding OK_PERF_HEADED=1).
+ *   --viewport=<WxH>          Viewport, e.g. 1920x1080. Default 1440x900
+ *
+ * Exit codes:
+ *   0  scenario completed, result JSON written
+ *   1  usage error (bad args, scenario not found)
+ *   2  scenario threw — result JSON still written with `error` field
+ */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { hostname, platform } from 'node:os';
@@ -18,10 +51,14 @@ import type {
   WebVitalRecord,
 } from './lib/scenario';
 
+// ─────────────────────────── Constants ─────────────────────────────────────
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TARGET = 'http://localhost:5173';
 const DEFAULT_OUT_DIR = resolve(HERE, 'results');
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
+
+// ─────────────────────────── CLI parsing ──────────────────────────────────
 
 interface CliArgs {
   scenario: string;
@@ -35,6 +72,12 @@ export function parseArgs(argv: readonly string[]): CliArgs {
   let scenario = '';
   let target = DEFAULT_TARGET;
   let outDir = DEFAULT_OUT_DIR;
+  // Default headless. Multi-cell sweeps that lose foreground focus hit
+  // Chromium's setTimeout/rAF throttle (>1s/tick) and turn into false-
+  // positive cold-load timeouts; running headless eliminates that failure
+  // mode. Explicit --headed (or OK_PERF_HEADED=1) opts in for paint/GPU
+  // diagnosis on a single scenario. Sentinel-style env contract: only the
+  // literal "1" enables, so typos like "true" or "yes" stay headless.
   let headed = process.env.OK_PERF_HEADED === '1';
   let viewport = DEFAULT_VIEWPORT;
 
@@ -84,6 +127,8 @@ function usageAndExit(err: string | null): never {
   process.exit(err ? 1 : 0);
 }
 
+// ─────────────────────────── Scenario loader ──────────────────────────────
+
 async function loadScenario(name: string): Promise<ScenarioDefinition> {
   const path = resolve(HERE, 'scenarios', `${name}.ts`);
   let mod: { default?: unknown };
@@ -101,6 +146,8 @@ async function loadScenario(name: string): Promise<ScenarioDefinition> {
   }
   return scen;
 }
+
+// ─────────────────────────── Runner ───────────────────────────────────────
 
 async function runScenario(args: CliArgs): Promise<void> {
   const scen = await loadScenario(args.scenario);
@@ -187,7 +234,9 @@ async function runScenario(args: CliArgs): Promise<void> {
   } finally {
     try {
       await browser?.close();
-    } catch {}
+    } catch {
+      // browser may already have closed on scenario failure
+    }
   }
 
   const outPath = resolve(
@@ -213,6 +262,8 @@ async function runScenario(args: CliArgs): Promise<void> {
     process.exit(2);
   }
 }
+
+// ─────────────────────────── Helpers ──────────────────────────────────────
 
 function buildMetadata(args: CliArgs): ScenarioResultMetadata {
   return {
@@ -326,6 +377,8 @@ function round2(v: number): number {
   if (!Number.isFinite(v)) return 0;
   return Math.round(v * 100) / 100;
 }
+
+// ─────────────────────────── Entry ────────────────────────────────────────
 
 if (import.meta.main) {
   const args = parseArgs(process.argv.slice(2));

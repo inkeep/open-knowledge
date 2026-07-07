@@ -1,3 +1,8 @@
+/**
+ * entry-label.ts unit tests — the fallback ladder for BlockChainEntry labels
+ * (shared by SelectionAnnouncer + future selection-consuming UI).
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type { BlockChainEntry } from '../extensions/selection-state-plugin.ts';
 import { getEntryLabel } from './entry-label.ts';

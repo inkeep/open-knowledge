@@ -7,7 +7,7 @@
  *   (c) Y.Text no-op → skip delete/insert when content unchanged
  *   (d) transaction origin → matches LocalTransactionOrigin shape
  *
- * Plus the factory wrapper's error-swallowing contract (S1.R2).
+ * Plus the factory wrapper's error-swallowing contract.
  */
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hocuspocus } from '@hocuspocus/server';
@@ -51,13 +51,16 @@ describe('applyExternalChange — throwing helper', () => {
 
     applyExternalChange(hp, docName, fullContent);
 
+    // Y.Text contains the FULL content (FM region IS the FM source of truth).
     const ytext = doc.getText('source');
     expect(ytext.toString()).toBe(fullContent);
 
+    // FM extracted from the YAML region matches what was on disk.
     const { frontmatter } = stripFrontmatter(ytext.toString());
     expect(frontmatter).toContain('title: Test');
     expect(frontmatter).toContain('---');
 
+    // XmlFragment contains body-derived nodes but NOT frontmatter text.
     const xmlFragment = doc.getXmlFragment('default');
     const xmlString = xmlFragment.toString();
     expect(xmlString).not.toContain('title: Test');
@@ -97,12 +100,22 @@ describe('applyExternalChange — throwing helper', () => {
     const malformed = '---\ntitle: [unterminated\nstatus: published\n---\n# Body\n';
     applyExternalChange(hp, docName, malformed);
 
+    // Y.Text holds the malformed bytes verbatim — no defensive revert.
     expect(doc.getText('source').toString()).toBe(malformed);
 
     await conn.disconnect();
   });
 
   test('(b4) FM-indent preserved verbatim; body canonicalized to match XmlFragment (bridge invariant)', async () => {
+    // Two parts of the same disk→CRDT contract:
+    //   - FM region is preserved EXACTLY (user's YAML formatting,
+    //     including `  - characters` indent, must round-trip).
+    //   - Body region matches XmlFragment's canonical serialization
+    //     (bridge invariant — `stripTrailingWhitespace(ytext) ===
+    //     stripTrailingWhitespace(serialize(fragment))`). Markdown has
+    //     multiple equivalent representations (doc-start `---` is
+    //     a thematic break that serializes to canonical `***`); writing
+    //     the raw disk bytes for these constructs would diverge.
     const docName = 'test-fm-indent-body-canonical';
     const conn = await hp.openDirectConnection(docName);
     const doc = getDoc(conn);
@@ -111,6 +124,7 @@ describe('applyExternalChange — throwing helper', () => {
     applyExternalChange(hp, docName, onDisk);
 
     const ytext = doc.getText('source').toString();
+    // FM region byte-identical to disk (preserves indent + scalar style).
     const { frontmatter } = stripFrontmatter(ytext);
     expect(frontmatter).toBe('---\ntags:\n  - characters\n  - air-nomads\n---\n');
 
@@ -118,6 +132,16 @@ describe('applyExternalChange — throwing helper', () => {
   });
 
   test('(b5) Y.Text-is-truth: doc-start `---` survives in Y.Text (no canonicalize-write-back)', async () => {
+    // Y.Text-is-truth contract (precedent #38): under contract
+    // Y.Text holds the user's source bytes. `---` and `***` at doc start are
+    // both valid CommonMark thematic breaks — `normalizeBridge` tolerates
+    // the equivalence so the bridge invariant still holds
+    // even when ytext bytes differ from `serialize(fragment)` bytes.
+    //
+    // Pre-contract: ytext was canonicalized to `***\n` to match XmlFragment's
+    // canonical serialization. Post-contract: ytext holds raw disk bytes
+    // verbatim. The single watchdog assertion at the bridge invariant level
+    // confirms the byte difference is tolerance-class-equal.
     const docName = 'test-thematic-break-raw';
     const conn = await hp.openDirectConnection(docName);
     const doc = getDoc(conn);
@@ -125,6 +149,7 @@ describe('applyExternalChange — throwing helper', () => {
     applyExternalChange(hp, docName, '---\n');
 
     const ytext = doc.getText('source').toString();
+    // Under contract: ytext holds the raw disk bytes — `---\n` survives.
     expect(ytext).toBe('---\n');
 
     await conn.disconnect();
@@ -184,15 +209,36 @@ describe('applyExternalChange — throwing helper', () => {
   });
 
   test('(e) catch path on post-mutation transact throw sets reconciledBase to mutated ytext', async () => {
+    // When applyFastDiff has already mutated Y.Text and updateYFragment
+    // then throws, the transact's mutations stay applied (Yjs doesn't roll
+    // back on throw). Without this fix, the transact-throw escapes the
+    // outer caller, recordContributor and the post-transact
+    // setReconciledBase(content) are skipped, and reconciledBase keeps
+    // pointing at OLD content. The next persistence flush would compare
+    // ytext (NEW, post-applyFastDiff) against reconciledBase (OLD), see
+    // them differ, and write ytext bytes to disk — typically idempotent
+    // (ytext === current disk), but under back-to-back disk edits within
+    // the persistence debounce window this could overwrite a newer disk
+    // version with the post-throw ytext state.
+    //
+    // The catch path's setReconciledBase(current ytext) bounds the race:
+    // the next persistence-flush compare matches (ytext === reconciledBase)
+    // and skips the write. Recovery converges via the next file-watcher
+    // event or user mutation.
     const docName = 'test-catch-bounds-post-mutation';
     const conn = await hp.openDirectConnection(docName);
     const doc = getDoc(conn);
 
+    // Establish initial state via a successful apply.
     applyExternalChange(hp, docName, '# Original\n');
     setReconciledBase(docName, '# Original\n');
     expect(doc.getText('source').toString()).toBe('# Original\n');
     expect(getReconciledBase(docName)).toBe('# Original\n');
 
+    // Wrap doc.transact so it runs the inner mutations normally, then
+    // throws after — simulating "applyFastDiff succeeded, updateYFragment
+    // threw". Mutations stay applied because Yjs doesn't roll back on
+    // throw.
     const originalTransact = doc.transact.bind(doc);
     doc.transact = ((fn: () => void, origin: unknown) => {
       originalTransact(() => {
@@ -205,7 +251,12 @@ describe('applyExternalChange — throwing helper', () => {
       applyExternalChange(hp, docName, '# After-Mutation\n');
     }).toThrow(/synthetic/);
 
+    // ytext WAS mutated by applyFastDiff before the synthetic throw.
     expect(doc.getText('source').toString()).toBe('# After-Mutation\n');
+    // The catch path set reconciledBase to current ytext content. WITHOUT
+    // the fix, reconciledBase would still equal '# Original\n' (the post-
+    // transact setReconciledBase('# After-Mutation\n') is skipped on
+    // throw), and persistence would see ytext ≠ reconciledBase and write.
     expect(getReconciledBase(docName)).toBe('# After-Mutation\n');
 
     doc.transact = originalTransact as typeof doc.transact;
@@ -256,6 +307,10 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
   });
 
   test('factory wrapper re-throws BridgeInvariantViolationError to preserve loud-failure gate', async () => {
+    // Contract-gate errors are loud-failure signals in NODE_ENV=test (or with
+    // OK_BRIDGE_THROW_ON_VIOLATION=1). Swallowing them here would silently
+    // subvert the test gate and let real bridge bugs land green. The wrapper
+    // must let them propagate.
     const errorSpy = mock(() => {});
     const originalError = console.error;
     console.error = errorSpy;
@@ -267,6 +322,9 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
 
       const doc = getDoc(conn);
       const originalGetXmlFragment = doc.getXmlFragment.bind(doc);
+      // Inject a synthetic BridgeInvariantViolationError where any post-load
+      // operation runs. The wrapper's catch must re-throw this rather than
+      // log-and-swallow.
       doc.getXmlFragment = () => {
         throw new BridgeInvariantViolationError({
           site: 'observer-b',
@@ -282,6 +340,8 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
         BridgeInvariantViolationError,
       );
 
+      // Routine error path was NOT taken — log line is the loud-failure throw,
+      // not the swallow path's `Failed to apply external change` message.
       expect(errorSpy).not.toHaveBeenCalled();
 
       doc.getXmlFragment = originalGetXmlFragment;
@@ -292,6 +352,10 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
   });
 
   test('factory wrapper re-throws BridgeMergeContentLossError to preserve OK_RETHROW_BRIDGE_LOSS gate', async () => {
+    // Same rationale as the BridgeInvariantViolationError case — content-loss
+    // signals from Path B must reach the test runner under
+    // OK_RETHROW_BRIDGE_LOSS=1 / NODE_ENV=test, not get swallowed by the
+    // dev-plugin file-watcher wrapper.
     const errorSpy = mock(() => {});
     const originalError = console.error;
     console.error = errorSpy;

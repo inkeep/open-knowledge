@@ -55,6 +55,7 @@ describe('createBasenameIndex — path normalization', () => {
     const idx = createBasenameIndex();
     idx.add('docs/photo.png');
     idx.add('notes/photo.png');
+    // './docs/meeting.md' and 'docs/meeting.md' should resolve the same way.
     expect(idx.resolveEmbed('photo.png', './docs/meeting.md')).toBe('docs/photo.png');
     expect(idx.resolveEmbed('photo.png', 'docs/meeting.md')).toBe('docs/photo.png');
   });
@@ -63,12 +64,16 @@ describe('createBasenameIndex — path normalization', () => {
     const idx = createBasenameIndex();
     idx.add('docs/photo.png');
     idx.add('attachments/photo.png');
+    // dirnameOf('readme.md') === '' → every candidate is "in subtree".
+    // Both are at depth 1; alphabetical tiebreak → 'attachments/photo.png' < 'docs/photo.png'.
     expect(idx.resolveEmbed('photo.png', 'readme.md')).toBe('attachments/photo.png');
   });
 });
 
 describe('createBasenameIndex — tiebreak #1: subtree preference, shallowest depth', () => {
   test('prefers path in sourcePath own dirname subtree over outside', () => {
+    // docs/photo.png and attachments/photo.png coexist; sourcePath
+    // is docs/meeting.md → docs/photo.png wins (inside sourceDir subtree).
     const idx = createBasenameIndex();
     idx.add('attachments/photo.png');
     idx.add('docs/photo.png');
@@ -86,10 +91,13 @@ describe('createBasenameIndex — tiebreak #1: subtree preference, shallowest de
     const idx = createBasenameIndex();
     idx.add('docs/b/photo.png');
     idx.add('docs/a/photo.png');
+    // Both at depth 1 from 'docs'. Alphabetical → 'docs/a/photo.png' wins.
     expect(idx.resolveEmbed('photo.png', 'docs/meeting.md')).toBe('docs/a/photo.png');
   });
 
   test('subtree preference beats shorter relative hop from outside', () => {
+    // 'sibling/photo.png' is 2 hops away from 'docs'; 'docs/sub/photo.png'
+    // is 1 step deeper, but it's in subtree → wins.
     const idx = createBasenameIndex();
     idx.add('sibling/photo.png');
     idx.add('docs/deep/deeper/photo.png');
@@ -99,6 +107,9 @@ describe('createBasenameIndex — tiebreak #1: subtree preference, shallowest de
 
 describe('createBasenameIndex — tiebreak #2: shortest relative hops when no subtree match', () => {
   test('shortest hop wins when nothing is in the subtree', () => {
+    // sourceDir = 'archive/old'; no in-subtree match.
+    // Hops to 'docs/photo.png': up 2 ('archive', 'old') + down 1 ('docs') = 3.
+    // Hops to 'attachments/deep/dir/photo.png': up 2 + down 3 = 5.
     const idx = createBasenameIndex();
     idx.add('attachments/deep/dir/photo.png');
     idx.add('docs/photo.png');
@@ -109,6 +120,7 @@ describe('createBasenameIndex — tiebreak #2: shortest relative hops when no su
     const idx = createBasenameIndex();
     idx.add('zulu/photo.png');
     idx.add('alpha/photo.png');
+    // sourceDir = 'mid'; both candidates are 2 hops away (up 1 + down 1).
     expect(idx.resolveEmbed('photo.png', 'mid/a.md')).toBe('alpha/photo.png');
   });
 });
@@ -191,6 +203,8 @@ describe('createBasenameIndex — add/remove/rename', () => {
 
 describe('createBasenameIndex — property-based tiebreak determinism', () => {
   test('resolveEmbed is insertion-order independent', () => {
+    // For any multiset of paths sharing a basename, two indexes built by
+    // inserting the paths in different orders must resolve to the same value.
     fc.assert(
       fc.property(
         fc
@@ -205,6 +219,7 @@ describe('createBasenameIndex — property-based tiebreak determinism', () => {
             { minLength: 2, maxLength: 8 },
           )
           .map((entries) => {
+            // Ensure all entries share the same basename for multi-candidate resolution.
             const sharedBase = entries[0][1];
             return entries.map(([dirs]) =>
               dirs.length === 0 ? sharedBase : `${dirs.join('/')}/${sharedBase}`,
@@ -239,6 +254,9 @@ describe('createBasenameIndex — property-based tiebreak determinism', () => {
 
 describe('createBasenameIndex — NFR-1 lookup performance', () => {
   test('10K lookups against a 1000-asset index finish well under 1s', () => {
+    // basename-index lookup is O(1) amortized. Upper bound is generous
+    // (100us/lookup) so this stays non-flaky across CI hardware; the actual
+    // Map hit cost is microseconds.
     const idx = createBasenameIndex();
     for (let i = 0; i < 1000; i++) {
       const dir = i % 2 === 0 ? `dir${i % 10}` : `nested/sub/${i % 5}`;

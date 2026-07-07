@@ -1,3 +1,30 @@
+/**
+ * Structural guard — the app module graph must contain NO runtime
+ * (value-import) cycle that crosses the `lib/ ↔ editor/` layering boundary.
+ *
+ * WHY (the bug): a CI-only, non-deterministic ESM init-order flake surfaces as
+ *   `SyntaxError: Export named 'useDocumentTransition' not found in module DocumentContext.tsx`.
+ * The export is real (a plain `export function` in DocumentContext.tsx). The cause is
+ * that editor/DocumentContext.tsx sat in a value-import SCC closed by a
+ * lib/ → editor/ layering inversion in lib/config-provider.tsx. Under Bun's
+ * order-sensitive circular-export resolution plus CI 4-vCPU turbo contention, an
+ * external importer (components/EditorArea.tsx) occasionally links a named export from
+ * DocumentContext before its export environment is fully bound.
+ *
+ * WHY A STATIC SOURCE GUARD (not a module-load test): the flake is a probabilistic CI-only
+ * ESM init-order race that does not reproduce deterministically off CI, so a deterministic
+ * *runtime* test of this invariant is out of reach. Acyclicity of the module graph is a
+ * property of the source, not of any executable behavior a unit test can observe — the same rationale as
+ * provider-pool.attach-boundary.test.ts. components/EditorArea.test.ts stays as the
+ * (probabilistic) symptom canary; THIS test pins the deterministic cause.
+ *
+ * THE CONTRACT: no value-import cycle spans lib/ ↔ editor/. `import type` edges are erased
+ * at runtime and are ignored here, so a type-only re-point will NOT satisfy this test —
+ * only cutting a lib→editor *value* inversion will. The boundary phrasing is deliberate
+ * (rather than the narrower "DocumentContext is acyclic"): it keeps the guard RED until
+ * EVERY lib→editor value edge that closes a cycle is gone, so cutting just one edge of a
+ * multi-edge entanglement cannot green this test while a residual lib↔editor value cycle remains.
+ */
 import { describe, expect, test } from 'bun:test';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +47,9 @@ interface ValueEdge {
   spec: string;
 }
 
+// --- Build the value-import (runtime) graph for packages/app/src once. -----------
+// ts-morph resolves `@/*` aliases + extensions + index files via the app tsconfig,
+// so an edge is recorded only when the specifier resolves to a real in-graph module.
 const project = new Project({
   tsConfigFilePath: join(APP_DIR, 'tsconfig.json'),
   skipAddingFilesFromTsConfig: false,
@@ -29,6 +59,8 @@ const files = project.getSourceFiles().filter((sf) => {
   const p = sf.getFilePath();
   return p.startsWith(APP_SRC + sep) && !isTestLike(p);
 });
+// ts-morph brands paths as StandardizedFilePath; normalise to plain string so the
+// graph keys interoperate with the node:path-derived constants (DOCUMENT_CONTEXT, …).
 const fileSet = new Set<string>(files.map((sf) => sf.getFilePath()));
 
 const adjacency = new Map<string, Set<string>>();
@@ -56,6 +88,7 @@ for (const sf of files) {
     edges.push({ from, to, line: imp.getStartLineNumber(), spec: imp.getModuleSpecifierValue() });
   }
 
+  // Re-exports (`export … from '…'`) also load the target at runtime; type-only re-exports do not.
   for (const exp of sf.getExportDeclarations()) {
     if (!exp.getModuleSpecifier() || exp.isTypeOnly()) continue;
     const target = exp.getModuleSpecifierSourceFile();
@@ -72,6 +105,7 @@ for (const sf of files) {
   }
 }
 
+// --- Tarjan SCC over the value graph (deterministic: sorted node + edge order). ---
 const nodes = [...fileSet].sort();
 
 function computeSccGroups(): string[][] {
@@ -118,6 +152,7 @@ function computeSccGroups(): string[][] {
 
 const sccGroups = computeSccGroups();
 
+// --- Offending cycles: non-trivial SCCs spanning lib/ ↔ editor/. ------------------
 const rel = (p: string) => relative(APP_SRC, p);
 
 const offending = sccGroups
@@ -165,15 +200,27 @@ const buildReport = (): string => {
 };
 
 describe('editor module graph layering', () => {
+  // Guards against a vacuous pass: a tsconfig glob change (or a broken resolver) could
+  // drop one side of the boundary, leaving the cycle assertion to pass for free. A total
+  // size floor alone would miss a *partial* failure (e.g. the whole editor/ subtree
+  // dropped while ~460 lib/+other nodes remain). So assert BOTH boundary dirs are
+  // populated and both anchors are present — the cycle test is only meaningful when the
+  // graph actually spans lib/ ↔ editor/.
   test('static import-graph analyser sees both sides of the lib/ ↔ editor/ boundary', () => {
     expect(fileSet.has(DOCUMENT_CONTEXT)).toBe(true);
     expect(fileSet.has(CONFIG_PROVIDER)).toBe(true);
     expect([...fileSet].filter((p) => p.startsWith(EDITOR_DIR)).length).toBeGreaterThan(10);
     expect([...fileSet].filter((p) => p.startsWith(LIB_DIR)).length).toBeGreaterThan(10);
+    // Both anchors must have resolved outgoing edges — a dropped `@/` alias would leave a
+    // file in fileSet (it exists on disk) but with zero adjacency, vacuously satisfying the
+    // cycle assertion for that side of the boundary.
     expect(adjacency.get(DOCUMENT_CONTEXT)?.size ?? 0).toBeGreaterThan(0);
     expect(adjacency.get(CONFIG_PROVIDER)?.size ?? 0).toBeGreaterThan(0);
   });
 
+  // THE CONTRACT: no value-import cycle may span lib/ ↔ editor/. A lib/ value-import back
+  // into editor/ that closes a cycle turns this RED and names the offending edge(s) in the
+  // failure output.
   test('no runtime (value-import) cycle crosses the lib/ ↔ editor/ boundary', () => {
     expect(offending.length === 0 ? '' : buildReport()).toBe('');
   });

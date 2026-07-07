@@ -1,3 +1,51 @@
+/**
+ * Defer-mount knee sweep scenario.
+ *
+ * Targets `LARGE_DOC_CHAR_THRESHOLD` (declared in `EditorActivityPool.tsx`).
+ * Walks `(threshold ∈ {MAX_SAFE_INTEGER, 1.5M, 500K, 200K, 100K, 0}) ×
+ * (doc ∈ {README, AGENTS, STORIES})` and measures the
+ * `coldLoadMs`/`firstToggleMs` curve at each cell.
+ *
+ * For each cell:
+ *   1. `page.addInitScript({LARGE_DOC_CHAR_THRESHOLD: threshold})` — fires
+ *      BEFORE app boot; `env-override.ts` reads `__okPerfOverrides[KEY]`
+ *      on each call so the latest write wins.
+ *   2. Full reload via `page.goto('/')` then `page.goto(/#/<doc>)` so each
+ *      cell starts from a full page reload.
+ *   3. Capture `coldLoadMs` (wall-clock t0 → PM-visible). Mirrors
+ *      `cold-load-big-doc.ts`.
+ *   4. Click Markdown-source toggle, poll for `ok/cold/first-toggle` mark up
+ *      to 10s. The mark fires when the SourceEditor mounts for the first
+ *      time — only on docs above the threshold
+ *      (`shouldEmitFirstToggle` gate in `EditorActivityPool.tsx`).
+ *
+ * Per-doc breakeven threshold = where `coldLoadMs` and `firstToggleMs`
+ * cross (the user-visible "should we defer-mount?" decision).
+ *
+ * Cell-count caveat: in-scenario sweeps risk memory saturation past ~20
+ * cells in a single Playwright context. If the run crashes mid-sweep, use
+ * `OK_PERF_M3_THRESHOLDS` and `OK_PERF_M3_DOCS` env filters to split into
+ * smaller batches.
+ *
+ * Inputs (env vars):
+ *   - `OK_PERF_M3_THRESHOLDS` — optional comma-separated thresholds. Default
+ *     "9007199254740991,1500000,500000,200000,100000,0" (MAX_SAFE_INTEGER as
+ *     the no-defer-mount baseline; `Number.isFinite` accepts it).
+ *   - `OK_PERF_M3_DOCS` — optional comma-separated doc names. Default
+ *     "README,AGENTS,STORIES".
+ *
+ * Output JSON `metrics`:
+ *   {
+ *     sweepCount: number,
+ *     sweepsJson: string  (JSON-encoded array of {doc, threshold, coldLoadMs,
+ *                          firstToggleMs, firstToggleSkipped?, rendered})
+ *   }
+ *
+ * Sibling scenarios: `cold-load-big-doc.ts` for the underlying coldLoadMs +
+ * firstToggleMs measurement patterns; `activity-mount-sweep.ts` for the
+ * cell-loop structure.
+ */
+
 import { markerFor } from '../lib/doc-markers';
 import { installLongtaskObserver } from '../lib/longtask-observer';
 import { defineScenario } from '../lib/scenario';
@@ -25,6 +73,10 @@ const DOCS = (process.env.OK_PERF_M3_DOCS ?? DEFAULT_DOCS.join(','))
 
 const PM_READY_CHARS = 200;
 const PM_READY_TIMEOUT_MS = 90_000;
+// Bumped from 10_000 → 30_000: source-editor first-mount on STORIES (530 KB)
+// can exceed 10 s on a loaded machine; the gate fires correctly but the mark
+// emits later than the prior poll window. 30 s gives headroom without pushing
+// into "scenario stuck" territory.
 const FIRST_TOGGLE_TIMEOUT_MS = 30_000;
 const SETTLE_BETWEEN_CELLS_MS = 500;
 
@@ -44,6 +96,10 @@ async function waitForVisibleProseMirrorByMarker(
 ): Promise<boolean> {
   const marker = markerFor(docName);
   try {
+    // Defensive union selector: Suspense fallback briefly shows EditorSkeleton
+    // (Option E static MDX preview was removed; the active editor always
+    // mounts but Suspense can extend during defer-mount). Either selector is
+    // sufficient for "page-visible — proceed to text-content check".
     await page.waitForSelector('.ProseMirror, [aria-label="Loading document"]', {
       state: 'attached',
       timeout: timeoutMs,
@@ -76,6 +132,9 @@ async function runCell(
   threshold: number,
   notes: string[],
 ): Promise<SweepCell> {
+  // Inject the override BEFORE app boot. addInitScript stacks across calls;
+  // each script reassigns __okPerfOverrides — latest wins because
+  // env-override.ts reads on every call (read-on-each-call semantics).
   await page.addInitScript((t: number) => {
     (
       globalThis as unknown as {
@@ -84,9 +143,12 @@ async function runCell(
     ).__okPerfOverrides = { LARGE_DOC_CHAR_THRESHOLD: t };
   }, threshold);
 
+  // Full reload to clear any prior editor state — full-reload isolation.
+  // Step 1: navigate to root to discard any in-memory editor cache.
   await page.goto(`${target}/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.waitForTimeout(SETTLE_BETWEEN_CELLS_MS);
 
+  // Step 2: cold-load the target doc and measure.
   const startWall = Date.now();
   await page.goto(`${target}/#/${encodeURIComponent(doc)}`, {
     waitUntil: 'domcontentloaded',
@@ -109,6 +171,8 @@ async function runCell(
     };
   }
 
+  // Click the Markdown-source toggle and poll for the first-toggle mark.
+  // Pattern copied from cold-load-big-doc.ts.
   const clickAt = await page.evaluate(() => performance.now());
   let firstToggleMs = -1;
   let firstToggleSkipped: string | null = null;
@@ -164,6 +228,8 @@ async function runCell(
     }
 
     if (markStartTime === null) {
+      // No mark fired within window — gate.isLarge=false at this threshold for
+      // this doc, so both editors pre-mounted, no first-toggle measurement.
       firstToggleSkipped = 'both-editors-pre-mounted';
     } else {
       firstToggleMs = Math.max(0, Math.round(markStartTime - clickAt));
@@ -221,6 +287,7 @@ export default defineScenario({
           });
         }
 
+        // Settle between cells.
         await page.waitForTimeout(SETTLE_BETWEEN_CELLS_MS);
       }
     }

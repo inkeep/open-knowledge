@@ -1,3 +1,13 @@
+/**
+ * Narrow-integration test for the editable project skill-target set
+ * (`GET` / `PUT /api/skill-targets`).
+ *
+ * Proves the headline requirement: changing the target set re-projects EVERY
+ * managed skill — the authored skill AND OK's shipped `open-knowledge` bundle —
+ * to the new editors, and reverse-projects from dropped ones, against a real
+ * server (`projectDir === contentDir`).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +26,7 @@ const markerPath = () => join(server.contentDir, '.ok', 'local', 'installed-skil
 
 beforeAll(async () => {
   server = await createTestServer();
+  // Author + install a skill into claude + cursor.
   await fetch(`${base()}/api/skill`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -45,6 +56,7 @@ describe('skill-targets — change set re-projects authored skills + OK bundle',
   });
 
   test('PUT narrows targets → skill + bundle drop from cursor, kept in claude', async () => {
+    // Precondition: installed into both claude + cursor.
     expect(existsSync(join(hostSkill('.cursor', 'trip-log'), 'SKILL.md'))).toBe(true);
 
     const res = await fetch(`${base()}/api/skill-targets`, {
@@ -59,15 +71,19 @@ describe('skill-targets — change set re-projects authored skills + OK bundle',
       expect(parsed.data.targets).toEqual(['claude']);
       const tripLog = parsed.data.reprojected.find((r) => r.name === 'trip-log');
       expect(tripLog?.hosts).toEqual(['claude']);
+      // OK's shipped bundle followed the set into claude.
       expect(parsed.data.bundleHosts).toEqual(['claude']);
     }
 
+    // Authored skill: present in claude, gone from cursor.
     expect(existsSync(join(hostSkill('.claude', 'trip-log'), 'SKILL.md'))).toBe(true);
     expect(existsSync(hostSkill('.cursor', 'trip-log'))).toBe(false);
 
+    // Shipped bundle: present in claude, gone from cursor.
     expect(existsSync(join(hostSkill('.claude', 'open-knowledge'), 'SKILL.md'))).toBe(true);
     expect(existsSync(hostSkill('.cursor', 'open-knowledge'))).toBe(false);
 
+    // Marker host set synced to the new targets.
     const marker = JSON.parse(readFileSync(markerPath(), 'utf-8')) as {
       skills: Record<string, { hosts: string[] }>;
     };

@@ -174,6 +174,8 @@ describe('encodeShareTargetForHash', () => {
   });
 
   test('folder target ignores branch (no ?branch= appended)', () => {
+    // The branch-switch decision resolves upstream before navigation, so the
+    // folder hash carries no branch query — matching in-app folder nav.
     expect(encodeShareTargetForHash('folder', 'docs/sub', 'main')).toBe('#/docs/sub/');
     expect(encodeShareTargetForHash('folder', '', 'main')).toBe('#/');
   });
@@ -217,8 +219,15 @@ describe('asset hash helpers', () => {
   });
 });
 
+// Managed-artifact docs (skills/templates) open as ordinary editor tabs, so
+// their `#/…` hashes resolve to their synthetic doc name like any document —
+// `skillDocName`/`templateDocName` build the raw key, `hashFromDocName` builds
+// the hash, and `docNameFromHash` decodes it back to the same key.
 describe('managed-artifact doc names round-trip as documents', () => {
   test('skill doc name round-trips through the hash', () => {
+    // A GLOBAL skill is the synthetic-doc form (`__skill__/global/<name>`);
+    // a project skill is a content doc, never `__skill__/project/<name>`, so the
+    // round-trip case uses the global form (the only real synthetic skill doc).
     const docName = skillLiveDocName('global', 'run-tests');
     expect(docName).toBe('__skill__/global/run-tests');
     expect(hashFromDocName(docName)).toBe('#/__skill__/global/run-tests');
@@ -238,10 +247,15 @@ describe('managed-artifact doc names round-trip as documents', () => {
   });
 
   test('a percent-encoded URL hash decodes back to the raw doc name', () => {
+    // The browser percent-encodes the URL hash; docNameFromHash decodes per
+    // segment so the key matches the raw doc name the tab/provider uses.
     expect(docNameFromHash('#/__template__/My%20Notes/plan')).toBe('__template__/My Notes/plan');
   });
 });
 
+// Skill bundle files are a viewer route, not a doc — their hash round-trips the
+// three coordinates (`scope` / `name` / `path`) the scope-aware `/api/skill-file`
+// read needs, and must NOT be mis-read as a docName or asset path.
 describe('skill-file hash', () => {
   test('round-trips scope / name / nested path', () => {
     const target = {
@@ -272,10 +286,13 @@ describe('skill-file hash', () => {
   test('returns null for a non-skill-file hash', () => {
     expect(skillFileFromHash('#/some/doc')).toBeNull();
     expect(skillFileFromHash('#/__asset__/images/x.png')).toBeNull();
+    // Missing the path tail (scope + name only) is not a valid bundle file.
     expect(skillFileFromHash('#/__skill-file__/global/trip-log')).toBeNull();
   });
 
   test('rejects an unknown scope segment (hash is untrusted/editable)', () => {
+    // The first segment must be a real skill scope (`project` | `global`) — a
+    // hand-edited or stale hash with a bogus scope must not become a target.
     expect(skillFileFromHash('#/__skill-file__/bogus/trip-log/references/x.md')).toBeNull();
     expect(skillFileFromHash('#/__skill-file__/personal/trip-log/references/x.md')).toBeNull();
   });

@@ -1,3 +1,17 @@
+/**
+ * Pins the boot-order contract for `runBootstrap`. The order-of-operations
+ * is load-bearing: registerIpcHandlers MUST run before nativeTheme.themeSource
+ * is set, AND nativeTheme.themeSource MUST be set before any window
+ * construction. Renderer-mount races otherwise land on a dead channel; cold-
+ * launch chrome correctness regresses if the show-gate's IPC handlers
+ * aren't reachable when the renderer fires `ok:theme:applied`.
+ *
+ * runBootstrap itself does NOT create windows — window construction is the
+ * caller's responsibility. The "before any createWindow" assertion is
+ * implicit (no createWindow callable is exposed to runBootstrap), but pinned
+ * by call-order tracking against the injected deps.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { runBootstrap } from '../../src/main/bootstrap.ts';
 import { emptyState } from '../../src/main/state-store.ts';
@@ -99,6 +113,8 @@ describe('runBootstrap order-of-operations', () => {
     const { calls, deps } = makeTracingDeps();
     await runBootstrap(deps);
 
+    // The deps we pass do not expose a createWindow primitive — verify the
+    // function only touches its declared dependency surface.
     const allowedSteps = new Set([
       'loadAppState',
       'evaluateSchemaCompatibility',
@@ -150,6 +166,7 @@ describe('runBootstrap return shape', () => {
       persistedSchemaVersion: 99,
       maxSupported: 1,
     });
+    // Diagnostic also surfaces in the warn log so operators can correlate.
     expect(warns.some((w) => w.msg.includes('schemaVersion'))).toBe(true);
   });
 });

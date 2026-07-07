@@ -1,3 +1,6 @@
+/**
+ * Unit tests for activity-log ring-buffer.
+ */
 import { beforeEach, describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 import { captureEffect, type EffectValue } from './activity-log.ts';
@@ -65,6 +68,7 @@ describe('captureEffect — happy path', () => {
 
     const effectsMap = doc.getMap<EffectValue>('agent-effects');
     const value = [...effectsMap.values()][0] as EffectValue;
+    // Quill Delta insert op: { insert: 'abc' }
     expect(value.delta).toEqual([{ insert: 'abc' }]);
   });
 
@@ -83,6 +87,7 @@ describe('captureEffect — happy path', () => {
   });
 
   test('does nothing when ytext has no doc (early return)', () => {
+    // Creating a Y.Text without a Y.Doc — accessing .doc returns null
     const orphanText = new Y.Text();
     expect(() => captureEffect(orphanText, 'agent-orphan')).not.toThrow();
   });
@@ -106,6 +111,7 @@ describe('captureEffect — ring-buffer eviction', () => {
   test('evicts OLDEST entries by timestamp when over 50', () => {
     const { doc, ytext } = makeDoc();
 
+    // Artificially set timestamps to be distinguishable
     for (let i = 0; i < 60; i++) {
       captureEffect(ytext, `agent-${i}`, 'seed');
       doc.transact(() => {
@@ -117,6 +123,8 @@ describe('captureEffect — ring-buffer eviction', () => {
     const timestamps = [...effectsMap.values()].map((v) => (v as EffectValue).timestamp);
     const min = Math.min(...timestamps);
     const max = Math.max(...timestamps);
+    // The retained entries should be from the more-recent writes, not the oldest
+    // Since the first 10 are evicted, all remaining timestamps >= the 11th entry's timestamp
     expect(max - min).toBeLessThan(10_000); // all within 10s — they're all ~same time
     expect(effectsMap.size).toBe(50);
   });
@@ -153,6 +161,10 @@ describe('captureEffect — error handling (D37)', () => {
     const { doc, ytext } = makeDoc();
     const effectsMap = doc.getMap<EffectValue>('agent-effects');
 
+    // Force the inner effectsMap.set() to throw by patching the method after
+    // captureEffect wires the observer but before the user's transact fires.
+    // This is the most reliable reproducer: observer runs, inner transact throws,
+    // catch block records the failure + increments the metric.
     captureEffect(ytext, 'agent-fail', 'seed');
 
     const originalSet = effectsMap.set.bind(effectsMap);
@@ -179,8 +191,14 @@ describe('captureEffect — error handling (D37)', () => {
     const { doc, ytext } = makeDoc();
     captureEffect(ytext, 'agent-leak', 'seed');
 
+    // Destroying the doc before any write must detach the observer so a later
+    // (post-destroy) write on a reused ytext reference cannot fire the capture
+    // into a destroyed doc (would throw in production with NODE_ENV=production).
     doc.destroy();
 
+    // After destroy, the observer should already be unhooked. Verify by checking
+    // the internal observer set on Y.Text has no observers left.
+    // yjs stores observers on `_eH` (EventHandler). If it's empty the leak is fixed.
     const eH = (ytext as unknown as { _eH?: { l: unknown[] } })._eH;
     expect(eH?.l.length ?? 0).toBe(0);
   });

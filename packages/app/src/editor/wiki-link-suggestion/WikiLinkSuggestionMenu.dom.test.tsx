@@ -1,3 +1,19 @@
+/**
+ * Tests for the `[[`-wiki-link picker's row layout.
+
+ *
+ * The polish widened the popup and switched the secondary path/docName line
+ * from single-line end-truncation to a break-all/line-clamp wrap so a long
+ * link's discriminating tail stays legible. These tests pin that the full path
+ * text renders and the wrap classes are present, while the existing
+ * page/asset/create/anchor rendering + selection markers stay intact.
+ *
+ * Folder rows: folders arrive at this component already collapsed to
+ * `kind:'page'` by the upstream `buildSuggestionItems` mapping (the
+ * `WikiLinkSuggestionItem` union has no `folder` variant), so a dedicated
+ * folder affordance is not assertable here. Symlinks are
+ * likewise not represented in the item shape.
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { WikiLinkSuggestionItem } from '../extensions/wiki-link-suggestion';

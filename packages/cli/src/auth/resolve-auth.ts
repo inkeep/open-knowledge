@@ -5,19 +5,39 @@ type AuthTier = 'A' | 'B' | 'C' | 'none';
 
 interface ResolvedAuth {
   tier: AuthTier;
+  /**
+   * git -c flags to pass for credential injection.
+   * Empty array when tier is 'none' or when using token-store relay.
+   */
   credentialArgs: string[];
 }
 
 interface ResolveAuthOptions {
+  /** Skip gh detection even if gh is on PATH */
   skipGhDetect?: boolean;
 }
 
+/**
+ * Resolve the best available auth method for a given git hostname.
+ *
+ * Tier A — gh CLI available and authenticated:
+ *   credentialArgs = ['-c', "credential.helper=!gh auth git-credential"]
+ *
+ * Tier B/C — token stored in TokenStore (keyring or file):
+ *   credentialArgs = ['-c', "credential.helper=!open-knowledge auth git-credential"]
+ *
+ * none — no auth available:
+ *   credentialArgs = []
+ *
+ * @param _detectGhFn - injectable for testing; defaults to the real detectGh
+ */
 export async function resolveAuth(
   host: string,
   tokenStore: TokenStore,
   options: ResolveAuthOptions = {},
   _detectGhFn: () => ReturnType<typeof detectGh> = detectGh,
 ): Promise<ResolvedAuth> {
+  // Tier A: gh CLI
   if (!options.skipGhDetect) {
     const gh = _detectGhFn();
     if (gh.available) {
@@ -28,6 +48,7 @@ export async function resolveAuth(
     }
   }
 
+  // Tier B/C: stored token
   const entry = await tokenStore.get(host);
   if (entry != null) {
     const tier: AuthTier = entry.gitProtocol === 'ssh' ? 'C' : 'B';
@@ -37,5 +58,6 @@ export async function resolveAuth(
     };
   }
 
+  // none
   return { tier: 'none', credentialArgs: [] };
 }

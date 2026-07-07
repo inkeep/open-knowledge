@@ -81,6 +81,12 @@ describe('validateMediaUrl — extensionless CDN URLs (no false positive)', () =
 });
 
 describe('validateMediaUrl — YouTube accepted for video kind (Video dispatches to iframe)', () => {
+  // Video.tsx's `parseYouTubeUrl` helper routes recognized YouTube URLs
+  // to a `<LiteYouTubeEmbed>` facade (thumbnail-then-iframe), so
+  // accepting them here matches what the renderer will actually do. The
+  // validator stays permissive at the host level — Video.tsx's fallback
+  // to `<video>` covers malformed IDs.
+
   test('accepts youtube.com/watch URLs', () => {
     expect(
       validateMediaUrl('https://www.youtube.com/watch?v=rekaSOwGMu0&pp=ugUHEgVlbi1H', 'video'),
@@ -122,6 +128,12 @@ describe('validateMediaUrl — YouTube accepted for video kind (Video dispatches
   });
 
   test('rejects unsupported YouTube subdomains the renderer cannot dispatch', () => {
+    // The validator's YouTube check delegates to `parseYouTubeUrl` so it
+    // agrees with the renderer's allowlist exactly. Subdomains the
+    // parser doesn't enumerate (`kids.`, `studio.`, etc.) fall through
+    // to the broad `endsWith('.youtube.com')` embed-provider detection
+    // and get the "Unrecognized YouTube URL" rejection — a clear error
+    // at PropPanel time instead of a silent broken-render later.
     expect(validateMediaUrl('https://kids.youtube.com/watch?v=dQw4w9WgXcQ', 'video')).toEqual({
       valid: false,
       reason: 'embed-provider',
@@ -135,6 +147,10 @@ describe('validateMediaUrl — YouTube accepted for video kind (Video dispatches
   });
 
   test('rejects malformed YouTube IDs at the validator (matches renderer behavior)', () => {
+    // The renderer's `parseYouTubeUrl` rejects IDs that don't match
+    // the 11-char `[A-Za-z0-9_-]` grammar; the validator inherits that
+    // strictness so a paste-time typo surfaces immediately instead of
+    // becoming a broken-iframe surprise.
     expect(validateMediaUrl('https://youtu.be/short', 'video')).toEqual({
       valid: false,
       reason: 'embed-provider',
@@ -144,6 +160,9 @@ describe('validateMediaUrl — YouTube accepted for video kind (Video dispatches
 });
 
 describe('validateMediaUrl — Vimeo accepted for video kind (Video dispatches to iframe)', () => {
+  // Video.tsx's `isVimeoUrl` helper routes recognized Vimeo URLs to
+  // `@u-wave/react-vimeo` (eager iframe), so the validator returns valid.
+
   test('accepts canonical vimeo.com URLs', () => {
     expect(validateMediaUrl('https://vimeo.com/76979871', 'video')).toEqual({ valid: true });
     expect(validateMediaUrl('https://www.vimeo.com/76979871', 'video')).toEqual({ valid: true });
@@ -169,6 +188,10 @@ describe('validateMediaUrl — Vimeo accepted for video kind (Video dispatches t
 });
 
 describe('validateMediaUrl — Loom accepted for video kind (Video dispatches to iframe)', () => {
+  // Video.tsx's `isLoomUrl` helper routes recognized Loom URLs to the
+  // direct-iframe LoomEmbed branch, so the validator returns valid.
+  // Image + Audio still reject Loom (no embed dispatch for those kinds).
+
   test('accepts canonical share URLs', () => {
     expect(validateMediaUrl('https://www.loom.com/share/abc123def456ghi789jk', 'video')).toEqual({
       valid: true,
@@ -191,6 +214,10 @@ describe('validateMediaUrl — Loom accepted for video kind (Video dispatches to
   });
 
   test('rejects malformed Loom IDs (too short — under 20 chars)', () => {
+    // The validator's Loom check delegates to `isLoomUrl` → `parseLoomUrl`
+    // → `LOOM_ID_RE` ([A-Za-z0-9]{20,}). Anything shorter falls through to
+    // the embed-provider rejection path so paste-time typos surface with
+    // a clear error instead of becoming a broken-iframe surprise.
     expect(validateMediaUrl('https://www.loom.com/share/abc', 'video')).toEqual({
       valid: false,
       reason: 'embed-provider',
@@ -205,6 +232,10 @@ describe('validateMediaUrl — Loom accepted for video kind (Video dispatches to
 });
 
 describe('validateMediaUrl — embed-provider rejection (image / audio kinds for every provider)', () => {
+  // Video flips to acceptance for YouTube + Vimeo + Loom — image / audio
+  // renderers don't dispatch any embed host, so embed URLs stay rejected
+  // for those kinds.
+
   test('YouTube rejected for image and audio kinds', () => {
     expect(validateMediaUrl('https://youtu.be/dQw4w9WgXcQ', 'image')).toEqual({
       valid: false,
@@ -370,6 +401,13 @@ describe('mediaUrlValidationMessage', () => {
   });
 
   test('embed-provider message generator still produces video-specific output (defensive coverage)', () => {
+    // YouTube + Vimeo + Loom + video kind all dispatch via their
+    // helpers, so the embed-provider rejection path on video kind only
+    // fires now when a provider HOST is matched but the URL grammar
+    // fails (malformed share / embed link). The message generator
+    // produces an "Unrecognized X URL" message in that case — pinned
+    // here so a future regression that resurrects the old "not yet
+    // supported" wording breaks loudly.
     const vimeoMsg = mediaUrlValidationMessage(
       { valid: false, reason: 'embed-provider', provider: 'vimeo' },
       'video',
@@ -377,6 +415,9 @@ describe('mediaUrlValidationMessage', () => {
     expect(vimeoMsg).toContain('Vimeo');
     expect(vimeoMsg).toContain('Unrecognized');
     expect(vimeoMsg).not.toContain('PRD-');
+    // Old "not yet supported" wording was stale — Vimeo IS dispatched.
+    // The new message reflects that the provider is supported but the
+    // URL shape didn't pass the parser.
     expect(vimeoMsg).not.toContain('not yet supported');
 
     const loomMsg = mediaUrlValidationMessage(
@@ -397,6 +438,7 @@ describe('mediaUrlValidationMessage', () => {
     expect(imgMsg).toContain('not direct image files');
     expect(imgMsg).not.toContain('embeds');
 
+    // Audio-kind interpolation is pinned directly (not just via PropPanel).
     const audioMsg = mediaUrlValidationMessage(
       { valid: false, reason: 'embed-provider', provider: 'loom' },
       'audio',

@@ -1,3 +1,15 @@
+/**
+ * `install` MCP tool — project an authored skill's source
+ * (`.ok/skills/<name>/`) out into your editor host dirs (`.claude/skills/`,
+ * `.cursor/skills/`, `.codex/skills/`) so your agents pick it up.
+ *
+ * The one new verb beyond the `skill` target on write/edit/delete/move: the
+ * deliberate Draft → Installed step. Routes to `POST /api/skill/install`
+ * (server) which validates the source first (a conflicted / malformed SKILL.md
+ * is refused, never projected verbatim), projects to the project-configured
+ * editors (or an explicit `targets` list), and records the marker so
+ * reclaim re-materializes it and the sharing-mode exclude stays skill-aware.
+ */
 import {
   type SkillScope,
   type SkillTargetEditor,
@@ -84,6 +96,8 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       if (!context.url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
 
+      // Target resolution lives server-side: explicit tool arg → the project's
+      // committed `.ok/skill-targets.json` → detected project-configured editors.
       const result = await httpPost(context.url, '/api/skill/install', {
         ...(args.scope !== undefined ? { scope: args.scope } : {}),
         name: args.name,

@@ -9,6 +9,8 @@ import {
   repairLaunchJson,
 } from './repair-launch-json.ts';
 
+// Current canonical recipe — the `# ok-ui-v1` `/bin/sh` chain that runs
+// `ok start` (not bare `ok ui`), so a worktree gets its own collab server.
 const CANONICAL_ENTRY = {
   name: 'open-knowledge-ui',
   runtimeExecutable: '/bin/sh',
@@ -17,6 +19,8 @@ const CANONICAL_ENTRY = {
   autoPort: true,
 };
 
+// Published shape (`npx @latest ui`). Launched a bare UI with no collab
+// server — now a `legacy-bare` form that migrates forward to the chain.
 const LEGACY_AT_LATEST_ENTRY = {
   name: 'open-knowledge-ui',
   runtimeExecutable: 'npx',
@@ -41,6 +45,7 @@ const LEGACY_BARE_WITH_Y_ENTRY = {
   autoPort: true,
 };
 
+/** Assert a rewritten entry is the current canonical chain shape. */
 function expectCanonicalChain(entry: { runtimeExecutable: string; runtimeArgs: string[] }): void {
   expect(entry.runtimeExecutable).toBe('/bin/sh');
   expect(entry.runtimeArgs.slice(0, 2)).toEqual(['-l', '-c']);
@@ -106,6 +111,8 @@ describe('classifyLaunchJsonEntry', () => {
   });
 
   it('returns "preserved" when the bare @latest spec omits the -y flag', () => {
+    // Forward-migration only — entries that already pin @latest but happen
+    // to lack `-y` are user-curated; leave them. Mirrors the MCP classifier.
     expect(
       classifyLaunchJsonEntry({
         name: 'open-knowledge-ui',
@@ -136,6 +143,7 @@ describe('classifyLaunchJsonEntry', () => {
   });
 
   it('returns "preserved" for legacy bare shape with extra trailing args', () => {
+    // Foreign-customized — e.g. someone appended `--port 9999`. Don't touch.
     expect(
       classifyLaunchJsonEntry({
         name: 'open-knowledge-ui',
@@ -294,6 +302,8 @@ describe('repairLaunchJson', () => {
   });
 
   it('preserves co-located non-OK configurations when rewriting', () => {
+    // Real launch.json files often have other dev tooling configs alongside.
+    // The repair sweep must rewrite only our entry and leave the rest intact.
     const foreignConfig = {
       name: 'some-other-tool',
       runtimeExecutable: 'node',
@@ -329,6 +339,7 @@ describe('repairLaunchJson', () => {
   });
 
   it('does not create launch.json when it was absent', () => {
+    // Negative-coverage: a sweep that does nothing must not silently scaffold.
     repairLaunchJson({ projectDir, logger });
     expect(existsSync(join(projectDir, '.claude', 'launch.json'))).toBe(false);
   });
@@ -374,6 +385,9 @@ describe('repairLaunchJson', () => {
   });
 
   it('reports read-failed and emits the structured event on non-object root', () => {
+    // Symmetric with the JSON-parse-error branch — both surface
+    // structurally-broken files via the same `launch-json-repair-read-failed`
+    // event so operators tailing stderr see them, not just unparseable JSON.
     const dir = join(projectDir, '.claude');
     mkdirSync(dir, { recursive: true });
     const path = join(dir, 'launch.json');
@@ -432,11 +446,17 @@ describe('repairLaunchJson', () => {
       expect(writeFailed?.configPath).toBe(configPath);
       expect(typeof writeFailed?.error).toBe('string');
     } finally {
+      // Restore writeability so afterEach's rmSync doesn't trip on a
+      // read-only file inside the test scratch tree.
       chmodSync(configPath, 0o644);
     }
   });
 
   it('rewrites only the first matching entry when somehow duplicated', () => {
+    // Defensive — `scaffoldLaunchJson` uses findIndex which targets the first
+    // match, so a hypothetical duplicate-named launch.json (manual edit, merge
+    // conflict resolved by appending) gets the first entry repaired. Pinning
+    // this behavior so the helper's findIndex contract can't drift to findLast.
     const configPath = writeLaunchJson({
       version: '0.0.1',
       configurations: [LEGACY_BARE_ENTRY, { ...LEGACY_BARE_ENTRY, port: 99999 }],
@@ -448,6 +468,7 @@ describe('repairLaunchJson', () => {
     const written = JSON.parse(readFileSync(configPath, 'utf-8'));
     expect(written.configurations).toHaveLength(2);
     expectCanonicalChain(written.configurations[0]);
+    // Second duplicate is left alone (findIndex returns first match only).
     expect(written.configurations[1].runtimeArgs).toEqual(['@inkeep/open-knowledge', 'ui']);
   });
 
@@ -470,6 +491,7 @@ describe('repairLaunchJson', () => {
   });
 
   it('skipped-reclaim-disabled fires even when no launch.json exists', () => {
+    // Distinct from no-file because the env gate runs before the existsSync check.
     const result = repairLaunchJson({ projectDir, logger, reclaimDisableEnv: '1' });
     expect(result.outcome.outcome).toBe('skipped-reclaim-disabled');
     expect(logEvents).toEqual([

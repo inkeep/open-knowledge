@@ -8,6 +8,10 @@ import {
   installClientLogForwarder,
 } from './install-client-log-forwarder';
 
+// The forwarder reads `console` / `window` / `document` through injectable
+// seams, so these unit tests run in the plain (non-DOM) tier with fakes — no
+// jsdom, fully deterministic.
+
 let handle: ClientLogForwarderHandle | undefined;
 afterEach(() => {
   handle?.uninstall();
@@ -96,6 +100,7 @@ function install(
 
 describe('installClientLogForwarder', () => {
   test('no-op when no window is available', () => {
+    // No windowObj injected + no global window in the unit-test tier.
     expect(installClientLogForwarder({ fetchImpl: makeFetchSpy() })).toBeUndefined();
   });
 
@@ -235,9 +240,11 @@ describe('installClientLogForwarder', () => {
     });
     expect(h1).toBeDefined();
     h1?.uninstall();
+    // Console restored: capturing no longer happens.
     con.warn('after uninstall');
     h1?.flushNow();
     expect(fetchSpy).not.toHaveBeenCalled();
+    // Marker cleared: a second install on the same window succeeds.
     handle = installClientLogForwarder({
       fetchImpl: fetchSpy,
       consoleObj: con,

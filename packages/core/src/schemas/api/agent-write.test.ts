@@ -63,9 +63,13 @@ describe('AgentWriteRequestSchema', () => {
     if (traversal.success || hiddenDot.success) return;
     const traversalMsg = traversal.error.issues[0]?.message ?? '';
     const hiddenDotMsg = hiddenDot.error.issues[0]?.message ?? '';
+    // Each failure carries its own classified reason from `validateDocName`…
     expect(traversalMsg).toContain('..');
     expect(hiddenDotMsg).toContain('hidden');
+    // …so distinct failure modes no longer collapse to one generic line.
     expect(traversalMsg).not.toBe(hiddenDotMsg);
+    // The `docName` field path survives the superRefine so `withValidation`'s
+    // `detail` reads `docName: <reason>` (path-prefixed), not a bare `: <reason>`.
     expect(traversal.error.issues[0]?.path).toEqual(['docName']);
   });
 
@@ -94,6 +98,10 @@ describe('AgentWriteMdRequestSchema', () => {
   });
 
   test('accepts empty markdown string (empty replace clears the body)', () => {
+    // `markdown` must be present
+    // but may be empty: `position: "replace"` with an empty payload clears the
+    // document body. `.min(1)` never prevented clears (whitespace satisfied it)
+    // while blocking the legitimate case.
     const result = AgentWriteMdRequestSchema.safeParse({ markdown: '' });
     expect(result.success).toBe(true);
   });
@@ -240,6 +248,9 @@ describe('AgentWriteSuccessSchema', () => {
   });
 
   test('rejects when ok:true wrapper is present (D22)', () => {
+    // Migrated handlers MUST drop the `ok: true` wrapper. A reader-side
+    // safeParse should still ACCEPT it via `.loose()` (forward-compat) —
+    // this test documents the intentional non-strictness.
     const result = AgentWriteSuccessSchema.safeParse({
       ok: true,
       timestamp: '2026-04-30T00:00:00.000Z',
@@ -380,3 +391,7 @@ describe('AgentUndoSuccessSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cluster B: pages CRUD
+// ---------------------------------------------------------------------------

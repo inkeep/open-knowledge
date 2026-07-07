@@ -22,6 +22,10 @@ describe('keyboard shortcut registry', () => {
     expect(formatShortcut('new-folder', 'mac')).toBe('⇧⌘ N');
     expect(formatShortcut('new-folder', 'windowsLinux')).toBe('Ctrl Shift N');
     expect(formatShortcut('edit-with-ai', 'mac')).toBe('⇧⌘ I');
+    expect(formatShortcut('tab-new', 'mac')).toBe('⌘ T');
+    expect(formatShortcut('tab-next', 'mac')).toBe('⌃ Tab');
+    expect(formatShortcut('tab-previous', 'mac')).toBe('⌃⇧ Tab');
+    expect(formatShortcut('tab-reopen-closed', 'mac')).toBe('⇧⌘ T');
   });
 
   test('formats spoken shortcut labels for accessible names', () => {
@@ -39,6 +43,7 @@ describe('keyboard shortcut registry', () => {
     expect(formatShortcutLabel('source-folding', 'windowsLinux')).toBe(
       'Control Shift Left Bracket or Control Shift Right Bracket',
     );
+    expect(formatShortcutLabel('tab-next', 'mac')).toBe('Control Tab');
   });
 
   test('matches settings shortcut exactly and excludes Alt combinations', () => {
@@ -164,6 +169,7 @@ describe('keyboard shortcut registry', () => {
         'windowsLinux',
       ),
     ).toBe(true);
+    // Wrong platform modifier: Ctrl+J on macOS must NOT match (mod is exact).
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: true, altKey: false, key: 'j' },
@@ -171,6 +177,7 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
+    // Extra Alt / Shift / bare key are all excluded.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: true, key: 'j' },
@@ -214,6 +221,7 @@ describe('keyboard shortcut registry', () => {
         'windowsLinux',
       ),
     ).toBe(true);
+    // Wrong platform modifier: Ctrl+L on macOS must NOT match (mod is exact).
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: true, altKey: false, key: 'l' },
@@ -221,6 +229,7 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
+    // Shift+Cmd+L stays free for CodeMirror's source-multi-cursor binding.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'l' },
@@ -242,6 +251,58 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
+  });
+
+  test('matches tab shortcuts with strict modifiers', () => {
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, key: 't' },
+        'tab-new',
+        'mac',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, key: 't' },
+        'tab-new',
+        'windowsLinux',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, key: 't' },
+        'tab-new',
+        'mac',
+      ),
+    ).toBe(false);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, key: 'Tab' },
+        'tab-next',
+        'mac',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: 'Tab' },
+        'tab-next',
+        'mac',
+      ),
+    ).toBe(false);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: 'Tab' },
+        'tab-previous',
+        'mac',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'T' },
+        'tab-reopen-closed',
+        'mac',
+      ),
+    ).toBe(true);
   });
 
   test('matches command palette with allowed extra modifiers and rejects missing mod', () => {

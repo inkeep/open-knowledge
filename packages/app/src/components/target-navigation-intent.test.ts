@@ -112,6 +112,9 @@ describe('resolveTargetNavigationIntent', () => {
   });
 
   test('a GLOBAL skill bundle reference node carries the skill-file viewer hash', () => {
+    // The graph click path uses `intent.hash` when present so the node routes to
+    // the read-only skill-file viewer (`#/__skill-file__/…`) instead of wrapping
+    // its synthetic docName as a `#/<doc>` hash (which would open a phantom tab).
     expect(
       resolveTargetNavigationIntent('__skill__/global/demo/references/notes', {
         pages: new Set(),
@@ -126,6 +129,8 @@ describe('resolveTargetNavigationIntent', () => {
       },
       hashDocName: 'global/demo/references/notes.md',
       hash: '#/__skill-file__/global/demo/references/notes.md',
+      // Resolves to a real openable viewer, so it renders as a resolved node
+      // (not the dashed-red "missing" treatment).
       displayState: 'doc',
     });
   });

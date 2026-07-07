@@ -9,6 +9,15 @@ import type {
 } from '../../src/main/url-scheme.ts';
 import { parseOpenKnowledgeFileUrl, registerProtocolHandler } from '../../src/main/url-scheme.ts';
 
+/**
+ * Unit tests for `registerProtocolHandler`'s queue-then-flush behavior.
+ *
+ * Uses a fake `app` that captures listeners + exposes a trigger surface so
+ * tests can drive the cold-start / warm / argv paths deterministically. No
+ * real `electron` import — the pure `app` dep interface is tested against a
+ * stub.
+ */
+
 type AppEvent = 'open-url' | 'second-instance' | 'before-quit' | 'continue-activity';
 type OpenUrlListener = (event: { preventDefault: () => void }, url: string) => void;
 type SecondInstanceListener = (event: unknown, argv: readonly string[]) => void;
@@ -139,11 +148,14 @@ function makeEnv(opts?: { isPackaged?: boolean }): TestEnv {
   } as unknown as TestEnv;
 }
 
+/** Flush pending microtasks/promises so then-chains observable downstream. */
 async function flushPromises() {
+  // Two await ticks to settle nested .then in the handler's flush loop.
   await Promise.resolve();
   await Promise.resolve();
 }
 
+/** Tick scheduler: fires the next enqueued timer in env.timers. */
 function tickTimer(env: TestEnv): void {
   const next = env.timers.shift();
   if (!next) throw new Error('no timer to tick');
@@ -178,6 +190,9 @@ describe('registerProtocolHandler — setAsDefaultProtocolClient', () => {
   });
 
   test('logs a warn when setAsDefaultProtocolClient returns false', () => {
+    // Per Electron docs the method is non-throwing; `false` signals the OS
+    // refused the binding. Must surface as a warn so developers don't stare
+    // at "dev deep-links not working" without a breadcrumb.
     const env = makeEnv({ isPackaged: false });
     env.app.setAsDefaultProtocolClient = mock(() => false);
     const warnLog: Array<{ obj: object; msg: string }> = [];
@@ -206,6 +221,9 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
       getAnyReadyWindow: env.getAnyReadyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
     });
+    // Dev-mode: `setAsDefaultProtocolClient` succeeded → `before-quit` handler
+    // should have been registered. Firing it calls `removeAsDefaultProtocolClient`
+    // so Launch Services doesn't leave a stale binding pointing at this worktree.
     env.app.fireBeforeQuit();
     expect(env.app.removeAsDefaultProtocolClient).toHaveBeenCalledWith('openknowledge');
   });
@@ -220,11 +238,16 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
       getAnyReadyWindow: env.getAnyReadyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
     });
+    // Packaged builds don't touch Launch Services at runtime — the binding
+    // comes from the DMG's Info.plist (electron-builder). Nothing to remove.
     expect(() => env.app.fireBeforeQuit()).toThrow(/before-quit listener not registered/);
     expect(env.app.removeAsDefaultProtocolClient).not.toHaveBeenCalled();
   });
 
   test('does NOT register before-quit handler when setAsDefaultProtocolClient returned false', () => {
+    // If the OS refused the binding, we never claimed the scheme, so we must
+    // NOT call `removeAsDefaultProtocolClient` on quit — it would remove a
+    // binding that another app owns, breaking their deep-links.
     const env = makeEnv({ isPackaged: false });
     env.app.setAsDefaultProtocolClient = mock(() => false);
     registerProtocolHandler({
@@ -254,6 +277,7 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
       log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
     });
+    // Must NOT bubble up past the listener — app quit would be aborted.
     expect(() => env.app.fireBeforeQuit()).not.toThrow();
     expect(warnLog.some((e) => e.msg.includes('removeAsDefaultProtocolClient failed'))).toBe(true);
   });
@@ -297,6 +321,8 @@ describe('registerProtocolHandler — deferred-share routeUrl + dedup', () => {
     expect(resolveShareTarget).toHaveBeenCalledTimes(1);
     expect(routeShareToNavigator).toHaveBeenCalledTimes(1); // miss → launcher-miss
 
+    // A splash "Open in OpenKnowledge" re-click for the SAME share, 2s later,
+    // is suppressed — the share routes exactly once.
     clock += 2_000;
     control.routeUrl(url);
     await flushPromises();
@@ -304,6 +330,7 @@ describe('registerProtocolHandler — deferred-share routeUrl + dedup', () => {
     expect(resolveShareTarget).toHaveBeenCalledTimes(1);
     expect(routeShareToNavigator).toHaveBeenCalledTimes(1);
 
+    // Past the dedup window, the same share routes again.
     clock += 11_000;
     control.routeUrl(url);
     await flushPromises();
@@ -330,6 +357,7 @@ describe('registerProtocolHandler — queue-then-flush', () => {
     });
 
     env.app.fireOpenUrl('openknowledge://open?project=/tmp/p&doc=a.md');
+    // Not yet flushed — routing should not have happened.
     expect(env.openProject).not.toHaveBeenCalled();
     expect(env.sendDeepLink).not.toHaveBeenCalled();
   });
@@ -348,6 +376,11 @@ describe('registerProtocolHandler — queue-then-flush', () => {
     env.app.resolveReady();
     await flushPromises();
 
+    // Cold path — project not in existingWindows, so focusWindowForProject
+    // returned null and routeUrl took the openProject branch. The deep-link
+    // threads through as `pendingDeepLinkDoc`; delivery happens inside
+    // window-manager's dom-ready hook, NOT via deps.sendDeepLink (which is
+    // reserved for the warm focus-existing path).
     await flushPromises();
     expect(env.openProject).toHaveBeenCalledWith('/tmp/p', {
       pendingDeepLinkTarget: { kind: 'doc', path: 'a.md' },
@@ -356,6 +389,11 @@ describe('registerProtocolHandler — queue-then-flush', () => {
   });
 
   test('two deep-links received before whenReady both drain in FIFO order', async () => {
+    // The real-OS "two URLs in rapid cold-start" case
+    // is blocked on signed-DMG, but the queue-drain
+    // mechanism is deterministic and testable here. Fires two open-url
+    // events pre-ready, resolves ready, asserts BOTH routeUrl calls fire
+    // in arrival order.
     env.readyWindow = { id: 'pre-existing' };
     registerProtocolHandler({
       app: env.app,
@@ -368,12 +406,16 @@ describe('registerProtocolHandler — queue-then-flush', () => {
     env.app.fireOpenUrl('openknowledge://open?project=/tmp/p1&doc=a.md');
     env.app.fireOpenUrl('openknowledge://open?project=/tmp/p2&doc=b.md');
 
+    // Pre-ready: neither routed.
     expect(env.openProject).not.toHaveBeenCalled();
 
     env.app.resolveReady();
     await flushPromises();
     await flushPromises();
 
+    // Both URLs drained in FIFO order — no URL lost, no duplicate. Each
+    // cold-path call threads the doc through pendingDeepLinkDoc; the
+    // dom-ready hook inside createProjectWindow handles the send.
     expect(env.openProject).toHaveBeenCalledTimes(2);
     expect(env.openProject).toHaveBeenNthCalledWith(1, '/tmp/p1', {
       pendingDeepLinkTarget: { kind: 'doc', path: 'a.md' },
@@ -398,22 +440,33 @@ describe('registerProtocolHandler — queue-then-flush', () => {
     env.app.resolveReady();
     await flushPromises();
 
+    // First flush attempt schedules a retry because no window exists yet.
+    // Walk retries 1..9, asserting each rescheduled another retry without
+    // draining. Retry 10 is handled separately below — its tick is the
+    // final-attempt boundary where drain MUST fire regardless of window state.
     for (let retryIndex = 1; retryIndex <= 9; retryIndex++) {
       expect(env.timers.length).toBe(1);
       expect(env.timers[0]?.ms).toBe(500);
       expect(env.openProject).not.toHaveBeenCalled();
       tickTimer(env);
       await flushPromises();
+      // After retries 1..9 fired, still no drain — just another 500ms retry scheduled.
       expect(env.openProject).not.toHaveBeenCalled();
     }
+    // Retry 10 is the final attempt. Before we tick it, drain has NOT fired.
     expect(env.timers.length).toBe(1);
     expect(env.timers[0]?.ms).toBe(500);
     expect(env.openProject).not.toHaveBeenCalled();
     tickTimer(env);
     await flushPromises();
+    // After retry 10, drain fires unconditionally (even with no ready window).
+    // Cold-path always threads pendingDeepLinkDoc through openProject.
     expect(env.openProject).toHaveBeenCalledWith('/tmp/p', {
       pendingDeepLinkTarget: { kind: 'doc', path: 'a.md' },
     });
+    // No 11th retry is scheduled and the drain fired exactly once — guards
+    // against a regression where the final-attempt path re-arms the timer
+    // (which would surface as duplicate openProject calls on slow boots).
     expect(env.timers.length).toBe(0);
     expect(env.openProject).toHaveBeenCalledTimes(1);
   });
@@ -485,6 +538,7 @@ describe('registerProtocolHandler — queue-then-flush', () => {
     await flushPromises();
     await flushPromises();
 
+    // Cold path: pendingDeepLinkDoc threads through; sendDeepLink not used.
     expect(env.openProject).toHaveBeenCalledWith('/tmp/B', {
       pendingDeepLinkTarget: { kind: 'doc', path: 'x.md' },
     });
@@ -493,6 +547,12 @@ describe('registerProtocolHandler — queue-then-flush', () => {
 
   test('handles openProject resolving null without throwing (failure already surfaced)', async () => {
     env.readyWindow = { id: 'primary' };
+    // Stub openProject to resolve null — simulates the Navigator-fallback
+    // path where the user already saw a dialog + the Navigator reopened.
+    // The cold path no longer calls sendDeepLink at all (delivery happens
+    // inside window-manager via dom-ready), so the null return just means
+    // "no window was created, nothing more to do." Regression assertion is
+    // "no throw, no stray sendDeepLink," not "sendDeepLink skipped."
     const openProjectStub = mock(
       async (
         _p: string,
@@ -542,6 +602,8 @@ describe('registerProtocolHandler — single-file launch control', () => {
     });
     expect(control.singleFileLaunch()).toBe(false);
     env.app.fireOpenUrl('openknowledge://open?project=/tmp/p&doc=a.md');
+    // A project deep-link does NOT claim a single-file launch — the boot path
+    // still restores the previous project (unchanged behavior).
     expect(control.singleFileLaunch()).toBe(false);
   });
 
@@ -560,6 +622,10 @@ describe('registerProtocolHandler — single-file launch control', () => {
   });
 
   test('drainQueuedUrls() routes a queued file= URL with NO ready window (suppress path)', async () => {
+    // The boot path suppressed the default window, so no boot-restore window
+    // exists for the auto-flush's `getAnyReadyWindow()` gate to wait on. The
+    // boot path drains explicitly post-bootstrap; the file route creates its
+    // own window via openEphemeralFile.
     env.readyWindow = null;
     const control = registerProtocolHandler({
       app: env.app,
@@ -574,13 +640,17 @@ describe('registerProtocolHandler — single-file launch control', () => {
     env.app.resolveReady();
     await flushPromises();
 
+    // The auto-flush is parked on a 500ms retry (no window) — it has NOT drained.
     expect(env.openEphemeralFile).not.toHaveBeenCalled();
     expect(env.timers.length).toBe(1);
 
+    // The boot path drains explicitly — the file opens without waiting out the
+    // retry budget.
     control.drainQueuedUrls();
     await flushPromises();
     expect(env.openEphemeralFile).toHaveBeenCalledWith('/Users/me/notes/todo.md');
 
+    // The parked retry later fires against an empty queue — no duplicate open.
     tickTimer(env);
     await flushPromises();
     expect(env.openEphemeralFile).toHaveBeenCalledTimes(1);
@@ -589,6 +659,7 @@ describe('registerProtocolHandler — single-file launch control', () => {
 
 describe('registerProtocolHandler — urlLaunchOwnsWindow (boot-restore suppression)', () => {
   let env: TestEnv;
+  // A valid universal-link share: `openknowledge.ai/d/<base64url(github-blob-url)>`.
   const SHARE_URL = `https://openknowledge.ai/d/${encodeShareUrl(
     'https://github.com/inkeep/notes/blob/main/welcome.md',
   )}`;
@@ -610,6 +681,12 @@ describe('registerProtocolHandler — urlLaunchOwnsWindow (boot-restore suppress
     });
   }
 
+  // Regression: a cold-start share deep-link must claim the launch so the boot
+  // path opens NO default boot-restore window. Otherwise the previously-opened
+  // project opens instead of the shared target (the receive-side wrong-target
+  // failure: "share link opened a previously-opened folder instead of the
+  // shared one"). The boot path reads this via `bootRestoreDecision`'s
+  // `urlLaunch` field — see `index.ts` boot block.
   test('becomes true after a valid share URL queued pre-ready (suppresses boot-restore window)', () => {
     const control = makeControl();
     expect(control.urlLaunchOwnsWindow()).toBe(false);
@@ -617,6 +694,11 @@ describe('registerProtocolHandler — urlLaunchOwnsWindow (boot-restore suppress
     expect(control.urlLaunchOwnsWindow()).toBe(true);
   });
 
+  // The splash-page "Open in OpenKnowledge" button fires the custom-scheme
+  // share form, which `parseShareUrl` routes through a separate
+  // `parseShareCustomScheme` branch than the universal link above. Cover it so a
+  // regression there can't silently reintroduce the cold-start wrong-target bug
+  // for that flow.
   test('becomes true after a valid custom-scheme share URL', () => {
     const control = makeControl();
     const blobUrl = 'https://github.com/inkeep/notes/blob/main/welcome.md';
@@ -624,24 +706,33 @@ describe('registerProtocolHandler — urlLaunchOwnsWindow (boot-restore suppress
     expect(control.urlLaunchOwnsWindow()).toBe(true);
   });
 
+  // A single-file open also owns its own window — parity with the share path
+  // (both must suppress the default boot-restore window).
   test('becomes true after a single-file file= URL (own-window launch parity)', () => {
     const control = makeControl();
     env.app.fireOpenUrl(FILE_URL);
     expect(control.urlLaunchOwnsWindow()).toBe(true);
   });
 
+  // An invalid/unsupported share surfaces a sonner toast into the focused/any
+  // window; suppressing the default window would leave the toast nowhere to
+  // land. So an invalid share must NOT claim the launch.
   test('stays false for an invalid share URL — its toast needs an existing window', () => {
     const control = makeControl();
     env.app.fireOpenUrl('https://openknowledge.ai/d/!!!not-base64!!!');
     expect(control.urlLaunchOwnsWindow()).toBe(false);
   });
 
+  // A `screen` deep-link navigates an EXISTING window's hash — it owns no
+  // window of its own, so suppressing the default window would drop it.
   test('stays false after a screen deep-link — it targets an existing window', () => {
     const control = makeControl();
     env.app.fireOpenUrl('openknowledge://screen?name=settings');
     expect(control.urlLaunchOwnsWindow()).toBe(false);
   });
 
+  // Legacy `open?project=&doc=` is intentionally out of scope here — its boot
+  // behavior is unchanged (the boot path still restores the previous project).
   test('stays false after a legacy project deep-link (unchanged scope)', () => {
     const control = makeControl();
     env.app.fireOpenUrl('openknowledge://open?project=/tmp/p&doc=a.md');
@@ -700,6 +791,10 @@ describe('registerProtocolHandler — second-instance argv parsing', () => {
 
 describe('registerProtocolHandler — cold-start process.argv scan', () => {
   test('queues openknowledge:// URL from process.argv on cold-start CLI launch', async () => {
+    // Simulates: `OK.app/Contents/MacOS/Open\ Knowledge
+    // openknowledge://open?project=/tmp/cs&doc=a.md` — primary-instance boot
+    // where no prior app is running, so no Apple Event fires and no
+    // `second-instance` dispatch. The URL lives in `process.argv`.
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
     registerProtocolHandler({
@@ -742,6 +837,9 @@ describe('registerProtocolHandler — cold-start process.argv scan', () => {
   });
 
   test('defaults to no-op when getInitialArgv is omitted', async () => {
+    // Without the dep, the handler treats initial argv as empty — the
+    // production call site injects `() => process.argv`; unit tests that
+    // don't care about argv delivery simply omit it.
     const env = makeEnv();
     registerProtocolHandler({
       app: env.app,
@@ -758,6 +856,12 @@ describe('registerProtocolHandler — cold-start process.argv scan', () => {
   });
 });
 
+/**
+ * Share-flow routing tests — verifies that the new share dispatch
+ * routes through `sendShareDeepLink` to the focused window without
+ * disturbing the existing `open`-action path (regression-checked by the
+ * tests above continuing to pass).
+ */
 describe('registerProtocolHandler — share-flow routing', () => {
   test('routes custom-scheme share URLs (openknowledge://share?url=...) through resolution', async () => {
     const env = makeEnv();
@@ -782,6 +886,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     env.app.fireOpenUrl(`openknowledge://share?url=${encodeURIComponent(blobUrl)}`);
     await flushPromises();
 
+    // The custom-scheme URL is parsed and reaches main-side resolution.
     expect(resolveShareTarget).toHaveBeenCalledTimes(1);
     expect(resolveShareTarget).toHaveBeenCalledWith({
       owner: 'inkeep',
@@ -790,6 +895,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
       sharedUrl: blobUrl,
       target: { kind: 'doc', docPath: 'x.md' },
     });
+    // Open-flow surface MUST stay untouched on the share path.
     expect(env.sendDeepLink).not.toHaveBeenCalled();
   });
 
@@ -814,6 +920,8 @@ describe('registerProtocolHandler — share-flow routing', () => {
     env.app.resolveReady();
     await flushPromises();
 
+    // Hand-build v2 payload (0x02 leading byte) — older clients MUST surface
+    // an "update" toast, not a silent mis-decode.
     const blobBytes = new TextEncoder().encode('https://github.com/o/r/blob/main/x.md');
     const v2 = new Uint8Array(blobBytes.length + 1);
     v2[0] = 0x02;
@@ -869,6 +977,9 @@ describe('registerProtocolHandler — share-flow routing', () => {
   });
 
   test('ok share with no resolveShareTarget dep surfaces warn + no dispatch', async () => {
+    // Resolution is the decision authority for an `ok` share — without it
+    // there is no target to route to. Production main always wires it; when
+    // unwired the share drops with a debuggable warn rather than guessing.
     const env = makeEnv();
     env.readyWindow = { id: 'ready' };
     const sendShareDeepLink = mock((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
@@ -881,6 +992,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
       sendDeepLink: env.sendDeepLink,
       getAnyReadyWindow: env.getAnyReadyWindow,
       sendShareDeepLink,
+      // resolveShareTarget intentionally omitted.
       getFocusedWindow: () => null,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
       log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
@@ -898,6 +1010,9 @@ describe('registerProtocolHandler — share-flow routing', () => {
   });
 
   test('open-action URLs continue routing through the legacy path (regression check)', async () => {
+    // Adding the share-flow dispatch MUST NOT break the existing `open`
+    // action — verified by walking the same code path that the existing
+    // queue-then-flush tests rely on.
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.existingWindows.set('/tmp/p', focusedWin);
@@ -925,6 +1040,23 @@ describe('registerProtocolHandler — share-flow routing', () => {
   });
 });
 
+/**
+ * Share resolution + routing tests — when `resolveShareTarget` is
+ * wired, `routeShare` runs the shared candidate-selection algorithm in main
+ * and dispatches per outcome. These tests stub the resolver so each routing
+ * branch is exercised without standing up a real git repo.
+ *
+ *   - `branch-match-ok` -> project's editor via `openProject` with
+ *     `pendingDeepLinkDoc` + `pendingBranch` + `pendingMultiCandidate`.
+ *   - `fallback` (different branch, OK-initialized) -> project's editor
+ *     for the branch-switch prompt. Warm path: focused window +
+ *     `sendShareDeepLink({kind: 'project-branch-switch', ...})`. Cold path:
+ *     `openProject` with `pendingShareBranchSwitch`.
+ *   - `branch-match-non-ok` -> Navigator via `routeShareToNavigator`
+ *     with the `launcher-consent` payload.
+ *   - `miss` -> Navigator via `routeShareToNavigator` with the
+ *     `launcher-miss` payload.
+ */
 describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   function makeShareUrl(blobUrl: string): string {
     return `openknowledge://share?url=${encodeURIComponent(blobUrl)}`;
@@ -942,6 +1074,11 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
 
   const sharedBlobUrl = 'https://github.com/inkeep/playbooks/blob/main/docs/getting-started.md';
 
+  // Full `Candidate` builder. Typed as `Candidate` (not cast through
+  // `unknown`) so a new required field on the interface fails this fixture at
+  // compile time rather than silently omitting it — the routing branches read
+  // off the selection and a missing field would otherwise surface as a runtime
+  // undefined.
   function makeCandidate(opts: {
     path: string;
     currentBranch?: string | null;
@@ -997,6 +1134,8 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
       pendingBranch: 'main',
       pendingMultiCandidate: true,
     });
+    // Branch-match-ok path does NOT emit ok:share:received — the doc is
+    // delivered via ok:deep-link by window-manager's existing gate.
     expect(sendShareDeepLink).not.toHaveBeenCalled();
   });
 
@@ -1036,6 +1175,9 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   });
 
   test('branch-match-ok (warm) focuses existing editor + delivers ok:deep-link immediately', async () => {
+    // Regression: when the project editor is already open, openProject's
+    // focus-existing early return skips the pendingDeepLinkDoc gate, so the
+    // doc nav would be dropped. The warm fork must focus + sendDeepLink.
     const env = makeEnv();
     const editorWin: FakeWindowHandle = { id: 'editor' };
     env.existingWindows.set('/Users/me/playbooks', editorWin);
@@ -1072,6 +1214,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
       branch: 'main',
       multiCandidate: true,
     });
+    // Must NOT re-spawn through openProject on the warm path.
     expect(env.openProject).not.toHaveBeenCalled();
   });
 
@@ -1111,6 +1254,8 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     await flushPromises();
     await flushPromises();
 
+    // Warm: focusWindowForProject returns the existing window. The branch-
+    // switch payload is dispatched immediately to that window.
     expect(env.focusWindowForProject).toHaveBeenCalledWith('/Users/me/playbooks');
     expect(env.openProject).not.toHaveBeenCalled();
     expect(sendShareDeepLink).toHaveBeenCalledWith(editorWin, {
@@ -1139,6 +1284,9 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     );
     const warnLog: Array<{ obj: object; msg: string }> = [];
 
+    // sendShareDeepLink intentionally omitted (dep unwired). Production always
+    // wires it; this pins the defense-in-depth observability: the open window
+    // can't receive the payload, so the drop must be logged, not silent.
     registerProtocolHandler({
       app: env.app,
       focusWindowForProject: env.focusWindowForProject,
@@ -1158,6 +1306,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     await flushPromises();
 
     expect(warnLog.some((e) => e.msg.includes('sendShareDeepLink dep missing'))).toBe(true);
+    // Falls through to openProject so the window is at least focused.
     expect(env.openProject).toHaveBeenCalledWith(
       '/Users/me/playbooks',
       expect.objectContaining({ pendingShareBranchSwitch: expect.any(Object) }),
@@ -1198,6 +1347,9 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     await flushPromises();
     await flushPromises();
 
+    // Cold: no existing window for /Users/me/playbooks. openProject runs
+    // with pendingShareBranchSwitch so window-manager's dom-ready hook
+    // delivers after mount.
     expect(env.openProject).toHaveBeenCalledWith('/Users/me/playbooks', {
       pendingShareBranchSwitch: {
         share: expectedSharePayload(),
@@ -1209,6 +1361,11 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   });
 
   test('fallback (reason:only-worktrees) routes through the same dispatch as main-checkout', async () => {
+    // The dispatch ignores `reason` and treats both fallback variants
+    // identically. Pin that contract so a future refactor branching on
+    // `reason` (e.g. distinct branch-switch copy for worktree-anchored
+    // shares) doesn't silently lose routing-layer coverage for the
+    // worktree variant.
     const env = makeEnv();
     const editorWin: FakeWindowHandle = { id: 'editor' };
     env.existingWindows.set('/Users/me/playbooks/worktrees/wt-1', editorWin);
@@ -1378,6 +1535,12 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   });
 
   test('branch-match-ok cold path: openProject returning null degrades to launcher-miss', async () => {
+    // The share-deps `openProject` wrapper returns null when the spawn failed
+    // AND the user already saw a generic "Unable to open project" dialog
+    // (`openProjectOrFallbackToNavigator` opens an empty Navigator on its
+    // own). Without surfacing the share to that Navigator, the user lands in
+    // a launcher with no indication of what was shared. Degrade to
+    // `launcher-miss` so the share metadata + clone/locate cards appear.
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
     const openProjectStub = mock(
@@ -1418,6 +1581,9 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   });
 
   test('fallback cold path: openProject returning null degrades to launcher-miss', async () => {
+    // Same rationale as branch-match-ok, applied to the branch-switch cold
+    // spawn. If the editor can't open, the user must still see what was
+    // shared and get a forward path (clone elsewhere, locate manually).
     const env = makeEnv();
     env.readyWindow = { id: 'some-other-editor' };
     const openProjectStub = mock(
@@ -1491,6 +1657,8 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     await flushPromises();
     await flushPromises();
 
+    // Degrades to the launcher rather than dropping — the user gets a forward
+    // path (clone / locate manually) instead of nothing happening.
     expect(routeShareToNavigator).toHaveBeenCalledTimes(1);
     expect(routeShareToNavigator).toHaveBeenCalledWith({
       kind: 'launcher-miss',
@@ -1523,6 +1691,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
       sendDeepLink: env.sendDeepLink,
       getAnyReadyWindow: env.getAnyReadyWindow,
       resolveShareTarget,
+      // routeShareToNavigator intentionally omitted
       getFocusedWindow: () => env.readyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
       log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
@@ -1539,6 +1708,8 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   });
 
   test('share URL via second-instance argv reaches resolution', async () => {
+    // A warm CLI launch (`open-knowledge openknowledge://share?url=...`) arrives
+    // via second-instance argv, not an Apple Event. Share resolution must run.
     const env = makeEnv();
     env.readyWindow = { id: 'primary' };
     const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
@@ -1567,6 +1738,8 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   });
 
   test('share URL via cold-start process.argv reaches resolution', async () => {
+    // A cold CLI launch puts the share URL in process.argv (no Apple Event,
+    // no second-instance). The queue-then-flush path must still resolve it.
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
     const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
@@ -1593,6 +1766,10 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   });
 
   test('two share clicks in quick succession route independently even when resolution finishes out of order', async () => {
+    // Concurrency contract: resolution is async, so a second share can arrive
+    // (and resolve) before the first. Each routeShare closes over its own
+    // payload + resolution, so each must dispatch to its OWN target — a late
+    // first resolution must not overwrite the second's target, or vice versa.
     const env = makeEnv();
     env.readyWindow = { id: 'ready' };
     let resolveA: (s: CandidateSelection) => void = () => {};
@@ -1621,11 +1798,13 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     env.app.resolveReady();
     await flushPromises();
 
+    // Two distinct shares fire back-to-back, before either resolves.
     env.app.fireOpenUrl(makeShareUrl('https://github.com/o/repo-a/blob/main/a.md'));
     env.app.fireOpenUrl(makeShareUrl('https://github.com/o/repo-b/blob/main/b.md'));
     await flushPromises();
     expect(env.openProject).not.toHaveBeenCalled();
 
+    // Resolve OUT OF ORDER: the second share (B) settles first.
     resolveB({
       kind: 'branch-match-ok',
       candidate: makeCandidate({ path: '/p/repo-b', currentBranch: 'main' }),
@@ -1641,6 +1820,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     await flushPromises();
     await flushPromises();
 
+    // Each dispatched to its own project + its own doc — no stale overwrite.
     expect(env.openProject).toHaveBeenCalledWith(
       '/p/repo-b',
       expect.objectContaining({ pendingDeepLinkTarget: { kind: 'doc', path: 'b.md' } }),
@@ -1652,6 +1832,12 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   });
 });
 
+/**
+ * Screen-flow routing tests — verifies `routeScreen` dispatches
+ * `openknowledge://screen?name=<id>` deep links through the injected
+ * `openScreen` dep, with the same focused-vs-ready window resolution and
+ * silent-drop branches as the share flow, without disturbing the `open` path.
+ */
 describe('registerProtocolHandler — screen-flow routing', () => {
   test('warm path: routes a screen URL to the focused window via openScreen', async () => {
     const env = makeEnv();
@@ -1677,6 +1863,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
 
     expect(openScreen).toHaveBeenCalledTimes(1);
     expect(openScreen).toHaveBeenCalledWith(focusedWin, 'settings');
+    // Open-flow surface MUST stay untouched on the screen path.
     expect(env.openProject).not.toHaveBeenCalled();
     expect(env.sendDeepLink).not.toHaveBeenCalled();
   });
@@ -1704,6 +1891,8 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     await flushPromises();
 
     expect(openScreen).toHaveBeenCalledWith(focusedWin, 'install-claude');
+    // Open-flow surface stays untouched on the screen path (parity with the
+    // settings warm-path test).
     expect(env.openProject).not.toHaveBeenCalled();
     expect(env.sendDeepLink).not.toHaveBeenCalled();
   });
@@ -1746,6 +1935,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
       sendDeepLink: env.sendDeepLink,
       getAnyReadyWindow: env.getAnyReadyWindow,
       getFocusedWindow: () => null,
+      // openScreen intentionally omitted — handler must silent-drop with a warn.
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
       log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
     });
@@ -1771,6 +1961,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
       focusWindowForProject: env.focusWindowForProject,
       openProject: env.openProject,
       sendDeepLink: env.sendDeepLink,
+      // Both window-finders return null.
       getAnyReadyWindow: mock(() => null),
       openScreen,
       getFocusedWindow: () => null,
@@ -1788,6 +1979,22 @@ describe('registerProtocolHandler — screen-flow routing', () => {
   });
 });
 
+/**
+ * `continue-activity` Handoff path — macOS Universal Links. The event fires
+ * when a user taps `https://openknowledge.ai/d/<encoded>` on a paired device
+ * (or, post-AASA-activation, in Slack/iMessage/Notes on this device). The
+ * handler:
+ *   1. Filters for `NSUserActivityTypeBrowsingWeb` only — other activity
+ *      types stay quiet (other apps' Handoff payloads, future Apple
+ *      additions).
+ *   2. Reads `webpageURL` from `details` first, then `userInfo` (defensive
+ *      against API drift).
+ *   3. Host-gates to `openknowledge.ai` / `www.openknowledge.ai` so a
+ *      malicious `NSUserActivityTypeBrowsingWeb` referencing a third-party
+ *      URL can never poison the queue.
+ *   4. Routes the URL through the same `enqueueOrRoute` plumbing as the
+ *      `open-url` path, so queue-then-flush + share-flow dispatch apply.
+ */
 describe('registerProtocolHandler — continue-activity Handoff path', () => {
   test('routes Universal Link to share dispatch via enqueueOrRoute', async () => {
     const env = makeEnv();
@@ -1815,7 +2022,10 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     });
     await flushPromises();
 
+    // Handler calls preventDefault to signal it owns the activity (suppresses
+    // `continue-activity-error` from AppKit when no other listener picks up).
     expect(event.preventDefault).toHaveBeenCalled();
+    // The Handoff Universal Link is parsed and reaches main-side resolution.
     expect(resolveShareTarget).toHaveBeenCalledTimes(1);
     expect(resolveShareTarget).toHaveBeenCalledWith({
       owner: 'inkeep',
@@ -1855,6 +2065,10 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
   });
 
   test('reads webpageURL from userInfo as a fallback when details is undefined', async () => {
+    // Older Electron shipped `webpageURL` on `userInfo` instead of `details`;
+    // the AC text also points at `userInfo?.webpageURL`. The handler tries
+    // both so the receiver path stays robust across Electron versions and
+    // test-double shapes.
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
@@ -1918,6 +2132,9 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
   });
 
   test('ignores activities whose webpageURL is on a non-AASA host', async () => {
+    // Defense-in-depth: even with the correct activity type, the URL must
+    // resolve to the AASA-listed hosts. A `NSUserActivityTypeBrowsingWeb`
+    // referencing example.com must not enter our queue.
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
@@ -2038,6 +2255,10 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
   });
 
   test('queue-then-flush: activity received before whenReady is drained after', async () => {
+    // Apple's Handoff handoff event can fire BEFORE `app.whenReady()` on a
+    // cold launch — the queue-then-flush guarantee must extend to it. We
+    // fire `continue-activity` pre-ready, then resolve ready, then assert
+    // the share dispatch fires exactly once.
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
@@ -2054,12 +2275,15 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
     });
 
+    // Pre-ready: activity fires; handler routes through enqueueOrRoute which
+    // pushes into the queue (flushed=false). No dispatch yet.
     const encoded = encodeShareUrl('https://github.com/o/r/blob/main/x.md');
     env.app.fireContinueActivity('NSUserActivityTypeBrowsingWeb', null, {
       webpageURL: `https://openknowledge.ai/d/${encoded}`,
     });
     expect(resolveShareTarget).not.toHaveBeenCalled();
 
+    // After ready + flush, the queued URL is drained.
     env.app.resolveReady();
     await flushPromises();
 
@@ -2067,6 +2291,9 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
   });
 
   test('existing open-url + share-flow paths still route correctly after adding continue-activity', async () => {
+    // Regression check — adding the new listener must not change any of the
+    // existing routing surfaces. We exercise both legacy `open` and share
+    // dispatch and confirm no contamination.
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.existingWindows.set('/tmp/p', focusedWin);
@@ -2086,10 +2313,12 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     env.app.resolveReady();
     await flushPromises();
 
+    // Legacy open
     env.app.fireOpenUrl('openknowledge://open?project=/tmp/p&doc=a.md');
     await flushPromises();
     expect(env.sendDeepLink).toHaveBeenCalledWith(focusedWin, { doc: 'a.md', kind: 'doc' });
 
+    // Custom-scheme share routes through resolution, not the open path.
     const blobUrl = 'https://github.com/o/r/blob/main/x.md';
     env.app.fireOpenUrl(`openknowledge://share?url=${encodeURIComponent(blobUrl)}`);
     await flushPromises();
@@ -2113,6 +2342,7 @@ describe('parseOpenKnowledgeFileUrl', () => {
       ),
     ).toBeNull();
     expect(parseOpenKnowledgeFileUrl('openknowledge://open?file=%00/x.md')).toBeNull();
+    // No `file` param → not a single-file URL (the project-doc parser handles it).
     expect(parseOpenKnowledgeFileUrl('openknowledge://open?project=/tmp/p&doc=a.md')).toBeNull();
   });
 
@@ -2183,6 +2413,7 @@ describe('registerProtocolHandler — single-file open (file=)', () => {
       app: env.app,
       focusWindowForProject: env.focusWindowForProject,
       openProject: env.openProject,
+      // openEphemeralFile deliberately omitted.
       sendDeepLink: env.sendDeepLink,
       getAnyReadyWindow: env.getAnyReadyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),

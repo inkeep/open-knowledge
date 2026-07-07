@@ -1,3 +1,9 @@
+/**
+ * `shadow-repo` check tests — exercises the no-.git/ warn, the
+ * missing-shadow-repo warn, the MalformedGitPointerError fail, and the
+ * pass-with-HEAD branch.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -76,6 +82,7 @@ describe('shadow-repo check', () => {
     mkdirSync(join(cwd, '.git'), { recursive: true });
     const shadowDir = join(cwd, '.git', 'ok');
     mkdirSync(shadowDir, { recursive: true });
+    // intentionally no HEAD file
 
     const def = makeShadowRepoCheck({
       resolve: () => shadowDir,

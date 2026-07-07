@@ -1,4 +1,28 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button> awaiting shadcn Button migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+/**
+ * Synchronous shell for the Settings modal — bundled in the main chunk.
+ *
+ * Owns the Dialog primitives, the sidebar (group computation + active-
+ * section state + sidebar UI), and a Suspense boundary wrapping the
+ * lazy body. The shell stays light so Cmd-, paints the dialog frame +
+ * sidebar + a content-area skeleton on the same frame as the trigger,
+ * while the heavy body (schema-form harness, RHF, ConfigSchema,
+ * schema-walker, Sync/Templates/Okignore/Integrations sections) loads
+ * in parallel and swaps in once resolved.
+ *
+ * The user-scope ConfigBinding is owned by ConfigProvider for the app
+ * session; the shell consumes { userBinding, userSynced } from
+ * useConfigContext() and gates the prop passed into the body so the
+ * body's dispatch sees a synced binding or null — preserving the gating
+ * semantics the dialog had before the shell/body split. Closing and
+ * reopening Settings is flash-free because the provider stays warm and
+ * the body chunk is cached after the first open.
+ *
+ * Sidebar IA:
+ *   USER         → Preferences, Hotkeys, Account
+ *   THIS PROJECT → Sync, Search, Templates, Ignore patterns, Config sharing
+ *   INTEGRATIONS → Claude Desktop (hidden when desktopPresent === false)
+ */
 
 import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -13,6 +37,14 @@ import { useConfigContext } from '@/lib/config-provider';
 import { useClaudeDesktopIntegration } from '@/lib/handoff/use-claude-desktop-integration';
 import { cn } from '@/lib/utils';
 
+/**
+ * GitHub Releases tag URL — mirrors `releaseUrlFor` in the desktop main
+ * process (`packages/desktop/src/main/auto-updater.ts`), the same URL the
+ * "What's new" release-notifier toast opens. Renderer-side duplicate
+ * because the main-process module can't cross the preload boundary; the
+ * URL shape is stable, and `encodeURIComponent` is defensive against a
+ * malformed version producing a path-confusion URL.
+ */
 function releaseNotesUrl(version: string): string {
   return `https://github.com/inkeep/open-knowledge/releases/tag/v${encodeURIComponent(version)}`;
 }
@@ -25,6 +57,11 @@ interface SidebarItem {
 interface SidebarGroup {
   id: 'user' | 'project' | 'integrations';
   label: string;
+  /**
+   * `false` renders the group disabled (no-project state for THIS
+   * PROJECT). Items are visible but not focusable; group label gets
+   * an explanatory caption announced via aria-describedby.
+   */
   enabled: boolean;
   items: SidebarItem[];
 }
@@ -39,15 +76,24 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   const { collabUrl } = useDocumentContext();
   const { userBinding, userSynced, okignoreBinding, okignoreSynced } = useConfigContext();
   const { desktopPresent } = useClaudeDesktopIntegration();
-  const titleId = 'settings-dialog-title';
 
-  const [activeId, setActiveId] = useState<string>('preferences');
+  // Always default to USER → Preferences on each fresh open. No
+  // in-session memory of last-viewed section.
+  const [activeId, setActiveId] = useState('preferences');
   useEffect(() => {
     if (open) setActiveId('preferences');
   }, [open]);
 
+  // hasProject signals whether the project-scope binding is a valid
+  // editing target. In current OK the editor UI always has a project
+  // when `collabUrl` is set; the disabled-THIS-PROJECT branch is
+  // defensive (e.g. Cmd-, before a project loads). Real "no project"
+  // detection (e.g. `ok mcp` standalone before init) would gate via
+  // a separate signal.
   const hasProject = collabUrl !== null;
 
+  // The docked terminal is desktop-only (the real shell has no web host), so
+  // its per-project revoke toggle only appears under the Electron preload.
   const isOkDesktopHost = typeof window !== 'undefined' && window.okDesktop != null;
 
   const groups: SidebarGroup[] = [
@@ -92,7 +138,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
         className="flex h-[700px] max-h-[calc(100dvh-4rem)] w-[900px] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:grid sm:grid-cols-[220px_1fr] sm:max-w-[min(900px,calc(100%-2rem))]"
         data-testid="settings-dialog"
       >
-        <DialogTitle className="sr-only" id={titleId}>
+        <DialogTitle className="sr-only">
           <Trans>Settings</Trans>
         </DialogTitle>
         <DialogDescription className="sr-only">
@@ -100,7 +146,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
         </DialogDescription>
         <SettingsSidebar groups={groups} activeId={activeId} onSelect={setActiveId} />
         <section
-          aria-labelledby={titleId}
+          aria-label={t`Settings content`}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain subtle-scrollbar p-6"
           // biome-ignore lint/a11y/noNoninteractiveTabindex: this scrollable content section must be focusable so keyboard users can scroll long settings pages.
           tabIndex={0}
@@ -129,6 +175,13 @@ interface SettingsSidebarProps {
 
 function SettingsSidebar({ groups, activeId, onSelect }: SettingsSidebarProps) {
   const { t } = useLingui();
+  // Single navigation landmark with an explicit label. A complementary
+  // landmark wrapping an unlabeled navigation produced two nested
+  // landmarks for one sidebar — landmark navigation surfaced both
+  // stops for what is one navigation surface. The sidebar IS the
+  // primary navigation for the dialog content (clicks swap the active
+  // body section), not tangentially-related content, so the
+  // navigation role is the semantically correct outer element.
   return (
     <nav
       aria-label={t`Settings sections`}
@@ -147,6 +200,24 @@ function SettingsSidebar({ groups, activeId, onSelect }: SettingsSidebarProps) {
   );
 }
 
+/**
+ * Bottom-pinned version + release-notes link. `mt-auto` works in the
+ * sm+ vertical flex-col layout; in the max-sm horizontal layout the
+ * footer trails after the last group (no `mt-auto` effect when the
+ * parent is `flex-row`), which is the natural mobile behavior.
+ *
+ * Source of the version string:
+ *   - Electron (`window.okDesktop?.appVersion`) — trusted, read from
+ *     `app.getVersion()` at boot via the bridge contract.
+ *   - Web — no equivalent runtime signal; the footer is suppressed
+ *     entirely so we never render `v` or `vundefined`.
+ *
+ * Click action mirrors the "What's new" toast (Notice B in
+ * `UpdateNotices.shared.ts`): `bridge.shell.openExternal(releaseUrl)`
+ * routes through the main-process asset allowlist. The bridge is
+ * guaranteed present whenever `appVersion` is — both are properties of
+ * the same Electron preload contract.
+ */
 function SettingsSidebarVersion() {
   const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const version = bridge?.appVersion;
@@ -213,8 +284,22 @@ function SettingsSidebarGroup({
           <li key={item.id}>
             <button
               type="button"
+              // `aria-current="page"` is the specific match for an in-
+              // dialog navigator that swaps the body content — wrapped
+              // in a navigation landmark, each click is page-like
+              // navigation within the dialog. Screen readers announce
+              // "current page" instead of the less-informative generic
+              // "current" that the unscoped `'true'` value produces.
               aria-current={activeId === item.id ? 'page' : undefined}
               aria-disabled={group.enabled ? undefined : true}
+              // Disabled buttons get the same caption the group header
+              // does — without this, a SR user who navigates directly
+              // to a disabled button (form/button rotor, arrow keys in
+              // browse mode) hears "Sync, dimmed, button" with no
+              // context for why it's disabled. tabIndex=-1 keeps them
+              // out of sequential tab order; aria-describedby surfaces
+              // the "Open a project to edit." caption when they reach
+              // the control by other means.
               aria-describedby={group.enabled ? undefined : captionId}
               tabIndex={group.enabled ? 0 : -1}
               disabled={!group.enabled}
@@ -238,7 +323,21 @@ function SettingsSidebarGroup({
   );
 }
 
+/**
+ * Paints inside the already-rendered dialog frame while the body chunk
+ * resolves. The shell ships in the main bundle so the dialog frame +
+ * sidebar are visible immediately and the content area shows shape-
+ * matching placeholders that swap to real content without a frame flash.
+ */
 function SettingsContentSkeleton() {
+  // The skeleton IS the async loading state for the lazy body chunk.
+  // Announce it as a polite live region with aria-busy so AT users get
+  // a non-interrupting signal that content is loading — without this,
+  // a screen-reader user opening Settings hears the landmarks and
+  // sidebar then encounters a silent content pane until the body
+  // resolves. Mirrors the `role="status" aria-live="polite"` precedent
+  // used by SavedIndicator in the body. Suspense unmounts this on body
+  // resolve, so aria-busy doesn't need to flip — it's just gone.
   return (
     <div
       role="status"

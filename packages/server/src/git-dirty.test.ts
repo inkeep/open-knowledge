@@ -151,6 +151,17 @@ describe('dirtyFilesOverlapWith', () => {
   });
 
   test('diverged branches: dirty file in HEAD-only change set is flagged as a conflict', async () => {
+    // Setup a diverged repo where HEAD and target each have commits the other lacks.
+    //  - file-A.md: HEAD changed it since merge-base; target did not.
+    //  - file-B.md: target changed it since merge-base; HEAD did not.
+    // A `git checkout target` will restore file-A.md to the merge-base version
+    // (because target's view of file-A.md is the merge-base version, which differs
+    // from HEAD's view). If file-A.md is dirty on the working tree, the checkout
+    // would clobber the dirty change → must be flagged as a conflict.
+    //
+    // The three-dot diff `HEAD...target` resolves to `merge-base..target` and
+    // therefore only includes file-B.md (the file target changed). file-A.md
+    // is missed, even though it would actually be touched by the checkout.
     write('file-A.md', 'a-at-merge-base\n');
     write('file-B.md', 'b-at-merge-base\n');
     commitAll('merge-base');
@@ -163,6 +174,7 @@ describe('dirtyFilesOverlapWith', () => {
     write('file-A.md', 'a-on-head\n');
     commitAll('head edits a');
 
+    // Dirty file-A.md on the working tree.
     write('file-A.md', 'a-dirty\n');
 
     const result = await dirtyFilesOverlapWith(projectDir, 'target');
@@ -220,5 +232,6 @@ describe('dirtyFilesOverlapWith', () => {
   });
 });
 
+// Suppress unused-import warnings for lifecycle hooks
 void beforeEach;
 void afterEach;

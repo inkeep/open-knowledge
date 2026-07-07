@@ -1,6 +1,8 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { ignoreToastInteractOutside } from './toast-outside-guard';
 
+// The guard's only DOM touch is `event.target.closest('[data-sonner-toaster]')`,
+// so a fake event with a stubbed `closest` exercises both branches without a DOM.
 type GuardEvent = Parameters<ReturnType<typeof ignoreToastInteractOutside>>[0];
 
 function makeEvent(insideToaster: boolean) {

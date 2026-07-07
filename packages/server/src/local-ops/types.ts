@@ -1,3 +1,12 @@
+/**
+ * Structured event types for the auth + clone local-op flows.
+ *
+ * Both flows emit a stream of typed events terminated by either `complete`
+ * or `error`. HTTP transport (api-extension.ts) serializes these to NDJSON.
+ * IPC transport (desktop main → renderer) forwards them as `webContents.send`
+ * payloads. Renderer transports adapt either back to a common AsyncIterable.
+ */
+
 export interface DeviceVerificationEvent {
   type: 'verification';
   user_code: string;

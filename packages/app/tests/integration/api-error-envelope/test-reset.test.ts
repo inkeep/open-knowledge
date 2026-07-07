@@ -1,3 +1,16 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleTestReset`
+ * This is a dev-only route gated on
+ * `enableTestRoutes` (defaulted ON in `createTestServer`).
+ *
+ * Asserts the canonical RFC 9457 wire shape for `POST /api/test-reset?docName=...`:
+ *   - happy path: status 200, `Content-Type: application/json`, flat body
+ *     `{}` (no `ok: true` discriminator).
+ *   - path-traversal docName → 400 `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on GET → 405 `urn:ok:error:method-not-allowed`
+ *     with `Allow: POST`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, TestResetSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

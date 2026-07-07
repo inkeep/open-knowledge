@@ -99,17 +99,46 @@ describe('PackCardGrid runtime behavior', () => {
     expect(screen.queryByText(/create a new file/)).toBeNull();
   });
 
-  test('renders a trailing blank-file card and fires the callback on click', async () => {
+  test('renders a create-a-new-file footer button and fires the callback on click', async () => {
     const onCreateBlankFile = mock(() => {});
     await renderPackCardGrid({ packs: allPacks, onCreateBlankFile });
 
     const buttons = screen.getAllByRole('button');
+    // One footer button after every pack card (no Show more without collapsedPackIds).
     expect(buttons).toHaveLength(allPacks.length + 1);
-    const blankCard = buttons.at(-1);
-    expect(blankCard?.textContent).toContain('create a new file');
+    const footerButton = buttons.at(-1);
+    expect(footerButton?.textContent).toContain('create a new file');
 
-    await userEvent.click(blankCard as HTMLElement);
+    await userEvent.click(footerButton as HTMLElement);
     expect(onCreateBlankFile).toHaveBeenCalledTimes(1);
+  });
+
+  test('parks collapsedPackIds behind a Show more toggle and appends them when expanded', async () => {
+    // Hide plain-notes (Pack 3) and gbrain (Pack 6); the other four stay visible.
+    await renderPackCardGrid({ packs: allPacks, collapsedPackIds: ['plain-notes', 'gbrain'] });
+
+    // Collapsed: the two hidden packs are absent; a Show more toggle is present.
+    expect(screen.queryByText('Pack 3')).toBeNull();
+    expect(screen.queryByText('Pack 6')).toBeNull();
+    const toggle = screen.getByRole('button', { name: /Show 2 more/ });
+
+    await userEvent.click(toggle);
+
+    // Expanded: hidden packs render appended after the visible set (registry
+    // order preserved within each group), and the toggle flips to Show less.
+    expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual([
+      'Pack 1',
+      'Pack 2',
+      'Pack 4',
+      'Pack 5',
+      'Pack 3',
+      'Pack 6',
+    ]);
+    const collapseToggle = screen.getByRole('button', { name: /Show less/ });
+
+    await userEvent.click(collapseToggle);
+    expect(screen.queryByText('Pack 3')).toBeNull();
+    expect(screen.getByRole('button', { name: /Show 2 more/ })).not.toBeNull();
   });
 
   test('renders the loading skeleton when caller-owned packs are still null', async () => {

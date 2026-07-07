@@ -30,6 +30,10 @@ describe('consumeAuthEventStream', () => {
     expect(JSON.parse(seen[1]).login).toBe('alice');
   });
 
+  // The load-bearing regression guard: the CloneDialog sign-in flow was
+  // freezing at "Waiting for authorization…" when the complete event landed
+  // in the final chunk without a terminating newline. The previous reader
+  // left that line in `buffer` at `done=true` and never processed it.
   test('fires onSuccess when a terminal event arrives WITHOUT a trailing newline', async () => {
     let completed: string | null = null;
     const terminated = await consumeAuthEventStream(
@@ -93,6 +97,7 @@ describe('consumeAuthEventStream', () => {
       },
     );
     expect(terminated).toBe(true);
+    // Empty/whitespace lines are filtered; malformed + valid lines reach processLine.
     expect(seen).toEqual(['not-json', '{"type":"complete","login":"dave"}']);
   });
 

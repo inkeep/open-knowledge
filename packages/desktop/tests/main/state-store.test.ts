@@ -39,7 +39,9 @@ describe('state-store (recent projects + LRU)', () => {
       s = addRecentProject(s, `/tmp/p${i}`, `p${i}`);
     }
     expect(s.recentProjects.length).toBe(20);
+    // Newest first — p24 should be at the front
     expect(s.recentProjects[0]?.path).toBe('/tmp/p24');
+    // Oldest 5 dropped
     expect(s.recentProjects.find((p) => p.path === '/tmp/p0')).toBeUndefined();
   });
 
@@ -48,6 +50,7 @@ describe('state-store (recent projects + LRU)', () => {
     s = addRecentProject(s, '/tmp/b', 'b');
     const next = removeRecentProject(s, '/tmp/a');
     expect(next.recentProjects.map((p) => p.path)).toEqual(['/tmp/b']);
+    // /tmp/b was the most-recent open, so removing /tmp/a leaves /tmp/b intact
     expect(next.lastOpenedProject).toBe('/tmp/b');
   });
 
@@ -196,12 +199,15 @@ describe('state-store (gitRemoteUrl field on RecentProject)', () => {
   });
 
   test('addRecentProject preserves a previously persisted gitRemoteUrl on re-open without a fresh value', () => {
+    // First open: backfill captures the canonical URL.
     let s = addRecentProject(
       emptyState(),
       '/tmp/p1',
       'p1',
       'https://github.com/inkeep/open-knowledge.git',
     );
+    // Re-open without the 4th arg (e.g. a transient `.git/config` read miss
+    // — a network share briefly unmounted, an antivirus lock).
     s = addRecentProject(s, '/tmp/p1', 'p1');
     expect(s.recentProjects[0]?.gitRemoteUrl).toBe('https://github.com/inkeep/open-knowledge.git');
   });
@@ -215,6 +221,7 @@ describe('state-store (gitRemoteUrl field on RecentProject)', () => {
   test('parseAppState loads a recents entry that omits gitRemoteUrl (legacy/upgrade path)', () => {
     const raw = {
       recentProjects: [
+        // Legacy entry: written before the field existed.
         { path: '/tmp/legacy', name: 'legacy', lastOpenedAt: '2026-04-20T00:00:00Z' },
       ],
       lastOpenedProject: '/tmp/legacy',
@@ -276,6 +283,8 @@ describe('state-store (gitRemoteUrl field on RecentProject)', () => {
 
 describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
   test('writes tmp first, then renames to canonical — real fs round-trip', () => {
+    // Real tmpdir + real fs. Verifies the full write+rename path ends with
+    // a well-formed state.json whose content matches the input state.
     const userDataDir = mkdtempSync(join(tmpdir(), 'ok-state-atomic-'));
     try {
       const state = addRecentProject(emptyState(), '/tmp/example', 'example');
@@ -291,6 +300,10 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
   });
 
   test('fs call order is write-tmp → rename-tmp-to-canonical (atomicity invariant)', () => {
+    // Mocked fs — asserts the sequence is tmp-write BEFORE canonical-rename,
+    // never the other way around. A future refactor that accidentally flips
+    // these (or drops the tmp indirection) would silently regress the
+    // crash-safety property.
     const calls: Array<{ op: string; path: string }> = [];
     const fs: SaveAppStateFs = {
       existsSync: mock(() => true),
@@ -329,6 +342,7 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
       saveAppStateToDir('/fake/userdata', emptyState(), fs, { error: errorLog }),
     ).not.toThrow();
     expect(errorLog).toHaveBeenCalled();
+    // Best-effort cleanup — tmp file unlink attempted.
     expect(unlinkSpy).toHaveBeenCalled();
   });
 
@@ -364,6 +378,8 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
     expect(mkdirSpy).toHaveBeenCalledWith('/fake/userdata', { recursive: true });
   });
 
+  // return boolean so writeState callers can
+  // detect disk-failure and roll back in-memory state.
   test('returns true on successful persist', () => {
     const fs: SaveAppStateFs = {
       existsSync: mock(() => true),
@@ -397,6 +413,7 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
   test('lastUsedProjectParent: setter immutably updates state', () => {
     const next = setLastUsedProjectParent(emptyState(), '/Users/alice/Notes');
     expect(next.lastUsedProjectParent).toBe('/Users/alice/Notes');
+    // Other fields untouched.
     expect(next.recentProjects).toEqual([]);
     expect(next.schemaVersion).toBe(1);
   });
@@ -451,6 +468,8 @@ describe('state-store (pendingWindowRestore — post-update window restore)', ()
   });
 
   test('parseAppState preserves an empty snapshot as [] — distinct from null', () => {
+    // [] means "a relaunch happened with no project windows open"; the boot
+    // path opens the Navigator rather than falling back to lastOpenedProject.
     const parsed = parseAppState({ recentProjects: [], pendingWindowRestore: [] });
     expect(parsed?.pendingWindowRestore).toEqual([]);
   });
@@ -482,8 +501,10 @@ describe('state-store (spellCheckEnabled — app-wide spell-check toggle)', () =
     const original = emptyState();
     const disabled = setSpellCheckEnabled(original, false);
     expect(disabled.spellCheckEnabled).toBe(false);
+    // Other fields untouched.
     expect(disabled.recentProjects).toEqual([]);
     expect(disabled.schemaVersion).toBe(1);
+    // Original not mutated by the immutable update.
     expect(original.spellCheckEnabled).toBe(true);
   });
 

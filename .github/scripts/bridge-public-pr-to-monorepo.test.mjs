@@ -5,10 +5,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   applyPatchWithConflictDetection,
+  buildCommitAttribution,
   buildPublicComment,
   checkOrgMembership,
   commitIndicatesConflicts,
   createClaGateGh,
+  listPublicPrCommitAuthors,
+  normalizeGitHubUserAuthor,
   postCommitStatus,
   readCommitClaStatus,
   syncPublicPr,
@@ -26,6 +29,108 @@ const fakeRequest = (response) => {
   };
   return { request, calls };
 };
+
+describe("buildCommitAttribution", () => {
+  test("credits every unique human author with native coauthor trailers", () => {
+    const attribution = buildCommitAttribution({
+      commitAuthors: [
+        { name: "Sarah Inkeep", email: "sarah@inkeep.com" },
+        { name: "github-actions[bot]", email: "41898282+github-actions[bot]@users.noreply.github.com" },
+        { name: "Sarah Inkeep", email: "sarah@inkeep.com" },
+        { name: "Robert Inkeep", email: "robert@inkeep.com" },
+      ],
+      fallbackAuthor: { name: "octocat", email: "1+octocat@users.noreply.github.com" },
+    });
+
+    expect(attribution.trailers).toEqual([
+      "Co-authored-by: Sarah Inkeep <sarah@inkeep.com>",
+      "Co-authored-by: Robert Inkeep <robert@inkeep.com>",
+    ]);
+  });
+
+  test("falls back to the public PR author when commits only have invalid authors", () => {
+    const attribution = buildCommitAttribution({
+      commitAuthors: [
+        { name: "github-actions[bot]", email: "41898282+github-actions[bot]@users.noreply.github.com" },
+        { name: "Bad\nName", email: "bad@example.com" },
+      ],
+      fallbackAuthor: { name: "octocat", email: "1+octocat@users.noreply.github.com" },
+    });
+
+    expect(attribution.trailers).toEqual([
+      "Co-authored-by: octocat <1+octocat@users.noreply.github.com>",
+    ]);
+  });
+});
+
+describe("normalizeGitHubUserAuthor", () => {
+  test("uses the GitHub-resolved user id/login noreply identity", () => {
+    expect(normalizeGitHubUserAuthor({ login: "rtran9", id: 11001605 })).toEqual({
+      name: "rtran9",
+      email: "11001605+rtran9@users.noreply.github.com",
+    });
+  });
+
+  test("ignores unresolved and bot users so callers can fall back", () => {
+    expect(normalizeGitHubUserAuthor(null)).toBeNull();
+    expect(normalizeGitHubUserAuthor({ login: "github-actions[bot]", id: 41898282 })).toBeNull();
+  });
+});
+
+describe("listPublicPrCommitAuthors", () => {
+  test("paginates through every public PR commit author", async () => {
+    const pageOne = Array.from({ length: 100 }, (_, index) => ({
+      author: { login: `author-${index}`, id: index + 1 },
+      commit: { author: { name: `Commit ${index}`, email: `commit-${index}@example.com` } },
+    }));
+    const pageTwo = [
+      {
+        author: { login: "final-author", id: 101 },
+        commit: { author: { name: "Final Commit", email: "final@example.com" } },
+      },
+    ];
+    const calls = [];
+    const request = async (args) => {
+      calls.push(args);
+      return calls.length === 1 ? pageOne : pageTwo;
+    };
+
+    const authors = await listPublicPrCommitAuthors({
+      token: "t",
+      repo: "owner/repo",
+      prNumber: 123,
+      request,
+    });
+
+    expect(authors).toHaveLength(101);
+    expect(authors.at(-1)).toEqual({
+      name: "final-author",
+      email: "101+final-author@users.noreply.github.com",
+    });
+    expect(calls.map((call) => call.path)).toEqual([
+      "/repos/owner/repo/pulls/123/commits?per_page=100&page=1",
+      "/repos/owner/repo/pulls/123/commits?per_page=100&page=2",
+    ]);
+  });
+
+  test("falls back to raw commit author when GitHub has no linked user", async () => {
+    const { request } = fakeRequest([
+      {
+        author: null,
+        commit: { author: { name: "Patch Author", email: "patch-author@example.com" } },
+      },
+    ]);
+
+    await expect(
+      listPublicPrCommitAuthors({
+        token: "t",
+        repo: "owner/repo",
+        prNumber: 123,
+        request,
+      }),
+    ).resolves.toEqual([{ name: "Patch Author", email: "patch-author@example.com" }]);
+  });
+});
 
 describe("readCommitClaStatus", () => {
   test("extracts the license/cla state from the combined status", async () => {
@@ -225,8 +330,8 @@ describe("applyPatchWithConflictDetection (graceful conflict routing canary)", (
   test("a divergence far from the contributor's edit applies 'clean'", () => {
     // The contributor edits B (top); OURS's comment divergence is at C (bottom),
     // separated by filler so they land in DIFFERENT diff hunks → 3-way merges
-    // cleanly. (Adjacent divergences share a hunk and conflict — see the test
-    // above; that's exactly why the bridge conflicts on comment-dense regions.)
+    // cleanly. (Adjacent divergences share a hunk and conflict; that's exactly
+    // why the bridge conflicts on comment-dense regions.)
     const longBase =
       "export const A = 1;\nexport const B = 2;\n" +
       "const p = 0;\nconst q = 0;\nconst r = 0;\nconst s = 0;\nconst u = 0;\nconst v = 0;\n" +

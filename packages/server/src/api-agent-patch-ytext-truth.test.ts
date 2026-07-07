@@ -1,3 +1,20 @@
+/**
+ * Y.Text-is-truth contract tests for handleAgentPatch.
+ *
+ * The pre-contract patch flow read the search surface from
+ * `serialize(fragment)`, which canonicalized user-typed source bytes
+ * before find/replace ran. Under contract, the search surface IS the user's
+ * source bytes (`ytext.toString()`) — what the agent sees through any
+ * other read path matches what the patcher computes against.
+ *
+ * Discriminating tests focus on bytes that differ across parse → serialize
+ * (CRLF, BOM, leading newlines, doc-start `***` ↔ `---`, blank-line counts
+ * between blocks) — those are where the canonicalization gap surfaces.
+ *
+ * Telemetry: `agent-patch-find-mismatch` fires on both 404 (no offset) and
+ * 409 (stale offset). Bounded cardinality (event name + numeric lengths +
+ * doc.name + hadOffset boolean).
+ */
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -91,6 +108,7 @@ function setup(): TestEnv {
   };
 }
 
+/** Capture console.warn calls during an async block. */
 async function captureWarnAsync<T>(
   fn: () => Promise<T>,
 ): Promise<{ result: T; warnings: string[] }> {
@@ -109,11 +127,17 @@ async function captureWarnAsync<T>(
 
 describe('POST /api/agent-patch — Y.Text-is-truth contract (FR-36)', () => {
   test('search surface IS ytext bytes — CRLF in body survives the patch flow', async () => {
+    // Pre-contract: currentBody from serialize(fragment) stripped CRLF, so
+    // patching `Bar` → `Baz` would have written LF-only bytes to ytext,
+    // dropping the user's CRLF line endings. Under contract the search
+    // surface is ytext directly, so CRLF survives the find/replace.
     const env = setup();
     try {
       const session = await env.sessionManager.getSession('test-doc');
       const ytext = session.dc.document.getText('source');
 
+      // Seed with CRLF line endings via composeAndWriteRawBody (raw bytes
+      // land verbatim in ytext per precedent #38).
       const initial = '__foo__\r\nBar appears here.\r\n';
       session.dc.document.transact(() => {
         applyAgentMarkdownWrite(session.dc.document, initial, 'replace');
@@ -127,6 +151,9 @@ describe('POST /api/agent-patch — Y.Text-is-truth contract (FR-36)', () => {
       });
 
       expect(response.status).toBe(200);
+      // CRLF preserved on both halves of the doc (`__foo__\r\n` before the
+      // patch site + `\r\n` after the replacement). Pre-fix this would have
+      // been `__foo__\nBaz appears here.\n` (LF-only).
       expect(ytext.toString()).toBe('__foo__\r\nBaz appears here.\r\n');
     } finally {
       await env.cleanup();
@@ -134,6 +161,11 @@ describe('POST /api/agent-patch — Y.Text-is-truth contract (FR-36)', () => {
   });
 
   test('search surface preserves doc-start `---` (no canonicalization to `***\\n\\n`)', async () => {
+    // Pre-contract: serialize(fragment) of `---\n# H\n` produces
+    // `***\n\n# H\n` (mdast canonicalizes thematic break + inserts the
+    // architectural-floor blank line between blocks). The patch flow
+    // would have rewritten ytext to that canonical shape on a successful
+    // body-region patch. Under contract, the user's raw bytes survive.
     const env = setup();
     try {
       const session = await env.sessionManager.getSession('test-doc');
@@ -152,6 +184,9 @@ describe('POST /api/agent-patch — Y.Text-is-truth contract (FR-36)', () => {
       });
 
       expect(response.status).toBe(200);
+      // `---\n` doc-start preserved (NOT `***\n\n`). doc-start is in
+      // the bridge invariant tolerance set, but BYTES on disk + in ytext
+      // are still distinct under contract.
       expect(ytext.toString()).toBe('---\n# H\n\nUpdated paragraph.\n');
       expect(ytext.toString().startsWith('---\n')).toBe(true);
       expect(ytext.toString().includes('***')).toBe(false);
@@ -161,6 +196,10 @@ describe('POST /api/agent-patch — Y.Text-is-truth contract (FR-36)', () => {
   });
 
   test('source-form delimiter (`__foo__`) is the find target — not the canonical `**foo**`', async () => {
+    // already preserves delimiter form through serialize(fragment),
+    // so this case happens to also work pre-fix via that path. Test stays
+    // because the contract MUST hold here
+    // — this surfaces the assumption explicitly.
     const env = setup();
     try {
       const session = await env.sessionManager.getSession('test-doc');
@@ -174,6 +213,9 @@ describe('POST /api/agent-patch — Y.Text-is-truth contract (FR-36)', () => {
         );
       }, AGENT_WRITE_ORIGIN);
 
+      // Agent computes find against what they read from a user-bytes
+      // surface (read_document, file watcher) — NOT against canonical
+      // `**strong**`. The patch must succeed.
       const response = await callAgentPatch(env.hocuspocus, env.sessionManager, env.contentDir, {
         docName: 'test-doc',
         find: '__strong__',
@@ -210,6 +252,8 @@ describe('POST /api/agent-patch — Y.Text-is-truth contract (FR-36)', () => {
       const after = getMetrics().agentPatchFindMismatches;
       expect(after).toBe(before + 1);
 
+      // Bounded cardinality: event + doc.name + numeric lengths + hadOffset.
+      // No raw content from `find` / `replace`.
       const event = warnings
         .map((w) => {
           try {
@@ -225,6 +269,7 @@ describe('POST /api/agent-patch — Y.Text-is-truth contract (FR-36)', () => {
       expect(event.findLength).toBe('this string does not exist'.length);
       expect(event.replaceLength).toBe('whatever'.length);
       expect(event.hadOffset).toBe(false);
+      // Verify the find string itself is NOT logged (cardinality discipline).
       expect(JSON.stringify(event)).not.toContain('this string does not exist');
     } finally {
       await env.cleanup();

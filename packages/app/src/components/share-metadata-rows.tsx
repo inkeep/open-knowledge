@@ -1,3 +1,14 @@
+/**
+ * Shared share-target metadata block used by both ShareReceiveDialog
+ * (launcher) and ShareBranchSwitchDialog (editor shell). Renders the
+ * repository / file / branch rows as semantic <dl> markup. The Branch row
+ * is suppressed for well-known default branches so the common case stays
+ * uncluttered.
+ *
+ * The `data-testid` is caller-supplied so each dialog keeps its own
+ * downstream e2e selectors.
+ */
+
 import { Trans } from '@lingui/react/macro';
 import type { ReactNode } from 'react';
 
@@ -8,8 +19,15 @@ export interface ShareMetadataRowsProps {
   repo: string;
   path: string;
   branch: string;
+  /**
+   * Share-target kind — drives the path row's label ("Folder" vs "File").
+   * Defaults to `'doc'` for back-compat with call sites that predate
+   * folder shares.
+   */
   kind?: 'doc' | 'folder';
+  /** Test id for the outer <dl> (each dialog scopes its own selector). */
   testId: string;
+  /** Test id for the branch <dd> value (downstream branch-row selection). */
   branchTestId: string;
 }
 

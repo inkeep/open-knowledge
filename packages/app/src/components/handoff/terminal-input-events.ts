@@ -1,3 +1,16 @@
+/**
+ * Window-scoped pub/sub carrying a raw text paste into the *already-open* docked
+ * terminal's active session. The editor's "Ask AI" selection affordance fires
+ * this so a selection lands directly in the live shell (e.g. a running `claude`
+ * TUI) when a terminal is open, skipping the bottom composer.
+ *
+ * Mirrors the `terminal-launch-events` idiom, but the payload is verbatim text —
+ * never a `<bin> '<prompt>'` command and never a `cli` discriminant. The host
+ * (`TerminalSessionsHost`) owns the PTY state, so it decides reuse-vs-fallback:
+ * a live PTY → write the text into it; no terminal open → defer to the Ask-AI
+ * composer (the same surface a caret-only Ask AI opens).
+ */
+
 const ACTIVE_TERMINAL_INPUT_EVENT = 'open-knowledge:active-terminal-input';
 
 export function requestActiveTerminalInput(

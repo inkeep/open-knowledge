@@ -6,6 +6,7 @@ import type {
   OkServerVersionDriftInfo,
 } from '@/lib/desktop-bridge-types';
 
+// Capture sonner calls so we can assert the toast wiring without a DOM.
 const toastWarning = mock((_msg: string, _opts?: unknown) => 'warn-id');
 const toastSuccess = mock((_msg: string) => 'success-id');
 const toastLoading = mock((_msg: string, _opts?: unknown) => 'loading-id');
@@ -43,6 +44,7 @@ const olderInfo: OkServerVersionDriftInfo = {
   appRuntime: '0.8.2',
 };
 
+/** Minimal bridge fake — only the surfaces the listener touches. */
 function makeBridge(opts?: { restartOutcome?: OkServerRestartOutcome; restartReject?: boolean }): {
   bridge: OkDesktopBridge;
   fireDrift: (info: OkServerVersionDriftInfo) => void;
@@ -165,6 +167,8 @@ describe('installServerDriftListener', () => {
     expect(h.unsubReclaimed).toHaveBeenCalledTimes(1);
   });
 
+  // The drift toast renders a custom component via `toast.custom`; inspect the
+  // element the render fn returns rather than rendering it (no DOM needed).
   type DriftNode = {
     props: { body: string; warning: string; onRestart: () => void; onDismiss: () => void };
   };
@@ -219,6 +223,8 @@ describe('installServerDriftListener', () => {
     installServerDriftListener({ bridge: h.bridge });
     fireDriftAndRender(h).props.onRestart();
     await flush();
+    // The loading toast clears on any resolved outcome, not just failure, so a
+    // success reaching a still-live renderer can't strand it.
     expect(toastDismiss).toHaveBeenCalledWith('loading-id');
     expect(toastError).not.toHaveBeenCalled();
   });
@@ -249,6 +255,8 @@ describe('installServerDriftListener', () => {
     h.fireReclaimed('0.8.2');
     expect(toastWarning).toHaveBeenCalledTimes(1);
     expect(toastWarning.mock.calls[0]?.[0]).toBe(reclaimNoticeMessage('0.8.2'));
+    // Finite duration so it doesn't pile up on repeat dev launches, but long
+    // enough to read the multi-sentence side-effect copy.
     expect(toastWarning.mock.calls[0]?.[1]).toMatchObject({ duration: 15_000 });
     expect(toastSuccess).not.toHaveBeenCalled();
   });

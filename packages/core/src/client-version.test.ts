@@ -7,6 +7,10 @@ import {
 } from './client-version.ts';
 import { PROTOCOL_VERSION } from './protocol-version.ts';
 
+// These assertions pin the v1 wire contract. It is a one-way door: once a
+// released client emits this shape, the future server-read logic must accept
+// it from every released client forever. A failure here means a wire-breaking
+// change — intentional changes are append-only.
 describe('client-version v1 wire contract', () => {
   test('PROTOCOL_VERSION is a positive integer', () => {
     expect(Number.isInteger(PROTOCOL_VERSION)).toBe(true);
@@ -28,6 +32,7 @@ describe('client-version v1 wire contract', () => {
       'x-ok-client-runtime': '0.8.1',
       'x-ok-client-kind': 'cli',
     });
+    // Headers must be plain strings — `Number` would not survive a HeadersInit.
     expect(typeof headers['x-ok-client-protocol']).toBe('string');
   });
 

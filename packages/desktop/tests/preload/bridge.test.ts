@@ -3,6 +3,19 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInvoker } from '../../src/shared/ipc-invoke.ts';
 
+/**
+ * Preload bridge unit tests.
+ *
+ * The bridge module itself imports `electron` (`contextBridge`, `ipcRenderer`)
+ * which only works inside a real Electron preload context — Bun's test runner
+ * can't load it. So the test exercises the BUILDING BLOCKS the preload uses
+ * (`createInvoker` typed-IPC factory) against a mock ipcRenderer surface.
+ *
+ * Full end-to-end preload behavior is verified in the Playwright smoke
+ * test (`tests/integration/m1-smoke.test.ts`) which launches a real Electron
+ * BrowserWindow.
+ */
+
 describe('createInvoker (typed IPC factory)', () => {
   test('forwards channel + args to ipcRenderer.invoke verbatim', async () => {
     const invoke = mock((channel: string, ...args: unknown[]) =>
@@ -37,6 +50,16 @@ describe('createInvoker (typed IPC factory)', () => {
   });
 });
 
+/**
+ * Regression gate — every `ipcRenderer.on(...)` / `ipcRenderer.removeListener(...)`
+ * channel-name literal in the preload bridge MUST appear as a key in
+ * `shared/ipc-events.ts`'s `EventChannels` interface. Without this check, a
+ * typo in the preload (e.g., `ok:project-switched` vs canonical
+ * `ok:project:switched`) silently makes the subscription a no-op — the typed
+ * EventChannels map exists specifically to prevent this, but the current
+ * preload invokes raw `ipcRenderer` calls where a string typo isn't caught at
+ * compile time.
+ */
 describe('preload channel names are declared in EventChannels', () => {
   const PRELOAD_PATH = join(__dirname, '..', '..', 'src', 'preload', 'index.ts');
   const EVENTS_PATH = join(__dirname, '..', '..', 'src', 'shared', 'ipc-events.ts');
@@ -45,12 +68,15 @@ describe('preload channel names are declared in EventChannels', () => {
     const preloadSrc = readFileSync(PRELOAD_PATH, 'utf-8');
     const eventsSrc = readFileSync(EVENTS_PATH, 'utf-8');
 
+    // Extract `'ok:...'` literals passed to `ipcRenderer.on(...)` /
+    // `ipcRenderer.removeListener(...)` / `ipcRenderer.once(...)`.
     const subscriptionPattern = /ipcRenderer\.(?:on|removeListener|once)\(\s*'(ok:[^']+)'/g;
     const usedChannels = new Set<string>();
     for (const m of preloadSrc.matchAll(subscriptionPattern)) {
       if (m[1]) usedChannels.add(m[1]);
     }
 
+    // Extract declared keys from `EventChannels` interface (format: `'ok:...':`).
     const declarationPattern = /^\s*'(ok:[^']+)'\s*:/gm;
     const declaredChannels = new Set<string>();
     for (const m of eventsSrc.matchAll(declarationPattern)) {

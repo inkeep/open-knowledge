@@ -1,4 +1,31 @@
 #!/usr/bin/env bun
+/**
+ * Engineer-local realism check for the cache-regime rotation fixtures.
+ *
+ * Reads dogfood traces the engineer captured from their own OK usage
+ * and compares the size distribution + rotation distance against the
+ * three fixtures' declared shapes. Prints a drift summary to stdout —
+ * never writes trace data, derived data, or output files. The fixtures
+ * remain defensible without this step (the parallel-design verdict-
+ * robustness check across 3 shapes carries the transferability claim).
+ * This script is a local affordance for the engineer to
+ * cross-check the engineered shapes against their own usage before
+ * committing the campaign cost; it is NOT part of the verdict gate.
+ *
+ * Local-only by architectural constraint: OK is fully self-hostable and
+ * has no production-telemetry channel. Trace capture is the
+ * engineer's responsibility; this script consumes whatever they have.
+ *
+ * Trace format (JSONL, one event per line):
+ *   { "docName": "<string>", "contentBytes": <number>, "openedAt": <epoch-ms> }
+ *
+ * Trace path: $OK_DOGFOOD_TRACE_DIR (default $HOME/.ok/perf-traces/).
+ *
+ * Usage:
+ *   bun run packages/app/tests/perf/fixtures/cache-regime-rotation/calibrate.ts
+ *   bun run packages/app/tests/perf/fixtures/cache-regime-rotation/calibrate.ts --trace-dir <path>
+ *   bun run packages/app/tests/perf/fixtures/cache-regime-rotation/calibrate.ts --fixture tight
+ */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -29,6 +56,7 @@ interface RealismStats {
   readonly totalEvents: number;
   readonly distinctDocs: number;
   readonly sizeDistributionPct: SizeDistribution;
+  /** Median # of distinct docs between repeat visits; null when no repeats observed. */
   readonly medianRotationDistance: number | null;
 }
 
@@ -67,6 +95,11 @@ export function computeSizeDistributionPct(
   };
 }
 
+/**
+ * Stack-distance variant: distinct docs touched between two consecutive
+ * visits to the same doc. Median across all observed repeats provides
+ * a robust central tendency for skewed (asymmetric) workloads.
+ */
 export function computeMedianRotationDistance(events: ReadonlyArray<TraceEvent>): number | null {
   const lastVisit = new Map<string, number>();
   const distances: number[] = [];
@@ -108,6 +141,12 @@ export function loadTraces(traceDir: string): TraceEvent[] {
     for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed === '') continue;
+      // Truncated trace files (interrupted dogfood-capture sessions) can
+      // produce malformed JSONL lines like `{"docName":"foo","cont`. A raw
+      // JSON.parse error here would abort the whole calibration run with
+      // a SyntaxError stack — the loader contract is silent-skip per the
+      // JSDoc, so we honor that contract for both missing-field and parse-
+      // failure shapes uniformly.
       let parsed: Partial<TraceEvent>;
       try {
         parsed = JSON.parse(trimmed) as Partial<TraceEvent>;
@@ -142,6 +181,16 @@ export function summarizeTraces(events: ReadonlyArray<TraceEvent>): RealismStats
   };
 }
 
+/**
+ * Heuristic expected rotation distance for each pattern.
+ *
+ * `hot-pocket` revisits the working set; expected distance ≈ size - 1.
+ * `random-eviction` samples without intentional reuse; expected
+ * distance ≈ size / 2 (mean stack distance under uniform random).
+ * Asymmetric biases heavily toward one doc, so its harness-side
+ * expected distance ≈ small_count for the hot-doc revisits (visits to
+ * the 5 small docs interleaved with the large).
+ */
 export function expectedRotationDistance(fixture: WorkloadFixture): number {
   const size = fixture.rotationDocs.length;
   if (fixture.ref === 'asymmetric') {

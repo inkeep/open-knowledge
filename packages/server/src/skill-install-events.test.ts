@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the install-state telemetry writer. Pins the fail-soft
+ * contract — `recordSkillInstallEvent` NEVER throws, every error path
+ * collapses to a logged warning + resolved void.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -56,6 +62,8 @@ describe('recordSkillInstallEvent — happy path', () => {
   test('appends to a pre-existing file without truncating', async () => {
     const home = freshHome();
     try {
+      // Pre-populate the file so the first append is a real append, not a
+      // create-new — pins the `flag: 'a'` contract.
       await mkdir(join(home, '.ok'), { recursive: true });
       await writeFile(eventsFilePath(home), '{"existing":"line"}\n', 'utf-8');
 
@@ -88,6 +96,9 @@ describe('recordSkillInstallEvent — fail-soft contract', () => {
   });
 
   test('mkdir failure → warns + resolves; no JSONL written', async () => {
+    // Point homedir at a path under an existing FILE — mkdir({recursive: true})
+    // will fail because the parent isn't a directory. Cleaner cross-platform
+    // than chmod-based tricks.
     const home = freshHome();
     try {
       const blocker = join(home, 'blocker-file');
@@ -111,6 +122,8 @@ describe('recordSkillInstallEvent — fail-soft contract', () => {
   });
 
   test('append failure → warns + resolves', async () => {
+    // Make the events path a directory, so the append (`writeFile flag: 'a'`)
+    // hits EISDIR. Reliable cross-platform.
     const home = freshHome();
     try {
       await mkdir(eventsFilePath(home), { recursive: true });

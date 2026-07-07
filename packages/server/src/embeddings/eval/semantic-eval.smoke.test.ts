@@ -1,3 +1,21 @@
+/**
+ * acceptance gate (gated real-API eval; rollout gate).
+ *
+ * Skipped unless `OK_EMBED_SMOKE=1` — it makes real network calls to the
+ * embeddings provider and needs a key, so it is NOT part of the hermetic
+ * `bun run check` (zero network in CI). Run on demand:
+ *
+ *   OK_EMBED_SMOKE=1 OK_EMBEDDINGS_API_KEY=sk-... \
+ *     bun test --conditions=development \
+ *     packages/server/src/embeddings/eval/semantic-eval.smoke.test.ts
+ *
+ * Asserts the candidate-source recall behavior unconditionally (a zero-overlap
+ * target must be retrievable at all) and REPORTS the pre-registered held-out
+ * gate. The held-out PASS/FAIL is logged, not asserted as a build failure: a
+ * sub-threshold number blocks the FLAG FLIP, not the merge (the feature ships
+ * dark). The flag-flip decision reads this number from the run output.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { searchWorkspaceCorpus } from '@inkeep/open-knowledge-core';
 import { loadEvalEmbedder, loadEvalSet, prepareEval, runHeldOutEval } from './semantic-eval.ts';
@@ -11,6 +29,9 @@ describe.skipIf(!ENABLED)('FR2 retrieval-quality eval (real embeddings API)', ()
     if (!embedder) return;
     const set = loadEvalSet();
     const prep = await prepareEval(embedder, set);
+    // For every zero-overlap pair, the target must surface in the semantic
+    // results (it is lexically unreachable — only the candidate-source union
+    // can retrieve it). This is the falsifiable candidate-source claim.
     for (const pair of set.pairs.filter((p) => p.category === 'zero-overlap')) {
       const scores = prep.queryScores.get(pair.query) ?? new Map<string, number>();
       const results = searchWorkspaceCorpus(prep.corpus, pair.query, {
@@ -38,6 +59,8 @@ describe.skipIf(!ENABLED)('FR2 retrieval-quality eval (real embeddings API)', ()
     console.log(
       `[FR2] GATE ${report.passes ? 'PASS — eligible for flag flip' : 'BELOW THRESHOLD — keep flag off'}`,
     );
+    // Sanity only: semantic must not be catastrophically worse than lexical.
+    // The pass/fail gate itself is a rollout decision, not a build assertion.
     expect(report.semantic.mrr).toBeGreaterThan(0);
   }, 180_000);
 });

@@ -1,3 +1,13 @@
+/**
+ * Empty `docName` must be rejected, never silently routed to a fallback
+ * target. Previously an empty/missing docName fell through to a hardcoded
+ * `test-doc`, so `write_document({ docName: "" })` returned success while
+ * overwriting `test-doc.md` (silent wrong-target write, data-loss class).
+ *
+ * These tests assert the contract end-to-end at the HTTP boundary: every
+ * mutating handler that read the `test-doc` fallback now answers 400 and
+ * creates no `test-doc` session.
+ */
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -44,6 +54,9 @@ async function dispatch(ext: unknown, req: IncomingMessage): Promise<CapturedRes
   return captured;
 }
 
+// Each entry is a mutating handler that previously read the `test-doc`
+// fallback. The body is the minimal shape that reaches the docName
+// resolution; the empty `docName` must be rejected before any of it runs.
 const EMPTY_DOCNAME_CASES: Array<{ route: string; body: Record<string, unknown> }> = [
   { route: '/api/agent-write', body: { docName: '', markdown: 'x' } },
   {
@@ -77,6 +90,7 @@ describe('empty docName rejection', () => {
 
         expect(captured.status).toBe(400);
         expect(captured.body.toLowerCase()).toContain('docname');
+        // The wrong-target write would have opened a `test-doc` document.
         expect(hocuspocus.documents.has('test-doc')).toBe(false);
       } finally {
         await sessionManager.closeAll();
@@ -85,6 +99,9 @@ describe('empty docName rejection', () => {
     });
   }
 
+  // An omitted `docName` field (not just an empty string) was the other half
+  // of the legacy `test-doc` fallback. The JSON wire shapes differ (`""` vs an
+  // absent key), so pin every route for the omitted case too.
   for (const { route, body } of EMPTY_DOCNAME_CASES) {
     const { docName: _omitted, ...bodyWithoutDocName } = body;
     test(`${route} rejects an omitted docName field, not routed to test-doc`, async () => {

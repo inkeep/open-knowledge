@@ -5,9 +5,11 @@ import { type ReactNode, useLayoutEffect, useState } from 'react';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { docTabId, localTabSessionStorageKey } from './editor-tabs';
 
+let mockCollabUrl: string | null = null;
+
 mock.module('@/lib/use-collab-url', () => ({
   useCollabUrl: () => ({
-    collabUrl: null,
+    collabUrl: mockCollabUrl,
     attempts: 0,
     terminal: false,
     lastError: null,
@@ -19,6 +21,8 @@ const { DocumentProvider, useDocumentContext } = await import('./DocumentContext
 
 const PINNED_TAB_ID = docTabId('Pinned.md');
 const OTHER_TAB_ID = docTabId('Other.md');
+const THIRD_TAB_ID = docTabId('Third.md');
+const originalFetch = globalThis.fetch;
 
 function seedTabSession() {
   window.localStorage.setItem(
@@ -41,6 +45,19 @@ function seedActiveOtherTabSession() {
       pinnedTabIds: [],
       activeDocName: 'Other.md',
       activeTabId: OTHER_TAB_ID,
+      updatedAt: new Date('2026-05-13T00:00:00.000Z').toISOString(),
+    }),
+  );
+}
+
+function seedThreeTabSession() {
+  window.localStorage.setItem(
+    localTabSessionStorageKey(window.location.origin),
+    JSON.stringify({
+      openTabs: [PINNED_TAB_ID, OTHER_TAB_ID, THIRD_TAB_ID],
+      pinnedTabIds: [],
+      activeDocName: 'Pinned.md',
+      activeTabId: PINNED_TAB_ID,
       updatedAt: new Date('2026-05-13T00:00:00.000Z').toISOString(),
     }),
   );
@@ -131,8 +148,20 @@ function CloseActiveHarness() {
       <button type="button" onClick={() => ctx.openNewTab()}>
         Open new
       </button>
+      <button type="button" onClick={() => ctx.openDocument('Other.md')}>
+        Open other
+      </button>
+      <button type="button" onClick={() => ctx.closeTab(OTHER_TAB_ID)}>
+        Close other
+      </button>
+      <button type="button" onClick={() => ctx.closeTab(THIRD_TAB_ID)}>
+        Close third
+      </button>
       <button type="button" onClick={() => setHandled(String(ctx.closeActiveTabOrWindow()))}>
         Close active
+      </button>
+      <button type="button" onClick={() => ctx.reopenClosedTab()}>
+        Reopen closed
       </button>
     </>
   );
@@ -156,6 +185,8 @@ describe('DocumentContext tab close force contract', () => {
   afterEach(() => {
     cleanup();
     delete window.okDesktop;
+    mockCollabUrl = null;
+    globalThis.fetch = originalFetch;
     window.localStorage.clear();
     window.location.hash = '';
   });
@@ -192,6 +223,63 @@ describe('DocumentContext tab close force contract', () => {
     expect(screen.getByTestId('close-handled').textContent).toBe('true');
     expect(screen.getByTestId('open-tabs').textContent).toBe(PINNED_TAB_ID);
     expect(screen.getByTestId('active-tab').textContent).toBe(PINNED_TAB_ID);
+  });
+
+  test('reopenClosedTab restores the most recently closed tab and activates it', async () => {
+    seedActiveOtherTabSession();
+    render(<CloseActiveHarness />, { wrapper: ProviderHarness });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Close active' }));
+
+    expect(screen.getByTestId('open-tabs').textContent).toBe(PINNED_TAB_ID);
+    expect(screen.getByTestId('active-tab').textContent).toBe(PINNED_TAB_ID);
+
+    await user.click(screen.getByRole('button', { name: 'Reopen closed' }));
+
+    expect(screen.getByTestId('open-tabs').textContent).toBe(`${PINNED_TAB_ID}|${OTHER_TAB_ID}`);
+    expect(screen.getByTestId('active-tab').textContent).toBe(OTHER_TAB_ID);
+  });
+
+  test('reopenClosedTab skips already-open entries and continues to the next closed tab', async () => {
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = mock(() => Promise.reject(new Error('unexpected fetch'))) as never;
+    seedThreeTabSession();
+    render(<CloseActiveHarness />, { wrapper: ProviderHarness });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Close third' }));
+    await user.click(screen.getByRole('button', { name: 'Close other' }));
+
+    expect(screen.getByTestId('open-tabs').textContent).toBe(PINNED_TAB_ID);
+
+    await user.click(screen.getByRole('button', { name: 'Open other' }));
+
+    expect(screen.getByTestId('open-tabs').textContent).toBe(`${PINNED_TAB_ID}|${OTHER_TAB_ID}`);
+    expect(screen.getByTestId('active-tab').textContent).toBe(OTHER_TAB_ID);
+
+    await user.click(screen.getByRole('button', { name: 'Reopen closed' }));
+
+    expect(screen.getByTestId('open-tabs').textContent).toBe(
+      `${PINNED_TAB_ID}|${OTHER_TAB_ID}|${THIRD_TAB_ID}`,
+    );
+    expect(screen.getByTestId('active-tab').textContent).toBe(THIRD_TAB_ID);
+  });
+
+  test('reopenClosedTab ignores closed new-tab placeholders', async () => {
+    render(<CloseActiveHarness />, { wrapper: ProviderHarness });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Open new' }));
+    await user.click(screen.getByRole('button', { name: 'Close active' }));
+
+    expect(screen.getByTestId('new-tabs').textContent).toBe('');
+    expect(screen.getByTestId('active-new-tab').textContent).toBe('');
+
+    await user.click(screen.getByRole('button', { name: 'Reopen closed' }));
+
+    expect(screen.getByTestId('new-tabs').textContent).toBe('');
+    expect(screen.getByTestId('active-new-tab').textContent).toBe('');
   });
 
   test('closeActiveTabOrWindow skips active pinned tab and closes the next visible unpinned tab', async () => {
@@ -324,6 +412,9 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
   });
 
   test('dragging the lone pinned tab out of the pinned zone unpins it (wired end-to-end)', async () => {
+    // Seed: [A,B,C] pinned {A}. Zone = index 0 only. Drag A → index 1.
+    // reorderTabs must thread the dragged id through applyDragPinMutation so
+    // the context's pinnedTabIds drops A.
     seedReorderSession();
     render(
       <ReorderHarness newOrder={[REORDER_B, REORDER_A, REORDER_C]} draggedTabId={REORDER_A} />,
@@ -343,10 +434,13 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
     expect(screen.getByTestId('visible-tabs').textContent).toBe(
       `${REORDER_B}|${REORDER_A}|${REORDER_C}`,
     );
+    // A left the size-1 pinned zone → unpinned.
     expect(screen.getByTestId('pinned-tabs').textContent).toBe('');
   });
 
   test('dragging an unpinned tab into the pinned zone pins it; non-dragged tabs keep state', async () => {
+    // Seed: [A,B,C] pinned {A}. Drag C to index 0 (into the size-1 zone).
+    // C pins; A is not the dragged tab so it stays pinned.
     seedReorderSession();
     render(
       <ReorderHarness newOrder={[REORDER_C, REORDER_A, REORDER_B]} draggedTabId={REORDER_C} />,
@@ -377,11 +471,16 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
     const beforePinned = screen.getByTestId('pinned-tabs').textContent;
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Reorder' }));
+    // Unchanged order short-circuits before pin mutation — pin set untouched.
     expect(screen.getByTestId('open-tabs').textContent).toBe(beforeOpen);
     expect(screen.getByTestId('pinned-tabs').textContent).toBe(beforePinned);
   });
 
   test('reorderTabs commits a new-tab-placeholder reorder among doc-tabs (QA-024)', async () => {
+    // Seed: openTabs=[A,B,C], pinned=[A]; harness creates a new-tab and reorders
+    // it BETWEEN A and B. Per-bucket orders are unchanged ([A,B,C] and [t1]),
+    // but the visible interleave moves t1 from end → middle. The reorder must
+    // commit the new visible order even though both buckets compare equal.
     seedReorderSession();
     function NewTabReorderHarness() {
       const ctx = useDocumentContext();
@@ -402,6 +501,7 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
               const visible = ctx.visibleTabIds;
               const newTabId = ctx.newTabIds[0];
               if (!newTabId) return;
+              // Move new-tab from index 3 (end) to index 1 (between A and B).
               const next = visible.filter((id) => id !== newTabId);
               next.splice(1, 0, newTabId);
               ctx.reorderTabs(next, newTabId);
@@ -427,6 +527,11 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
 
   test('reorderTabs defensively appends any open tab the caller forgot to include', async () => {
     seedReorderSession();
+    // Caller passes only [C, A] — B was forgotten; reorderTabs must append B
+    // rather than silently drop it from openTabs. Dragged = B (the appended
+    // tab lands at index 2, outside the size-1 zone, and was already
+    // unpinned) so pin state is unperturbed and the test stays focused on the
+    // append backstop.
     render(<ReorderHarness newOrder={[REORDER_C, REORDER_A]} draggedTabId={REORDER_B} />, {
       wrapper: ProviderHarness,
     });
@@ -435,6 +540,7 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
     await user.click(screen.getByRole('button', { name: 'Reorder' }));
     const tabs = screen.getByTestId('open-tabs').textContent ?? '';
     expect(tabs.split('|')).toEqual([REORDER_C, REORDER_A, REORDER_B]);
+    // A was not dragged → still pinned; the defensive append did not touch pin.
     expect(screen.getByTestId('pinned-tabs').textContent).toBe(REORDER_A);
   });
 });
@@ -442,6 +548,8 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
 const COLD_START_DOC = docTabId('event_watcher');
 
 function seedColdStartSession() {
+  // The state a cold single-file window reaches mid-startup: the seeded doc tab
+  // is already open + active while the page list is still loading.
   window.localStorage.setItem(
     localTabSessionStorageKey(window.location.origin),
     JSON.stringify({
@@ -461,6 +569,8 @@ function ColdStartSyncHarness() {
       <span data-testid="open-tabs">{ctx.openTabs.join('|')}</span>
       <button
         type="button"
+        // The first sync of a cold start fires while the page list is still
+        // empty (it arrives empty-then-populated).
         onClick={() =>
           ctx.syncOpenTabsWithKnownTargets({
             pages: new Set(),
@@ -483,6 +593,13 @@ describe('DocumentContext syncOpenTabsWithKnownTargets — cold-start hash prese
   });
 
   test('a sync against transiently-empty pages keeps the hash-targeted doc (no empty-state splash)', async () => {
+    // Regression: `ok <file>` cold launch. The window seeds `#/event_watcher`,
+    // the doc tab is open, but the page list arrives empty-then-populated. A
+    // sync firing in that empty window must NOT prune the doc and clear the hash
+    // — `activeTarget` is still `doc` (not yet `missing`), so `keepMissingDocName`
+    // is null here and only `keepHashDocName` saves it. Without the rescue the
+    // hash clears to '' and the editor falls through to the "Create something
+    // great" splash ~50% of cold opens.
     seedColdStartSession();
     window.location.hash = '#/event_watcher';
     render(<ColdStartSyncHarness />, { wrapper: ProviderHarness });
@@ -536,6 +653,10 @@ describe('DocumentContext remapTabsForRename — preserves tab position', () => 
   });
 
   test('renaming an open tab keeps its index in both openTabs and visibleTabIds', async () => {
+    // Seed: [foo, bar]. Rename foo → bazz. Expected: tabs stay [bazz, bar].
+    // Regression: previously the rename re-derived visibleTabIds via
+    // reconcileVisibleTabOrder, which dropped the stale `foo` id and re-appended
+    // the new `bazz` id at the end, producing [bar, bazz].
     seedRenameSession();
     render(<RenameHarness fromDocName="foo.md" toDocName="bazz.md" />, {
       wrapper: ProviderHarness,
@@ -552,6 +673,11 @@ describe('DocumentContext remapTabsForRename — preserves tab position', () => 
   });
 
   test('renaming the active tab commits the remapped tab id to activeTabId', async () => {
+    // Seed: [foo, bar], active = foo. Rename foo → bazz. Expected: activeTabId
+    // flips from RENAME_FOO to RENAME_BAZZ via commitActiveTabId — without this
+    // call, the active highlight would persist on the stale `foo` id even after
+    // the tab itself was remapped, leaving the editor's active-tab UI desynced
+    // from the rendered tab strip.
     seedRenameSession();
     render(<RenameHarness fromDocName="foo.md" toDocName="bazz.md" />, {
       wrapper: ProviderHarness,
@@ -566,6 +692,10 @@ describe('DocumentContext remapTabsForRename — preserves tab position', () => 
   });
 
   test('renaming a non-active tab leaves activeTabId untouched', async () => {
+    // Seed: [foo, bar], active = foo. Rename `bar` → `bazz`. Active stays foo —
+    // the `if (remappedActiveTabId && next.includes(remappedActiveTabId))` guard
+    // in remapTabsForRename only commits when the remapped active actually lands
+    // in the next tab set; an unrelated rename must not perturb the active tab.
     seedRenameSession();
     render(<RenameHarness fromDocName="bar.md" toDocName="bazz.md" />, {
       wrapper: ProviderHarness,

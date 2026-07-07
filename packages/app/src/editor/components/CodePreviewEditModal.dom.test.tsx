@@ -1,8 +1,28 @@
+/**
+ * DOM tests for `CodePreviewEditModal` — pin the load-bearing UX
+ * contracts:
+ *   - opens with the seeded `initialValue`
+ *   - Cancel and the close button discard the draft (onSave not called)
+ *   - the Save button commits the current draft via `onSave`
+ *   - a fresh open re-seeds from `initialValue` (no stale-draft carryover)
+ *   - the preview pane mounts only when `renderPreview` is supplied
+ *
+ * CodeMirror's keymap (Esc, Cmd+Enter) lives inside its own EditorView
+ * and isn't reachable via DOM-fire keyboard events in jsdom (it reads
+ * from KeyboardEvent.code which jsdom doesn't fully populate). Those
+ * shortcuts are exercised in Playwright instead.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { CodePreviewEditModal } from './CodePreviewEditModal';
 
+// jsdom preload exposes Element / MutationObserver but not NodeFilter; Radix's
+// `react-focus-scope` (Dialog's focus trap) reads it on mount. Bridge it on
+// globalThis BEFORE `render()` mounts the Dialog. Mirrors the local-bridge
+// pattern other DOM tests use for jsdom globals that the shared preload
+// doesn't cover.
 if (typeof window !== 'undefined' && !(globalThis as { NodeFilter?: unknown }).NodeFilter) {
   (globalThis as { NodeFilter?: unknown }).NodeFilter = (
     window as unknown as { NodeFilter: unknown }
@@ -10,9 +30,15 @@ if (typeof window !== 'undefined' && !(globalThis as { NodeFilter?: unknown }).N
 }
 
 afterEach(() => {
+  // jsdom doesn't auto-cleanup between tests under Bun's test runtime; do it
+  // explicitly so the next render starts from a fresh document.
   document.body.innerHTML = '';
 });
 
+/**
+ * Controlled wrapper — most call sites pass `open` + `onOpenChange` as
+ * a controlled pair, so the test fixture does too.
+ */
 function Harness(props: {
   initialValue?: string;
   renderPreview?: (value: string) => React.ReactNode;
@@ -92,6 +118,7 @@ describe('CodePreviewEditModal', () => {
         }}
       />,
     );
+    // No renderPreview → no preview slot.
     expect(screen.queryByTestId('ok-code-preview-edit-modal-preview')).toBeNull();
     unmount();
 
@@ -103,12 +130,19 @@ describe('CodePreviewEditModal', () => {
         renderPreview={(value) => <div data-testid="preview-marker">{value}</div>}
       />,
     );
+    // With renderPreview → preview slot mounts. The preview consumes the
+    // *debounced* draft; on first paint it sees the initialValue without
+    // the debounce timer having to fire.
     const preview = await screen.findByTestId('ok-code-preview-edit-modal-preview');
     expect(preview.textContent ?? '').toContain('<p>hello</p>');
     expect(saved).toBeNull();
   });
 
   test('re-opening with a new initialValue re-seeds the editor', async () => {
+    // Verify via Save round-trip (each open snapshots initialValue;
+    // Save returns the snapshot). jsdom doesn't render CodeMirror's
+    // virtual lines into queryable DOM text, so a textContent check
+    // would test cm-view's rendering, not our modal's seeding contract.
     const saved: string[] = [];
     function ReSeedHarness() {
       const [open, setOpen] = useState(true);

@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the pure share-publish helpers — name/owner validation,
+ * JSON-line picker, and the three event-shape mappers (owners, name-check,
+ * publish). The HTTP handlers themselves live in `api-extension.ts` and
+ * are exercised by the integration test at `./publish.integration.test.ts`.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import {
   isValidShareOwnerName,

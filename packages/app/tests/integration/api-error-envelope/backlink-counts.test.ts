@@ -1,3 +1,14 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleBacklinkCounts`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET /api/backlink-counts?docNames=a,b,c`:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `BacklinkCountsSuccessSchema`, no `ok` discriminator.
+ *   - missing docNames query param → `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
+ *     `Allow: GET` header.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { BacklinkCountsSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

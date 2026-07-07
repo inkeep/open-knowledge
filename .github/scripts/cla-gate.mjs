@@ -121,7 +121,7 @@ export async function applyClaGate({ gh, publicPr, internalPr, forceDraft = fals
   } catch (error) {
     // Fail closed for the security gate, but surface WHY the read failed
     // (401 / rate limit / API down) so a perpetual cla-read-error hold is
-    // triagable; forceDraft routing makes this catch newly load-bearing.
+    // triagable.
     console.warn(`Bridge: CLA gate read failed for ${author}: ${error.message}`);
     gate = { gated: true, reason: "cla-read-error" };
   }

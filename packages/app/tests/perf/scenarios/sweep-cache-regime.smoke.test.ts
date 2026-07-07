@@ -1,3 +1,26 @@
+/**
+ * Smoke test for the sweep-cache-regime scenario — the first
+ * `defineSweep`-class integration test.
+ *
+ * Scope: exercises the scenario's harness composition end-to-end with
+ * a synthetic runCell (no live dev server). Asserts the canonical
+ * SweepCellResult shape conforms to the verdict contract; pins
+ * the MAX_POOL=5 cell that the scenario calls out specifically.
+ *
+ * What this test deliberately does NOT cover (engineer-local only):
+ *
+ *   - Real Playwright/CDP cell execution — requires a live dev server.
+ *   - The full ~66-cell campaign wall-time — sweep methodology is
+ *     measured on canonical 16 GB+ MacBook hardware, not under CI.
+ *   - TipTap leak rate against the baseline — a separate
+ *     regression test pins that.
+ *
+ * The synthetic runCell exercises the same orchestration pipeline as
+ * production: each cell flows through the sweep-runner's stage logic,
+ * baseline tagging, withCheckpoint (when enabled), and the
+ * aggregateCampaign cross-fixture winner selection.
+ */
+
 import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,6 +45,19 @@ import scenario, {
   SCENARIO_NAME,
 } from './sweep-cache-regime';
 
+// ─────────────────────────────────────────────────────────────────────────
+// Helpers — synthetic measurement + runCell + ctx
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Synthesize a plausible per-cell measurement for the given cap regime.
+ *
+ * The shape is deterministic in the cap regime so the smoke test's
+ * assertions about verdict classification and the MAX_POOL=5
+ * cell stay stable across runs. Latency falls as cap rises (cache hit
+ * rate goes up) until it plateaus around MAX_POOL=20 — mimics the
+ * Pareto-knee shape expected from the campaign.
+ */
 function synthesizeMeasurement(capRegime: SweepCellInput['capRegime']): VerdictMeasurement {
   const poolHeadroom = Math.min(capRegime.maxPool, 20);
   const cacheHeadroom = Math.min(capRegime.maxCache, 20);
@@ -74,6 +110,9 @@ function buildSmokeCtx(outDir: string): {
     headed: false,
     viewport: { width: 1440, height: 900 },
   };
+  // The smoke test exercises only the scenario's pure-data + sweep-runner
+  // composition. Page/CDP/Browser are never touched by the synthetic
+  // runCell, so casting an undefined-shaped ctx is safe here.
   const ctx = {
     page: undefined as never,
     context: undefined as never,
@@ -96,6 +135,10 @@ const SMOKE_HOST: HostClassFingerprint = {
   osVersion: 'darwin',
   identifier: 'smoke-16gb-darwin',
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// Exports + parseSweepRunOptions
+// ─────────────────────────────────────────────────────────────────────────
 
 describe('sweep-cache-regime scenario — module exports', () => {
   it('default-exports a ScenarioDefinition with the canonical name', () => {
@@ -177,6 +220,10 @@ describe('parseSweepRunOptions', () => {
     expect(options.prodValidation).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// End-to-end with synthetic runCell
+// ─────────────────────────────────────────────────────────────────────────
 
 describe('sweep-cache-regime scenario — end-to-end smoke (synthetic runCell)', () => {
   it('produces a well-formed Stage-1 MAX_POOL=5 SweepCellResult for the tight fixture', async () => {
@@ -293,6 +340,14 @@ describe('sweep-cache-regime scenario — end-to-end smoke (synthetic runCell)',
   it('thrown runCell on a single cell preserves count via runner synthesis path (no drift note)', async () => {
     const outDir = mkdtempSync(resolve(tmpdir(), 'sweep-cache-regime-drift-'));
     try {
+      // Per the runner's contract, a thrown runCell still produces a
+      // synthesized FAIL cell with errors[] populated — the campaign's
+      // per-fixture cell count stays at the canonical 22. Throwing only
+      // on the first cell of Stage 1 leaves the rest of the stage
+      // error-free, so findStageWinner has valid cells to pick from
+      // and the campaign completes. The all-cells-fail case is covered
+      // by the next test (the runner refuses to continue on a zero-valid
+      // -cell stage; that's intentional, not a regression).
       const { ctx, notes } = buildSmokeCtx(outDir);
       const outcome = await runSweepCampaign(
         ctx,
@@ -303,6 +358,11 @@ describe('sweep-cache-regime scenario — end-to-end smoke (synthetic runCell)',
           prodValidation: false,
         },
         async (input: SweepCellInput, signal: AbortSignal): Promise<SweepCellResult> => {
+          // Throw on Stage 1's first axis-coverage cell (cellIndex 0) while
+          // leaving the baseline cell + every other stage cell error-free.
+          // This produces exactly one synthesized FAIL cell in allCells,
+          // so findStageWinner still has 5 valid Stage-1 cells to pick a
+          // winner from and the campaign completes.
           if (!input.isBaseline && input.stage === 1 && input.cellIndex === 0) {
             throw new Error(`synthetic throw for stage1 cellIndex=${input.cellIndex}`);
           }
@@ -320,6 +380,14 @@ describe('sweep-cache-regime scenario — end-to-end smoke (synthetic runCell)',
   it('all-cells-fail in a stage aborts the campaign with an actionable error (no silent zero-winner)', async () => {
     const outDir = mkdtempSync(resolve(tmpdir(), 'sweep-cache-regime-all-fail-'));
     try {
+      // When EVERY cell in Stage 1 fails (baseline still succeeds — otherwise
+      // the runner's baseline-cell-failure guard would fire earlier),
+      // findStageWinner has no valid cells to feed kneedle. The prior
+      // implementation returned 0 (which isn't in any cap axis), Stage 2
+      // then ran with maxPool=0, and the final verdict emitted a
+      // pathological {maxPool: 0, ...} regime. The runner must now abort
+      // with a clear stage label so the engineer investigates rather than
+      // seeing a phantom verdict.
       const { ctx } = buildSmokeCtx(outDir);
       let caught: Error | null = null;
       try {
@@ -351,6 +419,14 @@ describe('sweep-cache-regime scenario — end-to-end smoke (synthetic runCell)',
   it('baseline-cell failure aborts the campaign before any stage runs (loud, not silent)', async () => {
     const outDir = mkdtempSync(resolve(tmpdir(), 'sweep-cache-regime-baseline-fail-'));
     try {
+      // Sibling pin to the all-cells-fail test above. When the baseline
+      // cell itself fails, the arch-floor cannot be derived, so the
+      // runner refuses to proceed — every downstream cell would otherwise
+      // tag `cap-bounded` against a zeroed floor and silently corrupt
+      // CampaignVerdict.archFloors. Without this pin, a regression that
+      // restored the silent-zero-floor path could slip through under the
+      // existing all-stage1-fail test (which exercises a different error
+      // surface). See lib/sweep-runner.ts baseline guard.
       const { ctx } = buildSmokeCtx(outDir);
       let nonBaselineCellCount = 0;
       let caught: Error | null = null;
@@ -376,6 +452,8 @@ describe('sweep-cache-regime scenario — end-to-end smoke (synthetic runCell)',
       }
       expect(caught).not.toBeNull();
       expect(caught?.message).toMatch(/baseline cell for fixture 'tight' failed/);
+      // No stage cells ran — the throw fires before stage1 inputs are
+      // constructed.
       expect(nonBaselineCellCount).toBe(0);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
@@ -407,6 +485,10 @@ describe('sweep-cache-regime scenario — end-to-end smoke (synthetic runCell)',
   });
 
   it('prod-validation flags the loopback-IP dev-server forms (127.0.0.1, 0.0.0.0)', async () => {
+    // Vite's dev server binds to both `localhost` and the loopback IP forms.
+    // A previous version of the dev-server-detection regex only matched
+    // `localhost:5173`, leaving `http://127.0.0.1:5173` and
+    // `http://0.0.0.0:5173` as silent prod-validation bypasses.
     for (const target of ['http://127.0.0.1:5173', 'http://0.0.0.0:5173/']) {
       const outDir = mkdtempSync(resolve(tmpdir(), 'sweep-cache-regime-prod-ip-'));
       try {

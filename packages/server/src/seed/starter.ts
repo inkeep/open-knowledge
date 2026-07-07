@@ -1,3 +1,39 @@
+/**
+ * Starter packs for the `ok seed` scaffolder.
+ *
+ * Seven packs ship today:
+ *   - `knowledge-base`     — Karpathy three-layer source-grounded KB
+ *   - `software-lifecycle` — proposals / decisions / specs / postmortems / guides
+ *   - `codebase-wiki`      — agent-authored wiki of a codebase (architecture / modules / flows / concepts / guides)
+ *   - `plain-notes`        — Just notes/ + daily/ — escape hatch for casual users
+ *   - `worldbuilding`      — Fiction encyclopedia (characters / settings / themes / factions / lore)
+ *   - `writing-pipeline`   — ideas → drafts → published, lean three-stage
+ *   - `entity-vault`       — Entity vault (people / companies / meetings / concepts / originals / media)
+ *   - `okf`                — Open Knowledge Format conformant-by-construction mini-KB
+ *
+ * `codebase-wiki` is the only pack whose folder paths nest (`wiki/architecture`,
+ * …) and whose rootFiles keys carry a folder prefix (`wiki/OVERVIEW.md`); the
+ * scaffolder's plan + apply paths tolerate the slashes so the wiki nests under
+ * `wiki/` from both CLI and desktop without `--root`.
+ *
+ * Each pack carries: id, display name + description, optional default subfolder,
+ * a folder list (each with `.ok/frontmatter.yml` description + one or more
+ * templates via `starterTemplate` + optional `extraTemplates`), the template
+ * body strings, and optional root files (e.g. log.md for KB).
+ *
+ * Constraints:
+ *   - Substitution allowlist: {{date}} + {{user}} only. Validated by
+ *     `validateSubstitution` at template-write time.
+ *   - `title:` required at template-write time (TEMPLATE_TITLE_REQUIRED).
+ *   - Folder description in `.ok/frontmatter.yml` is the agent-guidance surface
+ *     — `ok seed` does NOT emit per-folder AGENTS.md.
+ *
+ * Back-compat: legacy `STARTER_FOLDERS`, `STARTER_TEMPLATES`, `LOG_MD_TEMPLATE`
+ * are exported as aliases pointing into `STARTER_PACKS['knowledge-base']` so
+ * existing test files and external consumers keep working without churn.
+ */
+
+/** Stable identifier for a pack. */
 export type PackId =
   | 'knowledge-base'
   | 'software-lifecycle'
@@ -8,31 +44,101 @@ export type PackId =
   | 'entity-vault'
   | 'okf';
 
+/** The default pack — back-compat for callers that don't pass `packId`. */
 export const DEFAULT_PACK_ID: PackId = 'knowledge-base';
 
+/**
+ * A starter-pack folder entry. Drives the filesystem scaffold (folder +
+ * `.ok/frontmatter.yml` + `.ok/templates/<starter>.md`).
+ */
 export interface StarterFolder {
+  /** Directory name created under the project root, e.g. `external-sources`. */
   path: string;
+  /** Human-readable title written to the folder's `.ok/frontmatter.yml`. */
   title: string;
+  /**
+   * Description written to the folder's `.ok/frontmatter.yml`. This is the
+   * **primary agent-guidance surface** for folder purpose — `ok seed` does
+   * NOT emit AGENTS.md files; agent guidance for each folder lives in this
+   * description, which surfaces at every `exec` (`ls` / `cat`) and `search`
+   * call as part of the folder's own frontmatter. Written FOR the agent:
+   * dense, jargon-carrying (prior-art shapes, status vocab) on purpose.
+   */
   description: string;
+  /**
+   * Short, plain-language, user-facing one-liner surfaced in the pack picker
+   * preview (`StarterPackFolderInfo.summary`). Separate from `description` so
+   * the agent surface can stay dense while users see jargon-free copy —
+   * mirrors the pack-level `pack.description` (short) vs `packBlurbs` split.
+   * Keep it a single short sentence; no code spans, no prior-art references.
+   * Falls back to the first sentence of `description` when omitted.
+   */
+  uiSummary?: string;
+  /** Tags written to the folder's `.ok/frontmatter.yml`. */
   tags: string[];
+  /**
+   * Filename (without `.md`) of the starter template the seed scaffolds
+   * inside `<folder>/.ok/templates/`. Stable identifier — agents reference
+   * via `write({ template: <starterTemplate> })`.
+   */
   starterTemplate: string;
+  /**
+   * Additional templates to install alongside `starterTemplate` in this
+   * folder's `.ok/templates/`. All ship with the seed; the starter is
+   * pre-selected in the picker, extras are available via `New from
+   * template…`. Each name MUST have a body in the pack's `templates` map.
+   *
+   * Use this when a single folder serves multiple distinct shapes — e.g.
+   * `guides/` ships `onboarding-guide` + `runbook` extras beside the
+   * generic `guide`; `specs/` ships `spec-plan` + `spec-tasks` to enable
+   * the `github/spec-kit` per-spec triple-file shape.
+   */
   extraTemplates?: readonly string[];
 }
 
+/**
+ * A bundled folders + templates + optional root files unit. Selected via
+ * `packId` in `SeedOptions`. Display name + description drive the picker UI;
+ * `defaultSubfolder` pre-fills the subfolder field when the user picks the
+ * "in a subfolder" option.
+ */
 export interface StarterPack {
   id: PackId;
+  /** Display name shown in the picker (e.g. "Knowledge base"). */
   name: string;
+  /** One-line subtitle shown in the picker card. */
   description: string;
+  /**
+   * Default subfolder name pre-filled in the dialog when the user picks
+   * "in a subfolder". `undefined` means project-root scaffold is recommended.
+   */
   defaultSubfolder?: string;
+  /** Folders to scaffold, each with `.ok/frontmatter.yml` + one or more templates (starter + optional extras). */
   folders: readonly StarterFolder[];
+  /** Per-folder template bodies, keyed by `StarterFolder.starterTemplate` and any `StarterFolder.extraTemplates` entries. */
   templates: Readonly<Record<string, string>>;
+  /**
+   * Optional root files written at the rootDir (e.g. `log.md` for the KB pack).
+   * Keyed by filename → body. Empty/missing means no root files for this pack.
+   *
+   * Keys are bare filenames for project-root files (`log.md`, `USER.md`), or
+   * slash-prefixed relative paths to land a file in a pack subfolder
+   * (`codebase-wiki` ships `wiki/OVERVIEW.md` + `wiki/log.md` so the wiki nests
+   * under `wiki/` without `--root`). `apply.ts` `resolveFileContent`
+   * resolves both forms (a frontmatter/template id always carries the literal
+   * `/.ok/` segment a rootFile key never does, so they never collide); path
+   * safety is enforced independently by `assertEntryPathInProject` at apply time.
+   */
   rootFiles?: Readonly<Record<string, string>>;
 }
+
+// ─── Pack 1: Knowledge base (the existing Karpathy three-layer) ──────────
 
 const KNOWLEDGE_BASE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'external-sources',
     title: 'External Sources',
+    uiSummary: 'The original sources, saved word-for-word.',
     description:
       'Raw sources saved verbatim — the fetched text of URLs, extracted PDFs, and copied files, each with the original URL and access date in frontmatter. Produced by `ingest`. Immutable after capture; no analysis here (that goes in `research/`).',
     tags: ['source', 'immutable', 'layer-ingest'],
@@ -41,6 +147,7 @@ const KNOWLEDGE_BASE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'research',
     title: 'Research',
+    uiSummary: 'Your work-in-progress take on what the sources mean.',
     description:
       'Provisional analysis that synthesizes the external sources. Every claim cites a doc in `external-sources/`; `status: provisional`. Promoted to `articles/` via `consolidate` once the findings are stable.',
     tags: ['research', 'provisional', 'layer-research'],
@@ -49,6 +156,7 @@ const KNOWLEDGE_BASE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'articles',
     title: 'Articles',
+    uiSummary: 'The finished, trusted version you can rely on.',
     description:
       'Canonical knowledge, committed after a team decision. The source of truth for the domain; carries a `supersedes:` chain back to the `research/` docs it replaces.',
     tags: ['article', 'canonical', 'layer-consolidate'],
@@ -127,10 +235,22 @@ description: Append-only audit trail of changes to this knowledge base.
 Append-only audit trail. Add one dated entry per turn that creates, edits, or restructures content. The knowledge-base skill describes what to log and the entry shape.
 `;
 
+// ─── Pack 2: Software lifecycle (NEW) ─────────────────────────────────────
+//
+// Folder shape refined per 2026 prior-art audit. Renames: `rfcs/` → `proposals/`
+// (Astro / dotnet / K8s convention), `adrs/` → `decisions/` (Google Cloud +
+// MADR-accepted). Removes top-level `runbooks/` — modern incident tools
+// (incident.io / Rootly) own the runbook surface; in-repo `guides/` absorbs
+// the runbook content that's still service-shaped. Adds `guides/` — Diátaxis
+// how-to + onboarding + runbook bucket; consistently the #1 in-repo doc need
+// new hires hit. Keeps `specs/` and `postmortems/` (load-bearing in
+// `github/spec-kit` and `dastergon/postmortem-templates` respectively).
+
 const SOFTWARE_LIFECYCLE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'proposals',
     title: 'Proposals',
+    uiSummary: "Ideas you're putting forward for discussion.",
     description:
       'In-flight design proposals (RFC-shape), one file per proposal (`0001-feature-name.md`). Status flows `draft → fcp → accepted/rejected`; accepted proposals graduate to a record in `decisions/`.',
     tags: ['proposal', 'design', 'in-flight'],
@@ -139,6 +259,7 @@ const SOFTWARE_LIFECYCLE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'decisions',
     title: 'Decisions',
+    uiSummary: "Decisions you've made, and why.",
     description:
       'Architecture Decision Records (MADR / Nygard shape), frozen once accepted. One file per decision (`NNNN-title.md`); a new decision links back via `Supersedes:` to the one it replaces.',
     tags: ['decision', 'adr', 'frozen'],
@@ -147,6 +268,7 @@ const SOFTWARE_LIFECYCLE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'specs',
     title: 'Specs',
+    uiSummary: "Detailed plans for what you're building.",
     description:
       'Implementation specs derived from accepted proposals. Prefer the `github/spec-kit` triple — one folder per spec with `spec.md` + `plan.md` + `tasks.md` (the folder ships all three templates). References the parent proposal.',
     tags: ['spec', 'implementation'],
@@ -156,6 +278,7 @@ const SOFTWARE_LIFECYCLE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'postmortems',
     title: 'Postmortems',
+    uiSummary: 'Write-ups of what broke and what you learned.',
     description:
       'Blameless incident write-ups, one file per incident (`YYYY-MM-DD-name.md`): Summary / Timeline / Root cause / What went well / Action items (Google SRE shape).',
     tags: ['postmortem', 'incident', 'blameless'],
@@ -164,6 +287,7 @@ const SOFTWARE_LIFECYCLE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'guides',
     title: 'Guides',
+    uiSummary: 'How-to guides, onboarding, and runbooks.',
     description:
       'How-to guides, onboarding docs, and service runbooks (Diátaxis "how-to"). Ships `guide`, `onboarding-guide`, and `runbook` templates; carries `last_verified`.',
     tags: ['guide', 'how-to', 'onboarding'],
@@ -375,10 +499,28 @@ tags: [postmortem]
 `,
 };
 
+// ─── Pack 3: Codebase wiki ("DeepWiki, but in your repo") ─────────────────
+//
+// Agent-authored equivalent of Cognition's DeepWiki: a coding agent reads the
+// source and writes a navigable, diagram-rich, source-grounded wiki INTO the
+// OK knowledge base. Version-controlled, private by default, human+agent
+// co-editable, and durable grounding context for future agent sessions.
+//
+// Two natural-language knobs the `wiki` workflow reads from the user's request
+// (zero engine config; the chosen profile is recorded in OVERVIEW frontmatter
+// so refreshes stay consistent):
+//   - audience: `internal` (default) | `public`
+//   - depth:    `tour` | `standard` (default) | `exhaustive`
+//
+// Folder paths nest under `wiki/` and rootFiles keys are `wiki/`-prefixed so the
+// wiki nests from CLI and desktop without `--root`. The scaffolder's plan + apply
+// paths tolerate the slashes (see apply.ts `resolveFileContent`).
+
 const CODEBASE_WIKI_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'wiki/architecture',
     title: 'Architecture',
+    uiSummary: 'The big-picture structure of your codebase.',
     description:
       'System boundaries, layers, subsystems, and cross-cutting concerns — the big-picture structure. One page per architectural area, each with a `mermaid` system-context or component diagram, the key components, and the design decisions behind them. Uses the `architecture-page` template. Cross-link the modules and flows each area touches. Reference source files per the wiki source-reference convention (relative links + symbol code-spans for `internal`; GitHub blob URLs for `public`).',
     tags: ['wiki', 'architecture'],
@@ -387,6 +529,7 @@ const CODEBASE_WIKI_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'wiki/modules',
     title: 'Modules',
+    uiSummary: 'What each package or module does.',
     description:
       'One page per package or module: purpose, responsibilities, public API / entry points, key files (linked per the source-reference convention), dependencies, and the flows it participates in. Uses the `module-page` template. At `depth: tour` these fold into the architecture pages; at `standard`+ each package gets its own page. Cross-link concepts and flows.',
     tags: ['wiki', 'module'],
@@ -395,6 +538,7 @@ const CODEBASE_WIKI_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'wiki/flows',
     title: 'Flows',
+    uiSummary: 'How key actions move through the system.',
     description:
       'Key end-to-end flows as `mermaid` sequence or flow diagrams plus narrative — how a request, job, or interaction moves through the system. Uses the `flow-page` template; record failure modes at `depth: exhaustive`. Link every module and concept the flow crosses.',
     tags: ['wiki', 'flow'],
@@ -403,6 +547,7 @@ const CODEBASE_WIKI_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'wiki/concepts',
     title: 'Concepts',
+    uiSummary: 'Plain definitions of the terms and ideas in your code.',
     description:
       'Glossary of atomic pages for domain terms and core abstractions — the vocabulary a newcomer needs. Uses the `concept-page` template: definition, why it matters, where it lives in the code. Keep pages small and densely cross-linked so concepts become hubs for everywhere they appear.',
     tags: ['wiki', 'concept'],
@@ -411,6 +556,7 @@ const CODEBASE_WIKI_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'wiki/guides',
     title: 'Guides',
+    uiSummary: 'How and where to make common changes.',
     description:
       'Task-oriented "how / where do I change X" walkthroughs. Uses the `guide-page` template: goal, steps, relevant code, gotchas. Populated at `depth: standard` and rich at `exhaustive`; thin or empty at `tour`. Link the modules and flows each guide touches.',
     tags: ['wiki', 'guide', 'how-to'],
@@ -515,6 +661,9 @@ tags: [wiki, guide]
 `,
 };
 
+// OVERVIEW is the wiki hub. Seeded as a stub; the `wiki` workflow fills the
+// body and stamps `profile` + `source_commit` (git HEAD at generation) into
+// frontmatter as the freshness anchor that refresh mode diffs against.
 const CODEBASE_WIKI_OVERVIEW_MD = `---
 title: Codebase Wiki — Overview
 description: Home page and navigation hub for this codebase wiki. Generated and refreshed by the wiki workflow.
@@ -542,6 +691,8 @@ Once generated, this page carries: what the project is, a big-picture architectu
 - Guides — task-oriented how / where-do-I-change-X walkthroughs
 `;
 
+// Append-only audit trail; mirrors the knowledge-base pack's slim log.md. The
+// entry shape lives in the codebase-wiki pack skill, not in the file body.
 const CODEBASE_WIKI_LOG_MD = `---
 title: Wiki Log
 description: Append-only audit trail of wiki generation and refresh runs.
@@ -552,10 +703,13 @@ description: Append-only audit trail of wiki generation and refresh runs.
 Append-only audit trail. Add one dated entry per generation or refresh run, recording the profile, the \`source_commit\` it was anchored to, and the coverage. The codebase-wiki skill describes the entry shape.
 `;
 
+// ─── Pack 4: Plain notes (NEW, trivial) ───────────────────────────────────
+
 const PLAIN_NOTES_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'notes',
     title: 'Notes',
+    uiSummary: 'One file per topic. Just write.',
     description:
       'Flat notes, one file per topic. The "I just want to write" home base — link freely and the graph builds itself.',
     tags: ['notes', 'flat'],
@@ -564,6 +718,7 @@ const PLAIN_NOTES_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'daily',
     title: 'Daily',
+    uiSummary: 'One journal entry per day.',
     description:
       'Daily journal entries, one file per day (`YYYY-MM-DD.md`): morning intentions, evening reflection.',
     tags: ['daily', 'journal'],
@@ -610,10 +765,13 @@ tags: [daily]
 `,
 };
 
+// ─── Pack 5: Worldbuilding (NEW, Fiction variant) ─────────────────────────
+
 const WORLDBUILDING_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'characters',
     title: 'Characters',
+    uiSummary: 'The people in your story.',
     description:
       'One file per character (PC + NPC); frontmatter carries `type`, status, faction, first appearance.',
     tags: ['character', 'fiction', 'entity'],
@@ -622,6 +780,7 @@ const WORLDBUILDING_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'settings',
     title: 'Settings',
+    uiSummary: 'The places and regions of your world.',
     description:
       'Locations, regions, and world-rules — the "where" of the story. Frontmatter carries region, controlling faction, danger level.',
     tags: ['setting', 'location', 'world'],
@@ -630,6 +789,7 @@ const WORLDBUILDING_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'themes',
     title: 'Themes',
+    uiSummary: 'The big ideas your story keeps returning to.',
     description:
       'Recurring narrative concerns (love, betrayal, identity) — the "why" of the story. Each entry captures the theme and its tension.',
     tags: ['theme', 'narrative', 'meaning'],
@@ -638,6 +798,7 @@ const WORLDBUILDING_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'factions',
     title: 'Factions',
+    uiSummary: 'The groups and their rivalries.',
     description:
       'Political, social, criminal, magical, or religious groups — the "who-vs-who" of the story. Ships `faction`, `political-faction`, and `religion` templates.',
     tags: ['faction', 'group', 'politics'],
@@ -647,6 +808,7 @@ const WORLDBUILDING_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'lore',
     title: 'Lore',
+    uiSummary: 'History, myth, and how the world works.',
     description:
       'History, mythology, cosmology, and magic systems — the foundational fabric the story stands on. Ships `lore`, `magic-system`, and `historical-event` templates.',
     tags: ['lore', 'history', 'world'],
@@ -866,10 +1028,25 @@ tags: [lore, history]
 `,
 };
 
+// ─── Pack 6: Writing pipeline (NEW, lean) ─────────────────────────────────
+//
+// Scope: short-to-medium-form essays, newsletters, blog posts. Book writing
+// is a fundamentally different beast (Manuscript / Chapters / Characters /
+// Worldbuilding) — defer to a future `book-pipeline` pack rather than fork
+// this one.
+//
+// Folder name `ideas/` (not `seeds/`) per 2026 prior-art audit: "seeds" is
+// Maggie-Appleton digital-garden jargon for *note maturity*, not a pre-draft
+// inbox. Real writers (Steph Ango / Eleanor Konik / Obsidian-forum bloggers)
+// say "ideas", "inbox", or "stuff". Jekyll `_drafts`/`_posts` (2008+) is the
+// most evidence-backed folder split in markdown writing; `drafts/published/`
+// preserves that load-bearing convention.
+
 const WRITING_PIPELINE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'ideas',
     title: 'Ideas',
+    uiSummary: 'Quick sparks to write about later.',
     description:
       'One-line ideas captured before they fade — premises, headlines, fragments. Not a draft folder; promote an idea into `drafts/` when you commit to writing it.',
     tags: ['idea', 'inbox', 'pre-draft'],
@@ -878,6 +1055,7 @@ const WRITING_PIPELINE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'drafts',
     title: 'Drafts',
+    uiSummary: "Pieces you're actively writing.",
     description:
       'Active prose. Frontmatter tracks `status`, word count, and parent idea. CRDT history covers every revision, so no named-revision folders.',
     tags: ['draft', 'prose'],
@@ -886,6 +1064,7 @@ const WRITING_PIPELINE_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'published',
     title: 'Published',
+    uiSummary: "Finished work you've shared.",
     description:
       'Shipped work; carries `published_at`, `canonical_url`, `channel`. Treat as immutable — to revise, copy to a new draft.',
     tags: ['published', 'live'],
@@ -941,10 +1120,29 @@ tags: [published]
 `,
 };
 
+// ─── Pack 7: Entity vault (GBrain-compatible Markdown) ────────────────────
+//
+// Inspired by Garry Tan's gbrain (https://github.com/garrytan/gbrain): a
+// typed-entity vault with `people/`, `companies/`, `meetings/`, `concepts/`,
+// `originals/`, `media/` plus root files for user profile, agent identity,
+// access policy, cadence, and an audit log. The pack ships the MARKDOWN HALF
+// of the pattern (folder structure + folder frontmatter + templates). OK is
+// the cockpit/editor/review layer; Garry's `gbrain`, when installed, can import
+// or sync the same Markdown vault for DB-backed indexing, retrieval, graph
+// extraction, and automation.
+//
+// No deep integration is implied here: OK does not run `gbrain`, read its DB,
+// or replace its engine. Interop is plain Markdown + Git.
+//
+// Body convention enforced via descriptions + templates: "compiled truth"
+// (overwritable, top section) above `--- timeline ---`, "timeline"
+// (append-only, parseable `- **YYYY-MM-DD** | ...` entries) below.
+
 const ENTITY_VAULT_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'people',
     title: 'People',
+    uiSummary: 'The people you know and work with.',
     description:
       'Person dossiers. Compiled-truth section above `--- timeline ---` (rewritten as understanding changes); append-only timeline below using `- **YYYY-MM-DD** | source | @author — evidence` bullets. Frontmatter `type: person`. Prefer path-qualified links such as `[[companies/acme|Acme]]` and `[[meetings/2026-05-12-acme|meeting]]` when identity matters. Agent: when a meeting note mentions a person not yet captured, stub a file here; route new facts into either compiled-truth (current synthesis) or timeline (raw evidence). Never rewrite the timeline.',
     tags: ['person', 'entity', 'dossier'],
@@ -953,6 +1151,7 @@ const ENTITY_VAULT_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'companies',
     title: 'Companies',
+    uiSummary: 'The companies on your radar.',
     description:
       'Company dossiers. Same body convention as `people/`: compiled-truth above `--- timeline ---`, append-only parseable timeline below. Frontmatter `type: company`. Prefer path-qualified links to `people/`, `meetings/`, and `concepts/`. Agent: when a person dossier references a company not yet captured, stub a file here; surface company-to-person edges when both exist.',
     tags: ['company', 'entity', 'dossier'],
@@ -961,6 +1160,7 @@ const ENTITY_VAULT_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'meetings',
     title: 'Meetings',
+    uiSummary: 'Notes from your meetings.',
     description:
       'Meeting notes. Filename `YYYY-MM-DD-<slug>.md`. Frontmatter carries `title`, `date`, `attendees:` (prefer person slugs/names that resolve to `people/` dossiers), and `type: meeting`. Body is raw notes with path-qualified links to the people, companies, and concepts mentioned. Agent: after a meeting note lands, extract entity mentions and append dated timeline bullets to each referenced dossier. Do NOT rewrite the meeting note; it is the verbatim record.',
     tags: ['meeting', 'note'],
@@ -969,6 +1169,7 @@ const ENTITY_VAULT_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'concepts',
     title: 'Concepts',
+    uiSummary: 'Recurring ideas that connect people and companies.',
     description:
       'Evergreen idea pages: abstract patterns, frameworks, recurring concepts that surface across people / companies / meetings. Compiled-truth above `--- timeline ---`, append-only parseable timeline below. Frontmatter `type: concept`. Agent: when a meeting note or person dossier references a concept (e.g. "agent-runtime observability") not yet captured, stub a file here; thread path-qualified links so the concept becomes a hub for everywhere it appears.',
     tags: ['concept', 'idea', 'evergreen'],
@@ -977,6 +1178,7 @@ const ENTITY_VAULT_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'originals',
     title: 'Originals',
+    uiSummary: 'Your own raw thinking.',
     description:
       "Your own thinking, untransformed. Frontmatter `type: original`. Use freely; link to anything that should become its own entity. Agent: treat originals as authoritative source material when extracting facts; these are the user's words, not inferences. Append timeline entries to referenced dossiers when a clear new claim appears, citing the original by markdown link.",
     tags: ['original', 'thinking', 'user'],
@@ -985,6 +1187,7 @@ const ENTITY_VAULT_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'media',
     title: 'Media',
+    uiSummary: 'Transcripts, voice notes, and long attachments.',
     description:
       "Bulk transcripts, voice notes, articles, large attachments. Frontmatter `type: transcript` (template provided). Often `.okignore`-d so the OK index stays light. Keep raw media/source material here; analysis belongs in dossiers, not here. If you also run Garry Tan's `gbrain`, import/sync can index these Markdown transcripts alongside the entity dossiers.",
     tags: ['media', 'transcript', 'bulk'],
@@ -1243,10 +1446,35 @@ description: "When the agent does scheduled work: daily briefings, end-of-day do
 
 `;
 
+// ─── Pack 7: OKF starter (Open Knowledge Format conformant-by-construction) ─
+//
+// A small mini-KB whose seeded content is conformant with Google's Open
+// Knowledge Format (OKF) v0.1 from commit one — WITHOUT enforcing anything.
+// OKF's one hard requirement is a non-empty `type` on every non-reserved doc
+// (§9 rules 1–2); plus reserved lowercase `index.md` (§6 navigation) and
+// `log.md` (§7 change-history) that carry NO frontmatter (§9 rule 3).
+//
+// Conformance is PURELY pre-populated content: the native frontmatter schema
+// stays open-shaped, nothing is linted, and `ok init` is untouched. The pack
+// is a normal `STARTER_PACKS` entry — same shape, invocation, and discovery as
+// every other pack.
+//
+// Seeded content uses STANDARD markdown links (`[text](./path.md)`), not OK's
+// `[[…]]` shorthand: a conformant OKF bundle's link graph is plain markdown
+// (OKF's export normalizes `[[doc]]` → `[text](./target.md)`), so authoring
+// standard links keeps the seeded bundle portable to a strict OKF consumer.
+//
+// Reserved files are frontmatter-free convention exemplars, valid at seed time;
+// the tool does not keep them live (the pack skill tells the author to maintain
+// them). `log.md` seeds a prose instruction (not a dated placeholder entry),
+// mirroring the other packs' root files — root files are written verbatim with
+// no `{{date}}` substitution, so a seeded date would be wrong.
+
 const OKF_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'concepts',
     title: 'Concepts',
+    uiSummary: 'Ideas and definitions worth keeping.',
     description:
       'Durable ideas and definitions, one file per concept. Each doc carries `type: concept` in its frontmatter. Link related concepts so the graph builds itself.',
     tags: ['concept', 'okf'],
@@ -1255,6 +1483,7 @@ const OKF_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'references',
     title: 'References',
+    uiSummary: 'Sources and citations you rely on.',
     description:
       'External sources and citations you rely on, one file per source. Each doc carries `type: reference`. Link the docs that cite a reference so the evidence trail stays navigable.',
     tags: ['reference', 'okf'],
@@ -1263,6 +1492,7 @@ const OKF_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'notes',
     title: 'Notes',
+    uiSummary: 'Working notes and observations.',
     description:
       'Working notes and observations, one file per note. Each doc carries `type: note`. The lightest section — capture first, link as ideas connect.',
     tags: ['note', 'okf'],
@@ -1270,6 +1500,11 @@ const OKF_FOLDERS: readonly StarterFolder[] = [
   },
 ] as const;
 
+// Templates are a single frontmatter block: the template's own picker identity
+// (title/description) sits under a reserved `template:` key, and every other
+// top-level key is the frontmatter the INSTANTIATED doc receives. On create the
+// `template:` identity is stripped; the rest (incl. `type:`) lands on the new
+// doc, which is what makes instantiated docs OKF-conformant.
 const OKF_TEMPLATES: Readonly<Record<string, string>> = {
   concept: `---
 template:
@@ -1326,6 +1561,11 @@ tags: [note]
 `,
 };
 
+// A real, non-reserved seed doc — single frontmatter block carrying a non-empty
+// `type` (the OKF §9 rule-2 requirement). Gives a strict OKF consumer a typed
+// document to accept and gives `index.md` a real link target. `Document` is the
+// OKF floor (non-empty is all OKF needs); the author picks a more specific type
+// as the KB grows.
 const OKF_WELCOME_MD = `---
 title: Welcome
 description: Start here — what this knowledge base is and how it is organized.
@@ -1350,6 +1590,10 @@ OKF requires exactly one thing of every non-reserved document: a non-empty \`typ
 See the project skill for the full set of conventions.
 `;
 
+// Reserved OKF §6 navigation file. Lowercase \`index.md\`, FRONTMATTER-FREE
+// (any frontmatter on a reserved file is a §9 rule-3 violation). A
+// progressive-disclosure link-list (standard markdown links) to the seeded
+// doc + sections.
 const OKF_INDEX_MD = `# Index
 
 The navigation hub for this knowledge base. Start with [welcome](./welcome.md), then explore by section.
@@ -1364,11 +1608,22 @@ The navigation hub for this knowledge base. Start with [welcome](./welcome.md), 
 Every document outside this file and \`log.md\` carries a non-empty \`type\` in its frontmatter — that is all OKF requires.
 `;
 
+// Reserved OKF §7 change-history file. Lowercase \`log.md\`, FRONTMATTER-FREE.
+// Seeds a prose instruction documenting the newest-first dated-entry format
+// (\`## YYYY-MM-DD: summary\`) rather than a placeholder entry — mirroring the
+// other packs' log.md, and avoiding a stale seeded date (root files get no
+// \`{{date}}\` substitution). The author adds the first real entry on first edit.
 const OKF_LOG_MD = `# Log
 
 Change history for this knowledge base, newest entry first. Add a dated entry (\`## YYYY-MM-DD: <summary>\`) whenever you create, edit, or restructure content — one entry per working session, not per file.
 `;
 
+// ─── The registry ─────────────────────────────────────────────────────────
+
+/**
+ * Registry of all starter packs. Indexed by `PackId`. The picker UI iterates
+ * over this in declaration order to render cards.
+ */
 export const STARTER_PACKS: Readonly<Record<PackId, StarterPack>> = {
   'knowledge-base': {
     id: 'knowledge-base',
@@ -1390,7 +1645,11 @@ export const STARTER_PACKS: Readonly<Record<PackId, StarterPack>> = {
   'codebase-wiki': {
     id: 'codebase-wiki',
     name: 'Codebase wiki',
+    // Picker cards line-clamp descriptions to 2 lines (PackCardGrid); the
+    // longer pitch lives in the pack's SKILL.md + the `wiki` workflow guide.
     description: 'A wiki to help navigate your codebase.',
+    // Nested folder paths (`wiki/...`) already place everything under `wiki/`,
+    // so there is no recommended subfolder to pre-fill.
     defaultSubfolder: undefined,
     folders: CODEBASE_WIKI_FOLDERS,
     templates: CODEBASE_WIKI_TEMPLATES,
@@ -1411,9 +1670,13 @@ export const STARTER_PACKS: Readonly<Record<PackId, StarterPack>> = {
     id: 'okf',
     name: 'Open Knowledge Format',
     description: "Wiki using Google's Open Knowledge Format.",
+    // Root scaffold: OKF reserved files (index.md / log.md) belong at the
+    // bundle root, so the project root IS the OKF bundle (no subfolder).
     defaultSubfolder: undefined,
     folders: OKF_FOLDERS,
     templates: OKF_TEMPLATES,
+    // `welcome.md` is a real non-reserved typed doc; `index.md` / `log.md` are
+    // the frontmatter-free OKF reserved files (§6 / §7).
     rootFiles: {
       'welcome.md': OKF_WELCOME_MD,
       'index.md': OKF_INDEX_MD,
@@ -1453,37 +1716,95 @@ export const STARTER_PACKS: Readonly<Record<PackId, StarterPack>> = {
   },
 };
 
+/** Stable, declaration-ordered list of pack ids (drives picker order). */
 export const STARTER_PACK_IDS: readonly PackId[] = Object.keys(STARTER_PACKS) as PackId[];
 
+/**
+ * The OKF pack's reserved files (OKF §6 navigation + §7 change-history). These
+ * are lowercase and FRONTMATTER-FREE by requirement — any frontmatter on a
+ * reserved file is an OKF §9 rule-3 violation. Single source of truth so the
+ * pack and its conformance tests can't drift on which files are reserved.
+ */
 export const OKF_RESERVED_FILENAMES: readonly string[] = ['index.md', 'log.md'];
 
+/**
+ * Resolve a pack from a (possibly-undefined) packId. Falls back to the default
+ * pack — `resolvePack` is the last line of defense, NOT the validation site.
+ *
+ * Trust-boundary validation happens at the HTTP / IPC / CLI boundary via
+ * `coercePackId` + `isKnownPackId`. Callers that want strict rejection of
+ * unknown ids MUST reject before calling `resolvePack`; this function will
+ * never throw. The CLI uses this strict pattern (returns a `failed` status
+ * with `Unknown pack` message); HTTP + IPC handlers should do the same so
+ * the contract stays symmetric across surfaces.
+ */
 export function resolvePack(packId?: PackId): StarterPack {
   if (!packId) return STARTER_PACKS[DEFAULT_PACK_ID];
   const pack = STARTER_PACKS[packId];
   if (!pack) {
+    // Defensive: PackId is a typed union, but external callers might pass an
+    // unknown string. Fall back rather than throw — symmetric rejection
+    // belongs at the HTTP / IPC boundary, not in this resolver.
     return STARTER_PACKS[DEFAULT_PACK_ID];
   }
   return pack;
 }
 
+/**
+ * Type guard: does `value` name a registered pack? Single source of truth for
+ * pack-id validation across CLI / HTTP / IPC trust boundaries — every surface
+ * that accepts a string `packId` from outside the type system uses this.
+ */
 export function isKnownPackId(value: unknown): value is PackId {
   return typeof value === 'string' && (STARTER_PACK_IDS as readonly string[]).includes(value);
 }
 
+/**
+ * Coerce an unknown into a `PackId | undefined`. Returns `undefined` for
+ * unknown / non-string inputs so callers can fall back to `DEFAULT_PACK_ID`
+ * via `resolvePack`. Use this at every trust boundary that takes a string
+ * pack id from a query param, HTTP body, or IPC payload.
+ */
 export function coercePackId(value: unknown): PackId | undefined {
   return isKnownPackId(value) ? value : undefined;
 }
 
+/**
+ * Public-facing per-folder metadata returned in `StarterPackInfo.folders`.
+ * Stable wire shape: just `path` + `summary` (first sentence of the full
+ * `StarterFolder.description` — UI-friendly length). The full description
+ * stays server-side and lands in the folder's `.ok/frontmatter.yml` at
+ * apply time.
+ */
 export interface StarterPackFolderInfo {
   path: string;
   summary: string;
 }
 
+/**
+ * User-visible entry counts surfaced on each pack picker card as
+ * "N files · N folders". Counts only user-meaningful entries — top-level
+ * folders, starter + extra template `.md` files, and `rootFiles`. Per-folder
+ * `.ok/` infrastructure (`.ok/frontmatter.yml`, `.ok/templates/`) is
+ * excluded; the card is a UX preview, not a literal plan count.
+ */
 export interface StarterPackEntryCounts {
   files: number;
   folders: number;
 }
 
+/**
+ * Public-facing pack metadata. Stable wire-format shape; HTTP + IPC both
+ * return `StarterPackInfo[]` from `listStarterPacks()` so any future fields
+ * surface in both surfaces automatically.
+ *
+ * `folders` carries per-folder summaries so the picker preview can display
+ * a one-line blurb next to each scaffolded folder (matches the pre-multi-pack
+ * "what gets created" UX, which had hardcoded blurbs for the three KB layers).
+ *
+ * `entryCounts` powers the card-level "N files · N folders" subtitle in the
+ * empty-state pack grid — derived statically from registry shape, no plan walk.
+ */
 export interface StarterPackInfo {
   id: PackId;
   name: string;
@@ -1493,14 +1814,26 @@ export interface StarterPackInfo {
   entryCounts: StarterPackEntryCounts;
 }
 
+/**
+ * Take the first sentence of a folder's description (max ~140 chars) so the
+ * UI gets a tight blurb without the full agent-guidance prose. Falls back to
+ * the truncated full description when there's no terminating punctuation.
+ */
 function deriveFolderSummary(description: string): string {
   const trimmed = description.trim();
+  // Split on terminating punctuation followed by whitespace; the regex's
+  // first capture is everything up to the first `.`/`!`/`?`.
   const match = /^([^.!?]+[.!?])/.exec(trimmed);
   const firstSentence = (match?.[1] ?? trimmed).trim();
   if (firstSentence.length <= 140) return firstSentence;
   return `${firstSentence.slice(0, 137)}…`;
 }
 
+/**
+ * Project the registry into a flat metadata array — what the picker UI
+ * fetches once on mount. Single source of truth; `/api/seed/packs` and
+ * `okDesktop.seed.listPacks()` both delegate here.
+ */
 export function listStarterPacks(): StarterPackInfo[] {
   return STARTER_PACK_IDS.map((id) => {
     const pack = STARTER_PACKS[id];
@@ -1511,13 +1844,21 @@ export function listStarterPacks(): StarterPackInfo[] {
       defaultSubfolder: pack.defaultSubfolder,
       folders: pack.folders.map((f) => ({
         path: f.path,
-        summary: deriveFolderSummary(f.description),
+        // Prefer the authored user-facing line; fall back to the first
+        // sentence of the agent description for any folder without one.
+        summary: f.uiSummary ?? deriveFolderSummary(f.description),
       })),
       entryCounts: computePackEntryCounts(pack),
     };
   });
 }
 
+/**
+ * Derive the user-visible "N files · N folders" counts for the pack-card
+ * subtitle. Templates count once per folder slot (starter + each extra);
+ * rootFiles count once each. Per-folder `.ok/frontmatter.yml` and the
+ * `.ok/templates/` directory are infrastructure and intentionally excluded.
+ */
 function computePackEntryCounts(pack: StarterPack): StarterPackEntryCounts {
   const folders = pack.folders.length;
   let files = 0;
@@ -1528,14 +1869,34 @@ function computePackEntryCounts(pack: StarterPack): StarterPackEntryCounts {
   return { files, folders };
 }
 
+// ─── Back-compat aliases ──────────────────────────────────────────────────
+// Legacy exports preserved for tests (`starter.test.ts`, `apply.test.ts`,
+// `plan.test.ts`) and external workspace consumers that imported these
+// before the multi-pack refactor. They alias into `STARTER_PACKS['knowledge-base']`
+// so behavior is unchanged when no `packId` is passed.
+
+/** @deprecated Use `STARTER_PACKS['knowledge-base'].folders` directly. */
 export const STARTER_FOLDERS: readonly StarterFolder[] = KNOWLEDGE_BASE_FOLDERS;
 
+/** @deprecated Use `STARTER_PACKS['knowledge-base'].templates` directly. */
 export const STARTER_TEMPLATES: Readonly<Record<string, string>> = KNOWLEDGE_BASE_TEMPLATES;
 
+/** @deprecated Use `STARTER_PACKS['knowledge-base'].rootFiles?.['log.md']` directly. */
 export const LOG_MD_TEMPLATE = KNOWLEDGE_BASE_LOG_MD;
 
+/**
+ * Filename for a folder's own frontmatter file inside a nested
+ * `.ok/`. Read by `readFolderFrontmatter` in
+ * `packages/server/src/content/nested-folder-rules.ts`.
+ */
 export const STARTER_FOLDER_FRONTMATTER_FILENAME = 'frontmatter.yml';
 
+/**
+ * Build the YAML body for a starter folder's `.ok/frontmatter.yml`. Plain
+ * string output (not a YAML AST) — the keys are well-known and the values
+ * are static at seed time, so a hand-rolled writer keeps the dependency
+ * surface minimal and the output predictable for drift-guard tests.
+ */
 export function buildStarterFolderFrontmatterYaml(folder: StarterFolder): string {
   const lines: string[] = [];
   lines.push(`title: ${yamlScalar(folder.title)}`);
@@ -1547,6 +1908,12 @@ export function buildStarterFolderFrontmatterYaml(folder: StarterFolder): string
   return `${lines.join('\n')}\n`;
 }
 
+/**
+ * Quote a YAML scalar when it contains characters that would break unquoted
+ * parsing (colons, hashes, leading/trailing whitespace, etc.). Conservative
+ * — quotes more strings than strictly necessary; correct under any YAML 1.2
+ * parser.
+ */
 function yamlScalar(value: string): string {
   if (value === '') return '""';
   if (/[:#\n"'\\]|^\s|\s$/.test(value)) {

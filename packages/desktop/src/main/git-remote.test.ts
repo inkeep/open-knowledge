@@ -107,7 +107,9 @@ describe('readCanonicalGitHubRemoteUrl (filesystem round-trip)', () => {
   });
 
   test('returns null when .git/config is absent (not a git repo)', () => {
-    const result = withTempProject(() => {});
+    const result = withTempProject(() => {
+      // No .git directory at all.
+    });
     expect(result).toBeNull();
   });
 
@@ -131,13 +133,17 @@ describe('readCanonicalGitHubRemoteUrl (filesystem round-trip)', () => {
   });
 
   test('does not throw when .git/config is unreadable', () => {
+    // Project dir exists, .git/config does not — read fails silently.
     const result = withTempProject((projectDir) => {
       mkdirSync(join(projectDir, '.git'));
+      // No config file written.
     });
     expect(result).toBeNull();
   });
 
   test('follows worktree `.git` pointer file to read the linked gitdir config', () => {
+    // Simulate a git worktree: primary checkout owns `.git/worktrees/feature/`,
+    // and the worktree's `.git` is a regular file pointing at that gitdir.
     const result = withTempProject((projectDir) => {
       const primaryDir = join(projectDir, '..', 'ok-git-remote-primary-');
       const primaryGitDir = `${primaryDir}-gitdir`;
@@ -146,6 +152,7 @@ describe('readCanonicalGitHubRemoteUrl (filesystem round-trip)', () => {
         join(primaryGitDir, 'config'),
         '[remote "origin"]\n\turl = https://github.com/inkeep/open-knowledge.git\n',
       );
+      // Worktree's `.git` is a FILE containing `gitdir: <path>`, not a dir.
       writeFileSync(join(projectDir, '.git'), `gitdir: ${primaryGitDir}\n`);
     });
     expect(result).toBe('https://github.com/inkeep/open-knowledge.git');
@@ -166,6 +173,10 @@ describe('readCanonicalGitHubRemoteUrl (filesystem round-trip)', () => {
   });
 
   test('follows the worktree commondir pointer to read origin config from the common dir', () => {
+    // A real linked worktree: its gitdir holds HEAD + a `commondir` pointer but
+    // NO `config` — origin config lives in the shared common dir. Before the
+    // commondir resolution this returned null and the worktree project silently
+    // missed on share-receive (it fell back to the clone/locate dialog).
     const result = withTempProject((projectDir) => {
       const commonDir = join(projectDir, 'main-git');
       mkdirSync(commonDir, { recursive: true });
@@ -175,6 +186,7 @@ describe('readCanonicalGitHubRemoteUrl (filesystem round-trip)', () => {
       );
       const worktreeGitDir = join(commonDir, 'worktrees', 'wt');
       mkdirSync(worktreeGitDir, { recursive: true });
+      // Relative `commondir` pointer, exactly as git writes it. No config here.
       writeFileSync(join(worktreeGitDir, 'commondir'), `${relative(worktreeGitDir, commonDir)}\n`);
       writeFileSync(join(projectDir, '.git'), `gitdir: ${worktreeGitDir}\n`);
     });

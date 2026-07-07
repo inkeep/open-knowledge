@@ -25,6 +25,9 @@ describe('joinWorkspacePath', () => {
   });
 
   test('POSIX: preserves literal backslash inside a relative path segment', () => {
+    // Relative path is assumed POSIX-form in transit; only the join uses the
+    // server-advertised separator. A literal backslash inside a POSIX segment
+    // on a POSIX host is a valid filename character and must survive.
     expect(joinWorkspacePath('/home/a', 'weird\\name.md', '/')).toBe('/home/a/weird\\name.md');
   });
 });

@@ -1,6 +1,19 @@
 import { describe, expect, test } from 'bun:test';
 import { applyChannelSettings, channelFromVersion } from '../../src/main/auto-updater.ts';
 
+/**
+ * Pure-helper coverage for the channel-derived updater config. Exercises
+ * the property writes directly against a plain bag — no FakeUpdater rig
+ * needed since the function only touches three setters.
+ *
+ * The setter-ordering invariant (set `allowDowngrade` AFTER `channel`
+ * because the `channel` setter force-enables `allowDowngrade` as a side
+ * effect in real electron-updater) cannot be observed against a plain bag
+ * — the FakeUpdater rig in `tests/integration/auto-updater.test.ts`
+ * exercises it via the boot path. This file owns the pure-config
+ * branches.
+ */
+
 interface Bag {
   channel: string | null;
   allowPrerelease: boolean;

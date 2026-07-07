@@ -1,3 +1,19 @@
+/**
+ * `write_document` (and every other MCP tool that registers a
+ * Zod input schema) must surface validation failures that NAME the missing
+ * field AND list the allowed values, instead of the default Zod v4 message
+ * which is a JSON dump of the issues array.
+ *
+ * These tests exercise `installPrettyZodErrors` against a real `McpServer`
+ * instance — registering a representative tool with the same enum shape as
+ * `write_document`'s `position` argument, then driving the SDK's internal
+ * `validateToolInput` path directly so we observe the exact `McpError`
+ * messages that the MCP SDK would surface to a client.
+ *
+ * Black-box assertions only: the test reads what an agent or human would
+ * see in the chat surface (`McpError.message`), not how the formatter is
+ * structured internally. Keeps the test resilient to formatter changes.
+ */
 import { describe, expect, test } from 'bun:test';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
@@ -63,11 +79,22 @@ describe('installPrettyZodErrors — PRD-6659', () => {
     if (outcome.kind !== 'mcp_error') return;
     expect(outcome.error.code).toBe(ErrorCode.InvalidParams);
     const text = outcome.error.message;
+    // Field name surfaced — the original failure mode hid this entirely.
     expect(text).toContain('position');
+    // All allowed values surfaced — the original failure mode never enumerated them.
     expect(text).toContain('append');
     expect(text).toContain('prepend');
     expect(text).toContain('replace');
+    // Tool name preserved so callers know which call site failed.
     expect(text).toContain('write_document');
+    // Anti-regression: must NOT be a bare "Required" with no other context,
+    // and must NOT be the raw Zod v4 JSON dump of the issues array — which
+    // is what `ZodError.message` returns by default and what the SDK
+    // surfaces unless `validateToolInput` is patched. The JSON dump
+    // contains "position"/"append"/etc. too, but only as quoted JSON
+    // values inside `"path":` / `"values":` keys, so checking field names
+    // alone wouldn't distinguish the two formats. The JSON-key markers
+    // below pin the structural difference.
     expect(text.trim()).not.toBe('Required');
     expect(text).not.toContain('"code":');
     expect(text).not.toContain('"path":');
@@ -127,6 +154,7 @@ describe('installPrettyZodErrors — PRD-6659', () => {
 
   test('tool without inputSchema passes through to the SDK default path', async () => {
     const server = new McpServer({ name: 'pretty-zod-errors-test', version: '0.0.0' });
+    // `server.registerTool(name, { description }, handler)` — no input schema.
     server.registerTool('no_schema_tool', { description: 'no schema' }, async () => ({
       content: [{ type: 'text', text: 'ok' }],
     }));
@@ -134,6 +162,7 @@ describe('installPrettyZodErrors — PRD-6659', () => {
     const tool = (server as unknown as { _registeredTools: Record<string, RegisteredTool> })
       ._registeredTools.no_schema_tool;
     const outcome = await callValidateToolInput(server, tool, {}, 'no_schema_tool');
+    // SDK contract: no inputSchema → validateToolInput returns undefined.
     expect(outcome.kind).toBe('ok');
     if (outcome.kind !== 'ok') return;
     expect(outcome.value).toBeUndefined();

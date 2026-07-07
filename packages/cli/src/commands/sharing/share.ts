@@ -1,3 +1,18 @@
+/**
+ * `ok config-sharing share` — switch the project to shared mode by removing OK
+ * artifact paths from `.git/info/exclude`. Symmetric counterpart of
+ * `ok config-sharing unshare`.
+ *
+ * No tracked-files safety check: going `local-only → shared` does not
+ * create a tracking conflict (tracking state is orthogonal to the exclude
+ * file). The user still needs to `git add` + commit the OK files to
+ * actually share them with the team; this command only undoes the local
+ * exclusion.
+ *
+ * On a project already in `shared` mode, the operation is a no-op (every
+ * OK path is classified `alreadyPresent: []` and no write happens).
+ */
+
 import { resolve } from 'node:path';
 import { Command } from 'commander';
 import {

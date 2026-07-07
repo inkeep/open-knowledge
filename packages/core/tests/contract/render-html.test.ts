@@ -1,3 +1,27 @@
+/**
+ * Public render contract for `@inkeep/open-knowledge-core`: the markdown -> HTML
+ * surface (`markdownToHtml` / `mdastToHtml`) that external consumers import from
+ * the package barrel. Pins the documented-construct rendering and the outbound
+ * URL-scheme sanitization that runs at the OK -> external-destination boundary.
+ *
+ * This is a CONTRACT test: every expectation is a fixed HTML literal, never the
+ * markdown input compared against itself. It deliberately imports only the
+ * public barrel and asserts no round-trip / byte-identity oracle, so it carries
+ * none of the engine's correctness-measurement apparatus.
+ *
+ * Security boundary: `markdownToHtml` produces clipboard/export HTML for foreign
+ * destinations whose own sanitization is unknown, so URL sanitization is
+ * fail-closed — only a fixed scheme ALLOWLIST (https, http, mailto, tel, ftp,
+ * sms) plus relative / anchor hrefs survive on `href` / `src`; every other
+ * scheme is dropped (the attribute is removed; the element and its text survive),
+ * including entity-obfuscated and leading-whitespace variants. The cases below
+ * pin allowlist *closure* — an unlisted scheme is rejected, not merely the few
+ * named dangerous ones — because the comprehensive engine suites
+ * (`safe-url.test.ts`, `mdast-to-html.test.ts`) are mirror-excluded, leaving this
+ * the sole public guard on the boundary. Expected outputs are the engine's
+ * actual behavior, captured by exercising the public functions.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { markdownToHtml, mdastToHtml } from '../../src/index.ts';
 
@@ -111,12 +135,15 @@ describe('markdownToHtml — outbound URL-scheme sanitization', () => {
   });
 
   test('allowlist closure: an unlisted scheme is rejected, not just the named dangerous ones', () => {
+    // A denylist-of-N would pass these through; a fail-closed allowlist drops them.
     expect(markdownToHtml('[a](blob:https://x)')).toBe('<p><a>a</a></p>');
     expect(markdownToHtml('[b](intent://scan/#Intent;end)')).toBe('<p><a>b</a></p>');
     expect(markdownToHtml('[c](view-source:http://x)')).toBe('<p><a>c</a></p>');
   });
 
   test('entity-obfuscated scheme is decoded before sanitizing, then dropped', () => {
+    // `java&#x73;cript:` decodes to `javascript:` — decode-before-sanitize is
+    // security-load-bearing, so the decoded scheme must still be rejected.
     const html = markdownToHtml('[x](java&#x73;cript:alert(1))');
     expect(html).not.toMatch(/javascript:/i);
     expect(html).toBe('<p><a>x</a></p>');

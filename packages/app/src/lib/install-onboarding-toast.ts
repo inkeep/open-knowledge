@@ -1,3 +1,17 @@
+/**
+ * Renderer-side onboarding-toast bridge subscriber.
+ *
+ * Listens for `ok:onboarding:toast` events on a freshly-spawned editor
+ * window (ancestor-promote / git-root-promote) and renders via sonner —
+ * 4 s auto-dismiss for routine notices, sticky for failures and PATH-edit
+ * disclosures. Module-init pattern so a toast that fires before
+ * React mounts isn't dropped — `bridge.onboarding.onToast` returns
+ * immediately on subscribe; sonner tolerates being called before its
+ * `<Toaster />` mounts (queued internally).
+ *
+ * Web / CLI distribution: `bridge` is undefined and `install` is a no-op.
+ */
+
 import { EDITOR_LABELS } from '@inkeep/open-knowledge-core';
 import { toast as sonnerToast } from 'sonner';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
@@ -17,6 +31,10 @@ export function installOnboardingToastListener(opts: {
 }): (() => void) | undefined {
   const bridge = opts.bridge;
   if (!bridge) return undefined;
+  // Tolerate bridges without an `onboarding` namespace — same defensiveness
+  // as `consent-store.ts`. e2e fake bridges that pre-date the
+  // onboarding namespace would otherwise throw at module-init and crash
+  // the renderer mid-mount.
   if (!bridge.onboarding) return undefined;
   return bridge.onboarding.onToast((payload) => {
     if (payload.kind === 'ancestor-promote') {
@@ -47,6 +65,9 @@ export function installOnboardingToastListener(opts: {
       return;
     }
     if (payload.kind === 'sharing-refused-tracked') {
+      // refusal — surface a sticky error toast with the full
+      // remediation. The desktop user can't `git rm --cached` from the UI
+      // (yet); the toast gives them the exact CLI commands.
       sonnerToast.error(
         `Config sharing unchanged: ${payload.tracked.length} OK file(s) tracked upstream — see message below.`,
         {
@@ -63,6 +84,12 @@ export function installOnboardingToastListener(opts: {
       );
       return;
     }
+    // Render the picked sub-path relative to gitRoot — pickedPath is realpath-
+    // canonicalized in folder-admission so an absolute realistic monorepo path
+    // wraps to 3-4 lines in sonner. Fall back to the absolute path if
+    // relativeToProject returns null (defensive: gitRootPromoted invariant
+    // already guarantees descendant, but realpath edge cases on symlinked
+    // trees are worth surviving without losing the toast).
     const subPath = relativeToProject(payload.gitRoot, payload.pickedPath) ?? payload.pickedPath;
     sonnerToast.success(
       `Initialized OpenKnowledge at ${payload.gitRoot} — opened parent of ${subPath} because it contains a .git folder`,

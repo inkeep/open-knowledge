@@ -244,6 +244,10 @@ describe('SyncResolveConflictRequestSchema', () => {
 });
 
 describe('SyncConflictContentSuccessSchema', () => {
+  // The server contract is "always-present-nullable" for `lifecycleStatus`
+  // (matches read_document.lifecycle convention — SDK
+  // type stability). Every parse below includes `lifecycleStatus` so the
+  // schema can reject responses that drop the field.
   test('parses populated stages with lifecycleStatus: null (default branch)', () => {
     expect(
       SyncConflictContentSuccessSchema.safeParse({
@@ -427,6 +431,12 @@ describe('InstallSkillSuccessSchema (discriminated union)', () => {
     ).toBe(true);
   });
   test('parses skip-current with skillVersion only (recordedAt optional)', () => {
+    // Regression guard: server emits recordedAt conditionally
+    // (skill-install.ts — `...(recordedAt !== null ? { recordedAt } : {})`).
+    // The discriminatedUnion's skip-current variant must accept the
+    // recordedAt-absent case, otherwise successResponse's safeParse falls
+    // back to a 500 on every legitimate skip-current emit. This test pins
+    // the regression so a future edit can't re-introduce it.
     expect(
       InstallSkillSuccessSchema.safeParse({
         status: 'skip-current',
@@ -443,6 +453,15 @@ describe('InstallSkillSuccessSchema (discriminated union)', () => {
     ).toBe(false);
   });
   test('accepts forward-compat extra fields per .loose() variants', () => {
+    // Each discriminated-union variant declares `.loose()` for forward-
+    // compat: a future server adding e.g. `installedAt` to `installed`
+    // must not break older clients. The DU enforces variant-specific
+    // REQUIRED fields (status discriminant + per-variant mandatory shape),
+    // not blanket rejection of unknown extras. A test asserting
+    // `{ status: 'failed', outputPath: 'x' }` is rejected would falsely
+    // imply `.strict()` semantics. The actual contract: status routes to
+    // the right variant, required fields are checked, forward-compat
+    // extras pass through.
     expect(
       InstallSkillSuccessSchema.safeParse({
         status: 'failed',

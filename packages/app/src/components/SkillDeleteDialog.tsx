@@ -7,11 +7,20 @@ import { Dialog } from '@/components/ui/dialog';
 import { deleteSkill } from '@/lib/skills-api';
 
 interface Props {
+  /** The skill to delete; `null` keeps the dialog closed. */
   skill: SkillsListEntry | null;
   onOpenChange: (open: boolean) => void;
+  /** Called after a successful delete so the parent re-fetches. */
   onDeleted: () => void;
 }
 
+/**
+ * Confirm and delete a skill. Deleting removes the source under
+ * `.ok/skills/<name>/` and reverse-projects: the editor host dirs it was
+ * installed into are uninstalled in the same operation (reverse-projection
+ * folds into delete server-side). The confirmation names the consequence for
+ * agents that resolve the skill by name.
+ */
 export function SkillDeleteDialog({ skill, onOpenChange, onDeleted }: Props) {
   const { t } = useLingui();
   const [deleting, setDeleting] = useState(false);

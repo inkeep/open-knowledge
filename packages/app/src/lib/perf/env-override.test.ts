@@ -10,6 +10,10 @@ import {
 } from 'bun:test';
 import { readNumericOverride, resetPerfOverrideWarnings } from './env-override';
 
+// Bun's test runner doesn't provide a DOM (repo convention — see
+// packages/app/src/components/EditorActivityPool.test.ts header for rationale).
+// `window` is stubbed to globalThis so the override reader's `typeof window`
+// guard resolves to 'object' and the window-branch is reachable in tests.
 const hadWindow = typeof (globalThis as { window?: unknown }).window !== 'undefined';
 
 describe('readNumericOverride', () => {
@@ -30,9 +34,11 @@ describe('readNumericOverride', () => {
 
   beforeEach(() => {
     resetPerfOverrideWarnings();
+    // Clear window override between tests
     if (typeof window !== 'undefined') {
       delete window.__okPerfOverrides;
     }
+    // Clear any test env vars that prior tests may have set
     for (const key of Object.keys(import.meta.env)) {
       if (key.startsWith('VITE_OK_PERF_')) {
         delete (import.meta.env as Record<string, unknown>)[key];
@@ -42,6 +48,7 @@ describe('readNumericOverride', () => {
   });
 
   afterEach(() => {
+    // Restore original env values
     for (const key of Object.keys(originalEnv)) {
       (import.meta.env as Record<string, unknown>)[key] = (originalEnv as Record<string, unknown>)[
         key
@@ -86,6 +93,7 @@ describe('readNumericOverride', () => {
   test('falls back to default when env value is not numeric', () => {
     (import.meta.env as Record<string, string>).VITE_OK_PERF_MAX_CACHE = 'not-a-number';
     expect(readNumericOverride('MAX_CACHE', 10)).toBe(10);
+    // Non-numeric env emits a single warning (distinct from the "override fired" warn)
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0]?.[0]).toContain('not numeric');
   });
@@ -122,6 +130,8 @@ describe('readNumericOverride', () => {
     expect(warnSpy).toHaveBeenCalledTimes(2);
   });
 
+  // Documented defaults for the 9 new dials. Each one is reachable via
+  // window.__okPerfOverrides AND import.meta.env.VITE_OK_PERF_<KEY>.
   test('exposes 9 new substrate dials with documented defaults', () => {
     expect(readNumericOverride('SYNC_TIMEOUT_MS', 30_000)).toBe(30_000);
     expect(readNumericOverride('MAX_BUFFER_BYTES', 1_048_576)).toBe(1_048_576);
@@ -179,6 +189,14 @@ describe('readNumericOverride', () => {
   });
 
   test('PROD short-circuit returns default ignoring all override channels', () => {
+    // Verifies the load-bearing safety gate at env-override.ts: when
+    // `import.meta.env.PROD === true`, both window and env channels MUST be
+    // bypassed. Without this guard, test-fixture overrides could leak into
+    // production builds and silently set `MAX_CACHE=0` or similar.
+    //
+    // Vite normally replaces `import.meta.env.PROD` at build time with a
+    // literal boolean; under `bun test` it is `undefined` (mutable) so we
+    // can pin it to `true` for the duration of this test.
     const original = (import.meta.env as Record<string, unknown>).PROD;
     try {
       (import.meta.env as Record<string, unknown>).PROD = true;
@@ -186,9 +204,16 @@ describe('readNumericOverride', () => {
       (import.meta.env as Record<string, string>).VITE_OK_PERF_BYTES_CACHE_THRESHOLD = '10000000';
       expect(readNumericOverride('MAX_CACHE', 10)).toBe(10);
       expect(readNumericOverride('BYTES_CACHE_THRESHOLD', 500_000)).toBe(500_000);
+      // Neither override channel was reached, so no warn was emitted.
       expect(warnSpy).not.toHaveBeenCalled();
     } finally {
       (import.meta.env as Record<string, unknown>).PROD = original;
     }
   });
 });
+
+// Boolean-override coverage was retired with the rollout-flag cleanup.
+// The two keys were the only PerfBooleanOverrideKey
+// members; with both retired the boolean reader has no production callers
+// and was deleted alongside the legacy `TiptapEditor` component. Numeric
+// override coverage above stays load-bearing.

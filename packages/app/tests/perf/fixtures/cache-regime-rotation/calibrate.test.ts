@@ -52,6 +52,7 @@ describe('computeMedianRotationDistance', () => {
   });
 
   test('measures distinct docs between repeat visits', () => {
+    // a → b → c → a   distance between a-visits = 2 distinct ('b' and 'c')
     const events = [
       { docName: 'a', contentBytes: 1000, openedAt: 1 },
       { docName: 'b', contentBytes: 1000, openedAt: 2 },
@@ -62,6 +63,7 @@ describe('computeMedianRotationDistance', () => {
   });
 
   test('median of multiple repeat distances', () => {
+    // distances: a@4→a@1 = 2, b@5→b@2 = 2, c@6→c@3 = 2 (all 2)
     const events = [
       { docName: 'a', contentBytes: 1000, openedAt: 1 },
       { docName: 'b', contentBytes: 1000, openedAt: 2 },
@@ -119,6 +121,10 @@ describe('loadTraces', () => {
   });
 
   test('skips truly malformed (unparseable) JSONL lines silently', () => {
+    // Interrupted dogfood-trace captures can truncate the final line
+    // mid-write. The loader must tolerate that without throwing — the
+    // JSDoc contract is silent-skip for both missing-field AND
+    // parse-failure shapes.
     const dir = mkdtempSync(join(tmpdir(), 'cache-regime-rotation-calibrate-truncated-'));
     try {
       writeFileSync(

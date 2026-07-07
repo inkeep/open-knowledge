@@ -101,6 +101,11 @@ describe('buildOkignorePatternFromTarget — invariants', () => {
 });
 
 describe('buildOkignorePatternFromTarget — glob-metacharacter escaping', () => {
+  // Regression: an unescaped `[draft]` in a filename gets parsed as a
+  // character class (matching a single character from {d,r,a,f,t}) by the
+  // npm:ignore library — silently failing to hide the file the user
+  // right-clicked AND incorrectly hiding unrelated single-letter files.
+
   test('filename with [bracket] segment is escaped so the literal file matches', () => {
     const pattern = buildOkignorePatternFromTarget({
       kind: 'file',
@@ -109,6 +114,7 @@ describe('buildOkignorePatternFromTarget — glob-metacharacter escaping', () =>
     });
     const ig = ignore().add(pattern);
     expect(ig.ignores('notes/[draft].md')).toBe(true);
+    // No collateral damage on single-letter siblings.
     expect(ig.ignores('notes/a.md')).toBe(false);
     expect(ig.ignores('notes/d.md')).toBe(false);
   });
@@ -132,10 +138,14 @@ describe('buildOkignorePatternFromTarget — glob-metacharacter escaping', () =>
     });
     const ig = ignore().add(pattern);
     expect(ig.ignores('foo*bar.md')).toBe(true);
+    // Without the escape, /foo*bar.md matches everything fooXYZbar.md.
     expect(ig.ignores('fooXYZbar.md')).toBe(false);
   });
 
   test('filename with embedded backslash is escaped so the literal char matches', () => {
+    // Backslash IS the escape character in gitignore syntax — leaving it
+    // unescaped would have it consume the next character. Self-escape
+    // restores the literal byte.
     const pattern = buildOkignorePatternFromTarget({
       kind: 'file',
       path: 'a\\b',

@@ -1,3 +1,10 @@
+/**
+ * RTL mount tests for the DocumentErrorBoundary contract:
+ * fallback render on throw, retry-handler invalidation. Exercises `render`
+ * + `userEvent` under the jsdom substrate (precedent #43); invocation via
+ * `bun run test:dom`. Throw injection follows the MaybeThrow Pattern C
+ * documented in precedent #43(d).
+ */
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -119,6 +126,11 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     shouldThrow = true;
     const onRecycle = mock((_docName: string) => {});
     const onNavigateBack = mock((_previousDocName: string) => {});
+    // Spy on the named export — ES module live binding lets DocumentErrorBoundary's
+    // captured `invalidateSyncPromise` reference see the spy's mockImplementation.
+    // This pins the load-bearing "back-nav clears the cached rejected sync
+    // promise so re-visiting the errored doc later gets a fresh attempt"
+    // contract at DocumentErrorBoundary.tsx.
     const invalidateSpy = spyOn(syncPromiseModule, 'invalidateSyncPromise').mockImplementation(
       () => {},
     );
@@ -140,6 +152,7 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     expect(onNavigateBack).toHaveBeenCalledTimes(1);
     expect(onNavigateBack.mock.calls[0]?.[0]).toBe('beta.md');
     expect(onRecycle).not.toHaveBeenCalled();
+    // Cache-invalidation contract.
     expect(invalidateSpy).toHaveBeenCalledTimes(1);
     expect(invalidateSpy.mock.calls[0]?.[0]).toBe('alpha.md');
 

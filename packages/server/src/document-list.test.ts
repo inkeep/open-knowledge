@@ -1,7 +1,20 @@
+/**
+ * Tests for GET /api/documents — document listing from the file index,
+ * with directory prefix filtering.
+ *
+ * The document list API now reads from the watcher's in-memory file index
+ * (populated and filtered by ContentFilter) instead of doing its own readdirSync.
+ */
 import { describe, expect, test } from 'bun:test';
 import { safeSubdir } from './api-extension.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 
+// ── File index based document listing tests ──
+
+/**
+ * Simulate the document list handler logic:
+ * reads from a file index map, optionally filtered by dir prefix.
+ */
 function listDocuments(
   index: ReadonlyMap<string, FileIndexEntry>,
   dir?: string,
@@ -94,6 +107,8 @@ describe('document listing from file index', () => {
     }
   });
 });
+
+// ── safeSubdir tests ──
 
 describe('safeSubdir', () => {
   test('resolves valid subdirectory', () => {

@@ -1,5 +1,8 @@
 import type { SVGProps } from 'react';
 
+// Obsidian brand mark, rendered monochrome via `currentColor` so it tracks the
+// sidebar text color and hover state like the other brand icons (the source
+// logo ships in Obsidian's `#A88BFA` purple).
 export function ObsidianIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

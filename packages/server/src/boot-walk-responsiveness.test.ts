@@ -1,3 +1,24 @@
+/**
+ * Boot-time index walks must yield to the event loop.
+ *
+ * On large content dirs the boot walks (backlink rebuild, tag-index init,
+ * basename-index seed, file-watcher seed) used synchronous recursive
+ * readdir and blocked the event loop for seconds — Ctrl+C produced no
+ * feedback and the server couldn't answer collab/API traffic until the
+ * walk finished.
+ *
+ * Each test schedules a 0 ms timer BEFORE starting the walk and asserts it
+ * fires before the walk completes. A blocking walk resolves its promise
+ * synchronously, and the awaiting continuation is a microtask that runs
+ * before any timer macrotask — so under the old implementation the timer
+ * deterministically lands after the walk. The walk over hundreds of
+ * directories awaits per readdir, giving the timer hundreds of chances to
+ * fire first.
+ *
+ * Each test also asserts the walk collected exactly the expected file set,
+ * pinning that the async conversion didn't change discovery semantics.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -38,6 +59,7 @@ afterEach(() => {
   rmSync(baseDir, { recursive: true, force: true });
 });
 
+/** Race a 0 ms timer against the walk; resolves true iff the timer won. */
 async function timerFiresDuring<T>(
   walk: () => Promise<T>,
 ): Promise<{ timerWon: boolean; result: T }> {
@@ -91,6 +113,10 @@ describe('boot-time walks yield to the event loop', () => {
     const handle = await startWatcher(contentDir, async () => {});
     try {
       expect(new Set(handle.getFileIndex().keys())).toEqual(expectedDocs);
+      // Race the timer against rescanFromDisk, which re-runs exactly the
+      // seed walk used at boot — startWatcher itself is unsuitable for the
+      // race because its backend subscription awaits would let the timer
+      // fire even with a blocking seed walk.
       const { timerWon } = await timerFiresDuring(() => handle.rescanFromDisk());
       expect(timerWon).toBe(true);
     } finally {

@@ -3,6 +3,7 @@ import { getLLMText } from './get-llm-text.ts';
 
 type Page = Parameters<typeof getLLMText>[0];
 
+/** Minimal page stand-in — getLLMText only touches `url` + `data`. */
 function fakePage(data: Partial<Page['data']> = {}, url = '/docs/get-started/overview'): Page {
   return {
     url,

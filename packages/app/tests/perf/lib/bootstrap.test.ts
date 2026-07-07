@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { bcaConfidenceInterval } from './bootstrap';
 
+/**
+ * Mulberry32 PRNG — same generator the cache-regime-rotation fixtures use
+ * Deterministic resamples mean CIs are reproducible across
+ * runs; without seeding, BCa would flake on the boundary cases this suite
+ * pins.
+ */
 function makePrng(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -13,6 +19,7 @@ function makePrng(seed: number): () => number {
 }
 
 function generateNormal(seed: number, n: number, mean: number, stdDev: number): number[] {
+  // Box-Muller; one normal per two uniforms. Fine for ~100-sample test sets.
   const rng = makePrng(seed);
   const out: number[] = [];
   while (out.length < n) {
@@ -63,10 +70,14 @@ describe('bcaConfidenceInterval', () => {
         rng: makePrng(99),
         bootstrapCount: 1000,
       });
+      // Sample mean drifts by ~0.5; CI half-width ≈ 1.4. Anchor on the
+      // sample mean, not the population mean, because the bootstrap
+      // corrects the SAMPLE-mean estimator's distribution.
       expect(ci.lo).toBeLessThan(ci.estimate);
       expect(ci.hi).toBeGreaterThan(ci.estimate);
       expect(ci.lo).toBeLessThan(100);
       expect(ci.hi).toBeGreaterThan(100);
+      // Width should be ~2-3 (2 * 1.96 * (10 / sqrt(200))).
       const width = ci.hi - ci.lo;
       expect(width).toBeGreaterThan(1.5);
       expect(width).toBeLessThan(5);
@@ -87,6 +98,8 @@ describe('bcaConfidenceInterval', () => {
     });
 
     test('point estimate equals statistic(original samples), not the bootstrap mean', () => {
+      // Skewed samples: bootstrap mean of bootstrap means ≈ sample mean,
+      // but the BCa contract pins `estimate` to the ORIGINAL-sample stat.
       const skewed = [1, 1, 1, 1, 1, 1, 1, 100];
       const sampleMean = skewed.reduce((a, b) => a + b, 0) / skewed.length;
       const ci = bcaConfidenceInterval(skewed, 0.025, {
@@ -97,12 +110,17 @@ describe('bcaConfidenceInterval', () => {
     });
 
     test('bias correction shifts the CI on skewed data', () => {
+      // Right-skewed sample: BCa should push the CI rightward relative to
+      // a naive percentile bootstrap (the bias-correction z0 captures the
+      // median-vs-mean shift).
       const skewed = [10, 11, 12, 12, 13, 13, 14, 15, 16, 80];
       const ci = bcaConfidenceInterval(skewed, 0.025, {
         rng: makePrng(5),
         bootstrapCount: 4000,
       });
       expect(ci.lo).toBeGreaterThan(10);
+      // Upper bound has to bracket the actual sample mean (~19.6) since
+      // a single 80 is influential at n=10.
       expect(ci.hi).toBeGreaterThan(ci.estimate);
     });
   });
@@ -132,10 +150,13 @@ describe('bcaConfidenceInterval', () => {
         bootstrapCount: 500,
       });
       expect(a.estimate).toBe(b.estimate);
+      // CIs may differ at second/third decimal — pin same estimate, allow CI bands to vary.
       expect(a.lo).not.toBe(b.lo);
     });
 
     test('custom statistic (median) overrides the mean default', () => {
+      // Outlier-resistant median; CI should NOT track the 1000 outlier the
+      // way a mean-CI would.
       const samples = [1, 2, 3, 4, 5, 6, 7, 8, 9, 1000];
       const median = (s: ReadonlyArray<number>): number => {
         const sorted = [...s].sort((x, y) => x - y);
@@ -151,10 +172,15 @@ describe('bcaConfidenceInterval', () => {
         statistic: median,
       });
       expect(ci.estimate).toBe(5.5);
+      // Median CI is bounded by the inter-quartile region; should NOT reach
+      // anywhere near 1000.
       expect(ci.hi).toBeLessThan(50);
     });
 
     test('bootstrapCount of 0 yields an interior CI without throwing (defensive guard at empty replicates)', () => {
+      // The replicate array is empty when count=0; percentile lookup on
+      // empty input returns 0 by convention. Ensures we don't blow up
+      // with NaN/throw when the caller passes a degenerate count.
       const samples = [1, 2, 3, 4, 5];
       const ci = bcaConfidenceInterval(samples, 0.025, {
         rng: makePrng(1),

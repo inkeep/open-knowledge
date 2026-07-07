@@ -21,7 +21,19 @@ export function CodexIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/**
+ * Gradient ("brand-color") variant of the Codex sparkle. Self-colored via a
+ * baked-in linearGradient — `currentColor` overrides do nothing, so any
+ * `**:text-accent-foreground` cascade from a parent dropdown item leaves it
+ * untouched. Used in the Open-in-Agent menus where we want the icon to keep
+ * its brand identity on hover.
+ */
 export function CodexBrandIcon(props: SVGProps<SVGSVGElement>) {
+  // SVG IDs are document-scoped — without per-instance suffixing, two
+  // CodexBrandIcons in the DOM would emit the same `<linearGradient id>`
+  // and `fill="url(#…)"` would resolve to the first match (works while the
+  // gradients agree, breaks the moment they diverge). Strip the colons
+  // useId emits — colons have no escape in `url(#…)` fragment refs.
   const gradId = `codex-brand-gradient-${useId().replace(/:/g, '')}`;
   return (
     <svg

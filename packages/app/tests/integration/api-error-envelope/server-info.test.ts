@@ -1,3 +1,13 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleServerInfo`.
+ *
+ *   - happy path: 200, application/json, body parses against
+ *     `ServerInfoSuccessSchema` (flat shape, no `ok: true` wrapper).
+ *   - method-not-allowed on POST → `urn:ok:error:method-not-allowed`.
+ *   - `Cache-Control: no-store` header preserved.
+ *   - the optional `boot` timings block round-trips through the schema.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   ProblemDetailsSchema,
@@ -33,6 +43,11 @@ describe('server-info envelope (RFC 9457)', () => {
   });
 
   test('optional boot timings block round-trips through the success schema', () => {
+    // The ephemeral test harness boots via `createServer` (not `bootServer`),
+    // so it never calls `startBootTimings` and the live `/api/server-info`
+    // body omits `boot`. Assert the additive shape directly: a fully-populated
+    // boot block (the standalone-boot case) parses, and `boot` is genuinely
+    // optional on the envelope.
     const boot = {
       startedAt: '2026-06-30T00:00:00.000Z',
       httpListenMs: 12,
@@ -53,6 +68,7 @@ describe('server-info envelope (RFC 9457)', () => {
       expect(withBoot.data.boot).toEqual(boot);
     }
 
+    // `boot` absent is still valid (dev-server / plugin path).
     const withoutBoot = ServerInfoSuccessSchema.safeParse({
       serverInstanceId: 'test-instance',
     });
@@ -61,9 +77,12 @@ describe('server-info envelope (RFC 9457)', () => {
       expect(withoutBoot.data.boot).toBeUndefined();
     }
 
+    // Every duration/count field is optional — a boot block with only the
+    // required `startedAt` still parses.
     expect(ServerInfoBootSchema.safeParse({ startedAt: '2026-06-30T00:00:00.000Z' }).success).toBe(
       true,
     );
+    // Negative durations are rejected (`.nonnegative()`).
     expect(
       ServerInfoBootSchema.safeParse({ startedAt: '2026-06-30T00:00:00.000Z', readyMs: -1 })
         .success,

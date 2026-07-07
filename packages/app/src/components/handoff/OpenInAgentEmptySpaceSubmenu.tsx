@@ -1,3 +1,24 @@
+/**
+ * Sidebar-wide context menu variant of the Send-to-AI submenu, mounted inside
+ * the FileSidebar's Radix `ContextMenu` wrapper (empty-space surface).
+ *
+ * Sibling to `OpenInAgentContextSubmenu` (which mounts inside Pierre's row
+ * context menu using `DropdownMenuSub*`). Both surfaces share the same
+ * install-state filter and dispatch — they diverge ONLY in the Radix submenu
+ * primitive. This one renders `ContextMenuSub*` because the parent surface is
+ * a Radix `ContextMenu`, not `DropdownMenu`; mixing the two Radix stacks (e.g.
+ * `DropdownMenuSub` inside `ContextMenuContent`) detaches keyboard navigation
+ * because Radix submenus inherit roving focus from their parent root primitive.
+ *
+ * Installed app launchers sit under a "Desktop" section label; the docked
+ * terminal launchers — one row per agent CLI in `VISIBLE_CLIS` (Claude, Codex,
+ * Cursor) — sit under a "Terminal" section label.
+ *
+ * When there is nothing to render (no installed targets and no terminal
+ * launcher), the entire submenu is hidden so the user doesn't land on an empty
+ * flyout.
+ */
+
 import {
   type HandoffOutcome,
   type HandoffTarget,
@@ -41,6 +62,7 @@ interface OpenInAgentEmptySpaceSubmenuProps {
   /** Install state per target. Caller-owned via `useInstalledAgents()` so
    *  the empty-space + sparkle + row surfaces share one coordinator. */
   readonly installStates: Record<HandoffTarget, InstallState>;
+  /** `useHandoffDispatch().dispatch` — fires URL builders + toast + telemetry. */
   readonly dispatch: (
     target: HandoffTarget,
     input: HandoffDispatchInput,
@@ -56,13 +78,22 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
   const inputMissing = input === null;
   const hint = emptySpaceRowHint(inputMissing);
 
+  // Install-state filter: render only targets we know are installed. Web-host
+  // Cursor forces `installed: false` upstream in `useInstalledAgents`, so the
+  // filter subsumes that case.
   const installedTargets = VISIBLE_TARGETS.filter(
     (target) => installStates[target.id]?.installed === true,
   );
 
   const showDesktopSection = installedTargets.length > 0;
+  // Desktop-only: `useTerminalLaunch()` is null on the web host (no shell).
   const showTerminalSection = terminalLaunch !== null;
 
+  // Discoverability gate: if there's nothing to render — no installed agents
+  // AND no terminal launcher row — hide the entire submenu so the user doesn't
+  // land on an empty flyout (a dead end). Common in web/remote-web mode where
+  // install probing returns all-false and there is no docked terminal. A stub
+  // item adds noise without a recovery affordance, so absence is the signal.
   if (!showDesktopSection && !showTerminalSection) {
     return null;
   }
@@ -75,6 +106,9 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
       </ContextMenuSubTrigger>
       <ContextMenuSubContent>
         {showTerminalSection ? (
+          // Terminal section leads (the in-app terminal is the first-class path).
+          // Labeled `role="group"` so assistive tech announces the section the
+          // visual header conveys (the label alone is skipped by arrow-key nav).
           <ContextMenuGroup aria-label={t`Terminal`}>
             <ContextMenuLabel>
               <Trans>Terminal</Trans>
@@ -111,6 +145,7 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
           </ContextMenuGroup>
         ) : null}
         {showDesktopSection ? (
+          // Desktop app launchers follow the Terminal section.
           <>
             {/* Separator only when a Terminal section sits above this one. */}
             {showTerminalSection ? <ContextMenuSeparator /> : null}

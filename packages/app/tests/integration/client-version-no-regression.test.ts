@@ -6,6 +6,10 @@ import { buildAuthToken } from '../../src/lib/auth-token';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer, waitForSync } from './test-harness';
 
+// A current, read-blind server must accept every instrumented client
+// unchanged: it never reads the version metadata, so the extra HTTP headers and
+// auth-token fields are inert. We exercise both instrumented transports against
+// a real server booted by the harness.
 describe('read-blind server accepts instrumented clients', () => {
   let server: TestServer;
 
@@ -32,6 +36,7 @@ describe('read-blind server accepts instrumented clients', () => {
       url: `ws://127.0.0.1:${server.port}/collab`,
       name: `test-${crypto.randomUUID()}`,
       document: doc,
+      // Anonymous tab: token now always present (carries version fields).
       token: buildAuthToken(null, null),
       connect: true,
     });

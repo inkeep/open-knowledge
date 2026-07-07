@@ -11,6 +11,9 @@ describe('fieldRegistry singleton', () => {
   });
 
   test('two callers see the same registry instance', async () => {
+    // Re-import the same module spec; ESM caching means the second import
+    // resolves to the already-loaded module, but the Symbol-keyed singleton
+    // would also dedupe across genuinely separate copies of the module.
     const reimport = await import('./field-registry.ts');
     expect(reimport.fieldRegistry).toBe(fieldRegistry);
   });
@@ -70,6 +73,11 @@ describe('getFieldMeta walker (descends innerType)', () => {
 });
 
 describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)', () => {
+  // Walks ConfigSchema's structural shape and asserts that every leaf field
+  // (scalar, array-leaf, enum) has a `fieldRegistry` entry. Catches the
+  // load-bearing declaration-order rule: `.register()` MUST come BEFORE
+  // `.default()` / `.optional()` / `.nullable()`. Only ONE `fieldRegistry`
+  // per process, so misregistration here is unrecoverable.
   function isObjectLike(schema: unknown): schema is { _zod: { def: { shape: unknown } } } {
     const def = (schema as { _zod?: { def?: { type?: string } } })._zod?.def;
     return def?.type === 'object' || def?.type === 'looseObject';
@@ -80,7 +88,9 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     while (cur) {
       const def = (cur as { _zod?: { def?: { type?: string; innerType?: unknown } } })._zod?.def;
       if (!def) return cur;
+      // Stop at object/looseObject — they're walkable, not leaves.
       if (def.type === 'object' || def.type === 'looseObject') return cur;
+      // Descend wrappers.
       if (def.innerType !== undefined) {
         cur = def.innerType;
         continue;
@@ -120,6 +130,10 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
   });
 
   test('no fields are agent-settable in the current schema', () => {
+    // The two MCP-tool tuning fields that used to be agent-settable were
+    // removed alongside the rest of the either-scope surface; their values
+    // now live as constants in `@inkeep/open-knowledge-core`. Re-introduce
+    // an entry here when an agent-tunable field actually returns.
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const allowlisted = leaves
@@ -144,6 +158,25 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
   });
 
   test('project-strict fields cover autoSync.default + content.* + telemetry.localSink.*', () => {
+    // `autoSync.default` is the committed seed for a machine's
+    // `autoSync.enabled` on first open (true/false/null). Project scope is the
+    // whole point — it travels with the repo so a maintainer pre-answers the
+    // onboarding prompt for everyone. Its sibling `autoSync.enabled` stays
+    // project-local (per-machine) so the two never collide on scope.
+    //
+    // `content.dir` names the root of this project's knowledge graph — it is
+    // project-shared (committed `config.yml`), so a user-global override
+    // doesn't make sense for it.
+    //
+    // `content.attachmentFolderPath` is project-shared: all collaborators use
+    // the same asset-placement convention (e.g. 'attachments/' mirror of Obsidian
+    // vaults) so assets land consistently regardless of who made the edit.
+    //
+    // `telemetry.localSink.*` controls the local file sink used by
+    // `ok diagnose bundle`. Project scope keeps the rotation/denylist
+    // defaults shared across collaborators in the committed `config.yml`;
+    // disabling the sink is also a project-level decision (sensitive
+    // workspaces opt out across the whole team).
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const projectStrict = leaves
@@ -162,6 +195,17 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
   });
 
   test('project-local-strict fields cover autoSync.enabled + appearance.sidebar.* + search.semantic.* + terminal.enabled', () => {
+    // Project-local fields are per-machine, per-project: each teammate's
+    // choice never crosses the git boundary.
+    // `<projectDir>/.ok/local/config.yml` is gitignored and never mirrored
+    // to the public repo. `autoSync.enabled` controls per-machine sync;
+    // the `appearance.sidebar.*` toggles are per-machine view preferences
+    // for hidden / ignored files in the file tree; `search.semantic.*` is the
+    // per-machine opt-in for embeddings search — enabling it sends content to
+    // a third-party provider (egress) and needs a local API key, so the choice
+    // (and its non-secret provider knobs) is inherently per-machine.
+    // `terminal.enabled` gates the in-app real OS shell: a full-privilege
+    // capability consented per-machine, never inherited via a clone.
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const projectLocalStrict = leaves

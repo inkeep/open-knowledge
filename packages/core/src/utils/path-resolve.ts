@@ -1,10 +1,38 @@
+/**
+ * Browser+Node compatible basename index for Foam-style wiki-embed resolution.
+ *
+ * Path shapes used throughout are contentDir-relative posix strings
+ * (e.g. `docs/photo.png`) — leading `./` and `/` are normalized away.
+ *
+ * Plain Map — no TrieMap dependency at our scale; index rebuilds at server
+ * startup and on CC1 ch:'files' signals, no disk persistence.
+ *
+ * Tiebreak rules in resolveEmbed (deterministic across rebuilds):
+ *   (1) prefer a path inside sourcePath's dirname subtree, shallowest wins
+ *   (2) else shortest posix-relative hop count from sourcePath's dirname
+ *   (3) else alphabetical ascending (final stable tiebreak)
+ *
+ * Lookup is case-insensitive on the basename (Obsidian parity); original-case
+ * paths are preserved in the bucket so disk I/O stays faithful.
+ */
+
 export interface BasenameIndex {
   add(path: string): void;
   remove(path: string): void;
   rename(oldPath: string, newPath: string): void;
   resolveEmbed(basename: string, sourcePath: string): string | null;
+  /**
+   * Drop every indexed path. Used on cross-branch HEAD switches where
+   * the on-disk asset set is swapped wholesale — asset DiskEvents do
+   * NOT fire during the switch (the file watcher's buffered events are
+   * discarded), so add/remove alone cannot transition the index to the
+   * new branch's shape. Pair with `seedBasenameIndex` to rebuild from
+   * the branch's current disk.
+   */
   clear(): void;
+  /** Debug/test only: frozen snapshot of the internal map. */
   snapshot(): ReadonlyMap<string, readonly string[]>;
+  /** Number of distinct basenames currently indexed. */
   size(): number;
 }
 

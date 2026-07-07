@@ -1,6 +1,20 @@
 import { describe, expect, test } from 'bun:test';
 import { emptyState, parseAppState } from '../../src/main/state-store.ts';
 
+/**
+ * Regression set for the four AppState fields
+ * (versionPendingInstall, lastSeenVersion, lastSuccessfulCheckAt,
+ * stuckHintShown). Paired with the existing state-store tests in
+ * `packages/desktop/tests/main/state-store.test.ts` which exercise the
+ * recentProjects / lastOpenedProject / atomic-writer behavior; this file
+ * owns these fields' invariants.
+ *
+ * The anchoring invariant is forward-compat: a state.json that
+ * lacks these four keys MUST return a valid AppState (no quarantine, no
+ * null) so upgrading users don't see their recent-projects list
+ * wiped on first launch.
+ */
+
 describe('AppState M3 fields — defaults', () => {
   test('emptyState has the four M3 defaults', () => {
     const s = emptyState();
@@ -30,6 +44,8 @@ describe('parseAppState M3 fields — coercion', () => {
   });
 
   test('attemptedInstall: round-trips a string, coerces non-string + absent to null', () => {
+    // parseAppState requires a `recentProjects` array (returns null otherwise),
+    // so each case carries the minimal valid envelope.
     expect(
       parseAppState({ recentProjects: [], attemptedInstall: '0.16.0-beta.3' })?.attemptedInstall,
     ).toBe('0.16.0-beta.3');
@@ -45,6 +61,7 @@ describe('parseAppState M3 fields — coercion', () => {
       parseAppState({ recentProjects: [], attemptedInstallSurfacedCount: 2 })
         ?.attemptedInstallSurfacedCount,
     ).toBe(2);
+    // Absent, negative, non-integer, and non-number all coerce to a fresh 0 budget.
     expect(parseAppState({ recentProjects: [] })?.attemptedInstallSurfacedCount).toBe(0);
     expect(
       parseAppState({ recentProjects: [], attemptedInstallSurfacedCount: -3 })
@@ -61,6 +78,7 @@ describe('parseAppState M3 fields — coercion', () => {
   });
 
   test('M1-forward-compat: pre-M3 blob without M3 keys returns valid state with defaults', () => {
+    // Shape a real state.json would have.
     const raw = {
       recentProjects: [
         { path: '/tmp/m1-project', name: 'm1-project', lastOpenedAt: '2026-02-01T00:00:00Z' },
@@ -69,8 +87,10 @@ describe('parseAppState M3 fields — coercion', () => {
     };
     const parsed = parseAppState(raw);
     expect(parsed).not.toBeNull();
+    // Existing data preserved.
     expect(parsed?.recentProjects.length).toBe(1);
     expect(parsed?.lastOpenedProject).toBe('/tmp/m1-project');
+    // New fields populate with emptyState() defaults — no quarantine.
     expect(parsed?.versionPendingInstall).toBeNull();
     expect(parsed?.lastSeenVersion).toBeNull();
     expect(parsed?.lastSuccessfulCheckAt).toBeNull();

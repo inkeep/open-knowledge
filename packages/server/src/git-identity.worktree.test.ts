@@ -1,3 +1,15 @@
+/**
+ * Integration tests for writeGitIdentity in a real git worktree on disk.
+ *
+ * Regression: `git config --local` writes to `$GIT_COMMON_DIR/config` even
+ * when invoked from a linked worktree, so calling `writeGitIdentity` from a
+ * worktree silently rewrote the main checkout's `user.name` / `user.email`.
+ *
+ * The fix enables `extensions.worktreeConfig` (idempotent) and writes
+ * `--worktree` when projectDir is a linked worktree; main checkouts retain
+ * the existing `--local` behavior.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -6,6 +18,11 @@ import { join } from 'node:path';
 
 import { resolveGitIdentity, writeGitIdentity } from './git-identity.ts';
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// Scrub inherited GIT_* env so a parent shell with GIT_DIR / GIT_WORK_TREE /
+// GIT_COMMON_DIR set doesn't redirect our test git invocations into the
+// surrounding repo.
 function cleanGitEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(process.env)) {
@@ -53,11 +70,16 @@ function setupRepo(): { tmp: string; main: string; linked: string } {
   return { tmp, main, linked };
 }
 
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
 describe('writeGitIdentity in a linked worktree', () => {
   let env: { tmp: string; main: string; linked: string };
   let savedGitEnv: Record<string, string | undefined>;
 
   beforeEach(() => {
+    // `writeGitIdentity` / `resolveGitIdentity` shell out to git and inherit
+    // process env. A GIT_DIR-leaking parent shell would redirect those calls
+    // into the surrounding repo and corrupt the isolation we set up below.
     savedGitEnv = {};
     for (const k of Object.keys(process.env)) {
       if (k.startsWith('GIT_')) {
@@ -77,6 +99,11 @@ describe('writeGitIdentity in a linked worktree', () => {
   });
 
   test('resolveGitIdentity in a linked worktree without the extension enabled falls through to the main identity', async () => {
+    // Pre-condition: a fresh worktree where no `writeGitIdentity` call has
+    // flipped `extensions.worktreeConfig`. `git config --worktree` exits 128
+    // (fatal) on this state; `defaultGitConfigReader` must map that to null
+    // so the chain falls through to `--local`. This is the correctness
+    // guarantee that lets us prepend the worktree-tier read unconditionally.
     const resolved = await resolveGitIdentity(env.linked);
     expect(resolved).toEqual({ name: 'Main Test', email: 'main@test.local' });
   });
@@ -84,28 +111,33 @@ describe('writeGitIdentity in a linked worktree', () => {
   test('writes per-worktree config and leaves main checkout untouched', () => {
     writeGitIdentity(env.linked, 'WT Author', 'wt@test.local');
 
+    // Per-worktree file exists with the new identity.
     const wtConfigPath = join(env.main, '.git', 'worktrees', 'wt', 'config.worktree');
     expect(existsSync(wtConfigPath)).toBe(true);
     const wtConfigBody = readFileSync(wtConfigPath, 'utf-8');
     expect(wtConfigBody).toContain('email = wt@test.local');
     expect(wtConfigBody).toContain('name = WT Author');
 
+    // Main repo's common config is untouched.
     const commonConfig = readFileSync(join(env.main, '.git', 'config'), 'utf-8');
     expect(commonConfig).toContain('email = main@test.local');
     expect(commonConfig).toContain('name = Main Test');
     expect(commonConfig).not.toContain('wt@test.local');
     expect(commonConfig).not.toContain('WT Author');
 
+    // Main checkout still resolves to its own identity (precedence-correct).
     expect(gitConfigGet(env.main, '--local', 'user.email')).toBe('main@test.local');
     expect(gitConfigGet(env.main, '--local', 'user.name')).toBe('Main Test');
   });
 
   test('enables extensions.worktreeConfig on first write (idempotent)', () => {
+    // Pre-condition: extension absent.
     expect(gitConfigGet(env.linked, '--local', 'extensions.worktreeConfig')).toBeNull();
 
     writeGitIdentity(env.linked, 'WT Author', 'wt@test.local');
     expect(gitConfigGet(env.linked, '--local', 'extensions.worktreeConfig')).toBe('true');
 
+    // Second call: still works, doesn't error, doesn't duplicate the key.
     writeGitIdentity(env.linked, 'WT Author 2', 'wt2@test.local');
     expect(gitConfigGet(env.linked, '--worktree', 'user.email')).toBe('wt2@test.local');
     const commonConfig = readFileSync(join(env.main, '.git', 'config'), 'utf-8');
@@ -155,6 +187,7 @@ describe('writeGitIdentity in the main worktree', () => {
     expect(gitConfigGet(env.main, '--local', 'user.name')).toBe('Updated Main');
     expect(gitConfigGet(env.main, '--local', 'extensions.worktreeConfig')).toBeNull();
 
+    // No per-worktree config materialised for the linked checkout.
     const wtConfigPath = join(env.main, '.git', 'worktrees', 'wt', 'config.worktree');
     expect(existsSync(wtConfigPath)).toBe(false);
   });

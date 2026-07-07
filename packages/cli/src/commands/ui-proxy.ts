@@ -1,3 +1,21 @@
+/**
+ * Minimal reverse HTTP proxy for `ok ui` lock-collision fallback and for
+ * forwarding `ok ui`'s `/api/*` traffic to the collab server.
+ *
+ * Two modes:
+ *   1. **Standalone** — `startProxyServer(opts)` spins up an HTTP listener that
+ *      forwards every request to an upstream host:port. Used for Claude
+ *      Code's `autoPort:true` lock-collision scenario (the listener holds the
+ *      autoPort-resolved port; requests get forwarded to the lock-holder's
+ *      port).
+ *   2. **Embedded** — `proxyRequest(req, res, opts)` is called directly from
+ *      an existing `http.Server` request handler to forward a single request
+ *      to an upstream. Used by `ok ui` so that React's same-origin REST
+ *      calls (`/api/pages`, `/api/backlinks`, etc.) transparently reach the
+ *      collab server on a different port without per-caller URL rewriting.
+ *
+ * Uses only `node:http` — no new 3P dependency.
+ */
 import type {
   Server as HttpServer,
   IncomingHttpHeaders,
@@ -35,6 +53,19 @@ interface StartProxyOptions {
  * hung upstream doesn't keep browser connections open indefinitely. */
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 10_000;
 
+/**
+ * Reject requests to the proxy that did not arrive over a loopback peer with a
+ * loopback Host header and (when present) a loopback Origin. This proxy
+ * rewrites the upstream Host header to `localhost:<port>` and the upstream
+ * sees the proxy's own loopback peer address — without this gate, a request
+ * that arrived over a non-loopback bind, a DNS-rebound hostname, or a
+ * cross-origin browser context would launder all three signals before the
+ * collab server's own gate (api-extension.ts) could see them.
+ *
+ * Returns `true` when the request was rejected and the response already
+ * written; the caller must return without further work. Returns `false` when
+ * the request is safe to forward.
+ */
 export function rejectIfNotLoopbackApi(req: IncomingMessage, res: ServerResponse): boolean {
   const peerAddress = req.socket?.remoteAddress;
   if (peerAddress !== undefined && !isLoopbackAddress(peerAddress)) {
@@ -73,6 +104,14 @@ export function rejectIfNotLoopbackApi(req: IncomingMessage, res: ServerResponse
  * upstream timeout above so we never time out a healthy request. */
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
+/**
+ * Upgrade-flow analogue of `rejectIfNotLoopbackApi`. The HTTP/1.1 upgrade
+ * exchange has no `ServerResponse` to write a structured error into, so on
+ * rejection we destroy the raw socket — the client surfaces this as a failed
+ * WebSocket handshake. Same three-gate defense (peer + Host + Origin).
+ *
+ * Returns `true` when the upgrade was rejected; the caller must return.
+ */
 export function rejectUpgradeIfNotLoopback(req: IncomingMessage, clientSocket: Duplex): boolean {
   const peerAddress = req.socket?.remoteAddress;
   if (peerAddress !== undefined && !isLoopbackAddress(peerAddress)) {
@@ -91,6 +130,25 @@ export function rejectUpgradeIfNotLoopback(req: IncomingMessage, clientSocket: D
   return false;
 }
 
+/**
+ * Forward an HTTP/1.1 upgrade (e.g. WebSocket) to an upstream and bridge the
+ * two sockets once the upstream responds with `101 Switching Protocols`.
+ *
+ * Uses a raw TCP connection rather than `http.request({ headers: { upgrade
+ * ... } })`. Node's HTTP client agent can interfere with the upgrade flow
+ * (and Bun's compatibility layer is even less reliable for this case);
+ * reconstructing the request bytes ourselves keeps the forward path
+ * deterministic across runtimes.
+ *
+ * Caller is responsible for the loopback / origin gate (see
+ * `rejectUpgradeIfNotLoopback`). `clientSocket` is the inbound socket Node
+ * detached on the upgrade event. `head` is any prefix bytes Node captured
+ * between the request line and the event firing (usually empty for WS).
+ *
+ * The pair of sockets is added to `upgradeSockets` so a parent server's
+ * shutdown can tear them down promptly — `httpServer.close()` does not
+ * track sockets detached by upgrade.
+ */
 export function proxyUpgrade(
   req: IncomingMessage,
   clientSocket: Duplex,
@@ -102,6 +160,10 @@ export function proxyUpgrade(
   upgradeSockets.add(clientSocket);
   clientSocket.once('close', () => upgradeSockets.delete(clientSocket));
 
+  // Connect timeout — matches the HTTP path's `DEFAULT_UPSTREAM_TIMEOUT_MS`
+  // (10s) so a Hocuspocus that accepts TCP but never responds doesn't pin a
+  // socket pair indefinitely. Cleared in the `connect` callback below so the
+  // bridge isn't subject to an idle-activity timeout once it's live.
   const upstreamSocket = netConnect({
     host: upstreamHost,
     port: upstreamPort,
@@ -129,15 +191,25 @@ export function proxyUpgrade(
     }
     try {
       upstreamSocket.destroy();
-    } catch {}
+    } catch {
+      // best-effort
+    }
     try {
       clientSocket.destroy();
-    } catch {}
+    } catch {
+      // best-effort
+    }
   };
 
   upstreamSocket.once('connect', () => {
+    // Bridge is live — drop the connect timeout so long-running WS sessions
+    // aren't capped by it. (Hocuspocus connections are intentionally
+    // long-lived; an activity-based timeout would need its own design.)
     upstreamSocket.setTimeout(0);
 
+    // Reconstruct the upgrade request: request line + headers + CRLF CRLF.
+    // `req.headers` arrives lowercase-keyed (per Node parser); HTTP header
+    // names are case-insensitive so verbatim serialisation is fine.
     const lines: string[] = [
       `${req.method ?? 'GET'} ${req.url ?? '/'} HTTP/1.1`,
       `host: ${upstreamHost}:${upstreamPort}`,
@@ -159,6 +231,10 @@ export function proxyUpgrade(
       return;
     }
 
+    // Bidirectional forwarding via manual `data` handlers — `stream.pipe`
+    // semantics on upgrade-detached sockets are inconsistent under Bun
+    // (spurious `end` events before any payload flows). Manual forwarding
+    // sidesteps that.
     upstreamSocket.on('data', (chunk: Buffer) => {
       if (clientSocket.writable) clientSocket.write(chunk);
     });
@@ -171,12 +247,30 @@ export function proxyUpgrade(
     cleanup({ event: 'proxy-upgrade-upstream-connect-timeout' });
   });
 
+  // `on('error')` rather than `once('error')` — `cleanup` is idempotent via
+  // the `cleaned` flag, and a stray write-after-destroy in the `data`
+  // forwarders can fire a second `error` we must still catch (an
+  // unhandled-error event would throw at the process level). `close` is the
+  // authoritative full-teardown signal; `end` is intentionally NOT listened
+  // for because under Bun 1.3 a freshly-connected `net.Socket` can emit a
+  // spurious `end` before any payload flows.
   upstreamSocket.on('error', (err) => cleanup({ event: 'proxy-upgrade-upstream-error', err }));
   clientSocket.on('error', (err) => cleanup({ event: 'proxy-upgrade-client-error', err }));
   upstreamSocket.once('close', () => cleanup());
   clientSocket.once('close', () => cleanup());
 }
 
+/**
+ * Hop-by-hop headers per RFC 7230 §6.1 — these MUST NOT be forwarded by a
+ * proxy. Additionally we drop `Cookie` / `Set-Cookie` because `ok ui` does
+ * not set cookies and there is no legitimate reason for localhost peers to
+ * flow cookies through our reverse proxy.
+ *
+ * `Upgrade` is stripped on the plain-HTTP request path only. WebSocket
+ * upgrades are routed through `proxyUpgrade` above, which preserves
+ * `Connection` / `Upgrade` / `Sec-WebSocket-*` verbatim so the upstream can
+ * complete the handshake.
+ */
 const HOP_BY_HOP_HEADERS: readonly string[] = [
   'connection',
   'keep-alive',
@@ -192,12 +286,27 @@ const HOP_BY_HOP_HEADERS: readonly string[] = [
 
 export async function startProxyServer(opts: StartProxyOptions): Promise<ProxyServerHandle> {
   const timeoutMs = opts.upstreamTimeoutMs ?? DEFAULT_UPSTREAM_TIMEOUT_MS;
+  // Track upgrade-pipe sockets so `close()` can drain them. `httpServer.close()`
+  // does not track sockets detached by an upgrade event; without explicit
+  // draining a long-lived WS would hold the close-callback open indefinitely.
   const upgradeSockets = new Set<Duplex>();
   const httpServer: HttpServer = createHttpServer((req, res) => {
+    // Standalone proxy mode (lock-collision fallback) forwards every URL — not
+    // just /api/*. Apply the gate to every request because we have no way to
+    // distinguish state-mutating from read-only paths without parsing every
+    // upstream's route table; loopback is the only sound default.
     if (rejectIfNotLoopbackApi(req, res)) return;
     forwardRequest(req, res, opts.upstreamHost, opts.upstreamPort, timeoutMs);
   });
 
+  // WebSocket upgrades — forward to the same upstream the HTTP path goes to.
+  // Without this, browsers loaded from this proxy port that try to open a WS
+  // here (the same-origin case: Electron utility upstream
+  // serves the shell + Hocuspocus on a single port) get their connection
+  // dropped — the kernel resets the socket because Node has no listener for
+  // the `upgrade` event. The upstream then handles the upgrade natively
+  // (Hocuspocus is wired into its HTTP server in both `ok ui` and the
+  // Electron utility paths).
   httpServer.on('upgrade', (req, clientSocket, head) => {
     if (rejectUpgradeIfNotLoopback(req, clientSocket)) return;
     proxyUpgrade(req, clientSocket, head, opts.upstreamHost, opts.upstreamPort, upgradeSockets);
@@ -220,10 +329,20 @@ export async function startProxyServer(opts: StartProxyOptions): Promise<ProxySe
     port,
     close: () =>
       new Promise<void>((done) => {
+        // `httpServer.close(cb)` only invokes the callback once every existing
+        // connection has finished — including idle HTTP keep-alive sockets
+        // left over from prior `fetch()` calls. Without evicting those, the
+        // promise hangs until the OS times out the socket (~10s+), which
+        // shows up as flaky test-suite `afterEach` timeouts. Destroy live
+        // upgrade pipes first (they own their own sockets post-upgrade and
+        // wouldn't be tracked by `closeIdleConnections`), then close idle
+        // keep-alives.
         for (const sock of upgradeSockets) {
           try {
             sock.destroy();
-          } catch {}
+          } catch {
+            // best-effort — the socket may already be torn down.
+          }
         }
         upgradeSockets.clear();
         httpServer.close(() => done());
@@ -235,9 +354,20 @@ export async function startProxyServer(opts: StartProxyOptions): Promise<ProxySe
 interface ProxyRequestOptions {
   upstreamHost: string;
   upstreamPort: number;
+  /** Per-request upstream timeout in ms. Default 10_000. 0 disables. */
   upstreamTimeoutMs?: number;
 }
 
+/**
+ * Forward a single incoming request to an upstream. Shared between
+ * `startProxyServer` (which wires it as the request handler) and embedded
+ * callers like `ok ui` that thread a targeted `/api/*` proxy into their
+ * existing request router without running a second HTTP listener.
+ *
+ * Handles: header forwarding (minus Host), request-body piping, response
+ * status/headers/body piping, 504 on upstream timeout, 502 on upstream
+ * error, and client-abort propagation so no upstream sockets leak.
+ */
 export function proxyRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -259,12 +389,18 @@ function forwardRequest(
   upstreamPort: number,
   upstreamTimeoutMs: number,
 ): void {
+  // Strip hop-by-hop headers (RFC 7230 §6.1) + Cookie / Set-Cookie. Drop the
+  // inbound Host header so we can rewrite it to the upstream authority —
+  // keeping the browser's Host would surface the proxy port in upstream logs
+  // and confuse vhost-routing upstreams.
   const headers: IncomingHttpHeaders = { ...req.headers };
   delete headers.host;
   for (const name of HOP_BY_HOP_HEADERS) {
     delete headers[name];
   }
 
+  // Per-request deadline — destroy the upstream + response on elapse so a
+  // slow-loris client or hung upstream can't pin sockets past DEFAULT_REQUEST_TIMEOUT_MS.
   req.setTimeout(DEFAULT_REQUEST_TIMEOUT_MS, () => {
     if (!res.headersSent) {
       try {
@@ -275,15 +411,21 @@ function forwardRequest(
           'Proxy request exceeded the per-request deadline.',
           `Slow-loris-class: client did not finish within ${DEFAULT_REQUEST_TIMEOUT_MS / 1000}s.`,
         );
-      } catch {}
+      } catch {
+        // already closed
+      }
     } else {
       try {
         res.end();
-      } catch {}
+      } catch {
+        // already closed
+      }
     }
     try {
       req.socket?.destroy();
-    } catch {}
+    } catch {
+      // best-effort
+    }
   });
 
   const upstreamReq = httpRequest(
@@ -295,6 +437,8 @@ function forwardRequest(
       headers: { ...headers, host: `${upstreamHost}:${upstreamPort}` },
     },
     (upstreamRes) => {
+      // Strip hop-by-hop headers + Set-Cookie on the response path too —
+      // same rationale as the inbound direction.
       const resHeaders = { ...upstreamRes.headers };
       for (const name of HOP_BY_HOP_HEADERS) {
         delete resHeaders[name];
@@ -304,11 +448,17 @@ function forwardRequest(
       upstreamRes.once('error', () => {
         try {
           res.end();
-        } catch {}
+        } catch {
+          // Already closed — nothing to do.
+        }
       });
     },
   );
 
+  // Bounded upstream timeout — without this a hung `ok ui` (GC pause, deadlock,
+  // anything non-crashing) leaves browsers waiting indefinitely. On deadline we
+  // destroy the upstream socket and respond 504 ourselves (headers-not-sent path
+  // is the common case; if upstream already started streaming, we just end).
   if (upstreamTimeoutMs > 0) {
     upstreamReq.setTimeout(upstreamTimeoutMs, () => {
       if (!res.headersSent) {
@@ -322,7 +472,9 @@ function forwardRequest(
       } else {
         try {
           res.end();
-        } catch {}
+        } catch {
+          // Already closed.
+        }
       }
       upstreamReq.destroy();
     });
@@ -330,6 +482,10 @@ function forwardRequest(
 
   upstreamReq.on('error', () => {
     if (!res.headersSent) {
+      // 502 Bad Gateway → reuse `collab-server-not-running` since the
+      // proxy's upstream IS the collab server (`ok start`); a connection
+      // error here means the upstream socket couldn't be established or
+      // dropped mid-request.
       emitProblem(
         res,
         502,
@@ -340,10 +496,13 @@ function forwardRequest(
     } else {
       try {
         res.end();
-      } catch {}
+      } catch {
+        // Already closed.
+      }
     }
   });
 
+  // Propagate client aborts so we don't leak an upstream socket.
   req.on('error', () => {
     upstreamReq.destroy();
   });

@@ -1,3 +1,23 @@
+/**
+ * Perf-observability-substrate canary.
+ *
+ * integration coverage that exercises the substrate
+ * primitives end-to-end without Playwright. Validates:
+ *
+ *   pool warm-back hit + miss marks fire and the counter
+ *         records both branches.
+ *   histogram has populated percentile snapshots after a
+ *         representative sample.
+ *   mark.count() increments by symbolic prop.
+ *   `mountId` / `poolEventId` adoption invariant: the
+ *         mount-id-registry and a peeked pool entry agree.
+ *   circular buffer evicts oldest entries at MAX_RING_ENTRIES.
+ *
+ * The Playwright perf scenarios
+ * exercise the same primitives via the Playwright harness; this file
+ * pins them so any regression fails CI in seconds rather
+ * than waiting for a perf run.
+ */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mark } from '../../src/lib/perf';
 import {
@@ -11,8 +31,10 @@ const hadWindow = typeof (globalThis as { window?: unknown }).window !== 'undefi
 
 beforeEach(() => {
   if (!hadWindow) (globalThis as unknown as { window: unknown }).window = globalThis;
+  // Compact ring so the eviction assertion runs in milliseconds.
   window.__okPerfOverrides = { MAX_RING_ENTRIES: 8 };
   resetPerfOverrideWarnings();
+  // Force a fresh collector so the override picks up.
   (globalThis as { __ok_perf?: unknown }).__ok_perf = undefined;
   __resetCardinalityWarnings();
 });
@@ -59,11 +81,17 @@ describe('perf-substrate canary', () => {
       ?.toArray()
       .filter((m: { name: string }) => m.name === 'ok/canary/seq')
       .map((m: { properties?: { ix?: unknown } }) => m.properties?.ix as number);
+    // Ring keeps the most recent N. Some entries from the start are
+    // evicted; the surviving sequence is contiguous and ends at 15.
     expect(seen?.[seen.length - 1]).toBe(15);
     expect(seen?.[0]).toBeGreaterThanOrEqual(8);
   });
 
   test('FR5 — mountId / poolEventId adoption invariant (registry + peek)', async () => {
+    // Local stub: the substrate level can't construct a real ProviderPool
+    // without a Hocuspocus URL, so we exercise the registry directly to
+    // pin the contract that mountId equals the pool entry's poolEventId
+    // when one is present.
     const { setMountId, getMountId, clearMountId } = await import(
       '../../src/editor/mount-id-registry'
     );

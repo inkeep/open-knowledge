@@ -80,6 +80,8 @@ describe('POST /api/agent-patch', () => {
       const ytext = session.dc.document.getText('source');
       const initial =
         '# Notes\n\nProject Alpha appears first. Later, Project Alpha appears second.\n';
+      // Seed via applyAgentMarkdownWrite so both XmlFragment and Y.Text are populated
+      // (agent-patch reads from XmlFragment per precedent #12 XmlFragment-authoritative).
       session.dc.document.transact(() => {
         applyAgentMarkdownWrite(session.dc.document, initial, 'replace');
       }, AGENT_WRITE_ORIGIN);
@@ -93,10 +95,13 @@ describe('POST /api/agent-patch', () => {
       });
 
       expect(response.status).toBe(200);
+      // Success body is flat — no `ok: true` wrapper.
       expect(JSON.parse(response.body)).toEqual({
         timestamp: expect.any(String),
         subscriberCount: expect.any(Number),
         systemSubscriberCount: expect.any(Number),
+        // R2: write-time outbound-link validation; the patched body has no
+        // links, so the always-present field is empty.
         brokenLinks: [],
       });
       expect(ytext.toString()).toBe(
@@ -121,6 +126,8 @@ describe('POST /api/agent-patch', () => {
       const ytext = session.dc.document.getText('source');
       const initial =
         '# Notes\n\nProject Alpha appears first. Later, Project Alpha appears second.\n';
+      // Seed via applyAgentMarkdownWrite so both XmlFragment and Y.Text are populated
+      // (agent-patch reads from XmlFragment per precedent #12 XmlFragment-authoritative).
       session.dc.document.transact(() => {
         applyAgentMarkdownWrite(session.dc.document, initial, 'replace');
       }, AGENT_WRITE_ORIGIN);
@@ -134,6 +141,7 @@ describe('POST /api/agent-patch', () => {
       });
 
       expect(response.status).toBe(409);
+      // stale-target emits RFC 9457 problem+json post-identity.
       const parsed = JSON.parse(response.body);
       expect(parsed.type).toBe('urn:ok:error:stale-target');
       expect(parsed.status).toBe(409);
@@ -158,6 +166,8 @@ describe('POST /api/agent-patch', () => {
       const ytext = session.dc.document.getText('source');
       const initial =
         '# Notes\n\nProject Alpha appears first. Later, Project Alpha appears second.\n';
+      // Seed via applyAgentMarkdownWrite so both XmlFragment and Y.Text are populated
+      // (agent-patch reads from XmlFragment per precedent #12 XmlFragment-authoritative).
       session.dc.document.transact(() => {
         applyAgentMarkdownWrite(session.dc.document, initial, 'replace');
       }, AGENT_WRITE_ORIGIN);
@@ -169,10 +179,13 @@ describe('POST /api/agent-patch', () => {
       });
 
       expect(response.status).toBe(200);
+      // Success body is flat — no `ok: true` wrapper.
       expect(JSON.parse(response.body)).toEqual({
         timestamp: expect.any(String),
         subscriberCount: expect.any(Number),
         systemSubscriberCount: expect.any(Number),
+        // R2: write-time outbound-link validation; the patched body has no
+        // links, so the always-present field is empty.
         brokenLinks: [],
       });
       expect(ytext.toString()).toBe(
@@ -197,6 +210,8 @@ describe('POST /api/agent-patch — surgical/incremental write shape', () => {
     try {
       const session = await sessionManager.getSession('test-doc');
       const ytext = session.dc.document.getText('source');
+      // Body large enough that the whole doc is far bigger than the edited
+      // token, so "minimal delta vs whole-doc overwrite" is unambiguous.
       const seed =
         '# Heading\n\n' +
         'Alpha paragraph one with several words of filler content here.\n\n' +
@@ -208,6 +223,7 @@ describe('POST /api/agent-patch — surgical/incremental write shape', () => {
       expect(ytext.toString()).toBe(seed);
       const wholeDocLen = seed.length;
 
+      // Count chars inserted/deleted by the patch transaction.
       let insertCharCount = 0;
       let deleteCharCount = 0;
       const observer = (event: Y.YTextEvent): void => {
@@ -227,11 +243,21 @@ describe('POST /api/agent-patch — surgical/incremental write shape', () => {
       ytext.unobserve(observer);
 
       expect(response.status).toBe(200);
+      // Final content is correct under EITHER primitive — the discriminator is
+      // the delta shape below, not the final string.
       expect(ytext.toString()).toBe(seed.replace('TARGET', 'REPLACED-TOKEN'));
       const newDocLen = ytext.toString().length;
 
+      // Regression pin: edit_document must route through the INCREMENTAL
+      // primitive. Under the atomic primitive (replaceRawBody) the patch is
+      // delete(0,len)+insert(0,whole) — deleteCharCount === wholeDocLen and
+      // insertCharCount === newDocLen, both RED here. Under the incremental
+      // primitive (composeAndWriteRawBody → applyFastDiff) only the matched
+      // span is touched.
       expect(deleteCharCount).toBeLessThan(wholeDocLen);
       expect(insertCharCount).toBeLessThan(newDocLen);
+      // Sanity: the delta is on the order of the edited token, not the
+      // document. Generous ceiling absorbs diff_cleanupSemantic boundary jitter.
       expect(deleteCharCount).toBeLessThan(64);
       expect(insertCharCount).toBeLessThan(64);
     } finally {

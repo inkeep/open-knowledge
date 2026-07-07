@@ -15,6 +15,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
+/** The New-tab split button's current pick: a CLI, or a bare shell ("terminal"). */
 export type TerminalNewTabChoice = TerminalCli | 'terminal';
 
 interface TerminalNewChatButtonProps {
@@ -34,6 +35,16 @@ interface TerminalNewChatButtonProps {
   readonly className?: string;
 }
 
+/**
+ * The docked terminal's "new tab" control: a split button pairing a primary
+ * launch of the current pick with a dropdown to switch it. Clicking the primary
+ * opens a new tab in whatever is currently selected (a CLI chat, or a bare
+ * terminal); the carat lists every CLI — picking one makes it the new default and
+ * opens a tab in it — plus a "Terminal" row that does the same for a bare shell.
+ * The pick sticks: CLI picks via the shared Ask-AI store, the bare-terminal pick
+ * via a terminal-only flag. The brand icon mirrors the Ask-AI surfaces so a glance
+ * tells you what a new tab will start.
+ */
 export function TerminalNewChatButton({
   selected,
   onLaunchSelected,
@@ -95,7 +106,13 @@ export function TerminalNewChatButton({
                 key={cli}
                 onSelect={() => onPickCli(cli)}
                 data-testid={`terminal-new-chat-cli-${cli}`}
+                // The accessible name carries "<name> CLI" so it is distinct and
+                // unambiguous (matches the Ask-AI Terminal rows, WCAG 2.5.3).
                 aria-label={t`${name} CLI`}
+                // Surface the current pick to assistive tech (the CheckIcon is
+                // aria-hidden). `aria-current` over menuitemradio: each row both
+                // selects a default AND launches, so radio semantics overstate the
+                // selection aspect (WCAG 1.3.1).
                 aria-current={selected === cli ? 'true' : undefined}
               >
                 <TargetIcon id={cliIconTargetId(cli)} className="size-4" aria-hidden="true" />

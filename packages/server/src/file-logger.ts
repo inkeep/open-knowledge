@@ -8,7 +8,7 @@ const OK_LOGS_DIR = join(homedir(), '.ok', 'logs');
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB per file before rotation
 const MAX_ROTATED_FILES = 2; // keep 2 archives + 1 active = 3 files ≈ 15 MB per logger
 const MAX_AGE_DAYS = 7;
-const MAX_DIR_SIZE_BYTES = 45 * 1024 * 1024; // 45 MB aggregate cap (NFR2)
+const MAX_DIR_SIZE_BYTES = 45 * 1024 * 1024; // 45 MB aggregate cap
 
 const REDACT_PATHS = [
   'authorization',
@@ -108,6 +108,13 @@ export interface FileLoggerOptions {
   filePath?: string;
   project?: string;
   additionalOptions?: Partial<LoggerOptions>;
+  /**
+   * Test seam: inject the timer scheduler so a unit test can assert the
+   * deferred prune timer is `.unref()`'d
+   * deterministically, without wall-clock timing. Production leaves this
+   * undefined and uses the global `setTimeout`. Mirrors the injectable-timer
+   * pattern in `cli/src/mcp/bundle-identity.ts`.
+   */
   _setTimeout?: typeof setTimeout;
 }
 
@@ -118,9 +125,22 @@ export function createFileLogger(opts: FileLoggerOptions): PinoLoggerInstance {
   const filePath = opts.filePath ?? join(OK_LOGS_DIR, `${opts.name}.${date}.log`);
 
   rotateIfNeeded(filePath);
+  // `.unref()` is load-bearing: createFileLogger runs in the CLI preAction
+  // hook on every command, so a referenced timer would pin the event loop for
+  // a full 5s after short commands (`ok ps`, `ok stop`) finish, blocking exit.
+  // Unref'd, short commands exit immediately; the prune still fires on
+  // long-lived processes (`ok start`, `ok mcp`) where logs actually accumulate.
+  // Per-file size is bounded inline by rotateIfNeeded above regardless.
   const scheduleTimer = opts._setTimeout ?? setTimeout;
   scheduleTimer(() => pruneLogsDir(OK_LOGS_DIR), 5000).unref();
 
+  // `sync: true` is load-bearing: with an async open, a fast-exit command that
+  // calls process.exit() in the same tick as logger construction (e.g. `ok
+  // start` in an uninitialized directory) beats the fs.open callback, and
+  // pino's exit-flush hook then throws "sonic boom is not ready yet" on the
+  // never-opened fd, dumping the minified bundle to the terminal. A sync open
+  // has the fd ready before any exit path can run; this sink is low-volume CLI
+  // diagnostics, so synchronous writes are acceptable.
   const dest = pino.destination({ dest: filePath, append: true, sync: true });
 
   const level = resolveLogLevel();
@@ -151,6 +171,19 @@ interface FlushableStream {
   once?: (event: string, cb: () => void) => void;
 }
 
+/**
+ * Flush a `createFileLogger` instance to disk before `process.exit()`.
+ *
+ * The file destination is async (`pino.destination({ sync: false })`) and opens
+ * its fd asynchronously. A record logged immediately before `process.exit()` is
+ * otherwise lost: the on-exit flush throws "sonic boom is not ready yet" when
+ * the fd hasn't opened. Short-lived log-then-exit processes (the git credential
+ * helper, whose stderr git swallows) must await this so the miss diagnostic
+ * actually lands. Reaches the underlying SonicBoom stream, waits for `ready` if
+ * the fd is still opening, then `flushSync()`s — bounded by `timeoutMs` so a
+ * stuck open never hangs the caller. No-op when `logger` is undefined or the
+ * stream is not flushable.
+ */
 export function flushFileLogger(
   logger: PinoLoggerInstance | undefined,
   timeoutMs = 250,
@@ -176,9 +209,15 @@ export function flushFileLogger(
     const flushAndDone = (): void => {
       try {
         stream.flushSync?.();
-      } catch {}
+      } catch {
+        // fd still not ready or already closed — best-effort.
+      }
       done();
     };
+    // flushFileLogger is exported public API; a long-lived caller invoking it
+    // repeatedly must not accumulate dangling 'ready' listeners or leaked
+    // timers (MaxListenersExceededWarning). Every resolution path clears the
+    // timer, and the 'ready' wait clears it before flushing.
     const timer = setTimeout(done, timeoutMs);
     if (typeof timer.unref === 'function') timer.unref();
     if (typeof stream.fd === 'number' && stream.fd >= 0) {

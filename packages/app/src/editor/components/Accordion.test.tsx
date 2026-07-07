@@ -1,3 +1,13 @@
+/**
+ * Accordion — unit coverage for the chevron-as-real-DOM refactor.
+ *
+ * The chevron is a real `<svg>` child of `<summary>` (lucide ChevronRight)
+ * so the clipboard live-DOM walker captures it via `cloneNode(true)`.
+ *
+ * Repo convention: no @testing-library, no happy-dom. Structural cases via
+ * `renderToString`.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
 import { Accordion } from './Accordion.tsx';
@@ -25,6 +35,7 @@ describe('Accordion — chevron refactor', () => {
       </Accordion>,
     );
     expect(html).toContain('accordion-chevron');
+    // Use class= prefix to disambiguate from the data-accordion-icon attr on <details>.
     expect(html).toMatch(/class="[^"]*\baccordion-icon\b/);
     const chevronIdx = html.indexOf('accordion-chevron');
     const iconClassMatch = html.match(/class="[^"]*\baccordion-icon\b/);

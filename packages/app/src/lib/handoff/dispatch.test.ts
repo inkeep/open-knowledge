@@ -41,6 +41,9 @@ async function readSentBody(fetchImpl: typeof globalThis.fetch): Promise<unknown
 
 describe('dispatchHandoff — claude-cowork', () => {
   test('POSTs /api/handoff with target=claude-cowork and a prompt-threaded claude://cowork/new URL', async () => {
+    // Doc-scoped Claude handoff threads the directive prompt;
+    // precedent #25 invariant preserved — no `file=` attach (the prompt is a
+    // short directive, never the file body); the agent grounds via OK MCP.
     const fetchImpl = makeFetch(200);
     const payload: HandoffPayload = { ...BASE_PAYLOAD, target: 'claude-cowork' };
     const result = await dispatchHandoff(payload, { fetch: fetchImpl });
@@ -54,6 +57,7 @@ describe('dispatchHandoff — claude-cowork', () => {
     expect(body.url).toMatch(/^claude:\/\/cowork\/new\?q=/);
     expect(body.url).toContain('folder=');
     expect(body.url).toContain('q=');
+    // precedent #25 invariant: no native file-attach.
     expect(body.url).not.toContain('file=');
     expect(body.workspacePath).toBeUndefined();
   });
@@ -90,7 +94,10 @@ describe('dispatchHandoff — codex', () => {
     expect(body.url).toMatch(/^codex:\/\/new\?prompt=/);
     expect(body.url).toContain('path=');
     expect(body.url).toContain('prompt=');
+    // precedent #25 invariant: no native file-attach.
     expect(body.url).not.toContain('file=');
+    // Codex doesn't need workspacePath — `path=` in the URL carries it for the
+    // recipe; the workspacePath body field is cursor-only.
     expect(body.workspacePath).toBeUndefined();
   });
 });
@@ -111,6 +118,7 @@ describe('dispatchHandoff — cursor', () => {
     expect(body.url).toContain('text=');
     expect(body.url).toContain('workspace=');
     expect(body.url).toContain('mode=agent');
+    // precedent #25 invariant: no native file-attach.
     expect(body.url).not.toContain('file=');
     expect(body.workspacePath).toBe(BASE_PAYLOAD.projectDir);
   });

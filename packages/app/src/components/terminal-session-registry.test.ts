@@ -68,6 +68,7 @@ describe('registry mutation', () => {
   test('updateTerminalSession patches activity so a busy session becomes idle after the quiet window', () => {
     register('a', 'claude', 'pty-a', now, true); // just streamed → busy
     expect(findIdleMatchingSession('claude', now)).toBeNull();
+    // Time passes, no new output → the same last-output stamp is now old enough.
     expect(findIdleMatchingSession('claude', now + IDLE_QUIET_MS + 1)?.id).toBe('a');
   });
 

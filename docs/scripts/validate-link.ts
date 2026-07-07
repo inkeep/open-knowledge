@@ -3,6 +3,21 @@ import { getSlugs } from 'fumadocs-core/source';
 import { printErrors, readFiles, scanURLs, validateFiles } from 'next-validate-link';
 import { composeTabId } from '../src/components/tabs';
 
+/**
+ * Tab deep-link anchors are NOT headings, so they never appear in
+ * `getTableOfContents`. The `<Tabs updateAnchor>` machinery (see
+ * `src/components/tabs.tsx`) writes `#${composeTabId(label, groupId)}` to the
+ * URL per tab, and those anchors are a load-bearing contract for shared links.
+ * Without registering them here, `validate-link` false-flags every valid
+ * `#tab-anchor` fragment as `invalid-fragment`. We reuse `composeTabId` (the
+ * single source of truth for the slug rules) so this can never drift from the
+ * runtime ids.
+ *
+ * Parses the `items={[...]}` form (`<Tabs groupId="x" items={['A', 'B']}>`),
+ * which is the deep-linkable pattern in this repo's MDX. The `s` flag on
+ * `ITEMS_ATTR` lets `.*?` cross newlines inside a multi-line items array;
+ * `TABS_OPEN_TAG` needs no such flag because `[^>]` already matches newlines.
+ */
 const TABS_OPEN_TAG = /<Tabs\b([^>]*)>/g;
 const GROUP_ID_ATTR = /groupId=["']([^"']+)["']/;
 const ITEMS_ATTR = /items=\{\[(.*?)\]\}/s;
@@ -26,6 +41,7 @@ function tabHashes(content: string): string[] {
 async function checkLinks() {
   const docsFiles = await readFiles(['content/**/*.{md,mdx}']);
 
+  // Build valid URLs manually from the slugs
   const scanned = await scanURLs({
     populate: {
       'docs/[...slug]': docsFiles.map((file) => {

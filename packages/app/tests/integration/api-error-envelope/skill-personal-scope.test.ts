@@ -1,3 +1,15 @@
+/**
+ * Global-scope skills: authored at `<home>/.ok/skills/`, listed
+ * alongside project skills, edited, installed into the user-global host dirs
+ * (`<home>/.{host}/skills/`), and deleted — but UNVERSIONED (no shadow repo for
+ * the user home), so history is always empty and restore is refused.
+ *
+ * Hermetic via the `configHomedirOverride` seam (the single user-home override
+ * that also resolves `~/.ok/global.yml`), so global writes land in a
+ * throwaway tempdir, never the real user home. (Bun's `os.homedir()` ignores
+ * `$HOME`, so an env override wouldn't work — the seam is threaded explicitly.)
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -39,6 +51,7 @@ describe('global-scope skills', () => {
       frontmatter: { name: 'daily-standup', description: 'Use when writing a standup update.' },
     });
     expect(res.status).toBe(200);
+    // The source landed in the overridden home, not the project content dir.
     expect(existsSync(join(tmpHome, '.ok', 'skills', 'daily-standup', 'SKILL.md'))).toBe(true);
   });
 
@@ -54,6 +67,7 @@ describe('global-scope skills', () => {
   });
 
   test('GET /api/skills lists the global skill with scope=global', async () => {
+    // Seed a project skill too, to prove the union surfaces both scopes.
     await putSkill({
       scope: 'project',
       name: 'project-only',
@@ -67,6 +81,7 @@ describe('global-scope skills', () => {
       const project = parsed.data.skills.find((s) => s.name === 'project-only');
       expect(personal?.scope).toBe('global');
       expect(project?.scope).toBe('project');
+      // Global install isn't wired yet → not installed, no hosts.
       expect(personal?.installed).toBe(false);
       expect(personal?.hosts).toEqual([]);
     }
@@ -100,6 +115,8 @@ describe('global-scope skills', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { hosts: string[] };
     expect(body.hosts).toContain('claude');
+    // Projected verbatim into the overridden home's global host dir, and the
+    // user-level install marker recorded it.
     expect(existsSync(join(tmpHome, '.claude', 'skills', 'daily-standup', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(tmpHome, '.ok', 'local', 'installed-skills.json'))).toBe(true);
   });
@@ -124,8 +141,10 @@ describe('global-scope skills', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { uninstalled: boolean };
     expect(body.uninstalled).toBe(true);
+    // Source kept; global projection removed.
     expect(existsSync(join(tmpHome, '.ok', 'skills', 'daily-standup', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(tmpHome, '.claude', 'skills', 'daily-standup'))).toBe(false);
+    // List now shows it as a Draft again.
     const list = await fetch(`${base()}/api/skills`);
     const parsed = SkillsListSuccessSchema.safeParse(await list.json());
     expect(parsed.success).toBe(true);
@@ -142,6 +161,7 @@ describe('global-scope skills', () => {
     });
     expect(res.status).toBe(200);
     expect(existsSync(join(tmpHome, '.ok', 'skills', 'daily-standup'))).toBe(false);
+    // Reverse-projection cleaned the global host dir too.
     expect(existsSync(join(tmpHome, '.claude', 'skills', 'daily-standup'))).toBe(false);
   });
 });

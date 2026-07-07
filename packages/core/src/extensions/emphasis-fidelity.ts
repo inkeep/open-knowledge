@@ -1,3 +1,22 @@
+/**
+ * Emphasis (strong/emphasis) mark overrides for source-text fidelity.
+ *
+ * Extends @tiptap/extension-italic and @tiptap/extension-bold (preserving
+ * toggleItalic/toggleBold commands, Cmd+I/Cmd+B shortcuts, and input rules)
+ * and adds delimiter-choice attributes.
+ *
+ * Schema names are mdast-canonical: 'emphasis' (not 'italic'), 'strong'
+ * (not 'bold'). Markdown parsing/serialization is handled by the unified
+ * pipeline (packages/core/src/markdown/).
+ *
+ * Input rules override the upstream defaults to thread the user's chosen
+ * delimiter form into the resulting mark via `getAttributes`. WYSIWYG-typed
+ * `__foo__` lands as strong with `sourceDelimiter='__'`; the to-markdown
+ * handler reads that attr and emits `__foo__`. Without the override,
+ * `getAttributes` is undefined upstream and the mark inherits the schema
+ * default (`'**'`/`'*'`), erasing the user's choice.
+ */
+
 import { markInputRule } from '@tiptap/core';
 import Bold, {
   starInputRegex as boldStarRe,

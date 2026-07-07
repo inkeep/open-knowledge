@@ -1,3 +1,15 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleSaveVersion`.
+ *
+ * Covers the canonical RFC 9457 wire shape:
+ *   - happy path with empty body: status 200, `Content-Type: application/json`,
+ *     body parses against `SaveVersionSuccessSchema`, no `ok: true` discriminator.
+ *   - body-shape failure (writer.id violates SAFE_ID_RE): emits
+ *     `urn:ok:error:invalid-request` problem+json.
+ *   - method-not-allowed on GET emits `urn:ok:error:method-not-allowed`
+ *     + `Allow: POST` header.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, SaveVersionSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

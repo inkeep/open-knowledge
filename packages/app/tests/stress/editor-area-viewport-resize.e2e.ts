@@ -1,6 +1,28 @@
+/**
+ * editor-area-viewport-resize.e2e.ts — Editor mount stability across viewport resize.
+ *
+ * Pins the invariant: the editor mount substrate (EditorActivityPool → ActivityEntry →
+ * TiptapEditor + V2 mount-promise + portalTarget) MUST survive viewport-driven layout
+ * transitions for the active doc. The hybrid render tree (precedent #18(b)) was
+ * designed for flash-free doc-switch transitions; this test extends the contract to
+ * the right doc-panel collapse/expand transition at the 1024px threshold.
+ *
+ * The right doc-panel is a `react-resizable-panels` Panel that is a STABLE SIBLING of
+ * the editor in one `ResizablePanelGroup` (precedent #18(b)): crossing the threshold
+ * collapses/expands the panel's flex size; it must never unmount the editor subtree.
+ * The editor + doc-panel are NOT swapped between distinct React tree positions, so
+ * the portal-target DOM identity is stable across any number of collapse cycles.
+ *
+ * Per CLAUDE.md STOP rule: each test creates its own unique doc via api.seedDocs —
+ * no hardcoded `'test-doc'`.
+ */
+
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 
+// 1024px is the right doc-panel collapse threshold (RIGHT_COLLAPSE_THRESHOLD in
+// `packages/app/src/lib/sidebar-partition.ts`). Above: panel open; below: panel
+// collapsed (width 0) but still a stable sibling of the editor in the panel group.
 const WIDE_VIEWPORT = { width: 1300, height: 800 } as const;
 const NARROW_VIEWPORT = { width: 800, height: 800 } as const;
 
@@ -23,6 +45,9 @@ const DOC_BODY_TEXT_MARKERS = [
   'editor-area-viewport-resize regression test',
 ] as const;
 
+// Frontmatter is what makes this repro match aang.md's structure — the Properties
+// panel renders, then we assert the body editor renders alongside it. The bug-state
+// is "Properties panel present, body editor absent"; the GREEN state is both present.
 function frontmatterDoc(name: string): string {
   return `---
 title: "${name} title"
@@ -38,6 +63,8 @@ ${DOC_BODY}`;
 }
 
 async function waitForEditorReady(page: Page) {
+  // ProseMirror's contenteditable surface confirms TipTap has mounted and bound
+  // to Y.Doc. The first assertion that fails on the bug-state.
   await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)', {
     state: 'attached',
     timeout: 15_000,
@@ -48,6 +75,9 @@ async function waitForEditorReady(page: Page) {
 }
 
 async function assertBodyEditorRendersContent(page: Page) {
+  // The structural assertion: the body editor's DOM must exist AND contain the
+  // seeded body text. Under a remount-bug, the .ProseMirror element either does
+  // not exist or exists but is empty.
   const editor = page.locator('.ProseMirror:not(.composer-prosemirror)').first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
 
@@ -58,10 +88,19 @@ async function assertBodyEditorRendersContent(page: Page) {
 }
 
 async function assertPropertyPanelRenders(page: Page, expectedTitle: string) {
+  // The PropertyPanel (frontmatter table) lives in the editor column, not the
+  // doc-panel. It is the control: confirms the EditorActivityPool tree is intact
+  // and the bug (if any) is isolated to the body editor.
   await expect(page.getByText('Properties').first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(expectedTitle).first()).toBeVisible({ timeout: 10_000 });
 }
 
+/**
+ * Wait deterministically for the doc-panel collapse/expand to settle after a
+ * `page.setViewportSize` call. The toggle's `aria-expanded` reflects the panel's
+ * open/collapsed state (`true` when open, `false` when collapsed) — polling it
+ * replaces a fixed `waitForTimeout` per the e2e STOP rule.
+ */
 async function waitForDocPanel(page: Page, expected: 'open' | 'collapsed') {
   const want = expected === 'open' ? 'true' : 'false';
   await expect
@@ -71,6 +110,16 @@ async function waitForDocPanel(page: Page, expected: 'open' | 'collapsed') {
     .toBe(want);
 }
 
+/**
+ * Returns a stable identity-token for the per-Activity portal target div.
+ * `EditorActivityPool` creates one `[data-ok-editor-portal=<docName>]`
+ * `HTMLDivElement` per ActivityEntry mount via `useState` lazy initializer.
+ * When ActivityEntry unmounts and remounts, a NEW div is created — so the
+ * DOM node identity changes. We tag each div with a random token on first
+ * read (stored in a `WeakMap` keyed by the element) and return the same
+ * token on subsequent reads of the same element; a different token means
+ * React remounted the subtree.
+ */
 async function portalTargetGeneration(page: Page, docName: string): Promise<string> {
   return page.evaluate((dn) => {
     const el = document.querySelector(`[data-ok-editor-portal="${dn}"]`);
@@ -106,11 +155,13 @@ test.describe('editor-area viewport resize — editor mount stability', () => {
     await assertBodyEditorRendersContent(page);
     await assertPropertyPanelRenders(page, `${docName} title`);
 
+    // CYCLE 1: shrink past 1024 (panel collapses) → expand back (panel reopens).
     await page.setViewportSize(NARROW_VIEWPORT);
     await waitForDocPanel(page, 'collapsed');
     await page.setViewportSize(WIDE_VIEWPORT);
     await waitForDocPanel(page, 'open');
 
+    // After one cycle: body editor MUST still be rendered with content.
     await waitForEditorReady(page);
     await assertBodyEditorRendersContent(page);
     await assertPropertyPanelRenders(page, `${docName} title`);
@@ -120,6 +171,13 @@ test.describe('editor-area viewport resize — editor mount stability', () => {
     page,
     api,
   }) => {
+    // STRUCTURAL invariant test (precedent #18(b)): the per-Activity portal target
+    // DOM node identity must survive the doc-panel collapse/expand transition for
+    // the active doc. EditorActivityPool creates one HTMLDivElement per ActivityEntry
+    // mount via useState lazy initializer; if removing the Sheet branch had collapsed
+    // the editor + doc-panel back into distinct tree positions, the threshold crossing
+    // would unmount and remount the editor subtree — changing the portal target's DOM
+    // identity. This test pins that the editor + doc-panel stay stable siblings.
     const docName = `viewport-resize-structural-${test.info().workerIndex}`;
     await api.seedDocs([{ name: docName, markdown: frontmatterDoc(docName) }]);
     await page.setViewportSize(WIDE_VIEWPORT);
@@ -131,8 +189,10 @@ test.describe('editor-area viewport resize — editor mount stability', () => {
     const genBefore = await portalTargetGeneration(page, docName);
     expect(genBefore).not.toBe('absent');
 
+    // Sanity: re-reading without a viewport change must return the same generation.
     expect(await portalTargetGeneration(page, docName)).toBe(genBefore);
 
+    // CYCLE 1: collapse → expand.
     await page.setViewportSize(NARROW_VIEWPORT);
     await waitForDocPanel(page, 'collapsed');
     await page.setViewportSize(WIDE_VIEWPORT);
@@ -145,6 +205,7 @@ test.describe('editor-area viewport resize — editor mount stability', () => {
       'portal target DOM identity must be stable across the doc-panel collapse/expand — a new generation means the editor subtree remounted, violating precedent #18(b)',
     ).toBe(genBefore);
 
+    // CYCLE 2: collapse → expand again.
     await page.setViewportSize(NARROW_VIEWPORT);
     await waitForDocPanel(page, 'collapsed');
     await page.setViewportSize(WIDE_VIEWPORT);
@@ -192,6 +253,13 @@ test.describe('editor-area viewport resize — editor mount stability', () => {
     page,
     api,
   }) => {
+    // focus-safety: when the doc-panel collapses for ANY reason (here, a
+    // responsive resize across 1024 — NOT a toggle click), focus inside the panel
+    // must move to the doc-panel toggle so it is never orphaned on a control inside
+    // a now-zero-width region. Guards the regression where the focus-safety effect
+    // queried a non-existent `[data-panel-id="doc-panel"]` (the library renders
+    // `id="doc-panel"`), so focus was never moved on the resize/keyboard/programmatic
+    // collapse paths.
     const docName = `viewport-resize-fr9-${test.info().workerIndex}`;
     await api.seedDocs([{ name: docName, markdown: frontmatterDoc(docName) }]);
     await page.setViewportSize(WIDE_VIEWPORT);
@@ -200,6 +268,7 @@ test.describe('editor-area viewport resize — editor mount stability', () => {
     await waitForEditorReady(page);
     await waitForDocPanel(page, 'open');
 
+    // Move focus to a control INSIDE the doc-panel (a tab button), then confirm.
     const focusedInside = await page.evaluate(() => {
       const panel = document.getElementById('doc-panel');
       const focusable = panel?.querySelector<HTMLElement>('[role="tab"], button');
@@ -208,6 +277,7 @@ test.describe('editor-area viewport resize — editor mount stability', () => {
     });
     expect(focusedInside, 'precondition: focus is inside the doc-panel').toBe(true);
 
+    // Collapse via resize (matchMedia path), NOT by clicking the toggle.
     await page.setViewportSize(NARROW_VIEWPORT);
     await waitForDocPanel(page, 'collapsed');
 

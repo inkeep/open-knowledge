@@ -1,8 +1,33 @@
+/**
+ * Tier-3 RTL mount test for the SettingsDialogShell userBinding gating
+ * contract.
+ *
+ * Pins the behavioral data-flow that the source-string guards in
+ * `SettingsDialogShell.test.ts` cannot reach: the ternary
+ * `userBinding={userSynced ? userBinding : null}` is the
+ * single behavioral invariant the shell/body split was designed to
+ * preserve — it gates the settings form against an unsynced CRDT
+ * binding. A refactor that breaks the data flow without changing the
+ * ternary's literal text (e.g. `useConfigContext()` returning a stale
+ * closure, or an intermediate prop passing `userBinding` unconditionally
+ * through a HOC) could ship the regression silently — the form would
+ * bind to an unsynced doc and overwrite user config with schema defaults.
+ *
+ * Approach: mock `SettingsDialogBodyLazy` to a synchronous probe
+ * component that records the `userBinding` prop it receives. Mount the
+ * Shell with `open={true}` and `useConfigContext` returning controlled
+ * `userBinding` / `userSynced` values; assert the probe received `null`
+ * when `userSynced` is false and the real binding when true.
+ */
+
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+// Radix UI primitives (used by shadcn `Dialog`) reach for DOM globals at
+// mount time that `tests/dom/jsdom-preload.ts` does not expose. Hoist the
+// needed shims locally.
 type WindowGlobals = {
   MutationObserver?: typeof MutationObserver;
   NodeFilter?: typeof NodeFilter;
@@ -34,6 +59,8 @@ if (globalWithDomShims.ResizeObserver === undefined) {
   globalWithDomShims.ResizeObserver = NoopResizeObserver;
 }
 
+// Captures one prop-snapshot per render so the test can inspect the
+// `userBinding` value the body would see.
 interface BodyProps {
   activeId: string;
   userBinding: ConfigBinding | null;
@@ -49,6 +76,9 @@ function resetProbe() {
 
 const pendingBodyChunk = new Promise<never>(() => {});
 
+// Module-level toggle the test cases flip before the Context mock factory
+// is read. Default to an unsynced binding so the initial render path is
+// exercised on every case.
 let mockUserBinding: ConfigBinding | null = null;
 let mockUserSynced = false;
 let mockOkignoreBinding: OkignoreBinding | null = null;
@@ -104,6 +134,9 @@ mock.module('@/lib/handoff/use-claude-desktop-integration', () => ({
 
 const { SettingsDialogShell } = await import('./SettingsDialogShell');
 
+// A sentinel ConfigBinding identity for the synced case — only its
+// reference equality matters for the assertions below; methods are
+// never called by the probe.
 const SENTINEL_USER_BINDING = {
   current: () => ({}) as never,
   patch: () => ({ ok: true, value: { applied: [], effective: {} } }) as never,
@@ -140,7 +173,11 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
 
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
 
+    // The body received SOMETHING (Suspense resolved synchronously
+    // because the lazy reference is mocked to a plain component).
     expect(probeProps.length).toBeGreaterThan(0);
+    // Most recent render carries the gated value: even though the
+    // ConfigProvider has a live binding, `userSynced=false` masks it.
     const latest = probeProps[probeProps.length - 1];
     expect(latest?.userBinding).toBeNull();
   });
@@ -157,6 +194,10 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
   });
 
   test('passes userBinding={null} when the binding itself is absent regardless of userSynced', () => {
+    // Cold-start edge case: the binding has not been constructed yet
+    // (collabUrl null, or before the effect runs). The gating ternary
+    // should still produce null — `userSynced ? null : null` is null —
+    // proving the prop pipeline does not invent a non-null binding.
     mockUserBinding = null;
     mockUserSynced = true;
 
@@ -168,11 +209,15 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
   });
 
   test('renders the dialog frame, navigation landmark, and default Preferences section immediately', () => {
-    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    render(<SettingsDialogShell open onOpenChange={() => {}} />);
 
     expect(screen.getByTestId('settings-dialog')).toBeTruthy();
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    const dialog = screen.getByRole('dialog');
+    const labelledBy = dialog.getAttribute('aria-labelledby');
+    expect(labelledBy).toBeTruthy();
+    expect(document.getElementById(labelledBy ?? '')?.textContent).toBe('Settings');
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Settings content' })).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Settings sections' })).toBeTruthy();
     expect(screen.getByText('User')).toBeTruthy();
     expect(screen.getByText('This project')).toBeTruthy();

@@ -1,3 +1,11 @@
+/**
+ * `ok deinit` — remove OpenKnowledge from ONE project, leaving the user's
+ * markdown content untouched. The per-project ring of the shared removal engine
+ * (`deinitOps`), reused by `ok uninstall`'s recent-projects sweep.
+ *
+ * Re-running `ok start` after `ok deinit` re-scaffolds the project cleanly.
+ */
+
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -14,10 +22,12 @@ import {
 
 export interface DeinitOptions {
   cwd?: string;
+  /** Override home (test-only). */
   home?: string;
   yes?: boolean;
   dryRun?: boolean;
   json?: boolean;
+  /** Test-only stdin override for the confirmation prompt. */
   confirmStream?: NodeJS.ReadableStream;
   /** Test-only: stub the machine-touching removal primitives (stop-server, etc.)
    *  so the failed-exit branch is exercisable without real side effects. */
@@ -34,6 +44,9 @@ export async function runDeinit(opts: DeinitOptions = {}): Promise<DeinitResult>
   const projectRoot = resolve(opts.cwd ?? process.cwd());
   const home = opts.home ?? homedir();
 
+  // `.ok/` is the project marker; without it there is no OpenKnowledge footprint
+  // to remove here (a stray editor-config entry would be handled by uninstall's
+  // global sweep, not a per-project deinit).
   if (!existsSync(join(projectRoot, '.ok'))) {
     return {
       status: 'no-op',

@@ -1,3 +1,20 @@
+/**
+ * Fixed-capacity O(1)-push ring buffer.
+ *
+ * Replaces `array.push` (unbounded growth) and `array.shift` (O(n) memmove
+ * in V8) for the `__ok_perf` collector ring-store. Long-running DEV
+ * sessions accumulate ~77 mark namespaces × hundreds of emissions/min;
+ * a ring is the architecturally correct primitive.
+ *
+ * Storage: pre-allocated `Array<T | undefined>` of size `capacity`.
+ * Writes go to `slots[head]`; head increments modulo capacity. When the
+ * buffer is full subsequent pushes overwrite the oldest entry.
+ *
+ * `toArray()` returns items in chronological order (oldest first when
+ * full; insertion order from index 0 when partial). Callers that need an
+ * ordered snapshot for serialization / map / filter call this; readers
+ * tolerant of internal layout call `forEach`.
+ */
 export class CircularBuffer<T> {
   private readonly capacity: number;
   private readonly slots: Array<T | undefined>;
@@ -18,6 +35,11 @@ export class CircularBuffer<T> {
     if (this.size < this.capacity) this.size += 1;
   }
 
+  /**
+   * Snapshot of items in chronological order:
+   * - When `size < capacity`: items at indices [0, size).
+   * - When full: items wrap from `head` (oldest) around to `head - 1` (newest).
+   */
   toArray(): T[] {
     const out: T[] = new Array<T>(this.size);
     if (this.size < this.capacity) {
@@ -25,6 +47,8 @@ export class CircularBuffer<T> {
         out[i] = this.slots[i] as T;
       }
     } else {
+      // Full: oldest slot is at `head` (next overwrite target). Walk from
+      // head around the ring.
       for (let i = 0; i < this.capacity; i += 1) {
         out[i] = this.slots[(this.head + i) % this.capacity] as T;
       }

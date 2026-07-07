@@ -1,3 +1,9 @@
+/**
+ * Project-local MCP config reclaim on project open. Both Desktop and CLI
+ * sweeps apply the same namespace-ownership rule: if an `open-knowledge`
+ * entry exists and does not pass the chain-sentinel check, rewrite it.
+ */
+
 import { join } from 'node:path';
 import {
   buildMcpConfigDeclineEvent,
@@ -37,8 +43,11 @@ type ProjectMcpReclaimResult =
   | { status: 'done'; perEditor: ProjectMcpReclaimPerEditor[] };
 
 export interface ProjectMcpReclaimCliSurface {
+  /** `EDITOR_TARGETS[id]` keyed by editor — same surface as `McpWiringCliSurface`. */
   editorTargets: Record<McpWiringEditorId, EditorMcpTarget>;
+  /** Full `ALL_EDITOR_IDS`. */
   allEditorIds: readonly McpWiringEditorId[];
+  /** Project-scope variant: discriminated classification at `projectPath`. */
   classifyExistingProjectMcpConfig(
     editorId: McpWiringEditorId,
     projectDir: string,
@@ -134,6 +143,11 @@ export async function checkAndRepairProjectMcpOnProjectOpen(
     }
 
     if (classification.kind === 'absent' || classification.kind === 'no-entry') {
+      // 'absent' = file doesn't exist. 'no-entry' = file parses but has no
+      // entry under our server name (could be a valid config for other
+      // tools — never author into it). Both are no-ops under namespace
+      // ownership. Operators reading the log can disambiguate via the
+      // configPath + existsSync upstream if they need to.
       perEditor.push({ editor, status: 'no-token', configPath: projectPath });
       logger.event({ event: 'project-mcp-reclaim-no-token', editor, configPath: projectPath });
       continue;
@@ -150,6 +164,11 @@ export async function checkAndRepairProjectMcpOnProjectOpen(
     }
 
     if (classification.kind === 'decline') {
+      // OpenKnowledge is a guest in another tool's config: a present, non-empty
+      // file it cannot fully parse is left byte-untouched — never renamed aside
+      // or overwritten — and registration is skipped. The bounded decline
+      // signal is the only operator-facing trace; the user sees OK's server
+      // simply absent rather than their config reset.
       perEditor.push({
         editor,
         status: 'declined',
@@ -168,10 +187,20 @@ export async function checkAndRepairProjectMcpOnProjectOpen(
     }
 
     if (classification.kind !== 'present') {
+      // Exhaustiveness guard: absent / no-entry / healthy-current / decline all
+      // `continue` above, so only an incompatible `present` reaches here. A new
+      // McpEntryClassification variant becomes a compile error rather than
+      // silently falling into the repair write below.
       const _exhaustive: never = classification;
       return _exhaustive;
     }
 
+    // Only a present-but-incompatible entry remains. Emit the structured
+    // `mcp-config-migrate` event BEFORE the write so field observability
+    // captures every attempted migration — including writes that fail. The
+    // sibling `project-mcp-reclaim-reclaimed` event below fires only on a
+    // successful write; together they distinguish "intent to migrate" from
+    // "did migrate."
     logger.event(
       buildMcpConfigMigrateEvent({
         scope: 'project',
@@ -204,6 +233,10 @@ export async function checkAndRepairProjectMcpOnProjectOpen(
     }
 
     if (writeResult.action === 'declined') {
+      // The classify pre-pass saw a reclaimable entry, but the lock-time read no
+      // longer parses (a concurrent harness truncated it, or it grew past the
+      // size bound). The write left the file byte-untouched — record a decline,
+      // NOT a reclaim, so the `reclaimed` event never fires for an unwritten file.
       const reason: McpDeclineReason = writeResult.reason ?? 'unparseable';
       perEditor.push({ editor, status: 'declined', configPath: projectPath, reason });
       logger.event(
@@ -217,6 +250,8 @@ export async function checkAndRepairProjectMcpOnProjectOpen(
       continue;
     }
 
+    // Reuses the shared `truncatePriorEntry` helper so the truncation contract
+    // stays in lockstep with `mcp-config-migrate`.
     const { priorCommand, priorArgs } = truncatePriorEntry(classification.entry);
     perEditor.push({ editor, status: 'reclaimed', configPath: projectPath });
     logger.event({

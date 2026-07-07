@@ -1,3 +1,11 @@
+/**
+ * RTL tests for the CRDT-bound template Properties panel. Asserts the behaviors
+ * unique to it: `title` + `description` round-trip through the live
+ * `bindFrontmatterDoc` binding (an edit IS a CRDT mutation of the template's
+ * YAML region), and the `name` field commits a RENAME (never a plain frontmatter
+ * patch). Uses a real-Y.Doc fake provider — same pattern `SourceEditor` uses.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -53,6 +61,7 @@ describe('TemplateProperties (CRDT)', () => {
     fireEvent.change(nameInput, { target: { value: 'standup' } });
     fireEvent.blur(nameInput);
     expect(onRename).toHaveBeenCalledWith('standup');
+    // The body/frontmatter is NOT rewritten by the panel — the rename spine owns the file.
     expect(ytext.toString()).toContain('# Agenda');
   });
 });

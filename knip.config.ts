@@ -52,6 +52,25 @@ export default {
     'scripts/assert-smoke-not-vacuous.mjs': ['files'],
     'scripts/assert-smoke-not-vacuous.test.mjs': ['files'],
     'scripts/check-no-ci-skip-in-e2e.test.mjs': ['files'],
+    'scripts/comment-identity.mjs': ['files'],
+    'scripts/git-clean-env.mjs': ['files'],
+    'scripts/comment-identity.test.mjs': ['files'],
+    'scripts/comment-inventory.mjs': ['files'],
+    'scripts/comment-inventory.test.mjs': ['files'],
+    'scripts/comment-leak-check.mjs': ['files'],
+    'scripts/comment-leak-check.test.mjs': ['files'],
+    'scripts/comment-protected-regions.mjs': ['files'],
+    'scripts/comment-protected-regions.test.mjs': ['files'],
+    'scripts/comment-fidelity.mjs': ['files'],
+    'scripts/comment-fidelity.test.mjs': ['files'],
+    'scripts/bridge-canary.mjs': ['files'],
+    'scripts/bridge-canary.test.mjs': ['files'],
+    'scripts/cluster-strict-gate.mjs': ['files'],
+    'scripts/cluster-strict-gate.test.mjs': ['files'],
+    'scripts/comment-recall-sample.mjs': ['files'],
+    'scripts/comment-recall-sample.test.mjs': ['files'],
+    'scripts/harvest-aggregate.mjs': ['files'],
+    'scripts/harvest-aggregate.test.mjs': ['files'],
     'scripts/assert-app-built.mjs': ['files'],
     'scripts/assert-app-built.test.mjs': ['files'],
     '.github/scripts/cla-gate.test.mjs': ['files'],
@@ -93,7 +112,7 @@ export default {
       project: 'src/**',
       ignoreDependencies: [
         '@tiptap/extension-collaboration-cursor', // transitive dependency for `y-prosemirror@1.3.7` patch
-        'fuzzysort', // installed by PR #361 (workspace omnibar search) ahead of the consumer wire-up
+        'fuzzysort', // installed for workspace omnibar search ahead of the consumer wire-up
         '@testing-library/jest-dom', // side-effect import (`import '@testing-library/jest-dom'`) registers matchers
         'highlight.js', // lowlight's peer dependency — never imported here directly, but lowlight's grammar registrations resolve through it
         ...fidelityOnlyAppDeps,

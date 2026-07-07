@@ -1,3 +1,17 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleLinkGraph`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET /api/link-graph[?docName=...&degrees=N]`:
+ *   - happy path (no params): status 200, `Content-Type: application/json`, body
+ *     parses against `LinkGraphSuccessSchema`, no `ok` discriminator.
+ *   - happy path (docName + degrees): scoped neighborhood query.
+ *   - unsafe docName → `urn:ok:error:invalid-request`.
+ *   - degrees without docName → `urn:ok:error:invalid-request`.
+ *   - negative degrees → `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
+ *     `Allow: GET` header.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { LinkGraphSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

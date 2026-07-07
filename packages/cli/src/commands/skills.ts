@@ -1,3 +1,16 @@
+/**
+ * `ok skills manage --on | --off | --status` — the headless opt-in for
+ * project-level skill management, mirroring the Desktop / `ok ui` prompt.
+ *
+ * `--on` flips the project to OK-managed (records `manageEditorSkills: true` in
+ * `<project>/.ok/local/skill-management.json`): on the next `ok start` / project
+ * open, `reconcileSkillInstalls` imports existing editor skills into `.ok/skills`
+ * and adopts newly-installed ones thereafter. `--off` is non-destructive — it
+ * stops future adoption; existing `.ok/skills` content + editor symlinks stay.
+ * Skills that already have a `.ok/skills` entry are managed regardless of this
+ * flag.
+ */
+
 import { resolve as resolvePath } from 'node:path';
 import { isProjectSkillManaged, writeSkillManagement } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
@@ -23,6 +36,8 @@ export function skillsCommand(): Command {
     )
     .option('--status', 'Print the current setting.')
     .action(async (opts: { on?: boolean; off?: boolean; status?: boolean }) => {
+      // No subcommand-level `--cwd`; the program-level `--cwd` preAction hook has
+      // already chdir'd, so process.cwd() reflects the user's project.
       const projectDir = resolvePath(process.cwd());
       const chosen = [opts.on, opts.off, opts.status].filter(Boolean).length;
       if (chosen !== 1) {
@@ -34,6 +49,9 @@ export function skillsCommand(): Command {
       }
 
       if (opts.status) {
+        // Effective state (honors the OK_RECLAIM_DISABLE / OK_SKILL_MANAGE env
+        // overrides reconcile reads), not just the raw marker — this is the
+        // surface people use to debug "why aren't my skills being adopted?".
         const managed = isProjectSkillManaged(projectDir);
         process.stdout.write(
           `Skill management for ${accent(projectDir)}: ${managed ? success('on') : dim('off (default)')}\n`,

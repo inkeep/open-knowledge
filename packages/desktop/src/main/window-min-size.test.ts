@@ -3,6 +3,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { WINDOW_MIN_SIZE } from './window-min-size.ts';
 
+/**
+ * Pure-function test — no Electron bindings touched at module top, so Bun
+ * runs it directly. Verifies both that the constants are sane and that
+ * `index.ts` actually wires them at the BrowserWindow construction sites
+ * (the bug class is "construction site never opted in to Electron's
+ * minWidth/minHeight" — the source-text checks catch a regression where
+ * the constants exist but get dropped from a constructor).
+ */
+
 describe('WINDOW_MIN_SIZE constants', () => {
   test('declares EDITOR with a usable minimum width', () => {
     expect(WINDOW_MIN_SIZE.EDITOR.width).toBeGreaterThanOrEqual(320);
@@ -21,6 +30,12 @@ describe('WINDOW_MIN_SIZE constants', () => {
   });
 
   test('EDITOR min width is at least as large as NAVIGATOR min width (wider chrome)', () => {
+    // Width-only invariant. Height cannot be cross-compared because the two
+    // windows have differently-shaped chrome: the Editor's content is
+    // horizontal-toolbar-dominated (modest height floor), while the
+    // Navigator's empty / first-launch state centers a header + 3-card row
+    // and benefits from a taller floor so the centered group can breathe
+    // without responsive-layout work.
     expect(WINDOW_MIN_SIZE.EDITOR.width).toBeGreaterThanOrEqual(WINDOW_MIN_SIZE.NAVIGATOR.width);
   });
 
@@ -56,6 +71,12 @@ describe('main/index.ts wires BrowserWindow min-size at construction', () => {
     expect(defaultsBlock?.[0]).toMatch(/minHeight:\s*WINDOW_MIN_SIZE\.NAVIGATOR\.height/);
   });
 
+  // The Editor override assertions are scoped to the Editor factory block via
+  // an extract-then-assert pattern (mirrors the DEFAULT_WIN_OPTS
+  // approach). Anchoring on `page-title-updated` is the discriminator — that
+  // event handler only appears in the Editor's createWindow callback. A
+  // global indexSource.match would pass even if the override migrated to a
+  // different constructor or appeared in an unrelated comment.
   const editorFactoryBlock = indexSource.match(
     /createWindow:\s*\(opts\)[\s\S]*?page-title-updated[\s\S]*?^\s*\},/m,
   );

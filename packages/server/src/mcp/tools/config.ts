@@ -1,3 +1,23 @@
+/**
+ * `config` MCP tool — fs-direct read of the effective merged config.
+ *
+ * Reads via `loadConfig` (defaults → user → project + ENV applied). No
+ * allowlist gating on read — agents can inspect any field. Read-only,
+ * idempotent.
+ *
+ * Tagged `[Operates on disk; no running OK server required]` because it
+ * doesn't need Hocuspocus running. Used for mid-session re-reads when
+ * state may have changed (file watcher detected an external edit, another
+ * agent wrote, etc.).
+ *
+ * Input: `{ key?: string, cwd?: string }` — key is the dotted path
+ *        (e.g. `"appearance.theme"`). Omit for full config.
+ * Output: `structuredContent: { value, exists, key? }` + JSON-stringified `content[]`.
+ *        (`exists` is always present — `true` when the value resolved, `false`
+ *        only for an absent keyed path; `key` echoes the dotted key and is
+ *        absent on a full-config read.)
+ */
+
 import { z } from 'zod';
 import type { ConfigOrResolver, ServerInstance } from './shared.ts';
 import {
@@ -83,6 +103,11 @@ export function register(server: ServerInstance, deps: GetConfigDeps): void {
       }
       const segments = args.key ? args.key.split('.').filter((s) => s.length > 0) : [];
       const value = segments.length > 0 ? readConfigPath(context.config, segments) : context.config;
+      // `JSON.stringify(undefined)` returns the JS value `undefined` rather
+      // than a JSON string — agents would see ambiguous text content and
+      // can't distinguish "path absent" from "path explicitly set to null".
+      // Surface the absence as a structured `exists: false` payload + a
+      // human-readable text body.
       if (segments.length > 0 && value === undefined) {
         return textPlusStructured(`(no value at ${args.key})`, {
           value: null,

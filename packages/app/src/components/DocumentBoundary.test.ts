@@ -1,3 +1,17 @@
+/**
+ * DocumentBoundary — unit tests for the component contract that makes the
+ * `use(syncPromise(...))` body safe under React StrictMode + Suspense.
+ *
+ * We cannot exercise `use()` + Suspense directly here — the repo convention
+ * rules out adding a DOM test harness.
+ * Component-level rendering is covered end-to-end by Playwright.
+ *
+ * What we CAN verify without a renderer is the invariant DocumentBoundary
+ * depends on: `syncPromise(docName, provider)` returns a stable reference for
+ * repeated same-doc calls, which is what lets `use()` survive StrictMode's
+ * dev-mode double-invoke of the component body.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { __resetSyncPromiseCache, syncPromise } from '@/editor/sync-promise';
@@ -25,7 +39,9 @@ afterEach(() => {
   for (const p of providers) {
     try {
       p.destroy();
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
   providers = [];
 });
@@ -39,6 +55,8 @@ describe('DocumentBoundary', () => {
     const provider = track(makeProvider('doc-a'));
     const first = syncPromise('doc-a', provider);
     const second = syncPromise('doc-a', provider);
+    // `use()` on a stable reference is the invariant that prevents infinite
+    // suspend loops under StrictMode's dev-mode double-invoke.
     expect(second).toBe(first);
   });
 

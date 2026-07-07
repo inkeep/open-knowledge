@@ -3,6 +3,21 @@ import { extractOriginUrl as extractFromCli } from '../../../cli/src/github/fold
 import { extractOriginUrl as extractFromServer } from '../../../server/src/share/git-context';
 import { extractOriginUrl as extractFromDesktop } from '../../src/main/git-remote';
 
+/**
+ * Cross-package contract test for `[remote "origin"]` parsing.
+ *
+ * Three production sites duplicate this parser (server, desktop, CLI) to
+ * avoid a server↔CLI dependency cycle. A regex divergence here previously
+ * caused the server to reject configs with whitespace after the opening
+ * bracket while the other two accepted them. This sync guard ensures all
+ * three return identical output for a shared fixture set so a bug fix to
+ * one copy can't silently fail to propagate.
+ *
+ * If extracting to a shared core helper becomes feasible (no cycle, no
+ * extra public surface), this test can be deleted — the consolidated
+ * implementation will be its own contract.
+ */
+
 interface Fixture {
   readonly name: string;
   readonly input: string;
@@ -74,6 +89,8 @@ describe('git-config `[remote "origin"]` parser parity', () => {
       expect(cliResult).toBe(fixture.expected);
       expect(serverResult).toBe(fixture.expected);
 
+      // Cross-implementation equality — if any pair diverges, fail loudly
+      // even when the expected fixture might already be the wrong value.
       expect(desktopResult).toBe(cliResult);
       expect(cliResult).toBe(serverResult);
     });

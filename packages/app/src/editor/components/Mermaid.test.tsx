@@ -1,3 +1,14 @@
+/**
+ * Mermaid — structural unit tests.
+ *
+ * Same testing-library-free convention as Math.test.tsx: `renderToString`
+ * from `react-dom/server` is the substrate. Mermaid renders via `useEffect`
+ * + an async lazy import + `mermaid.render()` call, so under
+ * `renderToString` the component lands in its initial placeholder state
+ * (the effect fires only on real mount). Live SVG output is exercised via
+ * the Playwright visual-regression suite.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
@@ -40,6 +51,11 @@ describe('MermaidView — placeholder branch', () => {
 
 describe('MermaidView — pre-render mount state', () => {
   test('non-empty chart starts in idle/rendering state under renderToString', () => {
+    // useEffect doesn't run under renderToString, so the component sits in
+    // its initial state — `status: 'idle'` — which renders the same shell
+    // as the empty placeholder branch except `chart.trim()` is non-empty.
+    // We're asserting this for stability: SSR-style render must NOT crash
+    // on mermaid mount and must produce visible markup.
     const html = renderToString(<MermaidView chart="graph TD; A-->B;" />);
     expect(html).toContain('data-component-type="mermaid"');
   });
@@ -52,6 +68,9 @@ describe('extractSourceNodeId', () => {
   });
 
   test('preserves internal hyphens in the source id', () => {
+    // Mermaid ids may include hyphens; the trailing `-<digits>` is always
+    // the counter, so a greedy match over everything before the counter
+    // hands back the whole id.
     expect(extractSourceNodeId('mermaid-scope-flowchart-A-B-3')).toBe('A-B');
   });
 
@@ -99,6 +118,8 @@ describe('findLabelInSource', () => {
   });
 
   test('word-boundary check rejects a suffix-match on longer node ids', () => {
+    // Looking up `B` should NOT match inside `AB[Web app]` — the preceding
+    // `A` is a word char, which invalidates the boundary.
     const noBoundary = 'graph TD\n  AB[Web app]-->Z\n';
     expect(findLabelInSource(noBoundary, 'B', 'Web app')).toBeNull();
   });
@@ -131,6 +152,8 @@ describe('spliceNewLabel', () => {
   });
 
   test('adds quotes when the new label contains mermaid-syntactic chars', () => {
+    // `[` inside the new label would break unquoted shape parsing, so we
+    // wrap in `"..."` even when the source form was unquoted.
     const source = 'graph TD\n  Z[GraphQL API]-->E\n';
     const match = locate(source, 'Z', 'GraphQL API');
     const next = spliceNewLabel(source, match, 'API [gateway]');
@@ -140,6 +163,8 @@ describe('spliceNewLabel', () => {
   test('preserves quotes when source already used the quoted form', () => {
     const source = 'graph TD\n  Z["Original"]-->E\n';
     const match = locate(source, 'Z', 'Original');
+    // Even a plain replacement stays quoted — author explicitly quoted the
+    // original, don't strip that decision.
     expect(spliceNewLabel(source, match, 'Plain')).toContain('Z["Plain"]');
   });
 
@@ -152,6 +177,10 @@ describe('spliceNewLabel', () => {
   });
 
   test('quoted edge label round-trip preserves quoting through splice', () => {
+    // `findEdgeLabelInSource` sets `open: ''` for edge labels, so the
+    // `match.open !== ''` gate in `spliceNewLabel` skips auto-quoting.
+    // But `wasQuoted: true` on the match must still cause the splice
+    // to keep the surrounding quotes — the author explicitly opted in.
     const source = 'flowchart LR\n  A -->|"multi word"| B\n';
     const m = findEdgeLabelInSource(source, 'A', 'B', 0, 'multi word');
     if (!m) throw new Error('expected a match');
@@ -200,6 +229,9 @@ describe('findEdgeLabelInSource', () => {
   });
 
   test('index tie-breaks when the same label appears on parallel edges', () => {
+    // Two `A -->|dup| B` edges. Index 0 finds the first, index 1 finds
+    // the second (mermaid's `L_A_B_<counter>` numbers each parallel
+    // edge; when clicking the label we forward that counter as `index`).
     const source = ['flowchart LR', '  A -->|dup| B', '  A -->|dup| B'].join('\n');
     const m0 = findEdgeLabelInSource(source, 'A', 'B', 0, 'dup');
     const m1 = findEdgeLabelInSource(source, 'A', 'B', 1, 'dup');
@@ -216,10 +248,14 @@ describe('findEdgeLabelInSource', () => {
   });
 
   test('label offset is exact even when the label text matches the from-id', () => {
+    // Regression: `m[0].indexOf(label)` used to return 0 (the `A`
+    // fromId) instead of the label's real position, corrupting the
+    // splice range. `d` flag + `m.indices` avoids the search entirely.
     const source = 'flowchart LR\n  A -->|A| B\n';
     const m = findEdgeLabelInSource(source, 'A', 'B', 0, 'A');
     if (!m) throw new Error('expected a match');
     expect(source.slice(m.start, m.end)).toBe('A');
+    // Splicing must land inside the pipes, not at the fromId.
     expect(spliceNewLabel(source, m, 'Renamed')).toContain('A -->|Renamed| B');
   });
 
@@ -238,6 +274,10 @@ describe('findEdgeLabelInSource', () => {
   });
 
   test('parallel edges with mixed quoting map by source order, not pattern order', () => {
+    // Regression: the earlier walk-per-pattern accumulator picked
+    // quoted matches first regardless of position, so `index=0` grabbed
+    // the QUOTED edge on line 3 even though mermaid emits `L_A_B_0` for
+    // the UNQUOTED one on line 2 (source order).
     const source = ['flowchart LR', '  A -->|Yes| B', '  A -->|"Yes"| B'].join('\n');
     const m0 = findEdgeLabelInSource(source, 'A', 'B', 0, 'Yes');
     const m1 = findEdgeLabelInSource(source, 'A', 'B', 1, 'Yes');
@@ -275,6 +315,11 @@ describe('findSequenceMessageInSource', () => {
   });
 
   test('splicing a message with mermaid-syntactic chars does NOT add literal quotes', () => {
+    // Regression: sequence messages are free text after `:` and have
+    // no quoting mechanism, so wrapping the replacement in `"..."`
+    // renders visible quotes in the diagram. `spliceNewLabel` gates
+    // auto-quoting on `match.open !== ''` — which is empty for
+    // sequence messages — so this stays a plain replacement.
     const src = 'sequenceDiagram\n  Alice->>Bob: hello\n';
     const m = findSequenceMessageInSource(src, 'hello');
     if (!m) throw new Error('expected a match');
@@ -288,7 +333,10 @@ describe('rewriteSequenceParticipant', () => {
   test('bare `participant X` gets an `as New` alias to preserve arrow refs', () => {
     const src = ['sequenceDiagram', '  participant Author', '  Author->>Bob: hi'].join('\n');
     const out = rewriteSequenceParticipant(src, 'Author', 'Alice');
+    // Simple identifier → unquoted alias (mermaid renders literal
+    // quotes when they're used unnecessarily).
     expect(out).toContain('participant Author as Alice');
+    // Author->>Bob preserved (renaming to Alice would break the id ref).
     expect(out).toContain('Author->>Bob: hi');
   });
 
@@ -308,6 +356,7 @@ describe('rewriteSequenceParticipant', () => {
   test('aliased unquoted `X as Display` replaces in place, adds quotes for special chars', () => {
     const src = 'sequenceDiagram\n  participant A as Author\n';
     const out = rewriteSequenceParticipant(src, 'Author', 'Two Words');
+    // Two words → quotes required.
     expect(out).toContain('participant A as "Two Words"');
   });
 

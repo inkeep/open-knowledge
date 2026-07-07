@@ -49,6 +49,7 @@ beforeAll(() => {
         });
       }
       if (url.pathname === '/api/sync/conflict-content') {
+        // The route emits the conflict shape as `kind` (the tool remaps → `shape`).
         return Response.json({
           ok: true,
           file: 'notes/sso.md',

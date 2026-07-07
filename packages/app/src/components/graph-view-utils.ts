@@ -30,6 +30,9 @@ export interface GraphData {
   links: GraphLink[];
 }
 
+// Intentionally a separate type from `TargetDisplayState` in target-navigation-intent.ts,
+// which is not exported. The two types are identical in shape but belong to different
+// layers — keep them decoupled so graph-view-utils has no dependency on the navigation layer.
 export type GraphDocDisplayState = 'doc' | 'folder' | 'missing';
 
 type GraphNodePhysicsKey =
@@ -143,6 +146,9 @@ export function reconcileGraphData(previous: GraphData, next: GraphData): GraphD
     const previousLink = previousLinksByKey.get(
       `${getGraphLinkEndpointId(link.source)}>${getGraphLinkEndpointId(link.target)}`,
     );
+    // __indexColor is force-graph's internal canvas hit-test identifier.
+    // The map is keyed by source>target, so this only copies the color when
+    // the exact same endpoint pair reappears — never leaks across different links.
     if (previousLink?.__indexColor) {
       mergedLink.__indexColor = previousLink.__indexColor;
     }

@@ -2,6 +2,12 @@ import { z } from 'zod';
 import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
 import { fieldRegistry } from './field-registry.ts';
 
+// Credential attribute key denylist for the local telemetry file sink. The
+// `ScrubbingSpanProcessor` reads the resolved `telemetry.localSink.attributeDenylist`
+// at runtime, which defaults to this list (see the `.default(...)` chain below).
+// Exported so the resolver and bundle collector consume the same source — the
+// cascade fallback would otherwise diverge silently if a maintainer bumped the
+// schema default without touching every caller.
 export const DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST: readonly string[] = Object.freeze([
   'authorization',
   'auth.token',
@@ -16,6 +22,9 @@ export const DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST: readonly string[] = Object.fr
 export const DEFAULT_SPANS_MAX_BYTES = 52_428_800;
 export const DEFAULT_LOGS_MAX_BYTES = 26_214_400;
 
+// Non-secret embeddings-provider defaults. Shared with the server so the live
+// layered config read and the schema `.default()` below cannot drift. The API
+// key is NEVER a config value — it lives only in the OS keyring.
 export const DEFAULT_EMBEDDINGS_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_EMBEDDINGS_MODEL = 'text-embedding-3-small';
 
@@ -28,6 +37,7 @@ export function isValidAttachmentFolderPath(value: string): boolean {
   const normalized = normalizeAttachmentFolderPath(value);
   if (normalized.includes('\0')) return false;
   if (normalized.includes('\\')) return false;
+  // The exact '/' sentinel means "content root" — the only allowed absolute path.
   if (normalized === '/') return true;
   if (normalized.startsWith('/')) return false;
   if (/^[A-Za-z]:/.test(normalized)) return false;
@@ -37,6 +47,17 @@ export function isValidAttachmentFolderPath(value: string): boolean {
 }
 
 export const ConfigSchema = z.looseObject({
+  // `content.dir` is PROJECT-scope — names the root of the project's
+  // knowledge graph. `content.include` / `content.exclude` were removed:
+  // path rules now live in `.okignore` files (gitignore syntax) at the
+  // project root and at any folder depth. The YAML loader rejects the
+  // removed keys with a source-located REMOVED_KEY error directing the
+  // user to `.okignore`.
+  //
+  // `content.attachmentFolderPath` is PROJECT-scope — where pasted and
+  // editor-dropped assets land relative to the content root. Default './'
+  // preserves the historical colocated-with-doc behavior; the exact '/'
+  // sentinel means the content root itself.
   content: z
     .looseObject({
       dir: z
@@ -58,6 +79,7 @@ export const ConfigSchema = z.looseObject({
           description:
             "Where pasted and dropped assets are stored, relative to the content root. './' colocates beside the current document (default); '/' targets the content root; './subdir' targets a subfolder under the current document folder; 'folder' targets a fixed folder under the content root. Whitespace-only values are treated as './'.",
         })
+        // Field metadata still resolves through this validation wrapper.
         .refine(isValidAttachmentFolderPath, {
           message:
             "Invalid attachment folder path: must not contain '..' segments, NUL bytes, backslashes, or OS absolute paths (use '/' for the content root).",
@@ -68,6 +90,62 @@ export const ConfigSchema = z.looseObject({
       dir: '.',
       attachmentFolderPath: DEFAULT_ATTACHMENT_FOLDER_PATH,
     }),
+  // `preview.*` is no longer a schema section. The code-block preview iframe
+  // now runs a fixed open network CSP (see the app's `preview-iframe-header.ts`),
+  // so there is no `preview.networkPolicy` / `preview.scriptSrc` to configure;
+  // `preview.baseUrl` (deployed-wiki URL) was likewise removed — the
+  // `preview-url` MCP resolver collapses to electron-protocol → lock. All are in
+  // REMOVED_KEYS so a stale `preview.*` key is rejected loudly, never a silent
+  // no-op. A future multi-tenant deployment that needs to lock the preview
+  // network down will reintroduce an operator-level control (an env / build flag
+  // the tenant can't edit), not a content-editable config field.
+  //
+  // `folders` is not a top-level field. A folder's own frontmatter lives in
+  // nested `<folder>/.ok/frontmatter.yml` files — sparse, opt-in, lazy-create
+  // (open-shape, exactly like a doc's). Edit via the `write` / `edit` MCP verbs
+  // (folder target) or by hand.
+  //
+  // `github.oauthAppClientId`, `server.host`, `server.openOnAgentEdit`,
+  // `mcp.autoStart`, `mcp.tools.read_document.historyDepth`,
+  // `mcp.tools.grep.maxResults` (formerly `mcp.tools.search.maxResults`
+  // before the search→grep rename), and
+  // `appearance.editorModeDefault` were removed — none were actually
+  // user-configurable in practice (or in the case of editorModeDefault,
+  // never read at all; new docs always open in WYSIWYG and users toggle
+  // mode via the editor mode button). Their values now live as
+  // constants in `packages/core/src/constants/{github,server,mcp}.ts`,
+  // or are simply hardcoded behavior. Loose-mode silently passes any
+  // stale keys through schema validation.
+  //
+  // `appearance.theme` defaults to UNSET in config.yml (no `'system'`
+  // default). The chrome FOUC scripts read localStorage as the cache;
+  // the first explicit Settings-pane write of `appearance.theme`
+  // canonicalizes the value into config.yml.
+  //
+  // USER-scope: theme is a personal preference, not a project-shared
+  // setting. A project `appearance.theme` would force every
+  // collaborator into the project owner's mode, which is a misuse
+  // pattern and not what users expect from the chrome toggle.
+  // SchemaStore validation flags it in project YAML; chrome toggle
+  // always writes via `userBinding.patch()`.
+  // `appearance.sidebar.showHiddenFiles` is a per-machine, per-project
+  // visibility toggle. Project scope would
+  // bleed one teammate's "show hidden files" choice across collaborators via
+  // git; user scope would force a single global setting for every OK
+  // project. `project-local` (gitignored `<projectDir>/.ok/local/config.yml`)
+  // is the only correct home — each teammate chooses independently for
+  // their machine.
+  //
+  // `appearance.preview.autoOpen` is USER-scope: whether the agent
+  // auto-opens or refreshes the OK preview UI on edits is a personal
+  // workflow preference (multi-monitor setups, browser-extension
+  // dependents, accessibility flows where the user manages their own
+  // view). Default `true` preserves the capability-based routing
+  // behavior — when false, the agent honors `response.autoOpen` from
+  // every preview-related tool call and leaves the user's existing
+  // view alone. (This is a per-user UX choice — unrelated to the preview
+  // iframe's network CSP, which is no longer configurable; see the `preview.*`
+  // note above.)
   appearance: z
     .looseObject({
       theme: z
@@ -110,6 +188,9 @@ export const ConfigSchema = z.looseObject({
         .optional(),
     })
     .default({ preview: { autoOpen: true } }),
+  // USER-scope: source-editor word wrap is a personal reading/editing
+  // preference, not project content. Default true preserves the historical
+  // CodeMirror behavior until a user explicitly disables it.
   editor: z
     .looseObject({
       wordWrap: z
@@ -124,6 +205,20 @@ export const ConfigSchema = z.looseObject({
         .default(true),
     })
     .default({ wordWrap: true }),
+  // `autoSync.enabled` is a per-machine, per-project preference: each
+  // teammate decides independently whether their machine should auto-pull /
+  // auto-push commits for *this* project. Project scope would bleed across
+  // teammates via git; user scope would force one global toggle for every
+  // OK project. The new `'project-local'` layer at
+  // `<projectDir>/.ok/local/config.yml` (gitignored) is the only correct
+  // home. SettingsPane SyncSection, the SyncStatusBadge popover Switch, and
+  // the AutoSyncOnboardingDialog all write here via the project-local
+  // binding — no special HTTP endpoint.
+  //
+  // `null` is the canonical "unanswered" sentinel: the onboarding modal
+  // gates on `enabled === null`, distinguishing "user has not chosen" from
+  // `true` / `false` (chosen). `looseObject` is retained so legacy
+  // `onboardingResolvedAt` keys still on disk parse without error.
   autoSync: z
     .looseObject({
       enabled: z
@@ -137,6 +232,16 @@ export const ConfigSchema = z.looseObject({
         })
         .nullable()
         .default(null),
+      // `autoSync.default` is the COMMITTED (project-scope) seed for a
+      // machine's `autoSync.enabled` on first open: `true` = default auto-sync
+      // on, `false` = default off, `null` = ask (show the onboarding modal). It
+      // travels with the repo via git so a maintainer can pre-answer the prompt
+      // for everyone who clones the project. It is a soft default — a
+      // per-machine `autoSync.enabled` (above) always overrides it, in both the
+      // server's `readProjectAutoSyncEnabled` resolution and the onboarding
+      // gate. Sharing `enabled`'s `boolean | null` value space is deliberate:
+      // `null` reuses the same "unanswered → ask" sentinel; the only difference
+      // between the two leaves is scope (committed vs per-machine).
       default: z
         .boolean()
         .register(fieldRegistry, {
@@ -150,6 +255,23 @@ export const ConfigSchema = z.looseObject({
         .default(null),
     })
     .default({ enabled: null, default: null }),
+  // `terminal.enabled` is the per-project, per-machine opt-out for the in-app
+  // terminal's real OS shell. The terminal is available by default; only an
+  // explicit `false` disables it (`null`/absent both read as the default-on
+  // state). Enabling a real shell is a full-privilege capability, but OK Desktop
+  // is a local-first app the user installed and launched themselves and the
+  // embedded shell runs at the same privilege as the app process they already
+  // trust, so the default is on and the opt-out exists for locked-down setups.
+  //
+  // The opt-out is per-machine: project scope would let one teammate's choice
+  // cross the git boundary to collaborators; user scope would span every project
+  // at once. The gitignored `project-local` layer at
+  // `<projectDir>/.ok/local/config.yml` is the only correct home — the opt-out is
+  // never inherited via a clone, sync, or share.
+  //
+  // `agentSettable: false` keeps the shell human-only: an agent can neither opt
+  // out (silencing a human who wants the terminal) nor re-enable one a human
+  // turned off.
   terminal: z
     .looseObject({
       enabled: z
@@ -165,6 +287,19 @@ export const ConfigSchema = z.looseObject({
         .default(null),
     })
     .default({ enabled: null }),
+  // PROJECT-scope: the local telemetry file sink writes spans + logs to
+  // `<contentDir>/.ok/local/{telemetry,logs}/*.jsonl` for `ok diagnose bundle`
+  // to harvest. The data is local-only — it never leaves the machine until
+  // the user explicitly runs `bundle`. Default-on follows the universal
+  // production-tooling pattern (macOS DiagnosticReports, systemd journals,
+  // Docker container logs); users with sensitive workspaces set
+  // `enabled: false`. Independent of the OTLP push gate (`OTEL_SDK_DISABLED`).
+  //
+  // `attributeDenylist` is the credential key denylist enforced at write
+  // time by the `ScrubbingSpanProcessor` — keys whose lowercase form matches
+  // any entry have their values replaced with `[REDACTED]` before any file
+  // exporter sees them. Extensible per project; the built-in default is
+  // shared via `DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST`.
   telemetry: z
     .looseObject({
       localSink: z
@@ -233,6 +368,16 @@ export const ConfigSchema = z.looseObject({
         attributeDenylist: [...DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST],
       },
     }),
+  // PROJECT-LOCAL scope: semantic search is an additive embeddings signal fused
+  // into the MCP `search` tool's lexical ranking. It is per-machine, not
+  // project-shared, because enabling it sends content to a third-party
+  // embeddings provider (egress) and needs an API key in the local OS keyring —
+  // each teammate opts in deliberately for their own machine. Project scope
+  // would force one teammate's egress choice across collaborators via git; user
+  // scope would force it for every project. Default OFF — the feature ships dark.
+  //
+  // The non-secret provider knobs (baseUrl / model / dimensions) live here; the
+  // API key NEVER does — it lives only in the OS keyring (`ok embeddings set-key`).
   search: z
     .looseObject({
       semantic: z
@@ -309,6 +454,13 @@ export const ConfigSchema = z.looseObject({
 
 export type Config = z.infer<typeof ConfigSchema>;
 
+/**
+ * Deep-partial input shape for patch operations against `ConfigSchema`.
+ *
+ * Used by `writeConfigPatch` / `ConfigBinding.patch` callers (MCP tools,
+ * Settings pane, CLI) to describe partial updates. Null at any path means
+ * "clear this field" (RFC 7396 spirit, TypeScript-only — no wire format).
+ */
 export type ConfigPatch = DeepPartial<Config>;
 
 type DeepPartial<T> =

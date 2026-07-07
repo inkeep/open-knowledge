@@ -74,6 +74,8 @@ describe('resolveProjectAnchor — command gating', () => {
 });
 
 describe('invocation cwd', () => {
+  // Module-level state: reset after each case so no other test in this
+  // process inherits a recorded value.
   afterEach(() => recordInvocationCwd(null));
 
   test('defaults to process.cwd() before any anchoring', () => {
@@ -111,6 +113,7 @@ describe('resolveProjectAnchor — real filesystem walk', () => {
     const root = makeFixture();
     makeProjectRoot(root);
     const sub = join(root, 'a');
+    // Folder-rule sidecar shape: `.ok/` exists but holds no config.yml.
     mkdirSync(join(sub, '.ok'), { recursive: true });
     const deeper = join(sub, 'b');
     mkdirSync(deeper, { recursive: true });
@@ -127,6 +130,13 @@ describe('resolveProjectAnchor — real filesystem walk', () => {
   });
 });
 
+/**
+ * Cold-spawn the real CLI entry point — exercises the preAction hook wiring
+ * (anchor → chdir → disclosure line → loadConfig from the resolved root),
+ * not just the pure helper. Spawn cwd stays at the package root for module
+ * resolution; the fixture directory is injected via `--cwd`, which the
+ * preAction hook applies before anchoring.
+ */
 function spawnCli(args: string[]): { exitCode: number | null; stdout: string; stderr: string } {
   const result = Bun.spawnSync({
     cmd: [
@@ -139,7 +149,11 @@ function spawnCli(args: string[]): { exitCode: number | null; stdout: string; st
       `,
     ],
     cwd: CLI_PACKAGE_ROOT,
+    // OK_BUNDLE_PROXY=0 keeps `ok mcp` in-process on machines with the
+    // desktop app installed (it would otherwise exec the bundled CLI).
     env: { ...process.env, NO_COLOR: '1', OK_BUNDLE_PROXY: '0' },
+    // Closed stdin: long-running stdio commands (`ok mcp`) see EOF and exit
+    // instead of wedging the sync spawn. Timeout is the regression backstop.
     stdin: 'ignore',
     timeout: 25_000,
   });
@@ -160,6 +174,8 @@ describe('CLI preAction project anchoring (cold spawn)', () => {
     const { exitCode, stdout, stderr } = spawnCli(['--cwd', sub, 'status', '--json']);
 
     expect(exitCode).toBe(0);
+    // `--cwd` goes through process.chdir, which canonicalizes symlinks
+    // (macOS `/var` → `/private/var`), so compare against the realpath.
     expect(stderr).toContain(`[ok] Using OpenKnowledge project at ${realpathSync(root)}`);
     const report = JSON.parse(stdout);
     expect(report).toHaveProperty('server');
@@ -177,6 +193,8 @@ describe('CLI preAction project anchoring (cold spawn)', () => {
 
     expect(exitCode).toBe(0);
     expect(stderr).toContain(`[ok] Using OpenKnowledge project at ${realpathSync(root)}`);
+    // Scope resolved from the root's `content.dir: docs` — proves loadConfig
+    // ran against the anchored root rather than the literal cwd's defaults.
     expect(stdout).toContain('hello.md');
   }, 30_000);
 
@@ -194,6 +212,10 @@ describe('CLI preAction project anchoring (cold spawn)', () => {
     const root = makeFixture();
     makeProjectRoot(root);
     const sub = join(root, 'sub');
+    // The live lock sits at <sub>/target — only reachable when the relative
+    // target resolves against the invocation cwd. A regression that resolves
+    // against the post-anchor root would look in <root>/target and report
+    // "No running open-knowledge processes." instead of stopping the pid.
     const targetDir = join(sub, 'target');
     mkdirSync(join(targetDir, '.ok', 'local'), { recursive: true });
 
@@ -220,10 +242,14 @@ describe('CLI preAction project anchoring (cold spawn)', () => {
     const sub = join(root, 'notes');
     mkdirSync(sub, { recursive: true });
 
+    // Closed stdin = immediate EOF: the stdio MCP server boots, sees EOF,
+    // and exits 0 without ever receiving a JSON-RPC request.
     const { exitCode, stdout, stderr } = spawnCli(['--cwd', sub, 'mcp']);
 
     expect(exitCode).toBe(0);
     expect(stderr).toContain(`[ok] Using OpenKnowledge project at ${realpathSync(root)}`);
+    // Binary guarantee: stdout is the JSON-RPC channel — the disclosure line
+    // (and any other diagnostics) must never land there.
     expect(stdout).toBe('');
   }, 30_000);
 

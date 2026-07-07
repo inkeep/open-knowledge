@@ -1,3 +1,6 @@
+/**
+ * Shared loopback-origin guard for unauthenticated local HTTP surfaces.
+ */
 export function isAllowedApiOrigin(origin: string): boolean {
   if (origin === 'null') return true;
   try {

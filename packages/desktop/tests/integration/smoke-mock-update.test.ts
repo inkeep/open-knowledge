@@ -1,3 +1,19 @@
+/**
+ * Integration test for the smoke harness.
+ *
+ * The harness (`packages/desktop/scripts/smoke-mock-update.mjs`) spins up a
+ * local HTTP server serving a channel manifest (`latest-mac.yml` /
+ * `beta-mac.yml`) + a fake `.zip` with a valid sha512. These tests spawn
+ * the script as a child process, wait for the `event=self-test-ok` marker
+ * on stdout, and assert the script exits cleanly with code 0 — proving the
+ * channel parameterization wires correctly to manifest filename + body.
+ *
+ * Scope: the HTTP serving + manifest validity portion — the part that runs
+ * under plain node/bun. The full Electron round-trip (Electron dev build +
+ * `dev-app-update.yml` pointing at the local port + observed Toast A) is a
+ * manual verification.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -51,10 +67,15 @@ describe('smoke-mock-update.mjs — self-test round-trip', () => {
     const result = await runSmoke({ OK_UPDATER_MOCK_CHANNEL: 'beta' });
 
     expect(result.code).toBe(0);
+    // Channel-aware start log; default version for beta is
+    // 0.4.0-beta.0 prerelease tag.
     expect(result.stdout).toContain('[mock-updater] event=start channel=beta version=0.4.0-beta.0');
     expect(result.stdout).toContain('[mock-updater] event=served path=/beta-mac.yml status=200');
+    // Self-test asserts manifest body contains `channel: beta`; reaching
+    // self-test-ok proves the body shape is correct.
     expect(result.stdout).toContain('[mock-updater] event=self-test-ok');
     expect(result.stdout).toContain('[mock-updater] event=shutdown reason=done');
+    // Negative: the beta run must NOT serve the latest manifest filename.
     expect(result.stdout).not.toContain('event=served path=/latest-mac.yml');
     expect(result.stderr).toBe('');
   }, 15000);
@@ -64,6 +85,7 @@ describe('smoke-mock-update.mjs — self-test round-trip', () => {
 
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('unsupported OK_UPDATER_MOCK_CHANNEL=rc');
+    // Should fail before opening the HTTP server.
     expect(result.stdout).not.toContain('event=start');
   }, 15000);
 });

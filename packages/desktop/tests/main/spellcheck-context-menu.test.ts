@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the editor context-menu attach helper. Drives the registered
+ * `context-menu` listener with fake params and asserts the isEditable gate, the
+ * freshly-read spell-check flag, and that each assembled menu action routes to
+ * the right injected capability — all without mounting a BrowserWindow.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import {
   attachSpellcheckContextMenu,
@@ -36,6 +43,7 @@ function makeWebContents() {
     ),
     replaceMisspelling: mock((_: string) => {}),
     showDefinitionForSelection: mock(() => {}),
+    /** Fire a context-menu event at the registered handler. */
     fire(params: ContextMenuHandlerParams) {
       if (!handler) throw new Error('no context-menu handler registered');
       handler({}, params);

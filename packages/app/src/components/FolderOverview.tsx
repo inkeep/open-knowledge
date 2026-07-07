@@ -149,6 +149,10 @@ export function FolderOverview({ folderPath }: { folderPath: string }) {
 
   const data = buildFolderOverviewData(folderPath, { pages, pageTitles, pageMeta, folderPaths });
   const sorted = sortEntries(data.children, sortKey, sortDir);
+  // Content-root has no folder leaf to derive a title from
+  // (`buildFolderOverviewData` returns ''). Fall back to a generic label so
+  // the root overview — reached by in-app root nav and root-folder shares —
+  // never renders a blank heading.
   const heading = data.title || (folderPath === '' ? t`All files` : data.title);
 
   function handleSort(key: SortKey) {
@@ -265,6 +269,10 @@ export function FolderOverview({ folderPath }: { folderPath: string }) {
         kind="file"
         initialDir={folderPath}
         folderConfig={folderConfigHandle}
+        // Preserve the old dropdown's "Index note" affordance as a low-cost
+        // breadcrumb: the dialog opens with the name pre-filled to `index`
+        // so creating an `index.md` is one Enter away. Users can still rename
+        // before submitting.
         suggestedName="index"
       />
     </>

@@ -1,79 +1,11 @@
-export { VFileMessage } from 'vfile-message';
-export {
-  applyFastDiff,
-  applyIncrementalDiff,
-  applyPatchToFm,
-  applyPathDeleteToFm,
-  applyPathRenameToFm,
-  applyPathReorderSeqToFm,
-  applyPathReorderToFm,
-  applyPathSetToFm,
-  applyRenameToFm,
-  applyReorderToFm,
-  assertContentPreservation,
-  BRIDGE_TOLERANCE_CLASSES,
-  type BridgeInvariantLogPayload,
-  type BridgeInvariantSite,
-  type BridgeInvariantViolation,
-  BridgeInvariantViolationError,
-  BridgeMergeContentLossError,
-  type BridgeMergeContentLossInfo,
-  type BridgeMergeContentLossLogPayload,
-  type BridgeMergeContentLossSide,
-  type BridgeMergeContentLossWhich,
-  type BridgeToleranceClass,
-  bindFrontmatterDoc,
-  classifySeverity,
-  type DiffChange,
-  type DocBoundarySplit,
-  defaultScheduler,
-  detectAppliedToleranceClasses,
-  detectFmRegion,
-  diffLinesFast,
-  emitToleranceFire,
-  type FmEditError,
-  type FmEditResult,
-  FORM_WRITE_ORIGIN,
-  type FrontmatterBinding,
-  type FrontmatterBindingPatchResult,
-  type FrontmatterBindingPatchSuccess,
-  type FrontmatterBindingPathResult,
-  type FrontmatterBindingPathSuccess,
-  type FrontmatterBindingRenameResult,
-  type FrontmatterBindingRenameSuccess,
-  type FrontmatterBindingReorderResult,
-  type FrontmatterBindingReorderSuccess,
-  type FrontmatterBindingUnsubscribe,
-  type FrontmatterDocProvider,
-  type FrontmatterSnapshot,
-  findFirstDivergenceIndex,
-  fnv1aDigest,
-  type InvariantViolation,
-  MAX_FM_REGION_BYTES,
-  mergeThreeWay,
-  normalizeBridge,
-  type ParsedFmRegion,
-  parseFencedFmRegion,
-  parseFmRegion,
-  projectMergeBoundarySpace,
-  readFmKeys,
-  readFmMap,
-  readFmRegionWithError,
-  reattachLeadingDocBoundary,
-  type Scheduler,
-  setToleranceTelemetryHook,
-  splitLeadingDocBoundary,
-  type ToleranceClassSeverity,
-  type ToleranceFireRecord,
-  type ToleranceTelemetryHook,
-  toBridgeInvariantLog,
-} from './bridge/index.ts';
+// Burst-grouping utility
 export {
   type Burst,
   bucketIntoBursts,
   type HumanEdit,
   type SessionTransaction,
 } from './burst-grouping.ts';
+// Client→server version metadata — the v1 wire contract builders.
 export {
   CLIENT_RUNTIME_VERSION_FALLBACK,
   CLIENT_VERSION_HEADER,
@@ -83,6 +15,43 @@ export {
   clientVersionHeaders,
   clientVersionTokenFields,
 } from './client-version.ts';
+// Logger types — typed contract for structured logging. Runtime lives in
+// `packages/server/src/logger.ts`; types stay here so renderer-side code can
+// import them without dragging pino/pino-roll into the renderer bundle.
+export type {
+  BundleManifest,
+  BundleRedaction,
+  ClassifiedPath,
+  Loggable,
+  LogLevel,
+  LogPayload,
+  SerializedError,
+  SerializedErrorTruncation,
+} from './logger-types.ts';
+export { LOG_LEVELS } from './logger-types.ts';
+// Renderer/browser console-capture helpers (level mapping, structured-message
+// unwrap, batch bounds) shared by the desktop main listener, the server
+// `/api/client-logs` ingest, and the web renderer forwarder.
+export {
+  mapConsoleLevel,
+  parseStructuredConsoleMessage,
+  RENDERER_LOG_MAX_BATCH_BYTES,
+  RENDERER_LOG_MAX_ENTRIES,
+  RENDERER_LOG_MAX_MESSAGE_BYTES,
+  type RendererLogLevel,
+  truncateLogMessage,
+} from './logging/renderer-log.ts';
+// Cross-process contract version (pure integer; browser-safe).
+export { PROTOCOL_VERSION } from './protocol-version.ts';
+
+// Markdown pipeline (new unified+remark)
+
+// Re-export VFileMessage for Observer B's error classification (instanceof check
+// instead of fragile constructor.name string comparison).
+export { VFileMessage } from 'vfile-message';
+// Headless config writers + UI ConfigBinding.
+// Browser+node compatible — no Node deps; structural ConfigDocProvider type
+// keeps `@hocuspocus/provider` out of core's runtime deps.
 export {
   bindConfigDoc,
   type ConfigBinding,
@@ -133,6 +102,7 @@ export {
   type RemovedKey,
 } from './config/removed-keys.ts';
 export type { Err, Ok, Result } from './config/result.ts';
+// Config schema, error envelope, and Result helper. Browser+node compatible.
 export {
   type Config,
   type ConfigPatch,
@@ -148,6 +118,9 @@ export {
 export { getLeafFieldMeta, resolveLeafSchema } from './config/schema-leaf.ts';
 export { CONFIG_SCHEMA_MAJOR, CONFIG_SCHEMA_MAJOR_PATH } from './config/schema-version.ts';
 export { type LocateOptions, locateIssue } from './config/source-locator.ts';
+// OTel helpers for config-edit spans. Browser+node compatible — imports
+// only `@opentelemetry/api`. Spans are inert no-ops when no SDK is
+// registered (server: OTEL_SDK_DISABLED gate; app: VITE_OTEL_ENABLED gate).
 export {
   addConfigSpanEvent,
   type ConfigOutcome,
@@ -159,6 +132,7 @@ export {
   withConfigSpan,
   withConfigSpanSync,
 } from './config/telemetry.ts';
+// Constants
 export {
   ACTIVITY_TTL_MS,
   evictStaleEntries,
@@ -231,11 +205,6 @@ export { SHOW_INSTALL_SKILL } from './constants/feature-flags.ts';
 export type { OkFolderState } from './constants/folder-state.ts';
 export { DEFAULT_GITHUB_OAUTH_CLIENT_ID } from './constants/github.ts';
 export { isOrphanMode, ORPHAN_MODES, type OrphanMode } from './constants/graph.ts';
-export {
-  DEFAULT_SIGTERM_GRACE_MS,
-  DEFAULT_SIGTERM_POLL_MS,
-  SPAWN_ERROR_LOG,
-} from './constants/lifecycle.ts';
 export { GREP_MAX_RESULTS, MCP_SERVER_NAME, READ_DOCUMENT_HISTORY_DEPTH } from './constants/mcp.ts';
 export { MENU_LABELS, type MenuLabelKey } from './constants/menu-labels.ts';
 export { LOCAL_DIR, OK_DIR, OK_PROJECT_MARKER } from './constants/ok-dir.ts';
@@ -267,6 +236,8 @@ export {
   type EmitFormat,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
   FILE_ATTACHMENT_EXTENSIONS,
+  // re-exported here as the canonical dispatch surface — same set, same
+  // role, but the import for the lookup helpers lives in code-languages.
   IMAGE_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
   type InlineAssetMediaKind,
@@ -285,6 +256,7 @@ export {
   VIDEO_EXTENSIONS,
   WIKI_EMBED_EXTENSIONS,
 } from './constants/upload.ts';
+// Extensions
 export { CodeBlockFidelity } from './extensions/code-block-fidelity.ts';
 export { EmphasisFidelity, StrongFidelity } from './extensions/emphasis-fidelity.ts';
 export { EscapeMark } from './extensions/escape-mark.ts';
@@ -324,48 +296,21 @@ export {
   WikiLink,
   type WikiLinkAttrs,
 } from './extensions/wiki-link.ts';
+// `WikiLinkEmbed` is transient: client-insert-only at drop time, never
+// emitted by server-side mdast→PM dispatch. Post round-trip
+// the node becomes PM `image` (image ext) or PM text+link mark (non-
+// image), NOT this PM node type. Still re-exported symmetrically with
+// the `WikiLink` peer so future consumers that need the node type or
+// attr shape directly (e.g. a non-default editor surface, a schema
+// introspection tool, a typed-component-nodes consumer) have a
+// public import path. Binding to the shape is an intentional contract
+// — the attrs (`target` / `alias` / `anchor` / `resolvedSrc`) are
+// schema-add-only per precedent #9, so the export commits to additive
+// evolution only.
 export {
   WikiLinkEmbed,
   type WikiLinkEmbedAttrs,
 } from './extensions/wiki-link-embed.ts';
-export {
-  type FrontmatterIssue,
-  FrontmatterIssueSchema,
-  type FrontmatterValidationError,
-  FrontmatterValidationErrorSchema,
-  fieldErrorsFromError,
-  toFrontmatterIssue,
-} from './frontmatter/errors.ts';
-export {
-  FRONTMATTER_TYPES,
-  type FrontmatterMap,
-  FrontmatterMapSchema,
-  type FrontmatterPatch,
-  FrontmatterPatchSchema,
-  type FrontmatterType,
-  FrontmatterTypeSchema,
-  type FrontmatterValue,
-  FrontmatterValueSchema,
-  frontmatterValuesEqual,
-  inferType,
-  isFrontmatterValueEmpty,
-  isIsoDateString,
-  RESERVED_FRONTMATTER_KEY,
-} from './frontmatter/schema.ts';
-export {
-  extractFrontmatterTags,
-  FRONTMATTER_TAG_GRAMMAR_HINT,
-  FRONTMATTER_TAG_VALUE_RE,
-  isValidFrontmatterTagValue,
-} from './frontmatter/tags.ts';
-export {
-  applyPatchToDocument,
-  getDocumentKeys,
-  type ParsedFrontmatter,
-  parseFrontmatterYaml,
-  serializeFrontmatterMap,
-  withFences,
-} from './frontmatter/yaml-codec.ts';
 export { parseBranchList } from './git/branch-list-parser.ts';
 export {
   type BridgeWorktreeEntry,
@@ -382,6 +327,8 @@ export {
   type WorktreeSelectorEntry,
   type WorktreeSelectorModel,
 } from './git/worktree-selector-model.ts';
+// Handoff — Open-in-Agent dropdown
+// + URN→IPC reason registry (`urn-ipc-registry.ts`).
 export {
   type AssembleHandoffPromptInput,
   assembleHandoffPrompt,
@@ -427,39 +374,6 @@ export {
   withSkillPointer,
 } from './handoff/index.ts';
 export {
-  emptyInstalledSkills,
-  INSTALLED_SKILLS_FILENAME,
-  INSTALLED_SKILLS_REL,
-  INSTALLED_SKILLS_SCHEMA_VERSION,
-  type InstalledSkillEntry,
-  InstalledSkillEntrySchema,
-  type InstalledSkillScope,
-  InstalledSkillScopeSchema,
-  type InstalledSkills,
-  InstalledSkillsSchema,
-  parseInstalledSkills,
-} from './installed-skills/schema.ts';
-export type {
-  BundleManifest,
-  BundleRedaction,
-  ClassifiedPath,
-  Loggable,
-  LogLevel,
-  LogPayload,
-  SerializedError,
-  SerializedErrorTruncation,
-} from './logger-types.ts';
-export { LOG_LEVELS } from './logger-types.ts';
-export {
-  mapConsoleLevel,
-  parseStructuredConsoleMessage,
-  RENDERER_LOG_MAX_BATCH_BYTES,
-  RENDERER_LOG_MAX_ENTRIES,
-  RENDERER_LOG_MAX_MESSAGE_BYTES,
-  type RendererLogLevel,
-  truncateLogMessage,
-} from './logging/renderer-log.ts';
-export {
   HTML_MAX_BYTES,
   HtmlPayloadTooLargeError,
   htmlToMdast,
@@ -499,7 +413,7 @@ export {
   type ParseHealthMetrics,
   resetParseHealth,
 } from './metrics/parse-health.ts';
-export { PROTOCOL_VERSION } from './protocol-version.ts';
+// Registry
 export {
   builtInComponents,
   type ComponentRegistry,
@@ -798,6 +712,8 @@ export {
   ShareConstructUrlRequestSchema,
   type ShareConstructUrlResponse,
   ShareConstructUrlResponseSchema,
+  type ShareFreshness,
+  ShareFreshnessSchema,
   type SharePublishErrorCode,
   SharePublishErrorCodeSchema,
   type SharePublishNameCheckResponse,
@@ -816,6 +732,12 @@ export {
   SharePublishResponseSchema,
   type SharePublishVisibility,
   SharePublishVisibilitySchema,
+  type ShareTargetStatusRequest,
+  ShareTargetStatusRequestSchema,
+  type ShareTargetStatusResponse,
+  ShareTargetStatusResponseSchema,
+  type ShareTargetStatusVerdict,
+  ShareTargetStatusVerdictSchema,
   SKILL_INSTALL_WARNING_CODES,
   SKILL_NAME_REGEX,
   type SkillDeleteSuccess,
@@ -985,6 +907,188 @@ export {
   DerivedViewChannelSchema,
 } from './schemas/cc1.ts';
 export {
+  HIDDEN_CONFIG_BASENAMES,
+  isHiddenDocName,
+  isValidDocName,
+  validateDocName,
+} from './util/doc-name.ts';
+export { toDesktopAssetHref } from './utils/asset-href.ts';
+export { isEmbedUrlRewritable, rewriteEmbedUrl } from './utils/embed-url-rewrite.ts';
+export { extensionOf } from './utils/extension.ts';
+export { formatFileSize } from './utils/file-size.ts';
+export { getGitHubStars } from './utils/github-stars.ts';
+export {
+  isLoomUrl,
+  type ParsedLoomUrl,
+  parseLoomUrl,
+} from './utils/loom-embed.ts';
+export { type PdfAnchorParts, parsePdfAnchor } from './utils/pdf-anchor.ts';
+export { isVimeoUrl } from './utils/vimeo-embed.ts';
+export {
+  type ParsedYouTubeUrl,
+  parseYouTubeUrl,
+  youtubeEmbedUrl,
+} from './utils/youtube-embed.ts';
+
+// Desktop bridge types (`OkDesktopBridge`, `OkDesktopConfig`, etc.) are
+// defined locally per package: `packages/desktop/src/shared/bridge-contract.ts`
+// for the desktop preload, and a future `packages/app/src/lib/desktop-bridge-
+// types.ts` for the app renderer's optional `window.okDesktop` access. Keeping
+// the contract co-located instead of re-exporting from this barrel avoids
+// dragging the full markdown / CRDT-bridge surface into desktop's compilation
+// context (TypeScript follows barrel re-exports through workspace symlinks
+// and complains about transitive deps that desktop doesn't declare directly).
+// `packages/core/src/desktop-bridge.ts` is the canonical reference shape;
+// drift between the per-package copies is caught by a contract-equality test.
+
+// Shadow-repo layout helpers are NOT re-exported here — they import `node:fs`
+// and would contaminate core's browser-compatibility contract. Import via the
+// subpath: `import { parseWriterId } from '@inkeep/open-knowledge-core/shadow-repo-layout'`.
+// CLI read path and server write path are the only consumers.
+
+// Bridge — observer/CRDT-bridge shared utilities (precedent #14)
+export {
+  applyFastDiff,
+  applyIncrementalDiff,
+  applyPatchToFm,
+  applyPathDeleteToFm,
+  applyPathRenameToFm,
+  applyPathReorderSeqToFm,
+  applyPathReorderToFm,
+  applyPathSetToFm,
+  applyRenameToFm,
+  applyReorderToFm,
+  assertContentPreservation,
+  BRIDGE_TOLERANCE_CLASSES,
+  type BridgeInvariantLogPayload,
+  type BridgeInvariantSite,
+  type BridgeInvariantViolation,
+  BridgeInvariantViolationError,
+  BridgeMergeContentLossError,
+  type BridgeMergeContentLossInfo,
+  type BridgeMergeContentLossLogPayload,
+  type BridgeMergeContentLossSide,
+  type BridgeMergeContentLossWhich,
+  type BridgeToleranceClass,
+  type BridgeToleranceSignal,
+  bindFrontmatterDoc,
+  classifySeverity,
+  type DiffChange,
+  type DocBoundarySplit,
+  defaultScheduler,
+  detectAppliedToleranceClasses,
+  detectFmRegion,
+  diffLinesFast,
+  emitToleranceFire,
+  type FmEditError,
+  type FmEditResult,
+  FORM_WRITE_ORIGIN,
+  type FrontmatterBinding,
+  type FrontmatterBindingPatchResult,
+  type FrontmatterBindingPatchSuccess,
+  type FrontmatterBindingPathResult,
+  type FrontmatterBindingPathSuccess,
+  type FrontmatterBindingRenameResult,
+  type FrontmatterBindingRenameSuccess,
+  type FrontmatterBindingReorderResult,
+  type FrontmatterBindingReorderSuccess,
+  type FrontmatterBindingUnsubscribe,
+  type FrontmatterDocProvider,
+  type FrontmatterSnapshot,
+  findFirstDivergenceIndex,
+  fnv1aDigest,
+  type InvariantViolation,
+  isParseEquivalentBridge,
+  MAX_FM_REGION_BYTES,
+  mergeThreeWay,
+  normalizeBridge,
+  PARSE_EQUIVALENCE_TOLERANCE,
+  type ParsedFmRegion,
+  parseFencedFmRegion,
+  parseFmRegion,
+  projectMergeBoundarySpace,
+  readFmKeys,
+  readFmMap,
+  readFmRegionWithError,
+  reattachLeadingDocBoundary,
+  type Scheduler,
+  setToleranceTelemetryHook,
+  splitLeadingDocBoundary,
+  type ToleranceClassSeverity,
+  type ToleranceFireRecord,
+  type ToleranceTelemetryHook,
+  toBridgeInvariantLog,
+} from './bridge/index.ts';
+// Two-phase shutdown timing constants — shared by the CLI's idle-shutdown
+// UI-sibling termination and the desktop's `stopAllOwnedServers` auto-
+// update teardown. Calibrated against Hocuspocus's destroyTimeoutMs.
+//
+// The client ↔ collab keep-alive WebSocket primitive (`startKeepalive` and
+// related types) lives at `@inkeep/open-knowledge-core/keepalive` rather
+// than this barrel. It depends on `process.pid` (Node-only) and would
+// erode this barrel's browser-safety contract if exported here — the same
+// reason `./server` and `./shadow-repo-layout` are subpath-exported.
+export {
+  DEFAULT_SIGTERM_GRACE_MS,
+  DEFAULT_SIGTERM_POLL_MS,
+  SPAWN_ERROR_LOG,
+} from './constants/lifecycle.ts';
+export {
+  type FrontmatterIssue,
+  FrontmatterIssueSchema,
+  type FrontmatterValidationError,
+  FrontmatterValidationErrorSchema,
+  fieldErrorsFromError,
+  toFrontmatterIssue,
+} from './frontmatter/errors.ts';
+export {
+  FRONTMATTER_TYPES,
+  type FrontmatterMap,
+  FrontmatterMapSchema,
+  type FrontmatterPatch,
+  FrontmatterPatchSchema,
+  type FrontmatterType,
+  FrontmatterTypeSchema,
+  type FrontmatterValue,
+  FrontmatterValueSchema,
+  frontmatterValuesEqual,
+  inferType,
+  isFrontmatterValueEmpty,
+  isIsoDateString,
+  RESERVED_FRONTMATTER_KEY,
+} from './frontmatter/schema.ts';
+// Frontmatter tag extractor + per-entry validator. The frontmatter `tags:`
+// grammar is more permissive than the inline `#tag` grammar (digit-leading
+// values like `2026` are valid here, not inline) — see `frontmatter/tags.ts`.
+export {
+  extractFrontmatterTags,
+  FRONTMATTER_TAG_GRAMMAR_HINT,
+  FRONTMATTER_TAG_VALUE_RE,
+  isValidFrontmatterTagValue,
+} from './frontmatter/tags.ts';
+// Frontmatter — per-key value schema + canonical YAML codec
+export {
+  applyPatchToDocument,
+  getDocumentKeys,
+  type ParsedFrontmatter,
+  parseFrontmatterYaml,
+  serializeFrontmatterMap,
+  withFences,
+} from './frontmatter/yaml-codec.ts';
+export {
+  emptyInstalledSkills,
+  INSTALLED_SKILLS_FILENAME,
+  INSTALLED_SKILLS_REL,
+  INSTALLED_SKILLS_SCHEMA_VERSION,
+  type InstalledSkillEntry,
+  InstalledSkillEntrySchema,
+  type InstalledSkillScope,
+  InstalledSkillScopeSchema,
+  type InstalledSkills,
+  InstalledSkillsSchema,
+  parseInstalledSkills,
+} from './installed-skills/schema.ts';
+export {
   createWorkspaceSearchCorpus,
   createWorkspaceSearchDocument,
   DEFAULT_RRF_K,
@@ -1028,6 +1132,7 @@ export {
 } from './sharing/index.ts';
 export {
   emptySkillState,
+  resolveBundleEnabled,
   SKILL_STATE_FILENAME,
   SKILL_STATE_REL,
   SKILL_STATE_SCHEMA_VERSION,
@@ -1035,6 +1140,7 @@ export {
   SKILL_STATE_TARGETS,
   SKILL_STATE_VERSION_RE,
   type SkillState,
+  type SkillStateBundleEntry,
   SkillStateSchema,
   type SkillStateSurface,
   type SkillStateTarget,
@@ -1050,6 +1156,7 @@ export {
   type SkillTargets,
   SkillTargetsSchema,
 } from './skill-targets/schema.ts';
+// Template file format — single-block parse/compose/instantiate (+ legacy back-compat)
 export {
   composeTemplateFile,
   instantiateDoc,
@@ -1058,6 +1165,7 @@ export {
   type TemplateIdentity,
   type TemplateModel,
 } from './templates/template-format.ts';
+// Types
 export type { Actor, PrincipalId, SessionId } from './types/actor.ts';
 export type {
   AgentFlashEntry,
@@ -1073,20 +1181,13 @@ export type {
   ShadowContributor,
   TimelineEntry,
 } from './types/timeline.ts';
-export {
-  HIDDEN_CONFIG_BASENAMES,
-  isHiddenDocName,
-  isValidDocName,
-  validateDocName,
-} from './util/doc-name.ts';
+// `atomic-yaml-write` is NOT re-exported here — it imports `node:fs` and
+// would contaminate core's browser-compatibility contract. Import via the
+// server sub-barrel: `import { atomicWriteFile } from '@inkeep/open-knowledge-core/server'`.
+// Utils
 export { applyByPrefixSuffix } from './utils/apply-by-prefix-suffix.ts';
-export { toDesktopAssetHref } from './utils/asset-href.ts';
 export { ChunkedInsertError, chunkedYTextInsert } from './utils/chunked-insert.ts';
 export { createCodeFenceTracker } from './utils/code-fence-tracker.ts';
-export { isEmbedUrlRewritable, rewriteEmbedUrl } from './utils/embed-url-rewrite.ts';
-export { extensionOf } from './utils/extension.ts';
-export { formatFileSize } from './utils/file-size.ts';
-export { getGitHubStars } from './utils/github-stars.ts';
 export {
   AGENT_COLORS,
   AGENT_ICON_COLORS,
@@ -1117,13 +1218,7 @@ export {
   isExternalHref,
   resolveAssetProjectPath,
 } from './utils/link-targets.ts';
-export {
-  isLoomUrl,
-  type ParsedLoomUrl,
-  parseLoomUrl,
-} from './utils/loom-embed.ts';
 export { type BasenameIndex, createBasenameIndex } from './utils/path-resolve.ts';
-export { type PdfAnchorParts, parsePdfAnchor } from './utils/pdf-anchor.ts';
 export { type ResolvedInternalHref, resolveInternalHref } from './utils/resolve-internal-href.ts';
 export { sanitizeFolderName } from './utils/sanitize-folder-name.ts';
 export {
@@ -1134,9 +1229,3 @@ export {
   wikiLinkHref,
 } from './utils/slug.ts';
 export { expandTagToHierarchy, tagsMatchingPrefix } from './utils/tag-rollup.ts';
-export { isVimeoUrl } from './utils/vimeo-embed.ts';
-export {
-  type ParsedYouTubeUrl,
-  parseYouTubeUrl,
-  youtubeEmbedUrl,
-} from './utils/youtube-embed.ts';

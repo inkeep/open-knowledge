@@ -1,3 +1,22 @@
+/**
+ * Instructional body for the `workflow({ kind: 'wiki' })` guide.
+ *
+ * Drives an agent to generate — and later refresh — a navigable, diagram-rich,
+ * source-grounded wiki of the surrounding codebase, authored as markdown INTO
+ * the OK knowledge base (the `codebase-wiki` starter pack's `wiki/` layout).
+ * The OK answer to Cognition's DeepWiki: repo-owned, version-controlled,
+ * private by default, human+agent co-editable, and durable grounding context
+ * for future agent sessions.
+ *
+ * Split from `workflow.ts` so the markdown content lives in a file dedicated to
+ * it (mirrors `discover-body.ts`). Body is interpolated with the project's
+ * resolved `contentDir` at call time; everything else is a constant.
+ *
+ * The recipe leans on shipped OK primitives only — no new engine code. It pairs
+ * NATIVE source-code tools (read `.ts`/`.py`/config/etc.) with the OK MCP verbs
+ * (`write`/`edit`/`links`/`search`/`exec`) that author and audit the markdown.
+ */
+
 export function buildWikiBody(contentDir: string): string {
   return `# Codebase Wiki — Generate + Refresh
 

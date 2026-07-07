@@ -120,6 +120,11 @@ msgstr ""
 msgid "{0, plural, one {# request blocked by the preview's security policy} other {# requests blocked by the preview's security policy}}"
 msgstr ""
 
+#. placeholder {0}: folder.templateCount
+#: src/components/CreatedItemsList.tsx
+msgid "{0, plural, one {# template} other {# templates}}"
+msgstr ""
+
 #. placeholder {0}: item.count
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
 msgid "{0, plural, one {# use} other {# uses}}"
@@ -162,6 +167,10 @@ msgstr ""
 #. placeholder {0}: Math.floor(diffSec / 60)
 #: src/components/FolderTimelineCard.tsx
 msgid "{0}m ago"
+msgstr ""
+
+#: src/components/EditorTabs.tsx
+msgid "{accessibleLabel} (conflict)"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -279,6 +288,14 @@ msgstr ""
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr ""
 
+#: src/components/CreatedItemsList.tsx
+msgid "{fileCount, plural, one {file} other {files}}"
+msgstr ""
+
+#: src/components/CreatedItemsList.tsx
+msgid "{folderCount, plural, one {folder} other {folders}}"
+msgstr ""
+
 #: src/components/HelpPopover.tsx
 msgid "{formatted} GitHub stars"
 msgstr ""
@@ -374,6 +391,14 @@ msgstr ""
 msgid "{settingsDescriptorLabel} properties"
 msgstr ""
 
+#: src/components/CreatedItemsList.tsx
+msgid "{skillCount, plural, one {skill} other {skills}}"
+msgstr ""
+
+#: src/components/CreatedItemsList.tsx
+msgid "{templateCount, plural, one {template} other {templates}}"
+msgstr ""
+
 #: src/components/EditorFooter.tsx
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr ""
@@ -464,6 +489,10 @@ msgstr ""
 msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and your provider settings."
 msgstr ""
 
+#: src/components/SeedDialog.tsx
+msgid "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
+msgstr ""
+
 #: src/editor/slash-command/items.tsx
 msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr ""
@@ -499,6 +528,10 @@ msgstr ""
 
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the name in the template list."
+msgstr ""
+
+#: src/components/SeedDialog.tsx
+msgid "A simple place to write, with one file per topic and a daily journal. Pick this if you just want to start writing and let the links between notes build up over time."
 msgstr ""
 
 #: src/components/SkillRenameDialog.tsx
@@ -556,6 +589,22 @@ msgstr ""
 msgid "Activate new tab"
 msgstr ""
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Activate one of the first eight editor tabs."
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Activate the last editor tab."
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Activate the next editor tab."
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Activate the previous editor tab."
+msgstr ""
+
 #: src/components/ActivityModeContent.tsx
 msgid "Active"
 msgstr ""
@@ -598,6 +647,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add cursors or select matching occurrences through CodeMirror."
+msgstr ""
+
+#: src/components/SeedDialog.tsx
+msgid "Add it directly to this project."
 msgstr ""
 
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -650,6 +703,11 @@ msgstr ""
 msgid "Add the next matching source selection."
 msgstr ""
 
+#. Subtext for the open-knowledge-write-skill skill row
+#: src/components/McpConsentDialogBody.tsx
+msgid "Adds a guided workflow for authoring new Agent Skills."
+msgstr ""
+
 #. placeholder {0}: pathInstall.rcFilesToTouch.join(', ')
 #: src/components/McpConsentDialogBody.tsx
 msgid "Adds a managed block to {0}"
@@ -678,6 +736,11 @@ msgstr ""
 
 #: src/components/FileTree.tsx
 msgid "Agent configuration file"
+msgstr ""
+
+#. Section label above the skill checkboxes in the first-launch dialog
+#: src/components/McpConsentDialogBody.tsx
+msgid "Agent Skills"
 msgstr ""
 
 #. Section label above the editor checkbox list in the first-launch dialog
@@ -738,7 +801,7 @@ msgid "API key set"
 msgstr ""
 
 #: src/components/CreatedItemsList.tsx
-msgid "Append-only timeline"
+msgid "Append-only log of what changed."
 msgstr ""
 
 #: src/editor/bubble-menu/LinkEditPopover.tsx
@@ -988,6 +1051,10 @@ msgstr ""
 msgid "Browse"
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Browse folder"
+msgstr ""
+
 #: src/components/CloneDialog.tsx
 msgid "Browse your repos:"
 msgstr ""
@@ -998,6 +1065,10 @@ msgstr ""
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Build a knowledge wiki about the different types of flightless birds. Start with an overview page, then add cross-linked pages for each major group (ratites like ostriches, emus, and kiwis; penguins; and flightless rails), the regions they live in, and a timeline of how flightlessness evolved."
+msgstr ""
+
+#: src/components/SeedDialog.tsx
+msgid "Build and keep track of the world behind your story. A home for your characters, places, factions, and the lore that ties them together, so details stay consistent as you write."
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -1078,6 +1149,11 @@ msgstr ""
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Checking for installed agents"
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Checking for updates on GitHub"
 msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
@@ -1373,10 +1449,6 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Component boundary navigation"
-msgstr ""
-
-#: src/components/SeedDialog.tsx
-msgid "Computing scaffold plan"
 msgstr ""
 
 #: src/components/BottomComposer.tsx
@@ -2032,10 +2104,6 @@ msgstr ""
 msgid "created folder"
 msgstr ""
 
-#: src/components/SeedDialog.tsx
-msgid "Created if missing; reused if it exists."
-msgstr ""
-
 #: src/components/FolderTimelineCard.tsx
 msgid "created template"
 msgstr ""
@@ -2291,6 +2359,7 @@ msgstr ""
 msgid "Docs tagged #{tagDocsName}"
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
 msgid "document"
@@ -2531,6 +2600,8 @@ msgstr ""
 
 #: src/components/AutoSyncOnboardingDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
+#: src/components/share-receive-miss-content.tsx
+#: src/components/ShareFreshnessWarning.tsx
 msgid "Enable auto-sync"
 msgstr ""
 
@@ -2626,6 +2697,10 @@ msgstr ""
 
 #: src/components/AuthModal.tsx
 msgid "Expires in {timeLabel}"
+msgstr ""
+
+#: src/components/SeedDialog.tsx
+msgid "Explain how your codebase works so teammates and AI agents can find their way around. Good for documenting the architecture, the main parts, and the questions new contributors always ask."
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -2941,6 +3016,10 @@ msgstr ""
 msgid "Files"
 msgstr ""
 
+#: src/components/CreatedItemsList.tsx
+msgid "Files & folders"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Files sidebar"
 msgstr ""
@@ -2998,6 +3077,7 @@ msgstr ""
 msgid "Fold, unfold, fold all, or unfold all source ranges."
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/TemplateProperties.tsx
@@ -3152,6 +3232,10 @@ msgstr ""
 msgid "Grid of rows and columns with a header row."
 msgstr ""
 
+#: src/components/CreatedItemsList.tsx
+msgid "Guides your AI agents on how to work here."
+msgstr ""
+
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "guides/install or https://example.com"
 msgstr ""
@@ -3195,6 +3279,11 @@ msgstr ""
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "Hello, world!"
+msgstr ""
+
+#. Subtext for the open-knowledge-discovery skill row
+#: src/components/McpConsentDialogBody.tsx
+msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -3281,6 +3370,14 @@ msgstr ""
 msgid "History unavailable"
 msgstr ""
 
+#: src/components/CreatedItemsList.tsx
+msgid "Home page and entry point."
+msgstr ""
+
+#: src/components/CreatedItemsList.tsx
+msgid "Home page and navigation hub."
+msgstr ""
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Horizontal pill strip + active panel below; click a pill to switch panels."
 msgstr ""
@@ -3296,6 +3393,10 @@ msgstr ""
 
 #: src/components/ShareButton.tsx
 msgid "How does sharing work?"
+msgstr ""
+
+#: src/components/ShareFreshnessWarning.tsx
+msgid "How to push manually"
 msgstr ""
 
 #: src/editor/slash-command/embed-starter-items.tsx
@@ -3556,8 +3657,16 @@ msgstr ""
 msgid "Join us on Discord"
 msgstr ""
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Jump to last tab"
+msgstr ""
+
 #: src/editor/components/Pdf.tsx
 msgid "Jump to page {pageNumber}"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Jump to tab 1-8"
 msgstr ""
 
 #: src/components/FolderOverview.tsx
@@ -3565,6 +3674,10 @@ msgstr ""
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
 msgid "just now"
+msgstr ""
+
+#: src/components/SeedDialog.tsx
+msgid "Keep a written record of how your product gets built. A home for proposing ideas, recording decisions, writing specs, and capturing what you learned after something broke."
 msgstr ""
 
 #: src/components/AutoSyncOnboardingDialog.tsx
@@ -3577,6 +3690,10 @@ msgstr ""
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Keep my version"
+msgstr ""
+
+#: src/components/SeedDialog.tsx
+msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr ""
 
 #: src/components/settings/EmbeddingsKeySection.tsx
@@ -3725,6 +3842,10 @@ msgstr ""
 
 #: src/editor/components/Pdf.tsx
 msgid "Loading PDF"
+msgstr ""
+
+#: src/components/SeedDialog.tsx
+msgid "Loading preview"
 msgstr ""
 
 #: src/components/CloneDialog.tsx
@@ -4114,6 +4235,7 @@ msgid "New skill"
 msgstr ""
 
 #: src/components/EditorTabs.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "New tab"
 msgstr ""
 
@@ -4138,6 +4260,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Next source diagnostic"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Next tab"
 msgstr ""
 
 #: src/components/FileSidebar.tsx
@@ -4504,6 +4630,10 @@ msgstr ""
 msgid "Open <0>Customize</0> in the sidebar <1/> <2>Skills</2>."
 msgstr ""
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Open a blank editor tab."
+msgstr ""
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Open a doc to share its URL."
 msgstr ""
@@ -4593,6 +4723,11 @@ msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open in current branch"
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Open it there"
 msgstr ""
 
 #. placeholder {0}: state.importable
@@ -4949,10 +5084,6 @@ msgstr ""
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
 msgstr ""
 
-#: src/components/SeedDialog.tsx
-msgid "Pick a layout that matches what you're building. Each pack ships with folders, templates, and agent-readable descriptions. You can mix and match later."
-msgstr ""
-
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Pick a name"
 msgstr ""
@@ -4996,6 +5127,10 @@ msgstr ""
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Previous match"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Previous tab"
 msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
@@ -5159,6 +5294,14 @@ msgstr ""
 msgid "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
 msgstr ""
 
+#: src/components/SeedDialog.tsx
+msgid "Ready-made folders and templates to get you started quickly."
+msgstr ""
+
+#: src/components/EmptyEditorState.tsx
+msgid "Ready-made folders and templates to get you started quickly. Select a pack to preview what gets created, then add it to your project."
+msgstr ""
+
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason}"
 msgstr ""
@@ -5306,6 +5449,11 @@ msgstr ""
 msgid "Remove the parent <0>.git</0> folder"
 msgstr ""
 
+#. Warning shown when the user unchecks an already-installed skill
+#: src/components/McpConsentDialogBody.tsx
+msgid "Removes this skill from your editors."
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
 msgstr ""
@@ -5350,6 +5498,14 @@ msgstr ""
 
 #: src/components/TemplateForm.tsx
 msgid "Renaming changes the file on disk and the id agents use to pick this template."
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Reopen closed tab"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Reopen the most recently closed editor tab."
 msgstr ""
 
 #: src/components/EditorActivityPool.tsx
@@ -5521,6 +5677,10 @@ msgstr ""
 msgid "Retrying"
 msgstr ""
 
+#: src/components/SeedDialog.tsx
+msgid "Reused if it already exists, created if not."
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "Reveal in File Explorer"
 msgstr ""
@@ -5615,10 +5775,6 @@ msgstr ""
 
 #: src/components/settings/EmbeddingsKeySection.tsx
 msgid "Saving"
-msgstr ""
-
-#: src/components/SeedDialog.tsx
-msgid "Scaffold directly under this project."
 msgstr ""
 
 #: src/components/NewSkillDialog.tsx
@@ -5865,6 +6021,10 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Settings content"
+msgstr ""
+
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 msgid "Settings failed to load"
 msgstr ""
@@ -5934,6 +6094,11 @@ msgstr ""
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
 msgstr ""
 
+#. placeholder {0}: hiddenPacks.length
+#: src/components/PackCardGrid.tsx
+msgid "Show {0} more"
+msgstr ""
+
 #: src/components/LinksPanel.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Show {hidden} more"
@@ -5970,6 +6135,10 @@ msgstr ""
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Show HTML preview"
+msgstr ""
+
+#: src/components/PackCardGrid.tsx
+msgid "Show less"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -6045,6 +6214,10 @@ msgstr ""
 
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
+msgstr ""
+
+#: src/components/CreatedItemsList.tsx
+msgid "Skill"
 msgstr ""
 
 #. placeholder {0}: skill.name
@@ -6173,6 +6346,10 @@ msgstr ""
 msgid "Start from"
 msgstr ""
 
+#: src/components/CreatedItemsList.tsx
+msgid "Start here: what this is and how it's organized."
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Start source completion"
 msgstr ""
@@ -6231,6 +6408,10 @@ msgstr ""
 msgid "Strikethrough"
 msgstr ""
 
+#: src/components/SeedDialog.tsx
+msgid "Subfolder name"
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Subfolder under current folder"
 msgstr ""
@@ -6258,6 +6439,10 @@ msgstr ""
 
 #: src/components/BottomComposer.tsx
 msgid "Summarize everything I changed this week"
+msgstr ""
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Switch and update branch"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -6304,10 +6489,15 @@ msgstr ""
 msgid "Sync failed — check the server logs for details."
 msgstr ""
 
+#: src/components/ShareFreshnessWarning.tsx
+msgid "Sync is failing. See the sync status for details."
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync is off — your edits will not sync to the remote repository."
 msgstr ""
 
+#: src/components/ShareFreshnessWarning.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync now"
 msgstr ""
@@ -6354,6 +6544,14 @@ msgstr ""
 msgid "Synced"
 msgstr ""
 
+#: src/components/ShareFreshnessWarning.tsx
+msgid "Synced. The link is up to date."
+msgstr ""
+
+#: src/components/ShareFreshnessWarning.tsx
+msgid "Syncing"
+msgstr ""
+
 #: src/components/TrashFailureModal.tsx
 msgid "System error"
 msgstr ""
@@ -6384,6 +6582,10 @@ msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Tags matching \"{tagListQuery}\""
+msgstr ""
+
+#: src/components/SeedDialog.tsx
+msgid "Take a piece of writing from a rough idea to a finished draft to something you're ready to share. Good for blog posts, essays, or anything you want to move through clear stages."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -6499,6 +6701,10 @@ msgstr ""
 msgid "The <0>type</0> every document created from this template gets (e.g. <1>research-note</1>). Keeps new docs Open Knowledge Format–conformant."
 msgstr ""
 
+#: src/components/CreatedItemsList.tsx
+msgid "The agent's persona, values, and voice."
+msgstr ""
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr ""
@@ -6525,7 +6731,7 @@ msgid "The folder on disk and the id agents use to invoke this skill."
 msgstr ""
 
 #: src/components/SeedDialog.tsx
-msgid "The folders and templates are in place; there's nothing left to scaffold."
+msgid "The folders and templates are already here, so there's nothing to add."
 msgstr ""
 
 #: src/editor/slash-command/items.tsx
@@ -6534,11 +6740,6 @@ msgstr ""
 
 #: src/components/TemplateProperties.tsx
 msgid "The menu label agents pick this template by (required)."
-msgstr ""
-
-#. placeholder {0}: phase.plan.packSkill.name
-#: src/components/SeedDialog.tsx
-msgid "The pack skill <0>{0}</0> will be (re)installed."
 msgstr ""
 
 #: src/editor/components/PreviewBlockedNotice.tsx
@@ -6591,8 +6792,35 @@ msgstr ""
 msgid "There's no project folder for this window, so a terminal can't start here."
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
+msgid "This {targetNoun} has been moved, renamed, or deleted in your local copy of branch <0>{branch}</0>. Please commit your changes or enable auto-sync."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "This {targetNoun} has been moved, renamed, or deleted in your local copy. Please commit your changes or enable auto-sync."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "This {targetNoun} isn't on branch <0>{branch}</0>. It may not have been pushed yet."
+msgstr ""
+
+#. placeholder {0}: branchSwitchState.resolution.renamedTo
+#. placeholder {0}: resolution.renamedTo
+#: src/components/share-receive-miss-content.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "This {targetNoun} moved to <0>{0}</0>. Open it there?"
+msgstr ""
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "This {targetNoun} only exists on branch <0>{shareBranch}</0>. You have uncommitted changes that prevent switching. Commit or stash your changes, then open the share link again."
+msgstr ""
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "This {targetNoun} was added to branch <0>{shareBranch}</0> recently. Switch and update to open it."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "This {targetNoun} was removed from branch <0>{branch}</0>."
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -6605,6 +6833,18 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
+msgstr ""
+
+#: src/components/ShareFreshnessWarning.tsx
+msgid "This doc has unpushed changes. Recipients will see the last pushed version."
+msgstr ""
+
+#: src/components/ShareFreshnessWarning.tsx
+msgid "This doc hasn't synced to GitHub yet. The link will work after the next sync."
+msgstr ""
+
+#: src/components/ShareFreshnessWarning.tsx
+msgid "This doc isn't on GitHub yet. The link won't work until it's pushed."
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -6627,8 +6867,20 @@ msgstr ""
 msgid "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
 msgstr ""
 
+#: src/components/ShareFreshnessWarning.tsx
+msgid "This folder has unpushed changes. Recipients will see the last pushed version."
+msgstr ""
+
+#: src/components/ShareFreshnessWarning.tsx
+msgid "This folder hasn't synced to GitHub yet. The link will work after the next sync."
+msgstr ""
+
 #: src/components/FolderOverview.tsx
 msgid "This folder is empty."
+msgstr ""
+
+#: src/components/ShareFreshnessWarning.tsx
+msgid "This folder isn't on GitHub yet. The link won't work until it's pushed."
 msgstr ""
 
 #: src/components/DeleteConfirmationDialog.tsx
@@ -6830,6 +7082,10 @@ msgstr ""
 msgid "Tree view options"
 msgstr ""
 
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "Try a prompt"
+msgstr ""
+
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/settings/AccountSection.tsx
@@ -6843,6 +7099,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Turn on semantic search?"
+msgstr ""
+
+#: src/components/SeedDialog.tsx
+msgid "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
 msgstr ""
 
 #: src/editor/components/Pdf.tsx
@@ -7205,6 +7465,10 @@ msgstr ""
 msgid "What gets created"
 msgstr ""
 
+#: src/components/EmptyEditorState.tsx
+msgid "What is a starter pack?"
+msgstr ""
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "What is this knowledge base for?"
 msgstr ""
@@ -7212,6 +7476,10 @@ msgstr ""
 #: src/components/handoff/EditWithAiPopover.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
+msgstr ""
+
+#: src/components/CreatedItemsList.tsx
+msgid "What the agent may read, write, and surface."
 msgstr ""
 
 #: src/components/empty-state/empty-state-copy.ts
@@ -7226,12 +7494,20 @@ msgstr ""
 msgid "When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.)."
 msgstr ""
 
+#: src/components/CreatedItemsList.tsx
+msgid "When the agent runs its scheduled work."
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Where newly added attachments are placed."
 msgstr ""
 
 #: src/components/SeedDialog.tsx
 msgid "Where should it live?"
+msgstr ""
+
+#: src/components/CreatedItemsList.tsx
+msgid "Who you are, so the agent has your context."
 msgstr ""
 
 #: src/editor/find-replace/FindReplaceBar.tsx
@@ -7340,6 +7616,10 @@ msgstr ""
 msgid "You don't have permission to push to this repo."
 msgstr ""
 
+#: src/components/ShareFreshnessWarning.tsx
+msgid "You don't have write access to this repo."
+msgstr ""
+
 #: src/components/DiffViewBoundary.tsx
 msgid "You modified <0>{filePath}</0> locally, but it was deleted upstream."
 msgstr ""
@@ -7372,6 +7652,10 @@ msgstr ""
 msgid "You're subscribed!"
 msgstr ""
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Your copy of branch <0>{shareBranch}</0> has changes that aren't on GitHub. The {targetNoun} will appear once the branch syncs."
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -7383,6 +7667,14 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Your local copy is behind. Pull the latest changes, then open the link again."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Your local copy of branch <0>{branch}</0> is behind. Pull the latest changes, then open the link again."
 msgstr ""
 
 #: src/components/settings/EmbeddingsKeySection.tsx

@@ -1,3 +1,27 @@
+/**
+ * `OkDesktopBridge` duplication — structural-equivalence gate.
+ *
+ * The bridge interface lives in three separate packages by design
+ * (core → canonical, desktop/src/shared → runtime consumer, app/src/lib →
+ * renderer consumer). The sibling `m1-smoke.test.ts` asserts the three
+ * files declare the same top-level member NAMES. This test is the
+ * signature-equality complement — two copies with the same members but
+ * divergent argument/return types (e.g. `openFolder(): Promise<string>`
+ * vs `Promise<string | null>`) pass the name check but slip through as
+ * runtime "null where string was expected" failures.
+ *
+ * Implementation: `Eq<X, Y>` is the classic TypeScript "types are
+ * mutually assignable" pair, using a dependent-variance trick on a
+ * generic function type. If the shapes diverge, the constant
+ * assignments `const _coreEqDesktop: Eq<Core, Desktop> = true` produce
+ * compile errors at the literal `true` (type narrows to `false`). This
+ * failure mode works at PR time via `turbo run typecheck`, not just
+ * when someone happens to run the bun test.
+ *
+ * Test-file scope: cross-package imports are permissible here because
+ * test files are not shipped in the production bundle.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type { OkDesktopBridge as AppBridge } from '../../../app/src/lib/desktop-bridge-types.ts';
 import type {

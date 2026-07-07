@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { shouldPaintOverlay } from './editor-area-overlay';
 
+/**
+ * Pin the 4-state truth table for the warm-reopen bypass conjunction.
+ * The AND is load-bearing — flipping to OR would skip the overlay on
+ * partially-resolved state, exposing the user to a brief stale-content
+ * flash before sync completes.
+ */
 describe('shouldPaintOverlay', () => {
   describe('skip conditions (overlay does NOT paint)', () => {
     test('returns false when activeDocName is null', () => {
@@ -39,6 +45,10 @@ describe('shouldPaintOverlay', () => {
 
   describe('paint conditions — partial resolution states (the AND is load-bearing)', () => {
     test('mount resolved, sync NOT resolved → paint (regression guard for &&-vs-|| flip)', () => {
+      // If a future refactor changes `mountResolved && syncResolved` to
+      // `mountResolved || syncResolved`, this case would incorrectly skip
+      // the overlay — the user would see the previous doc's editor while
+      // sync still pends, then a content snap when sync lands.
       expect(
         shouldPaintOverlay({
           activeDocName: 'a',
@@ -85,6 +95,9 @@ describe('shouldPaintOverlay', () => {
     });
 
     test('active set, deferred null, both resolved → no paint (warm-reopen)', () => {
+      // Edge case: deferred-value pre-commit, but caches already have
+      // entries (e.g., StrictMode dev double-invoke after a successful
+      // mount). Still skip — the deferred commit will land instantly.
       expect(
         shouldPaintOverlay({
           activeDocName: 'a',

@@ -1,3 +1,16 @@
+/**
+ * Coverage for the auth-query coalescing + concurrency cap added to
+ * `handleAuthStatus` / `handleAuthRepos`. Without these guards a
+ * sandboxed-but-compromised renderer can flood `ok:local-op:auth:{status,repos}`
+ * to spawn an unbounded number of CLI subprocesses (each with up to a 30 s
+ * wall-clock timeout), exhausting file descriptors / PIDs / memory.
+ *
+ * The handlers route subprocess spawns through `runAuthStatusSubprocess` /
+ * `runAuthReposSubprocess` from `@inkeep/open-knowledge-server`, which we
+ * mock at the module boundary so these tests never touch the real CLI. The
+ * factories surface a `resolve` hook so the test can hold each "subprocess"
+ * mid-flight while it asserts coalescing behavior.
+ */
 import { describe, expect, mock, test } from 'bun:test';
 import type { AuthReposResponse, AuthStatusResponse } from '@inkeep/open-knowledge-server';
 
@@ -14,6 +27,7 @@ mock.module('@inkeep/open-knowledge-server', () => ({
     new Promise<AuthReposResponse>((resolve) => {
       reposCalls.push({ host, resolve });
     }),
+  // Unused by status/repos handlers but imported by the module.
   runCloneSubprocess: () => ({ done: Promise.resolve(), cancel: () => {} }),
   runDeviceFlowSubprocess: () => ({ done: Promise.resolve(), cancel: () => {} }),
   validateCloneInputs: () => ({ ok: true }),
@@ -62,6 +76,7 @@ describe('handleAuthStatus — coalescing + concurrency cap', () => {
     ];
     expect(statusCalls).toHaveLength(4);
 
+    // 5th distinct host hits the cap synchronously — no subprocess spawned.
     const overflow = await handleAuthStatus(deps, { host: 'h5' });
     expect(statusCalls).toHaveLength(4);
     expect(overflow).toEqual({
@@ -70,6 +85,7 @@ describe('handleAuthStatus — coalescing + concurrency cap', () => {
       error: 'too many concurrent auth status queries',
     });
 
+    // Drain the four in-flight queries so the cache empties before next test.
     for (const call of statusCalls) {
       call.resolve({ authenticated: false, host: call.host ?? 'github.com' });
     }

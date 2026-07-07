@@ -14,6 +14,22 @@ interface SplashCtaPanelProps {
   cloneCommand: string;
 }
 
+/**
+ * Progressive-enhancement wrapper around the CTA surfaces: the SSR floor IS the
+ * macOS layout (deep-link primary + segmented Download button whose dropdown
+ * carries the CLI commands and GitHub). After hydration we classify the OS and
+ * adjust emphasis:
+ *
+ *   - macOS / unknown: render as SSR — "Open in macOS app" deep link + the
+ *     Download split button (CLI + GitHub inside its panel).
+ *   - Linux: drop the cluster (no desktop binary, no deep link); surface the
+ *     CLI as the primary path via the shared "Open with CLI" popover button +
+ *     a standalone GitHub link.
+ *   - Windows: replace both with a clear not-supported notice + GitHub.
+ *
+ * No-JS / pre-hydration: stays on the SSR floor; the server-rendered Download
+ * <a> and GitHub links work without JS (only the CLI popover is JS-gated).
+ */
 export function SplashCtaPanel({
   downloadUrl,
   customSchemeUrl,
@@ -63,6 +79,11 @@ export function SplashCtaPanel({
   );
 }
 
+/**
+ * Prefer `navigator.userAgentData.platform` (modern, narrow); fall back to
+ * the full UA. The Navigator type in TS lib.dom.d.ts doesn't expose
+ * userAgentData yet (still draft), so the cast names the shape we read.
+ */
 function readPlatformInput(): string | null {
   if (typeof navigator === 'undefined') return null;
   const withUaData = navigator as Navigator & {
@@ -85,6 +106,12 @@ function SplashWindowsNotice({ githubUrl }: { githubUrl: string }) {
   );
 }
 
+/**
+ * The "View on GitHub" fallback link. Reachable on every OS branch: inside the
+ * cluster on macOS/unknown, here on Windows, and standalone on Linux — so a
+ * recipient who can't run the desktop app or the CLI can always reach the
+ * shared content.
+ */
 function SplashGithubLink({ githubUrl }: { githubUrl: string }) {
   return (
     <a

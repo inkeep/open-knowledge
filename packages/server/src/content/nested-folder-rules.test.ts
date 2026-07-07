@@ -42,6 +42,8 @@ describe('readFolderFrontmatter — self-only (no cascade)', () => {
   });
 
   test('does NOT inherit from ancestor folders (self-only)', () => {
+    // Parent sets description + tags; child sets only title. With no cascade,
+    // the child returns its OWN keys only — no inherited description/tags.
     mkdirSync(join(projectDir, 'a', '.ok'), { recursive: true });
     writeFileSync(
       join(projectDir, 'a', '.ok', 'frontmatter.yml'),
@@ -51,6 +53,7 @@ describe('readFolderFrontmatter — self-only (no cascade)', () => {
     writeFileSync(join(projectDir, 'a', 'b', '.ok', 'frontmatter.yml'), 'title: B\n');
 
     expect(readFolderFrontmatter(projectDir, 'a/b')).toEqual({ title: 'B' });
+    // The ancestor still reports only its own keys.
     expect(readFolderFrontmatter(projectDir, 'a')).toEqual({
       title: 'A',
       description: 'A desc',
@@ -62,7 +65,9 @@ describe('readFolderFrontmatter — self-only (no cascade)', () => {
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(join(projectDir, '.ok', 'frontmatter.yml'), 'title: Project\ntags: [kb]\n');
 
+    // No inheritance: the child folder has nothing of its own.
     expect(readFolderFrontmatter(projectDir, 'meetings')).toEqual({});
+    // The project root observes its own frontmatter.
     expect(readFolderFrontmatter(projectDir, '')).toEqual({ title: 'Project', tags: ['kb'] });
   });
 

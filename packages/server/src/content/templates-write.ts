@@ -1,3 +1,30 @@
+/**
+ * Filesystem writers for `.ok/templates/<name>.md` files.
+ *
+ * Two callable surfaces — wrapped by the `write` / `edit` MCP tools (template target)
+ * (`write-template` / `delete-template` actions). Both are atomic-ish: write goes
+ * through a tmp+rename to avoid partial-state visibility for the
+ * file-watcher; delete is a single unlink + auto-clean of empty
+ * `.ok/templates/` and `.ok/`.
+ *
+ * Templates are project-scoped: a write targets a folder inside the
+ * current project at `<projectDir>/<folder>/.ok/templates/<name>.md`.
+ * `folder` is project-root-relative; `""` means the project root.
+ *
+ * Validation:
+ *   - `folder` must resolve under `projectDir` (no traversal escape).
+ *   - `name` is a safe filename: `[A-Za-z0-9_-]+` only.
+ *   - `frontmatter.title` MUST be present and non-empty — hard error
+ *     `TEMPLATE_TITLE_REQUIRED`. `title` is the menu surface (agents pick
+ *     templates by name+title); a title-less template is effectively
+ *     invisible. Storing one would create a silent failure later.
+ *   - `frontmatter.description` SHOULD be present — surfaced as a
+ *     post-write warning (not a hard error).
+ *   - `body` substitution allowlist: only `{{date}}` and `{{user}}` tokens
+ *     accepted; anything else inside `{{...}}` triggers hard error
+ *     `TEMPLATE_UNKNOWN_VARIABLE`.
+ */
+
 import {
   existsSync,
   mkdirSync,
@@ -62,12 +89,22 @@ interface DeleteTemplateInput {
   name: string;
 }
 
+/** Filename grammar: ASCII alnum + `_` + `-`. Stable identifier for write. */
 const NAME_RE = TEMPLATE_NAME_REGEX;
 
+/** Result of {@link composeTemplateContent} — validated `.md` bytes, no disk I/O. */
 export type TemplateContentResult =
   | { ok: true; content: string; warnings: string[] }
   | { ok: false; error: { code: string; message: string } };
 
+/**
+ * Validate a template's name + frontmatter + body substitutions and serialize
+ * the full `.md` bytes — WITHOUT touching disk. The content-composition core
+ * shared by the fs writer (`applyTemplateWrite`) and the CRDT write path (the
+ * `template-put` handler routes the returned `content` through the doc's
+ * Y.Text). Mirrors `composeSkillContent`. Folder/path validation stays with the
+ * caller (it is path-level, not content-level).
+ */
 export function composeTemplateContent(input: {
   name: string;
   body: string;
@@ -85,12 +122,22 @@ export function composeTemplateContent(input: {
   const titleCheck = validateTitle(input.frontmatter.title);
   if (!titleCheck.ok) return { ok: false, error: titleCheck.error };
 
+  // Only `{{date}}` and `{{user}}` substitutions are allowed in template
+  // bodies. Reject any other `{{...}}` token at write time so the agent never
+  // persists a template that would silently leave unknown tokens at
+  // instantiation time.
   const subsCheck = validateSubstitutionAllowlist(input.body);
   if (!subsCheck.ok) return { ok: false, error: subsCheck.error };
 
+  // The doc-frontmatter (in `body`) may not declare a top-level `template:`
+  // key — it is reserved for the template's own identity in the single block.
   const reservedCheck = validateNoReservedDocKey(input.body);
   if (!reservedCheck.ok) return { ok: false, error: reservedCheck.error };
 
+  // Compose a single-block template file: the `template:` identity followed
+  // by the doc-frontmatter + markdown carried in `body`. Only the (token-free)
+  // identity is serialized through YAML; `body` passes through verbatim so
+  // `{{date}}`/`{{user}}` survive.
   const identity: TemplateIdentity = {};
   if (input.frontmatter.title !== undefined) identity.title = input.frontmatter.title;
   if (input.frontmatter.description !== undefined) {
@@ -132,6 +179,7 @@ export function applyTemplateWrite(input: WriteTemplateInput): TemplateWriteResu
     input.name,
   );
 
+  // Lazy-create .ok/ and templates/.
   try {
     mkdirSync(templatesDir, { recursive: true });
   } catch (err) {
@@ -146,14 +194,19 @@ export function applyTemplateWrite(input: WriteTemplateInput): TemplateWriteResu
 
   const created = !existsSync(filePath);
 
+  // Atomic write: tmp + rename so the file-watcher sees one event.
   const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
   try {
     writeFileSync(tmpPath, content, 'utf-8');
     renameSync(tmpPath, filePath);
   } catch (err) {
+    // Clean up orphaned tmp file if write succeeded but rename failed.
     try {
       unlinkSync(tmpPath);
-    } catch {}
+    } catch {
+      // Best effort — tmp may not exist (writeFileSync failed) or may
+      // have already been moved (renameSync partial). Either way, leave it.
+    }
     return {
       ok: false,
       error: {
@@ -204,6 +257,13 @@ export function applyTemplateDelete(input: DeleteTemplateInput): TemplateDeleteR
   };
 }
 
+/**
+ * Auto-clean the now-possibly-empty `templates/` then `.ok/` dirs left behind
+ * after a template delete or move-out. Empty `templates/` → remove; if that
+ * leaves `.ok/` empty too → remove it. A non-empty dir (race, or `.ok/` still
+ * holding `frontmatter.yml`/`local/`) is left intact. Shared by
+ * `applyTemplateDelete` and `applyTemplateMove` so the cleanup rule lives once.
+ */
 function cleanEmptyOkDirs(
   templatesDir: string,
   okDir: string,
@@ -214,13 +274,17 @@ function cleanEmptyOkDirs(
     try {
       rmdirSync(templatesDir);
       templatesCleaned = true;
-    } catch {}
+    } catch {
+      // Non-empty (race) or permission error — leave it.
+    }
   }
   if (existsSync(okDir) && isEmpty(okDir)) {
     try {
       rmdirSync(okDir);
       okCleaned = true;
-    } catch {}
+    } catch {
+      // Non-empty (e.g., frontmatter.yml still here) — leave it.
+    }
   }
   return { templatesDir: templatesCleaned, okDir: okCleaned };
 }
@@ -231,6 +295,13 @@ interface MoveTemplateInput {
   fromName: string;
   toFolder: string;
   toName: string;
+  /**
+   * Relocate the file on disk. Injected by the caller so this module stays
+   * git-agnostic (the `git mv` primitive lives server-side). Returns `true`
+   * when the relocation was a tracked `git mv` (history-preserving), `false`
+   * when it fell back to a plain rename. Must create the destination if the
+   * relocator itself doesn't — `applyTemplateMove` pre-creates the dest dir.
+   */
   relocate: (fromAbs: string, toAbs: string) => Promise<boolean>;
 }
 
@@ -247,6 +318,19 @@ type TemplateMoveResult =
       error: { code: string; message: string };
     };
 
+/**
+ * Move/rename a template from `(fromFolder, fromName)` to `(toFolder, toName)`.
+ * Both endpoints are validated (traversal/escape + name grammar). The source
+ * must exist at EXACTLY `fromFolder` — an inherited template (resolved from an
+ * ancestor) is NOT moved here; the caller detects that case and teaches
+ * localize-then-move. Destination collision (exact path exists) is refused;
+ * a destination folder that merely *inherits* a same-named template is allowed
+ * (closest-wins shadow). The destination `templates/` dir is created; the
+ * relocation is delegated to `input.relocate` (git mv with fs fallback); the
+ * now-empty source dirs are auto-cleaned. Content is NOT rewritten here — the
+ * caller layers an `applyTemplateWrite` at the destination for atomic
+ * move+edit.
+ */
 export async function applyTemplateMove(input: MoveTemplateInput): Promise<TemplateMoveResult> {
   const fromValidation = validateInputs(input.projectDir, input.fromFolder, input.fromName);
   if (!fromValidation.ok) return { ok: false, error: fromValidation.error };
@@ -306,6 +390,7 @@ export async function applyTemplateMove(input: MoveTemplateInput): Promise<Templ
     };
   }
 
+  // Source dirs may now be empty (last template left the folder).
   const cleanedEmpty = cleanEmptyOkDirs(from.templatesDir, from.okDir);
 
   return {
@@ -352,6 +437,7 @@ function validateInputs(
       },
     };
   }
+  // Re-resolve and confirm we stay under projectDir.
   const folderAbs = folderNormalized ? resolve(projectDir, folderNormalized) : projectDir;
   const projectAbs = resolve(projectDir);
   if (!folderAbs.startsWith(projectAbs + sep) && folderAbs !== projectAbs) {
@@ -413,6 +499,11 @@ function relPathOf(projectDir: string, abs: string): string {
   return normalize(rel).split(sep).join('/');
 }
 
+/**
+ * Reject a top-level `template:` key inside the starter content's
+ * doc-frontmatter — it is reserved for the template's own identity in the
+ * single-block file, and a duplicate would corrupt the merged block.
+ */
 function validateNoReservedDocKey(
   body: string,
 ): { ok: true } | { ok: false; error: { code: string; message: string } } {

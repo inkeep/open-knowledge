@@ -1,6 +1,15 @@
 import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core';
 import type { AwarenessState, AwarenessUser } from './identity.ts';
 
+/**
+ * A human participant — publishes per-doc awareness (name, color, icon,
+ * cursor position, mode). Cursors are rendered by `@tiptap/extension-
+ * collaboration-cursor`.
+ *
+ * `tabCount` is 1 for non-deduped entries and ≥2 when multiple clientIds
+ * share the same `principalId` (multi-tab dedupe for git-config users). The
+ * tooltip in PresenceBar uses this to show "Name · N tabs" when N > 1.
+ */
 export interface HumanParticipant {
   kind: 'human';
   clientId: number;
@@ -9,6 +18,12 @@ export interface HumanParticipant {
   tabCount: number;
 }
 
+/**
+ * An agent participant — publishes presence via the `__system__` Y.Doc's
+ * `agentPresence` map (never per-doc awareness; see precedent #3).
+ * `presence` carries everything the bar needs: displayName, icon, color,
+ * currentDoc, mode, ts.
+ */
 export interface AgentParticipant {
   kind: 'agent';
   agentId: string;
@@ -17,6 +32,18 @@ export interface AgentParticipant {
 
 export type Participant = HumanParticipant | AgentParticipant;
 
+/**
+ * Shallow-compare two Participant arrays across the render-affecting
+ * fields. Intentionally skips `presence.ts` because the timestamp shifts
+ * on every `touchMode` call (mode-flip → same render output) without
+ * changing what the bar looks like. Used to short-circuit the 1 Hz TTL
+ * tick's `setState` when no peer actually changed — React Compiler cannot
+ * elide this because every tick produces a fresh object reference.
+ *
+ * `user.principalId` is not compared directly; principalId changes are
+ * covered indirectly because color is seeded from principalId — a
+ * principalId transition (e.g. boot-race resolution) always changes color.
+ */
 export function participantsEqual(a: Participant[], b: Participant[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -46,6 +73,18 @@ export function participantsEqual(a: Participant[], b: Participant[]): boolean {
   return true;
 }
 
+/**
+ * Dedupe `HumanParticipant[]` by `principalId`, collapsing multiple entries
+ * that share the same eligible principalId into one with `tabCount` set to
+ * the group size. Eligible means `typeof principalId === 'string' && principalId.length > 0`.
+ *
+ * Tie-break: the entry with the lowest `clientId` is the representative.
+ * Output order matches the position of each group's representative (lowest-clientId
+ * entry) in the input. When the representative is NOT the first-occurring entry for
+ * that principalId, earlier non-representative entries are skipped and the group
+ * appears at the representative's position. Ineligible entries (no principalId or
+ * empty string) pass through as-is with `tabCount === 1`.
+ */
 export function dedupeHumansByPrincipalId(humans: HumanParticipant[]): HumanParticipant[] {
   const groups = new Map<string, HumanParticipant[]>();
   for (const h of humans) {

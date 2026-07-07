@@ -1,3 +1,29 @@
+/**
+ * Source-level guards for the FOUC-time `html.electron-mode` class addition.
+ *
+ * Repo convention: no @testing-library / happy-dom. The class addition runs
+ * in the inline `<script>` block of `packages/app/index.html` — DOM-bound
+ * runtime behavior is exercised end-to-end via Playwright in the Electron
+ * host context. These guards lock the structural choices a future refactor
+ * would silently break:
+ *
+ *   - The class name is exactly `electron-mode` (CSS rules in globals.css
+ *     scope to `html.electron-mode`; renaming here without renaming there
+ *     is silent regression).
+ *   - The detection condition is `window.okDesktop` truthy (the canonical
+ *     idiom — matches `OpenInAgentMenu`, `FileTree`, `EditorHeader`,
+ *     `EditorTabs`, `FileSidebar`).
+ *   - The class is added on `document.documentElement` (the `<html>` element
+ *     — globals.css selector is `html.electron-mode`, NOT `body.electron-mode`).
+ *   - The addition runs INSIDE the existing FOUC inline `<script>`, NOT in a
+ *     React effect or main.tsx. Per FOUC discipline, the class must be on
+ *     `<html>` BEFORE first paint so the alpha-aware CSS rules engage from
+ *     byte 1.
+ *   - The script body remains single-line (biome's HTML formatter reindents
+ *     inline-script content; multi-line bodies create an infinite reformat
+ *     loop at pre-commit).
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -120,6 +120,11 @@ describe('unwrapFrontmatterFences', () => {
 });
 
 describe('fence trailing whitespace — recognition contract', () => {
+  // micromark-extension-frontmatter (the engine behind the repo's own
+  // markdownToHtml path) consumes optional spaces/tabs AFTER both fence
+  // sequences. Recognition must agree, or an in-tolerance source edit
+  // (`---` → `--- `) changes FM partitioning mid-session and the bridge
+  // compose fabricates an FM deletion.
   const recognized: Array<{ label: string; input: string; fm: string }> = [
     {
       label: 'space after the opening fence',
@@ -146,6 +151,8 @@ describe('fence trailing whitespace — recognition contract', () => {
   for (const { label, input, fm } of recognized) {
     test(`stripFrontmatter recognizes ${label} and preserves the raw bytes`, () => {
       const { frontmatter, body } = stripFrontmatter(input);
+      // Raw bytes verbatim (Y.Text-is-truth): the trailing whitespace the
+      // user typed stays inside `.frontmatter`, never normalized away here.
       expect(frontmatter).toBe(fm);
       expect(body).toBe('# Body');
     });
@@ -172,6 +179,10 @@ describe('fence trailing whitespace — recognition contract', () => {
   });
 
   test('closing-fence detection stops at the first ---[ \\t]* line inside the region', () => {
+    // A `--- ` line inside the YAML region is a YAML document separator, never
+    // legitimate FM content — micromark closes the frontmatter block there too,
+    // so recognition stops at the FIRST fence-shaped line, trailing whitespace
+    // included. Pins the boundary choice of the widened close-fence matcher.
     const input = '---\ntitle: X\n--- \nrest: y\n---\n# Body';
     const { frontmatter, body } = stripFrontmatter(input);
     expect(frontmatter).toBe('---\ntitle: X\n--- \n');

@@ -1,3 +1,22 @@
+/**
+ * Git-clone subprocess runner — spawns `<cli> clone --json <url> <dir>` and
+ * emits structured events.
+ *
+ * The CLI emits:
+ *   {type:'progress', phase, pct}
+ *   {type:'complete', dir}     ← CLI's terminal event (just the dir)
+ *   {type:'error', message}
+ *
+ * The HTTP relay (api-extension.ts) intercepts the CLI's `complete` and
+ * chains into `startServerAtDirAndGetPort` to add a `port` field before
+ * forwarding to the browser. The Electron Navigator IPC path does NOT need
+ * a port — main spawns a new editor window directly at `dir` — so it
+ * forwards the CLI's `complete` as-is (with `dir`, no `port`).
+ *
+ * This runner is framing-agnostic: callers receive each parsed event
+ * structurally and decide how to forward it.
+ */
+
 import { dirname, isAbsolute } from 'node:path';
 import {
   assertGitAvailable,
@@ -12,6 +31,12 @@ import { runSubprocess } from './subprocess.ts';
 
 const log = getLogger('clone-flow');
 
+/**
+ * Variant of `CloneEvent` emitted directly by the CLI subprocess — the
+ * `complete` carries `dir` instead of `port`. The HTTP relay rewrites this
+ * to a port-bearing event before forwarding to browsers; the Electron IPC
+ * path forwards it as-is.
+ */
 export type RawCloneEvent =
   | { type: 'progress'; phase: string; pct: number }
   | { type: 'complete'; dir: string }
@@ -21,9 +46,17 @@ export type RawCloneEvent =
 export interface RunCloneOptions {
   cliArgs: readonly string[];
   url: string;
+  /** Tilde-expanded target directory. */
   dir: string;
+  /**
+   * Optional ref for `ok clone -b <branch>`. When the branch doesn't exist
+   * upstream, the CLI emits a `branch-fallback` event and retries against
+   * the remote default branch.
+   */
   branch?: string | null;
+  /** Wall-clock subprocess timeout. Defaults to 10 minutes. */
   timeoutMs?: number;
+  /** Called for every parsed event. Use the controller's `done` to know when the stream ended. */
   onEvent: (event: RawCloneEvent) => void;
 }
 
@@ -36,6 +69,7 @@ type CloneInputValidation = { ok: true } | { ok: false; reason: 'invalid-url' | 
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
+/** Validate clone inputs. Returns `{ok:true}` only when both pass. */
 export function validateCloneInputs(url: string, dir: string): CloneInputValidation {
   if (!isAllowedGitUrl(url)) return { ok: false, reason: 'invalid-url' };
   if (!isSafeLocalPath(dir)) return { ok: false, reason: 'invalid-dir' };
@@ -71,16 +105,37 @@ function asRawCloneEvent(parsed: Record<string, unknown>): RawCloneEvent | null 
   return null;
 }
 
+/**
+ * Spawn `ok clone --json <url> <expanded-dir>` and stream events to
+ * `onEvent`. Resolves once the subprocess exits.
+ *
+ * Note: the caller is responsible for any post-clone follow-up. The HTTP
+ * relay rewrites the `complete` event into a port-bearing one (after
+ * starting the cloned project's server); the Electron Navigator IPC path
+ * leaves the `complete` as-is and lets main spawn a new editor window.
+ */
 export function runCloneSubprocess(opts: RunCloneOptions): RunCloneController {
   const targetDir = expandTilde(opts.dir);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
+  // Verify git is usable BEFORE spawning `<cli> clone` — whose internal
+  // `git clone` would otherwise surface a raw clone error. Any failure is
+  // surfaced as an error EVENT with a no-op controller — never a sync throw:
+  // both consumers (Electron IPC `handleCloneStart`, the HTTP relay) call this
+  // synchronously, and the relay's call sits OUTSIDE its `localOpGuard.release`
+  // path, so a sync throw would leak the clone lock (429s until restart) and
+  // hang the response. Typed preflight failures carry recoverable install
+  // guidance; any other error routes through the same contract rather than
+  // escaping it.
   let detected: GitDetected;
   try {
     detected = assertGitAvailable();
   } catch (err) {
     if (err instanceof GitNotAvailableError || err instanceof GitTooOldError) {
       emitPreflightFailureSpan(err);
+      // Pair the span with a structured log (mirrors boot.ts). OTEL is off by
+      // default, so this log line is the only field-visible signal for a
+      // setup-boundary preflight failure on the clone path.
       log.warn(
         {
           event: 'git_preflight_fail',
@@ -91,6 +146,10 @@ export function runCloneSubprocess(opts: RunCloneOptions): RunCloneController {
         err instanceof GitTooOldError ? 'git binary too old' : 'git binary not found',
       );
     } else {
+      // An unexpected (non-preflight) error would otherwise be converted straight
+      // to an error event with no server-side trace. Log it with the full error
+      // (stack/type captured) so a setup-boundary failure on the clone path isn't
+      // silently swallowed.
       log.error(
         {
           event: 'clone_preflight_unexpected_error',
@@ -106,6 +165,12 @@ export function runCloneSubprocess(opts: RunCloneOptions): RunCloneController {
     return { done, cancel: () => {} };
   }
 
+  // Point the spawned clone's internal `git` at the binary the preflight
+  // validated (closes the check/use divergence for the fallback-path case).
+  // Only enrich for an ABSOLUTE resolved path: a non-absolute resolvedPath (the
+  // bare `git` fallback) would make `dirname()` '.' and prepend the process cwd
+  // to the child PATH (CWE-426/427) — and in that case the inherited PATH
+  // already resolves a working git, so enrichment is unnecessary.
   const extraPathDirs = isAbsolute(detected.resolvedPath) ? [dirname(detected.resolvedPath)] : [];
 
   let sawTerminal = false;
@@ -142,6 +207,10 @@ export function runCloneSubprocess(opts: RunCloneOptions): RunCloneController {
       });
       return;
     }
+    // CLI exited cleanly without emitting a terminal event — synthesize a
+    // `complete` so the caller's stream resolves. Without this, the IPC
+    // path's async iterator hangs forever waiting for a terminal event
+    // that won't come. Mirrors `runDeviceFlowSubprocess`'s synthesis.
     opts.onEvent({ type: 'complete', dir: targetDir });
   });
 

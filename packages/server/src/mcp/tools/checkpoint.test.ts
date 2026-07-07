@@ -15,6 +15,7 @@ import { type CheckpointDeps, DESCRIPTION, register } from './checkpoint.ts';
 import type { ServerInstance } from './shared.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
 
+// See version.test.ts predecessor: skip on CI (simple-git child-reap hang).
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -94,6 +95,7 @@ describe('checkpoint — registration + behavior', () => {
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
     const result = await getTool().handler({});
+    // The route's `checkpointRef` is surfaced to agents as `version`.
     expect(result.structuredContent?.version).toBe('1234567890abcdef1234567890abcdef12345678');
     expect(result.structuredContent?.previewUrl).toBeNull();
   });

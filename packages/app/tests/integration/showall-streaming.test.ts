@@ -1,3 +1,12 @@
+/**
+ * NDJSON streaming for `GET /api/documents?showAll=true` over the
+ * real HTTP API. An `Accept: application/x-ndjson` request must stream one
+ * `DocumentListEntry` per line plus a terminal `{type:'complete'}` verdict, the
+ * client consumer must reassemble the same listing the buffered JSON path
+ * returns, and a request WITHOUT the NDJSON Accept must still get the buffered
+ * single-flight JSON response unchanged (back-compatible coexistence). The cap
+ * propagates as `truncated` on the terminal line.
+ */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -39,9 +48,11 @@ describe('showAll NDJSON streaming (PRD-6856)', () => {
     const complete = parsed.filter((row) => row.type === 'complete');
     const entries = parsed.filter((row) => row.type === undefined);
 
+    // Exactly one terminal verdict, and it reports the streamed count.
     expect(complete.length).toBe(1);
     expect(complete[0].truncated).toBe(false);
     expect(complete[0].count).toBe(entries.length);
+    // The fixture surfaced (root files + the sub dir + its note).
     expect(entries.length).toBeGreaterThan(ROOT_FILE_COUNT);
     for (const entry of entries) expect(entry.type).toBeUndefined();
   }, 30_000);
@@ -66,6 +77,7 @@ describe('showAll NDJSON streaming (PRD-6856)', () => {
     const res = await fetch(showAllUrl());
     expect(res.ok).toBe(true);
     expect(res.headers.get('content-type')).toContain('application/json');
+    // Parses as a single JSON blob — the single-flight path is unchanged.
     const body = DocumentListSuccessSchema.parse(await res.json());
     expect(body.documents.length).toBeGreaterThan(ROOT_FILE_COUNT);
   }, 30_000);

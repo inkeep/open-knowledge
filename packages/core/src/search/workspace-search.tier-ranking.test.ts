@@ -5,7 +5,19 @@ import {
   searchWorkspaceDocuments,
 } from './workspace-search.ts';
 
+/**
+ * Ranking invariants for the intent-aware, tier-dominant navigation score and
+ * the exact-name surfacing guarantee. These assert PROPERTIES (an exact-name
+ * match leads a body-heavier partial; an exact match is never dropped for a
+ * lower-tier sibling), not frozen orderings — the parity fixture pins exact
+ * scores. Expand these as the labeled query set grows.
+ */
+
 describe('tier-dominant ranking — identity beats body relevance', () => {
+  // The defect this fixes: an exact-name match (bracket 700) with a weak body
+  // score must outrank a substring match (bracket 600) with a much stronger
+  // body score. The old additive `lexical + fullText*20` inverted this because
+  // the body term (0–~6000) swamped the 450–700 bracket band.
   const exact = createWorkspaceSearchDocument({
     kind: 'page',
     path: 'cloud-collaboration/STORY',
@@ -29,6 +41,9 @@ describe('tier-dominant ranking — identity beats body relevance', () => {
     const results = searchWorkspaceDocuments(corpus, 'story', { intent: 'omnibar' });
     expect(results[0]?.document.path).toBe('cloud-collaboration/STORY');
 
+    // Non-trivial guard: the partials really do out-score the exact match on
+    // body, so this only passes because the bracket dominates — not because the
+    // exact match happened to win on body anyway.
     const exactHit = results.find((r) => r.document.path === 'cloud-collaboration/STORY');
     const partialHits = results.filter((r) => r.document.path !== 'cloud-collaboration/STORY');
     expect(partialHits.length).toBeGreaterThan(0);
@@ -46,6 +61,7 @@ describe('tier-dominant ranking — identity beats body relevance', () => {
         modifiedTs: 1,
       }),
     );
+    // Partial-name reports whose bodies hammer the `story` token.
     const partials = [1, 2, 3].map((n) =>
       createWorkspaceSearchDocument({
         kind: 'page',
@@ -68,6 +84,9 @@ describe('tier-dominant ranking — identity beats body relevance', () => {
   });
 
   test('a buried exact-name match surfaces into the top of its tier via recency', () => {
+    // Among same-named STORY pages, the one the user is actively editing
+    // (highest recency) leads its tier — the live `cloud-collaboration/STORY`
+    // case (buried at ~#10 by body BM25 before tier-dominance).
     const target = createWorkspaceSearchDocument({
       kind: 'page',
       path: 'cloud-collaboration/STORY',
@@ -88,6 +107,9 @@ describe('tier-dominant ranking — identity beats body relevance', () => {
 });
 
 describe('intent-aware scoring — full_text stays body-weighted', () => {
+  // The same corpus orders DIFFERENTLY by intent: navigation puts identity
+  // first; content search puts the strong body match first. This is the
+  // intent split — full_text keeps the body-weighted additive score.
   const exact = createWorkspaceSearchDocument({
     kind: 'page',
     path: 'a/STORY',
@@ -114,6 +136,12 @@ describe('intent-aware scoring — full_text stays body-weighted', () => {
 });
 
 describe('ranking decoupled from intent — the omnibar config', () => {
+  // The omnibar searches content (a full_text candidate set, with fuzzy
+  // tolerance) but must rank name-first and bound folders/files. It does that by
+  // pairing intent `full_text` with ranking `navigation`. The MCP `search` tool
+  // uses the same intent with the default (relevance) ranking and stays
+  // body-weighted + uncapped. This pins that decoupling — the wiring that makes
+  // the ranking fix reach the user-facing omnibar.
   const exact = createWorkspaceSearchDocument({
     kind: 'page',
     path: 'cloud-collaboration/STORY',
@@ -136,6 +164,7 @@ describe('ranking decoupled from intent — the omnibar config', () => {
     });
     expect(nav[0]?.document.path).toBe('cloud-collaboration/STORY');
 
+    // Same intent, default (relevance) ranking → the strong body match leads.
     const relevance = searchWorkspaceDocuments([exact, bodyHeavy], 'story', {
       intent: 'full_text',
     });
@@ -168,6 +197,9 @@ describe('ranking decoupled from intent — the omnibar config', () => {
 
 describe('exact-name surfacing — deep candidate pool', () => {
   test('an exact basename is never dropped for lower-tier siblings that crowd the limit', () => {
+    // One exact-name target (weak body) plus many partial-name pages with strong
+    // body. Under the old body-driven score the partials would fill the limited
+    // result set and bury the target; tier-dominance keeps the exact match on top.
     const target = createWorkspaceSearchDocument({
       kind: 'page',
       path: 'cloud-collaboration/STORY',
@@ -187,10 +219,15 @@ describe('exact-name surfacing — deep candidate pool', () => {
       limit: 10,
     });
     expect(results[0]?.document.path).toBe('cloud-collaboration/STORY');
+    // The partials really did exceed the result limit — so the guarantee is
+    // doing work, not riding a small corpus.
     expect(partials.length).toBeGreaterThan(10);
   });
 
   test('an exact basename remains findable among many same-named siblings (deep pool)', () => {
+    // The candidate pool admits every lexical match from the whole corpus, so a
+    // pile of same-named siblings far larger than the fetch window cannot push
+    // the actively-edited target out of the candidate set.
     const target = createWorkspaceSearchDocument({
       kind: 'file',
       path: 'team/quarterly/data.csv',

@@ -1,3 +1,18 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleTestFlushGit` —
+ * dev-only route gated on `enableTestRoutes` that drains the L2 git-commit
+ * pipeline (pending debounce timer + in-flight commit) before responding.
+ * Exists so integration tests can AWAIT WIP-commit durability instead of
+ * racing the fire-and-forget `flushDocToGit` chain against a wall-clock
+ * budget.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `POST /api/test-flush-git`:
+ *   - happy path: status 200, `Content-Type: application/json`, flat body
+ *     `{}` (no `ok: true` discriminator).
+ *   - method-not-allowed on GET → 405 `urn:ok:error:method-not-allowed`
+ *     with `Allow: POST`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, TestFlushGitSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

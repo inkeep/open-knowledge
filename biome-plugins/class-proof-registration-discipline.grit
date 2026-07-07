@@ -1,11 +1,10 @@
 // class-proof-registration-discipline — class-proof DSL contract enforcement.
 //
-// `defineClassProof()` (from `packages/md-conformance/src/class-proofs/dsl.ts`)
-// registers a class predicate + per-class proof obligation against ts-morph
+// `defineClassProof()` (the class-proof DSL entry point) registers a class predicate + per-class proof obligation against ts-morph
 // reflective enumeration. Two discipline rules:
 //
-//   (a) Registrations live ONLY in
-//       `packages/md-conformance/src/class-proofs/proofs/<name>.ts`. Authoring
+//   (a) Registrations live ONLY in the canonical `class-proofs/proofs/`
+//       dir (see the biome.jsonc override excludes). Authoring
 //       proofs elsewhere splinters the run-all manifest and breaks
 //       `runAllClassProofs(engine)`'s single-import contract.
 //   (b) Every call must pass both `predicate` and `proof` options. TypeScript
@@ -15,7 +14,7 @@
 //       a `.test.ts` file demoed before the test runs).
 //
 // Scoped via `overrides[].plugins` to ALL .ts/.tsx files EXCEPT the canonical
-// `packages/md-conformance/src/class-proofs/proofs/` directory. Inside the
+// proofs/ directory. Inside the
 // canonical dir, neither pattern fires — TypeScript's
 // `ClassProofOptions<M>` signature backstops the missing-args check. Outside
 // the canonical dir, ANY `defineClassProof` call fires (= "wrong location"),

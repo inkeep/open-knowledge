@@ -1,3 +1,20 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleTestRescanFiles` —
+ * file-index counterpart of `handleTestRescanBacklinks`. Dev-only route
+ * gated on `enableTestRoutes`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `POST /api/test-rescan-files`:
+ *   - happy path: status 200, `Content-Type: application/json`, flat body
+ *     `{}` (no `ok: true` discriminator).
+ *   - method-not-allowed on GET → 405 `urn:ok:error:method-not-allowed`
+ *     with `Allow: POST`.
+ *
+ * The 503 `urn:ok:error:file-rescan-not-configured` path is unreachable in
+ * `createTestServer` (the harness wires up a real watcher with
+ * `rescanFromDisk`); covered by
+ * `packages/server/src/api-test-rescan-files.test.ts`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, TestRescanFilesSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

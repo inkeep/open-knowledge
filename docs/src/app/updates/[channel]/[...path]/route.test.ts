@@ -16,6 +16,7 @@ mock.module('../../../../lib/track.ts', () => ({
 
 const BETA_DMG_URL =
   'https://github.com/inkeep/open-knowledge/releases/download/v0.20.0-beta.4/OpenKnowledge-arm64.dmg';
+// Mutable so a test can flip the beta resolver from a fresh tag to a fallback.
 type BetaRedirect = { kind: string; url: string; cause?: string };
 let _betaRedirect: BetaRedirect = { kind: 'fresh', url: BETA_DMG_URL };
 mock.module('../../../../lib/download-links.ts', () => ({

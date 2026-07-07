@@ -101,15 +101,22 @@ describe('registerDocExtension / getDocExtension', () => {
   });
 
   test('forgetDocExtension after collision returns to default (no shadow restore)', () => {
+    // Both extensions observed on disk; .mdx wins precedence.
     registerDocExtension('foo', '.md');
     registerDocExtension('foo', '.mdx');
     expect(getDocExtension('foo')).toBe('.mdx');
 
+    // Forget clears the winning entry entirely — the shadowed .md is NOT
+    // resurrected. This is intentional: file-watcher re-registers the
+    // surviving extension on the next observed event, so drift is self-healing.
     forgetDocExtension('foo');
     expect(getDocExtension('foo')).toBe('.md'); // back to default
   });
 
   test('preserves uppercase .MD casing observed on disk', () => {
+    // Persistence concatenates `${docName}${getDocExtension(docName)}` to derive
+    // the on-disk path. If we lowercase here, a `Foo.MD` file gets a duplicate
+    // `Foo.md` written next to it on case-sensitive filesystems.
     const result = registerDocExtension('foo', '.MD');
     expect(result).toEqual({ effective: '.MD', changed: true, shadowed: null });
     expect(getDocExtension('foo')).toBe('.MD');

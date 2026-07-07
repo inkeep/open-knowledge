@@ -52,6 +52,11 @@ describe('applyPatchToDocument — auto-vivification through scalar intermediate
   });
 
   test('existing populated parent is preserved (no clobber)', () => {
+    // The existing-key fixture uses `density: cozy` — a fictional
+    // appearance sibling chosen so loose-mode YAML round-trips it
+    // without coupling the test to a real schema leaf. The point is
+    // that `applyPatchToDocument` doesn't clobber unrelated siblings
+    // when patching one key under the same parent.
     const doc = parseDocument('appearance:\n  density: cozy\n');
 
     const applied = applyPatchToDocument(doc, {

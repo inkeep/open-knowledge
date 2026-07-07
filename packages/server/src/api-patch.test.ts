@@ -1,3 +1,13 @@
+/**
+ * Tests for agent-patch Y.Text behavior.
+ *
+ * These tests exercise the patch logic directly against a Y.Doc (no HTTP layer),
+ * validating the CRDT invariants that POST /api/agent-patch provides over the old
+ * full-document replace approach.
+ *
+ * Core invariant: a patch only mutates the matched character span — everything
+ * else in Y.Text survives untouched, regardless of what other writes have landed.
+ */
 import { describe, expect, test } from 'bun:test';
 import { Hocuspocus } from '@hocuspocus/server';
 import type * as Y from 'yjs';
@@ -11,6 +21,10 @@ function getDoc(conn: Conn): Y.Doc {
   return doc;
 }
 
+/**
+ * Replicate the handleAgentPatch transaction logic exactly.
+ * Returns whether the patch was applied, not found, or stale at the requested offset.
+ */
 function applyPatch(
   doc: Y.Doc,
   find: string,
@@ -76,6 +90,8 @@ describe('agent-patch: targeted Y.Text mutation', () => {
   });
 
   test('content written concurrently outside the matched region survives the patch', async () => {
+    // This is the key property that distinguishes agent-patch from a full replace:
+    // writes that landed outside the target span are preserved regardless of ordering.
     const hp = new Hocuspocus({ quiet: true });
     const conn = await hp.openDirectConnection('test-patch-concurrent');
     const doc = getDoc(conn);
@@ -85,6 +101,7 @@ describe('agent-patch: targeted Y.Text mutation', () => {
       ytext.insert(0, '# Header\n\nTarget sentence.\n\n## Footer\n\nExisting footer content.\n'),
     );
 
+    // Simulate a concurrent write that arrived before the patch (e.g. user typed something)
     doc.transact(() => {
       const current = ytext.toString();
       ytext.insert(current.length, '\nConcurrently added line.\n');
@@ -103,6 +120,8 @@ describe('agent-patch: targeted Y.Text mutation', () => {
   });
 
   test('frontmatter patch: body is character-for-character identical after update', async () => {
+    // update_frontmatter calls agent-patch with old FM block as `find`.
+    // The body must not be touched — not even normalized.
     const hp = new Hocuspocus({ quiet: true });
     const conn = await hp.openDirectConnection('test-patch-frontmatter');
     const doc = getDoc(conn);
@@ -117,6 +136,7 @@ describe('agent-patch: targeted Y.Text mutation', () => {
 
     expect(found).toBe('patched');
     expect(ytext.toString()).toBe(newFm + body);
+    // Explicit byte-level check: nothing after the frontmatter changed
     expect(ytext.toString().slice(newFm.length)).toBe(body);
 
     await conn.disconnect();

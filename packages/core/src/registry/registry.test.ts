@@ -5,6 +5,21 @@ import type { JsxComponentMeta } from './types.ts';
 
 describe('createRegistry', () => {
   test('returns the 14 canonical + 9 compat descriptors + wildcard', () => {
+    // 14 canonicals (Callout, Image, Video, Audio, Accordion, Math,
+    // MermaidFence, Pdf, File, Tabs, Tab, Embed, Mirror, MirrorSource)
+    // + 9 compats (GFMCallout, CommonMarkImage, HtmlDetailsAccordion,
+    // WikiEmbedImage, WikiEmbedVideo, WikiEmbedAudio, WikiEmbedFile,
+    // DollarMath, MathFence) + '*' wildcard.
+    // Compats are registered for parse + render but filtered out of the
+    // slash menu; they preserve source-form fidelity through round-trip
+    // edits.
+    //
+    // WikiEmbedPdf is not registered — `![[doc.pdf]]` dispatches to
+    // WikiEmbedFile instead. Mirror + MirrorSource cover master/copy block
+    // transclusion. The Mermaid canonical is named `MermaidFence`
+    // (fence-only authoring) — `Mermaid` is intentionally NOT a
+    // registered descriptor name, so legacy `<Mermaid />` JSX falls
+    // through to the wildcard.
     const registry = createRegistry();
     const entries = [...registry.entries()];
     expect(entries.length).toBe(24);
@@ -36,9 +51,11 @@ describe('createRegistry', () => {
   test('registry.set() followed by get() picks up new descriptor (M3 hot-add)', () => {
     const registry = createRegistry();
 
+    // Before: DataViz is unregistered
     expect(registry.get('DataViz')).toBeUndefined();
     expect(registry.getOrWildcard('DataViz').name).toBe('*');
 
+    // Hot-add
     const dataVizMeta: JsxComponentMeta = {
       name: 'DataViz',
       surface: 'canonical',
@@ -52,6 +69,7 @@ describe('createRegistry', () => {
     };
     registry.set('DataViz', dataVizMeta);
 
+    // After: DataViz returns the new descriptor
     const result = registry.get('DataViz');
     expect(result).toBeDefined();
     expect(result?.name).toBe('DataViz');
@@ -74,6 +92,8 @@ describe('createRegistry', () => {
     expect(registry.has('Accordion')).toBe(true);
     expect(registry.has('Math')).toBe(true);
     expect(registry.has('MermaidFence')).toBe(true);
+    // `<Mermaid />` JSX has no descriptor (canonical is named
+    // `MermaidFence`) — falls through to the wildcard via getOrWildcard.
     expect(registry.has('Mermaid')).toBe(false);
     expect(registry.has('Pdf')).toBe(true);
     expect(registry.has('File')).toBe(true);
@@ -83,9 +103,13 @@ describe('createRegistry', () => {
     expect(registry.has('Mirror')).toBe(true);
     expect(registry.has('MirrorSource')).toBe(true);
     expect(registry.has('*')).toBe(true);
+    // Lowercase media canonicals — capitalized forms now fall through to the
+    // wildcard. User content authored before the pivot would render with
+    // generic chrome but isn't registered as a fresh-insert canonical.
     expect(registry.has('Image')).toBe(false);
     expect(registry.has('Video')).toBe(false);
     expect(registry.has('Audio')).toBe(false);
+    // Other unregistered descriptors fall through to wildcard via getOrWildcard.
     expect(registry.has('Steps')).toBe(false);
     expect(registry.has('DataViz')).toBe(false);
   });
@@ -109,6 +133,9 @@ describe('builtInComponents manifest', () => {
   });
 
   test('all canonical entries have description and searchTerms (slash-menu surface)', () => {
+    // Compat descriptors are filtered out of the slash menu, so searchTerms
+    // (which power slash-menu discoverability) are only required on canonicals.
+    // Description is required on both — surfaces in agent discovery / MCP.
     for (const meta of builtInComponents) {
       expect(meta.description).toBeTruthy();
       if (meta.surface === 'canonical') {
@@ -119,6 +146,13 @@ describe('builtInComponents manifest', () => {
   });
 
   test('every enum PropDef defaultValue is in enumValues (Mi1 manifest-drift guard)', () => {
+    // PropDefEnum.defaultValue is typed loose (`string`),
+    // not as `enumValues[number]`, so a typo'd default would compile but
+    // ship as a runtime-invalid manifest entry. A type-generic refactor
+    // would propagate through every PropDef-array authoring site; this
+    // test-time guard catches the same drift class with no source-shape
+    // change. Add new descriptors with `defaultValue` that exists in
+    // their `enumValues` — anything else is a manifest defect.
     for (const meta of builtInComponents) {
       for (const prop of meta.props) {
         if (prop.type !== 'enum') continue;
@@ -132,6 +166,19 @@ describe('builtInComponents manifest', () => {
   });
 
   test('only Tabs registers emptyChildName (single compound parent in the canonical pack)', () => {
+    // The original compound-components bridge was retired
+    // (precedent #29 retracted on its old form). The Tabs
+    // revival reintroduced exactly one compound parent — `Tabs → Tab` —
+    // wired via JsxComponentView's standard `+ Add child` pill. Insertion
+    // routes through `createChildNode('Tab')` so the inserted PM shape
+    // matches slash-seeded starter Tabs (source-roundtrip safe).
+    //
+    // The `.jsx-empty-child-placeholder` affordance fires
+    // when a Tabs is emptied (both seeded tabs deleted). The
+    // component-blocks a11y e2e suite exercises the
+    // keyboard-activation invariant against that placeholder. If a SECOND
+    // compound parent lands, extend the expected set here AND verify
+    // that suite still covers the new descriptor's empty-state UX.
     const containers = builtInComponents.filter((m) => m.emptyChildName);
     const names = containers.map((c) => `${c.name}→${c.emptyChildName}`).sort();
     expect(
@@ -141,6 +188,11 @@ describe('builtInComponents manifest', () => {
   });
 
   test('Tabs descriptor prop surface is exactly `id` (the deep-link anchor)', () => {
+    // The strip's selection state is ephemeral React state, intentionally NOT
+    // a PM-stored prop — see Tabs.tsx header. So the descriptor's only
+    // user-facing prop is `id` (string, optional, advanced, no autoFocus).
+    // Adding a public prop here that affects rendering MUST come with a
+    // corresponding wiring through Tabs.tsx + serialization + showcase.
     const tabs = builtInComponents.find((m) => m.name === 'Tabs');
     expect(tabs).toBeDefined();
     expect(tabs?.hasChildren).toBe(true);
@@ -153,6 +205,13 @@ describe('builtInComponents manifest', () => {
   });
 
   test('Tab descriptor prop surface — `label` (required + autoFocus) + `id` (advanced)', () => {
+    // `label`'s autoFocus drives the PropPanel UX: when a fresh Tab is
+    // inserted via the `+ Add Tab` pill, the strip-side label input takes
+    // focus so the user can type a meaningful name immediately. Removing
+    // autoFocus silently regresses the insertion-to-naming flow.
+    // `required: true` matches Tabs.tsx's safeLabel fallback contract —
+    // an empty label is interpreted as "use Tab N" but the descriptor
+    // surface treats it as required so the PropPanel marks it.
     const tab = builtInComponents.find((m) => m.name === 'Tab');
     expect(tab).toBeDefined();
     expect(tab?.hasChildren).toBe(true);
@@ -168,6 +227,13 @@ describe('builtInComponents manifest', () => {
   });
 
   test('Callout has 15 first-class type enum values (GFM 5 + Obsidian-parity 10)', () => {
+    // GFM 5 (`note`, `tip`, `important`, `warning`, `caution`) + 10
+    // Obsidian-parity types promoted from aliases to first-class
+    // (`abstract`, `info`, `todo`, `success`, `question`, `failure`,
+    // `danger`, `bug`, `example`, `quote`). Rarer aliases (e.g.
+    // `summary`, `cite`, `error`) still fold via the parser's alias map
+    // — they collapse into the new first-class types, not the GFM 5.
+    // Precedent #9 schema-add-only: the enum is widened, never narrowed.
     const callout = builtInComponents.find((m) => m.name === 'Callout');
     expect(callout).toBeDefined();
     if (!callout) return;
@@ -199,6 +265,10 @@ describe('builtInComponents manifest', () => {
   });
 
   test('Callout exposes the 7-prop FR-1 surface', () => {
+    // `collapsible` + `defaultOpen` were added within the GFM 5-type scope.
+    // Together with `type`, `title`, `icon`, `color`, and `children` that's
+    // the full prop surface — order-insensitive; a future PropPanel reshuffle
+    // should not break this guard.
     const callout = builtInComponents.find((m) => m.name === 'Callout');
     expect(callout).toBeDefined();
     if (!callout) return;
@@ -209,6 +279,13 @@ describe('builtInComponents manifest', () => {
   });
 
   test('img exposes the 13-prop HTML-native surface (3 common + 10 advanced)', () => {
+    // Lowercase media canonical pivot. Drops the OK-specific `caption` and
+    // `zoom` props from the descriptor — caption belongs on a future Frame
+    // wrapper; zoom is always-on inside the Image React component.
+    // Common: src + alt + align. Advanced: width + height + srcset + sizes +
+    // loading + title + decoding + fetchpriority + crossorigin +
+    // referrerpolicy.
+    // Order-insensitive — a future reshuffle should not break this.
     const img = builtInComponents.find((m) => m.name === 'img');
     expect(img).toBeDefined();
     if (!img) return;
@@ -233,6 +310,14 @@ describe('builtInComponents manifest', () => {
   });
 
   test('img.align is a 3-value enum with center default, hidden from PropPanel', () => {
+    // Alignment lives on the descriptor so it serializes through MDX as
+    // `<img align="left" />` and round-trips. `center` is the visual +
+    // descriptor default; `omitOnDefault: true` keeps existing images
+    // (with no explicit `align`) byte-stable on save. The `hidden: true`
+    // flag is the load-bearing mechanism that consolidates alignment
+    // onto the bubble menu's `ImageAlignButtons` — without it,
+    // PropPanel would render a Select dropdown that would sit alongside
+    // the bubble-menu trio and present a redundant second control.
     const img = builtInComponents.find((m) => m.name === 'img');
     const align = img?.props.find((p) => p.name === 'align');
     expect(align).toBeDefined();
@@ -240,13 +325,30 @@ describe('builtInComponents manifest', () => {
       expect([...align.enumValues].sort()).toEqual(['center', 'left', 'right'].sort());
       expect(align.defaultValue).toBe('center');
       expect(align.omitOnDefault).toBe(true);
+      // NOT advanced — alignment is a frequent tweak; the `advanced`
+      // taxonomy is orthogonal to the `hidden` flag below.
       expect(align.advanced).toBeUndefined();
+      // Pin the bubble-menu-only contract. If this flag is dropped in
+      // a future refactor, PropPanel's hidden-prop filter
+      // (`!('hidden' in p && p.hidden)`) lets the Select re-appear and
+      // the consolidation regresses silently.
       expect(align.hidden).toBe(true);
+      // Pin the enum order — `center` must be first so the descriptor's
+      // declared default matches the wrapper-level CSS's "no explicit
+      // alignment" rendering.
       expect(align.enumValues[0]).toBe('center');
     }
   });
 
   test('img.alt is required with no defaultValue (WCAG 1.1.1 — must be a deliberate decision)', () => {
+    // Pins the source-of-truth schema for the tri-state needsConfig predicate:
+    // `required: true` means the predicate evaluates the prop at all;
+    // omitting `defaultValue` means `getDefaultProps` does NOT stamp `''` on
+    // fresh slash-insert, leaving the key absent so the gear nudge fires
+    // until the author types alt text OR explicitly writes `alt=""` for the
+    // decorative opt-in. Regressing to `required: false` or `defaultValue: ''`
+    // silently re-allows shipping images without an alt-text decision —
+    // breaks the WCAG-1.1.1 enforcement for the alt-text gear nudge.
     const img = builtInComponents.find((m) => m.name === 'img');
     const alt = img?.props.find((p) => p.name === 'alt');
     expect(alt).toBeDefined();
@@ -255,6 +357,13 @@ describe('builtInComponents manifest', () => {
   });
 
   test('CommonMarkImage.alt inherits required:true via htmlImgProps[1] identity-share', () => {
+    // CommonMarkImage's prop list reuses the same htmlImgProps[1] object as
+    // img's; both descriptors see the same `alt` PropDef instance. A future
+    // refactor that breaks the identity-share (e.g., spreads `{...alt}` into
+    // a new object) would silently let CommonMark `<img>` ship without a
+    // required-flag while JSX `<img>` retains it. Pin the inheritance via
+    // `Object.is` so a spread-into-fresh-object preserves the shape but
+    // FAILS the identity check loudly — a shape-only assertion would slip.
     const img = builtInComponents.find((m) => m.name === 'img');
     const cmi = builtInComponents.find((m) => m.name === 'CommonMarkImage');
     const imgAlt = img?.props.find((p) => p.name === 'alt');
@@ -262,11 +371,23 @@ describe('builtInComponents manifest', () => {
     expect(imgAlt).toBeDefined();
     expect(cmiAlt).toBeDefined();
     expect(Object.is(imgAlt, cmiAlt)).toBe(true);
+    // Shape pins (defense-in-depth — survive even if identity check is later
+    // intentionally relaxed; these are the WCAG-1.1.1 contract regardless).
     expect(cmiAlt?.required).toBe(true);
     expect(cmiAlt && 'defaultValue' in cmiAlt).toBe(false);
   });
 
   test('CommonMarkImage compat exposes exactly src + alt + title (no align)', () => {
+    // The index-stability contract documented in `built-ins.ts`'s
+    // `htmlImgProps` index map: `align` was appended at index `[12]` so
+    // identity-shared `htmlImgProps[N]` references in
+    // `commonMarkImageProps` (indices [0], [1], [7] → src, alt, title)
+    // stay stable. CommonMark `![alt](src "title")` syntax has no
+    // alignment surface, so the compat must NOT include `align`. A future
+    // refactor that moves `align` to an earlier index would silently
+    // shift `htmlImgProps[7]` away from `title`, breaking CommonMark
+    // image title round-tripping — this test fails loud when that
+    // happens.
     const cmi = builtInComponents.find((m) => m.name === 'CommonMarkImage');
     expect(cmi).toBeDefined();
     if (!cmi) return;
@@ -289,18 +410,28 @@ describe('builtInComponents manifest', () => {
   });
 
   test('img drops the `zoom` and `caption` props (Frame v2 will host)', () => {
+    // Greenfield pivot: zoom is now always-on inside the Image React
+    // component; caption belongs on a compositional Frame wrapper.
     const img = builtInComponents.find((m) => m.name === 'img');
     expect(img?.props.find((p) => p.name === 'zoom')).toBeUndefined();
     expect(img?.props.find((p) => p.name === 'caption')).toBeUndefined();
   });
 
   test('img stays `isSelfClosing: true` (no children slot)', () => {
+    // The CommonMark image bridge requires the canonical descriptor
+    // to declare `hasChildren: false` + `isSelfClosing: true` so the
+    // promotion path can map paragraph>image into a leaf descriptor cleanly.
     const img = builtInComponents.find((m) => m.name === 'img');
     expect(img?.hasChildren).toBe(false);
     expect(img?.isSelfClosing).toBe(true);
   });
 
   test('video exposes the 12-prop HTML-native surface (2 common + 10 advanced)', () => {
+    // Lowercase media canonical pivot. Adds `width` / `height` (today's
+    // canonical lacked them); HTML-attr lowercase names (`autoplay`,
+    // `playsinline`) so the rendered MDX matches the spec exactly. `align`
+    // is present for image parity (mirror htmlImgProps[12]).
+    // Order-insensitive — a future reshuffle should not break this guard.
     const video = builtInComponents.find((m) => m.name === 'video');
     expect(video).toBeDefined();
     if (!video) return;
@@ -324,16 +455,42 @@ describe('builtInComponents manifest', () => {
   });
 
   test('video.align mirrors img.align (PRD-6822 parity)', () => {
+    // Video joined the alignment-bearing descriptor set so
+    // the chrome-bar buttons and floating-PropPanel anchor behave the
+    // same way for video as for img. The contract is "literal parity" —
+    // every field on img.align must be mirrored on video.align so the
+    // wrapper-level `data-align` write path, the CSS `text-align`
+    // rules, and the bubble-menu enum-fallback all see exactly the
+    // same PropDef. Read both descriptors and compare structurally
+    // rather than hardcoding the shape — a future change to
+    // img.align (a fourth enum value, a description tweak, dropping
+    // `omitOnDefault`) would otherwise silently drift video.align
+    // while this guard stayed green.
     const img = builtInComponents.find((m) => m.name === 'img');
     const video = builtInComponents.find((m) => m.name === 'video');
     const imgAlign = img?.props.find((p) => p.name === 'align');
     const videoAlign = video?.props.find((p) => p.name === 'align');
     expect(imgAlign).toBeDefined();
     expect(videoAlign).toBeDefined();
+    // Literal equality — every field (type, enumValues, defaultValue,
+    // omitOnDefault, required, description, etc.) must match. No
+    // identity-share (the two PropDefs are intentionally distinct
+    // objects on their respective `htmlImgProps` / `htmlVideoProps`
+    // arrays) — `.toEqual` compares structurally, which is the
+    // contract we want. Picks up the `hidden: true` consolidation
+    // automatically: if it's dropped from one but not the other, this
+    // structural compare fails loudly before the alignment surface drifts.
     expect(videoAlign).toEqual(imgAlign);
   });
 
   test('Embed.align mirrors img.align (single alignment surface — bubble menu)', () => {
+    // Embed joined the alignable descriptor set so an iframe embed
+    // composes with the same `text-align` wrapper rule the img / video
+    // alignment buttons drive. The literal-equality check pins the
+    // `hidden: true` consolidation alongside the enum shape — any drift
+    // (drop the flag, change enum order, mutate defaultValue) fails
+    // here. Without this pin, an `align` Select could silently re-
+    // appear in PropPanel for Embed while img / video stayed clean.
     const img = builtInComponents.find((m) => m.name === 'img');
     const embed = builtInComponents.find((m) => m.name === 'Embed');
     const imgAlign = img?.props.find((p) => p.name === 'align');
@@ -344,6 +501,10 @@ describe('builtInComponents manifest', () => {
   });
 
   test('video has `controls` as a boolean with `true` default', () => {
+    // The default matches browser HTML5 authoring intuition — a video
+    // inserted via slash-menu renders with controls visible. Authors who
+    // want a chrome-less video (background loop, hero autoplay) set
+    // controls={false} explicitly.
     const video = builtInComponents.find((m) => m.name === 'video');
     const controls = video?.props.find((p) => p.name === 'controls');
     expect(controls).toBeDefined();
@@ -367,18 +528,27 @@ describe('builtInComponents manifest', () => {
   });
 
   test('video is a self-closing leaf (no PM children)', () => {
+    // HTML5 `<track>` / `<source>` require direct-child placement under
+    // `<video>`, but PM NodeViews mandate a wrapper DOM element — the two
+    // contracts are structurally incompatible. Authors who need captions /
+    // codec fallback write raw `<video>` + `<track>` HTML in MDX, which
+    // flows through rawMdxFallback.
     const video = builtInComponents.find((m) => m.name === 'video');
     expect(video?.hasChildren).toBe(false);
     expect(video?.isSelfClosing).toBe(true);
   });
 
   test('video has no `start` prop (matches Mintlify / Fumadocs)', () => {
+    // Runtime seek is not a persisted authoring concern.
     const video = builtInComponents.find((m) => m.name === 'video');
     const start = video?.props.find((p) => p.name === 'start');
     expect(start).toBeUndefined();
   });
 
   test('audio exposes the 7-prop HTML-native surface (1 common + 6 advanced)', () => {
+    // Lowercase media canonical pivot. `controls` is now an explicit prop
+    // (default true) — Audio.tsx no longer hardcodes always-on; authors who
+    // want a chrome-less audio set controls={false} from the descriptor.
     const audio = builtInComponents.find((m) => m.name === 'audio');
     expect(audio).toBeDefined();
     if (!audio) return;
@@ -407,6 +577,8 @@ describe('builtInComponents manifest', () => {
   });
 
   test('audio has `controls` as a boolean with `true` default (was hardcoded always-on)', () => {
+    // Lowercase pivot promotes controls to an explicit prop. Default true
+    // preserves the prior always-on behavior for the common case.
     const audio = builtInComponents.find((m) => m.name === 'audio');
     const controls = audio?.props.find((p) => p.name === 'controls');
     expect(controls).toBeDefined();
@@ -418,6 +590,8 @@ describe('builtInComponents manifest', () => {
   });
 
   test('Accordion exposes the 6-prop FR-5 surface', () => {
+    // Accordion has a 6-prop shape — standalone
+    // (no `variant`; renamed from Toggle). Order-insensitive.
     const accordion = builtInComponents.find((m) => m.name === 'Accordion');
     expect(accordion).toBeDefined();
     if (!accordion) return;
@@ -426,6 +600,8 @@ describe('builtInComponents manifest', () => {
   });
 
   test('Accordion has `title` as a required string', () => {
+    // `title` is the only required prop — ensures a freshly-inserted Accordion
+    // always has a visible affordance in the summary.
     const accordion = builtInComponents.find((m) => m.name === 'Accordion');
     const title = accordion?.props.find((p) => p.name === 'title');
     expect(title).toBeDefined();
@@ -434,6 +610,8 @@ describe('builtInComponents manifest', () => {
   });
 
   test('Accordion has `defaultOpen` as a boolean with `false` default', () => {
+    // Defaults to closed so slash-menu insertions don't immediately dominate
+    // page layout. Authors flip true for sections they want expanded up front.
     const accordion = builtInComponents.find((m) => m.name === 'Accordion');
     const defaultOpen = accordion?.props.find((p) => p.name === 'defaultOpen');
     expect(defaultOpen).toBeDefined();
@@ -445,18 +623,31 @@ describe('builtInComponents manifest', () => {
   });
 
   test('Accordion has `hasChildren: true` and no `isSelfClosing` (FR-5)', () => {
+    // Accordion body is a content hole — the descriptor MUST
+    // declare hasChildren: true so the NodeView mounts a NodeViewContent
+    // slot. Flipping to self-closing would strip the body on re-serialize.
     const accordion = builtInComponents.find((m) => m.name === 'Accordion');
     expect(accordion?.hasChildren).toBe(true);
     expect(accordion?.isSelfClosing).toBeUndefined();
   });
 
   test('Accordion has no `variant` prop (D-MF14 — NG30 preserves Notion color-map path)', () => {
+    // The research-recommended 7-prop descriptor included a `variant`
+    // enum absorbing Notion's color map (default/gray/brown/_background) —
+    // those come from the de-prioritized Notion audience. Dropping now (when
+    // nothing consumes it) avoids permanent lock-in under precedent #9. The
+    // Notion color-map absorption path is preserved. Schema-add-only makes
+    // extension free later.
     const accordion = builtInComponents.find((m) => m.name === 'Accordion');
     const variant = accordion?.props.find((p) => p.name === 'variant');
     expect(variant).toBeUndefined();
   });
 
   test('Accordion has no `emptyChildName` (D-MF16 — ships standalone, not compound)', () => {
+    // Accordion ships standalone, not as a compound parent. The
+    // foundation does NOT require an `<Accordions>` parent wrapper —
+    // diverges from Fumadocs's Radix-requires-parent pattern. A future
+    // compound tier could serve grouped-UX demand; standalone stays first.
     const accordion = builtInComponents.find((m) => m.name === 'Accordion');
     expect(accordion?.emptyChildName).toBeUndefined();
   });
@@ -477,6 +668,10 @@ describe('builtInComponents manifest', () => {
     expect(formula?.required).toBe(true);
     if (formula?.type === 'string') {
       expect(formula.autoFocus).toBe(true);
+      // PropPanel renders this as a CodeMirror editor with stex (LaTeX)
+      // syntax highlighting + line numbers — multi-line `\begin{align}…`
+      // and matrix-heavy formulas no longer collapse into a single-line
+      // input. See `CodeMirrorPropInput`.
       expect(formula.language).toBe('latex');
     }
   });
@@ -494,6 +689,9 @@ describe('builtInComponents manifest', () => {
   });
 
   test('MermaidFence exposes the 1-prop fence surface (chart only)', () => {
+    // Fence-only authoring: `id` and `theme` are not on the descriptor
+    // because they aren't expressible in ` ```mermaid ` fence syntax.
+    // The descriptor's serialize emits the fence on dirty save.
     const mermaid = builtInComponents.find((m) => m.name === 'MermaidFence');
     expect(mermaid).toBeDefined();
     if (!mermaid) return;
@@ -502,6 +700,15 @@ describe('builtInComponents manifest', () => {
   });
 
   test('MermaidFence keeps `chart` in the descriptor schema but hides it from PropPanel', () => {
+    // The chart prop stays declared so serialization, MCP `palette`
+    // queries, and the build-registry JSDoc extractor keep working off the
+    // schema. `hidden: true` is what suppresses the PropPanel UI — and
+    // because chart is the descriptor's only prop, the chrome `gear` icon
+    // on the node-view falls off too (`hasEditableProps` returns false in
+    // `JsxComponentView`). The canonical authoring surface for Mermaid is
+    // the dedicated fullscreen "Edit source" pen-icon modal
+    // (`CodePreviewEditModal`) — wired off the `editableSource` predicate
+    // — plus direct ```mermaid fence editing in source mode.
     const mermaid = builtInComponents.find((m) => m.name === 'MermaidFence');
     const chart = mermaid?.props.find((p) => p.name === 'chart');
     expect(chart).toBeDefined();
@@ -511,6 +718,10 @@ describe('builtInComponents manifest', () => {
   });
 
   test('MermaidFence has no editable props — chrome `gear` icon is suppressed', () => {
+    // Mirrors `hasEditableProps` in `JsxComponentView` — every prop is
+    // either `hidden` or `type === 'reactnode'`. Locks the gear-icon
+    // suppression at the descriptor layer so the node-view doesn't grow
+    // an inline PropPanel button that opens an empty popover.
     const mermaid = builtInComponents.find((m) => m.name === 'MermaidFence');
     const editable = mermaid?.props.some(
       (p) => !('hidden' in p && p.hidden) && p.type !== 'reactnode',
@@ -525,6 +736,9 @@ describe('builtInComponents manifest', () => {
   });
 
   test('MermaidFence keeps `displayName: "Mermaid"` (user-facing label unchanged)', () => {
+    // The descriptor's AST node name is `MermaidFence` (so `<Mermaid />`
+    // JSX doesn't match), but the slash menu + PropPanel still show
+    // "Mermaid" so the rename is invisible to end users.
     const mermaid = builtInComponents.find((m) => m.name === 'MermaidFence');
     expect(mermaid?.displayName).toBe('Mermaid');
   });
@@ -553,6 +767,8 @@ describe('builtInComponents manifest', () => {
     expect(mirrorSource).toBeDefined();
     if (!mirrorSource) return;
     expect(mirrorSource.hasChildren).toBe(true);
+    // Container components don't declare isSelfClosing (the JSX-emit path
+    // emits `<MirrorSource id="…">…</MirrorSource>`, not `<MirrorSource />`).
     expect(mirrorSource.isSelfClosing).toBeUndefined();
     const propNames = mirrorSource.props.map((p) => p.name).sort();
     expect(propNames).toEqual(['children', 'id']);
@@ -565,6 +781,10 @@ describe('builtInComponents manifest', () => {
   });
 
   test('MermaidFence serializes to a ` ```mermaid ` code fence (not JSX)', () => {
+    // The fence-only contract: the canonical descriptor emits a `code`
+    // mdast node with `lang: 'mermaid'` so remark-stringify produces a
+    // ` ```mermaid …``` ` fence on dirty save. Pristine bytes are
+    // preserved by Phase B's position-slice walker (source-raw).
     const mermaid = builtInComponents.find((m) => m.name === 'MermaidFence');
     expect(mermaid).toBeDefined();
     if (!mermaid) return;
@@ -602,6 +822,13 @@ describe('builtInComponents manifest', () => {
 });
 
 describe('placeholder contract — media descriptor src prop invariants', () => {
+  // The placeholder feature depends on a precise contract on each media
+  // descriptor's `src` prop. If a future change drops `defaultValue: ''`, removes
+  // `autoFocus: true`, or marks `src` as `advanced`, the placeholder pill
+  // silently stops rendering and users get the broken-source icon back.
+  // Downstream tests (the resolve-descriptor-placeholder unit test, e2e) would
+  // catch the regression eventually, but a manifest-level guard here flags
+  // it at `bun test` time with descriptor-named error messages.
   for (const name of ['img', 'video', 'audio', 'Pdf', 'File', 'Embed'] as const) {
     test(`${name}.src satisfies the placeholder contract`, () => {
       const meta = builtInComponents.find((m) => m.name === name);
@@ -626,9 +853,19 @@ describe('placeholder contract — media descriptor src prop invariants', () => 
 });
 
 describe('common/advanced split per descriptor', () => {
+  // Locks down the exact prop classification. The
+  // non-advanced (default-visible) section is calibrated to props the typical
+  // author actually picks (≥20% of inserts). A future change that demotes or
+  // promotes a prop must update this test, surfacing the design decision
+  // rather than silently changing the PropPanel layout.
   type Split = { common: string[]; advanced: string[] };
   const expected: Record<string, Split> = {
     img: {
+      // `align` is appended at the end of `htmlImgProps` (so existing
+      // identity-shared `htmlImgProps[N]` references in
+      // `commonMarkImageProps` stay stable) but is NOT marked advanced
+      // — alignment is a frequent author-tweak that surfaces in the
+      // bubble-menu and so should appear flat in the PropPanel too.
       common: ['src', 'alt', 'align'],
       advanced: [
         'width',
@@ -644,6 +881,9 @@ describe('common/advanced split per descriptor', () => {
       ],
     },
     video: {
+      // `align` is in common — same shape as img + Embed
+      // so chrome-bar alignment buttons fire and PropPanel surfaces the
+      // dropdown alongside `src` in the basic form.
       common: ['src', 'align'],
       advanced: [
         'controls',
@@ -675,6 +915,8 @@ describe('common/advanced split per descriptor', () => {
       advanced: ['id', 'language'],
     },
     MermaidFence: {
+      // Fence-only: single `chart` prop. `id` and `theme` aren't
+      // expressible in fence syntax, so they don't exist on the descriptor.
       common: ['chart'],
       advanced: [],
     },
@@ -683,10 +925,24 @@ describe('common/advanced split per descriptor', () => {
       advanced: ['title', 'anchor'],
     },
     File: {
+      // `File` is intentionally a one-prop canonical. The user-facing
+      // shape is the `![[file.ext]]` wikilink (consumed by `WikiEmbedFile`
+      // compat → translates to renderer); JSX `<File>` is filtered from
+      // the slash menu and exists only as the dispatch target so the
+      // compat has somewhere to render through. Display props (`name` /
+      // `size`) are passed by the compat at translateProps time, NOT
+      // declared here — declaring them would surface them in PropPanel
+      // for hand-authored `<File>` and emit serializer noise.
       common: ['src'],
       advanced: [],
     },
     Embed: {
+      // `src` (required URL), `title` (a11y label — kept in common
+      // because nothing auto-derives it), and `align` (matches the
+      // chrome-bar alignment trio) are the typical-author surface.
+      // `width` / `height` are advanced because the resize-handle
+      // gesture writes them automatically; PropPanel input is the
+      // power-user escape hatch.
       common: ['src', 'title', 'align'],
       advanced: ['width', 'height'],
     },
@@ -708,7 +964,42 @@ describe('common/advanced split per descriptor', () => {
     });
   }
 
+  // ─── Schema-flip-drift meta-test (parallel to precedent #47) ─────────
+  //
+  // The substrate-vocabulary drift guard (precedent #47) catches test
+  // fixtures that reference substrate names absent from the registry.
+  // This meta-test catches the inverse class: descriptor schema drift
+  // that silently regresses the key-absence predicate (precedent #46) by
+  // re-introducing `defaultValue: ''` on a required string prop.
+  //
+  // The tri-state nudge contract requires: required string props that
+  // opt into the chrome-bar gear nudge MUST declare `required: true` AND
+  // omit `defaultValue` (so `getDefaultProps` leaves the key absent on
+  // slash-insert and the parser preserves "key absent" through markdown
+  // round-trip). A future descriptor — or a future schema flip on an
+  // existing one — that adds `defaultValue: ''` would silently disable
+  // the gear nudge for that prop (the predicate observes the stamped
+  // empty string and concludes "satisfied"). That's the exact regression
+  // this guard prevents from re-entering through any other required
+  // string descriptor.
   test('no required string prop declares `defaultValue: ""` (defeats key-absence predicate)', () => {
+    // Documented exception: `src` on media descriptors uses the upload-flow
+    // pattern — slash-insert opens an upload modal (`uploadAndInsert` in
+    // `image-upload/index.ts`) that fills `src` BEFORE the component lands
+    // in the doc. The empty-string default is a transient parser state for
+    // descriptors that haven't yet been bridged from their slash-insert
+    // dialog; the gear-nudge pattern (`alt` per precedent #46) is a
+    // distinct UX surface for that prop class. Both patterns coexist: the
+    // exception itself is the precedent. New required-string descriptors
+    // must EITHER drop `defaultValue` (gear-nudge UX) OR set a meaningful
+    // non-empty default (default-fills-itself); `defaultValue: ""` on a
+    // required string prop without an upload-flow ergonomic is the bug
+    // class this guard catches.
+    // Descriptor+prop tuples — exemption is targeted at known media
+    // descriptors that use the slash-insert upload modal. Future `src`
+    // props on non-upload descriptors (e.g., a hypothetical Script or
+    // Link descriptor) are NOT auto-exempted; their absence from this
+    // set will trigger the offender list and force explicit review.
     const EXEMPT_BY_UPLOAD_FLOW = new Set<string>([
       'img.src',
       'video.src',
@@ -745,6 +1036,14 @@ describe('common/advanced split per descriptor', () => {
     expect(offenders).toHaveLength(0);
   });
 
+  // Forward-looking sibling: required string props with NO defaultValue
+  // are the canonical shape for the gear-nudge contract. This positive
+  // pin asserts the set of required-no-default props is non-empty —
+  // i.e., the registry has at least one descriptor exercising precedent
+  // #45's tri-state pattern. Acts as a anti-vacuousness check for the
+  // negative guard above (without this, a future refactor that removes
+  // ALL required-no-default props would silently make the negative guard
+  // vacuously pass).
   test('at least one descriptor exercises the required-no-defaultValue tri-state contract', () => {
     let count = 0;
     for (const d of builtInComponents) {
@@ -754,6 +1053,11 @@ describe('common/advanced split per descriptor', () => {
         }
       }
     }
+    // Current adopters (≥5): img.alt, CommonMarkImage.alt (identity-shared),
+    // Accordion.title, Math.formula, MermaidFence.chart. The ≥ 2 floor is
+    // conservative — it survives a future refactor that drops a few adopters
+    // (e.g., drops the identity-share without dropping the contract entirely)
+    // without falsely passing if ALL adopters are removed.
     expect(count).toBeGreaterThanOrEqual(2);
   });
 });

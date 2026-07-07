@@ -53,9 +53,11 @@ describe('VectorCache', () => {
     await c.init();
     const hash = hashContent('shared body');
     c.store('page:a', hash, 1, [vec(1, 1, 1, 1)]);
+    // A different doc with the same content reuses the blob without embedding.
     expect(c.link('page:b', hash, 2)).toBe(true);
     expect(c.getVectors('page:b')).toBeDefined();
     await c.persist();
+    // Only one blob on disk for the shared hash.
     const blobs = readdirSync(join(dir, 'vec'));
     expect(blobs).toEqual([`${hash}.bin`]);
   });
@@ -83,6 +85,8 @@ describe('VectorCache', () => {
     await a.init();
     a.store('page:a', hashContent('x'), 1, [vec(1, 0, 0, 0)]);
     await a.persist();
+    // Same model + dims + chunking, but a different provider produces different
+    // vectors — the cache must not score one against the other.
     const b = makeCache({ providerId: 'https://my-azure.openai.azure.com/v1' });
     await b.init();
     expect(b.getVectors('page:a')).toBeUndefined();
@@ -109,6 +113,7 @@ describe('VectorCache', () => {
     await c.persist();
     expect(readdirSync(join(dir, 'vec')).length).toBe(2);
 
+    // doc-b removed from the corpus.
     c.retain(new Set(['page:a']));
     await c.persist();
     expect(c.getVectors('page:b')).toBeUndefined();

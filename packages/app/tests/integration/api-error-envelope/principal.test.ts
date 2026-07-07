@@ -1,3 +1,12 @@
+/**
+ * Per-handler narrow-integration smoke test for `handlePrincipal`.
+ *
+ *   - happy path: 200, application/json, body parses against
+ *     `PrincipalSuccessSchema`.
+ *   - non-loopback Host → `urn:ok:error:host-not-allowed`.
+ *   - method-not-allowed on POST → `urn:ok:error:method-not-allowed`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PrincipalSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

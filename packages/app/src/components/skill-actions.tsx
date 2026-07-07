@@ -37,17 +37,42 @@ import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { duplicateSkill, installSkill, uninstallSkill } from '@/lib/skills-api';
 import { useWorkspace } from '@/lib/use-workspace';
 
+/**
+ * The shared per-skill action surface, reused by every place that lists a skill
+ * (the Settings manager rows and the file-sidebar Skills section). One owner of
+ * the install/uninstall side effects + the delete/history dialogs means the two
+ * surfaces stay behaviorally identical instead of re-deriving the flow.
+ *
+ * `useSkillActions` owns the stateful pieces (install-in-flight name, the
+ * delete + history dialog targets) and returns the handlers plus a `dialogs`
+ * node the caller mounts once. `SkillActionMenuItems` renders the dropdown rows
+ * so the menu reads the same wherever it appears. `onEdit` stays per-surface
+ * (Settings closes its dialog; the sidebar just opens the editor) and is passed
+ * in by the caller.
+ */
+
 export interface SkillActions {
+  /** Name of the skill whose install/uninstall POST is in flight, or null. */
   installingName: string | null;
+  /**
+   * Install + surface the result; the caller may use it to reflect new state.
+   * `targets` sets the exact editors the skill is installed into (the per-editor
+   * menu) — omit to install into the project's configured editors.
+   */
   install: (
     skill: SkillsListEntry,
     targets?: readonly string[],
   ) => Promise<Awaited<ReturnType<typeof installSkill>>>;
   uninstall: (skill: SkillsListEntry) => Promise<Awaited<ReturnType<typeof uninstallSkill>>>;
+  /** Duplicate a skill into `<name>-copy` (existing names avoid collisions). */
   duplicate: (skill: SkillsListEntry, existingNames: ReadonlySet<string>) => Promise<void>;
+  /** Open the (reused) delete-confirm dialog for a skill. */
   requestDelete: (skill: SkillsListEntry) => void;
+  /** Open the update-confirm dialog for a pack skill (refresh from bundle). */
   requestUpdate: (skill: SkillsListEntry) => void;
+  /** Open the rename dialog for a skill; `existingNames` drives its collision check. */
   requestRename: (skill: SkillsListEntry, existingNames: ReadonlySet<string>) => void;
+  /** Mount once per surface — the delete/rename dialogs these actions drive. */
   dialogs: ReactNode;
 }
 
@@ -73,21 +98,33 @@ export function useSkillActions(): SkillActions {
       toast.error(t`Couldn't install skill: ${result.error}`);
       return result;
     }
+    // Report the DELTA vs the prior host set, not just the final set — so a
+    // per-editor uncheck reads as an uninstall ("Uninstalled from Cursor")
+    // instead of the confusing "Installed into <remaining>". Install is
+    // set-exact, so the diff is the true effect of this click.
     const label = (ids: readonly string[]) =>
       ids.map((id) => EDITOR_LABELS[id as keyof typeof EDITOR_LABELS] ?? id).join(', ');
     const now = new Set(result.hosts);
     const added = result.hosts.filter((h) => !skill.hosts.includes(h));
     const removed = skill.hosts.filter((h) => !now.has(h));
 
+    // Switch on the machine-readable warning CODE, not the English message
+    // (`warnings[i]` is the display text for `warningCodes[i]`). The server
+    // owns the wording; we own the routing.
     const messageFor = (code: SkillInstallWarningCode): string | undefined => {
       const i = result.warningCodes.indexOf(code);
       return i >= 0 ? result.warnings[i] : undefined;
     };
+    // `no-targets` means the install projected nowhere — surface it INSTEAD of a
+    // success (nothing changed).
     const noTargetsWarning = messageFor('no-targets');
     if (noTargetsWarning) {
       toast.warning(noTargetsWarning);
       return result;
     }
+    // The executable-scripts security caution is only relevant when you ADD the
+    // skill to an editor — never on a pure uninstall (which removes it). Shown as
+    // a second toast alongside the success so the user sees both.
     if (added.length > 0) {
       const scriptsWarning = messageFor('scripts-present');
       if (scriptsWarning) toast.warning(scriptsWarning);
@@ -169,6 +206,11 @@ export function useSkillActions(): SkillActions {
 
 const EMPTY_NAME_SET: ReadonlySet<string> = new Set();
 
+/**
+ * The dropdown rows for a single skill. Rendered inside a `DropdownMenuContent`
+ * by each surface. `onInstall` is optional: the Settings row omits it (it shows
+ * a dedicated Install button), while the sidebar 3-dot menu includes it.
+ */
 export function SkillActionMenuItems({
   skill,
   onEdit,
@@ -208,6 +250,15 @@ export function SkillActionMenuItems({
   );
 }
 
+/**
+ * The full per-skill context menu for the file-sidebar Skills rows. Mirrors a
+ * file row's menu (Reveal in Finder / Open with AI / Open in Terminal / Copy
+ * Path / Duplicate / Rename / Delete) with Install/Uninstall in place of "Hide".
+ * Reuses the file menu's own primitives — the desktop bridge (`showItemInFolder`),
+ * `OpenInAgentContextSubmenu` (which carries the docked-terminal launch), and the
+ * clipboard adapter — plus `useSkillActions` for the install/duplicate/rename/delete flow.
+ * No "Edit" row: clicking the sidebar row opens the editor, like a file.
+ */
 export function SkillContextMenuItems({
   skill,
   actions,
@@ -221,6 +272,8 @@ export function SkillContextMenuItems({
   const workspace = useWorkspace();
   const installStates = useInstalledAgents().states;
   const { dispatch } = useHandoffDispatch();
+  // Desktop-only rows (Reveal / Terminal) render only in OK Desktop; the bridge
+  // is absent on the web host, like the file menu's reveal row.
   const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
   const absolutePath = skill.absolutePath;
 

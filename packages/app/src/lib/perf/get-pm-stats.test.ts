@@ -1,8 +1,22 @@
+/**
+ * `getPmStats(editor)` — unit tests.
+ *
+ * Construct an `EditorState` directly with a custom schema (mirroring the
+ * pattern in `mark-identity-decoration.test.ts`) and pass a structurally-
+ * typed `{state, view}` stub — the helper accepts an `EditorLike` shape so
+ * unit tests don't need a live `Editor` mount with DOM.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { getPmStats, type PmStats } from './get-pm-stats';
+
+// ---------------------------------------------------------------------------
+// Test schema — the same minimal shape used elsewhere in this package's
+// pure PM-state tests.
+// ---------------------------------------------------------------------------
 
 const schema = new Schema({
   nodes: {
@@ -51,12 +65,20 @@ function makeEditor(state: EditorState, view?: ViewStub) {
   return { state, view: view ?? {} };
 }
 
+// ---------------------------------------------------------------------------
+// Empty doc
+// ---------------------------------------------------------------------------
+
 describe('getPmStats — empty doc', () => {
   test('paragraph-only doc with no text content', () => {
     const doc = schema.node('doc', null, [schema.node('paragraph', null, [])]);
     const state = EditorState.create({ doc });
+    // Type-annotated to keep the public PmStats export grounded — knip's
+    // `--unsafe --write` strips exports with zero importers; this annotation
+    // ensures the type is referenced and the export survives auto-cleanup.
     const stats: PmStats = getPmStats(makeEditor(state));
 
+    // descendants() walks the single empty paragraph but its child fragment is empty.
     expect(stats.nodeCount).toBe(1);
     expect(stats.nodeCountByType).toEqual({ paragraph: 1 });
     expect(stats.markCount).toBe(0);
@@ -67,17 +89,26 @@ describe('getPmStats — empty doc', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Single-node doc
+// ---------------------------------------------------------------------------
+
 describe('getPmStats — single-node doc', () => {
   test('one paragraph with plain text', () => {
     const doc = buildDoc([{ type: 'paragraph', runs: [{ text: 'hello' }] }]);
     const state = EditorState.create({ doc });
     const stats = getPmStats(makeEditor(state));
 
+    // Two descendants: paragraph + text node.
     expect(stats.nodeCount).toBe(2);
     expect(stats.nodeCountByType).toEqual({ paragraph: 1, text: 1 });
     expect(stats.markCount).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Multi-mark doc — verifies markCount AND markCountByType
+// ---------------------------------------------------------------------------
 
 describe('getPmStats — multi-mark doc', () => {
   test('text with one link mark contributes 1 to markCount', () => {
@@ -92,6 +123,7 @@ describe('getPmStats — multi-mark doc', () => {
   });
 
   test('text with stacked marks contributes one count per mark', () => {
+    // strong + emphasis stacked on the same text node — both should count.
     const doc = buildDoc([
       {
         type: 'paragraph',
@@ -106,6 +138,8 @@ describe('getPmStats — multi-mark doc', () => {
   });
 
   test('marks across split text nodes count per text-node-instance', () => {
+    // PM splits text nodes when marks differ between adjacent runs. A "single"
+    // logical link sliced into two text nodes registers as two mark instances.
     const doc = buildDoc([
       {
         type: 'paragraph',
@@ -139,6 +173,10 @@ describe('getPmStats — multi-mark doc', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// nodeViewCount — verified via stub since real NodeView mount needs DOM
+// ---------------------------------------------------------------------------
+
 describe('getPmStats — nodeViewCount', () => {
   test('view with two registered NodeView constructors', () => {
     const doc = buildDoc([{ type: 'paragraph', runs: [{ text: 'x' }] }]);
@@ -166,11 +204,16 @@ describe('getPmStats — nodeViewCount', () => {
   test('omitted view → zero', () => {
     const doc = buildDoc([{ type: 'paragraph', runs: [{ text: 'x' }] }]);
     const state = EditorState.create({ doc });
+    // EditorLike permits view to be undefined; helper should not throw.
     const stats = getPmStats({ state });
 
     expect(stats.nodeViewCount).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// decorationCount + decorationCountByPlugin — multiple plugins
+// ---------------------------------------------------------------------------
 
 const keyedPluginA = new PluginKey('decoTestA');
 const keyedPluginB = new PluginKey('decoTestB');
@@ -222,7 +265,9 @@ describe('getPmStats — decoration counts', () => {
     });
     const stats = getPmStats(makeEditor(state));
 
+    // Two text nodes → two decorations.
     expect(stats.decorationCount).toBe(2);
+    // Keyed plugins surface their PluginKey name (with PM's internal counter suffix).
     const keyName = Object.keys(stats.decorationCountByPlugin)[0];
     expect(keyName?.startsWith('decoTestA')).toBe(true);
     expect(stats.decorationCountByPlugin[keyName as string]).toBe(2);
@@ -260,6 +305,9 @@ describe('getPmStats — decoration counts', () => {
     expect(stats.decorationCount).toBe(1);
     const keys = Object.keys(stats.decorationCountByPlugin);
     expect(keys.length).toBe(1);
+    // PM auto-generates `plugin$N` for keyless plugins; either that or the
+    // helper's `unkeyed-N` fallback is acceptable. The contract is "stable
+    // string identifier"; assert non-empty.
     const keyName = keys[0];
     expect(typeof keyName).toBe('string');
     expect((keyName as string).length).toBeGreaterThan(0);
@@ -302,6 +350,8 @@ describe('getPmStats — decoration counts', () => {
         },
       },
     });
+    // Combine with a working plugin to assert one buggy plugin doesn't take
+    // the whole probe down.
     const doc = buildDoc([{ type: 'paragraph', runs: [{ text: 'foo' }] }]);
     const state = EditorState.create({
       doc,
@@ -309,12 +359,19 @@ describe('getPmStats — decoration counts', () => {
     });
     const stats = getPmStats(makeEditor(state));
 
+    // Working plugin still counted, throwing plugin contributes 0.
     expect(stats.decorationCount).toBe(1);
     const keys = Object.keys(stats.decorationCountByPlugin);
     expect(keys.length).toBe(1);
     expect(keys[0]?.startsWith('decoTestA')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Combined — exercise the realistic shape (nodes + marks + nodeViews +
+// multiple decorations) so we have one sanity-check that the helper's
+// coordinated output is internally consistent.
+// ---------------------------------------------------------------------------
 
 describe('getPmStats — combined sanity', () => {
   test('realistic doc with marks + plugins + nodeViews matches expected counts', () => {
@@ -339,6 +396,7 @@ describe('getPmStats — combined sanity', () => {
       }),
     );
 
+    // 2 blocks + 3 text nodes = 5 nodes.
     expect(stats.nodeCount).toBe(5);
     expect(stats.nodeCountByType.heading).toBe(1);
     expect(stats.nodeCountByType.paragraph).toBe(1);
@@ -349,6 +407,7 @@ describe('getPmStats — combined sanity', () => {
 
     expect(stats.nodeViewCount).toBe(3);
 
+    // 3 text nodes × 2 plugins = 6 decorations.
     expect(stats.decorationCount).toBe(6);
     expect(Object.keys(stats.decorationCountByPlugin).length).toBe(2);
   });

@@ -1,4 +1,17 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+/**
+ * UpdateNotices — renderer side of the auto-updater notice surface.
+ *
+ * Mounts in the sidebar footer above the project switcher (see
+ * `FileSidebar.tsx` → `SidebarFooter`). Reads live notices from a module-level store via
+ * `useSyncExternalStore` — the IPC subscription lives OUTSIDE the React
+ * tree (see `lib/update-notices-store.ts`) so renderer remounts (theme
+ * toggle, sidebar resize, etc.) don't drop in-flight events.
+ *
+ * Rationale for sidebar placement over sonner overlays: the notices are
+ * "permanent until clicked" — a stable anchored location fits that intent
+ * better than a floating toast corner.
+ */
 
 import { useLingui } from '@lingui/react/macro';
 import { X } from 'lucide-react';
@@ -9,6 +22,11 @@ import { dismissNotice, getNoticesSnapshot, subscribeToNotices } from '@/lib/upd
 import { SubscribeCard } from './SubscribeCard';
 import type { UpdateNotice } from './UpdateNotices.shared';
 
+// Re-export the canonical copy + subscription surface for consumers that
+// import from `./UpdateNotices` (tests, future callers). The subscription
+// seams (`AddNoticeFn` / `DismissNoticeFn`) are intentionally NOT re-exported
+// — their types are internal to `attachUpdateSubscribers` and not part of
+// the public surface.
 export {
   addSchemaIncompatibilityNotice,
   appendErrorDetail,
@@ -31,6 +49,17 @@ export {
   WHATS_NEW_AUTO_DISMISS_MS,
 } from './UpdateNotices.shared';
 
+/**
+ * Renders a single notice card. Default layout is a single row (body
+ * text, action link, dismiss X). When `secondaryAction` is set the
+ * card switches to a stacked layout: body + dismiss on top, both
+ * action buttons inline below — accommodates Notice D's longer body
+ * + two-button decision without the actions wrapping awkwardly.
+ *
+ * `notice.dismissible === false` drops the X entirely (both layouts) —
+ * for terminal in-progress states like "Relaunching to install the
+ * update…" there is nothing to dismiss. Exported for render-test visibility.
+ */
 export function NoticeCard({ notice, onDismiss }: { notice: UpdateNotice; onDismiss: () => void }) {
   const { t } = useLingui();
   const tone =
@@ -117,6 +146,14 @@ export function NoticeCard({ notice, onDismiss }: { notice: UpdateNotice; onDism
   );
 }
 
+/**
+ * Pure selector: pick the single highest-priority (lowest `priority`
+ * number) notice from the store. Multiple armed states are mutually
+ * exclusive in practice (C = broken updater; A = pending install;
+ * B = just updated — A wouldn't arm at the same time as B for the same
+ * install), but the priority scheme handles the rare overlap cleanly.
+ * Exported for unit-test visibility.
+ */
 export function pickActiveNotice(notices: readonly UpdateNotice[]): UpdateNotice | null {
   if (notices.length === 0) return null;
   let active = notices[0];
@@ -128,10 +165,20 @@ export function pickActiveNotice(notices: readonly UpdateNotice[]): UpdateNotice
   return active;
 }
 
+/**
+ * Mount point for update notices. Subscribes to the module-level store
+ * via `useSyncExternalStore` and renders AT MOST ONE card — whichever
+ * notice has the lowest priority number. Dismissing reveals the next
+ * highest-priority notice if any are still armed. Safe to mount/unmount
+ * freely — subscriptions live in the store, not here.
+ */
 export function UpdateNotices(): ReactNode {
   const notices = useSyncExternalStore(subscribeToNotices, getNoticesSnapshot, getNoticesSnapshot);
   const active = pickActiveNotice(notices);
   if (!active) return null;
+  // A what's-new notice flagged `combinedSubscribe` renders as the combined
+  // release-notes + subscribe card (which owns its own dismissal + the
+  // subscribe-store side effects) instead of the plain one-line notice.
   if (active.combinedSubscribe && active.whatsNew) {
     return (
       <div data-testid="update-notices-list">
@@ -148,6 +195,8 @@ export function UpdateNotices(): ReactNode {
       <NoticeCard
         notice={active}
         onDismiss={() => {
+          // Dismiss locally for immediate feedback; the notice's own side-effect
+          // (e.g. what's-new telling main to clear every window) runs alongside.
           active.onDismiss?.();
           dismissNotice(active.id);
         }}

@@ -60,20 +60,38 @@ import {
   setSkillsManagement,
 } from '@/lib/skills-api';
 
+/**
+ * "Skills" section of the file sidebar — a skill is a FOLDER, browsable like the
+ * file tree above it: expand a skill to see everything it ships nested inside
+ * (`SKILL.md` + `scripts/` + `reference/` + assets). `SKILL.md` opens the skill
+ * editor (the same pipeline documents use); any other file reveals its text
+ * read-only in place (scripts are shown as text, never executed). Grouped by
+ * scope; built-in skills are intentionally not listed. Settings → Skills remains
+ * for config (which editors to install into).
+ */
 export function SkillsSidebarSection() {
   const { t } = useLingui();
   const state = useSkills();
   const { activeDocName } = useDocumentContext();
   const [newSkillOpen, setNewSkillOpen] = useState(false);
+  // Same install/uninstall/delete/history flow + dialogs the Settings list uses.
   const actions = useSkillActions();
 
   const skills = state.status === 'ready' ? state.data : [];
   const nameSets = skillNameSetsByScope(skills);
   const scopeLabel = useSkillScopeLabels();
 
+  // Per-scope accordion open-state. Closed by default, but a scope auto-opens
+  // when it holds the active skill — so a skill moved/opened INTO a scope is
+  // revealed instead of vanishing behind a collapsed header (the "moved but the
+  // dock didn't update" report). User intent (an explicit toggle) wins via the
+  // `?? autoOpen` fallback: once toggled, that scope stops auto-opening.
   const [openScopes, setOpenScopes] = useState<Record<string, boolean>>({});
 
   return (
+    // Collapsible like the Files tree: clicking the "Skills" header toggles the
+    // whole list. The `+` (New skill) stays an absolutely-positioned group action
+    // outside the trigger so it doesn't toggle the section.
     <Collapsible className="group/skills shrink-0">
       {/* `px-0` overrides the base `p-2`'s horizontal inset so the "Skills"
           header lands at the same 8px baseline as the Files section's project
@@ -104,10 +122,19 @@ export function SkillsSidebarSection() {
             ) : (
               SKILL_SCOPE_ORDER.filter((scope) => skills.some((s) => s.scope === scope)).map(
                 (scope) => {
+                  // Auto-open the scope that holds the active skill. This wins
+                  // over a stale manual toggle: a skill moved/opened INTO a scope
+                  // must be revealed, not stay hidden behind a header the user
+                  // happened to collapse earlier (the "moved a skill across
+                  // scopes and it vanished from the tree" report). Manual toggles
+                  // still govern the scopes that don't hold the active skill.
                   const holdsActive = skills.some(
                     (s) => s.scope === scope && skillLiveDocName(s.scope, s.name) === activeDocName,
                   );
                   return (
+                    // Each scope (Global / Project) is its own accordion, closed
+                    // by default — expanding Skills reveals the two scope headers,
+                    // and the user opens the one they want.
                     <Collapsible
                       key={scope}
                       className="group/scope"
@@ -154,6 +181,12 @@ export function SkillsSidebarSection() {
   );
 }
 
+/**
+ * One skill rendered as an expandable folder. Collapsed it reads as a row;
+ * expanded it lazy-loads the skill's bundled files and shows them as a nested
+ * tree. The skill's own `SKILL.md` is a synthetic top child that opens the
+ * editor; everything else is browsable file content.
+ */
 function SkillFolderItem({
   skill,
   activeDocName,
@@ -178,6 +211,9 @@ function SkillFolderItem({
             size="sm"
             isActive={active}
             className="h-6 text-[11px]"
+            // Right-click opens the same actions menu as the hover 3-dot button,
+            // matching the file tree's right-click affordance. preventDefault
+            // suppresses the native browser context menu so only the dropdown opens.
             onContextMenu={(e) => {
               e.preventDefault();
               setMenuOpen(true);
@@ -228,10 +264,13 @@ function SkillFolderItem({
   );
 }
 
+/** A skill's nested file tree node, built from the flat `scripts/run.py` paths. */
 interface FileNode {
   name: string;
   path: string;
+  /** Present for folders. */
   children?: FileNode[];
+  /** Present for files — inline text, or `null` for binary/oversize. */
   text?: string | null;
 }
 
@@ -256,6 +295,7 @@ function buildFileTree(files: readonly SkillBundledFile[]): FileNode[] {
   return root;
 }
 
+/** Folders first, then files; alphabetical within each. */
 function sortTree(nodes: FileNode[]): void {
   nodes.sort((a, b) => {
     const aFolder = a.children ? 0 : 1;
@@ -269,14 +309,29 @@ function sortTree(nodes: FileNode[]): void {
 function SkillFolderContents({ skill }: { skill: SkillsListEntry }) {
   const { t } = useLingui();
   const [files, setFiles] = useState<SkillBundledFile[] | null>(null);
+  // True once a bundle-files fetch failed. Without a terminal state, a failed
+  // fetch leaves `files === null` and the row shows "Loading" forever.
   const [loadFailed, setLoadFailed] = useState(false);
   const { openTarget } = useDocumentContext();
 
+  // Open a project-skill content doc as a PERSISTENT tab. `append` (not
+  // `replace-active`) so opening a second skill keeps the first open — skills are
+  // worked on side-by-side, unlike the file tree's single preview tab. `openTarget`
+  // still activates the newly-opened tab; `replaceHashWithoutNavigation` syncs the
+  // hash (bare `openDocument` bypasses the hash and a later nav effect steals focus).
   function openProjectDoc(docName: string) {
     openTarget({ kind: 'doc', target: docName, docName }, { tabBehavior: 'append' });
     replaceHashWithoutNavigation(hashFromDocName(docName));
   }
 
+  // Open a skill file. A PROJECT skill's `.md`/`.mdx` reference is a real
+  // content doc, so it opens EDITABLE in the normal editor (same as the file
+  // tree above). Everything else — global-scope bundle files of any type, and
+  // scripts of any scope — opens in a read-only viewer backed by the
+  // scope-aware `/api/skill-file` read. The content-dir asset server can't see
+  // a global skill (its files live under `~/.ok/skills/`, outside the project),
+  // so routing those through the asset path 404'd; the skill-file target reads
+  // the right store per scope.
   function openFile(filePath: string) {
     const dot = filePath.lastIndexOf('.');
     const ext = dot >= 0 ? filePath.slice(dot + 1).toLowerCase() : '';
@@ -306,6 +361,8 @@ function SkillFolderContents({ skill }: { skill: SkillsListEntry }) {
           setFiles(r.files);
           setLoadFailed(false);
         } else {
+          // Terminal state on failure: clear the spinner (empty list) and flag
+          // the error so the row doesn't hang on "Loading" indefinitely.
           setFiles([]);
           setLoadFailed(true);
         }
@@ -400,6 +457,8 @@ function FileTreeNode({
     );
   }
 
+  // Leaf file: opens read-only in the editor area (like clicking a file in the
+  // file tree above) — no cramped inline preview.
   return (
     <SidebarMenuSubItem>
       <SidebarMenuSubButton
@@ -416,6 +475,14 @@ function FileTreeNode({
   );
 }
 
+/**
+ * One-time import offer: when this project is undecided about skill management
+ * AND there are editor-dir skills OK could adopt, ask once. "Import" flips the
+ * project to OK-managed (server adopts them into `.ok/skills` + symlinks);
+ * "Not now" records the decline. Either way the choice persists per-machine, so
+ * the banner does not return. Skills already under `.ok/skills` are managed
+ * regardless and are not what this offers.
+ */
 function SkillImportPrompt() {
   const [state, setState] = useState<{ managed: boolean | null; importable: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -430,12 +497,16 @@ function SkillImportPrompt() {
     };
   }, []);
 
+  // Show only while undecided (managed === null) with something to import.
   if (!state || state.managed !== null || state.importable === 0) return null;
 
   const decide = async (manage: boolean) => {
     setBusy(true);
     const ok = await setSkillsManagement(manage);
     if (!ok) {
+      // PUT failed — the server never persisted the choice. Re-enable the
+      // buttons and leave the banner up so the user can retry, instead of
+      // dismissing it as a silent (false) success.
       setBusy(false);
       return;
     }

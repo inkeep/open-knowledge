@@ -160,11 +160,16 @@ describe('POST /api/git/checkout', () => {
       write(upstreamDir, 'remote.md', 'r\n');
       commitAll(upstreamDir, 'remote only');
       run(upstreamDir, 'git checkout -q main');
+      // simple-git's fetch refuses to push to a non-bare's checked-out branch,
+      // but we only fetch FROM upstream, so a regular clone-as-remote works.
+      // Clone into projectDir — pulls all branches into refs/remotes/origin/*
+      // but only checks out 'main' locally (so 'remote-only' is not local).
       rmSync(projectDir, { recursive: true, force: true });
       run(tmpRoot, `git clone -q ${upstreamDir} ${projectDir}`);
       run(projectDir, 'git config user.email "test@example.com"');
       run(projectDir, 'git config user.name "Test"');
       run(projectDir, 'git config commit.gpgsign false');
+      // Remove the remote tracking ref so rev-parse --verify refs/heads/remote-only fails.
       run(projectDir, 'git update-ref -d refs/remotes/origin/remote-only').toString();
     });
 
@@ -183,6 +188,7 @@ describe('POST /api/git/checkout', () => {
       write(projectDir, 'a.md', 'a-other\n');
       commitAll(projectDir, 'other a');
       run(projectDir, 'git checkout -q main');
+      // Dirty the file that will change on switch
       write(projectDir, 'a.md', 'a-dirty\n');
     });
 
@@ -193,6 +199,7 @@ describe('POST /api/git/checkout', () => {
     expect(res.json.ok).toBe(false);
     expect(res.json.reason).toBe('dirty-conflict');
     expect(res.json.files).toEqual(['a.md']);
+    // HEAD must not have changed
     expect(readHead(rig.projectDir)).toBe('ref: refs/heads/main');
   });
 
@@ -228,6 +235,8 @@ describe('POST /api/git/checkout', () => {
       run(projectDir, 'git config user.email "test@example.com"');
       run(projectDir, 'git config user.name "Test"');
       run(projectDir, 'git config commit.gpgsign false');
+      // Point origin at an unresolvable host so any fetch fails with a non-
+      // branch-not-found message.
       run(projectDir, 'git remote set-url origin https://invalid.example.invalid/repo.git');
     });
 
@@ -254,6 +263,7 @@ describe('POST /api/git/checkout', () => {
     expect(res.status).toBe(400);
     expect(res.json.type).toBe('urn:ok:error:invalid-request');
     expect(readHead(rig.projectDir)).toBe(headBefore);
+    // No git command ran (HEAD reflog unchanged, no fetch entry recorded).
     const reflogAfter = run(rig.projectDir, 'git reflog show HEAD');
     expect(reflogAfter).toBe(reflogBefore);
   });
@@ -300,6 +310,9 @@ describe('POST /api/git/checkout', () => {
     const headBefore = readHead(rig.projectDir);
     const reflogBefore = run(rig.projectDir, 'git reflog show HEAD');
 
+    // `HEAD:refs/heads/evil` would, without the colon rejection, reach
+    // `git fetch origin <branch>` where `:` is the refspec separator —
+    // attacker-controlled share URLs could rewrite local refs.
     const res = await postCheckout(rig.port, { branch: 'HEAD:refs/heads/evil' });
     expect(res.status).toBe(400);
     expect(res.json.type).toBe('urn:ok:error:invalid-request');
@@ -390,6 +403,9 @@ describe('POST /api/git/checkout', () => {
       run(projectDir, 'git checkout -q main');
     });
 
+    // Fire two checkouts in parallel without awaiting. withParentLock's
+    // FIFO queue means they run sequentially server-side. Both should
+    // succeed (no index-lock contention) and HEAD ends at the second.
     const [r1, r2] = await Promise.all([
       postCheckout(rig.port, { branch: 'one' }),
       postCheckout(rig.port, { branch: 'two' }),
@@ -398,6 +414,9 @@ describe('POST /api/git/checkout', () => {
     expect(r2.status).toBe(200);
     expect(r1.json.ok).toBe(true);
     expect(r2.json.ok).toBe(true);
+    // Final HEAD reflects whichever ran last under the lock — we accept
+    // either ordering, but reflog should show both transitions, never an
+    // index-lock failure.
     const finalHead = readHead(rig.projectDir);
     expect(['ref: refs/heads/one', 'ref: refs/heads/two']).toContain(finalHead);
     const reflog = run(rig.projectDir, 'git reflog show HEAD');

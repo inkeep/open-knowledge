@@ -1,3 +1,16 @@
+/**
+ * Theme-injection guard for the preview iframe header.
+ *
+ * `buildPreviewIframeHeader` injects OK's design tokens (both themes), a
+ * `color-scheme` declaration, themed `body` defaults, and a `postMessage`
+ * bootstrap script into every preview `srcDoc` — the mechanism that lets
+ * embedded `html preview` content track the reader's light/dark theme and
+ * report its rendered content height back for auto-sizing. These tests pin
+ * that contract: both theme blocks present, the full token subset delivered,
+ * the listener wired to the same key the parent posts, the auto-height
+ * reporter present, and — load-bearing for the no-reload toggle — the two
+ * per-theme headers differing by exactly the baked initial-class statement.
+ */
 import { describe, expect, test } from 'bun:test';
 import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core';
 import {
@@ -10,6 +23,7 @@ import {
 const THEMES: readonly PreviewTheme[] = ['light', 'dark'];
 const INITIAL_CLASS_STATEMENT = "d.classList.add('dark');";
 
+/** Count non-overlapping occurrences of `sub` in `s`. */
 function count(s: string, sub: string): number {
   return s.split(sub).length - 1;
 }
@@ -43,6 +57,7 @@ describe('buildPreviewIframeHeader — theme token injection', () => {
     test(`[${theme}] wires the postMessage theme listener`, () => {
       expect(header).toContain('<script>');
       expect(header).toContain("addEventListener('message'");
+      // The listener must key off the exact payload key the parent posts.
       const messageKey = Object.keys(buildPreviewThemeMessage('light'))[0];
       expect(header).toContain(`e.data.${messageKey}`);
     });
@@ -51,11 +66,19 @@ describe('buildPreviewIframeHeader — theme token injection', () => {
   test('dark bakes one extra initial-class statement vs light', () => {
     const light = buildPreviewIframeHeader('light');
     const dark = buildPreviewIframeHeader('dark');
+    // Light still defines the add('dark') path inside the message listener
+    // (1 occurrence); dark adds the bootstrap initial-class statement (2).
     expect(count(light, INITIAL_CLASS_STATEMENT)).toBe(1);
     expect(count(dark, INITIAL_CLASS_STATEMENT)).toBe(2);
   });
 
   test('light and dark headers differ ONLY by the baked class', () => {
+    // Load-bearing: a theme toggle re-skins the live iframe via postMessage
+    // with no srcDoc rebuild. That is only sound because the CSP, both <style>
+    // blocks, and the scrollbar style are byte-identical across themes — so the
+    // postMessage-flipped iframe renders exactly what a fresh dark-baked srcDoc
+    // would. `.replace` drops the first (bootstrap) occurrence only; the
+    // listener's copy is untouched.
     const light = buildPreviewIframeHeader('light');
     const dark = buildPreviewIframeHeader('dark');
     expect(dark.replace(INITIAL_CLASS_STATEMENT, '')).toBe(light);
@@ -74,6 +97,8 @@ describe('buildPreviewIframeHeader — auto-height reporting', () => {
     const header = buildPreviewIframeHeader(theme);
 
     test(`[${theme}] the bootstrap script reports content height`, () => {
+      // The iframe measures its body box and posts the height back so the
+      // NodeView can fit the wrapper to the content (auto-height).
       expect(header).toContain('okPreviewHeight');
       expect(header).toContain('getBoundingClientRect');
       expect(header).toContain('ResizeObserver');
@@ -81,6 +106,9 @@ describe('buildPreviewIframeHeader — auto-height reporting', () => {
   }
 
   test('the theme listener honors only the parent window', () => {
+    // An embed's own script can postMessage to itself; the listener drops
+    // anything whose source is not the parent so an embed cannot spoof a
+    // theme flip.
     expect(buildPreviewIframeHeader('light')).toContain('e.source!==parent');
   });
 });
@@ -99,6 +127,8 @@ describe('parsePreviewHeightMessage', () => {
     expect(parsePreviewHeightMessage({ okPreviewHeight: -10 })).toBeNull();
     expect(parsePreviewHeightMessage({ okPreviewHeight: 'tall' })).toBeNull();
     expect(parsePreviewHeightMessage({ okPreviewHeight: Number.NaN })).toBeNull();
+    // Infinity / -Infinity are distinct from NaN and exercise the
+    // `Number.isFinite` guard's other branch — pin both.
     expect(parsePreviewHeightMessage({ okPreviewHeight: Number.POSITIVE_INFINITY })).toBeNull();
     expect(parsePreviewHeightMessage({ okPreviewHeight: Number.NEGATIVE_INFINITY })).toBeNull();
   });

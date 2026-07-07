@@ -1,9 +1,23 @@
+/**
+ * CLI-side reader for the **project repo's** git log — complements
+ * `shadow-log.ts`. Both sources are surfaced in rich enrichment:
+ *   - shadow-repo → live agent/human edit bursts
+ *   - project git → durable authored commits (this file)
+ *
+ * Shadow-repo captures external project-git commits as `upstream` imports,
+ * but lossily (message becomes `upstream: import from <o>..<n>`, author
+ * becomes "openknowledge"). Reading the project's own `git log` preserves
+ * the original human-authored commit messages and author names.
+ *
+ * Uses simple-git against the project's `.git/`, not the shadow repo.
+ */
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import simpleGit, { type SimpleGit } from 'simple-git';
 
 export interface GitCommit {
   hash: string;
+  /** ISO-8601 committer date. */
   date: string;
   authorName: string;
   subject: string;
@@ -30,6 +44,12 @@ function openProjectGit(projectDir: string): SimpleGit {
   return simpleGit({ baseDir: resolve(projectDir), timeout: { block: GIT_TIMEOUT_MS } });
 }
 
+/**
+ * Read the last N project-git commits touching `relPath`. Returns
+ * `{ commits: [], source: 'git-absent' }` when the project isn't a git
+ * repo; returns `{ commits: [], source: 'git' }` when it is but the file
+ * has no commits (new, untracked, or recently created).
+ */
 export async function readProjectGitLog(
   projectDir: string,
   relPath: string,
@@ -49,6 +69,7 @@ export async function readProjectGitLog(
       relPath,
     );
   } catch {
+    // Non-fatal: no history, ambiguous revision, etc.
     return { commits: [], source: 'git' };
   }
 

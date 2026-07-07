@@ -1,3 +1,27 @@
+/**
+ * Procedural surfaces of the walk-currency extension. The user-observable
+ * walk-currency contract itself (gap edit survives into the mounted PM doc;
+ * no CRDT erasure on the first post-mount transaction) is pinned by
+ * `pattern-d-walk-currency.test.ts`; this file pins the surfaces around it:
+ *
+ *  - disarm branch: a missing ySync binding (or a binding without
+ *    `_forceRerender`) at view init fails open-but-loud — console.warn, no
+ *    throw, editor stays usable (mirrors the staleness guard's disarm
+ *    precedent)
+ *  - never-mounted cleanup: mount-promise abort/invalidate destroys the
+ *    pre-mount editor, and `onDestroy` unhooks the fragment observer even
+ *    though the plugin view never initialized
+ *  - non-stale fast path: a quiet construct→mount gap triggers no
+ *    `_forceRerender` — the prebuilt mapping (same instance, same entries)
+ *    survives into the mounted binding, preserving the pre-warm contract
+ *  - wiring arms: the extension is present in the extension list exactly
+ *    when a `prebuiltMapping` is supplied
+ *
+ * Substrate note: jsdom globals are installed per-file (not the
+ * `*.dom.test.tsx` RTL tier) via the shared walk-currency harness — see
+ * `walk-currency-test-harness.ts` for the install/restore contract.
+ */
+
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
@@ -38,6 +62,10 @@ afterEach(() => {
   __resetMountPromiseCache();
   __resetCacheForTests();
 });
+
+// ---------------------------------------------------------------------------
+// Harness
+// ---------------------------------------------------------------------------
 
 function makeProvider(docName: string): {
   ydoc: Y.Doc;
@@ -94,6 +122,7 @@ function createYSyncStandIn(binding?: Record<string, unknown>): Plugin {
   });
 }
 
+/** Capture console.warn lines for the duration of `fn`. */
 function captureWarnings<T>(fn: () => T): { result: T; warnings: string[] } {
   const warnings: string[] = [];
   const originalWarn = console.warn;
@@ -106,6 +135,10 @@ function captureWarnings<T>(fn: () => T): { result: T; warnings: string[] } {
     console.warn = originalWarn;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Disarm branch (vendored-seam drift)
+// ---------------------------------------------------------------------------
 
 describe('disarm branch', () => {
   /** Build a stale editor whose ySync state is supplied by a stand-in (no
@@ -128,6 +161,8 @@ describe('disarm branch', () => {
         walkCurrencyExtension({ fragment, docName }),
       ],
     });
+    // Fragment change in the construct→mount gap → the extension's view init
+    // takes the stale path and hits the (broken) seam.
     ydoc.transact(() => appendToFirstParagraph(fragment, ' GAPEDIT'));
     editor.mount(document.createElement('div'));
     return editor;
@@ -140,6 +175,7 @@ describe('disarm branch', () => {
       expect(
         warnings.some((w) => w.includes('no ySync binding') && w.includes('stale pre-warm')),
       ).toBe(true);
+      // Disarmed, not broken: typing still lands.
       const before = editor.state.doc.textContent;
       editor.view.dispatch(editor.state.tr.insertText('x', 1));
       expect(editor.state.doc.textContent).not.toBe(before);
@@ -164,6 +200,10 @@ describe('disarm branch', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Never-mounted cleanup (mount-promise abort/invalidate)
+// ---------------------------------------------------------------------------
+
 describe('never-mounted cleanup', () => {
   test('invalidating the mount during the yield window destroys the pre-mount editor and unhooks the observer', async () => {
     const docName = `never-mounted-${randomUUID()}`;
@@ -178,6 +218,9 @@ describe('never-mounted cleanup', () => {
           buildPatternDConstructorOptions({ provider, clipboard: fakeClipboard, ctorStart }),
         );
         constructedEditor = editor;
+        // Lands in the post-construct yield window — before editor.mount() —
+        // the same window the gap-edit harness uses. invalidateMountPromise
+        // routes through destroyPreMountEditor → editor.destroy() pre-mount.
         queueMicrotask(() => {
           invalidateMountPromise(docName);
         });
@@ -189,6 +232,7 @@ describe('never-mounted cleanup', () => {
         };
       };
 
+      // The promise is intentionally orphaned by invalidate — do not await it.
       void mountTiptapEditorPromise({
         docName,
         mountId: randomUUID(),
@@ -200,8 +244,12 @@ describe('never-mounted cleanup', () => {
       const editor = constructedEditor as unknown as Editor | null;
       expect(editor).not.toBeNull();
       expect((editor as Editor).isDestroyed).toBe(true);
+      // onDestroy fired for the never-mounted editor: the construct-time
+      // observeDeep registration is gone again.
       expect(deepObserverCount(fragment)).toBe(baseline);
 
+      // A post-destroy fragment edit must not re-engage anything — observer
+      // count stays at baseline and nothing throws.
       provider.document.transact(() => appendToFirstParagraph(fragment, ' AFTER-DESTROY'));
       await flushMicrotasksAndTimers();
       expect(deepObserverCount(fragment)).toBe(baseline);
@@ -210,6 +258,10 @@ describe('never-mounted cleanup', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Non-stale fast path (pre-warm contract preserved)
+// ---------------------------------------------------------------------------
 
 describe('non-stale fast path', () => {
   test('a quiet construct→mount gap triggers no rerender and the prebuilt mapping survives into the binding', async () => {
@@ -256,7 +308,11 @@ describe('non-stale fast path', () => {
       });
       await flushMicrotasksAndTimers();
 
+      // Pre-warm contract intact: no invalidating rerender was dispatched...
       expect(rerenderTransactions).toHaveLength(0);
+      // ...and the binding consumed the walk's own mapping — same instance,
+      // prebuilt entries intact (a _forceRerender would have cleared and
+      // repopulated it with new PM node instances).
       const syncState = ySyncPluginKey.getState(entry.editor.state) as {
         binding?: { mapping?: Map<unknown, unknown> };
       };
@@ -273,6 +329,10 @@ describe('non-stale fast path', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Wiring arms (shape tier — mirrors TiptapEditor.test.tsx)
+// ---------------------------------------------------------------------------
 
 describe('wiring arms', () => {
   test('no prebuiltMapping → walk-currency extension absent from the extension list', () => {
@@ -306,6 +366,8 @@ describe('wiring arms', () => {
       });
       expect(extensions.some((ext) => ext.name === 'walkCurrency')).toBe(true);
 
+      // The production Pattern D path always supplies the mapping, so the
+      // constructor options must always carry the enforcement.
       const opts = buildPatternDConstructorOptions({
         provider,
         clipboard: fakeClipboard,

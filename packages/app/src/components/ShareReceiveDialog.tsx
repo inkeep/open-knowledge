@@ -1,4 +1,25 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — Q2 card grid uses raw <button> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+/**
+ * Launcher-scoped share receive dialog. Mounted only in NavigatorApp and
+ * gated on the main-resolved share payloads `'launcher-consent'` (a
+ * worktree on the share branch that lacks `.ok/config.yml`) and
+ * `'launcher-miss'` (no usable local copy — clone or locate-locally).
+ *
+ * Main has already resolved the share target, so this dialog does NOT
+ * re-run candidate selection. The renderer lookup, branch-switch
+ * surface, and doc-missing surface that lived here historically moved
+ * to main-side routing (lookup + selection) and to ShareBranchSwitchDialog
+ * (branch-switch, project-scoped).
+ *
+ * Surfaces remaining here:
+ *   - `'launcher-consent'`: one-shot consent dialog driven by
+ *     `consent-flow.ts`. `Initialize and open` runs the scaffold via
+ *     `bridge.project.okInit`, then dispatches `bridge.project.open` with
+ *     `pendingDeepLinkTarget + pendingBranch`.
+ *   - `'launcher-miss'`: cards — Clone from GitHub (with auth
+ *     pre-flight via the cloneController) vs `I already have it locally`
+ *     (folder picker + `bridge.share.validateLocalFolder`).
+ */
 
 import { classifyBranchMatch } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -42,9 +63,18 @@ import {
 } from '@/lib/share/receive-flow';
 import { type ShareReceiveStore, shareReceiveStore } from '@/lib/share/receive-store';
 
+/**
+ * Result of a streamlined clone run. `kind` discriminates the three terminal
+ * states the dialog cares about: success (open the new project), user-
+ * cancellation (silent — no toast), and recoverable failure (the controller
+ * has already surfaced a toast; the dialog stays mounted so the user can
+ * retry or pick local instead).
+ */
 export type ShareReceiveCloneResult =
   | { readonly kind: 'ok'; readonly dir: string }
   | { readonly kind: 'cancelled' }
+  // `detail` carries the raw (redacted) git message for the dialog's
+  // technical-details disclosure; absent when the failure had no git output.
   | { readonly kind: 'error'; readonly detail?: string };
 
 export interface ShareReceiveCloneController {
@@ -55,7 +85,9 @@ export interface ShareReceiveCloneController {
 
 export interface ShareReceiveDialogProps {
   bridge: OkDesktopBridge;
+  /** Parent-provided controller for the auth + clone flow. */
   cloneController?: ShareReceiveCloneController;
+  /** Override store for testability. Production uses the singleton. */
   store?: ShareReceiveStore;
 }
 
@@ -74,6 +106,13 @@ function isLauncherMissPayload(
   return payload !== null && payload.kind === 'launcher-miss';
 }
 
+/**
+ * Store-subscribing outer shell. It owns the non-launcher dismissal toast
+ * and remounts the inner dialog per payload via `key`, so each new share
+ * gets fresh `useState` / `useRef` instead of imperatively resetting
+ * sibling state from props (the consent-seed-vs-reset race the keyed
+ * remount eliminates).
+ */
 export function ShareReceiveDialog({
   bridge,
   cloneController,
@@ -81,6 +120,11 @@ export function ShareReceiveDialog({
 }: ShareReceiveDialogProps) {
   const payload = useSyncExternalStore(store.subscribe, store.getSnapshot, () => null);
 
+  // Remount key derived from payload object identity via a render-phase state
+  // update — the React-sanctioned "reset all state when a prop changes" pattern
+  // (refs can't be read or written during render under React Compiler). The
+  // store hands out a fresh object on every emission, so identical re-shares
+  // still bump the key and remount; a content-derived key would collide.
   const [remountKey, setRemountKey] = useState(0);
   const [seenPayload, setSeenPayload] = useState<OkShareReceivedPayload | null>(payload);
   if (payload !== seenPayload) {
@@ -88,6 +132,8 @@ export function ShareReceiveDialog({
     setRemountKey((k) => k + 1);
   }
 
+  // Drive non-launcher payloads (unsupported-version / invalid) to a toast
+  // and dismiss the store so the dialog never visually mounts for them.
   useEffect(() => {
     if (!payload) return;
     const error = presentReceiveError(payload);
@@ -120,6 +166,11 @@ interface ShareReceiveDialogInnerProps {
   store: ShareReceiveStore;
 }
 
+/**
+ * Per-payload dialog body. Remounted by the outer shell on each new share,
+ * so its `useState` / `useRef` start fresh — no manual reset effect, and the
+ * consent seed runs exactly once against a guaranteed-null initial state.
+ */
 function ShareReceiveDialogInner({
   payload,
   bridge,
@@ -131,14 +182,26 @@ function ShareReceiveDialogInner({
   const [authStatus, setAuthStatus] = useState<OkLocalOpAuthStatusResponse | null>(null);
   const [authChecking, setAuthChecking] = useState(false);
   const [cloneRunning, setCloneRunning] = useState(false);
+  // Persistent in-dialog presentation of a clone failure (the GitHub error +
+  // likely causes), replacing the transient toast so the user can read the
+  // reasons and recover. `detail` is the raw git output (condensed for display);
+  // null when the failure carried no git message.
   const [cloneError, setCloneError] = useState<{ detail: string | null } | null>(null);
   const [consentState, setConsentState] = useState<ConsentFlowState | null>(null);
+  // Single-fire guard for the auth pre-flight probe. State-only guards
+  // race with the effect's own re-trigger (setAuthChecking(true) re-runs
+  // the effect, the cleanup flags cancelled=true, then the in-flight
+  // promise short-circuits and the banner stays on "Checking..." forever).
   const authProbeStartedRef = useRef(false);
+  // Move focus to the error card when a clone fails so the recovery actions are
+  // a single Tab away — the Clone button the user clicked unmounts when the card
+  // grid swaps to the error view, leaving keyboard focus undefined otherwise.
   const cloneErrorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (cloneError) cloneErrorRef.current?.focus();
   }, [cloneError]);
 
+  // Seed the consent flow when main routes a launcher-consent payload.
   // biome-ignore lint/correctness/useExhaustiveDependencies: payload-keyed effect; setConsentState identity is stable.
   useEffect(() => {
     if (!isLauncherConsentPayload(payload)) return;
@@ -157,6 +220,10 @@ function ShareReceiveDialogInner({
     );
   }, [payload]);
 
+  // Pre-flight auth check for the launcher-miss (cards) path: when the
+  // payload first lands, fetch the controller's current auth status so the
+  // Clone CTA can render correctly up-front (sign-in link + disabled Clone
+  // if unauthed) rather than letting the user click into a failure.
   // biome-ignore lint/correctness/useExhaustiveDependencies: cloneController identity churns every render; we want this gated on payload + auth-state transitions only.
   useEffect(() => {
     if (!cloneController) return;
@@ -171,6 +238,9 @@ function ShareReceiveDialogInner({
         setAuthStatus(result);
       })
       .catch((err) => {
+        // Probe failures are non-fatal — render the dialog as if unauthed
+        // so the Clone CTA stays disabled and the user can try sign-in
+        // manually. Logged for parity with the other catches in this file.
         console.warn(
           '[receive] auth pre-flight probe failed',
           err instanceof Error ? err.message : err,
@@ -186,6 +256,8 @@ function ShareReceiveDialogInner({
   const launcherConsent = isLauncherConsentPayload(payload) ? payload : null;
   const share = launcherMiss?.share ?? launcherConsent?.share ?? null;
   const expected = share ? { owner: share.owner, repo: share.repo } : null;
+  // Kind-aware noun so the dialog title reads correctly for folder shares as
+  // well as single-doc shares; defaults to "document" when no share is active.
   const targetNoun = share?.target.kind === 'folder' ? t`folder` : t`document`;
 
   async function handleCloneCtaClick(): Promise<void> {
@@ -203,6 +275,9 @@ function ShareReceiveDialogInner({
       });
       return;
     }
+    // Public repos clone anonymously — no sign-in required. A private repo's
+    // anonymous attempt fails with the classified "may be private" error and
+    // the always-present "Connect GitHub" affordance is the sign-in fallback.
     if (cloneRunning) return;
     setCloneError(null);
     setCloneRunning(true);
@@ -211,6 +286,9 @@ function ShareReceiveDialogInner({
     try {
       result = await cloneController.runClone({ url: cloneUrl, branch: launcherMiss.share.branch });
     } catch (err) {
+      // The controller is designed to never throw (it converts failures to an
+      // error result), so a throw here is unexpected — log it and surface a
+      // best-effort detail rather than swallowing the cause to null.
       console.warn('[receive] runClone threw unexpectedly', err);
       setCloneRunning(false);
       setCloneError({ detail: err instanceof Error ? err.message : String(err) });
@@ -232,6 +310,9 @@ function ShareReceiveDialogInner({
             path: shareTargetPath(launcherMiss.share.target),
           },
         });
+        // Dismiss only on a successful open — mirrors handleLocalCtaClick. If
+        // the open fails the clone already succeeded, so keep the dialog mounted
+        // (with the toast) instead of vanishing the user's context.
         store.dismiss();
       } catch (err) {
         console.warn(
@@ -242,6 +323,7 @@ function ShareReceiveDialogInner({
       }
       return;
     }
+    // 'cancelled' — user closed the folder picker; leave the dialog mounted.
   }
 
   async function handleSignInClick(): Promise<void> {
@@ -250,8 +332,11 @@ function ShareReceiveDialogInner({
     try {
       const next = await cloneController.startSignIn();
       setAuthChecking(false);
+      // `null` means the user dismissed the auth modal — keep prior status.
       if (next !== null) setAuthStatus(next);
     } catch (err) {
+      // A throw (not the null user-cancel) means sign-in genuinely failed —
+      // surface it rather than silently snapping back to "Connect GitHub".
       setAuthChecking(false);
       console.warn('[receive] startSignIn failed', err instanceof Error ? err.message : err);
       toast.error(t`Could not open GitHub sign-in. Please try again.`);
@@ -260,6 +345,9 @@ function ShareReceiveDialogInner({
 
   async function handleLocalCtaClick(): Promise<void> {
     if (!launcherMiss || !expected || pickerOpen) return;
+    // Leaving the clone-failure path for the local path: clear the error so the
+    // user sees the normal picker flow, not the stale clone-failure banner
+    // alongside any folder-validation toast. Mirrors handleCloneCtaClick.
     setCloneError(null);
     setPickerOpen(true);
     console.log(formatReceiveLog({ q2_path: 'local' }));
@@ -274,17 +362,32 @@ function ShareReceiveDialogInner({
         });
         console.log(formatReceiveLog({ folder_validate: result.kind }));
         if (result.kind === 'ok') {
+          // Branch-aware open, symmetric with the recents path: reconcile
+          // the located clone's checked-out branch against the share's branch
+          // with the SAME classifier the recents path uses (classifyBranchMatch),
+          // so a no-branch share, an unreadable HEAD (the all-null sentinel), or
+          // an already-matching branch silent-dispatch as a plain open, while a
+          // differing or detached HEAD routes to the branch-switch surface. The
+          // actual reconciliation (dirty-tree, checkout, navigation) then happens
+          // in the editor window via ShareBranchSwitchDialog, which re-reads HEAD.
           const shareBranch = launcherMiss.share.branch;
           let head: HeadBranchInfo = { currentBranch: null, headSha: null, detached: false };
           try {
             head = await bridge.project.readHeadBranch(folderPath);
           } catch (err) {
+            // readHeadBranch graceful-fails to the all-null sentinel rather than
+            // throwing, so a throw here is an IPC-transport failure. Either way
+            // the sentinel classifies as a match ('true') and we plain-open on
+            // the current branch — never a dead end.
             console.warn(
               '[receive] local-folder readHeadBranch failed',
               err instanceof Error ? err.message : err,
             );
           }
           const needsBranchSwitch = classifyBranchMatch(shareBranch, head) !== 'true';
+          // Validation already succeeded — a throw here is a project-open
+          // failure, not a validation failure, so it gets its own scope and an
+          // accurate message rather than the misleading "couldn't validate".
           try {
             await bridge.project.open({
               path: folderPath,
@@ -494,11 +597,16 @@ function ShareReceiveDialogInner({
 
   if (!launcherMiss || !share || !expected) return null;
 
+  // Clone is enabled regardless of auth: public repos clone anonymously, and a
+  // private-repo failure routes the user to the sign-in affordance in the
+  // banner below. Only an in-flight clone disables it.
   const cloneEnabled = cloneController !== undefined && !cloneRunning;
   const cloneLabel = cloneRunning ? t`Cloning...` : t`Clone to a new folder`;
 
   const lookingForUrl = canonicalGitHubRemoteUrl(expected);
   const signedInLogin = authStatus?.authenticated ? authStatus.login : undefined;
+  // Condense raw git stderr to its meaningful line; empty when nothing useful
+  // survives, in which case the dialog shows the cause list without an Error line.
   const cloneErrorMessage = cloneError?.detail ? formatCloneErrorMessage(cloneError.detail) : '';
 
   return (
@@ -529,6 +637,9 @@ function ShareReceiveDialogInner({
         </DialogHeader>
         <DialogBody>
           {cloneError ? (
+            // tabIndex -1 + ref so the focus effect can land focus here on
+            // failure. `role="alert"` is scoped to the heading below (not this
+            // whole block) so AT announces the one-line cause, not a wall of text.
             <div
               ref={cloneErrorRef}
               tabIndex={-1}

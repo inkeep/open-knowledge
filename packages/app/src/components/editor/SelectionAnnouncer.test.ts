@@ -1,3 +1,13 @@
+/**
+ * SelectionAnnouncer unit tests — cover `formatSelectionMessage` (pure
+ * formatter) and the wildcard / index-in-parent branch matrix.
+ *
+ * The full component (debounce, imperative textContent write, two-step
+ * clear-then-write for identical-message re-announce) is exercised by the
+ * E2E harness; these unit tests cover the AT-facing
+ * message shape the E2E harness only asserts partially.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState, NodeSelection } from '@tiptap/pm/state';
@@ -26,6 +36,7 @@ const jsx = (
   children: ReturnType<Schema['node']>[] = [],
 ): ReturnType<Schema['node']> => schema.node('jsxComponent', { componentName }, children);
 
+/** Minimal Editor stub satisfying the surface formatSelectionMessage reads. */
 function makeEditor(doc: ReturnType<Schema['node']>) {
   const state = EditorState.create({
     doc,
@@ -54,6 +65,7 @@ describe('formatSelectionMessage', () => {
   });
 
   test('single-entry chain uses the registered descriptor label', () => {
+    // Callout is a registered built-in descriptor with displayName 'Callout'.
     const editor = makeEditor(schema.node('doc', null, [jsx('Callout', [p('note')])]));
     const sel: BlockSelection = {
       selectedBlockId: 'b1',
@@ -82,8 +94,11 @@ describe('formatSelectionMessage', () => {
   });
 
   test('nested chain formats "N of M in Parent"', () => {
+    // Outer Callout at pos 0; three inner Image children; select second Image.
+    // (Both Callout + Image are registered descriptors.)
     const callout = jsx('Callout', [jsx('img'), jsx('img'), jsx('img')]);
     const doc = schema.node('doc', null, [callout]);
+    // Second Image pos = 1 (inside callout) + first Image nodeSize (2) = 3.
     const state = EditorState.create({ doc, selection: NodeSelection.create(doc, 3) });
     // biome-ignore lint/suspicious/noExplicitAny: formatSelectionMessage only touches editor.state.doc.resolve
     const editor = { state } as any;
@@ -98,6 +113,7 @@ describe('formatSelectionMessage', () => {
       rangeEncompassedBlockIds: new Set<string>(),
     };
     const msg = formatSelectionMessage(editor, sel);
+    // Index within parent is 0-based, announced 1-based.
     expect(msg).toBe('Selected: Image, 2 of 3 in Callout');
   });
 
@@ -111,6 +127,7 @@ describe('formatSelectionMessage', () => {
       selectedBlockId: 'image-b2',
       ancestorChain: [
         { bridgeId: 'callout-b1', componentName: 'Callout', pos: 0 },
+        // Pos 99999 is past end of doc — resolve() throws.
         { bridgeId: 'image-b2', componentName: 'img', pos: 99999 },
       ],
       selectionOrigin: 'pointer',

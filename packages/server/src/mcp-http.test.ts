@@ -1,3 +1,17 @@
+/**
+ * Session-level test for `createMcpHttpHandler` config plumbing.
+ *
+ * Historically booted a real HTTP MCP server with a synthetic `Config` whose
+ * `mcp.tools.grep.maxResults` (formerly `mcp.tools.search.maxResults`) was
+ * set to a non-default value, opened a real MCP session over HTTP, called
+ * the `grep` tool, and asserted the response reflected the configured
+ * ceiling. The cap is now a hardcoded constant (`GREP_MAX_RESULTS`), so the
+ * "configured value reaches the tool" tests no longer apply — surface tests
+ * here cover session lifecycle (cap, TTL, etc.) only.
+ *
+ * Co-located with `mcp-http.ts`; the `packages/app/tests/integration/mcp-http.test.ts`
+ * sibling covers the basic init+tools/list flow.
+ */
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
@@ -134,6 +148,15 @@ afterEach(async () => {
   openHarnesses = [];
 });
 
+// `mcp.tools.grep.maxResults` (renamed from `search.maxResults`) and
+// `mcp.tools.read_document.historyDepth` were removed from ConfigSchema;
+// their values now live as constants (`GREP_MAX_RESULTS`,
+// `READ_DOCUMENT_HISTORY_DEPTH`) in `@inkeep/open-knowledge-core`. The
+// end-to-end "configured value reaches the tool" tests that previously lived
+// here are no longer applicable — there is no user-facing configuration
+// surface to verify. Per-tool unit tests guard the constant being applied at
+// the call site.
+
 test('active MCP session cap refuses new sessions before allocation', async () => {
   const config: Config = ConfigSchema.parse({});
   const harness = await bootHandler(config, { maxSessions: 1 });
@@ -164,6 +187,12 @@ test('active MCP session cap refuses new sessions before allocation', async () =
 });
 
 test('mcp-tool-path-traversal: explicit cwd outside configured project root is rejected', async () => {
+  // Pre-fix `resolveCwd: explicit ?? projectDir ?? contentDir` accepted any
+  // absolute path the caller passed — so `tools/call exec {command:
+  // "cat passwd", cwd: "/etc"}` reached /etc/passwd. The configured
+  // projectDir is the trust boundary; an explicit cwd MUST lexically resolve
+  // at-or-under it. (Uses `exec` since read_document was retired in the OK
+  // MCP tool consolidation — exec is the surviving typed read surface.)
   const config: Config = ConfigSchema.parse({});
   const harness = await bootHandler(config);
   openHarnesses.push(harness);
@@ -195,11 +224,30 @@ test('mcp-tool-path-traversal: explicit cwd outside configured project root is r
   const body = (await escapeResponse.json()) as {
     result?: { isError?: boolean; content?: Array<{ text?: string }> };
   };
+  // Tool surface returns isError + descriptive text rather than a transport
+  // error so MCP clients can render it in chat (matches existing convention).
   expect(body.result?.isError).toBe(true);
   const text = body.result?.content?.[0]?.text ?? '';
   expect(text).toMatch(/not within the configured project root|escapes the configured root/);
 });
 
+/**
+ * a Zod validation failure on `write` used to surface as
+ * a bare `Required` (or a multi-line JSON dump of the Zod issues array) with
+ * no easy way for an agent to see which field was wrong or what values were
+ * valid. The `installPrettyZodErrors` patch (installed at McpServer
+ * construction in `createSessionServer`) re-formats validation failures with
+ * `z.prettifyError`, which names the field AND lists the allowed values.
+ *
+ * `position` is now optional — an omitted `position` defaults to `replace`
+ * for a new doc — so a *missing* `position` no longer fails validation. An
+ * *invalid* `position` value still produces a Zod enum failure; that is the
+ * trigger this test uses to exercise the pretty-error patch end-to-end.
+ *
+ * End-to-end through the full HTTP transport: confirms the patch survives
+ * the SDK's request-handler wrapping and the `createToolError` conversion
+ * that produces the user-facing `isError: true` payload.
+ */
 test('PRD-6659: tools/call write with an invalid position returns field name + allowed values', async () => {
   const config: Config = ConfigSchema.parse({});
   const harness = await bootHandler(config);
@@ -232,15 +280,34 @@ test('PRD-6659: tools/call write with an invalid position returns field name + a
   };
   expect(body.result?.isError).toBe(true);
   const text = body.result?.content?.[0]?.text ?? '';
+  // The fix must name the field and surface the allowed enum values.
   expect(text).toContain('position');
   expect(text).toContain('append');
   expect(text).toContain('prepend');
   expect(text).toContain('replace');
+  // The fix must NOT regress to the raw Zod v4 JSON dump (anti-regression
+  // structural markers — see `pretty-zod-errors.test.ts` for the
+  // equivalent unit-level assertion).
   expect(text).not.toContain('"code":');
   expect(text).not.toContain('"path":');
   expect(text.trim()).not.toBe('Required');
 });
 
+/**
+ * Pin the contract that fixes the agent-presence-icon flicker: when the
+ * `ok mcp` shim forwards its keepalive WS connectionId via
+ * `MCP_CONNECTION_ID_HEADER`, the MCP HTTP session adopts that id as
+ * `identity.connectionId`. Tools that pass
+ * `agentId: identity.connectionId` therefore route writes through the
+ * presence broadcaster under the same `agent-<id>` key the keepalive WS
+ * heartbeat operates on. Without this unification the heartbeat keys don't
+ * match and the icon falls off the bar between tool calls.
+ *
+ * Mounts a capture endpoint at `/api/agent-write-md` so the assertion runs
+ * end-to-end through the real `write` tool's `httpPost` hop —
+ * proves both that the header reaches the session AND that the connectionId
+ * surfaces on the agent-write request body.
+ */
 test('forwarded connectionId header reaches /api/agent-write-md as agentId', async () => {
   const config: Config = ConfigSchema.parse({});
   const contentDir = mkdtempSync(join(tmpdir(), 'ok-mcp-http-cid-'));
@@ -278,7 +345,9 @@ test('forwarded connectionId header reaches /api/agent-write-md as agentId', asy
               agentId?: unknown;
             };
             if (typeof body.agentId === 'string') capturedAgentId = body.agentId;
-          } catch {}
+          } catch {
+            // capture-only — surface failures via the assertion
+          }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
         });
@@ -294,6 +363,7 @@ test('forwarded connectionId header reaches /api/agent-write-md as agentId', asy
 
     const forwarded = 'forwarded-keepalive-id-1234';
 
+    // Initialize MCP session with the connectionId header.
     const init = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: 'POST',
       headers: {
@@ -330,6 +400,8 @@ test('forwarded connectionId header reaches /api/agent-write-md as agentId', asy
     });
     expect(initialized.status).toBe(202);
 
+    // Call write tool — it posts to /api/agent-write-md with
+    // agentId: identity.connectionId. The capture endpoint records the value.
     const call = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: 'POST',
       headers: {
@@ -355,6 +427,10 @@ test('forwarded connectionId header reaches /api/agent-write-md as agentId', asy
       }),
     });
     expect(call.status).toBe(200);
+    // Tools post `agentId: identity.connectionId` (the raw forwarded id);
+    // the `agent-` prefix is added downstream by the real
+    // `/api/agent-write-md` handler via `toBroadcasterKey` — out of scope
+    // for this test, which captures the body before the prefix is applied.
     expect(capturedAgentId).toBe(forwarded);
   } finally {
     if (handler) await handler.close();
@@ -364,6 +440,11 @@ test('forwarded connectionId header reaches /api/agent-write-md as agentId', asy
 });
 
 test('invalid connectionId header is ignored — session falls back to a fresh UUID', async () => {
+  // A header that fails `validateAgentId` (here: characters outside
+  // `[a-zA-Z0-9_-]`) must not propagate to the broadcaster key. The session
+  // still initializes (non-shim clients sending malformed values shouldn't be
+  // locked out) but `identity.connectionId` is the freshly minted UUID,
+  // distinct from the forwarded value.
   const config: Config = ConfigSchema.parse({});
   const contentDir = mkdtempSync(join(tmpdir(), 'ok-mcp-http-cid-bad-'));
   const port = await getFreeLoopbackPort();
@@ -406,7 +487,9 @@ test('invalid connectionId header is ignored — session falls back to a fresh U
               agentId?: unknown;
             };
             if (typeof body.agentId === 'string') capturedAgentId = body.agentId;
-          } catch {}
+          } catch {
+            // capture-only
+          }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
         });
@@ -481,11 +564,17 @@ test('invalid connectionId header is ignored — session falls back to a fresh U
     });
     expect(call.status).toBe(200);
     expect(capturedAgentId).toBeDefined();
+    // The rejected header value must not surface anywhere on the body —
+    // a UUID-shaped fallback is the only allowed outcome. UUID v4 form:
+    // 8-4-4-4-12 lowercase hex with dashes.
     expect(capturedAgentId).not.toContain(forwarded);
     expect(capturedAgentId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
 
+    // Operators debugging presence-icon flicker for a specific client need to
+    // see that the header was received but rejected. Log the bounded length
+    // (not the raw value — possibly attacker-controlled bytes).
     const headerWarn = warnCalls.find((call) =>
       call.msg.includes('forwarded connectionId header failed validation'),
     );

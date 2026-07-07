@@ -1,3 +1,13 @@
+/**
+ * `ok seed` — scaffold the Karpathy three-layer knowledge-base structure.
+ *
+ * Creates `external-sources/`, `research/`, `articles/`, an optional
+ * `log.md`, and writes per-folder `<folder>/.ok/frontmatter.yml` defaults
+ * that surface as agent guidance via `exec("ls <folder>")`.
+ *
+ * Replaces the former `init-content` MCP tool with a deterministic CLI.
+ */
+
 import { relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import {
@@ -16,10 +26,22 @@ import { accent, dim, error as errorColor, info, success, warning } from '../ui/
 
 interface SeedCommandOptions {
   cwd?: string;
+  /**
+   * Subfolder (relative to `cwd`) where the chosen starter pack is
+   * scaffolded. `.` / `''` scaffolds at the project root (historical behavior).
+   * When omitted and stdin is a TTY, the user is prompted interactively.
+   */
   root?: string;
+  /**
+   * Starter pack to scaffold. Defaults to `'knowledge-base'` for back-compat
+   * with single-scaffold callers. See `STARTER_PACKS` for the full registry.
+   */
   pack?: PackId;
+  /** Skip the Y/n confirmation prompt. */
   yes?: boolean;
+  /** Print the plan and exit without writing. */
   dryRun?: boolean;
+  /** Test-only: override stdin for confirmation. */
   confirmStream?: NodeJS.ReadableStream;
 }
 
@@ -28,12 +50,19 @@ function isPackId(value: unknown): value is PackId {
 }
 
 interface SeedCommandResult {
+  /** 'applied' (writes happened) | 'dry-run' | 'no-op' (already seeded) | 'cancelled' | 'prerequisite-missing' | 'failed' */
   status: 'applied' | 'dry-run' | 'no-op' | 'cancelled' | 'prerequisite-missing' | 'failed';
   message: string;
   plan?: ScaffoldPlan;
+  /** Non-zero on prerequisite-missing or failed. */
   exitCode: number;
 }
 
+/**
+ * Programmatic entry point. Thin wrapper around planSeed + applySeed that
+ * owns confirmation prompting and output formatting. Called by both the
+ * Commander action and integration tests.
+ */
 export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedCommandResult> {
   const cwd = resolve(opts.cwd ?? process.cwd());
   const packId: PackId = opts.pack ?? DEFAULT_PACK_ID;
@@ -48,6 +77,8 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
 
   let plan: ScaffoldPlan;
   try {
+    // A dry-run previews a pack before `ok init`, so it must not require an
+    // initialized project — skip the prerequisite gate in that mode only.
     plan = await planSeed({
       projectDir: cwd,
       rootDir: opts.root,
@@ -80,6 +111,9 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
   }
 
   if (opts.dryRun) {
+    // Surface the pack's organizing principle (per-folder "why" + templates),
+    // not just the file tree — so the reader can adapt the pattern into a
+    // similar structure of their own. The plan tree stays below it.
     const rationale = formatPackRationale(STARTER_PACKS[packId]);
     return {
       status: 'dry-run',
@@ -104,6 +138,8 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
     }
   }
 
+  // applySeed reads absolute paths from plan.created directly, so it needs
+  // only projectDir + packId — rootDir is already baked into the plan entries.
   const applyResult = await applySeed(plan, { projectDir: cwd, packId });
 
   if (applyResult.errors.length > 0) {
@@ -121,6 +157,9 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
 
   const packName = STARTER_PACKS[packId].name;
 
+  // `applySeed` installs the pack's project-local skill for every editor set up
+  // for this project (single install site shared with the desktop IPC + HTTP
+  // seed paths). Surface which editors got it.
   const skillLine =
     applyResult.packSkillsInstalled.length > 0
       ? `\n${dim(`Installed the ${packName} skill for: ${applyResult.packSkillsInstalled.join(', ')}`)}`
@@ -134,6 +173,7 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
   };
 }
 
+/** Print the registry of available packs as a small CLI table. */
 function formatPackList(): string {
   const lines: string[] = [accent('Available packs:')];
   for (const id of STARTER_PACK_IDS) {
@@ -143,6 +183,7 @@ function formatPackList(): string {
   return lines.join('\n');
 }
 
+/** Format a ScaffoldPlan as a plain colored list for CLI output. */
 function formatPlanBody(plan: ScaffoldPlan, cwd: string): string {
   const lines: string[] = [];
 
@@ -189,12 +230,14 @@ async function confirm(prompt: string, input?: NodeJS.ReadableStream): Promise<b
   const rl = createInterface({ input: input ?? process.stdin, output: process.stdout });
   try {
     const answer = (await rl.question(prompt)).trim().toLowerCase();
+    // Default Y on empty input
     return answer === '' || answer === 'y' || answer === 'yes';
   } finally {
     rl.close();
   }
 }
 
+/** Commander subcommand factory. Registered in cli.ts alongside init/start/mcp. */
 export function seedCommand(): Command {
   return new Command('seed')
     .description(

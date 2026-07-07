@@ -6,6 +6,10 @@ import { REMOVED_KEYS } from '@inkeep/open-knowledge-core';
 import { CONFIG_FILENAME, OK_DIR } from '../constants.ts';
 import { buildClearPatchForTest, DROPPED_FIELD_PATHS, runMigrate, runValidate } from './config.ts';
 
+// Re-exported via the test module helper at the bottom of this file. The
+// `buildClearPatch` helper isn't exported by config.ts directly (kept private
+// to discourage external use), so the test module re-exports it for coverage.
+
 function makeTempProject(): { cwd: string; userHome: string; cleanup: () => void } {
   const root = mkdtempSync(join(tmpdir(), 'ok-config-test-'));
   const cwd = join(root, 'project');
@@ -18,7 +22,9 @@ function makeTempProject(): { cwd: string; userHome: string; cleanup: () => void
     cleanup: () => {
       try {
         rmSync(root, { recursive: true, force: true });
-      } catch {}
+      } catch {
+        /* best-effort */
+      }
     },
   };
 }
@@ -28,6 +34,8 @@ function projectConfigPath(cwd: string): string {
 }
 
 function userConfigPath(home: string): string {
+  // User-global config lives at `~/.ok/global.yml` (distinct from project
+  // `.ok/config.yml`); see `resolveConfigPath('user', …)` in core.
   return join(home, OK_DIR, 'global.yml');
 }
 
@@ -89,8 +97,10 @@ describe('runValidate', () => {
         error: (msg) => stderr.push(msg),
       });
       expect(outcome.ok).toBe(false);
+      // file:line:col substring
       const joined = stderr.join('\n');
       expect(joined).toContain(`${wsPath}:`);
+      // Snippet caret marker
       expect(joined).toContain('^');
     } finally {
       project.cleanup();
@@ -150,6 +160,7 @@ describe('runMigrate', () => {
     expect(migrated).not.toContain('pushIntervalSeconds');
     expect(migrated).toContain('content:');
     expect(migrated).toContain('dir: docs');
+    // Comments preserved
     expect(migrated).toContain('# Header comment');
     expect(migrated).toContain('# --- content ---');
     expect(migrated).toContain('# Trailing comment');
@@ -158,6 +169,9 @@ describe('runMigrate', () => {
 
   test('removes server.port and persistence.* leaf fields (project)', async () => {
     const wsPath = projectConfigPath(project.cwd);
+    // `content.dir` is the surviving unrelated field; server.port +
+    // persistence.* are silent-drop leaves. (server.host / openOnAgentEdit are
+    // now removed keys themselves, so they can't serve as preserved siblings.)
     const original = `content:\n  dir: docs\nserver:\n  port: 3000\npersistence:\n  debounceMs: 5000\n  maxDebounceMs: 10000\n`;
     writeConfigYaml(wsPath, original);
     const outcome = await runMigrate({
@@ -171,6 +185,7 @@ describe('runMigrate', () => {
     expect(migrated).not.toContain('port:');
     expect(migrated).not.toContain('debounceMs');
     expect(migrated).not.toContain('maxDebounceMs');
+    // Unrelated field preserved.
     expect(migrated).toContain('dir: docs');
     const wsOutcome = outcome.outcomes.find((o) => o.scope === 'project');
     expect(wsOutcome?.removed.sort()).toEqual(
@@ -192,6 +207,7 @@ describe('runMigrate', () => {
     const migrated = readFileSync(wsPath, 'utf-8');
     expect(migrated).not.toContain('include:');
     expect(migrated).not.toContain('exclude:');
+    // Sibling field preserved
     expect(migrated).toContain('dir: .');
     const wsOutcome = outcome.outcomes.find((o) => o.scope === 'project');
     expect(wsOutcome?.removed.sort()).toEqual(['content.exclude', 'content.include'].sort());
@@ -216,6 +232,7 @@ describe('runMigrate', () => {
     });
     expect(outcome.ok).toBe(true);
     expect(stdout).toEqual(['No deprecated fields found.']);
+    // File untouched on second pass — bytes-equal
     expect(readFileSync(wsPath, 'utf-8')).toBe(afterFirst);
   });
 
@@ -271,6 +288,7 @@ describe('runMigrate', () => {
     expect(outcome.ok).toBe(true);
     expect(readFileSync(wsPath, 'utf-8')).not.toContain('sync:');
     expect(readFileSync(userPath, 'utf-8')).toBe(userOriginal);
+    // Outcomes only includes project, not user
     expect(outcome.outcomes.every((o) => o.scope === 'project')).toBe(true);
   });
 
@@ -350,13 +368,17 @@ describe('runMigrate', () => {
 
 describe('DROPPED_FIELD_PATHS', () => {
   test('is the silent-drop set followed by every removed-key registry path', () => {
+    // Silently-dropped sections (no removed-key error) come first.
     expect(DROPPED_FIELD_PATHS.slice(0, 4)).toEqual([
       ['sync'],
       ['persistence', 'debounceMs'],
       ['persistence', 'maxDebounceMs'],
       ['server', 'port'],
     ]);
+    // ...then the shared registry, so the "run `ok config migrate`" hint in
+    // every removed-key redirect is truthful.
     expect(DROPPED_FIELD_PATHS.slice(4)).toEqual(REMOVED_KEYS.map((k) => k.path));
+    // Headline keys that used to be silent are now strippable.
     const dotted = DROPPED_FIELD_PATHS.map((p) => p.join('.'));
     expect(dotted).toContain('folders');
     expect(dotted).toContain('appearance.editorModeDefault');

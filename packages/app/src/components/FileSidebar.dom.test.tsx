@@ -154,6 +154,9 @@ mock.module('@/components/ConflictsSection', () => ({
   ConflictsSection: () => <div data-testid="conflicts-section" />,
 }));
 
+// Heavy sidebar child (pulls in skill-actions → dropdown submenu + handoff
+// builders). Not under test here; stubbed like FileTree/ConflictsSection so the
+// sidebar's own behavior tests don't depend on the skills subtree's deep graph.
 mock.module('@/components/SkillsSidebarSection', () => ({
   SkillsSidebarSection: () => <div data-testid="skills-sidebar-section" />,
 }));
@@ -439,6 +442,7 @@ describe('FileSidebar runtime behavior', () => {
       'overflow-x-clip',
     ]);
     expect(header.getAttribute('data-electron-drag')).toBeNull();
+    // No macOS traffic-light reserve on web — there are no traffic lights.
     expect(screen.queryByTestId('sidebar-traffic-light-reserve')).toBeNull();
     expect(screen.queryByText('Project switcher')).toBeNull();
 
@@ -457,12 +461,17 @@ describe('FileSidebar runtime behavior', () => {
     expect(screen.queryByText('Files')).toBeNull();
     expect(screen.getByText('Project switcher')).toBeTruthy();
     expect(header.getAttribute('data-electron-drag')).toBe('');
+    // `justify-between` + the non-shrinkable reserve spacer keep the action
+    // cluster clear of the macOS traffic lights structurally; `overflow-x-clip`
+    // degrades an over-budget cluster toward the interior, not under the chrome.
     expectVisualClassTokens(header.className, [
       'justify-between',
       'overflow-x-clip',
       '[-webkit-app-region:drag]',
     ]);
     const reserve = screen.getByTestId('sidebar-traffic-light-reserve');
+    // `self-stretch` makes the reserve span the full header height so the whole
+    // traffic-light strip stays a draggable window region.
     expectVisualClassTokens(reserve.className, [
       'w-[var(--ok-titlebar-reserve-left,0px)]',
       'shrink-0',
@@ -573,6 +582,9 @@ describe('FileSidebar runtime behavior', () => {
   });
 
   test('toolbar and empty-space menu hide "New from template" when no templates exist', async () => {
+    // Both template-create surfaces drop the entry entirely when the resolved
+    // cascade is empty — the toolbar button and the empty-space submenu, not
+    // just a disabled placeholder.
     hasTemplates = false;
     installBridge();
     await renderSidebar();
@@ -580,6 +592,7 @@ describe('FileSidebar runtime behavior', () => {
 
     expect(screen.queryByRole('button', { name: 'New from template' })).toBeNull();
     expect(screen.queryByTestId('empty-space-menu-new-from-template')).toBeNull();
+    // Sibling create actions still render.
     expect(screen.getByTestId('empty-space-menu-new-file')).toBeTruthy();
     expect(screen.getByTestId('empty-space-menu-new-folder')).toBeTruthy();
   });

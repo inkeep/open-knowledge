@@ -1,3 +1,18 @@
+/**
+ * Substrate canary scenario — exercises the substrate
+ * primitives end-to-end through the perf-test harness.
+ *
+ * This is the perf-tier counterpart to
+ * `tests/integration/perf-substrate-canary.test.ts`. The integration
+ * test runs in tier-1 CI and pins the substrate primitives in
+ * milliseconds; this scenario drives a real browser, exercises the
+ * primitives via real navigation, and shape-asserts the marks /
+ * counters / histograms via `__ok_perf` drained from the page.
+ *
+ * Sweep axes: MAX_POOL ∈ {3, 5, 8} × fixture ∈ {'tight', 'broad'}.
+ * Per cell: cold-load README + warm-back twice + sample histogram.
+ */
+
 import { defineSweep } from '../lib/define-sweep';
 
 interface CellResult {
@@ -18,6 +33,8 @@ export default defineSweep({
     fixture: ['tight', 'broad'] as const,
   },
   scenario: async ({ maxPool, fixture }, ctx): Promise<CellResult> => {
+    // Override the dial via window.__okPerfOverrides so the test
+    // exercises the env-override surface.
     await ctx.page.evaluate((mp: number) => {
       const overrides = window.__okPerfOverrides ?? {};
       overrides.MAX_POOL = mp;
@@ -25,17 +42,24 @@ export default defineSweep({
       window.__okPerfOverrides = overrides;
     }, maxPool);
 
+    // Load the home page so the editor + provider-pool come up. Uses
+    // `opts.target` per the scenario harness's URL convention.
     await ctx.page.goto(ctx.opts.target, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
     });
 
+    // Drive a few open() calls — once for cold construct, then warm-back
+    // a couple times. With provider-pool keyed by docName, repeated
+    // openDocument calls for the same name take the warm-back branch.
+    // Use `navigate` to surface the cold/warm path.
     const targetDoc = fixture === 'tight' ? 'README' : 'AGENTS';
     await ctx.page.evaluate((doc: string) => {
       const ctxApi = (window as unknown as { __ok_open?: (d: string) => void }).__ok_open;
       if (typeof ctxApi === 'function') ctxApi(doc);
     }, targetDoc);
     await ctx.page.waitForTimeout(200);
+    // Re-open same doc twice → 2 warm-backs.
     for (let i = 0; i < 2; i += 1) {
       await ctx.page.evaluate((doc: string) => {
         const ctxApi = (window as unknown as { __ok_open?: (d: string) => void }).__ok_open;
@@ -44,7 +68,12 @@ export default defineSweep({
       await ctx.page.waitForTimeout(60);
     }
 
+    // Push some samples into a histogram so the histogram path is exercised.
     await ctx.page.evaluate(() => {
+      // The substrate's mark.histogram is reachable via the global
+      // `globalThis.__ok_mark` if the wire-site exposed it. Otherwise
+      // the page's own `mark` import handles it. Soft-skip on missing
+      // — the integration test is the canonical assertion.
       const maybe = (window as unknown as { mark?: { histogram?: unknown } }).mark;
       const hg = maybe?.histogram;
       if (typeof hg === 'function') {
@@ -52,6 +81,8 @@ export default defineSweep({
       }
     });
 
+    // Read the substrate state from `__ok_perf` to assert the cell's
+    // contract held.
     const snapshot = await ctx.page.evaluate(() => {
       const c = (
         globalThis as unknown as {

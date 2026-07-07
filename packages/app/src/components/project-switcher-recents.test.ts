@@ -93,6 +93,8 @@ describe('groupRecentsByRepo', () => {
       main('/beta', '/beta/.git'),
       worktree('/alpha/.ok/worktrees/x', '/alpha/.git', '/alpha', 'x'),
     ]);
+    // alpha first (its main appeared first), then notes, then beta. The alpha
+    // worktree folds into the existing alpha group, not a new trailing one.
     expect(groups.map((g) => g.project.path)).toEqual(['/alpha', '/notes', '/beta']);
     expect(groups[0]?.worktrees).toHaveLength(1);
   });
@@ -168,6 +170,7 @@ describe('buildWorktreeFlyoutEntries', () => {
       ]),
       '/other',
     );
+    // main pinned, then opened dev, then create-on-demand branches alphabetized.
     expect(entries.map((e) => e.branch)).toEqual(['main', 'dev', 'alpha', 'zeta']);
     const alpha = entries.find((e) => e.branch === 'alpha');
     expect(alpha?.opened).toBe(false);
@@ -180,6 +183,7 @@ describe('buildWorktreeFlyoutEntries', () => {
       worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
     ]);
     if (group === undefined) throw new Error('group');
+    // Model for /elsewhere — its mainRoot doesn't match this group, so ignored.
     const entries = buildWorktreeFlyoutEntries(
       group,
       model(

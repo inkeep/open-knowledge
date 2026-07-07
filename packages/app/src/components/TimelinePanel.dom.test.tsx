@@ -1,3 +1,16 @@
+/**
+ * RTL mount test: the Timeline surfaces only actor/system commits.
+ *
+ * Pins two user-visible contracts from the "timeline shows only auto-commits"
+ * change: (1) checkpoint rows are filtered out of the panel — they are
+ * background-cleanup artifacts now, not user history; and (2) there is no
+ * Save Version control in the panel header. The expand/diff/restore flow is
+ * exercised by the Playwright suite (timeline-diff-sidepane.e2e.ts); this
+ * mount test locks the filtering + header contract without a browser (and
+ * without a shadow repo, which the e2e fixture requires).
+ *
+ * Invocation: `bun run test:dom` from `packages/app/`.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 
@@ -92,15 +105,21 @@ describe('TimelineContent — actor/system commits only', () => {
 
     renderTimeline();
 
+    // Two WIP rows render; the interleaved checkpoint row is dropped.
     await waitFor(() => {
       expect(screen.getAllByTestId('timeline-entry-expand')).toHaveLength(2);
     });
     expect(screen.getByText('Alice')).toBeTruthy();
     expect(screen.getByText('Bob')).toBeTruthy();
+    // The checkpoint's commit message never reaches the DOM (row filtered out).
     expect(screen.queryByText('checkpoint: cleanup')).toBeNull();
   });
 
   test('keeps upstream-sync entries visible (exclude-by-type, not a wip allowlist)', async () => {
+    // The filter is `type !== 'checkpoint'`, so non-wip system entries like
+    // `upstream` pass through and render via their dedicated path
+    // (displayAuthor → "Upstream sync"). Pins that the exclude-by-type choice
+    // keeps a future/non-wip actor type visible rather than silently dropping it.
     mockHistory([wipEntry('a'.repeat(40), 'Alice'), upstreamEntry('u'.repeat(40))]);
 
     renderTimeline();
@@ -131,6 +150,9 @@ describe('TimelineContent — actor/system commits only', () => {
     await waitFor(() => {
       expect(screen.getByText('Alice')).toBeTruthy();
     });
+    // Query by the user-facing affordance (role + accessible name), not the
+    // deleted testid — this catches a re-introduced Save Version control even
+    // under a different testid, where a tombstone testid query would stay green.
     expect(screen.queryByRole('button', { name: /save version/i })).toBeNull();
   });
 });

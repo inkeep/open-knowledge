@@ -41,6 +41,7 @@ function makeRes(): { res: ServerResponse; captured: CapturedResponse } {
       }
     },
     end(body?: string) {
+      // Handlers that set `res.statusCode` directly (vs writeHead) surface it here.
       if (captured.status === 0) captured.status = (this as { statusCode: number }).statusCode;
       captured.body = body ?? '';
     },
@@ -138,6 +139,10 @@ describe('GET /api/config (desktop / worktree collab server)', () => {
   test('returns collabUrl null when the Host header is absent (deliberate divergence from ok ui)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-config-'));
     try {
+      // No Host header at all. Unlike `ok ui` (which falls back to
+      // `localhost:${resolvedPort}`), this handler advertises null and lets
+      // the client fall back to a same-origin WS URL. Pin it so a future
+      // change that silently adds a fallback is loud.
       const result = await call(buildExtension(dir), 'GET', '/api/config', {});
       expect(result.status).toBe(200);
       const body = JSON.parse(result.body) as { collabUrl: string | null };
@@ -187,6 +192,8 @@ describe('DELETE /api/config one-shot consume', () => {
         host: 'evil.example.com',
       });
       expect(del.status).toBe(403);
+      // The arm must survive a rejected DELETE — a DNS-rebound page must not
+      // be able to clear local TTL state.
       expect(existsSync(resolve(localDir, 'pane-target.json'))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });

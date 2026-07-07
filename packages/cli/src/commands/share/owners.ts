@@ -1,3 +1,14 @@
+/**
+ * `open-knowledge share owners` — list GitHub owners (user + orgs filtered by
+ * can_create_repository) eligible to host a new repo via the Publish-to-GitHub
+ * wizard. JSON-only output; emits exactly one event line on stdout and exits
+ * 0 so the server-side subprocess wrapper can parse without method ambiguity.
+ *
+ * Events (one of):
+ *   { type: 'owners', owners: [{ login, kind: 'user' | 'org', avatarUrl? }, ...] }
+ *   { type: 'error', code: 'auth-required' | 'network' }
+ */
+
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import type { TokenStore } from '../../auth/token-store.ts';
@@ -20,6 +31,27 @@ type OwnerListResult =
   | { kind: 'auth-required' }
   | { kind: 'network' };
 
+/**
+ * Pull owners eligible to create a new repo: the authenticated user first,
+ * then every active org membership where the user is either an org admin
+ * OR `permissions.can_create_repository` is explicitly `true`. Pre-filtering
+ * at this layer avoids dead-ended POST /api/share/publish submits per owner
+ * eligibility. Pagination is bounded — Octokit's iterator pages 100 at a
+ * time; few users belong to >100 orgs.
+ *
+ * Why two signals instead of one: the `permissions` block on a membership
+ * is only included when the OAuth token has `admin:org` scope. With the
+ * default `repo` scope used by the publish flow, `permissions` is absent
+ * even for orgs the user can create repos in — including admin-role orgs.
+ * Falling back to `role === 'admin'` recovers those orgs without widening
+ * the token's scope (admins can always create repos in their own org).
+ * Pure members of orgs without the `permissions` block stay filtered out —
+ * we can't confirm they have create permission without the scope upgrade,
+ * and surfacing them would create the dead-end this filter exists to avoid.
+ *
+ * `octokit` is parameterized so tests inject a fake without hitting the
+ * network. The real Octokit instance is built inside `runShareOwners`.
+ */
 export async function listShareOwners(octokit: Octokit): Promise<OwnerListResult> {
   try {
     const owners: ShareOwner[] = [];
@@ -43,6 +75,9 @@ export async function listShareOwners(octokit: Octokit): Promise<OwnerListResult
     }
     return { kind: 'ok', owners };
   } catch (err) {
+    // 401 from GitHub when the token is invalid/expired. We surface
+    // `auth-required` so the wizard can route through the existing
+    // Device-Flow modal rather than the generic network toast.
     const status = (err as { status?: number }).status;
     if (status === 401) return { kind: 'auth-required' };
     return { kind: 'network' };

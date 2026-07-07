@@ -12,6 +12,8 @@ describe('resolveLocalSinkConfig', () => {
     projectDir = mkdtempSync(join(tmpdir(), 'ok-local-sink-resolver-'));
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     mkdirSync(join(projectDir, '.ok', 'local'), { recursive: true });
+    // Default fixture: empty project config so readConfigSafely returns
+    // schema-defaulted values (sink on, default caps, default denylist).
     writeFileSync(join(projectDir, '.ok', 'config.yml'), '');
   });
 
@@ -55,12 +57,14 @@ describe('resolveLocalSinkConfig', () => {
   });
 
   it('returns null when project-local config sets enabled: false (project-local wins)', () => {
+    // Project keeps the default-on sink; project-local opts the operator out.
     seedProject({ telemetry: { localSink: { enabled: true } } });
     seedProjectLocal({ telemetry: { localSink: { enabled: false } } });
     expect(resolveLocalSinkConfig({ projectDir })).toBeNull();
   });
 
   it('returns the sink when project disables but project-local re-enables (project-local wins)', () => {
+    // Inverse of the typical override — sanity-checks symmetry.
     seedProject({ telemetry: { localSink: { enabled: false } } });
     seedProjectLocal({ telemetry: { localSink: { enabled: true } } });
     const resolved = resolveLocalSinkConfig({ projectDir });
@@ -94,6 +98,8 @@ describe('resolveLocalSinkConfig', () => {
   });
 
   it('cascades per-leaf: project-local attributeDenylist wins over project', () => {
+    // The denylist is value-replace (not merge) — operators who override
+    // expect their list to be authoritative.
     seedProject({
       telemetry: { localSink: { attributeDenylist: ['project-only'] } },
     });
@@ -115,6 +121,7 @@ describe('resolveLocalSinkConfig', () => {
         },
       },
     });
+    // project-local does not override either cap.
     seedProjectLocal({});
     const resolved = resolveLocalSinkConfig({ projectDir });
     expect(resolved).not.toBeNull();
@@ -124,6 +131,12 @@ describe('resolveLocalSinkConfig', () => {
   });
 
   it('anchors both sink configs on projectDir (not content.dir)', () => {
+    // The sink files are per-machine runtime state and must land under
+    // `<projectDir>/.ok/local/`, alongside server.lock / principal.json /
+    // state.json — NOT inside a `content.dir` sub-folder. Anchoring on
+    // content.dir would spawn a second `.ok/` whenever `content.dir != '.'`.
+    // The resolver reads config from projectDir and threads projectDir
+    // through to both sink configs.
     const resolved = resolveLocalSinkConfig({ projectDir });
     expect(resolved).not.toBeNull();
     if (resolved === null) throw new Error('expected non-null sink');

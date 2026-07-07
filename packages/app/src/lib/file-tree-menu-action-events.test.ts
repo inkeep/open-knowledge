@@ -1,3 +1,12 @@
+/**
+ * Coverage for the file-tree menu-action event buses. Mirrors the
+ * `create-file-events.test.ts` pattern — same event-bus discipline. The
+ * bus is the single rendezvous between FileSidebar's macOS File menu
+ * subscriber (emitter) and FileTree's row-action spines
+ * (subscriber); pinning emit + subscribe behavior keeps a refactor that
+ * breaks either side from silently making File → Move to Trash a no-op.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import {
@@ -9,6 +18,10 @@ import {
   subscribeToFileTreeMenuActionRename,
 } from './file-tree-menu-action-events';
 
+// Bun's test runner doesn't ship a `window` global; install a minimal
+// EventTarget-shaped fake mirroring `create-file-events.test.ts`'s
+// precedent (same event-bus discipline). Restored after each test to
+// keep other suites from inheriting the shim.
 const originalWindow = globalThis.window;
 
 type Listener = (event: Event) => void;

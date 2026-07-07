@@ -1,3 +1,12 @@
+/**
+ * Tier-3 RTL mount tests for Settings → Account → Embeddings provider key.
+ *
+ * Status (key presence) is driven through a mocked `/api/semantic-status` fetch;
+ * the set/clear actions through an injected stub transport. Asserts the
+ * write-only contract (the key is never rendered), the three presence states
+ * (no-key / file-key / env), and that Save/Clear call the transport.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { SemanticIndexStatus } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -54,6 +63,7 @@ function makeTransport(parts?: Partial<EmbeddingsKeyTransport>): {
       return parts?.clearKey ? parts.clearKey() : { ok: true };
     },
   };
+  // clearCalls is captured by closure; expose a getter object.
   return {
     transport,
     setCalls,
@@ -100,6 +110,7 @@ describe('EmbeddingsKeySection', () => {
     await user.click(screen.getByTestId('settings-embeddings-key-save'));
 
     expect(rec.setCalls).toEqual(['sk-secret-123']);
+    // Secret not retained in component state after it lands.
     await waitFor(() => expect((input as HTMLInputElement).value).toBe(''));
   });
 
@@ -114,6 +125,7 @@ describe('EmbeddingsKeySection', () => {
     await user.click(screen.getByTestId('settings-embeddings-key-save'));
 
     expect(await screen.findByTestId('settings-embeddings-key-error')).toBeDefined();
+    // The typed key is NOT cleared on failure, so the user can retry without retyping.
     expect((input as HTMLInputElement).value).toBe('sk-bad');
   });
 
@@ -135,6 +147,7 @@ describe('EmbeddingsKeySection', () => {
 
     const hint = await screen.findByTestId('settings-embeddings-key-hint');
     expect(hint.textContent).toContain('a1b2');
+    // Only the redacted tail is shown — the section never renders a full-length key.
     expect(hint.textContent?.length).toBeLessThan(20);
   });
 

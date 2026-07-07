@@ -1,3 +1,21 @@
+/**
+ * Unit tests for the Node-side peer simulator.
+ *
+ * Strategy: peers point at a dummy non-existent URL (`ws://localhost:1`).
+ * The HocuspocusProvider stays in 'connecting' state, but Y.Doc transactions
+ * are local-only — `transact()` does not require a connected provider — so
+ * the simulator's writes still succeed and getFireCounts() increments.
+ *
+ * What we pin:
+ *   - Factory shape: count peers spawned, count visible on handle.
+ *   - start() begins traffic and getFireCounts() reflects writes.
+ *   - stop() cleanly cancels timers (no late writes after the resolved
+ *     promise), is idempotent, and disposes provider + Y.Doc resources.
+ *   - human + agent profile pacing parameters are honored relative to one
+ *     another (we don't assert wall-clock timing — that's flake-prone —
+ *     but we DO assert relative count ordering at a fixed window).
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createNodePeerSimulator, type NodePeerSimulatorHandle } from './node-peer-simulator';
 
@@ -92,6 +110,8 @@ describe('createNodePeerSimulator — start() drives writes', () => {
     active.start(); // no-op
     await wait(120);
     const counts = active.getFireCounts();
+    // With a single schedule, ~3-4 fires in 120ms. Doubled would be ~6-8.
+    // Allow some scheduler jitter — we just assert NOT-double:
     expect(counts[0]).toBeLessThan(8);
   });
 });
@@ -110,6 +130,7 @@ describe('createNodePeerSimulator — stop() teardown', () => {
     expect(beforeStop).toBeGreaterThan(0);
     await active.stop();
     const justAfter = active.getFireCounts()[0] ?? 0;
+    // Wait significantly longer than the interval — no NEW fires should occur.
     await wait(150);
     const wellAfter = active.getFireCounts()[0] ?? 0;
     expect(wellAfter).toBe(justAfter);
@@ -125,6 +146,7 @@ describe('createNodePeerSimulator — stop() teardown', () => {
     active.start();
     await wait(60);
     await active.stop();
+    // Second stop must not throw; should resolve quickly.
     const t0 = Date.now();
     await active.stop();
     expect(Date.now() - t0).toBeLessThan(50);

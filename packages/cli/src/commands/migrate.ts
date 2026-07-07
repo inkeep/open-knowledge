@@ -1,3 +1,12 @@
+/**
+ * `open-knowledge migrate notion [dir]` — normalize a raw Notion `Markdown & CSV`
+ * export into clean Open Knowledge content, in place.
+ *
+ * Filesystem-only (no server): run it on the unzipped export before or instead
+ * of `ok start`. Dry-run by default — it prints what it would change and writes
+ * nothing until `--apply`. All transforms are idempotent.
+ */
+
 import { resolve } from 'node:path';
 import { Command } from 'commander';
 import { ALL_TRANSFORMS, applyPlan, buildPlan, type TransformId } from './migrate/notion/plan.ts';
@@ -72,6 +81,7 @@ export function migrateCommand(): Command {
       });
       const { report } = plan;
 
+      // Refuse a directory that is not a Notion export (unless --force).
       if (!report.isNotionExport && !options.force) {
         if (options.json) {
           console.log(
@@ -92,6 +102,8 @@ export function migrateCommand(): Command {
         try {
           applyPlan(plan);
         } catch (err) {
+          // An I/O failure (EACCES / ENOSPC / EPERM / …) mid-apply leaves a
+          // partial export; report it clearly instead of a raw crash.
           console.error(
             `Failed to apply changes: ${err instanceof Error ? err.message : String(err)}`,
           );

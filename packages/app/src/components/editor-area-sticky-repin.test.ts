@@ -28,6 +28,9 @@ describe('computeStickyRepinLayout', () => {
   });
 
   test('holds a collapsed doc panel at 0% and pins the terminal; editor absorbs (the VM scenario)', () => {
+    // editor | doc(collapsed=0) | terminal after a left-sidebar collapse widened
+    // the container. Only the terminal is pinned (the collapsed doc is left as-is);
+    // the editor must absorb the freed width, not the terminal.
     const next = computeStickyRepinLayout({
       currentLayout: { editor: 20, 'doc-panel': 0, 'terminal-column': 80 },
       containerPx: 1000,
@@ -40,6 +43,9 @@ describe('computeStickyRepinLayout', () => {
   });
 
   test('preserves a non-pinned, non-residual panel (agent-panel) in the layout', () => {
+    // The folder view mounts an agent panel that is neither pinned nor the
+    // residual — its share must pass through untouched while the residual
+    // absorbs only what the pins leave.
     const next = computeStickyRepinLayout({
       currentLayout: { editor: 30, 'doc-panel': 20, 'agent-panel': 15, 'terminal-column': 35 },
       containerPx: 1000,
@@ -53,6 +59,8 @@ describe('computeStickyRepinLayout', () => {
   });
 
   test('pins a collapse: pinning a panel at 0px holds it shut while the residual absorbs', () => {
+    // The panel-set-change assert pins the doc panel at 0px to preserve a
+    // user's collapse across a terminal mount/unmount layout restore.
     const next = computeStickyRepinLayout({
       currentLayout: { editor: 70, 'doc-panel': 30 },
       containerPx: 1000,

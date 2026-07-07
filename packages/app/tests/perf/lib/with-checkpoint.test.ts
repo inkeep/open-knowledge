@@ -76,6 +76,10 @@ describe('withCheckpoint', () => {
     const results = await withCheckpoint<SampleInput, SampleOutput>(
       async (input) => {
         const out = { id: input.id, axis: input.axis, computed: input.axis * 10 };
+        // After computing, read the file to confirm prior cells are durable.
+        // (flushAfterEach=true ⇒ file contains all SUCCESSFUL completed
+        // entries BEFORE this cell. This cell's flush happens after we
+        // return.)
         try {
           const file = await readCheckpointFile(checkpointPath);
           flushSnapshots.push(file.entries.length);
@@ -93,6 +97,7 @@ describe('withCheckpoint', () => {
       { id: 'b', axis: 2, computed: 20 },
       { id: 'c', axis: 3, computed: 30 },
     ]);
+    // Cell 0 sees 0 prior entries; cell 1 sees 1; cell 2 sees 2.
     expect(flushSnapshots).toEqual([-1, 1, 2]);
 
     const final = await readCheckpointFile(checkpointPath);
@@ -141,6 +146,7 @@ describe('withCheckpoint', () => {
       { ...baseConfig, checkpointPath },
     );
 
+    // Only 'c' was actually executed; 'a' and 'b' came from the checkpoint.
     expect(invocations).toEqual(['c']);
     expect(results).toEqual([
       { id: 'a', axis: 1, computed: 10 },
@@ -156,6 +162,7 @@ describe('withCheckpoint', () => {
         {
           schemaVersion: 1,
           entries: [
+            // Deliberately shuffled vs input order:
             {
               key: 'c:3',
               output: { id: 'c', axis: 3, computed: 30 },
@@ -222,6 +229,7 @@ describe('withCheckpoint', () => {
     expect(caughtError).toBeInstanceOf(Error);
     expect((caughtError as Error).message).toBe('cell-b-boom');
 
+    // Cell 'a' completed and was flushed; cell 'b' and 'c' are absent.
     const file = await readCheckpointFile(checkpointPath);
     expect(file.entries.length).toBe(1);
     expect(file.entries[0]?.key).toBe('a:1');
@@ -237,10 +245,14 @@ describe('withCheckpoint', () => {
     await withCheckpoint<SampleInput, SampleOutput>(
       async (input) => {
         if (input.id === 'b') {
+          // Cell B runs after A completed; under flushAfterEach=false, A's
+          // result is still in memory only — the file should not exist yet.
           try {
             await readCheckpointFile(checkpointPath);
             midRunFileExistedAfterCellA.value = true;
-          } catch {}
+          } catch {
+            // expected: file does not exist
+          }
         }
         return { id: input.id, axis: input.axis, computed: input.axis * 10 };
       },
@@ -397,6 +409,7 @@ describe('withCheckpoint', () => {
       { ...baseConfig, checkpointPath },
     );
     expect(results).toEqual([]);
+    // No file created on empty inputs.
     let exists = true;
     try {
       await readCheckpointFile(checkpointPath);
@@ -412,6 +425,7 @@ describe('withCheckpoint', () => {
       [{ id: 'a', axis: 1 }],
       { ...baseConfig, checkpointPath },
     );
+    // The atomic rename should leave no stale .tmp behind.
     let tmpExists = true;
     try {
       await readFile(`${checkpointPath}.tmp`, 'utf8');
@@ -422,6 +436,7 @@ describe('withCheckpoint', () => {
   });
 
   test('recordedAt timestamp is preserved on subsequent flushes (not overwritten)', async () => {
+    // First run records cell 'a' at time T0.
     await withCheckpoint<SampleInput, SampleOutput>(
       async (input) => ({ id: input.id, axis: input.axis, computed: input.axis }),
       [{ id: 'a', axis: 1 }],
@@ -431,8 +446,11 @@ describe('withCheckpoint', () => {
     const aTimestamp = after1.entries[0]?.recordedAt;
     expect(aTimestamp).toBeDefined();
 
+    // Wait one tick so that any naive Date.now() refresh would produce a
+    // different ISO string (millisecond-precision).
     await new Promise((resolve) => setTimeout(resolve, 5));
 
+    // Second run resumes (skips 'a') and adds 'b'.
     await withCheckpoint<SampleInput, SampleOutput>(
       async (input) => ({ id: input.id, axis: input.axis, computed: input.axis }),
       [
@@ -447,9 +465,16 @@ describe('withCheckpoint', () => {
   });
 
   test('AggregateError carries BOTH operation error AND flush error when both fail', async () => {
+    // When the operation throws AND the final flush also fails, the
+    // engineer would otherwise see only the flush error (e.g. ENOSPC) and
+    // re-discover the operation failure on the next run. AggregateError
+    // surfaces both causes in a single inspection.
     const checkpointDir = join(scratchDir, 'aggregate-error-readonly');
+    // Make the parent directory read-only so the .tmp write fails — this
+    // simulates the flush-failure path (disk full / permissions / quota).
     await import('node:fs/promises').then((fs) => fs.mkdir(checkpointDir, { recursive: true }));
     const checkpointPath = join(checkpointDir, 'sweep.checkpoint.json');
+    // Chmod the dir to read-only AFTER mkdir.
     const { chmod } = await import('node:fs/promises');
     await chmod(checkpointDir, 0o500);
 
@@ -467,15 +492,23 @@ describe('withCheckpoint', () => {
     } catch (err) {
       caughtError = err;
     } finally {
+      // Restore so test cleanup can delete the scratch dir.
       await chmod(checkpointDir, 0o700).catch(() => {});
     }
 
+    // When both fail, AggregateError surfaces both causes.
     if (caughtError instanceof AggregateError) {
       expect(caughtError.errors.length).toBe(2);
       const messages = caughtError.errors.map((e) => (e instanceof Error ? e.message : String(e)));
       expect(messages.some((m) => m.includes('operation-failure-original'))).toBe(true);
+      // Second error is the flush failure (EACCES / EPERM / ENOENT depending on platform).
       expect(messages.filter((m) => !m.includes('operation-failure-original')).length).toBe(1);
     } else {
+      // On platforms where chmod 0o500 doesn't actually block writes (some
+      // Docker filesystems, root-owned tmpdirs), the flush may succeed and
+      // the original pendingError surfaces alone. That's the documented
+      // contract — the AggregateError is the failure-mode-of-both path,
+      // not the canonical path.
       expect(caughtError).toBeInstanceOf(Error);
       expect((caughtError as Error).message).toContain('operation-failure-original');
     }

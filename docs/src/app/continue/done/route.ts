@@ -3,6 +3,14 @@ import { PENDING_SHARE_COOKIE } from '@/lib/deferred-share';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * `GET /continue/done` — the confirmation hop. The desktop's loopback listener
+ * redirects the browser here AFTER it has validated the redemption, so this is
+ * the single point where the pairing cookie is cleared (single-use semantics)
+ * and the branded "you can close this tab" page renders.
+ *
+ * A route handler (not a page) because clearing a cookie requires a Response.
+ */
 export function GET(_request: NextRequest): NextResponse {
   const body = `<!DOCTYPE html>
 <html lang="en">

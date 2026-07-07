@@ -192,6 +192,11 @@ describe('createLiveDerivedIndexExtension', () => {
   });
 
   test('FR-43: backlink update receives raw ytext bytes (CRLF survives)', async () => {
+    // serializeLiveDocument read from `mdManager.serialize(fragment)`
+    // which strips CRLF (the parser normalizes line endings to LF and the
+    // serializer never emits them back). Under contract, body source is
+    // `Y.Text('source').toString()` — CRLF survives byte-equal. Discriminating
+    // because CRLF is not preserved through parse → serialize (parser strips).
     const updateDocumentFromMarkdown = mock(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
@@ -200,6 +205,10 @@ describe('createLiveDerivedIndexExtension', () => {
     const conn = await hp.openDirectConnection('crlf-doc');
     const doc = getDoc(conn);
 
+    // applyExternalChange routes through composeAndWriteRawBody and
+    // lands raw bytes in both ytext and fragment. Under contract, ytext keeps
+    // the CRLF; fragment is derived via parse(body) so its serialize output
+    // would emit LF.
     applyExternalChange(hp, 'crlf-doc', '# Title\r\n\r\nLine A\r\nLine B\r\n');
     await extension.onChange?.(
       makeOnChangePayload(hp, doc, 'crlf-doc', {
@@ -211,12 +220,19 @@ describe('createLiveDerivedIndexExtension', () => {
 
     expect(updateDocumentFromMarkdown).toHaveBeenCalledTimes(1);
     const [, bodyArg] = updateDocumentFromMarkdown.mock.calls[0] as [string, string];
+    // CRLF survives — ytext is the source-of-truth.
     expect(bodyArg).toContain('\r\n');
+    // would have produced LF-only canonical bytes from
+    // serialize(fragment).
     expect(bodyArg).toBe('# Title\r\n\r\nLine A\r\nLine B\r\n');
     await conn.disconnect();
   });
 
   test('FR-43: doc-start `---\\n` survives (architectural-floor case)', async () => {
+    // mdast canonicalizes thematic break to `***` in body position, so a
+    // doc starting with `---\n# H\n` would round-trip through
+    // serialize(fragment) as `***\n\n# H\n`. Under contract, ytext keeps
+    // the user's typed `---\n` byte-equal — discriminating.
     const updateDocumentFromMarkdown = mock(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
@@ -242,6 +258,11 @@ describe('createLiveDerivedIndexExtension', () => {
   });
 
   test('FR-43: angle-bracket autolink form is observable in backlink snippet', async () => {
+    // the autolink form already round-trips through serialize via
+    // PUA-protected URL bytes — so this case is byte-equal through both code
+    // paths in steady state. It still validates the spec acceptance: the
+    // SNIPPET CONTENT (what consumers see) reflects what the user typed.
+    // '<https://x>' in snippet text, not '[https://x](https://x)'.
     const updateDocumentFromMarkdown = mock(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,

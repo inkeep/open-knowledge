@@ -1,4 +1,24 @@
 #!/usr/bin/env node
+/**
+ * Packaged-DMG keyring smoke driver.
+ *
+ * Usage:
+ *   node scripts/verify-keyring-in-packaged-dmg.mjs <dmg-path | app-path>
+ *
+ * Launches the packaged app with `OK_DEBUG_KEYRING_SMOKE=1 +
+ * OK_DEBUG_KEYRING_SMOKE_EXIT=1 + OK_DEBUG_KEYRING_SMOKE_OUT=<tmpfile>`.
+ * When the utility process auto-runs `runKeyringSmoke()` at boot, it writes
+ * the JSON result to the OUT path and exits. This driver reads the file and
+ * maps outcomes to exit codes:
+ *
+ *   0 — smoke reported ok:true (native binding loaded + round-trip succeeded)
+ *   1 — smoke reported ok:false (binding failed, read mismatch, etc.)
+ *   2 — app did not exit within the timeout (likely stuck)
+ *   3 — app exited but never wrote the output file (pre-smoke crash)
+ *
+ * Accepts either a `.dmg` (mounted via hdiutil + copied to tmp before detach)
+ * or an already-unpacked `.app` bundle (launched in place).
+ */
 
 import { spawn } from 'node:child_process';
 import { cp, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
@@ -7,8 +27,19 @@ import { basename, join, resolve } from 'node:path';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const STDERR_TAIL_LINES = 40;
+/**
+ * Grace window between SIGTERM (requested on timeout) and SIGKILL (escalation).
+ * Electron's main process can stall SIGTERM when it is blocked on a hung
+ * utility IPC or a deadlocked renderer, leaving the app alive after the
+ * driver has returned. 2 s is enough for a cooperating process to drain and
+ * short enough that the human watching the driver doesn't see the shell
+ * prompt lag.
+ */
 const KILL_ESCALATION_GRACE_MS = 2_000;
 
+/**
+ * Parse CLI args — single positional (dmg or .app path). Exported for tests.
+ */
 export function parseArgs(argv) {
   const positional = argv.slice(2).filter((a) => !a.startsWith('-'));
   if (positional.length !== 1 || !positional[0]) {
@@ -17,6 +48,9 @@ export function parseArgs(argv) {
   return { inputPath: positional[0] };
 }
 
+/**
+ * Classify the input path as `.dmg` or `.app`. Exported for tests.
+ */
 export function classifyInputPath(p) {
   const lower = p.toLowerCase();
   if (lower.endsWith('.dmg')) return 'dmg';
@@ -24,6 +58,13 @@ export function classifyInputPath(p) {
   throw new Error(`Input must be a .dmg or .app path; got: ${p}`);
 }
 
+/**
+ * Resolve the input path to an invocable `.app` path + a cleanup handle.
+ * For `.dmg`: attach read-only nobrowse, copy the first `.app` inside to a
+ * tmp dir, detach the mount, return the tmp `.app` path + a cleanup that
+ * removes the tmp dir.
+ * For `.app`: return the path as-is with a no-op cleanup.
+ */
 async function resolveAppPath(inputPath, deps = {}) {
   const runCommand = deps.runCommand ?? defaultRunCommand;
   const mkdtempImpl = deps.mkdtemp ?? mkdtemp;
@@ -46,6 +87,7 @@ async function resolveAppPath(inputPath, deps = {}) {
     try {
       await runCommand('hdiutil', ['detach', '-quiet', mountRoot]);
     } catch {
+      // best effort
     }
   };
   try {
@@ -82,6 +124,10 @@ async function resolveAppPath(inputPath, deps = {}) {
   }
 }
 
+/**
+ * Spawn the app's Electron binary with the required env vars + wait for it
+ * to exit (or timeout). Returns `{exitCode, stderr}`.
+ */
 async function spawnAppWithEnv(appPath, outPath, deps = {}) {
   const spawnImpl = deps.spawn ?? spawn;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -120,11 +166,17 @@ async function spawnAppWithEnv(appPath, outPath, deps = {}) {
       try {
         child.kill('SIGTERM');
       } catch {
+        // already gone
       }
+      // Escalate to SIGKILL after a grace period — Electron's main process can
+      // ignore SIGTERM when stuck in a deadlocked state, leaving the app alive
+      // after the driver has returned. Don't settle until the SIGKILL fires so
+      // the parent shell sees the orphan cleanup happen.
       sigkillTimer = setTimeoutImpl(() => {
         try {
           child.kill('SIGKILL');
         } catch {
+          // already gone
         }
         settle(null);
       }, killEscalationMs);
@@ -141,10 +193,18 @@ async function resolveExecutable(appPath, deps = {}) {
     await statImpl(exec);
     return exec;
   } catch {
+    // Electron + electron-builder produces `<basename>.app/Contents/MacOS/<basename>`.
+    // A missing binary at that path is a packaging mismatch (renamed productName
+    // without updating the `.app` basename, corrupt build output) — surface it
+    // verbatim rather than masking with a CFBundleExecutable fallback.
     throw new Error(`Executable not found at ${exec}`);
   }
 }
 
+/**
+ * Read the smoke result JSON from the OUT path. Returns null if the file
+ * does not exist (smoke never ran or the app crashed pre-write).
+ */
 export async function readSmokeResult(outPath, deps = {}) {
   const readFileImpl = deps.readFile ?? readFile;
   try {
@@ -156,11 +216,19 @@ export async function readSmokeResult(outPath, deps = {}) {
   }
 }
 
+/**
+ * End-to-end orchestration. Returns the exit code for the driver process.
+ * Exported for tests so they can assert the full-path exit-code behavior
+ * without invoking the shebang entry.
+ */
 export async function runDriver(argv, deps = {}) {
   const writeStream = deps.writeStream ?? ((s) => process.stdout.write(s));
   const errStream = deps.errStream ?? ((s) => process.stderr.write(s));
   const mkdtempImpl = deps.mkdtemp ?? mkdtemp;
   const rmImpl = deps.rm ?? rm;
+  // Injectable `process` for tests — default is Node's global. The driver uses
+  // it only for signal registration + cleanup-on-exit; everything else stays
+  // on pure Node APIs.
   const proc = deps.process ?? process;
 
   let args;
@@ -174,6 +242,20 @@ export async function runDriver(argv, deps = {}) {
   let resolvedApp;
   let outDir;
 
+  // SIGINT / SIGTERM handler registered inside `runDriver` (not at module
+  // load) so the cleanup closure captures the current invocation's
+  // `resolvedApp` + `outDir`. `once` + de-registration in `finally` keeps
+  // each driver run idempotent and prevents listener-count leaks across
+  // repeated invocations of the module in the same process (the test suite
+  // calls `runDriver` many times per run).
+  //
+  // Why both SIGINT + SIGTERM: the developer's Ctrl+C in a terminal sends
+  // SIGINT; external orchestration (CI timeout, `kill <pid>`) sends SIGTERM.
+  // Node's default behavior on both is to exit the process synchronously —
+  // the `finally` block below never runs. That leaves the hdiutil mount
+  // attached at `/Volumes/Open Knowledge` (requires manual `hdiutil detach`
+  // or reboot) and the tmp OUT dir on disk. Running cleanup from the signal
+  // handler eliminates the orphan.
   let signalHandled = false;
   async function signalCleanupAndExit(signal, exitCode) {
     if (signalHandled) return;
@@ -210,6 +292,12 @@ export async function runDriver(argv, deps = {}) {
 
     const result = await readSmokeResult(outPath, deps);
     if (!result) {
+      // Two distinct shapes collapse into this branch: (1) the utility
+      // crashed or exited before `runKeyringSmoke()` completed, so no file
+      // was written; (2) the smoke completed but `writeSmokeResult` failed
+      // (EACCES/ENOSPC on the OUT path's parent dir) and the utility logged
+      // + continued per the non-fatal write-failure path. Name
+      // both so the operator knows where to look.
       errStream(
         'verify-keyring: smoke result file never appeared. Either the app ' +
           'exited before the smoke finished, or the smoke completed but the ' +
@@ -266,6 +354,7 @@ async function defaultListAppsInMount(mountPath) {
   return entries.filter((e) => e.toLowerCase().endsWith('.app'));
 }
 
+// Shebang entry — run the driver when invoked directly.
 if (import.meta.url === `file://${process.argv[1]}`) {
   runDriver(process.argv).then((code) => process.exit(code));
 }

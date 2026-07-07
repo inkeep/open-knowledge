@@ -1,3 +1,19 @@
+/**
+ * Enforcement gate for the docked terminal.
+ *
+ * The PTY-spawning {@link TerminalPanel} mounts by default — the terminal is
+ * available unless the project-local config explicitly opts out with
+ * `terminal.enabled === false`. `terminal.enabled` is `agentSettable:false`
+ * (human-only), so an agent can never silence a human who wants the terminal nor
+ * re-enable a shell a human turned off; the explicit opt-out is the only refusal.
+ *
+ * The mount waits for the project-local binding to sync, so an opted-out project
+ * never flashes the shell (nor fires a PTY spawn the main backstop would refuse)
+ * during the cold-start window before the real value is known.
+ *
+ * Opting out while a shell is running unmounts TerminalPanel, whose cleanup kills
+ * the PTY — turning the terminal off takes effect immediately.
+ */
 import { useLingui } from '@lingui/react/macro';
 import { lazy, Suspense } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
@@ -7,14 +23,21 @@ import { useTerminalConsentState, useTerminalEnabledWriter } from '@/hooks/use-t
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import type { TerminalLaunchIntent } from './EditorPane';
 
+// xterm + its addons + xterm.css (a heavy, WebGL-bearing payload) import only
+// through TerminalPanel, so lazy-loading it keeps them out of the initial
+// bundle — including the web host, where the bridge is null and the terminal
+// can never render.
 const TerminalPanel = lazy(() =>
   import('./TerminalPanel').then((m) => ({ default: m.TerminalPanel })),
 );
 
 interface TerminalGateProps {
   readonly bridge: OkDesktopBridge;
+  /** Forwarded to TerminalPanel so the "Close terminal" button collapses the dock. */
   readonly onClose?: () => void;
+  /** Forwarded to TerminalPanel — OSC 0/2 title reports for the dock's tab label. */
   readonly onTitleChange?: (title: string) => void;
+  /** "Open in terminal" launch intent, forwarded to the session. */
   readonly launch?: TerminalLaunchIntent | null;
   /** Surviving PTY to adopt after a renderer reload, forwarded to the session;
    *  `null` for a freshly-opened tab. */
@@ -49,9 +72,16 @@ export function TerminalGate({
 
   if (synced && !optedOut) {
     return (
+      // Boundary OUTER, Suspense INNER (same composition as SettingsDialog /
+      // EditorActivityPool): Suspense only covers the lazy chunk's pending state.
+      // A render-time throw — xterm's WebGL/constructor path, or React.lazy
+      // re-throwing a rejected chunk import after a deploy bumped the asset hash —
+      // is NOT caught by Suspense and would unmount toward the app root, blanking
+      // the editor. This boundary scopes the failure to the dock cell.
       <ErrorBoundary
         fallbackRender={(props) => <TerminalErrorFallback {...props} />}
         onError={(error, info) => {
+          // console.error (not warn) — a user-visible fallback just rendered.
           console.error(
             '[TerminalGate] rendered fallback for the terminal panel',
             error,

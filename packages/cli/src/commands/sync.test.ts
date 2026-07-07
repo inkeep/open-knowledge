@@ -6,6 +6,11 @@ import type { Config } from '@inkeep/open-knowledge-server';
 import { RUNTIME_VERSION } from '@inkeep/open-knowledge-server';
 import { runSync } from './sync.ts';
 
+// runSync delegates to a running server via `POST /api/sync/trigger` when a live
+// server.lock is present. We plant a lock pointing at our own (alive) pid so the
+// server-first branch fires, then capture the outgoing request via a global
+// fetch stub. The request carries the client version headers (kind=cli).
+
 function headerOf(init: RequestInit | undefined, name: string): string | undefined {
   const h = init?.headers;
   if (h instanceof Headers) return h.get(name) ?? undefined;
@@ -22,6 +27,7 @@ describe('runSync — client version headers (AC-5)', () => {
     dir = mkdtempSync(join(tmpdir(), 'ok-sync-test-'));
     const lockDir = join(dir, '.ok', 'local');
     mkdirSync(lockDir, { recursive: true });
+    // Minimal live lock: our own pid (alive), matching hostname, non-zero port.
     writeFileSync(
       join(lockDir, 'server.lock'),
       JSON.stringify({ pid: process.pid, hostname: hostname(), port: 54321 }),
@@ -48,6 +54,7 @@ describe('runSync — client version headers (AC-5)', () => {
     expect(headerOf(seen, 'x-ok-client-protocol')).toBe('1');
     expect(headerOf(seen, 'x-ok-client-kind')).toBe('cli');
     expect(headerOf(seen, 'x-ok-client-runtime')).toBe(RUNTIME_VERSION);
+    // The original content-type is preserved alongside the version headers.
     expect(headerOf(seen, 'Content-Type')).toBe('application/json');
   });
 });

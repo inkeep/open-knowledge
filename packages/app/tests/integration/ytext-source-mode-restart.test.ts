@@ -1,3 +1,21 @@
+/**
+ * Y.Text (source-mode) duplication check.
+ *
+ * The Observer A initial-populate logic at
+ * `packages/server/src/server-observers.ts` creates Y.Text Items under
+ * the fresh server clientID on every doc load. The XmlFragment-side bug is
+ * well-understood; this test isolates the Y.Text channel so the fix can
+ * be verified as covering both CRDT surfaces.
+ *
+ * Y.Text is the CodeMirror source-mode binding. If Y.Text's items duplicate
+ * independently from the XmlFragment's items, the source-mode view would show
+ * doubled content even if the WYSIWYG (XmlFragment-backed) view were clean —
+ * or vice versa. The test asserts both surfaces match and neither duplicates.
+ *
+ * Expected: PASS post-fix. Regression guard for the pre-fix bug class
+ * — pre-fix, both Y.Text and XmlFragment showed doubled content on fast
+ * restart. Post-fix, neither surface duplicates and the two stay in sync.
+ */
 import './idb-preload';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
@@ -57,6 +75,7 @@ describe('T10: Y.Text (source-mode) duplication on restart', () => {
     if (!firstProvider) throw new Error('provider missing');
     const doc = firstProvider.document;
 
+    // Baseline: both surfaces have the fixture content once.
     const preYtext = doc.getText('source').toString();
     const preFrag = serializeFragment(doc.getXmlFragment('default'));
     const preSection1Text = (preYtext.match(/## Section 1/g) ?? []).length;
@@ -67,10 +86,14 @@ describe('T10: Y.Text (source-mode) duplication on restart', () => {
 
     const preClientIds = clientIdsInDoc(doc);
 
+    // Fast restart.
     server = await server.killAndRestartOnSamePort({ downtimeMs: 500 });
     cleanups.unshift(() => server.shutdown());
 
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 10_000, 50);
+    // post-fix the authenticationFailed recycle fires and `doc` points at a
+    // destroyed Y.Doc. Re-read from the pool's current active entry so
+    // post-restart assertions hit the live Y.Doc.
     await wait(500);
 
     const activeEntry = pool.getActive();
@@ -78,6 +101,7 @@ describe('T10: Y.Text (source-mode) duplication on restart', () => {
     const postDoc = activeEntry.provider.document;
     const postClientIds = clientIdsInDoc(postDoc);
 
+    // Both surfaces: exactly once.
     const postYtext = postDoc.getText('source').toString();
     const postFrag = serializeFragment(postDoc.getXmlFragment('default'));
     const postSection1Text = (postYtext.match(/## Section 1/g) ?? []).length;
@@ -113,6 +137,9 @@ describe('T10: Y.Text (source-mode) duplication on restart', () => {
     expect(postSection2Frag).toBe(1);
     expect(postWikiFrag).toBe(1);
 
+    // Bridge invariant should still hold post-restart (a duplicated Y.Text
+    // should serialize to duplicated XmlFragment, and vice versa — so if the
+    // two sides DIFFER, there's a separate bug in the bridge sync).
     assertBridgeInvariant(postDoc.getText('source'), postDoc.getXmlFragment('default'));
   }, 30_000);
 });

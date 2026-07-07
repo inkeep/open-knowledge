@@ -25,6 +25,32 @@ interface CheckAndRepairLaunchJsonOpts {
   logger?: LaunchJsonWiringLogger;
 }
 
+/**
+ * Force-write the canonical `.claude/launch.json` `open-knowledge-ui`
+ * configuration on every project open. Mirrors the user-level SKILL
+ * force-write posture — no namespace-ownership classification, no
+ * healthy-current short-circuit. `scaffoldLaunchJson` does the right thing
+ * in each case it can reach:
+ *
+ *   - File missing → creates `.claude/launch.json` with our entry only.
+ *   - File parses, no `open-knowledge-ui` entry → merges our entry into
+ *     `configurations[]` (preserves siblings the user defined).
+ *   - File parses, `open-knowledge-ui` entry exists → replaces it with the
+ *     current bundled shape.
+ *   - File exists but is blank/whitespace → `scaffoldLaunchJson` treats it
+ *     as `{}` and writes a fresh file with our entry.
+ *   - File exists but contains malformed JSON → `scaffoldLaunchJson`
+ *     returns `'failed'`; we surface that as `status: 'failed'`. We do
+ *     NOT backup-and-rewrite here — preserving siblings the user authored
+ *     into a broken file outweighs the recovery-on-corrupt case. (Pure
+ *     OK-managed files like SKILL.md and `.mcp.json` *do* get the
+ *     backup-and-rewrite treatment; launch.json doesn't because it's a
+ *     shared user-authored surface.)
+ *
+ * Idempotent: running twice in succession produces no diff on disk
+ * because `scaffoldLaunchJson` writes byte-identical output on the second
+ * call. CRDT-style force-write is fine here.
+ */
 export async function checkAndRepairLaunchJsonOnProjectOpen(
   opts: CheckAndRepairLaunchJsonOpts,
 ): Promise<LaunchJsonRepairResult> {

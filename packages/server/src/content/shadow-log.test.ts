@@ -1,5 +1,10 @@
 import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'bun:test';
 
+// Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in this
+// test setup spawns git children that Bun fails to reap on ubuntu-latest
+// GHA runners; post-test cgroup never drains, hanging test (test) at the
+// 15-min timeout. Tests run normally locally; follow-up PR will migrate
+// fixtures to execFileSync.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -128,6 +133,8 @@ describe('readShadowLog — multi-writer merge', () => {
     const agent: WriterIdentity = { id: 'agent-a', name: 'A', email: 'a@t.test' };
     const principal: WriterIdentity = { id: 'principal-b', name: 'B', email: 'b@t.test' };
 
+    // Explicit increasing commit dates make the committer-date ordering
+    // deterministic without >1s real-time waits (git dates are 1s-granular).
     writeFileSync(authPath, '# v1\n');
     await commitWip(shadow, agent, contentDir, 'agent first', branch, {
       date: '2026-05-05T12:00:01+00:00',
@@ -163,6 +170,7 @@ describe('readShadowLog — multi-writer merge', () => {
 
     for (let i = 0; i < 4; i++) {
       writeFileSync(authPath, `# v${i}\n`);
+      // Increasing per-iteration date → deterministic ordering, no real-time wait.
       await commitWip(shadow, writer, contentDir, `edit ${i}`, branch, {
         date: `2026-05-05T12:00:0${i + 1}+00:00`,
       });
@@ -212,6 +220,12 @@ describe('readShadowLog — upstream and empty cases', () => {
 });
 
 describe('readShadowLog — FR14 summaries carry through (US-007)', () => {
+  // This test fabricates a shadow commit with a hand-written `ok-contributors:`
+  // body line in the new shape (with `summaries`), then asserts that
+  // `readShadowLog` surfaces the summaries on `commits[i].contributors[*]`
+  // WITHOUT any CLI-side code change. The enrichment path flows through the
+  // existing `parseContributors` call — once the parser accepts
+  // the field, exec/read_document see it for free.
   test('summaries on the body line surface in commit.contributors[*].summaries', async () => {
     const project = await bootstrapProject();
     const shadow = await initShadowRepo(project);
@@ -222,6 +236,7 @@ describe('readShadowLog — FR14 summaries carry through (US-007)', () => {
     const writer: WriterIdentity = { id: 'agent-c', name: 'Claude', email: 'c@t.test' };
     const branch = (await simpleGit(project).revparse(['--abbrev-ref', 'HEAD'])).trim();
 
+    // Commit message body that mimics what `formatContributorsFrom` emits.
     const body = [
       'WIP auto-save 2026-04-21T00:00:00.000Z',
       '',
@@ -249,6 +264,7 @@ describe('readShadowLog — FR14 summaries carry through (US-007)', () => {
     const writer: WriterIdentity = { id: 'agent-legacy', name: 'Legacy', email: 'l@t.test' };
     const branch = (await simpleGit(project).revparse(['--abbrev-ref', 'HEAD'])).trim();
 
+    // Legacy body (no `summaries` key) — identical to what shipped commits contain today.
     const body = [
       'WIP auto-save 2026-04-10T00:00:00.000Z',
       '',
@@ -287,15 +303,20 @@ describe('readShadowLog — checkpoint-ancestry fallback (PRD-6972 FR7 / D15)', 
     const before = await readShadowLog(project, 'content/auth.md', 5);
     expect(before.commits.length).toBe(3);
 
+    // Consolidate: folds the writer's chain into an auto-consolidation checkpoint
+    // and deletes its WIP ref — exactly the post-consolidation state.
     await saveVersion(shadow, contentDir, [writer], branch, undefined, {
       checkpointKind: { foldedRefs: 1, trigger: 'dead-chain' },
     });
 
     const after = await readShadowLog(project, 'content/auth.md', 5);
+    // Same top recent activity as before — surfaced via the checkpoint ancestry.
     expect(after.commits.map((c) => c.hash).sort()).toEqual(
       before.commits.map((c) => c.hash).sort(),
     );
+    // The consolidation checkpoint itself is NOT surfaced as activity.
     expect(after.commits.every((c) => !c.message.startsWith('checkpoint:'))).toBe(true);
+    // Attribution preserved via the ok-actor body line (the ref name is gone).
     expect(after.commits.every((c) => c.writerId === 'agent-z')).toBe(true);
     expect(after.commits.every((c) => c.writerClassification === 'agent')).toBe(true);
   });

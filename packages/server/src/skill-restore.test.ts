@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { isGitObjectNotFound } from './skill-restore.ts';
 
+/**
+ * The `isGitObjectNotFound` boundary is what keeps a corrupt-repo / missing-git
+ * failure from being masked as a stale-version 404 in `restoreSkillVersion`'s
+ * `ls-tree` catch (→ HTTP 500 vs 404). Pin both sides so the regex can't
+ * silently broaden to swallow genuine server faults as not-found.
+ */
 describe('isGitObjectNotFound', () => {
   test('classifies a genuinely-missing object/revision as not-found (→ 404)', () => {
     for (const msg of [

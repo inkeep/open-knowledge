@@ -1,5 +1,10 @@
 import type { SVGProps } from 'react';
 
+// OpenCode brand mark (the square "terminal" glyph from opencode.ai), rendered
+// monochrome via `currentColor` so the dropdown row's color cascade (and the
+// optional `--ok-brand-color` override in `TargetIcon`) tints it per theme. The
+// inner block drops to a lower opacity to echo the two-tone brand mark without
+// baking in the dark background the favicon ships with.
 export function OpenCodeIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

@@ -1,3 +1,20 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleSuggestLinks`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET /api/suggest-links?docName=...`:
+ *   - missing docName query param → `urn:ok:error:invalid-request`.
+ *   - unsafe docName → `urn:ok:error:invalid-request`.
+ *   - reserved (system / config) docName → `urn:ok:error:reserved-doc-name`.
+ *   - non-existent docName → `urn:ok:error:doc-not-found`.
+ *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
+ *     `Allow: GET` header.
+ *
+ * Happy-path is exercised by `packages/server/src/api-suggest-links.test.ts`,
+ * which seeds files on disk before constructing the handler. The harness in
+ * this file boots a full server without seeding, so we assert errors-only —
+ * sufficient to catch wire-shape regressions.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

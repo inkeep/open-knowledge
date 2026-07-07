@@ -59,6 +59,9 @@ describe('wikiLinkHref', () => {
   });
 
   test('empty target with null anchor produces #', () => {
+    // The wiki-link parser rejects empty targets upstream, but the helper
+    // is pure — defensive coverage proves it does not throw or read
+    // undefined slug bytes.
     expect(wikiLinkHref('', null)).toBe('#');
   });
 
@@ -67,6 +70,9 @@ describe('wikiLinkHref', () => {
   });
 
   test('byte-identical to the historical mdast-to-hast-handlers private implementation', () => {
+    // Drift fence — if this assertion ever changes, the wikiLinkHandler
+    // round-trip in mdast-to-hast-handlers.test.ts will diverge from the
+    // walker-side wiki-link transform that imports this same helper.
     const cases: Array<[string, string | null, string]> = [
       ['Page', null, '#page'],
       ['Page', 'Heading', '#page-heading'],

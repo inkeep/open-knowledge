@@ -1,20 +1,48 @@
+/**
+ * GitHub Device Flow runner — spawns `<cli> auth login --json --host <host>`
+ * and emits structured events to a callback. Used by both the HTTP relay
+ * (api-extension.ts) and the desktop-main IPC handler (Navigator window has
+ * no backing API server).
+ *
+ * The CLI emits one of:
+ *   {type:'verification', user_code, verification_uri, expires_in}
+ *   {type:'complete', host, login}
+ *   {type:'error', message}
+ *
+ * On clean exit without a terminal event, this runner synthesizes a
+ * `complete` so the caller never hangs on a silent exit (the device-flow
+ * subprocess sometimes returns 0 after writing the token to the keychain
+ * without emitting `complete` on older builds).
+ */
+
 import { runSubprocess } from './subprocess.ts';
 import type { AuthEvent } from './types.ts';
 
 export interface RunDeviceFlowOptions {
+  /** Command + base argv prefix; e.g. `['open-knowledge']` or `[process.execPath, scriptPath]`. */
   cliArgs: readonly string[];
+  /** GitHub host. Defaults to `'github.com'`. */
   host?: string;
+  /** Wall-clock subprocess timeout. Defaults to 10 minutes. */
   timeoutMs?: number;
+  /** Called for every parsed event. */
   onEvent: (event: AuthEvent) => void;
 }
 
 export interface RunDeviceFlowController {
+  /** Resolves once the subprocess has exited and the final synthesized event (if any) is emitted. */
   done: Promise<void>;
+  /** SIGTERM the child. */
   cancel(): void;
 }
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
+/**
+ * Heuristic — return `true` when the parsed JSON matches the shape of one
+ * of the expected `AuthEvent` variants. Non-event lines (the CLI sometimes
+ * writes keychain probe info on stdout in older builds) are ignored.
+ */
 function asAuthEvent(parsed: Record<string, unknown>): AuthEvent | null {
   const type = parsed.type;
   if (type === 'verification') {
@@ -75,6 +103,9 @@ export function runDeviceFlowSubprocess(opts: RunDeviceFlowOptions): RunDeviceFl
   const done = proc.done.then((result) => {
     if (sawTerminal) return;
     if (result.code === 0) {
+      // CLI exited cleanly without a terminal event — synthesize one so
+      // the caller's stream resolves. Login name will be filled in by the
+      // next /api/local-op/auth/status poll on the client side.
       opts.onEvent({ type: 'complete', host, login: '' });
     } else {
       opts.onEvent({

@@ -1,3 +1,10 @@
+/**
+ * Unit tests for installUserSkill.
+ *
+ * Subprocess invocation is mocked via the injectable `spawn` option.
+ * Each test uses a fresh `mkdtempSync`-backed HOME so the sidecar write path
+ * touches only the tmpdir — never the real `~/`.
+ */
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { SpawnOptions } from 'node:child_process';
 import { EventEmitter } from 'node:events';
@@ -21,8 +28,15 @@ async function readServerVersion(): Promise<string> {
   return (JSON.parse(raw) as { version: string }).version;
 }
 
+/**
+ * Build a fake ChildProcess that scripts one emit() lifecycle — enough to
+ * exercise `installUserSkill`'s listener contract without spawning a real
+ * subprocess.
+ */
 interface FakeChildScript {
+  /** Bytes to push to the stderr stream before exit. */
   stderr?: string;
+  /** How the process terminates. */
   outcome: { kind: 'exit'; code: number } | { kind: 'error'; error: Error } | { kind: 'hang' };
 }
 
@@ -34,6 +48,7 @@ function makeFakeChild(script: FakeChildScript): ReturnType<SpawnLike> {
     stdout: new PassThrough(),
     stdin: null,
     kill: (_sig?: NodeJS.Signals | number) => {
+      // Mirror real ChildProcess: kill triggers an exit/error event unless we've already settled.
       return true;
     },
   });
@@ -45,6 +60,7 @@ function makeFakeChild(script: FakeChildScript): ReturnType<SpawnLike> {
     } else if (script.outcome.kind === 'error') {
       (child as unknown as EventEmitter).emit('error', script.outcome.error);
     }
+    // 'hang' — emit nothing. installUserSkill should hit its timeout.
   });
 
   return child;
@@ -96,32 +112,53 @@ function freshHome(): string {
   return mkdtempSync(join(tmpdir(), 'ok-skill-install-'));
 }
 
+// Track-1 active path: `~/.ok/skill-state/cli-hosts`.
+// State lives at `~/.ok/skill-state.yml` as a single YAML document.
 const YAML_REL = ['.ok', 'skill-state.yml'] as const;
 function yamlPathFor(home: string): string {
   return join(home, ...YAML_REL);
 }
 
+// Track-1 installs the slim discovery bundle; the disk-presence gate probes
+// its install dir, NOT the pre-split `open-knowledge` dir.
 const CENTRAL_SKILL_REL = ['.agents', 'skills', 'open-knowledge-discovery'] as const;
 function centralSkillDirFor(home: string): string {
   return join(home, ...CENTRAL_SKILL_REL);
 }
 
+/**
+ * Pretend the `skills` CLI already wrote the central source. Pairs with
+ * writeSidecar to simulate a real prior install — without both, the
+ * skip-current gate now correctly rejects the sidecar as stale.
+ */
 function writeCentralSkill(home: string): void {
   const dir = centralSkillDirFor(home);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'SKILL.md'), '# stub\n', 'utf-8');
 }
 
+/** Find the warn record carrying a specific structured `event` field. */
 function findWarn(records: RecordedLog[], event: string): RecordedLog | undefined {
   return records.find((r) => r.level === 'warn' && (r.data as { event?: string }).event === event);
 }
 
+/**
+ * Pretend a pre-split `open-knowledge` user-global skill dir exists at one
+ * host. `installUserSkill` only spawns the legacy `npx skills remove` when
+ * such a dir is on disk — a fresh machine skips the subprocess entirely.
+ */
 function writeLegacyUserSkill(home: string, hostDir = '.claude'): void {
   const dir = join(home, hostDir, 'skills', 'open-knowledge');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'SKILL.md'), '# legacy\n', 'utf-8');
 }
 
+/**
+ * Stage a `cli-hosts` entry in the YAML state file. `content` is the raw
+ * version string the test wants the gate to read. Empty / malformed
+ * content writes a YAML whose `version` field will fail schema validation
+ * — the read path then returns null (fail-soft contract).
+ */
 function writeSidecar(home: string, content: string): void {
   const dir = join(home, '.ok');
   mkdirSync(dir, { recursive: true });
@@ -137,6 +174,10 @@ function writeSidecar(home: string, content: string): void {
   writeFileSync(yamlPathFor(home), yaml, 'utf-8');
 }
 
+/**
+ * Returns the cli-hosts version + '\n' or null. Reads the YAML and
+ * projects out the version field via a tolerant regex.
+ */
 function readSidecarIfExists(home: string): string | null {
   let raw: string;
   try {
@@ -158,6 +199,7 @@ beforeEach(async () => {
   currentVersion = await readServerVersion();
 });
 
+/** Read the JSONL install-event log written under a test HOME. */
 function readInstallEvents(home: string): Array<Record<string, unknown>> {
   let raw: string;
   try {
@@ -190,6 +232,8 @@ describe('quoteForWindowsShell', () => {
 });
 
 describe('installUserSkill — Windows npx.cmd shim', () => {
+  // On Windows `npx` is `npx.cmd`; Node's spawn cannot exec it without a shell.
+  // The injected `platform` lets us assert the shell shim on a POSIX runner.
   test('platform "win32" spawns npx with shell:true', async () => {
     const home = freshHome();
     const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
@@ -199,6 +243,7 @@ describe('installUserSkill — Windows npx.cmd shim', () => {
     expect(result).toBe('installed');
     expect(calls[0]?.command).toBe('npx');
     expect(calls[0]?.opts.shell).toBe(true);
+    // The literal `*` must still reach npx (no whitespace → not quoted).
     expect(calls[0]?.args).toContain('*');
   });
 
@@ -221,6 +266,7 @@ describe('installUserSkill — fresh install', () => {
     const result = await installUserSkill({ home, logger, spawn });
 
     expect(result).toBe('installed');
+    // Fresh machine — no legacy `open-knowledge` dir — so one spawn: the `add`.
     expect(calls.length).toBe(1);
     expect(calls[0]?.command).toBe('npx');
     expect(calls[0]?.args).toEqual([
@@ -234,6 +280,7 @@ describe('installUserSkill — fresh install', () => {
       '-y',
       '--copy',
     ]);
+    // The rich `project` bundle never installs at user scope.
     expect(calls[0]?.args.some((a) => /assets\/skills\/project/.test(a))).toBe(false);
     expect((calls[0]?.opts.env as NodeJS.ProcessEnv)?.HOME).toBe(home);
     expect(readSidecarIfExists(home)).toBe(`${currentVersion}\n`);
@@ -271,6 +318,7 @@ describe('installUserSkill — legacy migration', () => {
     const result = await installUserSkill({ home, spawn });
 
     expect(result).toBe('installed');
+    // Two subprocesses: the legacy `remove`, then the `add`.
     expect(calls.length).toBe(2);
     expect(calls[0]?.args).toEqual([
       '-y',
@@ -287,11 +335,15 @@ describe('installUserSkill — legacy migration', () => {
   test('legacy remove exiting non-zero is logged + swallowed; install still proceeds', async () => {
     const home = freshHome();
     writeLegacyUserSkill(home, '.cursor');
+    // The shared fake scripts every spawn — both `remove` and `add` exit 1.
+    // The non-zero `remove` must NOT abort the install; only the `add` gates it.
     const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 1 } });
     const { logger, records } = makeRecordingLogger();
 
     const result = await installUserSkill({ home, logger, spawn });
 
+    // `add` failed (exit 1) → 'failed'; the run did not throw, and the
+    // legacy-remove failure surfaced as its own swallowed warning.
     expect(result).toBe('failed');
     expect(calls[0]?.args).toContain('remove');
     expect(findWarn(records, 'skill-install.legacy-remove-failed')).toBeDefined();
@@ -312,6 +364,20 @@ describe('installUserSkill — idempotency (skip-current)', () => {
     expect(readSidecarIfExists(home)).toBe(`${currentVersion}\n`);
   });
 
+  test('force bypasses the skip-current gate → subprocess IS invoked even when the version matches', async () => {
+    const home = freshHome();
+    writeSidecar(home, `${currentVersion}\n`);
+    writeCentralSkill(home);
+    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
+
+    // `ok init` passes force so one bundle's shared-key version write can't
+    // freeze another bundle's content on an upgrade-then-reinit.
+    const result = await installUserSkill({ home, spawn, force: true });
+
+    expect(result).toBe('installed');
+    expect(calls.length).toBe(1);
+  });
+
   test('sidecar without trailing newline still matches (tolerant parse)', async () => {
     const home = freshHome();
     writeSidecar(home, currentVersion);
@@ -326,12 +392,15 @@ describe('installUserSkill — idempotency (skip-current)', () => {
   test('sidecar matches but central skill dir is missing → reinstall fires, sidecar rewritten', async () => {
     const home = freshHome();
     writeSidecar(home, `${currentVersion}\n`);
+    // Deliberately do NOT call writeCentralSkill — simulates `npx skills remove -g`
+    // having nuked the skill while leaving the sidecar intact.
     const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
     const { logger, records } = makeRecordingLogger();
 
     const result = await installUserSkill({ home, logger, spawn });
 
     expect(result).toBe('installed');
+    // Fresh machine, no legacy dir — one spawn: the `add`.
     expect(calls.length).toBe(1);
     expect(readSidecarIfExists(home)).toBe(`${currentVersion}\n`);
     const reinstallLog = records.find(
@@ -465,9 +534,18 @@ describe('installUserSkill — HOME propagates to subprocess env', () => {
   });
 });
 
+// `host` shim suppresses an unused-import flag — `calls[0]?.opts.env` carries
+// the HOME spec asserts; this scoped helper localizes the access pattern.
 function host(calls: ReadonlyArray<{ opts: { env?: NodeJS.ProcessEnv } }>): NodeJS.ProcessEnv {
   return (calls[0]?.opts.env ?? {}) as NodeJS.ProcessEnv;
 }
+
+// ─── buildAndOpenSkill ─────────────────────────────────────────────────────
+//
+// Shared primitive that produces `openknowledge.skill` and hands it to the OS
+// file association. Consumed by the `ok install-skill` CLI, the
+// `POST /api/install-skill` endpoint, and (in principle) the Electron skill
+// bridge — every test here protects all three call sites at once.
 
 describe('buildAndOpenSkill', () => {
   function makeFakeSpawn(capture: {
@@ -578,12 +656,19 @@ describe('buildAndOpenSkill', () => {
       spawnFn: makeFakeSpawn({ threw: new Error('EACCES: permission denied') }),
     });
 
+    // Build succeeded; handoff failed soft.
     expect(result.status).toBe('built');
     expect(result.handoffError?.reason).toBe('spawn-error');
     expect(result.handoffError?.message).toContain('EACCES');
     expect(result.outputPath).toBeDefined();
   });
 });
+
+// ─── buildAndOpenSkill install-state gate ─────────────────────
+//
+// The skip-current gate is what stops `buildAndOpenSkill` from rebuilding
+// the `.skill` zip on every Cowork click. Direct tests for the composed
+// flow — the helpers in skill-state.ts have their own unit coverage.
 
 describe('buildAndOpenSkill — install-state gate', () => {
   function makeNoopSpawn(): SpawnLike {
@@ -633,11 +718,14 @@ describe('buildAndOpenSkill — install-state gate', () => {
     expect(result.status).toBe('skip-current');
     expect(result.skillVersion).toBe(currentVersion);
     expect(typeof result.recordedAt).toBe('string');
+    // No bundle was written.
     let outExists = false;
     try {
       readFileSync(join(home, 'should-not-build.skill'));
       outExists = true;
-    } catch {}
+    } catch {
+      /* expected */
+    }
     expect(outExists).toBe(false);
   });
 
@@ -682,12 +770,14 @@ describe('buildAndOpenSkill — install-state gate', () => {
 
   test('subsequent invocation after a successful build hits the gate', async () => {
     const home = freshHome();
+    // First call: fresh build, populates state.
     const first = await buildAndOpenSkill({
       home,
       out: join(home, 'first.skill'),
       noOpen: true,
     });
     expect(first.status).toBe('built');
+    // Second call: gate matches, skips rebuild.
     const second = await buildAndOpenSkill({
       home,
       out: join(home, 'second.skill'),

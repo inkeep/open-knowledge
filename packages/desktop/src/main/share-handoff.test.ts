@@ -130,6 +130,8 @@ describe('url helpers', () => {
     });
     expect(decision).toEqual({
       kind: 'redeem',
+      // The reconstructed share URL MUST stay on the apex — parseShareUrl's host
+      // allowlist rejects localhost.
       shareUrl: `https://openknowledge.ai/d/${TOKEN}`,
       doneLocation: 'http://localhost:3010/continue/done',
     });
@@ -143,6 +145,8 @@ describe('url helpers', () => {
     expect(parsed).toEqual({ pathname: '/redeem', token: TOKEN, nonce: NONCE });
   });
 });
+
+// ─── Harness for startFirstRunHandshake ──────────────────────────────────────
 
 class FakeResponse implements HandoffHttpResponse {
   statusCode = 200;
@@ -179,6 +183,7 @@ class FakeServer implements HandoffHttpServer {
   close() {
     this.closed = true;
   }
+  /** Drive a request through the registered handler. */
   request(url: string): FakeResponse {
     const res = new FakeResponse();
     this.handler({ url }, res);
@@ -258,6 +263,7 @@ describe('startFirstRunHandshake', () => {
     const server = h.getServer();
     const probe = server.request('/favicon.ico');
     expect(probe.statusCode).toBe(404);
+    // The real redemption still works afterward.
     const res = server.request(`/redeem?token=${TOKEN}&nonce=${NONCE}`);
     expect(res.statusCode).toBe(302);
     expect(h.outcomes).toEqual(['redeemed']);

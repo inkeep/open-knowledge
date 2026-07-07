@@ -1,3 +1,10 @@
+/**
+ * Subprocess runner — foundational behavior used by both auth + clone flows.
+ *
+ * Fixture subprocesses are spawned via `process.execPath -e <script>` so the
+ * tests stay self-contained (no dependence on the project CLI being on PATH).
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { delimiter as PATH_DELIMITER } from 'node:path';
 import { runSubprocess } from './subprocess.ts';
@@ -77,6 +84,7 @@ describe('runSubprocess', () => {
     setTimeout(() => proc.cancel(), 50);
     const result = await proc.done;
     expect(result.cancelled).toBe(true);
+    // Process exited via signal; exit code reported as null.
     expect(result.code).toBeNull();
   });
 
@@ -148,6 +156,9 @@ describe('runSubprocess', () => {
     expect(lines.map((l) => l.raw)).toEqual(['keep']);
   });
 
+  // `extraPathDirs` is the clone-flow git-binding mechanism: the caller's
+  // git-preflight resolves a usable git and prepends its dir so the spawned
+  // `<cli> clone`'s internal `git` resolves to the validated binary.
   const echoPathCli = fixtureCli(`console.log(JSON.stringify({ path: process.env.PATH }))`);
   const childPathFrom = (lines: { parsed: Record<string, unknown> | null }[]): string =>
     String(lines[0]?.parsed?.path ?? '');
@@ -190,6 +201,8 @@ describe('runSubprocess', () => {
     });
     await proc.done;
     const childPath = childPathFrom(lines);
+    // The leading empty string is filtered — the child PATH must not start with
+    // an empty segment (a `${DELIM}`-prefixed PATH resolves the cwd implicitly).
     expect(childPath.split(PATH_DELIMITER)[0]).toBe('/opt/only');
   });
 });

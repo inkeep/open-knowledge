@@ -1,3 +1,18 @@
+/**
+ * Config-sharing posture as two side-by-side radio cards — shared by the
+ * open-folder consent dialog (surfaced at the top level, where the choice is
+ * more consequential for an existing folder) and the create-project dialog
+ * (tucked inside "Advanced settings", since a greenfield project defaults to
+ * Shared). The two surfaces intentionally place the field differently.
+ *
+ * Visible copy stays plain-language; the technical detail (which files, git
+ * mechanics) lives in `ConfigSharingInfoTooltip` next to the legend.
+ *
+ * `idPrefix` namespaces the radio element ids so two instances can coexist;
+ * `testIdPrefix` keeps each dialog's existing test ids (`consent-sharing*` /
+ * `create-sharing*`) stable.
+ */
+
 import { Trans } from '@lingui/react/macro';
 import { ConfigSharingInfoTooltip } from '@/components/ConfigSharingInfoTooltip';
 import { Label } from '@/components/ui/label';
@@ -9,6 +24,7 @@ export type SharingMode = 'shared' | 'local-only';
 interface SharingModeFieldProps {
   value: SharingMode;
   onValueChange: (value: SharingMode) => void;
+  /** Whole control busy/disabled (e.g. while the dialog is submitting). */
   disabled?: boolean;
   idPrefix: string;
   testIdPrefix: string;

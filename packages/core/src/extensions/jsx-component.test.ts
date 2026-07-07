@@ -1,3 +1,9 @@
+/**
+ * Tests for jsxComponent PM node — native MDX form.
+ *
+ * The old code-fence form (```jsx-component) is replaced by native MDX via remark-mdx.
+ * These tests verify the jsxComponent PM node works correctly with the new pipeline.
+ */
 import { describe, expect, test } from 'bun:test';
 import { type Extension, getSchema, type Mark, type Node } from '@tiptap/core';
 import { MarkdownManager } from '../markdown/index.ts';
@@ -55,6 +61,7 @@ describe('jsxComponent via native MDX', () => {
 
 describe('jsxComponent insertJsxComponent command', () => {
   test('command is available in extension', () => {
+    // The insertJsxComponent command is defined in JsxComponent extension
     const ext = sharedExtensions.find((e: TiptapExtensionLike) => {
       if (e.name === 'jsxComponent') return true;
       const config = (e as { config?: { name?: string } }).config;

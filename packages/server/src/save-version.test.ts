@@ -1,3 +1,11 @@
+/**
+ * Save-version integration tests.
+ *
+ * Verifies the shadow-only contract:
+ *   - History checkpoint ALWAYS lands (plumbing path, no hooks/signing).
+ *   - The user's parent git repo is never mutated.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -43,7 +51,9 @@ function makeRes(): { res: ServerResponse; captured: CapturedResponse } {
       captured.body = body ?? '';
       try {
         captured.parsed = JSON.parse(body ?? '{}') as Record<string, unknown>;
-      } catch {}
+      } catch {
+        // non-JSON body
+      }
     },
   } as unknown as ServerResponse;
   return { res, captured };
@@ -97,6 +107,12 @@ describe('save-version shadow checkpoint', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RED tests — the new contract: server MUST NOT mutate the user's
+// real git history (HEAD, tags, index) on save-version or rollback. Shadow
+// checkpoint still lands; only the parent-git wrapping is forbidden.
+// ─────────────────────────────────────────────────────────────────────────────
 
 describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
   let tmpDir: string;
@@ -153,10 +169,13 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
       ).onRequest({ request: req, response: res });
 
       expect(captured.status).toBe(200);
+      // Shadow checkpoint still lands (wanted half of the contract).
       expect(typeof captured.parsed.checkpointRef).toBe('string');
       expect((captured.parsed.checkpointRef as string).length).toBeGreaterThan(0);
+      // versionTag is no longer in the response (parent-git tag never created).
       expect(captured.parsed.versionTag).toBeUndefined();
 
+      // RED contract: user's git HEAD, tags, index all unchanged.
       const headAfter = (await git.raw(['rev-parse', 'HEAD'])).trim();
       const tagsAfter = (await git.tags(['--list', 'ok/v*'])).all;
       const statusAfter = (await git.raw(['status', '--porcelain'])).trim();
@@ -171,6 +190,8 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
 
   test('git dir: in-flight untracked files are NOT swept by parent-git add (PRD-6716)', async () => {
     const projectDir = tmpDir;
+    // Default-production wiring: contentDir == projectDir, contentRoot omitted
+    // → handler resolves resolvedContentRoot to '.' and pathspec to '.'.
     const contentDir = projectDir;
     writeFileSync(join(projectDir, 'doc.md'), '# Hello\n');
 
@@ -182,6 +203,7 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
     await git.add('.');
     await git.commit('initial');
 
+    // Untracked in-flight work the user has NOT staged.
     writeFileSync(join(projectDir, 'untracked-code.ts'), 'console.log("WIP")\n');
     writeFileSync(join(projectDir, 'in-flight-secrets.txt'), 'API_KEY=sk-not-yet-rotated\n');
 
@@ -200,6 +222,7 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
         contentDir,
         projectDir,
         shadowRef,
+        // contentRoot intentionally omitted → handler resolves to '.'
         getFileIndex: () => new Map(),
       });
 
@@ -214,6 +237,7 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
       expect(captured.status).toBe(200);
       expect(typeof captured.parsed.checkpointRef).toBe('string');
 
+      // RED contract: untracked files remain untracked (not swept into a commit).
       const headAfter = (await git.raw(['rev-parse', 'HEAD'])).trim();
       expect(headAfter).toBe(headBefore);
 
@@ -253,9 +277,14 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
     const branch = (await simpleGit(projectDir).revparse(['--abbrev-ref', 'HEAD'])).trim();
     const priorSha = await commitWip(shadow, writer, 'content', 'WIP test prior version', branch);
 
+    // Modify the doc on disk so the rollback has work to do.
     const newContent = '# Initial\n\nVersion 2 content (modified)\n';
     writeFileSync(resolve(contentDir, `${docName}.md`), newContent);
 
+    // Synthesize a Y.Doc-in-map "hocuspocus" so the rollback handler proceeds
+    // past `hocuspocus.documents.get(docName)` (which would otherwise 409 and
+    // short-circuit before the parent-git block). Same harness shape used by
+    // api-rollback-actor-identity.test.ts setupRollback().
     const yDoc = new Y.Doc();
     const xmlFragment = yDoc.getXmlFragment('default');
     const para = new Y.XmlElement('paragraph');
@@ -274,6 +303,9 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
       },
     };
 
+    // `statusBefore` captures an already-dirty tree (the doc was written to disk
+    // above without staging). The assertion below pins index identity: rollback
+    // must NOT `git add` — so `statusAfter` stays ` M …` rather than flipping to `M …`.
     const headBefore = (await git.raw(['rev-parse', 'HEAD'])).trim();
     const statusBefore = (await git.raw(['status', '--porcelain'])).trim();
 
@@ -305,10 +337,18 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
     const headAfter = (await git.raw(['rev-parse', 'HEAD'])).trim();
     const statusAfter = (await git.raw(['status', '--porcelain'])).trim();
 
+    // RED contract: rollback handler must not commit on the user's HEAD.
     expect(headAfter).toBe(headBefore);
     expect(statusAfter).toBe(statusBefore);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save Version unification: an empty-body request
+// consolidates ALL non-park WIP chains on the active branch (not just the
+// service writer); explicit writers / agentId stay scoped; the active branch is
+// threaded (no hardcoded 'main').
+// ─────────────────────────────────────────────────────────────────────────────
 
 describe('PRD-6972 FR6: Save Version unification', () => {
   let tmpDir: string;
@@ -405,6 +445,7 @@ describe('PRD-6972 FR6: Save Version unification', () => {
       const captured = await post(ext, {});
       expect(captured.status).toBe(200);
       expect(typeof captured.parsed.checkpointRef).toBe('string');
+      // Width collapses — every non-park WIP chain folded.
       expect(await wipRefs('main')).toHaveLength(0);
     } finally {
       await sessionManager.closeAll();
@@ -432,6 +473,7 @@ describe('PRD-6972 FR6: Save Version unification', () => {
       const captured = await post(ext, { writers: [{ id: 'agent-1', name: 'a1', email: 'a1@x' }] });
       expect(captured.status).toBe(200);
       const remaining = await wipRefs('main');
+      // agent-1 folded; agent-2 untouched (scoped behavior preserved).
       expect(remaining.some((r) => r.endsWith('/agent-1'))).toBe(false);
       expect(remaining.some((r) => r.endsWith('/agent-2'))).toBe(true);
     } finally {

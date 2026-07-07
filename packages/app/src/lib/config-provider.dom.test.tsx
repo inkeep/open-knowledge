@@ -1,6 +1,21 @@
+/**
+ * Tier-3 RTL mount tests for ConfigProvider Context propagation —
+ * sibling to the structural-grep `config-provider.test.tsx`. Exercises `render` + the
+ * React Context API surface under the jsdom substrate (precedent #43);
+ * invocation via `bun run test:dom`.
+ */
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 
+// `mock.module(...)` is module-level and is NOT reset by Bun's `mock.restore()`
+// — it persists for the lifetime of this file. Both `describe` blocks below
+// share the mocked `useThemeBridge` surface. That's intentional here because
+// every test in this file exercises the `collabUrl: null` cold-start path (the
+// prop is passed as null below) where the real provider early-returns before
+// any Hocuspocus / binding / theme-bridge interaction. If a future Tier-3 test
+// needs to exercise the REAL seam (e.g. asserting that ConfigProvider calls
+// useThemeBridge with `themeValue ?? 'system'`), start a sibling `*.dom.test.tsx`
+// file rather than fighting these module-level mocks.
 mock.module('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: () => {},
 }));

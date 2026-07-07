@@ -1,3 +1,20 @@
+/**
+ * WikiEmbed* compat descriptors — convergence on the canonical img / video /
+ * audio / File render path. `![[file.ext]]` parsed from external sources
+ * lands as one of four compat descriptors (WikiEmbedImage / WikiEmbedVideo
+ * / WikiEmbedAudio / WikiEmbedFile) keyed by extension. Each renders through
+ * its canonical sibling (`rendersAs: 'img' | 'video' | 'audio' | 'File'`)
+ * via `translateProps` and serializes back to source-form `wikiLinkEmbed`
+ * mdast so the round-trip is byte-identical.
+ *
+ * PropPanel narrows automatically because each descriptor declares only the
+ * single user-editable prop the source syntax can encode (`alias`).
+ *
+ * WikiEmbedPdf was removed — `![[doc.pdf]]` now dispatches to
+ * `WikiEmbedFile` (File row chrome) for parity with other dropped
+ * attachments. The pdfjs canvas viewer stays available via the explicit
+ * `<Pdf src="..." />` JSX form.
+ */
 import { describe, expect, test } from 'bun:test';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { builtInComponents } from './index.ts';
@@ -190,6 +207,12 @@ describe('WikiEmbedImage.serialize — source-form mdast emit', () => {
   });
 });
 
+// ── WikiEmbedVideo ───────────────────────────────────────────────────────────
+//
+// Mirrors the WikiEmbedImage shape with `rendersAs: 'video'`. Alias maps to the
+// canonical video's `title` prop (HTML5 `<video title>` tooltip) — Video.tsx
+// has no `alt` slot, so `title` is the closest authored-string analog.
+
 describe('WikiEmbedVideo descriptor — registration', () => {
   test('is registered in builtInComponents as a compat descriptor', () => {
     expect(wikiEmbedVideo).toBeDefined();
@@ -368,6 +391,11 @@ describe('WikiEmbedVideo.serialize — source-form mdast emit', () => {
   });
 });
 
+// ── WikiEmbedAudio ───────────────────────────────────────────────────────────
+//
+// Mirrors the WikiEmbedVideo shape with `rendersAs: 'audio'`. Audio.tsx also
+// has no `alt` slot — alias maps to the canonical audio's `title` prop.
+
 describe('WikiEmbedAudio descriptor — registration', () => {
   test('is registered in builtInComponents as a compat descriptor', () => {
     expect(wikiEmbedAudio).toBeDefined();
@@ -545,6 +573,15 @@ describe('WikiEmbedAudio.serialize — source-form mdast emit', () => {
     expect(cast.data.target).toBe('');
   });
 });
+
+// ── WikiEmbedFile ────────────────────────────────────────────────────────────
+//
+// `rendersAs: 'File'`. Catches every non-media wiki-embed (`![[archive.zip]]`,
+// `![[handbook.docx]]`, `![[doc.pdf]]`, …) and routes to the File row chrome.
+// Threads only `alias` through translateProps — the canonical `File` accepts
+// `name` rather than `title`, and the compat performs that remap. PDFs land
+// here too: the wikilink form treats them like any other dropped attachment.
+// The pdfjs canvas viewer is reachable via the explicit `<Pdf>` JSX path.
 
 describe('WikiEmbedFile descriptor — registration', () => {
   test('is registered in builtInComponents as a compat descriptor', () => {

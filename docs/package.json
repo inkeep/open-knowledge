@@ -23,7 +23,6 @@
     "@radix-ui/react-popover": "^1.1.17",
     "@types/mdx": "^2.0.13",
     "@vercel/microfrontends": "^2.3.6",
-    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "fumadocs-core": "~16.1.0",
     "fumadocs-mdx": "~14.0.3",

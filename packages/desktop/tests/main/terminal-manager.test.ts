@@ -10,6 +10,19 @@ import {
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
 import type { PtyHostIncomingMessage } from '../../src/utility/pty-host.ts';
 
+/**
+ * Unit tests for the main-side PTY mediator. Every boundary (fork, send,
+ * timer, ptyId) is an injected fake so the routing / coalescing / backpressure
+ * logic runs without an Electron runtime. The coalesce timer is captured and
+ * fired deterministically — no real timers, no open handles.
+ *
+ * The renderer↔main↔utility hops are real trust boundaries (cross-process,
+ * untyped IPC): the message-narrowing + isDestroyed + spawn-error guards are
+ * exercised with real malformed / destroyed-window input through the public
+ * message path, not by mocking the call site to force a throw.
+ */
+
+/** Captures everything the manager posts to / how often it kills its host. */
 class FakeUtility {
   posted: PtyHostIncomingMessage[] = [];
   killed = 0;
@@ -238,6 +251,8 @@ describe('createTerminalManager — coalescing + UTF-8 integrity', () => {
       cols: 80,
       rows: 24,
     });
+    // node-pty's StringDecoder hands main whole codepoints per read; main only
+    // ever concatenates, never slices — so the combined string is byte-exact.
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: '日本' });
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: '語 €' });
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: ' 🚀' });
@@ -274,6 +289,7 @@ describe('createTerminalManager — exit + crash surfacing', () => {
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
     expect(h.sent.map((s) => s.channel)).toEqual(['ok:pty:data', 'ok:pty:exit']);
     expect(h.exits()[0]).toEqual({ ptyId: 'pty-1', exitCode: 0, signal: null });
+    // ptyId is cleared — a late input no longer reaches the (dead) host.
     const before = h.forked[0]?.posted.length ?? 0;
     h.mgr.input({ windowId: 1, ptyId: 'pty-1', data: 'x' });
     expect(h.forked[0]?.posted.length).toBe(before);
@@ -330,6 +346,7 @@ describe('createTerminalManager — exit + crash surfacing', () => {
       signal: null,
       error: 'terminal host exited',
     });
+    // Next create forks a fresh host (the crashed one was dropped).
     h.mgr.create({
       windowId: 1,
       webContents: makeWebContents(),
@@ -349,6 +366,9 @@ describe('createTerminalManager — exit + crash surfacing', () => {
       cols: 80,
       rows: 24,
     });
+    // Buffer a read without firing the coalesce timer, then crash the host. The
+    // buffer lives main-side (independent of the dead host), so the final bytes
+    // must still land before the exit state — mirroring the clean-exit ordering.
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'last gasp' });
     h.forked[0]?.emitExit(1);
     expect(h.sent.map((s) => s.channel)).toEqual(['ok:pty:data', 'ok:pty:exit']);
@@ -402,8 +422,10 @@ describe('createTerminalManager — backpressure', () => {
     });
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'x'.repeat(150) });
     h.runTimers();
+    // Partial drain that stays at/above low-water → no resume yet.
     h.mgr.drain({ windowId: 1, ptyId: 'pty-1', bytes: 130 }); // 150 - 130 = 20, not < 20
     expect(h.forked[0]?.posted).not.toContainEqual({ type: 'resume', ptyId: 'pty-1' });
+    // One more byte drained crosses below the low-water mark → resume.
     h.mgr.drain({ windowId: 1, ptyId: 'pty-1', bytes: 5 }); // 15 < 20
     expect(h.forked[0]?.posted).toContainEqual({ type: 'resume', ptyId: 'pty-1' });
   });
@@ -465,8 +487,10 @@ describe('createTerminalManager — lifecycle reap', () => {
     const utility = h.forked[0];
     h.mgr.killForWindow(1);
     expect(utility?.killed).toBe(1);
+    // The kill triggers a utility exit — it must NOT push into the gone window.
     utility?.emitExit(0);
     expect(h.exits()).toEqual([]);
+    // A fresh create forks a new host.
     h.mgr.create({
       windowId: 1,
       webContents: makeWebContents(),
@@ -501,6 +525,7 @@ describe('createTerminalManager — lifecycle reap', () => {
     h.mgr.killAll();
     expect(h.forked[0]?.killed).toBe(1);
     expect(h.forked[1]?.killed).toBe(1);
+    // The map is cleared — a later create forks anew.
     h.mgr.create({
       windowId: 1,
       webContents: makeWebContents(),
@@ -512,6 +537,8 @@ describe('createTerminalManager — lifecycle reap', () => {
   });
 
   test('killAll completes the reap even when one host throws on kill (no orphans)', () => {
+    // A throwing kill on one host must not abort the loop — the remaining
+    // windows' hosts would otherwise outlive the app (orphan shells).
     const forked: ThrowingUtility[] = [];
     let idn = 0;
     const mgr = createTerminalManager({
@@ -537,6 +564,7 @@ describe('createTerminalManager — lifecycle reap', () => {
     }
 
     expect(() => mgr.killAll()).not.toThrow();
+    // Every host had kill() attempted despite the first one throwing.
     expect(forked.map((u) => u.killAttempts)).toEqual([1, 1, 1]);
   });
 
@@ -567,6 +595,7 @@ describe('createTerminalManager — lifecycle reap', () => {
   });
 });
 
+/** A FakeUtility whose `kill()` can throw, to exercise the reap-loop guard. */
 class ThrowingUtility {
   killAttempts = 0;
   constructor(private readonly throwsOnKill: boolean) {}
@@ -580,9 +609,15 @@ class ThrowingUtility {
 }
 
 describe('createTerminalManager — telemetry', () => {
+  // The telemetry sinks are injected deps (the OTel emission boundary), so
+  // asserting on them is a behavioral pin via the public message path — real
+  // exit / crash / input / reap input drives the observable signal, not a
+  // mocked internal call site.
   function makeTelemetryManager() {
     const shellExits: Array<{ crashed: boolean }> = [];
     const sessions: true[] = [];
+    // Captured whole so a test can assert the payload shape, not just the count
+    // — a future leak of command bytes into the signal would surface as an extra key.
     const concurrent: Array<{ count: number }> = [];
     const h = makeManager({
       recordShellExit: (info) => shellExits.push(info),
@@ -684,6 +719,7 @@ describe('createTerminalManager — telemetry', () => {
     h.start(1);
     h.mgr.input({ windowId: 1, ptyId: 'pty-1', data: 'first\r' });
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
+    // Restart in the same window: a fresh PTY, no command, then a clean exit.
     h.start(1);
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-2', exitCode: 0, signal: null });
     expect(h.sessions).toHaveLength(1);
@@ -779,6 +815,7 @@ describe('createTerminalManager — telemetry', () => {
 });
 
 describe('createTerminalManager — concurrent sessions', () => {
+  /** Open two sessions in one window over the same host; returns both create results. */
   function twoSessions(over?: Partial<TerminalManagerDeps>) {
     const h = makeManager({ highWaterBytes: 100, lowWaterBytes: 20, ...over });
     const wc = makeWebContents();
@@ -809,6 +846,7 @@ describe('createTerminalManager — concurrent sessions', () => {
     expect(b).toEqual({ ok: true, ptyId: 'pty-2' });
     expect(h.forked).toHaveLength(1);
     const posted = h.forked[0]?.posted ?? [];
+    // Both shells were spawned and neither was killed to make room for the other.
     expect(posted).toContainEqual({
       type: 'create',
       ptyId: 'pty-1',
@@ -852,6 +890,7 @@ describe('createTerminalManager — concurrent sessions', () => {
     const posted = h.forked[0]?.posted ?? [];
     expect(posted).toContainEqual({ type: 'pause', ptyId: 'pty-1' });
     expect(posted).not.toContainEqual({ type: 'pause', ptyId: 'pty-2' });
+    // B's bytes still reached the renderer despite A being paused.
     expect(dataFor(h, 'pty-2')).toEqual(['y'.repeat(10)]);
   });
 
@@ -871,6 +910,7 @@ describe('createTerminalManager — concurrent sessions', () => {
     const { h } = twoSessions();
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'x'.repeat(150) });
     h.runTimers(); // pty-1 pauses; pty-2 was never paused
+    // A drain on the never-paused sibling must not produce a resume.
     h.mgr.drain({ windowId: 1, ptyId: 'pty-2', bytes: 5 });
     expect(h.forked[0]?.posted).not.toContainEqual({ type: 'resume', ptyId: 'pty-2' });
   });
@@ -879,6 +919,7 @@ describe('createTerminalManager — concurrent sessions', () => {
     const { h } = twoSessions();
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
     expect(h.exits()).toContainEqual({ ptyId: 'pty-1', exitCode: 0, signal: null });
+    // pty-2 still accepts input; the exited pty-1 no longer does.
     const before = h.forked[0]?.posted.length ?? 0;
     h.mgr.input({ windowId: 1, ptyId: 'pty-2', data: 'alive\r' });
     h.mgr.input({ windowId: 1, ptyId: 'pty-1', data: 'ghost\r' });
@@ -890,8 +931,10 @@ describe('createTerminalManager — concurrent sessions', () => {
     const { h } = twoSessions();
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'x'.repeat(150) });
     h.runTimers(); // pty-1 paused
+    // pty-2 exits cleanly while pty-1 stays paused.
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-2', exitCode: 0, signal: null });
     expect(h.exits()).toContainEqual({ ptyId: 'pty-2', exitCode: 0, signal: null });
+    // pty-1 is still paused and resumes independently once drained.
     h.mgr.drain({ windowId: 1, ptyId: 'pty-1', bytes: 150 });
     expect(h.forked[0]?.posted).toContainEqual({ type: 'resume', ptyId: 'pty-1' });
   });

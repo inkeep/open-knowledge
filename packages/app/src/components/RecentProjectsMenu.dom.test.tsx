@@ -21,6 +21,10 @@ type ItemProps = {
   [key: string]: unknown;
 };
 
+// DropdownMenuItem is a div (role=menuitem), matching reality — the real one is
+// not a <button>, so the nested toggle Button composes cleanly. onSelect fires on
+// click; a nested Button that stopPropagations its click keeps onSelect from
+// firing (the two-target behavior).
 mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuItem: ({ children, onSelect, ...props }: ItemProps) => (
     <div
@@ -56,6 +60,16 @@ mock.module('@/components/ui/button', () => ({
   ),
 }));
 
+// Popover: controlled by `open` (driven by the hoisted flyoutPath). Content
+// renders only when open, matching Radix (PopoverContent is absent from the DOM
+// while closed). The real Radix Popover portals + gates open on pointerdown
+// (which the Electron renderer lacks — the reason for choosing Popover over
+// DropdownMenuSub), neither of which jsdom drives, so the mock flattens it to a
+// context-carried { open, onOpenChange }. PopoverTrigger clones its asChild
+// child (the expander Button) to add an onClick that calls onOpenChange(!open)
+// — exactly what Radix's asChild Trigger does — so the click lands on the real
+// interactive Button and the Button's own onClick stopPropagation keeps the
+// row's onSelect from firing. That models the two-target row exactly.
 const PopoverStateContext = createContext<{ open: boolean; onOpenChange: (o: boolean) => void }>({
   open: false,
   onOpenChange: () => {},
@@ -87,6 +101,8 @@ mock.module('@/components/ui/popover', () => ({
   },
   PopoverContent: ({
     children,
+    // Strip Radix-only positioning/dismiss props so React doesn't warn about
+    // unknown DOM attributes on the plain div the mock renders.
     side: _side,
     align: _align,
     sideOffset: _sideOffset,
@@ -96,6 +112,9 @@ mock.module('@/components/ui/popover', () => ({
     ...props
   }: ItemProps & { onOpenAutoFocus?: (e: Event) => void }) => {
     const { open } = use(PopoverStateContext);
+    // Radix fires onOpenAutoFocus when the content opens. Simulate it here (hook
+    // runs unconditionally, before the closed early-return) so the flyout's
+    // focus-into-search behavior is exercised in the mock.
     useEffect(() => {
       if (open) onOpenAutoFocus?.(new Event('focus'));
     }, [open, onOpenAutoFocus]);
@@ -171,6 +190,9 @@ function createBridge() {
 
 const noGuard = () => false;
 
+// A stateful host for RecentProjectsMenu so the hoisted flyoutPath (owned by
+// ProjectSwitcher in production) is toggled the same way here — clicking a
+// group's expander flips flyoutPath, which renders that group's flyout.
 function Host({
   bridge,
   recents,
@@ -239,6 +261,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
   test('project rows carry NO folder icon (switcher stays focused on names)', () => {
     renderMenu({ recents: [nonGit('/notes')] });
     const row = screen.getByTestId('project-switcher-recent-/notes');
+    // Folder icon removed. A non-git row renders no icon at all.
     expect(row.querySelector('svg')).toBeNull();
   });
 
@@ -250,15 +273,20 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
       ],
     });
 
+    // Flyout is closed by default — its content is not rendered.
     const groupRow = screen.getByTestId('project-switcher-group-/repo');
     expect(groupRow.textContent).toContain('/repo');
     expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
 
+    // The expander row carries the pluralized worktree count ("1 worktree" at
+    // one; "N worktrees" otherwise) plus a trailing chevron only — no leading
+    // GitBranch icon, since "worktrees" already says what the chip is.
     const toggle = screen.getByTestId('project-switcher-toggle-/repo');
     expect(toggle.querySelectorAll('svg').length).toBe(1);
     expect(toggle.textContent).toContain('1 worktree');
     expect(toggle.textContent).not.toContain('1 worktrees');
 
+    // Clicking the expander opens the flyout — and does NOT open the project.
     fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
     await waitFor(() => {
       expect(screen.getByTestId('project-switcher-flyout-/repo')).not.toBeNull();
@@ -274,6 +302,8 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
       ],
     });
     expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
+    // Mouse-enter (which fires on the Electron renderer, unlike pointerdown)
+    // opens the flyout on hover.
     fireEvent.mouseEnter(screen.getByTestId('project-switcher-toggle-/repo'));
     await waitFor(() => {
       expect(screen.getByTestId('project-switcher-flyout-/repo')).not.toBeNull();
@@ -291,23 +321,29 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     const row = screen.getByTestId('project-switcher-group-/repo');
     expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
 
+    // ArrowRight (the count-chip trigger is out of roving focus) opens the flyout
+    // from the focused row — without opening the project.
     fireEvent.keyDown(row, { key: 'ArrowRight' });
     await waitFor(() => {
       expect(screen.getByTestId('project-switcher-flyout-/repo')).not.toBeNull();
     });
     expect(bridge.project.open).not.toHaveBeenCalled();
 
+    // Focus moves INTO the flyout (onto its search input) so the list + create
+    // option are keyboard-reachable.
     await waitFor(() => {
       expect(document.activeElement).toBe(
         screen.getByTestId('project-switcher-flyout-search-/repo'),
       );
     });
 
+    // ArrowLeft closes it again.
     fireEvent.keyDown(row, { key: 'ArrowLeft' });
     await waitFor(() => {
       expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
     });
 
+    // Re-open, then Escape closes it too.
     fireEvent.keyDown(row, { key: 'ArrowRight' });
     await waitFor(() => {
       expect(screen.getByTestId('project-switcher-flyout-/repo')).not.toBeNull();
@@ -327,15 +363,21 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     });
     fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
 
+    // main (default, pinned) is entry /repo; the dev worktree follows.
     const mainEntry = await screen.findByTestId('project-switcher-flyout-entry-/repo');
     expect(mainEntry.textContent).toContain('main');
     expect(mainEntry.textContent).toContain('default');
     const devEntry = screen.getByTestId('project-switcher-flyout-entry-/repo/.ok/worktrees/dev');
     expect(devEntry.textContent).toContain('dev');
 
+    // No per-row GitBranch icon — the "default" chip above (and "create
+    // worktree" on un-opened branches, covered elsewhere) carries the
+    // distinction instead. The flyout's icons live on the search input, not on
+    // every row.
     expect(mainEntry.querySelector('svg')).toBeNull();
     expect(devEntry.querySelector('svg')).toBeNull();
     const flyoutSearch = screen.getByTestId('project-switcher-flyout-search-/repo');
+    // Search magnifier (leading) + branch icon (trailing) = two icons on the field.
     expect(flyoutSearch.parentElement?.querySelectorAll('svg').length).toBe(2);
 
     fireEvent.click(devEntry);
@@ -356,6 +398,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         worktree('/repo/.ok/worktrees/newer', '/repo/.git', '/repo', 'newer', '2026-06-30'),
       ],
     });
+    // Two worktrees → the count control reads the plural form.
     expect(screen.getByTestId('project-switcher-toggle-/repo').textContent).toContain(
       '2 worktrees',
     );
@@ -365,6 +408,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     const ids = [...flyout.querySelectorAll('[data-testid^="project-switcher-flyout-entry-"]')].map(
       (el) => el.getAttribute('data-testid'),
     );
+    // main pinned first; then newer before older by lastOpenedAt.
     expect(ids).toEqual([
       'project-switcher-flyout-entry-/repo',
       'project-switcher-flyout-entry-/repo/.ok/worktrees/newer',
@@ -394,13 +438,17 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
     await screen.findByTestId('project-switcher-flyout-/repo');
 
+    // The un-opened branch is present (create-on-demand) and flagged "create".
     const createRow = screen.getByTestId('project-switcher-flyout-entry-branch:feature-x');
     expect(createRow.textContent).toContain('feature-x');
     expect(createRow.textContent).toContain('create worktree');
 
+    // Filter to just the create-on-demand branch.
     const searchBox = screen.getByTestId(
       'project-switcher-flyout-search-/repo',
     ) as HTMLInputElement;
+    // The search input's placeholder must be extractable/localized (regression
+    // guard: prop-drilling `t` left every string in these sub-components blank).
     expect(searchBox.placeholder).toBe('Search worktrees');
     fireEvent.change(searchBox, { target: { value: 'feature' } });
     await waitFor(() => {
@@ -410,6 +458,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     });
     expect(screen.getByTestId('project-switcher-flyout-entry-branch:feature-x')).not.toBeNull();
 
+    // Selecting it creates the worktree then opens the window.
     fireEvent.click(screen.getByTestId('project-switcher-flyout-entry-branch:feature-x'));
     await waitFor(() => {
       expect(bridge.worktree.create).toHaveBeenCalledWith({
@@ -450,6 +499,8 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
     await screen.findByTestId('project-switcher-flyout-/repo');
 
+    // A query matching no worktree/branch. The empty label stays, AND a clickable
+    // create option carrying the typed name appears.
     const searchBox = screen.getByTestId(
       'project-switcher-flyout-search-/repo',
     ) as HTMLInputElement;
@@ -458,6 +509,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
       expect(screen.getByText('No matching worktrees or branches.')).not.toBeNull();
     });
     const createOption = screen.getByTestId('project-switcher-flyout-create');
+    // The trimmed query is what's shown (and what gets pre-filled).
     expect(createOption.textContent).toContain('Create worktree');
     expect(createOption.textContent).toContain('new-thing');
 
@@ -488,11 +540,15 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     const searchBox = screen.getByTestId(
       'project-switcher-flyout-search-/repo',
     ) as HTMLInputElement;
+    // Whitespace-only trims to empty: entries still match (nothing filtered out),
+    // so the empty-state branch never renders and there's no name to create with.
     fireEvent.change(searchBox, { target: { value: '   ' } });
     expect(screen.queryByTestId('project-switcher-flyout-create')).toBeNull();
   });
 
   test('a NON-current project flyout does NOT offer the create option (creation anchors to the current project)', async () => {
+    // The switcher's cached model belongs to a DIFFERENT project than this
+    // group, so create-on-demand isn't meaningful here — the option is hidden.
     renderMenu({
       recents: [
         main('/repo', '/repo/.git'),
@@ -521,10 +577,12 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     await waitFor(() => {
       expect(screen.getByText('No matching worktrees or branches.')).not.toBeNull();
     });
+    // No create option in a non-current project's flyout.
     expect(screen.queryByTestId('project-switcher-flyout-create')).toBeNull();
   });
 
   test('a non-current project flyout shows only its opened worktrees (no branch model)', async () => {
+    // worktreeModel belongs to a DIFFERENT project, so it must not leak in.
     renderMenu({
       recents: [
         main('/repo', '/repo/.git'),
@@ -546,6 +604,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     });
     fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
     const flyout = await screen.findByTestId('project-switcher-flyout-/repo');
+    // main + dev only; the other project's branch does not appear.
     expect(flyout.textContent).not.toContain('other-branch');
     expect(screen.getByTestId('project-switcher-flyout-entry-/repo')).not.toBeNull();
     expect(
@@ -560,6 +619,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
       ],
     });
+    // The name row opens the project directly (separate target from the expander).
     fireEvent.click(screen.getByTestId('project-switcher-group-/repo'));
     await waitFor(() => {
       expect(bridge.project.open).toHaveBeenCalledWith({
@@ -597,9 +657,13 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     renderMenu({
       recents: [worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev')],
     });
+    // Group exists (synthesized from mainRoot) with its path; the expander reveals
+    // the worktree flyout.
     const groupRow = screen.getByTestId('project-switcher-group-/repo');
     expect(groupRow.textContent).toContain('/repo');
     fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
+    // Synthesized project has no pinned main entry (never opened); the dev
+    // worktree is present.
     await screen.findByTestId('project-switcher-flyout-/repo');
     expect(
       screen.getByTestId('project-switcher-flyout-entry-/repo/.ok/worktrees/dev'),
@@ -611,6 +675,8 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
 describe('RecentProjectsMenu — flyout keyboard navigation (item 29)', () => {
   beforeEach(cleanup);
 
+  // main (pinned) + two opened worktrees → three list rows to rove through:
+  //   [0] /repo (main, "default")   [1] newer   [2] older
   function openThreeRowFlyout() {
     const utils = renderMenu({
       recents: [
@@ -619,6 +685,8 @@ describe('RecentProjectsMenu — flyout keyboard navigation (item 29)', () => {
         worktree('/repo/.ok/worktrees/newer', '/repo/.git', '/repo', 'newer', '2026-06-30'),
       ],
     });
+    // Open via ArrowRight on the group row so focus lands in the search input,
+    // exactly as it does for a keyboard user.
     fireEvent.keyDown(screen.getByTestId('project-switcher-group-/repo'), { key: 'ArrowRight' });
     return utils;
   }
@@ -631,6 +699,7 @@ describe('RecentProjectsMenu — flyout keyboard navigation (item 29)', () => {
     await waitFor(() => expect(document.activeElement).toBe(search));
 
     fireEvent.keyDown(search, { key: 'ArrowDown' });
+    // First row is the pinned main worktree (/repo).
     expect(document.activeElement).toBe(row('/repo'));
   });
 
@@ -642,14 +711,17 @@ describe('RecentProjectsMenu — flyout keyboard navigation (item 29)', () => {
     fireEvent.keyDown(search, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(row('/repo'));
 
+    // Down through newer, then older (recency order matches the render order).
     fireEvent.keyDown(row('/repo'), { key: 'ArrowDown' });
     expect(document.activeElement).toBe(row('/repo/.ok/worktrees/newer'));
     fireEvent.keyDown(row('/repo/.ok/worktrees/newer'), { key: 'ArrowDown' });
     expect(document.activeElement).toBe(row('/repo/.ok/worktrees/older'));
 
+    // ArrowDown on the last row clamps (stays on the last row).
     fireEvent.keyDown(row('/repo/.ok/worktrees/older'), { key: 'ArrowDown' });
     expect(document.activeElement).toBe(row('/repo/.ok/worktrees/older'));
 
+    // Back up to the first row.
     fireEvent.keyDown(row('/repo/.ok/worktrees/older'), { key: 'ArrowUp' });
     expect(document.activeElement).toBe(row('/repo/.ok/worktrees/newer'));
     fireEvent.keyDown(row('/repo/.ok/worktrees/newer'), { key: 'ArrowUp' });
@@ -673,6 +745,7 @@ describe('RecentProjectsMenu — flyout keyboard navigation (item 29)', () => {
     const search = await screen.findByTestId('project-switcher-flyout-search-/repo');
     await waitFor(() => expect(document.activeElement).toBe(search));
 
+    // Arrow to the "newer" worktree, then Enter to open it.
     fireEvent.keyDown(search, { key: 'ArrowDown' });
     fireEvent.keyDown(row('/repo'), { key: 'ArrowDown' });
     expect(document.activeElement).toBe(row('/repo/.ok/worktrees/newer'));
@@ -694,12 +767,14 @@ describe('RecentProjectsMenu — flyout keyboard navigation (item 29)', () => {
     )) as HTMLInputElement;
     await waitFor(() => expect(document.activeElement).toBe(search));
 
+    // Filter to just "newer".
     fireEvent.change(search, { target: { value: 'newer' } });
     await waitFor(() => {
       expect(
         screen.queryByTestId('project-switcher-flyout-entry-/repo/.ok/worktrees/older'),
       ).toBeNull();
     });
+    // ArrowDown lands on the single remaining (filtered) row, not a stale one.
     fireEvent.keyDown(search, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(row('/repo/.ok/worktrees/newer'));
   });
@@ -711,6 +786,8 @@ describe('RecentProjectsMenu — search (cross-project)', () => {
   test('project search rows carry NO folder icon', () => {
     renderMenu({ recents: [main('/repo', '/repo/.git')], query: 'repo' });
     const row = screen.getByTestId('project-switcher-recent-/repo');
+    // Only the current-check may render a check; there is no folder icon.
+    // (Not current here, so no svg at all on the project label.)
     expect(row.querySelector('svg')).toBeNull();
   });
 
@@ -722,6 +799,7 @@ describe('RecentProjectsMenu — search (cross-project)', () => {
       ],
       query: 'dev',
     });
+    // The result names the project (repo) the worktree belongs to.
     const row = screen.getByTestId('project-switcher-worktree-/repo/.ok/worktrees/dev');
     expect(row.textContent).toContain('dev');
     expect(row.textContent).toContain('repo');
@@ -742,6 +820,7 @@ describe('RecentProjectsMenu — search (cross-project)', () => {
         { branch: 'feature-x', worktreePath: null, isCurrent: false, isMain: false, locked: false },
       ]),
     });
+    // The row names the current project the branch belongs to.
     expect(screen.getByTestId('project-switcher-branch-feature-x').textContent).toContain('repo');
     fireEvent.click(screen.getByTestId('project-switcher-branch-feature-x'));
     await waitFor(() => {
@@ -774,6 +853,7 @@ describe('RecentProjectsMenu — search (cross-project)', () => {
         },
       ]),
     });
+    // Shown once as the opened worktree, not again as a create-on-demand branch.
     expect(screen.getByTestId('project-switcher-worktree-/repo/.ok/worktrees/dev')).not.toBeNull();
     expect(screen.queryByTestId('project-switcher-branch-dev')).toBeNull();
   });

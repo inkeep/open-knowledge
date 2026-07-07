@@ -1,3 +1,9 @@
+/**
+ * Stale-replica re-assertion probe.
+ * Shape: docA open → hidden behind docB (Activity pool keeps it mounted with a
+ * live provider) → an agent write FIXES docA's content remotely → reveal docA
+ * and poke a local transaction → assert the fix SURVIVES (RED = re-assertion).
+ */
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced as waitForProvider } from './_helpers';
@@ -41,8 +47,11 @@ test('PRD-6955(b): remote fix to a hidden-but-mounted doc survives reveal + loca
     { name: docB, markdown: '# Doc B\n\nparking doc.\n' },
   ]);
 
+  // open A (mounts its editor), then switch to B (A goes Activity-hidden, provider stays live)
   await page.goto(`/#/${docA}`);
   await waitForProvider(page);
+  // Event-driven settle (e2e STOP rule bans waitForTimeout): A's editor has
+  // rendered the seeded content before we park it behind B.
   await expect(page.locator('.ProseMirror:not(.composer-prosemirror)').last()).toContainText(
     'state one CORRUPT marker.',
   );
@@ -52,6 +61,7 @@ test('PRD-6955(b): remote fix to a hidden-but-mounted doc survives reveal + loca
     'parking doc.',
   );
 
+  // remote "fix" lands on A while its editor is hidden
   const res = await fetch(`${baseURL}/api/agent-patch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -63,12 +73,17 @@ test('PRD-6955(b): remote fix to a hidden-but-mounted doc survives reveal + loca
   });
   expect(res.ok).toBe(true);
 
+  // Mid-state gate: the remote fix must reach docA's (hidden) Y.Doc before reveal,
+  // so a final-assertion failure can only mean re-assertion, not a lost patch.
   await expect
     .poll(() => sourceFor(page, docA), { timeout: 10_000 })
     .toContain('state two FIXED marker.');
 
+  // reveal A; poke a real local transaction (type into the tail)
   await page.goto(`/#/${docA}`);
   await waitForProvider(page);
+  // Reveal settle: the visible PM doc must show the remote fix before the poke
+  // (healthy hidden-editor reconciliation — the behavior this test pins).
   await expect(page.locator('.ProseMirror:not(.composer-prosemirror)').last()).toContainText(
     'state two FIXED marker.',
   );
@@ -76,12 +91,14 @@ test('PRD-6955(b): remote fix to a hidden-but-mounted doc survives reveal + loca
   await editor.click();
   await page.keyboard.press('End');
   await page.keyboard.type(' touched', { delay: 15 });
+  // Keystroke pipeline completion (PM→Y→observer→Y.Text) instead of a fixed sleep.
   await expect
     .poll(() => sourceFor(page, docA), { timeout: 10_000 })
     .toContain('tail para. touched');
 
   const text = await sourceFor(page, docA);
   console.log('[6955b] final head:', JSON.stringify(text.slice(0, 120)));
+  // RED-direction: the fix must SURVIVE the reveal + local touch
   expect(text).toContain('state two FIXED marker.');
   expect(text).not.toContain('state one CORRUPT marker.');
 });

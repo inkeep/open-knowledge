@@ -563,18 +563,22 @@ describe('SettingsDialogBody section runtime dispatch', () => {
         webUrl: 'https://github.com/inkeep/open-knowledge',
       },
     };
+    // Maintainer has committed "off by default".
     projectConfig = { autoSync: { default: false } };
     projectSynced = true;
 
     await renderBody({ activeId: 'sync' });
 
+    // Current committed stance reflected on the group's selected value.
     expect(screen.getByTestId('settings-sync-default-toggle').getAttribute('data-value')).toBe(
       'off',
     );
 
+    // "On by default" writes the committed seed `true`.
     fireEvent.click(screen.getByTestId('settings-sync-default-on'));
     expect(syncDefaultWriterCalls).toEqual([true]);
 
+    // "Ask each person" clears the committed seed (writes null → RFC 7396 delete).
     fireEvent.click(screen.getByTestId('settings-sync-default-ask'));
     expect(syncDefaultWriterCalls).toEqual([true, null]);
   });
@@ -594,6 +598,9 @@ describe('SettingsDialogBody section runtime dispatch', () => {
 
     await renderBody({ activeId: 'sync' });
 
+    // Cold-start guard: a click before the committed doc syncs could overwrite a
+    // maintainer's committed default with the schema default (null), silently
+    // re-enabling the onboarding prompt for every collaborator.
     expect(screen.getByTestId('settings-sync-default-toggle').getAttribute('data-disabled')).toBe(
       'true',
     );

@@ -22,6 +22,8 @@ describe('findEnclosingGitRoot', () => {
   });
 
   test('returns { gitRoot: dir, distance: 0 } when dir has a .git FILE (git worktree form)', () => {
+    // `git worktree add` writes a regular file at <worktree>/.git with
+    // contents like `gitdir: /path/to/.git/worktrees/foo`.
     writeFileSync(join(root, '.git'), 'gitdir: /tmp/fake-gitdir\n');
     const result = findEnclosingGitRoot(root);
     expect(result).toEqual({ gitRoot: root, distance: 0 });

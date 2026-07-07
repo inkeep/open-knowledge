@@ -81,6 +81,11 @@ describe('buildAwarenessUser — state (b): principal.source === "git-config"', 
 
 describe('buildAwarenessUser — state (c): principal.source === "synthesized"', () => {
   test('publishes random-fallback name, deterministic color, NO principalId', () => {
+    // synthesized users do not publish principalId. Two browser profiles
+    // on the same machine read the same synthesized principal.json (same id)
+    // but generate different localStorage random names; publishing principalId
+    // would false-dedupe them and tie-break on lowest clientId, producing a
+    // visible name flicker.
     const user = buildAwarenessUser({ principal: synthesizedPrincipal, identity });
     expect(user.type).toBe('human');
     expect(user.name).toBe('Curious Squirrel');

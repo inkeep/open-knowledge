@@ -8,6 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useFrontmatterField } from '@/lib/use-frontmatter-field';
 
+/**
+ * Template identity rendered as the document editor's "Properties" panel, bound
+ * to the SAME CRDT doc the body editor edits. `title` + `description` live in
+ * the template's YAML region and bind live via `bindFrontmatterDoc` (shared
+ * `useFrontmatterField`) — an edit is a CRDT mutation, not a side-channel PUT.
+ * `name` is the filename identity; editing it RENAMES (git-mv via `onRename`),
+ * committed on blur/Enter. `folder` is shown read-only (move-to-folder is a
+ * separate action).
+ */
 export function TemplateProperties({
   provider,
   name,
@@ -17,7 +26,9 @@ export function TemplateProperties({
 }: {
   provider: HocuspocusProvider;
   name: string;
+  /** Project-root-relative owning folder (`''` = project root), shown read-only. */
   folder: string;
+  /** Commit a rename (blur/Enter with a changed, grammar-valid name). */
   onRename?: (next: string) => void;
   nameError?: string | null;
 }) {
@@ -117,6 +128,7 @@ export function TemplateProperties({
   );
 }
 
+/** One property row: type icon + fixed-width label column + inline value. */
 function PropertyRow({
   icon,
   label,

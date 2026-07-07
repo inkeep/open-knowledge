@@ -11,6 +11,14 @@ import {
 } from './parse-health.ts';
 
 describe('parse-health metrics', () => {
+  // Parse-health is module-level singleton state that other test files can
+  // increment as a side-effect (e.g., raw-mdx-fallback-mdast-promotion.test.ts
+  // triggers block-level fallback which calls `incrementBlockFallback`).
+  // Test files run in alphabetical order via bun test; `markdown/` sorts
+  // before `metrics/`, so the "initial state is all zeros" assertion has
+  // already been contaminated by the time this file runs unless we reset
+  // BEFORE each test, not just after. The afterEach stays to protect tests
+  // that run after this file (defensive on both sides).
   beforeEach(() => resetParseHealth());
   afterEach(() => resetParseHealth());
 
@@ -97,11 +105,15 @@ describe('parse-health metrics', () => {
     const snap1 = getParseHealth();
     incrementJsxRenderFailure('Callout');
     const snap2 = getParseHealth();
+    // snap1 must NOT reflect the second increment.
     expect(snap1.jsxRenderFailure.Callout).toBe(1);
     expect(snap2.jsxRenderFailure.Callout).toBe(2);
   });
 
   test('ypsMismatch counters are bridged via globalThis (CJS patch ↔ ESM)', () => {
+    // The y-prosemirror patch increments via `globalThis.__okYpsCounters`
+    // because patched CJS cannot import this ESM module. This test simulates
+    // the patch's increment path directly and asserts getParseHealth() reads it.
     type GlobalWithCounters = typeof globalThis & {
       __okYpsCounters?: { block: number; inline: number };
     };

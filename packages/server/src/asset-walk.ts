@@ -1,3 +1,25 @@
+/**
+ * Initial walk that seeds the basename index from disk.
+ *
+ * The file watcher's startup walk is markdown-only — its fileIndex is
+ * keyed by docName and ignores asset extensions. To populate the
+ * basename index without emitting a synthetic burst of asset-create
+ * events at boot, we do a separate walk here using the same admission
+ * rules (ContentFilter + LINKABLE_ASSET_EXTENSIONS).
+ *
+ * Symlink-following is intentional but bounded: cycles are caught via
+ * a `visited` inode set, escape outside contentDir is rejected via
+ * realpath check.
+ *
+ * Per-entry errors are classified: ENOENT stays silent (concurrent
+ * rename race is legit and common), all other errno codes surface via
+ * the optional `onSkip` callback so the caller can push a partial-
+ * degraded subsystem indicator. Without surface, EACCES on a vault
+ * subtree silently truncates the walk and every embed under that
+ * subtree breaks with no log signal — a real
+ * "degraded[] unreachable" failure mode.
+ */
+
 import type { Dirent, Stats } from 'node:fs';
 import { readdirSync } from 'node:fs';
 import { lstat, readdir, realpath, stat } from 'node:fs/promises';
@@ -11,6 +33,7 @@ import type { ContentFilter } from './content-filter.ts';
 import { isSupportedAssetFile } from './doc-extensions.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
 
+/** Classification of why a particular entry was skipped during the walk. */
 type SeedSkipReason =
   | 'read-failed'
   | 'lstat-failed'
@@ -22,6 +45,12 @@ interface SeedOptions {
   contentDir: string;
   contentFilter?: ContentFilter;
   basenameIndex: BasenameIndex;
+  /**
+   * Fires on each non-ENOENT per-entry failure. `code` is the Node errno
+   * string (e.g. `'EACCES'`, `'EMFILE'`, `'EPERM'`) or `undefined` if
+   * the error didn't carry one. Invoked synchronously from inside
+   * `seedBasenameIndex`; keep the body light (log + increment counter).
+   */
   onSkip?(reason: SeedSkipReason, code: string | undefined, path: string): void;
 }
 
@@ -30,6 +59,24 @@ function errnoCode(err: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
+/**
+ * Bounded single-directory basename seed for no-project single-file mode.
+ *
+ * The recursive `seedBasenameIndex` is unusable here for two reasons: it walks
+ * the whole contentDir (a stall + privacy leak on a large parent like `~/`),
+ * and it gates each entry through `contentFilter.isExcluded`, which the
+ * single-file scope makes `true` for every sibling — so it would add nothing.
+ *
+ * This does ONE non-recursive `readdir` of the doc's own directory and adds
+ * every sibling asset (by extension) directly, with NO `isExcluded` gate — the
+ * point is precisely to resolve `![[sibling.png]]` embeds the one doc
+ * references. Serving still flows through `contentFilter.isPathIgnored` (left
+ * unscoped in single-file mode), so admitting the basename here does not widen
+ * the served surface beyond assets the doc actually links.
+ *
+ * Residual: assets in subfolders and assets
+ * added to the directory after open do not resolve.
+ */
 export function seedSingleDirBasenameIndex(opts: {
   contentDir: string;
   basenameIndex: BasenameIndex;
@@ -50,6 +97,11 @@ export function seedSingleDirBasenameIndex(opts: {
   }
 }
 
+/**
+ * Async per-entry fs calls so the event loop stays responsive while the boot
+ * seed walks a large content dir — the synchronous variant blocked signal
+ * handlers and collab/API traffic until the whole tree was visited.
+ */
 export async function seedBasenameIndex(opts: SeedOptions): Promise<void> {
   const root = opts.contentDir;
   const visited = new Set<number>();

@@ -483,7 +483,11 @@ export function GraphView({
   onStatsChange?: (nodes: number, links: number, loading: boolean) => void;
   onClustersChange?: (clusters: string[]) => void;
 }) {
+  // force-graph mutates the objects it receives in-place during layout, so we compare
+  // incoming API payloads against separate signatures before replacing graphData.
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
+  // Signatures of the last-applied API response, stored separately from rendered graph data because
+  // force-graph mutates link objects in-place (replacing string IDs with node object refs).
   const lastSigRef = useRef({ nodes: '', links: '' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -492,6 +496,12 @@ export function GraphView({
   const focusStateRef = useRef<FocusState>({ key: '', lastX: null, lastY: null, lastAt: 0 });
   const backgroundPointerRef = useRef<BackgroundPointerState | null>(null);
   const graphNodesRef = useRef<GraphNode[]>(graphData.nodes);
+  // Tracks whether the force-layout simulation has reached its cooldown
+  // terminus. Flipped true in `onEngineStop`, false on every `onEngineTick`
+  // (engine re-runs whenever graphData mutates or an explicit reheat fires).
+  // Consumed by the DEV-gated `__graphHarness.isSimulationSettled()` so
+  // canvas-click-at-coord tests can gate on a real settlement signal instead
+  // of racing the physics.
   const simulationSettledRef = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 320, height: 400 });
   const { t } = useLingui();
@@ -609,6 +619,8 @@ export function GraphView({
   const labelChipBorderColor = isDark ? 'rgba(243,244,246,0.08)' : 'rgba(17,24,39,0.08)';
   const focusZoom = isExpanded ? 1.6 : 2.35;
   const maxLabelWidthPx = isExpanded ? 220 : 150;
+  // Fullscreen shows the whole project graph, so it intentionally uses a tighter
+  // label budget than the docked 2-hop neighborhood view to avoid flooding.
   const maxVisibleLabels = isExpanded ? 10 : 18;
 
   const displayData: GraphData = showUrlNodes
@@ -691,6 +703,10 @@ export function GraphView({
   }, [focusKey, activeDocName, focusZoom]);
 
   useEffect(() => {
+    // DEV-gate guards all `window.__graphHarness` writes below; see
+    // precedent #20. Vite statically replaces
+    // `import.meta.env.DEV` at build time, so this entire effect body
+    // is tree-shaken from production bundles.
     if (!import.meta.env.DEV) return;
 
     const harness = {
@@ -776,6 +792,8 @@ export function GraphView({
           availableHeight: containerRef.current?.parentElement?.getBoundingClientRect().height ?? 0,
         };
       },
+      // True once the force-layout simulation has reached cooldown — flipped
+      // in `onEngineStop` and cleared on every `onEngineTick`.
       isSimulationSettled() {
         return simulationSettledRef.current;
       },
@@ -1120,6 +1138,8 @@ export function GraphView({
               if (!fg) return;
 
               ctx.save();
+              // force-graph keeps the graph transform active during frame hooks; reset to
+              // CSS-pixel space so placement math and text rendering share one coordinate system.
               const pxRatio = window.devicePixelRatio || 1;
               ctx.setTransform(pxRatio, 0, 0, pxRatio, 0, 0);
               ctx.font = '10px system-ui, sans-serif';
@@ -1176,6 +1196,9 @@ export function GraphView({
               }
               if (node.docName) {
                 const navigationIntent = navigationIntentByNodeId.get(node.id);
+                // A kind-aware hash (e.g. a global skill bundle reference routing
+                // to the read-only skill-file viewer) takes precedence; otherwise
+                // wrap the resolved docName as a normal `#/<doc>` hash.
                 window.location.assign(
                   navigationIntent?.hash ??
                     hashFromDocName(

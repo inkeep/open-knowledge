@@ -93,11 +93,19 @@ describe('handleRollback — rename history mitigation (US-005)', () => {
     };
   }
 
+  /**
+   * Sets up:
+   * - cycle 1: write `a.md`, commitWip → commitA, saveVersion → K1.
+   * - cycle 2: delete `a.md`, write `b.md`, commitWip → renameCommit.
+   * - rename-log entry `a → b` keyed at `renameCommit`.
+   * - hocuspocus document for `b` ready to receive the rollback.
+   */
   async function setup() {
     const projectDir = tmpDir;
     const contentDir = resolve(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
 
+    // Initial project commit
     writeFileSync(resolve(contentDir, 'placeholder.md'), '# placeholder\n');
     const git = simpleGit(projectDir);
     await git.init();
@@ -115,17 +123,21 @@ describe('handleRollback — rename history mitigation (US-005)', () => {
     };
     const at = makeTick();
 
+    // Cycle 1: a.md
     rmSync(resolve(contentDir, 'placeholder.md'));
     writeFileSync(resolve(contentDir, 'a.md'), '# A pre-rename\n');
     const commitA = await commitWip(shadow, writer, 'content', 'WIP: a v1', 'main', { date: at() });
     await saveVersion(shadow, 'content', [writer], 'main', undefined, { date: at() });
 
+    // Cycle 2: rename a → b (delete a.md, write b.md). Dated so K1 is strictly
+    // before the rename commit without a real-time tick.
     rmSync(resolve(contentDir, 'a.md'));
     writeFileSync(resolve(contentDir, 'b.md'), '# B post-rename\n');
     const renameCommit = await commitWip(shadow, writer, 'content', 'rename: a -> b', 'main', {
       date: at(),
     });
 
+    // Wire rename log
     const index = createEmptyIndex();
     appendRenameLogEntry(
       shadow.gitDir,
@@ -134,6 +146,7 @@ describe('handleRollback — rename history mitigation (US-005)', () => {
     );
     setRenameLogIndex(shadow.gitDir, index);
 
+    // Y.Doc for b — required for the editor-side application path
     const docName = 'b';
     const yDoc = new Y.Doc();
     yDoc.getXmlFragment('default');
@@ -180,11 +193,15 @@ describe('handleRollback — rename history mitigation (US-005)', () => {
     const { commitA, callRollback, docName, hocuspocus, contentDir } = await setup();
     const response = await callRollback({ docName, commitSha: commitA });
     expect(response.status).toBe(200);
+    // content actually reverts. Status 200 alone doesn't prove the
+    // historical body was applied; a no-op handler that returns 200 would
+    // still pass without this check.
     const yDoc = hocuspocus.documents.get(docName);
     expect(yDoc).toBeDefined();
     const restoredText = yDoc?.getText('source').toString() ?? '';
     expect(restoredText).toContain('A pre-rename');
     expect(restoredText).not.toContain('B post-rename');
+    // Filename is unchanged (restore is verbatim content, not name reversion).
     const { existsSync } = await import('node:fs');
     expect(existsSync(resolve(contentDir, 'b.md'))).toBe(true);
     expect(existsSync(resolve(contentDir, 'a.md'))).toBe(false);
@@ -194,6 +211,9 @@ describe('handleRollback — rename history mitigation (US-005)', () => {
     const { renameCommit, callRollback, docName, hocuspocus } = await setup();
     const response = await callRollback({ docName, commitSha: renameCommit });
     expect(response.status).toBe(200);
+    // Content stays at the post-rename version (renameCommit's tree had b.md
+    // already containing the post-rename body — rollback to it is a no-op
+    // semantically but must still succeed and apply identity content).
     const yDoc = hocuspocus.documents.get(docName);
     const restoredText = yDoc?.getText('source').toString() ?? '';
     expect(restoredText).toContain('B post-rename');
@@ -201,6 +221,7 @@ describe('handleRollback — rename history mitigation (US-005)', () => {
 
   test('rollback to unrelated SHA → 404 with descriptive resolver-rejection message', async () => {
     const { callRollback, docName } = await setup();
+    // 40-char hex that's highly unlikely to exist
     const fakeSha = 'deadbeef'.repeat(5);
     const response = await callRollback({ docName, commitSha: fakeSha });
     expect(response.status).toBe(404);
@@ -214,6 +235,9 @@ describe('handleRollback — rename history mitigation (US-005)', () => {
   test('contamination case: SHA from a name-reuse cycle → 404, no shadow commit written', async () => {
     const { shadow, contentDir, callRollback, docName, at } = await setup();
 
+    // Cycle 3: a.md is recreated under a different file (after deleting b.md
+    // so the new commit's tree has a.md only). `at` continues setup()'s clock so
+    // the new commit is strictly after the rename commit without a real-time tick.
     rmSync(resolve(contentDir, 'b.md'));
     writeFileSync(resolve(contentDir, 'a.md'), '# A new (unrelated)\n');
     const writer: WriterIdentity = {

@@ -1,3 +1,15 @@
+/**
+ * Cross-cutting vertical-slice verification for agent-write-summaries.
+ *
+ * Proves the full chain: `recordContributor(summary)` → swap + format →
+ * commitWip on a real shadow repo → `getDocumentHistory` → `TimelineEntry.contributors[*].summaries`.
+ *
+ * Skips the HTTP layer (covered by api-agent-write-summary.test.ts) and the
+ * MCP transport (covered by summary-passthrough.test.ts) so this suite focuses
+ * purely on the shadow-repo round-trip integrity — if this regresses, the
+ * storage contract has been broken somewhere between the accumulator and the
+ * read path.
+ */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,6 +31,7 @@ async function bootstrap(): Promise<string> {
   await git.init();
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 't@t.test');
+  // Ensure we have a main branch.
   const contentDir = resolve(projectDir, 'content');
   mkdirSync(contentDir, { recursive: true });
   writeFileSync(resolve(contentDir, 'foo.md'), '# Foo\n');
@@ -44,6 +57,7 @@ describe('summaries round-trip: accumulator → shadow commit → timeline query
     const contentDir = resolve(project, 'content');
     const branch = (await simpleGit(project).revparse(['--abbrev-ref', 'HEAD'])).trim();
 
+    // Simulate what the API handlers do: record per-write summaries.
     recordContributor(
       'content/foo',
       'agent-claude',
@@ -72,6 +86,7 @@ describe('summaries round-trip: accumulator → shadow commit → timeline query
       'Tightened docstring',
     );
 
+    // Drain like persistence.ts's commitToWipRef would.
     const snapshot = swapContributors();
     const contributorLines = formatContributorsFrom(snapshot);
     const message = `WIP auto-save 2026-04-21T00:00:00.000Z${contributorLines}`;
@@ -85,6 +100,7 @@ describe('summaries round-trip: accumulator → shadow commit → timeline query
 
     const { entries } = await getDocumentHistory(shadow, { docName: 'foo', branch }, 'content');
 
+    // Find the WIP entry we just wrote. `init` upstream commit may also be present.
     const wip = entries.find((e) => e.type === 'wip');
     expect(wip).toBeDefined();
     expect(wip?.contributors).toHaveLength(1);
@@ -103,6 +119,7 @@ describe('summaries round-trip: accumulator → shadow commit → timeline query
     const contentDir = resolve(project, 'content');
     const branch = (await simpleGit(project).revparse(['--abbrev-ref', 'HEAD'])).trim();
 
+    // Fabricate a legacy-shape body (no summaries field).
     const legacyBody = [
       'WIP auto-save 2026-04-10T00:00:00.000Z',
       '',
@@ -208,6 +225,8 @@ describe('summaries round-trip: accumulator → shadow commit → timeline query
     const aEntry = wip?.contributors.find((c) => c.id === 'agent-a');
     const bEntry = wip?.contributors.find((c) => c.id === 'agent-b');
     expect(aEntry?.summaries).toEqual(['With summary']);
+    // The summary-less contributor must have NO `summaries` key on the wire,
+    // which parseContributors surfaces as `undefined`. Byte-identical to legacy.
     expect(bEntry?.summaries).toBeUndefined();
   });
 });

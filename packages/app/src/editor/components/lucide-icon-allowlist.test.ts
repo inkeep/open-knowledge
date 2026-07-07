@@ -51,6 +51,9 @@ describe('LUCIDE_ICON_ENTRIES', () => {
 
   test('every component is a function (renderable React component)', () => {
     for (const [, Component] of LUCIDE_ICON_ENTRIES) {
+      // lucide-react exports forwardRef objects; both function and object
+      // values are acceptable React component shapes — assert non-nullish
+      // and not a primitive.
       expect(Component).not.toBeNull();
       expect(['function', 'object']).toContain(typeof Component);
     }

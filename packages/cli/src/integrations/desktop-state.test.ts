@@ -39,6 +39,7 @@ describe('desktopUserDataDir', () => {
         productName: DESKTOP_LEGACY_PRODUCT_NAME,
       }),
     ).toBe('/Users/x/Library/Application Support/Open Knowledge');
+    // Sanity: the two product names differ.
     expect(DESKTOP_PRODUCT_NAME).not.toBe(DESKTOP_LEGACY_PRODUCT_NAME);
   });
 });
@@ -100,6 +101,7 @@ describe('stateDirIsOurs', () => {
   test('false for a FOREIGN vendor’s same-named dir (no recentProjects array)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-state-'));
     try {
+      // Another app literally named "Open Knowledge" with its own state format.
       writeState(dir, { windows: [], preferences: { theme: 'dark' } });
       expect(stateDirIsOurs(dir)).toBe(false);
       writeFileSync(join(dir, 'state.json'), '{ broken json');

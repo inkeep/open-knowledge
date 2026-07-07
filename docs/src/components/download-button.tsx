@@ -2,6 +2,7 @@ import { DownloadIcon } from 'lucide-react';
 import { DOWNLOAD_ROUTE } from '@/lib/site';
 
 type DownloadButtonProps = {
+  /** Defaults to the tracked stable-download route (fires `dmg_downloaded`). */
   href?: string;
   label?: string;
 };
@@ -10,6 +11,8 @@ export function DownloadButton({
   href = DOWNLOAD_ROUTE,
   label = 'DOWNLOAD FOR MAC',
 }: DownloadButtonProps) {
+  // Raw <a>, not next/link: the download route is a 302 redirect handler, so
+  // next/link would prefetch it (firing the redirect) and double-fetch on click.
   return (
     <a
       href={href}

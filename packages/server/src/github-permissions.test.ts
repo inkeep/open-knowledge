@@ -1,3 +1,11 @@
+/**
+ * Tests for the push-permission probe.
+ *
+ * Boundaries are mocked (HTTP via injected `fetch`, gh detection + credential
+ * store via injected fakes); the probe's own classification + token-resolution
+ * logic is exercised for real. Telemetry assertions use the InMemoryMetric
+ * harness from `frontmatter-telemetry.test.ts`.
+ */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { metrics } from '@opentelemetry/api';
 import {
@@ -16,6 +24,8 @@ import {
   type ProbeTokenStore,
   type PushPermission,
 } from './github-permissions.ts';
+
+// ─── Fakes at the system boundaries ──────────────────────────────────────────
 
 function mockFetch(handler: (url: string, init?: RequestInit) => Response): {
   fetch: FetchFn;
@@ -60,6 +70,8 @@ function fakeStore(token: string | null): { store: ProbeTokenStore; hosts: strin
 function authHeader(init?: RequestInit): string | undefined {
   return (init?.headers as Record<string, string> | undefined)?.Authorization;
 }
+
+// ─── Classification ───────────────────────────────────────────────────────────
 
 describe('checkPushPermission — classification', () => {
   const cases: Array<{
@@ -182,6 +194,10 @@ describe('checkPushPermission — classification', () => {
   });
 
   test('an AbortError-shaped rejection without the timer firing → unknown/network', async () => {
+    // Synthetic AbortError-shape but the AbortController.abort() was never
+    // called (timer didn't fire). `ac.signal.aborted` is false → classifier
+    // routes to `network`, not `timeout`. Distinguishes "fetch synthesized
+    // an AbortError" from "our 5s ceiling actually fired."
     const fetchFn: FetchFn = (_input, init) =>
       Promise.reject(
         Object.assign(new Error('The operation was aborted'), {
@@ -199,6 +215,11 @@ describe('checkPushPermission — classification', () => {
   });
 
   test('probe-timeout firing (signal.aborted === true) → unknown/timeout', async () => {
+    // Mock fetch that hangs until the AbortSignal aborts, then rejects.
+    // Matches how real fetch behaves under abort. With _timeoutMs=20ms,
+    // the timer fires before the test gives up, and the catch branches
+    // on `ac.signal.aborted === true` → `timeout`. Production keeps the
+    // 5s ceiling; this seam exercises the branch without the wait.
     const fetchFn: FetchFn = (_input, init) =>
       new Promise((_resolve, reject) => {
         const sig = init?.signal;
@@ -220,6 +241,8 @@ describe('checkPushPermission — classification', () => {
     expect(result).toEqual({ kind: 'unknown', error: 'timeout' });
   });
 });
+
+// ─── Token resolution order (Tier A → Tier B/C → anonymous) ──────────────────
 
 describe('checkPushPermission — token resolution', () => {
   test('Tier A: gh token is used and the credential store is not consulted', async () => {
@@ -294,6 +317,8 @@ describe('checkPushPermission — token resolution', () => {
   });
 });
 
+// ─── Request shape ────────────────────────────────────────────────────────────
+
 describe('checkPushPermission — request shape', () => {
   test('hits api.github.com/repos/OWNER/REPO with the GitHub user-agent + accept', async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(200, { permissions: { push: true } }));
@@ -311,6 +336,8 @@ describe('checkPushPermission — request shape', () => {
   });
 
   test('GHES host routes through /api/v3 base', async () => {
+    // github.com → api.github.com; any other host → https://<host>/api/v3
+    // (matches packages/cli/src/auth/device-flow.ts convention).
     const { fetch, calls } = mockFetch(() => jsonResponse(200, { permissions: { push: true } }));
     await checkPushPermission({
       owner: 'acme',
@@ -355,6 +382,8 @@ describe('checkPushPermission — request shape', () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+// ─── Telemetry (bounded cardinality, no repo/url leakage) ────────────────────
 
 interface MetricHarness {
   exporter: InMemoryMetricExporter;
@@ -483,6 +512,7 @@ describe('checkPushPermission — telemetry', () => {
     const allowedCounterKeys = ['denied_reason', 'error_class', 'outcome'];
     for (const p of points) {
       const keys = Object.keys(p.attributes).sort();
+      // counter carries all three bounded labels; histogram carries only `outcome`
       expect(keys.every((k) => allowedCounterKeys.includes(k))).toBe(true);
       const serialized = JSON.stringify(p.attributes);
       expect(serialized).not.toContain('secret-owner-abc');

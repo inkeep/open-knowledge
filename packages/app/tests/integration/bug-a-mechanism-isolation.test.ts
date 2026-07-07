@@ -1,3 +1,19 @@
+/**
+ * Bug-A mechanism isolation — empirical reproducer.
+ *
+ * Hypothesis: when a client types in WYSIWYG and an agent-write API call
+ * fires within the client's Observer A 50ms debounce window, server-side
+ * syncTextToFragment rebuilds server's XmlFragment from server's stale
+ * Y.Text — destroying user content that was in server's XmlFragment (via
+ * CRDT propagation) but not yet in server's Y.Text.
+ *
+ * Method: real Hocuspocus server + real HocuspocusProvider client over
+ * WebSocket. Inspect server-side Y.Doc state at each critical moment
+ * (same-process access).
+ *
+ * Iron Law: NO production code modified.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
@@ -12,6 +28,11 @@ import {
   testReset,
 } from './test-harness';
 
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+/** Apply markdown to client XmlFragment via updateYFragment — simulates WYSIWYG edit. */
 function applyMarkdownToFragment(client: TestClient, md: string): void {
   const parsed = mdManager.parse(md);
   const pmNode = schema.nodeFromJSON(parsed);
@@ -21,12 +42,14 @@ function applyMarkdownToFragment(client: TestClient, md: string): void {
   });
 }
 
+/** Serialize XmlFragment → Markdown string. */
 function serializeFrag(
   fragment: { length: number } & Parameters<typeof yXmlFragmentToProseMirrorRootNode>[0],
 ): string {
   return mdManager.serialize(yXmlFragmentToProseMirrorRootNode(fragment, schema).toJSON());
 }
 
+/** Capture server-side Y.Text + XmlFragment state for a given docName. */
 function captureServerState(
   server: TestServer,
   docName: string,
@@ -44,11 +67,22 @@ function captureServerState(
   return { ytext, frag };
 }
 
+// ═════════════════════════════════════════════════════════════
+// Bug-A mechanism isolation
+// ═════════════════════════════════════════════════════════════
+
 describe('Bug-A mechanism isolation: server stomp via syncTextToFragment', () => {
   let server: TestServer;
 
+  // Use shared server for all timing variants
   const DOC_NAME = 'test-doc';
 
+  /**
+   * Run the Bug-A scenario with a configurable wait between the client's
+   * XmlFragment mutation and the agent write API call.
+   *
+   * Returns structured evidence for verdict analysis.
+   */
   async function runBugAScenario(delayMs: number): Promise<{
     delay: number;
     t1: { ytext: string | null; frag: string | null };
@@ -61,23 +95,40 @@ describe('Bug-A mechanism isolation: server stomp via syncTextToFragment', () =>
     const client = await createTestClient(server.port, DOC_NAME);
 
     try {
+      // ── T0: baseline (empty doc after reset) ──
       captureServerState(server, DOC_NAME, `delay=${delayMs}/T0`);
 
+      // ── Step 1: Client mutates XmlFragment (simulates WYSIWYG typing) ──
+      // This schedules Observer A's 50ms debounce on the CLIENT. The XmlFragment
+      // CRDT update propagates to server via WebSocket (~2-5ms on localhost).
+      // Client Y.Text does NOT update until Observer A fires (50ms).
       applyMarkdownToFragment(client, 'user typed in WYSIWYG\n');
 
+      // ── Step 2: Wait the configured delay ──
+      // Goal: wait long enough for XmlFragment CRDT propagation to server, but
+      // shorter than Observer A's 50ms debounce so server Y.Text is still stale.
       await wait(delayMs);
 
+      // ── T1: server state BEFORE agent write ──
       const t1 = captureServerState(server, DOC_NAME, `delay=${delayMs}/T1`);
 
+      // ── Step 3: Agent write via API ──
+      // Server-side handler: ytext.insert + syncTextToFragment in single transaction.
+      // syncTextToFragment reads Y.Text → parses → updateYFragment → replaces XmlFragment.
       await agentWriteMd(server.port, 'agent content X', {
         docName: DOC_NAME,
         position: 'append',
       });
 
+      // ── T2: server state IMMEDIATELY after agent write ──
       const t2 = captureServerState(server, DOC_NAME, `delay=${delayMs}/T2`);
 
+      // ── Step 4: Wait for full settle ──
+      // Observer A debounce fires, client Y.Text gets user content, propagates
+      // to server. Observer B processes any changes. Allow full convergence.
       await wait(800);
 
+      // ── T3: final settled state ──
       const t3 = captureServerState(server, DOC_NAME, `delay=${delayMs}/T3`);
 
       const clientFinal = {
@@ -97,11 +148,18 @@ describe('Bug-A mechanism isolation: server stomp via syncTextToFragment', () =>
     }
   }
 
+  // Create/teardown shared server
   test('setup', async () => {
     server = await createTestServer();
     expect(server.port).toBeGreaterThan(0);
   });
 
+  /**
+   * Run the scenario at multiple delay points to find the race window.
+   * The race is real if ANY delay shows:
+   *   T1: server.frag HAS 'user typed' + server.ytext DOES NOT
+   *   T2: server.frag no longer has 'user typed' (post-agent-write stomp)
+   */
   test('Bug-A timing sweep: delays 5, 15, 25ms', async () => {
     const delays = [5, 15, 25];
     const results: Awaited<ReturnType<typeof runBugAScenario>>[] = [];
@@ -126,6 +184,7 @@ describe('Bug-A mechanism isolation: server stomp via syncTextToFragment', () =>
       );
     }
 
+    // Identify the stomp pattern: T1 frag has user content but ytext doesn't, AND T2 frag lost it
     const stompFound = results.some((r) => {
       const t1FragHas = r.t1.frag?.includes('user typed in WYSIWYG') ?? false;
       const t1YTextLacks = !(r.t1.ytext?.includes('user typed in WYSIWYG') ?? false);
@@ -141,6 +200,7 @@ describe('Bug-A mechanism isolation: server stomp via syncTextToFragment', () =>
         '    but server.ytext does not, AND T2 server.frag lost user content after agent write.',
       );
     } else {
+      // Check which condition failed
       const anyT1FragHasUser = results.some((r) => r.t1.frag?.includes('user typed in WYSIWYG'));
       const anyT1YTextLacksUser = results.some(
         (r) => !(r.t1.ytext?.includes('user typed in WYSIWYG') ?? false),
@@ -169,10 +229,12 @@ describe('Bug-A mechanism isolation: server stomp via syncTextToFragment', () =>
       }
     }
 
+    // Also check for final data loss
     const anyFinalLoss = results.some((r) => !r.t3.frag?.includes('user typed in WYSIWYG'));
     console.log(`\nFinal data loss (user content missing at T3): ${anyFinalLoss}`);
     console.log('=============================================\n');
 
+    // Soft assertion — test always passes, evidence is in logs
     expect(true).toBe(true);
   });
 

@@ -76,6 +76,10 @@ interface ExecResult {
   isError?: boolean;
 }
 
+// `textPlusStructured` mirrors the visible body into `structuredContent.text`
+// (the cross-client body channel — Claude-class clients drop `content[].text`
+// when structuredContent is present). Tests assert on it as the body handle;
+// the raw `stdout` copy was dropped.
 function structured(result: ExecResult): ExecStructuredResult & { text?: string } {
   return result.structuredContent as unknown as ExecStructuredResult & { text?: string };
 }
@@ -105,6 +109,7 @@ describe('exec — happy path', () => {
     expect(files.length).toBe(1);
     expect(files[0].path).toBe('content/auth.md');
     expect(files[0].title).toBe('Auth');
+    // rich shape on single-path cat
     expect(files[0].historySource).toBe('shadow-repo-absent');
   });
 
@@ -123,6 +128,7 @@ describe('exec — happy path', () => {
     const s = structured(result);
     const files = fileEntries(s);
     expect(files.length).toBe(2);
+    // Slim shape: rich fields null
     for (const m of files) {
       expect(m.backlinkCount).toBe(null);
       expect(m.history).toBe(null);
@@ -173,6 +179,7 @@ describe('exec — happy path', () => {
       (e): e is Extract<typeof e, { type: 'directory' }> =>
         (e as { type?: string }).type === 'directory',
     );
+    // Parent `specs` + two children (`specs/spec-a`, `specs/spec-b`).
     expect(dirs.length).toBe(3);
     const parentEntry = dirs.find((d) => d.path === 'specs');
     expect(parentEntry).toBeDefined();
@@ -182,8 +189,10 @@ describe('exec — happy path', () => {
     expect(specAEntry?.recursiveMdCount).toBe(2);
     expect(specAEntry?.childDirCount).toBe(1);
     expect(specAEntry?.mostRecentMd).toBeDefined();
+    // Content block renders folder summary
     expect(result.content[0].text).toContain('specs/spec-a/');
     expect(result.content[0].text).toContain('md file');
+    // Pin the new text rendering paths (not just the structured fields).
     expect(result.content[0].text).toContain('1 md file here (2 in tree)');
     expect(result.content[0].text).toMatch(/most recent:.*\d{4}-\d{2}-\d{2}/);
   });
@@ -217,12 +226,18 @@ describe('exec — happy path', () => {
   });
 
   test("ls <dir> surfaces the folder's own well-known frontmatter keys + templates_available", async () => {
+    // The load-bearing folder-level fields a listing returns are the folder's
+    // own well-known `title`/`description`/`tags` (self-only — no cascade)
+    // and `templates_available` (the write_document template menu).
     const project = await bootstrap();
     const specs = resolve(project, 'specs');
     const specsOk = resolve(specs, '.ok');
     const specsOkTemplates = resolve(specsOk, 'templates');
     mkdirSync(specsOkTemplates, { recursive: true });
     writeFileSync(resolve(specs, 'foo.md'), '# Foo\n');
+    // A folder's frontmatter is open-shape, so it may carry keys beyond the
+    // well-known triad (`status`); reads must not break, and only the
+    // well-known fields are promoted onto the typed directory entry.
     writeFileSync(
       resolve(specsOk, 'frontmatter.yml'),
       'title: Specs\ndescription: Specifications\ntags: [spec]\nstatus: draft\n',
@@ -244,6 +259,7 @@ describe('exec — happy path', () => {
     );
     const parent = dirs.find((d) => d.path === 'specs');
     expect(parent).toBeDefined();
+    // Self-only descriptive fields surface flat on the directory entry.
     expect(parent?.title).toBe('Specs');
     expect(parent?.description).toBe('Specifications');
     expect(parent?.tags).toEqual(['spec']);
@@ -253,6 +269,7 @@ describe('exec — happy path', () => {
     expect(rfc).toBeDefined();
     expect(rfc?.title).toBe('RFC');
     expect(rfc?.description).toBe('Request for comments');
+    // templates now surface in the human-readable text, not just structuredContent
     expect(result.content[0].text).toContain('templates: rfc');
     expect(result.content[0].text).toContain('Request for comments');
   });
@@ -318,6 +335,7 @@ describe('exec — stdout provenance headers', () => {
 
     const s = structured(result);
     expect(s.text).not.toContain('==>');
+    // enrichedPaths still lists every file read, so provenance is preserved.
     const files = fileEntries(s);
     expect(files.map((f) => f.path).sort()).toEqual(['articles/a.md', 'articles/b.md']);
   });
@@ -351,6 +369,8 @@ describe('exec — stdout provenance headers', () => {
     )) as ExecResult;
 
     const s = structured(result);
+    // The head-trimmer fires a cap banner that prefixes the body, so assert the
+    // cat provenance header is present (cat wins) rather than at byte 0.
     expect(s.text).toContain('==> articles/auth.md <==\n');
   });
 });
@@ -410,6 +430,12 @@ describe('exec — binary file NG8 warning', () => {
 });
 
 describe('exec — cat enrichment carries shadow-repo history with writer attribution', () => {
+  // Successor to the original parity test (exec vs read_document). With
+  // read_document dropped in the OK MCP tool consolidation, the parity
+  // claim no longer needs a peer comparison — exec is the sole typed read
+  // for a doc. Keep the assertion on shadow-repo history + agent
+  // writer-classification + frontmatter fields so the enrichment contract
+  // stays pinned.
   test('cat returns frontmatter + shadow-repo history with agent classification', async () => {
     const project = await bootstrap();
     const shadow = await initShadowRepo(project);
@@ -537,14 +563,19 @@ describe('exec — structuredContent mirrors body text + warnings (Desktop fix)'
     )) as ExecResult;
 
     const s = structured(result);
+    // Body reaches the model via both channels Claude-class clients honor.
     expect(result.content[0].text).toContain('alpha body');
     expect(typeof s.text).toBe('string');
     expect(s.text).toContain('alpha body');
+    // The redundant raw `stdout` channel (copy C) is gone; nothing re-emits it.
     expect('stdout' in (result.structuredContent ?? {})).toBe(false);
     expect(s.stdoutTruncated).toBe(false);
   });
 
   test('body is emitted exactly twice on the wire (content[].text + structuredContent.text)', async () => {
+    // A unique token placed once in a sub-cap doc must appear exactly 2× in the
+    // serialized result — content[].text and structuredContent.text. A third
+    // occurrence would mean the dropped raw `stdout` channel (copy C) is back.
     const project = await bootstrap();
     const content = resolve(project, 'content');
     mkdirSync(content, { recursive: true });
@@ -562,6 +593,11 @@ describe('exec — structuredContent mirrors body text + warnings (Desktop fix)'
   });
 
   test('mid-size cat stays within the realized per-copy + total wire budget (was 3× overflow)', async () => {
+    // The repro: a doc the cap would once pass untruncated produced a
+    // ~3× wire payload that overflowed the client. The soft cap now budgets the
+    // 2× body duplication AND the per-copy decoration (banner/provenance/
+    // enrichment), so the realized result stays bounded. Frontmatter here makes
+    // the enrichment block non-trivial — the case a stdout-only cap would miss.
     const project = await bootstrap();
     const content = resolve(project, 'content');
     mkdirSync(content, { recursive: true });
@@ -576,10 +612,15 @@ describe('exec — structuredContent mirrors body text + warnings (Desktop fix)'
       { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
     )) as ExecResult;
 
+    // Over the soft cap → truncated with a marker, not silently overflowed.
     expect(structured(result).stdoutTruncated).toBe(true);
     expect(result.content[0].text).toContain('truncated');
+    // Each wire copy is the FULL decorated body (banner + provenance + stdout +
+    // enrichment), not just the capped stdout — pin the realized per-copy size
+    // to the budget ÷ copies, so decoration can't reopen the overflow class.
     const perCopyBudget = Math.floor(RESULT_BODY_BUDGET_BYTES / WIRE_BODY_COPIES);
     expect(result.content[0].text.length).toBeLessThan(perCopyBudget);
+    // Total realized wire (both copies + enrichedPaths + envelope) under budget.
     expect(JSON.stringify(result).length).toBeLessThan(RESULT_BODY_BUDGET_BYTES);
   });
 
@@ -632,6 +673,8 @@ describe('exec — structuredContent mirrors body text + warnings (Desktop fix)'
 describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
   test('emits a route-only previewUrl per enriched file; no top-level ui block', async () => {
     const project = await bootstrap();
+    // Bind the UI lock so the resolver treats the route as reachable; the
+    // resolved previewUrl is route-only and carries no host:port.
     bindTestUiLock(project);
     const contentDir = resolve(project, 'articles');
     mkdirSync(contentDir, { recursive: true });
@@ -651,6 +694,7 @@ describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
       expect((f as unknown as { previewUrl: string }).previewUrl).toBe(`/#/${docName}`);
       expect((f as unknown as { previewUrlSource: string }).previewUrlSource).toBe('lock');
     }
+    // The `ui` block was removed from list-tool responses.
     expect((s as unknown as { ui?: unknown }).ui).toBeUndefined();
   });
 
@@ -672,7 +716,18 @@ describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
     expect((s as unknown as { ui?: unknown }).ui).toBeUndefined();
   });
 
+  // main's
+  // folder-rule work made `config` required on ExecDeps (it's threaded through
+  // to `enrichPath` for folder-frontmatter resolution), so the optional-config
+  // path no longer exists. Callers always pass config via tools/index.ts.
+
   test('mcp-tool-path-traversal: `ls ../etc/` does not enrich a directory outside cwd', async () => {
+    // The bash sandbox blocks the actual `ls` (ReadWriteFs root=cwd), but
+    // pre-fix `extractFromLs` still emitted "../etc" as a referenced path
+    // and `enrichDirectory` would readdir /etc — turning a blocked exec
+    // into a directory-disclosure oracle. Containment filter in exec.ts
+    // must drop any extracted path that lexically escapes cwd before
+    // classifyPaths/enrichDirectory ever sees it.
     const project = await bootstrap();
     const result = (await buildExecResult(
       { command: 'ls ../' },
@@ -680,6 +735,8 @@ describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
     )) as ExecResult;
 
     const s = structured(result);
+    // Whether bash returns an empty listing or an error, the structured
+    // surface MUST NOT enumerate paths outside the project root.
     for (const entry of s.enrichedPaths) {
       expect(entry.path.startsWith('../')).toBe(false);
       expect(entry.path).not.toBe('..');
@@ -702,6 +759,8 @@ describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
   });
 
   test('FR13: nested .ok/ paths are filtered from enrichedPaths (not surfaced as listings)', async () => {
+    // .ok/ directories are plumbing, not content. Their CONTENTS surface as
+    // structured fields on the parent folder's record, not as path entries.
     const project = await bootstrap();
     const meetings = resolve(project, 'meetings');
     const meetingsOkTpls = resolve(meetings, '.ok', 'templates');
@@ -709,6 +768,8 @@ describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
     writeFileSync(resolve(meetingsOkTpls, 'prep-notes.md'), '---\ntitle: Prep\n---\nbody\n');
     writeFileSync(resolve(meetings, '2026-05-01.md'), '---\ntitle: Meeting\n---\nbody\n');
 
+    // ls meetings/ — must not surface `.ok/templates/prep-notes.md` despite
+    // it being a real .md file on disk.
     const result = (await buildExecResult(
       { command: 'find meetings -name "*.md"' },
       { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
@@ -716,11 +777,23 @@ describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
     const s = structured(result);
     const paths = s.enrichedPaths.map((e) => e.path);
     expect(paths).toContain('meetings/2026-05-01.md');
+    // The template file lives at meetings/.ok/templates/prep-notes.md and
+    // must NOT appear in enrichedPaths.
     expect(paths.some((p) => p.includes('.ok/'))).toBe(false);
   });
 });
 
+// Regression coverage for the explicit-subdirectory-cwd bug: the production
+// resolver walks UP from the passed cwd to the enclosing `.ok/config.yml`, but
+// `exec` must still run the command in the literal directory the caller passed.
+// Every other test in this file stubs `resolveCwd: async () => project` — a
+// constant that ignores its argument and so never exercises the walk-up. These
+// tests wire a resolver that genuinely walks up (honoring its argument), the way
+// the real CLI does, then assert the command runs where it was told.
 describe('exec — explicit subdirectory cwd', () => {
+  // Mirror `findProjectDir` (cli/src/mcp/server.ts): resolve, then walk up to
+  // the nearest ancestor with an `.ok/config.yml`. Honors its argument — that
+  // is the whole point.
   function walkUpResolveCwd(start: string): string {
     let dir = resolve(start);
     for (;;) {
@@ -790,8 +863,14 @@ describe('exec — explicit subdirectory cwd', () => {
     expect(result.isError).toBeFalsy();
     const files = fileEntries(structured(result));
     expect(files.length).toBe(1);
+    // The file lives at <project>/subdir/note.md; its canonical docName is
+    // project-relative even though bash ran inside `subdir`.
     expect(files[0].path).toBe('subdir/note.md');
     expect(files[0].title).toBe('Subdir Note');
+    // The agent-facing provenance header is rebased to the same project-relative
+    // address (not the bare `note.md` the command typed) — pins the `rebase`
+    // path through `buildStdoutProvenance`, which the enrichment assert above
+    // does not exercise.
     expect(structured(result).text?.startsWith('==> subdir/note.md <==\n')).toBe(true);
   });
 
@@ -811,6 +890,8 @@ describe('exec — explicit subdirectory cwd', () => {
     )) as ExecResult;
 
     expect(result.isError).toBeFalsy();
+    // `ls inner/` ran inside `subdir`, but the header addresses the dir
+    // project-relative — `subdir/inner/:`, not `inner/:`.
     expect(structured(result).text?.startsWith('subdir/inner/:\n')).toBe(true);
   });
 

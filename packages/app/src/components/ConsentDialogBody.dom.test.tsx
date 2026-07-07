@@ -67,6 +67,12 @@ function renderConsentDialog() {
   return harness;
 }
 
+/**
+ * The content.dir / ignore / AI-tool controls live inside the collapsed
+ * "Advanced settings" section, which Radix unmounts while closed. Expand it
+ * before interacting with those fields. (Config sharing is NOT here — it sits
+ * at the top level.)
+ */
 async function expandAdvanced() {
   await userEvent.click(screen.getByTestId('consent-advanced-trigger'));
 }
@@ -96,13 +102,22 @@ describe('ConsentDialogBody runtime form behavior', () => {
   test('config sharing is shown at the top level, not inside Advanced settings', async () => {
     renderConsentDialog();
 
+    // Visible without expanding Advanced.
     expect(screen.getByTestId('consent-sharing')).not.toBeNull();
     expect(screen.getByTestId('consent-sharing-shared')).not.toBeNull();
     expect(screen.getByTestId('consent-sharing-local-only')).not.toBeNull();
+    // ...while the Advanced-only fields stay collapsed.
     expect(screen.queryByTestId('consent-content-dir')).toBeNull();
   });
 
   test('config-sharing info tooltip stays closed when the dialog first opens', async () => {
+    // Radix Dialog autofocuses the first focusable descendant on open. The
+    // file-count probe is async, so ProbePreview renders a non-focusable
+    // placeholder at mount — which would make the sharing-info TooltipTrigger
+    // the first focusable element. A Radix Tooltip opens immediately on focus
+    // (delayDuration 0), so the info popover would pop open unbidden. The
+    // dialog redirects initial focus away from the trigger; assert the tooltip
+    // content (portaled only while open) is absent on mount.
     renderConsentDialog();
 
     expect(screen.queryByText(/Setup files include/i)).toBeNull();
@@ -122,6 +137,9 @@ describe('ConsentDialogBody runtime form behavior', () => {
   });
 
   test('an invalid default content dir force-opens Advanced settings and shows the error without expanding', () => {
+    // Regression guard for `advancedExpanded = advancedOpen || !contentDirSafe`
+    // — an invalid content dir must auto-open the section so its inline error
+    // is reachable, WITHOUT any expand interaction.
     const harness = makeStore();
     const invalidPayload = { ...payload, defaultContentDir: '../secrets' };
     render(<ConsentDialogBody payload={invalidPayload} store={harness.store} />);

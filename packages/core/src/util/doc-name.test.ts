@@ -13,6 +13,8 @@ describe('isHiddenDocName', () => {
     'a/.hidden/b',
     '.okignore',
     'a/.b',
+    // Non-dotted agent config in HIDDEN_CONFIG_BASENAMES — hidden by basename,
+    // at the root and nested.
     'opencode.json',
     'config/opencode.json',
   ])
@@ -22,6 +24,8 @@ describe('isHiddenDocName', () => {
     'Music',
     'a/b/c',
     'note.with.dots',
+    // Basename match is exact — neither a near-miss extension nor an
+    // `opencode.json` ancestor segment counts as hidden.
     'opencode.jsonx',
     'opencode.json/notes',
   ])
@@ -40,6 +44,8 @@ describe('validateDocName', () => {
     }
   });
 
+  // Each of these previously
+  // produced a 500, a junk/hidden file, or an unaddressable doc.
   const REJECTED: Array<[string, string]> = [
     ['', 'empty'],
     ['   ', 'whitespace only'],

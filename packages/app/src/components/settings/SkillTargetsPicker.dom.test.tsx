@@ -1,3 +1,11 @@
+/**
+ * RTL behavioral tests for the skill-targets picker.
+ *
+ * Asserts the picker renders one checkbox per project-skill editor reflecting
+ * the committed set, and that toggling an editor PUTs the updated target set
+ * to `/api/skill-targets`.
+ */
+
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -40,6 +48,7 @@ describe('SkillTargetsPicker', () => {
     render(<SkillTargetsPicker />);
 
     await waitFor(() => expect(screen.getByTestId('skill-target-claude')).toBeDefined());
+    // claude is in the set → checked; cursor/codex are not.
     expect(screen.getByTestId('skill-target-claude').getAttribute('aria-checked')).toBe('true');
     expect(screen.getByTestId('skill-target-cursor').getAttribute('aria-checked')).toBe('false');
     expect(screen.getByTestId('skill-target-codex')).toBeDefined();
@@ -78,6 +87,7 @@ describe('SkillTargetsPicker', () => {
     const put = calls.find((c) => c.method === 'PUT');
     expect(put).toBeDefined();
     const sent = JSON.parse(put?.body ?? '{}') as { targets: string[] };
+    // The new set unions the existing committed target with the toggled-on one.
     expect(new Set(sent.targets)).toEqual(new Set(['claude', 'cursor']));
   });
 });

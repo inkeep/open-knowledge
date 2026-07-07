@@ -21,6 +21,15 @@ If the project has no `origin` configured, the Share button opens the **Publish 
 
 If the push fails after the repo was created (auth lost mid-flow, network blip), the wizard shows a **Retry push** affordance. The GitHub-side repo isn't recreated, only the push is retried.
 
+### Freshness warnings
+
+A share link points at GitHub, but your local edits only reach GitHub through auto-sync (off by default) or a manual push. When you click Share, OpenKnowledge checks the shared doc or folder against its last-known state on GitHub and, if the link won't yet show what you're looking at, adds a non-blocking warning row to the popover:
+
+- **Not on GitHub yet.** The target has never been pushed, so the link won't resolve until it is. With auto-sync off, the row offers **Enable auto-sync** and **How to push manually**; with auto-sync on, it offers **Sync now** and clears itself once the push lands.
+- **Unpushed changes.** The target is on GitHub but has local edits that aren't, so recipients see the last pushed version. With auto-sync on this stays silent — the next sync closes the gap.
+
+If you don't have write access to the repo, the row explains that instead of offering a push action. The check is local, adds no network round-trip, and never blocks sharing: if it can't run, the link still copies with no warning. Folder shares get the same treatment as docs.
+
 ## Opening a share link
 
 The recipient clicks the URL and lands on a splash page showing the target (file or folder) name, the `owner/repo` path, and the branch from which it was shared.
@@ -40,10 +49,18 @@ The deep link arrives at the desktop app's handler, which runs a three-question 
 
 ### Receiving on a different branch
 
-If you have the repo open locally but on a different branch, the app falls through to a branch-switch dialog instead of silently opening the wrong content. Behavior depends on whether the shared target (file or folder) exists on your current branch:
+If you have the repo open locally but on a different branch, the app opens a branch-switch dialog instead of silently showing the wrong content. It compares the shared target (file or folder) against your current branch and against GitHub, then offers the action that matches what it finds:
 
-- **Target exists on both branches.** The dialog offers `Open on <current-branch>` or `Switch to <share-branch> and open`.
-- **Target only on the share's branch.** The dialog offers `Switch to <share-branch> and open` plus Cancel.
+- **On your current branch.** Open it where you are, or switch to the share's branch and open.
+- **Not local yet, but on GitHub (your local copy is behind).** **Switch and update branch** fast-forwards your local branch to GitHub's tip and opens the doc. This is fast-forward-only — the receive flow never merges. A branch that has diverged from GitHub instead gets a plain switch with a note that the doc will appear once the branch syncs.
+- **Moved.** If GitHub shows the target was renamed, the dialog offers to open it at its new path.
+- **Removed, or never pushed.** A deleted target is messaged as removed from the branch; a path that never existed on the branch is messaged as "may not have been pushed yet." The two are distinct, and neither drops you into an empty create-mode editor.
+
+If OpenKnowledge can't reach GitHub to make this call, it falls back to today's "pull the latest, then re-open" guidance.
+
+### When the shared target has moved or been removed
+
+Even on the right branch, a doc or folder can be renamed or deleted after a link is minted. Rather than opening an empty editor at the old path — where you could unknowingly start a divergent copy — OpenKnowledge shows an honest terminal panel with the same verdict-driven copy as the branch-switch dialog: an offer to open a renamed target at its new path, a plain "removed from this branch" message with a link back to the parent folder, or "not pushed yet" when the path never existed. If the check can't reach GitHub, it falls back to the usual pull-and-retry guidance.
 
 ### Receiving without push permission
 

@@ -65,6 +65,8 @@ describe('validateLocalFolderForShare', () => {
     });
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
+      // Re-emitted URL preserves the origin-config casing — receiver's
+      // RecentProject lookup also normalizes case so this stays a hit.
       expect(result.gitRemoteUrl).toBe('https://github.com/Inkeep/Open-Knowledge.git');
     }
   });
@@ -93,6 +95,7 @@ describe('validateLocalFolderForShare', () => {
   test('returns not-git when .git is a directory but config is missing', async () => {
     const folder = resolve(tmpDir, 'shell-only');
     mkdirSync(resolve(folder, '.git'), { recursive: true });
+    // No config file at all — the "shell-only" git state.
 
     const result = await validateLocalFolderForShare(folder, {
       owner: 'inkeep',
@@ -122,6 +125,8 @@ describe('validateLocalFolderForShare', () => {
       '[core]\n\trepositoryformatversion = 0\n[remote "origin"]\n\turl = https://github.com/inkeep/open-knowledge.git\n',
       'utf-8',
     );
+    // Worktree-pointer: gitdir under <primary>/.git/worktrees/<name>, but we
+    // use the primary's config (the worktree shares the same origin).
     const worktreeFolder = resolve(tmpDir, 'feature-branch');
     mkdirSync(worktreeFolder);
     writeFileSync(resolve(worktreeFolder, '.git'), `gitdir: ${primaryGitDir}\n`, 'utf-8');
@@ -137,6 +142,11 @@ describe('validateLocalFolderForShare', () => {
   });
 
   test('worktree case: reads origin from the common dir via the gitdir commondir pointer', async () => {
+    // Real linked-worktree layout: the worktree gitdir lives under
+    // <primary>/.git/worktrees/<name> and holds a `commondir` pointer but NO
+    // config of its own — origin config lives in the shared common dir. Before
+    // the commondir resolution this returned not-git, which blocked worktree
+    // share-receive (the dispatch gate rejected the worktree).
     const primaryGitDir = resolve(tmpDir, 'primary', '.git');
     mkdirSync(primaryGitDir, { recursive: true });
     writeFileSync(
@@ -146,6 +156,8 @@ describe('validateLocalFolderForShare', () => {
     );
     const worktreeGitDir = resolve(primaryGitDir, 'worktrees', 'feature');
     mkdirSync(worktreeGitDir, { recursive: true });
+    // Relative commondir pointer, exactly as git writes it ('../..' from the
+    // worktree gitdir resolves back to the primary .git). No config here.
     writeFileSync(resolve(worktreeGitDir, 'commondir'), '../..\n', 'utf-8');
     const worktreeFolder = resolve(tmpDir, 'feature-wt');
     mkdirSync(worktreeFolder);
@@ -242,10 +254,12 @@ describe('validateLocalFolderForShare', () => {
   });
 
   test('returns symlink-escape when the picked folder is a symlink that resolves outside its parent', async () => {
+    // /tmp/xxx/escape-target — the folder we don't want to read from
     const escapeTarget = resolve(tmpDir, 'escape-target');
     mkdirSync(escapeTarget);
     seedRepo(escapeTarget, 'https://github.com/attacker/secrets.git');
 
+    // /tmp/xxx/parent/picked — symlink pointing outside parent's tree
     const parent = resolve(tmpDir, 'parent');
     mkdirSync(parent);
     const picked = resolve(parent, 'picked');
@@ -259,6 +273,8 @@ describe('validateLocalFolderForShare', () => {
   });
 
   test('returns symlink-escape when .git itself is a symlink to an outside directory', async () => {
+    // /tmp/xxx/elsewhere — a directory containing a config that masquerades
+    // as a github origin matching the expected repo.
     const elsewhere = resolve(tmpDir, 'elsewhere');
     mkdirSync(elsewhere);
     writeFileSync(
@@ -267,6 +283,7 @@ describe('validateLocalFolderForShare', () => {
       'utf-8',
     );
 
+    // /tmp/xxx/folder — .git is a symlink to /tmp/xxx/elsewhere
     const folder = resolve(tmpDir, 'folder');
     mkdirSync(folder);
     symlinkSync(elsewhere, resolve(folder, '.git'));
@@ -279,6 +296,8 @@ describe('validateLocalFolderForShare', () => {
   });
 
   test('legitimate symlinked folder under its own parent still validates ok', async () => {
+    // Common macOS / iCloud case: a folder is a symlink to a sibling under
+    // the same parent. Should validate normally.
     const realFolder = resolve(tmpDir, 'real-folder');
     mkdirSync(realFolder);
     seedRepo(realFolder, 'https://github.com/inkeep/open-knowledge.git');

@@ -1,3 +1,35 @@
+/**
+ * Regression: concurrent writers to an MCP host config file (Claude Desktop,
+ * Cursor, Codex, etc.) must not silently lose updates, corrupt JSON, or
+ * destroy unrelated pre-existing server entries.
+ *
+ * The original race surface is the read-modify-write loop inside
+ * `writeEditorMcpConfig` (`packages/cli/src/commands/init.ts`):
+ *
+ *   const config = readJsonConfig(path);   // T0: read state-N
+ *   const next = { ...config, [topLevelKey]: { ...servers, [key]: entry } };
+ *   writeJsonConfig(path, next);           // T1: write state-N + my entry
+ *
+ * With no advisory lock and a naked `fs.writeFileSync`, two concurrent
+ * writers that both observe `state-N` between T0 and T1 will both produce a
+ * `state-N+my-entry` next-state — and the second `writeFileSync` clobbers
+ * the first's entry (lost update). Two writers landing in the wrong write
+ * interleave can also leave the file with valid-JSON-followed-by-trailing-
+ * garbage (torn write) or — worst case — strip every pre-existing server
+ * entry written by other tools (Cursor's, Codex's, hand-edited).
+ *
+ * Realistic triggers in production: a CLI `ok init` running concurrently
+ * with OK Desktop's startup-repair MCP-wiring sweep; a user double-clicking
+ * the consent-dialog Add button; two desktop instances launching against
+ * the same Claude Desktop config.
+ *
+ * This test exercises the race at the same surface the production callers
+ * hit — `writeEditorMcpConfig` against a `cursor`-shaped target whose
+ * `configPath` is redirected at a fixture. N concurrent OS-level processes
+ * make distinct entry additions; the post-state must contain every
+ * pre-existing entry plus every concurrent addition.
+ */
+
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { spawn as nativeSpawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -25,7 +57,9 @@ function spawnConfigWriter(configPath: string, serverKey: string): Promise<Worke
     const timeoutHandle = setTimeout(() => {
       try {
         proc.kill('SIGKILL');
-      } catch {}
+      } catch {
+        // already dead
+      }
       rejectSpawn(
         new Error(`config-race-worker(${serverKey}) timed out after ${WORKER_TIMEOUT_MS}ms`),
       );
@@ -41,6 +75,9 @@ function spawnConfigWriter(configPath: string, serverKey: string): Promise<Worke
   });
 }
 
+// Skip-on-CI for the same reason as `multi-project-locks.test.ts` — cross-
+// process bun spawns are unreliable on Linux GHA per oven-sh/bun#11892.
+// Local runs exercise the full path.
 const describeCrossProcess = process.env.CI ? describe.skip : describe;
 
 describeCrossProcess('mcp host config — concurrent-write race', () => {
@@ -54,6 +91,9 @@ describeCrossProcess('mcp host config — concurrent-write race', () => {
     );
     mkdirSync(testRoot, { recursive: true });
     configPath = join(testRoot, 'claude_desktop_config.json');
+    // Seed with two unrelated MCP server entries that the OK writer must not
+    // destroy. These stand in for entries written by Cursor, hand-edited
+    // setups, or other MCP-host tools sharing the same config file.
     writeFileSync(
       configPath,
       `${JSON.stringify(
@@ -81,6 +121,10 @@ describeCrossProcess('mcp host config — concurrent-write race', () => {
     const writers = expectedKeys.map((key) => spawnConfigWriter(configPath, key));
     const outcomes = await Promise.all(writers);
 
+    // Every worker must exit cleanly. If any failed, surface the stderr so a
+    // regression is diagnosable, but treat that as the primary failure —
+    // the race symptom is downstream of an exit-0 worker that silently lost
+    // its write.
     const workerFailures = outcomes.filter((o) => o.exitCode !== 0);
     if (workerFailures.length > 0) {
       throw new Error(
@@ -90,6 +134,8 @@ describeCrossProcess('mcp host config — concurrent-write race', () => {
       );
     }
 
+    // The file MUST still parse as JSON. Naked `writeFileSync` interleaves
+    // can leave trailing garbage past a valid JSON prefix.
     expect(existsSync(configPath)).toBe(true);
     const raw = readFileSync(configPath, 'utf-8');
     let cfg: { mcpServers?: Record<string, unknown> };
@@ -110,6 +156,10 @@ describeCrossProcess('mcp host config — concurrent-write race', () => {
       );
     }
 
+    // Pre-existing entries from other tools MUST survive — this is the
+    // worst-case failure mode (silent destruction
+    // when writer A truncates → writer B reads empty → writer B writes its
+    // single entry as the entire server map).
     const missingPreExisting = ['existing-cursor', 'existing-handedit'].filter(
       (k) => !(k in servers),
     );
@@ -120,6 +170,7 @@ describeCrossProcess('mcp host config — concurrent-write race', () => {
       );
     }
 
+    // Every concurrent writer's entry MUST be present (no lost updates).
     const missingFromWrites = expectedKeys.filter((k) => !(k in servers));
     if (missingFromWrites.length > 0) {
       throw new Error(
@@ -130,6 +181,9 @@ describeCrossProcess('mcp host config — concurrent-write race', () => {
       );
     }
 
+    // Total: 2 pre-existing + N concurrent writers. Catches the case where
+    // the file ends up with an extra key from a stale write that landed on
+    // top of a fresh truncation, leaving more than expected.
     expect(Object.keys(servers).length).toBe(2 + N);
   });
 });

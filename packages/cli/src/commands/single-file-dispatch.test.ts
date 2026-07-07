@@ -21,6 +21,7 @@ const SUBCOMMANDS = new Set([
   'clean',
 ]);
 
+/** Test predicate: markdown extension OR one of an explicit existing-file set. */
 function isFileishWith(existing: Set<string>): (t: string) => boolean {
   return (t) => hasMarkdownExtension(t) || existing.has(t);
 }
@@ -37,6 +38,7 @@ describe('scanRootArgv', () => {
   test('extracts --cwd (space + equals form), consuming its value', () => {
     expect(scanRootArgv(['--cwd', '/foo', 'notes.md']).cwd).toBe('/foo');
     expect(scanRootArgv(['--cwd=/bar', 'notes.md']).cwd).toBe('/bar');
+    // The --cwd value token is not mistaken for an operand.
     expect(scanRootArgv(['--cwd', '/foo', 'notes.md']).operands).toEqual(['notes.md']);
   });
 
@@ -67,6 +69,8 @@ describe('decideSingleFileTarget', () => {
   test('a known subcommand is left for Commander (passthrough)', () => {
     expect(decideSingleFileTarget(['start'], opts())).toBeNull();
     expect(decideSingleFileTarget(['init'], opts())).toBeNull();
+    // Even an existing file whose NAME equals a subcommand → the subcommand
+    // wins (escape via `ok open ./start`).
     expect(decideSingleFileTarget(['start'], opts(['start']))).toBeNull();
   });
 
@@ -76,6 +80,8 @@ describe('decideSingleFileTarget', () => {
   });
 
   test('`ok open <ext-less doc>` is left to the existing `ok open` subcommand', () => {
+    // `specs/foo/SPEC` is neither a markdown filename nor an existing file →
+    // the existing ext-less project-doc contract is untouched.
     expect(decideSingleFileTarget(['open', 'specs/foo/SPEC'], opts())).toBeNull();
   });
 

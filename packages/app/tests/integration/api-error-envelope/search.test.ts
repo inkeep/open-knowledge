@@ -1,3 +1,14 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleSearch`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET / POST /api/search`:
+ *   - GET happy path: 200 + flat success body parses against
+ *     `SearchSuccessSchema`.
+ *   - POST happy path: 200 + flat success body.
+ *   - GET with overly-long query (>200 chars) → 400 + `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on PATCH emits 405 + `Allow: GET, POST`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, SearchSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

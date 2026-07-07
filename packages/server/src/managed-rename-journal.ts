@@ -27,6 +27,10 @@ interface ManagedRenameAffectedDoc {
   to: string;
 }
 
+/**
+ * V1 schema (legacy) — single-doc rename. Kept for back-compat reading at
+ * startup. New journals are written as V2.
+ */
 interface ManagedRenameRecoveryJournalV1 {
   version: 1;
   sourceDocName: string;
@@ -35,6 +39,10 @@ interface ManagedRenameRecoveryJournalV1 {
   snapshots: ManagedRenameSnapshot[];
 }
 
+/**
+ * V2 schema — multi-doc rename. `affectedDocs[]` drives recovery's destination
+ * cleanup; `fromPath` / `toPath` are observability-only (logs + dashboards).
+ */
 interface ManagedRenameRecoveryJournalV2 {
   version: 2;
   fromPath: string;
@@ -60,6 +68,14 @@ function journalDir(projectDir: string): string {
   return getLocalDir(projectDir);
 }
 
+/**
+ * Absolute path to the managed-rename recovery journal at
+ * `<projectDir>/.ok/local/managed-rename.json`.
+ *
+ * The journal is per-project runtime state (cross-machine ignore, per-machine
+ * recovery target), so it lives at the project root rather than inside a
+ * content sub-folder configured via `content.dir`.
+ */
 export function managedRenameJournalPath(projectDir: string): string {
   return resolve(journalDir(projectDir), MANAGED_RENAME_JOURNAL_FILENAME);
 }
@@ -244,6 +260,18 @@ function clearManagedRenameJournal(projectDir: string): void {
   tracedRmSync(managedRenameJournalPath(projectDir), { force: true });
 }
 
+/**
+ * Persist the pre-rename recovery journal, run the managed rename operation,
+ * then clear the journal only if the operation completes successfully.
+ *
+ * If the operation throws, the journal remains on disk so the next server
+ * startup can restore the pre-rename state. Do not wrap this in `try/finally`
+ * or the crash-recovery guarantee is lost.
+ *
+ * `projectDir` locates the journal under `<projectDir>/.ok/local/`. Callers
+ * that pass `contentDir` keep working when `projectDir === contentDir`;
+ * when they differ, `projectDir` is the load-bearing one.
+ */
 export async function withManagedRenameRecovery<T>(
   projectDir: string,
   journal: ManagedRenameRecoveryJournalV2,

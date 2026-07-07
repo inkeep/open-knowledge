@@ -1,5 +1,47 @@
+/**
+ * `defineSweep` — promotes the Cartesian-product sweep pattern
+ * to a first-class harness primitive.
+ *
+ * Earlier campaigns hand-rolled
+ * their axis-iteration boilerplate (~300 LOC each) — fan out over
+ * `axes`, run a per-cell scenario, aggregate. This module collapses
+ * that to one call:
+ *
+ *     export default defineSweep({
+ *       name: 'sweep-pool-warm-back',
+ *       baselineKey: 'sweep-pool-warm-back',
+ *       axes: {
+ *         maxPool: [3, 5, 8, 10] as const,
+ *         fixture: ['tight', 'broad'] as const,
+ *       },
+ *       scenario: async ({ maxPool, fixture }, ctx) => {
+ *         await ctx.page.evaluate((mp) => {
+ *           window.__okPerfOverrides = { MAX_POOL: mp };
+ *         }, maxPool);
+ *         await runOneCell(ctx, fixture);
+ *         return { fixture };
+ *       },
+ *     });
+ *
+ * Output schema:
+ *   {
+ *     name, baselineKey, axes,
+ *     cells: [{ axesValues, result, durationMs, errors? }, ...]
+ *   }
+ *
+ * Cell results are indexed in iteration order (Object.entries(axes) →
+ * Cartesian product). A throwing per-cell scenario does NOT abort the
+ * sweep — the error is captured in that cell's `errors[]` and the
+ * sweep continues. Caller decides whether any error is fatal.
+ *
+ * Non-Cartesian patterns: if the campaign needs an
+ * adaptive or skip-criterion sweep, opt out and use `defineScenario`
+ * directly. This primitive shoulders the common case.
+ */
+
 import { defineScenario, type ScenarioCtx, type ScenarioDefinition } from './scenario';
 
+/** A single cell's input — the (key → value) tuple for this point in the sweep. */
 export type AxesValues<TAxes extends Record<string, readonly unknown[]>> = {
   [K in keyof TAxes]: TAxes[K][number];
 };
@@ -26,6 +68,11 @@ export interface DefineSweepOpts<TAxes extends Record<string, readonly unknown[]
   scenario: (axesValues: AxesValues<TAxes>, ctx: ScenarioCtx) => Promise<TResult>;
 }
 
+/**
+ * Compute the Cartesian product of `axes`. Iteration order: outer = the
+ * first axis declared; inner = the last. (e.g. axes={a:[1,2], b:[x,y]}
+ * → [[1,x],[1,y],[2,x],[2,y]].)
+ */
 export function cartesian<TAxes extends Record<string, readonly unknown[]>>(
   axes: TAxes,
 ): Array<AxesValues<TAxes>> {
@@ -77,6 +124,9 @@ export function defineSweep<TAxes extends Record<string, readonly unknown[]>, TR
         axes,
         cells,
       };
+      // Stash on the ctx.metrics record so the scenario driver picks
+      // it up. Standard scenarios merge ctx.metrics into the result
+      // JSON; we store one JSON-serialized blob keyed by baselineKey.
       ctx.recordMetric(`sweep.${baselineKey}.cells`, cells.length);
       ctx.recordMetric(`sweep.${baselineKey}.payload`, JSON.stringify(output));
     },

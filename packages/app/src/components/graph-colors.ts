@@ -1,3 +1,18 @@
+/**
+ * Deterministic cluster-to-color mapping for graph nodes.
+ *
+ * Improved palette optimized for knowledge graphs with:
+ * - Better color harmony across 16 distinct hue families
+ * - Stronger WCAG contrast ratios for both themes
+ * - Semantic grouping: cool tones for structural concepts,
+ *   vibrant tones for creative/breakthrough ideas, warm tones
+ *   for processes and evaluation
+ * - Reduced visual fatigue with balanced saturation levels
+ *
+ * The same cluster name will always map to the same color
+ * (deterministic via stableHash).
+ */
+
 const DARK_PALETTE = [
   '#60a5fa', // Blue      - Knowledge, concepts, structure
   '#a78bfa', // Violet    - Research, analysis, methodology

@@ -9,6 +9,7 @@ import { reprojectAllManagedSkills } from './skill-reproject.ts';
 let root: string;
 let skillsRoot: string;
 
+/** Author a managed source skill under `.ok/skills/<name>`, frontmatter name = folder. */
 function makeSource(name: string, frontmatterName = name): string {
   const dir = join(skillsRoot, name);
   mkdirSync(dir, { recursive: true });
@@ -19,6 +20,7 @@ function makeSource(name: string, frontmatterName = name): string {
   return dir;
 }
 
+/** Install a project-scope skill's marker entry + symlink projections. */
 async function install(name: string, hosts: ReadonlyArray<'claude' | 'cursor' | 'codex'>) {
   projectSkill(join(skillsRoot, name), name, root, hosts);
   await recordSkillInstall(root, name, {
@@ -64,8 +66,11 @@ describe('reprojectAllManagedSkills', () => {
     makeSource('beta');
     await install('beta', ['claude']);
     expect(projected('.claude/skills', 'beta')).toBe(true);
+    // Source disappears after install (native delete of `.ok/skills/beta`).
     rmSync(join(skillsRoot, 'beta'), { recursive: true, force: true });
 
+    // `claude` is STILL in targets, yet the projection must be torn down because
+    // the source is gone — otherwise the link lingers while the marker reads [].
     const r = await reprojectAllManagedSkills({
       projectDir: root,
       skillsRoot,
@@ -80,6 +85,7 @@ describe('reprojectAllManagedSkills', () => {
   test('per-skill isolation: an invalid source does not abort the valid one', async () => {
     makeSource('valid-one');
     await install('valid-one', ['claude']);
+    // Invalid: frontmatter.name ≠ folder name (the bypass guard rejects it).
     makeSource('mismatch', 'totally-different');
     await install('mismatch', ['claude', 'cursor']);
 
@@ -89,9 +95,11 @@ describe('reprojectAllManagedSkills', () => {
       targets: ['claude', 'cursor'],
     });
 
+    // Valid skill projected to the full target set.
     expect(r.reprojected).toContainEqual({ name: 'valid-one', hosts: ['claude', 'cursor'] });
     expect(projected('.claude/skills', 'valid-one')).toBe(true);
     expect(projected('.cursor/skills', 'valid-one')).toBe(true);
+    // Invalid skill left un-projected (zero hosts), reversed from all recorded.
     expect(r.reprojected).toContainEqual({ name: 'mismatch', hosts: [] });
     expect(projected('.claude/skills', 'mismatch')).toBe(false);
     expect(projected('.cursor/skills', 'mismatch')).toBe(false);

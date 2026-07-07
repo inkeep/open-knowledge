@@ -18,6 +18,7 @@ describe('createConceptEmbedder', () => {
 
   test('zero-token-overlap pair sharing a concept scores high cosine (the G1 case)', async () => {
     const embedder = createConceptEmbedder({ concepts });
+    // No shared tokens, but both are about auth + refresh/re-issue.
     const [query] = await embedder.embed(['auth retries'], { role: 'query' });
     const [doc] = await embedder.embed(['session token refresh re-issues credentials'], {
       role: 'document',

@@ -400,6 +400,12 @@ describe('file-tree-operations', () => {
     });
   });
 
+  // `target.path` is extension-stripped for `.md` / `.mdx` files (see
+  // `treeFilePathToDocName` in file-tree-adapter.ts), so the trash flow must
+  // reconstruct the on-disk extension before handing the absolute path to
+  // `bridge.shell.trashItem`. The peer call site at FileTree.tsx applyDelete
+  // does the same via `docNameToTreePath(target.path, target.docExt)`. Folders
+  // and assets pass through unchanged.
   describe('buildTrashAbsPath', () => {
     const posixWorkspace: { contentDir: string; pathSeparator: '/' | '\\' } = {
       contentDir: '/workspace',
@@ -427,6 +433,9 @@ describe('file-tree-operations', () => {
     });
 
     test('.md file in a folder containing `+` — the user-reported case', () => {
+      // `+` is incidental — the bug fires for any `.md` delete — but pinning
+      // this literal input prevents a narrow "encode `+`" fix from looking
+      // right while the real root cause (extension stripping) goes unaddressed.
       const target: FileTreeTarget = {
         kind: 'file',
         path: 'TLA+/USER',
@@ -446,6 +455,8 @@ describe('file-tree-operations', () => {
     });
 
     test('asset (e.g. .png) path passes through unchanged', () => {
+      // Assets carry their full content-relative path. The helper must not
+      // append the default markdown extension.
       const target: FileTreeTarget = {
         kind: 'asset',
         path: 'docs/photo.png',
@@ -455,6 +466,9 @@ describe('file-tree-operations', () => {
     });
 
     test('Windows-shaped workspace — relative POSIX path is converted to backslashes', () => {
+      // joinWorkspacePath already rewrites `/` → `\` when sep is `\\`. The
+      // helper must compose with that, not strip the extension first then
+      // round-trip through a different normalizer.
       const target: FileTreeTarget = {
         kind: 'file',
         path: 'notes/USER',

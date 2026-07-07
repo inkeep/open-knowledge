@@ -149,6 +149,10 @@ describe('handleCloneFailure', () => {
 });
 
 describe('buildCloneEnv', () => {
+  // Regression guard: clone must INHERIT the caller's env (so the Tier-A `gh`
+  // credential helper can find `gh` on PATH + its config via HOME), not replace
+  // it — simple-git's `.env()` replaces wholesale. A revert to a bare object
+  // would silently re-break Tier A on stock (e.g. Homebrew) installs.
   test('inherits PATH and HOME from the source env', () => {
     const env = buildCloneEnv({ PATH: '/opt/homebrew/bin:/usr/bin', HOME: '/Users/me' });
     expect(env.PATH).toBe('/opt/homebrew/bin:/usr/bin');
@@ -169,6 +173,10 @@ describe('buildCloneEnv', () => {
 });
 
 describe('buildCloneGitOptions', () => {
+  // `ok clone` runs git as the user with the user's env; simple-git refuses to
+  // run with PAGER / GIT_SSH_COMMAND / GIT_ASKPASS present unless these flags
+  // opt in. Reverting any of them silently re-breaks clone for users who set
+  // those env vars (the reported `PAGER is not permitted` failure).
   test('opts into the env-based unsafe flags so the user PAGER/SSH/askpass env is honored', () => {
     const o = buildCloneGitOptions('/work/dir', ['credential.helper=!gh auth git-credential']);
     expect(o.baseDir).toBe('/work/dir');
@@ -253,6 +261,7 @@ describe('ensureOkExcludedFromGit', () => {
     expect(ensureOkExcludedFromGit(testDir)).toBe('appended');
     const after = readFileSync(excludePath, 'utf-8');
     expect(after).toContain(`${OK_DIR}/`);
+    // Original template preserved
     expect(after.startsWith(defaultTemplate)).toBe(true);
   });
 
@@ -289,6 +298,11 @@ describe('ensureOkExcludedFromGit', () => {
   });
 
   it('writes to the COMMON-dir info/exclude when run inside a linked worktree (bug-fix case)', () => {
+    // Reproduces the worktree-blind regression: when
+    // `<projectDir>/.git` is a regular file (pointer to a per-worktree admin
+    // dir), the legacy helper hard-coded `<projectDir>/.git/info/exclude`
+    // and returned `no-exclude` silently. Post-migration, the new module
+    // resolves through `commondir` and writes to the main repo's exclude.
     const mainRepoDir = resolve(
       tmpdir(),
       `clone-exclude-main-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -315,12 +329,16 @@ describe('ensureOkExcludedFromGit', () => {
       stdio: ['ignore', 'ignore', 'ignore'],
     });
     try {
+      // Sanity-pin: the linked worktree's `.git` is a pointer file, not a dir.
       const dotGit = readFileSync(join(linkedDir, '.git'), 'utf-8');
       expect(dotGit.startsWith('gitdir:')).toBe(true);
 
       const result = ensureOkExcludedFromGit(linkedDir);
       expect(result).toBe('appended');
 
+      // The write landed in the COMMON dir's info/exclude — i.e., the main
+      // repo's `.git/info/exclude`, NOT a non-existent
+      // `<linkedDir>/.git/info/exclude`.
       const mainExclude = readFileSync(join(mainRepoDir, '.git', 'info', 'exclude'), 'utf-8');
       expect(mainExclude).toContain(`${OK_DIR}/`);
     } finally {
@@ -506,6 +524,10 @@ describe('isBranchNotFoundError', () => {
   });
 
   test('matches the lowercase "couldn\'t find remote ref" message (git CLI variant)', () => {
+    // Some git versions emit this form on `git clone -b <missing>` instead of
+    // the older "Remote branch X not found in upstream origin". Without this
+    // pattern the classifier falls through, the clone error propagates as a
+    // generic failure, and the share-receive flow surfaces the wrong toast.
     expect(
       isBranchNotFoundError(new Error("fatal: couldn't find remote ref refs/heads/feat/missing")),
     ).toBe(true);
@@ -624,6 +646,8 @@ describe('formatCloneAuthFailure', () => {
     });
     expect(out).toContain('missing required OAuth scopes');
     expect(out).toContain('repo');
+    // ok auth login mints a fixed device-flow scope set that can't gain repo —
+    // so it must NOT be the recovery; the PAT flow is.
     expect(out).not.toContain('ok auth login');
     expect(out).toContain('ok auth pat');
     expect(out).toContain('https://github.com/settings/tokens');
@@ -639,6 +663,8 @@ describe('formatCloneAuthFailure', () => {
       });
       expect(out).not.toBeNull();
       expect(out).toContain('SSH');
+      // `ok auth login` mints an HTTPS credential — it cannot fix an SSH key,
+      // so it must never appear as the recovery for an SSH transport failure.
       expect(out).not.toContain('ok auth login');
     }
   });
@@ -738,6 +764,9 @@ describe('emitCloneFailure', () => {
   });
 
   test('same actionable message regardless of TTY — no isTTY branch in the helper', () => {
+    // Behavioral statement: the helper takes a json flag, not a TTY flag, so
+    // the same login-fixable input always produces the same message string in
+    // interactive mode.
     const c1 = makeCollectors();
     const c2 = makeCollectors();
     const args = {
@@ -754,6 +783,12 @@ describe('emitCloneFailure', () => {
 
 describe('runClone git preflight', () => {
   it('git unusable everywhere → runClone surfaces the recoverable GitNotAvailableError', async () => {
+    // Same technique as init.test.ts's git-unavailable case: narrow PATH so the
+    // bare `git` probe fails, AND override the platform so detectGit's absolute
+    // fallback paths are host-absent — together git is unresolvable, so the
+    // preflight throws the recoverable typed error instead of letting a raw
+    // simple-git clone error surface. (resolveOnPath's positive cache is only
+    // touched on the success path, so no cache reset is needed here.)
     const originalPath = process.env.PATH;
     const originalPlatform = process.platform;
     process.env.PATH = '/nonexistent';
@@ -763,6 +798,9 @@ describe('runClone git preflight', () => {
     });
     try {
       const { GitNotAvailableError } = await import('@inkeep/open-knowledge-server');
+      // Nonexistent cwd + default dir → targetDir is absent, so the non-empty-dir
+      // check is skipped and runClone reaches the preflight, which throws before
+      // any network probe or keyring init. `_config` is unused by runClone.
       const cwd = join(
         tmpdir(),
         `ok-clone-preflight-${Date.now()}-${Math.random().toString(36).slice(2)}`,

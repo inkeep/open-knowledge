@@ -196,6 +196,11 @@ export function collectReferencedAssets(args: {
   contentDir: string;
   fileIndex: ReadonlyMap<string, FileIndexEntry>;
   readMarkdown: (path: string) => string | null;
+  /**
+   * Optional content-filter gate. Excluded assets (via `.gitignore` /
+   * `.okignore`) are dropped so they do not appear in document listings —
+   * keeps the sidebar in sync with what `/api/asset` is allowed to serve.
+   */
   isExcluded?: (relativePath: string) => boolean;
 }): ReferencedAssetEntry[] {
   let contentDir: string;

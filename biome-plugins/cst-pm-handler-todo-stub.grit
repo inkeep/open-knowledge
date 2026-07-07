@@ -13,8 +13,8 @@
 // `ICstEngine` is the compile-time backstop for missing methods, and the
 // per-substrate node-set traversal belongs to a suite-self-consistency gate.
 //
-// Scoped via `overrides[].plugins` to
-// `packages/md-conformance/src/substrates/*/handlers/**/*.ts` (and the fixture).
+// Scoped via `overrides[].plugins` to the per-substrate handlers/ subtrees
+// (see the biome.jsonc override includes) and the fixture.
 // Out of scope: the codemod implementation itself, harness tests, oracles - all
 // of which legitimately throw error tags that include the literal string
 // `TODO: implement` (e.g. an oracle producing a synthetic failure reason).

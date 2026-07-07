@@ -198,6 +198,10 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
   });
 
   test('write declines (read-then-write race) → declined, not a false reclaimed', async () => {
+    // The classify pre-pass sees a reclaimable entry, but the lock-time write
+    // declines (a concurrent harness truncated the file, or it grew past the
+    // size bound). The sweep must NOT report `reclaimed` for a byte-untouched
+    // file, and must surface the bounded decline signal instead.
     const { cli, writes } = buildCli({
       claude: {
         target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
@@ -223,6 +227,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
       expect(e?.status).toBe('declined');
       if (e?.status === 'declined') expect(e.reason).toBe('unparseable');
     }
+    // The write was attempted, but no `reclaimed` event was emitted for it.
     expect(writes).toEqual(['claude']);
     expect(events.some((e) => e.event === 'project-mcp-reclaim-reclaimed')).toBe(false);
     const decline = events.find((e) => e.event === 'mcp-config-decline');
@@ -237,6 +242,9 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
   });
 
   test('incompatible entry emits mcp-config-migrate before the write', async () => {
+    // Records the order of (event-emit, write) calls so we can assert the
+    // migrate event lands BEFORE the writer is invoked — captures "intent to
+    // migrate" even when the write subsequently fails.
     const order: string[] = [];
     const target = fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json');
     const baseCli: ProjectMcpReclaimCliSurface = {
@@ -266,7 +274,9 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
       },
     });
     expect(r.status).toBe('done');
+    // Migrate event arrives before the writer is invoked.
     expect(order).toEqual(['migrate-event', 'write']);
+    // Event shape matches the shared builder's contract.
     const migrate = events.find((e) => e.event === 'mcp-config-migrate');
     expect(migrate).toMatchObject({
       event: 'mcp-config-migrate',
@@ -304,11 +314,14 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
         expect(e.configPath).toBe('/p/.mcp.json');
       }
     }
+    // No registration write is dispatched for a config OK couldn't parse.
     expect(writes).toEqual([]);
+    // The destructive `.broken` rename + fresh-write path is gone entirely.
     expect(events.some((e) => e.event === 'project-mcp-reclaim-corrupt-backup')).toBe(false);
     expect(events.some((e) => e.event === 'project-mcp-reclaim-reclaimed-from-corrupt')).toBe(
       false,
     );
+    // The only trace is the bounded decline signal — no config path or contents.
     const decline = events.find((e) => e.event === 'mcp-config-decline');
     expect(decline).toMatchObject({
       event: 'mcp-config-decline',
@@ -344,6 +357,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
       expect(r.perEditor.find((e) => e.editor === 'claude')?.status).toBe('declined');
       expect(r.perEditor.find((e) => e.editor === 'cursor')?.status).toBe('reclaimed');
     }
+    // Only the reclaimable sibling is written; the declined config is untouched.
     expect(writes).toEqual(['cursor']);
   });
 

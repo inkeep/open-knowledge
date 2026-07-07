@@ -17,7 +17,7 @@
   <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
   <a href="https://openknowledge.ai/docs/get-started/quickstart#ok-install-web-app-linux-windows-intel-mac">web view + cli</a>
   <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-  <a href="https://x.com/OpenKnowledgeAI">𝕏</a>
+  <a href="https://x.com/OpenKnowledge">𝕏</a>
   <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
   <a href="https://discord.com/invite/YujKpFN49">Discord</a>
 </div>
@@ -86,5 +86,5 @@ Feel free to <a href="https://github.com/inkeep/open-knowledge/issues/new/choose
 </p>
 
 <p>
-  🔔 Follow us on <a href="https://x.com/OpenKnowledgeAI">𝕏</a> for product updates. 🔔
+  🔔 Follow us on <a href="https://x.com/OpenKnowledge">𝕏</a> for product updates. 🔔
 </p>

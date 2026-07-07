@@ -1,4 +1,12 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button> awaiting shadcn Button migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+/**
+ * ActivityPanelBurstRow — one burst (StackItem) inside an expanded file
+ * row. Shows {relative timestamp, `+N −M` diff stat, optional summary},
+ * and lazy-loads the unified-diff mini hunk on click.
+ *
+ * Bursts are display-only — no undo action button here; undo lives on the
+ * file-row action area.
+ */
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -26,6 +34,7 @@ function formatRelative(ms: number, now: number): string {
     const minutes = Math.round(diff / 60_000);
     return t`${minutes}m ago`;
   }
+  // Older than an hour → absolute HH:MM:SS
   const d = new Date(ms);
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
@@ -40,6 +49,9 @@ export function ActivityPanelBurstRow({
   const [diff, setDiff] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // React Compiler: `Date.now()` is impure — hoist behind useState + tick
+  // every 30 s so relative-timestamp labels stay fresh without violating
+  // render purity.
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);

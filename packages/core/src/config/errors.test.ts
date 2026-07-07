@@ -185,6 +185,7 @@ describe('humanFormat', () => {
     expect(out).toContain('appearance.theme');
     expect(out).toContain('project');
     expect(out).toContain('user');
+    // Names the file to edit and how to fix.
     expect(out).toContain('~/.ok/global.yml');
     expect(out).toContain('.ok/config.yml');
     expect(out).toContain('Move it to ~/.ok/global.yml');
@@ -233,6 +234,7 @@ describe('humanFormat', () => {
 describe('FieldScopeSchema / WriteScopeSchema — project-local', () => {
   test('FieldScopeSchema accepts project-local', () => {
     expect(FieldScopeSchema.parse('project-local')).toBe('project-local');
+    // Existing values still parse.
     expect(FieldScopeSchema.parse('user')).toBe('user');
     expect(FieldScopeSchema.parse('project')).toBe('project');
     expect(FieldScopeSchema.parse('either')).toBe('either');

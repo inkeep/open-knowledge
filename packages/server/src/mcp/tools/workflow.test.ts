@@ -72,6 +72,7 @@ describe('workflow — kind discriminator + per-kind teaching errors', () => {
     const r = await capture(cwd).handler({ kind: 'wiki' });
     expect(r.isError).toBeFalsy();
     expect(textOf(r)).toContain('# Codebase Wiki');
+    // The guide is interpolated with the resolved content.dir (mirrors discover).
     expect(textOf(r)).toContain('wiki/OVERVIEW.md');
     expect(r.structuredContent?.previewUrl).toBeNull();
   });

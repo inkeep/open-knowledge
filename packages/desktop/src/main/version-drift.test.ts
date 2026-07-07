@@ -70,6 +70,8 @@ describe('classifyServerVersion', () => {
   });
 
   test('server runtime is the unknown sentinel → indeterminate (NOT older)', () => {
+    // Regression guard: `0.0.0-unknown` is valid semver and a naive compare
+    // ranks it oldest — it must short-circuit to indeterminate.
     expect(
       classifyServerVersion(
         { protocolVersion: 1, runtimeVersion: CLIENT_RUNTIME_VERSION_FALLBACK },
@@ -95,6 +97,8 @@ describe('classifyServerVersion', () => {
   });
 
   test('protocol mismatch is classified even when server runtime is the sentinel', () => {
+    // Protocol is a real declared integer; the sentinel only blocks the
+    // runtime comparison, not a protocol-level decision.
     expect(
       classifyServerVersion(
         { protocolVersion: 0, runtimeVersion: CLIENT_RUNTIME_VERSION_FALLBACK },

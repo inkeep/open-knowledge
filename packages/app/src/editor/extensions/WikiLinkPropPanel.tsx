@@ -1,3 +1,20 @@
+/**
+ * WikiLinkPropPanel — singleton React UI for the active wiki-link node.
+ *
+ * Replaces the per-instance `WikiLinkView` React NodeView with a single
+ * subtree rendered at editor root via the InteractionLayer. The chip
+ * itself is a plain-DOM NodeView (see `wiki-link.ts`).
+ *
+ * Reads node attrs by resolving the live PM position via `getPos()` (passed
+ * from the NodeView's setup) — the chip's position can change as the user
+ * edits, so we must read fresh attrs from `editor.state.doc.nodeAt(pos)`.
+ *
+ * Mirrors InternalLinkPropPanel: bare click on the chip navigates via
+ * `wiki-link.ts` `handlePrimary`; hover / keyboard focus opens the singleton
+ * PropPanel, which surfaces Edit / Copy / Remove for resolved targets and a
+ * Create-page action for unresolved ones.
+ */
+
 import {
   classifyWikiLinkTarget,
   getWikiLinkText,
@@ -53,6 +70,8 @@ import {
   resolveWikiLinkAssetTarget,
 } from './wiki-link-helpers';
 
+// ── Edit dialog ───────────────────────────────────────────────────────────────
+
 interface EditWikiLinkDialogProps {
   open: boolean;
   target: string;
@@ -60,6 +79,12 @@ interface EditWikiLinkDialogProps {
   anchor: string | null;
   pages: Set<string>;
   assetPaths: Set<string>;
+  /**
+   * Tracked non-markdown files (kind:'file' from
+   * /api/documents). Forwarded to {@link resolveWikiLinkAssetTarget} so a
+   * `[[data/example.csv]]` target resolves in the edit dialog just like it
+   * does on the live chip.
+   */
   filePaths: Set<string>;
   loading: boolean;
   onOpenChange: (open: boolean) => void;
@@ -87,10 +112,19 @@ function EditWikiLinkDialog({
   const headingListId = useId();
   const { t } = useLingui();
 
+  // Edit dialog mirrors the panel's resolution, including the
+  // tracked non-markdown file set, so the edit-time chip preview matches the
+  // committed chip state for a `[[data/example.csv]]`-style target.
   const editAssetPath = resolveWikiLinkAssetTarget(editTarget, assetPaths, filePaths);
   const isEditTargetResolved = isResolvedWikiLinkTarget(editTarget, pages, assetPaths, filePaths);
   const headings = useHeadings(editTarget, isEditTargetResolved && !editAssetPath && open);
 
+  // CRDT safety: snapshot all initial state on the open transition only.
+  // Reacting to target/alias/anchor changes WHILE the dialog is open would
+  // clobber the user's in-progress edits whenever a remote peer mutates
+  // the live wiki-link node. `prevOpenRef` gates the init block to fire
+  // exactly once per open lifecycle. Mirrors the same pattern in
+  // EditMarkdownLinkDialog (InternalLinkPropPanel.tsx).
   const prevOpenRef = useRef(false);
   useEffect(() => {
     if (!open) {
@@ -257,14 +291,27 @@ function EditWikiLinkDialog({
   );
 }
 
+// ── PropPanel ─────────────────────────────────────────────────────────────────
+
 interface WikiLinkPropPanelProps {
   editor: Editor;
+  /** Resolves the wiki-link node's current PM position. */
   getPos: () => number | undefined;
   onClose: () => void;
+  /**
+   * Routes the clickable destination text through the chip's primary
+   * navigation (the NodeView's `handlePrimary`). Returns true when the
+   * navigation was handled. Keeps resolution / asset / safe-scheme behavior
+   * single-source between the chip and this panel. Required — the only
+   * caller (wiki-link.ts) always supplies it; a missing handler would
+   * silently fall back to the native `<a href>`, bypassing the safe-scheme
+   * gating and asset/folder fall-through that `handlePrimary` owns.
+   */
   onNavigate: (newTab: boolean) => boolean;
 }
 
 export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiLinkPropPanelProps) {
+  // Read current node attrs from PM state via getPos.
   const pos = getPos();
   const node = pos != null ? editor.state.doc.nodeAt(pos) : null;
   const target = String(node?.attrs.target ?? '');
@@ -284,6 +331,12 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
   } = usePageList();
   const classifiedTarget = classifyWikiLinkTarget(target, anchor);
   const externalTarget = classifiedTarget?.kind === 'external' ? classifiedTarget : null;
+  // Mirror handlePrimary's asset resolution (wiki-link.ts): when the target
+  // isn't in the known asset paths, fall back to the stripped raw URL so an
+  // asset-shaped wiki-link stays a navigable asset in the panel exactly as the
+  // chip treats it — otherwise the chip would navigate while the panel renders
+  // plain text. Pass `filePaths` so the panel's resolution
+  // matches the chip's resolution for tracked non-markdown files.
   const assetPath =
     classifiedTarget?.kind === 'asset'
       ? (resolveWikiLinkAssetTarget(classifiedTarget.url, assetPaths, filePaths) ??
@@ -304,6 +357,7 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
   const { t } = useLingui();
 
   if (!node) {
+    // Node was removed mid-render — gracefully close.
     return null;
   }
 
@@ -384,6 +438,12 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
     linkIntent.displayState === 'folder';
   const isUnresolved = !externalTarget && !loading && !assetPath && linkIntent?.kind === 'create';
 
+  // Make the destination text a real link. The click routes through the
+  // chip's primary navigation (`onNavigate` → handlePrimary), so resolution /
+  // asset / safe-scheme behavior stays single-source. `linkHref` is set only
+  // for native affordances (status-bar URL, middle-click, right-click "copy
+  // link address") — the click handler owns left/Cmd-click. Folder /
+  // unresolved / loading states have no destination, so they stay plain text.
   const isExternalLink = !!externalTarget;
   const linkHref = externalTarget
     ? isSafeNavigationUrl(externalTarget.url)
@@ -441,6 +501,10 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
     };
   }
 
+  // Floating-UI virtual reference. `posToDOMRect` is queried lazily on each
+  // autoUpdate tick so the panel tracks the chip across PM edits / scroll —
+  // matches the BubbleMenuBar pattern. `contextElement` lets autoUpdate
+  // discover the editor's overflow scroll ancestors automatically.
   const triggerReference = {
     getBoundingClientRect: () => {
       const livePos = getPos();
@@ -458,11 +522,14 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
 
   const displayText =
     assetPath ?? (externalTarget ? externalTarget.url : `${target}${anchor ? `#${anchor}` : ''}`);
+  // Copy content matches the wiki-link source form: `[[target#anchor|alias]]`.
   const copyContent = (() => {
     const inner = anchor ? `${target}#${anchor}` : target;
     return alias ? `[[${inner}|${alias}]]` : `[[${inner}]]`;
   })();
 
+  // Span (phrasing content) — TooltipTrigger asChild requires a phrasing-
+  // content child, so any nested element must also be phrasing content.
   const iconNode = (
     <span className={cn('flex shrink-0', stateLabel.className)}>{stateLabel.icon}</span>
   );

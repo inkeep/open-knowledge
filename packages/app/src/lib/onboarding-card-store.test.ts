@@ -72,6 +72,10 @@ describe('readPersistedState', () => {
     expect(readPersistedState(s)).toEqual(DEFAULT_ONBOARDING_CARD_STATE);
   });
 
+  // Browser-storage trust boundary: localStorage.getItem can throw SecurityError
+  // in Safari private browsing (and equivalent modes). The read try/catch is the
+  // producer-cannot-enforce surface for that throw — pin the fallback via the
+  // public storage seam (real failure-inducing input through the public interface).
   test('returns default when getItem throws (SecurityError / private browsing)', () => {
     const throwingStorage: OnboardingCardStorage = {
       getItem: () => {
@@ -91,6 +95,9 @@ describe('writePersistedState', () => {
     expect(readPersistedState(s)).toEqual(next);
   });
 
+  // Browser-storage trust boundary: setItem throws QuotaExceededError when origin
+  // storage is full. The write try/catch lets the session keep working — pin that
+  // it does not propagate, via the public storage seam.
   test('does not throw when setItem throws (quota exceeded)', () => {
     const throwingStorage: OnboardingCardStorage = {
       getItem: () => null,
@@ -139,6 +146,7 @@ describe('createOnboardingCardStore — persistence across remount', () => {
   test('dismiss persists so a fresh store reads it back true', () => {
     const shared = memoryStorage();
     createOnboardingCardStore(shared).dismiss();
+    // A fresh store over the same storage simulates a reload / new module read.
     expect(createOnboardingCardStore(shared).getSnapshot().dismissed).toBe(true);
   });
 
@@ -275,6 +283,9 @@ describe('createOnboardingCardStore — install', () => {
     expect(notified).toBe(true);
   });
 
+  // SSR-safety: the default-storage path must not throw when localStorage is
+  // unreachable. In the Bun unit runtime `window` is undefined, so constructing
+  // and installing the real-storage store directly exercises that path.
   test('construct + install over the default storage path does not throw', () => {
     expect(() => createOnboardingCardStore().install()).not.toThrow();
   });

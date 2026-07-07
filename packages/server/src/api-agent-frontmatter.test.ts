@@ -1,3 +1,16 @@
+/**
+ * Tests for agent-write frontmatter handling under the Y.Text-direct model
+ * (`Y.Map('metadata')` is no longer a CRDT root for FM data; the YAML
+ * region of `Y.Text('source')` IS the source of truth).
+ *
+ * Covers:
+ *   1. write_document with payload FM updates the YAML region of Y.Text.
+ *   2. write_document with body-only payload preserves existing FM.
+ *   3. append/prepend never duplicate or stomp FM.
+ *   4. agent-patch refuses spliced edits to the FM region.
+ *   5. body-only agent-patch continues to work.
+ *   6. agent-undo reverts the FM region in lock-step with body changes.
+ */
 import { describe, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -90,6 +103,7 @@ describe('POST /api/agent-write-md (write_document) — frontmatter handling', (
     try {
       const session = await sessionManager.getSession('test-doc');
 
+      // Seed existing FM.
       session.dc.document.transact(() => {
         applyAgentMarkdownWrite(
           session.dc.document,
@@ -110,6 +124,7 @@ describe('POST /api/agent-write-md (write_document) — frontmatter handling', (
 
       expect(response.status).toBe(200);
 
+      // YAML region in Y.Text reflects the new FM.
       expect(fmMap(session.dc.document)).toEqual({
         title: 'New Title',
         cluster: 'research',
@@ -278,6 +293,7 @@ describe('POST /api/frontmatter-patch (edit_frontmatter) — fence spacing (PRD-
     try {
       const session = await sessionManager.getSession('test-doc');
 
+      // Doc starts with NO frontmatter — a bare body.
       session.dc.document.transact(() => {
         applyAgentMarkdownWrite(session.dc.document, '# Heading\n\nbody text\n', 'replace');
       }, AGENT_WRITE_ORIGIN);
@@ -292,6 +308,8 @@ describe('POST /api/frontmatter-patch (edit_frontmatter) — fence spacing (PRD-
 
       expect(response.status).toBe(200);
       const ytext = session.dc.document.getText('source').toString();
+      // Exactly one blank line between the closing fence and the body — not a
+      // glued `---\n# Heading`, and not a doubled `---\n\n\n# Heading`.
       expect(ytext).toBe('---\naddedkey: v1\n---\n\n# Heading\n\nbody text\n');
       expect(ytext).not.toContain('---\n# Heading');
     } finally {
@@ -304,6 +322,7 @@ describe('POST /api/frontmatter-patch (edit_frontmatter) — fence spacing (PRD-
     try {
       const session = await sessionManager.getSession('test-doc');
 
+      // Doc already has FM followed by the canonical single blank line.
       session.dc.document.transact(() => {
         applyAgentMarkdownWrite(
           session.dc.document,
@@ -333,6 +352,9 @@ describe('POST /api/frontmatter-patch (edit_frontmatter) — fence spacing (PRD-
     try {
       const session = await sessionManager.getSession('test-doc');
 
+      // Body already begins with a blank line — the separator must not double.
+      // Seed Y.Text directly so the leading-newline byte premise is exact
+      // (the write path may normalize a leading newline away).
       session.dc.document.transact(() => {
         session.dc.document.getText('source').insert(0, '\n# Heading\n');
       }, AGENT_WRITE_ORIGIN);
@@ -517,9 +539,13 @@ describe('POST /api/agent-patch (edit_document) — frontmatter rejection', () =
       });
 
       expect(response.status).toBe(404);
+      // target-not-found emits RFC 9457 problem+json post-identity.
       const parsed = JSON.parse(response.body);
       expect(parsed.type).toBe('urn:ok:error:target-not-found');
       expect(parsed.status).toBe(404);
+      // Negative: confirm target-not-found isn't mis-routed to the
+      // frontmatter-rejection path. The URN check already proves
+      // this; the title check here documents the intent.
       expect(parsed.title).not.toContain('Frontmatter edits are not supported');
     } finally {
       await cleanup();
@@ -593,6 +619,7 @@ describe('agent-undo round-trip across FM-touching writes', () => {
       const session = await sessionManager.getSession('doc-fm-undo.md');
       const document = session.dc.document;
 
+      // Frame 1: seed FM + body under session.origin so the UM tracks it.
       document.transact(() => {
         applyAgentMarkdownWrite(
           document,
@@ -602,6 +629,7 @@ describe('agent-undo round-trip across FM-touching writes', () => {
       }, session.origin);
       session.um.stopCapturing();
 
+      // Frame 2: touch FM (title) only.
       document.transact(() => {
         applyAgentMarkdownWrite(
           document,
@@ -612,6 +640,8 @@ describe('agent-undo round-trip across FM-touching writes', () => {
 
       expect(fmMap(document)).toEqual({ title: 'Updated', status: 'draft' });
 
+      // Undo: Y.Text reverts the byte range modified in Frame 2 — bringing
+      // the FM region back to the Frame 1 state.
       const undone = applyAgentUndo(session, 'last');
       expect(undone).toBe(true);
       expect(fmMap(document)).toEqual({ title: 'Original', status: 'draft' });
@@ -621,12 +651,20 @@ describe('agent-undo round-trip across FM-touching writes', () => {
   });
 });
 
+// reproducer: agents constructing markdown by hand sometimes ship
+// unquoted string values that contain YAML-significant characters (`:`, `#`,
+// leading `-`). With Y.Text-is-truth, those bytes reach disk verbatim and the
+// property panel shows "Frontmatter YAML is malformed". The gate in
+// `applyAgentMarkdownWriteInner` refuses the write at the write boundary so
+// the bad bytes never land — only triggered when the FM actually CHANGED, so
+// docs that already carry malformed FM stay editable for body-only writes.
 describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PRD-6781)', () => {
   test('replace with unquoted-colon title returns 400 + RFC 9457 envelope; doc unchanged', async () => {
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
       const session = await sessionManager.getSession('test-doc');
 
+      // The exact shape title with a colon, no quotes.
       const malformed = [
         '---',
         'title: The End of 3% Mortgages: Why the Mortgage Lock-In Effect Is Fading in 2026',
@@ -653,10 +691,15 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
       expect(parsed.type).toBe('urn:ok:error:frontmatter-malformed');
       expect(parsed.title).toBe('Frontmatter YAML is malformed.');
       expect(parsed.file).toBe('test-doc.md');
+      // The envelope carries the raw yaml@2 parser message + the fix hint.
+      // Assert on stable shape (non-empty parseError + hint substring), not
+      // yaml@2's specific English wording — a parser upgrade that rephrases
+      // the message would silently regress a wording-pinned test.
       expect(typeof parsed.parseError).toBe('string');
       expect((parsed.parseError as string).length).toBeGreaterThan(0);
       expect(parsed.detail).toContain('YAML-significant characters');
 
+      // Y.Text untouched — the agent's malformed bytes never landed.
       const ytext = session.dc.document.getText('source').toString();
       expect(ytext).toBe('');
       expect(ytextFm(session.dc.document)).toBe('');
@@ -699,6 +742,11 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
   });
 
   test("Obsidian's empty `tags:` / `aliases:` null shapes write through (200), not refused at the gate", async () => {
+    // The gate calls `parseFrontmatterYaml` → `FrontmatterMapSchema.safeParse`,
+    // which now coerces Obsidian's `null` empty-list / bare-key shapes to empty
+    // values instead of rejecting the whole map. Pin the HTTP boundary so a
+    // future early-guard added before the schema call (which the unit tests
+    // would not catch) can't silently start refusing these real-vault files.
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
       const session = await sessionManager.getSession('test-doc');
@@ -726,6 +774,7 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
       );
 
       expect(response.status).toBe(200);
+      // Read back through the (coerced) schema: empty lists, real keys intact.
       expect(fmMap(session.dc.document)).toEqual({
         'plugin-id': 'dataview',
         tags: [],
@@ -742,6 +791,8 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
     try {
       const session = await sessionManager.getSession('test-doc');
 
+      // Seed a doc with malformed FM directly into Y.Text (simulating a doc
+      // authored before this gate existed — its bytes are already on disk).
       const preexisting = ['---', 'title: Already: Broken', '---', '', '# Existing Body', ''].join(
         '\n',
       );
@@ -750,6 +801,7 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
         ytext.insert(0, preexisting);
       }, AGENT_WRITE_ORIGIN);
 
+      // Body-only append must still succeed — the gate only fires on FM change.
       const appendResponse = await callApi(
         hocuspocus,
         sessionManager,
@@ -759,6 +811,8 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
       );
       expect(appendResponse.status).toBe(200);
 
+      // And prepend must too — covers the parallel `case 'prepend'` branch
+      // that also routes through `finalFm = existingFm`.
       const prependResponse = await callApi(
         hocuspocus,
         sessionManager,
@@ -778,6 +832,12 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
   });
 
   test('replace with body-only payload on doc with malformed existing FM succeeds (inheritor protection)', async () => {
+    // The introducer-vs-inheritor invariant for the `replace` branch:
+    // `finalFm = payloadFm || existingFm` — when `payloadFm = ''` (no FM in
+    // the agent's payload), `finalFm = existingFm`, so the gate skips and
+    // the doc remains editable for body-only writes even when its FM is
+    // already broken. A future refactor that drops the `||` fallback would
+    // start rejecting recovery workflows for legacy malformed docs.
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
       const session = await sessionManager.getSession('test-doc');
@@ -799,7 +859,9 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
 
       expect(response.status).toBe(200);
       const ytext = session.dc.document.getText('source').toString();
+      // The malformed FM is inherited verbatim — gate did not fire.
       expect(ytext).toContain('Already: Broken');
+      // Body region was replaced.
       expect(ytext).toContain('Replaced.');
       expect(ytext).not.toContain('# Old Body');
     } finally {
@@ -812,6 +874,7 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
     try {
       const session = await sessionManager.getSession('test-doc');
 
+      // Start with a clean doc.
       session.dc.document.transact(() => {
         applyAgentMarkdownWrite(
           session.dc.document,
@@ -820,6 +883,8 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
         );
       }, AGENT_WRITE_ORIGIN);
 
+      // Agent re-submits with a malformed title — `finalFm !== existingFm`,
+      // gate fires.
       const response = await callApi(
         hocuspocus,
         sessionManager,
@@ -836,6 +901,7 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
       const parsed = JSON.parse(response.body);
       expect(parsed.type).toBe('urn:ok:error:frontmatter-malformed');
 
+      // Y.Text unchanged — Clean Start survives.
       expect(fmMap(session.dc.document)).toEqual({ title: 'Clean Start' });
     } finally {
       await cleanup();
@@ -843,6 +909,11 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
   });
 
   test('replace with top-level array FM (non-mapping) is rejected with 400', async () => {
+    // Exercises the non-parse `map: null` branch of `parseFrontmatterYaml`:
+    // YAML parses fine but the top-level value isn't a mapping. Without this
+    // case the gate's coverage would only span yaml@2-side failures and miss
+    // the schema/shape rejections — the widened FIX_HINT addresses both
+    // classes, so the test should too.
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
       const session = await sessionManager.getSession('test-doc');
@@ -860,6 +931,7 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
       const parsed = JSON.parse(response.body);
       expect(parsed.type).toBe('urn:ok:error:frontmatter-malformed');
       expect(parsed.parseError).toBe('top-level value is not a mapping');
+      // Bytes never landed.
       expect(session.dc.document.getText('source').toString()).toBe('');
     } finally {
       await cleanup();
@@ -867,6 +939,13 @@ describe('POST /api/agent-write-md (write_document) — malformed-FM refusal (PR
   });
 });
 
+// the recursive `FrontmatterValueSchema` accepts nested mappings,
+// arrays of objects, and arbitrarily deep nesting. The malformed-write gate's
+// predicate (`parsed.map === null`) narrows accordingly — only genuine YAML
+// parse errors and non-mapping top-level values still refuse. The structured
+// `frontmatter-malformed-write-refused` event now carries a bounded-
+// cardinality `class` label so ops can confirm the
+// nested-rejection bucket is at zero without unbounded counter cardinality.
 describe('POST /api/agent-write-md (write_document) — nested frontmatter acceptance (PRD-6947)', () => {
   test('replace with nested `metadata:` map succeeds; Y.Text reflects the nested structure', async () => {
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
@@ -1041,6 +1120,7 @@ describe('POST /api/agent-write-md (write_document) — nested frontmatter accep
       expect(response.status).toBe(400);
       const parsed = JSON.parse(response.body);
       expect(parsed.type).toBe('urn:ok:error:frontmatter-malformed');
+      // Y.Text untouched.
       expect(session.dc.document.getText('source').toString()).toBe('');
     } finally {
       await cleanup();
@@ -1049,6 +1129,12 @@ describe('POST /api/agent-write-md (write_document) — nested frontmatter accep
 });
 
 describe('POST /api/agent-write-md — telemetry refusal-class split (PRD-6947, Q-X7)', () => {
+  // The structured `frontmatter-malformed-write-refused` event now carries a
+  // bounded-cardinality `class` label. The nested-rejection
+  // bucket does not appear — nested-but-valid writes skip the gate entirely.
+  // These tests pin the classifier wiring at the HTTP boundary so a future
+  // change to either the event shape or the classifier surfaces a regression.
+
   function collectRefusalEvents(
     spy: ReturnType<typeof spyOn<typeof console, 'warn'>>,
   ): Array<Record<string, unknown>> {
@@ -1154,6 +1240,12 @@ describe('POST /api/agent-write-md — telemetry refusal-class split (PRD-6947, 
   });
 });
 
+// the `/api/frontmatter-patch` route now accepts a nested
+// object value at a top-level key (whole-subtree REPLACE — caller sends the
+// full subtree they want). A top-level `null` deletes the (potentially
+// nested) value at that key. A nested null INSIDE a subtree is rejected per
+// the recursive `FrontmatterValueSchema` (null is not in the value union),
+// because the wire contract stays additive + path-syntax-free.
 describe('POST /api/frontmatter-patch — nested value acceptance (PRD-6947)', () => {
   test('nested-object patch value sets the subtree on a fresh doc; Y.Text reflects the nested YAML', async () => {
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
@@ -1409,6 +1501,7 @@ describe('POST /api/frontmatter-patch — nested value acceptance (PRD-6947)', (
       expect(response.status).toBe(400);
       const parsed = JSON.parse(response.body);
       expect(parsed.type).toBe('urn:ok:error:invalid-request');
+      // Y.Text untouched — atomic reject.
       expect(ytextFm(session.dc.document)).toBe(beforeFm);
     } finally {
       await cleanup();
@@ -1426,6 +1519,12 @@ describe('POST /api/frontmatter-patch — nested value acceptance (PRD-6947)', (
 
       const beforeFm = ytextFm(session.dc.document);
 
+      // A nested value whose leaf is outside the recursive value union
+      // (here, an explicit non-finite numeric token round-tripped through
+      // JSON.parse(JSON.stringify(...))) — the schema must atomically reject
+      // the whole patch. Using a stringly-invalid value lets us drive this
+      // through the JSON wire without needing to construct a Symbol /
+      // function (the JSON encoder would drop those).
       const response = await callApi(
         hocuspocus,
         sessionManager,
@@ -1433,6 +1532,9 @@ describe('POST /api/frontmatter-patch — nested value acceptance (PRD-6947)', (
         '/api/frontmatter-patch',
         {
           docName: 'test-doc',
+          // Reserved key — applyPatchToFm refuses 'frontmatter' as a
+          // top-level key (reserved by precedent) AND surfaces it as a
+          // per-key fieldError on the same atomic-reject envelope.
           patch: { frontmatter: { not: 'allowed' } },
         },
       );
@@ -1442,6 +1544,7 @@ describe('POST /api/frontmatter-patch — nested value acceptance (PRD-6947)', (
       expect(parsed.type).toBe('urn:ok:error:invalid-frontmatter-patch');
       expect(parsed.fieldErrors).toBeDefined();
       expect(parsed.fieldErrors.frontmatter).toContain('reserved');
+      // Y.Text untouched.
       expect(ytextFm(session.dc.document)).toBe(beforeFm);
     } finally {
       await cleanup();

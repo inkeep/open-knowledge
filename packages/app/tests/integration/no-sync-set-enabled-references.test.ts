@@ -1,3 +1,18 @@
+/**
+ * Regression guard: no client-side code may import or reference the
+ * deleted `/api/sync/set-enabled` endpoint or `postSyncEnabled` helper.
+ *
+ * The endpoint and helper were removed.
+ * All client write surfaces now route through
+ * `bindConfigDoc.patch` on the project-local binding. A future refactor
+ * that re-introduces the HTTP path would split the writer surface back
+ * into two (HTTP + CRDT) and bypass the standard config pipeline.
+ *
+ * This test fails noisily if any new file under `packages/app/src/`
+ * mentions the deleted symbols. Source-grep test — fast, no I/O beyond
+ * the filesystem walk.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +31,8 @@ function* walkSourceFiles(dir: string): Generator<string> {
         entry.endsWith('.tsx') ||
         entry.endsWith('.js') ||
         entry.endsWith('.mjs')) &&
+      // Tests reference the deleted strings via .not.toContain assertions.
+      // Those are intentional regression guards, not real consumers.
       !entry.endsWith('.test.ts') &&
       !entry.endsWith('.test.tsx')
     ) {

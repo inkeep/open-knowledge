@@ -5,6 +5,13 @@ import { SiteFooter } from '@/components/footer';
 import { OkWordmark } from '@/components/ok-wordmark';
 import { cn } from '@/lib/utils';
 
+/**
+ * The shared "slide" page shell — the cream/dark branded chrome used by the
+ * first-run continue flow (`/continue`): dot-texture background pair, a
+ * home-linking wordmark header, a centered content column, and the site footer.
+ * Mirrors the structure the `/d/[encoded]` share splash renders inline; the
+ * splash can be migrated onto this shell so the chrome lives in one place.
+ */
 export function SlidePageShell({ children }: { children: ReactNode }) {
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-slide-bg font-[family-name:var(--font-dm-sans)]">
@@ -32,12 +39,13 @@ export function SlidePageShell({ children }: { children: ReactNode }) {
       </section>
 
       <div className="relative z-10">
-        <SiteFooter showSubscribe={false} />
+        <SiteFooter />
       </div>
     </main>
   );
 }
 
+/** The slide eyebrow: a small mono, uppercase label above the headline. */
 export function SlideEyebrow({ className, ...props }: ComponentProps<'p'>) {
   return (
     <p
@@ -50,6 +58,7 @@ export function SlideEyebrow({ className, ...props }: ComponentProps<'p'>) {
   );
 }
 
+/** The slide headline — the large, light-weight page title. */
 export function SlideHeading({ className, ...props }: ComponentProps<'h1'>) {
   return (
     <h1
@@ -62,6 +71,7 @@ export function SlideHeading({ className, ...props }: ComponentProps<'h1'>) {
   );
 }
 
+/** The slide lead paragraph — muted supporting copy beneath the headline. */
 export function SlideLead({ className, ...props }: ComponentProps<'p'>) {
   return <p className={cn('text-lg leading-relaxed text-slide-muted', className)} {...props} />;
 }

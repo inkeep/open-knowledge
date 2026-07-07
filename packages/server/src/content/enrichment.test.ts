@@ -46,6 +46,7 @@ describe('enrichPath — slim (multi-path) shape', () => {
     expect(meta.title).toBe('Auth');
     expect(meta.description).toBe('OAuth');
     expect(meta.tags).toEqual(['auth', 'oauth']);
+    // Rich fields are null (slim shape)
     expect(meta.backlinkCount).toBe(null);
     expect(meta.history).toBe(null);
     expect(meta.historySource).toBe(null);
@@ -65,6 +66,9 @@ describe('enrichPath — slim (multi-path) shape', () => {
   });
 
   test('frontmatter under trailing-whitespace fences still enriches title/description/tags', async () => {
+    // `--- ` / `---\t` fence lines are in-tolerance keystrokes away from
+    // canonical fences; enrichment must keep recognizing the FM block
+    // instead of degrading to "no frontmatter".
     const project = await bootstrapProject();
     const contentDir = resolve(project, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -165,6 +169,7 @@ describe('enrichPath — folder frontmatter does NOT cascade into docs (self-onl
     );
 
     const meta = await enrichPath('specs/foo.md', { projectDir: project });
+    // Exactly the file's own keys — no merge with the folder's frontmatter.
     expect(meta.title).toBe('File');
     expect(meta.description).toBeUndefined();
     expect(meta.tags).toEqual(['file-tag']);
@@ -223,6 +228,7 @@ describe('enrichDirectory — self-only folder frontmatter', () => {
     writeFileSync(resolve(project, 'a/b/foo.md'), '# foo\n');
 
     const meta = await enrichDirectory('a/b', { projectDir: project });
+    // b's OWN frontmatter only — no description / tags inherited from a.
     expect(meta.title).toBe('B');
     expect(meta.description).toBeUndefined();
     expect(meta.tags).toBeUndefined();

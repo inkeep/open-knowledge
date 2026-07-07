@@ -370,6 +370,10 @@ describe('parseGitHubBlobUrl', () => {
     ).toBeNull();
   });
 
+  // REGRESSION PIN: the blob-only parser treats a
+  // tree URL as invalid. This simulates a pre-folder client receiving a folder
+  // share — it MUST degrade to the "Invalid share URL" path rather than
+  // silently mis-parsing. parseGitHubShareUrl (below) is the folder-aware path.
   test('tree (folder) URL returns null from blob-only parser', () => {
     expect(parseGitHubBlobUrl('https://github.com/owner/repo/tree/main/README.md')).toBeNull();
   });
@@ -404,6 +408,10 @@ describe('parseGitHubBlobUrl', () => {
   });
 
   describe('round-trip with buildGitHubBlobUrl-shape URLs', () => {
+    // The server's buildGitHubBlobUrl encodes branch as a single segment
+    // (slashes become %2F) and path segments individually (separator preserved).
+    // These cases pair build-shape input with parser output to prove the
+    // contract on the parser side without crossing a package boundary.
     const cases: Array<{ branch: string; encodedBranch: string }> = [
       { branch: 'main', encodedBranch: 'main' },
       { branch: 'feat/foo', encodedBranch: 'feat%2Ffoo' },

@@ -1,4 +1,33 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+/**
+ * Lazy body for the Settings modal — pulled in as a separate chunk by
+ * `SettingsDialogShell.tsx` via `React.lazy`. Receives the active
+ * sidebar section id + the user/okignore bindings (already gated by
+ * their synced state at the shell level) and dispatches to the section
+ * components.
+ *
+ * The shell ships Dialog/Sidebar/skeleton synchronously so the dialog
+ * frame paints immediately on Cmd-,; this file's ~330kB of schema-form
+ * harness (ConfigSchema, react-hook-form, schema-walker) + heavy
+ * section bodies (Sync/Templates/Okignore/Integrations) loads in
+ * parallel and swaps in.
+ *
+ * The user-scope ConfigBinding is owned by ConfigProvider for the app
+ * session — see `lib/config-provider.tsx`. The body is a pure consumer
+ * of the props the shell passes (no provider creation, no per-open
+ * teardown).
+ *
+ * Auto-save: per-control commits via `binding.patch`. Client-side L1
+ * validation gates writes. Per-field reset writes the schema default
+ * (or null per RFC 7396 for fields without a default).
+ *
+ * L3 rejection from non-pane writers (CLI, MCP, hand-edit) surfaces
+ * as a sonner toast + brief field flash on the matching scope's
+ * section (when mounted).
+ *
+ * The Integrations section's "Install in Claude Desktop" row opens
+ * `<InstallInClaudeDesktopDialog>` (its own internal Dialog).
+ */
 
 import {
   CONFIG_DOC_NAME_PROJECT,
@@ -92,12 +121,19 @@ import type { SlotForwardedProps } from './slot-forwarded-props';
 import { TerminalSection } from './TerminalSection';
 import { pickFirstIssueForPath, useConfigForm } from './use-config-form';
 
+/**
+ * Internal scope tag for routing each section to its config binding.
+ * Not exposed to the user — there's no top-level scope toggle in the
+ * new design. Sections under USER use the user binding; sections under
+ * THIS PROJECT use the project binding.
+ */
 type Scope = 'user' | 'project';
 
 interface FieldDef {
   path: string[];
   label: MessageDescriptor;
   description?: MessageDescriptor;
+  /** Optional override: 'enum-toggle' renders enum as a ToggleGroup; default is select-style toggle. */
   control?: 'enum-toggle';
 }
 
@@ -120,6 +156,10 @@ const FIELDS_USER_PREFERENCES: FieldDef[] = [
   },
 ];
 
+// The selected committed-default option uses the app's primary blue (the same
+// token as the Button default variant), not the muted ToggleGroup default, so
+// the active stance reads as clearly chosen and matches the accent used
+// elsewhere in the app.
 const COMMITTED_DEFAULT_SELECTED_CLASS =
   'data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90';
 
@@ -159,6 +199,9 @@ export function SettingsDialogBody({
     return <HotkeysSection />;
   }
   if (activeId === 'account') {
+    // Two machine-global credentials live here: the GitHub account and the
+    // embeddings provider key (the latter shared across all projects; semantic
+    // search is enabled per-project in This project → Search).
     return (
       <div className="space-y-8">
         <AccountSection />
@@ -167,12 +210,22 @@ export function SettingsDialogBody({
     );
   }
   if (activeId === 'sync') {
+    // When there's no git remote, SyncSection renders a setup CTA (the
+    // Publish-to-GitHub wizard) rather than the auto-sync toggle. (Preview
+    // was a sibling here until `preview.baseUrl` was removed from the
+    // schema; if a project-scope setting reappears, stack it alongside
+    // `<SyncSection />` again and rename the sidebar item back to something
+    // more general.)
     return <SyncSection />;
   }
   if (activeId === 'search') {
+    // Project-local semantic-search opt-in. Reads its own project-local
+    // binding from ConfigContext (like SyncSection) — no prop threading.
     return <SearchSection />;
   }
   if (activeId === 'terminal') {
+    // Desktop-only per-project shell consent (the nav item is gated to the
+    // Electron host). Reads + writes its own project-local binding.
     return <TerminalSection />;
   }
   if (activeId === 'project-templates') {
@@ -185,6 +238,9 @@ export function SettingsDialogBody({
     return <SharingSection />;
   }
   if (activeId === 'okignore') {
+    // Project-scope `.okignore` editor. Binding is shared with the
+    // FileTree right-click "Hide this file/folder" affordance via
+    // `<ConfigProvider>` — both write to the same Y.Text body.
     return <OkignoreSection binding={okignoreBinding} synced={okignoreSynced} />;
   }
   if (activeId === 'claude-desktop') {
@@ -335,6 +391,19 @@ interface BoundSchemaSectionProps {
   fields: FieldDef[];
 }
 
+/**
+ * Mounts the harness (`useConfigForm`) once per binding identity and
+ * wraps the body in shadcn's `<Form>` (RHF's `FormProvider`). One per
+ * scope; both scopes' sections live under the same dialog so each has
+ * its own form instance.
+ *
+ * Owns the CC1 `'config-validation-rejected'` subscription scoped to
+ * the matching docName, plus the per-field flash state — both need
+ * access to the form. The toast fires for any rejection on this scope;
+ * `setError` + `setFocus` + `flash` only fire when the field's section
+ * is the active one (the form is unmounted otherwise, so nothing to
+ * flash).
+ */
 function BoundSchemaSection({
   title,
   description,
@@ -351,6 +420,10 @@ function BoundSchemaSection({
     const unsubscribe = subscribeToConfigValidationRejected((event) => {
       if (event.docName !== docName) return;
 
+      // Toast carries the full multi-line summary (humanFormat); the
+      // inline FormMessage shows only the path-matched issue so the
+      // field doesn't render a multi-line block with file paths and
+      // caret markers.
       toast.error(humanFormat(event.error), { duration: 8000 });
 
       const path = firstIssuePath(event.error);
@@ -364,6 +437,12 @@ function BoundSchemaSection({
         if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
         flashTimerRef.current = setTimeout(() => {
           setFlashedPath(null);
+          // Clear the inline error alongside the flash. The toast
+          // (8s) remains the persistent feedback channel; if the
+          // external writer corrected the value via Y.Text,
+          // `applyExternalUpdate` already updated the field — we
+          // don't want a stale red FormMessage lingering on a
+          // now-valid value.
           form.clearErrors(path as FieldPath<Config>);
         }, 600);
       }
@@ -473,6 +552,8 @@ function attachmentPathFromMode(mode: AttachmentPlacementMode, folderText: strin
   return folder;
 }
 
+// The mode select and folder input are one config leaf, so this needs a
+// small custom state machine instead of the single-field BoundSchemaSection.
 function AttachmentsSection() {
   const { projectBinding, projectConfig, projectSynced } = useConfigContext();
   if (!projectBinding || !projectSynced || !projectConfig) {
@@ -665,6 +746,15 @@ function AttachmentsSectionBody({ binding, value }: { binding: ConfigBinding; va
   );
 }
 
+/**
+ * Sync section — surface the git auto-sync toggle in Settings so users
+ * have a deliberate path to re-enable when the header badge is hidden
+ * (state === 'disabled' hides the badge).
+ *
+ * The toggle writes through the project-local ConfigBinding so the choice
+ * lands in `<projectDir>/.ok/local/config.yml`; the file watcher then drives
+ * the SyncEngine to match.
+ */
 function SyncSection() {
   const { t } = useLingui();
   const status = useGitSyncStatus();
@@ -675,8 +765,17 @@ function SyncSection() {
   const { confirmOpen, setConfirmOpen, onToggleRequest, onConfirm } =
     useEnableSyncWithConfirm(writer);
   const [publishOpen, setPublishOpen] = useState(false);
+  // Local AuthModal control for the Sign-in-again affordance surfaced when
+  // the probe returns 401. The editor header has its own AuthModal — settings
+  // doesn't share it, so the section owns one locally (same pattern as
+  // AccountSection).
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
+  // No git remote configured — instead of dead-ending on a CLI instruction,
+  // lead with the outcome (back up + share) and offer the existing
+  // Publish-to-GitHub wizard, which creates a repo and connects it with no
+  // terminal. The raw `git remote add` path stays as an Advanced disclosure
+  // for users who already have a repository.
   if (status && !status.hasRemote && status.state === 'dormant') {
     return (
       <section
@@ -735,26 +834,46 @@ function SyncSection() {
     );
   }
 
+  // Read user intent from the synchronous local CRDT preference (the same
+  // binding `useSyncEnabledWriter` writes to). Don't read from the server's
+  // engine-state projection — that round-trips through ~2 s persistence
+  // debounce + chokidar settle + 100 ms CC1 debounce, making the Switch
+  // appear to lag every click.
   const enabled = projectLocalConfig?.autoSync?.enabled ?? false;
+  // Mirrors the SyncStatusBadge popover so both surfaces gate identically.
+  // Disable on cold start OR on a denied probe; never disable on
+  // undefined / unknown / pending (preserves read+write parity).
   const disabledControl = shouldDisableSyncSwitch(
     projectLocalSynced,
     status?.pushPermission?.checkStatus,
   );
+  // Whether the body line should carry the no-permission copy inline (instead
+  // of the standard "your edits stay local" string + a redundant paragraph
+  // underneath). Fires for both the probe-`denied` path AND the in-memory
+  // pause path (autoSync was already enabled when probe came back denied —
+  // engine sets `pausedReason='no-push-permission'`).
   const isPushDenied =
     status?.pushPermission?.checkStatus === 'denied' ||
     status?.pausedReason === 'no-push-permission';
   const sectionMessage =
     isPushDenied || !status?.pausedReason ? null : formatPausedReason(status.pausedReason);
 
+  // Committed project default (`autoSync.default`) — the maintainer-facing,
+  // git-shared seed for everyone's first open. true/false/null map to the three
+  // ToggleGroup options; `null` (ask) is the absence of a committed seed.
   const committedDefault = projectConfig?.autoSync?.default ?? null;
   const committedDefaultValue =
     committedDefault === true ? 'on' : committedDefault === false ? 'off' : 'ask';
   function onCommittedDefaultChange(next: string) {
+    // Radix single ToggleGroup emits '' when the active item is re-pressed
+    // (deselect) — ignore it so there is always exactly one committed stance.
     if (next !== 'ask' && next !== 'on' && next !== 'off') return;
     if (defaultWriter === null) {
       toast.error(t`Sync settings not yet loaded — try again in a moment`);
       return;
     }
+    // 'ask' writes null, which clears the committed key (RFC 7396 merge-patch) →
+    // unanswered machines see the onboarding prompt again.
     const value = next === 'on' ? true : next === 'off' ? false : null;
     const result = defaultWriter(value);
     if (!result.ok) {
@@ -784,6 +903,10 @@ function SyncSection() {
             </label>
             <p className="text-muted-foreground text-1sm" data-testid="settings-sync-body">
               {isPushDenied ? (
+                // Probe denied (or engine paused in-memory because autoSync was
+                // already on when probe denied). Replace the standard body copy
+                // with the permission-specific message — the redundant
+                // sectionMessage paragraph below is suppressed in this case.
                 <Trans>Auto-sync is off — you don't have permission to push to this repo</Trans>
               ) : enabled ? (
                 <Trans>
@@ -845,6 +968,9 @@ function SyncSection() {
           </p>
         )}
         {shouldOfferSignInAgain(status?.pushPermission) && (
+          // Probe-401 ('unknown/token-invalid') surfaces a Sign in again
+          // affordance without disabling sync. Mirrors the popover so both
+          // surfaces gate identically.
           <div className="mt-2 flex items-start gap-2" data-testid="settings-sync-signin-again">
             <p className="text-1sm text-muted-foreground flex-1 min-w-0">
               <Trans>Your GitHub session expired — sign in again to verify push access.</Trans>
@@ -927,6 +1053,10 @@ interface SettingsFieldProps {
 }
 
 function SettingsField({ field, scope, commitField, isFlashed }: SettingsFieldProps) {
+  // 'use no memo' — the FormField inline render-prop below destructures
+  // `ctl` (a ControllerRenderProps with a `ref` field), which the React
+  // Compiler heuristic flags as ref-access during render. Same rationale
+  // as FieldControlBody / control bodies.
   'use no memo';
   const { t } = useLingui();
   const form = useFormContext<Config>();
@@ -935,6 +1065,11 @@ function SettingsField({ field, scope, commitField, isFlashed }: SettingsFieldPr
   const defaultValue = leafSchema ? getFieldDefault(leafSchema) : undefined;
   const enumOptions = leafSchema ? getEnumOptions(leafSchema) : undefined;
 
+  // Defensive cross-scope check — every FieldDef in the new design is
+  // routed to a section that matches its schema scope, so this should
+  // never fire. Keeping the meta lookup as a guard rail; we don't
+  // render a readonly note (the sidebar IA prevents the cross-scope
+  // case from being reachable).
   const meta = leafSchema ? getFieldMeta(leafSchema) : undefined;
   const scopeMismatch =
     (meta?.scope === 'project' && scope !== 'project') ||
@@ -944,6 +1079,8 @@ function SettingsField({ field, scope, commitField, isFlashed }: SettingsFieldPr
   const labelText = t(field.label);
 
   const [savedTick, setSavedTick] = useState(false);
+  // Tracks the SavedIndicator timeout so an unmount mid-flash doesn't fire
+  // `setSavedTick(false)` on a torn-down component (React warning).
   const savedTickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -958,17 +1095,45 @@ function SettingsField({ field, scope, commitField, isFlashed }: SettingsFieldPr
     savedTickTimerRef.current = setTimeout(() => setSavedTick(false), 1200);
   };
 
+  /**
+   * Run `commitField` (the harness-owned binding.patch + form.setError /
+   * form.clearErrors path) and flash the SavedIndicator on success. The
+   * value committed is whatever currently lives in the form at `name` —
+   * call sites are responsible for writing the desired value via
+   * `ctl.onChange` (per-control commits) or `form.setValue` (reset path)
+   * BEFORE invoking `runCommit`.
+   */
   const runCommit = (): boolean => {
     const ok = commitField(dottedName);
     if (ok) flashSavedTick();
     return ok;
   };
 
+  /**
+   * Per-interaction commit (blur/change/Enter). Skips no-op commits where
+   * the field is not dirty against its current `defaultValue` baseline —
+   * after a successful commit, `useConfigForm` re-baselines via
+   * `form.resetField(name, { defaultValue: value })`, so subsequent
+   * blurs on an unchanged field correctly report `isDirty: false` and
+   * the unconditional `binding.patch → Y.Text delete+insert` cycle is
+   * avoided. Returns true on no-op (no error to surface).
+   *
+   * The reset path bypasses this guard by calling `runCommit` directly:
+   * `form.setValue(name, target, { shouldDirty: false })` leaves the
+   * field non-dirty, but the commit is still intentional (the user
+   * clicked Reset).
+   */
   const runCommitIfDirty = (): boolean => {
     if (!form.getFieldState(dottedName).isDirty) return true;
     return runCommit();
   };
 
+  /**
+   * Reset writes the schema default (or `null` for fields with no
+   * default — null-as-clear preserves RFC 7396 semantics) into form
+   * state, then commits via the harness. `shouldDirty: false` so the
+   * field doesn't end up flagged as dirty after reset.
+   */
   const reset = () => {
     const target = defaultValue === undefined ? null : defaultValue;
     form.setValue(dottedName, target as never, { shouldDirty: false });
@@ -982,6 +1147,9 @@ function SettingsField({ field, scope, commitField, isFlashed }: SettingsFieldPr
       control={form.control}
       name={dottedName}
       render={({ field: ctl }) => {
+        // Reset-button visibility derives from the form's reactive value
+        // (`ctl.value`) so it updates in lockstep with user edits, external
+        // Y.Text updates, and resets.
         const showResetButton =
           !scopeMismatch && (defaultValue !== undefined || ctl.value !== undefined);
 
@@ -1038,9 +1206,29 @@ interface FieldControlBodyProps {
   ctl: ControllerRenderProps<Config, FieldPath<Config>>;
   typeTag: string | undefined;
   enumOptions: readonly string[] | undefined;
+  /**
+   * Commits the field's CURRENT form value via the harness's
+   * `commitField`. Call sites must write the desired value through
+   * `ctl.onChange` BEFORE invoking — the commit reads from form state.
+   */
   onCommit: () => boolean;
 }
 
+/**
+ * Type-tag-driven dispatch for the inner control element. Returns a
+ * single React element so the wrapping `<FormControl>` (Radix Slot)
+ * can forward `id`, `aria-describedby`, and `aria-invalid` to the
+ * underlying DOM input. The Slot clones this component with those props;
+ * destructure + forward as `...slotForwarded` into each leaf — without
+ * this hop the a11y attributes hit FieldControlBody and stop, breaking
+ * screen-reader notification of L1 rejection (ARIA §4.10).
+ *
+ * `'use no memo'` opts out of React Compiler memoization because RHF's
+ * `ControllerRenderProps` exposes a `ref` field; the compiler heuristic
+ * flags every property access on objects with `ref` as ref-access during
+ * render. The control bodies below use the same opt-out for the same
+ * reason.
+ */
 function FieldControlBody({
   field,
   ctl,
@@ -1051,6 +1239,11 @@ function FieldControlBody({
 }: FieldControlBodyProps & SlotForwardedProps) {
   'use no memo';
   const { t } = useLingui();
+  // Optimistic theme apply. next-themes' `useTheme` is safe to
+  // call unconditionally — it returns a no-op `setTheme` when no
+  // <ThemeProvider> is mounted (e.g. in unit harnesses), and the app always
+  // mounts one in `main.tsx`. The actual flip is gated to the theme field in
+  // the enum-toggle branch below, so non-theme controls are unaffected.
   const { setTheme } = useTheme();
   if (typeTag === 'boolean') {
     return (
@@ -1068,7 +1261,15 @@ function FieldControlBody({
   }
   if (typeTag === 'enum' && enumOptions && enumOptions.length > 0) {
     if (field.control === 'enum-toggle' || enumOptions.length <= 4) {
+      // Slot.Root forwards `id` onto its child; ToggleGroup root renders a
+      // <div>, which is not a labelable element — `<label htmlFor>` on a
+      // div doesn't focus its descendants on click. Pluck the id and put
+      // it on the first ToggleGroupItem (a <button>) so label-click moves
+      // focus into the group. aria-describedby/aria-invalid stay on the
+      // wrapper since they describe the group as a whole.
       const { id: forwardedId, ...wrapperSlotProps } = slotForwarded;
+      // Theme is the one enum-toggle that flips app-wide appearance. Detect it
+      // by path so the optimistic next-themes write stays scoped to this field.
       const isThemeField = field.path[0] === 'appearance' && field.path[1] === 'theme';
       return (
         <ToggleGroup
@@ -1078,6 +1279,15 @@ function FieldControlBody({
           ref={ctl.ref}
           onValueChange={(next) => {
             if (!next) return;
+            // Optimistic flip on the originating client: apply via next-themes
+            // synchronously so the UI changes on click instead of waiting for
+            // the patch -> user-config Y.Text -> ConfigProvider merged-effect
+            // round-trip (the perceived lag). `next` is forwarded verbatim —
+            // 'system' is the OS-tracking lever and must not be resolved here.
+            // The ConfigProvider merged-effect still drives cross-project /
+            // remote clients (via config.yml + file-watcher) and Electron
+            // native chrome, and no-ops here (same value -> next-themes
+            // state bailout), so there is no double-flip.
             if (isThemeField) setTheme(next);
             ctl.onChange(next);
             onCommit();
@@ -1112,6 +1322,10 @@ function FieldControlBody({
   return <StringControlBody ctl={ctl} onCommit={onCommit} {...slotForwarded} />;
 }
 
+/**
+ * String-typed text input. Form value IS the displayed text — no local
+ * presentation buffer needed. Commits on blur or Enter.
+ */
 function StringControlBody({
   ctl,
   onCommit,
@@ -1142,6 +1356,12 @@ function StringControlBody({
   );
 }
 
+/**
+ * Number-typed input. Form value is a `number`; the textbox needs a
+ * string presentation buffer so the user can type intermediate text
+ * (`'1.'`, `'-'`) without it parsing prematurely. The local `pendingText`
+ * resyncs with `ctl.value` whenever the user isn't actively editing.
+ */
 function NumberControlBody({
   ctl,
   onCommit,
@@ -1155,6 +1375,9 @@ function NumberControlBody({
   const lastSyncedValueRef = useRef(ctl.value);
 
   useEffect(() => {
+    // Skip if ctl.value hasn't changed since the last sync (dedup —
+    // avoids resetting pendingText on unrelated re-renders). When
+    // ctl.value DOES change, refresh pendingText to track it.
     if (lastSyncedValueRef.current === ctl.value) return;
     setPendingText(ctl.value === undefined ? '' : String(ctl.value));
     lastSyncedValueRef.current = ctl.value;
@@ -1163,6 +1386,7 @@ function NumberControlBody({
   const commitText = () => {
     const parsed = Number(pendingText);
     if (!Number.isFinite(parsed)) {
+      // Let L1 reject + show a typed FormMessage error rather than silently swallow.
       ctl.onChange(pendingText as unknown as number);
       onCommit();
       return;
@@ -1194,6 +1418,12 @@ function NumberControlBody({
   );
 }
 
+/**
+ * String-array textarea. Form value is `string[]`; the textarea displays
+ * a newline-joined string. Local `pendingText` resyncs with `ctl.value`
+ * whenever the user isn't actively editing. Commit splits on newlines,
+ * trims each entry, and filters empty lines.
+ */
 function StringArrayControlBody({
   ctl,
   onCommit,
@@ -1241,6 +1471,11 @@ function StringArrayControlBody({
 }
 
 function SavedIndicator({ visible }: { visible: boolean }) {
+  // Live region — auto-save replaces an explicit Save button, so this
+  // checkmark IS the save confirmation. Polite announcement so screen
+  // readers say "Saved" without interrupting other speech (WCAG 4.1.3).
+  // Always render the wrapper so the SR-only text node is present at
+  // mount time; the visible checkmark is the only thing that toggles.
   return (
     <span role="status" aria-live="polite" className="text-emerald-600">
       {visible ? (

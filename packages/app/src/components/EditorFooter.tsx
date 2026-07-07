@@ -37,6 +37,7 @@ export function EditorFooter({
   const { t } = useLingui();
   const identity = useEditorFooterIdentity();
   if (!showStats && identity === null && composerBadge == null) return null;
+  // A non-null selectionStats scopes the counts to the current selection.
   const active = selectionStats ?? stats;
   const isSelection = selectionStats != null;
   const { words, chars, tokens } = active;
@@ -51,6 +52,7 @@ export function EditorFooter({
       }
       className={cn(
         'relative flex h-6 shrink-0 items-center justify-between gap-3 bg-background px-3 text-2xs text-muted-foreground',
+        // Clear the bottom-dock reveal tab that floats over the bottom-right.
         reserveRightGutter && 'pr-12',
       )}
     >

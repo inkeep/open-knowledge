@@ -14,7 +14,9 @@ describe('appendOkIgnoreSync', () => {
   afterEach(() => {
     try {
       rmSync(dir, { recursive: true, force: true });
-    } catch {}
+    } catch {
+      // best-effort
+    }
   });
 
   test('empty-string patterns is a no-op (file is not created)', () => {
@@ -69,6 +71,11 @@ describe('appendOkIgnoreSync', () => {
   });
 
   test('seed-comment block re-supplied on top of a seeded file does not duplicate (exact-overlap → early return)', () => {
+    // The consent dialog's
+    // "Ignore patterns" textarea is filled (paste / mis-call) with the same
+    // seed header `ok init` already wrote to disk. Every input line is a
+    // duplicate, so `toAppend.length === 0` early-returns and the file is
+    // left byte-identical — never even rewritten.
     const seed = [
       '# .okignore — paths to exclude from the OpenKnowledge document index.',
       '# Uses gitignore syntax (parsed by the `ignore` npm library), evaluated',
@@ -90,6 +97,12 @@ describe('appendOkIgnoreSync', () => {
   });
 
   test('seed-comment block plus one genuinely new pattern: seed lines drop, separator+new pattern land (paste-then-type shape)', () => {
+    // User pastes the seed header into the consent
+    // dialog's textarea AND types one new pattern below it. This exercises
+    // the separator+write path (the all-duplicate input only hits the early-return). The
+    // seed lines all collide in the trim-set and drop; the new pattern
+    // survives and gets appended with the standard `\n` separator (file
+    // ends with `\n`, so single-newline separator).
     const seed = [
       '# .okignore — paths to exclude from the OpenKnowledge document index.',
       '# Uses gitignore syntax (parsed by the `ignore` npm library), evaluated',
@@ -133,6 +146,12 @@ describe('appendOkIgnoreSync', () => {
   });
 
   test('within-input repeats are NOT deduped (existing-line set is built once at entry, not refreshed per input line)', () => {
+    // Docstring pin: dedup is cross-call only. Callers that need
+    // within-input dedup must pre-dedupe — the existing-line set never
+    // observes input lines. Use a non-empty existing that does NOT contain
+    // `tmp/` so both input lines pass the filter because the set genuinely
+    // doesn't see them (vs. the weaker empty-file case where the set
+    // contains only `''`).
     writeFileSync(join(dir, '.okignore'), 'foo/\n', 'utf8');
     appendOkIgnoreSync(dir, 'tmp/\ntmp/');
     const out = readFileSync(join(dir, '.okignore'), 'utf8');

@@ -10,6 +10,7 @@ const LABELS: Record<TransformId, string> = {
 
 const ORDER: readonly TransformId[] = ['images', 'callouts', 'frontmatter', 'tables', 'links'];
 
+/** Human-readable per-transform summary. */
 export function formatReport(report: Report, o: { applied: boolean; dir: string }): string {
   const lines: string[] = [];
   lines.push(
@@ -42,6 +43,7 @@ export function formatReport(report: Report, o: { applied: boolean; dir: string 
   return lines.join('\n');
 }
 
+/** Machine-readable report for `--json`. */
 export function formatReportJson(report: Report, o: { applied: boolean }): string {
   return JSON.stringify({ applied: o.applied, ...report }, null, 2);
 }

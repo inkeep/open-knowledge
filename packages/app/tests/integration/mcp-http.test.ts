@@ -64,6 +64,9 @@ test('POST /mcp serves MCP JSON-RPC over Streamable HTTP', async () => {
       result?: { tools?: Array<{ name: string }> };
     };
     const toolNames = toolsBody.result?.tools?.map((tool) => tool.name) ?? [];
+    // Sample the verb surface + the merges/splits: the four CRUD verbs;
+    // version -> checkpoint + restore_version; conflict reads -> conflicts;
+    // components/palette -> palette.
     expect(toolNames).toContain('exec');
     expect(toolNames).toContain('search');
     expect(toolNames).toContain('write');

@@ -25,8 +25,13 @@ import type { ContentFilter } from './content-filter.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
 import { toPosix } from './path-utils.ts';
 
+// Line-oriented variant: excludes \n since lines are pre-split.
+// cf. packages/core/src/extensions/wiki-link.ts WIKI_LINK_PATTERN (no \n exclusion).
+// Sticky flag ('y') enables position-based matching via lastIndex.
 const WIKI_LINK_RE = /\[\[([^\n#[\]|]+)(?:#([^\n[\]|]+))?(?:\|([^\n[\]]+))?\]\]/y;
 
+// Inline link form: [text](href) with an optional CommonMark title.
+// Sticky flag for position-based matching. Does NOT match reference-style [text][ref].
 const MD_LINK_RE =
   /\[([^\]\n]*)\]\((<[^>\n]+>|[^)\s\n]+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\)/y;
 
@@ -118,6 +123,11 @@ interface SerializedBranchGraphState {
     string,
     Array<{ url: string; label: string | null; snippet: string | null }>
   >;
+  /**
+   * Per-doc mtime snapshot written by rebuildFromDisk / reconcileWithDisk.
+   * Used on next startup to skip re-parsing files whose mtime hasn't changed.
+   * Optional for backward compatibility — absent means treat all files as new.
+   */
   mtimes?: Record<string, number>;
 }
 
@@ -136,6 +146,16 @@ function createEmptyState(): BranchGraphState {
   };
 }
 
+/**
+ * Scope-uniform parse of a skill bundle doc (PROJECT content doc OR GLOBAL
+ * managed-artifact doc) into the three fields the structural-edge logic needs:
+ * the skill `name`, the bundle `kind`, and the doc name of the bundle's `SKILL`
+ * doc in the SAME scope. Returning the scope-correct SKILL doc name from one
+ * place lets `structuralBundleNeighbors` draw within-bundle edges identically
+ * for both scopes — a global SKILL connects only to global references of the
+ * same skill, a project SKILL only to project references, never across the
+ * scope boundary or into a project's KB.
+ */
 function parseSkillBundleDocAnyScope(
   docName: string,
 ): { name: string; kind: 'skill' | 'reference'; skillDocName: string } | null {
@@ -245,6 +265,9 @@ function readInlineCode(line: string, start: number): { text: string; nextIndex:
   if (runLength === 0) return null;
   const openEnd = start + runLength;
 
+  // CommonMark §6.1: the closing backtick string must be exactly the same length
+  // as the opening string and must not be preceded or followed by a backtick.
+  // indexOf() would match inside a longer run, so we scan for exact-length runs.
   let i = openEnd;
   while (i < line.length) {
     if (line[i] !== '`') {
@@ -258,6 +281,13 @@ function readInlineCode(line: string, start: number): { text: string; nextIndex:
     }
     i += closeLen;
   }
+  // Unmatched opening run. Per CommonMark §6.1, a backtick string is "neither
+  // preceded nor followed by a backtick" — characters inside the run cannot
+  // start a different (shorter) opening run. Treat the full run as literal
+  // text and advance past it. Returning `nextIndex: start + 1` here would let
+  // the caller's outer loop re-enter readInlineCode at every interior backtick
+  // and re-scan to end of line, giving O(N²) work on a long unclosed run
+  // (DoS attack vector via crafted markdown reaching the backlink indexer).
   return { text: line.slice(start, openEnd), nextIndex: openEnd };
 }
 
@@ -265,6 +295,9 @@ function readWikiLink(
   line: string,
   start: number,
 ): { target: string; alias: string | null; anchor: string | null; nextIndex: number } | null {
+  // Uses sticky flag for position-based matching via lastIndex.
+  // core's parseWikiLink expects the string to start with '[[' (^ anchor) and
+  // cannot be used here where start may be mid-line.
   WIKI_LINK_RE.lastIndex = start;
   const match = WIKI_LINK_RE.exec(line);
   if (!match) return null;
@@ -317,6 +350,9 @@ function extractWikiLinksFromLine(
         flatText += label;
         const classified = classifyWikiLinkTarget(wikiLink.target, wikiLink.anchor);
         if (classified?.kind === 'doc') {
+          // A bundle-relative wiki-link inside a SKILL.md (`[[references/x]]`)
+          // is classified as a bare content-root doc; remap it to the sibling
+          // bundle ref so the inbound edge lands on the real ref doc.
           const target =
             resolveSkillBundleWikiTarget(wikiLink.target, sourceDocName) ?? classified.docName;
           occurrences.push({
@@ -389,6 +425,13 @@ function extractExternalWikiLinksFromLine(line: string): {
   return { text: flatText, occurrences };
 }
 
+/**
+ * Resolve an href (from a markdown inline link) relative to a source docName.
+ * Returns the resolved docName (no `.md` extension, no leading `./`) or null if
+ * the href is external or escapes the content directory root.
+ *
+ * Resolution is pure string arithmetic — no filesystem access.
+ */
 export function resolveMarkdownHref(href: string, sourceDocName: string): string | null {
   return resolveInternalHref(href, sourceDocName)?.docName ?? null;
 }
@@ -435,6 +478,7 @@ function extractMarkdownLinksFromLine(
       }
     }
 
+    // Skip wiki-links so they're not double-counted as markdown links
     if (line[idx] === '[' && line[idx + 1] === '[') {
       const wikiLink = readWikiLink(line, idx);
       if (wikiLink) {
@@ -458,6 +502,7 @@ function extractMarkdownLinksFromLine(
             end: start + mdLink.text.length,
           });
         } else {
+          // External link — add text to flat buffer without recording
           flatText += mdLink.text;
         }
         idx = mdLink.nextIndex;
@@ -661,12 +706,60 @@ function extractExternalMarkdownLinksFromMarkdown(
   return links;
 }
 
+/**
+ * One broken outbound link found in a doc's body, in the shape `write`/`edit`
+ * surface to agents.
+ *
+ * - `href` — the link exactly as the author wrote it (a markdown href like
+ *   `./wiki/x`, or the reconstructed `[[Page]]` form for a wiki link), so the
+ *   agent can grep for it and fix it.
+ * - `resolvedTo` — the content-root docName the href resolved to but which
+ *   doesn't exist (`reason: 'no-such-doc'`), the content-root file path a
+ *   link to an asset/source file resolved to but which isn't on disk
+ *   (`reason: 'no-such-file'`, e.g. `src/foo.py`), or `null` when the href
+ *   can't resolve at all (`reason: 'unresolvable'` — empty href, or a relative
+ *   path that escapes the content root).
+ */
 export interface BrokenOutboundLink {
   href: string;
   resolvedTo: string | null;
   reason: BrokenLinkReason;
 }
 
+/**
+ * Resolve a just-written doc's outbound internal links against the live set of
+ * docs that exist, and return the ones that don't resolve. This is the
+ * write-time validation primitive behind the `brokenLinks` response field.
+ * It works **purely from the markdown bytes the write handler already
+ * holds** — it does NOT read the BacklinkIndex (whose agent-write update is
+ * 100ms-debounced and therefore stale at write-response time). It mirrors the
+ * indexer's own link extraction (fence-aware, inline-code-aware, wiki +
+ * markdown, `![[…]]` doc-embeds counted, external/anchor links skipped) so the
+ * same links the graph tracks are the ones validated.
+ *
+ * Two existence oracles, because the two link kinds live in two different
+ * places. **Doc links** (`.md`/`.mdx` / extensionless) are validated against
+ * `admittedDocs` — the in-memory CRDT-doc set. **File links** (a markdown
+ * `[text](path.ext)` to any non-doc file — a linked asset OR a source file like
+ * `../src/foo.py`) have no CRDT presence, so they're validated against disk via
+ * the injected `fileExists` oracle. This closes the gap where a wrong-depth
+ * `../../../src/foo.py` 404s silently: `resolveAssetProjectPath` root-confines
+ * the href (overshoot → `unresolvable`), then `fileExists` checks the resolved
+ * path (missing → `no-such-file`). Omit `fileExists` and file links are skipped
+ * (pure-resolution unit tests, callers without a filesystem). Wiki-link asset
+ * embeds (`![[x.pdf]]`) are NOT validated — they resolve by vault-wide basename,
+ * not by relative path, so the depth footgun doesn't apply and the path-pure
+ * resolver here can't answer them.
+ *
+ * Marginal cost is one doc's extraction + one `Set.has` (docs) or one
+ * `fileExists` call (files) per distinct outbound link — no corpus scan.
+ * Duplicate raw hrefs collapse to a single entry.
+ *
+ * @param markdown        the full just-written source (frontmatter is stripped here)
+ * @param sourceDocName   the doc being written (relative hrefs resolve against its dir)
+ * @param admittedDocs    every docName that currently exists (the same admitted set `getDeadLinks` takes)
+ * @param fileExists      oracle for a content-root-relative file path's on-disk existence; omit to skip file-link validation
+ */
 export function computeBrokenOutboundLinks(
   markdown: string,
   sourceDocName: string,
@@ -696,9 +789,13 @@ export function computeBrokenOutboundLinks(
 
   const recordMarkdownLink = (rawHref: string): void => {
     const trimmed = rawHref.trim();
+    // Pure anchor (`#section`) — an intra-doc reference, not a doc link.
+    // Broken-anchor validation is deferred.
     if (trimmed.startsWith('#')) return;
     const classified = classifyMarkdownHref(trimmed, sourceDocName);
     if (!classified) {
+      // Empty href, or a `.md`/`.mdx`/extensionless path that escapes the
+      // content root: cannot resolve to any doc.
       record(trimmed, null, 'unresolvable');
       return;
     }
@@ -709,9 +806,13 @@ export function computeBrokenOutboundLinks(
       return;
     }
     if (classified.kind === 'asset') {
+      // A link to a non-doc file (a linked asset, or a source file like
+      // `../src/foo.py`). It has no CRDT presence, so validate the resolved
+      // path against disk. Skip when no oracle is injected.
       if (!fileExists) return;
       const filePath = resolveAssetProjectPath(classified.url, sourceDocName);
       if (filePath === null) {
+        // `../`-overshoot past the content root — the off-by-one depth bug.
         record(trimmed, null, 'unresolvable');
         return;
       }
@@ -720,10 +821,15 @@ export function computeBrokenOutboundLinks(
       }
       return;
     }
+    // External URLs aren't a local link target — not our concern.
   };
 
   const recordWikiLink = (target: string, anchor: string | null): void => {
     const classified = classifyWikiLinkTarget(target, anchor);
+    // Only doc targets are validated. A wiki-link asset embed (`![[x.pdf]]`)
+    // resolves by vault-wide basename, not by relative path, so the depth
+    // footgun doesn't apply and the path-pure resolver here can't answer it —
+    // unlike a markdown `[text](path.ext)`, which IS file-validated above.
     if (!classified || classified.kind !== 'doc') return;
     if (!admitted.has(classified.docName)) {
       record(`[[${target}${anchor ? `#${anchor}` : ''}]]`, classified.docName, 'no-such-doc');
@@ -754,6 +860,8 @@ export function computeBrokenOutboundLinks(
           continue;
         }
       }
+      // Wiki form first, so `[[…]]` (and `![[…]]` doc-embeds) aren't re-read as
+      // a markdown link — mirrors the indexer's extraction order.
       if (line[idx] === '[' && line[idx + 1] === '[') {
         const wikiLink = readWikiLink(line, idx);
         if (wikiLink) {
@@ -873,6 +981,11 @@ export class BacklinkIndex {
   private readonly contentDir: string;
   private readonly contentFilter?: ContentFilter;
   private readonly states = new Map<string, BranchGraphState>();
+  /**
+   * Per-branch mtime snapshots. Populated by rebuildFromDisk / reconcileWithDisk
+   * and persisted in the cache JSON. Used on the next startup to skip re-parsing
+   * files whose mtime is unchanged.
+   */
   private readonly mtimesByBranch = new Map<string, Map<string, number>>();
   private activeBranch = 'main';
 
@@ -892,13 +1005,39 @@ export class BacklinkIndex {
     return state;
   }
 
+  /**
+   * Structural graph neighbors of a skill bundle doc, derived from the doc NAME
+   * shape (the shared skill-bundle parent) — not from any link the SKILL body
+   * authored. A skill's `SKILL` doc connects to each indexed `references/**` doc
+   * of the SAME skill, and vice versa. Additive to the authored wiki-link /
+   * markdown-link edges and scoped strictly to skill bundles: a non-skill doc
+   * returns no structural neighbors, so co-membership in a normal folder never
+   * fabricates an edge.
+   *
+   * Both scopes participate with identical within-bundle semantics: PROJECT
+   * bundles (content docs `.ok/skills/<name>/...`) and GLOBAL bundles
+   * (managed-artifact docs `__skill__/global/<name>/...`). The match keys on the
+   * scope-correct SKILL doc name (`skillDocName`), so a global SKILL pairs only
+   * with global references of the same skill and a project SKILL only with
+   * project references — never across the scope boundary, and a global reference
+   * never connects into a project's KB.
+   *
+   * Membership is decided against the live node registry (`state.forward` holds a
+   * key for every indexed doc, even one with zero authored links), so structural
+   * edges appear and disappear as bundle docs are added / removed / renamed
+   * without any extra bookkeeping.
+   */
   private structuralBundleNeighbors(docName: string, branch = this.activeBranch): Set<string> {
     const parsed = parseSkillBundleDocAnyScope(docName);
     const neighbors = new Set<string>();
     if (!parsed) return neighbors;
     const state = this.getState(branch);
+    // The doc itself must be a live node — a deleted bundle doc draws no edges,
+    // so a partner left behind never reports the deleted doc as a neighbor.
     if (!state.forward.has(docName)) return neighbors;
     if (parsed.kind === 'skill') {
+      // SKILL doc → every indexed reference doc whose own scope-correct SKILL
+      // doc name equals this SKILL's name (same scope + same skill).
       for (const candidate of state.forward.keys()) {
         const other = parseSkillBundleDocAnyScope(candidate);
         if (other?.kind === 'reference' && other.skillDocName === docName) {
@@ -906,6 +1045,7 @@ export class BacklinkIndex {
         }
       }
     } else {
+      // Reference doc → its skill's SKILL doc, when that SKILL doc is indexed.
       if (state.forward.has(parsed.skillDocName)) neighbors.add(parsed.skillDocName);
     }
     return neighbors;
@@ -924,6 +1064,15 @@ export class BacklinkIndex {
     return resolve(getLocalDir(this.projectDir), 'cache', branch, 'backlinks.json');
   }
 
+  /**
+   * Register `docName` as a live graph node carrying NO authored link edges,
+   * dropping any prior authored edges it had. Idempotent. Used for GLOBAL skill
+   * bundle docs: they get structural (name-derived) within-bundle edges to their
+   * own SKILL / references, but their body is deliberately NOT parsed for
+   * wiki/markdown links — a global skill must never link into a project's KB
+   * (within-bundle-only). A bare node also gives `structuralBundleNeighbors` a
+   * live endpoint so the structural edge actually draws.
+   */
   private registerNodeOnly(docName: string, branch = this.activeBranch): void {
     const state = this.getState(branch);
     const priorTargets = state.forward.get(docName) ?? new Set<string>();
@@ -944,6 +1093,13 @@ export class BacklinkIndex {
     state.externalForward.set(docName, new Map());
   }
 
+  /**
+   * Public node-only registration for a GLOBAL skill bundle doc (SKILL or
+   * reference). Ingestion (boot scan + the managed-artifact watcher) calls this
+   * so a global bundle's nodes exist as structural-edge endpoints WITHOUT pulling
+   * their body into cross-KB link parsing. A non-global-bundle name is ignored
+   * (this method is the ONLY supported way to add a global bundle node).
+   */
   registerGlobalSkillBundleNode(docName: string, branch = this.activeBranch): void {
     if (!parseGlobalSkillBundleDoc(docName)) return;
     this.registerNodeOnly(docName, branch);
@@ -956,6 +1112,10 @@ export class BacklinkIndex {
     branch = this.activeBranch,
   ): void {
     if (isLinkIndexExcludedDoc(docName)) return;
+    // Global skill bundle docs participate via structural edges ONLY — never
+    // ingest their authored body links (a global reference's `[[project-doc]]`
+    // must NOT create a cross-boundary edge into this project's KB). Register the
+    // node and stop; deleteDocument still removes it like any other node.
     if (parseGlobalSkillBundleDoc(docName)) {
       this.registerNodeOnly(docName, branch);
       return;
@@ -985,6 +1145,9 @@ export class BacklinkIndex {
 
     for (const link of links) {
       if (!link.target) continue;
+      // Normalize a link to a skill/template FILE path to the artifact's
+      // identity so the edge connects to the skill/template entity (backlinks)
+      // rather than a (missing) raw `.ok/...` file path.
       const target = managedArtifactDocNameFromContentTarget(link.target) ?? link.target;
       nextTargets.add(target);
       let sources = state.backward.get(target);
@@ -1025,6 +1188,7 @@ export class BacklinkIndex {
       const mdLinks = extractMarkdownLinksFromMarkdown(body, docName);
       const wikiExternalLinks = extractExternalWikiLinksFromMarkdown(body);
       const mdExternalLinks = extractExternalMarkdownLinksFromMarkdown(body, docName);
+      // Merge: wiki links take precedence for duplicate targets (they have richer snippet context)
       const seen = new Set(wikiLinks.map((l) => l.target));
       const merged = [...wikiLinks, ...mdLinks.filter((l) => !seen.has(l.target))];
       const externalSeen = new Set(wikiExternalLinks.map((l) => l.url));
@@ -1079,6 +1243,8 @@ export class BacklinkIndex {
         entries.set(source, { source, anchor: meta.anchor, snippet: meta.snippet });
       }
     }
+    // Structural skill-bundle edges are undirected, so a SKILL↔reference partner
+    // is a backlink source even when neither doc authored a link to the other.
     for (const partner of this.structuralBundleNeighbors(target, branch)) {
       if (!entries.has(partner))
         entries.set(partner, { source: partner, anchor: null, snippet: null });
@@ -1086,6 +1252,13 @@ export class BacklinkIndex {
     return [...entries.values()].sort((a, b) => a.source.localeCompare(b.source));
   }
 
+  /**
+   * Backlink count without materializing the entry list — cheap primitive for
+   * bulk/listing UIs that need connection density but not sources/snippets.
+   * O(1) for ordinary docs; a SKILL/reference doc additionally unions its
+   * structural skill-bundle partners (`structuralBundleNeighbors` scans the
+   * forward map), so the count stays consistent with `getBacklinks`.
+   */
   getBacklinkCount(target: string, branch = this.activeBranch): number {
     const state = this.getState(branch);
     const authored = state.backward.get(target);
@@ -1099,6 +1272,9 @@ export class BacklinkIndex {
   getForwardLinks(source: string, branch = this.activeBranch): string[] {
     const state = this.getState(branch);
     const targets = new Set(state.forward.get(source) ?? new Set<string>());
+    // Undirected structural skill-bundle edges surface as forward links too, so a
+    // SKILL doc lists its references (and a reference lists its SKILL) even with
+    // no authored link between them.
     for (const partner of this.structuralBundleNeighbors(source, branch)) targets.add(partner);
     return [...targets].sort((a, b) => a.localeCompare(b));
   }
@@ -1128,6 +1304,11 @@ export class BacklinkIndex {
 
   getOrphans(allDocs: string[], mode: OrphanMode = 'both', branch = this.activeBranch): string[] {
     const state = this.getState(branch);
+    // Precompute the set of SKILL docs that have ≥1 indexed reference in ONE
+    // pass over the forward index. Otherwise the per-doc structural-edge check
+    // below calls `structuralBundleNeighbors`, which re-scans every forward key
+    // for each SKILL doc — O(skills × docs) overall. This mirrors the existence
+    // semantics of `structuralBundleNeighbors` (keep in sync if that changes).
     const skillDocsWithReference = new Set<string>();
     for (const candidate of state.forward.keys()) {
       const parsed = parseSkillBundleDocAnyScope(candidate);
@@ -1135,6 +1316,7 @@ export class BacklinkIndex {
     }
     const hasStructuralEdge = (docName: string): boolean => {
       const parsed = parseSkillBundleDocAnyScope(docName);
+      // A deleted bundle doc (not a live forward node) draws no edges.
       if (!parsed || !state.forward.has(docName)) return false;
       return parsed.kind === 'skill'
         ? skillDocsWithReference.has(docName)
@@ -1142,6 +1324,9 @@ export class BacklinkIndex {
     };
     return [...allDocs]
       .filter((docName) => {
+        // Structural skill-bundle edges are undirected, so a partner counts as
+        // both an inbound and an outbound edge — a connected reference is not an
+        // orphan even with zero authored links.
         const structural = hasStructuralEdge(docName);
         const hasInboundEdges = structural || (state.backward.get(docName)?.size ?? 0) > 0;
         const hasOutboundEdges = structural || (state.forward.get(docName)?.size ?? 0) > 0;
@@ -1163,10 +1348,29 @@ export class BacklinkIndex {
       .slice(0, limit);
   }
 
+  /**
+   * Every docName the graph has indexed — one key per doc whose body passed
+   * through `updateDocument`, even a doc with zero outbound links. This is the
+   * additive existence oracle the dead-link check folds in (see `getDeadLinks`):
+   * `state.forward` is updated in-process by `onStoreDocument`, so it holds a
+   * just-persisted doc immediately, ahead of the async file-watcher index.
+   * Callers union this with their file-index view so file-index lag (or a
+   * dropped FSEvent) never demotes a live graph node to "missing". A referenced-
+   * but-missing target is never a forward node (it lives only in `state.backward`),
+   * so this set never reports a non-existent doc as existing.
+   */
   getIndexedDocNames(branch = this.activeBranch): string[] {
     return [...this.getState(branch).forward.keys()];
   }
 
+  /**
+   * Referenced targets that don't resolve to an existing doc. Existence is
+   * `admittedDocs ∪ keys(state.forward)`, NOT `admittedDocs` alone: `state.forward`
+   * is an additive second oracle (every doc whose body the graph has indexed),
+   * so a narrower admitted set never demotes a live graph node to "missing".
+   * See the inline note on the existence check for why this keeps dead-link and
+   * backlink resolution in agreement.
+   */
   getDeadLinks(
     admittedDocs: Iterable<string>,
     sourceDocNames?: readonly string[],
@@ -1178,6 +1382,16 @@ export class BacklinkIndex {
 
     return [...state.backward.entries()]
       .filter(([target, sources]) => {
+        // A target exists if the caller's admitted set lists it OR the graph
+        // already holds it as a live forward node. `state.forward` gains a key
+        // the moment a doc's body is indexed (the same `updateDocument` call
+        // that records this backlink edge), so a freshly-written doc is a valid
+        // target immediately — even before the async file-watcher adds it to
+        // `admittedDocs`. Without the forward check the two indexes disagree: a
+        // doc the graph just registered a backlink FOR gets reported dead until
+        // the watcher re-indexes (or the server restarts). A genuinely-missing
+        // target is never a forward node (only `state.backward` carries it), so
+        // this never hides a real dead link.
         if (admittedDocSet.has(target) || state.forward.has(target)) return false;
         if (!sourceDocSet) return sources.size > 0;
         for (const source of sources.keys()) {
@@ -1240,6 +1454,9 @@ export class BacklinkIndex {
       }
     }
 
+    // Structural skill-bundle edges (SKILL → references of the same skill).
+    // Emitted directionally SKILL→reference, skipping any pair an authored link
+    // already covers (in EITHER direction) so a wiki-link ref isn't double-drawn.
     for (const source of state.forward.keys()) {
       const parsed = parseSkillBundleDocAnyScope(source);
       if (parsed?.kind !== 'skill') continue;
@@ -1311,6 +1528,7 @@ export class BacklinkIndex {
         for (const source of state.backward.get(current.nodeId)?.keys() ?? []) {
           neighbors.add(source);
         }
+        // Structural skill-bundle partners are undirected neighbors for traversal.
         for (const partner of this.structuralBundleNeighbors(current.nodeId, branch)) {
           neighbors.add(partner);
         }
@@ -1341,6 +1559,9 @@ export class BacklinkIndex {
       }
     }
 
+    // Structural skill-bundle edges, directional SKILL→reference, both visited.
+    // Skip any pair an authored link already covers (either direction) so a
+    // wiki-link ref isn't double-drawn.
     for (const source of visited) {
       const parsed = parseSkillBundleDocAnyScope(source);
       if (parsed?.kind !== 'skill') continue;
@@ -1410,6 +1631,19 @@ export class BacklinkIndex {
     this.mtimesByBranch.delete(branch);
   }
 
+  /**
+   * Full cold-start rebuild. Reads and parses every .md/.mdx in the content
+   * tree. Async with bounded concurrency (50 files per batch) so the event loop
+   * is not blocked for the duration. Collects mtime snapshots so the next boot
+   * can use reconcileWithDisk() instead.
+   *
+   * Uses `walkForPaths` (which threads the observed on-disk extension) so the
+   * rebuild does not depend on the file-watcher's `docExtensionByName`
+   * registry being populated. Boot order calls this BEFORE `startWatcher`, so
+   * the registry is empty at this point; a `getDocExtension`-based path would
+   * default every docName to `.md` — ENOENT on every `.mdx`. The sibling
+   * `reconcileWithDisk` path takes the same shape.
+   */
   async rebuildFromDisk(branch = this.activeBranch): Promise<void> {
     const state = createEmptyState();
     const mtimes = new Map<string, number>();
@@ -1461,6 +1695,8 @@ export class BacklinkIndex {
         state.externalForward.set(docName, externalTargets);
         for (const link of links) {
           if (!link.target) continue;
+          // Normalize skill/template file-path targets to artifact identity (see
+          // updateDocument) so doc→skill/template edges resolve to the entity.
           const target = managedArtifactDocNameFromContentTarget(link.target) ?? link.target;
           targets.add(target);
           let sources = state.backward.get(target);
@@ -1490,6 +1726,15 @@ export class BacklinkIndex {
     this.mtimesByBranch.set(branch, mtimes);
   }
 
+  /**
+   * Walk the content directory and return absolute file paths alongside their
+   * docNames. Avoids getDocExtension() so reconcileWithDisk doesn't depend on
+   * the file-watcher's extension registry being populated at startup.
+   *
+   * Async per-directory readdir so the event loop stays responsive during
+   * boot on large content dirs (thousands of files) — a synchronous walk
+   * blocks signal handlers and collab/API traffic until it completes.
+   */
   private async walkForPaths(
     dir: string,
     results: Array<{ docName: string; filePath: string }>,
@@ -1515,6 +1760,16 @@ export class BacklinkIndex {
     }
   }
 
+  /**
+   * Incremental startup reconcile. Compares per-file mtimes against the snapshot
+   * persisted in the cache, re-parsing only files that changed while the server
+   * was offline. Requires the cache to have been loaded via loadFromDisk() first.
+   *
+   * Falls back to a full entry update for any file whose mtime differs, and
+   * removes entries for files that no longer exist on disk.
+   *
+   * Returns counts of changed files for diagnostic logging.
+   */
   async reconcileWithDisk(branch = this.activeBranch): Promise<{
     added: number;
     updated: number;
@@ -1526,6 +1781,8 @@ export class BacklinkIndex {
     const rawDocs: Array<{ docName: string; filePath: string }> = [];
     await this.walkForPaths(this.contentDir, rawDocs);
 
+    // Deduplicate: foo.md and foo.mdx both strip to "foo"; keep first occurrence
+    // (same first-wins dedup as rebuildFromDisk).
     const seen = new Set<string>();
     const docs = rawDocs.filter(({ docName }) => {
       if (seen.has(docName)) return false;
@@ -1538,6 +1795,7 @@ export class BacklinkIndex {
     let added = 0;
     let updated = 0;
 
+    // Phase 1: stat all files concurrently to find changed/new ones.
     const toProcess: Array<{ docName: string; filePath: string; mtimeMs: number; isNew: boolean }> =
       [];
     const statResults = await Promise.allSettled(
@@ -1558,6 +1816,7 @@ export class BacklinkIndex {
       toProcess.push({ docName, filePath, mtimeMs, isNew: storedMtime === undefined });
     }
 
+    // Phase 2: read + parse changed/new files in bounded batches.
     const BATCH_SIZE = 50;
     for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
       const batch = toProcess.slice(i, i + BATCH_SIZE);
@@ -1582,9 +1841,16 @@ export class BacklinkIndex {
       }
     }
 
+    // Phase 3: remove entries for docs that no longer exist on disk.
+    // Union of storedMtimes and graph forward-keys covers the pre-mtime cache
+    // upgrade path where storedMtimes is empty but the loaded graph state may
+    // still hold entries for since-deleted files.
     let deleted = 0;
     const allKnownDocs = new Set([...storedMtimes.keys(), ...this.getState(branch).forward.keys()]);
     for (const docName of allKnownDocs) {
+      // Global skill bundle nodes live OUTSIDE contentDir and are owned by the
+      // global-skill ingestion path, not this content-dir reconcile — never drop
+      // them here just because they're absent from the content scan.
       if (parseGlobalSkillBundleDoc(docName)) continue;
       if (!currentDocSet.has(docName)) {
         this.deleteDocument(docName, branch);
@@ -1596,6 +1862,19 @@ export class BacklinkIndex {
     return { added, updated, deleted };
   }
 
+  /**
+   * Register every GLOBAL skill bundle doc (SKILL + `references/**.md`) found
+   * under the given global skills root(s) as a graph node, scope `global`. Nodes
+   * only — bodies are deliberately not parsed (within-bundle-only; see
+   * `registerNodeOnly`). Structural edges then connect each SKILL to its own
+   * references via `structuralBundleNeighbors`.
+   *
+   * Idempotent + bounded: re-running re-registers the same nodes (and prunes
+   * global nodes whose file vanished). Called on boot AND after every content
+   * rebuild/reconcile (which replace state and would otherwise drop these
+   * out-of-contentDir nodes), and incrementally by the managed-artifact watcher.
+   * Scripts and non-`.md` references are skipped (not graph nodes).
+   */
   async ingestGlobalSkillBundles(
     roots: ReadonlyArray<string>,
     branch = this.activeBranch,
@@ -1614,6 +1893,7 @@ export class BacklinkIndex {
         if (!skillDir.isDirectory()) continue;
         const name = skillDir.name;
         const dir = join(root, name);
+        // SKILL doc: `__skill__/global/<name>` when `<dir>/SKILL.md` exists.
         const skillDocName = skillLiveDocName('global', name);
         if (existsSync(join(dir, 'SKILL.md'))) {
           if (parseGlobalSkillBundleDoc(skillDocName)) {
@@ -1621,6 +1901,7 @@ export class BacklinkIndex {
             live.add(skillDocName);
           }
         }
+        // Reference docs: `<dir>/references/**.md` → ext-less bundle doc names.
         const refs: Array<{ docName: string }> = [];
         await this.walkGlobalSkillReferences(join(dir, 'references'), name, '', refs);
         for (const { docName } of refs) {
@@ -1629,6 +1910,9 @@ export class BacklinkIndex {
         }
       }
     }
+    // Prune global bundle nodes whose source file disappeared since the last
+    // ingest (skill / reference deleted on disk while the index kept the node).
+    // Collect first — deleteDocument mutates the forward map we'd be iterating.
     const stale: string[] = [];
     for (const docName of this.getState(branch).forward.keys()) {
       if (parseGlobalSkillBundleDoc(docName) && !live.has(docName)) stale.push(docName);
@@ -1636,6 +1920,11 @@ export class BacklinkIndex {
     for (const docName of stale) this.deleteDocument(docName, branch);
   }
 
+  /**
+   * Recurse a global skill's `references/` dir, pushing one ext-less bundle doc
+   * name per `.md` file (`__skill__/global/<name>/references/<rel>`). Mirrors the
+   * project bundle reference shape so both scopes share node identities.
+   */
   private async walkGlobalSkillReferences(
     dir: string,
     skillName: string,
@@ -1646,6 +1935,9 @@ export class BacklinkIndex {
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch (err) {
+      // A missing `references/` dir is the common, expected case — silent.
+      // A real IO failure (EACCES/EIO) silently drops a skill's references
+      // from the graph, so surface it rather than swallowing indistinguishably.
       if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
         console.warn(`[backlinks] Failed to read skill references dir ${dir}:`, err);
       }

@@ -1,3 +1,13 @@
+/**
+ * Unit tests for `openAssetSafely` + `revealAssetSafely`. Covers the
+ * three-check gate (containment / existence / extension blocklist) with
+ * injected deps so no Electron runtime is required.
+ *
+ * Paired with the integration test at
+ * `packages/desktop/tests/integration/asset-open-ipc.test.ts` which exercises
+ * the same handlers through the in-memory IPC bus.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import {
   extractPathExtension,
@@ -7,8 +17,12 @@ import {
 
 const POSIX: NodeJS.Platform = 'linux';
 
+// Stand-in for a real project root. The tests inject `resolveCanonical` +
+// `statExists` so no actual filesystem touches required.
 const PROJECT = '/tmp/ok-test-project';
 
+// Canonical-resolver fake that treats inputs as already-canonical for all
+// paths at or under a configurable set, and throws ENOENT otherwise.
 function makeResolver(existingPaths: string[]): (path: string) => string {
   const set = new Set(existingPaths);
   return (path) => {
@@ -98,11 +112,13 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
 
   test('symlink escape (realpath canonicalizes outside project) → path-escape', async () => {
     const openPath = mock(async (_: string) => '');
+    // Simulate: project has `notes/link.pdf` which is a symlink to /etc/passwd
     const result = await openAssetSafely(
       {
         projectPath: PROJECT,
         platform: POSIX,
         openPath,
+        // realpath resolves the symlink to /etc/passwd — outside project
         resolveCanonical: () => '/etc/passwd',
         statExists: () => true,
       },
@@ -202,6 +218,8 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   });
 
   test('openPath returning non-empty error string → resolve-error', async () => {
+    // shell.openPath returns a non-empty string when the OS handler refuses
+    // the dispatch — e.g. "No application is associated with .foo files"
     const openPath = mock(async (_: string) => 'No handler for .foo');
     const canonical = `${PROJECT}/notes/file.foo`;
     const result = await openAssetSafely(

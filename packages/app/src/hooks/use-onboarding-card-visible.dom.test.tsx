@@ -60,6 +60,8 @@ describe('useOnboardingCardVisible', () => {
     globalThis.fetch = fetchMock as never;
     const store = createOnboardingCardStore(memoryStorage());
     render(<Probe store={store} />);
+    // No host → the probe never runs; nothing can flip activation. Assert it
+    // stayed un-fired (no /api/documents read) rather than waiting a fixed delay.
     await act(async () => {});
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByTestId('visible').textContent).toBe('false');
@@ -84,6 +86,8 @@ describe('useOnboardingCardVisible', () => {
     mockDocuments([]);
     const store = createOnboardingCardStore(memoryStorage());
     render(<Probe store={store} />);
+    // Wait until the probe actually queried recents, flush its decision, then
+    // assert it declined to activate — a deterministic checkpoint, not a delay.
     await waitFor(() => expect(listRecent).toHaveBeenCalled());
     await act(async () => {});
     expect(screen.getByTestId('visible').textContent).toBe('false');
@@ -99,6 +103,8 @@ describe('useOnboardingCardVisible', () => {
     const store = createOnboardingCardStore(memoryStorage());
     store.dismiss();
     render(<Probe store={store} />);
+    // Suppressed stores skip the probe entirely — assert no /api/documents read
+    // (the "skips evaluation" claim) instead of waiting a fixed delay.
     await act(async () => {});
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByTestId('visible').textContent).toBe('false');
@@ -110,6 +116,8 @@ describe('useOnboardingCardVisible', () => {
     const store = createOnboardingCardStore(memoryStorage());
     render(<Probe store={store} />);
     await waitFor(() => expect(screen.getByTestId('visible').textContent).toBe('true'));
+    // First file created → step completes; the store re-renders synchronously and
+    // the card must remain visible (latched) — no arbitrary delay needed.
     act(() => {
       store.markStepComplete('file');
     });
@@ -131,6 +139,9 @@ describe('useOnboardingCardVisible', () => {
   });
 
   test('cancels a pending activation when the probe unmounts mid-flight', async () => {
+    // Stall the recents probe so it is still pending at unmount. The effect
+    // cleanup sets `cancelled`, so a resolution after unmount must NOT activate —
+    // otherwise it would latch a card for a project the user already left.
     let resolveRecents!: (r: Array<{ path: string }>) => void;
     const listRecent = mock(
       () =>
@@ -147,6 +158,8 @@ describe('useOnboardingCardVisible', () => {
     const view = render(<Probe store={store} />);
     await waitFor(() => expect(listRecent).toHaveBeenCalled());
     view.unmount();
+    // Resolve after unmount with a fresh single project that WOULD have activated
+    // had the component stayed mounted.
     await act(async () => {
       resolveRecents([{ path: CURRENT_PATH }]);
     });

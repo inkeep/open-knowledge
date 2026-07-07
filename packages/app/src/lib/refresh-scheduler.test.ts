@@ -97,6 +97,7 @@ describe('createRefreshScheduler', () => {
     first.resolve();
     await setImmediate();
 
+    // Exactly one trailing re-run, and no further cancel for the idle re-run.
     expect(calls).toBe(2);
     expect(cancels).toBe(1);
   });

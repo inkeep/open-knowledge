@@ -12,6 +12,12 @@ describe('ConfigSchema', () => {
   });
 
   test('stale dropped fields pass loose-mode without throwing', () => {
+    // The schema is `z.looseObject` so existing configs carrying removed
+    // keys (sync.*, persistence.*, server.port, plus the recently-removed
+    // either-scope fields whose values now live as constants in core) parse
+    // cleanly; users mid-upgrade aren't broken. The loader emits a
+    // deprecation warn for the recently-removed keys; the codemod
+    // (`ok config migrate`) is the proactive cleanup path.
     const result = ConfigSchema.safeParse({
       sync: { pushIntervalSeconds: 30, autoCommit: true },
       persistence: { debounceMs: 2000 },
@@ -53,6 +59,10 @@ describe('ConfigSchema', () => {
   });
 
   test('content.include and content.exclude pass loose-mode (removed from schema)', () => {
+    // `content.include` / `content.exclude` were removed from `ConfigSchema`;
+    // path rules now live in `.okignore` files. Existing keys parse silently
+    // via `z.looseObject` so existing configs don't crash; the loader's
+    // REMOVED_KEY check rejects them at the YAML layer with a migration hint.
     const result = ConfigSchema.safeParse({
       content: { include: ['**/*.md'], exclude: ['drafts/**'] },
     });
@@ -65,10 +75,30 @@ describe('ConfigSchema', () => {
     });
     expect(config.content.dir).toBe('docs');
   });
+
+  // `preview.*` is no longer a schema section — the preview iframe runs a fixed
+  // open network CSP (not configurable). A stale `preview.scriptSrc` /
+  // `preview.baseUrl` is rejected via REMOVED_KEYS (see core's removed-keys).
+
+  // `folders` was removed from ConfigSchema. Folder defaults
+  // live in nested `<folder>/.ok/frontmatter.yml` files; the FolderRuleSchema
+  // export remains for set_folder_rule's helper shapes, but it no longer
+  // corresponds to a top-level config field.
+  // Loose-mode behavior on unknown top-level keys is covered separately.
 });
 
 describe('ConfigSchema (upload surface removed per 2026-04-24 amendment)', () => {
   test('legacy upload.* keys parse cleanly without throwing', () => {
+    // The `upload.*` user-facing config surface was removed entirely
+    // (zero user-facing upload config; all values are module-level
+    // constants in `@inkeep/open-knowledge-core`). Legacy configs still
+    // carrying any `upload.*` shape parse cleanly because the schema is
+    // `z.looseObject` — unknown keys are preserved on the parsed result
+    // rather than stripped, but they are not consumed by any code that
+    // reads the schema. The `loader.ts` deprecation WARN surfaces them at
+    // load time so users notice the dead config. The input is typed as
+    // `unknown` rather than the Zod-inferred shape because the point of
+    // the test is to exercise legacy-key acceptance.
     const legacyInput: unknown = {
       upload: {
         attachmentFolderPath: 'attachments',

@@ -1,3 +1,22 @@
+/**
+ * `workflow` MCP tool — the procedural-guide primers, dispatched on `kind`.
+ *
+ * Merges the former ingest / research / consolidate / discover tools. Each
+ * returns instructional text (a numbered plan), not data; no server connection
+ * is needed (discover's Phase 5 link-graph step checks for Hocuspocus itself).
+ *
+ * Per-`kind` payload:
+ *   - `ingest`      → `source` (required): a URL / file / identifier to capture.
+ *   - `research`    → `topic`  (required): the question/topic to investigate.
+ *   - `consolidate` → `topic`  (required): the topic to fold into a canonical doc.
+ *   - `discover`    → (none): extract conventions from an existing repo.
+ *   - `wiki`        → (none): generate / refresh a source-grounded wiki of this
+ *     codebase (the `codebase-wiki` pack); audience/depth read from the request.
+ *
+ * `discover` and `wiki` interpolate the resolved `content.dir` into their guide
+ * (the others are constants); a missing required arg returns a per-`kind`
+ * teaching error.
+ */
 import { z } from 'zod';
 import { buildConsolidateBody } from './consolidate-body.ts';
 import { buildDiscoverBody } from './discover-body.ts';
@@ -32,6 +51,8 @@ export const DESCRIPTION = [
 ].join('\n');
 
 export function register(server: ServerInstance, deps: WorkflowToolDeps): void {
+  // Reuse the workflow-handler frame machinery (orientation block + previewUrl:
+  // null) for the three Karpathy-layer kinds; each reads its own arg name.
   const ingest = buildWorkflowHandler('ingest', deps, 'source', buildIngestBody);
   const research = buildWorkflowHandler('research', deps, 'topic', buildResearchBody);
   const consolidate = buildWorkflowHandler('consolidate', deps, 'topic', buildConsolidateBody);
@@ -101,6 +122,9 @@ export function register(server: ServerInstance, deps: WorkflowToolDeps): void {
           });
         }
         case 'wiki': {
+          // No-arg kind — mirrors discover's ad-hoc resolve + textPlusStructured
+          // pattern (it doesn't use the buildWorkflowHandler factory; the factory
+          // serves the three arg-bearing Karpathy kinds — see shared.ts).
           const context = await resolveProjectConfigContext(deps.resolveCwd, deps.config, args.cwd);
           if (!context.ok) return textResult(`Error: ${context.error}`, true);
           return textPlusStructured(buildWikiBody(context.config.content.dir), {

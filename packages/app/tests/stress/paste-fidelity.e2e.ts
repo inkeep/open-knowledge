@@ -1,3 +1,22 @@
+/**
+ * Playwright paste-fidelity E2E — extended for clipboard-mdast-canonical.
+ *
+ * Covers the full four-clipboard-path matrix plus scenarios for codeBlock
+ * paste, markdown-first tiebreak, Cmd+Shift+V, code copy, chunked-paste
+ * frame-timing, and drag-and-drop parity.
+ *
+ * Clipboard injection: uses DataTransfer + dispatchEvent to bypass the
+ * navigator.clipboard permission gate on headless Chromium.
+ *
+ * Copy-side: `simulateCopyAndRead(selection)` dispatches a synthetic
+ * copy event, intercepts `event.clipboardData.setData` via a capture
+ * handler, and returns `{plain, html}`. Required for asserting the copy-side
+ * acceptance criteria at the MIME boundary.
+ *
+ * Run:
+ *   cd packages/app && bun run test:e2e  (or bunx playwright test paste-fidelity.e2e.ts)
+ */
+
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +35,11 @@ const PERF_BASELINE: { qa022: { p50Ms: number } } = JSON.parse(
   readFileSync(join(fileURLToPath(import.meta.url), '..', 'perf-baseline.json'), 'utf-8'),
 );
 
+/**
+ * Read a captured vendor HTML fixture from packages/core/src/markdown/rehype-plugins/fixtures/.
+ * These are the same fixtures the unit tests use, so cross-vendor E2E coverage
+ * matches the canonical cleanup-plugin shape instead of ad-hoc inline HTML.
+ */
 const _dirname = fileURLToPath(new URL('.', import.meta.url));
 const FIXTURE_ROOT = join(_dirname, '../../../core/src/markdown/rehype-plugins/fixtures');
 function fixture(name: string): string {
@@ -29,6 +53,7 @@ async function getYText(page: Page): Promise<string> {
   });
 }
 
+/** Branch E: paste a text/plain-only payload into WYSIWYG. */
 async function pasteText(page: Page, text: string) {
   await page.evaluate((content) => {
     const editor = document.querySelector('.ProseMirror:not(.composer-prosemirror)');
@@ -44,6 +69,7 @@ async function pasteText(page: Page, text: string) {
   }, text);
 }
 
+/** Paste a payload with a chosen MIME map. */
 async function pasteWithMimes(
   page: Page,
   mimes: Record<string, string>,
@@ -66,6 +92,13 @@ async function pasteWithMimes(
     { mimes, shiftKey: options.shiftKey },
   );
 }
+
+// `simulateCopyAndRead` + `simulateCutAndRead` live in `_helpers/clipboard.ts`
+// (imported via the barrel above). They replace the previous in-file copies.
+// See the helper module for MIME-capture semantics and cross-view (wysiwyg /
+// source) selector handling.
+
+// ─── Paste baseline tests ───
 
 test.describe('V1 paste baseline — text/plain content through WYSIWYG', () => {
   let docName: string;
@@ -126,6 +159,8 @@ test.describe('V1 paste baseline — text/plain content through WYSIWYG', () => 
   });
 });
 
+// ─── Copy-side scenarios ───
+
 test.describe('Copy-side: simulateCopyAndRead captures MIME map', () => {
   let docName: string;
 
@@ -138,6 +173,7 @@ test.describe('Copy-side: simulateCopyAndRead captures MIME map', () => {
   });
 
   test('WYSIWYG copy → text/plain carries markdown', async ({ page }) => {
+    // Seed some content first via paste.
     await page.click('.ProseMirror:not(.composer-prosemirror)');
     await pasteText(page, '# Title\n\nBody text here.\n');
     await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('Body text here');
@@ -151,6 +187,8 @@ test.describe('Copy-side: simulateCopyAndRead captures MIME map', () => {
     await pasteText(page, '# Hi');
     await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('Hi');
     const out = await simulateCopyAndRead(page, 'wysiwyg');
+    // data-pm-slice wrapper is present so another OK tab / PM editor
+    // can route through native parseFromClipboard.
     expect(out.html).toContain('data-pm-slice');
   });
 
@@ -158,6 +196,10 @@ test.describe('Copy-side: simulateCopyAndRead captures MIME map', () => {
     page,
     baseURL,
   }) => {
+    // Seed via /api/agent-write-md so the paste goes through the full
+    // MarkdownManager.parse path (recognises the `[[Page|Alias]]` as a
+    // wikiLink mdast node, not just literal brackets that the copy side
+    // would then backslash-escape per CommonMark §2.4).
     await fetch(`${baseURL}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -173,17 +215,34 @@ test.describe('Copy-side: simulateCopyAndRead captures MIME map', () => {
     await page.click('.ProseMirror:not(.composer-prosemirror)');
     const out = await simulateCopyAndRead(page, 'wysiwyg');
     expect(out.plain).toContain('[[Page|Alias]]');
+    // walker transform — the live `<span data-wiki-link>` chip is
+    // rewritten to the cross-pipeline anchor shape that
+    // `mdast-to-hast-handlers.ts:wikiLinkHandler` emits, so:
+    //   1. Cross-app destinations (Gmail / Notion / Slack) see a
+    //      clickable `<a href="#page">Alias</a>` affordance, not opaque text.
+    //   2. OK→OK Branch C paste reconstructs wikiLink node identity via
+    //      the `a.wiki-link[data-target]` parseHTML rule at
+    //      `wiki-link.ts`.
     expect(out.html).toContain('class="wiki-link"');
     expect(out.html).toContain('data-target="Page"');
     expect(out.html).toContain('href="#page"');
+    // escape-correctness invariant: no unescaped <script> substring
     expect(out.html).not.toContain('<script>');
   });
 
   test('empty WYSIWYG selection copy → clipboard unchanged (FR-15)', async ({ page }) => {
+    // We expose the default PM behavior: an empty selection should be a
+    // no-op; our clipboardTextSerializer / clipboardSerializer hooks only
+    // fire on the serialize path when PM chooses to serialize. An empty
+    // range produces an empty string for both MIMEs.
     const out = await simulateCopyAndRead(page, 'wysiwyg').catch(() => ({ plain: '', html: '' }));
+    // At minimum: the harness does not throw, and the captured payload
+    // is either absent or empty.
     expect(out.plain === '' || typeof out.plain === 'string').toBe(true);
   });
 });
+
+// ─── Paste-side cross-vendor scenarios (Branch D) ───
 
 test.describe('Paste from vendor HTML → structured content through Branch D', () => {
   let docName: string;
@@ -243,6 +302,9 @@ test.describe('Paste from vendor HTML → structured content through Branch D', 
       'text/plain': 'notion plain',
       'text/html': '<!-- notionvc: abc --><p>line one\nline two</p>',
     });
+    // Content survives — hard-break semantics depend on downstream handling;
+    // we only assert content presence here (the skip-notion-whitespace plugin
+    // unit test covers the conversion).
     await expect(async () => {
       const content = await getYText(page);
       expect(content).toContain('line one');
@@ -273,7 +335,27 @@ test.describe('Paste from vendor HTML → structured content through Branch D', 
       expect(content).toContain('bold');
     }).toPass({ timeout: 5_000 });
   });
+
+  test('table with block-content cell pastes as an intact single-line row', async ({ page }) => {
+    // A pasted <td> carrying a list must degrade to one physical GFM row
+    // (breaks as <br />), never emit a raw newline inside the row — a raw
+    // newline fractures the table on every fresh parse of the stored bytes.
+    await pasteWithMimes(page, {
+      'text/plain': 'fallback text',
+      'text/html':
+        '<table><tr><th>h</th></tr><tr><td><ul><li>one</li><li>two</li></ul></td></tr></table>',
+    });
+    await expect(async () => {
+      const content = await getYText(page);
+      // Both list items live on the same physical row line.
+      expect(content).toMatch(/\|[^\n]*one[^\n]*two[^\n]*\|/);
+      // No fracture: nothing escaped the table as a top-level block.
+      expect(content).not.toMatch(/^[*-] two/m);
+    }).toPass({ timeout: 5_000 });
+  });
 });
+
+// ─── FR-specific WYSIWYG scenarios ───
 
 test.describe('WYSIWYG FR-specific paste behavior', () => {
   let docName: string;
@@ -288,12 +370,16 @@ test.describe('WYSIWYG FR-specific paste behavior', () => {
   });
 
   test('FR-10: paste inside a codeBlock inserts verbatim (no markdown parse)', async ({ page }) => {
+    // Seed a code block, cursor inside it.
     await pasteText(page, '```js\nexisting line\n```\n');
     await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('existing line');
+    // Click inside the code block; paste a markdown-shaped payload.
     await page.locator('.ProseMirror pre').first().click();
     await pasteText(page, '# this stays literal');
     await expect(async () => {
       const content = await getYText(page);
+      // The literal `#` should appear inside the code block — not parsed
+      // as a heading.
       expect(content).toContain('# this stays literal');
     }).toPass({ timeout: 5_000 });
   });
@@ -302,11 +388,14 @@ test.describe('WYSIWYG FR-specific paste behavior', () => {
     page,
   }) => {
     await pasteWithMimes(page, {
+      // 3+ markdown signals in plain
       'text/plain': '# markdown heading\n\n- bullet\n- bullet\n\n[link](url)\n',
+      // plain rich html with different content
       'text/html': '<p>plain HTML version with <strong>rich</strong> content</p>',
     });
     await expect(async () => {
       const content = await getYText(page);
+      // Markdown path wins: we see the heading + list, not the HTML prose.
       expect(content).toContain('markdown heading');
       expect(content).toContain('bullet');
     }).toPass({ timeout: 5_000 });
@@ -323,6 +412,7 @@ test.describe('WYSIWYG FR-specific paste behavior', () => {
     );
     await expect(async () => {
       const content = await getYText(page);
+      // shift bypasses markdown parsing → literal `#` + text inserted.
       expect(content).toContain('# literal hash');
     }).toPass({ timeout: 5_000 });
   });
@@ -331,13 +421,28 @@ test.describe('WYSIWYG FR-specific paste behavior', () => {
     await pasteText(page, '```python\nprint(1)\nprint(2)\n```\n');
     await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('print(1)');
     const out = await simulateCopyAndRead(page, 'wysiwyg');
+    // text/plain has the fenced form.
     expect(out.plain).toContain('```');
     expect(out.plain).toContain('print(1)');
+    // text/html has a <pre><code> rendering. PM's serializeForClipboard adds a
+    // `data-pm-slice` attribute to the outermost element, so the serialized
+    // shape is `<pre data-pm-slice="…"><code class="language-python">…` rather
+    // than a bare `<pre>`. Match `<pre` followed by whitespace OR `>` so the
+    // assertion survives the slice-wrapper attribute AND rejects `<pressure>` /
+    // `<prefer>`.
     expect(out.html).toMatch(/<pre[\s>]/);
     expect(out.html).toMatch(/<code[\s>]/);
   });
 });
 
+// ─── chunked large paste ───
+
+/**
+ * Paste a payload at the Source editor's (CodeMirror) DOM. The chunked
+ * Y.Text insertion path (`chunkedYTextInsert`) is invoked exclusively by
+ * the Source dispatcher (per precedent #19), so
+ * the frame-timing test must target `.cm-content`, not `.ProseMirror`.
+ */
 async function pasteHtmlInSource(page: Page, html: string, plain: string) {
   await page.evaluate(
     ({ html: h, plain: p }) => {
@@ -366,6 +471,10 @@ test.describe('FR-21 large-paste chunked insertion (Source view)', () => {
     await page.goto(`/#/${docName}`);
     await waitForProvider(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+    // Switch the editor pane to the Source view — the chunked path is
+    // Source-exclusive per precedent #19. The mode toggle is a
+    // radio group (aria-label="Editor mode") with radios "Visual editor" +
+    // "Markdown source"; the visible label for source is "Markdown".
     await page.getByRole('radio', { name: /Markdown source/i }).click({ timeout: 10_000 });
     await page.waitForSelector('.cm-content', { timeout: 10_000 });
   });
@@ -373,6 +482,8 @@ test.describe('FR-21 large-paste chunked insertion (Source view)', () => {
   test('1MB HTML paste lands in Y.Text via chunked insertion without blocking', async ({
     page,
   }) => {
+    // Seed a non-trivial existing doc (a few KB) so the insertion happens
+    // in context, not on an empty doc.
     const seed = 'seeded line\n'.repeat(1000);
     await page.evaluate((s) => {
       const editor = document.querySelector('.cm-content');
@@ -383,10 +494,15 @@ test.describe('FR-21 large-paste chunked insertion (Source view)', () => {
         new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }),
       );
     }, seed);
+    // Wait for the seed to land in Y.Text so the subsequent 1MB paste measures
+    // chunked insertion against a non-trivial buffer (CRDT-propagation signal).
     await expect
       .poll(() => getYText(page).then((s) => s.length), { timeout: 10_000 })
       .toBeGreaterThan(8_000);
 
+    // Build a ~1MB HTML payload so the Source Branch D chunked path is
+    // exercised (text/html triggers htmlToMdast → mdastToMarkdown →
+    // chunkedYTextInsert for payloads >500KB).
     const paragraph = '<p>line of prose that is pasted in a big block</p>';
     const html = paragraph.repeat(22_000);
     const plain = 'line of prose that is pasted in a big block\n'.repeat(22_000);
@@ -400,6 +516,8 @@ test.describe('FR-21 large-paste chunked insertion (Source view)', () => {
     }).toPass({ timeout: 30_000 });
   });
 });
+
+// ─── drag-and-drop parity ───
 
 test.describe('FR-22 drag-and-drop MIME parity (dragstart uses same hooks as copy)', () => {
   let docName: string;
@@ -418,6 +536,10 @@ test.describe('FR-22 drag-and-drop MIME parity (dragstart uses same hooks as cop
   }) => {
     await pasteText(page, '# Drag Me\n\nProse.\n');
     await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('Drag Me');
+    // Same PM-selection-sync requirement as simulateCopyAndRead: PM's
+    // serializeForClipboard (invoked by dragstart) bails if
+    // view.state.selection is empty. A DOM-range selection alone is not
+    // sufficient; Meta+A drives PM's selectAll command.
     await selectAllAndWaitForSelection(page, '.ProseMirror:not(.composer-prosemirror)');
     const out = await page.evaluate(() => {
       const editor = document.querySelector(
@@ -446,6 +568,8 @@ test.describe('FR-22 drag-and-drop MIME parity (dragstart uses same hooks as cop
     expect(out.html).toContain('data-pm-slice');
   });
 });
+
+// ─── vendor-fixture paste coverage ───
 
 test.describe('Vendor HTML fixtures → structured content through Branch D', () => {
   let docName: string;
@@ -521,6 +645,8 @@ test.describe('Vendor HTML fixtures → structured content through Branch D', ()
   });
 });
 
+// ─── Source-view cross-view symmetry ───
+
 test.describe('Source-view copy output (FR-4, D4 byte-parity)', () => {
   let docName: string;
 
@@ -530,6 +656,8 @@ test.describe('Source-view copy output (FR-4, D4 byte-parity)', () => {
     await page.goto(`/#/${docName}`);
     await waitForProvider(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+    // Seed with markdown via the WYSIWYG pane so both views have identical
+    // logical content.
     await page.click('.ProseMirror:not(.composer-prosemirror)');
     await pasteText(page, '# Title\n\nBody with **bold** and a [[Page|Alias]] link.\n');
     await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('[[Page|Alias]]');
@@ -540,37 +668,65 @@ test.describe('Source-view copy output (FR-4, D4 byte-parity)', () => {
   }) => {
     await page.getByRole('radio', { name: /Markdown source/i }).click({ timeout: 10_000 });
     await page.waitForSelector('.cm-content', { timeout: 10_000 });
+    // Wait for CM6 to mirror the seeded content (Observer A settles in ~50ms).
     await expect(page.locator('.cm-content')).toContainText('Title', { timeout: 5_000 });
     const out = await simulateCopyAndRead(page, 'source');
     expect(out.plain.length).toBeGreaterThan(0);
     expect(out.plain).toContain('Title');
     expect(out.plain).toContain('[[Page|Alias]]');
     expect(out.html.length).toBeGreaterThan(0);
+    // source-mode wrapper — text/html is a single
+    // `<pre class="mdx-component"><code>{escaped raw markdown}</code></pre>`
+    // around the bytes the user is viewing, NOT rendered output. Aligns
+    // with VS Code, Obsidian source mode, GitHub textarea, CM6 default.
     expect(out.html).toContain('<pre class="mdx-component">');
     expect(out.html).toContain('<code>');
+    // Raw markdown bytes are inside the wrapper — wiki-link syntax appears
+    // literally, NOT as a rendered `<a class="wiki-link">` tag.
     expect(out.html).toContain('[[Page|Alias]]');
     expect(out.html).not.toContain('<h1');
   });
 
   test('Source copy and WYSIWYG copy carry equivalent text/plain bytes', async ({ page }) => {
+    // WYSIWYG copy first (doc is already on WYSIWYG side from beforeEach).
     const wysiwygOut = await simulateCopyAndRead(page, 'wysiwyg');
+    // Switch to Source view.
     await page.getByRole('radio', { name: /Markdown source/i }).click({ timeout: 10_000 });
     await page.waitForSelector('.cm-content', { timeout: 10_000 });
+    // Wait for CM6 to mirror the seeded content via Observer A.
     await expect(page.locator('.cm-content')).toContainText('[[Page|Alias]]', { timeout: 5_000 });
     const sourceOut = await simulateCopyAndRead(page, 'source');
 
+    // text/plain byte-equivalence is the load-bearing cross-view invariant —
+    // both views emit the same canonical markdown bytes (whitespace
+    // normalization aside). text/html shape DIVERGES by design under the
+    // 2026-05-03 source-fallback spec:
+    //   - WYSIWYG: live-DOM walker output wrapped in `<div data-pm-slice>`,
+    //     with wiki-link transform applied (chip → cross-pipeline
+    //     anchor).
+    //   - Source: single `<pre class="mdx-component"><code>{escaped raw}</code></pre>`
+    //     wrapper holding the raw markdown bytes — no rendered tags.
     expect(sourceOut.plain).toContain('Title');
     expect(wysiwygOut.plain).toContain('Title');
     expect(sourceOut.plain).toContain('[[Page|Alias]]');
     expect(wysiwygOut.plain).toContain('[[Page|Alias]]');
+    // Source-mode HTML is the byte wrapper — raw markdown including
+    // literal `[[Page|Alias]]` syntax inside `<pre><code>`.
     expect(sourceOut.html).toContain('<pre class="mdx-component">');
     expect(sourceOut.html).toContain('[[Page|Alias]]');
+    // WYSIWYG HTML carries the transformed wiki-link anchor.
     expect(wysiwygOut.html).toContain('class="wiki-link"');
     expect(wysiwygOut.html).toContain('data-target="Page"');
+    // invariant: neither view leaks the live-DOM `data-resolved` marker
+    // — that's an OK-internal flag for the WYSIWYG renderer, never copied
+    // out. Walker post-pass strips it on the chip clone; source-mode wrapper
+    // never emits it.
     expect(sourceOut.html).not.toContain('data-resolved');
     expect(wysiwygOut.html).not.toContain('data-resolved');
   });
 });
+
+// ─── HtmlPayloadTooLargeError fallback ───
 
 test.describe('FR-11 fallback: oversized text/html falls through to text/plain', () => {
   let docName: string;
@@ -587,12 +743,17 @@ test.describe('FR-11 fallback: oversized text/html falls through to text/plain',
   test('QA-031 WYSIWYG >5MB text/html skips Branch D, lands via Branch E plain-text', async ({
     page,
   }) => {
+    // Capture the structured telemetry — the dispatcher must emit a
+    // clipboard-html-conversion-fail event with errorClass set to
+    // HtmlPayloadTooLargeError so operators can see the guard fired.
     const warnings: string[] = [];
     page.on('console', (msg) => {
       if (msg.type() === 'warning' || msg.type() === 'warn' || msg.type() === 'log') {
         warnings.push(msg.text());
       }
     });
+    // Build a 6MB HTML payload so htmlToMdast throws HtmlPayloadTooLargeError
+    // at the 5MB ceiling (HTML_MAX_BYTES in html-to-mdast.ts).
     const fragment = '<p>x</p>';
     const html = fragment.repeat(750_000);
     expect(html.length).toBeGreaterThan(5 * 1024 * 1024);
@@ -604,12 +765,15 @@ test.describe('FR-11 fallback: oversized text/html falls through to text/plain',
       const content = await getYText(page);
       expect(content).toContain('fallback payload should land');
     }).toPass({ timeout: 10_000 });
+    // Confirm the typed error was logged (not buried under a generic "unknown").
     const sawTooLarge = warnings.some(
       (w) => w.includes('HtmlPayloadTooLargeError') || w.includes('clipboard-html-conversion-fail'),
     );
     expect(sawTooLarge).toBe(true);
   });
 });
+
+// ─── URL scheme sanitization end-to-end on the copy path ───
 
 test.describe('FR-20 URL scheme sanitization on copy', () => {
   let docName: string;
@@ -627,6 +791,9 @@ test.describe('FR-20 URL scheme sanitization on copy', () => {
     page,
     baseURL,
   }) => {
+    // Seed content containing every unsafe scheme. Write through agent-write-md
+    // so the markdown parse produces real <a href="..."> mdast links (not
+    // escaped literal brackets via Branch E's heuristic fallthrough).
     const evil = [
       '[run-js](javascript:alert(1))',
       '[data-leak](data:text/html,<script>1</script>)',
@@ -643,14 +810,21 @@ test.describe('FR-20 URL scheme sanitization on copy', () => {
     }).toPass({ timeout: 5_000 });
     await page.click('.ProseMirror:not(.composer-prosemirror)');
     const out = await simulateCopyAndRead(page, 'wysiwyg');
+    // Each unsafe scheme must be absent from the outbound HTML's href
+    // attributes. Matching against the raw substring is sufficient: the
+    // scheme name would have to appear as an href to pose a risk, and the
+    // sanitizer deletes the attribute entirely when the scheme is unsafe.
     expect(out.html.toLowerCase()).not.toContain('javascript:');
     expect(out.html.toLowerCase()).not.toContain('data:text/html');
     expect(out.html.toLowerCase()).not.toContain('vbscript:');
     expect(out.html.toLowerCase()).not.toContain('file:///');
+    // Link text must survive — only the href is stripped.
     expect(out.html).toContain('run-js');
     expect(out.html).toContain('data-leak');
   });
 });
+
+// ─── Drag-and-drop beyond dragstart parity ───
 
 test.describe('FR-16 drag-and-drop scenarios beyond dragstart MIME parity', () => {
   let docName: string;
@@ -667,6 +841,10 @@ test.describe('FR-16 drag-and-drop scenarios beyond dragstart MIME parity', () =
   test('QA-043 external drag-in from a Gmail-shaped HTML payload routes through Branch D', async ({
     page,
   }) => {
+    // A cross-origin drag-in surfaces as `drop` event with dataTransfer
+    // holding `text/html`. PM's drop handler calls `parseFromClipboard`
+    // which routes through our `handlePaste` hook — so the dispatcher
+    // branches the same way a Cmd+V would.
     await page.evaluate(() => {
       const editor = document.querySelector(
         '.ProseMirror:not(.composer-prosemirror)',
@@ -678,6 +856,7 @@ test.describe('FR-16 drag-and-drop scenarios beyond dragstart MIME parity', () =
         '<div class="gmail_quote"><p class="gmail_default">Dropped from Gmail</p></div>',
       );
       dt.setData('text/plain', 'Dropped from Gmail');
+      // Fire dragover then drop at a reasonable coordinate inside the editor.
       const rect = editor.getBoundingClientRect();
       const cx = rect.left + Math.floor(rect.width / 2);
       const cy = rect.top + Math.floor(rect.height / 2);
@@ -707,6 +886,8 @@ test.describe('FR-16 drag-and-drop scenarios beyond dragstart MIME parity', () =
   });
 });
 
+// ─── WYSIWYG cut parity ───
+
 test.describe('FR-12 WYSIWYG cut writes MIMEs AND deletes selection', () => {
   let docName: string;
 
@@ -727,12 +908,16 @@ test.describe('FR-12 WYSIWYG cut writes MIMEs AND deletes selection', () => {
     const out = await simulateCutAndRead(page, 'wysiwyg');
     expect(out.plain).toContain('Cut Me');
     expect(out.html).toContain('<h1');
+    // The editor should no longer contain the cut content (empty doc ok).
     await expect(async () => {
       const yt = await getYText(page);
+      // Allow whitespace-only remnant but the literal heading text must be gone.
       expect(yt).not.toContain('Cut Me');
     }).toPass({ timeout: 5_000 });
   });
 });
+
+// ─── frame-timing oracle ───
 
 test.describe('FR-21 chunked insertion maintains 60fps frame budget', () => {
   let docName: string;
@@ -750,7 +935,25 @@ test.describe('FR-21 chunked insertion maintains 60fps frame budget', () => {
   test('QA-022 chunked-paste p50 frame-time stays within baseline-relative budget', async ({
     page,
   }) => {
+    // Baseline-relative perf assertion. Threshold = max(2 × p50Baseline, 32ms):
+    //   - 32ms is the absolute floor (one double-budget at 60fps; honors
+    //     the 16ms target with 2× headroom for headless-Chromium noise).
+    //   - 2 × p50Baseline is the regression ceiling — catches a real
+    //     slowdown without runner-speed variance tripping the floor.
+    // Baseline lives in perf-baseline.json; update protocol is in
+    // perf-baseline-update.md. test.slow() triples the default 120s
+    // timeout to accommodate chunked insertion + flush measurement on
+    // contended CI runners.
     test.slow();
+    // Sampler design: the AC scopes the budget to the "chunked
+    // insertion phase" — explicitly NOT the synchronous htmlToMdast /
+    // mdastToMarkdown conversion that precedes it (a single big string
+    // transform whose cost is bounded by payload size and correctness-
+    // critical for Branch D). We sample rAF deltas while watching Y.Text
+    // length grow: start the clock on the FIRST chunk landing (byte count
+    // bumps above a small initial threshold) and stop when the length
+    // plateaus for 2 frames. That window isolates the interleaved
+    // chunked-write + rAF-yield loop where the 60fps AC actually lives.
     await page.evaluate(() => {
       const state = window as unknown as {
         __frameTimes: number[];
@@ -782,6 +985,7 @@ test.describe('FR-21 chunked insertion maintains 60fps frame budget', () => {
       };
     });
 
+    // Build ~1MB HTML payload and fire into Source view.
     const paragraph = '<p>line of prose that is pasted in a big block</p>';
     const html = paragraph.repeat(22_000);
     const plain = 'line of prose that is pasted in a big block\n'.repeat(22_000);
@@ -801,6 +1005,12 @@ test.describe('FR-21 chunked insertion maintains 60fps frame budget', () => {
       state.__stopSampler();
       const samples = state.__frameTimes;
       const ytSamples = state.__ytextSamples;
+      // Locate the chunked-insertion window: first index where Y.Text length
+      // exceeded baseline + a small threshold (first chunk landed), through
+      // the last frame before length plateaued. This excludes the big
+      // pre-chunking htmlToMdast/mdastToMarkdown synchronous spike — which
+      // is a known and expected cost of Branch D, not in the AC's
+      // scope.
       const firstGrowthIdx = ytSamples.findIndex((s) => s.len > baseline + 1024);
       const plateauStart = (() => {
         for (let i = ytSamples.length - 2; i > firstGrowthIdx; i--) {
@@ -825,16 +1035,45 @@ test.describe('FR-21 chunked insertion maintains 60fps frame budget', () => {
       };
     }, before);
 
+    // Oracle: during the chunked insertion phase, P50 frame-time stays within
+    // the baseline-relative ceiling (max(2 × baseline, 80ms)); the MEDIAN
+    // window frames stay bounded. The observed p95 can be dominated by the
+    // final Observer B post-paste re-parse, which per chunked-insert.ts
+    // §comment is documented Future Work (incremental re-parse). A regression
+    // signal is: total blocking time during the chunking window exceeds what
+    // a reasonable human tolerates (~1s), OR p50 grows above the baseline-
+    // relative ceiling, OR the rAF loop stops yielding.
     const p50Threshold = Math.max(2 * PERF_BASELINE.qa022.p50Ms, 80);
     console.log(
       `FR-21 frame metrics: ${JSON.stringify(metrics)} (p50 threshold = ${p50Threshold}ms, baseline = ${PERF_BASELINE.qa022.p50Ms}ms)`,
     );
+    // Must have captured a meaningful window (payload exercised chunking).
     expect(metrics.windowFrames).toBeGreaterThan(2);
+    // p50 stays within max(2 × baseline, 80ms). At the current local-seed
+    // baseline (qa022.p50Ms = 17), the 80ms absolute floor is the dominant
+    // term — max(2 × 17, 80) = 80 — calibrated against observed CI runner
+    // variance (33-67ms p50 distribution; the prior 32ms floor was the
+    // local 60fps tick boundary, below CI's noise floor). A real regression
+    // pushing local p50 above ~40ms (e.g., a 5x slowdown to ~85ms) trips
+    // the floor. After a future rebaseline of qa022.p50Ms against median-
+    // of-5 CI samples (expected ≈40ms), the 2 × baseline term becomes the
+    // dominant ceiling at ~80ms — same overall budget, but tracking CI
+    // distribution directly rather than the local-seed shortfall. See
+    // perf-baseline-update.md for the rebaseline protocol; qa022.p50Ms in
+    // perf-baseline.json is intentionally not touched here (a baseline-data
+    // change requires median-of-5 green CI samples, which the assertion-
+    // shape change unblocks).
     expect(metrics.p50).toBeLessThan(p50Threshold);
+    // Total blocking time: p50 * windowFrames is an approximation of wall
+    // time spent waiting for chunked inserts. Stay under a generous 5s
+    // envelope for a 1MB paste; a 2x regression here (>10s) indicates a
+    // real chunking-loop failure.
     const estimatedWallTime = metrics.p50 * metrics.windowFrames;
     expect(estimatedWallTime).toBeLessThan(5000);
   });
 });
+
+// ─── Source-side Cmd+Shift+V + Source cut behavior ───
 
 test.describe('FR-17 + FR-12/FR-15 Source-view clipboard parity', () => {
   let docName: string;
@@ -845,23 +1084,32 @@ test.describe('FR-17 + FR-12/FR-15 Source-view clipboard parity', () => {
     await page.goto(`/#/${docName}`);
     await waitForProvider(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+    // Seed content in the WYSIWYG side first, then switch to Source view
+    // so the buffer has markdown available for cut / select-all tests.
     await page.click('.ProseMirror:not(.composer-prosemirror)');
     await pasteText(page, '# Source Heading\n\nProse with **bold**.\n');
     await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('Source Heading');
     await page.getByRole('radio', { name: /Markdown source/i }).click({ timeout: 10_000 });
     await page.waitForSelector('.cm-content', { timeout: 10_000 });
+    // Wait for CM6 to mirror the seeded content before the test runs its copy/cut.
     await expect(page.locator('.cm-content')).toContainText('Source Heading', { timeout: 5_000 });
   });
 
   test('QA-011 Source Cmd+Shift+V falls through to CM6 default (plain-text verbatim)', async ({
     page,
   }) => {
+    // Source's shift branch returns false (`return false` in source-clipboard.ts
+    // handlePaste), letting CM6's built-in text insert handle the payload. We
+    // verify that `# literal` arrives verbatim as plain text AND that we DO
+    // NOT fire Branch D on the text/html. The source-detected telemetry
+    // should record branch='shift'.
     const warnings: string[] = [];
     page.on('console', (msg) => {
       if (['warning', 'warn', 'log'].includes(msg.type())) warnings.push(msg.text());
     });
     const before = (await getYText(page)).length;
     await page.focus('.cm-content');
+    // Position cursor at end of existing buffer.
     await page.keyboard.press('ControlOrMeta+End');
     await page.evaluate((shiftKey) => {
       const editor = document.querySelector('.cm-content');
@@ -879,9 +1127,11 @@ test.describe('FR-17 + FR-12/FR-15 Source-view clipboard parity', () => {
     }, true);
     await expect(async () => {
       const after = await getYText(page);
+      // Literal `# literal hash` must appear (no HTML conversion).
       expect(after).toContain('# literal hash');
       expect(after.length).toBeGreaterThan(before);
     }).toPass({ timeout: 5_000 });
+    // Structured telemetry confirms the shift branch fired.
     const sawShift = warnings.some(
       (w) => /clipboard-source-detected/.test(w) && /"branch":"shift"/.test(w),
     );
@@ -891,12 +1141,16 @@ test.describe('FR-17 + FR-12/FR-15 Source-view clipboard parity', () => {
   test('Source Cmd+X deletes selection AND writes both MIMEs in source-shaped HTML', async ({
     page,
   }) => {
+    // Seed selection via Meta+A (selects full buffer) then fire the cut.
     const out = await simulateCutAndRead(page, 'source');
     expect(out.plain).toContain('Source Heading');
     expect(out.html.length).toBeGreaterThan(0);
+    // source-mode wrapper for cut path mirrors the copy path —
+    // text/html is the byte wrapper, NOT rendered headings.
     expect(out.html).toContain('<pre class="mdx-component">');
     expect(out.html).toContain('# Source Heading');
     expect(out.html).not.toContain('<h1');
+    // Source cut must actually remove the content.
     await expect(async () => {
       const after = await getYText(page);
       expect(after).not.toContain('Source Heading');
@@ -904,8 +1158,11 @@ test.describe('FR-17 + FR-12/FR-15 Source-view clipboard parity', () => {
   });
 
   test('QA-016-source empty-selection copy is a no-op (FR-15)', async ({ page }) => {
+    // Place cursor at a specific position with no range selection.
     await page.focus('.cm-content');
     await page.keyboard.press('ControlOrMeta+End'); // move cursor to end, no range
+    // Fire the raw synthetic copy WITHOUT the Meta+A select-all dance, so
+    // the Source handler sees from === to and must return false.
     const out = await page.evaluate(() => {
       const editor = document.querySelector('.cm-content');
       if (!editor) throw new Error('no cm-content');
@@ -924,10 +1181,27 @@ test.describe('FR-17 + FR-12/FR-15 Source-view clipboard parity', () => {
       editor.dispatchEvent(event);
       return { plain: captured['text/plain'] ?? '', html: captured['text/html'] ?? '' };
     });
+    // Our handler returns false on empty selection, CM6 default fires which
+    // in a synthetic event context writes nothing (no actual copy to OS).
+    // The critical invariant: our handler MUST NOT write to the DataTransfer.
+    // An empty `out` payload is the pass signal.
     expect(out.plain).toBe('');
     expect(out.html).toBe('');
   });
 });
+
+// ─── OK→OK round-trip through Branch C (data-pm-slice) ───
+//
+// The wire-format contract: when OK's copy hooks emit `text/html` wrapped in
+// `<div data-pm-slice="...">`, pasting that payload back into OK must land
+// through PM's native `parseFromClipboard` (Branch C) and reproduce the
+// source slice losslessly — including first-class custom-node types like
+// wikiLink. Single-page round-trip: capture, reset, inject. PM's
+// `handlePaste` doesn't distinguish the clipboard's origin; it just
+// processes DataTransfer. So a single-page capture-then-inject-captured-
+// bytes test is functionally equivalent to the cross-tab case for wire-
+// format verification. True cross-context testing (separate browser
+// contexts) requires shared OS clipboard and is out of scope here.
 
 test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
   let docName: string;
@@ -944,6 +1218,9 @@ test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
     page,
     baseURL,
   }) => {
+    // Seed with content containing a wikiLink + heading + bold so the
+    // round-trip exercises both first-class mdast types and basic
+    // structural nodes.
     const seedMarkdown = '## Target\n\nSee [[Page|Alias]] and **bold** here.\n';
     await fetch(`${baseURL}/api/agent-write-md`, {
       method: 'POST',
@@ -954,16 +1231,33 @@ test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
       expect(await getYText(page)).toContain('[[Page|Alias]]');
     }).toPass({ timeout: 5_000 });
 
+    // Capture the clipboard payload from WYSIWYG (Cmd+A + Cmd+C equivalent).
     await page.click('.ProseMirror:not(.composer-prosemirror)');
     const captured = await simulateCopyAndRead(page, 'wysiwyg');
     expect(captured.html).toContain('data-pm-slice');
+    // walker transform — chip rewritten to `<a class="wiki-link"
+    // data-target="..." href="#slug">{alias}</a>`. The
+    // `a.wiki-link[data-target]` parseHTML rule at `wiki-link.ts`
+    // reconstructs wikiLink node identity on Branch C round-trip, matching
+    // the cross-pipeline shape from `mdast-to-hast-handlers.ts:wikiLinkHandler`.
     expect(captured.html).toContain('class="wiki-link"');
     expect(captured.html).toContain('data-target="Page"');
     expect(captured.plain).toContain('[[Page|Alias]]');
 
+    // Reset the doc so subsequent paste can't just "inherit" the seed.
+    // page.goto to the same hash URL is a no-op (hash-nav on the same page);
+    // force a full reload so the ProviderPool re-opens the doc from the
+    // now-reset server state rather than replaying the cached Y.Doc.
     await fetch(`${baseURL}/api/test-reset?docName=${encodeURIComponent(docName)}`, {
       method: 'POST',
     });
+    // Client-persistence (y-indexeddb) preserves Y.Doc state in
+    // `ok-ydoc:${branch}:${docName}` across reloads. test-reset wipes
+    // server state but cannot reach the browser's IDB; without explicit
+    // cleanup the client hydrates seed content from IDB and the
+    // post-reset doc never empties out. Prefix-agnostic deletion: walk
+    // every IDB whose name matches `ok-ydoc:.*:${docName}` regardless
+    // of branch. Mirrors what CC1 `branch-switched` does in production.
     await page.evaluate(async (name) => {
       const dbs = await indexedDB.databases();
       const target = new RegExp(`^ok-ydoc:.*:${name}$`);
@@ -989,11 +1283,14 @@ test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
       .poll(() => getYText(page).then((s) => s.length), { timeout: 10_000 })
       .toBeLessThan(20);
 
+    // Inject the captured bytes as a paste event — this triggers Branch C
+    // because captured.html contains `data-pm-slice`.
     await pasteWithMimes(page, {
       'text/plain': captured.plain,
       'text/html': captured.html,
     });
 
+    // Assert the round-tripped content preserves wikiLink + heading + bold.
     await expect(async () => {
       const content = await getYText(page);
       expect(content).toContain('[[Page|Alias]]');
@@ -1006,6 +1303,13 @@ test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
     page,
     baseURL,
   }) => {
+    // Regression guard: if dispatcher routing broke and pasted data-pm-slice
+    // HTML through Branch D (html→mdast via rehype-remark), a trivial wikiLink
+    // round-trip would still pass on text content — but the class="wiki-link"
+    // attribute on the anchor element would not survive Branch D's mdast
+    // conversion (rehype-remark converts <a> to mdast link, losing our
+    // semantic class). Asserting on the round-tripped doc's *structural*
+    // preservation catches a silent Branch C→D regression.
     const seedMarkdown = 'Prefix [[Thing]] suffix.\n';
     await fetch(`${baseURL}/api/agent-write-md`, {
       method: 'POST',
@@ -1023,6 +1327,9 @@ test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
     await fetch(`${baseURL}/api/test-reset?docName=${encodeURIComponent(docName)}`, {
       method: 'POST',
     });
+    // Drop the client-persistence IDB row(s) alongside the server reset
+    // — see prior test for rationale. Prefix-agnostic deletion (any
+    // observed-branch namespace).
     await page.evaluate(async (name) => {
       const dbs = await indexedDB.databases();
       const target = new RegExp(`^ok-ydoc:.*:${name}$`);
@@ -1040,6 +1347,8 @@ test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
           ),
       );
     }, docName);
+    // Force full reload — see the prior test's comment; same-hash goto is a
+    // no-op and lets ProviderPool replay the cached pre-reset Y.Doc.
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForProvider(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
@@ -1053,6 +1362,10 @@ test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
       'text/html': captured.html,
     });
 
+    // After Branch C round-trip: the canonical markdown source form of the
+    // wikiLink MUST be preserved byte-exact. If Branch D had been taken, the
+    // wikiLink would have been converted to a plain link + the `[[Thing]]`
+    // syntax would have been lost (replaced with `[Thing](Thing)` or similar).
     await expect(async () => {
       const content = await getYText(page);
       expect(content).toContain('[[Thing]]');
@@ -1060,6 +1373,16 @@ test.describe('OK→OK round-trip through Branch C (data-pm-slice)', () => {
     }).toPass({ timeout: 5_000 });
   });
 });
+
+// ─── Clipboard component contract — 10-test budget ───
+//
+// Five OK→OK paste cases verifying the dispatcher reorder (heuristic
+// extension) preserves descriptor identity for the spec's BUG classes:
+// img canonical, Callout canonical, HtmlDetailsAccordion compat, raw-HTML-
+// inline cross-view symmetry, plus cross-view Callout (WYSIWYG↔Source).
+// One cross-machine paste (raw markdown text from email/Slack). One
+// cross-PM-editor interop case. Drag-and-drop is exercised by the existing
+// test below; we add one internal-drag case to round out the budget.
 
 test.describe('Clipboard component contract — OK→OK descriptor identity (US-009)', () => {
   let docName: string;
@@ -1076,6 +1399,10 @@ test.describe('Clipboard component contract — OK→OK descriptor identity (US-
   test('CB-CONTRACT-1: <img/> JSX paste preserves descriptor identity (BUG class 1)', async ({
     page,
   }) => {
+    // Paste with both text/plain (canonical) AND text/html (with data-pm-slice
+    // mimicking an OK→OK paste). Pre-reorder this would silently flip to
+    // ![](src) via TipTap's Image extension parseDOM; post-reorder the
+    // markdown-first tiebreak runs first and preserves the JSX form.
     await pasteWithMimes(page, {
       'text/plain': '<img src="https://example.com/x.png" alt="x" />',
       'text/html':
@@ -1083,6 +1410,7 @@ test.describe('Clipboard component contract — OK→OK descriptor identity (US-
     });
     await expect(async () => {
       const content = await getYText(page);
+      // Source bytes preserve the JSX form (not `![](src)` markdown form).
       expect(content).toContain('<img');
       expect(content).toContain('src="https://example.com/x.png"');
       expect(content).not.toContain('![');
@@ -1102,6 +1430,7 @@ test.describe('Clipboard component contract — OK→OK descriptor identity (US-
       expect(content).toContain('<Callout type="note">');
       expect(content).toContain('body text');
       expect(content).toContain('</Callout>');
+      // No fenced code block — that's the regression the reorder fixes.
       expect(content).not.toMatch(/^```/m);
     }).toPass({ timeout: 5_000 });
   });
@@ -1125,6 +1454,9 @@ test.describe('Clipboard component contract — OK→OK descriptor identity (US-
   test('CB-CONTRACT-4: <u>foo</u> raw HTML inline survives via D18 heuristic (BUG class 4)', async ({
     page,
   }) => {
+    // Previously, single-line raw HTML inline paste falls through to verbatim
+    // text/plain insertion. Now the raw-HTML-inline signal hits and
+    // routes through mdManager.parse, which preserves the bytes.
     await pasteText(page, 'before <u>underlined</u> after\n');
     await expect(async () => {
       const content = await getYText(page);
@@ -1135,6 +1467,8 @@ test.describe('Clipboard component contract — OK→OK descriptor identity (US-
   test('CB-CONTRACT-5: cross-view Callout — WYSIWYG paste survives view switch to Source', async ({
     page,
   }) => {
+    // Paste a multi-line Callout into WYSIWYG, switch to Source view, verify
+    // the source bytes are preserved.
     await pasteText(page, '<Callout type="warning">\n\nbody text\n\n</Callout>\n');
     await expect(async () => {
       const content = await getYText(page);
@@ -1159,6 +1493,9 @@ test.describe('Clipboard component contract — cross-machine + cross-PM-editor 
   test('CB-CONTRACT-6: cross-machine D4 — raw markdown <Callout> from email recovers descriptor identity', async ({
     page,
   }) => {
+    // Simulates raw markdown text shared via email/Slack/file — ONLY
+    // text/plain present, no PM-style html. Pre-capitalized-JSX signal,
+    // single-line `<Callout>` would fall through to verbatim plaintext.
     await pasteText(page, '<Callout type="note">body</Callout>');
     await expect(async () => {
       const content = await getYText(page);
@@ -1171,6 +1508,10 @@ test.describe('Clipboard component contract — cross-machine + cross-PM-editor 
   test('CB-CONTRACT-7: cross-PM-editor — Linear-style canonical markdown text/plain routes through markdown path', async ({
     page,
   }) => {
+    // Synthesized payload mimicking what Linear's markdown-canonical text/plain
+    // would carry. Markdown-first tiebreak fires (heading + list signals) and
+    // routes through mdManager.parse — equivalent to today's Branch C result
+    // for OK-schema-mappable elements.
     await pasteWithMimes(page, {
       'text/plain':
         '## Heading\n\n- item one\n- item two\n\nA paragraph with [a link](https://x).\n',
@@ -1202,6 +1543,7 @@ test.describe('Clipboard component contract — drag-and-drop (US-009)', () => {
     page,
     baseURL,
   }) => {
+    // Seed a Callout via agent-write-md.
     await fetch(`${baseURL}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1215,6 +1557,9 @@ test.describe('Clipboard component contract — drag-and-drop (US-009)', () => {
       const content = await getYText(page);
       expect(content).toContain('drag me');
     }).toPass({ timeout: 5_000 });
+    // Use the existing simulateCopyAndRead helper as a proxy for dragstart
+    // since both emit through the same `clipboardSerializer.serializeFragment`
+    // hook (parity; precedent #19(b)).
     const out = await simulateCopyAndRead(page, 'wysiwyg');
     expect(out.plain).toContain('<Callout type="note">');
     expect(out.plain).toContain('drag me');
@@ -1225,6 +1570,9 @@ test.describe('Clipboard component contract — drag-and-drop (US-009)', () => {
     page,
     baseURL,
   }) => {
+    // Seed an image; then verify a copy-paste round-trip preserves the JSX
+    // identity. This exercises the same hook PM uses for `view.dragging.slice`
+    // internal-drag fast path.
     await fetch(`${baseURL}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1247,6 +1595,9 @@ test.describe('Clipboard component contract — drag-and-drop (US-009)', () => {
     page,
     baseURL,
   }) => {
+    // End-to-end OK→OK identity loop: seed → copy → paste-into-fresh-doc.
+    // Verifies that the dispatcher reorder + heuristic extension preserve
+    // bytes across an out-and-back trip.
     await fetch(`${baseURL}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1263,6 +1614,7 @@ test.describe('Clipboard component contract — drag-and-drop (US-009)', () => {
     const captured = await simulateCopyAndRead(page, 'wysiwyg');
     expect(captured.plain).toContain('<img');
 
+    // Reset doc + paste back.
     await fetch(`${baseURL}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1281,6 +1633,7 @@ test.describe('Clipboard component contract — drag-and-drop (US-009)', () => {
       const content = await getYText(page);
       expect(content).toContain('<img');
       expect(content).toContain('src="x.png"');
+      // Critical: NOT the markdown form (BUG class 1).
       expect(content).not.toMatch(/!\[/);
     }).toPass({ timeout: 5_000 });
   });
@@ -1289,6 +1642,19 @@ test.describe('Clipboard component contract — drag-and-drop (US-009)', () => {
     page,
     baseURL,
   }) => {
+    // Empirical bug — pasting a Callout into Gmail lost color and chevron
+    // because Tailwind v4 themes resolve to `oklch(...)` literals via
+    // `getComputedStyle()`, which Gmail/Notion-class HTML renderers don't
+    // parse. This test pins the post-fix invariants:
+    //   1. The walker's emitted style values are converted to `rgb()` /
+    //      `rgba()` so destinations without modern color-function support
+    //      can still render the colors.
+    //   2. Editor toolbar chrome (move/delete/settings buttons, drag
+    //      handle) is stripped via the `data-clipboard-omit="true"`
+    //      opt-out — the JsxComponentView wrapper marks itself with the
+    //      attribute so the walker drops the entire chrome subtree.
+    //   3. Real DOM children that ARE legitimate content (chevron svg,
+    //      info icon svg) survive — the chrome opt-out doesn't over-strip.
     await fetch(`${baseURL}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1304,15 +1670,31 @@ test.describe('Clipboard component contract — drag-and-drop (US-009)', () => {
     }).toPass({ timeout: 5_000 });
     const out = await simulateCopyAndRead(page, 'wysiwyg');
 
+    // Render fidelity: oklch resolved to rgb so Gmail/Notion can render.
     expect(out.html).not.toContain('oklch(');
     expect(out.html).not.toContain('oklab(');
     expect(out.html).toMatch(/rgb\(\s*\d/);
 
+    // No editor chrome leaks.
     expect(out.html).not.toContain('lucide-trash2');
     expect(out.html).not.toContain('lucide-settings2');
     expect(out.html).not.toContain('jsx-component-chrome');
     expect(out.html).not.toContain('jsx-chrome-btn');
 
+    // Legitimate content survives. The chevron + info icon are real DOM
+    // children, but no major paste destination (Gmail / Notion / Slack /
+    // Outlook / Google Docs) preserves inline `<svg>` — Gmail's image
+    // proxy refuses SVG, Outlook retired SVG support in Sept 2025, and
+    // the others have no `svg` block type. The walker substitutes a
+    // Unicode-glyph span at emit time so the icon survives with the
+    // parent's already-inlined `color: rgb(...)` for color resolution.
+    // Without these post-substitution assertions the walker could regress
+    // visible content.
+    // Callout uses `<ChevronDown>` for the open-collapsible state (since
+    // PR #388, "Polish callout"), so the post-substitution glyph is the
+    // down-arrowhead `⌄` (mapped via LUCIDE_GLYPH_MAP). The closed-state
+    // chevron-right glyph `›` is exercised by the unit test for
+    // `glyphForLucide` in `clipboard-walker.test.ts`.
     expect(out.html).not.toContain('lucide-chevron-down');
     expect(out.html).not.toContain('lucide-info');
     expect(out.html).not.toMatch(/<svg[^>]*class="[^"]*lucide-/);

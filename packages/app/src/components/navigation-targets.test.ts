@@ -19,6 +19,9 @@ describe('deriveKnownFolderPaths', () => {
 
 describe('resolveNavigationTarget', () => {
   test('resolves managed-artifact docs as real doc targets (never missing)', () => {
+    // Global skills + templates live outside the page list, so the membership
+    // checks would mark them 'missing' — but they're real synthetic docs.
+    // Resolve directly so hash nav opens them and graph/links aren't broken.
     for (const docName of ['__skill__/global/foo', '__template__/notes/daily']) {
       expect(resolveNavigationTarget(docName, { pages: new Set() })).toEqual({
         kind: 'doc',
@@ -29,6 +32,10 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('resolves a GLOBAL skill bundle reference node to a read-only skill-file target', () => {
+    // A global skill's references live at `~/.ok/skills/<name>/references/…`,
+    // OUTSIDE the project — a graph click must open the scope-aware skill-file
+    // viewer, not a phantom doc tab. The node name is ext-less; the resolver
+    // reconstructs the `.md` on-disk path the `/api/skill-file` endpoint reads.
     expect(
       resolveNavigationTarget('__skill__/global/demo/references/notes', { pages: new Set() }),
     ).toEqual({
@@ -38,6 +45,7 @@ describe('resolveNavigationTarget', () => {
       name: 'demo',
       path: 'references/notes.md',
     });
+    // Nested reference.
     expect(
       resolveNavigationTarget('__skill__/global/demo/references/sub/deep', { pages: new Set() }),
     ).toEqual({
@@ -50,6 +58,7 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('the GLOBAL SKILL doc itself stays a normal editor doc target (not skill-file)', () => {
+    // Only references route to the viewer — the SKILL doc opens in the editor.
     expect(resolveNavigationTarget('__skill__/global/demo', { pages: new Set() })).toEqual({
       kind: 'doc',
       target: '__skill__/global/demo',
@@ -58,6 +67,9 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('redirects a stale `__skill__/project/<name>` deep-link to the content doc', () => {
+    // A project skill is a CONTENT doc (`.ok/skills/<name>/SKILL`), never the
+    // synthetic `__skill__/project/<name>`. A stale bookmark/deep-link in the
+    // dead form must redirect to the live content doc, not open a phantom tab.
     expect(resolveNavigationTarget('__skill__/project/foo', { pages: new Set() })).toEqual({
       kind: 'doc',
       target: '.ok/skills/foo/SKILL',
@@ -66,12 +78,15 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('resolves a skill file-path link as content and a template link to its artifact', () => {
+    // Project skills are content docs now: a link to a skill file resolves
+    // through the normal page index, NOT to a synthetic __skill__ artifact doc.
     const skillDoc = '.ok/skills/open-knowledge-pack-knowledge-base/SKILL';
     expect(resolveNavigationTarget(skillDoc, { pages: new Set([skillDoc]) })).toEqual({
       kind: 'doc',
       target: skillDoc,
       docName: skillDoc,
     });
+    // Templates remain managed artifacts and still map by their on-disk file path.
     expect(resolveNavigationTarget('notes/.ok/templates/daily', { pages: new Set() })).toEqual({
       kind: 'doc',
       target: '__template__/notes/daily',

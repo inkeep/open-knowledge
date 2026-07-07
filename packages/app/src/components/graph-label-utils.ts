@@ -110,6 +110,14 @@ function clampMiddleByCharacters(
     return '';
   }
 
+  // Preference order — pick the most-readable fit:
+  //   1. Word-boundary middle-clamp (`head… tail`, both sides at spaces)
+  //   2. Word-boundary end-truncate (`head…`, head ends at a space)
+  //   3. Character-level end-truncate (`head…`, head may end mid-word)
+  // Mid-word middle-clamp (`Install…n guide`) is never produced — it reads
+  // as garbled text. Walk keep values from largest down so we return the
+  // longest readable candidate that fits.
+
   const maxKeep = Math.max(1, Math.floor((text.length - ellipsis.length) / 2));
   for (let keep = maxKeep; keep >= 1; keep--) {
     if (text[keep] !== ' ' || text[text.length - keep - 1] !== ' ') continue;

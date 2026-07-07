@@ -1,3 +1,20 @@
+/**
+ * `write` MCP tool — create or overwrite one thing, polymorphic over
+ * `document` / `folder` / `template` / `skill` / `asset` (Pattern B: each target's
+ * fields nest inside its address key so the per-target required fields are
+ * visible in the JSON Schema the model reads).
+ *
+ * Backends by target:
+ *   - document → CRDT (`POST /api/agent-write-md`) [Requires: Hocuspocus]
+ *   - folder   → `POST /api/create-folder` (mkdir) + `PUT /api/folder-config` frontmatter (attributed) [Requires: Hocuspocus]
+ *   - template → `PUT /api/template` (server, attributed) → `<folder>/.ok/templates/<name>.md`
+ *   - skill    → `PUT /api/skill` (server, attributed) → `.ok/skills/<name>/SKILL.md` (authored via the `skill` target, never a raw `document` path under `.ok/skills/`)
+ *   - asset    → multipart `POST /api/upload` [Requires: Hocuspocus]
+ *
+ * The "exactly one target" constraint is the one soft constraint the SDK
+ * can't compile to JSON Schema; a miss returns a teaching error with the
+ * corrective shape.
+ */
 import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import {
@@ -111,22 +128,41 @@ type WriteOneResult =
       position: string;
       fromTemplate?: string;
       extensionNote?: string;
+      /**
+       * Templates the parent folder offers, surfaced only on a create that
+       * passed no `template`. Nudges the agent toward the folder's shape
+       * without blocking the write that already landed.
+       */
+      templateHint?: readonly { name: string; description?: string }[];
       raw: WriteApiResult;
     }
   | { docName: string; ok: false; error: string };
 
+// ─────────────────────────── doc-write helpers ───────────────────────────
+// the document target of
+// `write` preserves every guard (template instantiation, position-defaulting,
+// extension coercion notes, empty-content rejection, frontmatter-ignored
+// notes).
+
+/**
+ * A `---` frontmatter block in a `prepend`/`append` payload is dropped by the
+ * CRDT write path (a second FM block would be invalid). Surface a note instead
+ * of silently discarding it.
+ */
 function frontmatterIgnoredNote(position: string, markdown: string | undefined): string | null {
   if ((position !== 'prepend' && position !== 'append') || !markdown) return null;
   if (stripFrontmatter(markdown).frontmatter.trim() === '') return null;
   return `Note: a \`---\` frontmatter block in this \`${position}\` payload was ignored — frontmatter is written only with \`position: "replace"\`. To change frontmatter, use \`edit({ document: { path, frontmatter } })\` (patch) or \`write({ document: { path, content, position: "replace" } })\` (full rewrite).`;
 }
 
+/** An `append`/`prepend` whose body is empty is a server-side no-op. */
 function emptyAppendNoOpNote(position: string, markdown: string | undefined): string | null {
   if ((position !== 'prepend' && position !== 'append') || markdown === undefined) return null;
   if (stripFrontmatter(markdown).body !== '') return null;
   return `No content to ${position} — document unchanged. To clear a document, use \`position: "replace"\` with empty \`content\`.`;
 }
 
+/** The supported extension the caller typed on the raw name, or null. */
 function requestedDocExtension(rawDocName: string): '.md' | '.mdx' | null {
   const lower = rawDocName.toLowerCase();
   if (lower.endsWith('.mdx')) return '.mdx';
@@ -143,6 +179,20 @@ function extensionIgnoredNote(
   return `Note: "${docName}" already exists as \`${docName}${existingExt}\`, so the requested \`${requestedExt}\` extension was not applied — the write went to \`${docName}${existingExt}\`. Changing a doc's on-disk extension in place isn't available via the MCP today.`;
 }
 
+/**
+ * Compose a `---\nYAML\n---\nbody` document. Used when `document.frontmatter`
+ * accompanies literal `content`: `/api/agent-write-md` has no frontmatter
+ * field, so the create writes the YAML block inline with `position: "replace"`
+ * (the one position that persists frontmatter). Null/empty patch values are
+ * dropped — a create has nothing to delete.
+ *
+ * When `body` already opens with its own `---…---` block, that block is the
+ * base and the `frontmatter` param is overlaid on top (PATCH semantics: param
+ * wins per key, empties drop, embedded-only keys survive), yielding a SINGLE
+ * block — never a second block stacked on the first. A malformed embedded
+ * block can't be merged, so it's rejected with a teaching error rather than
+ * silently doubled.
+ */
 export function composeWithFrontmatter(
   frontmatter: FrontmatterPatch,
   body: string,
@@ -161,12 +211,17 @@ export function composeWithFrontmatter(
     base = parsed.map;
   }
 
+  // `mergePatch` is param-wins: param values replace, param empties drop the
+  // key, embedded-only keys survive. Matches the folder-frontmatter precedence.
+  // `serializeFrontmatterMap` + `withFences` are the canonical FM codec the
+  // bridge invariant depends on — empty map → no block, fence-less body.
   const merged = mergePatch(base, frontmatter as Record<string, unknown>) as FrontmatterMap;
   const yamlBody = serializeFrontmatterMap(merged);
   if (yamlBody === '') return { ok: true, markdown: cleanBody };
   return { ok: true, markdown: withFences(yamlBody) + cleanBody };
 }
 
+/** Write one document, returning a plain per-doc result (no MCP wrapping). */
 async function writeOneDoc(
   spec: DocSpec,
   cwd: string,
@@ -207,8 +262,13 @@ async function writeOneDoc(
 
   const existingExt = docExtensionOnDisk(contentDir, docName) ?? null;
   const docExists = existingExt !== null;
+  // Explicit `extension` field wins over an extension typed into `path`; either
+  // is honored only on a pure create (handled downstream at the forward below).
   const requestedExt = spec.extension ?? requestedDocExtension(spec.path);
 
+  // Omitted `position` defaults to `replace` on create; rejected for an
+  // existing doc so an omitted arg can't silently overwrite. Frontmatter
+  // forces `replace` (the only position that persists a YAML block).
   let effectivePosition: string;
   if (spec.position !== undefined) {
     effectivePosition = spec.position;
@@ -220,6 +280,22 @@ async function writeOneDoc(
     };
   } else {
     effectivePosition = 'replace';
+  }
+
+  // Nudge: creating a doc in a folder that ships templates, but reaching for
+  // none. Templates only get used if the agent knows they exist, and it may
+  // write from memory without an `exec ls` first — so surface the folder's menu
+  // on the write itself. Create-only (an overwrite/append is deliberate) and
+  // skipped when a template WAS used.
+  let templateHint: readonly { name: string; description?: string }[] | undefined;
+  if (spec.template === undefined && !docExists) {
+    const available = resolveTemplatesAvailable(cwd, parentFolderOf(docName), { depth: 1 });
+    if (available.length > 0) {
+      templateHint = available.map((t) => ({
+        name: t.name,
+        ...(t.description ? { description: t.description } : {}),
+      }));
+    }
   }
 
   if (spec.template !== undefined) {
@@ -247,6 +323,12 @@ async function writeOneDoc(
         error: `failed to read template at ${matched.path}: ${(err as Error).message}`,
       };
     }
+    // The new doc IS the template's starter content (doc-frontmatter +
+    // markdown) with the `template:` identity stripped. `instantiateDoc`
+    // normalizes single-block and legacy two-block templates the same way and
+    // preserves `{{date}}`/`{{user}}` tokens for substitution. (Plain
+    // `stripFrontmatter` would drop the doc-frontmatter from a single-block
+    // template, losing `type`/`status`/etc. on every created doc.)
     const templateBody = instantiateDoc(templateContent);
     effectiveMarkdown = applySubstitution(templateBody, {
       date: todayIsoUtc(),
@@ -254,6 +336,9 @@ async function writeOneDoc(
     });
     effectivePosition = 'replace';
   } else if (hasFrontmatter) {
+    // Literal content + own frontmatter: merge into a single YAML block and
+    // force `replace` (the only position that persists frontmatter). If the
+    // content already opens with its own block, it's merged, not stacked.
     const composed = composeWithFrontmatter(
       spec.frontmatter as FrontmatterPatch,
       effectiveMarkdown,
@@ -263,6 +348,7 @@ async function writeOneDoc(
     effectivePosition = 'replace';
   }
 
+  // Empty content on a NON-EXISTENT doc creates nothing (phantom-doc guard).
   if (!docExists && normalizeBridge(effectiveMarkdown) === '') {
     return {
       docName,
@@ -289,6 +375,8 @@ async function writeOneDoc(
     };
   }
 
+  // Template path + own frontmatter: the template body became the doc, so the
+  // doc's own frontmatter is applied as a follow-up merge-patch.
   if (spec.template !== undefined && hasFrontmatter) {
     const fmResult = await httpPost(url, '/api/frontmatter-patch', {
       docName,
@@ -311,9 +399,23 @@ async function writeOneDoc(
     position: effectivePosition,
     ...(spec.template !== undefined ? { fromTemplate: spec.template } : {}),
     ...(extensionNote ? { extensionNote } : {}),
+    ...(templateHint ? { templateHint } : {}),
     raw: result,
   };
 }
+
+/**
+ * One-line nudge listing a folder's available templates. Info (`ℹ`), not a
+ * warning (`⚠`) — the write landed; this only points at a cleaner next time.
+ */
+function formatTemplateHintLine(hint: readonly { name: string; description?: string }[]): string {
+  const list = hint
+    .map((t) => (t.description ? `${t.name} (${t.description})` : t.name))
+    .join(', ');
+  return `ℹ This folder has templates you can start from: ${list}. Pass \`template: "${hint[0]?.name ?? ''}"\` next time to match the folder's shape (the doc still landed).`;
+}
+
+// ─────────────────────────── target handlers ───────────────────────────
 
 async function handleFolder(
   folder: { path: string; frontmatter?: FrontmatterPatch },
@@ -339,6 +441,9 @@ async function handleFolder(
 
   const lines = [`Created folder ${folder.path}.`];
   if (folder.frontmatter !== undefined && Object.keys(folder.frontmatter).length > 0) {
+    // Folder properties route through PUT /api/folder-config so the write is
+    // attributed in the folder timeline (the create-folder already
+    // requires the server). On a fresh folder the merge over `{}` is a set.
     const fm = await httpPut(url, '/api/folder-config', {
       path: folder.path,
       frontmatter: folder.frontmatter,
@@ -346,6 +451,10 @@ async function handleFolder(
       ...agentIdentityFields(identity),
     });
     if (!fm.ok) {
+      // The folder itself was created — only the secondary frontmatter write
+      // failed. Returning `isError` would make agents retry the whole `write`
+      // and hit a 409. Report success with a partial-failure detail so the
+      // recovery is the narrow `edit({ folder: { frontmatter } })`.
       return textPlusStructured(
         `Created folder ${folder.path}, but writing its properties failed: ${fm.error}. Use edit({ folder: { path: "${folder.path}", frontmatter } }) to retry the properties.`,
         { folder: { ok: true, path: folder.path, frontmatterError: String(fm.error) } },
@@ -369,6 +478,8 @@ async function handleTemplate(
   const resolved = resolveTemplatePath(template.path);
   if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
   const { folder, name } = resolved;
+  // Server-routed (PUT /api/template) so the create/overwrite is attributed in
+  // the folder timeline. Requires the server, like every attributed mutation.
   if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
   const result = await httpPut(url, '/api/template', {
     folder,
@@ -423,6 +534,9 @@ async function handleAsset(
     return textResult('Error: asset is empty (0 bytes).', true);
   }
 
+  // `/api/upload` derives the destination folder from `dirname(parentDocName)`
+  // and the filename from the file part. The asset path IS that target path:
+  // the slashes are the folder, the final segment is the filename.
   const { folder, name: fileName } = splitTargetPath(asset.path);
   const parentDocName = folder ? `${folder}/${fileName}` : fileName;
 
@@ -475,6 +589,14 @@ async function handleAsset(
   });
 }
 
+/**
+ * Write a skill bundle: SKILL.md (when `description` present) and/or any
+ * `references/**`+`scripts/**` files. `body` is optional → an agent can write
+ * one reference into an existing skill without resending SKILL.md. Each
+ * `files` path is validated against the allowlist (`references/`/`scripts/`
+ * only, no escape) before any network call. SKILL.md is written first so a
+ * file write into a brand-new skill finds its dir.
+ */
 async function handleSkillWrite(
   skill: {
     name: string;
@@ -503,6 +625,7 @@ async function handleSkillWrite(
       true,
     );
   }
+  // Validate every file path up front (no partial writes on a bad path).
   for (const f of files) {
     const resolved = resolveSkillFilePath(f.path);
     if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
@@ -516,6 +639,7 @@ async function handleSkillWrite(
     error?: string;
   }> = [];
 
+  // 1. SKILL.md first (so a fresh skill's dir exists before file writes).
   let skillMdResult: Awaited<ReturnType<typeof writeSkill>> | null = null;
   if (hasSkillMd) {
     skillMdResult = await writeSkill(url, {
@@ -530,6 +654,7 @@ async function handleSkillWrite(
     if (skillMdResult.isError) return skillMdResult;
   }
 
+  // 2. Bundle files.
   for (const f of files) {
     const r = await writeSkillFile(url, {
       name: skill.name,
@@ -556,6 +681,8 @@ async function handleSkillWrite(
 
   const fileOk = fileResults.filter((r) => r.ok).length;
   const anyFileFailed = fileResults.some((r) => !r.ok);
+  // Reuse the SKILL.md result's structured envelope (preview + skill path) when
+  // present; otherwise build a minimal one.
   const baseStructured =
     ((skillMdResult as { structuredContent?: Record<string, unknown> } | null)?.structuredContent as
       | Record<string, unknown>
@@ -577,6 +704,8 @@ async function handleSkillWrite(
   return textPlusStructured(lines.filter(Boolean).join('\n'), structured, anyFileFailed);
 }
 
+// ─────────────────────────── batch / single doc ───────────────────────────
+
 async function handleBatch(
   documents: DocSpec[],
   cwd: string,
@@ -594,6 +723,8 @@ async function handleBatch(
     if (!r.ok) return { docName: r.docName, ok: false as const, error: r.error };
     const preview = resolvePreviewUrl(r.docName, { lockDir });
     const warnings = parseAdvisoryWarnings(r.raw.warnings);
+    // Per-doc, always present (even `[]`) — batch writes need per-doc
+    // attribution for which doc's links are broken.
     const brokenLinks = parseBrokenLinks(r.raw.brokenLinks);
     return {
       docName: r.docName,
@@ -601,6 +732,7 @@ async function handleBatch(
       position: r.position,
       ...(preview ? { previewUrl: preview.url } : {}),
       ...(warnings ? { warnings } : {}),
+      ...(r.templateHint ? { templateHint: r.templateHint } : {}),
       brokenLinks,
     };
   });
@@ -621,6 +753,11 @@ async function handleBatch(
       const brokenBrief = formatBrokenLinkBrief(d.brokenLinks);
       if (brokenBrief) baseParts.push(brokenBrief);
     }
+    if (r.ok && r.templateHint) {
+      baseParts.push(
+        `ℹ ${r.templateHint.length} template${r.templateHint.length === 1 ? '' : 's'} available here (pass \`template\`).`,
+      );
+    }
     return baseParts.join(' ');
   });
   const perDocNotes = documents.flatMap((spec, i) => {
@@ -631,6 +768,9 @@ async function handleBatch(
     return notes.map((n) => `${spec.path} — ${n}`);
   });
   const text = [`${okCount}/${docOut.length} written.`, ...lines, ...perDocNotes].join('\n');
+  // Batch result mirrors the `documents` input key: the per-doc results live
+  // in the `documents` array; the preview-attach `warning` is the uniform
+  // top-level envelope (not nested).
   const structured: Record<string, unknown> = { documents: docOut };
   const firstOk = results.find((r): r is Extract<WriteOneResult, { ok: true }> => r.ok);
   if (firstOk && firstOk.raw.systemSubscriberCount === 0) {
@@ -664,6 +804,7 @@ async function handleSingleDoc(
       : undefined;
   const summaryHint = typeof summaryResult?.hint === 'string' ? summaryResult.hint : undefined;
   const advisoryWarnings = parseAdvisoryWarnings(result.warnings);
+  // Always an array — `[]` is the positive "all links resolve" confirmation .
   const brokenLinks = parseBrokenLinks(result.brokenLinks);
 
   const noOpNote = emptyAppendNoOpNote(w.position, spec.content);
@@ -687,17 +828,25 @@ async function handleSingleDoc(
     lines.push(...formatAdvisoryLines(advisoryWarnings));
   }
   lines.push(...formatBrokenLinkLines(brokenLinks));
+  if (w.templateHint) lines.push(formatTemplateHintLine(w.templateHint));
   const text = lines.join('\n');
 
+  // Uniform preview envelope top-level; document-specific signals nest under
+  // `document` (mirrors the input key). Shared with `edit` via `nestDocResult`.
+  // `brokenLinks` is always present (even `[]`), so the doc result is always
+  // assembled — no bare-text early-return.
   const document: Record<string, unknown> = {
     brokenLinks,
   };
   if (hints) document.hints = hints;
   if (summaryResult) document.summary = summaryResult;
   if (advisoryWarnings) document.warnings = advisoryWarnings;
+  if (w.templateHint) document.templateHint = w.templateHint;
   const warning = noPreviewAnywhere ? buildPreviewAttachWarning(preview, autoOpen) : undefined;
   return textPlusStructured(text, nestDocResult(preview, warning, document));
 }
+
+// ─────────────────────────── registration ───────────────────────────
 
 export function register(server: ServerInstance, deps: WriteDeps): void {
   const docTargetShape = {
@@ -826,6 +975,11 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
         summary: summaryArgSchema,
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },
+      // Output mirrors the Pattern-B input: the result nests under the target
+      // key you wrote (`document` / `folder` / `template` / `asset`, or
+      // `documents` for a batch). The uniform preview envelope
+      // (`previewUrl` / `previewUrlSource` / `warning`) stays top-level — it is
+      // the cross-tool contract agents handle the same way for every tool.
       outputSchema: outputSchemaWithText({
         document: z
           .object({
@@ -927,6 +1081,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
       const contentDir = resolveContentDir(config, cwd);
       const autoOpen = config.appearance.preview.autoOpen;
 
+      // Batch documents.
       if (args.documents !== undefined) {
         const teaching = exactlyOneTargetError(args as Record<string, unknown>, [
           'document',

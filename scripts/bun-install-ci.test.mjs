@@ -1,3 +1,41 @@
+/**
+ * Test contract for `bun-install-ci.sh`, the CI-side retry wrapper around
+ * `bun install --frozen-lockfile`.
+ *
+ * Why this wrapper exists.
+ *   Bun has no built-in retry for tarball-fetch / tarball-extract failures
+ *   (tracker: oven-sh/bun#26879 — open as of 2026-05). A single transient
+ *   registry/CDN hiccup during the network phase aborts the whole install
+ *   with exit 1 and turns a CI job red on noise.
+ *
+ *   The wrapper retries the install on failure with backoff and emits
+ *   GitHub Actions workflow-command annotations (::warning:: per retry,
+ *   ::error:: on final exhaustion) so the noise is visible without
+ *   masking persistent failures.
+ *
+ * What this test pins.
+ *   1. Happy path — first attempt succeeds: wrapper exits 0 with no
+ *      ::warning:: / ::error:: annotations. Common path stays clean.
+ *   2. Flake recovery — first attempt fails with a tarball-error
+ *      signature, second succeeds: wrapper exits 0 with exactly one
+ *      ::warning::. This is the bug class we are absorbing.
+ *   3. Exhaustion — all BUN_INSTALL_MAX_ATTEMPTS fail: wrapper exits
+ *      non-zero with (N - 1) ::warning:: annotations followed by one
+ *      ::error::. Bounded retry, no silent masking.
+ *   4. Input validation — non-integer BUN_INSTALL_MAX_ATTEMPTS or
+ *      BUN_INSTALL_RETRY_SLEEP_BASE exits 64 (EX_USAGE) in milliseconds.
+ *
+ * How the stub works.
+ *   The wrapper consults `$BUN_INSTALL_CMD` (default: `bun install
+ *   --frozen-lockfile`). The test sets `BUN_INSTALL_CMD` to a stub bash
+ *   script that records each invocation against a counter file and
+ *   exits per the behavior named in `$TEST_STUB_BEHAVIOR`. This lets us
+ *   exercise the wrapper's control flow without touching a real registry.
+ *
+ *   `BUN_INSTALL_RETRY_SLEEP_BASE=0` is passed to keep test iterations
+ *   instant; in prod the wrapper sleeps with exponential backoff between
+ *   attempts.
+ */
 
 import { afterEach, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
@@ -9,8 +47,16 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const WRAPPER = join(SCRIPT_DIR, 'bun-install-ci.sh');
 
+// Track stub tmp dirs created by each test so afterEach can clean them up.
+// Dev machines accumulate /tmp/bun-install-ci-test-* otherwise; CI runners
+// are ephemeral so cleanup is non-load-bearing there.
 const cleanupDirs = [];
 
+/**
+ * Create a temp dir with an attempt-count file and a stub script that the
+ * wrapper will invoke via `$BUN_INSTALL_CMD`. Behavior is selected at
+ * invocation time via `$TEST_STUB_BEHAVIOR`.
+ */
 function setupStub() {
   const tmp = mkdtempSync(join(tmpdir(), 'bun-install-ci-test-'));
   cleanupDirs.push(tmp);
@@ -126,6 +172,7 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
       try {
         rmSync(dir, { recursive: true, force: true });
       } catch {
+        // Best-effort cleanup; ignore EBUSY/ENOENT.
       }
     }
   });
@@ -138,6 +185,7 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
       );
     }
     const stat = statSync(WRAPPER);
+    // Owner execute bit at minimum; CI runners need exec perms either way.
     expect(stat.mode & 0o100).toBeGreaterThan(0);
   });
 
@@ -165,12 +213,24 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
     const ctx = setupStub();
     const result = runWrapper({ ...ctx, behavior: 'always-fail', maxAttempts: 3 });
 
+    // Stub exits 1; wrapper does `exit "$rc"` so the install's exit code
+    // passes through. Pin this contract — a future change that wraps the
+    // exit (e.g., always-1 on any failure regardless of underlying rc)
+    // would silently lose downstream's ability to distinguish bun's
+    // exit codes.
     expect(result.status).toBe(1);
     const out = combinedOutput(result);
     expect(countMatches(out, '::warning::')).toBe(2);
     expect(countMatches(out, '::error::')).toBe(1);
   });
 
+  // The exhaustion test above asserts exit 1, but stub exits 1 — a
+  // regression that replaced `exit "$rc"` with a hardcoded `exit 1`
+  // would still pass it. This test pins the passthrough as GENERIC by
+  // stubbing a non-1 exit code (42 — arbitrary, picked to avoid
+  // collision with common exit codes like 0/1/2/64/127) and asserting
+  // the wrapper bubbles it up unchanged. MAX_ATTEMPTS=1 keeps the test
+  // fast (no retry sleep iterations).
   test('exit-code passthrough is generic: stub exit 42 → wrapper exit 42', () => {
     const ctx = setupStub();
     const result = runWrapper({
@@ -183,6 +243,15 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
     expect(result.status).toBe(42);
   });
 
+  // MAX_ATTEMPTS=1 corner. Two branches the other tests don't exercise:
+  //   (a) singular noun on the ::error:: annotation ("attempt" not
+  //       "attempts"), driven by the small bash ternary at the exhaustion
+  //       point;
+  //   (b) zero-warning exhaustion path — the retry loop body that emits
+  //       ::warning:: never runs because attempt 1 hits the >= check on
+  //       its first pass.
+  // Without this test, refactoring the exhaustion block could regress
+  // either branch silently.
   test('MAX_ATTEMPTS=1: single attempt fails → exit 1, 0 ::warning::s, 1 ::error:: with singular noun', () => {
     const ctx = setupStub();
     const result = runWrapper({ ...ctx, behavior: 'always-fail', maxAttempts: 1 });
@@ -191,10 +260,18 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
     const out = combinedOutput(result);
     expect(countMatches(out, '::warning::')).toBe(0);
     expect(countMatches(out, '::error::')).toBe(1);
+    // Singular noun. "1 attempts" would be ungrammatical; the ternary at
+    // the exhaustion point picks "attempt" when MAX is 1.
     expect(out).toMatch(/after 1 attempt\b/);
     expect(out).not.toMatch(/after 1 attempts\b/);
   });
 
+  // Input validation. The previous loop used `[ -ge ]` to detect exhaustion,
+  // which silently returns false on non-integer rhs and produced an unbounded
+  // retry loop when the knob was misconfigured. The wrapper now validates env
+  // at entry and exits 64 (EX_USAGE). The 2 s timeout below is the safety
+  // net: if validation regresses to the prior shape, the always-fail stub
+  // would loop forever and the test would time out instead of asserting.
   test('input validation: non-integer BUN_INSTALL_MAX_ATTEMPTS exits 64 in milliseconds', () => {
     const ctx = setupStub();
     const result = runWrapper({
@@ -222,6 +299,9 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
 
     expect(result.signal).toBeNull();
     expect(result.status).toBe(64);
+    // Match the sibling non-integer test's annotation-content assertions
+    // so both validation cases pin the same shape — exit code alone would
+    // miss a regression where the script returns 64 but prints nothing.
     const out = combinedOutput(result);
     expect(out).toContain('::error::');
     expect(out).toContain('BUN_INSTALL_MAX_ATTEMPTS');
@@ -239,10 +319,26 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
     expect(result.signal).toBeNull();
     expect(result.status).toBe(64);
     const out = combinedOutput(result);
+    // Match both sibling validation tests' shape — assert the ::error::
+    // annotation as well as the env-var name. A regression that drops
+    // the ::error:: emit but keeps the exit 64 would pass an env-var-only
+    // assertion and the operator-facing CI annotation would silently
+    // disappear.
     expect(out).toContain('::error::');
     expect(out).toContain('BUN_INSTALL_RETRY_SLEEP_BASE');
   });
 
+  // Per-attempt timeout watchdog. A bun install can HANG (not fail-fast) on a
+  // cold cache; a retry-on-exit-only wrapper never engages and the hang rides
+  // the GitHub job to its `timeout-minutes` cap, which cancels (no retry). The
+  // watchdog converts a hang into a retryable exit-124. The 20s spawnSync
+  // safety net below means a watchdog regression (never kills) fails the test
+  // by timeout instead of hanging the suite.
+  //
+  // BUN_INSTALL_ATTEMPT_TIMEOUT is 3s (not 1s) deliberately: the *passing*
+  // attempt must finish well inside the budget even on a saturated runner, or
+  // the watchdog kills it and the warning count flakes. 3s gives ~3x headroom
+  // over the instant stub while the 30s hang still trips the budget reliably.
   test('timeout recovery: attempt 1 hangs (killed by watchdog) then attempt 2 passes → exit 0 with one timeout ::warning::', () => {
     const ctx = setupStub();
     const result = runWrapper({
@@ -271,6 +367,8 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
       timeoutMs: 20000,
     });
 
+    // 124 is the GNU `timeout` convention; the wrapper normalizes the 143/137
+    // a watchdog kill produces so downstream sees a stable "timed out" code.
     expect(result.signal).toBeNull();
     expect(result.status).toBe(124);
     const out = combinedOutput(result);
@@ -279,6 +377,9 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
     expect(out).toContain('timed out after 3s');
   }, 30000); // 2 attempts x 3s budget exceeds Bun's 5s default per-test timeout
 
+  // The SIGTERM-responsive hang tests above exercise the graceful kill. This
+  // one ignores SIGTERM so the watchdog must escalate to SIGKILL after the
+  // grace window — proving the escalation fires and 137 also normalizes to 124.
   test('SIGKILL escalation: a SIGTERM-ignoring hang is force-killed and normalized to exit 124', () => {
     const ctx = setupStub();
     const result = runWrapper({
@@ -297,6 +398,10 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
     expect(countMatches(combinedOutput(result), '::error::')).toBe(1);
   }, 30000); // 3s budget + 1s grace + SIGKILL can edge past Bun's 5s default
 
+  // Escape hatch: BUN_INSTALL_ATTEMPT_TIMEOUT=0 disables the watchdog and runs
+  // the install on the direct (non-backgrounded) path. Happy install still
+  // succeeds cleanly — pins that disabling the watchdog doesn't perturb the
+  // common path.
   test('timeout disabled (BUN_INSTALL_ATTEMPT_TIMEOUT=0): direct path, happy install exits 0 with no annotations', () => {
     const ctx = setupStub();
     const result = runWrapper({
@@ -311,6 +416,14 @@ describe('bun-install-ci.sh — retry wrapper for `bun install --frozen-lockfile
     expect(out).not.toContain('::error::');
   });
 
+  // Direct path (TIMEOUT=0) must still retry on ordinary install failure.
+  // Without this test, a refactor that drops the `|| rc=$?` from
+  // `run_install "$@" || rc=$?` (turning it into `run_install "$@"; rc=$?`)
+  // would let `set -e` abort the wrapper on the first non-zero install exit
+  // and silently lose retry behavior for users running with the watchdog
+  // disabled. The annotation must name "failed (exit 1)" rather than
+  // "timed out" so the wrong-branch regression (timed branch dispatched
+  // while TIMEOUT=0) also surfaces here.
   test('timeout disabled + failure: direct path still retries and recovers', () => {
     const ctx = setupStub();
     const result = runWrapper({

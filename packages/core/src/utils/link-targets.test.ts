@@ -140,12 +140,24 @@ describe('resolveAssetProjectPath', () => {
   });
 
   test('server-absolute path is treated as project-root-relative (2026-04-24b)', () => {
+    // Server-absolute
+    // hrefs (`/`-leading) are emitted at drop time + post-roundtrip for
+    // subdirectory docs so hash routing doesn't resolve them against the
+    // wrong base. Treating them as external here breaks the asset-click
+    // dispatcher for any asset that round-tripped through the server —
+    // the click would fall through to external-URL handling rather than
+    // reaching `shell.openAsset` in Electron.
     expect(resolveAssetProjectPath('/docs/file.pdf', 'notes/readme')).toBe('docs/file.pdf');
     expect(resolveAssetProjectPath('/vale_15.m4v', 'notes/readme')).toBe('vale_15.m4v');
     expect(resolveAssetProjectPath('/sub/dir/photo.png', 'docs/guide')).toBe('sub/dir/photo.png');
   });
 
   test('server-absolute path still refuses escape attempts', () => {
+    // `..` in server-absolute paths is nonsensical (there's no relative
+    // base) but a caller might construct `/../../etc/passwd` through a
+    // URL parser. Containment is defense-in-depth — the main-process
+    // `openAssetSafely` is the authoritative gate, but the renderer
+    // shouldn't feed it escape attempts.
     expect(resolveAssetProjectPath('/../etc/passwd', 'notes/readme')).toBeNull();
     expect(resolveAssetProjectPath('/docs/../../../etc/passwd', 'notes/readme')).toBeNull();
   });

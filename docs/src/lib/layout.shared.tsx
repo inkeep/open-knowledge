@@ -14,6 +14,9 @@ export function baseOptions({
     nav: {
       title: <OkWordmark aria-label="OpenKnowledge" className={wordmarkClassName} />,
     },
+    // Icon links render in the docs sidebar footer. GitHub lives here (not via
+    // the `githubUrl` shortcut, which Fumadocs appends last) so the order stays
+    // GitHub, Discord, X. All three URLs share the source of truth in site.ts.
     links: [
       {
         type: 'icon',

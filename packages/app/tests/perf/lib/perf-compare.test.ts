@@ -1,3 +1,20 @@
+/**
+ * Unit tests for the perf-compare.sh diff tool.
+ *
+ * Strategy: write two synthetic baseline JSONs to a tmpdir, invoke the
+ * shell script via Bun's spawn, and assert the markdown table emitted on
+ * stdout matches expectations.
+ *
+ * What we pin:
+ *   - Direction tagging: latency-down → IMPROVED, latency-up → REGRESSED.
+ *   - Variance threshold: changes within ±N% emit UNCHANGED.
+ *   - Per-row missing-side handling: rows present in only one baseline are
+ *     emitted with `(missing from)` or `(missing to)` notes (not crashes).
+ *   - Help text via --help exits 64.
+ *   - Malformed JSON exits 1; missing file exits 2.
+ *   - Filters: --scenario / --doc narrow the table to matching rows.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -142,6 +159,7 @@ describe('perf-compare.sh — direction tagging', () => {
   });
 
   test('non-Ms metric: higher is better → up emits IMPROVED', async () => {
+    // e.g. throughput counter: higher = improvement.
     const from = writeBaseline('from.json', {
       scenarios: { s: { docs: { D: { fireCount: { p50: 100 } } } } },
     });

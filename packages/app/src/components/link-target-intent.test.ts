@@ -104,6 +104,9 @@ describe('resolveLinkTargetIntent', () => {
   });
 
   test('navigates a skill-bundle reference to the read-only viewer instead of create-page', () => {
+    // A skill's `references/*` shows in Outgoing as a real, openable target — it
+    // must NOT render as "Missing page — click to create" (which would create a
+    // phantom page). It routes to the read-only skill-file viewer hash.
     expect(
       resolveLinkTargetIntent('__skill__/global/test/references/notes', {
         pages: new Set<string>(),

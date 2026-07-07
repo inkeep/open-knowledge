@@ -1,3 +1,12 @@
+/**
+ * SyncStatusBadge — displays the git sync engine state in the editor header.
+ *
+ * States: dormant (hidden) | idle/synced | fetching/pulling/pushing (syncing) |
+ * conflict | offline | auth-error | disabled | available (sync off, remote present)
+ *
+ * Click opens a popover with last-sync details and action buttons.
+ */
+
 import type { PushPermissionWire, SyncErrorCode } from '@inkeep/open-knowledge-core';
 import { plural, t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
@@ -19,11 +28,29 @@ import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
 import { useConfigContext } from '@/lib/config-provider';
 import { filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
+import { triggerSync } from '@/lib/trigger-sync';
 import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
 import { Button } from './ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Switch } from './ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Fire-and-forget manual sync from a badge button. The badge's own status
+ * stream drives the visible state, so a rejected trigger (offline / server
+ * down) needs no UI handling — but it gets a breadcrumb rather than being
+ * swallowed silently, so a "Sync now did nothing" report is triageable.
+ */
+function triggerSyncFromBadge(): void {
+  triggerSync('sync').catch((err) => {
+    console.warn(
+      '[sync-badge] manual sync trigger failed',
+      err instanceof Error ? err.message : err,
+    );
+  });
+}
 
 function formatRelative(iso: string | null): string {
   if (!iso) return t`never`;
@@ -40,13 +67,7 @@ function formatRelative(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
-async function triggerSync(op: 'sync' | 'push' | 'pull'): Promise<void> {
-  await fetch('/api/sync/trigger', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ op }),
-  });
-}
+// ── inner: icon + color per state ────────────────────────────────────────────
 
 interface BadgeIconProps {
   status: GitSyncStatus;
@@ -56,6 +77,7 @@ function BadgeIcon({ status }: BadgeIconProps) {
   const cls = 'size-3.5';
   switch (status.state) {
     case 'dormant':
+      // Available: remote exists but sync not yet enabled
       return <Cloud className={`${cls} text-muted-foreground`} />;
     case 'idle':
       if (status.ahead > 0 || status.behind > 0) {
@@ -73,6 +95,8 @@ function BadgeIcon({ status }: BadgeIconProps) {
     case 'auth-error':
       return <LogIn className={`${cls} text-destructive`} />;
     case 'disabled':
+      // Reachable only when an auto-disable carries a pausedReason
+      // (manual user disable hides the badge via early return below).
       return <AlertTriangle className={`${cls} text-amber-500`} />;
     default:
       return <Cloud className={`${cls} text-muted-foreground`} />;
@@ -99,6 +123,8 @@ function badgeLabel(status: GitSyncStatus): string {
       return '';
   }
 }
+
+// ── popover content ───────────────────────────────────────────────────────────
 
 function stateLabel(state: GitSyncStatus['state']): string {
   switch (state) {
@@ -146,6 +172,12 @@ export function formatPausedReason(reason: string): string {
   }
 }
 
+/**
+ * Format the cause-specific message for a `denied` push-permission probe.
+ * Used when the user has not enabled sync yet (so `pausedReason` is unset)
+ * but the probe says they can't push — they should see the same actionable
+ * copy as a user whose engine paused after enabling sync.
+ */
 export function formatPushPermissionDenied(
   reason: 'no-collaborator' | 'private-no-access' | 'repo-not-found' | undefined,
 ): string {
@@ -161,6 +193,13 @@ export function formatPushPermissionDenied(
   }
 }
 
+/**
+ * Map a server-emitted `errorCode` to a Lingui-localized string. The server
+ * never carries English in `errorCode`; the wire payload is the bounded
+ * `SyncErrorCode` enum (single-sourced in `@inkeep/open-knowledge-core`).
+ * Callers fall back to `status.pushError` (developer-facing raw message) when
+ * `pushErrorCode` is undefined.
+ */
 export function formatPushFailureCode(code: SyncErrorCode): string {
   switch (code) {
     case 'auth-403':
@@ -174,10 +213,21 @@ export function formatPushFailureCode(code: SyncErrorCode): string {
     case 'semantic-protected-branch':
       return t`The default branch is protected — pushes need a pull request.`;
     default:
+      // Forward-compat: if a future server emits a code this client doesn't
+      // recognize (server-client version skew, even though OK ships as a
+      // monolith), the errorCode-first render branch would otherwise produce
+      // a styled-red empty paragraph. Generic copy keeps the slot meaningful.
       return t`Push failed — check the server logs for details.`;
   }
 }
 
+/**
+ * Pull-side (fetch + merge) counterpart to {@link formatPushFailureCode}. Same
+ * bounded enum, but the copy is framed around reading from the remote rather
+ * than pushing. `semantic-protected-branch` is push-only, so it can't reach
+ * this path under current classification — it maps to the generic fallback
+ * alongside any future unrecognized code.
+ */
 export function formatPullFailureCode(code: SyncErrorCode): string {
   switch (code) {
     case 'auth-403':
@@ -193,6 +243,13 @@ export function formatPullFailureCode(code: SyncErrorCode): string {
   }
 }
 
+/**
+ * Neutral (direction-agnostic) copy for a failure code, used when push and pull
+ * failed with the same root cause and collapse into a single line. The push- and
+ * pull-specific framings live in {@link formatPushFailureCode} /
+ * {@link formatPullFailureCode}; this is the shared-cause variant so the popover
+ * doesn't repeat one auth failure as two near-identical lines.
+ */
 export function formatSyncFailureCode(code: SyncErrorCode): string {
   switch (code) {
     case 'auth-403':
@@ -213,11 +270,27 @@ export function formatSyncFailureCode(code: SyncErrorCode): string {
 type SyncErrorDirection = 'push' | 'pull';
 
 export interface SyncErrorLine {
+  /** Stable React key — also the structural identity of the line. */
   key: 'sync' | 'push' | 'pull';
+  /** Direction label to render; null when collapsed or a lone error. */
   direction: SyncErrorDirection | null;
   message: string;
 }
 
+/**
+ * Build the destructive error line(s) for the popover from the per-direction
+ * error surfaces:
+ *
+ * - both legs failed with the same root cause (identical `*ErrorCode`, or
+ *   identical raw `*Error` when uncoded) → one neutral, unlabeled line;
+ * - both failed with different causes → two lines, each labeled with its
+ *   direction so the user can tell push from pull;
+ * - one leg failed → a single unlabeled line (its copy already implies the
+ *   direction).
+ *
+ * Pure so the render cascade can't drift from the collapse/label rules without
+ * the truth table failing too.
+ */
 export function computeSyncErrorLines(
   status: Pick<GitSyncStatus, 'pushError' | 'pushErrorCode' | 'pullError' | 'pullErrorCode'>,
 ): SyncErrorLine[] {
@@ -225,6 +298,8 @@ export function computeSyncErrorLines(
   const pullPresent = status.pullErrorCode != null || status.pullError != null;
 
   if (pushPresent && pullPresent) {
+    // Codes are the authoritative root-cause key; fall back to raw-message
+    // equality only when neither leg carried a code.
     const sameRootCause =
       status.pushErrorCode != null
         ? status.pushErrorCode === status.pullErrorCode
@@ -266,12 +341,36 @@ export function computeSyncErrorLines(
   return lines;
 }
 
+/**
+ * Decide whether the popover/settings should surface a "Sign in again"
+ * affordance for the probe-401 case. Returns true ONLY when the probe
+ * itself returned 401 (`unknown/token-invalid`) — never on `denied`
+ * (which has its own affordance) or other `unknown` causes (network /
+ * rate-limit / malformed-response) where re-auth is not the remedy.
+ *
+ * Sync stays enabled; only the affordance surfaces. The Switch is NOT
+ * disabled in this case — `shouldDisableSyncSwitch` keys off `'denied'`
+ * only. The probe couldn't reach a verdict, so the user's existing sync
+ * preference is preserved while they re-authenticate.
+ */
 export function shouldOfferSignInAgain(pushPermission: PushPermissionWire | undefined): boolean {
   return (
     pushPermission?.checkStatus === 'unknown' && pushPermission.unknownError === 'token-invalid'
   );
 }
 
+/**
+ * Pure helper: decide whether the sync Switch should be disabled given the
+ * Hocuspocus-synced flag and the push-permission probe outcome. Extracted so
+ * a unit test can pin the truth table without touching React rendering.
+ *
+ * Returns true when the local config binding hasn't hydrated yet (cold start)
+ * or the probe explicitly reports `denied`. Other probe states — `'allowed'`,
+ * `'unknown'`, and missing entirely — preserve the existing gating behavior
+ * (Switch enabled when synced). This is the read+write parity invariant:
+ * a slow / failed / not-yet-resolved probe must never disable the toggle
+ * for an `allowed`-historical user.
+ */
 export function shouldDisableSyncSwitch(
   projectLocalSynced: boolean | undefined,
   pushPermissionCheckStatus: 'allowed' | 'denied' | 'unknown' | undefined,
@@ -314,6 +413,10 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
   const writer = useSyncEnabledWriter();
   const { confirmOpen, setConfirmOpen, onToggleRequest, onConfirm } =
     useEnableSyncWithConfirm(writer);
+  // The "Review conflicts" affordance navigates to the first conflicted file
+  // (so the editor-area DiffViewBoundary mounts via the lifecycle observer).
+  // There is no side-sheet to open — the sidebar Conflicts section is the
+  // project-level list, the editor-area DiffView is the resolution surface.
   const { conflicts } = useConflicts();
   const firstConflict = conflicts[0] ?? null;
 
@@ -367,6 +470,11 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
           {formatPushPermissionDenied(status.pushPermission.deniedReason)}
         </p>
       ) : shouldOfferSignInAgain(status.pushPermission) ? (
+        // Probe-401 branch: surface a "Sign in again" affordance without
+        // disabling sync — the probe couldn't reach a verdict, so the user's
+        // existing sync preference is preserved while they re-authenticate.
+        // The button reuses `onSignIn`, the same handler wired for the
+        // `auth-error` state below.
         <div className="flex items-start gap-2">
           <p className="text-xs text-muted-foreground flex-1 min-w-0">
             <Trans>Your GitHub session expired — sign in again to verify push access.</Trans>
@@ -460,7 +568,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
           status.state !== 'disabled' &&
           status.state !== 'auth-error' &&
           status.state !== 'conflict' && (
-            <Button variant="outline" size="xs" onClick={() => void triggerSync('sync')}>
+            <Button variant="outline" size="xs" onClick={triggerSyncFromBadge}>
               <Trans>Sync now</Trans>
             </Button>
           )}
@@ -470,7 +578,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
           </Button>
         )}
         {enabled && status.state === 'offline' && (
-          <Button variant="outline" size="xs" onClick={() => void triggerSync('sync')}>
+          <Button variant="outline" size="xs" onClick={triggerSyncFromBadge}>
             <Trans>Retry</Trans>
           </Button>
         )}
@@ -494,8 +602,12 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
   );
 }
 
+// ── public component ──────────────────────────────────────────────────────────
+
 interface SyncStatusBadgeProps {
+  /** Called when "Connect GitHub" is clicked in the auth-error popover or enable-sync prompt. */
   onSignIn?: () => void;
+  /** Called when "Set identity" is clicked in the identity-unresolved nudge. */
   onSetIdentity?: () => void;
 }
 
@@ -503,6 +615,10 @@ export function SyncStatusBadge({ onSignIn, onSetIdentity }: SyncStatusBadgeProp
   const { t } = useLingui();
   const { status, fetchError } = useGitSyncStatusDetailed();
 
+  // Surface a lightweight connectivity warning when the server has been
+  // reachable before (we have a prior status) but the last refresh failed.
+  // Before first successful fetch we stay hidden so the badge doesn't flash
+  // on every reload.
   if (!status) {
     if (fetchError) {
       return (
@@ -531,8 +647,17 @@ export function SyncStatusBadge({ onSignIn, onSetIdentity }: SyncStatusBadgeProp
     return null;
   }
 
+  // Hide when dormant with no remote (truly no git remote)
   if (status.state === 'dormant' && !status.hasRemote) return null;
 
+  // Hide when sync is explicitly disabled by the user — they opted out, so
+  // there's nothing actionable to surface in the header. Re-enabling goes
+  // through Settings → Sync, which gates with a confirmation dialog. Keep
+  // the badge visible when an auto-disable carries a `pausedReason` (e.g.
+  // protected-branch) so the user can see *why* sync stopped — without it,
+  // the only signal would be a missing badge. Manual disable clears
+  // `pausedReason`; auto-disable sets it. (Unsafe states like auth-error /
+  // conflict / offline already render — they need attention.)
   if (status.state === 'disabled' && !status.pausedReason) return null;
 
   const label = badgeLabel(status);

@@ -25,6 +25,8 @@ afterEach(() => {
   if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true });
 });
 
+// Helper: list any tmp siblings of `target` in testDir (the orphan
+// cleanup contract — tmp files MUST NOT outlive the atomic-write call).
 function orphanTmps(): string[] {
   return readdirSync(testDir).filter((f) => f.startsWith('state.yml.tmp.'));
 }
@@ -50,6 +52,12 @@ describe('atomicWriteFileSync — sequential', () => {
 
 describe('atomicWriteFileSync — failure cleanup', () => {
   test('cleans tmp when rename fails because target is a non-empty dir', () => {
+    // Set up: target path is a directory with content. writeFileSync to
+    // the tmp sibling succeeds (parent dir is writable), then renameSync
+    // fails (can't replace a non-empty directory with a regular file).
+    // This exercises the try/catch cleanup path that the unit-only
+    // chmod-parent test (which fires at writeFileSync, before any tmp is
+    // created) can't reach.
     mkdirSync(target, { recursive: true });
     writeFileSync(join(target, 'occupant'), 'x');
 
@@ -58,8 +66,12 @@ describe('atomicWriteFileSync — failure cleanup', () => {
   });
 
   test('cleans tmp when writeFileSync fails because parent dir is missing', () => {
+    // Tmp path lives in a non-existent dir → writeFileSync errors with
+    // ENOENT before any tmp is created. Catch best-effort unlinks the
+    // never-existed tmp (also ENOENT, swallowed) and re-throws.
     const missing = join(testDir, 'no', 'such', 'dir', 'state.yml');
     expect(() => atomicWriteFileSync(missing, 'x')).toThrow();
+    // testDir stays clean (no tmps leak into a sibling location).
     expect(orphanTmps()).toEqual([]);
   });
 });
@@ -87,12 +99,20 @@ describe('atomicWriteFile (async) — failure cleanup', () => {
   });
 
   test('cleans tmp when writeFile fails because parent dir is missing', async () => {
+    // Mirror of the sync writeFile-fail test. Sibling coverage so a
+    // future refactor that narrowed the async catch (e.g., checking
+    // err.code before cleanup) can't regress one variant without the
+    // other.
     const missing = join(testDir, 'no', 'such', 'dir', 'state.yml');
     await expect(atomicWriteFile(missing, 'x')).rejects.toThrow();
     expect(orphanTmps()).toEqual([]);
   });
 });
 
+// Crash-orphan sweep contract: each atomic-write call best-effort
+// cleans `${basename}.tmp.*` siblings whose mtime is older than the
+// internal STALE_TMP_AGE_MS (30 s). Concurrent writers' fresh tmps
+// stay safe; tmps belonging to unrelated targets stay safe.
 describe('atomicWriteFileSync — crash-orphan sweep', () => {
   test('unlinks stale .tmp siblings of the target', () => {
     const ancientTmp = join(testDir, 'state.yml.tmp.ancient-uuid');
@@ -108,6 +128,7 @@ describe('atomicWriteFileSync — crash-orphan sweep', () => {
   test('preserves recent .tmp siblings of the target (concurrent writers)', () => {
     const freshTmp = join(testDir, 'state.yml.tmp.in-flight-uuid');
     writeFileSync(freshTmp, 'concurrent writer');
+    // mtime = now (set by writeFileSync); well within STALE_TMP_AGE_MS.
 
     atomicWriteFileSync(target, 'new');
     expect(existsSync(freshTmp)).toBe(true);

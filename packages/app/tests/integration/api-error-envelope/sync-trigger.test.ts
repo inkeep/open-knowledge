@@ -1,3 +1,15 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleSyncTrigger`.
+ *
+ * The test harness starts a SyncEngine even without a remote (it sits
+ * in `dormant` state). Coverage:
+ *   - happy path: POST {op:'sync'} → 202 Accepted, flat `{op}` echo body
+ *     with `application/json`.
+ *   - body-shape errors via withValidation-equivalent path: schema rejects
+ *     unknown `op` values with `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on GET → 405 with `Allow: POST`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, SyncTriggerSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

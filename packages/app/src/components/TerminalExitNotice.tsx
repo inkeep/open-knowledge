@@ -1,3 +1,15 @@
+/**
+ * Failure-state surface for the docked terminal. When the shell exits or the
+ * PTY crashes the canvas would otherwise freeze on its last output with no cue
+ * that it is dead — this overlay makes the exit visible and offers the only way
+ * back: a fresh PTY in the same window/cwd.
+ *
+ * It is `role="alert"` because the terminal is non-functional until restart, so
+ * the state change must reach a screen-reader user even when focus is elsewhere.
+ * The raw `error` string from main is intentionally not rendered (it is an
+ * internal diagnostic, not user-facing copy); its presence alone distinguishes
+ * a crash from a clean exit.
+ */
 import { useLingui } from '@lingui/react/macro';
 import { Button } from '@/components/ui/button';
 
@@ -9,6 +21,7 @@ export interface TerminalExitInfo {
 
 interface TerminalExitNoticeProps {
   readonly info: TerminalExitInfo;
+  /** Spawn a fresh PTY in the same window/cwd. */
   readonly onRestart: () => void;
 }
 

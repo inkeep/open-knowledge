@@ -1,3 +1,11 @@
+/**
+ * Malformed `docName` must be rejected with a clean 400 before the write path
+ * runs. Previously a whitespace-only name passed request validation and threw
+ * a 500 deep in the doc layer ("Document name must not be empty"), while `.`,
+ * `a/`, `.foo`, and tab-bearing names were silently accepted and created junk,
+ * hidden, or unaddressable files on disk. The shared docName contract now
+ * rejects them at the request-schema boundary.
+ */
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -49,6 +57,8 @@ async function postWriteMd(ext: unknown, docName: string): Promise<CapturedRespo
   return captured;
 }
 
+// The bug table. Every entry must answer 400
+// (request invalid) — never a 500, and never a 200 that materializes junk.
 const MALFORMED = ['   ', '.', '..', '../escape', 'a/', '/abs', '.foo', 'x\ty'];
 
 describe('malformed docName rejection (/api/agent-write-md)', () => {
@@ -73,6 +83,7 @@ describe('malformed docName rejection (/api/agent-write-md)', () => {
         expect(captured.status).toBe(400);
       }
 
+      // No junk files (`..md`, `a/.md`, `.foo.md`, tab-named, etc.) were created.
       expect(readdirSync(contentDir)).toHaveLength(0);
     } finally {
       await sessionManager.closeAll();

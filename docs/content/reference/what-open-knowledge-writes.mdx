@@ -7,7 +7,7 @@ description: Every file OpenKnowledge creates or changes — when, where, in-pro
 
 OpenKnowledge keeps your knowledge base as plain markdown in your own project directory, but the tooling around it — the CLI, the MCP server, and the desktop app — also writes a handful of supporting files, some of them **outside the project**, in your home directory, your shell startup files, your editors' configs, and the OS credential store.
 
-This page lists every one of them: **when** each write happens, **what** it is, and **where** it lands. Everything here is verified against the source.
+This page lists every one of them: **when** each write happens, **what** it is, and **where** it is written.
 
 <Callout type="info" title="The short version">
   **Nothing leaves your machine by default.** Diagnostic logs and telemetry are local-only — there's no usage phone-home. The handful of things that *can* send data off your machine — semantic search, a diagnostic bundle, GitHub sync, and the desktop app's update check — are opt-in or on-demand, except the desktop app's update check, which runs automatically on launch. All of them are listed under [What leaves your machine](#what-leaves-your-machine).
@@ -63,6 +63,12 @@ The managed block is clearly fenced so you can see and remove it:
 ```
 
 Delete the block and the app **won't re-add it** — the removal is recorded and respected. Or set `OK_RECLAIM_DISABLE=1` to disable all of this before first launch.
+
+### User-global Agent Skills
+
+OpenKnowledge ships two user-global [Agent Skills](/docs/features/skills) — `open-knowledge-discovery` (helps your coding agent recognize and route through OpenKnowledge projects) and `open-knowledge-write-skill` (a workflow for authoring new skills). They install into each detected editor's global skill folder (`~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) plus the shared `~/.agents/skills/` hub.
+
+These are **consent-gated**, one checkbox per skill in the same first-launch dialog (both checked by default). Uncheck one and it is never installed; uncheck an already-installed one and its copies are **removed**. The choice is recorded in `~/.ok/skill-state.yml` and honored by every install path — the desktop app, `ok init`, and `ok start` — so a skill you declined is never re-added. Machines that already had the skills before the consent dialog are treated as consented (left in place). Re-enable later from **File → Set up OpenKnowledge integrations…**.
 
 ### Setting up a project
 
@@ -158,11 +164,12 @@ With `--scope user` or `both` (the default), `ok init` also registers the `open-
 | `~/.codex/config.toml` | Codex | Outside-project (editor config) |
 | `~/.config/opencode/opencode.json` | OpenCode | Outside-project (editor config) |
 
-`ok init` also re-runs the user-global skill install (the discovery skill above) and, if you choose **local-only** sharing, adds the OpenKnowledge paths to `.git/info/exclude` so `.ok/` stays off your remote.
+`ok init` also installs the two user-global skills (`open-knowledge-discovery` and `open-knowledge-write-skill`), honoring any prior consent choice, and, if you choose **local-only** sharing, adds the OpenKnowledge paths to `.git/info/exclude` so `.ok/` stays off your remote.
 
 <Callout type="info" title="Controlling it">
   - `--no-mcp` — scaffold `.ok/` only; register nothing with any editor.
   - `--scope user | project | both` — where the MCP entry is written. In an interactive terminal, `ok init` prompts for this; scripted/CI runs default to `both`, so pass the flag to constrain them.
+  - `--no-skills` — install no user-global skills; `--skills discovery,write-skill` — install only the named bundles. Default installs both. The choice is recorded and honored by the desktop app too.
   - `--local-only` (vs `--shared`) — keep `.ok/` out of git.
 </Callout>
 

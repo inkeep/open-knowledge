@@ -1,5 +1,16 @@
 import type { ITheme } from '@xterm/xterm';
 
+/**
+ * Curated xterm palettes for the docked terminal, one per resolved app mode.
+ *
+ * Hand-tuned rather than derived from the app's CSS tokens: xterm's 16 ANSI
+ * slots have no clean mapping onto the app's semantic tokens, and a curated
+ * pair gives correct contrast in both modes. The surface colors track the
+ * neutral `--background`/`--foreground` tokens closely enough to blend with the
+ * `bg-background` wrapper; the ANSI slots follow the VS Code terminal palettes,
+ * which are tuned for legibility. `minimumContrastRatio` on the Terminal lifts
+ * any remaining low-contrast program output toward AA at render time.
+ */
 export const XTERM_DARK_THEME = {
   background: '#171717',
   foreground: '#e5e5e5',
@@ -48,6 +59,12 @@ export const XTERM_LIGHT_THEME = {
   brightWhite: '#a5a5a5',
 } satisfies ITheme;
 
+/**
+ * Pick the xterm palette for a next-themes `resolvedTheme` (already collapsed
+ * from `system` to `light`/`dark`). Anything other than `dark` — including the
+ * pre-mount `undefined` — resolves to light, matching the sibling theme-aware
+ * viewers.
+ */
 export function xtermThemeForMode(resolvedTheme: string | undefined): ITheme {
   return resolvedTheme === 'dark' ? XTERM_DARK_THEME : XTERM_LIGHT_THEME;
 }

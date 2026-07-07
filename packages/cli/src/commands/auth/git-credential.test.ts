@@ -6,6 +6,10 @@ import { Readable, Writable } from 'node:stream';
 import { FileBackend } from '../../auth/token-store.ts';
 import { type CredentialGetLogContext, handleCredentialGet } from './git-credential.ts';
 
+// ---------------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------------
+
 function makeStream(content: string): Readable {
   return Readable.from([Buffer.from(content, 'utf-8')]);
 }
@@ -27,6 +31,10 @@ function makeOutput(): { writable: Writable; result: () => string } {
 function makeStore(tmpDir: string) {
   return new FileBackend(join(tmpDir, 'auth.yml'));
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 describe('handleCredentialGet', () => {
   let tmpDir: string;
@@ -124,6 +132,11 @@ describe('handleCredentialGet', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Diagnostic logging — the credential-helper miss is the only persistent
+// signal that precedes a sync auth failure (git swallows the helper's stderr).
+// ---------------------------------------------------------------------------
+
 interface LogCall {
   level: 'debug' | 'warn';
   fields: Record<string, unknown>;
@@ -134,6 +147,8 @@ function makeFakeLogger() {
   const calls: LogCall[] = [];
   const record = (level: 'debug' | 'warn') => (fields: Record<string, unknown>, msg: string) =>
     calls.push({ level, fields, msg });
+  // Only debug/warn are exercised by handleCredentialGet; cast through unknown
+  // since we implement a tiny subset of the pino Logger surface.
   const logger = {
     debug: record('debug'),
     warn: record('warn'),
@@ -171,6 +186,7 @@ describe('handleCredentialGet diagnostic logging', () => {
       outcome: 'found',
       backend: 'file',
     });
+    // The token must never reach the log — assert across the full serialized record.
     expect(JSON.stringify(calls)).not.toContain('gho_super_secret');
   });
 
@@ -257,6 +273,12 @@ describe('handleCredentialGet diagnostic logging', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// gh-token relay — the server resolves a gh token (where gh is reachable) and
+// passes it through OK_GH_TOKEN/OK_GH_TOKEN_HOST across the stripped git env.
+// The helper prefers it over its own store so sync matches clone's gh-first tier.
+// ---------------------------------------------------------------------------
+
 describe('handleCredentialGet gh-token relay', () => {
   let tmpDir: string;
   let savedToken: string | undefined;
@@ -322,6 +344,7 @@ describe('handleCredentialGet gh-token relay', () => {
     const store = makeStore(tmpDir);
     await store.set('github.com', 'alice', 'gho_stored');
     process.env.OK_GH_TOKEN = 'gho_relayed';
+    // OK_GH_TOKEN_HOST intentionally unset
     const input = makeStream('protocol=https\nhost=github.com\n\n');
     const { writable, result } = makeOutput();
 
@@ -333,6 +356,8 @@ describe('handleCredentialGet gh-token relay', () => {
 
   test('CR and LF in the relayed token are stripped before write', async () => {
     const store = makeStore(tmpDir);
+    // Both \r and \n must be stripped — either can inject a new credential
+    // protocol field (\r\nurl=…) into the helper's newline-delimited output.
     process.env.OK_GH_TOKEN = 'gho_relayed\r\nurl=http://evil';
     process.env.OK_GH_TOKEN_HOST = 'github.com';
     const input = makeStream('protocol=https\nhost=github.com\n\n');

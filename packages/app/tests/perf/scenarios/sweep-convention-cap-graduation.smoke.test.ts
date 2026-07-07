@@ -1,3 +1,16 @@
+/**
+ * Smoke test for the convention-cap-graduation sweep scaffold.
+ *
+ * Runnable under Bun (no Playwright dependency). Covers:
+ *   - LATENCY_PROFILES is well-formed (5 entries, monotonically rising
+ *     RTT, correct discriminator names, no zero throughput for non-
+ *     localhost profiles).
+ *   - analyzeCalibration partitions on the divergence threshold:
+ *     within tolerance → ok; outside → mismatch with reason.
+ *   - buildScaffoldCellResults surfaces the STOP_IF reason in the
+ *     scaffolded JSON when calibration fails.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type { TempoQueryResult } from '../lib/tempo-client';
 import {
@@ -27,6 +40,10 @@ import {
   type TempoQueryFn,
 } from './sweep-convention-cap-graduation';
 
+// ---------------------------------------------------------------------------
+// LATENCY_PROFILES — well-formedness
+// ---------------------------------------------------------------------------
+
 describe('LATENCY_PROFILES', () => {
   test('has exactly 5 profiles', () => {
     expect(LATENCY_PROFILES.length).toBe(5);
@@ -38,6 +55,9 @@ describe('LATENCY_PROFILES', () => {
   });
 
   test('latencyMs is monotonically non-decreasing across the band', () => {
+    // Each profile slower-or-equal to the previous one. Out-of-order
+    // bands would silently re-target the sweep at a different operating
+    // point than the methodology assumes.
     for (let i = 1; i < LATENCY_PROFILES.length; i++) {
       const prev = LATENCY_PROFILES[i - 1];
       const cur = LATENCY_PROFILES[i];
@@ -71,6 +91,10 @@ describe('LATENCY_PROFILES', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// analyzeCalibration — STOP_IF partitioning
+// ---------------------------------------------------------------------------
+
 function uniformSamples(count: number, value: number): number[] {
   return Array.from({ length: count }, () => value);
 }
@@ -91,6 +115,9 @@ describe('analyzeCalibration', () => {
   });
 
   test('flags throttling-method-mismatch when slow-3g medians diverge >1.5x', () => {
+    // CDP says 2000ms slow-3g, but routeWebSocket comes in at 4000ms —
+    // a 2x divergence. The sweep cannot trust either method as the
+    // authority; STOP_IF fires.
     const samples: CalibrationSamples = {
       cdpLocalhostMs: uniformSamples(10, 2),
       routeWebSocketLocalhostMs: uniformSamples(10, 2),
@@ -107,6 +134,10 @@ describe('analyzeCalibration', () => {
   });
 
   test('flags mismatch on empty sample arrays (non-finite medians)', () => {
+    // The `measureRoundTripSeries` stub returns empty arrays — until the
+    // real Playwright workload is wired, the calibration path naturally
+    // trips this arm. That's the desired shape: a degraded sweep run
+    // produces a structured STOP_IF, not a silent zero-cycle pass.
     const samples: CalibrationSamples = {
       cdpLocalhostMs: [],
       routeWebSocketLocalhostMs: [],
@@ -122,6 +153,9 @@ describe('analyzeCalibration', () => {
   });
 
   test('localhost-only divergence above 1.5x still flags mismatch', () => {
+    // Even when slow-3g matches, divergence at the floor profile is a
+    // bug signal — CDP and routeWebSocket shouldn't disagree on the
+    // unthrottled native path.
     const samples: CalibrationSamples = {
       cdpLocalhostMs: uniformSamples(10, 2),
       routeWebSocketLocalhostMs: uniformSamples(10, 10),
@@ -135,6 +169,10 @@ describe('analyzeCalibration', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildScaffoldCellResults — STOP_IF surface in the JSON output
+// ---------------------------------------------------------------------------
 
 describe('buildScaffoldCellResults', () => {
   test('emits scenario name + schemaVersion + profile list', () => {
@@ -182,6 +220,10 @@ describe('buildScaffoldCellResults', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// percentile helper
+// ---------------------------------------------------------------------------
+
 describe('percentile', () => {
   test('returns null on empty input', () => {
     expect(percentile([], 0.5)).toBeNull();
@@ -207,6 +249,16 @@ describe('percentile', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// runCycleLoop + buildPerProfileSummary + buildFullCellResults
+// ---------------------------------------------------------------------------
+
+/**
+ * Synthetic driver — deterministic sync/mount latencies derived from
+ * profile + cycle index. Cycles 0..N-1 produce successful outcomes;
+ * negative cycleIndex (never used in the loop) is unreachable so any
+ * cycle the loop drives is observable.
+ */
 function makeSyntheticDriver(opts: {
   syncMsByProfile?: Partial<Record<LatencyProfileName, number>>;
   mountMsByProfile?: Partial<Record<LatencyProfileName, number>>;
@@ -241,6 +293,8 @@ describe('runCycleLoop', () => {
     expect(result.perCycle.length).toBe(LATENCY_PROFILES.length * 2);
     expect(result.perProfile.length).toBe(LATENCY_PROFILES.length);
 
+    // Each profile has 2 non-rejected samples and 0 rejected, so no
+    // empty-profile flag.
     for (const profile of result.perProfile) {
       expect(profile.samples).toBe(2);
       expect(profile.rejectedCount).toBe(0);
@@ -248,6 +302,8 @@ describe('runCycleLoop', () => {
       expect(profile.syncElapsedMs.p50).toBeGreaterThan(0);
     }
 
+    // perCycle rows carry the (mountId, profile, syncElapsedMs,
+    // mountElapsedMs) tuple.
     const first = result.perCycle[0];
     expect(first).toBeDefined();
     expect(first?.mountId).toMatch(/^mid-/);
@@ -257,6 +313,8 @@ describe('runCycleLoop', () => {
   });
 
   test('per-profile rollup computes p50/p95/p99 from the non-rejected samples', async () => {
+    // Synthetic samples: 1, 2, 3, 4, 5 for sync. Per-profile percentile
+    // helper should return 3 / 4.8 / 4.96 (linear interpolation).
     const driver: CycleDriver = async ({ profile, cycleIndex }) => ({
       kind: 'success',
       mountId: `mid-${profile.name}-${cycleIndex}`,
@@ -275,6 +333,7 @@ describe('runCycleLoop', () => {
   });
 
   test('empty-profile flag fires when all cycles in a profile are rejected', async () => {
+    // Reject every cycle index 0..4.
     const driver = makeSyntheticDriver({ rejectAt: [0, 1, 2, 3, 4] });
     const result = await runCycleLoop({
       driver,
@@ -292,6 +351,7 @@ describe('runCycleLoop', () => {
     let callCount = 0;
     const driver: CycleDriver = async ({ profile, cycleIndex }) => {
       callCount += 1;
+      // Throw on the slow-3g profile's first cycle.
       if (profile.name === 'slow-3g' && cycleIndex === 0) {
         throw new Error('synthetic driver failure');
       }
@@ -307,9 +367,12 @@ describe('runCycleLoop', () => {
       cyclesPerProfile: 2,
     });
     expect(result.perProfile.length).toBe(LATENCY_PROFILES.length);
+    // The throwing cycle was recorded as a rejected row; the slow-3g
+    // profile still has a rollup with 1 successful + 1 rejected sample.
     const slow3g = result.perProfile.find((p) => p.profile === 'slow-3g');
     expect(slow3g?.rejectedCount).toBe(1);
     expect(slow3g?.samples).toBe(1);
+    // Total driver invocations: 5 profiles × 2 cycles = 10.
     expect(callCount).toBe(10);
   });
 
@@ -340,6 +403,10 @@ describe('buildPerProfileSummary — direct unit test', () => {
     if (summary.syncP99BootstrapCi95) {
       expect(summary.syncP99BootstrapCi95.estimate).toBeGreaterThan(0);
       expect(summary.syncP99BootstrapCi95.lo).toBeLessThanOrEqual(summary.syncP99BootstrapCi95.hi);
+      // Full lo ≤ estimate ≤ hi monotonicity contract. A buggy bootstrap
+      // returning lo=5/hi=10 with estimate=50 would pass the lo<=hi check
+      // alone but violate the statistical envelope that the sweep's
+      // bcaUpperRecommendationMs depends on.
       expect(summary.syncP99BootstrapCi95.lo).toBeLessThanOrEqual(
         summary.syncP99BootstrapCi95.estimate,
       );
@@ -359,6 +426,7 @@ describe('buildPerProfileSummary — direct unit test', () => {
 
 describe('buildFullCellResults — JSON assembly', () => {
   test('bubbles empty-profile STOP_IF flags from perProfile up to the top level', async () => {
+    // One profile fully rejected; others succeed.
     const driver: CycleDriver = async ({ profile, cycleIndex }) => {
       if (profile.name === 'slow-3g') {
         return { kind: 'rejected', mountId: `mid-${cycleIndex}`, reason: 'sync-timeout' };
@@ -416,6 +484,10 @@ describe('buildFullCellResults — JSON assembly', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// LGTM pre-flight + Tempo enrichment
+// ---------------------------------------------------------------------------
+
 describe('isTempoRunning', () => {
   test('returns true when the Tempo container row is present and running', () => {
     const ndjson = `{"Name":"${LGTM_TEMPO_CONTAINER_NAME}","State":"running","Status":"Up 5 minutes"}
@@ -434,6 +506,9 @@ describe('isTempoRunning', () => {
   });
 
   test('tolerates non-JSON noise mixed into the stream', () => {
+    // `docker compose` versions vary in their --format json output —
+    // some emit a single JSON array, some NDJSON, some include a
+    // log line at the start. The parser must be permissive.
     const noisy = `WARN[0000] some upstream warning
 {"Name":"${LGTM_TEMPO_CONTAINER_NAME}","State":"running"}
 not-json-blob`;
@@ -456,6 +531,7 @@ describe('checkLgtmStackPreflight', () => {
     expect(result.kind).toBe('unavailable');
     if (result.kind === 'unavailable') {
       expect(result.reason).toBe('lgtm-stack-unavailable');
+      // Operator message names the bringup command
       expect(result.detail).toMatch(/docker compose up -d/);
       expect(result.detail).toContain('docker/otel-dev');
     }
@@ -503,6 +579,7 @@ describe('checkOtelCollectorReachable', () => {
     expect(result.kind).toBe('unreachable');
     if (result.kind === 'unreachable') {
       expect(result.reason).toBe('otel-collector-unreachable');
+      // Operator message names the env var + canonical port to debug.
       expect(result.detail).toMatch(/VITE_OTEL_COLLECTOR_URL/);
       expect(result.detail).toMatch(/14318/);
     }
@@ -550,6 +627,7 @@ describe('classifyProfileTempoHealth', () => {
       correlationMissingCount: 0,
     });
     expect(flags).toContain('tempo-query-empty-for-cycle');
+    // The 10% threshold is exact — 5/50 should NOT trip.
     const flagsAtBoundary = classifyProfileTempoHealth({
       totalCycles: 50,
       emptyCount: 5,
@@ -662,6 +740,10 @@ describe('enrichCyclesWithTempo', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// SYNC methodology
+// ---------------------------------------------------------------------------
+
 import {
   computeSyncMethodology,
   DEFAULT_SYNC_METHODOLOGY_LEVERS,
@@ -677,6 +759,7 @@ describe('projectRejectRateAtCap', () => {
   });
 
   test('counts the fraction above the cap', () => {
+    // 5 samples: 100, 200, 300, 400, 500. Cap at 350 → 2/5 above.
     expect(projectRejectRateAtCap([100, 200, 300, 400, 500], 350)).toBe(0.4);
   });
 
@@ -705,6 +788,8 @@ describe('computeSyncMethodology', () => {
   }
 
   test('produces a recommendation on a well-formed distribution', async () => {
+    // Simple distribution: 10ms each cycle on localhost. p99 = 10.
+    // recommendedMs = 10 × 4 (default safetyMargin) = 40 < ceiling 55000.
     const perCycle = syntheticCycles(
       'localhost',
       Array.from({ length: 20 }, () => 10),
@@ -732,10 +817,12 @@ describe('computeSyncMethodology', () => {
     expect(local?.multiplierRecommendationMs).toBeGreaterThan(0);
     expect(local?.multiplierRecommendationMs).toBeLessThan(55_000);
     expect(local?.stopIfFlags).not.toContain('server-ceiling-bound');
+    // Suppress unused-import lint for perCycle helper
     expect(perCycle.length).toBe(20);
   });
 
   test('flags server-ceiling-bound when p99 × safetyMargin exceeds the ceiling', () => {
+    // p99 = 20_000ms. safetyMargin = 4 → unclamped = 80_000 > ceiling 55_000.
     const perProfile: PerProfileSummary[] = [
       {
         profile: 'slow-3g',
@@ -757,11 +844,13 @@ describe('computeSyncMethodology', () => {
     expect(result.perProfile.find((p) => p.profile === 'slow-3g')?.stopIfFlags).toContain(
       'server-ceiling-bound',
     );
+    // The recommendation IS clamped (not 80_000):
     const slow = result.perProfile.find((p) => p.profile === 'slow-3g');
     expect(slow?.multiplierRecommendationMs).toBe(55_000);
   });
 
   test('emits BOTH multiplier and BCa-upper recommendations', () => {
+    // p99 = 50, BCa upper = 100.
     const perProfile: PerProfileSummary[] = [
       {
         profile: 'localhost',
@@ -858,10 +947,15 @@ describe('computeSyncMethodology', () => {
       perProfile,
       perCycle: [],
     });
+    // max = max(40 [localhost], 12000 [slow-3g]) = 12000, well under ceiling.
     expect(result.globalMultiplierRecommendationMs).toBe(12_000);
     expect(result.globalBcaUpperRecommendationMs).toBe(3100);
   });
 });
+
+// ---------------------------------------------------------------------------
+// MOUNT methodology — kneedle bounded by Nielsen-Norman
+// ---------------------------------------------------------------------------
 
 import {
   buildMountTimeCdf,
@@ -885,6 +979,7 @@ describe('buildMountTimeCdf', () => {
   });
 
   test('deduplicates repeated x values', () => {
+    // Many 100ms samples + one 50ms + one 200ms — only 3 unique x.
     const cdf = buildMountTimeCdf([100, 100, 100, 50, 200, 100]);
     expect(cdf.map((p) => p.x)).toEqual([50, 100, 200]);
   });
@@ -895,6 +990,8 @@ describe('computeMountMethodology', () => {
     perCycle: PerCycleRow[];
     perProfile: PerProfileSummary[];
   } {
+    // Build a bimodal distribution: half the cycles at ~30ms (cold), half
+    // at ~250ms (warm-fallback). Distribute across 2 profiles.
     const profiles: LatencyProfileName[] = ['localhost', 'fast-wifi'];
     const perCycle: PerCycleRow[] = [];
     for (let p = 0; p < profiles.length; p++) {
@@ -923,6 +1020,8 @@ describe('computeMountMethodology', () => {
         });
       }
     }
+    // Synthetic perProfile rollup — we only need rejectRate for the
+    // methodology's input-quality block.
     const perProfile: PerProfileSummary[] = profiles
       .filter((p): p is LatencyProfileName => p !== undefined)
       .map((p) => ({
@@ -944,6 +1043,8 @@ describe('computeMountMethodology', () => {
     const result = computeMountMethodology({ perProfile, perCycle });
     expect(result.methodology).toBe('kneedle-bounded-by-NN');
     expect(result.designLevers).toEqual(DEFAULT_MOUNT_METHODOLOGY_LEVERS);
+    // The bimodal CDF's inflection is small (~30-250ms), well below NN floor
+    // (3000). The methodology should clamp to floor.
     expect(result.recommendedCapMs).toBeGreaterThanOrEqual(
       DEFAULT_MOUNT_METHODOLOGY_LEVERS.nnFloorMs,
     );
@@ -953,6 +1054,8 @@ describe('computeMountMethodology', () => {
   });
 
   test('flags kneedle-degenerate on a uniform distribution + falls back to NN ceiling', () => {
+    // Uniform 1..100ms — no inflection. kneedle returns LOW confidence;
+    // methodology MUST flag kneedle-degenerate and fall back to ceiling.
     const perCycle: PerCycleRow[] = Array.from({ length: 100 }, (_, i) => ({
       mountId: `mid-uni-${i}`,
       profile: 'localhost' as LatencyProfileName,
@@ -990,6 +1093,8 @@ describe('computeMountMethodology', () => {
   });
 
   test('flags NN-floor-clamp-multiple-profiles when >1 profile sits entirely below the floor', () => {
+    // Three profiles, each contributing 10 samples all at ~50-100ms —
+    // well below the 3000ms NN floor.
     const profiles: LatencyProfileName[] = ['localhost', 'fast-wifi', 'cafe-lte'];
     const perCycle: PerCycleRow[] = [];
     for (let p = 0; p < profiles.length; p++) {
@@ -1029,9 +1134,12 @@ describe('computeMountMethodology', () => {
   test('records inflectionMs pre-clamp + clamp result post-clamp', () => {
     const { perCycle, perProfile } = makeBimodalCycles();
     const result = computeMountMethodology({ perProfile, perCycle });
+    // inflectionMs is the pre-clamp value; recommendedCapMs is post.
+    // When the methodology actually runs (non-degenerate path), both are present.
     if (!result.stopIfFlags.includes('kneedle-degenerate')) {
       expect(Number.isFinite(result.inflectionMs)).toBe(true);
     }
+    // clamp is one of three documented values
     expect(['floor', 'ceiling', 'none']).toContain(result.clamp);
   });
 
@@ -1041,6 +1149,7 @@ describe('computeMountMethodology', () => {
       perCycle: [],
       levers: { nnFloorMs: 1_000, nnCeilingMs: 5_000 },
     });
+    // Empty samples → fallback to nnCeiling = 5000
     expect(result.recommendedCapMs).toBe(5_000);
     expect(result.designLevers.nnFloorMs).toBe(1_000);
     expect(result.designLevers.nnCeilingMs).toBe(5_000);
@@ -1074,6 +1183,10 @@ describe('computeMountMethodology', () => {
     expect(result.perProfileRejectRates).toEqual([{ profile: 'localhost', rejectRate: 0.1 }]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// differentials rollup + falsifiability + full smoke
+// ---------------------------------------------------------------------------
 
 import {
   computeDifferentials,
@@ -1124,6 +1237,8 @@ describe('computeDifferentials', () => {
   }
 
   test('Differential E (syncDominatesMountTailRatio) is computed free from mark-histogram data', () => {
+    // No serverSpanTimings / clientSpanTimings — the ratio still
+    // populates from sync.p99 / mount.p99.
     const perProfile: PerProfileSummary[] = [makePerProfile('localhost', 30, 90)];
     const perCycle = makePerCycle('localhost', 5);
     const result = computeDifferentials({ perProfile, perCycle });
@@ -1143,6 +1258,7 @@ describe('computeDifferentials', () => {
 
   test('providerSetupContaminationMs is the median of ok.provider-pool.open samples', () => {
     const perProfile: PerProfileSummary[] = [makePerProfile('localhost', 30, 100)];
+    // 5 samples of providerPoolOpenMs = 8ms — median = 8.
     const perCycle = makePerCycle('localhost', 5, null, 8);
     const result = computeDifferentials({ perProfile, perCycle });
     const local = result.perProfile.find((d) => d.profile === 'localhost');
@@ -1154,6 +1270,7 @@ describe('computeDifferentials', () => {
       makePerProfile('localhost', 30, 100),
       makePerProfile('slow-3g', 30, 2000),
     ];
+    // Slow-3g handshake p99 = 1500 → share = 1500/2000 = 0.75 > 0.50 → FAIL.
     const perCycle = [...makePerCycle('localhost', 5), ...makePerCycle('slow-3g', 10, 1500)];
     const result = computeDifferentials({ perProfile, perCycle });
     expect(result.globalFalsifiabilityChecks.deploymentTopologyRobustness).toBe('FAIL');
@@ -1173,6 +1290,9 @@ describe('computeDifferentials', () => {
   });
 
   test('mountVsSyncTailIndependence FAILS when ANY profile has ratio > 0.85', () => {
+    // syncDominatesMountTailRatio > 0.85 trip — actually our convention
+    // is sync.p99 / mount.p99 — so values OVER 0.85 mean sync >> mount.
+    // For the FAIL case, we want sync.p99 ~ mount.p99 (ratio near 1).
     const perProfile: PerProfileSummary[] = [
       makePerProfile('localhost', 100, 90), // sync=90, mount=100 → ratio 0.9
     ];
@@ -1284,7 +1404,16 @@ describe('buildFullCellResults — full end-to-end shape (US-011)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// SYNC methodology — two-tier reject-rate check
+// ---------------------------------------------------------------------------
+
 describe('computeSyncMethodology — two-tier reject-rate gates', () => {
+  /**
+   * Build a synthetic perProfile + perCycle pair where the profile
+   * has a controlled pre-sync-disconnect rate. Useful for asserting
+   * the Tier-1 / Tier-2 threshold behavior in isolation.
+   */
   function makeProfilePair(opts: {
     profile: LatencyProfileName;
     latencyMs: number;
@@ -1343,6 +1472,9 @@ describe('computeSyncMethodology — two-tier reject-rate gates', () => {
   }
 
   test('Tier 1 fires when preSyncDisconnectRate exceeds 1%', () => {
+    // 99 successful cycles + 2 pre-sync-disconnects = 2/101 ≈ 1.98%.
+    // Above the 1% Tier-1 threshold → flag should fire on the profile
+    // AND bubble to the methodology's global stopIfFlags.
     const { perProfile, perCycle } = makeProfilePair({
       profile: 'slow-3g',
       latencyMs: 2000,
@@ -1358,6 +1490,8 @@ describe('computeSyncMethodology — two-tier reject-rate gates', () => {
   });
 
   test('Tier 1 does NOT fire at exactly 1% — strict-greater semantics', () => {
+    // 99 successes + 1 disconnect = 1% exactly. The threshold is
+    // strict-greater so this passes; nothing flags.
     const { perProfile, perCycle } = makeProfilePair({
       profile: 'localhost',
       latencyMs: 0,
@@ -1372,6 +1506,16 @@ describe('computeSyncMethodology — two-tier reject-rate gates', () => {
   });
 
   test('Tier 2 fires when projectedRejectRateAtMultiplierCap exceeds 1%', () => {
+    // The methodology decouples perProfile.syncElapsedMs.p99 (used
+    // to compute the multiplier cap) from the perCycle samples (used
+    // to project the reject rate at that cap). A pathological
+    // distribution can have a low p99 in the perProfile rollup AND
+    // a long tail in the underlying samples that exceeds the cap.
+    //
+    // Engineer the trigger: perProfile.p99 = 10ms (artificially low,
+    // e.g. from a one-off undersampled rollup), perCycle has 95
+    // samples at 5ms + 5 samples at 50ms. multiplierCap = 10 × 4 =
+    // 40ms. Samples above 40ms: 5/100 = 5% > 1%. Tier 2 fires.
     const successSamples = [
       ...Array.from({ length: 95 }, () => 5),
       ...Array.from({ length: 5 }, () => 50),
@@ -1394,6 +1538,9 @@ describe('computeSyncMethodology — two-tier reject-rate gates', () => {
         samples: 100,
         rejectedCount: 0,
         rejectRate: 0,
+        // Artificially low p99 in the rollup forces a tight
+        // multiplier cap; the per-cycle long-tail samples then
+        // exceed it.
         syncElapsedMs: { p50: 5, p95: 5, p99: 10 },
         mountElapsedMs: { p50: 30, p95: 35, p99: 40 },
         syncP99BootstrapCi95: null,
@@ -1426,6 +1573,10 @@ describe('computeSyncMethodology — two-tier reject-rate gates', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// SYNC methodology — slow-3g warm-path spot-check
+// ---------------------------------------------------------------------------
+
 describe('computeSyncMethodology — slow-3g warm-path spot-check', () => {
   function healthyProfile(): PerProfileSummary {
     return {
@@ -1451,6 +1602,8 @@ describe('computeSyncMethodology — slow-3g warm-path spot-check', () => {
   });
 
   test('populates ratio + warmTailExceedsCold when warm p99 stays under threshold', () => {
+    // Cold p99 = 10_000ms, warm p99 = 100ms (warm path is fast).
+    // Ratio = 0.01 → far below threshold. warmTailExceedsCold = false.
     const result = computeSyncMethodology({
       perProfile: [healthyProfile()],
       perCycle: [],
@@ -1468,6 +1621,8 @@ describe('computeSyncMethodology — slow-3g warm-path spot-check', () => {
   });
 
   test('flags warm-path-tail-exceeds-cold-tail-on-slow-3g when ratio > 2x', () => {
+    // Cold p99 = 100ms, warm p99 = 300ms. Ratio = 3 → > 2x threshold.
+    // The check fires.
     const result = computeSyncMethodology({
       perProfile: [healthyProfile()],
       perCycle: [],
@@ -1493,6 +1648,10 @@ describe('computeSyncMethodology — slow-3g warm-path spot-check', () => {
     expect(result.stopIfFlags).not.toContain('warm-path-tail-exceeds-cold-tail-on-slow-3g');
   });
 });
+
+// ---------------------------------------------------------------------------
+// SYNC methodology — post-rejection retry aggregation
+// ---------------------------------------------------------------------------
 
 describe('computeSyncMethodology — post-rejection retry aggregation', () => {
   test('retryAfterRejectionMsP99 is null when no cycles produced a retry sample', () => {
@@ -1527,6 +1686,11 @@ describe('computeSyncMethodology — post-rejection retry aggregation', () => {
   });
 
   test('retryAfterRejectionMsP99 reflects the retry distribution per profile', () => {
+    // 10 cycles with retry samples ranging 1000-1900ms (1000 + i*100).
+    // p99 of 10 samples uses rank = 0.99 × 9 = 8.91. sorted[8]=1800,
+    // sorted[9]=1900 → p99 = 1800 + 0.91 × 100 = 1891. The
+    // interpolation lands BELOW the max because nearest-rank weights
+    // sorted[8] more heavily than sorted[9] at rank 8.91.
     const perCycle: PerCycleRow[] = Array.from({ length: 10 }, (_, i) => ({
       mountId: `mid-${i}`,
       profile: 'slow-3g',
@@ -1558,6 +1722,9 @@ describe('computeSyncMethodology — post-rejection retry aggregation', () => {
   });
 
   test('retry samples flow through the cycle-loop result into the methodology', async () => {
+    // Driver returns the retry shape on every 2nd cycle. The cycle
+    // loop projects this into PerCycleRow.retryAfterRejectionMs, and
+    // the methodology aggregates per profile.
     const driver: CycleDriver = async ({ profile, cycleIndex }) => {
       if (cycleIndex % 2 === 0) {
         return {
@@ -1579,6 +1746,7 @@ describe('computeSyncMethodology — post-rejection retry aggregation', () => {
       cyclesPerProfile: 10,
       profiles: [getLatencyProfile('localhost')],
     });
+    // Half of cycles had a retry sample.
     const retryRows = cycleResult.perCycle.filter((c) => c.retryAfterRejectionMs !== null);
     expect(retryRows.length).toBe(5);
     expect(retryRows.every((c) => c.retryAfterRejectionMs === 1500)).toBe(true);

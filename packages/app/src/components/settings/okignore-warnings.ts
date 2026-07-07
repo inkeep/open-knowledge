@@ -1,3 +1,17 @@
+/**
+ * Pure heuristic-warning detector for `.okignore` pattern lines.
+ *
+ * Why heuristics, not validation: per `npm:ignore`'s actual behavior
+ * and git's gitignore spec, almost no syntactic input throws — most
+ * "wrong-looking" patterns simply match nothing. Server-side persistence
+ * rejection only fires on whitespace-only lines (the structural
+ * "user committed nothing" case). These five shapes are commit-but-
+ * probably-not-what-you-meant signals surfaced as yellow non-blocking
+ * indicators in the list editor.
+ *
+ * Browser-safe, no dependencies. Tested in `okignore-warnings.test.ts`.
+ */
+
 type OkignoreWarningCode =
   | 'trailing-backslash'
   | 'unmatched-bracket'
@@ -18,9 +32,18 @@ export const WARNING_MESSAGES: Readonly<Record<OkignoreWarningCode, string>> = {
   'embedded-newline': 'Embedded line break — the row spans multiple lines.',
 };
 
+/**
+ * Inspect a single pattern line and return any heuristic warnings.
+ * Empty lines and `#`-comments return `[]` — they're metadata, not
+ * patterns the user committed by intent.
+ *
+ * The returned array is fresh per call; safe to use as React state
+ * without aliasing the caller's reference.
+ */
 export function checkHeuristicWarnings(line: string): OkignoreWarning[] {
   const warnings: OkignoreWarning[] = [];
   if (line.length === 0) return warnings;
+  // Comment lines never get warnings — they round-trip as metadata.
   if (line.trimStart().startsWith('#')) return warnings;
 
   if (/[\r\n]/.test(line)) {
@@ -41,6 +64,9 @@ export function checkHeuristicWarnings(line: string): OkignoreWarning[] {
     });
   }
 
+  // Count `[` vs `]`. Open > close is "open character class" — gitignore
+  // treats this as a literal class extending to EOL which never matches.
+  // Close > open is fine (gitignore tolerates a stray `]`).
   const opens = countMatches(trimmed, '[');
   const closes = countMatches(trimmed, ']');
   if (opens > closes) {

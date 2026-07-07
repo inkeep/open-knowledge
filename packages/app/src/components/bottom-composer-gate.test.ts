@@ -5,6 +5,11 @@ import {
   shouldShowFolderComposer,
 } from './bottom-composer-gate';
 
+/**
+ * The composer is doc-scoped and shows in both the desktop app and a user's own
+ * browser. Pin presence/absence across each of the three gate inputs: from a
+ * passing baseline, flipping any single input must hide the composer.
+ */
 const PASSING: BottomComposerGateInputs = {
   terminalVisible: false,
   isEmbedded: false,
@@ -12,6 +17,10 @@ const PASSING: BottomComposerGateInputs = {
 };
 
 describe('shouldShowBottomComposer', () => {
+  // Renders in both the desktop app AND a plain browser: there is no desktop
+  // gate, so `PASSING` covers both hosts. The regression guard is the ABSENCE
+  // of a `isDesktop: false` hide-case below — re-introducing a desktop gate
+  // would have to add one back.
   test('renders when not embedded, terminal closed, and a doc is open', () => {
     expect(shouldShowBottomComposer(PASSING)).toBe(true);
   });
@@ -42,6 +51,8 @@ describe('shouldShowBottomComposer', () => {
 });
 
 describe('shouldShowFolderComposer', () => {
+  // Folder scope has no open doc, so the predicate drops the activeDocName clause
+  // and gates only on embedded / terminal.
   const PASSING_FOLDER = { terminalVisible: false, isEmbedded: false };
 
   test('renders when not embedded and terminal closed (no doc required)', () => {

@@ -104,6 +104,8 @@ describe('runDocLineageGuard', () => {
     expect(() => runDocLineageGuard('notes/a', 'epoch-1', deps)).not.toThrow();
   });
 
+  // ─── Counters (operator-visible signal, mirrors removal-redirect-guard) ───
+
   test('increments the mismatch counter on each rejection arm', () => {
     expectRejection(() => runDocLineageGuard('notes/a', 'epoch-1', depsFor(undefined)));
     expect(getMetrics().authDocLineageMismatchCount).toBe(1);
@@ -139,6 +141,9 @@ describe('runDocLineageGuard', () => {
   });
 });
 
+// The epoch key is persisted inside Y.Docs (IDB + update history); renaming the
+// constant's VALUE is a protocol break for existing docs, so the wire value is
+// pinned explicitly here while every read/write site goes through the constant.
 test('LINEAGE_EPOCH_KEY wire value is stable', () => {
   expect(LINEAGE_EPOCH_KEY).toBe('epoch');
 });

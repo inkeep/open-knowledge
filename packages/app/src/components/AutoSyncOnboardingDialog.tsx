@@ -1,3 +1,12 @@
+/**
+ * AutoSyncOnboardingDialog — first-run prompt explaining git auto-sync.
+ *
+ * Shown once per project when the sync engine reports a remote exists AND
+ * the project-local config field `autoSync.enabled` has not been set
+ * (`=== null`). Both buttons write through the project-local ConfigBinding
+ * so the choice flows down the standard Y.Text → persistence-hook →
+ * file-watcher → SyncEngine pipeline.
+ */
 import { Trans, useLingui } from '@lingui/react/macro';
 import { toast } from 'sonner';
 import {
@@ -42,7 +51,13 @@ export function AutoSyncOnboardingDialog({ open, onResolved }: AutoSyncOnboardin
   }
 
   return (
-    <DialogRoot open={open} onOpenChange={() => {}}>
+    <DialogRoot
+      open={open}
+      // Both buttons explicitly call onResolved; ignore Radix close-on-outside-
+      // click / Esc so the user doesn't accidentally clear the prompt without
+      // making a real choice.
+      onOpenChange={() => {}}
+    >
       <DialogContent className="sm:max-w-lg" showCloseButton={false}>
         <DialogHeader>
           <AutoSyncEnableDialogIntro />

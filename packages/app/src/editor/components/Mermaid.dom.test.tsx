@@ -1,3 +1,10 @@
+/**
+ * RTL behavioral tests for Mermaid diagram controls.
+ *
+ * Mermaid and Panzoom are both lazy browser-side dependencies in the component.
+ * These tests mock them at the module boundary so the contract under test is
+ * the mounted toolbar behavior, filling preview layout, and Panzoom lifecycle.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';

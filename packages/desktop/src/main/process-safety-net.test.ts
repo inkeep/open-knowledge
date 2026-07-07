@@ -2,6 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import { installStdioBrokenPipeGuard, isBrokenPipeError } from './process-safety-net.ts';
 
+/**
+ * Contract: a broken-pipe error on stdout/stderr must be handled at the stream
+ * boundary so it never escalates to an uncaught exception. Non-broken-pipe
+ * stream errors must still be surfaced (never silently masked), and the surfacing
+ * sink must never crash the process.
+ */
+
+/** A stand-in for `process.stdout` / `process.stderr` — a bare Writable-ish emitter. */
 function makeStdioStub() {
   const stdout = new EventEmitter();
   const stderr = new EventEmitter();
@@ -43,6 +51,9 @@ describe('isBrokenPipeError', () => {
 describe('installStdioBrokenPipeGuard', () => {
   test('RED-state baseline: without the guard, an EPIPE on stdout escalates (emit throws)', () => {
     const { stdout } = makeStdioStub();
+    // A Node EventEmitter with no 'error' listener throws synchronously on
+    // emit('error', ...) — the in-process analogue of the unhandled stream
+    // error that becomes an uncaught exception → Electron's fatal modal.
     expect(() => stdout.emit('error', epipe())).toThrow();
   });
 
@@ -93,6 +104,9 @@ describe('installStdioBrokenPipeGuard', () => {
   });
 
   test('a throwing onNonBenignError sink does not crash the process', () => {
+    // The whole point of the guard is "no stream error escalates". A sink that
+    // throws (e.g. the file logger's lazy mkdir hitting EACCES) must not defeat
+    // that — otherwise the guard re-creates the exact bug it prevents.
     const proc = makeStdioStub();
     installStdioBrokenPipeGuard(proc, {
       onNonBenignError: () => {
@@ -109,6 +123,7 @@ describe('installStdioBrokenPipeGuard', () => {
     installStdioBrokenPipeGuard(proc, { onNonBenignError: (_s, err) => surfaced.push(err) });
     installStdioBrokenPipeGuard(proc, { onNonBenignError: (_s, err) => surfaced.push(err) });
     proc.stdout.emit('error', errnoError('ENOSPC'));
+    // Exactly one report, not two — re-installing must not stack listeners.
     expect(surfaced).toHaveLength(1);
   });
 });

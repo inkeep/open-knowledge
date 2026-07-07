@@ -141,6 +141,10 @@
         "hardBreakStyle": {
           "hasDefault": true,
           "default": "backslash"
+        },
+        "sourceRaw": {
+          "hasDefault": true,
+          "default": null
         }
       },
       "content": "",
@@ -868,6 +872,11 @@
     },
     {
       "name": "restore-from-mdx",
+      "version": null,
+      "hasOptions": false
+    },
+    {
+      "name": "void-br-promoter",
       "version": null,
       "hasOptions": false
     },

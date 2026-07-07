@@ -1,3 +1,43 @@
+/**
+ * TipTap destroy-leak regression test.
+ *
+ * Pins the documented per-cycle leak rate baseline so the harness watches
+ * for regression even before the fix campaign re-runs. The test reads the
+ * committed leak-probe baseline JSON
+ * (updated by `bun run probe:tiptap-leak --update-baseline`) and applies
+ * threshold-based assertions keyed on the baseline's `source` field:
+ *
+ *   - pre-fix posture; the absolute 5 MB/cycle regression threshold is
+ *     RECORDED but NOT asserted (would always fail pre-fix). The test
+ *     sanity-checks the baseline shape + ensures someone hasn't accidentally
+ *     regressed the pre-fix measurement upward without re-running the probe.
+ *   - post-fix posture; the absolute threshold ACTIVATES. The test asserts:
+ *       * leakRateMbPerCycle <= 5 (CI failure threshold)
+ *       * leakRateMbPerCycle <= 2 (stricter post-fix target)
+ *
+ * Why baseline-JSON-based instead of running the probe in this test:
+ *   - The probe requires a running dev server at the target URL (engineer-
+ *     local infrastructure). bun test runs in `bun run check` without a
+ *     dev server, so an in-test probe execution would always SKIP — which
+ *     is mock-tautological coverage.
+ *   - Reading a committed baseline.json + asserting on it is the strongest
+ *     CI-runnable contract: future regressions are detected when an
+ *     engineer runs the probe and either (a) commits a regressed baseline
+ *     by mistake (this test catches it), or (b) the probe surfaces a
+ *     regression and the engineer must update the baseline + investigate.
+ *
+ * The probe + baseline + this test are designed as a 3-piece contract:
+ *   1. Engineer runs `bun run probe:tiptap-leak --update-baseline` on
+ *      canonical 16 GB+ MacBook hardware.
+ *   2. Probe writes new baseline.json with measured leak rate + source
+ *      field reflecting fix posture.
+ *   3. This test in CI asserts the committed baseline against the thresholds.
+ *
+ * This test does NOT apply the fix autonomously, even when the probe
+ * surfaces a fork-required source. The fix decision is the engineer's; this
+ * test just enforces what the engineer commits.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,13 +52,18 @@ import {
 } from './tiptap-destroy-leak';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// HERE is packages/app/tests/perf/probes; needs 5 `..` to reach the OK
+// repo root (packages/app/tests/perf/probes → perf → tests → app → packages → repo-root).
 const BASELINE_PATH = resolve(
   HERE,
   '../../../../../specs/2026-05-10-cap-graduation-cache-regime/evidence/tiptap-leak-probe-baseline.json',
 );
 
+/** CI failure threshold for post-fix posture. */
 const POST_FIX_REGRESSION_THRESHOLD_MB_PER_CYCLE = 5;
+/** Stricter post-fix target (TipTap fix should drop leak ~85%). */
 const POST_FIX_TARGET_MB_PER_CYCLE = 2;
+/** Pre-fix sanity ceiling — any baseline >50 MB/cycle is suspicious (pre-fix measurement was 17). */
 const PRE_FIX_SANITY_CEILING_MB_PER_CYCLE = 50;
 
 type BaselineSource =
@@ -111,6 +156,8 @@ describe('tiptap-destroy-leak regression assertions', () => {
   test('pre-fix baseline stays under sanity ceiling (catches accidental upward drift)', () => {
     const baseline = readBaseline();
     if (baseline.source === 'post-fix-W14') {
+      // Post-fix posture; the post-fix-specific test below applies. Skip
+      // this sanity check (would be redundant with the stricter assertions).
       return;
     }
     expect(baseline.leakRateMbPerCycle).toBeLessThanOrEqual(PRE_FIX_SANITY_CEILING_MB_PER_CYCLE);
@@ -119,6 +166,9 @@ describe('tiptap-destroy-leak regression assertions', () => {
   test('post-fix posture meets AC14.3 + AC14.2 thresholds', () => {
     const baseline = readBaseline();
     if (baseline.source !== 'post-fix-W14') {
+      // Pre-fix posture: absolute threshold not yet activatable;
+      // baseline tracks the documented current measurement. The fix
+      // landing flips source → post-fix-W14 + this assertion fires.
       return;
     }
     expect(baseline.leakRateMbPerCycle).toBeLessThanOrEqual(
@@ -132,6 +182,10 @@ describe('tiptap-destroy-leak regression assertions', () => {
     if (baseline.source !== 'pre-fix-W14-fork-required') {
       return;
     }
+    // When the probe identifies a fork-required leak source, the engineer
+    // must surface to the user. The hypothesizedFixNotes
+    // field captures the rationale; assert it's populated so the surfacing
+    // isn't silently lost on baseline-update.
     expect(baseline.hypothesizedFixPath).toBe('fork-required');
     expect(baseline.hypothesizedFixNotes).toBeDefined();
     expect((baseline.hypothesizedFixNotes ?? '').length).toBeGreaterThan(20);
@@ -187,13 +241,25 @@ describe('tiptap-destroy-leak probe CLI shape', () => {
   });
 
   test('leak-rate formula uses N-1 (regression: a prior probe divided by N and diverged from the library)', () => {
+    // Fixed sequence: 5 post-cycle heap samples drifting linearly from
+    // 100 → 140 MB. Interval count is 4 (N-1); per-cycle leak rate is
+    // (140-100)/4 = 10 MB/cycle. A divide-by-N formula would emit
+    // (140-100)/5 = 8 MB/cycle — that drift between probe and library
+    // is the regression this test guards.
     const samples = [100, 110, 120, 130, 140];
     expect(computeLeakRateMbPerCycle(samples)).toBe(10);
+    // Sanity-check that fewer than 2 samples short-circuits to 0 (matches
+    // the probe's pre-condition; the inline guard was removed when the
+    // probe started delegating to this function).
     expect(computeLeakRateMbPerCycle([])).toBe(0);
     expect(computeLeakRateMbPerCycle([42])).toBe(0);
   });
 
   test('writeProbeResults refuses --update-baseline on a degraded run', () => {
+    // A run where most cycles failed produces an empty cycleHeapsMb, which
+    // makes computeLeakRateMbPerCycle return 0. Writing that as a baseline
+    // labelled 'post-fix-W14' would silently mask future regressions of
+    // 5+ MB/cycle. The gate refuses if observedCycles/cycles < 0.5.
     const outDir = mkdtempSync(join(tmpdir(), 'tiptap-leak-baseline-degraded-'));
     try {
       const degraded: ProbeResult = {
@@ -211,6 +277,8 @@ describe('tiptap-destroy-leak probe CLI shape', () => {
         hypothesizedFixNotes: '',
       };
       expect(() => writeProbeResults(degraded, outDir, true)).toThrow(/baseline refused/);
+      // Refused baselines must not leave a baseline.json on disk — the
+      // engineer sees the error AND the absence of a stale baseline.
       expect(existsSync(resolve(outDir, 'tiptap-leak-probe-baseline.json'))).toBe(false);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
@@ -251,6 +319,8 @@ describe('tiptap-destroy-leak probe CLI shape', () => {
   });
 
   test('ProbeOptions + ProbeResult types are exported (compile-time check)', () => {
+    // This test exists so a structural change to the exported types fails
+    // typecheck; the runtime expect is a no-op shape pin.
     const sample: ProbeOptions = {
       target: 'http://localhost:5173',
       doc: 'PROJECT',

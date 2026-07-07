@@ -7,6 +7,7 @@ import {
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
 import { skillDisplayName } from '@/lib/skill-scope';
 
+/** Narrow a free string to a known skill scope (`project` | `global`). */
 function isSkillScope(value: string): value is SkillScope {
   return (MANAGED_ARTIFACT_SCOPES as readonly string[]).includes(value);
 }
@@ -29,12 +30,26 @@ interface KnownTabTargets {
   folderPaths: ReadonlySet<string>;
   assetPaths: ReadonlySet<string>;
   keepMissingDocName?: string | null;
+  /**
+   * Doc the location hash currently points at — kept even when absent from
+   * `pages`. The page list loads empty-then-populated on cold start, so a sync
+   * that fires in that window would otherwise evict the doc the user is
+   * navigating to (clearing the hash → empty-state splash). Genuine removal is
+   * handled by the deletion path (`onDocDeleted`), not this prune, so retaining
+   * the navigated doc here can't strand a deleted one. Distinct from
+   * `keepMissingDocName`, which only protects an already-resolved `missing`
+   * target — the cold-start race evicts before that resolution runs.
+   */
   keepHashDocName?: string | null;
 }
 
 const LOCAL_TAB_SESSION_PREFIX = 'ok-editor-tabs-v1:';
 const FOLDER_TAB_PREFIX = '\u0000folder:';
 const ASSET_TAB_PREFIX = '\u0000asset:';
+// Skill bundle files are addressed by three coordinates (scope / name / path),
+// not a single path, so they get their own tab namespace. `name` carries no
+// slash (lowercase-hyphen identity), so `scope/name/<path-tail>` parses back
+// unambiguously even though `path` may contain slashes.
 const SKILL_FILE_TAB_PREFIX = '\u0000skill-file:';
 const TAB_INSTANCE_SEPARATOR = '\u0000doc-tab:';
 const MARKDOWN_TAB_EXTENSION_PATTERN = /\.(md|mdx)$/i;
@@ -74,6 +89,7 @@ function isValidTabId(value: unknown): value is string {
   return true;
 }
 
+/** The three coordinates a skill-file tab/target round-trips. */
 export interface SkillFileTabTarget {
   scope: SkillScope;
   name: string;
@@ -84,6 +100,7 @@ export function skillFileTabId(target: SkillFileTabTarget): string {
   return `${SKILL_FILE_TAB_PREFIX}${target.scope}/${target.name}/${target.path}`;
 }
 
+/** Parse the `<scope>/<name>/<path…>` body of a skill-file tab id (post-prefix). */
 function parseSkillFileTabBody(base: string): SkillFileTabTarget | null {
   if (!base.startsWith(SKILL_FILE_TAB_PREFIX)) return null;
   const body = base.slice(SKILL_FILE_TAB_PREFIX.length);
@@ -91,6 +108,9 @@ function parseSkillFileTabBody(base: string): SkillFileTabTarget | null {
   if (segments.length < 3) return null;
   const [scope, name, ...rest] = segments;
   const path = rest.join('/');
+  // Validate scope against the known set — a tab id is persisted state that can
+  // be hand-edited / stale, so an unknown scope must not silently become a
+  // skill-file target with a bogus scope.
   if (!scope || !name || !path || !isSkillScope(scope)) return null;
   return { scope, name, path };
 }
@@ -111,8 +131,12 @@ export function tabParts(
   docName: string,
   docExt: string,
 ): { baseName: string; extension: string; label: string; prefix: string } {
+  // Project skills are content docs at `.ok/skills/<name>/SKILL`, but the tab
+  // should read as the skill's NAME (matching global skills, whose tab shows
+  // the name) — not the literal "SKILL" filename or the `.ok/skills/` path.
   const projectSkill = parseProjectSkillContentDocName(docName);
   if (projectSkill) {
+    // Prefix-stripped display (`open-knowledge-pack-X` → `X`), matching the sidebar.
     const display = skillDisplayName(projectSkill);
     return { baseName: display, extension: '', label: display, prefix: '' };
   }
@@ -249,6 +273,23 @@ export function filterClosableTabIds(
   return normalizeOpenTabs(tabIds, Number.MAX_SAFE_INTEGER).filter((tabId) => !pinned.has(tabId));
 }
 
+/**
+ * Drag-mutable pin state. Only the *dragged* tab's pin status can flip, and
+ * only when it crosses the pinned/unpinned divide. The divide sits after the
+ * first `pinnedCount` positions (pinnedCount = number of currently-pinned open
+ * tabs): positions `[0, pinnedCount)` are the pinned zone, the rest are the
+ * unpinned region.
+ *
+ *   - Dragged tab lands inside the pinned zone → it is pinned.
+ *   - Dragged tab lands in the unpinned region → it is unpinned.
+ *   - Every *other* tab keeps its pin state regardless of where the reorder
+ *     pushed it (pin is membership, not position) — so pinned and unpinned
+ *     tabs still interleave freely and are identified by the pin icon, not by
+ *     being front-clustered. Re-ordering two pinned tabs among themselves, or
+ *     within the zone, never changes pin state.
+ *
+ * Returns the next pinnedTabIds. Pure — caller commits it.
+ */
 export function applyDragPinMutation(
   nextOpenTabs: readonly string[],
   pinnedTabIds: readonly string[],
@@ -256,6 +297,8 @@ export function applyDragPinMutation(
 ): string[] {
   const normalizedOpen = normalizeOpenTabs(nextOpenTabs, Number.MAX_SAFE_INTEGER);
   const prevPinned = normalizePinnedTabIds(pinnedTabIds, normalizedOpen);
+  // Only open tabs are pinnable — new-tab placeholders / unknown ids never
+  // mutate pin state.
   const draggedIdx = normalizedOpen.indexOf(draggedTabId);
   if (draggedIdx < 0) return prevPinned;
   const wasPinned = prevPinned.includes(draggedTabId);
@@ -325,6 +368,10 @@ export function openTab(
       activeTabId: currentTabId,
     };
   }
+  // Focus an already-open tab for this target rather than opening a second tab
+  // for the same doc/folder/asset. Without this, opening a target that is open
+  // in a non-active tab — or while a blank new-tab is active — would mint a
+  // duplicate tab for the same file.
   const existingTabId = normalized.find((openTabId) => baseTabId(openTabId) === canonicalTabId);
   if (existingTabId) {
     return {
@@ -390,9 +437,16 @@ export function filterOpenTabsForKnownTargets(
     const tab = parseEditorTabId(tabId);
     if (tab.kind === 'folder') return folderPaths.has(tab.folderPath);
     if (tab.kind === 'asset') return assetPaths.has(tab.assetPath);
+    // Skill bundle files are addressed outside the content tree (scope/name/
+    // path), so they never appear in `pages`/`assetPaths` — keep their tabs so
+    // a page-list sync doesn't prune the open viewer.
     if (tab.kind === 'skill-file') return true;
     return (
       pages.has(tab.docName) ||
+      // Managed-artifact docs (skills/templates) are tree-excluded by design, so
+      // they never appear in `pages` — keep their tabs regardless, otherwise the
+      // page-list sync would prune the active skill/template tab the moment a
+      // page-list update fires (e.g. right after opening it).
       isManagedArtifactDocName(tab.docName) ||
       tab.docName === keepMissingDocName ||
       tab.docName === keepHashDocName
@@ -441,6 +495,7 @@ export function remapOpenTabs(
   for (const tab of tabs) {
     const { instanceSuffix } = splitTabInstance(tab);
     const parsed = parseEditorTabId(tab);
+    // Skill-file tabs aren't renameable doc/folder/asset paths — pass through.
     const mappedBase =
       parsed.kind === 'doc'
         ? remapDocTabBase(parsed.docName, baseTabId(tab))
@@ -469,6 +524,13 @@ export function remapOpenTabs(
   return capOpenTabsPreservingPinned(next, limit, remappedPinnedTabIds);
 }
 
+// Pre-seed the visible tab order with the rename-remapped equivalents so a
+// subsequent `reconcileVisibleTabOrder` does not drop the stale (pre-rename)
+// tabIds at the membership check and re-append the new tabIds at the end,
+// shifting the renamed tab's slot. Both rename-adjacent commit
+// paths in DocumentContext — server-driven `onRenameRedirect` and
+// sidebar-driven `remapTabsForRename` — MUST seed the ref through this
+// helper so the invariant is structural rather than caller-enforced.
 export function remapVisibleTabsForRename(
   currentOrder: readonly string[],
   renamed: readonly { fromDocName: string; toDocName: string }[],
@@ -642,5 +704,6 @@ export function writeLocalTabSessionState(
     storage.setItem(key, JSON.stringify(state));
   } catch (err) {
     console.warn('[editor-tabs] failed to write local tab session:', err);
+    // Private browsing and quota failures should not affect editing.
   }
 }

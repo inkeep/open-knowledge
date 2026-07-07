@@ -1,3 +1,14 @@
+/**
+ * Semantic-search subsystem — public surface.
+ *
+ * Server-side, capability-gated, additive on top of the BM25 engine, sourced
+ * from a remote OpenAI-compatible embeddings API. This barrel re-exports only
+ * what the rest of the server package consumes; siblings within the subsystem
+ * import each other directly. See the module docstrings: `embedder` (interface +
+ * OpenAI HTTP client + key seam), `concept-embedder` (deterministic test/offline
+ * embedder), `chunking`, `vector-cache`, `semantic-search-service`.
+ */
+
 export { createConceptEmbedder } from './concept-embedder.ts';
 export {
   DEFAULT_EMBEDDINGS_DIMENSIONS,

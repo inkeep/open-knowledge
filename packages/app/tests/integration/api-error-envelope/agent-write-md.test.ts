@@ -1,3 +1,15 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleAgentWriteMd`.
+ *
+ * Asserts the canonical RFC 9457 wire shape:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `AgentWriteMdSuccessSchema` (timestamp + subscriber counts +
+ *     optional hints/summary), no `ok: true` discriminator.
+ *   - missing markdown → `urn:ok:error:invalid-request` (pre-identity body
+ *     shape rejection from `withValidation`).
+ *   - reserved docname → `urn:ok:error:reserved-doc-name` (post-identity semantic).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { AgentWriteMdSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -58,6 +70,11 @@ describe('agent-write-md envelope (RFC 9457)', () => {
   });
 
   test('empty markdown string is accepted by the endpoint (schema no longer rejects empty)', async () => {
+    // The endpoint is permissive: empty `markdown` parses and returns 200. This
+    // exercises the wire-contract relaxation (no `.min(1)`), NOT the
+    // clear-existing-body behavior — `docName` is fresh, so there is no prior
+    // body to clear. Body-clearing is covered in agent-sessions.test.ts; the
+    // "don't create empty docs" policy lives in the MCP `write_document` tool.
     const docName = `agent-write-md-empty-${crypto.randomUUID().slice(0, 8)}`;
     const res = await postWriteMd({ markdown: '', position: 'replace', docName });
     expect(res.status).toBe(200);

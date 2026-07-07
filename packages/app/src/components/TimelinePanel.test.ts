@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the pure-function helpers in TimelinePanel.tsx.
+ *
+ * The React rendering itself is exercised via the Playwright e2e suite; this
+ * test focuses on the summary-flattening helper so refactors survive without
+ * a browser.
+ */
 import { describe, expect, test } from 'bun:test';
 import type { TimelineEntry } from '@inkeep/open-knowledge-core';
 import { allSummariesFor } from './TimelinePanel.tsx';

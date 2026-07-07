@@ -1,6 +1,15 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import { TemplatesManagerSection } from './TemplatesManagerSection';
 
+/**
+ * Settings -> Project templates. Manages templates at the project root's
+ * `.ok/templates/` directory — available across every folder in the project.
+ * Folder-level templates (under `<folder>/.ok/templates/`) stay on each
+ * folder's overview page.
+ *
+ * Thin wrapper around the shared `TemplatesManagerSection`; see that component
+ * for the list / edit / delete / new mechanics.
+ */
 export function ProjectTemplatesSection() {
   const { t } = useLingui();
   return (

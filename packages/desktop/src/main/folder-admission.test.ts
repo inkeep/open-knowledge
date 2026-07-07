@@ -74,6 +74,7 @@ describe('validateFolderPick — home warnings', () => {
   });
 
   test('home/Documents/sub does NOT trigger home-documents warning', () => {
+    // Only the exact path matches — a sub-folder of ~/Documents is fair game.
     const result = validateFolderPick(join(HOME, 'Documents/notes'), { homeDir: HOME });
     expect(result.warnings).toEqual([]);
   });
@@ -130,11 +131,15 @@ describe('validateFolderPick — purity + path normalization', () => {
   });
 
   test('embedded ".." resolved before comparison', () => {
+    // path.resolve('/Volumes/External/../External') → '/Volumes/External'
     const result = validateFolderPick('/Volumes/External/sub/../', { homeDir: HOME });
     expect(result.warnings).toEqual([{ kind: 'volumes-mount' }]);
   });
 
   test('default homeDir falls back to os.homedir() when option omitted', () => {
+    // Smoke check: function does not throw when homeDir is not injected. The
+    // exact warning content depends on the real environment's home, so we
+    // only assert structural shape here.
     const result = validateFolderPick('/opt/projects/x');
     expect(result.blocked).toBe(false);
     expect(Array.isArray(result.warnings)).toBe(true);
@@ -147,6 +152,9 @@ describe('validateFolderPick — purity + path normalization', () => {
   });
 
   test('warning kind type is exhaustively narrowed (compile-time + runtime)', () => {
+    // Locks the discriminated union — if a SensitivePathWarning variant is
+    // added/removed, the assertNever line fails to typecheck and a
+    // human-readable test failure surfaces alongside.
     const allKinds: readonly SensitivePathWarning['kind'][] = [
       'root',
       'home',
@@ -163,6 +171,10 @@ describe('validateFolderPick — purity + path normalization', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// discoverProject — ancestor walk + git-root promotion
+// ---------------------------------------------------------------------------
+
 let tmpRoot: string;
 /** Realpath-resolved scratch dir. macOS aliases /tmp → /private/tmp; using
  * realpath keeps fixtures' absolute paths consistent with the realpathSync
@@ -173,6 +185,8 @@ let fakeHome: string;
 beforeEach(() => {
   tmpRoot = mkdtempSync(resolve(tmpdir(), 'ok-discover-project-'));
   tmpReal = realpathSync(tmpRoot);
+  // The fake home anchors the walk's upper bound. Setting it INSIDE the tmp
+  // tree keeps every fixture below "home" without involving the real user.
   fakeHome = resolve(tmpReal, 'home');
   mkdirSync(fakeHome, { recursive: true });
 });
@@ -264,6 +278,10 @@ describe('discoverProject — managed kind (ancestor walk)', () => {
   });
 
   test('legacy .ok/ below git root wins over git-root promotion', async () => {
+    // Fixture: <fakeHome>/repo/.git/, <fakeHome>/repo/docs/.ok/. Picked path is
+    // <fakeHome>/repo/docs/api. The walk hits .ok/ at <fakeHome>/repo/docs
+    // BEFORE git-root resolution, so the managed branch wins (the ancestor
+    // walk takes precedence over the git-root rule).
     const repo = resolve(fakeHome, 'repo');
     const docs = resolve(repo, 'docs');
     const api = resolve(docs, 'api');
@@ -301,6 +319,9 @@ describe('discoverProject — fresh kind, git-root promotion (FR-2a)', () => {
     expect(result.kind).toBe('fresh');
     if (result.kind !== 'fresh') return;
     expect(result.projectDir).toBe(repo);
+    // The opened folder and the content scope intentionally align: content
+    // dir defaults to the git root, not the picked sub-folder. The consent
+    // dialog still lets the user narrow it.
     expect(result.defaultContentDir).toBe('.');
     expect(result.gitRootPromoted).toBe(true);
     expect(result.gitState).toBe('present');
@@ -380,6 +401,10 @@ describe('discoverProject — fresh kind, git-root promotion (FR-2a)', () => {
 
 describe('discoverProject — linked-worktree carveout scoping', () => {
   test('subfolder of a linked worktree promotes to the git root, not in-place Setup', async () => {
+    // Regression: resolveGitDirDetailed walks up to the worktree root's `.git`
+    // pointer, so a subfolder used to misclassify as a linked-worktree root and
+    // short-circuit to in-place Setup — scaffolding `.ok/` inside the subdir
+    // instead of promoting to the git root.
     const worktree = resolve(fakeHome, 'wt');
     const sub = resolve(worktree, 'public/open-knowledge');
     mkdirSync(sub, { recursive: true });
@@ -398,6 +423,9 @@ describe('discoverProject — linked-worktree carveout scoping', () => {
   });
 
   test('the linked-worktree root itself still classifies standalone under an ancestor .ok/', async () => {
+    // The carveout's reason for existing: an un-initialized linked-worktree
+    // root is its own project regardless of an ancestor OK project. The
+    // subfolder fix must not weaken this.
     const parent = resolve(fakeHome, 'parent');
     const worktree = resolve(parent, 'wt');
     mkdirSync(worktree, { recursive: true });
@@ -410,6 +438,8 @@ describe('discoverProject — linked-worktree carveout scoping', () => {
       dirSizeProbe: null,
     });
 
+    // 'fresh' (standalone) — NOT 'managed', which would mean it wrongly
+    // promoted to the ancestor `.ok/`.
     expect(result.kind).toBe('fresh');
     if (result.kind !== 'fresh') return;
     expect(result.projectDir).toBe(worktree);
@@ -499,6 +529,9 @@ describe('discoverProject — rejected kind', () => {
   });
 
   test('returns rejected/symlink-escape when picked is a symlink to a sibling tree', async () => {
+    // Fixture: dirA/sub is a symlink that resolves to dirB/elsewhere. The
+    // realpath of pickedPath is OUTSIDE realpath(dirname(pickedPath)) — we
+    // refuse rather than walk a tree the user didn't visibly choose.
     const dirA = resolve(fakeHome, 'dirA');
     const dirB = resolve(fakeHome, 'dirB');
     const elsewhere = resolve(dirB, 'elsewhere');
@@ -521,6 +554,9 @@ describe('discoverProject — rejected kind', () => {
 
 describe('discoverProject — depth + boundary safety', () => {
   test('walk respects ANCESTOR_WALK_DEPTH_LIMIT — .ok/ at depth 31 is NOT found', async () => {
+    // Build a 31-deep chain under a synthetic root that is NOT inside
+    // fakeHome — we want the walk to hit the depth cap before any other
+    // boundary. Place .ok/ at the root of the chain (31 levels above picked).
     const chainRoot = resolve(tmpReal, 'deep');
     let cursor = chainRoot;
     for (let i = 0; i < 31; i += 1) cursor = resolve(cursor, `lvl${i}`);
@@ -584,16 +620,53 @@ describe('discoverProject — type surface', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// discoverProject — integration with real `git rev-parse`
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// discoverProject — ancestor-promote MUST be bounded by boot-budget
+// ---------------------------------------------------------------------------
+//
+// Regression contract for "utility init timed out after 15000ms". The
+// ancestor-promote walk: when a picked path's strict ancestor under
+// $HOME contains `.ok/config.yml`, discoverProject silently promotes projectDir
+// to that ancestor. If the ancestor's content tree is large enough that
+// `createServer`'s synchronous `createContentFilter` + `tagIndex.init()` exceed
+// the utility's 15s init budget, the user sees
+// a timeout dialog with the picked path — never the promoted ancestor — and the
+// post-mount toast that would have informed them never fires (mount never
+// completes on timeout).
+//
+// The foundational contract: ancestor-promote MUST be one of (a) bounded so it
+// cannot promote to a directory the desktop cannot boot in 15s, (b) surfaced to
+// the user before fork, OR (c) on a boot path with no fixed timeout. PR #678's
+// implementation does none.
+//
+// Probe injection follows the existing `gitTopLevel` pattern in
+// `DiscoverProjectOptions` — the test must NOT walk a real 90k-file dir
+// (any new test must use a fast injected probe).
 describe('discoverProject — ancestor-promote bounded by boot budget (regression: utility init timeout)', () => {
   type DirSizeProbe = (dir: string) => Promise<{ readonly exceedsCap: boolean }>;
 
   test('ancestor with content tree EXCEEDING boot budget MUST surface user-confirmation requirement', async () => {
+    // Fixture: pick is <fakeHome>/ancestor/sub/picked; <fakeHome>/ancestor has
+    // `.ok/config.yml`. Without a probe, today's discoverProject returns
+    // `{ kind: 'managed', projectDir: ancestor, ancestorPromoted: true }` and
+    // the caller forks the utility against the ancestor — utility init times
+    // out at 15s if the ancestor is huge.
     const ancestor = resolve(fakeHome, 'ancestor');
     const sub = resolve(ancestor, 'sub');
     const picked = resolve(sub, 'picked');
     mkdirSync(picked, { recursive: true });
     writeOkConfig(ancestor);
 
+    // Probe reports the ancestor exceeds the boot-budget cap. A real probe
+    // would call something like `walkExceedsCap` (already exists at
+    // `consent-dialog.ts`); here we shortcut with a stub so the test is fast.
+    // Capture the dir the probe was called against — the load-bearing
+    // distinction between measuring the ancestor (correct) and the picked
+    // subdir (would silently reintroduce the dragon-wiki regression).
     let probedDir: string | undefined;
     const dirSizeProbe: DirSizeProbe = async (dir) => {
       probedDir = dir;
@@ -607,8 +680,16 @@ describe('discoverProject — ancestor-promote bounded by boot budget (regressio
     };
     const result = await discoverProject(picked, opts);
 
+    // Probe must have been called with the ancestor, not the picked subdir —
+    // a regression that flips this to `realPicked` would silently mismeasure
+    // the small subtree as `exceedsCap: false` and reintroduce the silent fork.
     expect(probedDir).toBe(ancestor);
 
+    // Pin the concrete post-fix shape: discoverProject returns the
+    // `'managed-requires-confirmation'` discriminated variant with the
+    // ancestor's projectDir, the user's picked path preserved, and
+    // ancestorPromoted asserted true. Pinning it lets a regression that
+    // flipped to a different shape fail loudly here.
     expect(result.kind).toBe('managed-requires-confirmation');
     if (result.kind !== 'managed-requires-confirmation') return;
     expect(result.projectDir).toBe(ancestor);
@@ -617,6 +698,10 @@ describe('discoverProject — ancestor-promote bounded by boot budget (regressio
   });
 
   test('ancestor with content tree UNDER boot budget proceeds with silent managed-promote (no over-correction)', async () => {
+    // Companion guard: when the probe says the ancestor is small, the legacy
+    // managed-promote behavior is preserved. Pins that the fix doesn't
+    // over-correct and confirm-prompt every ancestor-promote (which would
+    // surprise users with vault-style `.ok/` near home).
     const ancestor = resolve(fakeHome, 'ancestor');
     const sub = resolve(ancestor, 'sub');
     const picked = resolve(sub, 'picked');
@@ -639,6 +724,11 @@ describe('discoverProject — ancestor-promote bounded by boot budget (regressio
   });
 
   test('explicit null opt-out preserves legacy silent ancestor-promote (no probe = no gate)', async () => {
+    // The probe is required (the type system enforces every caller make a
+    // conscious choice — see DiscoverProjectOptions), with `null` as the
+    // explicit opt-out. Pinning the null-sentinel path keeps the legacy
+    // managed-promote branch reachable for callers that demonstrably can't
+    // ever land on a too-large ancestor (CLI flows, narrow tests).
     const ancestor = resolve(fakeHome, 'ancestor');
     const sub = resolve(ancestor, 'sub');
     const picked = resolve(sub, 'picked');
@@ -658,6 +748,14 @@ describe('discoverProject — ancestor-promote bounded by boot budget (regressio
   });
 
   test('direct-pick (no walk-up) does NOT invoke the probe', async () => {
+    // Pin the direct-pick branch's no-probe contract: when the picked path
+    // ITSELF contains `.ok/config.yml` (cursor === realPicked, no walk-up),
+    // the boot-budget probe must be bypassed entirely. Otherwise a user
+    // explicitly opening a known project would be ambushed by a confirmation
+    // dialog they didn't ask for. The source pins this via `ancestorPromoted`
+    // being false when cursor matches realPicked, so the
+    // `ancestorPromoted && dirSizeProbe` guard short-circuits before the
+    // probe call.
     const projectRoot = resolve(fakeHome, 'projectRoot');
     mkdirSync(projectRoot, { recursive: true });
     writeOkConfig(projectRoot);
@@ -747,6 +845,7 @@ describe('discoverProject — D12 linked-worktree carveout', () => {
 
     expect(result.kind).toBe('fresh');
     if (result.kind !== 'fresh') return;
+    // Critical: NOT promoted to parent — the worktree is its own project.
     expect(result.projectDir).toBe(wt);
     expect(result.pickedPath).toBe(wt);
     expect(result.gitRootPromoted).toBe(false);
@@ -792,6 +891,12 @@ describe('discoverProject — D12 linked-worktree carveout', () => {
   });
 
   test('linked-worktree root with its OWN .ok/config.yml classifies as managed (not fresh)', async () => {
+    // Regression guard: an already-initialized worktree (.ok/config.yml present
+    // at its root) must classify as `managed` so the consent dialog does not
+    // re-prompt on every launch. The linked-worktree carveout treats UN-initialized
+    // linked worktrees as standalone; an INITIALIZED one is an existing OK project
+    // and the worktree's own .ok/config.yml takes precedence over the
+    // carveout's "treat as fresh" default.
     const parent = resolve(fakeHome, 'parent-init');
     mkdirSync(parent, { recursive: true });
     writeOkConfig(parent);
@@ -804,6 +909,8 @@ describe('discoverProject — D12 linked-worktree carveout', () => {
 
     const wt = resolve(parent, 'wt-initialized');
     await execFileAsync('git', ['-C', parent, 'worktree', 'add', '-b', 'init-feat', wt]);
+    // The worktree carries its own .ok/config.yml — common for any worktree
+    // checked out from a branch where .ok/config.yml is git-tracked.
     writeOkConfig(wt);
 
     const result = await discoverProject(wt, { homeDir: fakeHome, dirSizeProbe: null });

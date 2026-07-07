@@ -95,6 +95,12 @@ const blockTypes: BlockType[] = [
     label: 'Code Block',
     icon: SquareCode,
     isActive: (editor) => editor.isActive('codeBlock'),
+    // Default to JavaScript at creation so syntax highlighting fires on
+    // the first character. The default lives here (and on the sibling
+    // bare-backticks input rule + slash menu) rather than as a schema
+    // default — the y-tiptap bridge would otherwise migrate parsed-from-
+    // disk bare fences. See `extensions/code-block.ts`'s top-of-file
+    // comment for the bridge mechanics.
     command: (editor) => editor.chain().focus().toggleCodeBlock({ language: 'js' }).run(),
   },
 ];

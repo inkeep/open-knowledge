@@ -1,3 +1,6 @@
+/**
+ * Behavioral coverage for the two pure path helpers.
+ */
 import { describe, expect, test } from 'bun:test';
 import { isContentDirSafe, relativeToProject } from './project-paths';
 

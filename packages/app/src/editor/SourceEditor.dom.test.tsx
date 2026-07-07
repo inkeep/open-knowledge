@@ -25,6 +25,7 @@ Object.defineProperty(window.Range.prototype, 'getBoundingClientRect', {
 
 const mountedDocNames = new Set<string>();
 
+// Count open+focus requests reaching the BottomComposer subscriber path.
 let composerOpenRequests = 0;
 let unsubscribeComposer: (() => void) | null = null;
 
@@ -96,6 +97,7 @@ async function findCmContent(container: HTMLElement): Promise<HTMLElement> {
   return container.querySelector<HTMLElement>('.cm-content');
 }
 
+/** `@tiptap/core`'s `isMacOS()` reads `navigator.platform` at call time. */
 function setPlatform(platform: string): void {
   Object.defineProperty(globalThis.navigator, 'platform', {
     value: platform,
@@ -265,6 +267,10 @@ describe('SourceEditor outline navigation', () => {
   }
 
   test('skips a frontmatter region whose opening fence carries a trailing space', async () => {
+    // `--- ` is one in-tolerance keystroke away from `---`. The outline list
+    // comes from the server's extractHeadings (core fence contract — FM
+    // stripped), so the client-side jump scan must skip the same FM region or
+    // the YAML `#` comment is miscounted as the index-0 heading.
     const content = [
       '--- ',
       'title: Fence hazard',

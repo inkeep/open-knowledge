@@ -8,9 +8,15 @@ import { Textbox } from './icons/textbox';
 interface EditorModeToggleProps {
   isSourceMode: boolean;
   onModeChange: (mode: EditorModeValue) => void;
+  /** Disables the Markdown (source) option (e.g. doc editor when offline). */
   sourceDisabled?: boolean;
 }
 
+/**
+ * Visual ⇄ Markdown editor-mode toggle — the segmented control shared by the
+ * document editor toolbar (`EditorToolbar`) and the skill editor, so both read
+ * identically.
+ */
 export function EditorModeToggle({
   isSourceMode,
   onModeChange,

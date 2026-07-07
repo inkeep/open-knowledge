@@ -79,7 +79,7 @@ describe('SubscribeCard (combined release-notes + subscribe)', () => {
     expect(screen.getByText('1.4.0', { exact: false })).toBeTruthy();
 
     const hrefs = Array.from(document.querySelectorAll('a')).map((a) => a.getAttribute('href'));
-    expect(hrefs).toContain('https://x.com/OpenKnowledgeAI');
+    expect(hrefs).toContain('https://x.com/OpenKnowledge');
     expect(hrefs).toContain('https://github.com/inkeep/open-knowledge');
     expect(hrefs).toContain('https://discord.com/invite/YujKpFN49');
   });
@@ -111,8 +111,10 @@ describe('SubscribeCard (combined release-notes + subscribe)', () => {
 
     await waitFor(() => expect(submitSubscribe).toHaveBeenCalled());
     expect(store.getSnapshot().subscribed).toBe(true);
+    // Social row collapses on success; the release-notes row stays.
     expect(screen.queryByText('Follow us on')).toBeNull();
     expect(screen.getByText(/Updated to Version/)).toBeTruthy();
+    // Auto-dismiss fires after the linger.
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });

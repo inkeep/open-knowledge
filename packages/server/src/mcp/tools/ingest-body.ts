@@ -1,3 +1,15 @@
+/**
+ * `ingest` MCP workflow tool — capture an external source as raw reference material
+ * inside the project's content directory.
+ *
+ * Principle: raw preservation only. No summary, no analysis, no interpretation.
+ * That's `research`'s job.
+ *
+ * Bias: when the source is a binary file (PDF, image, audio, video, Office doc),
+ * agents preserve the raw bytes — not a lossy text scrape — via the agent's shell
+ * tool + the existing `![[file.ext]]` asset-embed surface.
+ */
+
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 
 export function buildIngestBody(source: string, contentDir: string): string {

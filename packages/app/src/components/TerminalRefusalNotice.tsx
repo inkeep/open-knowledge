@@ -1,8 +1,22 @@
+/**
+ * Failure-state surface for a terminal whose shell main refused to start. When
+ * `bridge.terminal.create()` resolves `{ ok: false }` the xterm canvas was
+ * already opened into the container, so without this notice the user faces a
+ * bare focused black box that echoes nothing. This makes the refusal visible
+ * and states why, mirroring TerminalExitNotice.
+ *
+ * It is `role="alert"` because the terminal is non-functional, so the state
+ * change must reach a screen-reader user even when focus is elsewhere. The
+ * focused canvas is intentionally NOT given focus by the panel for these
+ * states; the optional "Close terminal" affordance collapses the dock and
+ * returns focus to the editor.
+ */
 import { useLingui } from '@lingui/react/macro';
 import { Button } from '@/components/ui/button';
 
 interface TerminalRefusalNoticeProps {
   readonly reason: 'no-project' | 'not-consented';
+  /** Release focus / collapse the dock back to the editor. */
   readonly onClose?: () => void;
 }
 

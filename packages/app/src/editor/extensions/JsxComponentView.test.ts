@@ -1,3 +1,26 @@
+/**
+ * Regression tests for `extractPrimitiveProps` (JsxComponentView.tsx).
+ *
+ * The function's contract:
+ *   - Passes through every declared non-reactnode prop.
+ *   - Excludes prop names the descriptor marked as `reactnode`.
+ *   - Preserves unknown attrs (merge symmetry — fumadocs components
+ *     often require attrs we don't declare, e.g. `InlineTOC.items`).
+ *   - Routes every return value through `sanitizeComponentProps` — XSS
+ *     denylist (`dangerouslySetInnerHTML`, `on*` events, React internals),
+ *     URL-scheme allowlist, style sanitization, nested URL traversal.
+ *
+ * the implementation iterated ONLY the descriptor-declared
+ * PropDef entries, dropping any attr not in the registry. Example crash:
+ * `<InlineTOC items={[...]}>` → fumadocs InlineTOC does `items.map(...)`
+ * → `TypeError: Cannot read properties of undefined (reading 'map')`
+ * because the `items` attr was silently dropped.
+ *
+ * Also includes the kind-discriminator write-boundary helper. Expression-kind
+ * jsxComponent nodes are sourceRaw-only and must not receive element-shaped
+ * prop edits.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -19,6 +42,9 @@ describe('extractPrimitiveProps', () => {
   });
 
   test('excludes reactnode-typed prop names (content holes are NOT render-time props)', () => {
+    // Shouldn't happen in practice (parser wouldn't put children in props),
+    // but asserting the filter excludes reactnode names if they somehow
+    // appear.
     const attrs = { props: { title: 'Hi', children: 'shouldnt be here' } };
     const result = extractPrimitiveProps(attrs, reactNodes('children'));
     expect(result).toEqual({ title: 'Hi' });
@@ -26,6 +52,8 @@ describe('extractPrimitiveProps', () => {
   });
 
   test('REGRESSION: undeclared attrs pass through (e.g. InlineTOC items, TypeTable type)', () => {
+    // Registry PropDef only declares `children: reactnode`, but fumadocs
+    // InlineTOC requires an `items` array or it crashes.
     const attrs = {
       props: {
         items: [
@@ -36,12 +64,16 @@ describe('extractPrimitiveProps', () => {
     };
     const result = extractPrimitiveProps(attrs, reactNodes('children'));
 
+    // The undeclared `items` MUST reach the component.
     expect(result).toHaveProperty('items');
     expect(Array.isArray(result.items)).toBe(true);
     expect((result.items as unknown[]).length).toBe(2);
   });
 
   test('REGRESSION: preserves unknown attrs alongside declared ones (FR-21 merge symmetry)', () => {
+    // fumadocs Card has `title`/`description`/`color`/`external` attrs; if
+    // the descriptor only declares title+description, color/external must
+    // still reach the rendered component.
     const attrs = {
       props: {
         title: 'Custom Card',
@@ -68,6 +100,8 @@ describe('extractPrimitiveProps', () => {
     const result = extractPrimitiveProps({}, reactNodes());
     expect(result).toEqual({});
   });
+
+  // ── Render-layer XSS mitigation contract (sanitizeComponentProps) ──────
 
   test('XSS: strips javascript: URL from href before it reaches live React', () => {
     const attrs = { props: { href: 'javascript:alert(1)', title: 'bad' } };
@@ -149,6 +183,10 @@ describe('getElementJsxAttrs', () => {
 });
 
 describe('stableHash', () => {
+  // Load-bearing invariant: the ErrorBoundary reset key depends on two props
+  // objects with identical (key, value) pairs hashing to the same string,
+  // regardless of insertion order. Without this, post-edit re-serialization
+  // reorders keys and the boundary remounts mid-typing, stealing focus.
   test('key-order independence — primary load-bearing invariant', () => {
     expect(stableHash({ a: 1, b: 2 })).toBe(stableHash({ b: 2, a: 1 }));
     expect(stableHash({ type: 'warn', title: 'x' })).toBe(stableHash({ title: 'x', type: 'warn' }));

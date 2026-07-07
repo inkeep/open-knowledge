@@ -1,5 +1,16 @@
-import type { BridgeToleranceClass, CC1Channel } from '@inkeep/open-knowledge-core';
+/**
+ * Reconciliation metrics — in-memory counters for observability.
+ *
+ * Exposed via GET /api/metrics/reconciliation.
+ */
 
+import type { BridgeToleranceSignal, CC1Channel } from '@inkeep/open-knowledge-core';
+
+/**
+ * Why an Observer A drain could not be served by the map-driven splice.
+ * Closed union — keys a bounded-cardinality counter map, so call sites are
+ * compile-time checked the same way `BridgeToleranceSignal` keys are.
+ */
 export type MapDrivenSpliceFallbackReason =
   | 'text-mismatch'
   | 'synthetic-doc'
@@ -15,6 +26,7 @@ export interface ReconciliationMetrics {
   branchSwitchCount: number;
   parkCount: number;
   gitAutoSaveFailureCount: number;
+  /** Count of per-writer fan-out commitWipFromTree failures. */
   gitWriterCommitFailureCount: number;
   cc1BroadcastCount: number;
   cc1BroadcastDropCount: number;
@@ -38,13 +50,13 @@ export interface ReconciliationMetrics {
    *  disk I/O. Under skipStoreHooks: true, a single agent-write produces
    *  exactly one persistence disk write. */
   persistenceDiskWrites: number;
-  /** Bridge-correctness SPEC §6 R9 — count of Observer A Path B
+  /** Bridge-correctness — count of Observer A Path B
    *  content-preservation post-condition violations. Calibration signal
    *  for the parallel single-CRDT-collapse exploration. */
   bridgeMergeContentLoss: number;
-  /** Bridge-correctness SPEC §6 R9 — count of successful silent rescue
+  /** Bridge-correctness — count of successful silent rescue
    *  checkpoints written via saveInMemoryCheckpoint. Bounds the rate a user
-   *  might see in TimelinePanel; if high, R7c coalescing becomes worth adding. */
+   *  might see in TimelinePanel; if high, coalescing becomes worth adding. */
   bridgeMergeCheckpointCreated: number;
   /** Y.Text-is-truth contract — count of bridge invariant violation events
    *  emitted by the watchdog (Observer B post-Phase-1, the persistence
@@ -101,6 +113,7 @@ export interface ReconciliationMetrics {
   /** Count of legacy WIP refs deleted by the allowlist-based sweep in
    *  initShadowRepo on first run post-upgrade. */
   shadowMigrationLegacyRefsDeleted: number;
+  /** Count of captureEffect failures. Prod swallows; dev/test throws. */
   effectDiffCaptureFailures: number;
   /** Count of awareness-mutation failures in `AgentPresenceBroadcaster`
    *  (setPresence / clearPresence / touchMode catching a throw from
@@ -139,12 +152,13 @@ export interface ReconciliationMetrics {
    *  (architectural-floor cases like CRLF/leading-newline are normal); growth
    *  highlights which classes are most worth closing via fidelity attrs.
    *
-   *  Keys are bounded to `BridgeToleranceClass` (the enumerated labels in
-   *  `BRIDGE_TOLERANCE_CLASSES`). Lazy keys: a class only appears once the
+   *  Keys are bounded to `BridgeToleranceSignal` (the enumerated labels in
+   *  `BRIDGE_TOLERANCE_CLASSES` plus the check-layer parse-equivalence
+   *  fallback). Lazy keys: a class only appears once the
    *  first event for it has fired. Tightening from `string` enforces typo-
    *  resistance at compile time so no caller can silently pollute the map
    *  with arbitrary labels and drop those counters from operator visibility. */
-  bridgeToleranceApplied: Partial<Record<BridgeToleranceClass, number>>;
+  bridgeToleranceApplied: Partial<Record<BridgeToleranceSignal, number>>;
   /** Y.Text-is-truth contract — count of Observer A Path B
    *  fires (mergeThreeWay slow path triggered by ytext divergence from the
    *  baseline) that escaped the per-doc rate-limiter and emitted a
@@ -220,7 +234,7 @@ export interface ReconciliationMetrics {
   /** Y.Text-is-truth contract — count of best-effort
    *  fragment-reconciliation attempts (`reconcileFragmentNow`) that
    *  threw inside persistence's pre-write sanity-check recovery path. The
-   *  reconciliation is the second half of the contract's R7 hazard
+   *  reconciliation is the second half of the contract's hazard
    *  mitigation: when the watchdog fires `bridge-invariant-violation` at
    *  persistence-time, the disk write proceeds with ytext bytes and a
    *  fragment-reconciliation queues to re-derive fragment from `parse(ytext)`
@@ -259,12 +273,12 @@ export interface ReconciliationMetrics {
    *  rejection errors (malformed remote-peer CRDT update, schema drift,
    *  exotic Y.XmlElement types) land here. The catch path conservatively
    *  treats a serialize throw as definite divergence: queues fragment
-   *  reconciliation, proceeds to write Y.Text bytes verbatim (R7 hazard
+   *  reconciliation, proceeds to write Y.Text bytes verbatim (hazard
    *  mitigation). Steady-state target ~0; non-zero growth means the
    *  fragment side is producing values the canonical serializer rejects —
    *  worth investigating before the divergence becomes systemic. */
   persistenceSanityCheckSerializeFailures: number;
-  /** Audit-framework phase 2 — count of deferred-drain cycles in
+  /** Audit-framework — count of deferred-drain cycles in
    *  `flushDeferredStores` where `storeDocumentNow` threw past its inner
    *  catches. The deferred drain runs after a quiescence-gate timeout post-
    *  burst; the worst-case frequency is tens-per-day, so there is no rate-
@@ -505,7 +519,16 @@ export function incrementAgentPatchFindMismatches(): void {
   counters.agentPatchFindMismatches++;
 }
 
-export function incrementBridgeToleranceApplied(toleranceClass: BridgeToleranceClass): void {
+/**
+ * Increment the bridge-tolerance-applied counter for a specific tolerance
+ * class. Bounded cardinality: the enumerated labels in
+ * `BRIDGE_TOLERANCE_CLASSES` plus the check-layer parse-equivalence
+ * fallback (`BridgeToleranceSignal` in `@inkeep/open-knowledge-core`).
+ * Tightening from `string` is a compile-time guard against
+ * typos at call sites that would otherwise silently pollute the metrics map
+ * with arbitrary keys and drop those counters from operator dashboards.
+ */
+export function incrementBridgeToleranceApplied(toleranceClass: BridgeToleranceSignal): void {
   counters.bridgeToleranceApplied[toleranceClass] =
     (counters.bridgeToleranceApplied[toleranceClass] ?? 0) + 1;
 }
@@ -522,6 +545,12 @@ export function incrementMapDrivenSpliceApplied(): void {
   counters.mapDrivenSpliceApplied++;
 }
 
+/**
+ * Increment the map-driven-splice fallback counter for a specific reason.
+ * Bounded cardinality: the 4-value `MapDrivenSpliceFallbackReason` union is
+ * a compile-time guard against arbitrary keys, mirroring
+ * `incrementBridgeToleranceApplied`.
+ */
 export function incrementMapDrivenSpliceFallback(reason: MapDrivenSpliceFallbackReason): void {
   counters.mapDrivenSpliceFallback[reason] = (counters.mapDrivenSpliceFallback[reason] ?? 0) + 1;
 }
@@ -594,6 +623,11 @@ export function incrementAuthDocLineageGuardError(): void {
   counters.authDocLineageGuardErrors++;
 }
 
+/**
+ * Record a filtered collab-socket error. Prefer `handleCollabSocketError`
+ * at call sites — it pairs the classify + counter update atomically so the
+ * two can't drift. This low-level function is exported for tests.
+ */
 export function incrementCollabSocketFilteredError(code: 'EPIPE' | 'ECONNRESET'): void {
   if (code === 'EPIPE') counters.collabSocketEpipeCount++;
   else counters.collabSocketEconnresetCount++;
@@ -603,6 +637,35 @@ export function incrementCollabMessageTooLarge(): void {
   counters.collabMessageTooLargeCount++;
 }
 
+/**
+ * Classify a collab-socket error. Returns `true` if the error is a
+ * known-safe kernel TCP-teardown signal (EPIPE or ECONNRESET) that should
+ * be filtered out of logs per precedent §23. As a side effect, increments
+ * the corresponding per-code metric counter so operators can see the rate
+ * during incident triage.
+ *
+ * Returns `false` for any other error code — the caller surfaces those
+ * via their normal logging path.
+ *
+ * Contract: callers MUST use this helper rather than re-implementing the
+ * `code === 'EPIPE' || code === 'ECONNRESET'` check inline. Centralizing
+ * the filter surface prevents future skew (e.g., if ETIMEDOUT or ECONNABORTED
+ * become known-safe, the decision flips in one place).
+ *
+ * Usage shape:
+ *
+ *   socket.on('error', (err: NodeJS.ErrnoException) => {
+ *     if (handleCollabSocketError(err)) return;
+ *     log.error({ err }, 'Upgrade socket error');
+ *   });
+ *
+ *   ws.on('error', (err: NodeJS.ErrnoException) => {
+ *     if (!handleCollabSocketError(err)) {
+ *       log.error({ err }, 'WebSocket error');
+ *     }
+ *     ws.terminate();
+ *   });
+ */
 export function incrementShadowMigrationLegacyRefsDeleted(count: number): void {
   counters.shadowMigrationLegacyRefsDeleted += count;
 }
@@ -623,6 +686,12 @@ export function handleCollabSocketError(err: NodeJS.ErrnoException): boolean {
   return false;
 }
 
+/**
+ * Record a per-channel CC1 watermark. The `channel` parameter is narrowed
+ * to `CC1Channel` so the bounded-cardinality contract is enforced at
+ * compile time — every call site is keyed by one of the nine enumerated
+ * channel labels and arbitrary strings are rejected by the type checker.
+ */
 export function setCC1LastSeq(channel: CC1Channel, seq: number): void {
   counters.cc1LastSeq[channel] = seq;
 }

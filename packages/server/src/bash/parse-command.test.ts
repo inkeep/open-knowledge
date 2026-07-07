@@ -79,6 +79,10 @@ describe('parseCommand — write_blocked (redirection and write flags)', () => {
   test('sort --output=file', () => expectError('sort --output=out file', 'write_blocked'));
   test('find -delete', () => expectError('find . -name "*.md" -delete', 'write_blocked'));
   test('find -fprint', () => expectError('find . -fprint out.txt', 'write_blocked'));
+  // find -exec / -execdir / -ok take a command terminated by `;` which
+  // shell-quote turns into an op token — the shell-construct layer fires
+  // first. Either rejection is correct; categorizing as shell_construct_blocked
+  // is defensible because the `;` terminator is the real injection vector.
   test('find -exec rejected (via ; op token)', () =>
     expectError('find . -exec rm {} ;', 'shell_construct_blocked'));
   test('find -execdir rejected (via ; op token)', () =>
@@ -105,6 +109,10 @@ describe('parseCommand — shell_construct_blocked', () => {
 });
 
 describe('parseCommand — env/var expansions pass-through (handled at runtime)', () => {
+  // shell-quote strips `$IFS`, `$HOME`, `${FOO}` etc. when no env map is
+  // provided — they become empty strings in the arg list. The resulting
+  // command parses fine at the parser layer; path-traversal rejection
+  // happens later in the exec handler via realpath check.
   test('$IFS strips to empty — parser accepts', () => {
     const result = parseCommand('cat $IFS/etc/passwd');
     if ('error' in result) {
@@ -160,6 +168,7 @@ describe('augmentStagesWithExcludes — grep', () => {
   test('respects user-provided --exclude-dir', () => {
     const stages = augmentStagesWithExcludes(parse('grep -rn --exclude-dir=my-dir oauth .'));
     expect(stages[0].args).toContain('--exclude-dir=my-dir');
+    // None of ours injected
     expect(stages[0].args.filter((a) => a.startsWith('--exclude-dir=')).length).toBe(1);
   });
 
@@ -183,6 +192,7 @@ describe('augmentStagesWithExcludes — find', () => {
     const stages = augmentStagesWithExcludes(parse('find . -name "*.md"'));
     const joined = stages[0].args.join(' ');
     expect(joined).toContain('-not -path */node_modules/*');
+    // Injection happens before the -name primary
     expect(stages[0].args.indexOf('-not')).toBeLessThan(stages[0].args.indexOf('-name'));
   });
 
@@ -194,6 +204,7 @@ describe('augmentStagesWithExcludes — find', () => {
 
   test('skips when user already passed -not', () => {
     const stages = augmentStagesWithExcludes(parse('find . -not -path "*/foo/*" -name "*.md"'));
+    // Only the user's -not should be present
     expect(stages[0].args.filter((a) => a === '-not').length).toBe(1);
   });
 
@@ -207,6 +218,7 @@ describe('augmentStagesWithExcludes — find', () => {
     const stages = augmentStagesWithExcludes(
       parse('find . -path "*/node_modules" -prune -name "*.md"'),
     );
+    // No additional -not injected
     expect(stages[0].args.filter((a) => a === '-not').length).toBe(0);
   });
 });

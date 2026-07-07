@@ -110,6 +110,8 @@ describe('computeSemanticModeView', () => {
   });
 
   test('clearing the query after a fire keeps the held results dimmed, no submit', () => {
+    // A stray "select-all + delete" must not cost the expensive set: the held
+    // results stay (dimmed), and there is nothing to submit until text returns.
     expect(
       view({ query: '', firedQuery: 'auth retries', status: 'success', resultCount: 7 }),
     ).toEqual({
@@ -120,6 +122,8 @@ describe('computeSemanticModeView', () => {
   });
 
   test('clearing the query DURING a re-fire keeps the held results dimmed, spinner showing', () => {
+    // Cleared mid-flight: distinct from the success clear above — the spinner is
+    // still up, so the notice is 'searching' (not null) while the held set holds.
     expect(
       view({ query: '', firedQuery: 'auth retries', status: 'loading', resultCount: 7 }),
     ).toEqual({
@@ -130,6 +134,9 @@ describe('computeSemanticModeView', () => {
   });
 
   test('clearing the query after an error keeps the held results dimmed, no retry row', () => {
+    // After a provider error, clearing the input must NOT leave a retry row: an
+    // empty query has nothing to retry. The held set stays (dimmed) until text
+    // returns; without this the retry affordance would target an empty query.
     expect(
       view({ query: '', firedQuery: 'auth retries', status: 'error', resultCount: 7 }),
     ).toEqual({

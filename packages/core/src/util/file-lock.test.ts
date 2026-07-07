@@ -47,6 +47,8 @@ describe('withFileLock — concurrent', () => {
         active += 1;
         maxActive = Math.max(maxActive, active);
         totalRuns += 1;
+        // Yield to the event loop so any racing call has a chance to overlap
+        // if serialization is broken.
         await new Promise((r) => setTimeout(r, 5));
         active -= 1;
         return i;
@@ -63,6 +65,7 @@ describe('withFileLock — concurrent', () => {
 
 describe('withFileLock — stale-lock recovery', () => {
   test('force-clears a lockfile whose mtime is older than 2 * timeoutMs', async () => {
+    // Pre-create a lockfile from a "crashed" prior holder.
     writeFileSync(lockPath, '', { mode: 0o600 });
     const ancient = new Date('2000-01-01T00:00:00Z');
     utimesSync(lockPath, ancient, ancient);
@@ -81,6 +84,7 @@ describe('withFileLock — stale-lock recovery', () => {
   });
 
   test('onWarn that throws propagates the exception (no silent swallow)', async () => {
+    // Pre-create a stale lockfile so the stale-clear path runs.
     writeFileSync(lockPath, '', { mode: 0o600 });
     const ancient = new Date('2000-01-01T00:00:00Z');
     utimesSync(lockPath, ancient, ancient);
@@ -103,10 +107,12 @@ describe('withFileLock — timeout', () => {
       release = r;
     });
 
+    // Start a long-held lock that we'll release manually.
     const heldPromise = withFileLock(lockPath, async () => {
       await releaseSignal;
     });
 
+    // Try to acquire while held — should time out fast.
     await expect(
       withFileLock(lockPath, async () => 'never', {
         timeoutMs: 100,
@@ -149,6 +155,10 @@ describe('withFileLock — timeout', () => {
   });
 });
 
+// Sync variant — mirrors the async suite's shape (sequential happy path,
+// stale-lock recovery, timeout) so a regression in the busy-wait or sync
+// stale-clear path can't hide behind the CI-skipped cross-process race
+// test that's the only other coverage for `withFileLockSync`.
 describe('withFileLockSync — sequential', () => {
   test('runs fn, returns its result, removes the lockfile', () => {
     const result = withFileLockSync(lockPath, () => {
@@ -171,6 +181,7 @@ describe('withFileLockSync — sequential', () => {
 
 describe('withFileLockSync — stale-lock recovery', () => {
   test('force-clears a lockfile whose mtime is older than 2 * timeoutMs', () => {
+    // Pre-create a lockfile from a "crashed" prior holder.
     writeFileSync(lockPath, '', { mode: 0o600 });
     const ancient = new Date('2000-01-01T00:00:00Z');
     utimesSync(lockPath, ancient, ancient);
@@ -189,6 +200,7 @@ describe('withFileLockSync — stale-lock recovery', () => {
   });
 
   test('onWarn that throws propagates the exception (no silent swallow)', () => {
+    // Pre-create a stale lockfile so the stale-clear path runs.
     writeFileSync(lockPath, '', { mode: 0o600 });
     const ancient = new Date('2000-01-01T00:00:00Z');
     utimesSync(lockPath, ancient, ancient);
@@ -206,6 +218,8 @@ describe('withFileLockSync — stale-lock recovery', () => {
 
 describe('withFileLockSync — timeout', () => {
   test('throws FileLockTimeoutError when the lock is held past timeoutMs', () => {
+    // Pre-create a fresh lockfile (mtime = now) so the sync busy-wait can't
+    // clear it as stale during the short timeout window.
     writeFileSync(lockPath, '', { mode: 0o600 });
 
     expect(() =>

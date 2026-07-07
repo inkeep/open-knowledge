@@ -1,3 +1,37 @@
+/**
+ * Audit-framework schema snapshot generator.
+ *
+ * Walks the active TipTap PM schema (via `getSchema(sharedExtensions)`) and
+ * the active mdast plugin chain (`ACTIVE_MDAST_PLUGINS` from
+ * `src/markdown/pipeline.ts`), then writes a structured, byte-stable JSON
+ * snapshot to `<core>/schema-snapshot.json`.
+ *
+ * The snapshot is the audit framework's source-of-truth artifact: the audit
+ * framework derives its catalog from this file at
+ * audit-generate time, not by importing core at runtime. This decouples the
+ * standalone audit project from OK's workspace graph. This positions the same
+ * JSON as the
+ * language-agnostic byte contract for the future TS↔Rust port.
+ *
+ * Modes:
+ *   default          write the snapshot to <core>/schema-snapshot.json
+ *   --check          regenerate in memory; exit non-zero if it differs from
+ *                    the committed file. Used by check-schema-snapshot-clean.sh
+ *                    in OK's `bun run check` chain.
+ *   --out <path>     override the output path (test / debug only)
+ *
+ * Determinism:
+ *   - Nodes / marks emitted in alphabetical order by name
+ *   - Attrs within each node / mark emitted in alphabetical order
+ *   - ACTIVE_MDAST_PLUGINS emitted in declaration order (the actual chain order)
+ *   - Default values are JSON-stringified verbatim; non-serializable values fall
+ *     back to `null` with a `__nonSerializableDefault` marker so the snapshot
+ *     stays self-describing
+ *   - JSON output: 2-space indent + trailing newline (mirrors notices generator)
+ *
+ * Re-running with no source changes yields a byte-identical file.
+ */
+
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { argv, exit } from 'node:process';
@@ -15,6 +49,7 @@ const require = createRequire(SCRIPT_URL);
 interface AttrSnapshot {
   hasDefault: boolean;
   default?: unknown;
+  /** Marker present iff `default` could not be JSON-serialized. */
   __nonSerializableDefault?: true;
 }
 
@@ -39,7 +74,9 @@ interface MarkSnapshot {
 
 interface PluginSnapshot {
   name: string;
+  /** npm package version, or null when the plugin is local to OK */
   version: string | null;
+  /** true iff the plugin is registered with options */
   hasOptions: boolean;
 }
 
@@ -56,6 +93,9 @@ function captureAttr(attrSpec: unknown): AttrSnapshot {
   const hasDefault = 'default' in spec;
   if (!hasDefault) return { hasDefault: false };
   const value = spec.default;
+  // JSON.stringify returns undefined for non-JSON-serializable values
+  // (functions, symbols, BigInt). Capturing such defaults verbatim would
+  // make the snapshot non-deterministic; we fall back to a marker.
   let serialized: string | undefined;
   try {
     serialized = JSON.stringify(value);
@@ -109,6 +149,9 @@ function captureSchema(): {
     }
     marks[markName] = {
       attrs,
+      // `excludes: undefined` means "exclude marks of the same type" — PM
+      // canonicalizes this to the mark's own name. `''` means "coexist with
+      // everything" (Code mark's deliberate widening per CLAUDE.md STOP).
       excludes: typeof spec.excludes === 'string' ? spec.excludes : markName,
       group: spec.group ?? '',
       inclusive: spec.inclusive !== false,
@@ -120,6 +163,10 @@ function captureSchema(): {
 }
 
 function getPluginVersion(packageName: string): string | null {
+  // Local plugins (e.g., callout-transformer, image-promoter) do not have
+  // installable npm packages — `${name}/package.json` won't resolve and
+  // require throws. Return null in that case so the snapshot records the
+  // plugin's identity without a phantom version.
   try {
     const pkg = require(`${packageName}/package.json`) as unknown;
     if (pkg && typeof pkg === 'object' && 'version' in pkg) {
@@ -180,6 +227,7 @@ function parseArgs(rawArgs: readonly string[]): {
 }
 
 function main(): void {
+  // argv[0] = bun, argv[1] = script path, rest = user args
   const userArgs = argv.slice(2);
   const { check, out } = parseArgs(userArgs);
   const snapshot = buildSnapshot();
@@ -211,6 +259,9 @@ function main(): void {
   process.stdout.write(`Wrote ${out}\n`);
 }
 
+// Bun runs this file directly; only execute main when invoked as the entry
+// script (mirrors the notices generator's pattern). Supports import-only
+// usage from tests if needed.
 if (SCRIPT_PATH === fileURLToPath(`file://${argv[1] ?? ''}`)) {
   main();
 }

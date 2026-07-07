@@ -1,3 +1,16 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleTemplate`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET / PUT / DELETE /api/template`:
+ *   - GET on a non-existent template → 404 + `urn:ok:error:template-not-found`.
+ *   - PUT happy path: 200 + flat success body parsing
+ *     `TemplatePutSuccessSchema`.
+ *   - PUT with invalid name → 400 + `urn:ok:error:invalid-request`.
+ *   - DELETE happy path: 200 + flat success body (existed=true after PUT,
+ *     existed=false on second DELETE).
+ *   - method-not-allowed on PATCH emits 405 + `Allow: GET, PUT, POST, DELETE`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   ProblemDetailsSchema,
@@ -75,6 +88,9 @@ describe('template envelope (RFC 9457)', () => {
   });
 
   test('PUT with stale `target` body field is rejected by .strict() schema', async () => {
+    // Symmetric `.strict()` on TemplatePutRequestSchema rejects unknown keys.
+    // Legacy callers that still send `target: "user"` get a Zod
+    // unrecognized_keys issue → 400 RFC 9457 invalid-request.
     const res = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -111,6 +127,7 @@ describe('template envelope (RFC 9457)', () => {
   });
 
   test('GET with legacy `?target=user` query is silently ignored — serves project tier', async () => {
+    // Re-create the template so this case is self-contained.
     const put = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -123,6 +140,8 @@ describe('template envelope (RFC 9457)', () => {
     });
     expect(put.status).toBe(200);
 
+    // The `target=user` query param is unknown and silently ignored — the
+    // request resolves at the project tier exactly like a GET without target.
     const res = await fetch(
       `http://127.0.0.1:${server.port}/api/template?name=legacy-get&folder=&target=user`,
     );
@@ -132,6 +151,7 @@ describe('template envelope (RFC 9457)', () => {
   });
 
   test('DELETE with legacy `?target=user` query is silently ignored — deletes project tier', async () => {
+    // Re-create the template so this case is self-contained.
     const put = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -144,6 +164,8 @@ describe('template envelope (RFC 9457)', () => {
     });
     expect(put.status).toBe(200);
 
+    // The `target=user` query param is unknown and silently ignored — the
+    // request deletes the project-tier file exactly like a DELETE without target.
     const res = await fetch(
       `http://127.0.0.1:${server.port}/api/template?name=legacy-del&folder=&target=user`,
       { method: 'DELETE' },
@@ -156,6 +178,7 @@ describe('template envelope (RFC 9457)', () => {
   test('method-not-allowed on PATCH emits problem+json with Allow: GET, PUT, POST, DELETE', async () => {
     const res = await fetch(`http://127.0.0.1:${server.port}/api/template`, { method: 'PATCH' });
     expect(res.status).toBe(405);
+    // POST = template move/rename; PATCH remains unsupported.
     expect(res.headers.get('allow')).toBe('GET, PUT, POST, DELETE');
 
     const body = await res.json();

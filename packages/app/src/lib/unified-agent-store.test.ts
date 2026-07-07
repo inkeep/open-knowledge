@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the unified sticky-agent store. The store is ONE source
+ * of truth shared by both "Ask AI" composer placements; it carries the CLI
+ * sentinel and reads the two legacy v1 keys once as a migration shim so a user's
+ * prior pick (from either old surface) survives the consolidation.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
 import {
@@ -71,6 +78,9 @@ describe('unified-agent-store — migration shim (read-both legacy keys)', () =>
   });
 
   test('prefers the bottom-composer key (CLI-capable) when both legacy keys are set', () => {
+    // The bottom key is the only one that can hold a CLI sentinel, so it is read
+    // first — a sticky CLI pick is never silently downgraded to the app-only
+    // create value.
     const storage = makeStorage({
       [LEGACY_BOTTOM_KEY]: terminalCliId('claude'),
       [LEGACY_CREATE_KEY]: 'codex',
@@ -140,6 +150,8 @@ describe('terminalCliId / parseStickyCliId', () => {
   });
 
   test('a sticky CLI id is ignored by resolveStickyAgent (it resolves app targets only)', () => {
+    // The composer routes CLI mode through parseStickyCliId, not resolveStickyAgent,
+    // so a CLI sentinel must NOT masquerade as an app target here.
     const resolved = resolveStickyAgent(states({ codex: true }), terminalCliId('cursor'));
     expect(resolved?.id).toBe('codex');
   });

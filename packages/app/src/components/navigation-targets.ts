@@ -38,10 +38,15 @@ export type ResolvedNavigationTarget =
       mediaKind: InlineAssetMediaKind | null;
     }
   | {
+      // A skill bundle file (`references/**` / `scripts/**`) opened in a
+      // read-only viewer. Scope-aware: read via `/api/skill-file`, NOT the
+      // content-dir asset server — so a GLOBAL skill's files (which live under
+      // `~/.ok/skills/`, outside the project) open instead of 404ing.
       kind: 'skill-file';
       target: string;
       scope: SkillScope;
       name: string;
+      /** Skill-relative path, e.g. `references/x.md` or `scripts/run.sh`. */
       path: string;
     }
   | {
@@ -60,7 +65,10 @@ interface DocumentSizeMeta {
   size?: number;
 }
 
-function normalizeTargetPath(target: string): { normalizedTarget: string; expectsFolder: boolean } {
+export function normalizeTargetPath(target: string): {
+  normalizedTarget: string;
+  expectsFolder: boolean;
+} {
   const trimmed = target.trim();
   return {
     normalizedTarget: normalizeDocNameInput(trimmed).replace(/\/+$/g, ''),
@@ -78,6 +86,17 @@ export function deriveKnownFolderPaths(docNames: Iterable<string>): Set<string> 
   return folderPaths;
 }
 
+/**
+ * When `options.pagesBySlug` is provided,
+ * `pages.has(target)` misses fall back to a slug-keyed lookup so a
+ * dropped `.md` file carrying a lowercased slug (e.g. `casecheck123`)
+ * resolves against a case-preserved cache entry (e.g. `CaseCheck123`).
+ * Returns the canonical docName via the index, which becomes the target
+ * of the `doc` result so downstream `hashDocName` navigation hits the
+ * correct file. If `pagesBySlug` is omitted the resolver stays exact-
+ * match only (backward compatible for tests constructing bare
+ * `{pages: new Set(...)}` options).
+ */
 function slugResolve(
   normalizedTarget: string,
   pagesBySlug: ReadonlyMap<string, string> | undefined,
@@ -88,6 +107,14 @@ function slugResolve(
   return pagesBySlug.get(slug);
 }
 
+/**
+ * Bare-name basename fallback. When the target has no path separator,
+ * look up its slug against the basename-keyed index so `[[analysis]]`
+ * resolves to `andrew-data/project-x/analysis`. Alphabetical-first on
+ * basename collision is baked into the index build. Targets containing
+ * `/` skip this branch — a typed path that doesn't exact-match must
+ * not silently rewrite to a same-leaf file in a different folder.
+ */
 function basenameResolve(
   normalizedTarget: string,
   pagesByBasename: ReadonlyMap<string, string> | undefined,
@@ -108,7 +135,21 @@ export function resolveNavigationTarget(
     pagesByBasename?: ReadonlyMap<string, string>;
   },
 ): ResolvedNavigationTarget {
+  // Managed-artifact docs (skills/templates) are real docs addressed by their
+  // exact synthetic name, but they live OUTSIDE the page list — so the
+  // membership checks below would mark them 'missing'. Resolve them directly as
+  // a doc target so every consumer (hash nav, graph, links) treats them as real
+  // instead of broken/uncreated.
   if (isManagedArtifactDocName(target)) {
+    // A GLOBAL skill bundle REFERENCE graph node (`__skill__/global/<name>/
+    // references/<rel>`) is not an editor doc — it lives at `~/.ok/skills/`,
+    // outside the project, and opens read-only in the skill-file viewer. Resolve
+    // it to a `skill-file` target so a graph click routes there instead of a
+    // phantom doc tab. The node name is ext-less (content-doc style); global
+    // bundle nodes are `.md` references by construction, so reconstruct the
+    // on-disk path the scope-aware `/api/skill-file` endpoint reads. The global
+    // SKILL doc itself (`kind: 'skill'`) keeps opening as a normal editor tab and
+    // falls through below.
     const globalBundle = parseGlobalSkillBundleDoc(target);
     if (globalBundle?.kind === 'reference') {
       const path = `references/${globalBundle.rel}.md`;
@@ -120,6 +161,10 @@ export function resolveNavigationTarget(
         path,
       };
     }
+    // A project skill is a CONTENT doc (`.ok/skills/<name>/SKILL`), never the
+    // synthetic `__skill__/project/<name>`. A stale deep-link / bookmark in that
+    // dead form must redirect to the live content doc rather than open a phantom
+    // empty tab. (Global skills + templates keep their synthetic name.)
     const parsed = parseManagedArtifactName(target);
     if (parsed?.kind === 'skill' && parsed.scope === 'project') {
       const docName = projectSkillContentDocName(parsed.name);
@@ -127,6 +172,10 @@ export function resolveNavigationTarget(
     }
     return { kind: 'doc', target, docName: target };
   }
+  // A doc that links to a skill/template by its on-disk file path
+  // (`.ok/skills/<name>/SKILL`, `<folder>/.ok/templates/<name>`) resolves to the
+  // managed-artifact doc, so clicking the link opens the artifact editor instead
+  // of offering to "create" a missing page.
   const artifactDocName = managedArtifactDocNameFromContentTarget(target);
   if (artifactDocName) {
     return { kind: 'doc', target: artifactDocName, docName: artifactDocName };
@@ -204,6 +253,16 @@ export function resolveNavigationTarget(
   };
 }
 
+/**
+ * Hash-driven navigation lands on the folder overview even when an
+ * `index.md` (or legacy folder note) exists. A folder-overview tab opened
+ * via `openTarget({kind:'folder', ...})` writes its hash silently via
+ * `history.replaceState`; if `NavigationHandler`'s effect re-fires (page
+ * list populating, tab close re-assigning the hash) and the resolver
+ * promotes `folder` → `folder-index`, the deps-driven re-resolution opens
+ * a doc tab on top of the folder tab. Wikilinks + graph/links nav still
+ * call `resolveNavigationTarget` directly and keep the auto-follow.
+ */
 export function downgradeFolderIndexForHashNav(
   target: ResolvedNavigationTarget,
 ): ResolvedNavigationTarget {

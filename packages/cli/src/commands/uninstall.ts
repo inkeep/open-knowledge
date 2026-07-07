@@ -1,3 +1,18 @@
+/**
+ * `ok uninstall` — reverse OpenKnowledge's whole outside-project footprint as
+ * completely as it can find it: credentials, PATH shim, editor MCP configs,
+ * skill bundles, application data, stale locks, and the `~/.ok` machinery dir —
+ * plus an offer to `deinit` recent projects. Leaves the user's markdown content
+ * (and `~/.ok/skills`) alone unless `--purge-content`.
+ *
+ * Never self-deletes the app binary (a running process can't cleanly remove its
+ * own executable, and the CLI may live inside the app bundle). Instead it
+ * detects how OK was installed and prints the exact removal command.
+ *
+ * Safe by default: a preview/dry-run, a confirmation that defaults to NO, and
+ * surgical removal that never clobbers a user's non-OK config.
+ */
+
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -18,12 +33,22 @@ import {
   removalPlanToJson,
 } from './removal-render.ts';
 
+// ---------------------------------------------------------------------------
+// Install-method detection (detect + instruct; never self-delete)
+// ---------------------------------------------------------------------------
+
 export interface InstallMethod {
   method: 'app' | 'npm-global' | 'npx';
   label: string;
+  /** The exact command / action the user should run to finish removal. */
   instruction: string;
 }
 
+/**
+ * Detect how OK is installed and return the removal instruction for each method
+ * found. Best-effort + informational — the command prints these but never runs
+ * them. Multiple can be present (an app install AND an npm CLI).
+ */
 export function detectInstallMethods(
   home: string,
   argv1: string | undefined,
@@ -74,6 +99,8 @@ function defaultNpmLs(args: string[]): string | null {
       stdio: ['ignore', 'pipe', 'ignore'],
     });
   } catch {
+    // npm absent, not a global install, or the probe timed out — treat as "not
+    // installed via npm global".
     return null;
   }
 }
@@ -82,6 +109,11 @@ function defaultNpmLs(args: string[]): string | null {
  *  step OK can't do for itself doesn't get lost in the removal log. */
 const CALLOUT_RULE = '━'.repeat(64);
 
+/**
+ * The app-binary-removal instructions, rendered as a bracketed banner (OK never
+ * deletes its own running binary). Printed LAST by `runUninstall` so it's
+ * the final, most-visible thing on screen.
+ */
 function formatInstallInstructions(methods: InstallMethod[]): string {
   const lines: string[] = [
     warning(CALLOUT_RULE),
@@ -104,16 +136,24 @@ function formatInstallInstructions(methods: InstallMethod[]): string {
   return lines.join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// Recent-projects selection
+// ---------------------------------------------------------------------------
+
 interface ProjectCandidate {
   path: string;
+  /** True when a server is currently running for this project. */
   running: boolean;
+  /** True when this is the project the user is standing in. */
   current: boolean;
 }
 
+/** projectRoot from a lock dir (`<root>/.ok/local` → `<root>`). */
 function projectRootFromLockDir(lockDir: string): string {
   return resolve(lockDir, '..', '..');
 }
 
+/** True iff `dir` is an existing project with a `.ok/` dir. */
 function isDeinitableProject(dir: string): boolean {
   return existsSync(join(dir, '.ok'));
 }
@@ -128,11 +168,27 @@ export interface ResolveRecentProjectsInput {
   allProjects?: boolean;
   dryRun?: boolean;
   isTTY?: boolean;
+  /** Test hook for the interactive checkbox. */
   promptFn?: (candidates: ProjectCandidate[]) => Promise<string[]>;
+  /** Test hook for the recent-projects reader. */
   readRecents?: (userDataDir: string) => Array<{ path: string }>;
+  /** Test hook for the enclosing-project resolver. */
   findRoot?: typeof findEnclosingProjectRoot;
 }
 
+/**
+ * Resolve which project roots to `deinit`. Candidates are the union of the
+ * desktop recent-projects list, currently-running servers, and the project the
+ * user is standing in — but per-project removal is OPT-IN, so none are selected
+ * by default:
+ *   - `--all-projects` → every candidate.
+ *   - `--yes` (alone) / non-interactive / `--dry-run` → none (global only).
+ *   - interactive → only the projects the user ticks (unchecked by default).
+ *
+ * This keeps `ok uninstall` from silently stripping a repo's committed config +
+ * OK edit-history just because a server was running or the user was standing in
+ * it; `ok deinit` is the per-project tool.
+ */
 export async function resolveRecentDeinitProjects(
   input: ResolveRecentProjectsInput,
 ): Promise<string[]> {
@@ -162,6 +218,11 @@ export async function resolveRecentDeinitProjects(
   }
   if (candidates.length === 0) return [];
 
+  // Selection — per-project removal is OPT-IN. `ok uninstall` removes the global
+  // footprint; deiniting a project also strips its committed `.ok/config.yml`,
+  // MCP entries, and OK edit-history (`.git/ok/`), so it must never happen to a
+  // repo the user didn't explicitly pick (they may still be using it — the
+  // current dir and running servers included).
   if (input.allProjects) return candidates.map((c) => c.path); // explicit: all
   if (input.yes) return []; // `--yes` alone = global only; add `--all-projects` for projects
   if (input.dryRun) return []; // a plain run selects nothing by default
@@ -187,12 +248,21 @@ async function defaultProjectCheckbox(candidates: ProjectCandidate[]): Promise<s
   });
 }
 
+// ---------------------------------------------------------------------------
+// Command
+// ---------------------------------------------------------------------------
+
 /** Injectable seams for `runUninstall` — a named interface (not an anonymous
  *  inline type), matching `RepairSkillsDeps` etc. */
 interface UninstallDeps {
   discoverLockDirs?: () => Promise<string[]>;
   resolveRecentProjects?: typeof resolveRecentDeinitProjects;
   detectInstallMethods?: typeof detectInstallMethods;
+  /**
+   * RunRemoval deps — lets a test stub the machine-touching primitives
+   * (keychain / embeddings / stop-server) so the `--yes` success path can be
+   * exercised end-to-end without touching the real OS keychain.
+   */
   runRemovalDeps?: RunRemovalDeps;
 }
 
@@ -264,10 +334,13 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
     'Individual projects are only removed when you select them (or pass --all-projects). ' +
       'To remove OpenKnowledge from one project, run `ok deinit` inside it.',
   );
+  // Detection runs `npm ls -g` — compute it only on the paths that render it
+  // (dry-run + a confirmed run), never on a cancel/refuse.
   const binaryBlock = (): string =>
     formatInstallInstructions(detectInstall(home, opts.argv1 ?? process.argv[1]));
 
   if (opts.dryRun) {
+    // The app-removal callout goes LAST so it doesn't get buried in the plan.
     const body = opts.json
       ? JSON.stringify(removalPlanToJson(plan), null, 2)
       : [
@@ -319,6 +392,8 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
       : formatRemovalOutcome(outcome),
   ];
   if (!opts.json) {
+    // Minor notes first; then the success line; then the app-removal callout
+    // LAST so the one manual step is the final, most-visible thing on screen.
     parts.push('', fallbackNote, URL_SCHEME_NOTE);
     if (outcome.failed.length === 0) {
       parts.push('', success("OpenKnowledge's files have been removed from this machine."));

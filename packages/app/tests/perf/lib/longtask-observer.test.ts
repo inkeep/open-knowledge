@@ -1,3 +1,21 @@
+/**
+ * `installLongtaskObserver(page)` + `readLongtasks(page)` — unit tests.
+ *
+ * The helper has two halves:
+ *   1. installLongtaskObserver: registers an init script that sets up
+ *      `globalThis.__okScenLongTasks` and a `PerformanceObserver` that
+ *      pushes longtask entries into it.
+ *   2. readLongtasks: drains the in-page store via `page.evaluate`.
+ *
+ * The init script's body runs in the browser. Bun unit tests can't exercise
+ * Playwright's browser env, but we CAN exercise the seam — verify that
+ * `installLongtaskObserver` calls `page.addInitScript` exactly once with a
+ * function whose body is the expected shape, and that `readLongtasks`
+ * delegates to `page.evaluate` and propagates the returned array verbatim.
+ *
+ * The fake-page mocks expose just the two methods the helper touches.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type { Page } from '@playwright/test';
 import { installLongtaskObserver, type LongTaskRecord, readLongtasks } from './longtask-observer';
@@ -39,6 +57,9 @@ describe('installLongtaskObserver', () => {
     const fn = fake.addInitScriptCalls[0]?.fn;
     expect(typeof fn).toBe('function');
     const src = (fn as () => void).toString();
+    // The store name `__okScenLongTasks` is the contract — it's referenced by
+    // every scenario that drains it. Verify the init script writes to that
+    // exact key, not a typo'd variant.
     expect(src).toContain('__okScenLongTasks');
   });
 
@@ -47,6 +68,9 @@ describe('installLongtaskObserver', () => {
     await installLongtaskObserver(fake as unknown as Page);
     const src = (fake.addInitScriptCalls[0]?.fn as () => void).toString();
     expect(src).toContain('PerformanceObserver');
+    // bun's bundler minifies string quotes and `true` → `!0` when stringifying
+    // function bodies; match against either form for both `longtask` and the
+    // `buffered:true` flag (the load-bearing back-fill setting).
     expect(src).toMatch(/longtask/);
     expect(src).toMatch(/buffered:\s*(true|!0)/);
   });
@@ -78,6 +102,9 @@ describe('readLongtasks', () => {
   });
 
   test('returns empty array when store is missing (observer never installed)', async () => {
+    // The helper's evaluate body returns `store ?? []`; the in-page evaluator
+    // would actually run that ?? branch. Here we mock the resolved value as
+    // []; the test verifies the helper does NOT post-process the result.
     const fake = makeFakePage([]);
     const got = await readLongtasks(fake as unknown as Page);
     expect(got).toEqual([]);
@@ -101,6 +128,7 @@ describe('readLongtasks', () => {
 
 describe('install + read contract', () => {
   test('LongTaskRecord shape includes startTime, duration, name', () => {
+    // Compile-time check: if the interface drifts, this test won't compile.
     const sample: LongTaskRecord = { startTime: 0, duration: 0, name: 'self' };
     expect(sample.startTime).toBe(0);
     expect(sample.duration).toBe(0);

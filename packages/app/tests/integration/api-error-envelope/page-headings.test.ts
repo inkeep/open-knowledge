@@ -1,3 +1,15 @@
+/**
+ * Per-handler narrow-integration smoke test for `handlePageHeadings`.
+ *
+ * Asserts the canonical RFC 9457 wire shape:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `PageHeadingsSuccessSchema`, no `ok: true` discriminator.
+ *   - missing docName query param → `urn:ok:error:invalid-request`.
+ *   - non-existent docName → `urn:ok:error:doc-not-found`.
+ *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
+ *     `Allow: GET` header.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PageHeadingsSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

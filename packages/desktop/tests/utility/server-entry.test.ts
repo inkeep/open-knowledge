@@ -12,9 +12,22 @@ import {
   setupUtility,
 } from '../../src/utility/server-entry.ts';
 
+/**
+ * Utility-process unit tests.
+ *
+ * Don't fork an actual utilityProcess — Bun's test runner can't host one. The
+ * `setupUtility(deps)` factory takes an injected parentPort + injected server
+ * import + injected exit/setInterval, so we mock all of these and assert the
+ * IPC + lifecycle branches.
+ *
+ * Full forked-utility behavior is covered by the smoke test which
+ * launches a real Electron BrowserWindow.
+ */
+
 interface MockParentPort {
   on: ReturnType<typeof mock>;
   postMessage: ReturnType<typeof mock>;
+  /** Helper — fire a message into the registered handler. */
   fire: (msg: unknown) => void;
 }
 
@@ -51,6 +64,12 @@ function buildEnv(): MockEnv {
   return env;
 }
 
+/**
+ * Build a fake `PreparedBootEnvironment` so unit tests can exercise the
+ * post-prelude branch of `handleInit` without touching disk. Defaults match
+ * the schema-defaults shape that the production prelude returns when no
+ * `.ok/config.yml` exists.
+ */
 function makeFakePrepared(overrides?: Partial<PreparedBootEnvironment>): PreparedBootEnvironment {
   return {
     config: ConfigSchema.parse({}),
@@ -113,11 +132,13 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
     expect(ready.port).toBe(51234);
     expect(ready.apiOrigin).toBe('http://localhost:51234');
 
+    // Asserts the opt-outs plus the autoInit decoupling
     const callArgs = bootServer.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
     expect(callArgs?.attachUiSibling).toBe(false);
     expect(callArgs?.idleShutdownMs).toBe(null);
     expect(callArgs?.skipAutoInit).toBe(true);
     expect(callArgs?.autoInitFn).toBeUndefined();
+    // Loaded config + resolved contentDir from the prelude wins over the IPC opts
     expect(callArgs?.contentDir).toBe('/fake/test-project');
     expect(callArgs?.config).toBe(prepared.config);
 
@@ -182,11 +203,13 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       prepareBootEnvironment: fakePrepare(),
     });
 
+    // Trigger the polled callback manually
     expect(env.intervals.length).toBeGreaterThan(0);
     const pollCb = env.intervals[0]?.cb;
     expect(pollCb).toBeDefined();
     pollCb?.();
 
+    // Allow async shutdown to settle
     await wait(10);
     expect(env.exit).toHaveBeenCalledWith(0);
     void handle;
@@ -225,6 +248,9 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
 
     expect(destroy).toHaveBeenCalledTimes(1);
     expect(env.exit).toHaveBeenCalledWith(0);
+    // stopParentPoll must actually stop the interval on shutdown — otherwise
+    // the parent-death poll keeps firing and can re-enter shutdown in tests
+    // where `exit` is mocked.
     expect(env.intervalCancel).toHaveBeenCalled();
   });
 
@@ -328,6 +354,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       writeSmokeResult,
     });
 
+    // Auto-smoke is async — give it a microtask window.
     await wait(5);
 
     expect(runSmoke).toHaveBeenCalledTimes(1);
@@ -337,6 +364,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
     const parsed = JSON.parse(writtenContents) as KeyringSmokeResult;
     expect(parsed).toEqual(smokeResult);
     expect(writtenContents.endsWith('\n')).toBe(true);
+    // Exit must NOT have been called — EXIT flag was not set
     expect(env.exit).not.toHaveBeenCalled();
   });
 
@@ -376,6 +404,8 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
     expect(runSmoke).toHaveBeenCalledTimes(1);
     expect(writeSmokeResult).toHaveBeenCalledTimes(1);
     expect(env.exit).toHaveBeenCalledWith(0);
+    // Message listener must NOT have been registered when EXIT=1 — the
+    // utility is going down after the smoke.
     expect(env.parentPort.on).not.toHaveBeenCalled();
   });
 
@@ -409,12 +439,15 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
     await wait(5);
 
     expect(runSmoke).toHaveBeenCalledTimes(1);
+    // No OUT path → no file write
     expect(writeSmokeResult).not.toHaveBeenCalled();
+    // IPC result is still posted
     expect(env.parentPort.postMessage).toHaveBeenCalledWith({
       type: 'debug-keyring-smoke-result',
       correlationId: 'auto-boot',
       result: smokeResult,
     });
+    // Listener registered because EXIT not set — utility continues normal boot
     expect(env.parentPort.on).toHaveBeenCalled();
   });
 
@@ -477,9 +510,12 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
 
     await wait(5);
 
+    // Smoke ran and was attempted to write
     expect(runSmoke).toHaveBeenCalledTimes(1);
     expect(writeSmokeResult).toHaveBeenCalledTimes(1);
+    // No exit — the utility continues boot
     expect(env.exit).not.toHaveBeenCalled();
+    // Listener registered so the utility can accept init
     expect(env.parentPort.on).toHaveBeenCalled();
   });
 
@@ -758,6 +794,8 @@ describe('handleInit boot prelude (FR-16/17/18/19/22/24)', () => {
 
     const callArgs = bootServer.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
     expect(callArgs?.config).toBeDefined();
+    // ConfigSchema.parse({}) always materializes nested defaults (`content.dir`,
+    // `preview.baseUrl`, etc.) — the guarantee MCP handlers depend on.
     const passedConfig = callArgs?.config as { content?: { dir?: unknown } } | undefined;
     expect(passedConfig?.content?.dir).toBeDefined();
   });
@@ -795,6 +833,7 @@ describe('resolveContentDir (FR-17 unit)', () => {
     try {
       const config = ConfigSchema.parse({ content: { dir: '../escape' } });
       expect(resolveContentDir('/projects/myrepo', config, '/ipc/picked')).toBe('/ipc/picked');
+      // The warning carries the offending value so support diagnostics can find it.
       const escapeWarning = warnSpy.mock.calls.find((args) =>
         String(args[0] ?? '').includes('content.dir='),
       );
@@ -818,6 +857,7 @@ describe('resolveContentDir (FR-17 unit)', () => {
 
   test('undefined ipcFallback defaults to projectDir for the empty/. case', () => {
     const config = ConfigSchema.parse({});
+    // Default content.dir is '.' → IPC fallback wins, but undefined fallback means projectDir
     expect(resolveContentDir('/projects/myrepo', config, undefined)).toBe('/projects/myrepo');
   });
 });
@@ -831,7 +871,13 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
     tmpRoot = mkdtempSync(resolve(tmpdir(), 'ok-utility-prelude-'));
   });
 
+  // No `afterEach(rmSync(...))` — Bun's afterEach hook order with describe-level
+  // beforeEach risks racing the parent-poll cancel; tmp dirs are cleaned up by
+  // the OS. Each test removes its own tmpRoot before assertions where order matters.
+
   test('loads real .ok/config.yml + resolves content.dir via the production prelude', async () => {
+    // Real fixture: project with content.dir: docs in config.yml + a real .git/HEAD
+    // (so ensureProjectGit short-circuits without invoking the git CLI).
     mkdirSync(resolve(tmpRoot, '.git'), { recursive: true });
     writeFileSync(resolve(tmpRoot, '.git/HEAD'), 'ref: refs/heads/main\n', 'utf-8');
     mkdirSync(resolve(tmpRoot, '.ok'), { recursive: true });
@@ -887,6 +933,7 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
   });
 
   test('didEnsureGit=false runs ensureProjectGit which scaffolds a real .git/', async () => {
+    // Pre-state: no .git/, no .ok/. The prelude must materialize both.
     const fakeBooted = {
       port: 4242,
       destroy: mock(() => Promise.resolve()),
@@ -917,12 +964,16 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
         projectDir: tmpRoot,
         port: 0,
         host: 'localhost',
+        // didEnsureGit absent → utility runs ensureProjectGit
       },
     });
     await handle.readyPromise;
 
+    // ensureProjectGit ran → .git/HEAD exists; initContent ran → .ok/config.yml exists.
     const headPath = resolve(tmpRoot, '.git/HEAD');
     const configPath = resolve(tmpRoot, '.ok/config.yml');
+    // Use git's own tooling to check rather than fs.existsSync — guards against a
+    // shell `.git/` regression.
     const headStat = execFileSync('test', ['-f', headPath], { encoding: 'utf-8' });
     expect(headStat).toBe('');
     const configStat = execFileSync('test', ['-f', configPath], { encoding: 'utf-8' });
@@ -935,6 +986,7 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
     mkdirSync(resolve(tmpRoot, '.git'), { recursive: true });
     writeFileSync(resolve(tmpRoot, '.git/HEAD'), 'ref: refs/heads/main\n', 'utf-8');
     mkdirSync(resolve(tmpRoot, '.ok'), { recursive: true });
+    // Invalid YAML — unbalanced brace
     writeFileSync(resolve(tmpRoot, '.ok/config.yml'), 'version: 1\ncontent: {\n', 'utf-8');
 
     const fakeBooted = {
@@ -981,7 +1033,9 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
       );
       expect(fallbackWarn).toBeDefined();
 
+      // Editor still opens — bootServer was called.
       expect(bootServer).toHaveBeenCalled();
+      // Schema defaults applied — content.dir should be '.' (the schema default).
       const callArgs = bootServer.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
       const passedConfig = callArgs?.config as { content?: { dir?: unknown } } | undefined;
       expect(passedConfig?.content?.dir).toBe('.');
@@ -1035,6 +1089,8 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
     });
     await handle.readyPromise;
 
+    // Confirm the user's customized config is intact byte-for-byte after the
+    // idempotent re-init.
     const { readFileSync } = await import('node:fs');
     const post = readFileSync(resolve(tmpRoot, '.ok/config.yml'), 'utf-8');
     expect(post).toBe(userCustomized);

@@ -1,3 +1,20 @@
+/**
+ * OutlinePanel polls `/api/page-headings` every 2s while
+ * mounted. The scenario opens README, waits for the outline panel to mount
+ * and fire its first heading fetch, then sits idle for 30s and counts the
+ * number of background `/api/page-headings` requests that fire during the
+ * idle window.
+ *
+ * Pre-fix baseline: apiCallCount ≥ 10 across 30s idle.
+ * Post-fix target:  apiCallCount === 0 across 30s idle (invalidation
+ * moves to HocuspocusProvider `update` event).
+ *
+ * The scenario uses its own `page.on('response')` listener so it can filter
+ * by absolute Date.now() timestamps — the driver's `networkRequests` array
+ * only carries request-duration ms, not absolute timestamps, so it cannot
+ * answer "how many requests in THIS 30s window".
+ */
+
 import { installLongtaskObserver } from '../lib/longtask-observer';
 import { defineScenario } from '../lib/scenario';
 
@@ -43,6 +60,10 @@ export default defineScenario({
       return;
     }
 
+    // Wait for at least the initial heading fetch to fire so we know the
+    // OutlinePanel is mounted and active. If it never fires within 10s the
+    // panel may be collapsed or absent; either way the idle window still
+    // measures background polling from zero.
     const startAwaitFirst = Date.now();
     while (headingRequestsAt.length === 0 && Date.now() - startAwaitFirst < 10_000) {
       await page.waitForTimeout(200);
@@ -52,6 +73,7 @@ export default defineScenario({
       ctx.note('OutlinePanel did not fire an initial /api/page-headings within 10s');
     }
 
+    // 30s idle — deliberately no interaction. This is measurement, not a test.
     const idleStart = Date.now();
     await page.waitForTimeout(IDLE_MS);
     const idleEnd = Date.now();

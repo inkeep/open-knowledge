@@ -12,6 +12,7 @@ export type SidebarDragPayload =
   | { v: 1; kind: 'folder'; folderPath: string }
   | { v: 1; kind: 'asset'; assetPath: string; mediaKind: InlineAssetMediaKind | null };
 
+// Drift warning: keep exhaustive with InlineAssetMediaKind in core upload constants.
 const INLINE_ASSET_MEDIA_KIND_VALUES = {
   image: true,
   video: true,

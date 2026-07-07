@@ -1,3 +1,23 @@
+/**
+ * TagSuggestionMenu — popover for `#` typeahead in the editor.
+ *
+ * Sister to `WikiLinkSuggestionMenu` (`[[` typeahead). Same listbox /
+ * `aria-activedescendant` / live-region accessibility shape, same
+ * `preventFocusSteal` discipline so focus stays in ProseMirror's
+ * contenteditable while the popup is open. Differs in two ways:
+ *
+ *   - one-mode menu (no anchor sub-mode like wiki-links). Items are
+ *     either `{ kind: 'tag', value, count, isLeaf }` (an indexed tag,
+ *     possibly an expanded prefix from the hierarchical rollup) or
+ *     `{ kind: 'create', value }` (the typed query is a valid tag name
+ *     not in the index — offer to insert as a new tag).
+ *
+ *   - usage-count chip on the right of each row, sourced from the
+ *     server-side `TagIndex.getAllTags()` summary. Hierarchical rollup
+ *     prefixes show their cumulative count (matches the `/api/tags`
+ *     contract); leaf tags show the literal-author count.
+ */
+
 import { plural, t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useId, useRef } from 'react';
@@ -8,6 +28,14 @@ interface TagSuggestionMenuProps {
   query: string;
   selectedIndex: number;
   onSelect: (item: TagSuggestionItem) => void;
+  /**
+   * Called when the user hovers (or pointer-moves into) an option.
+   * Hover-tracking the keyboard `selectedIndex` keeps the visible
+   * highlight and the Enter target unified — without it, hovering a
+   * row would visually contradict which row Enter would commit. Pure
+   * pointer-driven; arrow-key navigation continues to drive the same
+   * index from the parent suggestion plugin.
+   */
   onHover?: (index: number) => void;
   loading?: boolean;
   error?: string | null;
@@ -52,6 +80,9 @@ export function TagSuggestionMenu({
     if (selected) selected.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
+  // Prevent any click on the popup (buttons or empty space) from stealing
+  // focus from the editor — without this, Backspace and other keys go to
+  // the popup instead of ProseMirror. Mirrors WikiLinkSuggestionMenu.
   const preventFocusSteal = (e: React.MouseEvent) => e.preventDefault();
 
   if (loading) {
@@ -138,6 +169,12 @@ export function TagSuggestionMenu({
               e.preventDefault();
               onSelect(item);
             }}
+            // `onPointerMove` (not `onMouseEnter`) so that an item
+            // already under the cursor while the user types — common
+            // when the popover repositions on each keystroke — still
+            // tracks pointer position. `onMouseEnter` only fires on
+            // pointer-crossing-boundary; movement WITHIN an item that
+            // hasn't yet entered would miss. Cheap (just sets an int).
             onPointerMove={onHover ? () => onHover(idx) : undefined}
           >
             <span aria-hidden="true" className="font-mono text-xs text-muted-foreground">

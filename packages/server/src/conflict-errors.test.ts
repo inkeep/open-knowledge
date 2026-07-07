@@ -1,3 +1,14 @@
+/**
+ * Pins the slim RFC 9457 wire shape produced by `respondDocInConflict`.
+ *
+ * The exact body is a 1-way-door contract: no `base` /
+ * `ours` / `theirs` ever embedded — agents that want the merge stages call
+ * `conflicts({ kind: "content" })` explicitly. Without this test pinning the literal
+ * keys + title + URN + status, a downstream refactor of the helper could
+ * silently shift the shape (e.g. nest extensions under `extensions`, swap
+ * the title, change the URN) and break every agent's 409-class branching.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { ServerResponse } from 'node:http';
 import { DocInConflictError, respondDocInConflict } from './conflict-errors.ts';
@@ -62,6 +73,7 @@ describe('respondDocInConflict — slim RFC 9457 envelope', () => {
     expect(endCalls).toHaveLength(1);
     const body = JSON.parse(endCalls[0]) as Record<string, unknown>;
 
+    // Required RFC 9457 core fields (verbatim wire contract).
     expect(body.type).toBe('urn:ok:error:doc-in-conflict');
     expect(body.title).toBe('Document is in conflict.');
     expect(body.status).toBe(409);
@@ -69,6 +81,8 @@ describe('respondDocInConflict — slim RFC 9457 envelope', () => {
       'The document is in a merge-conflict state. Call conflicts({ kind: "content" }) + resolve_conflict before retrying.',
     );
 
+    // Flat extension members (errorResponse spreads `extensions` at the
+    // top level, NOT nested under `extensions`).
     expect(body.file).toBe('docs/notes.md');
     expect(body.resolutionOptions).toEqual(['mine', 'theirs', 'content', 'delete']);
   });
@@ -81,14 +95,23 @@ describe('respondDocInConflict — slim RFC 9457 envelope', () => {
 
     const body = JSON.parse(endCalls[0]) as Record<string, unknown>;
 
+    // Slim envelope. Embedding stages is the rejected
+    // "heavy envelope" branch.
     expect(body.base).toBeUndefined();
     expect(body.ours).toBeUndefined();
     expect(body.theirs).toBeUndefined();
 
+    // Negative coverage for the alternate-nesting bug: if someone nested
+    // the extensions one level deep, `body.extensions` would carry the
+    // file + resolutionOptions instead of having them flat.
     expect(body.extensions).toBeUndefined();
   });
 
   test('emits structured `doc-in-conflict-write-refused` log event with handler + doc.name', () => {
+    // every refusal MUST emit this
+    // event from the centralized helper so the counter sees every gate
+    // site uniformly. Removing the emit (or pushing it to per-handler
+    // catch sites) is the regression class this test guards.
     const { res } = makeMockRes();
     const err = new DocInConflictError({ file: 'docs/notes.md' });
 
@@ -112,6 +135,9 @@ describe('respondDocInConflict — slim RFC 9457 envelope', () => {
   });
 
   test('title is exactly "Document is in conflict." verbatim', () => {
+    // Pinned separately so a future copy-edit of the title surfaces here
+    // and not as a downstream agent-SDK regression. fixes the title
+    // string verbatim — derived from neither the URN nor the detail.
     const { res, endCalls } = makeMockRes();
     const err = new DocInConflictError({ file: 'any/path.md' });
 
@@ -136,6 +162,8 @@ describe('DocInConflictError', () => {
       throw original;
     }
     function outer(): void {
+      // Wrap inner so we exercise a real rethrow boundary — the helper
+      // catches at the outer call site, not within outer itself.
       inner();
     }
     let caught: unknown;

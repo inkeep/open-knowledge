@@ -54,6 +54,7 @@ describe('AgentFocusBroadcaster', () => {
       writeKind: 'write',
       ts: 200,
     });
+    // Upsert claude-1 — claude-2 must survive
     broadcaster.setFocus('claude-1', {
       agentName: 'Claude',
       currentDoc: 'a2.md',
@@ -106,6 +107,7 @@ describe('AgentFocusBroadcaster', () => {
 
   test('graceful no-op when __system__ document is missing', () => {
     const noopBroadcaster = new AgentFocusBroadcaster(makeMockHocuspocus(null));
+    // Should not throw
     noopBroadcaster.setFocus('claude-1', {
       agentName: 'Claude',
       currentDoc: 'foo.md',
@@ -134,10 +136,17 @@ describe('AgentFocusBroadcaster', () => {
     expect(map['claude-2']).toBeDefined();
     expect(map['claude-1'].currentDoc).toBe('a.md');
     expect(map['claude-2'].currentDoc).toBe('b.md');
+    // The map is the canonical location for per-agent state — no flat/nested collisions.
     expect(Object.keys(map).length).toBe(2);
   });
 
   test('principal-prefixed agentId is filtered at the broadcaster boundary', () => {
+    // Form-write handlers attribute writes to `principal-<UUID>` (precedent
+    // #25). The frontmatter-patch handler routes its post-write
+    // `setFocus(agentId, …)` call through the broadcaster unconditionally so
+    // the agent-write call shape stays uniform; the broadcaster filters
+    // principal ids internally so the user editing their own properties
+    // doesn't surface as a focus push.
     broadcaster.setFocus('principal-deadbeef', {
       agentName: 'Local User',
       currentDoc: 'a.md',
@@ -149,6 +158,7 @@ describe('AgentFocusBroadcaster', () => {
     broadcaster.clearFocus('principal-deadbeef');
     expect(broadcaster.getFocusMap()).toEqual({});
 
+    // Real agents under the same broadcaster remain unaffected.
     broadcaster.setFocus('agent-real', {
       agentName: 'Claude',
       currentDoc: 'b.md',

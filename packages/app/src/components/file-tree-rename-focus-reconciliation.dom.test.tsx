@@ -1,3 +1,18 @@
+/**
+ * Pins the post-rename Pierre/React reconciliation contract — after
+ * `applyRenamedDocuments` settles, `model.getFocusedPath()` and
+ * `getSelectedPaths()` MUST hold the canonical with-extension path, not
+ * an extensionless basename Pierre's `commitRename` can write to its store
+ * when the user deletes the suffix before committing.
+ *
+ * `StubModel` mirrors Pierre's two relevant behaviors:
+ *  - `move(source, dest)` remaps `focusedPath` and `selectedPaths`
+ *    verbatim; throws `Source path does not exist` when source is missing
+ *    (matches Pierre's `movePath`).
+ *  - `resetPaths(paths)` falls back to `paths[0]` when the prior focused
+ *    path is gone from the new set (Pierre's `resolveFocusedIndex` →
+ *    index-0 fallback — the user-visible bug mechanism).
+ */
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import type { MouseEventHandler, ReactNode } from 'react';
@@ -47,6 +62,10 @@ const closeAndClearForRenameMock = mock(async () => {});
 const remapTabsForRenameMock = mock(() => {});
 const dispatchHandoffMock = mock(async () => ({ ok: true as const }));
 
+// Three documents alphabetically. `foo.md` (index 1) is the rename target.
+// After rename: ['aaa.md', 'bar.md', 'zzz.md']. The index-0 row (`aaa.md`)
+// is the fallback target Pierre snaps focus onto when its `#focusedPath`
+// diverges from the canonical paths — that's the user-visible symptom.
 const INITIAL_DOCUMENTS: FileEntry[] = [
   {
     kind: 'document',
@@ -123,6 +142,17 @@ class StubItem {
   }
 }
 
+/**
+ * Faithfully models Pierre's two relevant behaviors:
+ *
+ *   move(source, dest): remap focusedPath when it matches source. This is
+ *     `#applyMutationState` + `remapMovedPath` behavior — Pierre stores
+ *     whatever path move() was called with, without canonicalization.
+ *
+ *   resetPaths(paths): rebuild items; if previous focusedPath is no longer
+ *     in the new path set, fall back to paths[0]. Models Pierre's
+ *     `resolveFocusedIndex` final fallback branch.
+ */
 class StubModel {
   focusedPath: string | null = null;
   selectedPaths: string[] = [];
@@ -156,6 +186,9 @@ class StubModel {
     for (const path of paths) {
       this.items.set(path, new StubItem(path, path.endsWith('/')));
     }
+    // Pierre's `resolveFocusedIndex` fallback: if the prior focusedPath
+    // is not in the new path set, snap to index 0. This is the
+    // load-bearing mechanism the bug exploits.
     if (this.focusedPath != null && !this.items.has(this.focusedPath)) {
       this.focusedPath = paths.length > 0 ? paths[0] : null;
     }
@@ -177,6 +210,26 @@ class StubModel {
     this.items.set(path, new StubItem(path, path.endsWith('/')));
   }
 
+  /**
+   * Pierre's `#applyMutationState` remaps focusedPath verbatim — whatever
+   * caller passed as `dest` becomes the new focusedPath. The extensionless
+   * rename bug routes through here: caller is Pierre's commitRename, dest is
+   * the suffix-less basename ('bar'), and focusedPath becomes 'bar'.
+   *
+   * Selection paths are remapped via the same `remapPathThroughMutation`
+   * machinery on Pierre's side — modeled here so the test pins
+   * `getSelectedPaths()` reconciliation as a side effect of `move()`.
+   * Without this, a future refactor that swapped `model.move(basename,
+   * canonical)` for `model.focusPath(canonical)` could pass the focus
+   * assertion while silently regressing selection reconciliation.
+   *
+   * **Throws on missing source** — matches Pierre's `movePath`, which
+   * raises `Source path does not exist: "<source>"`. Drag/drop and
+   * folder-cascade tests rely on this to pin the
+   * extensionless-rename reconciliation guard's correctness: if the guard
+   * mistakenly calls `move()` on a path Pierre never had, the test fails
+   * loudly here rather than silently no-op.
+   */
   move(source: string, dest: string) {
     const item = this.items.get(source);
     if (item == null) {
@@ -197,6 +250,7 @@ class StubModel {
     }
   }
 
+  /** Test helper — set initial focused path for the scenario setup. */
   focusPath(path: string) {
     this.focusedPath = path;
   }
@@ -388,6 +442,13 @@ interface RenameEvent {
   isFolder: boolean;
 }
 
+/**
+ * Simulate Pierre's `#completeRenaming` ordering: fire the captured
+ * `onRename(event)` callback (kicks off React's async handleTreeRename),
+ * then mutate the model via `move(source, extensionlessDest)`. The move
+ * remaps `model.focusedPath` from `'foo.md'` to `'bar'` (extensionless) —
+ * the divergence the test pins.
+ */
 function simulatePierreCommitRename(
   source: string,
   extensionlessDest: string,
@@ -407,6 +468,8 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
 
   beforeEach(() => {
     model = new StubModel();
+    // Seed the stub with the initial visible paths so `getItem('foo.md')`
+    // returns a real handle when pre-rename setup runs.
     model.resetPaths(['aaa.md', 'foo.md', 'zzz.md']);
     capturedOptions = null;
     documentsFetchResult = INITIAL_DOCUMENTS;
@@ -436,21 +499,37 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
   test('PRIMARY — after applyRenamedDocuments settles, model focusedPath is the canonical with-extension form', async () => {
     render(<FileTree />);
 
+    // Wait for initial mount + useFileTree options capture.
     await waitFor(() => {
       expect(capturedOptions).not.toBeNull();
     });
+    // Wait for FileTree's initial documents fetch + resetModelToDocuments
+    // to settle. FileTree's mount overwrites the beforeEach seed; without
+    // this wait, `model.move()` would throw "Source path does not exist".
     await waitFor(() => {
       expect(model.getItem('foo.md')).not.toBeNull();
     });
 
+    // Seed pre-rename focus + selection on the row about to be renamed —
+    // this is how Pierre's commitRename ends up remapping focusedPath +
+    // selectedPaths from 'foo.md' to 'bar' (extensionless) on its
+    // `move()` call. Selection is pinned in addition to focus so a future
+    // refactor using `model.focusPath(canonical)` instead of
+    // `model.move(basename, canonical)` cannot silently regress selection.
     model.focusPath('foo.md');
     model.selectedPaths = ['foo.md'];
     expect(model.getFocusedPath()).toBe('foo.md');
     expect(model.getSelectedPaths()).toEqual(['foo.md']);
 
+    // Fire an extensionless rename: simulates Pierre's commitRename
+    // ordering (onRename callback → move with extensionless dest).
     fetchCalls = [];
     simulatePierreCommitRename('foo.md', 'bar', false);
 
+    // Wait directly on the observable outcome (Pierre's focusedPath
+    // becoming canonical), not an intermediate proxy. addPage fires
+    // BEFORE the setDocuments updater where reconciliation runs;
+    // polling on focusedPath is resilient to React batching changes.
     await waitFor(() => {
       expect(model.getFocusedPath()).toBe('bar.md');
     });
@@ -464,6 +543,10 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
     await waitFor(() => {
       expect(capturedOptions).not.toBeNull();
     });
+    // Wait for FileTree's initial documents fetch + resetModelToDocuments
+    // to settle before pre-seeding focus. The beforeEach seed is overwritten
+    // by FileTree's initial mount; without this wait, `model.items` may be
+    // empty in CI (slower scheduling) and `getFocusedIndex()` returns -1.
     await waitFor(() => {
       expect(model.getItem('foo.md')).not.toBeNull();
     });
@@ -473,10 +556,17 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
 
     simulatePierreCommitRename('foo.md', 'bar', false);
 
+    // Wait directly on Pierre's focusedPath becoming canonical.
     await waitFor(() => {
       expect(model.getFocusedPath()).toBe('bar.md');
     });
 
+    // Simulate any subsequent resetPaths trigger (file-watcher CC1
+    // broadcast, refresh, late /api/documents re-fetch). Under the bug,
+    // model.focusedPath is still 'bar' — not in the canonical paths — so
+    // the stub's resolveFocusedIndex fallback snaps focus to index 0
+    // ('aaa.md'), exactly as Pierre would. Under the fix, focus stays on
+    // 'bar.md' at index 1.
     model.resetPaths(['aaa.md', 'bar.md', 'zzz.md']);
 
     expect(model.getFocusedPath()).toBe('bar.md');
@@ -484,6 +574,13 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
   });
 
   test('DRAG_DROP — Pierre store already canonical post-drop; reconciliation guard short-circuits without throwing', async () => {
+    // Drag/drop semantic: Pierre's internal drop handler commits the move
+    // with the CANONICAL tree path (no extensionless commit applies to drops). By the
+    // time `applyRenamedDocuments` runs, Pierre's store no longer has the
+    // extensionless basename — `getItem(toDocName)` returns null, so the
+    // reconciliation guard MUST short-circuit. If the guard mistakenly
+    // calls `model.move('subfolder/foo', 'subfolder/foo.md')`, the stub
+    // (and real Pierre) throws "Source path does not exist".
     renameResponseBody = {
       renamed: [{ fromDocName: 'foo', toDocName: 'subfolder/foo' }],
       renamedAssets: [],
@@ -499,10 +596,14 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
       expect(model.getItem('foo.md')).not.toBeNull();
     });
 
+    // Simulate Pierre's drop: store moves directly to canonical 'subfolder/foo.md'.
     model.focusPath('foo.md');
     model.move('foo.md', 'subfolder/foo.md');
     expect(model.getFocusedPath()).toBe('subfolder/foo.md');
 
+    // Fire the server-response side of handleTreeRename (which calls
+    // applyRenamedDocuments → extensionless-rename reconciliation). The guard
+    // must short-circuit on `getItem('subfolder/foo') === null`.
     const options = capturedOptions as {
       renaming?: { onRename?: (e: RenameEvent) => void };
     } | null;
@@ -512,15 +613,28 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
     }
     onRename({ sourcePath: 'foo.md', destinationPath: 'subfolder/foo.md', isFolder: false });
 
+    // Wait for handleTreeRename to settle. addPage is the earliest
+    // observable signal that applyRenamedDocuments started. Focus
+    // assertion below catches both pre-existing canonical state and any
+    // accidental reconciliation move.
     await waitFor(() => {
       expect(addPageMock).toHaveBeenCalledWith('subfolder/foo');
     });
 
+    // Pierre's store retains the canonical path; no spurious throw, no
+    // sidebar-out-of-date toast. Focus stays where Pierre put it.
     expect(model.getFocusedPath()).toBe('subfolder/foo.md');
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
   test('FOLDER_CASCADE — children pre-canonical in Pierre store; reconciliation guard short-circuits per child', async () => {
+    // Folder rename: server returns one `renamed[]` entry per child doc
+    // whose path shifted. Pierre's folder-rename internals have already
+    // moved each child to its canonical destination path BEFORE
+    // applyRenamedDocuments runs. The reconciliation guard's positive
+    // selector (`getItem(toDocName) == null`) must short-circuit each
+    // entry — if it mistakenly calls `model.move()` on the extensionless
+    // form for any cascade child, Pierre throws.
     renameResponseBody = {
       renamed: [
         { fromDocName: 'notes/a', toDocName: 'essays/a' },
@@ -555,11 +669,14 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
       expect(model.getItem('notes/a.md')).not.toBeNull();
     });
 
+    // Pierre's folder-cascade has already moved children to canonical.
     model.focusPath('notes/a.md');
     model.move('notes/a.md', 'essays/a.md');
     model.move('notes/b.md', 'essays/b.md');
     expect(model.getFocusedPath()).toBe('essays/a.md');
 
+    // Fire applyRenamedDocuments — guard must short-circuit both entries
+    // since `getItem('essays/a') === null` and `getItem('essays/b') === null`.
     const options = capturedOptions as {
       renaming?: { onRename?: (e: RenameEvent) => void };
     } | null;
@@ -569,15 +686,25 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
     }
     onRename({ sourcePath: 'notes/', destinationPath: 'essays/', isFolder: true });
 
+    // Wait for handleTreeRename to settle. Same reasoning as DRAG_DROP:
+    // addPage is the earliest observable signal; focus assertion below
+    // catches both pre-existing canonical state and accidental moves.
     await waitFor(() => {
       expect(addPageMock).toHaveBeenCalledWith('essays/a');
     });
 
+    // Both children retain their canonical paths; no spurious throw.
     expect(model.getFocusedPath()).toBe('essays/a.md');
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
   test('NULL_SOURCE — server returns fromDocName absent from current state; source==null guard short-circuits', async () => {
+    // Race scenarios: user deleted the file client-side between rename
+    // initiation and server response (current React state no longer has
+    // fromDocName), OR server returns a stale entry that React's state
+    // moved past. The `if (source == null) continue` guard at
+    // extensionless-rename reconciliation must short-circuit such entries —
+    // no spurious `model.move()` call, no throw, focus unchanged.
     renameResponseBody = {
       renamed: [{ fromDocName: 'nonexistent', toDocName: 'whatever' }],
       renamedAssets: [],
@@ -592,11 +719,17 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
       expect(model.getItem('foo.md')).not.toBeNull();
     });
 
+    // Pin pre-rename state.
     model.focusPath('foo.md');
     model.selectedPaths = ['foo.md'];
     const focusBefore = model.getFocusedPath();
     const itemsBefore = Array.from(model.items.keys()).sort();
 
+    // Trigger applyRenamedDocuments via Pierre's onRename. Do NOT call
+    // `simulatePierreCommitRename` — its `model.move()` would throw on
+    // the nonexistent source. We're testing the React-side guard, not
+    // Pierre's commit semantics, so fire onRename directly and leave
+    // Pierre's store untouched.
     const options = capturedOptions as {
       renaming?: { onRename?: (e: RenameEvent) => void };
     } | null;
@@ -610,10 +743,17 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
       isFolder: false,
     });
 
+    // `addPage(toDocName)` fires unconditionally in `applyRenamedDocuments`
+    // (before the setDocuments updater where reconcile runs) — works as
+    // the wait signal even when the guard short-circuits the reconcile.
     await waitFor(() => {
       expect(addPageMock).toHaveBeenCalledWith('whatever');
     });
 
+    // Contract: guard short-circuited cleanly. No throw, no toast, no
+    // model state change (Pierre's store unchanged because nothing
+    // matched in current; React's documents unchanged because
+    // applyRenameToDocuments couldn't find the entry either).
     expect(toastErrorMock).not.toHaveBeenCalled();
     expect(model.getFocusedPath()).toBe(focusBefore);
     expect(model.getSelectedPaths()).toEqual(['foo.md']);

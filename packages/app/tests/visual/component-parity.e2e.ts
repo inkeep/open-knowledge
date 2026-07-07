@@ -1,7 +1,36 @@
+/**
+ * Visual regression suite — 5-pack foundation parity.
+ *
+ * Captures screenshots of each 5-pack component rendered in the editor and
+ * compares against golden baselines. Tolerance: ≤1% pixel delta (accommodates
+ * anti-aliasing/subpixel). Covers {light, dark} themes and {selected, unselected}
+ * states per the renamed 5-pack VR block set.
+ *
+ * Coverage:
+ *   VR01 — Callout across all 5 GFM types (× light/dark) + foldable variant
+ *   VR-IMAGE — Image with always-on zoom (no caption)
+ *   VR-VIDEO — Video with poster + HTML5 controls
+ *   VR-AUDIO — Audio with native chrome
+ *   VR-ACCORDION — Accordion expanded + collapsed + exclusive grouping (name attr)
+ *   VR17 — mixed 5-pack document
+ *   VR18 — wildcard unregistered component
+ *
+ *
+ * Baseline management:
+ *   - packages/app/tests/visual/__snapshots__/ stores approved baselines
+ *   - First run creates baselines; subsequent runs diff
+ *   - Golden-file updates require explicit: bun run test:visual:update
+ *   - Cannot silently regenerate in CI
+ *
+ * Isolation: per-worker fixture + per-test UUID docName — no hardcoded
+ * 'test-doc' (precedent #20(a)).
+ */
+
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test } from '../stress/_helpers';
 
+/** Wait for provider to connect and sync */
 async function waitForProvider(page: Page) {
   await page.waitForFunction(() => Boolean(window.__activeProvider?.isSynced), {
     timeout: 15_000,
@@ -18,6 +47,7 @@ async function waitForDocSeeded(page: Page, minChildCount = 1) {
   );
 }
 
+/** Toggle theme to dark or light mode */
 async function setTheme(page: Page, theme: 'dark' | 'light') {
   await page.evaluate((t) => {
     document.documentElement.classList.toggle('dark', t === 'dark');
@@ -30,6 +60,7 @@ async function setTheme(page: Page, theme: 'dark' | 'light') {
   );
 }
 
+/** Click to select a jsxComponent block by its data-component-name */
 async function selectComponent(page: Page, componentName: string) {
   const component = page.locator(`[data-jsx-component][data-component-name="${componentName}"]`);
   await component.first().click();
@@ -49,6 +80,7 @@ async function selectComponent(page: Page, componentName: string) {
   );
 }
 
+/** Deselect by clicking on the editor background */
 async function deselectAll(page: Page) {
   await page.locator('.ProseMirror').click({ position: { x: 10, y: 10 } });
   await page.waitForFunction(
@@ -58,6 +90,11 @@ async function deselectAll(page: Page) {
   );
 }
 
+/**
+ * Per-test isolation: seed a unique docName, replace its contents, navigate
+ * to it via hash route. Returns the docName so the caller can reference it
+ * later if needed.
+ */
 async function seedAndNavigate(
   page: Page,
   api: { seedDocs: (d: Array<{ name: string; markdown: string }>) => Promise<void> },
@@ -71,6 +108,11 @@ async function seedAndNavigate(
   return docName;
 }
 
+// ── VR01: Callout (GFM 5-type + foldable) ───────────────────────
+
+// GFM 5-type set. Prior list was
+// ['note', 'warning', 'error', 'info'] — 'error'/'info' were not GFM types
+// and would alias-fold to 'caution'/'note' respectively.
 const calloutTypes = ['note', 'tip', 'important', 'warning', 'caution'] as const;
 
 for (const calloutType of calloutTypes) {
@@ -101,6 +143,7 @@ for (const calloutType of calloutTypes) {
   }
 }
 
+// foldable Callout variant — collapsible + defaultOpen.
 for (const defaultOpen of [true, false] as const) {
   for (const theme of ['light', 'dark'] as const) {
     const label = defaultOpen ? 'open' : 'closed';
@@ -127,6 +170,8 @@ for (const defaultOpen of [true, false] as const) {
   }
 }
 
+// ── VR-IMAGE: lowercase <img> with always-on zoom (no figcaption) ──
+
 for (const theme of ['light', 'dark'] as const) {
   test(`VR-IMAGE-${theme}: <img> with always-on zoom in ${theme} mode`, async ({ page, api }) => {
     await seedAndNavigate(
@@ -144,6 +189,8 @@ for (const theme of ['light', 'dark'] as const) {
   });
 }
 
+// ── VR-VIDEO: Video with poster + HTML5 controls ───────────────
+
 for (const theme of ['light', 'dark'] as const) {
   test(`VR-VIDEO-${theme}: Video with poster in ${theme} mode`, async ({ page, api }) => {
     await seedAndNavigate(page, api, '<video src="/sample.mp4" poster="/placeholder.png" />');
@@ -157,6 +204,8 @@ for (const theme of ['light', 'dark'] as const) {
   });
 }
 
+// ── VR-AUDIO: Audio with native chrome ─────────────────────────
+
 for (const theme of ['light', 'dark'] as const) {
   test(`VR-AUDIO-${theme}: Audio native chrome in ${theme} mode`, async ({ page, api }) => {
     await seedAndNavigate(page, api, '<audio src="/sample.mp3" />');
@@ -169,6 +218,8 @@ for (const theme of ['light', 'dark'] as const) {
     });
   });
 }
+
+// ── VR-ACCORDION: Accordion expanded + collapsed + exclusive grouping ──
 
 for (const theme of ['light', 'dark'] as const) {
   test(`VR-ACCORDION-${theme}: Accordion expanded (defaultOpen) in ${theme} mode`, async ({
@@ -238,6 +289,8 @@ for (const theme of ['light', 'dark'] as const) {
   });
 }
 
+// ── VR17: Mixed 5-pack document ─────────────────────────────────
+
 for (const theme of ['light', 'dark'] as const) {
   test(`VR17-${theme}: Mixed 5-pack document in ${theme} mode`, async ({ page, api }) => {
     await seedAndNavigate(
@@ -269,6 +322,7 @@ for (const theme of ['light', 'dark'] as const) {
         '<audio src="/sample.mp3" />',
       ].join('\n'),
     );
+    // Mixed doc: require at least 6 top-level blocks (heading + 5 components).
     await waitForDocSeeded(page, 6);
     await setTheme(page, theme);
 
@@ -277,6 +331,8 @@ for (const theme of ['light', 'dark'] as const) {
     });
   });
 }
+
+// ── VR18: Wildcard unregistered ────────────────────────────────
 
 for (const theme of ['light', 'dark'] as const) {
   test(`VR18-${theme}: Wildcard unregistered component in ${theme} mode`, async ({ page, api }) => {

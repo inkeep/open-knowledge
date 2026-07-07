@@ -1,3 +1,20 @@
+/**
+ * Multi-client fast restart.
+ *
+ * Extends the single-client fast restart repro in provider-pool-reconnect.test.ts
+ * with a second connected pool, simulating two browser tabs open against the same
+ * doc when the server restarts.
+ *
+ * Bug-class arithmetic: with N clients holding Y.Docs before the restart, the
+ * post-restart sync union contains each client's clientID PLUS the server's
+ * freshly-generated clientID. For N=2, the expected merged clientID set size is 3
+ * (two client clientIDs + one server clientID). Content from the fresh-server-
+ * clientID items duplicates the on-disk markdown.
+ *
+ * Expected: PASS post-fix. Regression guard for the multi-client restart duplication bug class
+ * — marker counts at baseline and clientID-drift assertion holds. Any
+ * reintroduction of the multi-client restart duplication trips this red.
+ */
 import './idb-preload';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -41,6 +58,8 @@ describe('T2: Multi-client fast restart', () => {
     cleanups.push(() => server.shutdown());
 
     const docName = 'multi-doc';
+    // Seed the fixture on disk before clients connect, so persistence.onLoadDocument
+    // loads canonical content into each doc session.
     writeFileSync(join(server.contentDir, `${docName}.md`), MULTI_FIXTURE, 'utf-8');
 
     const ctx = await createMultiClientContext({
@@ -50,9 +69,11 @@ describe('T2: Multi-client fast restart', () => {
     });
     cleanups.push(() => ctx.cleanup());
 
+    // Baseline — each pool's provider is synced with canonical content.
     const initialProviders = ctx.pools.map((p) => p.getActive()?.provider);
     expect(initialProviders.every((p) => p !== undefined)).toBe(true);
 
+    // Let any post-sync persistence drain settle.
     await wait(300);
 
     const baseline = readFileSync(join(server.contentDir, `${docName}.md`), 'utf-8');
@@ -63,6 +84,7 @@ describe('T2: Multi-client fast restart', () => {
     expect(baselineSectionB).toBe(1);
     expect(baselineSibling).toBe(1);
 
+    // Capture pre-restart clientID sets per pool.
     const preRestartClientIdSets = ctx.pools.map((p) => {
       const entry = p.getActive();
       if (!entry) throw new Error('pool has no active entry pre-restart');
@@ -70,15 +92,24 @@ describe('T2: Multi-client fast restart', () => {
     });
     const preRestartSummary = preRestartClientIdSets.map((s) => [...s]);
 
+    // Fast restart: 500ms downtime, well under RECYCLE_DEBOUNCE_MS = 4000.
     server = await server.killAndRestartOnSamePort({ downtimeMs: 500 });
     cleanups.unshift(() => server.shutdown());
 
+    // Wait for all pools to re-sync.
     await pollUntil(
       () => ctx.pools.every((p) => p.getActive()?.provider.isSynced === true),
       10_000,
       50,
     );
 
+    // The authenticationFailed → recycle defense replaces the stale Y.Doc with a fresh
+    // provider on restart (previously the disconnect-debounce window absorbed the restart
+    // and kept the stale Y.Doc, so the provider identity was unchanged). The behavior
+    // assertion below (no duplicated markers on disk) is the real gate; the clientID
+    // mechanism checks are informational.
+
+    // Capture post-restart clientID sets.
     const postRestartClientIdSets = ctx.pools.map((p) => {
       const entry = p.getActive();
       if (!entry) throw new Error('pool has no active entry post-restart');
@@ -92,6 +123,7 @@ describe('T2: Multi-client fast restart', () => {
       growth: postRestartClientIdSets.map((s, i) => s.size - preRestartClientIdSets[i].size),
     });
 
+    // Behavior: disk content matches baseline exactly once, after persistence settles.
     const afterRestart = await pollDiskContentStable(
       join(server.contentDir, `${docName}.md`),
       (c) => c.includes('Section A') && c.includes('Section B'),
@@ -111,10 +143,12 @@ describe('T2: Multi-client fast restart', () => {
       diskBytes: afterRestart.length,
     });
 
+    // Expect NO duplication on any marker.
     expect(afterSectionA).toBe(baselineSectionA);
     expect(afterSectionB).toBe(baselineSectionB);
     expect(afterSibling).toBe(baselineSibling);
 
+    // Mechanism: both clients' clientID sets match server's clientID set.
     const serverDoc = server.instance.hocuspocus.documents.get(docName);
     if (!serverDoc) throw new Error('server doc missing post-restart');
     for (let i = 0; i < ctx.pools.length; i++) {
@@ -134,7 +168,9 @@ describe('T2: Multi-client fast restart', () => {
           resumeSync: () => {
             throw new Error('unused');
           },
-          cleanup: async () => {},
+          cleanup: async () => {
+            /* pool owns */
+          },
         },
         serverDoc,
         `client ${i}`,

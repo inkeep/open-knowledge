@@ -26,6 +26,12 @@ async function bootRig(
 ): Promise<TestRig> {
   const tmpRoot = await mkdtemp(join(tmpdir(), 'share-construct-url-'));
   const projectDir = join(tmpRoot, 'project');
+  // When `contentDirIsRoot`, content.dir === '.' (the common v1 case), so the
+  // folder-root share degenerates to `tree/<branch>`. Otherwise content lives
+  // in a `content/` subdir and the root maps to `tree/<branch>/content`.
+  // When `contentDirEscapes`, contentDir sits OUTSIDE projectDir (a project
+  // misconfiguration) so `toGitRelativePath(projectDir, contentDir)` returns
+  // null — exercising the folder-root fail-loud guard.
   const contentDir = opts?.contentDirEscapes
     ? join(tmpRoot, 'escaped-content')
     : opts?.contentDirIsRoot
@@ -61,6 +67,14 @@ async function bootRig(
   });
   hocuspocus.configuration.extensions.push(ext);
 
+  // Bind v4 loopback EXPLICITLY. A bare `listen(0)` binds dual-stack `::`,
+  // which succeeds on the v6 side even when an unrelated long-lived process
+  // (an `ok ui` proxy, a dev server) already holds 127.0.0.1:<same port> —
+  // and `fetch('http://localhost:...')` then coin-flips the address family,
+  // intermittently landing on the foreign v4 listener (observed: its
+  // collab-server-not-running 503 failing this suite under parallel load).
+  // Binding 127.0.0.1 makes the OS pick a port that is actually free on the
+  // family the client uses.
   const port = await new Promise<number>((resolveListen) => {
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address();
@@ -177,6 +191,8 @@ describe('POST /api/share/construct-url', () => {
     const res = await postConstructUrl(rig.port, { kind: 'doc', docPath: 'a.md' });
     expect(res.status).toBe(200);
     const json = await res.json();
+    // The branch field is carried on this variant so the editor toast can
+    // name the offending branch ("Push <branch> to GitHub before sharing.").
     expect(json).toEqual({
       ok: false,
       error: 'branch-not-on-origin',
@@ -260,6 +276,7 @@ describe('POST /api/share/construct-url', () => {
     const decoded = decodeShareUrl(encoded);
     const decodedUrl = new URL(decoded.sharedUrl);
     const segments = decodedUrl.pathname.split('/');
+    // [/, owner, repo, blob, branch, ...path]
     expect(segments.slice(0, 5)).toEqual(['', 'inkeep', 'open-knowledge', 'blob', 'main']);
     const decodedDocPath = segments
       .slice(5)
@@ -334,6 +351,7 @@ describe('POST /api/share/construct-url', () => {
         branchesOnOrigin: ['main'],
       });
     });
+    // `kind: 'doc'` selects the doc member, which requires a non-empty docPath.
     const res = await postConstructUrl(rig.port, { kind: 'doc', folderPath: 'docs' });
     expect(res.status).toBe(400);
   });
@@ -378,6 +396,7 @@ describe('POST /api/share/construct-url', () => {
   });
 
   test('folder ROOT (folderPath: "") with content.dir subdir maps to tree/<branch>/<content.dir>', async () => {
+    // bootRig default: contentDir = <projectDir>/content, so content.dir === 'content'.
     rig = await bootRig((projectDir) => {
       seedRemoteAndHead(projectDir, {
         head: 'ref: refs/heads/main\n',
@@ -404,6 +423,8 @@ describe('POST /api/share/construct-url', () => {
       { contentDirEscapes: true },
     );
     const res = await postConstructUrl(rig.port, { kind: 'folder', folderPath: '' });
+    // A null `toGitRelativePath` (containment violation) must surface as an
+    // error, not silently collapse to `''` → `tree/<branch>` (repo root).
     expect(res.status).toBe(500);
   });
 });
@@ -537,10 +558,12 @@ describe('isValidSharePath (kind-aware)', () => {
   });
 
   test('control chars rejected for both kinds (symmetry with isValidBranchInfoPath)', () => {
+    // NUL and TAB are in the [\x00-\x1F\x7F] range; reject regardless of kind.
     expect(isValidSharePath('a\x00b', 'doc')).toBe(false);
     expect(isValidSharePath('a\x00b', 'folder')).toBe(false);
     expect(isValidSharePath('a\tb', 'doc')).toBe(false);
     expect(isValidSharePath('a\tb', 'folder')).toBe(false);
+    // DEL (\x7F) too.
     expect(isValidSharePath('a\x7Fb', 'doc')).toBe(false);
   });
 });
@@ -548,6 +571,9 @@ describe('isValidSharePath (kind-aware)', () => {
 describe('emitShareConstructUrlLog telemetry', () => {
   function captureLog(emit: () => void): Array<Record<string, unknown>> {
     const records: Array<Record<string, unknown>> = [];
+    // Route `getLogger('share')` through a capturing PinoLogger whose `info`
+    // records the structured payload, so we can assert the bounded `kind`
+    // attribute without scraping stdout.
     loggerFactory.configure({
       loggerFactory: (name: string) => {
         const logger = new PinoLogger(name, { options: { level: 'silent' } });

@@ -1,3 +1,19 @@
+/**
+ * Content scope preview — enumerates the files the watcher will index, given
+ * a config snapshot, without spinning up the server.
+ *
+ * `previewContent()` is the load-bearing helper: it builds a `ContentFilter`
+ * from `@inkeep/open-knowledge-server` and walks `contentDir` mirroring the
+ * file-watcher's startup walk (`file-watcher.ts:seedLastKnownHashes`). Reusing
+ * the same filter is the invariant that keeps the preview's count matching
+ * what the watcher will actually index, including nested `.gitignore` +
+ * `.okignore` handling (so `.ok/cache/` is excluded automatically).
+ *
+ * Returns warnings rather than throwing — preview failure must never block
+ * init. `formatPreviewBlock()` renders the result for both the `init`
+ * post-scaffold output and the standalone `open-knowledge preview` verb;
+ * keeping the formatter here ensures both surfaces stay byte-identical.
+ */
 import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { createContentFilter } from '@inkeep/open-knowledge-server';

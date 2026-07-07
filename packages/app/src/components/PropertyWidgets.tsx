@@ -1,4 +1,22 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+/**
+ * Property widgets — controlled inputs for the five frontmatter types.
+ *
+ * Each widget reads `value` (parsed from the YAML region of `Y.Text('source')`
+ * via `bindFrontmatterDoc.current()`) and emits `onCommit(newValue)` on Enter /
+ * blur (or click for boolean). The parent (PropertyRow in PropertyPanel)
+ * routes commits through `bindFrontmatterDoc.patch()`, which edits the YAML
+ * region at the `Pair` level via yaml@2 and replaces the Y.Text byte range
+ * under `FORM_WRITE_ORIGIN`. No HTTP round-trip — the change reaches the
+ * server via the same WebSocket the editor already uses.
+ *
+ * Type picker (TypeIconButton) opens a dropdown listing the five widget types;
+ * selecting a different type triggers a value coercion + commit so the slot
+ * value matches the new shape.
+ *
+ * List values are flat `string[]`. Widgets present arrays as chip inputs
+ * regardless of declared type — value shape wins for rendering.
+ */
 
 import {
   FRONTMATTER_TAG_GRAMMAR_HINT,
@@ -40,10 +58,27 @@ import { cn } from '@/lib/utils';
 import { PropertyInlineLinks } from './PropertyInlineLinks';
 import { hasInlineLinks } from './property-inline-link-tokens';
 
+/**
+ * Shared widget-shape contract — `keyName` for testids + aria-labels,
+ * the current value, and a commit callback that fires on settle (blur,
+ * Enter, picker choice). Exported so siblings outside this file
+ * (`PageHeaderWidgets.tsx`'s icon + cover widgets) can opt into the
+ * same prop shape without duplicating the interface.
+ */
 export interface CommonWidgetProps<T extends FrontmatterValue> {
   keyName: string;
   value: T;
   onCommit: (next: T) => void;
+  /**
+   * Optional "submit the whole form" handler for Enter, distinct from
+   * `onCommit` (which only settles this field's value). The add-property
+   * row wires this so pressing Enter in the value editor commits the new
+   * property — instead of merely blurring the input — without the user
+   * reaching for the "Add" button. Receives the freshly-typed value so the
+   * consumer's commit doesn't race the async `onCommit` state update. When
+   * absent (every existing-row editor), Enter keeps its blur-to-settle
+   * behavior.
+   */
   onSubmit?: (next: T) => void;
 }
 
@@ -51,20 +86,47 @@ export function TextWidget({ keyName, value, onCommit, onSubmit }: CommonWidgetP
   const { t } = useLingui();
   const [draft, setDraft] = useState(value);
   const focusedRef = useRef(false);
+  // Set in onKeyDown(Escape) before blur(); read synchronously in onBlur to
+  // skip the commit. setDraft(value) is async — without this flag, the blur
+  // handler reads the stale typed draft from the current render closure and
+  // commits it before React re-renders with the reverted draft.
   const revertingRef = useRef(false);
+  // Link-mode toggle: URL-shaped values render as a clickable chip (the
+  // "view"); editing pivots to the textarea below. `isSafeUrl` follows the
+  // same scheme allowlist used by page-icon / cover / wiki-link, so any
+  // safe http(s) value lights up as a link with zero user opt-in — same
+  // posture as how YAML auto-types numbers / dates / booleans from value
+  // shape. Plain-text values keep the textarea-as-display behavior.
   const [isEditing, setIsEditing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Re-sync local draft to incoming `value` when the input is not focused.
+  // Without this, a remote concurrent edit (other peer / MCP / file-watcher)
+  // is invisible to the widget; on next blur the stale draft would overwrite
+  // the remote update — a CRDT divergence at the form surface that the per-
+  // key storage layer is supposed to prevent.
   useEffect(() => {
     if (!focusedRef.current) setDraft(value);
   }, [value]);
+  // Auto-focus the textarea when entering edit mode from link view. Without
+  // this, the user clicks the pencil and the textarea mounts but lands
+  // unfocused — they'd have to click into it again to type.
   useEffect(() => {
     if (isEditing) {
       textareaRef.current?.focus();
+      // Drop the caret at the end so the user is positioned to append /
+      // extend rather than replacing the URL by accident.
       const el = textareaRef.current;
       if (el) el.setSelectionRange(el.value.length, el.value.length);
     }
   }, [isEditing]);
 
+  // Pure-http(s)-URL fast path keeps the original full-replacement
+  // anchor chip (label === url). Beyond that, the read view widens
+  // to ANY value carrying embedded link syntax — wiki-links,
+  // markdown links, or autolinks mixed with prose — so the displayed
+  // chip rehydrates the markdown into clickable elements rather than
+  // showing raw `[[…]]` / `[text](url)` source. The pencil affordance
+  // pivots back to the textarea regardless of which read view fired.
   const trimmedValue = value.trim();
   const isPureUrl = !isEditing && trimmedValue.length > 0 && /^https?:\/\/\S+$/i.test(trimmedValue);
   const hasMixedLinks = !isEditing && !isPureUrl && hasInlineLinks(value);
@@ -75,6 +137,16 @@ export function TextWidget({ keyName, value, onCommit, onSubmit }: CommonWidgetP
           href={value}
           target="_blank"
           rel="noopener noreferrer"
+          // `dispatchExternalLinkClick` is the shared non-handoff
+          // outbound-nav primitive (lib/external-link.ts) — `onClick`
+          // covers left-click (with modifiers); `onAuxClick` covers
+          // middle-click. Both routes through the Electron
+          // shell.openExternal allowlist when the bridge is present,
+          // falling through to the anchor's `target="_blank"` default
+          // on web. The handoff-dispatch infrastructure under
+          // `lib/handoff/` is reserved for the Open-in-Agent flow per
+          // its single-entry-point meta-test; this helper is the
+          // non-handoff sibling for plain URL navs.
           onClick={(e) => dispatchExternalLinkClick(e, value)}
           onAuxClick={(e) => {
             if (e.button === 1) dispatchExternalLinkClick(e, value);
@@ -100,6 +172,12 @@ export function TextWidget({ keyName, value, onCommit, onSubmit }: CommonWidgetP
     );
   }
 
+  // read view for values that mix prose with embedded link
+  // syntax (`[[wikilink]] — note`, `see [doc](./d.md)`, `https://x.y in
+  // sentence`). Same layout shell as the URL chip above so the pencil
+  // affordance + truncation behavior carry over; the inner element is
+  // `PropertyInlineLinks` which tokenizes the value and renders each
+  // link kind as an anchor.
   if (hasMixedLinks) {
     return (
       <div
@@ -129,6 +207,10 @@ export function TextWidget({ keyName, value, onCommit, onSubmit }: CommonWidgetP
     );
   }
 
+  // Renders as a `<textarea rows={1}>` with `field-sizing: content` so long
+  // values wrap to multiple lines and the box auto-grows to fit instead of
+  // horizontally scrolling out of the property column. Enter still commits
+  // (the property panel treats text values as single-paragraph).
   return (
     <textarea
       ref={textareaRef}
@@ -144,6 +226,9 @@ export function TextWidget({ keyName, value, onCommit, onSubmit }: CommonWidgetP
       }}
       onBlur={() => {
         focusedRef.current = false;
+        // Exit the explicit edit-mode flip if the user entered via the
+        // pencil affordance — re-render swaps back to the link view when
+        // the value still parses as a safe URL.
         setIsEditing(false);
         if (revertingRef.current) {
           revertingRef.current = false;
@@ -173,6 +258,7 @@ export function NumberWidget({ keyName, value, onCommit, onSubmit }: CommonWidge
   const { t } = useLingui();
   const [draft, setDraft] = useState<string>(String(value));
   const focusedRef = useRef(false);
+  // See TextWidget — synchronous flag to skip commit on Escape-driven blur.
   const revertingRef = useRef(false);
   useEffect(() => {
     if (!focusedRef.current) setDraft(String(value));
@@ -239,6 +325,14 @@ export function BooleanWidget({ keyName, value, onCommit }: CommonWidgetProps<bo
   );
 }
 
+// react-day-picker (+ its locale/formatting weight) is the heaviest dependency
+// in the property panel, yet the calendar only renders when the user opens the
+// date-picker popover — a rare interaction, and never for non-date fields (most
+// frontmatter). Lazy-load it so it splits into its own chunk loaded on demand
+// instead of riding in the eager editor bundle. DateWidget itself stays eager so
+// the text input renders synchronously (incl. SSR / renderToString); the closed
+// Popover doesn't mount its content, so the Suspense boundary only activates on
+// open. (date-fns stays eager here — it's small and the input needs it on mount.)
 const Calendar = lazy(() =>
   import('@/components/ui/calendar').then((m) => ({ default: m.Calendar })),
 );
@@ -250,8 +344,13 @@ export function DateWidget({ keyName, value, onCommit, onSubmit }: CommonWidgetP
   const [month, setMonth] = useState<Date | undefined>(date);
   const [open, setOpen] = useState(false);
   const focusedRef = useRef(false);
+  // Same async/sync mismatch as TextWidget / NumberWidget — Escape calls
+  // setInputValue(reverted) (async) then blur() (sync). Without this guard,
+  // onBlur reads the stale typed inputValue from closure and commitInput()
+  // would parse + commit the typed-but-cancelled value.
   const revertingRef = useRef(false);
 
+  // Re-sync input display from external value when not focused (remote edits / commits).
   useEffect(() => {
     if (!focusedRef.current) {
       const next = parseDate(value);
@@ -260,6 +359,9 @@ export function DateWidget({ keyName, value, onCommit, onSubmit }: CommonWidgetP
     }
   }, [value]);
 
+  // Returns the committed ISO date on a valid parse (so the Enter handler can
+  // forward it to `onSubmit`), or undefined when the input was invalid/empty
+  // and reverted to the last committed value.
   function commitInput(): string | undefined {
     const parsed = parseFromInput(inputValue);
     if (parsed) {
@@ -269,6 +371,7 @@ export function DateWidget({ keyName, value, onCommit, onSubmit }: CommonWidgetP
       setMonth(parsed);
       return iso;
     }
+    // Invalid or empty input — revert to last committed value.
     setInputValue(formatDateForInput(date));
     setMonth(date);
     return undefined;
@@ -370,6 +473,11 @@ function formatDateForInput(date: Date | undefined): string {
   return date ? format(date, INPUT_DATE_FORMAT) : '';
 }
 
+// Explicit format strings parsed in local time. `new Date('2026-04-24')` would
+// interpret an ISO 8601 date-only string as UTC midnight; `format(d,'yyyy-MM-dd')`
+// then formats local — producing off-by-one days in negative-UTC-offset
+// timezones. `date-fns/parse` interprets every format in local time, matching
+// the rest of the widget's local-time presentation.
 const INPUT_PARSE_FORMATS = [
   'MMM d, yyyy', // matches INPUT_DATE_FORMAT — calendar picks round-trip
   'MMMM d, yyyy', // full month name
@@ -392,15 +500,31 @@ export function parseFromInput(input: string): Date | undefined {
 export function ListWidget({ keyName, value, onCommit }: CommonWidgetProps<string[]>) {
   const { t } = useLingui();
   const [draft, setDraft] = useState('');
+  // Inline "rejected last commit" flag — only relevant for `isTagsField`.
+  // When the input fails the frontmatter-tag grammar gate, we keep the
+  // draft on screen with a red ring + helper text so the author can fix
+  // it instead of silently losing their keystrokes.
   const [draftRejected, setDraftRejected] = useState(false);
   const isTagsField = keyName === 'tags';
   function addChip(raw: string) {
     const trimmed = raw.trim();
     if (!trimmed) return;
     if (isTagsField && !isValidFrontmatterTagValue(trimmed)) {
+      // Reject at the WYSIWYG input boundary; the source-mode editor
+      // still allows arbitrary YAML through (and the WYSIWYG render
+      // path below flags any invalid entries that arrived that way).
       setDraftRejected(true);
       return;
     }
+    // Normalize leading `#` for tags-field commits.
+    // `isValidFrontmatterTagValue` strips a leading `#` for paste
+    // tolerance (Obsidian-shape input), so `#showcase` passes the
+    // gate above — but we must commit the bare form. Without this,
+    // `#showcase` would land in YAML as-is, then either (a) render
+    // as invalid here on the next paint (`FRONTMATTER_TAG_VALUE_RE`
+    // rejects bare `#`), or (b) get silently re-normalized by the
+    // disk-side parser on the next round-trip, drifting the
+    // displayed value. Strip once, commit canonically.
     const normalized = isTagsField && trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
     setDraftRejected(false);
     onCommit([...value, normalized]);
@@ -411,6 +535,18 @@ export function ListWidget({ keyName, value, onCommit }: CommonWidgetProps<strin
     next.splice(index, 1);
     onCommit(next);
   }
+  // The `tags` frontmatter field is the one list whose entries have a
+  // navigation semantic — clicking a chip should open the same TagDialog
+  // that inline `#tag` clicks open. Generic list values (categories,
+  // aliases, or whatever else a user puts in YAML) stay non-interactive.
+  // Tag chips render as a primary-tinted pill via inline Tailwind (the
+  // wrapper carries bg + hover/active state) so the link button and the
+  // remove button live inside one shared pill — intentionally diverging
+  // from the global `.tag` CSS class used for inline editor tags, which
+  // is a single non-removable element. When a tag chip's value fails the
+  // grammar gate (arrived from source mode), it renders with a
+  // destructive ring + tooltip explaining the rule so authors can find
+  // and clean up the malformed entry without context-switching.
   return (
     <div
       data-testid="list-widget"
@@ -428,6 +564,10 @@ export function ListWidget({ keyName, value, onCommit }: CommonWidgetProps<strin
             data-index={i}
             data-tag-invalid={renderAsInvalidTag ? 'true' : undefined}
             className={cn(
+              // `max-w-full min-w-0 break-all` constrains a pathologically
+              // long single-word tag (`#xxxxxxx…`) to the value cell width
+              // and lets the text break mid-string instead of overflowing
+              // the column into adjacent layout.
               'inline-flex max-w-full min-w-0 items-center break-all text-1sm gap-0.5 rounded-full py-0.5 pl-2 pr-1.5 transition-colors',
               renderAsTag &&
                 'bg-primary/10 font-medium text-primary has-[button[data-tag]:hover]:bg-primary/20 has-[button[data-tag]:active]:bg-primary/25',
@@ -447,6 +587,12 @@ export function ListWidget({ keyName, value, onCommit }: CommonWidgetProps<strin
                 #{chip}
               </button>
             ) : (
+              // render embedded link syntax (wikilinks, markdown
+              // links, bare URLs) inside the chip as clickable elements
+              // instead of raw text. Plain-text chips fast-path through
+              // the helper's `hasInlineLinks` short-circuit to a single
+              // `<span>`, so the only cost on the common case is one
+              // substring probe.
               <PropertyInlineLinks text={chip} />
             )}
             <button
@@ -467,6 +613,10 @@ export function ListWidget({ keyName, value, onCommit }: CommonWidgetProps<strin
             </button>
           </span>
         );
+        // Tooltip-wrap only invalid tag chips — valid tags + non-tag list
+        // values get no extra DOM. The destructive ring on the chip
+        // surfaces the invalid state at a glance; the tooltip explains
+        // the grammar rule on hover/focus.
         if (!renderAsInvalidTag) return chipBody;
         return (
           <Tooltip
@@ -489,6 +639,8 @@ export function ListWidget({ keyName, value, onCommit }: CommonWidgetProps<strin
         aria-describedby={draftRejected ? `${keyName}-tag-grammar` : undefined}
         onChange={(e) => {
           setDraft(e.target.value);
+          // Clear the rejection flag as soon as the author keeps typing
+          // — they're correcting; the next commit will re-validate.
           if (draftRejected) setDraftRejected(false);
         }}
         onKeyDown={(e) => {
@@ -527,6 +679,14 @@ export function ListWidget({ keyName, value, onCommit }: CommonWidgetProps<strin
   );
 }
 
+/**
+ * Type → Lucide icon map. Consumed by `TypeIconButton` (the live type-
+ * change dropdown) AND by `PlaceholderIdentity` in `FrontmatterRow.tsx`
+ * (the static dimmed glyph on placeholder rows like the always-visible
+ * `tags` row). The cross-file consumer is the reason for the `export`;
+ * if a future change scopes placeholder rendering back into this file,
+ * the export can be demoted.
+ */
 export const TYPE_ICON: Record<FrontmatterType, typeof Type> = {
   text: Type,
   number: Hash,
@@ -536,6 +696,8 @@ export const TYPE_ICON: Record<FrontmatterType, typeof Type> = {
   object: Braces,
 };
 
+// Module-level constants can't use the `t` macro — `msg` produces lazy
+// MessageDescriptors resolved per-render via `useLingui()`'s `t`.
 const TYPE_LABEL: Record<FrontmatterType, MessageDescriptor> = {
   text: msg`Text`,
   number: msg`Number`,
@@ -558,7 +720,18 @@ interface TypeIconButtonProps {
   keyName: string;
   type: FrontmatterType;
   onChangeType: (next: FrontmatterType) => void;
+  /**
+   * Render as a non-interactive type indicator. Used for inherited rows
+   * where the cascade owns the type — to change it, the user must
+   * materialize the value into the file first, then operate on the
+   * file-owned row.
+   */
   disabled?: boolean;
+  /**
+   * Forwarded to `<DropdownMenuContent>`. Consumers that own a different
+   * post-close typing target (e.g. AddPropertyRow's name input) call
+   * `event.preventDefault()` here and synchronously focus their target.
+   */
   onCloseAutoFocus?: (event: Event) => void;
 }
 
@@ -573,6 +746,11 @@ export function TypeIconButton({
   const Icon = TYPE_ICON[type];
   const typeLabel = t(TYPE_LABEL[type]);
   if (disabled) {
+    // Native `disabled` swallows pointer events, so per shadcn's
+    // disabled-button pattern we wrap the button in a focusable <span>
+    // that the Tooltip can attach to. The button stays truly disabled
+    // (correct keyboard + screen-reader semantics); the tooltip surfaces
+    // on hover/focus of the wrapper.
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -639,6 +817,11 @@ export function TypeIconButton({
   );
 }
 
+/**
+ * Best-effort coercion when the user changes the declared type. The value-shape
+ * always wins for rendering, so coercion mostly matters when a primitive
+ * value transitions to a different primitive shape.
+ */
 export function coerceValue(value: FrontmatterValue, target: FrontmatterType): FrontmatterValue {
   switch (target) {
     case 'text': {
@@ -680,6 +863,12 @@ export function coerceValue(value: FrontmatterValue, target: FrontmatterType): F
   }
 }
 
+/**
+ * Resolve which widget to render given the underlying value. Value shape wins
+ * (a string[] always renders as ListWidget regardless of declared type). For
+ * scalar values, fall back to the supplied declared type, which is either an
+ * inferred shape or a user-picked override.
+ */
 export function resolveWidgetType(
   value: FrontmatterValue,
   declared: FrontmatterType,
@@ -692,6 +881,15 @@ export function resolveWidgetType(
   return declared;
 }
 
+/**
+ * Detect nested object / array-of-object values that the five scalar widgets
+ * cannot represent without lossy coercion (an object would `String()` to
+ * `'[object Object]'` through the text widget; an array of objects would lose
+ * every entry through the scalar `ListWidget`). Plain-object values route to
+ * `ObjectWidget` (expandable nested rows); array-of-object values route to
+ * `ComplexValueWidget` (read-only preview) until the indexed-item editor
+ * lands.
+ */
 export function isComplexValue(value: FrontmatterValue): boolean {
   if (Array.isArray(value)) {
     return value.some((entry) => typeof entry === 'object' && entry !== null);
@@ -699,12 +897,20 @@ export function isComplexValue(value: FrontmatterValue): boolean {
   return typeof value === 'object' && value !== null;
 }
 
+/** Plain-object discriminator — true only for non-array, non-null `object` values. */
 export function isPlainObjectValue(
   value: FrontmatterValue,
 ): value is { [key: string]: FrontmatterValue } {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Homogeneous array-of-objects discriminator — true only when every element is
+ * a plain object. Heterogeneous arrays (mix of scalars + objects) fall through
+ * to `ComplexValueWidget` (read-only preview) because the indexed-row model
+ * implies every item is the same shape; a mixed array would need a
+ * per-item-type picker we don't ship.
+ */
 export function isArrayOfObjectsValue(
   value: FrontmatterValue,
 ): value is Array<{ [key: string]: FrontmatterValue }> {
@@ -717,6 +923,13 @@ interface ComplexValueWidgetProps {
   value: FrontmatterValue;
 }
 
+/**
+ * Read-only preview row for nested objects and arrays of objects — the
+ * shape categories the five scalar widgets cannot render or commit. The
+ * preview surfaces enough structure (top-level keys for objects, item
+ * count for arrays) that the user can tell the value is intact while the
+ * structured editor is still pending.
+ */
 export function ComplexValueWidget({ keyName, value }: ComplexValueWidgetProps) {
   const summary = summarizeComplexValue(value);
   const isArray = Array.isArray(value);

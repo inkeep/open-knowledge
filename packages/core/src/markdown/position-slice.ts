@@ -528,6 +528,7 @@ export function applyPositionSliceToNode(
     }
 
     case 'break': {
+      if (node.data.sourceRaw) break;
       const slice = source.slice(startOff, endOff);
       if (slice.includes('\\')) {
         node.data.sourceStyle = 'backslash';

@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { isWithinDir, toPosix } from './path-utils.ts';
 
+// These exercise the Windows (`\`-separated) branch on a POSIX CI runner — the
+// helpers are deliberately separator-independent so the win32 behavior is
+// reproducible without a Windows host (mirrors app/src/lib/project-paths.test.ts).
+
 describe('toPosix', () => {
   test('rewrites Windows backslashes to forward slashes', () => {
     expect(toPosix('C:\\Users\\mike\\Documents\\kb\\asdf')).toBe('C:/Users/mike/Documents/kb/asdf');
@@ -20,6 +24,9 @@ describe('toPosix', () => {
 
 describe('isWithinDir', () => {
   test('a child under a Windows parent is contained (the PRD-7140 regression)', () => {
+    // The reported symptom: a new folder built as `<contentDir>/asdf` was
+    // refused as a symlink-escape because `realpath` returned the
+    // backslash form. Containment must hold across separator styles.
     const contentDir = 'C:\\Users\\mike\\Documents\\kb';
     expect(isWithinDir('C:\\Users\\mike\\Documents\\kb\\asdf', contentDir)).toBe(true);
     expect(isWithinDir('C:\\Users\\mike\\Documents\\kb/asdf', contentDir)).toBe(true);
@@ -37,6 +44,7 @@ describe('isWithinDir', () => {
     ).toBe(false);
     expect(isWithinDir('C:\\Users\\mike\\Other\\x', 'C:\\Users\\mike\\Documents\\kb')).toBe(false);
     expect(isWithinDir('/Users/mike/other/x', '/Users/mike/kb')).toBe(false);
+    // Prefix-but-not-a-path-boundary must NOT count as contained.
     expect(isWithinDir('/Users/mike/kbase/x', '/Users/mike/kb')).toBe(false);
   });
 

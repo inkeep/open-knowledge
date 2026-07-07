@@ -1,6 +1,13 @@
+/**
+ * Human + machine rendering for `ok deinit` / `ok uninstall` — grouped plan
+ * output (rendered like `seed.ts`'s `formatPlanBody`) and the post-run outcome
+ * summary, plus the `--json` shape.
+ */
+
 import { accent, dim, error as errorColor, success, warning } from '../ui/colors.ts';
 import type { RemovalOp, RemovalOutcome, RemovalPlan } from './removal-plan.ts';
 
+/** Group ops by their section, preserving first-seen order. */
 function groupOps(ops: RemovalOp[]): Map<string, RemovalOp[]> {
   const groups = new Map<string, RemovalOp[]>();
   for (const op of ops) {
@@ -11,6 +18,7 @@ function groupOps(ops: RemovalOp[]): Map<string, RemovalOp[]> {
   return groups;
 }
 
+/** The confirmable plan body: each group's ops as a bulleted removal list. */
 export function formatRemovalPlan(plan: RemovalPlan): string {
   if (plan.ops.length === 0) return dim('Nothing to remove.');
   const lines: string[] = [];
@@ -24,6 +32,7 @@ export function formatRemovalPlan(plan: RemovalPlan): string {
   return lines.join('\n');
 }
 
+/** Post-run summary: counts + every skipped/failed op with its reason. */
 export function formatRemovalOutcome(outcome: RemovalOutcome): string {
   const removed = outcome.removed.length;
   const failed = outcome.failed.length;
@@ -61,6 +70,12 @@ interface RemovalItem {
   detail?: string;
 }
 
+/**
+ * The `--json` shape. A `mode` discriminant keeps a dry-run PLAN (what WOULD be
+ * removed, under `planned`) distinct from an applied OUTCOME (what actually
+ * happened, under `removed`/`skipped`/`failed`) — so a consumer never confuses
+ * "these are the ops I intend to run" with "these ops succeeded".
+ */
 export type RemovalJson =
   | { scope: 'uninstall' | 'deinit'; mode: 'dry-run'; planned: RemovalItem[] }
   | {

@@ -1,3 +1,7 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleSeedPlan`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, SeedPlanSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

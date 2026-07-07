@@ -2,6 +2,14 @@ import { Trans } from '@lingui/react/macro';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
+/**
+ * Installed vs Draft state for a skill — one source shared by the Settings list
+ * row (`SkillRow`), the sidebar Skills section, and the editor header.
+ *
+ * `subtle` renders a muted inline label instead of the filled pill — used in the
+ * file sidebar so the state reads as quiet metadata next to the row (cohesive
+ * with the icon + name file rows) rather than a loud badge.
+ */
 export function SkillStateBadge({
   installed,
   className,

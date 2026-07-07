@@ -1,3 +1,12 @@
+/**
+ * `ok config-sharing status` — print the current sharing mode, the OK paths
+ * currently in `.git/info/exclude`, and any OK paths tracked upstream
+ * (informational; the user is in `local-only` mode but a teammate
+ * committed a file that should also be cleaned up via `git rm --cached`).
+ *
+ * Pure read — never writes. Safe to invoke from any CI / scripted context.
+ */
+
 import { resolve } from 'node:path';
 import { Command } from 'commander';
 import {

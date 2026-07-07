@@ -1,7 +1,30 @@
+/**
+ * Themed `html preview` starter snippets.
+ *
+ * Each starter is a complete, copy-ready `html preview` embed that styles
+ * itself entirely with OK's injected theme tokens (`var(--chart-1)`,
+ * `var(--card)`, `var(--foreground)`, …) — so it tracks the reader's light/dark
+ * theme with no hand-picked colors. Every snippet is pure inline HTML / CSS /
+ * JS with no external dependencies, so it renders self-contained — no network
+ * access required.
+ *
+ * Single source of truth for two surfaces:
+ *   - the `palette` MCP tool's `embedPatterns` (agent path)
+ *   - the slash-command starter family in the editor (human path)
+ *
+ * Token reference: see `PREVIEW_THEME_TOKENS` — the same subset injected into
+ * every preview iframe.
+ */
+
+/** One copy-ready themed `html preview` starter. */
 export interface PreviewEmbedStarter {
+  /** Stable id — slash-item suffix + `embedPatterns[].id`. */
   readonly id: 'chart' | 'stat-cards' | 'custom-svg' | 'interactive-control';
+  /** Human-facing title (slash-menu label, `embedPatterns[].title`). */
   readonly title: string;
+  /** One-line description of what the starter renders. */
   readonly description: string;
+  /** The embed body — goes inside a ` ```html preview ` fenced block. */
   readonly html: string;
 }
 
@@ -45,6 +68,13 @@ const STAT_CARDS_HTML = `<div style="font-family:system-ui,sans-serif;padding:20
   </script>
 </div>`;
 
+// Theme tokens INSIDE an SVG must be routed through `style="..."` rather
+// than the matching presentation attribute (`fill=` / `stroke=`). CSS
+// `var()` is NOT a valid SVG `<paint>` value per the W3C spec — Chromium
+// 113+ tolerates it as a non-standard extension, but Safari / older
+// Chromium silently fall back to the spec default (`fill: black`,
+// `stroke: none`), so the rings render as black blobs. Routing through
+// `style=` is the canonical form that works in every browser.
 const CUSTOM_SVG_HTML = `<div style="font-family:system-ui,sans-serif;padding:20px;display:flex;align-items:center;gap:20px;color:var(--foreground)">
   <svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="70 percent complete">
     <circle cx="60" cy="60" r="46" stroke-width="14" style="fill: none; stroke: var(--border)" />
@@ -102,6 +132,10 @@ export const PREVIEW_EMBED_STARTERS: readonly PreviewEmbedStarter[] = [
   },
 ];
 
+/**
+ * The full ` ```html preview ` fenced block for a starter — copy-ready
+ * markdown an agent can paste straight into a document.
+ */
 export function previewEmbedFence(starter: PreviewEmbedStarter): string {
   return ['```html preview', starter.html, '```'].join('\n');
 }

@@ -1,3 +1,8 @@
+/**
+ * Regression smoke for the production-only sidebar create -> inline rename
+ * path leaving the selected document without an editable TipTap surface.
+ */
+
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';

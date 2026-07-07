@@ -46,6 +46,21 @@ describe('upload extension sets', () => {
     }
   });
 
+  // Partition guard — defense against drift between dispatch surfaces
+  // (pickInsertShape, handlers.wikiLinkEmbed). If a new extension lands in
+  // WIKI_EMBED_EXTENSIONS without a matching home in IMAGE / VIDEO / AUDIO
+  // / FILE_ATTACHMENT, this fails loudly so the dispatch tables stay in
+  // sync.
+  //
+  // FILE_ATTACHMENT_EXTENSIONS — the
+  // `WikiEmbedFile` compat dispatches block-context wiki-embeds whose
+  // extension lives in that set to the `File` canonical (Notion-style
+  // inline-row chrome). The dispatch ladder
+  // (`markdown/index.ts:wikiLinkEmbed`) is now image → video → audio
+  // → file → text+link fallback. PDF lives inside FILE_ATTACHMENT
+  // (the wikilink form renders as a File row alongside docx / zip /
+  // …); the pdfjs canvas viewer is reachable via the `<Pdf>` JSX form
+  // rather than auto-routed from `![[doc.pdf]]`.
   test('IMAGE ∪ VIDEO ∪ AUDIO ∪ FILE_ATTACHMENT === WIKI_EMBED_EXTENSIONS (set equality)', () => {
     const union = new Set<string>([
       ...IMAGE_EXTENSIONS,
@@ -54,17 +69,28 @@ describe('upload extension sets', () => {
       ...FILE_ATTACHMENT_EXTENSIONS,
     ]);
 
+    // ⊆ direction: union subset of WIKI_EMBED_EXTENSIONS
     for (const ext of union) {
       expect(WIKI_EMBED_EXTENSIONS.has(ext)).toBe(true);
     }
 
+    // ⊇ direction: WIKI_EMBED_EXTENSIONS subset of union
     for (const ext of WIKI_EMBED_EXTENSIONS) {
       expect(union.has(ext)).toBe(true);
     }
 
+    // Same cardinality (defense against duplicates inside individual sets)
     expect(union.size).toBe(WIKI_EMBED_EXTENSIONS.size);
   });
 
+  // FILE_ATTACHMENT_EXTENSIONS must be disjoint from the inline-media
+  // sets (image / video / audio) — the dispatch ladder stops at the
+  // first matching branch, so an overlapping ext would render through
+  // whichever tier ran first, which is a class of confusion this test
+  // prevents. PDF is INTENTIONALLY a member of FILE_ATTACHMENT (the
+  // wikilink/drop form treats it like any other downloadable file); the
+  // explicit `<Pdf>` JSX is a separate authoring path with its own
+  // canonical and is unaffected.
   test('FILE_ATTACHMENT_EXTENSIONS is disjoint from IMAGE / VIDEO / AUDIO', () => {
     for (const ext of FILE_ATTACHMENT_EXTENSIONS) {
       expect(IMAGE_EXTENSIONS.has(ext)).toBe(false);
@@ -73,12 +99,20 @@ describe('upload extension sets', () => {
     }
   });
 
+  // Every type OK lets you embed/link (`![[file.ext]]`) MUST be one OK admits
+  // into the file index and serves — otherwise the link resolves against a set
+  // that omits it and renders as a "non-existent" redlink while /api/asset 404s.
+  // ASSET_EXTENSIONS is the serve/index/link-resolution predicate;
+  // WIKI_EMBED_EXTENSIONS is the embed/link predicate. The latter must be a
+  // subset of the former.
   test('WIKI_EMBED_EXTENSIONS ⊆ ASSET_EXTENSIONS (embeddable ⇒ servable + resolvable)', () => {
     for (const ext of WIKI_EMBED_EXTENSIONS) {
       expect(ASSET_EXTENSIONS.has(ext)).toBe(true);
     }
   });
 
+  // User-authored files linked by their own bare extension (not droppable
+  // embeds, so absent from WIKI_EMBED) still must resolve + serve.
   test('ASSET_EXTENSIONS admits user-linked non-embed types (html/htm/gpx)', () => {
     expect(ASSET_EXTENSIONS.has('html')).toBe(true);
     expect(ASSET_EXTENSIONS.has('htm')).toBe(true);
@@ -87,6 +121,10 @@ describe('upload extension sets', () => {
 });
 
 describe('mediaKindForSidebarAssetExtension', () => {
+  // Pins the central dispatch function called by `DocumentContext` when
+  // building sidebar asset rows. The classifier returns the discriminant
+  // that `AssetPreview` switches on to pick a render component.
+
   test.each([
     ['png', 'image'],
     ['jpg', 'image'],
@@ -126,6 +164,9 @@ describe('mediaKindForSidebarAssetExtension', () => {
   });
 
   test('base and canvas are absent from ASSET_EXTENSIONS and INLINE_RENDERABLE_EXTENSIONS', () => {
+    // These extensions resolve to mediaKind:'text' via TEXT_VIEWER_FALLBACK_EXTENSIONS
+    // rather than the inline-text set, so the serve/XSS boundary (ASSET_EXTENSIONS +
+    // INLINE_RENDERABLE_EXTENSIONS) is unchanged — /api/asset keeps returning 415 for them.
     expect(ASSET_EXTENSIONS.has('base')).toBe(false);
     expect(ASSET_EXTENSIONS.has('canvas')).toBe(false);
     expect(INLINE_RENDERABLE_EXTENSIONS.has('base')).toBe(false);
@@ -135,6 +176,8 @@ describe('mediaKindForSidebarAssetExtension', () => {
   test('TEXT_VIEWER_FALLBACK_EXTENSIONS contains exactly base and canvas', () => {
     expect(TEXT_VIEWER_FALLBACK_EXTENSIONS.has('base')).toBe(true);
     expect(TEXT_VIEWER_FALLBACK_EXTENSIONS.has('canvas')).toBe(true);
+    // Size pin guards accidental widening of the text-viewer-only path, which
+    // bypasses the XSS/serve boundary that ASSET_EXTENSIONS enforces.
     expect(TEXT_VIEWER_FALLBACK_EXTENSIONS.size).toBe(2);
   });
 
@@ -159,6 +202,10 @@ describe('mediaKindForSidebarAssetExtension', () => {
   });
 
   test('lock files dispatch to TextViewer regardless of stem prefix', () => {
+    // `lock` is the file extension — covers `bun.lock`, `Cargo.lock`,
+    // `Gemfile.lock`, OK's own `.ok/local/server.lock`, etc. The
+    // dispatch keys off the extension only; the stem prefix is
+    // irrelevant.
     expect(mediaKindForSidebarAssetExtension('lock')).toBe('text');
     expect(mediaKindForSidebarAssetExtension('.lock')).toBe('text');
     expect(mediaKindForSidebarAssetExtension('LOCK')).toBe('text');

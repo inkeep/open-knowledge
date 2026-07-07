@@ -22,6 +22,10 @@ describe('resolveLeafSchema', () => {
     const leaf = resolveLeafSchema(ConfigSchema, ['nonExistentSection']);
     expect(leaf).toBeUndefined();
   });
+
+  // `folders` array leaf was removed. The
+  // resolveLeafSchema implementation still needs to handle missing keys
+  // (covered by 'returns undefined for a missing top-level key' above).
 });
 
 describe('getLeafFieldMeta', () => {
@@ -61,6 +65,7 @@ describe('getLeafFieldMeta', () => {
   });
 
   test('returns undefined for a non-leaf intermediate (object container without registered metadata)', () => {
+    // `appearance` is a container; its inner shape carries no fieldRegistry entry.
     const meta = getLeafFieldMeta(ConfigSchema, ['appearance']);
     expect(meta).toBeUndefined();
   });

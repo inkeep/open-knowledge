@@ -1,3 +1,11 @@
+/**
+ * RTL mount tests for `useServerKeepalive` — start-once lifecycle,
+ * presence-invisible options, the Electron gate, latest-collabUrl resolution
+ * without socket churn, and teardown on unmount. Invoked via `bun run test:dom`
+ * (jsdom substrate, precedent #43). Behavior-only per AGENTS.md React-test
+ * discipline: we assert what the hook does (start/skip/close, resolver output),
+ * never its source text.
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { KeepaliveHandle, KeepaliveOptions } from '@inkeep/open-knowledge-core/keepalive';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
@@ -63,11 +71,13 @@ describe('useServerKeepalive (Tier-3 mount)', () => {
     );
 
     const opts = fake.calls[0];
+    // Presence-invisible: no identity triplet, no connectionId, no pid.
     expect(opts.connectionId).toBeUndefined();
     expect(opts.displayName).toBeUndefined();
     expect(opts.clientName).toBeUndefined();
     expect(opts.colorSeed).toBeUndefined();
     expect(opts.pid).toBeUndefined();
+    // Resolver strips the trailing /collab so the primitive appends cleanly.
     expect(await opts.resolveWsUrl()).toBe('ws://localhost:5173');
   });
 
@@ -98,6 +108,7 @@ describe('useServerKeepalive (Tier-3 mount)', () => {
       />,
     );
 
+    // Give the mount effect a chance to (not) run.
     await act(async () => {
       await Promise.resolve();
     });
@@ -119,11 +130,13 @@ describe('useServerKeepalive (Tier-3 mount)', () => {
     );
     expect(await fake.calls[0].resolveWsUrl()).toBe('ws://localhost:1111');
 
+    // Simulate a server respawn on a new port: collabUrl re-resolves.
     rerender(<HookProbe collabUrl="ws://localhost:2222/collab" options={options} />);
     await act(async () => {
       await Promise.resolve();
     });
 
+    // No socket churn: still exactly one keepalive, now resolving the new port.
     expect(fake.calls.length).toBe(1);
     expect(await fake.calls[0].resolveWsUrl()).toBe('ws://localhost:2222');
   });

@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { HDR_HISTOGRAM_SENTINEL, Histogram } from './hdr-histogram';
 
+/**
+ * Brute-force percentile oracle: sort samples ascending, index the
+ * percentile rank. Uses the ceil-rank rule so the result aligns with
+ * the histogram's "first bucket whose cumulative count crosses the
+ * target rank" semantics.
+ */
 function brutePercentile(samples: number[], rank: number): number {
   if (samples.length === 0) return 0;
   const sorted = [...samples].sort((a, b) => a - b);
@@ -8,9 +14,14 @@ function brutePercentile(samples: number[], rank: number): number {
   return sorted[idx] ?? 0;
 }
 
+/**
+ * Pseudo-random with a seeded LCG so PBT runs are deterministic. Using
+ * Math.random() would drift a flaky test under the ±0.5% bound.
+ */
 function seededRng(seed: number): () => number {
   let s = seed >>> 0;
   return () => {
+    // Numerical Recipes LCG.
     s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
     return s / 0xff_ff_ff_ff;
   };
@@ -21,6 +32,7 @@ type DistroFn = (rng: () => number) => number;
 const distributions: Record<string, DistroFn> = {
   uniform: (rng) => 1 + Math.floor(rng() * 1_000_000),
   exponential: (rng) => Math.max(1, Math.round(-Math.log(1 - rng()) * 200)),
+  // Approx log-normal via Box-Muller on two uniforms.
   logNormal: (rng) => {
     const u1 = Math.max(1e-9, rng());
     const u2 = rng();
@@ -62,6 +74,7 @@ describe('Histogram', () => {
     expect(snap.count).toBe(1);
     expect(snap.min).toBe(42);
     expect(snap.max).toBe(42);
+    // Allow ±1 for first-bucket rounding (precision 3 → first bucket integer).
     for (const p of [snap.p50, snap.p95, snap.p99, snap.p999]) {
       expect(p).toBe(42);
     }
@@ -90,6 +103,10 @@ describe('Histogram', () => {
   });
 
   test('matches brute-force oracle within ±0.5% across distributions × sample counts', () => {
+    // Tolerance accounts for bucket-midpoint quantization at 3-sig-fig
+    // precision; the histogram bucket width is ~0.1% of value at the
+    // tail, but the oracle reports the nearest-sample value, so we
+    // allow 0.5% to absorb both the bucketization and oracle offsets.
     const tolerance = 0.005; // 0.5%
     const ranks: Array<
       keyof Pick<ReturnType<Histogram['snapshot']>, 'p50' | 'p95' | 'p99' | 'p999'>
@@ -109,6 +126,8 @@ describe('Histogram', () => {
           const rankNum = r === 'p50' ? 50 : r === 'p95' ? 95 : r === 'p99' ? 99 : 99.9;
           const oracle = brutePercentile(samples, rankNum);
           const got = snap[r];
+          // For tiny percentiles the absolute error matters more than
+          // relative; allow a 1-bucket absolute slack at the low end.
           const allowed = Math.max(1, oracle * tolerance);
           const error = Math.abs(got - oracle);
           if (error > allowed) {
@@ -140,13 +159,16 @@ describe('Histogram', () => {
       warnings.push(args.map((a) => String(a)).join(' '));
     };
     try {
+      // p=3 (default) does NOT warn — quiet on the documented happy path.
       new Histogram(3);
       expect(warnings.length).toBe(0);
+      // p=4 warns once with a memory-cost figure (~MB).
       new Histogram(4);
       expect(warnings.length).toBe(1);
       expect(warnings[0]).toContain('Histogram precision 4');
       expect(warnings[0]).toMatch(/~\d+(\.\d+)? MB per instance/);
       expect(warnings[0]).toContain('MAX_HISTOGRAM_PRECISION=3');
+      // Subsequent high-precision constructions are silent (warn-once gate).
       new Histogram(5);
       new Histogram(4);
       expect(warnings.length).toBe(1);

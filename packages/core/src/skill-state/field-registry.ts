@@ -1,9 +1,13 @@
 import { z } from 'zod';
 
 interface SkillStateFieldMeta {
+  /** Optional human-readable description; renders into IDE hover or future export. */
   description?: string;
 }
 
+// Symbol-keyed globalThis singleton — same discipline as `config/field-registry.ts`.
+// Two copies of this module loaded under different file paths still share one
+// registry of registered schemas.
 const SINGLETON_KEY = Symbol.for('@inkeep/open-knowledge/skill-state-field-registry');
 
 interface SingletonGlobal {

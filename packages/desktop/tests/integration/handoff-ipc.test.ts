@@ -1,3 +1,29 @@
+/**
+ * Integration tests for the four handoff IPC channels.
+ *
+ * Scope: this file verifies the WIRE contract — channel name + `createHandler`
+ * + `createInvoker` + the impl functions that `main/index.ts` wires in —
+ * composes correctly end-to-end. Unit-level coverage of impl behavior (each
+ * deps-injected function's edge cases) lives at `tests/main/ipc-handlers.test.ts`;
+ * this file's signal is that registration + invocation + rejection propagation
+ * work when plugged through the real typed factories.
+ *
+ * What's newly tested here (not at the unit tier):
+ *   - `ok:shell:open-external` routes each v0 scheme through `checkOutboundUrl`
+ *     — proving the allowlist extension is actually reachable via IPC, not
+ *     just via direct `checkOutboundUrl` calls in shell-allowlist.test.ts.
+ *   - Rejections (bad scheme / invalid path / detect-failure / HOME unwritable)
+ *     surface to the renderer as Promise rejections — a roundtrip
+ *     must fail loudly, not silently return `undefined`.
+ *   - Args splatted through the generic `ipc.invoke(channel, ...args)` land on
+ *     the handler's positional args in order, preserving `RequestChannels` shape.
+ *
+ * Electron is NOT imported — a tiny in-memory bus pairs with `createHandler`
+ * (bound to `ipcMain`) and `createInvoker` (bound to `ipcRenderer`). This is
+ * the same pattern `tests/preload/bridge.test.ts` uses for its `createInvoker`
+ * unit tests, extended so both ends see the same in-memory surface.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import type { IpcMain, IpcMainInvokeEvent, IpcRenderer } from 'electron';
 import {
@@ -11,6 +37,15 @@ import type { HandoffStatsLine } from '../../src/shared/ipc-channels.ts';
 import { createHandler } from '../../src/shared/ipc-handler.ts';
 import { createInvoker } from '../../src/shared/ipc-invoke.ts';
 
+/**
+ * Minimal in-memory IPC bus that mirrors the parts of `IpcMain` + `IpcRenderer`
+ * that `createHandler` + `createInvoker` actually touch. Everything else
+ * throws so an accidental use (e.g., `ipcMain.on`) fails loudly in test land.
+ *
+ * Rejection semantics mirror Electron: if a handler throws synchronously OR
+ * returns a rejected Promise, the `invoke` Promise rejects. `await fn(...)`
+ * in the invoke body gives us both behaviors for free.
+ */
 function createInMemoryIpcPair(): { ipcMain: IpcMain; ipcRenderer: IpcRenderer } {
   type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
   const handlers = new Map<string, Handler>();
@@ -40,6 +75,11 @@ function createInMemoryIpcPair(): { ipcMain: IpcMain; ipcRenderer: IpcRenderer }
   return { ipcMain, ipcRenderer };
 }
 
+/**
+ * Factory: build a fresh IPC pair + typed factories per test. Isolation means
+ * one test's registrations can't leak into another — same discipline as the
+ * integration harness in `handoff-api.test.ts`'s `beforeEach`.
+ */
 function setupRig() {
   const { ipcMain, ipcRenderer } = createInMemoryIpcPair();
   const handle = createHandler(ipcMain);
@@ -48,6 +88,11 @@ function setupRig() {
 }
 
 describe("'ok:shell:open-external' routes v0 schemes through the allowlist", () => {
+  /**
+   * Each scheme is exercised with the exact payload shape the `shell-allowlist.ts`
+   * JSDoc documents. If `shell-allowlist.ts` ever narrows the allowlist or the URL
+   * builders produce a new path segment, the matching test fires.
+   */
   const ALLOWED_PAYLOADS: ReadonlyArray<[label: string, url: string]> = [
     [
       'Claude Cowork',
@@ -137,6 +182,12 @@ describe("'ok:shell:detect-protocol' round-trips install state", () => {
           getApplicationInfoForProtocol: async () => {
             throw new Error('no handler registered');
           },
+          // Stub the macOS LaunchServices fallback probe — without this, the
+          // impl's fall-through path (`detectProtocol` line ~133) calls the
+          // real `macOsProbeReal`, which queries the host's actual scheme
+          // registrations and returns `installed:true` on developer machines
+          // that have `codex://` installed locally. The test's intent is the
+          // double-failure conservative fallback path.
           runMacOsProbe: async () => false,
         },
         scheme,
@@ -182,6 +233,12 @@ describe("'ok:shell:spawn-cursor' round-trips spawn outcomes", () => {
       return spawnCursorImpl(
         {
           platform: 'darwin',
+          // Stub the CLI-shim resolver to null so this test deterministically
+          // exercises the Electron `getApplicationInfoForProtocol` fallback —
+          // without it, the real `resolveCursorBinaryDefault` probes the host
+          // filesystem and returns `Contents/Resources/app/bin/cursor` on any
+          // machine with Cursor installed, making the test pass-on-CI /
+          // fail-on-dev-laptops.
           resolveCursorBinary: async () => null,
           getApplicationInfoForProtocol: async () => ({
             name: 'Cursor',
@@ -255,6 +312,8 @@ describe("'ok:shell:spawn-cursor' round-trips spawn outcomes", () => {
       return spawnCursorImpl(
         {
           platform: 'darwin',
+          // See sibling test — null-stub the resolver so the test stays
+          // hermetic regardless of whether Cursor.app is installed on the host.
           resolveCursorBinary: async () => null,
           getApplicationInfoForProtocol: async () => ({
             name: 'Cursor',
@@ -272,6 +331,10 @@ describe("'ok:shell:spawn-cursor' round-trips spawn outcomes", () => {
 });
 
 describe("'ok:shell:show-item-in-folder' round-trips reveal outcomes", () => {
+  // The wire's contract: result is `undefined` (silent-by-design — refusals
+  // do NOT leak validation signal back to a potentially-compromised renderer).
+  // What's observable through the wire is whether `shell.showItemInFolder` was
+  // invoked + with what argument. Each test asserts both.
   test('valid path within project invokes shell.showItemInFolder', async () => {
     const { handle, invoke } = setupRig();
     const calls: string[] = [];
@@ -378,7 +441,9 @@ describe("'ok:shell:record-handoff' round-trips the stats append", () => {
           appendFile: async () => {
             throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
           },
-          mkdir: async () => {},
+          mkdir: async () => {
+            // Succeeds — failure is on append.
+          },
           warn: (m) => warnings.push(m),
         },
         line,
@@ -393,6 +458,8 @@ describe("'ok:shell:record-handoff' round-trips the stats append", () => {
       ts: '2026-04-22T03:31:00.000Z',
       reason: 'not-installed',
     };
+    // Telemetry failure MUST NOT reject across the wire — dispatch path relies on
+    // recordHandoff never taking down the renderer.
     await expect(invoke('ok:shell:record-handoff', line)).resolves.toBeUndefined();
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('EACCES');
@@ -431,6 +498,9 @@ describe('wire-level invariants', () => {
   test('unregistered channel rejects the invoke promise', async () => {
     const { invoke } = setupRig();
     await expect(
+      // We cast through `unknown` because `RequestChannels` refuses the string at
+      // compile time — the test's purpose is specifically to exercise the
+      // runtime path when registration is missing.
       (invoke as unknown as (ch: string) => Promise<unknown>)('ok:shell:does-not-exist'),
     ).rejects.toThrow(/no handler registered/);
   });

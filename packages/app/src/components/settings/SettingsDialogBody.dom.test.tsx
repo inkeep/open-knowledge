@@ -218,6 +218,18 @@ describe('SettingsDialogBody preferences runtime', () => {
   });
 });
 
+/**
+ * Optimistic theme-apply path. The Theme ToggleGroup must flip
+ * next-themes immediately on the originating client instead of waiting for
+ * the patch -> user-config Y.Text -> ConfigProvider merged-effect round-trip.
+ *
+ * This harness mounts no ConfigProvider effects; it only supplies the bare
+ * ConfigContext needed by project-scope settings. The only thing that can move
+ * next-themes state on click is still the optimistic `setTheme(next)` wired
+ * into `FieldControlBody`'s enum-toggle branch. That makes the probe assertion
+ * a discriminating check: it goes green ONLY if the optimistic path fires. The
+ * `binding.patch` assertion proves persistence is still wired.
+ */
 let themeStorageKeySeq = 0;
 
 function ThemeProbe() {
@@ -226,6 +238,8 @@ function ThemeProbe() {
 }
 
 function renderPreferencesWithTheme(binding: ConfigBinding) {
+  // Unique storageKey per render so next-themes can't carry a persisted
+  // value from a prior test in this file (defaultTheme="system" each time).
   themeStorageKeySeq += 1;
   return render(
     <ThemeProvider
@@ -265,13 +279,17 @@ describe('SettingsDialogBody theme toggle — optimistic apply', () => {
     const { binding, patches } = makeBinding();
     const { container } = renderPreferencesWithTheme(binding);
 
+    // Default theme before any click.
     expect(screen.getByTestId('theme-probe').textContent).toBe('system');
 
     await user.click(themeToggleItem(container, 'dark'));
 
+    // Optimistic flip — observable only via the new setTheme path because
+    // this tree has no ConfigProvider merged-effect to drive the theme.
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('dark');
     });
+    // Persistence to user-scope config.yml still wired (nested patch shape).
     expect(patches).toEqual([{ appearance: { theme: 'dark' } }]);
   });
 
@@ -280,6 +298,7 @@ describe('SettingsDialogBody theme toggle — optimistic apply', () => {
     const { binding, patches } = makeBinding();
     const { container } = renderPreferencesWithTheme(binding);
 
+    // Move off the default first so the System transition is observable.
     await user.click(themeToggleItem(container, 'dark'));
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('dark');
@@ -287,6 +306,7 @@ describe('SettingsDialogBody theme toggle — optimistic apply', () => {
 
     await user.click(themeToggleItem(container, 'system'));
 
+    // Verbatim 'system' — the OS-tracking lever — not a resolved light/dark.
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('system');
     });

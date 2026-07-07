@@ -2,6 +2,7 @@ import type { HeadingEntry } from '@inkeep/open-knowledge-core';
 import { useEffect, useState } from 'react';
 import { fetchHeadings } from './wiki-link-suggestion';
 
+/** Fetch headings for a resolved page. Returns null while loading, [] when none. */
 export function useHeadings(docName: string, enabled: boolean): HeadingEntry[] | null {
   const [headings, setHeadings] = useState<HeadingEntry[] | null>(null);
 

@@ -4,6 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 
+/**
+ * The collapsible "Properties"-style section shared by the document property
+ * panel (`PropertyPanel`) and the skill editor (`SkillProperties`): one
+ * disclosure header (chevron + title) inside a content-column-aligned
+ * `property-panel` container. Presentational only — owns just the open/closed
+ * state. Extracted so the two surfaces share one header instead of copies that
+ * drift apart on a restyle.
+ */
 export function PropertyDisclosure({
   title,
   className,
@@ -14,8 +22,11 @@ export function PropertyDisclosure({
   ref,
 }: {
   title: ReactNode;
+  /** Extra container classes (e.g. vertical padding) merged after the base. */
   className?: string;
+  /** Forwarded to the container as `data-testid`. */
   testId?: string;
+  /** Controlled open state. Omit for self-managed (uncontrolled) disclosure. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   children: ReactNode;

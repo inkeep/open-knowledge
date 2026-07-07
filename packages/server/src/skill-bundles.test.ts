@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BUNDLE_IDS, BUNDLE_SKILL_NAME, bundleSkillMdPath } from './skill-bundles.ts';
 
+// Repo root = three levels up from this file (packages/server/src → root).
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 describe('skill-bundles (single source of truth)', () => {

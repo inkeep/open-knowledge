@@ -1,3 +1,24 @@
+/**
+ * Unit tests for the MANAGED_RENAME_ORIGIN paired-write order property.
+ *
+ * `applyManagedRenameMapToLoadedDocument` in api-extension.ts writes both
+ * Y.Text and Y.XmlFragment inside one `doc.transact(..., MANAGED_RENAME_ORIGIN)`
+ * drain. Under the Y.Text-is-truth contract (precedent #38), Y.Text is the
+ * source of truth — the write order MUST be ytext-first / fragment-second so
+ * that a partial failure (second write throws after the first succeeds) leaves
+ * ytext in the new state and Observer B Phase 1 re-derives fragment from
+ * `parse(ytext)` on the next non-paired settlement.
+ *
+ * Reversed order (fragment-first / ytext-second) silently reverts the rename
+ * if updateYFragment succeeds and applyFastDiff then throws: fragment holds
+ * the new state but ytext is stale, and Observer B's next dispatch re-derives
+ * fragment from the STALE ytext, undoing the rename without any visible error.
+ *
+ * This file mirrors the load-bearing properties already pinned for
+ * `composeAndWriteRawBody` in bridge-intake.test.ts (write-order observation +
+ * partial-failure recovery), specialized to the rename call site whose write
+ * sequence is open-coded inside the api-extension closure.
+ */
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { applyFastDiff, sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
@@ -9,6 +30,10 @@ import { setupServerObservers } from './server-observers.ts';
 
 const schema = getSchema(sharedExtensions);
 
+/**
+ * Run the rename's paired-write sequence inline. Mirrors the new ytext-first
+ * order in api-extension.ts:applyManagedRenameMapToLoadedDocument.
+ */
 function applyRenameWritesInline(
   doc: Y.Doc,
   newMarkdown: string,
@@ -52,6 +77,10 @@ describe('MANAGED_RENAME_ORIGIN — paired-write order property', () => {
   });
 
   test('Y.Text is mutated before XmlFragment under MANAGED_RENAME_ORIGIN', () => {
+    // Yjs's transaction.changed map is preserved in insertion order. The type
+    // that received its first mutation first fires its observer first. If a
+    // future refactor reverses the call sequence, this test catches it via
+    // observer-dispatch order.
     const events: string[] = [];
     const xmlFragment = doc.getXmlFragment('default');
     const ytext = doc.getText('source');
@@ -71,6 +100,8 @@ describe('MANAGED_RENAME_ORIGIN — paired-write order property', () => {
       applyRenameWritesInline(doc, '# New\n\n[[new-page]]\n', { throwAfterYText: true });
     }).toThrow(/synthetic/);
 
+    // ytext was written first, so it holds the new bytes despite the throw —
+    // Yjs transactions don't roll back on throw.
     expect(ytext.toString()).toBe('# New\n\n[[new-page]]\n');
   });
 
@@ -82,6 +113,10 @@ describe('MANAGED_RENAME_ORIGIN — paired-write order property', () => {
       applyRenameWritesInline(doc, '# New\n\n[[new-page]]\n', { throwAfterYText: true });
     }).toThrow(/synthetic/);
 
+    // After the partial-failure throw: ytext = new bytes; fragment = old bytes.
+    // Now attach observers and trigger a non-paired ytext settlement that
+    // forces Observer B Phase 1 (ytext → fragment) to re-derive fragment from
+    // current ytext bytes.
     const cleanup = setupServerObservers({
       doc,
       xmlFragment,
@@ -90,11 +125,17 @@ describe('MANAGED_RENAME_ORIGIN — paired-write order property', () => {
       schema,
     });
 
+    // A non-paired ytext mutation triggers Observer B's settlement dispatch.
     doc.transact(() => {
       const cur = ytext.toString();
       ytext.insert(cur.length, ' ');
     });
 
+    // Fragment now derives from current ytext bytes — the rename target body
+    // survived through the partial-failure recovery path. Observer B serializes
+    // the post-settlement xmlFragment back through the markdown pipeline; the
+    // round-trip through ytext (truth) → fragment (derived) → serialize must
+    // carry the rename target.
     const fragmentJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
     const fragmentBody = mdManager.serialize(fragmentJson);
     expect(fragmentBody).toContain('new-page');

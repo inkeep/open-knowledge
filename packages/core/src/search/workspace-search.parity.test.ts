@@ -7,6 +7,17 @@ import {
   type WorkspaceSearchOptions,
 } from './workspace-search.ts';
 
+/**
+ * Flag-OFF byte-identity guard.
+ *
+ * The fixture is the frozen output of `searchWorkspaceCorpus` captured from the
+ * pre-embeddings ranking baseline. With no
+ * `semantic` option (the flag-OFF path), the post-embeddings code MUST reproduce
+ * it exactly, including the `signals` shape (no `vector` key). A diff here means
+ * the no-surprise contract is broken.
+ *
+ * Regenerate the fixture ONLY when intentionally changing the flag-OFF ranking.
+ */
 interface FixtureCase {
   query: string;
   options: WorkspaceSearchOptions;
@@ -37,6 +48,7 @@ describe('flag-OFF parity with the pre-embeddings baseline', () => {
         signals: r.signals,
       }));
       expect(actual).toEqual(c.expected);
+      // Belt-and-suspenders: no result may carry a `vector` signal on this path.
       for (const r of actual) {
         expect('vector' in r.signals).toBe(false);
       }

@@ -125,6 +125,9 @@ describe('tag endpoints', () => {
       expect(body.name).toBe('proj');
       expect(body.docs.map((d) => d.docName).sort()).toEqual(['alpha', 'beta']);
       expect(body.docs.every((d) => d.snippet === null)).toBe(true);
+      // matchingTags surfaces the rollup: each doc's authored tag falls
+      // under the queried prefix `proj`. Without this field the dialog
+      // can't tell users *why* a doc is in the result list.
       const byName = Object.fromEntries(body.docs.map((d) => [d.docName, d.matchingTags]));
       expect(byName.alpha).toEqual(['proj/team/2026']);
       expect(byName.beta).toEqual(['proj/team/2027']);
@@ -140,6 +143,7 @@ describe('tag endpoints', () => {
       const idx = new TagIndex({ contentDir: dir });
       await idx.init();
 
+      // %2F is the encoded form of '/'
       const result = await callRoute(dir, '/api/tags/proj%2Fteam', new Map(), idx);
       expect(result.status).toBe(200);
       const body = JSON.parse(result.body) as { name: string; docs: unknown[] };

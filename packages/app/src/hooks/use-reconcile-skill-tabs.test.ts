@@ -2,6 +2,13 @@ import { describe, expect, test } from 'bun:test';
 import { skillLiveDocName } from '@inkeep/open-knowledge-core';
 import { computeSkillTabReconcile, parseSkillTabDocName } from './use-reconcile-skill-tabs';
 
+/**
+ * Unit coverage for the open-skill-tab reconciler: an agent/MCP/server-side
+ * scope move only broadcasts `files` (no client tab retarget), so an open skill
+ * tab is left pointing at a doc that no longer exists. The reconciler retargets
+ * it to the moved skill's new scope, or closes it when the skill is gone.
+ *
+ */
 describe('parseSkillTabDocName', () => {
   test('parses a project skill content doc', () => {
     expect(parseSkillTabDocName('.ok/skills/demo/SKILL')).toEqual({
@@ -20,6 +27,7 @@ describe('parseSkillTabDocName', () => {
   test('rejects a non-skill doc (plain page, template, ref)', () => {
     expect(parseSkillTabDocName('notes/standup')).toBeNull();
     expect(parseSkillTabDocName('__template__/notes/daily')).toBeNull();
+    // A bundle reference is NOT the skill tab itself (it has its own doc).
     expect(parseSkillTabDocName('.ok/skills/demo/references/notes')).toBeNull();
   });
 });
@@ -34,6 +42,8 @@ describe('computeSkillTabReconcile', () => {
   });
 
   test('retargets an orphaned project tab to the OTHER scope when the skill moved there', () => {
+    // demo was moved project → global; its project content doc no longer exists,
+    // but it now exists at global scope.
     const actions = computeSkillTabReconcile(
       ['.ok/skills/demo/SKILL'],
       [{ scope: 'global', name: 'demo' }],

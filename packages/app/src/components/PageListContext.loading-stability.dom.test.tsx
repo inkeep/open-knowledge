@@ -1,3 +1,25 @@
+/**
+ * RTL mount test for the page-list loading-stability contract.
+ *
+ * Pins the user-visible behavioral contract: once the page list has loaded,
+ * a background re-fetch (window focus / visibilitychange / CC1 `files`
+ * push) MUST NOT tear the consuming view down to a cold-load skeleton and
+ * remount it. `PageListContext.loading` gates a full-view skeleton in
+ * consumers (FolderOverview returns one while it is true); the provider's
+ * `refetch()` runs on every focus and every external file change, so
+ * re-raising `loading` there strobes the entire view on each — a flicker
+ * even when the page list is unchanged. The settled verdict the render
+ * layer reads (`loading`) must reflect cold-load-only; the fetch lifecycle
+ * of background refreshes is invisible to it (last-good `pages` reconcile
+ * in place).
+ *
+ * Drive the background refetch via a real `window` focus event (the
+ * provider's own listener). The CC1 documents-events bus is mocked to a
+ * no-op so the only background trigger is the explicit focus dispatch —
+ * deterministic and hermetic.
+ *
+ * Invocation: `bun run test:dom` from `packages/app/`.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
@@ -96,6 +118,7 @@ function pagesBody(
   };
 }
 
+/** Resolve the most recent in-flight `/api/pages` + `/api/documents` pair. */
 async function settleRound(
   docNames: Parameters<typeof pagesBody>[0],
   documents: DocumentListEntry[] = [],
@@ -166,6 +189,7 @@ describe('PageListContext loading stability', () => {
       </PageListProvider>,
     );
 
+    // Cold load: skeleton until the first response lands.
     expect(screen.getByTestId('page-list-skeleton')).not.toBeNull();
     expect(screen.queryByTestId('page-list-content')).toBeNull();
 
@@ -175,22 +199,32 @@ describe('PageListContext loading stability', () => {
     });
     expect(screen.queryByTestId('page-list-skeleton')).toBeNull();
 
+    // The exact content node the user is now looking at.
     const coldNode = screen.getByTestId('page-list-content');
     coldNode.setAttribute('data-marker', 'cold');
     const pageFetchesAfterCold = pageResolvers.length; // 0 — cold round drained
 
+    // Background re-trigger: a real window focus. The provider's own
+    // listener calls refetch() synchronously (jsdom visibilityState is
+    // 'visible'). Pre-fix this called setLoading(true) synchronously in
+    // the handler — the skeleton would reappear before any fetch settled.
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
       await Promise.resolve();
     });
 
+    // Non-vacuity: the focus actually drove a fresh /api/pages fetch.
     expect(pageResolvers.length).toBe(pageFetchesAfterCold + 1);
 
+    // In-flight window (2nd fetch NOT yet resolved): no skeleton, and the
+    // SAME content node — the view did not unmount/remount.
     expect(screen.queryByTestId('page-list-skeleton')).toBeNull();
     const inFlightNode = screen.getByTestId('page-list-content');
     expect(inFlightNode).toBe(coldNode);
     expect(inFlightNode.getAttribute('data-marker')).toBe('cold');
 
+    // Resolve the background round with a CHANGED page list. Content
+    // reconciles in place on the same node; still no skeleton.
     await settleRound(['A', 'B']);
     await waitFor(() => {
       expect(screen.getByTestId('page-list-content').textContent).toBe('A,B');

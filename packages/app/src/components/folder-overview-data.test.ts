@@ -28,6 +28,7 @@ describe('buildFolderOverviewData', () => {
 
     expect(data.title).toBe('Reports');
 
+    // Folders come first, then files — each group sorted by title (localeCompare)
     expect(data.children).toEqual([
       { kind: 'folder', path: 'reports/q2', name: 'q2', title: 'q2' },
       { kind: 'folder', path: 'reports/q1', name: 'q1', title: 'Quarter One' },
@@ -70,6 +71,9 @@ describe('buildFolderOverviewData', () => {
   });
 
   test('content-root (empty folderPath) lists only top-level children', () => {
+    // The empty prefix means every top-level docName / folderPath is a
+    // direct child; nested entries (`docs/a`, `reports/q1`) are excluded.
+    // Reached by in-app root nav and root-folder shares.
     const data = buildFolderOverviewData('', {
       pages: new Set(['intro', 'README', 'docs/a', 'docs/b', 'reports/q1/summary']),
       pageTitles: new Map([['intro', 'Intro']]),

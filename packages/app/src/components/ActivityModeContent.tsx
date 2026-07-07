@@ -1,3 +1,24 @@
+/**
+ * ActivityModeContent — the DocPanel's `'agent'` mode content.
+ *
+ * Replaces the standalone `AgentActivityPanel` Sheet.
+ * Embedded inside `DocPanel`, so this component no longer provides its own
+ * container chrome — it's rendered directly as the body of the `'agent'`
+ * mode branch. No Sheet, no width hook, no resize handle.
+ *
+ * Responsibilities:
+ *   - Fetches per-agent activity via `useActivityPanel(connectionId)`.
+ *   - Dispatches `POST /api/agent-undo` (`'last'` / `'file'` scope) with
+ *     user-visible success / error toasts.
+ *   - Filename-click navigates the main editor without flipping mode
+ *     (doc-nav does not reset the scoped agent).
+ *   - Renders every state branch: loading / error / no-agent-selected /
+ *     empty / session-ended / populated.
+ *
+ * Test contract: the inner `ActivityModeBody` is factored out so it can
+ * be unit-tested via `renderToString` without any portal / context /
+ * fetch dependencies. The outer wrapper owns the hook + callbacks.
+ */
 import { t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
@@ -12,6 +33,10 @@ import { AgentIcon } from './icons/AgentIcon';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
+// ---------------------------------------------------------------
+// HTTP: undo dispatch
+// ---------------------------------------------------------------
+
 async function postAgentUndo(body: {
   connectionId: string;
   docName: string;
@@ -23,6 +48,8 @@ async function postAgentUndo(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       ...body,
+      // The attribution-sweep contract requires every mutating POST to carry
+      // an agentId — the server derives `writerId = "agent-${agentId}"`.
       agentId: body.connectionId,
     }),
   });
@@ -30,6 +57,10 @@ async function postAgentUndo(body: {
     throw new Error(`agent-undo failed: HTTP ${res.status}`);
   }
 }
+
+// ---------------------------------------------------------------
+// `window.location.hash` helper — mirrors PresenceBar's navigateToDoc.
+// ---------------------------------------------------------------
 
 function hashFromDocName(docName: string): string {
   return `#/${docName
@@ -42,6 +73,10 @@ function navigateToDoc(docName: string): void {
   if (typeof window === 'undefined') return;
   window.location.hash = hashFromDocName(docName);
 }
+
+// ---------------------------------------------------------------
+// Sub-views
+// ---------------------------------------------------------------
 
 function LoadingState(): React.JSX.Element {
   return (
@@ -92,6 +127,7 @@ function EmptyState(): React.JSX.Element {
   );
 }
 
+/** Visible hint when mode is `'agent'` but no agent is scoped. */
 function NoAgentSelectedState({
   onExit,
   showBackButton,
@@ -146,6 +182,12 @@ function BackToDocumentButton({ onClick }: { onClick: () => void }): React.JSX.E
 }
 
 function SessionEndedBanner({ lastTs }: { lastTs: number | null }): React.JSX.Element {
+  // `Date.now()` is impure — calling it in render violates React Compiler's
+  // purity contract. Hoist behind a lazy-init useState so it's captured
+  // exactly once at mount. The displayed value only needs "when session
+  // ended" minute precision, so we skip the setInterval tick used by
+  // ActivityPanelFileRow (the session isn't going to un-end; a paint-once
+  // "2m ago" that drifts slightly while the user lingers is acceptable).
   const [mountedAt] = useState<number>(() => Date.now());
   const ago = lastTs ? formatAgo(mountedAt - lastTs) : null;
   return (
@@ -195,6 +237,10 @@ function AgentAvatar({
     </span>
   );
 }
+
+// ---------------------------------------------------------------
+// Body — pure presentational (testable via renderToString)
+// ---------------------------------------------------------------
 
 interface ActivityModeBodyProps {
   data: ReturnType<typeof useActivityPanel>['data'];
@@ -304,6 +350,10 @@ function ActivityModeBody({
   );
 }
 
+// ---------------------------------------------------------------
+// Outer component — owns hook + callbacks
+// ---------------------------------------------------------------
+
 export function ActivityModeContent({
   showBackButton = true,
 }: {
@@ -315,6 +365,10 @@ export function ActivityModeContent({
   const { pageMeta } = usePageList();
   const { data, status, error, reload, fetchBurstDiff } = useActivityPanel(docPanelAgentId);
 
+  // When mode is `'agent'` but no agent is scoped (edge case: user flipped
+  // mode without ever clicking an avatar), render a discoverable hint rather
+  // than silently showing an empty panel. Back-arrow still reachable so the
+  // user is never wedged in this state.
   if (docPanelAgentId === null) {
     return <NoAgentSelectedState onExit={closeActivityPanel} showBackButton={showBackButton} />;
   }
@@ -336,8 +390,11 @@ export function ActivityModeContent({
       });
       reload();
     } catch (err) {
+      // Surface the failure — `Undo all` has a confirmation dialog, but
+      // `Undo last` is inline. Either silently failing is user-hostile.
       const message = err instanceof Error ? err.message : String(err);
       toast.error(t`Undo failed: ${message}`);
+      // Non-fatal — re-fetch to recover ground truth.
       reload();
     }
   };
@@ -350,6 +407,8 @@ export function ActivityModeContent({
         scope: 'file',
         agentName: data?.agent?.displayName,
       });
+      // `Undo all` has a confirmation dialog — the blast-radius asymmetry
+      // applies to feedback too.
       toast.success(t`Undone all edits on ${docName}`);
       reload();
     } catch (err) {

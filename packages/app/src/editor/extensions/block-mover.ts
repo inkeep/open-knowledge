@@ -1,7 +1,21 @@
+/**
+ * BlockMover — app-only TipTap extension providing keyboard shortcuts for
+ * reordering top-level blocks (paragraphs, headings, lists, components).
+ *
+ * Shortcuts:
+ *   - Mod-Shift-ArrowUp:   Move current block up one position
+ *   - Mod-Shift-ArrowDown: Move current block down one position
+ *
+ * App-only: pure UI interaction, no schema changes or persistence implications.
+ */
 import { Extension } from '@tiptap/core';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { TextSelection } from '@tiptap/pm/state';
 
+/**
+ * Returns the position range of the depth-1 block that contains the cursor,
+ * or null if the cursor is at the document root (depth 0).
+ */
 export function currentTopLevelBlock(state: EditorState): { from: number; to: number } | null {
   const { $from } = state.selection;
   if ($from.depth === 0) return null;
@@ -24,6 +38,8 @@ export function moveBlockUp(
   if ($above.depth === 0) return false;
 
   const aboveFrom = $above.before(1);
+  // aboveTo === from: adjacent blocks share the same boundary position —
+  // there is no separator token between them in ProseMirror.
   const movingNode = state.doc.slice(from, to).content;
   const aboveNode = state.doc.slice(aboveFrom, from).content;
 
@@ -55,6 +71,7 @@ export function moveBlockDown(
   const $below = state.doc.resolve(to + 1);
   if ($below.depth === 0) return false;
 
+  // belowFrom === to: adjacent blocks share the same boundary position.
   const belowTo = $below.after(1);
   const movingNode = state.doc.slice(from, to).content;
   const belowNode = state.doc.slice(to, belowTo).content;

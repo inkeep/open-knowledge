@@ -1,6 +1,14 @@
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 
+/**
+ * Single source of the empty-state headline + subtitle copy, shared by the
+ * three surfaces that render `EmptyStateHeader`: `OnboardingView` (brand-new
+ * project), `CreateView` (project has content), and `TerminalEmptyHeader` (new
+ * tab with the docked terminal open). Returns `msg` descriptors so callers
+ * resolve them through `useLingui().t(...)` and stay locale-reactive; keeping
+ * the four strings here means a copy edit lands in one place instead of three.
+ */
 export function getEmptyStateCopy({
   isOnboarding,
   isEmbedded,

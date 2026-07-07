@@ -9,6 +9,7 @@ const log = getLogger('suggest-links');
 
 const WORD_CHAR_RE = /[\p{L}\p{N}]/u;
 
+// Line-oriented variants: excludes \n since lines are pre-split.
 const WIKI_LINK_RE = /\[\[([^\n#[\]|]+)(?:#([^\n[\]|]+))?(?:\|([^\n[\]]+))?\]\]/y;
 const MD_LINK_RE =
   /\[([^\]\n]*)\]\((<[^>\n]+>|[^)\s\n]+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\)/y;
@@ -155,6 +156,9 @@ function readInlineCode(line: string, start: number): { text: string; nextIndex:
     index += closeLength;
   }
 
+  // Unmatched opening run — see backlink-index.ts readInlineCode for the
+  // CommonMark §6.1 rationale. Skip past the full run to avoid O(N²) re-scans
+  // on long unclosed backtick runs (DoS bound).
   return { text: line.slice(start, openEnd), nextIndex: openEnd };
 }
 
@@ -489,6 +493,11 @@ function scanMarkdownForMentions(
 }
 
 function serializeLiveDocument(document: Document): string {
+  // Y.Text-is-truth contract (precedent #38): body source is the raw user
+  // bytes in `Y.Text('source')`. Reading from serialize(fragment) would
+  // emit canonical bytes (e.g., `[https://x](https://x)` instead of the
+  // user's typed `<https://x>` autolink form), making suggest-link
+  // snippets reflect a form the user never chose.
   return document.getText('source').toString();
 }
 

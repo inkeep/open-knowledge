@@ -1,3 +1,24 @@
+/**
+ * Config-sharing section — the per-project shared / local-only toggle for the
+ * OK config artifact set.
+ *
+ * Two-state segmented control: `Shared` vs `Local only`. Toggling routes
+ * through `bridge.sharing.setMode` which calls the same
+ * `addOkPathsToGitExclude` / `removeOkPathsFromGitExclude` primitives the CLI
+ * uses, so desktop and CLI cannot drift.
+ *
+ * Refusal: when the toggle to `local-only` hits a tracked-upstream OK
+ * file, main returns `kind: 'refused-tracked'` with the full
+ * remediation. We render it in an inline alert + a sticky toast so the
+ * user has time to copy the `git rm --cached` commands.
+ *
+ * No git: when the project has no git repo, the toggle is disabled with
+ * a tooltip explanation.
+ *
+ * Web / non-Electron: `bridge` is undefined; the section renders a
+ * read-only "available in the desktop app" stub.
+ */
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -49,12 +70,20 @@ function SharingSectionBody() {
       setStatus(await bridge.status());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t`Config sharing status read failed`);
+      // Don't strand the initial mount in the Skeleton if `bridge.status()`
+      // itself rejects (IPC teardown on window close, stale bridge): with no
+      // status yet, fall back to a safe `no-git` reading so the section
+      // renders (the toast already surfaced the real error). A later refresh
+      // failure keeps the last good status rather than clobbering it.
       setStatus(
         (prev) => prev ?? { kind: 'status', mode: 'no-git', excluded: [], trackedUpstream: [] },
       );
     }
   }
 
+  // Initial fetch on mount. React Compiler optimizes the closure capture
+  // of `refresh`; manual useCallback is intentionally omitted per the
+  // codebase's compiler-first convention.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh is a stable closure under React Compiler — adding it to deps would force the manual-memoization pattern the codebase explicitly rejects.
   useEffect(() => {
     void refresh();
@@ -81,6 +110,9 @@ function SharingSectionBody() {
     if (result === null) return;
     if (result.kind === 'refused-tracked') {
       setRefusal({ tracked: result.tracked, remediation: result.remediation });
+      // The inline alert below renders the full remediation; keep the toast a
+      // brief, auto-dismissing pointer to it rather than a second copy (the
+      // settings panel is already showing the details inline).
       toast.error(t`Config sharing unchanged — see details below.`, { duration: 5000 });
     } else if (result.kind === 'no-exclude') {
       toast.warning(

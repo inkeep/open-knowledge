@@ -23,6 +23,7 @@ function initGitRepo(dir: string): void {
     cwd: dir,
     stdio: ['ignore', 'ignore', 'ignore'],
   });
+  // Identity needed for any subsequent `git commit`.
   execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
   execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: dir });
 }
@@ -58,6 +59,9 @@ describe('getOkArtifactPaths', () => {
     expect(paths).toContain('.claude/skills/open-knowledge/');
     expect(paths).toContain('.cursor/skills/open-knowledge/');
     expect(paths).toContain('.codex/skills/open-knowledge/');
+    // OpenCode installs into its own `.opencode/skills/` (its own primary dir,
+    // not a shared `.agents/skills/` write), so it adds a distinct skill path on
+    // top of its `opencode.json` config.
     expect(paths).toContain('.opencode/skills/open-knowledge/');
     expect(paths).toContain('.claude/launch.json');
     expect(paths).toHaveLength(11);
@@ -70,6 +74,11 @@ describe('getOkArtifactPaths', () => {
   });
 
   it('emits unanchored `.ok/` / `.okignore` regardless of content.dir', () => {
+    // The artifact set is content.dir-independent: a slash-free gitignore
+    // entry matches at any depth, covering the project-root config dir plus
+    // content-dir and folder-nested copies. Even with content.dir set to a
+    // subdirectory, the entries stay unanchored — no `<contentDir>/`-prefixed
+    // or `**`-nested spellings (which would miss the root `.ok/`).
     mkdirSync(join(dir, OK_DIR), { recursive: true });
     writeFileSync(join(dir, OK_DIR, 'config.yml'), 'content:\n  dir: docs\n', 'utf-8');
     const paths = getOkArtifactPaths(dir);
@@ -78,10 +87,16 @@ describe('getOkArtifactPaths', () => {
     expect(paths).not.toContain('docs/.ok/');
     expect(paths).not.toContain('docs/.okignore');
     expect(paths.some((p) => p.includes('**'))).toBe(false);
+    // content.dir must not inflate the set — same eleven paths as the no-config
+    // case, just never `<contentDir>`-prefixed.
     expect(paths).toHaveLength(11);
   });
 
   it('excludes each installed skill projection per the OF3 marker (PRD-6934 C9 fix)', () => {
+    // The pre-fix set covered only the single hardcoded `open-knowledge`
+    // bundle, so authored + pack skills leaked in local-only mode. With an
+    // installed-skills marker present, every projection `.{host}/skills/<name>/`
+    // is excluded per the hosts it was installed to.
     mkdirSync(join(dir, OK_DIR, 'local'), { recursive: true });
     writeFileSync(
       join(dir, OK_DIR, 'local', 'installed-skills.json'),
@@ -110,6 +125,7 @@ describe('getOkArtifactPaths', () => {
     expect(paths).toContain('.claude/skills/trip-log/');
     expect(paths).toContain('.cursor/skills/trip-log/');
     expect(paths).toContain('.codex/skills/fishing-pack/'); // codex → .codex
+    // The shipped bundle excludes remain alongside the authored ones.
     expect(paths).toContain('.claude/skills/open-knowledge/');
   });
 
@@ -131,6 +147,8 @@ describe('root + nested .ok coverage for a non-default content.dir', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  // `git check-ignore -q` exits 0 when the path is ignored, 1 otherwise.
+  // Asks git's own engine whether the patterns we wrote actually hide a path.
   function isIgnored(rel: string): boolean {
     try {
       execFileSync('git', ['check-ignore', '-q', '--', rel], {
@@ -144,6 +162,9 @@ describe('root + nested .ok coverage for a non-default content.dir', () => {
   }
 
   it('excludes the ROOT `.ok/` config dir AND folder-nested `.ok/` / `.okignore` (content.dir = docs)', () => {
+    // content.dir points at a subdir, but the project config still lives at the
+    // ROOT `.ok/` (read from `<projectRoot>/.ok/config.yml`); folder configs
+    // live nested under the content dir.
     mkdirSync(join(dir, OK_DIR), { recursive: true });
     writeFileSync(join(dir, OK_DIR, 'config.yml'), 'content:\n  dir: docs\n', 'utf-8');
     writeFileSync(join(dir, '.okignore'), '', 'utf-8');
@@ -154,8 +175,11 @@ describe('root + nested .ok coverage for a non-default content.dir', () => {
     const result = addOkPathsToGitExclude(dir, getOkArtifactPaths(dir));
     expect(result.kind).toBe('updated');
 
+    // The root config dir — the one that actually holds config.yml — must be
+    // excluded. The previous `<contentDir>/.ok/` anchoring missed it entirely.
     expect(isIgnored('.ok/config.yml')).toBe(true);
     expect(isIgnored('.okignore')).toBe(true);
+    // Folder-nested copies under the content dir, too.
     expect(isIgnored('docs/guides/.ok/frontmatter.yml')).toBe(true);
     expect(isIgnored('docs/guides/.okignore')).toBe(true);
   });
@@ -225,6 +249,9 @@ describe('addOkPathsToGitExclude', () => {
   });
 
   it('overlaps cleanly with the clone-precedent `.ok/` line', () => {
+    // Mirrors what `ensureOkExcludedFromGit` wrote before the migration:
+    // bare `.ok/` on its own line. A subsequent `ok init --local-only` (or
+    // `ok config-sharing unshare`) must NOT duplicate the line.
     writeExclude(dir, '.ok/\n');
     const result = addOkPathsToGitExclude(dir, [
       '.ok/',
@@ -253,6 +280,7 @@ describe('addOkPathsToGitExclude', () => {
     expect(result.tracked).toEqual(['.mcp.json']);
     expect(result.remediation).toContain('Cannot switch OpenKnowledge to local-only');
     expect(result.remediation).toContain('git rm --cached .mcp.json');
+    // Untouched: the exclude file was not written.
     expect(readExclude(dir)).toBe('');
   });
 
@@ -299,9 +327,13 @@ describe('addOkPathsToGitExclude', () => {
   });
 
   it('writes to the linked-worktree admin dir, not <projectRoot>/.git/info/exclude', () => {
+    // Reproduce the worktree-blind bug: in a linked
+    // worktree, <projectRoot>/.git is a regular file containing
+    // `gitdir: <abs-path>`, and `info/exclude` lives under that admin dir.
     const mainRepo = uniqueDir('main-repo');
     const linkedWorktree = uniqueDir('linked-worktree');
     initGitRepo(mainRepo);
+    // Need an initial commit before `git worktree add`.
     writeFileSync(join(mainRepo, 'README.md'), '# main\n', 'utf-8');
     execFileSync('git', ['add', 'README.md'], { cwd: mainRepo });
     execFileSync('git', ['commit', '-m', 'init'], {
@@ -313,18 +345,28 @@ describe('addOkPathsToGitExclude', () => {
       stdio: ['ignore', 'ignore', 'ignore'],
     });
     try {
+      // Sanity: the linked worktree's `.git` is a pointer file.
       const dotGitContent = readFileSync(join(linkedWorktree, '.git'), 'utf-8');
       expect(dotGitContent.startsWith('gitdir:')).toBe(true);
 
       const result = addOkPathsToGitExclude(linkedWorktree, ['.ok/', '.mcp.json']);
       expect(result.kind).toBe('updated');
 
+      // `.git/info/exclude` is a per-clone artifact, not a per-worktree
+      // one. The linked worktree's admin dir contains a `commondir` file
+      // that resolves to `<mainRepo>/.git` — and that's where info/exclude
+      // lives. Confirm we wrote there, not to a non-existent
+      // <linkedWorktree>/.git/info/exclude (which the original worktree-
+      // blind `ensureOkExcludedFromGit` would have silently no-op'd on).
       const mainExclude = join(mainRepo, '.git', 'info', 'exclude');
       expect(existsSync(mainExclude)).toBe(true);
       const mainExcludeContent = readFileSync(mainExclude, 'utf-8');
       expect(mainExcludeContent).toContain('.ok/');
       expect(mainExcludeContent).toContain('.mcp.json');
 
+      // The classic worktree-blind code path would have looked at
+      // <linkedWorktree>/.git/info/exclude — but here `.git` is a file,
+      // not a directory, so that location doesn't exist at all.
       expect(existsSync(join(linkedWorktree, '.git', 'info', 'exclude'))).toBe(false);
     } finally {
       rmSync(linkedWorktree, { recursive: true, force: true });
@@ -395,6 +437,7 @@ build/
     const result = removeOkPathsFromGitExclude(dir, ['.ok/', '.mcp.json', '.cursor/mcp.json']);
     expect(result.kind).toBe('updated');
     if (result.kind !== 'updated') throw new Error('unreachable');
+    // `.cursor/mcp.json` was never in the file, so it is not reported removed.
     expect(result.removed.sort()).toEqual(['.mcp.json', '.ok/']);
   });
 
@@ -423,6 +466,7 @@ describe('readSharingMode', () => {
   });
 
   it('returns `local-only` when EVEN ONE OK artifact path is excluded (OR-of-variants, not AND)', () => {
+    // Direction-pinning test: at-least-one-variant, not all.
     writeExclude(dir, '.mcp.json\n');
     expect(readSharingMode(dir)).toBe('local-only');
   });
@@ -486,6 +530,7 @@ describe('probeTrackedOkPaths', () => {
 
   it('returns an empty list when no candidate is tracked', () => {
     writeFileSync(join(dir, '.mcp.json'), '{}', 'utf-8');
+    // Created but not committed.
     expect(probeTrackedOkPaths(dir, ['.mcp.json']).tracked).toEqual([]);
   });
 
@@ -500,6 +545,8 @@ describe('formatTrackedRemediation', () => {
     expect(out).toContain('  .mcp.json');
     expect(out).toContain('  .claude/skills/open-knowledge/');
     expect(out).toContain('git rm --cached .mcp.json');
+    // Dir form: `-r` AND trailing-slash stripped (git rm cares about the
+    // path token, not the gitignore-style trailing slash).
     expect(out).toContain('git rm --cached -r .claude/skills/open-knowledge');
   });
 

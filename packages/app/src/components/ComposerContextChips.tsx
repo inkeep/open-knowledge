@@ -1,3 +1,26 @@
+/**
+ * Cursor-style context-chip row for the unified "Ask AI" composer's NON-inline
+ * context: the set of whole-file references the user has touched while drafting.
+ * Typed `@`-mentions stay INLINE in the prompt (each rendered as its own
+ * removable chip by the `composerMention` node view), so a file referenced
+ * inline is never also shown here — the top row holds only references that are
+ * NOT inline (the host maintains that live invariant).
+ *
+ * Each chip is a compact LEADING icon + short label (never raw content),
+ * Cursor-style. There is no trailing × and no reserved trailing space: the
+ * LEADING icon doubles as the remove control. At rest the icon-button shows the
+ * file glyph; on chip hover / `:focus-within` (and while the button itself is
+ * focused, for keyboard reach) the file glyph cross-fades to an X in the SAME
+ * fixed-size cell. The button removes on Enter/Space/click AND on Backspace/Delete
+ * (an a11y improvement over Cursor's hover-only ×). Styling mirrors the inline
+ * mention chip (`.composer-mention-chip` in globals.css) so the two read as one
+ * chip system.
+ *
+ * Lives at host level (outside the ProseMirror editor subtree) → shadcn
+ * primitives, not raw interactive elements. Removing a chip sticky-dismisses its
+ * path for the life of the draft (the host owns that).
+ */
+
 import { useLingui } from '@lingui/react/macro';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';

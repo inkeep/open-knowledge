@@ -1,3 +1,31 @@
+/**
+ * `AssetViewerRegistry` — module-level singleton that maps lowercased file
+ * extensions to renderer-side viewers. Empty at landing; follow-up PRs
+ * register PDF.js, image lightbox, video/audio inline.
+ *
+ * Contract: `lookup(ext)` returns a discriminated union so callers cannot
+ * accidentally pass a possibly-undefined viewer into `.render()` (precedent
+ * #19(b) — lookup discriminates on the type, no `!` assertion
+ * required).
+ *
+ * Case discipline: both `register` and `lookup` lowercase inputs — matches
+ * `classifyMarkdownHref` which emits `AssetLinkTarget.ext` already
+ * normalized via `extractAssetExtension`. Belt-and-braces so a viewer
+ * declaring `exts: ['PDF']` still finds itself on `lookup('pdf')`.
+ *
+ * Lifecycle:
+ * - `register(viewer)` returns an `unregister: () => void` callback, matching
+ *   the React 19 ref-callback cleanup idiom. Hot-reload + test code use it
+ *   for cleanup.
+ * - Ordering policy is **last-registered wins**. When a viewer instance other
+ *   than the currently-registered one claims an existing extension, a
+ *   structured `console.warn` is emitted naming the collision before the
+ *   replacement happens.
+ * - Both edges are idempotent. Re-registering the **same** viewer instance
+ *   returns the existing unregister fn without warning. Calling the returned
+ *   `unregister()` more than once is a benign no-op.
+ */
+
 import type { AssetViewer, AssetViewerLookupResult } from './types.ts';
 
 export class AssetViewerRegistry {
@@ -47,6 +75,15 @@ export class AssetViewerRegistry {
     return viewer ? { ok: true, viewer } : { ok: false };
   }
 
+  /**
+   * Test-only — drop all registrations. Production code never calls this.
+   * Named `clearForTests` rather than `reset` / `clear` so a stray call site
+   * in production would stand out in code review.
+   *
+   * Also discards the per-viewer unregister-fn cache so a subsequent
+   * `register(sameViewerInstance)` re-registers fresh rather than returning
+   * the stale (now-orphaned) unregister fn.
+   */
   clearForTests(): void {
     this.byExt.clear();
     this.viewerUnregisterFns = new WeakMap();
@@ -57,4 +94,15 @@ export class AssetViewerRegistry {
   }
 }
 
+/**
+ * The singleton registry the dispatcher consults by default. Follow-up
+ * viewer PRs register against this instance at module-init time:
+ *
+ * ```ts
+ * import { assetViewerRegistry } from './asset-dispatch/registry';
+ * const unregister = assetViewerRegistry.register(PdfJsViewer);
+ * // ...later, e.g. in HMR cleanup:
+ * unregister();
+ * ```
+ */
 export const assetViewerRegistry = new AssetViewerRegistry();

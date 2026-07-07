@@ -39,6 +39,7 @@ describe('applySkillWrite', () => {
     expect(raw).toContain('name: trip-log');
     expect(raw).toContain('description: Use when logging a fishing trip.');
     expect(raw).toContain('# Steps');
+    // No injected keys — frontmatter purity: only name + description.
     expect(raw).not.toContain('version:');
     expect(raw).not.toContain('title:');
   });
@@ -227,6 +228,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     expect(script.ok).toBe(true);
     if (script.ok) expect(script.created).toBe(true);
 
+    // Overwrite reports created:false.
     const again = applySkillBundleFileWrite({
       skillsRoot,
       name: 'trip-log',
@@ -305,6 +307,7 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     });
     expect(del.ok).toBe(true);
     if (del.ok) expect(del.existed).toBe(true);
+    // Emptied references/ pruned; SKILL.md + skill dir intact.
     expect(existsSync(join(skillsRoot, 'trip-log', 'references'))).toBe(false);
     expect(existsSync(join(skillsRoot, 'trip-log', 'SKILL.md'))).toBe(true);
 

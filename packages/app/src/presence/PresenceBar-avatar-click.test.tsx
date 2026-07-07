@@ -1,3 +1,16 @@
+/**
+ * AgentAvatar click → openActivityPanel behavior tests.
+ *
+ * PresenceBar's top-level component needs DocumentContext + a real
+ * HocuspocusProvider to exercise, so we target AgentAvatar indirectly by
+ * rendering PresenceBar with stubbed hooks via `mock.module`. Static
+ * markup inspection verifies the aria-label + data attributes + the click
+ * event wires through to the mocked openActivityPanel.
+ *
+ * The interactive flow (click → panel opens, Esc closes, swap behavior)
+ * lives in Playwright.
+ */
+
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core';
 import { renderToString } from 'react-dom/server';
@@ -15,6 +28,8 @@ const openActivityPanel = (connectionId: string, targetDoc: string | null): void
 
 let currentAgents: AgentParticipant[] = [];
 let crossDocAgents: AgentParticipant[] = [];
+// Mutable so a test can exercise the `activeDocName !== null` half of the
+// `interactive` OR — a sentinel agent must stay clickable when a doc is open.
 let mockActiveDocName: string | null = null;
 
 mock.module('@/editor/DocumentContext', () => ({
@@ -31,6 +46,12 @@ mock.module('@/editor/DocumentContext', () => ({
   }),
 }));
 
+// Bun keeps module mocks process-global and never restores them between
+// test files — every factory spreads the real module so omitted exports
+// stay linkable for any later importer in the process (the partial
+// DocumentContext factory here detonated EditorArea.test.ts's module-load
+// smoke on order-unlucky CI runners; see
+// tests/integration/mock-module-completeness.test.ts).
 mock.module('./use-presence', () => ({
   ...actualUsePresence,
   usePresence: () => ({ current: currentAgents, crossDoc: crossDocAgents }),
@@ -81,6 +102,7 @@ describe('PresenceBar avatar click wiring', () => {
     );
     expect(html).toContain('data-presence-badge="agent"');
     expect(html).toContain('<button');
+    // aria-label prefix signals click-to-open behavior.
     expect(html).toContain('Open activity panel for Agent-abc');
   });
 
@@ -97,6 +119,10 @@ describe('PresenceBar avatar click wiring', () => {
   });
 
   test('sentinel-only agent with no doc selected renders inert (no dead click target)', () => {
+    // `(connected)` is the keepalive-bootstrap sentinel — non-null so the
+    // entry survives the presence filter, but no real doc to navigate to.
+    // With no doc selected (mock `activeDocName: null`) the click would be a
+    // silent no-op, so the avatar must render as a non-button inert badge.
     crossDocAgents = [agent('idle', 'claude', '(connected)')];
     const html = renderToString(
       <TooltipProvider>
@@ -109,6 +135,11 @@ describe('PresenceBar avatar click wiring', () => {
   });
 
   test('sentinel agent stays interactive when a doc IS selected (guards the interactive OR)', () => {
+    // `interactive = activeDocName !== null || realCurrentDoc !== null`. The
+    // sentinel agent has no real doc, so this case relies on the FIRST operand:
+    // with a doc open the avatar must remain a clickable button (clicking opens
+    // the agent's Activity view in the current doc's panel). A regression to
+    // `&&` would render it inert here — this test fails if that happens.
     mockActiveDocName = 'current.md';
     crossDocAgents = [agent('idle', 'claude', '(connected)')];
     const html = renderToString(

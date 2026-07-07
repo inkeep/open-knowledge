@@ -3,17 +3,32 @@ import { useLingui } from '@lingui/react/macro';
 import { Bird, FileCode2, ListTree, Network, Telescope } from 'lucide-react';
 import type { ComponentType } from 'react';
 
+// Re-export the canonical scenario type (defined in core's prompt-composer, the
+// single source of truth shared with `composeCreatePrompt`) so consumers keep
+// importing it from here.
 export type { CreateScenario };
 
 export interface CreateSuggestion {
   readonly id: string;
   readonly icon: ComponentType<{ className?: string }>;
+  /** Short chip / row label. */
   readonly label: string;
   /** Full prompt — prefilled into the composer, or copied verbatim in the
    *  embedded list. */
   readonly prompt: string;
 }
 
+/**
+ * Single source of truth for the empty-state starter prompts, shared by the
+ * `CreatePromptComposer` chips (non-embedded → prefill + hand off) and the
+ * `CopyablePromptList` rows (embedded → copy + paste into the host agent).
+ *
+ * Both scenarios return a full set so the embedded `CopyablePromptList` always
+ * has rows to render. The non-embedded composer separately suppresses its pills
+ * for `existing-repo` (see `CreatePromptComposer`) — that's a surface decision,
+ * not a data one. Both sets are authored inline so the t-macro strings stay
+ * statically extractable and resolve against the active locale at render.
+ */
 export function useCreateSuggestions(scenario: CreateScenario): readonly CreateSuggestion[] {
   const { t } = useLingui();
   return scenario === 'existing-repo'

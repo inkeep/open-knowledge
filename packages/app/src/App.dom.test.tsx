@@ -56,6 +56,8 @@ mock.module('@/editor/DocumentContext', () => ({
     clearTarget: clearTargetMock,
     syncOpenTabsWithKnownTargets: syncOpenTabsWithKnownTargetsMock,
     tabSessionLoaded,
+    // The skill-tab reconciler reads these at render (no open skill tab here,
+    // so it issues no `/api/skills` fetch); the real context always supplies them.
     openTabs: [],
     closeDocument: () => {},
   }),
@@ -93,6 +95,9 @@ mock.module('@/lib/config-provider', () => ({
   ),
 }));
 
+// AppBody reads `merged.appearance.preview.autoOpen` to compose the
+// "Open in terminal" launch prompt; the ConfigProvider above is a passthrough
+// so the real context is never set. Stub the hook to the cold-start shape.
 mock.module('@/lib/config-context', () => ({
   useConfigContext: () => ({ merged: null }),
 }));
@@ -101,6 +106,9 @@ mock.module('@/lib/api-config', () => ({
   fetchApiConfig: (...args: Parameters<typeof fetchApiConfigMock>) => fetchApiConfigMock(...args),
 }));
 
+// ConfigProviderHost mounts the app-lifetime server keepalive; stub it so this
+// chrome-focused test doesn't open a real WebSocket. Behavior is covered by
+// use-server-keepalive.dom.test.tsx.
 mock.module('@/lib/use-server-keepalive', () => ({
   useServerKeepalive: () => {},
 }));
@@ -148,6 +156,10 @@ mock.module('@/components/CreateProjectMenuTrigger', () => ({
 
 mock.module('@/components/ShareBranchSwitchDialog', () => ({
   ShareBranchSwitchDialog: () => <div data-testid="share-branch-switch-dialog" />,
+}));
+
+mock.module('@/components/ShareReceiveMissDialog', () => ({
+  ShareReceiveMissDialog: () => <div data-testid="share-receive-miss-dialog" />,
 }));
 
 mock.module('@/components/NewItemDialog', () => ({

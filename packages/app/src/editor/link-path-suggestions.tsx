@@ -229,12 +229,15 @@ export function LinkPathSuggestionInput({
       }
       if (event.key === 'Escape') {
         event.preventDefault();
+        // First Escape dismisses autocomplete; the parent dialog/popover gets
+        // the next Escape if the user wants to close the whole surface.
         setDismissed(true);
         return;
       }
     }
     if (showSuggestionPanel && event.key === 'Escape') {
       event.preventDefault();
+      // See matching-options Escape branch.
       setDismissed(true);
       return;
     }

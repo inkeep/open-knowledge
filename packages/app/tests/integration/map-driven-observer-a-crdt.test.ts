@@ -1,3 +1,16 @@
+/**
+ * Cross-CRDT integration: map-driven Observer A under multi-client topology.
+ *
+ * Exercises the map-driven Path A (the default Observer A write path)
+ * end-to-end through Hocuspocus with two concurrent clients editing
+ * distinct blocks. Verifies:
+ *   - Convergence to byte-identical Y.Text across replicas (cross-replica
+ *     consistency under the map-driven write path).
+ *   - Per-replica ≡ post-convergence for non-overlapping splices —
+ *     the merged result preserves the bytes the OTHER client contributed
+ *     (no client's splice clobbers the other's).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import * as Y from 'yjs';
@@ -106,11 +119,15 @@ describe('map-driven Observer A — cross-CRDT integration', () => {
       perClientOptions: { skipInvariantWatcher: true },
     });
     try {
+      // Seed the corrupting construct: an indented-children <Steps>/<Step> doc
+      // this round-tripped beyond tolerance and
+      // the multi-drain Observer-A re-derivation amplified it; post-fix it folds.
       const seed =
         '<Steps>\n\n<Step>\n\nSTEP-ALPHA-BODY paragraph.\n\n</Step>\n\n<Step>\n\nSTEP-BRAVO-BODY paragraph.\n\n</Step>\n\n</Steps>\n';
       await agentWriteMd(server.port, seed, { docName, position: 'replace' });
       await awaitConvergence(clients, ['STEP-ALPHA-BODY', 'STEP-BRAVO-BODY']);
 
+      // Concurrent WYSIWYG edits from both clients — the amplifier trigger.
       appendParagraph(clients[0], 'MAP-JSX-EDIT-A');
       appendParagraph(clients[1], 'MAP-JSX-EDIT-B');
       await awaitConvergence(clients, [
@@ -124,6 +141,9 @@ describe('map-driven Observer A — cross-CRDT integration', () => {
       expect(ytexts[1]).toBe(ytexts[0]);
       for (const client of clients) assertBridgeInvariant(client.ytext, client.fragment);
 
+      // byte-budget + no-duplication on the corrupting construct: every
+      // authored anchor appears EXACTLY once (the amplifier would multiply them)
+      // and the converged bytes stay within a small multiple of the authored input.
       const converged = ytexts[0];
       for (const marker of [
         'STEP-ALPHA-BODY',

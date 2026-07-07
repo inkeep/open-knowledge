@@ -1,3 +1,20 @@
+/**
+ * CloneDialog — dialog for cloning a GitHub repo into a new OpenKnowledge project.
+ *
+ * Supports:
+ *   - Editable combobox input: paste URL, type owner/repo shorthand, or — when
+ *     signed in — type to filter your repos. Matches appear in a floating
+ *     Popover listbox anchored under the input (portaled, so the modal height
+ *     stays fixed); selecting a row fills the input and closes the list.
+ *     Keyboard: ArrowUp/Down to move, Enter to pick, Escape to close.
+ *   - Authenticated repo browse when signed in (GET /api/local-op/auth/repos)
+ *   - Native folder picker on Clone (when `pickParentFolder` provided): clones into
+ *     `<picked>/<repo-name>`. Cancelling the picker leaves the dialog open with the
+ *     URL still filled. Web/CLI callers without the picker fall back to a text input.
+ *   - Clone via POST /api/local-op/clone (NDJSON streaming progress)
+ *   - Sign-in integration: onSignIn prop opens AuthModal
+ *   - On complete: redirect to the new server port
+ */
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -49,8 +66,10 @@ function phaseLabel(phase: ClonePhase): MessageDescriptor {
   }
 }
 
+/** Extract repo name from a URL or owner/repo shorthand. */
 function extractRepoName(input: string): string {
   const trimmed = input.trim();
+  // owner/repo shorthand
   if (/^[\w.-]+\/[\w.-]+$/.test(trimmed)) return trimmed.split('/')[1];
   try {
     const url = new URL(trimmed.replace(/^git@([^:]+):/, 'https://$1/'));
@@ -73,11 +92,49 @@ function extractRepoName(input: string): string {
 interface CloneDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called when "Connect GitHub" is clicked. */
   onSignIn?: () => void;
+  /**
+   * Called when the clone completes successfully. When provided, the dialog
+   * does NOT redirect via `window.location.href` — the caller takes over
+   * navigation. Used by the Electron Navigator to spawn a new editor window
+   * at `dir` instead of navigating the launcher itself to the new dev port.
+   *
+   * Shape is the flattened union of the two transport `complete` variants:
+   * HTTP relay emits `{port, dir}`; IPC main emits `{dir}` only. `dir` is
+   * always present (server-side guarantee); `port` is HTTP-only.
+   */
   onCloneComplete?: (info: { port?: number; dir: string }) => void;
+  /**
+   * Transport for the clone subprocess. Defaults to the HTTP path (POST
+   * /api/local-op/clone) so existing editor / web callers don't change.
+   * The Project Navigator passes an IPC transport because its window has
+   * no backing API server.
+   */
   transport?: CloneTransport;
+  /**
+   * Transport for the one-shot auth-status / repos queries. Defaults to
+   * the HTTP path (POST /api/local-op/auth/{status,repos}). Navigator
+   * passes an IPC transport — without it the queries 404 on the renderer
+   * dev server and the dialog persistently shows the Sign-in button even
+   * when the user is signed in.
+   */
   authQueryTransport?: AuthQueryTransport;
+  /**
+   * Optional native folder-picker. When provided (Electron Navigator), the
+   * dialog hides its Local-path text field and instead fires the picker on
+   * Clone — the picked folder becomes the parent and the repo clones into
+   * `<picked>/<repo-name>`. Resolving to `null` (user cancelled the picker)
+   * leaves the dialog open with the URL still filled in. When omitted
+   * (web/CLI distribution), the dialog falls back to a basic text input.
+   */
   pickParentFolder?: () => Promise<string | null>;
+  /**
+   * Optional URL to seed into the input field on dialog open. Used by the
+   * share-receive Q3 path to pre-fill the wizard with the share's
+   * `<owner>/<repo>` clone URL. Re-applies whenever this prop changes while
+   * the dialog is open. Triggers the same name-derivation as user input.
+   */
   initialUrl?: string;
 }
 
@@ -108,6 +165,10 @@ export function CloneDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
 
+  // Check auth status when the dialog opens. The transport defaults to the
+  // HTTP path; Navigator passes an IPC transport because its window has no
+  // backing API server (apiOrigin === '') — the HTTP fetch would 404 on the
+  // renderer dev server and the dialog would persistently show "Connect GitHub".
   // biome-ignore lint/correctness/useExhaustiveDependencies: resolvedAuthQuery is stable per render
   useEffect(() => {
     if (!open) return;
@@ -119,6 +180,10 @@ export function CloneDialog({
         if (!cancelled) setIsSignedIn(data.authenticated);
       })
       .catch(() => {
+        // An unreachable check is not a confirmed sign-out, so leave the shared
+        // cache untouched — Settings → Account writes/reads it too, and flipping
+        // it to false here would wrongly revert that surface on a transient
+        // failure. Fall back to the plain input for this render only.
         if (!cancelled) setIsSignedIn(false);
       });
     return () => {
@@ -148,6 +213,11 @@ export function CloneDialog({
     };
   }, [isSignedIn, open]);
 
+  // Seed the URL input from `initialUrl` whenever the dialog opens (or the
+  // prop changes while open). The receive-flow Q3 path passes the share's
+  // canonical clone URL so the wizard arrives ready-to-clone — the user only
+  // picks the parent folder. Inline (not delegated to handleUrlChange) so the
+  // React Compiler doesn't trip on the use-before-declare hoist.
   useEffect(() => {
     if (!open) return;
     if (!initialUrl) return;
@@ -157,6 +227,7 @@ export function CloneDialog({
     if (name) setLocalPath(`~/Documents/${name}`);
   }, [open, initialUrl, usePicker]);
 
+  // Keep the keyboard-highlighted suggestion scrolled into view.
   useEffect(() => {
     if (activeIndex < 0) return;
     document
@@ -189,6 +260,9 @@ export function CloneDialog({
 
     let dir = localPath || '';
     if (pickParentFolder) {
+      // Set cloning before awaiting the picker so a second click on the
+      // (now-disabled) Clone button can't open a second picker or queue a
+      // second clone.
       setCloning(true);
       const parent = await pickParentFolder();
       if (!parent) {
@@ -211,6 +285,8 @@ export function CloneDialog({
     cancelRef.current = handle.cancel;
 
     try {
+      // Manual iterator drive — React Compiler (BuildHIR) does not yet
+      // support `for await ... of` lowering.
       const iter = handle.events[Symbol.asyncIterator]();
       let sawTerminal = false;
       let result = await iter.next();
@@ -243,6 +319,7 @@ export function CloneDialog({
         result = await iter.next();
       }
       if (!sawTerminal) {
+        // Stream ended without a terminal 'complete' or 'error' event.
         toast.error(t`Clone stream ended unexpectedly — check if the clone completed`, {
           id: toastId,
         });
@@ -250,6 +327,8 @@ export function CloneDialog({
         cancelRef.current = null;
       }
     } catch (err) {
+      // Log so non-transport exceptions (e.g. an `onCloneComplete` callback
+      // throwing) aren't lost behind the generic toast message.
       console.error('[CloneDialog] clone iteration failed:', err);
       toast.error(t`Clone failed — connection error`, { id: toastId });
       setCloning(false);
@@ -282,23 +361,40 @@ export function CloneDialog({
     inputRef.current?.focus();
   }
 
+  // While auth status is still unknown (null), treat it as the signed-in branch
+  // so signed-in users never see the "Connect GitHub" CTA flash before the
+  // status check resolves. The suggestion list shows a loading state meanwhile.
   const checkingAuth = isSignedIn === null;
   const repoListLoading = checkingAuth || (loadingRepos && repos === null);
   const query = urlInput.trim().toLowerCase();
   const suggestions = (repos ?? []).filter((r) =>
     `${r.full_name} ${r.clone_url}`.toLowerCase().includes(query),
   );
+  // When the field holds a pasted clone URL (not a search term), suppress the
+  // "no matches" empty state — the user is entering a target, not browsing.
   const queryLooksLikeUrl = /:\/\/|^git@|\.git$/i.test(urlInput.trim());
+  // Show an empty-state message (rather than letting the popover blink shut)
+  // once repos have loaded and nothing matches: explains zero-repo accounts and
+  // genuine no-match searches without flickering on the load→empty transition.
   const showEmptyState =
     isSignedIn === true && repos !== null && suggestions.length === 0 && !queryLooksLikeUrl;
+  // Popover floats over the modal (portaled), so opening it never grows the
+  // dialog. Open while loading, when there are matches, or to show empty state.
   const popoverOpen =
     listOpen &&
     isSignedIn !== false &&
     !cloning &&
     (repoListLoading || suggestions.length > 0 || showEmptyState);
   const suggestionCount = suggestions.length;
+  // aria-controls must reference the live popup; during loading that's the
+  // status element, otherwise the listbox.
   const loadingId = `${listboxId}-loading`;
 
+  // Clamp the highlight if the suggestion list shrinks under it — e.g. repos
+  // finish loading (or the filter narrows) while the user is mid-keyboard-nav —
+  // so aria-activedescendant never points at a row that no longer exists. The
+  // updater returns `i` unchanged when still valid, so React bails out (no extra
+  // render) in the common case.
   useEffect(() => {
     setActiveIndex((i) => (i >= suggestionCount ? suggestionCount - 1 : i));
   }, [suggestionCount]);
@@ -314,6 +410,8 @@ export function CloneDialog({
       setActiveIndex((i) => Math.min(i + 1, suggestions.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      // Floor at -1 (not 0): ArrowUp off the first row clears the highlight and
+      // returns to free-text entry, per the WAI-ARIA combobox keyboard model.
       setActiveIndex((i) => Math.max(i - 1, -1));
     } else if (e.key === 'Enter') {
       if (popoverOpen && activeIndex >= 0 && activeIndex < suggestions.length) {
@@ -322,6 +420,7 @@ export function CloneDialog({
       }
     } else if (e.key === 'Escape') {
       if (popoverOpen) {
+        // Close the suggestion list first, not the whole dialog.
         e.preventDefault();
         e.stopPropagation();
         setListOpen(false);
@@ -347,6 +446,10 @@ export function CloneDialog({
               </label>
 
               {isSignedIn !== false ? (
+                // Editable combobox: the input stays a normal text field (paste a
+                // URL or type owner/repo), and matching repos appear in a floating
+                // Popover listbox anchored under it. The list is portaled, so it
+                // overlays the modal instead of growing it, and closes on select.
                 <Popover open={popoverOpen} onOpenChange={setListOpen}>
                   <PopoverAnchor asChild>
                     <Input
@@ -374,6 +477,9 @@ export function CloneDialog({
                     align="start"
                     sideOffset={4}
                     className="w-(--radix-popover-trigger-width) max-h-56 overflow-y-auto overscroll-y-contain subtle-scrollbar p-0"
+                    // Keep focus in the input — the list is a passive suggestion
+                    // surface, not a focus target. And don't let a pointer-down on
+                    // the input itself (the anchor) count as an outside-click close.
                     onOpenAutoFocus={(e) => e.preventDefault()}
                     onCloseAutoFocus={(e) => e.preventDefault()}
                     onInteractOutside={(e) => {
@@ -394,6 +500,11 @@ export function CloneDialog({
                         <Skeleton className="h-4 w-2/5" />
                       </output>
                     ) : (
+                      // Single listbox container so aria-controls (which points at
+                      // listboxId whenever the popover is open and not loading)
+                      // always resolves to a role="listbox" element — empty state
+                      // included. The empty message is a role="presentation" child,
+                      // which the listbox content model permits.
                       <div
                         id={listboxId}
                         role="listbox"
@@ -420,6 +531,8 @@ export function CloneDialog({
                               role="option"
                               tabIndex={-1}
                               aria-selected={i === activeIndex}
+                              // preventDefault on mousedown so the input keeps focus
+                              // through the click; onClick then commits the choice.
                               onMouseDown={(e) => e.preventDefault()}
                               onMouseEnter={() => setActiveIndex(i)}
                               onClick={() => selectRepo(repo)}

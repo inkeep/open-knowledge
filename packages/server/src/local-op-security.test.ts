@@ -15,6 +15,8 @@ import {
   isSafeLocalPath,
 } from './local-op-security.ts';
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function makeReq(remoteAddress: string, origin?: string): IncomingMessage {
   const req = new EventEmitter() as unknown as IncomingMessage;
   req.socket = { remoteAddress } as IncomingMessage['socket'];
@@ -57,6 +59,8 @@ function makeRes(): {
   return { res, calls };
 }
 
+// ─── isLoopbackRequest ────────────────────────────────────────────────────────
+
 describe('isLoopbackRequest', () => {
   test('allows 127.0.0.1', () => {
     expect(isLoopbackRequest(makeReq('127.0.0.1'))).toBe(true);
@@ -74,6 +78,8 @@ describe('isLoopbackRequest', () => {
     expect(isLoopbackRequest(makeReq('2001:db8::1'))).toBe(false);
   });
 });
+
+// ─── hasValidLocalOpOrigin ────────────────────────────────────────────────────
 
 describe('hasValidLocalOpOrigin', () => {
   test('allows absent origin', () => {
@@ -95,6 +101,8 @@ describe('hasValidLocalOpOrigin', () => {
     expect(hasValidLocalOpOrigin(makeReq('127.0.0.1', 'http://192.168.1.1:3000'))).toBe(false);
   });
 });
+
+// ─── isAllowedGitUrl ──────────────────────────────────────────────────────────
 
 describe('isAllowedGitUrl', () => {
   test('allows https URL', () => {
@@ -135,6 +143,8 @@ describe('isAllowedGitUrl', () => {
   });
 });
 
+// ─── isSafeLocalPath ─────────────────────────────────────────────────────────
+
 describe('isSafeLocalPath', () => {
   const home = homedir();
 
@@ -157,15 +167,27 @@ describe('isSafeLocalPath', () => {
     expect(isSafeLocalPath(`${home}/repo\0/evil`)).toBe(false);
   });
   test('rejects path that escapes via ..', () => {
+    // Resolved path of home + '/../etc' lands outside home
     expect(isSafeLocalPath(`${home}/../etc`)).toBe(false);
   });
 });
+
+// ─── isPathWithinHome — realpath / symlink containment ───────────────────────
+//
+// Tests inject a tmp dir as `home` so symlink scenarios can be exercised
+// without touching the developer's actual home. The public `isSafeLocalPath`
+// is a thin wrapper over `isPathWithinHome(_, homedir())`; mocking `homedir()`
+// is unreliable in Bun (no `$HOME` honoring after first call; `mock.module`
+// leaks across files per server-factory.test.ts).
 
 describe('isPathWithinHome — symlink containment', () => {
   let fakeHome: string;
   let outsideDir: string;
 
   beforeAll(() => {
+    // realpath the tmpdir on macOS — `/var/folders/...` resolves to
+    // `/private/var/folders/...`. Without this, paths under fakeHome compare
+    // against a non-canonical $HOME and the containment check is unsound.
     const root = realpathSync(tmpdir());
     fakeHome = mkdtempSync(join(root, 'ok-local-op-home-'));
     outsideDir = mkdtempSync(join(root, 'ok-local-op-outside-'));
@@ -185,10 +207,18 @@ describe('isPathWithinHome — symlink containment', () => {
   test('rejects path under a symlinked ancestor that escapes home', () => {
     const link = join(fakeHome, 'decoy-parent');
     symlinkSync(outsideDir, link);
+    // Suffix component does not exist — algorithm walks up to the symlink and
+    // canonicalizes it. Containment check sees `<outsideDir>/new-clone-target`.
     expect(isPathWithinHome(join(link, 'new-clone-target'), fakeHome)).toBe(false);
   });
 
   test('rejects path under a symlinked ancestor with a real subdir', () => {
+    // lstat follows symlinks in ancestor components and only reports
+    // isSymbolicLink() for the leaf. With a symlinked ancestor and a real
+    // (non-symlink) subdir inside its target, the walk-up sees the subdir as
+    // a real directory, so a "skip realpath when leaf is non-symlink" branch
+    // trusts the lexical path. The canonical on-disk location is outside
+    // home and must be rejected.
     const link = join(fakeHome, 'escape');
     symlinkSync(outsideDir, link);
     mkdirSync(join(outsideDir, 'real-child'));
@@ -212,6 +242,7 @@ describe('isPathWithinHome — symlink containment', () => {
     symlinkSync(join(outsideDir, 'gone'), link);
     rmSync(outsideDir, { recursive: true, force: true });
     expect(isPathWithinHome(link, fakeHome)).toBe(false);
+    // Re-create outsideDir so the afterAll cleanup remains a no-op-safe rm.
     mkdirSync(outsideDir, { recursive: true });
   });
 
@@ -223,6 +254,24 @@ describe('isPathWithinHome — symlink containment', () => {
     expect(isPathWithinHome(fakeHome, fakeHome)).toBe(true);
   });
 });
+
+// ─── isPathWithinHome — realpath syscall failure on non-symlink ──────────────
+//
+// macOS TCC ("Files and Folders") grants `lstat` on a protected directory but
+// denies `realpath` (which performs per-component lstats after the entry
+// point). The kernel reports the protected dir as `isSymbolicLink === false`
+// via `lstat`, yet `realpath` raises EPERM. When the leaf is confirmed
+// non-symlink by `lstat`, the EPERM is treated as TCC-class and the lexical
+// path is trusted at that component — the kernel has already attested the
+// leaf is not a redirector. Symlink leaves still fail closed on any
+// `realpath` error.
+//
+// Reproducing TCC denial hermetically requires intercepting the syscall, so
+// these tests spy on `fs.realpathSync` and throw an EPERM-shaped error for
+// the target path while passing through for `realHome` and other paths the
+// algorithm walks. The mock substitutes for an OS-level failure mode that is
+// per-binary and environment-dependent (Bun on a fresh macOS install lacks
+// the grant; Linux runners have no TCC layer at all).
 
 describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   let fakeHome: string;
@@ -257,6 +306,9 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   }
 
   test('lstat-confirmed non-symlink + realpath EPERM → accept (TCC-class)', () => {
+    // Real on-disk directory under fakeHome; lstat sees `isSymbolicLink === false`.
+    // realpath is mocked to throw EPERM only for this exact path, mirroring the
+    // TCC syscall asymmetry: lstat allowed, realpath denied.
     const protectedDir = join(fakeHome, 'protected-non-symlink');
     mkdirSync(protectedDir);
     const spy = spyEpermOn(protectedDir);
@@ -268,6 +320,10 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   });
 
   test('lstat-confirmed non-symlink + realpath EPERM on existing leaf → accept', () => {
+    // The leaf itself exists (no walk-up needed) and is not a symlink. When
+    // `realpath` raises EPERM under TCC, the lexical path is accepted at
+    // that component because `lstat` has already attested the leaf is not a
+    // redirector.
     const protectedLeaf = join(fakeHome, 'protected-leaf-dir');
     mkdirSync(protectedLeaf);
     const spy = spyEpermOn(protectedLeaf);
@@ -279,6 +335,10 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   });
 
   test('lstat-confirmed non-symlink + realpath EACCES on existing leaf → accept (TCC-class)', () => {
+    // Production code accepts both EPERM and EACCES for the TCC-class
+    // accommodation. macOS may emit either depending on macOS version and
+    // entitlement state. This test pins the EACCES arm so a future refactor
+    // narrowing to EPERM-only is caught.
     const protectedLeaf = join(fakeHome, 'protected-leaf-eacces-dir');
     mkdirSync(protectedLeaf);
     const original = fs.realpathSync;
@@ -306,6 +366,10 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   });
 
   test('symlink + realpath error → still reject (defense-in-depth)', () => {
+    // A symlink whose realpath fails must fail closed because the target is
+    // unverifiable. The TCC-EPERM accommodation applies only to non-symlink
+    // leaves where `lstat` has already attested the component is not a
+    // redirector.
     const target = join(fakeHome, 'real-target');
     mkdirSync(target);
     const link = join(fakeHome, 'symlink-to-target');
@@ -319,6 +383,11 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   });
 
   test('lstat EPERM on an existing path → reject (fail-closed)', () => {
+    // Symmetric counterpart to the realpath EPERM accommodation: when `lstat`
+    // itself is denied (the kernel does not attest whether the component is a
+    // symlink), there is no basis to accept the lexical path. Pins the
+    // fail-closed contract on the lstat boundary so a future refactor cannot
+    // relax it into a `treat-EPERM-as-ENOENT-and-walk-up` bypass.
     const blocked = join(fakeHome, 'lstat-blocked-dir');
     mkdirSync(blocked);
     const originalLstat = fs.lstatSync;
@@ -343,11 +412,32 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   });
 
   test('lstat-confirmed non-symlink under symlinked ancestor + realpath EPERM → still reject (security boundary)', () => {
+    // Closes a security regression in the EPERM accept-branch: `lstat` follows
+    // symlinks in ancestor components and only reports `isSymbolicLink === false`
+    // for the leaf. With a symlinked ancestor whose target holds a real
+    // (non-symlink) subdir, the kernel reports the subdir as non-symlink even
+    // though its canonical location sits outside home.
+    //
+    // Setup: real `outsideDir/real-child` under outsideDir;
+    // `fakeHome/escape-symlink-ancestor -> outsideDir` is a symlink under
+    // home. Walking `fakeHome/escape-symlink-ancestor/real-child/clone-target`:
+    //   iter 1: current=.../escape-symlink-ancestor/real-child/clone-target
+    //           lstat ENOENT, suffix=[clone-target], walk up
+    //   iter 2: current=.../escape-symlink-ancestor/real-child lstat
+    //           (follows ancestor symlink) reports non-symlink, realpath
+    //           mocked EPERM
+    // Without the ancestor-chain scan, the accept-branch trusts the lexical
+    // path and `relative(fakeHome, .../escape-symlink-ancestor/real-child) ===
+    // 'escape-symlink-ancestor/real-child'` (no `..`, not absolute), so the
+    // containment check returns true — yet canonical location is
+    // `outsideDir/real-child`, outside fakeHome.
     const tmpOutside = mkdtempSync(join(realpathSync(tmpdir()), 'ok-symlinked-ancestor-'));
     try {
       const escapeLink = join(fakeHome, 'escape-symlink-ancestor');
       symlinkSync(tmpOutside, escapeLink);
       mkdirSync(join(tmpOutside, 'real-child'));
+      // The path-through-the-symlinked-ancestor is what gets fed to realpath
+      // when the algorithm walks up; mock EPERM on that exact lookup string.
       const realChildThroughLink = join(escapeLink, 'real-child');
       const spy = spyEpermOn(realChildThroughLink);
       try {
@@ -363,6 +453,10 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   });
 
   test('lstat-confirmed non-symlink under symlinked ancestor + realpath EACCES → still reject (security boundary, EACCES arm)', () => {
+    // Mirrors the EPERM ancestor-reject test but injects EACCES. Pins
+    // the EACCES arm of the OR condition in the realpath catch — a future
+    // refactor narrowing the ancestor-chain scan to EPERM-only would pass
+    // the EACCES accept test but fail this one.
     const tmpOutside = mkdtempSync(join(realpathSync(tmpdir()), 'ok-symlinked-ancestor-eacces-'));
     try {
       const escapeLink = join(fakeHome, 'escape-symlink-ancestor-eacces');
@@ -398,6 +492,15 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
     }
   });
 });
+
+// ─── isPathWithinHome — fail-closed defensive guards ─────────────────────────
+//
+// Pins the fail-closed contract on three boundaries that are otherwise
+// untested today: a non-EPERM realpath error on a non-symlink leaf must
+// reject (unknown error codes are not granted the TCC accommodation); a
+// home-dir realpath failure must reject every input (no realHome → no
+// containment basis); an lstat throw during `ancestorChainHasSymlink`
+// must fail closed inside the EPERM accept-branch.
 
 describe('isPathWithinHome — fail-closed defensive guards', () => {
   let fakeHome: string;
@@ -451,6 +554,10 @@ describe('isPathWithinHome — fail-closed defensive guards', () => {
   }
 
   test('non-symlink + realpath EIO → reject (unknown error code, not TCC)', () => {
+    // Only EPERM/EACCES are granted the TCC-class accommodation. Any other
+    // realpath error code on a non-symlink leaf must fail closed — the
+    // accept-branch is narrow by design, not a generic "trust lexical when
+    // realpath misbehaves" hatch.
     const dir = join(fakeHome, 'eio-dir');
     mkdirSync(dir);
     const spy = spyErrnoOn(dir, 'EIO', 'realpathSync');
@@ -462,6 +569,10 @@ describe('isPathWithinHome — fail-closed defensive guards', () => {
   });
 
   test('home dir realpath failure → reject all paths', () => {
+    // realHome is the containment anchor; without it there is no basis to
+    // judge any path. Pins the early-return at the realHome resolution site
+    // against a future refactor that might fall back to a non-canonicalized
+    // home string.
     const spy = spyErrnoOn(fakeHome, 'EPERM', 'realpathSync');
     try {
       expect(isPathWithinHome(join(fakeHome, 'anything'), fakeHome)).toBe(false);
@@ -471,6 +582,12 @@ describe('isPathWithinHome — fail-closed defensive guards', () => {
   });
 
   test('ancestor chain lstat-throw during scan → fail-closed reject', () => {
+    // Dual-spy: realpath EPERM on the leaf takes the algorithm into the
+    // EPERM accept-branch, which calls `ancestorChainHasSymlink`. When the
+    // ancestor walk's `lstat` throws (TCC denial on an intermediate
+    // component), the function returns true (treat-as-symlink) and the
+    // accept-branch rejects. Pins the catch inside `ancestorChainHasSymlink`
+    // against a relaxation to "skip this component on error".
     const ancestor = join(fakeHome, 'mid-ancestor-failclosed');
     const leaf = join(ancestor, 'leaf-failclosed');
     mkdirSync(ancestor);
@@ -485,6 +602,8 @@ describe('isPathWithinHome — fail-closed defensive guards', () => {
     }
   });
 });
+
+// ─── checkLocalOpSecurity ────────────────────────────────────────────────────
 
 describe('checkLocalOpSecurity', () => {
   test('allows loopback request with no origin', () => {
@@ -531,6 +650,8 @@ describe('checkLocalOpSecurity', () => {
     expect(body.status).toBe(403);
   });
 });
+
+// ─── createConcurrencyGuard ───────────────────────────────────────────────────
 
 describe('createConcurrencyGuard', () => {
   test('tryAcquire succeeds first time', () => {

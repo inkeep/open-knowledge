@@ -63,6 +63,7 @@ describe('extractDeltaSection', () => {
 
 - old: prior
 `;
+    // Just the trailing blank line between the two ## headings.
     expect(extractDeltaSection(input)).toBe('');
   });
 });
@@ -160,6 +161,11 @@ describe('renderNotes', () => {
   });
 
   test('drops top-level fixed-group sibling-bump bullets', () => {
+    // Changesets emits `- @inkeep/<pkg>@<version>` as a direct bullet in
+    // non-cli packages' CHANGELOG fragments. The version stamped is the
+    // pre-mode-computed bump (e.g., beta.6), which is unrelated to the
+    // workflow-resolved -beta.N tag (e.g., beta.46) the release ships as.
+    // These bullets are boilerplate cross-references — drop them.
     const packageDeltas = {
       core: `### Patch Changes
 
@@ -299,10 +305,14 @@ describe('round-trip: extractDeltaSection → parseSection → renderNotes', () 
       newCount: 2,
     });
 
+    // abc1234 should appear once despite being in both packages.
     const occurrences = (notes.match(/MCP wiring repair/g) || []).length;
     expect(occurrences).toBe(1);
+    // def5678 (app-only) should appear once.
     expect(notes).toContain('jsx selection UX');
+    // Updated dependencies bulletboard must not leak through.
     expect(notes).not.toContain('Updated dependencies');
+    // Marker at end.
     expect(notes).toMatch(/<!-- ok-consumed-set:.*-->$/);
   });
 });
@@ -344,6 +354,10 @@ describe('maxBumpType', () => {
 });
 
 describe('computeBaseVersion — normative cadence vectors', () => {
+  // base = anchor bumped by the max bump-type accumulated since the
+  // last stable. Each row is the pile as it grows cut-by-cut from a clean
+  // 0.5.0 stable. -beta.N counter is owned by release.yml (tag scan), not
+  // here, so these only pin the base.
   const ANCHOR = '0.5.0';
 
   test('V1 — linear patches stay on one base', () => {
@@ -358,6 +372,8 @@ describe('computeBaseVersion — normative cadence vectors', () => {
     expect(computeBaseVersion(ANCHOR, ['patch', 'minor', 'patch'])).toBe('0.6.0');
   });
 
+  // Pins the math layer; check-no-major-changeset.sh prevents a 'major' from
+  // reaching here in a real cycle.
   test('V3 — a major dominates the whole cycle', () => {
     expect(computeBaseVersion(ANCHOR, ['major'])).toBe('1.0.0');
     expect(computeBaseVersion(ANCHOR, ['major', 'minor'])).toBe('1.0.0');

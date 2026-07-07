@@ -151,6 +151,10 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
   });
 
   test('hides the whole submenu when nothing can render (no installed targets, no terminal launcher)', async () => {
+    // No TerminalLaunchContext provider in the test → `useTerminalLaunch()` is
+    // null (web-host path). With every visible target uninstalled there is
+    // nothing to launch, so the submenu (and its trigger) must not render — and
+    // there is no claude.ai fallback to keep it alive anymore.
     await renderSubmenu({
       states: installStates({
         'claude-code': { installed: false, lastChecked: 1 },
@@ -168,16 +172,20 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
 
     expect(screen.getByText('Desktop')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
+    // Terminal-first: the Terminal section label precedes the Desktop one.
     expect(
       screen.getByText('Terminal').compareDocumentPosition(screen.getByText('Desktop')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // Separator divides the two populated sections.
     expect(document.querySelector('[data-slot="context-menu-separator"]')).toBeTruthy();
 
     const terminalRow = screen.getByTestId('empty-space-open-in-terminal-claude');
+    // Visible text is the brand "Claude"; accessible name is "Claude CLI".
     expect(terminalRow.textContent).toContain('Claude');
     expect(terminalRow.textContent).not.toContain('CLI');
     expect(terminalRow.getAttribute('aria-label')).toBe('Claude CLI');
+    // Codex + Cursor rows sit alongside, each with its own "<Brand> CLI" name.
     expect(
       screen.getByTestId('empty-space-open-in-terminal-codex').getAttribute('aria-label'),
     ).toBe('Codex CLI');
@@ -201,6 +209,8 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     await openEmptySpaceSubmenu();
 
     const terminalRow = screen.getByTestId('empty-space-open-in-terminal-claude');
+    // WCAG 2.5.3: the accessible name must contain the visible label "Claude";
+    // when input is missing the hint is appended in this exact order.
     expect(terminalRow.getAttribute('aria-label')).toBe('Claude CLI, No workspace');
     expect(terminalRow.getAttribute('data-disabled')).toBe('');
 

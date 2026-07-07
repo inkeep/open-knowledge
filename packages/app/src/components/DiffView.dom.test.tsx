@@ -1,3 +1,15 @@
+/**
+ * RTL behavioral test for `DiffView`'s `oursOverride` prop.
+ *
+ * Pins the contract: when an explicit `oursOverride` is passed, the
+ * conflict-mode merge view displays those bytes as the `ours` pane instead
+ * of `newContent`. This closes the byte-divergence class where the
+ * editor-area DiffView showed `git show :2:` bytes while a "Keep mine"
+ * dispatch with `strategy: 'content'` would write the (different) Y.Text
+ * snapshot. Now both surfaces show the same string.
+ *
+ * Substrate: jsdom via `bun run test:dom`.
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { DiffView } from './DiffView';
@@ -18,6 +30,9 @@ describe('DiffView oursOverride (FR3)', () => {
       />,
     );
 
+    // CodeMirror renders the doc text inside a `.cm-content` container. The
+    // bytes the override carries should appear; the bytes `newContent`
+    // carries should NOT (since override fully replaces it).
     const cmContent = container.querySelector('.cm-content');
     expect(cmContent).not.toBeNull();
     const rendered = cmContent?.textContent ?? '';
@@ -77,6 +92,12 @@ describe('DiffView conflict footer height contract', () => {
     cleanup();
   });
 
+  // The conflict footer (Exit merge / Undo / Save resolution) must stay
+  // clickable while the floating Ask AI composer is visible. The composer
+  // anchors its bottom to `--conflict-footer-height` (the counterpart of the
+  // composer's own `--ask-composer-height`), so DiffView must publish the
+  // footer's measured height on the document root for the whole conflict
+  // session and reclaim it afterward.
   test('conflictMode publishes --conflict-footer-height on the document root while mounted', () => {
     const { unmount } = render(
       <DiffView
@@ -88,6 +109,8 @@ describe('DiffView conflict footer height contract', () => {
     );
 
     const value = document.documentElement.style.getPropertyValue('--conflict-footer-height');
+    // jsdom: offsetHeight=0, so this is a lifecycle pin (published vs not),
+    // not a geometry assertion; real browsers produce the actual height.
     expect(value).toBe('0px');
 
     unmount();

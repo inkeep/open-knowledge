@@ -6,6 +6,13 @@ type TargetDisplayState = 'doc' | 'folder' | 'missing';
 interface TargetNavigationIntent {
   resolvedTarget: ResolvedNavigationTarget;
   hashDocName: string;
+  /**
+   * The FULL navigation hash for this target, kind-aware. For most targets this
+   * is `#/<hashDocName>` (the caller may instead build it from `hashDocName`),
+   * but a `skill-file` target routes to the read-only viewer via the
+   * `#/__skill-file__/…` prefix — its hash cannot be expressed as a docName, so
+   * a graph click must use this field rather than wrapping `hashDocName`.
+   */
   hash: string | null;
   displayState: TargetDisplayState;
 }
@@ -15,6 +22,9 @@ function getTargetDisplayState(resolvedTarget: ResolvedNavigationTarget): Target
     case 'doc':
     case 'large-file':
       return 'doc';
+    // A skill-bundle reference resolves to a real, openable read-only viewer, so
+    // it must render as a resolved node — not the dashed-red "missing" treatment
+    // (which would read as a broken link even though clicking it opens the file).
     case 'skill-file':
       return 'doc';
     case 'folder':

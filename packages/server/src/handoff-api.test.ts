@@ -21,6 +21,7 @@ describe('createInstalledAgentsProbe', () => {
   });
 
   test('3 calls within TTL produce 1 probe per scheme (cache hit)', async () => {
+    // 3 calls within 60s → 1 probe per scheme.
     const counts: Record<string, number> = {};
     const probeFn = async (scheme: InstalledAgentScheme) => {
       counts[scheme] = (counts[scheme] ?? 0) + 1;
@@ -57,9 +58,13 @@ describe('createInstalledAgentsProbe', () => {
   });
 
   test('concurrent calls coalesce into a single probe per scheme', async () => {
+    // In-flight dedup: if 5 requests fire before the probe resolves, all 5
+    // await the same probe.
     const counts: Record<string, number> = {};
     const probeFn = async (scheme: InstalledAgentScheme) => {
       counts[scheme] = (counts[scheme] ?? 0) + 1;
+      // Deliberate microtask-deferred resolution so all 5 callers see the
+      // same in-flight entry.
       await wait(0);
       return true;
     };
@@ -82,6 +87,7 @@ describe('createInstalledAgentsProbe', () => {
     expect(await probeWithCache('claude')).toBe(false);
     clockNow += 10_000; // well within TTL
     expect(await probeWithCache('claude')).toBe(false);
+    // Only one actual probe call despite two cached calls.
     expect(calls).toBe(1);
   });
 
@@ -109,6 +115,11 @@ describe('handleInstalledAgents', () => {
     method: string,
     headers: Record<string, string> = {},
   ): import('node:http').IncomingMessage {
+    // Real IncomingMessage always exposes a headers object; the mock mirrors
+    // that shape so the capability-tier Host check in handleInstalledAgents
+    // doesn't trip over an undefined `headers`. Default to no Host header,
+    // which `isLocalWebHost` treats as local-web (conservative default — the
+    // route gate has already required a loopback socket to reach here).
     return { method, headers } as import('node:http').IncomingMessage;
   }
 
@@ -231,8 +242,10 @@ describe('createOsProbe', () => {
     const calls: ExecCall[] = [];
     const exec: ExecFileLike = (file, args, _opts, cb) => {
       calls.push({ cmd: file, args });
+      // Pick the first matching key by command prefix.
       const key = Object.keys(responses).find((k) => k === file) ?? file;
       const resp = responses[key] ?? {};
+      // Microtask-defer the callback so the probe Promise is in-flight briefly.
       queueMicrotask(() => {
         cb(resp.err ?? null, resp.stdout ?? '', '');
       });
@@ -253,10 +266,12 @@ describe('createOsProbe', () => {
     const { exec, calls } = makeExecFake({ osascript: { err } });
     const probe = createOsProbe('darwin', exec);
     expect(await probe('codex')).toBe(false);
+    // Codex has two candidates; both must be probed before we conclude not-installed.
     expect(calls.length).toBeGreaterThanOrEqual(2);
   });
 
   test('macOS codex scheme tries "Codex" first, falls back to "OpenAI Codex"', async () => {
+    // Sequential probe: first candidate fails with exit 1, second returns a bundle id.
     const calls: Array<{ cmd: string; args: readonly string[] }> = [];
     let callIndex = 0;
     const exec: ExecFileLike = (file, args, _opts, cb) => {
@@ -264,8 +279,10 @@ describe('createOsProbe', () => {
       const index = callIndex++;
       queueMicrotask(() => {
         if (index === 0) {
+          // First candidate ("Codex") not found on this machine.
           cb(Object.assign(new Error('exit 1'), { code: 1 }), '', '');
         } else {
+          // Second candidate ("OpenAI Codex") returns a bundle id.
           cb(null, 'com.openai.codex\n', '');
         }
       });
@@ -280,6 +297,7 @@ describe('createOsProbe', () => {
     const { exec, calls } = makeExecFake({ osascript: { stdout: 'com.openai.codex' } });
     const probe = createOsProbe('darwin', exec);
     expect(await probe('codex')).toBe(true);
+    // Fallback candidate never probed once the first one returned.
     expect(calls.length).toBe(1);
     expect(calls[0]?.args).toEqual(['-e', 'id of app "Codex"']);
   });
@@ -289,6 +307,8 @@ describe('createOsProbe', () => {
     const probe = createOsProbe('win32', exec);
     expect(await probe('cursor')).toBe(true);
     expect(calls[0]?.cmd).toBe('reg');
+    // Querying HKCR catches both HKCU\Software\Classes (user-scope) and
+    // HKLM\Software\Classes (system-wide installer) registrations.
     expect(calls[0]?.args).toEqual(['query', 'HKCR\\cursor', '/ve']);
   });
 
@@ -338,6 +358,7 @@ describe('createOsProbe', () => {
 
 describe('isLocalWebHost — capability-tier Host detection (D47)', () => {
   function reqWith(headers: Record<string, string>): import('node:http').IncomingMessage {
+    // Minimal IncomingMessage shape — the helper reads only req.headers.{host,origin}.
     return { headers } as unknown as import('node:http').IncomingMessage;
   }
 
@@ -366,6 +387,8 @@ describe('isLocalWebHost — capability-tier Host detection (D47)', () => {
   });
 
   test('Host: 127.0.0.1.evil.com → remote-web (rebinding-style hostname is NOT loopback)', () => {
+    // Defense-in-depth: a crafted hostname that starts with the loopback IP
+    // literal must not match. WHATWG URL parses this as a normal DNS name.
     expect(isLocalWebHost(reqWith({ host: '127.0.0.1.evil.com:5173' }))).toBe(false);
   });
 
@@ -382,6 +405,7 @@ describe('isLocalWebHost — capability-tier Host detection (D47)', () => {
   });
 
   test('malformed Host falls back to Origin when present', () => {
+    // Unparseable Host should not flip the tier when Origin would have answered.
     expect(
       isLocalWebHost(reqWith({ host: '::::not-a-host::::', origin: 'http://localhost' })),
     ).toBe(true);
@@ -428,6 +452,7 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
       getFileIndex: () => new Map(),
       installedAgentsProbe: async (scheme) => {
         probeCalls[scheme] = (probeCalls[scheme] ?? 0) + 1;
+        // Deterministic mock response: claude + cursor installed, codex not.
         return scheme === 'claude' || scheme === 'cursor';
       },
     });
@@ -463,6 +488,7 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   });
 
   test('3 GETs within cache TTL trigger exactly 1 probe per scheme', async () => {
+    // "3 calls within 60s → 1 probe per scheme".
     for (let i = 0; i < 3; i++) {
       const res = await fetch(`http://127.0.0.1:${port}/api/installed-agents`);
       expect(res.status).toBe(200);
@@ -486,6 +512,11 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   });
 
   test('rejects cross-origin requests (DNS-rebinding / malicious-page defense)', async () => {
+    // A request that reaches the loopback socket but carries an Origin header
+    // naming a non-loopback host is the DNS-rebinding / cross-origin-fetch
+    // class. The `checkLocalOpSecurity` gate added alongside this endpoint
+    // rejects it; exposing the install fingerprint to co-resident hostile
+    // origins defeats the whole point of the gate.
     const res = await fetch(`http://127.0.0.1:${port}/api/installed-agents`, {
       headers: { Origin: 'https://evil.example.com' },
     });
@@ -505,15 +536,29 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
     expect(body).toEqual({ claude: true, codex: false, cursor: true });
   });
 
+  // ── capability-tier ──────────────────────────────────────────
+  // The route gate (`checkLocalOpSecurity`) accepts loopback sockets with a
+  // loopback Origin. Inside the handler, `isLocalWebHost` then inspects the
+  // browser-supplied Host header to distinguish "browser typed localhost"
+  // (local-web — real probe) from "browser typed a non-loopback URL"
+  // (remote-web — return all-installed and let the OS protocol-dispatch
+  // dialog be the truth signal). The remote-web case is normally reached via
+  // SSH tunnels / reverse proxies where the connection still terminates on
+  // loopback; these tests simulate it directly with a forged Host header.
+
   test('remote-web (Host: example.com) → all-true and probe NOT called', async () => {
     const res = await fetch(`http://127.0.0.1:${port}/api/installed-agents`, {
       headers: {
+        // Cross-origin Origin is rejected by checkLocalOpSecurity, so only
+        // the Host header carries the remote-web signal here.
         Host: 'example.com:5173',
       },
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ claude: true, codex: true, cursor: true });
+    // The capability-tier short-circuits before the probe runs — the server's
+    // own filesystem must never be fingerprinted on behalf of a remote browser.
     expect(probeCalls).toEqual({});
   });
 
@@ -536,6 +581,8 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   });
 
   test('remote-web requests are NOT cached against later local-web requests', async () => {
+    // Capability-tier short-circuits without populating the cache, so a
+    // following local-web request still triggers the real probe.
     const remote = await fetch(`http://127.0.0.1:${port}/api/installed-agents`, {
       headers: { Host: 'example.com:5173' },
     });

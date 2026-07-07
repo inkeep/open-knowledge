@@ -1,3 +1,17 @@
+/**
+ * Structural-duplication classifier for the persistence tripwire.
+ *
+ * Returns `block` only when the candidate body is an integer concatenation
+ * (k ≥ 2) of the bridge-normalized base body, separated by inter-copy
+ * whitespace only. Frontmatter is stripped from both inputs before
+ * comparison, so frontmatter-only changes never block. Size and
+ * child-count ratios are NOT inputs — those remain warn-only diagnostics
+ * elsewhere.
+ *
+ * Pure module: no disk I/O, no imports from `persistence.ts`. Reuses
+ * `normalizeBridge` (canonical bridge-invariant normalization) and
+ * `stripFrontmatter` from the shared markdown pipeline.
+ */
 import { normalizeBridge, stripFrontmatter } from '@inkeep/open-knowledge-core';
 
 type DuplicationReason =
@@ -21,6 +35,14 @@ function isWhitespace(ch: string): boolean {
   return ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r';
 }
 
+/**
+ * Classify whether `candidate` is a structural duplication of `base`.
+ *
+ * Block iff, after stripping frontmatter, bridge-normalizing, and
+ * trimming both sides, the candidate body equals an integer
+ * concatenation of the base body (k ≥ 2) with only inter-copy whitespace
+ * between repetitions.
+ */
 export function classifyDuplication(candidate: string, base: string): DuplicationClassification {
   const baseBody = normalizeBody(base);
   if (baseBody.length === 0) {

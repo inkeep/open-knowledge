@@ -1,3 +1,8 @@
+/**
+ * Re-exports for the per-check modules. Imported by `diagnose.ts` to build
+ * the default check registry.
+ */
+
 export { makeBunCheck } from './bun.ts';
 export { makeConfigYamlCheck } from './config-yaml.ts';
 export { makeContentDirCheck } from './content-dir.ts';

@@ -4,6 +4,8 @@
   "pages": [
     "---GET STARTED---",
     "...get-started",
+    "---WORKFLOWS---",
+    "...workflows",
     "---MIGRATE---",
     "...migrate",
     "---INTEGRATIONS---",
@@ -12,8 +14,6 @@
     "...features",
     "---ADVANCED---",
     "...advanced",
-    "---WORKFLOWS---",
-    "...workflows",
     "---REFERENCE---",
     "...reference"
   ]

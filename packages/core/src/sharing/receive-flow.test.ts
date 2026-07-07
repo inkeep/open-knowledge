@@ -119,6 +119,12 @@ describe('findRecentProjectsForRepo', () => {
   });
 
   test('SSH-form stored URL misses match — falls through to clone / locate', () => {
+    // Pre-condition: the open-time backfill (readCanonicalGitHubRemoteUrl)
+    // canonicalizes to the https form, so a properly-backfilled
+    // RecentProject never reaches this state. But the gap exists if a
+    // RecentProject was persisted BEFORE backfill — the URL is the raw
+    // SSH form (`git@github.com:owner/repo.git`) and the canonical https
+    // compare misses. Pin the silent fall-through behavior.
     const r = recent({
       path: '/x',
       gitRemoteUrl: 'git@github.com:inkeep/open-knowledge.git',

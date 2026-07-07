@@ -14,9 +14,24 @@ import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
 import { SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
 import { useSettingsRoute } from '@/lib/use-settings-route';
 
+/**
+ * Settings → Skills. Lists the project's authored skills (under
+ * `<projectRoot>/.ok/skills/<name>/`) grouped by scope, so where each skill
+ * lives is unmistakable: project skills are shared via git with everyone on
+ * the project; global skills follow you across every project on this
+ * computer. Each row badges its install-state (Installed vs Draft) and the
+ * editor hosts it's projected into, and carries Install / Edit / Delete.
+ *
+ * Create + edit author the skill's `SKILL.md` (name + description + body);
+ * Install projects it into the project's target editors (see `SkillTargetsPicker`).
+ */
+
 interface ScopeGroupChrome {
+  /** Group heading. */
   title: ReactNode;
+  /** One-line scope explainer under the heading. */
   blurb: ReactNode;
+  /** Shown when this scope has zero skills. */
   empty: ReactNode;
 }
 
@@ -45,11 +60,17 @@ export function SkillsManagerSection() {
   const settingsRoute = useSettingsRoute();
   const [newSkillOpen, setNewSkillOpen] = useState(false);
 
+  // Open the skill as the active editor tab and close Settings so it's visible —
+  // editing a skill is editing a document (the tab + sidebar + chrome are the
+  // doc shell). Setting the artifact hash also closes Settings (it's hash-driven),
+  // so the explicit close() is a belt-and-suspenders no-op once the hash flips.
   function openSkillTab(scope: SkillScope, name: string) {
     openManagedArtifactTab(skillLiveDocName(scope, name));
     settingsRoute.close();
   }
 
+  // Install/uninstall side effects + the delete/history dialogs are shared with
+  // the file-sidebar Skills section via this hook (no duplicated flow).
   const actions = useSkillActions();
 
   return (
@@ -98,6 +119,10 @@ export function SkillsManagerSection() {
           const skills = state.data
             .filter((s) => s.scope === scope)
             .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+          // Global store isn't enumerated yet — hide its group
+          // entirely until it can hold skills, rather than show a permanently
+          // empty section. The project group always renders so its empty state
+          // guides first-time authoring.
           if (scope === 'global' && skills.length === 0) return null;
           return (
             <ScopeGroup

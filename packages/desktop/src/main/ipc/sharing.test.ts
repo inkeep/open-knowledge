@@ -1,3 +1,13 @@
+/**
+ * IPC handler tests for the `ok:sharing:dispatch` channel (status / set-mode).
+ *
+ * Exercise the pure handler functions directly against a tmpdir-backed git
+ * repo. The IPC wrapping in main/index.ts is one createHandler call; its
+ * behavior (look up ctx, throw on no-ctx, forward projectPath) is shared
+ * with every project-scoped IPC and is covered by the existing main-side
+ * tests for those siblings.
+ */
+
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -99,6 +109,7 @@ describe('handleSharingSetMode', () => {
     expect(handleSharingStatus(dir).mode).toBe('local-only');
     handleSharingSetMode(dir, 'shared');
     expect(handleSharingStatus(dir).mode).toBe('shared');
+    // Exclude file (created by git init) should not retain any OK markers.
     const exclude = readFileSync(join(dir, '.git', 'info', 'exclude'), 'utf-8');
     expect(exclude).not.toContain('.ok/');
     expect(exclude).not.toContain('.mcp.json');

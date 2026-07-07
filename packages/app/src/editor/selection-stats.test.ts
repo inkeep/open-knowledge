@@ -33,12 +33,18 @@ describe('selection-stats store', () => {
     publishSelectionStats('store-b', 'wysiwyg', null);
   });
 
+  // Regression: a doc kept in both surfaces (one Activity-hidden) must not let
+  // the hidden editor's publish clobber the visible editor's entry. Separate
+  // surface keys for the same doc are independent.
   test('the two surfaces for one doc do not clobber each other', () => {
     const doc = 'store-two-surface';
     publishSelectionStats(doc, 'wysiwyg', { words: 5, chars: 30, tokens: 8 });
+    // Hidden source editor fires on a bridge-driven docChange and publishes its
+    // collapsed (null) selection. This must NOT clear the WYSIWYG entry.
     publishSelectionStats(doc, 'source', null);
     expect(getSelectionStats(doc, 'wysiwyg')).toEqual({ words: 5, chars: 30, tokens: 8 });
     expect(getSelectionStats(doc, 'source')).toBeNull();
+    // And the reverse direction.
     publishSelectionStats(doc, 'source', { words: 2, chars: 4, tokens: 1 });
     publishSelectionStats(doc, 'wysiwyg', null);
     expect(getSelectionStats(doc, 'source')).toEqual({ words: 2, chars: 4, tokens: 1 });
@@ -69,9 +75,11 @@ describe('selection-stats store', () => {
     const unsub = subscribeSelectionStats(() => {
       calls++;
     });
+    // A fresh object with identical values (what the extraction helpers mint).
     publishSelectionStats(doc, 'wysiwyg', { words: 3, chars: 12, tokens: 3 });
     expect(calls).toBe(0);
     expect(getSelectionStats(doc, 'wysiwyg')).toBe(ref1); // same reference retained
+    // A real value change notifies and swaps the reference.
     publishSelectionStats(doc, 'wysiwyg', { words: 4, chars: 12, tokens: 3 });
     expect(calls).toBe(1);
     unsub();
@@ -124,6 +132,7 @@ describe('selectionStatsFromSource', () => {
   });
 
   test('raw markdown selection is stripped to visible-text stats', () => {
+    // "## Hello" in source ≡ "Hello" in WYSIWYG.
     expect(
       selectionStatsFromSource(fakeSourceView([{ from: 0, to: 8, text: '## Hello' }])),
     ).toEqual({ words: 1, chars: 5, tokens: 2 });

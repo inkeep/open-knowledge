@@ -13,6 +13,8 @@ function makeDeps(overrides: Partial<OpenDeps> = {}): {
   const deps: OpenDeps = {
     detectBundlePath: () => null,
     resolveBaseUrl: () => null,
+    // Default: nothing is a folder on disk, so tests opt into folder routing via
+    // an explicit override, `--folder`, or a trailing slash.
     classifyName: () => 'doc',
     openTarget: (t) => opened.push(t),
     log: (m) => logs.push(m),
@@ -125,6 +127,8 @@ describe('runOpen', () => {
   });
 
   test('skill name with a traversal/unsafe segment → error before any open', () => {
+    // The unsafe-name guard runs before the skill branch, so a malicious skill
+    // name can't slip into the synthetic `__skill__/<scope>/<name>` target.
     const { deps, opened, errors } = makeDeps({
       detectBundlePath: () => '/Applications/OpenKnowledge.app',
     });
@@ -173,6 +177,9 @@ describe('runOpen', () => {
     expect(errors).toHaveLength(1);
   });
 
+  // The deep-link path (encodeURIComponent) and the browser-route path
+  // (encodeDocName, per-segment) intentionally diverge on `/`: the deep link
+  // encodes it to %2F, the browser route preserves it as a path separator.
   test('doc deep link encodes the whole name including the slash (%2F)', () => {
     const { deps, opened } = makeDeps({
       detectBundlePath: () => '/Applications/OpenKnowledge.app',
@@ -205,6 +212,9 @@ describe('createRealOpenDeps wiring', () => {
     expect(deps.detectBundlePath()).toBe('/Applications/OpenKnowledge.app');
   });
 
+  // The headless-agent contract: a bundle is present but `available` is false
+  // (non-TTY) — the collapse keys on bundlePath, so desktop routing still fires.
+  // Pins against a regression that re-gates on `available`.
   test('detectBundlePath returns the bundle path when available:false but bundlePath is set', () => {
     const deps = createRealOpenDeps(() => ({
       available: false,

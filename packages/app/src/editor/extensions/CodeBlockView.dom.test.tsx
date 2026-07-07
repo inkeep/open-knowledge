@@ -1,3 +1,14 @@
+/**
+ * Composition guard for the preview NodeView → iframe `srcdoc` wiring.
+ *
+ * `code-block-preview-csp.test.ts` pins `buildPreviewIframeHeader` in
+ * isolation; this test pins that its output actually reaches the rendered
+ * iframe — a dropped header or a hardcoded string would ship the wrong CSP to
+ * the live preview. The CSP is no longer configurable (the iframe runs a fixed
+ * open network policy), so this asserts the open directives land in the
+ * `srcdoc`.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { Config } from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
@@ -35,6 +46,8 @@ function makeEditor(): NodeViewProps['editor'] {
   } as unknown as NodeViewProps['editor'];
 }
 
+// `language: 'html'` + `meta: 'preview'` makes `shouldShowPreview` true, so
+// the preview iframe (the surface under test) actually renders.
 function makeProps(): NodeViewProps {
   return {
     editor: makeEditor(),
@@ -66,11 +79,13 @@ describe('CodeBlockView preview-CSP wiring', () => {
 
   test('renders the fixed open-network CSP in the iframe srcdoc', () => {
     const srcdoc = renderSrcdoc();
+    // The builder's open directives flow through the NodeView into the iframe.
     expect(srcdoc).toContain("script-src 'unsafe-inline' https:");
     expect(srcdoc).toContain('connect-src https:');
     expect(srcdoc).toContain('img-src https:');
     expect(srcdoc).not.toContain("connect-src 'none'");
     expect(srcdoc).not.toContain("'unsafe-eval'");
+    // The body still rides after the header — guards the `+ node.textContent`.
     expect(srcdoc).toContain('<div id="probe">hello</div>');
   });
 });
@@ -80,6 +95,16 @@ describe('CodeBlockView edit-source modal language wiring', () => {
     cleanup();
   });
 
+  /**
+   * Regression for the silent-degrade bug:
+   * `normalizeCodeLanguage('html')` returns `'xml'` (the canonical lowlight
+   * key), so a stale `normalized === 'html'` guard at the modal call site
+   * always evaluated false and the modal opened with `language="plain"` —
+   * no Lezer tree → no token spans → blank-coloring source pane. Pinning
+   * the rendered `data-language` attribute on the modal source host
+   * catches a regression of that exact shape: any future alias-tree
+   * rework that re-introduces the bug would fail this test.
+   */
   test('html-preview fence opens edit-source modal with language="html"', () => {
     const { container } = render(
       <ConfigContext value={makeConfigValue(null)}>
@@ -91,12 +116,21 @@ describe('CodeBlockView edit-source modal language wiring', () => {
     ) as HTMLButtonElement | null;
     expect(editBtn).toBeTruthy();
     fireEvent.click(editBtn as HTMLButtonElement);
+    // Radix portals dialog content to document.body — query off the document.
     const sourceHost = document.querySelector('[data-testid="ok-code-preview-edit-modal-source"]');
     expect(sourceHost).toBeTruthy();
     expect(sourceHost?.getAttribute('data-language')).toBe('html');
   });
 });
 
+/**
+ * Pins the parent-side CSP-violation seam that the unit tests cannot reach:
+ * the bootstrap test stops at the iframe's `postMessage`, and
+ * `PreviewBlockedNotice.dom.test.tsx` starts at the component's props. This is
+ * the wire between them — `onMessage` parses a report from THIS iframe into
+ * state and renders the notice, `onLoad` clears it, and a report from a foreign
+ * window is dropped by the `e.source` filter.
+ */
 describe('CodeBlockView CSP-violation notice wiring', () => {
   afterEach(() => {
     cleanup();
@@ -113,6 +147,9 @@ describe('CodeBlockView CSP-violation notice wiring', () => {
     return { ...utils, iframe };
   }
 
+  // jsdom's MessageEvent constructor rejects a Window as `source` (it requires a
+  // MessagePort), so build a plain message Event and attach `source` + `data`
+  // directly — the handler only reads those two fields.
   function cspReport(source: unknown) {
     const evt = new Event('message');
     Object.defineProperty(evt, 'source', { value: source, configurable: true });
@@ -129,6 +166,8 @@ describe('CodeBlockView CSP-violation notice wiring', () => {
   }
 
   test('shows no notice before any CSP report arrives', () => {
+    // `blockedRequests` initializes to null and the render gates on it; a
+    // non-null default would paint a spurious notice on every preview mount.
     const { container } = renderPreview();
     expect(container.querySelector('[role="status"]')).toBeNull();
   });

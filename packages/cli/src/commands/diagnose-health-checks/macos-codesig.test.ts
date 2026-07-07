@@ -1,3 +1,9 @@
+/**
+ * `macos-codesig` check tests — covers the platform skip, the
+ * dev-mode caveat, the translocation fail, and the codesign
+ * pass/fail branches.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { makeMacosCodesigCheck } from './macos-codesig.ts';
 

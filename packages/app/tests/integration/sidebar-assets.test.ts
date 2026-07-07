@@ -49,6 +49,11 @@ describe('/api/documents sidebar asset rows', () => {
   test('returns referenced local assets as non-document rows', async () => {
     const res = await fetch(`http://127.0.0.1:${server.port}/api/documents`);
     expect(res.ok).toBe(true);
+    // Round-trip the response through `DocumentListSuccessSchema` so any
+    // schema-vs-server divergence (e.g. mediaKind union, new asset variants)
+    // surfaces as a typed parse failure here, not as a runtime error in
+    // FileTree.tsx. Inline-cast assertions silently accept whatever shape the
+    // server emits — and miss exactly this class of regression.
     const body = DocumentListSuccessSchema.parse(await res.json());
 
     const doc = body.documents.find((entry) => entry.docName === 'docs/guide');
@@ -110,6 +115,11 @@ describe('/api/documents sidebar asset rows', () => {
       referencedBy: ['docs/guide'],
     });
 
+    // Unreferenced non-markdown files surface by disk presence (not markdown
+    // reference): a file no markdown body links to still appears, as a
+    // name-only `kind:'file'` row — never as a `kind:'asset'` row, since it
+    // carries no `referencedBy`. (Asset rows are reserved for files an indexed
+    // markdown body actually references.)
     const unreferenced = body.documents.find(
       (entry) => entry.path === 'docs/media/unreferenced.png',
     );
@@ -119,6 +129,8 @@ describe('/api/documents sidebar asset rows', () => {
       assetExt: 'png',
     });
 
+    // A remote URL is not a file on disk, so it never enters the index and
+    // never appears as a row regardless of all-files coverage.
     expect(body.documents.some((entry) => entry.path === 'https://example.com/remote.png')).toBe(
       false,
     );

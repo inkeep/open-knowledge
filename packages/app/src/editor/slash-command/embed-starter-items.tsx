@@ -1,3 +1,28 @@
+/**
+ * Slash-command items for the embed group — generic blank-HTML entry +
+ * the themed `html preview` starter family.
+ *
+ * Every item in this file inserts an `html preview` code block:
+ * `language: 'html'`, `meta: 'preview'`. The block opens straight into the
+ * live sandboxed iframe preview (see `CodeBlockView`'s `shouldShowPreview`
+ * gate + `PREVIEWABLE_LANGUAGES`). The blank entry seeds a minimal
+ * theme-token-wired Hello-world so the preview shows something on first
+ * paint; the themed entries pull their body from `PREVIEW_EMBED_STARTERS`
+ * — single-source-of-truth shared with the `palette` MCP
+ * tool's `embedPatterns` so agents and humans see the same palette.
+ *
+ * Generic blank lives at the TOP of the returned list so `/embed` lands
+ * on the from-scratch entry first (matches the "new blank doc →
+ * templates" mental model from other tools).
+ *
+ * Naming convention — every item's `name` field uses the `embed-starter-*`
+ * prefix (`embed-starter-html`, `embed-starter-chart`, …). The blank
+ * entry's id is `html` rather than a `PREVIEW_EMBED_STARTERS` id, but it
+ * shares the prefix so a grep for `embed-starter-` reaches every item in
+ * the embed group. The "starter" label is loose: a starting point for an
+ * `html preview` embed, not literally a `PreviewEmbedStarter`.
+ */
+
 import { PREVIEW_EMBED_STARTERS, type PreviewEmbedStarter } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
@@ -6,6 +31,12 @@ import { BarChart3, Code, LayoutGrid, Shapes, SlidersHorizontal } from 'lucide-r
 import type { ReactNode } from 'react';
 import type { SlashCommandItem } from './items';
 
+/**
+ * Insert an `html preview` code block at the current selection. Single
+ * insertion path shared by every entry in this file — blank-HTML and the
+ * themed starters both call through here so the (codeBlock + language=html
+ * + meta=preview) shape stays in one place.
+ */
 function insertHtmlPreview(editor: Editor, html: string): void {
   editor
     .chain()
@@ -18,11 +49,19 @@ function insertHtmlPreview(editor: Editor, html: string): void {
     .run();
 }
 
+/**
+ * Body for the blank-HTML slash entry. Theme-token wired (no hand-picked
+ * colors) so the preview tracks the reader's light/dark theme like the
+ * themed starters do. The copy nudges the author toward editing — without
+ * a seed the iframe renders empty and the author may think the preview
+ * didn't activate.
+ */
 const BLANK_HTML_BODY = `<div style="padding:20px;font-family:system-ui,sans-serif;color:var(--foreground)">
   <h1 style="margin:0 0 8px;font-size:20px;font-weight:600">Hello, world!</h1>
   <p style="margin:0;color:var(--muted-foreground)">Edit this HTML — the preview updates live.</p>
 </div>`;
 
+/** Per-starter menu chrome — icon, search aliases, and the hover preview. */
 interface StarterUi {
   icon: SlashCommandItem['icon'];
   aliases: string[];
@@ -108,6 +147,14 @@ const STARTER_UI: Record<PreviewEmbedStarter['id'], StarterUi> = {
   },
 };
 
+/**
+ * Generic `html preview` slash entry — the "blank canvas" sibling of the
+ * themed starters. Lands at the TOP of the embed group so authors who want
+ * to write arbitrary HTML don't have to scroll past four themed templates
+ * to find it. Mirrors the themed-starter shape (code block + `meta:
+ * 'preview'`) so it shares CodeBlockView's iframe sandbox, resize affords,
+ * settings-popover title editor, and copy chrome with zero extra wiring.
+ */
 function getBlankHtmlEmbedItem(): SlashCommandItem {
   return {
     name: 'embed-starter-html',
@@ -119,6 +166,10 @@ function getBlankHtmlEmbedItem(): SlashCommandItem {
     command: (editor: Editor) => insertHtmlPreview(editor, BLANK_HTML_BODY),
     preview: {
       description: t`Custom HTML with a live preview pane (sandboxed iframe).`,
+      // Hand-built browser-pane mockup matching the `Embed` jsx component's
+      // preview shape (component-items.tsx) — gives `/embed → HTML` a
+      // recognizable family with the iframe-embed entry without rendering
+      // a real iframe in the slash menu pane.
       render: () => (
         <div className="flex h-full w-full flex-col overflow-hidden rounded-md border border-border bg-background">
           <div className="flex items-center gap-1.5 border-b border-border bg-muted/40 px-2 py-1.5">
@@ -143,6 +194,11 @@ function getBlankHtmlEmbedItem(): SlashCommandItem {
   };
 }
 
+/**
+ * Slash-menu items for the embed group: generic blank-HTML entry first,
+ * followed by the themed `html preview` starters. Merged into the menu via
+ * `itemsSources` alongside the built-in and component items.
+ */
 export function getEmbedStarterItems(): SlashCommandItem[] {
   const starters = PREVIEW_EMBED_STARTERS.map((starter): SlashCommandItem => {
     const ui = STARTER_UI[starter.id];

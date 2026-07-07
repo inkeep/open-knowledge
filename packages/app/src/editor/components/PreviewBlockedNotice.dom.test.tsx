@@ -1,3 +1,16 @@
+/**
+ * Render tests for `PreviewBlockedNotice` — the friendly, dismissible banner
+ * the code-block preview shows when its CSP (or the host's security layer)
+ * blocks a request.
+ *
+ * Only a renderer can prove the user-facing contract: the notice is announced
+ * (role=status), names what was blocked, is count-aware (singular vs plural),
+ * flags truncation, and wires its dismiss control. The iframe→parent reporting
+ * + message parsing are covered in `preview-iframe-csp-violation.test.ts`.
+ *
+ * Lingui macros resolve through the English-passthrough shim; substrate is
+ * jsdom via `bun run test:dom`.
+ */
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { PreviewBlockedNotice } from './PreviewBlockedNotice';
@@ -33,6 +46,8 @@ describe('PreviewBlockedNotice', () => {
   });
 
   test('renders (inline) when the blocked uri is empty', () => {
+    // Inline-script / eval violations report an empty blockedURI; the fallback
+    // must still name the entry rather than render a blank line.
     render(
       <PreviewBlockedNotice
         blocked={[{ directive: 'script-src', uri: '' }]}
@@ -79,10 +94,13 @@ describe('PreviewBlockedNotice', () => {
         onDismiss={() => {}}
       />,
     );
+    // "More than N" — never an exact count when the report was capped.
     expect(screen.getByText(/more than 2 requests were blocked/i)).toBeDefined();
   });
 
   test('flags display overflow when more were listed than shown', () => {
+    // 6 blocked, not report-truncated: only VISIBLE_LIMIT (4) are listed, so the
+    // notice must say more were blocked even though the heading count is exact.
     const blocked = Array.from({ length: 6 }, (_v, i) => ({
       directive: 'img-src',
       uri: `http://a/${i}.png`,

@@ -1,3 +1,15 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleHistory`.
+ *
+ * Asserts the canonical RFC 9457 wire shape:
+ *   - happy path: 200, application/json, body parses against
+ *     `HistorySuccessSchema`, no `ok: true` discriminator.
+ *   - missing docName query param emits `urn:ok:error:invalid-request`.
+ *   - bad branch name emits `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed`
+ *     + `Allow: GET`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { HistorySuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -15,6 +27,7 @@ afterAll(async () => {
 
 describe('history envelope (RFC 9457)', () => {
   test('happy path emits flat history body for an existing doc', async () => {
+    // Seed a doc via /api/agent-write-md so history has at least one entry.
     await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -63,6 +76,12 @@ describe('history envelope (RFC 9457)', () => {
   });
 
   test('concurrent identical requests stay consistent through the single-flight path (no shared-state corruption)', async () => {
+    // Scope: this asserts the HTTP single-flight path is concurrency-SAFE — 8
+    // simultaneous identical requests all succeed and return byte-identical
+    // bodies, i.e. sharing one in-flight promise corrupts no shared state.
+    // It does NOT prove the walk ran exactly once (body equality holds for any
+    // deterministic server); the "1 git walk for N callers" coalescing count is
+    // proven directly by `single-flight.test.ts` (`fn called exactly once`).
     await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -78,6 +97,7 @@ describe('history envelope (RFC 9457)', () => {
     }>;
     const first = JSON.stringify(bodies[0]?.entries);
     expect(bodies.every((b) => JSON.stringify(b.entries) === first)).toBe(true);
+    // hasMore is a first-class validated field (window semantics).
     const parsed = HistorySuccessSchema.safeParse(bodies[0]);
     expect(parsed.success).toBe(true);
   });

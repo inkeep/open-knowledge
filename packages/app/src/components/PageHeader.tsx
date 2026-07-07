@@ -1,3 +1,30 @@
+/**
+ * PageHeader — the cover banner + page-icon surface above the editor body.
+ *
+ * Reads `icon` + `cover` from the document's frontmatter (Y.Text('source')
+ * YAML region) via the same `bindFrontmatterDoc` binding `PropertyPanel`
+ * uses. Renders three states (driven by which frontmatter keys resolve to
+ * supported values per `page-header-utils.ts`):
+ *
+ *   1. **cover + icon**: full-width cover banner; icon overlays the bottom-
+ *      left of the cover (Notion-style — half the icon sits on top of the
+ *      cover, half hangs below into the property panel's gutter).
+ *   2. **cover only**: just the banner.
+ *   3. **icon only**: a small icon row above the property panel (no
+ *      banner).
+ *   4. **neither**: render nothing — zero layout shift for docs that
+ *      don't opt in.
+ *
+ * Mount site: `EditorActivityPool`'s per-document column, BETWEEN
+ * `DocumentBoundary` and `PropertyPanel`, so the cover/icon shares the
+ * Y.Doc lifecycle of the open document AND scrolls with the editor
+ * body (precedent #18(b) — keep all per-doc UI inside the boundary).
+ *
+ * The `aria-hidden` attribute marks the header as decoration; the
+ * H1 inside the TipTap body remains the document's actual title. This
+ * avoids fighting screen readers over which surface to announce.
+ */
+
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   bindFrontmatterDoc,
@@ -17,6 +44,13 @@ interface PageHeaderProps {
   provider: HocuspocusProvider;
 }
 
+/**
+ * Read the initial frontmatter snapshot synchronously from the provider
+ * — same direct-read pattern as `PropertyPanel.readInitialSnapshot`. We
+ * read the source bytes once and parse, avoiding the
+ * allocate-binding-and-immediately-dispose pattern an earlier draft of
+ * this file used.
+ */
 function readInitialSnapshot(provider: HocuspocusProvider): FrontmatterSnapshot {
   const ytext = provider.document.getText('source').toString();
   const { map, parseError } = readFmRegionWithError(ytext);
@@ -30,6 +64,11 @@ export function PageHeader({ provider }: PageHeaderProps) {
   );
 
   useEffect(() => {
+    // Closure-scoped binding — there is no consumer that reads the
+    // binding from React state, so a `useState` slot would just pay
+    // for an extra unmount-time render. Lifecycle is bounded by the
+    // effect: `subscribe()` runs while mounted, `unsub()` + `dispose()`
+    // run on cleanup.
     const next = bindFrontmatterDoc(provider);
     setSnapshot(next.current());
     const unsub = next.subscribe((s) => {
@@ -64,6 +103,11 @@ export function PageHeader({ provider }: PageHeaderProps) {
 }
 
 function CoverBanner({ cover }: { cover: ResolvedPageCover }) {
+  // `<img>` (not CSS `background-image`) so the browser's native loader
+  // shows the image, respects `loading="lazy"`, and an `onError` could
+  // fall back to a placeholder later. `draggable={false}` so cover-drag
+  // doesn't accidentally start a media drag-out gesture from the
+  // editor.
   return (
     <div className="page-header-cover" data-testid="page-header-cover">
       <img
@@ -71,6 +115,9 @@ function CoverBanner({ cover }: { cover: ResolvedPageCover }) {
         alt=""
         draggable={false}
         loading="lazy"
+        // `cover.value` can be an attacker-controlled external host
+        // (`url` kind). Match `Embed` / `CodeBlockView` / `Image` —
+        // never leak the doc path + query params in Referer.
         referrerPolicy="no-referrer"
         className="page-header-cover-img"
       />
@@ -87,12 +134,16 @@ function PageIconBlock({ icon, hasCover }: { icon: ResolvedPageIcon; hasCover: b
       </span>
     );
   }
+  // `url` / `path` — rendered as an `<img>`. `path` is already
+  // `toDesktopAssetHref`-wrapped in resolvePageIcon.
   return (
     <span className={overlay} data-testid="page-header-icon" data-kind={icon.kind}>
       <img
         src={icon.value}
         alt=""
         draggable={false}
+        // External-host icons leak Referer without this — same posture
+        // as the cover banner above.
         referrerPolicy="no-referrer"
         className="page-header-icon-img"
       />

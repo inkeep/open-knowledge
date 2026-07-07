@@ -16,6 +16,13 @@ import { OK_SIDEBAR_DRAG_MIME } from '@/lib/sidebar-drag';
 const DEFAULT_TREE_EXTENSION = '.md';
 const TREE_EXTENSION_PATTERN = /\.(md|mdx)$/i;
 
+/**
+ * Map a docName to the tree path the @pierre/trees model uses. `docExt`
+ * carries the actual on-disk extension (`.md` / `.mdx`) — defaults to `.md`
+ * for sites that don't have it yet. Two files with the same docName but
+ * different extensions are distinct file system entries; passing the wrong
+ * extension breaks tree-model mapping.
+ */
 export function docNameToTreePath(
   docName: string,
   docExt: string = DEFAULT_TREE_EXTENSION,
@@ -32,6 +39,11 @@ export function fileEntryToTreePath(entry: FileEntry): string {
   return isAssetEntry(entry) ? entry.path : docNameToTreePath(entry.docName, entry.docExt);
 }
 
+/**
+ * Detect the markdown extension on a tree path. Returns `.md` or `.mdx`
+ * (lowercased) when the path ends with one; undefined when neither matches
+ * (e.g., a folder path).
+ */
 function detectTreePathExtension(treePath: string): string | undefined {
   const match = stripTrailingSlash(treePath).match(TREE_EXTENSION_PATTERN);
   return match ? `.${match[1].toLowerCase()}` : undefined;
@@ -73,6 +85,12 @@ export function collectTreeFolderPathsFromDocuments(documents: readonly FileEntr
         ? entry.path
         : entry.docName;
     const segments = path.split('/').filter(Boolean);
+    // `.ok/` is an internal directory. Skills-as-content makes
+    // `.ok/skills/<name>/SKILL` real content docs and `.ok` itself
+    // index-descendable, so they now reach the document list — but `.ok` is
+    // never a user-visible tree folder (skills live in the Skills section).
+    // Excluding it keeps the folder count (and the hasFolders-gated "Tree view
+    // options" toolbar) about VISIBLE folders only.
     if (segments.includes('.ok')) continue;
     if (isFolderEntry(entry)) {
       const folderPath = folderPathToTreeDirectoryPath(entry.path);
@@ -98,6 +116,14 @@ export function computeTreeAncestorPaths(path: string | null): string[] {
   return ancestors;
 }
 
+/**
+ * Resolve the on-disk extension for a file target. The regex over the tree
+ * path is the fast path for already-extended paths. When the regex misses —
+ * Pierre's `#completeRenaming` can move a node to its extensionless basename
+ * (`Untitled.md` → `Untitled`) without notifying us — fall back to the
+ * authoritative `documents` list. A missing entry on an extensionless name
+ * defaults to `.md`; asset classification happens before this helper.
+ */
 function resolveFileDocExt(
   treePath: string,
   docName: string,
@@ -127,6 +153,7 @@ export function resolveExtensionlessAssetPath(
       return !name.includes('/') && name.startsWith(`${stem}.`);
     },
   );
+  // Ambiguous same-stem assets intentionally preserve the caller's conservative fallback.
   return candidates.length === 1 ? candidates[0].path : null;
 }
 
@@ -198,6 +225,8 @@ export function relativePathForTreeItem(item: ContextMenuItem): string {
 
 export function normalizeTreePathForKind(path: string, isFolder: boolean): string {
   if (isFolder) return folderPathToTreeDirectoryPath(path);
+  // Already-extended paths pass through (preserves authored .md/.mdx); bare
+  // names get the default extension appended for new-file placeholders.
   return TREE_EXTENSION_PATTERN.test(path) ? path : `${path}${DEFAULT_TREE_EXTENSION}`;
 }
 

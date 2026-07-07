@@ -1,3 +1,15 @@
+/**
+ * Pure unit coverage for the active-target → path / handoff-input
+ * projections that drive the macOS File menu's state-aware items.
+ *
+ * These resolvers exist because the File menu doesn't have ambient row
+ * context — they convert a `ResolvedNavigationTarget` snapshot into the
+ * same path shapes the sidebar's per-row right-click menu derives from
+ * the Pierre `ContextMenuItem`. Branching is the load-bearing logic worth
+ * pinning so a refactor that changes the scope cascade (doc / folder /
+ * project / asset) doesn't silently land the menu pick on the wrong path.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import {
   buildSendToAiInputForActiveTarget,
@@ -136,6 +148,9 @@ describe('buildSendToAiInputForActiveTarget', () => {
     expect(input).not.toBeNull();
     expect(input?.docContext).toBeNull();
     expect(input?.folderRelativePath).toBe('reports');
+    // Folder scope keeps cwd at contentDir (project root) so project-level
+    // agent tooling resolves; the folder focus is conveyed via the directive
+    // prompt's relative path, not via cwd. See `buildFolderHandoffInput`.
     expect(input?.projectDir).toBe('/Users/test/project');
   });
 

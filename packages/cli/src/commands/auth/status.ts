@@ -11,6 +11,11 @@ interface StatusOptions {
 
 type ResolvedStatusSource = { tier: 'A' | 'B' | 'C'; token: string } | { tier: 'none' };
 
+/**
+ * Pick the credential source for an `auth status` call: gh delegation first,
+ * stored token second, none third. `_detectGhFn` is injectable for tests so
+ * we can drive the cascade without spawning `gh`.
+ */
 export async function resolveStatusSource(
   host: string,
   tokenStore: TokenStore,
@@ -23,6 +28,11 @@ export async function resolveStatusSource(
   return { tier: entry.gitProtocol === 'ssh' ? 'C' : 'B', token: entry.token };
 }
 
+/**
+ * Status outcomes that map to the `--json` payload. Pure shape (no IO) so the
+ * payload builder below can be unit-tested without spawning gh or hitting the
+ * GitHub API.
+ */
 export type StatusOutcome =
   | { authenticated: false }
   | { authenticated: false; error: string }
@@ -34,6 +44,12 @@ export type StatusOutcome =
       email: string | null;
     };
 
+/**
+ * Build the `auth status --json` payload. `backend` names the active token
+ * storage mechanism (`keyring` | `file`) so callers can confirm where the
+ * credential lives — the Linux CLI e2e smoke asserts the headless fallback
+ * resolved to `file` even with no token stored.
+ */
 export function buildStatusPayload(
   host: string,
   backend: TokenStore['backend'],

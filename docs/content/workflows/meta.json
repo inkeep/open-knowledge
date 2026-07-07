@@ -1,5 +1,14 @@
 {
   "title": "Workflows",
   "icon": "LuWorkflow",
-  "pages": ["karpathy-llm-wiki", "entity-vault", "supporting-open-knowledge-format"]
+  "pages": [
+    "karpathy-llm-wiki",
+    "codebase-wiki",
+    "software-lifecycle",
+    "entity-vault",
+    "writing-pipeline",
+    "supporting-open-knowledge-format",
+    "worldbuilding",
+    "plain-notes"
+  ]
 }

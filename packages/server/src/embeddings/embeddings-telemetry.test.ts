@@ -7,6 +7,13 @@ import {
   recordSemanticQuery,
 } from './embeddings-telemetry.ts';
 
+/**
+ * The instruments are no-ops under the default (disabled) OTel provider. These
+ * assert the record paths never throw — the per-query retrieval event must never
+ * be able to break a search — and that every label is a bounded enum (no content
+ * / key / free-form string reaches a span). Bounded-cardinality is enforced by
+ * the function signatures: there is no overload that accepts an arbitrary value.
+ */
 describe('embeddings telemetry', () => {
   test('all record paths are no-throw under the default provider', () => {
     expect(() => {

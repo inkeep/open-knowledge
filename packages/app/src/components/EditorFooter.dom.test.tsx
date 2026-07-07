@@ -1,3 +1,8 @@
+/**
+ * Tests for the EditorFooter "Ask AI" reopen badge — the affordance that
+ * brings the dismissed bottom composer back. Identity + lingui are mocked so the
+ * test is scoped to the badge's presence + click wiring next to the stats.
+ */
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -14,6 +19,7 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
+// No project/branch identity — keep the footer scoped to stats + badge.
 mock.module('@/hooks/use-editor-footer-identity', () => ({
   useEditorFooterIdentity: () => null,
 }));
@@ -34,6 +40,7 @@ describe('EditorFooter (Ask AI reopen badge)', () => {
     const badge = screen.getByTestId('ask-ai-reopen-badge');
     expect(badge).toBeTruthy();
     expect(badge.textContent).toContain('Ask AI');
+    // Stats still render alongside it.
     expect(screen.getByText(/words/)).toBeTruthy();
   });
 

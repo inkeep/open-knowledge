@@ -1,4 +1,35 @@
 #!/usr/bin/env node
+/**
+ * Launch one or more isolated OpenKnowledge desktop instances in parallel (macOS).
+ *
+ * A bare second launch of the app can't run: Electron keys its single-instance
+ * lock on the `userData` directory (and Chromium storage + recents live there),
+ * so the second process fails `requestSingleInstanceLock()` and quits. Giving
+ * each instance its own `--user-data-dir` yields a distinct lock AND isolated
+ * storage, so N instances coexist. This is the only mechanism that works for the
+ * PACKAGED app — `OK_INSTANCE` (a sibling dev-only env knob) is gated to
+ * `!app.isPackaged` and does not apply here.
+ *
+ * Each instance opens its named project by pre-seeding that instance's own
+ * `state.json` `lastOpenedProject` — the cold-start restore opens it. (An
+ * `openknowledge://` URL in argv only routes via the second-instance path, so it
+ * is NOT honored by a fresh primary instance; pre-seeding is the per-instance
+ * targetable path. The `state.json` shape mirrors `AppState` in
+ * `src/main/state-store.ts` — keep in sync if that schema changes.)
+ *
+ * Launches are STAGGERED: each instance is given time to acquire its project's
+ * `<contentDir>/.ok/local/server.lock` before the next starts. Booting two at
+ * the same millisecond races and drops one project to the Navigator.
+ *
+ * Usage:
+ *   node scripts/launch-instances.mjs <name>=<projectPath> [<name>=<projectPath> ...]
+ *   bun run desktop:instances -- work=~/code/proj-a review=~/code/proj-b
+ *
+ * Flags / env:
+ *   --app <path>  (or OK_DESKTOP_APP)  path to the built .app
+ *                 default: dist-desktop/mac-arm64/OpenKnowledge.app (run `bun run build:dir` first)
+ *   --user-data-root <dir>  base dir for per-instance userData (default: ~/.ok/instances)
+ */
 
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -46,6 +77,7 @@ function resolveAppPath(flagPath) {
     if (!existsSync(abs)) throw new Error(`--app path not found: ${abs}`);
     return abs;
   }
+  // Default: the unsigned local build output, relative to this package.
   const pkgRoot = resolve(import.meta.dirname, '..');
   const candidate = join(pkgRoot, 'dist-desktop', 'mac-arm64', 'OpenKnowledge.app');
   if (!existsSync(candidate)) {
@@ -61,9 +93,12 @@ function resolveAppPath(flagPath) {
 function ensureGitRepo(project) {
   if (!existsSync(project)) mkdirSync(project, { recursive: true });
   if (existsSync(join(project, '.git'))) return;
+  // openProject falls back to the Navigator on a non-git folder; init so the
+  // project actually opens.
   execFileSync('git', ['-C', project, 'init', '-q']);
 }
 
+// Mirrors the required AppState fields in src/main/state-store.ts (schemaVersion 1).
 function emptyState() {
   return {
     recentProjects: [],
@@ -85,11 +120,15 @@ function emptyState() {
 function seedState(userDataDir, project, name) {
   mkdirSync(userDataDir, { recursive: true });
   const statePath = join(userDataDir, 'state.json');
+  // Merge into an existing state.json if present so we don't clobber fields this
+  // script doesn't know about (forward-compatible with schema additions).
   let state = emptyState();
   if (existsSync(statePath)) {
     try {
       state = { ...state, ...JSON.parse(readFileSync(statePath, 'utf-8')) };
-    } catch {}
+    } catch {
+      // Corrupt — overwrite with a clean minimal doc.
+    }
   }
   const now = new Date().toISOString();
   const recents = Array.isArray(state.recentProjects) ? state.recentProjects : [];
@@ -101,6 +140,8 @@ function seedState(userDataDir, project, name) {
 }
 
 function launch(appPath, userDataDir) {
+  // `open -n` starts a NEW, detached instance that survives this process;
+  // `--args` passes the Chromium `--user-data-dir` switch to it.
   const child = spawn('open', ['-n', appPath, '--args', `--user-data-dir=${userDataDir}`], {
     detached: true,
     stdio: 'ignore',

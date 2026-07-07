@@ -1,3 +1,13 @@
+/**
+ * Regression test for the optimistic-install rollback in SkillEditorActions.
+ * The install/uninstall handlers await the action result and drop the optimistic
+ * host overlay on failure; without that, a failed write leaves the pill stuck on
+ * the wrong Installed/Draft state for the rest of the session (the server keeps
+ * reporting the old hosts, which never match the attempted overlay, so the
+ * convergence effect never clears it). Here we fail an uninstall and assert the
+ * pill reverts from the optimistic "Draft" back to server-truth "Installed".
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -46,6 +56,7 @@ describe('SkillEditorActions — optimistic rollback', () => {
     await user.click(await screen.findByTestId('skill-uninstall'));
 
     await waitFor(() => expect(uninstall).toHaveBeenCalledTimes(1));
+    // Rolled back to server truth — not stuck on the optimistic Draft overlay.
     await waitFor(() =>
       expect(screen.getByTestId('skill-install-menu-trigger').getAttribute('data-state')).toBe(
         'installed',

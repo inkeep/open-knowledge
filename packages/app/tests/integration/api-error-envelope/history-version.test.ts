@@ -1,3 +1,16 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleHistoryVersion`.
+ *
+ * The dynamic `:sha` path parameter prevents `withValidation` integration;
+ * the handler hand-rolls method gating + errorResponse calls. Smoke covers:
+ *   - happy path: 200, application/json, body parses against
+ *     `HistoryVersionSuccessSchema`.
+ *   - invalid SHA format → `urn:ok:error:invalid-request`.
+ *   - 40-char SHA without a corresponding commit → `urn:ok:error:doc-not-found`.
+ *   - method-not-allowed on POST → `urn:ok:error:method-not-allowed`
+ *     + `Allow: GET`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import {
@@ -20,12 +33,22 @@ afterAll(async () => {
 
 describe('history-version envelope (RFC 9457)', () => {
   test('happy path emits flat history-version body parseable as HistoryVersionSuccessSchema', async () => {
+    // Seed a doc + save-version to create a real commit SHA in the shadow
+    // repo, then exercise handleHistoryVersion against that SHA. Schema-
+    // parse the body against HistoryVersionSuccessSchema so a future wire
+    // shape regression (renamed `sha`/`content`/`timestamp`/`author`,
+    // dropped field) trips here regardless of successResponse's runtime
+    // safeParse fallback.
     const docName = `history-version-happy-${crypto.randomUUID().slice(0, 8)}`;
     await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ docName, markdown: '# Hello\n', position: 'replace' }),
     });
+    // saveVersion runs `git add` against the shadow workTree (= contentDir
+    // on disk). agent-write-md returns before the persistence debounce flushes
+    // the seed to disk, so calling save-version immediately can race the
+    // flush and snapshot empty/stale state. Wait until the doc lands.
     await pollDiskContentStable(
       join(server.contentDir, `${docName}.md`),
       (c) => c.includes('# Hello'),
@@ -38,6 +61,8 @@ describe('history-version envelope (RFC 9457)', () => {
     });
     expect(saveRes.status).toBe(200);
     const saveBody = SaveVersionSuccessSchema.parse(await saveRes.json());
+    // Same refname-shape extraction as diff.test.ts — checkpointRef is a
+    // ref of the form `refs/checkpoints/<branch>/<sha>`.
     const refMatch = saveBody.checkpointRef.match(/([0-9a-f]{40})$/);
     expect(refMatch).not.toBeNull();
     const sha = refMatch?.[1] ?? '';

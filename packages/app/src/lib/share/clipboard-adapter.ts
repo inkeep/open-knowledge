@@ -1,3 +1,31 @@
+/**
+ * Single-responsibility clipboard write that prefers the Electron IPC
+ * bridge when available.
+ *
+ *   1. `window.okDesktop.clipboard.writeText` — Electron renderer's preload
+ *      bridge to the main process. The main-process clipboard call is NOT
+ *      gated on the renderer's transient user activation, so this path is
+ *      unconditionally reliable in the desktop app (which is OK's primary
+ *      deployment context).
+ *   2. `navigator.clipboard.writeText` — browser path. Requires the
+ *      caller to be inside a fresh user-gesture handler (the browser
+ *      Clipboard API gates the write on transient activation at call time).
+ *   3. `document.execCommand('copy')` — legacy fallback when the async API
+ *      is absent or rejects. The async API is additionally gated on the
+ *      `clipboard-write` Permissions-Policy, which embedding hosts (e.g.
+ *      the Claude preview iframe) commonly deny; execCommand is gated on
+ *      user activation only, and transient activation survives the
+ *      rejection microtask — so this still fires inside the original
+ *      gesture and succeeds where writeText is policy-blocked.
+ *
+ * Callers MUST invoke this from a fresh user-gesture handler. In the share
+ * flow the Share button's onClick and the Publish-to-GitHub dialog's
+ * "Copy share link" button onClick both satisfy that contract; the dialog's
+ * Publish submit handler intentionally does NOT auto-copy because the
+ * multi-second publish would consume that activation before the write
+ * could fire.
+ */
+
 type OkDesktopClipboard = { writeText: (text: string) => Promise<void> };
 
 interface OkDesktopHost {
@@ -10,6 +38,16 @@ interface NavClipboardHost {
   };
 }
 
+/**
+ * Heuristically detect that a rejected clipboard write was refused by the
+ * surrounding Permissions-Policy (e.g. an iframe whose parent's `allow=`
+ * attribute does not include `clipboard-write`). Browsers don't expose a
+ * dedicated error subclass for this — they throw a generic NotAllowedError
+ * whose wording varies: Chromium's iframe policy block says "blocked
+ * because of a permissions policy"; the permission-denied variant says
+ * "permission denied". Callers pair this with a top-frame check
+ * (`window.self !== window.top`) before assuming the iframe story.
+ */
 export function isPermissionsPolicyRefusal(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name !== 'NotAllowedError') return false;
@@ -44,9 +82,11 @@ function tryExecCommandCopy(text: string): boolean {
   }
   const scratch = doc.createElement('textarea');
   scratch.value = text;
+  // Off-viewport but rendered — `display:none` breaks selection in Chromium.
   scratch.style.position = 'fixed';
   scratch.style.opacity = '0';
   scratch.style.pointerEvents = 'none';
+  // Readonly prevents the mobile keyboard flash and IME interference.
   scratch.setAttribute('readonly', '');
   doc.body.appendChild(scratch);
   try {
@@ -74,6 +114,8 @@ export async function scheduleClipboardWrite(text: string): Promise<void> {
       return;
     } catch (error) {
       if (tryExecCommandCopy(text)) return;
+      // Rethrow the writeText rejection (not an execCommand artifact) so
+      // callers' isPermissionsPolicyRefusal classification still works.
       throw error;
     }
   }

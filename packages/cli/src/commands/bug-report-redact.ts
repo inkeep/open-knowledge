@@ -1,3 +1,14 @@
+/**
+ * Secret/PII redaction for `ok bug-report` bundles. Extracted from
+ * `bug-report.ts` so it can be unit-tested directly — `bug-report.ts` imports
+ * `cli.ts`, which parses argv at module load, so it can't be imported in a test.
+ *
+ * This is the ship-path backstop for the on-disk diagnostics logs (which now
+ * include captured renderer/browser console output): `redactContent` runs over
+ * every bundled file before it leaves the machine. It is best-effort pattern
+ * matching, not a guarantee — see the JWT / URL-credential note below.
+ */
+
 interface SecretPattern {
   name: string;
   regex: RegExp;
@@ -28,6 +39,13 @@ const SECRET_PATTERNS: readonly SecretPattern[] = [
     regex: /([Aa]uthorization:\s*[Bb]earer\s+)\S+/g,
     replacement: '$1[REDACTED]',
   },
+  // JWTs (header.payload.signature; header + payload are base64url of `{`) and
+  // credentials embedded in URLs (`scheme://user:pass@host`, e.g. token push
+  // URLs / DB connection strings). Added because client-side console capture
+  // now routes free-text renderer output into the bundled logs. No trailing
+  // `\b` on the JWT — base64url's `-`/`_` aren't word chars, so a signature
+  // ending in one wouldn't have a word boundary after it; the greedy class
+  // consumes the whole signature instead.
   {
     name: 'jwt',
     regex: /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
@@ -40,8 +58,10 @@ const SECRET_PATTERNS: readonly SecretPattern[] = [
   },
 ];
 
+/** Names of the redaction patterns, for the bundle's privacy summary. */
 export const SECRET_PATTERN_NAMES: readonly string[] = SECRET_PATTERNS.map((p) => p.name);
 
+/** Apply {@link SECRET_PATTERNS} line by line; report which patterns matched. */
 export function redactContent(content: string): {
   redacted: string;
   patterns: string[];

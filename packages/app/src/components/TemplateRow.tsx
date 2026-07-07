@@ -14,10 +14,20 @@ interface TemplateRowProps {
   template: TemplateMenuEntry;
   onEdit: () => void;
   onDelete: () => void;
+  /**
+   * "Create a document from this template." Omit to hide the action — the
+   * Settings manager lists templates without an inline create affordance.
+   */
   onCreate?: () => void;
+  /** Trailing badge (inherited-source indicator, scope label). Omit for none. */
   badge?: ReactNode;
 }
 
+/**
+ * One row in a template list. Clicking the row body opens edit; a 3-dot menu
+ * carries Edit + Delete; an optional `Create` action instantiates a document.
+ * Shared by the folder-overview card and the Settings template manager.
+ */
 export function TemplateRow({ template, onEdit, onDelete, onCreate, badge }: TemplateRowProps) {
   const { t } = useLingui();
   const label = template.title ?? template.name;

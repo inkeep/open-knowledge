@@ -1,3 +1,14 @@
+/**
+ * Tests for the Tempo HTTP API query helper.
+ *
+ * The helper joins per-cycle OTel spans (frontend ok.cold-mount tree + 4
+ * children, server sync.handshake, persistence.onLoadDocument) by mountId
+ * attribute and returns decomposed timings.
+ *
+ * Mocks fetch at the boundary. The actual Tempo HTTP API is exercised
+ * with the live LGTM stack running — Docker is
+ * not running in this environment.
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
   parseTempoTimings,
@@ -31,6 +42,12 @@ const DEFAULT_OPTS: TempoSearchOptions = {
   tempoBaseUrl: 'http://localhost:3200',
 };
 
+/**
+ * Build a synthetic Tempo /api/search response. Each entry in `spans`
+ * becomes one span at the trace level. Each span has its name, duration,
+ * and the attributes map. mountId is set on every span when provided so
+ * the helper's join-by-mountId logic sees a complete cycle.
+ */
 function buildTempoResponse(
   spans: Array<{ name: string; durationMs: number; mountId?: string }>,
 ): TempoSearchResponse {
@@ -91,6 +108,9 @@ describe('parseTempoTimings — pure extraction', () => {
   });
 
   test('returns success with null fields for spans that did not arrive', () => {
+    // Partial trace — only frontend spans, server-side spans are missing
+    // (e.g., OTEL_SDK_DISABLED is unset on the server). Sweep still wants
+    // the client decomposition.
     const response = buildTempoResponse([
       { name: 'ok.cold-mount', durationMs: 100, mountId: 'mid-p' },
       { name: 'ok.sync-promise', durationMs: 90, mountId: 'mid-p' },
@@ -108,6 +128,9 @@ describe('parseTempoTimings — pure extraction', () => {
   });
 
   test('tolerates spans across multiple traces in one response', () => {
+    // BSP can flush in batches that span trace boundaries. The helper
+    // collapses by mountId attribute regardless of which trace owns each
+    // span.
     const response: TempoSearchResponse = {
       traces: [
         {
@@ -147,6 +170,8 @@ describe('parseTempoTimings — pure extraction', () => {
   });
 
   test('tolerates spans inside spanSets (plural) when Tempo returns the alternate shape', () => {
+    // Tempo's response shape uses `spanSet` in some versions, `spanSets`
+    // (array) in others (TraceQL grouping). The helper accepts both.
     const response: TempoSearchResponse = {
       traces: [
         {
@@ -258,8 +283,18 @@ describe('queryTempoByMountId — HTTP boundary', () => {
       endTimeMs: 1_700_000_005_000,
     });
     expect(capturedUrl).toContain('otel.example:3200');
+    // Tempo expects start/end in Unix seconds (not ms). The helper must
+    // convert — verifying via substring keeps the test robust against
+    // query-string ordering / encoding.
     expect(capturedUrl).toContain('start=1700000000');
     expect(capturedUrl).toContain('end=1700000005');
+    // mount.id is the load-bearing per-cycle correlation key. If a refactor
+    // moved the filter client-side (URL stops carrying mount.id, helper
+    // post-filters by attribute), URL-shape tests above would still pass
+    // while every per-cycle decomposition query would return all spans in
+    // the window — silently flipping a fail-loud STOP_IF: mountid-span-
+    // correlation-missing path into a fail-quiet wrong-answer one. Pin the
+    // mount.id query param explicitly.
     expect(capturedUrl).toContain('mount.id');
     expect(capturedUrl).toContain(DEFAULT_OPTS.mountId);
   });

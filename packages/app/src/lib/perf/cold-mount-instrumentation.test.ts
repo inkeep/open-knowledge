@@ -1,3 +1,12 @@
+/**
+ * Unit tests for `wrapExtensionsWithTiming` — the only export of
+ * cold-mount-instrumentation.ts that is unit-testable in isolation. The other
+ * patches (per-NodeView factory, per-decoration plugin, append-to-paint
+ * bracket) hook prototype methods on TipTap / PM / yjs and require a full
+ * mounted editor; their integration coverage lives in
+ * `tests/perf/scenarios/g4-profile-decomposition.ts`.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Extension } from '@tiptap/core';
 import {
@@ -14,7 +23,9 @@ interface ParentScope {
 function clearMeasures(): void {
   try {
     performance.clearMeasures();
-  } catch {}
+  } catch {
+    // ignore in envs where clearMeasures throws
+  }
 }
 
 function getMarkNames(): string[] {
@@ -35,6 +46,7 @@ describe('wrapExtensionsWithTiming', () => {
     const original = Extension.create({ name: 'wikiLink' });
     const [wrapped] = wrapExtensionsWithTiming([original]);
     expect(wrapped.name).toBe('wikiLink');
+    // .extend() returns a child extension whose parent is the original.
     expect((wrapped as unknown as { parent?: unknown }).parent).toBe(original);
   });
 
@@ -116,6 +128,7 @@ describe('wrapExtensionsWithTiming', () => {
         parentCalls += 1;
       },
     });
+    // The wrapped hook delegates via this.parent?.() — exercised once here.
     expect(parentCalls).toBe(1);
   });
 
@@ -163,6 +176,9 @@ describe('wrapExtensionsWithTiming', () => {
 
   test('handles extension whose parent has no hook (this.parent is null)', () => {
     const ext = Extension.create({ name: 'noHook' });
+    // Original ext does NOT define onCreate. After wrap, calling wrapped's
+    // onCreate must not throw — TipTap binds `this.parent` to null when
+    // the parent chain has no implementation.
     const [wrapped] = wrapExtensionsWithTiming([ext]);
     const onCreate = (wrapped as unknown as { config: { onCreate?: (this: ParentScope) => void } })
       .config.onCreate;
@@ -173,6 +189,10 @@ describe('wrapExtensionsWithTiming', () => {
 });
 
 describe('shouldInstallColdMountInstrumentation (D18 PROD-build override)', () => {
+  // Vite normally replaces `import.meta.env.PROD` and `import.meta.env.DEV`
+  // at build time with literal booleans; under `bun test` these slots are
+  // mutable (undefined by default) so each case can pin exactly the env
+  // shape it intends to exercise.
   type EnvSlot = 'PROD' | 'DEV' | 'VITE_OK_PERF_INSTRUMENT';
   const ENV_SLOTS: readonly EnvSlot[] = ['PROD', 'DEV', 'VITE_OK_PERF_INSTRUMENT'];
   let originalEnv: Partial<Record<EnvSlot, unknown>>;
@@ -227,6 +247,8 @@ describe('shouldInstallColdMountInstrumentation (D18 PROD-build override)', () =
   });
 
   test('PROD with VITE_OK_PERF_INSTRUMENT="true" → skips (only literal "1" enables)', () => {
+    // Vite serializes env vars as strings — guard against the common
+    // mistake of passing `'true'` and expecting boolean coercion.
     (import.meta.env as Record<string, unknown>).PROD = true;
     (import.meta.env as Record<string, unknown>).VITE_OK_PERF_INSTRUMENT = 'true';
     expect(shouldInstallColdMountInstrumentation()).toBe(false);
@@ -239,10 +261,17 @@ describe('shouldInstallColdMountInstrumentation (D18 PROD-build override)', () =
   });
 
   test('neither PROD nor DEV set (bun test default shape) → installs', () => {
+    // No env hints at all — current bun test default. Without this case the
+    // existing wrapExtensionsWithTiming suite (which relies on
+    // instrumentationDisabled returning false) would silently regress.
     expect(shouldInstallColdMountInstrumentation()).toBe(true);
   });
 
   test('per-component patches honor the gate end-to-end (PROD without override → identity)', () => {
+    // Verifies the full chain: gate → instrumentationDisabled →
+    // per-component short-circuit. wrapExtensionsWithTiming is the externally
+    // visible per-component primitive that returns identity (the same input
+    // array) when instrumentation is disabled.
     (import.meta.env as Record<string, unknown>).PROD = true;
     const ext = Extension.create({ name: 'gateProbe' });
     const out = wrapExtensionsWithTiming([ext]);
@@ -250,6 +279,9 @@ describe('shouldInstallColdMountInstrumentation (D18 PROD-build override)', () =
   });
 
   test('per-component patches honor the gate end-to-end (PROD with override → wraps)', () => {
+    // Same scenario flipped: with VITE_OK_PERF_INSTRUMENT=1, the gate flips and
+    // wrapExtensionsWithTiming returns a derived (wrapped) extension. Pairs
+    // with the previous test to prove both branches of the decision land.
     (import.meta.env as Record<string, unknown>).PROD = true;
     (import.meta.env as Record<string, unknown>).VITE_OK_PERF_INSTRUMENT = '1';
     const ext = Extension.create({ name: 'gateProbe' });
@@ -260,6 +292,21 @@ describe('shouldInstallColdMountInstrumentation (D18 PROD-build override)', () =
 });
 
 describe('wrapMethod — error propagation contract', () => {
+  // Pattern C tests:
+  // exercise real failure-inducing input (an `original` that throws) through
+  // the public `wrapMethod` interface and assert the user-observable contract:
+  // the original error propagates verbatim; instrumentation side effects
+  // never hijack control flow.
+  //
+  // Regression context: a prior pattern ran `propsBuilder` inside the wrapped
+  // method's `finally{}` block unconditionally. When `original.apply` threw
+  // (e.g., TipTap's `Editor.createView` rejecting a malformed PM schema), the
+  // finally still ran propsBuilder, which read partially-constructed state
+  // (e.g., `editor.view._props` while `editor.editorView` is null) and
+  // triggered TipTap's throwing-proxy. The secondary throw shadowed the
+  // original, so the surfaced error was always "view['_props']" instead of
+  // the real schema rejection. This test class pins the fix.
+
   beforeEach(() => {
     getCollector()?.reset();
     clearMeasures();
@@ -294,15 +341,22 @@ describe('wrapMethod — error propagation contract', () => {
     };
     wrapMethod(target, 'method', 'ok/cold/test-throw-no-props', () => {
       propsBuilderInvocations += 1;
+      // If this ever runs on the throw path, the original-error contract is
+      // broken because state reads can throw and shadow the original.
       return { wasCalled: true };
     });
     try {
       (target.method as () => void)();
-    } catch {}
+    } catch {
+      /* expected */
+    }
     expect(propsBuilderInvocations).toBe(0);
   });
 
   test('propsBuilder throw on success path is swallowed; original return value propagates', () => {
+    // Defense-in-depth: even on the success path, a buggy propsBuilder must
+    // not hijack the original return value or mask other errors. The throw
+    // is captured into the timing mark's props as `instrumentation-error`.
     const target: Record<string, unknown> = {
       method() {
         return 'original-success-return';
@@ -322,6 +376,9 @@ describe('wrapMethod — error propagation contract', () => {
   });
 
   test('timing mark is emitted on both success and throw paths with `threw` discriminator', () => {
+    // Marks must always fire so cost is attributable on either path. The
+    // `threw` boolean lets the collector distinguish failed mounts from
+    // successful ones in trace analysis.
     const successTarget: Record<string, unknown> = { ok: () => 42 };
     const throwTarget: Record<string, unknown> = {
       bad: () => {
@@ -334,7 +391,9 @@ describe('wrapMethod — error propagation contract', () => {
     (successTarget.ok as () => number)();
     try {
       (throwTarget.bad as () => void)();
-    } catch {}
+    } catch {
+      /* expected */
+    }
 
     const successMark = getCollector()
       ?.marks.toArray()

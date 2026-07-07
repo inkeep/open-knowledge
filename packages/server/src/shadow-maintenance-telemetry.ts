@@ -1,10 +1,22 @@
+/**
+ * Telemetry for the shadow-repo maintenance coordinator.
+ *
+ * Lazy-init meters so registration binds to the real provider post-
+ * `initTelemetry`. Cardinality discipline (STOP rule): every attribute is a
+ * bounded enum. Loose-object counts are NEVER metric attributes (they would be
+ * unbounded) — they ride structured logs in the coordinator. No paths, no
+ * content, no free-form strings reach a metric here.
+ */
 import type { Counter, Histogram } from '@opentelemetry/api';
 import { getMeter } from './telemetry.ts';
 
+/** Bounded label: which maintenance leg ran. */
 export type MaintenanceOp = 'gc' | 'consolidation' | 'reap';
 
+/** Bounded label: the run's outcome. */
 export type MaintenanceOutcome = 'ok' | 'skipped' | 'error';
 
+/** Bounded label: why an auto-consolidation fired (mirrors AutoConsolidationTrigger). */
 export type ConsolidationTriggerLabel = 'dead-chain' | 'session-close' | 'boot' | 'ttl';
 
 let _runDuration: Histogram | null = null;
@@ -36,6 +48,7 @@ function consolidationCounter(): Counter {
   return _consolidation;
 }
 
+/** Record one maintenance op's wall-clock duration + outcome. */
 export function recordMaintenanceRun(
   op: MaintenanceOp,
   outcome: MaintenanceOutcome,
@@ -44,14 +57,20 @@ export function recordMaintenanceRun(
   runDurationHist().record(Math.max(0, durationMs), { op, outcome });
 }
 
+/** Count an observed gc.log latch. */
 export function recordGcLatch(): void {
   gcLatchCounter().add(1);
 }
 
+/** Count an auto-consolidation that folded ≥1 chain, by trigger. */
 export function recordConsolidation(trigger: ConsolidationTriggerLabel): void {
   consolidationCounter().add(1, { trigger });
 }
 
+/**
+ * Drop cached lazy-init instruments so the next call rebinds against the
+ * currently-registered global MeterProvider. Test-only.
+ */
 export function __resetMaintenanceTelemetryForTesting(): void {
   _runDuration = null;
   _gcLatch = null;

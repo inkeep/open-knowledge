@@ -22,6 +22,18 @@ function firstParam(value: string | string[] | undefined): string | null {
   return value ?? null;
 }
 
+/**
+ * `/continue` — redeem-or-welcome. OpenKnowledge opens this on its true first
+ * launch with `port`/`nonce` for the loopback handshake. When a pairing cookie
+ * is present and the params are well-formed, redirect the pending share token
+ * to the desktop's localhost listener (cookie retained — `/continue/done`
+ * clears it after a confirmed redemption). Otherwise this is the
+ * welcome/getting-started page every first-run visitor lands on.
+ *
+ * A server component can read cookies and `redirect()`, but cannot delete
+ * cookies — the malformed-cookie cleanup the decision allows for is deferred to
+ * the harmless 7-day expiry rather than handled here.
+ */
 export default async function ContinuePage({ searchParams }: ContinuePageProps) {
   const params = await searchParams;
   const cookieStore = await cookies();

@@ -1,3 +1,12 @@
+/**
+ * Resolves the project identity (name + path + branch) shown in the editor
+ * footer when the ProjectSwitcher isn't visible — sidebar collapsed or
+ * non-Electron host. Returns `null` when the switcher IS visible (Electron +
+ * expanded sidebar), so the footer skips the row entirely.
+ *
+ * Project name + path prefer the Electron bridge; on web they derive from
+ * `useWorkspace().contentDir` (basename + raw path).
+ */
 import { useSidebar } from '@/components/ui/sidebar';
 import { useCurrentBranch } from '@/hooks/use-current-branch';
 import { extractFolderBasename } from '@/lib/path-utils';

@@ -1,3 +1,8 @@
+/**
+ * The Settings → Terminal nav item is desktop-only: the docked terminal has no
+ * web host, so its per-project revoke toggle must only be reachable under the
+ * Electron preload (`window.okDesktop`).
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';

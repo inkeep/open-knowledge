@@ -3,6 +3,7 @@ import { parseDocument } from 'yaml';
 import { isKnownConfigError } from './errors.ts';
 import { detectRemovedKeys, REMOVED_KEYS } from './removed-keys.ts';
 
+/** Build a nested object `{ a: { b: <leaf> } }` from a dotted path. */
 function nest(path: readonly string[], leaf: unknown): Record<string, unknown> {
   const root: Record<string, unknown> = {};
   let cur = root;
@@ -37,6 +38,8 @@ describe('REMOVED_KEYS registry', () => {
 });
 
 describe('detectRemovedKeys', () => {
+  // Table-driven: every registry entry, in isolation, must be detected and
+  // carry its own redirect.
   for (const entry of REMOVED_KEYS) {
     const dotted = entry.path.join('.');
     test(`detects ${dotted}`, () => {
@@ -73,7 +76,11 @@ describe('detectRemovedKeys', () => {
   });
 
   test('a key whose only sibling is current (not the removed leaf) is not flagged', () => {
+    // upload.maxBytes is removed, but a config with only upload.<other> must
+    // not false-positive — detection is leaf-exact.
     expect(detectRemovedKeys({ value: { upload: { somethingElse: 1 } } })).toEqual([]);
+    // telemetry.localSink.*.maxBytes is a CURRENT key; the removed one is
+    // upload.maxBytes specifically.
     expect(
       detectRemovedKeys({ value: { telemetry: { localSink: { spans: { maxBytes: 4096 } } } } }),
     ).toEqual([]);
@@ -87,6 +94,7 @@ describe('detectRemovedKeys', () => {
     const [err] = errors;
     if (err !== undefined && isKnownConfigError(err) && err.code === 'REMOVED_KEY') {
       expect(err.source?.file).toBe('/tmp/config.yml');
+      // locateIssue points at the value node — `baseUrl`'s value is on line 2.
       expect(err.source?.line).toBe(2);
     }
   });

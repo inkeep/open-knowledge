@@ -1,3 +1,18 @@
+/**
+ * DOM tests for nested-frontmatter CRUD via the binding's local path
+ * API. Each test mounts a real {@link PropertyPanel} under a
+ * {@link HocuspocusProvider}, exercises an interaction (edit / add /
+ * rename / delete) on a nested key, then asserts the Y.Text-backed YAML
+ * region reflects the change.
+ *
+ * Why this layer: the binding-side path API is covered by
+ * `bind-frontmatter-doc.test.ts`; the panel-side renders are covered by
+ * `PropertyPanel.test.tsx`. The seam between the two — the
+ * {@link ObjectWidget} dispatcher wiring path-aware handlers to the
+ * binding's `patchPath` / `renamePath` / `deletePath` — only fires under
+ * a mounted React tree with effects. These tests pin that seam.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { readFmMap } from '@inkeep/open-knowledge-core';
@@ -44,12 +59,17 @@ afterEach(() => {
   for (const p of providers.splice(0)) {
     try {
       p.destroy();
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 });
 
 describe('PropertyPanel — nested CRUD (US-007)', () => {
   async function findInputByKey(testid: string, key: string): Promise<HTMLElement> {
+    // The test substrate mounts the panel; the binding attaches via useEffect.
+    // `waitFor` polls until the row renders (no fixed budget — less flaky on
+    // slow CI workers than a hand-rolled loop).
     return waitFor(() => {
       const el = document.querySelector(
         `[data-testid="${testid}"][data-key="${key}"]`,
@@ -128,6 +148,8 @@ describe('PropertyPanel — nested CRUD (US-007)', () => {
     await user.click(authorNameButton);
 
     const renameInput = await screen.findByTestId('property-name-rename-input');
+    // The rename input only mounts for the row in rename mode — assert it's
+    // bound to author specifically.
     expect(renameInput.getAttribute('data-key')).toBe('author');
 
     await user.clear(renameInput);
@@ -138,6 +160,8 @@ describe('PropertyPanel — nested CRUD (US-007)', () => {
     expect(map).toEqual({
       metadata: { version: '1.0.0', maintainer: 'Inkeep', license: 'MIT' },
     });
+    // Source-position is preserved: serialize order should be version,
+    // maintainer (renamed-in-place), license.
     const fenced = provider.document.getText('source').toString();
     const versionIdx = fenced.indexOf('version:');
     const maintainerIdx = fenced.indexOf('maintainer:');
@@ -162,6 +186,10 @@ describe('PropertyPanel — nested CRUD (US-007)', () => {
 
     const nameInput = await screen.findByTestId('add-property-name-input');
     await user.type(nameInput, 'license');
+    // The default type is 'text' — value widget already has draft.value=''.
+    // We need to type a value so the commit gate (isFrontmatterValueEmpty)
+    // admits the add. The value widget for a text type is a textarea with
+    // data-testid="text-widget" + data-key="__add__".
     const addValueInput = document.querySelector(
       'textarea[data-testid="text-widget"][data-key="__add__"]',
     ) as HTMLTextAreaElement | null;
@@ -169,6 +197,8 @@ describe('PropertyPanel — nested CRUD (US-007)', () => {
     if (!addValueInput) return;
     await user.click(addValueInput);
     await user.type(addValueInput, 'MIT');
+    // Commit via the explicit "Add" button (Enter on the value's textarea
+    // would commit the value draft, not the add row).
     const addCommit = await screen.findByTestId('add-property-commit');
     await user.click(addCommit);
 
@@ -194,6 +224,9 @@ describe('PropertyPanel — nested CRUD (US-007)', () => {
 
     const nameInput = await screen.findByTestId('add-property-name-input');
     await user.type(nameInput, 'version');
+    // The "Add" commit gate disables the button when the value is empty
+    // (matches mergePatch drop-on-empty). Type a value so the click fires
+    // and the duplicate-key check actually runs.
     const valueInput = document.querySelector(
       'textarea[data-testid="text-widget"][data-key="__add__"]',
     ) as HTMLTextAreaElement | null;
@@ -206,6 +239,7 @@ describe('PropertyPanel — nested CRUD (US-007)', () => {
 
     const errorEl = await screen.findByTestId('add-property-error');
     expect(errorEl.textContent ?? '').toContain('version');
+    // No mutation — the original FM is unchanged.
     expect(readPanelMap(provider)).toEqual({ metadata: { version: '1.0.0' } });
   });
 
@@ -214,6 +248,9 @@ describe('PropertyPanel — nested CRUD (US-007)', () => {
     seedYTextFm(provider, '---\nouter:\n  inner:\n    leaf: "old"\n    other: keep\n---\n');
     renderPanel(provider);
 
+    // Radix CollapsibleContent unmounts its content while closed. The
+    // depth-1 ObjectWidget (`inner`) auto-collapses on mount, so the
+    // depth-2 `leaf` row is NOT in the DOM until the user expands.
     const innerTrigger = (await findInputByKey(
       'object-widget-trigger',
       'inner',
@@ -257,6 +294,7 @@ describe('PropertyPanel — nested CRUD (US-007)', () => {
     await user.type(renameInput, 'author');
     await user.keyboard('{Enter}');
 
+    // Inline error surfaces; Y.Text unchanged.
     const errorEl = await screen.findByTestId('property-name-rename-error');
     expect(errorEl.textContent ?? '').toContain('author');
     const map = readPanelMap(provider);
@@ -335,6 +373,8 @@ describe('PropertyPanel — array-of-objects CRUD (US-008)', () => {
     const user = userEvent.setup();
     await user.click(removeBtn);
 
+    // The whole `authors` key is removed rather than left as a bare `[]`, which
+    // would re-dispatch to the scalar chip widget with no way to re-add objects.
     const map = readPanelMap(provider);
     expect(map.authors).toBeUndefined();
   });

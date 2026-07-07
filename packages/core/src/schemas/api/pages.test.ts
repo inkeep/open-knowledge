@@ -169,6 +169,8 @@ describe('PageEntrySchema and PagesSuccessSchema', () => {
     expect(PageEntrySchema.safeParse(validPage).success).toBe(true);
   });
   test('accepts empty title', () => {
+    // title may be empty when extractPageTitle finds no headings; the
+    // schema should not reject — the docName is the user-visible fallback.
     expect(PageEntrySchema.safeParse({ ...validPage, title: '' }).success).toBe(true);
   });
   test('rejects negative size', () => {
@@ -364,3 +366,5 @@ describe('RollbackSuccessSchema', () => {
     ).toBe(true);
   });
 });
+
+// ─── Cluster C URN tokens ───────────────────────────────────────

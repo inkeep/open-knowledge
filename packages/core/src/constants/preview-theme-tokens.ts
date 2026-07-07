@@ -1,6 +1,24 @@
+/**
+ * Preview-iframe theme tokens — the design-token subset injected into every
+ * `html preview` iframe's `srcDoc` as CSS custom properties, so embedded
+ * content can reference `var(--chart-1)`, `var(--foreground)`, … and track
+ * the reader's light/dark theme.
+ *
+ * GENERATED FILE — do not hand-edit. Regenerate after changing any listed
+ * token in `packages/app/src/globals.css`:
+ *
+ *     bun run packages/core/scripts/generate-preview-theme-tokens.ts
+ *
+ * Drift between this file and the CSS is caught by
+ * `preview-theme-tokens.test.ts` (re-resolves from globals.css).
+ */
+
 export interface PreviewThemeToken {
+  /** CSS custom-property name, e.g. '--chart-1'. */
   readonly name: string;
+  /** Resolved light-theme value — every `var()` indirection resolved to a literal. */
   readonly light: string;
+  /** Resolved dark-theme value. */
   readonly dark: string;
 }
 

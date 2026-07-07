@@ -1,3 +1,22 @@
+/**
+ * Prewarm-then-click correlation by deterministic `poolEventId`.
+ *
+ * The hover-intent prewarm path emits `ok/sidebar/prewarm-success` and
+ * records `(docName, poolEventId, emittedAt)` here. The user-click path
+ * (`DocumentContext.openDocument`) reads this map: when the pool entry's
+ * `poolEventId` matches a recorded prewarm within
+ * `PREWARM_CORRELATION_WINDOW_MS`, the click emits
+ * `ok/sidebar/prewarm-clicked` and `mark.count('ok/sidebar/prewarm',
+ * { hit: true })`. On TTL expiry without a click the cleanup tick emits
+ * `mark.count('ok/sidebar/prewarm', { hit: false })`.
+ *
+ * JOIN DISCIPLINE: the join is by `poolEventId` equality (deterministic).
+ * The window is purely a TTL for in-memory cleanup — it is NEVER the
+ * join primitive. Two concurrent prewarms for different pool entries
+ * never confuse each other, even when their docNames or timestamps
+ * overlap.
+ */
+
 import { mark } from '@/lib/perf';
 import { readNumericOverride } from '@/lib/perf/env-override';
 
@@ -15,6 +34,9 @@ function getTtlMs(): number {
 
 function scheduleSweep(): void {
   if (sweepTimer !== null) return;
+  // Sweep slightly after each TTL window so expired entries get processed
+  // approximately once per window. Using a half-window cadence balances
+  // latency vs cost.
   const cadence = Math.max(50, Math.floor(getTtlMs() / 2));
   sweepTimer = setTimeout(() => {
     sweepTimer = null;
@@ -33,6 +55,18 @@ function sweepExpired(now: number): void {
   }
 }
 
+/**
+ * Record that a prewarm fired for `docName` with the given `poolEventId`.
+ *
+ * Overwrites any prior record for the same docName (the latest prewarm
+ * wins). When an overwrite happens, the prior record's hit:false signal
+ * is emitted at overwrite time — hit:false means "the prewarm didn't
+ * lead to its own click within TTL," and an overwritten record can no
+ * longer be matched, so the verdict is settled. Without this emission,
+ * overwritten entries would never increment hit:false (the TTL sweep
+ * can't find them after delete) and the prewarm-effectiveness counter
+ * would silently bias toward over-counting hits / under-counting misses.
+ */
 export function recordPrewarm(
   docName: string,
   poolEventId: string,
@@ -45,6 +79,12 @@ export function recordPrewarm(
   scheduleSweep();
 }
 
+/**
+ * Check whether opening `docName` with the given `poolEventId` matches a
+ * recent prewarm record within TTL. On match: emits the
+ * prewarm-clicked mark + counter, removes the record, returns true.
+ * On no match: returns false (caller does not emit).
+ */
 export function consumePrewarmClick(
   docName: string,
   poolEventId: string,
@@ -60,10 +100,12 @@ export function consumePrewarmClick(
   return true;
 }
 
+/** Test-only: snapshot of recorded prewarms. */
 export function __peekPrewarmRecord(docName: string): RecentPrewarm | undefined {
   return recentPrewarms.get(docName);
 }
 
+/** Test-only: clear state between tests + cancel pending sweep. */
 export function __resetPrewarmCorrelation(): void {
   recentPrewarms.clear();
   if (sweepTimer !== null) {

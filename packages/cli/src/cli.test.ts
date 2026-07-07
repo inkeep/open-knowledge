@@ -33,11 +33,17 @@ describe('CLI argv parsing', () => {
     expect(result.exitCode).toBe(0);
     expect(stderr).not.toContain('unknown option');
     expect(stdout.startsWith('[')).toBe(true);
+    // Spawns a fresh `bun` that cold-imports the whole CLI and runs `ps --json`;
+    // the default 5s test timeout is too tight for that under local machine load.
   }, 30_000);
 });
 
 describe('CLI --version notice', () => {
   test('--version emits the version plus the GPL copyright / free-software / no-warranty trio', () => {
+    // Exercises the wired surface — `.version(buildVersionNotice(...))` in cli.ts
+    // through Commander's `--version` handler — not just the pure builder. A
+    // regression that reverted the version action to the bare version string
+    // would pass version-notice.test.ts but fail here.
     const result = Bun.spawnSync({
       cmd: [
         'bun',

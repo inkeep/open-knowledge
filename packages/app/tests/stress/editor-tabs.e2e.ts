@@ -60,6 +60,11 @@ async function deletePathIfExists(
 async function clearVisibleContentEntries(workerServer: WorkerServer): Promise<void> {
   for (const entry of readdirSync(workerServer.contentDir, { withFileTypes: true })) {
     if (entry.name.startsWith('.')) continue;
+    // The worker fixture's pre-seeded entries must survive the clear:
+    // sibling tests on the same worker (file-tree-create's desktop-refresh
+    // restore, prop-upload's subdir upload) depend on them at navigate
+    // time. They are constant from worker boot, so keeping them does not
+    // reintroduce the sidebar-churn this helper exists to remove.
     if ((REQUIRED_FIXTURE_ENTRY_NAMES as readonly string[]).includes(entry.name)) continue;
     if (entry.isDirectory()) {
       await deletePathIfExists(workerServer.baseURL, 'folder', entry.name);
@@ -106,6 +111,10 @@ function activeEditorTabButtons(page: Page, accessibleLabel: string): Locator {
     .getByRole('button', { name: accessibleLabel, exact: true });
 }
 
+// The editor-tab chrome strings are wrapped with Lingui (`t` / `<Trans>`), so
+// selecting these controls by accessible name couples the suite to English
+// copy and breaks on every i18n batch. Anchor on stable `data-testid`s
+// (set in EditorTabs.tsx) instead — they never route through the catalog.
 function editorNewTabButton(page: Page): Locator {
   return page.getByRole('main').getByTestId('editor-new-tab-button');
 }
@@ -125,6 +134,9 @@ function sidebarTreeItem(page: Page, accessibleLabel: string): Locator {
 }
 
 function editorTabChrome(tabButton: Locator): Locator {
+  // Each tab wrapper is a dnd-kit sortable handle (`aria-roledescription="sortable"`).
+  // dnd-kit assigns role="button" to that element, so anchor on the stable
+  // aria-roledescription instead of role="presentation".
   return tabButton.locator('xpath=ancestor::div[@aria-roledescription="sortable"][1]');
 }
 
@@ -178,6 +190,10 @@ async function expectPersistedPinnedTabs(page: Page, expected: string[]) {
 async function editorTabOrder(page: Page): Promise<string[]> {
   return page.locator('header div[aria-roledescription="sortable"]').evaluateAll((tabEls) =>
     tabEls.flatMap((tabEl) => {
+      // Anchor on data-testids, not Lingui-wrapped accessible names — the
+      // placeholder/close labels route through the i18n catalog. The primary
+      // button's aria-label is the doc/folder/asset filename (not Lingui-routed),
+      // so it stays the order key.
       if (tabEl.querySelector('[data-testid="editor-new-tab-placeholder-button"]')) {
         return ['new-tab'];
       }
@@ -221,6 +237,9 @@ async function seedReferencedAssetDoc(
   await api.createPage(`${docName}.md`);
   await api.replaceDoc(docName, markdown);
 
+  // /api/documents derives referenced assets from disk and caches the result
+  // by file-index metadata. Keep the disk file aligned with the CRDT write,
+  // then bump the file index so a prior worker-level cache cannot mask it.
   writeFileSync(join(workerServer.contentDir, `${docName}.md`), markdown);
   await api.createPage(`${docName}-asset-index-bump.md`);
   await expectDocumentListContainsAsset(workerServer.baseURL, assetPath);
@@ -315,6 +334,10 @@ test.describe('Editor tabs', () => {
     const firstLabel = `${firstDoc}.md`;
     const selectedLabel = `${selectedDoc}.md`;
 
+    // Foreign docs leaked into the shared per-worker contentDir by earlier
+    // tests churn the sidebar tree while this test clicks a specific row
+    // Clear first so the tree
+    // holds only this test's seeds.
     await clearVisibleContentEntries(workerServer);
     await seedMarkdownDocs(api, [
       { name: firstDoc, markdown: `# First ${id}` },
@@ -569,6 +592,9 @@ test.describe('Editor tabs', () => {
       { name: barDoc, markdown: `# Bar Refresh ${id}` },
     ]);
 
+    // Two tabs pointing at the same file can only exist in a restored session
+    // now (focus-in-place prevents creating a second one via the UI); assert the
+    // legacy duplicate survives a reload.
     await installLocalTabSession(page, {
       openTabs: [fooDoc, barDoc, duplicateFooTabId],
       activeDocName: fooDoc,
@@ -690,6 +716,10 @@ test.describe('Editor tabs', () => {
 
     await page.goto(`/#/${barDoc}`);
     await expect(editorTabButtons(page, barLabel)).toHaveCount(1, { timeout: 10_000 });
+    // Settle the cold-load render before the first interaction: the bar tab can
+    // mount before the provider has synced and the sidebar's virtualized tree
+    // has finished its first layout, and a click that races that reflow gets
+    // swallowed by the Pierre tree's click/focus handling under worker contention.
     await waitForActiveProviderSynced(page);
 
     await editorNewTabButton(page).click();
@@ -697,6 +727,8 @@ test.describe('Editor tabs', () => {
     await sidebarTreeItem(page, `hello-${id}.mdx`).click();
     await expect(editorTabButtons(page, helloLabel)).toHaveCount(1, { timeout: 10_000 });
     await expectActiveTab(editorTabButtons(page, helloLabel).first());
+    // Re-settle after the hello navigation so the bar-row click below does not
+    // race the tree reflow that navigation triggers (same Pierre click/focus race).
     await waitForActiveProviderSynced(page);
 
     await sidebarTreeItem(page, `bar-${id}.mdx`).click();

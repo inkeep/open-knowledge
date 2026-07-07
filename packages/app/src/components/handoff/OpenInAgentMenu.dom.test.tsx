@@ -48,6 +48,9 @@ mock.module('@/hooks/use-is-embedded', () => ({
   useIsEmbedded: () => false,
 }));
 
+// The popover renders its own agent rows now and only pulls `TargetIcon` from
+// this module (which transitively imports `next-themes`); stub it so the mount
+// stays provider-free.
 mock.module('./OpenInAgentMenuItem', () => ({
   TargetIcon: () => null,
 }));
@@ -134,8 +137,14 @@ describe('OpenInAgentMenu runtime behavior', () => {
     expect(screen.getByTestId('open-in-agent-item-cursor')).toBeTruthy();
     expect(screen.queryByTestId('open-in-agent-item-claude-cowork')).toBeNull();
 
+    // The "Desktop" section label renders above the app-agent rows (assert before
+    // the click, which closes the popover and unmounts the panel).
     expect(screen.getByTestId('open-in-agent-desktop-label').textContent).toContain('Desktop');
 
+    // No instruction typed → the bare input dispatches unchanged. `toStrictEqual`
+    // (not `toEqual`) proves no `instruction` key was added: strict equality
+    // rejects an extra `instruction: undefined` key, whereas `toEqual` treats an
+    // undefined-valued key as absent and would miss that regression.
     await userEvent.click(screen.getByTestId('open-in-agent-item-codex'));
     expect(dispatchCalls).toStrictEqual([{ target: 'codex', input }]);
   });
@@ -159,6 +168,10 @@ describe('OpenInAgentMenu runtime behavior', () => {
   });
 
   test('instruction input resets to empty when the popover is reopened', async () => {
+    // Pins the documented reset-on-remount contract: the popover unmounts its
+    // content when closed, so the instruction never persists across opens. A
+    // future change making the panel persistent (e.g. for animation) would
+    // break this silently.
     states = {
       'claude-cowork': { installed: true, lastChecked: 1 },
       'claude-code': { installed: true, lastChecked: 1 },
@@ -168,6 +181,7 @@ describe('OpenInAgentMenu runtime behavior', () => {
     await renderMenu();
     await openMenu();
     await userEvent.type(screen.getByTestId('open-in-agent-instruction'), 'Tighten the intro');
+    // Dispatching closes the popover (unmounts the panel).
     await userEvent.click(screen.getByTestId('open-in-agent-item-codex'));
 
     await userEvent.click(screen.getByTestId('open-in-agent-trigger'));
@@ -189,6 +203,9 @@ describe('OpenInAgentMenu runtime behavior', () => {
 
     await userEvent.type(screen.getByTestId('open-in-agent-instruction'), '   ');
     await userEvent.click(screen.getByTestId('open-in-agent-item-codex'));
+    // `toStrictEqual` against the bare `input` proves no `instruction` key was
+    // added — strict equality distinguishes `instruction: undefined` from
+    // key-absent, which `toEqual` would not.
     expect(dispatchCalls).toStrictEqual([{ target: 'codex', input }]);
   });
 
@@ -202,6 +219,8 @@ describe('OpenInAgentMenu runtime behavior', () => {
     await renderMenu();
     await openMenu();
 
+    // No terminal launcher in the test (no provider → web-host path), so the
+    // disabled empty hint renders. The removed claude.ai web fallback must not.
     const empty = screen.getByTestId('open-in-agent-empty');
     expect(empty.textContent).toContain('No installed agents found');
     expect(screen.queryByTestId('open-in-agent-claude-web-fallback')).toBeNull();
@@ -235,8 +254,11 @@ describe('OpenInAgentMenu runtime behavior', () => {
     expect(screen.getByTestId('open-in-agent-terminal-claude')).toBeTruthy();
     expect(screen.getByTestId('open-in-agent-terminal-codex')).toBeTruthy();
     expect(screen.getByTestId('open-in-agent-terminal-cursor')).toBeTruthy();
+    // Each section is a named role="group" (via <fieldset>/<legend>) so
+    // assistive tech announces it.
     expect(screen.getByRole('group', { name: 'Desktop' })).toBeTruthy();
     expect(screen.getByRole('group', { name: 'Terminal' })).toBeTruthy();
+    // Terminal-first: the Terminal section label precedes the Desktop one.
     const terminalLabel = screen.getByTestId('open-in-agent-terminal-label');
     const desktopLabel = screen.getByTestId('open-in-agent-desktop-label');
     expect(
@@ -251,6 +273,7 @@ describe('OpenInAgentMenu runtime behavior', () => {
 
     await userEvent.click(screen.getByTestId('open-in-agent-terminal-claude'));
     expect(launchCalls).toEqual([{ input, cli: 'claude' }]);
+    // The terminal launch is distinct from the app deep-link dispatch.
     expect(dispatchCalls).toEqual([]);
   });
 

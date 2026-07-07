@@ -69,6 +69,8 @@ describe('GET /api/asset', () => {
       '<h1>trip viewer</h1><script>alert("x")</script>',
     );
     writeFileSync(join(contentDir, 'docs', 'legacy.htm'), '<h1>legacy</h1>');
+    // `.js` has a known mrmime content type but is NOT in ASSET_EXTENSIONS —
+    // exercises the admission gate independently of the content-type gate.
     writeFileSync(join(contentDir, 'docs', 'script.js'), 'alert(1)');
     mkdirSync(join(contentDir, 'docs', 'directory.png'));
     writeFileSync(join(tmpDir, 'outside.png'), 'outside');
@@ -133,6 +135,8 @@ describe('GET /api/asset', () => {
   });
 
   test('rejects unsupported extensions even when they have a known content type', async () => {
+    // `.js` resolves to `text/javascript` via mrmime but is not in
+    // ASSET_EXTENSIONS, so the admission gate 415s it.
     const res = await fetch(assetUrl(harness.baseURL, 'docs/script.js'));
 
     expect(res.status).toBe(415);
@@ -142,6 +146,9 @@ describe('GET /api/asset', () => {
     'docs/page.html',
     'docs/legacy.htm',
   ])('serves %s inside a sandboxed opaque origin (scripts run, network blocked, isolated from OK)', async (assetPath) => {
+    // html/htm are admitted (so links resolve + serve) but render only under
+    // the sandbox CSP: scripts run in a unique opaque origin and `connect-src
+    // 'none'` blocks reaching OK's loopback API or exfiltrating.
     const res = await fetch(assetUrl(harness.baseURL, assetPath));
 
     expect(res.status).toBe(200);

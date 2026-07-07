@@ -26,11 +26,19 @@ function makeFixture(): Fixture {
     cleanup: () => {
       try {
         rmSync(root, { recursive: true, force: true });
-      } catch {}
+      } catch {
+        /* best-effort */
+      }
     },
   };
 }
 
+/**
+ * Wait until either `predicate()` returns true or `timeoutMs` elapses.
+ * Polls every 25ms — fast enough that chokidar's awaitWriteFinish (100ms
+ * stabilityThreshold) dominates the latency. Returns true on success,
+ * false on timeout.
+ */
 async function waitFor(predicate: () => boolean, timeoutMs = 3_000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -48,10 +56,13 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  // Tear down watchers before deleting tempdir so chokidar releases handles.
   for (const cleanup of cleanups.splice(0)) {
     try {
       await cleanup();
-    } catch {}
+    } catch {
+      /* best-effort */
+    }
   }
   fx.cleanup();
 });
@@ -103,6 +114,11 @@ describe('startConfigFileWatcher', () => {
     });
     cleanups.push(cleanup);
 
+    // Wait past the fallback poll's first tick (500ms) so we exercise BOTH
+    // chokidar's `ignoreInitial` AND the post-`ready` fallback's seeded
+    // dedup. Without the disk-seed the fallback would re-emit `onChange`
+    // for pre-existing content the consumer is supposed to ignore. 750ms
+    // covers one fallback tick plus a margin against scheduler jitter.
     await wait(750);
     expect(events).toEqual([]);
   });
@@ -116,6 +132,9 @@ describe('startConfigFileWatcher', () => {
     });
     cleanups.push(cleanup);
 
+    // Simulate the persistence layer's atomic write: write to tmp, then
+    // rename. Without awaitWriteFinish, chokidar would emit unlink + add for
+    // the rename. With it, the events coalesce to a single change.
     const tmpPath = `${fx.absPath}.tmp.test`;
     writeFileSync(tmpPath, 'theme: dark\n', 'utf-8');
     await rename(tmpPath, fx.absPath);
@@ -124,6 +143,7 @@ describe('startConfigFileWatcher', () => {
     expect(fired).toBe(true);
     expect(events.at(-1)).toBe('theme: dark\n');
 
+    // Hold for additional debounce window — assert no extra events arrived.
     await wait(200);
     expect(events.length).toBeGreaterThan(0);
     expect(events.length).toBeLessThanOrEqual(2);
@@ -146,6 +166,7 @@ describe('startConfigFileWatcher', () => {
   test('cleanup function returned is idempotent', async () => {
     const cleanup = await startConfigFileWatcher(fx.absPath, () => {});
     await cleanup();
+    // Second call must not throw.
     await cleanup();
   });
 
@@ -164,6 +185,7 @@ describe('startConfigFileWatcher', () => {
     writeFileSync(fx.absPath, 'first\n', 'utf-8');
     await waitFor(() => firstFired);
 
+    // Watcher must still be alive — second write fires despite the throw.
     writeFileSync(fx.absPath, 'theme: dark\n', 'utf-8');
     const fired = await waitFor(() => secondFired);
     expect(fired).toBe(true);
@@ -182,7 +204,9 @@ describe('startMultiPathConfigFileWatcher', () => {
       cleanup: () => {
         try {
           rmSync(root, { recursive: true, force: true });
-        } catch {}
+        } catch {
+          /* best-effort */
+        }
       },
     };
   }
@@ -231,6 +255,7 @@ describe('startMultiPathConfigFileWatcher', () => {
     const matched = events.find((e) => e.path === multiFx.pathA);
     expect(matched).toBeDefined();
     expect(matched?.content.startsWith('drafts/\n')).toBe(true);
+    // The other path was not touched — must not have fired.
     expect(events.some((e) => e.path === multiFx.pathB)).toBe(false);
   }, 25_000);
 
@@ -271,6 +296,8 @@ describe('startMultiPathConfigFileWatcher', () => {
     );
     cleanups.push(cleanup);
 
+    // Past the fallback poll's first tick (500ms) — the per-path lastContent
+    // seed must dedup pre-existing content for both files.
     await wait(750);
     expect(events).toEqual([]);
   });
@@ -297,8 +324,10 @@ describe('startMultiPathConfigFileWatcher', () => {
     const matchedA = events.filter((e) => e.path === multiFx.pathA);
     expect(matchedA.length).toBeGreaterThan(0);
     expect(matchedA.at(-1)?.content).toBe('*.tmp\n*.log\n');
+    // pathB was not touched.
     expect(events.some((e) => e.path === multiFx.pathB)).toBe(false);
 
+    // Hold for additional debounce window — assert no flood of extra events.
     await wait(200);
     expect(matchedA.length).toBeLessThanOrEqual(2);
   });
@@ -329,6 +358,7 @@ describe('startMultiPathConfigFileWatcher', () => {
   test('cleanup function is idempotent', async () => {
     const cleanup = await startMultiPathConfigFileWatcher([multiFx.pathA, multiFx.pathB], () => {});
     await cleanup();
+    // Second call must not throw.
     await cleanup();
   });
 
@@ -342,6 +372,7 @@ describe('startMultiPathConfigFileWatcher', () => {
     );
     cleanups.push(cleanup);
 
+    // Sibling file in same parent dir — not watched.
     const siblingPath = join(multiFx.root, 'unrelated.txt');
     writeFileSync(siblingPath, 'hello\n', 'utf-8');
     await wait(750);

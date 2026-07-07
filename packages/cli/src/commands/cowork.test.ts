@@ -5,6 +5,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCoworkSkill } from './cowork.ts';
 
+/**
+ * Tests for `ok cowork` (hidden).
+ *
+ * Coverage:
+ *   - Default output path goes to a Downloads-like dir
+ *   - Custom --out path wins
+ *   - --no-open produces `status: 'built'` without spawning anything
+ *   - File-association invocation spawns `open`/`start`/`xdg-open` per platform
+ *   - Unsupported platform falls back to `built` with a helpful message
+ *   - Output file is a valid ZIP wrapping `open-knowledge/SKILL.md`
+ */
+
+// Minimal ChildProcess-like stub for spawnFn tests. We only use `unref()`
+// and don't need the full ChildProcess surface.
 function makeFakeSpawn(capture: {
   command?: string;
   args?: readonly string[];
@@ -18,6 +32,11 @@ function makeFakeSpawn(capture: {
   }) as unknown as typeof spawn;
 }
 
+// picocolors emits ANSI codes when it detects color support (TTY or
+// FORCE_COLOR=1, both common in CI). The composed message wraps individual
+// words like `Customize` and `Skills` in their own `accent()` calls, which
+// breaks contiguous-substring matching when codes are present. Strip codes
+// before substring checks so the assertions are color-agnostic.
 function stripAnsi(s: string): string {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes
   return s.replace(/\[[0-9;]*m/g, '');
@@ -45,6 +64,8 @@ describe('runCoworkSkill', () => {
     expect(statSync(outPath).size).toBeGreaterThan(0);
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result.skillVersion).toMatch(/^\d+\.\d+\.\d+/);
+    // With --no-open, message points at the Claude Desktop App manual
+    // upload sequence (the 5-click Customize → Skills → + → ... flow).
     expect(result.message).toContain('Customize → Skills');
     expect(result.message).toContain('Upload skill');
   });
@@ -62,6 +83,12 @@ describe('runCoworkSkill', () => {
     expect(result.status).toBe('installed');
     expect(capture.command).toBe('open');
     expect(capture.args).toEqual([outPath]);
+    // Post-handoff message includes the 5-click upload sequence
+    // (.skill opens the Claude Desktop App but doesn't auto-install).
+    // Strip ANSI before substring checks: `Customize` and `Skills` are
+    // each in their own `accent()` call, so colored output splits the
+    // contiguous phrase. CI runs with FORCE_COLOR=1 / TTY; local typically
+    // runs without — strip to make assertions color-agnostic.
     const plain = stripAnsi(result.message);
     expect(plain).toContain('Claude Desktop App opened');
     expect(plain).toContain('Customize (sidebar) → Skills');
@@ -82,6 +109,7 @@ describe('runCoworkSkill', () => {
     expect(capture.command).toBe('cmd');
     expect(capture.args?.[0]).toBe('/c');
     expect(capture.args?.[1]).toBe('start');
+    // Third arg is the empty-title placeholder; fourth is the path.
     expect(capture.args?.[3]).toBe(outPath);
   });
 
@@ -127,6 +155,7 @@ describe('runCoworkSkill', () => {
       }),
     });
 
+    // Build succeeded; handoff failed — user can still double-click manually.
     expect(result.status).toBe('built');
     expect(result.exitCode).toBe(0);
     expect(result.message).toContain('EACCES: permission denied');

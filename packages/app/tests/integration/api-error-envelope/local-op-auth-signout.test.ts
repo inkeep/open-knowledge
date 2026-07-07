@@ -1,3 +1,9 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleLocalOpAuthSignout`.
+ * Covers method gating, body-shape validation, and the
+ * happy-path empty success body (no `ok: true` wrapper).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { LocalOpAuthEmptySuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -7,6 +13,7 @@ let server: TestServer;
 
 beforeAll(async () => {
   server = await createTestServer({
+    // Spawn ENOENT triggers the catch in handleLocalOpAuthSignout.
     localOpCliArgs: ['/nonexistent-test-binary-do-not-create-this-file'],
   });
 }, HARNESS_BOOT_TIMEOUT_MS);
@@ -62,6 +69,10 @@ describe('local-op-auth-signout envelope (RFC 9457, US-012)', () => {
     }
   });
 
+  // Documents the canonical success shape via schema reference. The
+  // actual happy path requires a live `auth signout` subprocess (host-network
+  // deps) — covered separately. The schema parses `{}` and any forward-compat
+  // extras.
   test('LocalOpAuthEmptySuccessSchema accepts empty success body', () => {
     expect(LocalOpAuthEmptySuccessSchema.safeParse({}).success).toBe(true);
   });

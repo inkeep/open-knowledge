@@ -1,3 +1,12 @@
+/**
+ * RTL tests for the skill Properties panel. The frontmatter editor is the EXACT
+ * document `PropertyPanel` (its own tests cover the CRDT binding); these assert
+ * what is unique to the skill surface: the reused panel renders the doc's
+ * frontmatter (description shows through it), and the identity `name` field
+ * commits a RENAME (never a plain frontmatter patch). Uses a real-Y.Doc fake
+ * provider — the same pattern `SourceEditor.dom.test.tsx` uses.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -34,7 +43,9 @@ describe('SkillProperties (CRDT)', () => {
   test('renders the reused document property panel with the doc frontmatter', () => {
     const { provider } = makeProvider(SOURCE);
     renderPanel(<SkillProperties provider={provider} name="foo" onRename={() => {}} />);
+    // The frontmatter editor IS the document PropertyPanel (same component).
     expect(screen.getByTestId('property-panel')).toBeTruthy();
+    // The description frontmatter value renders through it (not a bespoke row).
     expect(screen.getByDisplayValue('initial desc')).toBeTruthy();
   });
 
@@ -46,6 +57,7 @@ describe('SkillProperties (CRDT)', () => {
     fireEvent.change(nameInput, { target: { value: 'bar' } });
     fireEvent.blur(nameInput);
     expect(onRename).toHaveBeenCalledWith('bar');
+    // The frontmatter `name:` is NOT rewritten by the panel — the rename spine owns it.
     expect(ytext.toString()).toContain('name: foo');
   });
 

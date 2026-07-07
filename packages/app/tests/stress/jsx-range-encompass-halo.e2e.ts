@@ -1,3 +1,27 @@
+/**
+ * JSX range-encompass soft halo — Playwright E2E.
+ *
+ * Pins the three observable behaviors that require a real browser:
+ *
+ *   - A TextSelection range from before a JSX wrapper to after it
+ *     sets `data-range-selected="true"` on it AND the soft halo's
+ *     ::after computed opacity is > 0.
+ *   - Cmd+A (AllSelection) populates `data-range-selected="true"`
+ *     on every JSX wrapper in the doc.
+ *   - The soft tone (`background: var(--selection-soft)`) is
+ *     visually distinguishable from the full ring halo
+ *     (`border-color: var(--ring)`): captured `::after` styles
+ *     differ between NodeSelected and range-encompassed states.
+ *
+ * Real Chromium is required: `getComputedStyle(el, '::after')` does not
+ * resolve `var(--selection-soft)` reliably under happy-dom / jsdom.
+ *
+ * This file is NOT in the CI `test:e2e` file list
+ * (`packages/app/package.json` dispatches a fixed subset for PR-tier
+ * runs); generic `bunx playwright test` invocations run it for
+ * pre-push coverage.
+ */
+
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test } from './_helpers';
@@ -30,7 +54,7 @@ async function selectAllText(page: Page) {
 }
 
 /** Programmatically NodeSelect the first jsxComponent matching `componentName`.
- *  Used to drive AC13's "full halo" state without depending on hover-then-grip
+ *  Used to drive "full halo" state without depending on hover-then-grip
  *  mouse coordination. */
 async function nodeSelectFirstJsx(page: Page, componentName: string) {
   await page.evaluate((name) => {
@@ -79,6 +103,8 @@ async function selectRangeOverFirstJsx(page: Page, componentName: string) {
   }, componentName);
 }
 
+// ── single-wrapper drag-select range marks data-range-selected ────
+
 test('AC11: TextSelection range covering one Callout sets data-range-selected with opacity>0', async ({
   page,
   api,
@@ -91,13 +117,23 @@ test('AC11: TextSelection range covering one Callout sets data-range-selected wi
   const callout = page.locator('.jsx-component-wrapper[data-component-type="callout"]').first();
   await callout.waitFor({ state: 'visible' });
 
+  // Baseline: no wrapper carries range-selected before the range fires.
   expect(await callout.getAttribute('data-range-selected')).toBeNull();
 
   await selectRangeOverFirstJsx(page, 'Callout');
 
+  // attribute pass-through.
   await expect(callout).toHaveAttribute('data-range-selected', 'true', { timeout: 2_000 });
+  // Mutual exclusion: TextSelection-range does NOT NodeSelect the wrapper.
   expect(await callout.getAttribute('data-selected')).toBeNull();
 
+  // soft halo paints — ::after opacity strictly > 0 (the CSS rule
+  // resets the halo's --selection-halo-opacity to 1 via the explicit
+  // `opacity: 1` declaration on the [data-range-selected] paint rule).
+  // Polled rather than read once: globals.css `.jsx-component-wrapper::after`
+  // has a 180ms opacity transition (`prefers-reduced-motion: no-preference`),
+  // and Playwright can sample computed opacity at exactly t=0 of the
+  // transition under parallel-worker CPU contention.
   await expect
     .poll(
       () =>
@@ -106,6 +142,8 @@ test('AC11: TextSelection range covering one Callout sets data-range-selected wi
     )
     .toBeGreaterThan(0);
 });
+
+// ── Cmd+A paints soft halo on every JSX wrapper ───────────────────
 
 test('AC12: Cmd+A populates data-range-selected on every JSX wrapper in the doc', async ({
   page,
@@ -119,18 +157,24 @@ test('AC12: Cmd+A populates data-range-selected on every JSX wrapper in the doc'
   await page.waitForSelector('.jsx-component-wrapper[data-component-type="callout"]');
   await page.waitForSelector('.jsx-component-wrapper[data-component-type="accordion"]');
 
+  // Baseline: zero range-selected wrappers prior to selectAll.
   await expect(page.locator('.jsx-component-wrapper[data-range-selected="true"]')).toHaveCount(0);
 
   await selectAllText(page);
 
+  // Every JSX wrapper in the doc carries data-range-selected. Total in this
+  // fixture: Callout + Accordion = 2.
   await expect(page.locator('.jsx-component-wrapper[data-range-selected="true"]')).toHaveCount(2);
   const callout = page.locator('.jsx-component-wrapper[data-component-type="callout"]').first();
   const accordion = page.locator('.jsx-component-wrapper[data-component-type="accordion"]').first();
   await expect(callout).toHaveAttribute('data-range-selected', 'true');
   await expect(accordion).toHaveAttribute('data-range-selected', 'true');
+  // Mutual exclusion holds for both: AllSelection is not a NodeSelection.
   expect(await callout.getAttribute('data-selected')).toBeNull();
   expect(await accordion.getAttribute('data-selected')).toBeNull();
 });
+
+// ── soft halo tone is visually distinct from full halo ────────────
 
 test('AC13: soft range halo paints a distinct background from the full ring halo', async ({
   page,
@@ -140,8 +184,18 @@ test('AC13: soft range halo paints a distinct background from the full ring halo
   const callout = page.locator('.jsx-component-wrapper[data-component-type="callout"]').first();
   await callout.waitFor({ state: 'visible' });
 
+  // State A: NodeSelect the Callout → full halo (border-color via --ring,
+  // ::after background stays transparent / unset).
   await nodeSelectFirstJsx(page, 'Callout');
   await expect(callout).toHaveAttribute('data-selected', 'true');
+  // The halo gate
+  // routes through TipTap's `selected` NodeView prop, which flips via an
+  // internal rAF (`ReactNodeViewRenderer.handleSelectionUpdate`). The 180ms
+  // opacity transition (globals.css `.jsx-component-wrapper::after`) starts
+  // on that rAF, so `data-selected="true"` can be observed in DOM exactly
+  // when the transition is at t=0 (opacity computed value still 0). Poll
+  // until the transition reads a non-zero opacity — the semantic invariant
+  // is "halo paints," not "DOM attribute is set in the same frame."
   await expect
     .poll(
       () =>
@@ -159,6 +213,10 @@ test('AC13: soft range halo paints a distinct background from the full ring halo
     };
   });
 
+  // State B: AllSelection → soft halo (background via --selection-soft,
+  // border-color stays transparent / unset). NodeSelection is replaced
+  // by AllSelection so `data-selected` clears before `data-range-selected`
+  // takes over.
   await selectAllText(page);
   await expect(callout).toHaveAttribute('data-range-selected', 'true', { timeout: 2_000 });
   expect(await callout.getAttribute('data-selected')).toBeNull();
@@ -172,9 +230,15 @@ test('AC13: soft range halo paints a distinct background from the full ring halo
     };
   });
 
+  // The two paint channels differ. The full halo uses border-color (with
+  // background staying transparent); the soft halo uses background (with
+  // border-color staying transparent). Both yield opacity > 0 — the visual
+  // distinction lives in which channel is painted.
   expect(softHalo.backgroundColor).not.toBe(fullHalo.backgroundColor);
   expect(softHalo.borderColor).not.toBe(fullHalo.borderColor);
+  // The soft halo's resolved background must include a non-zero color.
   expect(softHalo.backgroundColor).not.toMatch(/rgba?\(0,\s*0,\s*0,\s*0\)|^transparent\b/);
+  // Both states result in a visible halo (opacity > 0).
   expect(Number.parseFloat(fullHalo.opacity)).toBeGreaterThan(0);
   expect(Number.parseFloat(softHalo.opacity)).toBeGreaterThan(0);
 });

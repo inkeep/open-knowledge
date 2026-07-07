@@ -1,3 +1,16 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleMetricsParseHealth`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for
+ * `GET /api/metrics/parse-health`:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `MetricsParseHealthSuccessSchema` (permissive — operators
+ *     read fields by name; pinning every counter would force lockstep
+ *     maintenance with `parse-health.ts`). No `ok: true` discriminator.
+ *   - method-not-allowed on POST → 405 `urn:ok:error:method-not-allowed`
+ *     with `Allow: GET`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { MetricsParseHealthSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -22,6 +35,7 @@ describe('metrics-parse-health envelope (RFC 9457)', () => {
     const body = await res.json();
     expect(MetricsParseHealthSuccessSchema.safeParse(body).success).toBe(true);
     expect((body as Record<string, unknown>).ok).toBeUndefined();
+    // Top-level `parseFallback` shape is the operator-visible field name.
     const parseFallback = (body as Record<string, unknown>).parseFallback;
     expect(parseFallback && typeof parseFallback === 'object').toBe(true);
   });

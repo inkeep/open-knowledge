@@ -119,6 +119,8 @@ describe('buildWorktreeSelectorModel', () => {
       worktrees: [wt({ path: '/repo', branch: 'main' })],
       branches: ['main', 'dev'],
       currentProjectPath: '/repo',
+      // origin/main + origin/dev have local counterparts (still valid base
+      // options); origin/feature-x is remote-only; the duplicate is deduped.
       remoteBranches: ['origin/main', 'origin/dev', 'origin/feature-x', 'origin/feature-x'],
     });
     expect(model.remoteBranches).toEqual(['origin/main', 'origin/dev', 'origin/feature-x']);
@@ -133,7 +135,10 @@ describe('buildWorktreeSelectorModel', () => {
     });
     const byBranch = new Map(model.entries.map((e) => [e.branch, e]));
     expect(byBranch.get('main')?.behind).toBe(3);
+    // 0 is a real value (up to date with last fetch) — must survive, not be dropped.
     expect(byBranch.get('dev')?.behind).toBe(0);
+    // A branch with no computed count has no `behind` field at all (undefined),
+    // distinguishing "no upstream / unknown" from "0 behind".
     expect(byBranch.get('no-upstream')?.behind).toBeUndefined();
     expect('behind' in (byBranch.get('no-upstream') ?? {})).toBe(false);
   });

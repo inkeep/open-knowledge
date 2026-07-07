@@ -1,3 +1,19 @@
+/**
+ * mark-interaction-bridge — unit tests.
+ *
+ * Covers three surfaces:
+ *   1. `getCurrentMarkInfo` live-lookup helper — state present / absent / wrong id.
+ *   2. `buildMarkBridgeHandlers` — onRegister/onDeregister wiring with a mock layer.
+ *      PropPanel renderer receives correct ctx. Predicate behavior is NOT tested
+ *      here — that's markIdentityPlugin's responsibility (already covered).
+ *   3. `buildMarkInteractionBridge` — returns a Plugin keyed by markIdentityKey.
+ *
+ * No PM View mount required: the handler surface is validated by calling
+ * `onRegister` / `onDeregister` directly and asserting the mock layer was
+ * invoked with the expected params. PM plugin lifecycle (view().update firing
+ * diffs) is already covered by mark-identity.test.ts.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type { Editor } from '@tiptap/core';
 import { type Mark, Schema } from '@tiptap/pm/model';
@@ -14,6 +30,10 @@ import {
   buildMarkInteractionBridge,
   getCurrentMarkInfo,
 } from './mark-interaction-bridge';
+
+// ---------------------------------------------------------------------------
+// Test schema + helpers
+// ---------------------------------------------------------------------------
 
 const schema = new Schema({
   nodes: {
@@ -47,6 +67,11 @@ function stateWithIdentity(runs: Array<{ text: string; marks?: Mark[] }>): Edito
   });
 }
 
+/**
+ * Fake InteractionLayerHandle that records register/deregister calls so tests
+ * can assert the bridge wired them correctly. The layer API is small enough
+ * to duck-type without a library.
+ */
 interface FakeLayer extends InteractionLayerHandle {
   registerCalls: RegisterParams[];
   deregisterCalls: string[];
@@ -58,6 +83,9 @@ function makeFakeLayer(): FakeLayer {
   const deregisterCalls: string[] = [];
   const setActiveNodeCalls: Array<string | null> = [];
   let activeNode: string | null = null;
+  // Real InteractionLayerStore — exposes the same API the production layer
+  // uses so the fake satisfies the InteractionLayerHandle contract (which
+  // now requires `store`).
   const store = new InteractionLayerStore();
   return {
     register(params) {
@@ -79,7 +107,9 @@ function makeFakeLayer(): FakeLayer {
     getRegistration(id) {
       return store.getRegistration(id);
     },
-    destroy() {},
+    destroy() {
+      /* no-op */
+    },
     store,
     registerCalls,
     deregisterCalls,
@@ -87,6 +117,7 @@ function makeFakeLayer(): FakeLayer {
   };
 }
 
+/** Minimal Editor shape — only `.state` is read by the bridge / tests. */
 function makeFakeEditor(state: EditorState): Editor {
   return { state } as unknown as Editor;
 }
@@ -101,6 +132,10 @@ function makeMarkInfo(overrides: Partial<MarkInfo> = {}): MarkInfo {
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// getCurrentMarkInfo
+// ---------------------------------------------------------------------------
 
 describe('getCurrentMarkInfo', () => {
   test('returns null when markIdentityPlugin is not installed', () => {
@@ -123,6 +158,7 @@ describe('getCurrentMarkInfo', () => {
     expect(info?.id).toBe('m1');
     expect(info?.markType).toBe('link');
     expect(info?.attrs).toEqual({ href: '/a' });
+    // First text node starts at pos 1; 'hello' is 5 chars wide.
     expect(info?.from).toBe(1);
     expect(info?.to).toBe(6);
   });
@@ -139,6 +175,10 @@ describe('getCurrentMarkInfo', () => {
     expect(m2?.attrs).toEqual({ href: '/b' });
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildMarkBridgeHandlers — onRegister wiring
+// ---------------------------------------------------------------------------
 
 describe('buildMarkBridgeHandlers — onRegister', () => {
   test('onRegister forwards to layer.register with type + nodeId from MarkInfo', () => {
@@ -177,6 +217,9 @@ describe('buildMarkBridgeHandlers — onRegister', () => {
     const propPanel = reg?.controls.propPanel;
     expect(typeof propPanel).toBe('function');
 
+    // Invoke the registered propPanel with a layer-supplied InteractionContext
+    // and verify the user-supplied renderer was called with the expected
+    // augmented MarkPropPanelContext.
     const deactivate = () => {};
     const ctx: InteractionContext = { nodeId: 'm3', type: 'link', deactivate };
     propPanel?.(ctx);
@@ -223,6 +266,10 @@ interface MarkPropPanelCtxCapture {
   deactivate: () => void;
 }
 
+// ---------------------------------------------------------------------------
+// buildMarkBridgeHandlers — onDeregister wiring
+// ---------------------------------------------------------------------------
+
 describe('buildMarkBridgeHandlers — onDeregister', () => {
   test('onDeregister forwards the ID to layer.deregister', () => {
     const editor = makeFakeEditor(stateWithIdentity([]));
@@ -251,6 +298,10 @@ describe('buildMarkBridgeHandlers — onDeregister', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// buildMarkInteractionBridge — plugin factory
+// ---------------------------------------------------------------------------
+
 describe('buildMarkInteractionBridge', () => {
   test('returns a Plugin keyed by markIdentityKey', () => {
     const editor = makeFakeEditor(stateWithIdentity([]));
@@ -273,6 +324,8 @@ describe('buildMarkInteractionBridge', () => {
       markTypes: ['link'],
       renderPropPanel: () => null,
     });
+    // Install on a fresh state alongside the plugin itself — verifies the
+    // plugin's init() + apply() paths run cleanly without errors.
     const doc = buildDoc([{ text: 'hello', marks: [linkMark('/a')] }]);
     expect(() => EditorState.create({ doc, plugins: [plugin] })).not.toThrow();
   });
@@ -287,6 +340,8 @@ describe('buildMarkInteractionBridge', () => {
       markTypes,
       renderPropPanel: () => null,
     });
+    // Mutate caller-side array — shouldn't change plugin behavior (verified
+    // by no throw during install + structural presence of key).
     markTypes.push('strong');
     expect(plugin.spec.key).toBe(markIdentityKey);
   });

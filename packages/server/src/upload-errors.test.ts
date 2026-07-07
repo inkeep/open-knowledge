@@ -1,3 +1,15 @@
+/**
+ * Branch coverage for `classifyUploadErrno` — the errno-to-URN mapper
+ * shared by `handleUploadAsset`'s mkdir guard and busboy write pipeline.
+ * `uploadStatusFor` (switch over `UploadWriteReason`) is covered by the
+ * exhaustiveness meta-test, but `classifyUploadErrno` uses if/else
+ * chains that the AST scanner doesn't reach.
+ *
+ * A regression that swaps ENOSPC and EROFS mappings would route disk-full
+ * errors to 500 `storage-readonly` instead of 507 `storage-full`, causing
+ * SDK consumers branching on the URN to display wrong retry guidance.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { classifyUploadErrno, uploadStatusFor, uploadTitleFor } from './upload-errors.ts';
 
@@ -37,12 +49,23 @@ describe('classifyUploadErrno', () => {
   });
 
   test('error with no code field → urn:ok:error:storage-error', () => {
+    // `NodeJS.ErrnoException.code` is optional — a plain `new Error()`
+    // without `.code` set must not crash the classifier. Default branch
+    // catches it.
     const err = new Error('no code at all') as NodeJS.ErrnoException;
     expect(classifyUploadErrno(err)).toBe('urn:ok:error:storage-error');
   });
 });
 
 describe('uploadStatusFor', () => {
+  // The exhaustiveness meta-test verifies the switch terminates with
+  // `default: assertNeverProblemType(target)` — that's a structural
+  // guarantee against forgetting a variant. But it doesn't verify the
+  // PER-CASE return values: a swapped mapping (e.g.,
+  // `storage-full → 500` instead of `507`) would pass exhaustiveness
+  // but break SDK retry guidance because consumers branch on status.
+  // Pin each mapping explicitly.
+
   test('malformed-upload → 400', () => {
     expect(uploadStatusFor('urn:ok:error:malformed-upload')).toBe(400);
   });
@@ -65,6 +88,11 @@ describe('uploadStatusFor', () => {
 });
 
 describe('uploadTitleFor', () => {
+  // Same per-case rationale as `uploadStatusFor`. Title strings are the
+  // user-facing diagnostic surface (RFC 9457 §3.1.4); a swapped or
+  // truncated mapping would surface the wrong message but pass the
+  // exhaustiveness meta-test.
+
   test('malformed-upload title is sentence-shaped + period-terminated', () => {
     expect(uploadTitleFor('urn:ok:error:malformed-upload')).toBe('Upload payload is malformed.');
   });

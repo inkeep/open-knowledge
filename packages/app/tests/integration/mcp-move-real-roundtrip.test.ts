@@ -1,3 +1,24 @@
+/**
+ * Real MCP move tool roundtrip against a live OK server.
+ *
+ * The unit-level mock-fetch tests for the merged `move` tool
+ * globalThis.fetch — they verify the merged `move` tool builds the
+ * correct HTTP body but never round-trip through a real OK server. This
+ * test:
+ *
+ *   1. Boots a real OK server via the integration harness
+ *      (createRestartableServer — ensures the same shadow-git + persistence
+ *      surface as production).
+ *   2. Seeds folder + backlink state on disk.
+ *   3. Registers the merged `move` MCP tool with serverUrl pointing at the
+ *      live server (no fetch mock).
+ *   4. Invokes the tool's handler — the tool probes the filesystem to
+ *      decide whether `from` is a file or folder, then fires a real HTTP
+ *      POST with kind=file or kind=folder accordingly.
+ *   5. Asserts the on-disk state was rewritten AND the tool's structured
+ *      response carries the renamed[] / rewrittenDocs[] / previewUrls{}
+ *      (folder) or previewUrl (file) shape consumers depend on.
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -52,6 +73,7 @@ describe('MCP move tool — real roundtrip against live OK server (QA-004 / QA-0
     const server = await createRestartableServer();
     cleanups.push(() => server.shutdown());
 
+    // Seed: articles/{a,b,c} + a backlink-source 'index'.
     mkdirSync(join(server.contentDir, 'articles'), { recursive: true });
     writeFileSync(join(server.contentDir, 'articles', 'a.md'), '# A\n', 'utf-8');
     writeFileSync(join(server.contentDir, 'articles', 'b.md'), '# B\n', 'utf-8');
@@ -83,6 +105,7 @@ describe('MCP move tool — real roundtrip against live OK server (QA-004 / QA-0
 
     expect(result.isError).toBeUndefined();
     expect(result.content[0]?.text).toContain('Renamed folder articles/ → essays/');
+    // Structured content carries the renamed[] + rewrittenDocs[] shape.
     const structured = result.structuredContent as {
       ok: boolean;
       renamed: Array<{ fromDocName: string; toDocName: string }>;
@@ -95,17 +118,26 @@ describe('MCP move tool — real roundtrip against live OK server (QA-004 / QA-0
     expect(fromPaths).toEqual(['articles/a', 'articles/b', 'articles/c']);
     const toPaths = structured.renamed.map((r) => r.toDocName).sort();
     expect(toPaths).toEqual(['essays/a', 'essays/b', 'essays/c']);
+    // Backlink-source 'index' was rewritten.
     const rewrittenNames = structured.rewrittenDocs.map((d) => d.docName);
     expect(rewrittenNames).toContain('index');
 
+    // On-disk state matches.
     expect(existsSync(join(server.contentDir, 'essays', 'a.md'))).toBe(true);
     expect(existsSync(join(server.contentDir, 'essays', 'b.md'))).toBe(true);
     expect(existsSync(join(server.contentDir, 'essays', 'c.md'))).toBe(true);
     expect(existsSync(join(server.contentDir, 'articles', 'a.md'))).toBe(false);
     expect(existsSync(join(server.contentDir, 'articles'))).toBe(false);
+    // Backlink source rewritten on disk.
     const indexBody = readFileSync(join(server.contentDir, 'index.md'), 'utf-8');
     expect(indexBody).toContain('[[essays/a]]');
     expect(indexBody).not.toContain('[[articles/a]]');
+    // 30s → 60s: ubuntu-latest CI under load takes ~30s for the live-server
+    // round-trip (file-watcher index + MCP tool dispatch + /api/rename-path
+    // server work + on-disk rewrite + backlink rewrite). Observed CI failure
+    // at 30,008ms (8ms over) on commit 8bc35fde9; matches the rename-history
+    // 60s→90s precedent for runner-class slowness on rename-related tests.
+    // Local repro is ~3s — wide CI multiplier intentional and proportional.
   }, 60_000);
 
   test('QA-005: move (document) posts to live /api/rename-path with kind:file → backlinks rewrite', async () => {
@@ -151,10 +183,17 @@ describe('MCP move tool — real roundtrip against live OK server (QA-004 / QA-0
     const rewrittenNames = structured.rewrittenDocs.map((d) => d.docName);
     expect(rewrittenNames).toContain('index');
 
+    // Disk state.
     expect(existsSync(join(server.contentDir, 'sso.md'))).toBe(true);
     expect(existsSync(join(server.contentDir, 'auth.md'))).toBe(false);
     const indexBody = readFileSync(join(server.contentDir, 'index.md'), 'utf-8');
     expect(indexBody).toContain('[[sso]]');
     expect(indexBody).not.toContain('[[auth]]');
+    // 30s → 60s: ubuntu-latest CI under load takes ~30s for the live-server
+    // round-trip (file-watcher index + MCP tool dispatch + /api/rename-path
+    // server work + on-disk rewrite + backlink rewrite). Observed CI failure
+    // at 30,008ms (8ms over) on commit 8bc35fde9; matches the rename-history
+    // 60s→90s precedent for runner-class slowness on rename-related tests.
+    // Local repro is ~3s — wide CI multiplier intentional and proportional.
   }, 60_000);
 });

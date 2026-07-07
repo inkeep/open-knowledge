@@ -1,3 +1,17 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleMetricsReconciliation`
+ *
+ *
+ * Asserts the canonical RFC 9457 wire shape for
+ * `GET /api/metrics/reconciliation`:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `MetricsReconciliationSuccessSchema` (permissive — operators
+ *     read fields by name; pinning every counter would force lockstep
+ *     maintenance with `metrics.ts`). No `ok: true` discriminator.
+ *   - method-not-allowed on POST → 405 `urn:ok:error:method-not-allowed`
+ *     with `Allow: GET`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   MetricsReconciliationSuccessSchema,
@@ -25,6 +39,7 @@ describe('metrics-reconciliation envelope (RFC 9457)', () => {
     const body = await res.json();
     expect(MetricsReconciliationSuccessSchema.safeParse(body).success).toBe(true);
     expect((body as Record<string, unknown>).ok).toBeUndefined();
+    // The known counters should be present even though the schema is permissive.
     expect(typeof (body as Record<string, unknown>).reconcileCount).toBe('number');
   });
 

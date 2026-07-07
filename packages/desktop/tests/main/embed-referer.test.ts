@@ -8,6 +8,7 @@ import {
 describe('EMBED_REFERER', () => {
   test('is a real HTTPS origin (YouTube rejects file:// and empty)', () => {
     expect(EMBED_REFERER.startsWith('https://')).toBe(true);
+    // Sanity: trailing slash so the value is a complete origin, not a path.
     expect(EMBED_REFERER.endsWith('/')).toBe(true);
   });
 });
@@ -24,6 +25,8 @@ describe('EMBED_HOST_PATTERNS', () => {
   });
 
   test('does not cover Vimeo / Loom (their iframes accept any embedding origin)', () => {
+    // Pin the scope decision so a future broadening surfaces here — a
+    // Vimeo/Loom-also-failing report should bring this test with it.
     expect(EMBED_HOST_PATTERNS.some((p) => p.includes('vimeo'))).toBe(false);
     expect(EMBED_HOST_PATTERNS.some((p) => p.includes('loom'))).toBe(false);
   });
@@ -35,6 +38,7 @@ describe('rewriteEmbedRequestHeaders', () => {
       'User-Agent': 'Electron/Whatever',
     });
     expect(out.Referer).toBe(EMBED_REFERER);
+    // Other headers preserved.
     expect(out['User-Agent']).toBe('Electron/Whatever');
   });
 
@@ -46,6 +50,10 @@ describe('rewriteEmbedRequestHeaders', () => {
   });
 
   test('drops lowercase `referer` to avoid duplicate casings in the outbound request', () => {
+    // Electron's HttpHeaders is case-insensitive on read but preserves
+    // the casing of the last write. Downstream HTTP libs vary on which
+    // they emit, so the rewrite normalizes to a single canonical
+    // `Referer` and drops any stale lowercase entry.
     const out = rewriteEmbedRequestHeaders({
       referer: 'file:///path/to/old',
       'X-Custom': 'keep-me',
@@ -76,6 +84,7 @@ describe('rewriteEmbedRequestHeaders', () => {
       'User-Agent': 'UA',
     };
     rewriteEmbedRequestHeaders(input);
+    // Input unchanged.
     expect(input.Referer).toBe('file:///old');
   });
 });

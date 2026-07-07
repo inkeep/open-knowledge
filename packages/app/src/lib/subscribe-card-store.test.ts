@@ -95,6 +95,7 @@ describe('isSubscribeCombinedEligible', () => {
     expect(isSubscribeCombinedEligible(stateWith({ shownVersions: ['1.0.0'] }), '1.0.0')).toBe(
       false,
     );
+    // ...but still eligible for a different version (within budget)
     expect(isSubscribeCombinedEligible(stateWith({ shownVersions: ['1.0.0'] }), '1.1.0')).toBe(
       true,
     );
@@ -139,6 +140,7 @@ describe('createSubscribeCardStore', () => {
     createSubscribeCardStore(s).recordShown('1.0.0');
     const store2 = createSubscribeCardStore(s);
     expect(store2.getSnapshot().shownVersions).toEqual(['1.0.0']);
+    // A reopen on the same version is no longer eligible; a new version is.
     expect(isSubscribeCombinedEligible(store2.getSnapshot(), '1.0.0')).toBe(false);
     expect(isSubscribeCombinedEligible(store2.getSnapshot(), '2.0.0')).toBe(true);
   });

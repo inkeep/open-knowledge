@@ -1,3 +1,13 @@
+/**
+ * ActivityPanelDiffView unit tests — verify the rendering branch logic by
+ * walking the returned React element tree. Follows the existing repo pattern
+ * in `GraphLegend.test.tsx` (no DOM rendering deps).
+ *
+ * What we verify:
+ *   - Empty / whitespace-only diff input → "No changes" placeholder branch.
+ *   - Valid unified-diff input → react-diff-view's Diff component is rendered.
+ *   - Unparseable input doesn't crash (fallback to <pre> or placeholder).
+ */
 import { describe, expect, test } from 'bun:test';
 import { createPatch } from 'diff';
 import type { ReactElement, ReactNode } from 'react';
@@ -23,6 +33,7 @@ function collectText(node: ReactNode): string {
   return collectText(el.props.children ?? null);
 }
 
+/** Walks the element tree and returns the first element whose props.className matches. */
 function findByClassName(node: ReactNode, className: string): ReactElement | null {
   if (!node || typeof node !== 'object') return null;
   if (Array.isArray(node)) {
@@ -58,6 +69,10 @@ describe('ActivityPanelDiffView', () => {
       context: 3,
     });
     const el = ActivityPanelDiffView({ diff });
+    // The valid-diff branch mounts a div.activity-panel-diff wrapping the
+    // react-diff-view Diff component. The placeholder branch has its own div
+    // with px-3 py-2 italic copy containing "No changes". Verify the wrapper
+    // is present AND we're NOT in the placeholder path.
     expect(findByClassName(el, 'activity-panel-diff')).not.toBeNull();
     expect(collectText(el)).not.toContain('No changes');
   });
@@ -72,6 +87,9 @@ describe('ActivityPanelDiffView', () => {
   });
 
   test('unparseable input does not crash', () => {
+    // parseDiff on "garbage" returns [] (or throws, depending on input) —
+    // we either render the placeholder or the raw <pre> fallback. In all
+    // cases the call must not throw.
     expect(() => ActivityPanelDiffView({ diff: 'not-a-diff' })).not.toThrow();
   });
 });

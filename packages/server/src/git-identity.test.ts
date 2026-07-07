@@ -1,3 +1,10 @@
+/**
+ * Unit tests for resolveGitIdentity() — chain order + fallback logic.
+ * Uses injected GitConfigReader so no actual git or simple-git calls are made.
+ *
+ * Chain: per-worktree → repo-local → global → tokenStore → null
+ */
+
 import { describe, expect, test } from 'bun:test';
 import {
   type GitConfigReader,
@@ -5,18 +12,24 @@ import {
   resolveGitIdentity,
 } from './git-identity.ts';
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Build a mock GitConfigReader that returns pre-defined values per (key, scope). */
 function mockReader(
   values: Partial<Record<string, Partial<Record<'worktree' | 'local' | 'global', string | null>>>>,
 ): GitConfigReader {
   return (_dir, key, scope) => values[key]?.[scope] ?? null;
 }
 
+/** A minimal TokenStore stub. */
 function makeTokenStore(entry: { login: string; name?: string; email?: string } | null) {
   const store: GitIdentityTokenStore = {
     get: async (_host: string) => entry,
   };
   return store;
 }
+
+// ─── Chain order tests ────────────────────────────────────────────────────────
 
 describe('resolveGitIdentity chain order', () => {
   test('Step 1 (worktree): per-worktree identity wins over local + global', async () => {
@@ -138,6 +151,7 @@ describe('resolveGitIdentity chain order', () => {
       name: 'The Octocat',
       email: 'cat@github.com',
     });
+    // host not provided — step 3 skipped even with a valid store
     const result = await resolveGitIdentity('/fake/repo', store, null, reader);
     expect(result).toBeNull();
   });

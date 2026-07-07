@@ -3,7 +3,9 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 
+// Controls the mocked git-sync hook's hasRemote signal per test.
 let hasRemote = true;
+// Captures the input runShareAction receives.
 let lastShareInput: unknown;
 const runShareActionMock = mock(async (input: unknown) => {
   lastShareInput = input;
@@ -45,6 +47,7 @@ function Button({
   variant?: unknown;
   [key: string]: unknown;
 }) {
+  // Radix menu items dispatch via onSelect; map it to onClick for the test.
   return (
     <button
       type="button"
@@ -197,6 +200,7 @@ describe('FileSidebar project-root Share', () => {
     hasRemote = true;
     lastShareInput = undefined;
     runShareActionMock.mockClear();
+    // Web mode (no okDesktop) keeps the test off the Electron header path.
     Object.defineProperty(window, 'okDesktop', { configurable: true, value: undefined });
   });
 
@@ -207,6 +211,7 @@ describe('FileSidebar project-root Share', () => {
   test('the project-root header is marked so right-clicks open the project menu', async () => {
     render(<FileSidebar onOpenSearch={() => {}} />);
     const header = await screen.findByText('open-knowledge');
+    // The header (or an ancestor) carries the right-click-exemption marker.
     expect(header.closest('[data-sidebar-root-context]')).not.toBeNull();
   });
 
@@ -229,6 +234,7 @@ describe('FileSidebar project-root Share', () => {
     hasRemote = false;
     render(<FileSidebar onOpenSearch={() => {}} />);
 
+    // Another always-present root item proves the menu rendered.
     await screen.findByTestId('empty-space-menu-new-file');
     expect(screen.queryByTestId('empty-space-menu-share')).toBeNull();
   });

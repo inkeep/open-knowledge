@@ -1,3 +1,11 @@
+/**
+ * Pure-function unit tests for the share-action orchestration helpers.
+ *
+ * The Share button itself (`ShareButton.tsx`) is a thin wiring layer over
+ * `runShareAction` — every side effect is injectable here so the test
+ * suite exercises the full decision tree without spinning up React.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type {
   ShareConstructUrlErrorCode,
@@ -88,6 +96,11 @@ describe('mapShareErrorToToast', () => {
   });
 
   test('no-remote returns the no-remote copy (kept for callers that map directly; runShareAction routes to the wizard)', () => {
+    // `runShareAction` routes both client-side `hasRemote: false` AND
+    // server-side `{ok:false, error:'no-remote'}` to the Publish wizard.
+    // This `mapShareErrorToToast`
+    // entry stays so any non-`runShareAction` caller that surfaces a raw
+    // server error still has a friendly string.
     expect(mapShareErrorToToast('no-remote')).toBe('This project has no GitHub remote.');
   });
 
@@ -302,6 +315,8 @@ describe('runShareAction — happy path', () => {
       shareUrl: 'https://openknowledge.ai/d/Fff',
       branch: 'main',
     });
+    // folderRelativePath is content-relative wire semantics — passed through
+    // unchanged (NOT run through docNameToMarkdownPath).
     expect(deps.fetchCalls[0].body).toEqual({ kind: 'folder', folderPath: 'guides/onboarding' });
     expect(deps.successToasts).toEqual(['Folder share link copied.']);
     expect(deps.clipboardTexts).toEqual(['https://openknowledge.ai/d/Fff']);
@@ -352,6 +367,11 @@ describe('runShareAction — no-remote routing', () => {
   });
 
   test('server-side no-remote response also fires the wizard (worktree dev parity)', async () => {
+    // The client-side `hasRemote` hook and the server-side construct
+    // endpoint can disagree in dev — e.g. a parent worktree carries the
+    // remote but the OK contentDir is a sibling without its own `.git/`.
+    // Routing both signals through the wizard keeps "Share never dead-
+    // ends".
     const deps = makeDeps({
       fetchResponse: { ok: false, error: 'no-remote' },
     });

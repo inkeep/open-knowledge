@@ -16,7 +16,7 @@ import { LayerStack, WhereToStart } from '@/components/overview-blocks';
 import { Tab, Tabs } from '@/components/tabs';
 import { VerifyExec } from '@/components/verify-exec';
 
-export function getMDXComponents(): MDXComponents {
+export function getMDXComponents(components?: MDXComponents): MDXComponents {
   return {
     ...defaultMdxComponents,
     Accordion,
@@ -39,5 +39,6 @@ export function getMDXComponents(): MDXComponents {
     Tabs,
     TypeTable,
     VerifyExec,
+    ...components,
   };
 }

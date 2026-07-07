@@ -23,6 +23,7 @@ describe('content-divergence gate', () => {
     expect(d.actualBytes).toBe(actual.length);
     expect(d.byteDelta).toBe(actual.length - intended.length);
     expect(d.divergenceType).toBe('patch-content-mismatch');
+    // The whole point: the agent recovers from `currentState`, no re-read.
     expect(d.currentState).toEqual({ kind: 'inline', content: actual });
   });
 
@@ -39,6 +40,8 @@ describe('content-divergence gate', () => {
   });
 
   test('byte fields are UTF-8 byte counts, not UTF-16 code units', () => {
+    // 'é' = 1 code unit / 2 UTF-8 bytes; '😀' = 2 code units / 4 UTF-8 bytes.
+    // 'abé😀' is string-length 5 but 8 UTF-8 bytes — the fields must report 8.
     const d = evaluateContentDivergence('abé😀', 'abc', 'replace');
     expect(d).toBeDefined();
     if (!d) return;
@@ -58,6 +61,7 @@ describe('content-divergence gate', () => {
     if (cs.kind === 'truncated') {
       expect(cs.byteLength).toBe(overCap.length);
       expect(cs.hint).toContain('exec');
+      // The truncated variant carries no inline content (just a re-read marker).
       expect('content' in cs).toBe(false);
     }
   });

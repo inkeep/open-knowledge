@@ -1,3 +1,10 @@
+/**
+ * Observer sync tests — shimmer prevention.
+ *
+ * Cross-CRDT sync tests (Observer A writing Y.Text, Observer B writing XmlFragment)
+ * live in server-observers.test.ts and C1-C10 integration tests (server-authoritative
+ * architecture, precedent #14). This file covers client-side shimmer prevention only.
+ */
 import { describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { MarkdownManager } from '@inkeep/open-knowledge-core';
@@ -10,12 +17,15 @@ import { ORIGIN_TEXT_TO_TREE, ORIGIN_TREE_TO_TEXT, setupObservers } from './obse
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });
 const schema = getSchema(sharedExtensions);
 
+/** Populate XmlFragment from markdown */
 function applyMarkdown(doc: Y.Doc, fragment: Y.XmlFragment, md: string) {
   const json = mdManager.parse(md);
   const pmNode = schema.nodeFromJSON(json);
   const meta = { mapping: new Map(), isOMark: new Map() };
   updateYFragment(doc, fragment, pmNode, meta);
 }
+
+// --- Shimmer Prevention ---
 
 describe('Shimmer prevention', () => {
   test('S01: single XmlFragment edit → bounded observer firings', async () => {

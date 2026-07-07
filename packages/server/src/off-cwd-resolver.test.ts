@@ -6,6 +6,7 @@ import {
   resolveOffCwdTarget,
 } from './off-cwd-resolver.ts';
 
+/** Build deps from a fixed candidate list + an optional symlink realpath map. */
 function makeDeps(
   candidates: OffCwdCandidate[],
   realpathMap: Record<string, string> = {},
@@ -44,6 +45,7 @@ describe('resolveOffCwdTarget', () => {
   });
 
   test('contentDir != projectDir: matches the config-derived content subdir', async () => {
+    // Server's content.dir is "docs", so contentDir is a subdir of the project root.
     const deps = makeDeps([candidate('/proj/docs', 5103)]);
     const r = await resolveOffCwdTarget('/proj/docs/guide.mdx', deps);
     expect(r).toEqual({ baseUrl: 'http://127.0.0.1:5103', docName: 'guide' });
@@ -54,6 +56,7 @@ describe('resolveOffCwdTarget', () => {
       candidate('/repo/feat-b', 5102, /* alive */ false),
       candidate('/repo/feat-a', 5101, true),
     ]);
+    // target lives under feat-b (dead) → no live match, not feat-a
     const r = await resolveOffCwdTarget('/repo/feat-b/specs/foo.md', deps);
     expect(r).toBeNull();
   });
@@ -63,6 +66,8 @@ describe('resolveOffCwdTarget', () => {
       candidate('/repo', 5101, /* alive */ true), // shorter prefix, live
       candidate('/repo/feat-b', 5102, /* alive */ false), // longer prefix, dead
     ]);
+    // Target is inside both, but the more-specific match is dead — the live
+    // parent must win, not null and not the dead longer match.
     const r = await resolveOffCwdTarget('/repo/feat-b/specs/foo.md', deps);
     expect(r).toEqual({ baseUrl: 'http://127.0.0.1:5101', docName: 'feat-b/specs/foo' });
   });

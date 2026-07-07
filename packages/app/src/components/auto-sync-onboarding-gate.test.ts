@@ -4,6 +4,9 @@ import {
   shouldShowAutoSyncOnboarding,
 } from './auto-sync-onboarding-gate.ts';
 
+// Baseline = every condition aligned so the modal SHOWS. Each test flips one
+// input and asserts the gate's response, keeping every condition on its own
+// independently verifiable row.
 const SHOWING: AutoSyncOnboardingGateInputs = {
   autoSyncOnboardingDismissed: false,
   hasRemote: true,
@@ -36,6 +39,8 @@ describe('shouldShowAutoSyncOnboarding', () => {
   });
 
   test('hidden until the committed project binding has synced (flash-free)', () => {
+    // Without the projectSynced guard, a project shipping default:false would
+    // briefly read the schema default (null) and flash the modal open.
     expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectSynced: false })).toBe(false);
     expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectSynced: undefined })).toBe(false);
   });
@@ -78,10 +83,13 @@ describe('shouldShowAutoSyncOnboarding', () => {
   });
 
   test('still asks when committed config is absent or default is null/absent', () => {
+    // projectConfig === null (committed doc empty) → no seed → ask.
     expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectConfig: null })).toBe(true);
+    // autoSync present but default absent → no seed → ask.
     expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectConfig: { autoSync: {} } })).toBe(
       true,
     );
+    // autoSync absent entirely → no seed → ask.
     expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectConfig: {} })).toBe(true);
   });
 

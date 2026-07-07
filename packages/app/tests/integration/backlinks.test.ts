@@ -88,6 +88,8 @@ test('backlink endpoints update from live client edits before persistence deboun
   }
 });
 
+// Outer budget exceeds awaitBacklinkIndexed's 30s inner timeout so the
+// helper's targeted error surfaces before bun:test's generic timeout.
 const DISK_EDIT_BACKLINK_TIMEOUT_MS = 45_000;
 test(
   'backlink endpoints update after external disk edits',
@@ -102,6 +104,10 @@ test(
         'utf-8',
       );
 
+      // Disk → CRDT → backlink-index is a two-stage async gap the file watcher
+      // batches; `awaitBacklinkIndexed` polls the exact invariant and re-scans
+      // once if @parcel/watcher drops the `create` event on Linux CI. A raw
+      // wall-clock sleep + bare pollUntil has neither the budget nor the rescue.
       await awaitBacklinkIndexed(server, 'beta', 'gamma');
     } finally {
       await server.cleanup();

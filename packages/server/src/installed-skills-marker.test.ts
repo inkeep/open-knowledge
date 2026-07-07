@@ -61,6 +61,7 @@ describe('installed-skills marker', () => {
   });
 
   test('corrupt marker JSON reads as empty (fail-soft), never throws', async () => {
+    // A prior record creates `.ok/local/`; then clobber the file with garbage.
     await recordSkillInstall(projectDir, 'seed', entry(['claude']));
     writeFileSync(installedSkillsPath(projectDir), '{ not valid json', 'utf-8');
     const state = readInstalledSkills(projectDir);

@@ -1,3 +1,19 @@
+/**
+ * Tier-3 tests for the composer `@`-mention dropdown's row layout + affordances
+ * (the "picker polish" pass).
+ *
+ * Covers the two things the polish added on top of the existing icon/selection
+ * behavior:
+ *   - Link visibility: the serialized path renders verbatim and in full (no
+ *     end-truncation that hides the discriminating tail of a long path).
+ *   - Folder differentiation: a folder row (extension-less path) carries a
+ *     trailing `/` on its path, a "Folder" type label, and a `folder` kind
+ *     marker — files/assets/pages do not.
+ *
+ * Symlinks are intentionally NOT asserted: `MentionItem` carries no symlink
+ * signal, so they cannot be distinguished at this row (see the component's
+ * `mentionItemKind` note).
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { ComposerMentionMenu } from './ComposerMentionMenu';
@@ -39,6 +55,8 @@ function optionFor(item: MentionItem): HTMLElement {
 describe('ComposerMentionMenu — link visibility', () => {
   test('renders the full serialized path verbatim (no truncation of the tail)', () => {
     renderMenu([PAGE]);
+    // The whole path is present in the row's text content — a clamp/wrap keeps
+    // it legible rather than dropping the discriminating filename.
     expect(optionFor(PAGE).textContent).toContain(PAGE.path);
   });
 
@@ -56,6 +74,7 @@ describe('ComposerMentionMenu — folder differentiation', () => {
     renderMenu([FOLDER]);
     const row = optionFor(FOLDER);
     expect(row.dataset.mentionKind).toBe('folder');
+    // Trailing slash signals "container, not leaf".
     expect(row.textContent).toContain(`${FOLDER.path}/`);
     expect(within(row).getByText('Folder')).toBeDefined();
   });
@@ -121,10 +140,12 @@ describe('ComposerMentionMenu — listbox accessibility', () => {
     const live = container.querySelector('[aria-live="polite"][aria-atomic="true"]');
     expect(live).not.toBeNull();
     expect(live?.className).toContain('sr-only');
+    // selectedIndex 1 → the FOLDER row's title is announced.
     expect(live?.textContent).toBe(FOLDER.title);
 
     cleanup();
 
+    // Moving the selection re-points the live region at the new item.
     const { container: container2 } = renderMenu([PAGE, FOLDER, ASSET], 2);
     const live2 = container2.querySelector('[aria-live="polite"][aria-atomic="true"]');
     expect(live2?.textContent).toBe(ASSET.title);
@@ -137,6 +158,7 @@ describe('ComposerMentionMenu — fetch error state', () => {
     const hint = screen.getByText("Couldn't load docs — type @ again to retry");
     expect(hint).toBeDefined();
     expect(hint.getAttribute('aria-live')).toBe('assertive');
+    // The error message replaces the silent "no docs" empty state — not both.
     expect(screen.queryByText('Type to find a doc')).toBeNull();
   });
 });

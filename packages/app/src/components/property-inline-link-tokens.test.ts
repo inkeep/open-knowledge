@@ -65,6 +65,9 @@ describe('tokenizePropertyInlineLinks — wiki-links', () => {
   });
 
   test('PRD-7111 reported shape — wikilink + em-dash + parenthetical', () => {
+    // Exact case: chip text contains a
+    // wikilink at the head, followed by free-form description that
+    // happens to include literal parens.
     const input =
       '[[public/open-knowledge/specs/2026-06-12-showall-truncation-ux/SPEC]] — which entries appear (cap), NOT horizontal density';
     const segs = tokenizePropertyInlineLinks(input);
@@ -127,6 +130,11 @@ describe('tokenizePropertyInlineLinks — markdown links', () => {
   });
 
   test('malformed: missing closing `)` — link rejected, but bare URL still recognized', () => {
+    // The markdown-link recognizer rejects (no closing paren), so the
+    // segments fall through to the autolink branch. Net effect: the URL
+    // stays clickable even though the surrounding markdown syntax is
+    // broken. This is more useful than emitting a single dead text run
+    // that drops link affordance — the user sees their typo + the URL.
     const input = '[label](https://example.com';
     const segs = tokenizePropertyInlineLinks(input);
     expect(segs).toEqual([
@@ -142,6 +150,9 @@ describe('tokenizePropertyInlineLinks — markdown links', () => {
   });
 
   test('nested `[` inside text — falls through to text', () => {
+    // Conservative: `[a [b] c](url)` would need balanced-bracket scan;
+    // the simple recognizer rejects nested `[`. Acceptable for property
+    // values where this shape is vanishingly rare.
     const input = '[a [b] c](url)';
     const segs = tokenizePropertyInlineLinks(input);
     expect(segs).toEqual([{ type: 'text', value: '[a [b] c](url)' }]);
@@ -181,10 +192,13 @@ describe('tokenizePropertyInlineLinks — bare URLs (autolinks)', () => {
     expect(autolink).toBeDefined();
     if (autolink?.type !== 'autolink') throw new Error('unreachable');
     expect(autolink.url).toBe('https://example.com');
+    // Trailing `.` re-emerges as a plain-text segment, so round-trip holds.
     expectRoundTrip(input, segs);
   });
 
   test('URL with balanced parens kept whole', () => {
+    // Common Wikipedia / MDN shape: trailing `)` belongs to the URL when
+    // the URL contains a matching `(`.
     const input = 'https://en.wikipedia.org/wiki/Foo_(disambiguation)';
     const segs = tokenizePropertyInlineLinks(input);
     expect(segs).toEqual([
@@ -248,6 +262,9 @@ describe('hasInlineLinks', () => {
   });
 
   test('cheap-probe short-circuit: text containing `[[` but no real wikilink → still calls tokenizer', () => {
+    // The substring `[[]]` looks like a wikilink prefix but the
+    // tokenizer rejects empty targets — verify hasInlineLinks reflects
+    // the tokenizer's decision, not the substring probe.
     expect(hasInlineLinks('value with [[]] sequence')).toBe(false);
   });
 });

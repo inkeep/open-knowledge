@@ -1,7 +1,16 @@
+/**
+ * Deterministic pins for classifyFinalState — the budget-exhaustion
+ * discriminator that turns a former unconditional fuzz failure into a
+ * conditional converged-late pass. The fuzz suite only reaches it under
+ * seed-dependent wall-clock exhaustion, so each of the three outcomes is
+ * pinned here against hand-built client states: a future inversion of the
+ * pass/fail decision reddens reliably instead of probabilistically.
+ */
 import { describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 import { classifyFinalState, serializeFragment } from './test-harness';
 
+/** A minimal classifiable client: paragraph fragment + explicit Y.Text bytes. */
 function makeClient(paragraphText: string, ytextBytes: string) {
   const doc = new Y.Doc();
   const ytext = doc.getText('source');
@@ -39,6 +48,8 @@ describe('classifyFinalState', () => {
   test('identical, in-tolerance peers classify as converged-late', () => {
     const a = makeClient('Alpha.', 'Alpha.\n');
     const b = makeClient('Alpha.', 'Alpha.\n');
+    // Sanity: the Y.Text bytes match the fragment's canonical serialization,
+    // so this state is good — late, not wrong.
     expect(serializeFragment(a.fragment)).toBe('Alpha.\n');
     expect(classifyFinalState([a, b])).toEqual({ outcome: 'converged-late' });
   });

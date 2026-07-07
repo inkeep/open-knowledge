@@ -101,8 +101,16 @@ import { mermaid } from 'codemirror-lang-mermaid';
 import { useEffect, useRef } from 'react';
 import { computeChange } from '../extensions/RawMdxFallbackCMView';
 
+// Single source of truth — `PropDefString.language` (in `core/registry/types.ts`)
+// is the registry contract that drives whether this branch is selected at all,
+// so deriving the local enum from it means adding a new language there
+// produces a type error here at the `switch (language)` site below.
 type LanguageName = NonNullable<PropDefString['language']>;
 
+/**
+ * Resolve a `language` value to the CM6 language extension that drives
+ * syntax highlighting + indentation.
+ */
 function resolveLanguageExtension(language: LanguageName): Extension {
   switch (language) {
     case 'html':
@@ -112,36 +120,60 @@ function resolveLanguageExtension(language: LanguageName): Extension {
     case 'yaml':
       return yaml();
     case 'javascript':
+      // Covers JS / TS / JSX / TSX via the same lang-javascript package
+      // (used by the OK source-mode editor for inline JSX expression
+      // attributes too).
       return javascript({ jsx: true, typescript: true });
     case 'markdown':
       return markdown();
     case 'latex':
       return StreamLanguage.define(stex);
     case 'mermaid':
+      // `codemirror-lang-mermaid` ships a real Lezer grammar covering
+      // flowchart / sequence / class / state / pie / gantt / journey /
+      // mindmap / requirement diagrams. Tags map onto our existing
+      // HighlightStyle.
       return mermaid();
   }
 }
 
+/**
+ * Shared highlight style for both LaTeX and Mermaid surfaces. Colors
+ * resolve through the `--syntax-*` semantic tokens defined in
+ * `globals.css` (`:root` + `.dark` blocks) so the same tags pick
+ * appropriately-contrasted shades in light and dark themes — using the
+ * Tailwind v4 `--color-*-NNN` palette directly would land below WCAG AA
+ * on the OK dark `--background`. Layered on top of `defaultHighlightStyle`
+ * (`fallback: true`) so tags we don't explicitly style still get base
+ * styling.
+ */
 export const propEditorHighlight = HighlightStyle.define([
+  // Keywords + control flow — `\frac`, `\begin`, `graph`, `subgraph`,
+  // `classDiagram`, etc.
   { tag: tags.keyword, color: 'var(--syntax-keyword)', fontWeight: '600' },
   { tag: tags.controlKeyword, color: 'var(--syntax-keyword)', fontWeight: '600' },
   { tag: tags.modifier, color: 'var(--syntax-keyword)' },
+  // Names — node ids in mermaid, env names in LaTeX
   { tag: tags.tagName, color: 'var(--syntax-tag)' },
   { tag: tags.typeName, color: 'var(--syntax-tag)' },
   { tag: tags.className, color: 'var(--syntax-tag)' },
   { tag: tags.attributeName, color: 'var(--syntax-attr)' },
   { tag: tags.propertyName, color: 'var(--syntax-attr)' },
   { tag: tags.variableName, color: 'var(--syntax-attr)' },
+  // Literals
   { tag: tags.string, color: 'var(--syntax-string)' },
   { tag: tags.number, color: 'var(--syntax-number)' },
   { tag: tags.bool, color: 'var(--syntax-number)' },
   { tag: tags.null, color: 'var(--syntax-number)' },
   { tag: tags.atom, color: 'var(--syntax-atom)' },
   { tag: tags.literal, color: 'var(--syntax-number)' },
+  // Operators + punctuation — math operators in LaTeX, arrows in
+  // mermaid (`-->`, `==>`, `:::`)
   { tag: tags.operator, color: 'var(--syntax-keyword)' },
   { tag: tags.punctuation, color: 'var(--foreground)' },
   { tag: tags.bracket, color: 'var(--foreground)' },
   { tag: tags.brace, color: 'var(--foreground)' },
+  // Meta
   { tag: tags.meta, color: 'var(--muted-foreground)' },
   { tag: tags.comment, color: 'var(--muted-foreground)', fontStyle: 'italic' },
 ]);
@@ -150,8 +182,16 @@ interface CodeMirrorPropInputProps {
   value: string;
   language: LanguageName;
   onChange: (value: string) => void;
+  /** Forwarded to the wrapper `<div>` for E2E hooks + a11y attribute targets. */
   id?: string;
+  /**
+   * `id` of the host `<label>`. Forwarded to CM's inner
+   * `[contenteditable]` content DOM as `aria-labelledby` after mount, so
+   * screen readers announce the editor with the field name (the
+   * wrapper's `<label htmlFor>` is a no-op against a `<div>`).
+   */
   ariaLabelledBy?: string;
+  /** Auto-focus on mount — mirrors PropPanel's `<Input autoFocus>` semantics. */
   autoFocus?: boolean;
 }
 
@@ -165,18 +205,40 @@ export function CodeMirrorPropInput({
 }: CodeMirrorPropInputProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  // Per-instance Compartment for the language extension. Lets us
+  // reconfigure the language at runtime (HMR / future hot-reload paths)
+  // without rebuilding the EditorView and dropping doc / selection /
+  // history — same pattern as `RawMdxFallbackCMView`'s
+  // `themeCompartmentRef`.
   const languageCompartmentRef = useRef(new Compartment());
+  // Mirror of the latest `onChange` so the CM updateListener (closed over
+  // at construct time) always calls the freshest handler without a
+  // remount cycle. Updated via effect (not direct render assignment) to
+  // satisfy React Compiler's "no ref access during render" rule.
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
+  // Mirrors of `value`, `language`, `autoFocus`, and `ariaLabelledBy` so
+  // the mount effect can read their first-render values without
+  // depending on them. The mount effect is `[]`-deps so the editor
+  // builds exactly once per component lifetime; `value` flows through
+  // the doc-sync effect below, `language` through the Compartment
+  // reconfigure effect, `autoFocus` only matters at mount, and
+  // `ariaLabelledBy` flows through its own attribute-sync effect.
   const initialValueRef = useRef(value);
   const initialLanguageRef = useRef(language);
   const initialAutoFocusRef = useRef(autoFocus);
   const initialAriaLabelledByRef = useRef(ariaLabelledBy);
 
+  // Mount + dispose. Single build per instance — language swaps go
+  // through the Compartment effect, value swaps through the doc-sync
+  // effect, ariaLabelledBy through its own attribute-sync effect. All
+  // captured values are refs, so biome's `useExhaustiveDependencies`
+  // doesn't flag the empty deps array (sibling `RawMdxFallbackCMView`
   // needs a `biome-ignore` because its mount effect captures non-ref
+  // values; ours doesn't, so the suppression would be a no-op).
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
@@ -188,6 +250,17 @@ export function CodeMirrorPropInput({
       bracketMatching(),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       syntaxHighlighting(propEditorHighlight),
+      // `indentWithTab` MUST come first so Tab/Shift-Tab insert/remove
+      // indentation rather than moving focus — the canonical convention
+      // for code-editor surfaces (CodeMirror itself documents this in
+      // its `defaultKeymap` / `indentWithTab` split, since "Tab moves
+      // focus" is the expected browser default for accessibility, not
+      // for code editing). Inside the PropPanel popover this also
+      // sidesteps Radix non-modal Popover dismissing on focus leave;
+      // either way, the right answer for an authoring surface in this
+      // shape is to keep Tab local. Esc still bubbles (intentional —
+      // closes popover from inside the editor); Cmd/Ctrl+Z is bound by
+      // `historyKeymap` and stays local.
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
       EditorView.lineWrapping,
       EditorView.updateListener.of((update) => {
@@ -208,6 +281,10 @@ export function CodeMirrorPropInput({
     });
     viewRef.current = view;
 
+    // `<label htmlFor>` doesn't associate with non-labelable elements,
+    // so we wire the accessible name directly onto CM's inner
+    // `[contenteditable]`. role + aria-multiline make the editor's
+    // textbox semantics explicit for AT.
     if (initialAriaLabelledByRef.current) {
       view.contentDOM.setAttribute('aria-labelledby', initialAriaLabelledByRef.current);
     }
@@ -221,6 +298,10 @@ export function CodeMirrorPropInput({
     };
   }, []);
 
+  // Sync `ariaLabelledBy` to `view.contentDOM` after mount when it
+  // changes (or is cleared). Stable in practice — PropPanel passes a
+  // derived `${stringId}-label` — but kept correct across the rare
+  // case where the host updates the label id.
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -231,6 +312,11 @@ export function CodeMirrorPropInput({
     }
   }, [ariaLabelledBy]);
 
+  // Reconfigure the language Compartment when the language prop changes
+  // at runtime. No-op for typical PropPanel usage (descriptors don't
+  // hot-swap), but matches the `RawMdxFallbackCMView` Compartment idiom
+  // and survives HMR / future hot-reload paths without dropping
+  // doc / selection / history.
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -239,6 +325,14 @@ export function CodeMirrorPropInput({
     });
   }, [language]);
 
+  // Reconcile external value changes with the editor's internal doc.
+  // Uses `computeChange` (the sibling `RawMdxFallbackCMView`'s minimal-
+  // diff helper) so an external sync — undo / redo, multi-client
+  // delta — only rewrites the changed substring instead of replacing
+  // the entire doc. Critical for cursor-position preservation: a
+  // full-doc replacement collapses the cursor to position 0 every
+  // time. Skipped when the doc already matches (the typical case —
+  // the user typed and we round-tripped value back through onChange).
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;

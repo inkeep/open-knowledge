@@ -1,8 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import { createTomlConfigEngine, type NativeTomlBinding } from './toml-config-engine.ts';
 
+// A config value that exercises the whole point of the native engine: a 64-bit
+// integer past Number.MAX_SAFE_INTEGER, plus a microsecond datetime. smol-toml
+// throws on both; the native toml_edit parser accepts them.
 const CAPABLE_CASE = 'big = 9223372036854775807\nts = 2026-06-26T12:34:56.123456Z\n';
 
+// The probe path only calls parseTomlToJson; a fake binding still has to satisfy
+// the upsert + remove halves of the interface. No-op edits are enough for the
+// parse-focused cases below.
 const NOOP_UPSERT: NativeTomlBinding['upsertMcpServer'] = () => ({
   text: '',
   changed: false,
@@ -24,6 +30,9 @@ describe('createTomlConfigEngine', () => {
   });
 
   test('the JS fallback rejects the same integer the native engine accepts', () => {
+    // Control: forcing the loader to return null proves the native path does
+    // real work — the same input it parses, the fallback throws on. Without
+    // this the capable-case assertion could pass vacuously.
     const fallback = createTomlConfigEngine(() => null);
     expect(fallback.backend).toBe('fallback');
     expect(() => fallback.parseToObject(CAPABLE_CASE)).toThrow();
@@ -81,6 +90,7 @@ describe('createTomlConfigEngine', () => {
     if (engine.backend !== 'native') throw new Error('expected the native engine');
     const result = engine.upsertEntry('x = 1\n', 'open-knowledge', { command: 'c' });
     expect(result).toEqual({ text: 'edited', existed: true });
+    // The entry object is serialized to JSON for the addon boundary.
     expect(captured).toEqual({
       toml: 'x = 1\n',
       name: 'open-knowledge',
@@ -101,6 +111,8 @@ describe('createTomlConfigEngine', () => {
     const engine = createTomlConfigEngine(() => fake);
     if (engine.backend !== 'native') throw new Error('expected the native engine');
     const result = engine.removeEntry('x = 1\n', 'open-knowledge');
+    // `changed` is dropped at the engine boundary — the write wrapper decides to
+    // write off `newText !== raw`; `existed` drives the removed-vs-absent report.
     expect(result).toEqual({ text: 'trimmed', existed: true });
     expect(captured).toEqual({ toml: 'x = 1\n', name: 'open-knowledge' });
   });
@@ -116,6 +128,8 @@ describe('createTomlConfigEngine', () => {
     expect(removed.text).toContain('[mcp_servers.other]');
     expect(removed.text).toContain('command = "node"  # sibling');
     expect(removed.text).not.toContain('[mcp_servers.open-knowledge]');
+    // Removing an entry that is no longer present reports not-existed and is a
+    // byte-identical no-op.
     const again = engine.removeEntry(removed.text, 'open-knowledge');
     expect(again.existed).toBe(false);
     expect(again.text).toBe(removed.text);
@@ -133,6 +147,7 @@ describe('createTomlConfigEngine', () => {
     expect(result.text).toContain('# keep');
     expect(result.text).toContain('[mcp_servers.other]');
     expect(result.text).toContain('[mcp_servers.open-knowledge]');
+    // A second upsert of the same entry reports it now exists.
     const again = engine.upsertEntry(result.text, 'open-knowledge', {
       command: '/bin/sh',
       args: ['-l', '-c', 'run'],
@@ -147,6 +162,8 @@ describe('createTomlConfigEngine', () => {
   });
 
   test('both backends reject a non-table root', () => {
+    // A native binding can only ever yield a table root for valid TOML; this
+    // guards the contract that parseToObject returns an object or throws.
     const arrayRoot: NativeTomlBinding = {
       parseTomlToJson: (raw) => (raw.includes('probe') ? '{"probe":1}' : '[1,2,3]'),
       upsertMcpServer: NOOP_UPSERT,

@@ -34,7 +34,9 @@ describe('mark', () => {
   afterEach(() => {
     try {
       performance.clearMeasures();
-    } catch {}
+    } catch {
+      // ignore in envs where clearMeasures throws
+    }
   });
 
   test('creates a performance entry with the given name', () => {
@@ -126,10 +128,12 @@ describe('mark.count', () => {
   test('warns once when prop key cardinality exceeds 100 distinct values', () => {
     const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
+      // Up to 100 distinct values stays quiet.
       for (let i = 0; i < 100; i += 1) {
         mark.count('ok/test/card', { docId: `d-${i}` });
       }
       const startCalls = warnSpy.mock.calls.length;
+      // 101st distinct value crosses the threshold and warns.
       mark.count('ok/test/card', { docId: 'd-101' });
       mark.count('ok/test/card', { docId: 'd-102' });
       mark.count('ok/test/card', { docId: 'd-103' });
@@ -139,6 +143,7 @@ describe('mark.count', () => {
       expect(warns.length).toBe(1);
       expect(String(warns[0]?.[0])).toContain('ok/test/card');
       expect(String(warns[0]?.[0])).toContain('docId');
+      // Counter state still updates.
       expect(getCollector()?.counters['ok/test/card']?.total).toBe(103);
     } finally {
       warnSpy.mockRestore();
@@ -169,6 +174,7 @@ describe('mark.histogram', () => {
     expect(snap?.min).toBe(25);
     expect(snap?.max).toBe(25);
 
+    // Paired DevTools-track mark exists with durationMs in props.
     const entries = performance.getEntriesByName('ok/test/dur');
     expect(entries.length).toBeGreaterThanOrEqual(1);
     const last = entries[entries.length - 1] as PerformanceMeasure;

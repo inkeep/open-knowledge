@@ -4,14 +4,14 @@
  * window is NOT initially present), then triggers `bridge.navigator.open()`
  * from the editor renderer and asserts that the Navigator window appears.
  *
- * Coverage (one test per FR5 branch where the branches are observably distinct):
+ * Coverage (one test per branch where the branches are observably distinct):
  *   1. Editor opens FIRST (lastOpenedProject path).
- *   2. FR5(c) — closed → create: `bridge.navigator.open()` spawns a navigator window.
- *   3. FR5(a)/(b) — count never exceeds 1 across re-invokes (poll-based, not
- *      a fixed sleep). FR5(a) and FR5(b) are not separately distinguishable
+ *   2. closed → create: `bridge.navigator.open()` spawns a navigator window.
+ *   3. count never exceeds 1 across re-invokes (poll-based, not
+ *      a fixed sleep). These branches are not separately distinguishable
  *      from window-count alone, but the count-stability poll catches the
  *      regression class both branches are intended to prevent (duplicate spawn).
- *   4. FR5(d) — closing the navigator leaves the editor window alive.
+ *   4. closing the navigator leaves the editor window alive.
  *
  * The test calls `bridge.navigator.open()` directly via `page.evaluate(...)`
  * rather than clicking the dropdown trigger — exercising the IPC contract is
@@ -49,6 +49,12 @@ interface SeededHome {
   projectDir: string;
 }
 
+// Compute the per-test Electron userData dir under tmpHome. The Chromium
+// `--user-data-dir=<path>` switch is the only mechanism that reliably
+// isolates `app.getPath('userData')` in dev mode — Electron's default
+// resolution reads `NSBundle.mainBundle`'s CFBundleName (which is
+// "Electron" when launched via `Electron.app/Contents/MacOS/Electron`,
+// regardless of `productName` or the `HOME` env var).
 function userDataDirFor(tmpHome: string): string {
   return join(tmpHome, 'electron-userdata');
 }
@@ -172,8 +178,11 @@ test.describe('Project Navigator return-affordance smoke', () => {
     captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findEditorWindow(app);
+    // Editor should be the only window initially — Navigator did NOT spawn
+    // because lastOpenedProject was set.
     await expect.poll(() => countNavigatorWindows(app)).toBe(0);
 
+    // Invoke the bridge IPC and assert the Navigator window appears.
     await editor.evaluate(async () => {
       await window.okDesktop?.navigator.open();
     });
@@ -185,6 +194,10 @@ test.describe('Project Navigator return-affordance smoke', () => {
       })
       .toBe(1);
 
+    // Re-invoke twice. Count must NEVER exceed 1 across the
+    // poll window: an event-driven check that fails the moment a duplicate
+    // appears, rather than waiting out a fixed sleep budget that could
+    // mask a slow-spawn race on a loaded machine.
     await editor.evaluate(async () => {
       await window.okDesktop?.navigator.open();
     });
@@ -215,6 +228,9 @@ test.describe('Project Navigator return-affordance smoke', () => {
     });
     const navigatorPage = await findNavigatorWindow(app);
 
+    // Close the Navigator. The editor window must NOT be torn down by
+    // any side-effect of the navigator's `closed` lifecycle handler
+    // (which only nulls the module-level `navigatorWindow` ref in main).
     await navigatorPage.close();
 
     await expect
@@ -224,6 +240,9 @@ test.describe('Project Navigator return-affordance smoke', () => {
       })
       .toBe(0);
 
+    // Editor must still be alive — verifying via its renderer-side bridge
+    // proves the BrowserWindow is still attached to its utility process,
+    // not just that an Electron handle exists.
     await expect
       .poll(() => countEditorWindows(app), {
         timeout: 2_000,

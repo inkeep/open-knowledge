@@ -1,8 +1,17 @@
+/**
+ * Clone-flow runner — covers the JSON-shape parser, terminal-event tracking,
+ * timeout/error reporting, stderr inclusion in error messages, and the
+ * `validateCloneInputs` URL/path allowlists.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { type RawCloneEvent, runCloneSubprocess, validateCloneInputs } from './clone-flow.ts';
 
+// `validateCloneInputs` confines the target to the user's home directory.
+// All clone fixtures use a path under home so the runner-level tests don't
+// trip on the path allowlist.
 const HOME_PATH = join(homedir(), 'open-knowledge-test-clone');
 
 const fixtureCli = (script: string): readonly string[] => [process.execPath, '-e', script];
@@ -67,6 +76,7 @@ describe('runCloneSubprocess', () => {
   test('CLI-emitted error event is forwarded as terminal — no second event synthesized', async () => {
     const events: RawCloneEvent[] = [];
     const ctrl = runCloneSubprocess({
+      // CLI emits 'error' but exits with code 0 (e.g. graceful failure).
       cliArgs: fixtureCli(`
         console.log(JSON.stringify({type:'error', message:'permission denied'}));
         process.exit(0);
@@ -92,6 +102,7 @@ describe('runCloneSubprocess', () => {
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
+    // First line dropped (missing pct); second forwarded.
     expect(events.map((e) => e.type)).toEqual(['complete']);
   });
 
@@ -99,6 +110,9 @@ describe('runCloneSubprocess', () => {
     const events: RawCloneEvent[] = [];
     const ctrl = runCloneSubprocess({
       cliArgs: fixtureCli(`
+        // Emit only an invalid (missing dir) line, then clean exit. The runner
+        // ignores the malformed line and synthesizes a complete from opts.dir
+        // so the IPC stream consumer's iterator can resolve.
         console.log(JSON.stringify({type:'complete'}));
         process.exit(0);
       `),
@@ -136,6 +150,8 @@ describe('runCloneSubprocess', () => {
     });
     setTimeout(() => ctrl.cancel(), 50);
     await ctrl.done;
+    // Cancel via SIGTERM yields code:null → runner reports as error event
+    // ("Clone process exited with code -1"). Asserts current behavior.
     const errEvent = events.find((e) => e.type === 'error');
     expect(errEvent).toBeDefined();
   });
@@ -183,6 +199,7 @@ describe('validateCloneInputs', () => {
   });
 
   test('rejects path that is not safe for the local filesystem', () => {
+    // Empty string is rejected by isSafeLocalPath.
     const result = validateCloneInputs('https://github.com/x/y.git', '');
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('invalid-dir');

@@ -83,6 +83,7 @@ describe('list + listItem DOM rendering', () => {
     const node = schema.nodes.list.createAndFill({ ordered: false });
     if (!node) throw new Error('createAndFill returned null');
     const spec = schema.nodes.list.spec.toDOM?.(node);
+    // toDOM returns [tag, attrs, 0] — tag should be 'ul' for bullet
     expect(spec).toBeDefined();
     expect(Array.isArray(spec)).toBe(true);
     expect((spec as unknown[])[0]).toBe('ul');
@@ -102,6 +103,7 @@ describe('list + listItem DOM rendering', () => {
     if (!node) throw new Error('createAndFill returned null');
     const spec = schema.nodes.list.spec.toDOM?.(node);
     expect(spec).toBeDefined();
+    // [tag, attrs, 0] — attrs should include start
     const attrs = (spec as unknown[])[1] as Record<string, unknown>;
     expect(attrs.start).toBe(5);
   });
@@ -147,6 +149,13 @@ describe('list fidelity attrs', () => {
 });
 
 describe('list pipeline round-trip (via new MarkdownManager)', () => {
+  // These tests use the new MarkdownManager with the unified list schema
+  // to verify that the handlers + schema work together.
+  // The MarkdownManager from packages/core/src/markdown builds against
+  // whatever extensions are provided — when list.ts is registered, it
+  // uses the unified `list` + `listItem` path.
+
+  // Import the new MarkdownManager
   const { MarkdownManager } = require('../markdown/index.ts');
 
   const mdManager = new MarkdownManager({ extensions });
@@ -155,6 +164,7 @@ describe('list pipeline round-trip (via new MarkdownManager)', () => {
     const md = '- item one\n- item two\n';
     const json = mdManager.parse(md);
     expect(json.content).toBeDefined();
+    // Should contain a list node
     const listNode = json.content?.find((n: { type: string }) => n.type === 'list');
     expect(listNode).toBeDefined();
     expect(listNode.attrs.ordered).toBe(false);
@@ -174,8 +184,10 @@ describe('list pipeline round-trip (via new MarkdownManager)', () => {
     const json = mdManager.parse(md);
     const listNode = json.content?.find((n: { type: string }) => n.type === 'list');
     expect(listNode).toBeDefined();
+    // Inner list should be inside the first listItem
     const firstItem = listNode?.content?.[0];
     expect(firstItem?.type).toBe('listItem');
+    // Should have a nested list as second content child
     const hasNestedList = firstItem?.content?.some((n: { type: string }) => n.type === 'list');
     expect(hasNestedList).toBe(true);
   });
@@ -206,7 +218,14 @@ describe('list pipeline round-trip (via new MarkdownManager)', () => {
   });
 });
 
+// Regression tests for the input rule priority bug.
+// Before the fix, typing `- [ ] ` created a bullet list because the bullet
+// rule regex /^\s*([-+*])\s$/ matched `- ` first and the task rule never
+// had a chance to fire. The fix adds a negative lookahead to the bullet
+// regex so it rejects patterns immediately followed by a checkbox.
 describe('list input rule priority (regression for QA-013)', () => {
+  // Mirror of the regexes in list.ts — kept in sync manually.
+  // If these change in list.ts, update here AND verify the fix still holds.
   const BULLET_RULE_RE = /^\s*([-+*])(?!\s*\[[ xX]\])\s$/;
   const ORDERED_RULE_RE = /^\s*(\d+)([.)])\s$/;
   const TASK_RULE_RE = /^\s*[-*+]\s\[([ xX])\]\s$/;
@@ -228,6 +247,7 @@ describe('list input rule priority (regression for QA-013)', () => {
   test('bullet rule matches with leading whitespace (nested)', () => {
     expect(BULLET_RULE_RE.test('  - ')).toBe(true);
     expect(BULLET_RULE_RE.test('    * ')).toBe(true);
+    // And rejects task patterns even when nested
     expect(BULLET_RULE_RE.test('  - [ ] ')).toBe(false);
   });
 
@@ -256,6 +276,7 @@ describe('list input rule priority (regression for QA-013)', () => {
   });
 
   test('ordered rule does not conflict with bullet or task rules', () => {
+    // All three rules are mutually exclusive for their shapes
     expect(BULLET_RULE_RE.test('1. ')).toBe(false);
     expect(TASK_RULE_RE.test('1. ')).toBe(false);
     expect(ORDERED_RULE_RE.test('1. ')).toBe(true);

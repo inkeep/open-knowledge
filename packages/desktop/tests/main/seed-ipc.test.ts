@@ -39,6 +39,7 @@ describe('handleSeedPlan', () => {
   });
 
   test('returns {ok:false, prerequisite-missing} when .ok/ is absent', async () => {
+    // testDir exists, but no `.ok/` inside — triggers prerequisite error
     const result = await handleSeedPlan({ resolveProjectRoot: () => testDir });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -49,6 +50,7 @@ describe('handleSeedPlan', () => {
 
   test('surfaces internal errors as {ok:false, internal}', async () => {
     scaffoldOkDir(testDir);
+    // Inject a planSeed that throws a non-prerequisite error.
     const result = await handleSeedPlan({
       resolveProjectRoot: () => testDir,
       planSeed: async () => {
@@ -64,6 +66,7 @@ describe('handleSeedPlan', () => {
 
   test('returns {ok:false, invalid-root} when rootDir resolves outside projectDir', async () => {
     scaffoldOkDir(testDir);
+    // Real planSeed (no inject) — exercises the typed-error path end-to-end.
     const result = await handleSeedPlan(
       { resolveProjectRoot: () => testDir },
       { rootDir: '/tmp/escape' },

@@ -1,0 +1,128 @@
+---
+title: Codebase wiki
+icon: LuNetwork
+description: "An AI reads your code and writes a plain-English guide to it: how it's built, how the pieces fit, with diagrams and links back to the real files. The guide lives right in your repo, stays private, and helps the next person (or AI) get up to speed fast. Built on the Codebase wiki starter pack."
+---
+A **codebase wiki** is an agent-authored map of a codebase — architecture, modules, key flows, and domain concepts — written as navigable, diagram-rich markdown that lives *in the repo*. Think DeepWiki, but the pages are files you own: version-controlled, diffable, private by default, human and agent co-editable, and doubling as durable grounding context for every future agent session.
+
+```html preview
+<div style="padding:18px">
+  <div id="loop" style="display:flex;flex-wrap:wrap;gap:10px;align-items:stretch"></div>
+  <div class="cap">The agent reads source with native tools, then authors the wiki with OpenKnowledge — diagrams, cross-links, and source references, one section at a time.</div>
+</div>
+<style>
+#loop .card{flex:1;min-width:150px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--card);transition:box-shadow .3s,border-color .3s;cursor:pointer}
+#loop .card .t{font-weight:600;font-size:13px}
+#loop .card .s{color:var(--muted-foreground);font-size:11.5px;margin-top:3px;line-height:1.35}
+#loop .card.on{border-color:var(--primary);box-shadow:0 0 0 3px var(--accent-soft)}
+#loop .card.on .t{color:var(--accent-ink)}
+.cap{margin-top:12px;color:var(--muted-foreground);font-size:12.5px}
+.cap::before{content:"\21BB  ";color:var(--primary);font-weight:700}
+@media (prefers-reduced-motion:reduce){#loop .card{transition:none}}
+</style>
+<script>
+var steps=[["1 · Survey","agent reads the repo: entry points, packages, dependency shape"],["2 · Author","writes architecture / modules / flows / concepts as linked pages + mermaid diagrams"],["3 · Ground","every claim references a real file it read — no invented paths"],["4 · Refresh","on the next run, diffs the commit range and updates only what changed"]];
+var loop=document.getElementById("loop"),cards=[];
+steps.forEach(function(s,i){
+  var d=document.createElement("div");d.className="card";
+  var t=document.createElement("div");t.className="t";t.textContent=s[0];
+  var sub=document.createElement("div");sub.className="s";sub.textContent=s[1];
+  d.appendChild(t);d.appendChild(sub);
+  d.onclick=function(){pinned=true;set(i);};
+  loop.appendChild(d);cards.push(d);
+});
+var cur=0,pinned=false;
+function set(i){cur=i;cards.forEach(function(n,j){n.classList.toggle("on",j===i);});}
+set(0);
+if(!matchMedia("(prefers-reduced-motion:reduce)").matches){setInterval(function(){if(!pinned)set((cur+1)%cards.length);},1600);}
+</script>
+```
+
+There's no separate Q&A product bolted on. Q&A *is* your OpenKnowledge-grounded agent plus [search](../reference/agentic-search.mdx): once the wiki exists, any agent session can read it back, follow its backlinks, and answer "where do I change X?" from pages that cite real source files.
+
+New joiners get a navigable map before they touch anything, ramping in an afternoon instead of reverse-engineering over months. Maintainers generate the architecture once and refresh it as code moves, so they stop re-explaining it to every new contributor. Agent-assisted developers keep the wiki as grounding context, so future sessions read it first instead of rediscovering the same structure. And for OSS, it doubles as a public architecture guide with GitHub-linked sources and no secrets — contributors navigate the project without you.
+
+## The shape
+
+```
+wiki/
+  OVERVIEW.md     hub: what it is, a big-picture architecture diagram, a nav map to every section
+  log.md          append-only generation / refresh audit trail
+  architecture/   system boundaries, layers, subsystems, cross-cutting concerns + diagrams
+  modules/        one page per package / module: purpose, entry points, key files, deps
+  flows/          key end-to-end flows as sequence / flow diagrams + narrative
+  concepts/       glossary: atomic pages for domain terms and core abstractions
+  guides/         task-oriented "how / where do I change X" walkthroughs
+```
+
+Every section links to the others: a flow page links every module it crosses; a module page links the concepts it implements. That dense cross-linking is what makes the wiki navigable — each concept page becomes a hub for everywhere it appears.
+
+## Two knobs: audience and depth
+
+You don't configure the wiki in a settings file — you say what you want in plain language, and the choice is recorded in `OVERVIEW.md` frontmatter so refreshes stay consistent.
+
+| Knob | Values | What it changes |
+| --- | --- | --- |
+| **audience** | `internal` (default) · `public` | `public` means polished prose, no secrets or internal infra or ticket numbers, and GitHub-URL source references instead of relative paths |
+| **depth** | `tour` · `standard` (default) · `exhaustive` | Scales coverage from OVERVIEW + architecture + top flows, up through per-package module pages, concepts, and task guides |
+
+So "build the wiki, public and exhaustive" and "just give me a quick internal tour" produce very different artifacts from the same pack.
+
+## The scenario
+
+You've inherited a 200-file TypeScript service and have to add a feature this week. Instead of grepping blind:
+
+<CopyPrompt>Build a codebase wiki for this repo. Internal audience, standard depth.</CopyPrompt>
+
+The agent surveys the repo, writes `OVERVIEW.md` with a top-level architecture diagram, then fills `architecture/`, `modules/`, `flows/`, and `concepts/` — each page carrying a mermaid diagram and links to the specific files it read. An hour later you open `flows/request-lifecycle.md`, see the sequence diagram, follow the link into `modules/auth.md`, and know exactly where your feature slots in. Next week, after you've merged, `refresh` updates only the pages your diff touched.
+
+## What's in your project after seeding
+
+Pick **Codebase wiki** in the starter-pack picker, or run:
+
+```bash
+ok seed --pack codebase-wiki
+```
+
+The pack scaffolds the `wiki/` tree above with a stubbed `OVERVIEW.md` (empty `source_commit`), a starter template per section (`architecture-page`, `module-page`, `flow-page`, `concept-page`, `guide-page`), and `wiki/log.md`. Each folder's `.ok/frontmatter.yml` teaches the agent that section's job, so guidance lives next to the action rather than inside every page.
+
+<Callout type="info" title="Seeding also installs a skill">
+  `ok seed --pack codebase-wiki` installs the **Codebase wiki** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance behind the generate / refresh procedure, the audience and depth knobs, and the source-reference discipline — read automatically, and editable like any other doc. It lands as a real `SKILL.md` committed to your repo, one per detected editor. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+</Callout>
+
+## Generate, then refresh
+
+Don't ask the agent to free-hand it. The pack drives generation through a phased, guided workflow that auto-detects which mode you're in:
+
+<CopyPrompt>Generate the codebase wiki.</CopyPrompt>
+
+To update it later, once it exists:
+
+<CopyPrompt>Refresh the codebase wiki.</CopyPrompt>
+
+Either prompt works — the pack auto-detects which mode to run from `source_commit` in `OVERVIEW.md`:
+
+- **Generate** (a stubbed `OVERVIEW.md`): survey → overview → architecture → modules → flows → concepts → a final link-graph audit that catches orphans and dead links.
+- **Refresh** (a stamped `OVERVIEW.md`): diff the recorded `source_commit` against current `HEAD`, update only the affected pages, and re-stamp.
+
+`OVERVIEW.md` carries `source_commit` — the git commit the wiki was last built against. It's the freshness anchor: refresh diffs from it, so the wiki tracks the code instead of drifting into fiction.
+
+<Callout type="info">
+  **Two toolsets, on purpose.** The agent reads *source code* with native file tools (it's not markdown, so OpenKnowledge doesn't index it) and authors the *wiki* with OpenKnowledge — so every page lands as a real CRDT document with attribution and history. Source references are grounded: the agent links only files it actually read, never invented paths.
+</Callout>
+
+## Cadence
+
+| When | Do |
+| --- | --- |
+| First arrival at a repo | Generate at `standard` depth; skim `OVERVIEW.md` and the architecture pages |
+| Onboarding someone | Point them at the wiki; regenerate at `exhaustive` if they need module-level depth |
+| After a significant merge | Refresh — the agent updates only the pages the diff touched and re-stamps `source_commit` |
+| Going public | Regenerate with `audience: public` for GitHub-linked, secret-free prose |
+
+## Further reading
+
+- **[Software lifecycle workflow](./software-lifecycle.mdx).** The proposals → decisions → specs the wiki's code implements.
+- **[LLM wiki workflow](./karpathy-llm-wiki.mdx).** Same source-grounded discipline, aimed at external sources instead of your own code.
+- **[Agentic search](../reference/agentic-search.mdx).** How an agent retrieves across the wiki — search, grep, and backlinks over live files, no vector database.
+- **[Agent activity](../features/agent-activity.mdx).** Every wiki page write, attributed and diffable.

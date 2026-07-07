@@ -1,3 +1,15 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleFolderConfig`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET / PUT /api/folder-config`:
+ *   - GET happy path: 200, flat success body, parses against
+ *     `FolderConfigGetSuccessSchema`, no `ok` discriminator.
+ *   - PUT happy path on root folder: 200, flat success body with
+ *     `applied` field, parses against `FolderConfigPutSuccessSchema`.
+ *   - GET path-traversal attempt → 400 + `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on DELETE emits 405 + `Allow: GET, PUT` header.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   FolderConfigGetSuccessSchema,
@@ -45,6 +57,8 @@ describe('folder-config envelope (RFC 9457)', () => {
   });
 
   test('PUT with an arbitrary (non-well-known) key succeeds — folder frontmatter is open-shape', async () => {
+    // Folder frontmatter works like a doc's: any key is accepted, not just
+    // the conventional title/description/tags.
     const res = await fetch(`http://127.0.0.1:${server.port}/api/folder-config`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

@@ -3,6 +3,7 @@ import { getLocalDir, resolveContentDir, resolveLockDir } from './paths.ts';
 import type { Config } from './schema.ts';
 
 function makeConfig(dir: string): Config {
+  // Minimal Config shape for path-resolution tests. We only read content.dir.
   return { content: { dir } } as unknown as Config;
 }
 

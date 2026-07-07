@@ -5,6 +5,19 @@ import {
   type ShowGateRegistry,
 } from '../../src/main/show-gate.ts';
 
+/**
+ * Show-gate registry unit tests.
+ *
+ * Pure DI'd module — no Electron, no real timers. The registry coordinates the
+ * dual-signal contract:
+ *   - `ready-to-show` from BrowserWindow chrome-readiness
+ *   - `ok:theme:applied` from renderer ConfigProvider after first sync settles
+ *
+ * Both must arrive before `window.show()` fires. A 5 s safety timeout falls
+ * back to show with a structured warn so a stalled signal can't trap the user
+ * with no visible window.
+ */
+
 interface CapturedTimer {
   cb: () => void;
   ms: number;
@@ -332,6 +345,11 @@ describe('createShowGateRegistry — dispose + cleanup', () => {
   });
 
   test('dispose() clears the safety timer so the closure is not pinned past dispose', () => {
+    // Without clearTimeout, the timer's closure pins the BrowserWindowLike
+    // reference for up to 5 s after the window closes. The fireTimeout
+    // callback short-circuits via `states.get(window) === undefined`, so the
+    // timer is functionally inert — but pinning closures across rapid
+    // open/close cycles burns memory until each timer fires.
     const win = makeWindow();
     const dispose = env.registry.register(win);
     expect(env.timers).toHaveLength(1);
@@ -342,6 +360,10 @@ describe('createShowGateRegistry — dispose + cleanup', () => {
   });
 
   test('show after both signals also clears the safety timer', () => {
+    // The happy path also frees the timer slot — once the window has been
+    // shown, the safety timer is no longer needed and the closure can be
+    // released immediately rather than waiting for the timer to fire and
+    // no-op against a missing Map entry.
     const win = makeWindow();
     env.registry.register(win);
     win.fireReadyToShow();
@@ -360,6 +382,13 @@ describe('createShowGateRegistry — destroyed-window race on the happy path', (
   });
 
   test('window destroyed between both signals and maybeShow → does not call show', () => {
+    // Mirror of the fireTimeout guard at the timeout path. If both signals
+    // arrive after the window is destroyed (user closes during cold launch
+    // — second signal arrives before the `closed` listener disposes the
+    // gate state), maybeShow must not call show(). Electron's
+    // destroyed-window show() throws; optional chaining only saves us when
+    // `show` is undefined, not when it's a real method on a destroyed
+    // window.
     const win = makeWindow();
     env.registry.register(win);
     win.fireReadyToShow();
@@ -379,6 +408,14 @@ describe('createShowGateRegistry — destroyed-window race on the happy path', (
 });
 
 describe('createShowGateRegistry — show() throws past the destroyed-window guard', () => {
+  // Mirrors `reduced-transparency-handler.ts`'s per-call try/catch. The
+  // isDestroyed guard handles the common shutdown race; the catch isolates
+  // residual cases — close events that fire between the guard and the
+  // native call, or unexpected native errors surfaced through Electron's
+  // binding. Without it, a throw from window.show() would either escape to
+  // Node's unhandled-exception handler (fireTimeout path, runs from
+  // setTimeout) or leave gate state corrupted (state.shown set before show
+  // throws, Map entry never deleted, timer cleared but closure pinned).
   let env: TestEnv;
 
   beforeEach(() => {
@@ -410,16 +447,25 @@ describe('createShowGateRegistry — show() throws past the destroyed-window gua
   });
 
   test('happy-path show throws → states Map entry is released (no leak)', () => {
+    // Without the catch reordering, state.shown was set BEFORE show — when
+    // show threw, state stayed in the Map with shown=true (a lie) and the
+    // entry leaked. The fix runs states.delete() in both success and
+    // failure branches, so a follow-up fireThemeApplied is a no-op via
+    // states.get returning undefined.
     const win = makeThrowingWindow();
     env.registry.register(win);
     win.fireReadyToShow();
     env.registry.fireThemeApplied(win);
+    // Re-firing must be a no-op — entry is gone, show is not invoked again.
     win.show = mock(() => {});
     env.registry.fireThemeApplied(win);
     expect(win.show).not.toHaveBeenCalled();
   });
 
   test('timeout-path show throws → catch logs warn + does not escape setTimeout', () => {
+    // fireTimeout runs from a setTimeout callback. A throw there escapes to
+    // Node's unhandled-exception handler with no diagnostic trail. Wrap +
+    // structured warn keeps the failure observable.
     const win = makeThrowingWindow();
     env.registry.register(win, { kind: 'navigator' });
     expect(() => env.timers[0]?.cb()).not.toThrow();
@@ -432,6 +478,8 @@ describe('createShowGateRegistry — show() throws past the destroyed-window gua
       windowKind: 'navigator',
       error: 'Object has been destroyed',
     });
+    // The timeout warn (`show-gate-timeout`) still fires — the failure warn
+    // is additive, not a replacement.
     const timeout = env.warns.find(
       (w) => (w.obj as { event?: unknown }).event === 'show-gate-timeout',
     );

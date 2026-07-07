@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, jest, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { isMacOS } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import { assetTabId, folderTabId } from '@/editor/editor-tabs';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
@@ -30,9 +31,14 @@ const closeTabs = mock(() => {});
 const getPoolActiveDocName = mock(() => null as string | null);
 const openNewTab = mock(() => {});
 const pinTab = mock(() => {});
+const reopenClosedTab = mock(() => {});
 const remapTabsForRename = mock(() => {});
 const reorderTabs = mock(() => {});
 const unpinTab = mock(() => {});
+
+function primaryShortcutModifier(): Pick<KeyboardEventInit, 'ctrlKey' | 'metaKey'> {
+  return isMacOS() ? { metaKey: true } : { ctrlKey: true };
+}
 
 type DndContextProps = {
   accessibility?: { container?: HTMLElement };
@@ -188,6 +194,7 @@ mock.module('@/editor/DocumentContext', () => ({
     openTabs,
     pinTab,
     pinnedTabIds,
+    reopenClosedTab,
     remapTabsForRename,
     reorderTabs,
     unpinTab,
@@ -258,6 +265,7 @@ function resetState() {
     getPoolActiveDocName,
     openNewTab,
     pinTab,
+    reopenClosedTab,
     remapTabsForRename,
     reorderTabs,
     unpinTab,
@@ -309,6 +317,9 @@ describe('EditorTabs runtime behavior', () => {
     const markdownTab = tabButton('docs/team/notes.md');
     expect(markdownTab.textContent).toBe('notes');
     expect(markdownTab.getAttribute('title')).toBe('docs/team/notes.md');
+    expect(markdownTab.closest('[data-sortable-id]')?.getAttribute('aria-keyshortcuts')).toBe(
+      'Meta+1 Control+1',
+    );
 
     const mdxTab = tabButton('docs/team/spec.mdx');
     expect(mdxTab.textContent).toBe('spec');
@@ -418,6 +429,117 @@ describe('EditorTabs runtime behavior', () => {
       ],
       'docs/team/readme',
     );
+  });
+
+  test('handles tab keyboard shortcuts for create, navigation, jump, and reopen', async () => {
+    const { newId } = defaultTabs();
+    await renderEditorTabs();
+
+    const primaryMod = primaryShortcutModifier();
+
+    fireEvent.keyDown(window, { key: 't', ...primaryMod });
+    expect(openNewTab).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(window, { key: 'Tab', ctrlKey: true });
+    expect(activateTab).toHaveBeenLastCalledWith('docs/team/readme');
+
+    fireEvent.keyDown(window, { key: 'Tab', ctrlKey: true, shiftKey: true });
+    expect(activateTab).toHaveBeenLastCalledWith('docs/team/notes');
+
+    fireEvent.keyDown(window, { key: '1', ...primaryMod });
+    expect(activateTab).toHaveBeenLastCalledWith('docs/team/notes');
+
+    fireEvent.keyDown(window, { key: '9', ...primaryMod });
+    expect(activateNewTab).toHaveBeenLastCalledWith(newId);
+
+    fireEvent.keyDown(window, { key: 'T', ...primaryMod, shiftKey: true });
+    expect(reopenClosedTab).toHaveBeenCalledTimes(1);
+
+    activateNewTab.mockClear();
+    activateTab.mockClear();
+    fireEvent.keyDown(window, { key: '7', ...primaryMod });
+    expect(activateNewTab).not.toHaveBeenCalled();
+    expect(activateTab).not.toHaveBeenCalled();
+  });
+
+  test('tab cycling shortcuts wrap from last to first and first to last', async () => {
+    const { newId } = defaultTabs();
+    activeDocName = null;
+    activeTabId = null;
+    activeNewTabId = newId;
+    isNewTabActive = true;
+    await renderEditorTabs();
+
+    fireEvent.keyDown(window, { key: 'Tab', ctrlKey: true });
+    expect(activateTab).toHaveBeenLastCalledWith('docs/team/notes');
+
+    cleanup();
+    resetState();
+    activeDocName = 'docs/team/notes';
+    activeTabId = 'docs/team/notes';
+    await renderEditorTabs();
+
+    fireEvent.keyDown(window, { key: 'Tab', ctrlKey: true, shiftKey: true });
+    expect(activateNewTab).toHaveBeenLastCalledWith(newId);
+  });
+
+  test('modifier hold delays per-tab shortcut hints and non-active close affordances', async () => {
+    jest.useFakeTimers();
+    try {
+      await renderEditorTabs();
+
+      expect(screen.queryAllByTestId('editor-tab-shortcut-hint')).toHaveLength(0);
+
+      fireEvent.keyDown(window, { key: 'Meta', metaKey: true });
+
+      expect(screen.queryAllByTestId('editor-tab-shortcut-hint')).toHaveLength(0);
+      expectVisualClassTokens(
+        screen.getByRole('button', { name: 'Close docs/team/notes.md' }).getAttribute('class'),
+        ['pointer-events-none', 'opacity-0'],
+      );
+      expectVisualClassTokens(
+        screen.getByRole('button', { name: 'Close new tab' }).getAttribute('class'),
+        ['pointer-events-none', 'opacity-0'],
+      );
+
+      act(() => {
+        jest.advanceTimersByTime(999);
+      });
+
+      expect(screen.queryAllByTestId('editor-tab-shortcut-hint')).toHaveLength(0);
+      expectVisualClassTokens(
+        screen.getByRole('button', { name: 'Close docs/team/notes.md' }).getAttribute('class'),
+        ['pointer-events-none', 'opacity-0'],
+      );
+
+      act(() => {
+        jest.advanceTimersByTime(1);
+      });
+
+      expect(
+        screen.getAllByTestId('editor-tab-shortcut-hint').map((node) => node.textContent),
+      ).toEqual(['⌘1', '⌘2', '⌘3', '⌘4', '⌘5', '⌘6']);
+      expect(screen.queryByRole('button', { name: 'Close docs/team/notes.md' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Close new tab' })).toBeNull();
+
+      fireEvent.blur(window);
+
+      expect(screen.queryAllByTestId('editor-tab-shortcut-hint')).toHaveLength(0);
+      expect(screen.getByRole('button', { name: 'Close docs/team/notes.md' })).toBeTruthy();
+
+      fireEvent.keyDown(window, { key: 'Meta', metaKey: true });
+      act(() => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(screen.getAllByTestId('editor-tab-shortcut-hint')).toHaveLength(6);
+
+      fireEvent.keyUp(window, { key: 'Meta' });
+
+      expect(screen.queryAllByTestId('editor-tab-shortcut-hint')).toHaveLength(0);
+      expect(screen.getByRole('button', { name: 'Close docs/team/notes.md' })).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('context actions close visible document tabs in bulk while routing empty tabs through closeNewTab', async () => {
@@ -535,8 +657,13 @@ describe('EditorTabs runtime behavior', () => {
     lifecycleStatuses.set('docs/team/notes', 'conflict');
     await renderEditorTabs();
 
-    expect(screen.getByTestId('editor-tab-conflict-badge').getAttribute('aria-label')).toBe(
-      'Conflict',
+    const conflictedTabButton = screen.getByRole('button', {
+      name: 'docs/team/notes.md (conflict)',
+    });
+    expect(conflictedTabButton).toBeTruthy();
+    expect(conflictedTabButton.getAttribute('title')).toBe('docs/team/notes.md (conflict)');
+    expect(screen.getByTestId('editor-tab-conflict-badge').getAttribute('aria-hidden')).toBe(
+      'true',
     );
     expect(screen.getAllByRole('menuitem', { name: 'Close' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('menuitem', { name: 'Close others' }).length).toBeGreaterThan(0);
@@ -557,7 +684,7 @@ describe('EditorTabs runtime behavior', () => {
     ]);
 
     const inactiveClose = within(
-      tabButton('docs/team/notes.md').closest('[data-sortable-id]') as HTMLElement,
+      conflictedTabButton.closest('[data-sortable-id]') as HTMLElement,
     ).getByRole('button', { name: 'Close docs/team/notes.md' });
     expectVisualClassTokens(inactiveClose.className, ['mr-1.5']);
 

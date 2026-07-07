@@ -1,3 +1,33 @@
+/**
+ * PublishToGitHubDialog — wizard that publishes a no-remote project to
+ * GitHub. Mounted by the editor surface in response to the Share
+ * button's no-remote callback (through an explicit modal).
+ *
+ * Flow (one-pass linear; no separate "step" state machine):
+ *
+ *   1. On open, fetch owners → rendered as a radio list, with the first org
+ *      pre-selected when the user belongs to one (else their own account).
+ *   2. Name field pre-fills with `sanitizeRepoName(extractFolderBasename(contentDir))`.
+ *      User-edited values re-sanitize inline; "Will be created as `<name>`"
+ *      preview reflects the sanitized form.
+ *   3. Name-check fires 500ms after the last keystroke (or immediately on
+ *      blur) and renders an inline ✓/✗ status next to the field.
+ *   4. Submit is enabled iff owner + sanitized-name + name-check === available.
+ *   5. POST /api/share/publish; on `{ok:true}` transition the dialog to a
+ *      "Published" success view that exposes an explicit "Copy share link"
+ *      button. Clicking it installs a fresh user gesture that the shared
+ *      `runShareAction` orchestrator + clipboard adapter ride to satisfy the
+ *      browser Clipboard API's transient-activation gate. (Auto-copying
+ *      inside `handleSubmit` is impossible in browsers: the multi-second
+ *      publish submit consumes the original click's activation.)
+ *   6. Each error code maps to a banner via `presentPublishError`:
+ *      `name-conflict`/`saml-sso`/`push-failed`/`auth-required`/etc.
+ *
+ * If the GET /api/share/publish/owners endpoint returns `auth-required`
+ * (no token in the keychain), the wizard mounts the existing `AuthModal`
+ * Device Flow surface; on success it retries the owners fetch automatically.
+ */
+
 import type { SharePublishOwner } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { CheckCircle2, Copy, ExternalLink, Loader2, XCircle } from 'lucide-react';
@@ -69,6 +99,24 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
     next: ReturnType<typeof presentPublishError>['next'];
   } | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  // After publish succeeds we transition the modal to a success state with
+  // an explicit "Copy share link" button instead of auto-copying. Reasons:
+  //
+  //   1. The browser Clipboard API requires the write call to occur inside
+  //      a fresh user gesture's transient activation; the multi-second
+  //      publish submit above consumed the original click's activation, so
+  //      any auto-copy attempt fires outside the activation window and is
+  //      rejected by the underlying browser API.
+  //   2. Even with a fresh click, browser deployments inside an iframe
+  //      (e.g. the Claude preview tool) may have `clipboard-write`
+  //      Permissions Policy disabled, in which case the browser refuses
+  //      the write instantly regardless of activation.
+  //
+  // Defense: we eagerly fetch the share URL when the success view mounts
+  // and render it as a selectable readonly input. The Copy button click
+  // is then SYNCHRONOUS (no async work between click and clipboard call),
+  // and if the browser still refuses (iframe policy, etc.) the URL is
+  // right there for the user to select and copy manually.
   const [publishResult, setPublishResult] = useState<{
     ownerLogin: string;
     repoName: string;
@@ -77,6 +125,7 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareUrlError, setShareUrlError] = useState<string | null>(null);
 
+  // Debounce timer for name-check; cleared on every keystroke and on unmount.
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightNameRef = useRef<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
@@ -109,6 +158,10 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
     setOwnersLoading(false);
   }
 
+  // Reset transient state + seed name on every open (the open-tracking
+  // useEffect pattern from CreateProjectDialog). Without this, a previous
+  // session's banner / busy / typed name / post-publish success view would
+  // persist across opens.
   // biome-ignore lint/correctness/useExhaustiveDependencies: open-effect — workspace pulled lazily
   useEffect(() => {
     if (!open) return;
@@ -131,6 +184,9 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
     }
   }, [open]);
 
+  // Name-check: debounce, fire, route. Skips if the sanitized name is
+  // empty, the owner isn't yet known, or we already have a result for
+  // this exact (owner, name) pair.
   useEffect(() => {
     if (!open) return;
     if (debounceRef.current !== null) clearTimeout(debounceRef.current);
@@ -165,6 +221,14 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
     };
   }, [open, selectedOwner, sanitizedName, t]);
 
+  // Eagerly fetch the share URL once the dialog has transitioned to the
+  // success view. The user's click on "Copy share link" is then purely
+  // synchronous — the underlying clipboard write fires inside the same JS
+  // task as the click, with no awaits in between. This preserves the
+  // freshest possible transient activation. The fetched URL also gets
+  // rendered as a selectable input so the user has a manual fallback when
+  // the browser refuses the clipboard write outright (iframe Permissions
+  // Policy, denied permission, etc.).
   useEffect(() => {
     if (!publishResult || !activeDocName) return;
     let cancelled = false;
@@ -180,6 +244,9 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
         }
       } catch (error) {
         if (cancelled) return;
+        // Log the underlying transport / parse error for future debugging
+        // — the inline `shareUrlError` text shown in the dialog is the
+        // user-facing message; the console payload is the diagnostic one.
         console.warn('[share] action=prefetch-share-url result=failed', error);
         setShareUrlError(t`Couldn't construct the share URL. Try Done and re-share.`);
       }
@@ -209,6 +276,10 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
         description: description.trim().length > 0 ? description.trim() : undefined,
       });
       if (res.ok) {
+        // Transition to the success view. Don't auto-copy — the user gesture
+        // that started `handleSubmit` was consumed by the multi-second publish
+        // submit, so `navigator.clipboard.write` would reject. The success
+        // view's "Copy share link" button installs a fresh activation.
         setPublishResult({ ownerLogin: res.ownerLogin, repoName: res.repoName });
         setSubmitting(false);
         return;
@@ -232,6 +303,11 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
 
   function handleCopyShareLink() {
     if (!shareUrl || copying) return;
+    // Fire the clipboard write SYNCHRONOUSLY inside the click handler — the
+    // URL is already in state, so there's no async work between click and
+    // the underlying writeText / IPC call. Maximizes the activation budget.
+    // We use a then/catch chain (not await) so the call site stays sync
+    // through entry; the `setCopying(false)` happens in `finally`.
     setCopying(true);
     scheduleClipboardWrite(shareUrl)
       .then(() => {
@@ -241,6 +317,11 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
       .catch((error: unknown) => {
         console.warn('[share] action=link-construct result=clipboard-failed', error);
         if (isPermissionsPolicyRefusal(error) && window.self !== window.top) {
+          // Embedded inside a parent frame (e.g. a preview tool) whose
+          // Permissions-Policy doesn't include `clipboard-write`. No
+          // amount of activation hygiene can rescue this from inside the
+          // iframe — the parent has to grant the permission. Point the
+          // user at the desktop app and the manual fallback.
           toast.error(
             t`Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app.`,
           );
@@ -372,6 +453,10 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     onBlur={() => {
+                      // Trigger an immediate name-check by resetting the
+                      // in-flight key — the existing effect already covers
+                      // the debounced path, this just closes the gap when
+                      // a user tabs out fast.
                       inFlightNameRef.current = null;
                     }}
                     placeholder="my-knowledge-base"
@@ -523,6 +608,9 @@ function PublishSuccessView({
 }) {
   const { t } = useLingui();
   const urlInputRef = useRef<HTMLInputElement | null>(null);
+  // Once the URL lands, pre-select it so a keyboard cmd/ctrl+C copies it
+  // without needing the Copy button. Cheap belt-and-braces against any
+  // environment that refuses the programmatic clipboard write.
   useEffect(() => {
     if (!shareUrl || !urlInputRef.current) return;
     urlInputRef.current.focus();
@@ -582,6 +670,8 @@ function PublishSuccessView({
                 value={shareUrl}
                 onFocus={(e) => e.currentTarget.select()}
                 onClick={(e) => e.currentTarget.select()}
+                // Right-click must land with the URL selected so any native
+                // context menu the host provides offers an enabled Copy.
                 onContextMenu={(e) => e.currentTarget.select()}
                 className="font-mono text-xs"
               />

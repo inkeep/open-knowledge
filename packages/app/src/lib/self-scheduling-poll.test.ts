@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { createSelfSchedulingPoll, type PollOutcome } from './self-scheduling-poll.ts';
 
+// Injectable fake timer — records scheduled callbacks; `runPending` fires the
+// next one. No real time elapses, so the scheduling contract is deterministic.
 function makeTimerHarness() {
   const timers: Array<{ fn: () => void; ms: number; id: number }> = [];
   let nextId = 1;
@@ -22,6 +24,8 @@ function makeTimerHarness() {
   };
 }
 
+// Controllable poll — each call returns a fresh promise resolved/rejected by the
+// test via `resolve`/`reject` on the latest call.
 function makePollController() {
   let calls = 0;
   let resolveLatest: (o: PollOutcome) => void = () => {};
@@ -42,6 +46,7 @@ function makePollController() {
   };
 }
 
+// Flush microtasks so the continuation after `await poll()` runs.
 const flush = async () => {
   await Promise.resolve();
   await Promise.resolve();
@@ -65,6 +70,7 @@ describe('createSelfSchedulingPoll (PRD-6972 FR1)', () => {
     expect(ctrl.calls).toBe(1);
     expect(timer.timers).toHaveLength(0); // nothing armed while a poll is in flight
 
+    // The poll is still in flight — no second poll can be issued.
     await flush();
     expect(ctrl.calls).toBe(1);
 
@@ -99,16 +105,19 @@ describe('createSelfSchedulingPoll (PRD-6972 FR1)', () => {
     await flush();
     expect(timer.timers).toHaveLength(1);
 
+    // Tab goes hidden; the armed tick fires but parks instead of polling.
     paused = true;
     timer.runPending();
     await flush();
     expect(ctrl.calls).toBe(1); // zero requests while hidden
     expect(timer.timers).toHaveLength(0); // parked, no timer
 
+    // resume() while still hidden is a no-op.
     loop.resume();
     await flush();
     expect(ctrl.calls).toBe(1);
 
+    // Tab shown → resume polls exactly once.
     paused = false;
     loop.resume();
     await flush();
@@ -223,6 +232,7 @@ describe('createSelfSchedulingPoll (PRD-6972 FR1)', () => {
     await flush();
     expect(ctrl.calls).toBe(1);
 
+    // Re-starting mid-flight must not fire a second concurrent poll.
     loop.start();
     await flush();
     expect(ctrl.calls).toBe(1);

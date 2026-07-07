@@ -1,7 +1,7 @@
 ---
 title: Entity vault (GBrain-compatible) workflow
 icon: LuBoxes
-description: A GBrain-compatible Markdown workflow for people, companies, meetings, and concepts. OpenKnowledge is the cockpit/editor/review layer; Garry Tan's gbrain can import or sync the same vault for indexing and automation.
+description: "A personal memory for the people, companies, and meetings in your world. Each one gets its own page that an AI keeps up to date as you learn more, and you can correct anything by hand. Works with Garry Tan's gbrain if you use it, but doesn't need it."
 ---
 
 An **Entity vault (GBrain-compatible Markdown)** is a Markdown brain organized around typed dossiers: people, companies, meetings, concepts, originals, and media. Each durable dossier has two zones:
@@ -11,12 +11,38 @@ An **Entity vault (GBrain-compatible Markdown)** is a Markdown brain organized a
 
 OpenKnowledge scaffolds and edits that Markdown. Garry Tan's [`gbrain`](https://github.com/garrytan/gbrain), if you install it, can import/sync the same vault and add its DB-backed retrieval, graph extraction, embedding, and automation. OK does **not** replace `gbrain`; it gives GBrain-style Markdown brains a human cockpit for review, correction, attribution, and Git-visible edits.
 
-## Who this is for
+```html preview
+<div style="padding:18px">
+  <div id="dv" style="max-width:430px;margin:0 auto;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card)">
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-weight:600;font-size:13px">Jane Founder <span style="color:var(--muted-foreground);font-weight:400">· person</span></div>
+    <div style="padding:11px 14px">
+      <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground)">Compiled truth</div>
+      <div id="dv-truth" style="font-size:12.5px;margin-top:4px;line-height:1.45"></div>
+    </div>
+    <div style="padding:11px 14px;border-top:1px dashed var(--border)">
+      <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground)">Timeline (append-only)</div>
+      <div id="dv-tl" style="margin-top:6px;display:flex;flex-direction:column;gap:5px"></div>
+    </div>
+  </div>
+  <div class="cap">Two zones per dossier: a compiled truth the agent rewrites as evidence changes, and a timeline it only ever appends to.</div>
+</div>
+<style>
+.cap{margin-top:12px;color:var(--muted-foreground);font-size:12.5px;text-align:center}
+.cap::before{content:"\1F9E0  ";font-weight:700}
+#dv-tl .b{font-size:11.5px;color:var(--muted-foreground);border-left:2px solid var(--accent-soft);padding-left:8px;animation:dvin .4s ease}
+@keyframes dvin{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+</style>
+<script>
+var truths=["Co-founder and CEO of Jane Co.","Co-founder and CEO of Jane Co. Ex-profiler; sharp on cost-per-token economics.","Co-founder and CEO of Jane Co. Ex-profiler; sharp on cost-per-token economics. Go-to-market still forming."];
+var bullets=["2026-05-12 · coffee — described the observability wedge","2026-05-13 · agent enrichment — prior OSS profiler work","2026-05-20 · intro from Alex — GTM still developing"];
+var truth=document.getElementById("dv-truth"),tl=document.getElementById("dv-tl");
+function render(i){truth.textContent=truths[i];tl.innerHTML="";for(var j=0;j<=i;j++){var b=document.createElement("div");b.className="b";b.textContent=bullets[j];tl.appendChild(b);}}
+var cur=0;render(0);
+if(!matchMedia("(prefers-reduced-motion:reduce)").matches){setInterval(function(){cur=(cur+1)%3;render(cur);},1800);}
+</script>
+```
 
-- You want a second brain that tracks **people, companies, meetings, and concepts**, not just source documents.
-- You want agents to maintain dossiers while you keep final editorial control.
-- You already use `gbrain` and want a visual/editor layer over the Markdown files it indexes.
-- You do not use `gbrain` yet, but want a portable GBrain-compatible Markdown shape you can adopt later.
+Founders and investors get a second brain over **people, companies, meetings, and concepts** — a network that's queryable, not just a pile of source documents. Agents maintain the dossiers while you keep final editorial control, so wrong claims get corrected by hand rather than trusted blindly. If you already run `gbrain`, this is a visual editor layer over the Markdown it indexes; if you don't yet, the GBrain-compatible Markdown shape is portable, so adopting that engine later is never a migration.
 
 ## The division of labor
 
@@ -55,6 +81,10 @@ your-project/
 ```
 
 Each folder includes an `.ok/frontmatter.yml` description that agents see during file listings/searches, plus templates under `.ok/templates/`.
+
+<Callout type="info" title="Seeding also installs a skill">
+  `ok seed --pack entity-vault` installs the **Entity vault** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance behind the dossier conventions — compiled-truth vs. append-only timeline, path-qualified links, the correction loop — read automatically, and editable like any other doc. It lands as a real `SKILL.md` committed to your repo, one per detected editor. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+</Callout>
 
 ## Markdown shape
 
@@ -160,7 +190,7 @@ For a GBrain-literate reviewer, the demo target is not "OK replaces GBrain." It 
 
 Aha moment: **GBrain makes agent memory useful; OK makes the Markdown memory inspectable, correctable, and collaborative.**
 
-## Routine
+## Cadence
 
 | Cadence | What |
 | --- | --- |

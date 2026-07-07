@@ -33,6 +33,8 @@ describe('recordHandoff (renderer-side telemetry)', () => {
         },
       }),
     ).resolves.toBeUndefined();
+    // Web host is the expected fall-through — no warn noise allowed (every
+    // web dispatch would otherwise spam the console).
     expect(warnings).toHaveLength(0);
   });
 
@@ -66,6 +68,7 @@ describe('recordHandoff (renderer-side telemetry)', () => {
       okDesktop: {
         shell: {
           recordHandoff: async () => {
+            // Intentionally throws a non-Error to exercise the String(err) branch.
             throw 'string-rejection';
           },
         },

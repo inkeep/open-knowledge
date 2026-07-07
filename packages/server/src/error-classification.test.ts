@@ -117,6 +117,9 @@ describe('classifyGitError', () => {
       expect(r.retryable).toBe(false);
     });
 
+    // No-credential: the credential helper returned nothing and git fell back to
+    // a no-TTY prompt. Must classify as auth (non-retryable) so the UI offers
+    // reconnect rather than looping in a retryable "offline" state.
     test('no credential — "could not read Username … Device not configured" (no GIT_TERMINAL_PROMPT)', () => {
       const r = classifyGitError(
         mkErr(
@@ -255,6 +258,10 @@ describe('classifyGitError', () => {
     });
 
     test('simple-git GitResponseError shape (CONFLICTS: file:reason)', () => {
+      // Mirrors the actual error simple-git throws from `git.merge()` when
+      // conflicts occur: `new GitResponseError(MergeSummaryDetail)` produces
+      // `message = "CONFLICTS: <file>:<reason>[, …]"` and `git` is the
+      // MergeSummaryDetail object whose toString() yields the same string.
       const mergeSummary = {
         conflicts: [{ file: 'test.md', reason: 'content' }],
         merges: [],
@@ -353,6 +360,8 @@ describe('classifyGitError', () => {
     });
 
     test('bare ENOSPC (case-insensitive, no "no space left" text to fall back on)', () => {
+      // Regression: /ENOSPC/ (no /i) was matched against a lowercased string,
+      // so it never fired — only the sibling /no space left on device/i did.
       const r = classifyGitError(mkErr('fatal: write error: ENOSPC'));
       expect(r.class).toBe('local');
       expect(r.subclass).toBe('disk-full');
@@ -375,6 +384,7 @@ describe('classifyGitError', () => {
 
     test('rawStderr is optional but included when available', () => {
       const r = classifyGitError(mkErr('fatal', 'stderr content here'));
+      // rawStderr may or may not be populated depending on classification path
       if (r.rawStderr !== undefined) {
         expect(typeof r.rawStderr).toBe('string');
       }
@@ -496,6 +506,9 @@ describe('classifyGitError', () => {
     });
 
     test('the wire never carries English in the code path', () => {
+      // Belt-and-braces guard: anyone scanning the code field across every
+      // classification result must see only the bounded enum values (no raw
+      // sentence ever slips through). Localization lives entirely client-side.
       const r403 = classifyGitError(mkErr('HTTP 403: Permission denied'));
       expect(typeof r403.userFacingCode === 'string').toBe(true);
       expect(r403.userFacingCode).not.toMatch(/permission to push/i);

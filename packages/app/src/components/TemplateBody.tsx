@@ -3,6 +3,16 @@ import { useId } from 'react';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Textarea } from '@/components/ui/textarea';
 
+/**
+ * Monospace editor for a template body — the markdown that becomes a new
+ * document's content when someone creates a doc from this template.
+ *
+ * Rendered raw, not as a WYSIWYG preview: for a template the structural
+ * scaffolding — heading skeleton, parenthetical placeholders, and the
+ * `{{date}}` / `{{user}}` substitution tokens — is the point, and a polished
+ * render would hide it. The token allowlist is enforced server-side at write
+ * time; any other `{{...}}` token is rejected at save.
+ */
 export function TemplateBodyTextarea({
   value,
   onChange,
@@ -17,6 +27,8 @@ export function TemplateBodyTextarea({
   rows?: number;
 }) {
   const id = useId();
+  // `{{date}}` / `{{user}}` carry literal braces that `lingui compile` reads
+  // as ICU syntax — bind them to locals and render as plain placeholders.
   const dateToken = '{{date}}';
   const userToken = '{{user}}';
   return (

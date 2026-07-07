@@ -19,10 +19,13 @@ describe('locateIssue', () => {
     expect(result).toBeDefined();
     expect(result?.file).toBe('/abs/config.yml');
     expect(result?.line).toBe(4);
+    // Column should point at the start of the value `"fifty"` (1-indexed).
+    // The line is `      maxResults: "fifty"`; the value starts at column 19.
     expect(result?.column).toBeGreaterThanOrEqual(19);
     expect(result?.snippet).toBeDefined();
     expect(result?.snippet).toContain('maxResults');
     expect(result?.snippet).toContain('"fifty"');
+    // Caret marker rendered.
     expect(result?.snippet).toContain('^');
   });
 
@@ -46,9 +49,11 @@ describe('locateIssue', () => {
       file: '/c.yml',
       source,
       doc,
+      // Path that doesn't exist — expect fallback to the nearest existing ancestor.
       path: ['mcp', 'tools', 'grep', 'nonExistentField'],
     });
     expect(result).toBeDefined();
+    // Should fall back to `grep:` block (line 3 in source).
     expect(result?.line).toBeGreaterThanOrEqual(1);
     expect(result?.line).toBeLessThanOrEqual(4);
   });
@@ -68,11 +73,13 @@ line5: c
       path: ['line3', 'bad'],
     });
     expect(result).toBeDefined();
+    // Snippet should include a line before, the target line, and a line after.
     expect(result?.snippet).toContain('line3:');
     expect(result?.snippet).toContain('bad:');
   });
 
   test('handles 1-indexed line/column correctly across CRLF + leading newlines', () => {
+    // Lead with a blank line so position calculations matter.
     const source = `\n\nmcp:\n  autoStart: notabool\n`;
     const doc = parseDocument(source);
     const result = locateIssue({
@@ -82,6 +89,7 @@ line5: c
       path: ['mcp', 'autoStart'],
     });
     expect(result).toBeDefined();
+    // `autoStart:` is on line 4 (1-indexed: blank, blank, mcp:, autoStart).
     expect(result?.line).toBe(4);
   });
 

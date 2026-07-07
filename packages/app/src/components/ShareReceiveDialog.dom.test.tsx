@@ -193,6 +193,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
 
     await renderDialog({ cloneController });
 
+    // Wait for the auth probe to resolve so the clone CTA becomes enabled.
     await waitFor(() =>
       expect((screen.getByTestId('share-receive-clone') as HTMLButtonElement).disabled).toBe(false),
     );
@@ -200,7 +201,10 @@ describe('ShareReceiveDialog runtime behavior', () => {
     fireEvent.click(screen.getByTestId('share-receive-clone'));
     await waitFor(() => expect(cloneController.runClone).toHaveBeenCalled());
 
+    // After clone error the dialog stays mounted so the user can recover.
     expect(screen.getByTestId('share-receive-dialog')).toBeTruthy();
+    // The sign-in affordance must remain visible — it is the primary recovery path
+    // when anonymous clone fails (e.g. private fork, token required).
     expect(screen.getByTestId('share-receive-signin')).toBeTruthy();
   });
 
@@ -229,9 +233,15 @@ describe('ShareReceiveDialog runtime behavior', () => {
     fireEvent.click(screen.getByTestId('share-receive-clone'));
     await waitFor(() => expect(cloneController.runClone).toHaveBeenCalled());
 
+    // The failure is presented in a persistent error region, not a transient toast.
     await screen.findByTestId('share-receive-clone-error');
+    // role="alert" is scoped to the concise heading, not the whole block, so AT
+    // announces the one-line cause rather than the full card.
     expect(screen.getByRole('alert').textContent).toContain("We couldn't clone this repository");
 
+    // The GitHub error is condensed to its meaningful line — no progress
+    // preamble, no leaked local path, no repeated repo URL. The repo + filename
+    // already live in the dialog header's metadata rows.
     const message = screen.getByTestId('share-receive-clone-error-message').textContent ?? '';
     expect(message).toContain('Error:');
     expect(message).toContain('Repository not found');
@@ -241,12 +251,16 @@ describe('ShareReceiveDialog runtime behavior', () => {
     expect(screen.queryByTestId('share-receive-clone-error-url')).toBeNull();
     expect(screen.queryByTestId('share-receive-clone-error-detail')).toBeNull();
 
+    // A list of likely causes, including the private-repo case the bug is about.
     expect(screen.getByTestId('share-receive-clone-error-reasons').textContent).toMatch(/private/i);
 
+    // Recovery affordances stay available: retry + sign-in.
     expect(screen.getByTestId('share-receive-clone-retry')).toBeTruthy();
     expect(screen.getByTestId('share-receive-signin')).toBeTruthy();
 
+    // The dialog (modal) is still mounted, not dismissed.
     expect(screen.getByTestId('share-receive-dialog')).toBeTruthy();
+    // No transient error toast — the modal owns the presentation now.
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -263,6 +277,8 @@ describe('ShareReceiveDialog runtime behavior', () => {
     );
     fireEvent.click(screen.getByTestId('share-receive-clone'));
 
+    // The error view (reasons + recovery) still renders; only the GitHub-message
+    // line is omitted when there's no message to show.
     await screen.findByTestId('share-receive-clone-error');
     expect(screen.getByTestId('share-receive-clone-error-reasons')).toBeTruthy();
     expect(screen.queryByTestId('share-receive-clone-error-message')).toBeNull();
@@ -291,6 +307,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
     fireEvent.click(retry);
 
     await waitFor(() => expect(cloneController.runClone).toHaveBeenCalledTimes(2));
+    // Second run returned 'cancelled' → the error view clears.
     await waitFor(() => expect(screen.queryByTestId('share-receive-clone-error')).toBeNull());
   });
 
@@ -311,8 +328,11 @@ describe('ShareReceiveDialog runtime behavior', () => {
     const localBtn = await screen.findByTestId('share-receive-error-local');
     fireEvent.click(localBtn);
 
+    // Entering the local path clears the clone-failure banner...
     await waitFor(() => expect(screen.queryByTestId('share-receive-clone-error')).toBeNull());
+    // ...opens the native folder picker...
     await waitFor(() => expect(bridge.dialog.openFolder).toHaveBeenCalled());
+    // ...and returns the user to the normal two-card view.
     expect(screen.getByTestId('share-receive-clone')).toBeTruthy();
   });
 
@@ -349,14 +369,18 @@ describe('ShareReceiveDialog runtime behavior', () => {
     );
     expect(screen.getByTestId('share-receive-metadata').textContent).toContain('docs/guide.md');
     expect(screen.getByTestId('share-receive-metadata-branch').textContent).toBe('feat/share');
+    // Public repos clone anonymously: the clone CTA is enabled and labeled for
+    // an immediate clone even though the auth probe resolved unauthenticated.
     await waitFor(() =>
       expect(screen.getByTestId('share-receive-clone').textContent).toContain(
         'Clone to a new folder',
       ),
     );
     expect((screen.getByTestId('share-receive-clone') as HTMLButtonElement).disabled).toBe(false);
+    // The sign-in affordance remains available as the private-repo fallback.
     expect(await screen.findByTestId('share-receive-signin')).toBeTruthy();
 
+    // Clicking Clone proceeds without first signing in.
     fireEvent.click(screen.getByTestId('share-receive-clone'));
     await waitFor(() =>
       expect(cloneController.runClone).toHaveBeenCalledWith({
@@ -383,6 +407,9 @@ describe('ShareReceiveDialog runtime behavior', () => {
         'This folder is a clone of fork/repo, not inkeep/open-knowledge. Pick a different folder?',
       ),
     );
+    // The located clone ('/right') is checked out on 'main', but the share is
+    // for 'feat/share' — the receive flow must route to the branch-switch
+    // surface rather than open the doc directly on the wrong branch.
     await waitFor(() => expect(bridge.project.readHeadBranch).toHaveBeenCalledWith('/right'));
     await waitFor(() => {
       const openArg = (bridge.project.open as ReturnType<typeof mock>).mock.calls.at(-1)?.[0] as {
@@ -396,8 +423,14 @@ describe('ShareReceiveDialog runtime behavior', () => {
     });
   });
 
+  // "I already have it locally" must be branch-aware, symmetric with the
+  // recent-projects path: when the located clone is on a different branch than
+  // the share, route to the branch-switch surface instead of silently opening
+  // the doc on the wrong branch.
   test('I have it locally: branch mismatch routes to the branch-switch surface, not a plain open', async () => {
     const bridge = createBridge();
+    // Located clone HEAD is 'main' (createBridge default); the share is for
+    // 'feat/share' — a mismatch.
     const store = createTestStore(okPayload({ branch: 'feat/share' }));
     bridge.__folderPicks.push('/local/clone');
     bridge.__validationResults.push({
@@ -410,8 +443,12 @@ describe('ShareReceiveDialog runtime behavior', () => {
     expect(await screen.findByTestId('share-receive-dialog')).toBeTruthy();
     fireEvent.click(screen.getByTestId('share-receive-local'));
 
+    // The flow must read the located folder's HEAD to make a branch decision.
     await waitFor(() => expect(bridge.project.readHeadBranch).toHaveBeenCalledWith('/local/clone'));
 
+    // On mismatch it must open the project with a branch-switch payload (so the
+    // editor window mounts ShareBranchSwitchDialog), NOT a plain deep-link open
+    // on the current branch.
     await waitFor(() => expect(bridge.project.open).toHaveBeenCalled());
     const openArg = (bridge.project.open as ReturnType<typeof mock>).mock.calls.at(-1)?.[0] as {
       path?: string;
@@ -426,18 +463,24 @@ describe('ShareReceiveDialog runtime behavior', () => {
     expect(openArg.pendingShareBranchSwitch).toBeDefined();
     expect(openArg.pendingShareBranchSwitch?.projectPath).toBe('/local/clone');
     expect(openArg.pendingShareBranchSwitch?.currentBranch).toBe('main');
+    // The `share` payload is what ShareBranchSwitchDialog uses to resolve the
+    // target branch + doc; a dropped or partial share would pass the other
+    // assertions while silently breaking the branch-switch UX.
     expect(openArg.pendingShareBranchSwitch?.share).toMatchObject({
       owner: 'inkeep',
       repo: 'open-knowledge',
       branch: 'feat/share',
       target: { kind: 'doc', docPath: 'docs/guide.md' },
     });
+    // A plain deep-link target would silently navigate on the wrong branch.
     expect(openArg.pendingDeepLinkTarget).toBeUndefined();
     expect(store.dismiss).toHaveBeenCalled();
   });
 
   test('I have it locally: branch match opens directly without a branch-switch', async () => {
     const bridge = createBridge();
+    // Located clone HEAD is 'main' (createBridge default) and the share is for
+    // 'main' — a match, so open straight to the doc with no branch-switch.
     const store = createTestStore(okPayload({ branch: 'main' }));
     bridge.__folderPicks.push('/local/clone');
     bridge.__validationResults.push({
@@ -457,6 +500,8 @@ describe('ShareReceiveDialog runtime behavior', () => {
     };
     expect(openArg.pendingDeepLinkTarget).toEqual({ kind: 'doc', path: 'docs/guide.md' });
     expect(openArg.pendingShareBranchSwitch).toBeUndefined();
+    // Guard the success path: a dropped store.dismiss() would leave a ghost
+    // dialog over the newly opened project window.
     expect(store.dismiss).toHaveBeenCalled();
   });
 
@@ -468,6 +513,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
       kind: 'ok',
       gitRemoteUrl: 'https://github.com/inkeep/open-knowledge.git',
     });
+    // Detached HEAD is not on the share's branch -> route to the switch surface.
     bridge.project.readHeadBranch = mock(() =>
       Promise.resolve({ currentBranch: null, detached: true, headSha: '1234567' }),
     );
@@ -502,6 +548,9 @@ describe('ShareReceiveDialog runtime behavior', () => {
       kind: 'ok',
       gitRemoteUrl: 'https://github.com/inkeep/open-knowledge.git',
     });
+    // Graceful-fail sentinel (missing / unreadable .git/HEAD): classify as a
+    // match so a single broken clone never forces a needless branch-switch
+    // prompt — symmetric with the recents path's silent dispatch.
     bridge.project.readHeadBranch = mock(() =>
       Promise.resolve({ currentBranch: null, detached: false, headSha: null }),
     );
@@ -523,6 +572,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
 
   test('I have it locally: share with no branch opens directly', async () => {
     const bridge = createBridge();
+    // Legacy share URL with no branch — always a plain open regardless of HEAD.
     const store = createTestStore(okPayload({ branch: '' }));
     bridge.__folderPicks.push('/local/clone');
     bridge.__validationResults.push({
@@ -553,6 +603,9 @@ describe('ShareReceiveDialog runtime behavior', () => {
       kind: 'ok',
       gitRemoteUrl: 'https://github.com/inkeep/open-knowledge.git',
     });
+    // Distinct from the graceful-fail sentinel (a resolved all-null value):
+    // an IPC-transport rejection hits the catch, which leaves the all-null
+    // sentinel in place -> classifies as a match -> plain open, never a dead end.
     bridge.project.readHeadBranch = mock(() => Promise.reject(new Error('ipc channel closed')));
 
     await renderDialog({ bridge, store });

@@ -1,3 +1,12 @@
+/**
+ * Behavioral tests for the Settings → Terminal opt-out toggle.
+ *
+ * The system boundary (the CRDT-backed consent hook) is mocked; the real shadcn
+ * Switch is rendered. Assertions pin the default-on opt-out: the default
+ * (never-chosen) and granted states read as on; only an explicit `false` reads
+ * as off; on → off writes `false`; off → on writes `true` directly (no consent
+ * dialog); the control is disabled until the binding is ready.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

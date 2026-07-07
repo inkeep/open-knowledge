@@ -1,3 +1,15 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleAgentActivity`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET /api/agent-activity?agentId=...`:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `AgentActivitySuccessSchema`, no `ok` discriminator. Returns the
+ *     zero-state ledger (sessionAlive=false, agent=null, files=[]) for an
+ *     unknown agentId — the route is read-only + agent-id-bound.
+ *   - missing agentId → 400 `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on POST → 405 `urn:ok:error:method-not-allowed`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { AgentActivitySuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

@@ -19,6 +19,7 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+// Poll until `predicate` is true or the deadline elapses (watcher is async).
 async function eventually(predicate: () => boolean, timeoutMs = 20_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -28,6 +29,13 @@ async function eventually(predicate: () => boolean, timeoutMs = 20_000): Promise
   throw new Error('eventually: predicate never became true');
 }
 
+// These two assert real chokidar event delivery (create/edit a file, wait for
+// onChange). The watcher uses `usePolling: true`, whose detection depends on a
+// setInterval firing on the event loop. macOS (the only supported platform) runs
+// them fast, but on the Linux CI runner the whole server suite shares one
+// saturated event loop, so the poll never gets a tick within even a 20s deadline
+// and the file change is missed. Gate them off CI — the watcher's wiring is
+// verified locally on the supported platform; CI keeps the rest of the suite.
 const RUNNING_IN_CI = Boolean(process.env.CI);
 
 describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
@@ -54,6 +62,7 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
     const contents: string[] = [];
     cleanup = await startManagedArtifactWatcher([skillsRoot], (_p, c) => contents.push(c));
 
+    // A non-SKILL.md sibling must never fire.
     writeFileSync(resolve(skillDir, 'NOTES.md'), 'noise', 'utf-8');
     writeFileSync(leaf, 'v2', 'utf-8');
 

@@ -17,6 +17,10 @@ import { LinkEditPopover } from './LinkEditPopover';
 function shouldShowBubbleMenu({ editor }: { editor: Editor }): boolean {
   if (getFindReplaceState(editor.state).query) return false;
   if (editor.isActive('codeBlock')) return false;
+  // Image / File NodeSelection — show the menu so the per-type buttons
+  // (`ImageAlignButtons` / `FileBubbleButtons`) are reachable even though
+  // `textBetween` is empty across a leaf atom. Bypasses the text-bearing-
+  // selection guards below.
   if (isImageNodeSelected(editor)) return true;
   if (isFileNodeSelected(editor)) return true;
   if (editor.state.selection.empty) return false;
@@ -37,6 +41,13 @@ export function BubbleMenuBar({
   const [tooltipKey, setTooltipKey] = useState(0);
   const stopAutoUpdateRef = useRef<(() => void) | null>(null);
 
+  // When an image / file is NodeSelected we swap the bar's contents to
+  // per-type controls (alignment buttons for images, download for
+  // files). The text-style controls (block-type / inline-format / link)
+  // are inappropriate for a leaf media block — they'd target the wrong
+  // selection or no-op. The selectors watch `selection` so the bar
+  // swaps content live as the user moves between text and media blocks
+  // without dismount.
   const isImageMode = useEditorState({
     editor,
     selector: (ctx) => isImageNodeSelected(ctx.editor),
@@ -46,6 +57,9 @@ export function BubbleMenuBar({
     selector: (ctx) => isFileNodeSelected(ctx.editor),
   });
 
+  // Virtual element whose getBoundingClientRect always reflects the current
+  // selection position. contextElement lets autoUpdate discover scroll ancestors
+  // (including the overflow-y-auto editor container) automatically.
   const virtualEl = {
     getBoundingClientRect: () => {
       try {
@@ -75,13 +89,17 @@ export function BubbleMenuBar({
             popup.style.top = `${y}px`;
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          // Position calculation failed (e.g., detached element) — autoUpdate will retry
+        });
     });
   };
 
   const onHide = () => {
     stopAutoUpdateRef.current?.();
     stopAutoUpdateRef.current = null;
+    // Bump key to force remount of tooltip-bearing children — prevents "rogue tooltips"
+    // that stay open after the bubble menu hides due to portal/z-index timing.
     setTooltipKey((k) => k + 1);
   };
 

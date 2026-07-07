@@ -3,6 +3,21 @@ import path from 'node:path';
 import { zipSync } from 'fflate';
 import sharp from 'sharp';
 
+// Regenerates the downloadable brand kit in public/brand/ from the two logo
+// React components (the single source of truth for the mark's path data).
+//
+// Outputs, per asset: an SVG, a high-res transparent PNG, and one zip bundling
+// everything for the "Download all" affordance on /brand. The mark keeps its
+// built-in drop-shadow (the depth is part of the lockup, not an added effect),
+// applied to the icon exactly as the components render it.
+//
+// The wordmark text renders as `currentColor` in the component; here it's
+// baked to a concrete ink so the file reads correctly out of context: near-
+// black for light backgrounds, pure white for dark ones. The icon is full
+// colour and works on either background, so it ships as a single variant.
+//
+// Run whenever ok-wordmark.tsx / ok-icon.tsx change: bun run generate:brand-assets
+
 const root = path.resolve(import.meta.dirname, '..');
 const outDir = path.join(root, 'public', 'brand');
 
@@ -11,6 +26,8 @@ const INK_DARK = '#ffffff'; // wordmark on dark backgrounds
 
 type SvgPath = { d: string; fill: string };
 
+// Pull every self-closing <path d=".." fill=".."> out of a component source.
+// Order-preserving; ignores the <filter> defs (no `d` attribute).
 function extractPaths(src: string): SvgPath[] {
   const paths: SvgPath[] = [];
   for (const el of src.match(/<path\b[\s\S]*?\/>/g) ?? []) {
@@ -34,6 +51,9 @@ if (!wordmarkPath) {
   throw new Error('Could not find the currentColor wordmark path in ok-wordmark.tsx');
 }
 
+// The icon's soft drop-shadow, transcribed to standard (kebab-case) SVG from
+// the `ok-wordmark-shadow` filter the components declare in JSX. Applied to the
+// icon group so the downloaded mark carries the same depth as the site lockup.
 const SHADOW_FILTER = `  <defs>
     <filter id="ok-shadow" x="0" y="0" width="226.297" height="251.133" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
       <feFlood flood-opacity="0" result="BackgroundImageFix"/>
@@ -60,6 +80,7 @@ ${SHADOW_FILTER}
 </svg>
 `;
 
+// Full lockup: icon (0–226 in x) + wordmark text, sharing the component viewBox.
 const logoSvg = (ink: string) =>
   svgDoc(
     '0 0 1307 252',
@@ -86,6 +107,8 @@ async function main() {
     const svgBytes = new TextEncoder().encode(asset.svg);
     writeFileSync(path.join(outDir, `${asset.file}.svg`), asset.svg);
 
+    // density lifts the SVG rasterization DPI before the resize so the PNG
+    // stays crisp at the target width; transparent background is preserved.
     const png = await sharp(Buffer.from(asset.svg), { density: 400 })
       .resize({ width: asset.pngWidth })
       .png()

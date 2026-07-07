@@ -36,6 +36,9 @@ interface MarketingButtonProps
 }
 
 const baseClasses = cn(
+  // Bare `transition` (not `transition-all`) covers Tailwind's curated set —
+  // colors, opacity, box-shadow, transform, filter — without animating
+  // layout-triggering properties like width/height.
   'flex items-center gap-2 transition duration-200 ease-in-out',
   'outline-none focus-visible:ring-2 focus-visible:ring-slide-accent focus-visible:ring-offset-2',
   'disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer',
@@ -164,6 +167,8 @@ export function MarketingButton({
     handleClick(e);
   };
 
+  // Source: skip the `pr-2.5` icon override for `secondary` so its fixed
+  // 22px right padding is preserved.
   const layoutClasses =
     showIcon && variant !== 'minimal' && variant !== 'icon' && variant !== 'secondary'
       ? 'pr-2.5'
@@ -184,8 +189,14 @@ export function MarketingButton({
   const ArrowIcon = iconDirection === 'down' ? ArrowDown : ArrowRight;
   const ChevronsIcon = iconDirection === 'down' ? ChevronsDown : ChevronsRight;
   const isFileLink = typeof href === 'string' && href.split('?')[0]?.toLowerCase().endsWith('.pdf');
+  // Download/update routes are 302 redirect handlers, not client-navigable
+  // pages — render them as a raw <a> so next/link never prefetches them (which
+  // would fire the redirect and inflate download counts) or double-fetches on
+  // click. Mirrors the raw-<a> pattern in app/d/[encoded]/splash-buttons.tsx.
   const isRedirectRoute =
     typeof href === 'string' && (href.startsWith('/download/') || href.startsWith('/updates/'));
+  // An explicit `download` only takes effect on a raw <a> — next/link drops the
+  // attribute — so force the raw-anchor path (also avoids prefetching the file).
   const useRawAnchor = isFileLink || isRedirectRoute || typeof download !== 'undefined';
   const computedDownload = typeof download !== 'undefined' ? download : isFileLink ? '' : undefined;
 
@@ -262,6 +273,8 @@ export function MarketingButton({
           className={buttonClasses}
           target={target}
           rel={finalRel}
+          aria-label={props['aria-label']}
+          title={props.title}
           onClick={handleAnchorClick}
           download={computedDownload}
           aria-disabled={disabled ? 'true' : undefined}
@@ -273,7 +286,15 @@ export function MarketingButton({
     }
 
     return (
-      <Link href={href} className={buttonClasses} target={target} rel={finalRel} onClick={onClick}>
+      <Link
+        href={href}
+        className={buttonClasses}
+        target={target}
+        rel={finalRel}
+        aria-label={props['aria-label']}
+        title={props.title}
+        onClick={onClick}
+      >
         {buttonContent}
       </Link>
     );

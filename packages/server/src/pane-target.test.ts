@@ -41,6 +41,7 @@ describe('pane-target store', () => {
   test('a malformed route (not `#/`) is rejected at the write boundary', () => {
     expect(armPaneTarget(tmpDir, 'https://evil.example', 1_000)).toBe(false);
     expect(readArmedPaneTarget(tmpDir, 1_000)).toBeNull();
+    // A valid arm still works afterward (the rejection wrote nothing).
     expect(armPaneTarget(tmpDir, '#/ok', 1_000)).toBe(true);
     expect(readArmedPaneTarget(tmpDir, 1_000)).toBe('#/ok');
   });
@@ -48,6 +49,7 @@ describe('pane-target store', () => {
   test('clear consumes the armed target (no re-navigate within TTL)', () => {
     armPaneTarget(tmpDir, '#/specs/foo/SPEC', 1_000);
     clearArmedPaneTarget(tmpDir);
+    // Within the TTL, but the target is gone — a reload must not re-navigate.
     expect(readArmedPaneTarget(tmpDir, 1_000 + 5_000)).toBeNull();
   });
 

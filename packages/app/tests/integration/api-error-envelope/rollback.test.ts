@@ -1,3 +1,18 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleRollback`.
+ *
+ * Asserts the canonical RFC 9457 wire shape:
+ *   - missing commitSha → `urn:ok:error:invalid-request` (schema regex rejects).
+ *   - shadow-not-configured → `urn:ok:error:rollback-not-configured` (server
+ *     in non-shadow mode; this is the dominant failure path in tests because
+ *     `gitEnabled: false` is the harness default).
+ *   - method-not-allowed on GET emits `urn:ok:error:method-not-allowed`.
+ *
+ * Happy path is exercised end-to-end by `restore-button-rollback.e2e.ts` /
+ * `agent-write-summaries` integration suites — those run with shadow-repo
+ * gitEnabled. This smoke test stays narrow to the wire-shape contract.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -50,6 +65,9 @@ describe('rollback envelope (RFC 9457)', () => {
   });
 
   test('non-existent SHA in shadow repo emits urn:ok:error:doc-not-found', async () => {
+    // The test harness's `ensureProjectGit` initializes a shadow repo, so
+    // schema-valid + non-existent-SHA flows past `rollback-not-configured`
+    // and hits the post-identity `cat-file` check → 404 doc-not-found.
     const res = await postRollback({ docName: 'test-doc', commitSha: 'a'.repeat(40) });
     expect(res.status).toBe(404);
     expect(res.headers.get('content-type')).toBe('application/problem+json');

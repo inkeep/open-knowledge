@@ -1,9 +1,23 @@
+/**
+ * Tests for `ok diagnose bundle` runner.
+ *
+ * Verifies the CLI wrapper around collectBundle + writeBundle:
+ * pid integration via runDiagnose, summary printing, y/N prompt, --out
+ * path validation, --yes skip-prompt path. Runs the real collector + zip
+ * writer end-to-end against a tmpdir; only network + process-diagnose
+ * deps are injected.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { type RunDiagnoseBundleDeps, runDiagnoseBundle } from './diagnose.ts';
+
+// ---------------------------------------------------------------------------
+// Fixture helpers
+// ---------------------------------------------------------------------------
 
 const tmpDirs: string[] = [];
 
@@ -69,6 +83,10 @@ function readZipEntries(zipPath: string): string[] {
     .sort();
 }
 
+// ---------------------------------------------------------------------------
+// Tracer bullet — bundle works on a fresh content-dir, --yes
+// ---------------------------------------------------------------------------
+
 describe('runDiagnoseBundle — tracer bullet', () => {
   test('writes a zip to the default path with no server running and --yes', async () => {
     const contentDir = makeTmpDir();
@@ -81,14 +99,20 @@ describe('runDiagnoseBundle — tracer bullet', () => {
     expect(result.outputPath?.endsWith('.zip')).toBe(true);
     expect(existsSync(result.outputPath ?? '')).toBe(true);
 
+    // --yes skips the prompt entirely.
     expect(captured.prompts.length).toBe(0);
 
+    // Zip contains manifest.json + state files at minimum.
     const entries = readZipEntries(result.outputPath ?? '');
     expect(entries).toContain('manifest.json');
     expect(entries).toContain('state/runtime.json');
     expect(entries).toContain('state/server-status.txt');
   });
 });
+
+// ---------------------------------------------------------------------------
+// works without a running server
+// ---------------------------------------------------------------------------
 
 describe('runDiagnoseBundle — no running server', () => {
   test('manifest.serverStatus is not-running; state/server-status.txt confirms', async () => {
@@ -98,6 +122,7 @@ describe('runDiagnoseBundle — no running server', () => {
     const result = await runDiagnoseBundle({ contentDir, yes: true }, deps);
     expect(result.outputPath).not.toBeNull();
 
+    // Pull manifest + status out of the zip.
     const extractDir = makeTmpDir('ok-bundle-extract-');
     execSync(
       `unzip -q ${JSON.stringify(result.outputPath ?? '')} -d ${JSON.stringify(extractDir)}`,
@@ -107,10 +132,15 @@ describe('runDiagnoseBundle — no running server', () => {
     const statusBody = readFileSync(join(extractDir, 'state', 'server-status.txt'), 'utf-8');
     expect(statusBody).toContain('not-running');
 
+    // CLI should have surfaced the 'server not running' warning to the user.
     const allLogs = captured.logs.join('\n');
     expect(allLogs).toContain('server not running');
   });
 });
+
+// ---------------------------------------------------------------------------
+// --pid integration
+// ---------------------------------------------------------------------------
 
 describe('runDiagnoseBundle — --pid integration', () => {
   test('--pid runs process-diagnose into a tmp dir and includes process/ in the zip', async () => {
@@ -120,6 +150,8 @@ describe('runDiagnoseBundle — --pid integration', () => {
     const { deps } = makeRunnerDeps({
       runProcessDiagnose: async (pid) => {
         pidSeen = pid;
+        // Simulate the existing runDiagnose flow by writing a small payload
+        // into a tmp dir — the runner copies the contents under `process/`.
         const dir = mkdtempSync(join(tmpdir(), 'ok-bundle-test-proc-'));
         tmpDirs.push(dir);
         writeFileSync(join(dir, 'metadata.json'), '{"pid":42,"command":"node"}');
@@ -141,6 +173,10 @@ describe('runDiagnoseBundle — --pid integration', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// content summary + y/N prompt
+// ---------------------------------------------------------------------------
+
 describe('runDiagnoseBundle — prompt + summary', () => {
   test('prints a content summary before the prompt', async () => {
     const contentDir = makeTmpDir();
@@ -159,6 +195,7 @@ describe('runDiagnoseBundle — prompt + summary', () => {
     expect(allLogs).toContain('doc.name attributes:');
     expect(allLogs).toContain('Content-dir path:');
     expect(allLogs).toContain('Server status:');
+    // Includes the count from the seeded spans file.
     expect(allLogs).toMatch(/doc\.name attributes:\s+1 occurrence/);
   });
 
@@ -179,6 +216,7 @@ describe('runDiagnoseBundle — prompt + summary', () => {
     const result = await runDiagnoseBundle({ contentDir }, deps);
     expect(result.declined).toBe(true);
     expect(result.outputPath).toBeNull();
+    // No zip should have landed at the default location.
     const defaultDir = join(contentDir, '.ok', 'local', 'diagnostics');
     if (existsSync(defaultDir)) {
       const files = (await import('node:fs')).readdirSync(defaultDir);
@@ -203,6 +241,10 @@ describe('runDiagnoseBundle — prompt + summary', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// --out flag
+// ---------------------------------------------------------------------------
+
 describe('runDiagnoseBundle — --out flag', () => {
   test('--out with existing parent directory writes the zip there', async () => {
     const contentDir = makeTmpDir();
@@ -226,9 +268,14 @@ describe('runDiagnoseBundle — --out flag', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// --redact end-to-end
+// ---------------------------------------------------------------------------
+
 describe('runDiagnoseBundle — --redact', () => {
   test('hashes doc names and strips contentDir in zipped JSONLs; manifest carries inverse map', async () => {
     const contentDir = makeTmpDir();
+    // Seed a fixture with a known doc name + the content-dir path.
     const otlpLine = JSON.stringify({
       resourceSpans: [
         {
@@ -254,23 +301,32 @@ describe('runDiagnoseBundle — --redact', () => {
     const result = await runDiagnoseBundle({ contentDir, out, yes: true, redact: true }, deps);
     expect(result.outputPath).toBe(out);
 
+    // Extract the zip and inspect.
     const extractDir = makeTmpDir('ok-bundle-extract-');
     execSync(`unzip -q ${JSON.stringify(out)} -d ${JSON.stringify(extractDir)}`);
     const zippedSpans = readFileSync(join(extractDir, 'telemetry', 'spans-current.jsonl'), 'utf-8');
 
+    // (a) doc-name-shaped values were replaced with doc:<8hex>.
     expect(zippedSpans).not.toContain('fixture-doc');
     expect(zippedSpans).toMatch(/"doc:[a-f0-9]{8}"/);
 
+    // (b) absolute content-dir prefix was replaced with <CONTENT_DIR>.
     expect(zippedSpans).not.toContain(contentDir);
     expect(zippedSpans).toContain('<CONTENT_DIR>/foo.md');
 
+    // (c) manifest.json.redaction.docNameMapSidecar references an out-of-zip
+    // sidecar; the inverse map itself never lives inside the zip.
     const manifest = JSON.parse(readFileSync(join(extractDir, 'manifest.json'), 'utf-8'));
     expect(manifest.redaction.applied).toBe(true);
     expect(manifest.redaction.docNameMapSidecar).toMatch(/\.docnames\.json$/);
     expect(manifest.redaction).not.toHaveProperty('docNameMap');
+    // The manifest's absolutePath is masked when redaction is on, so the
+    // recipient never sees the raw user-home path either.
     expect(manifest.contentDir.absolutePath).toBe('<CONTENT_DIR>');
+    // pathSha256 stays as the SHA-256 of the original path for correlation.
     expect(manifest.contentDir.pathSha256).toMatch(/^[0-9a-f]{64}$/);
 
+    // The sidecar exists next to the zip and contains the inverse map.
     const sidecarPath = join(dirname(out), manifest.redaction.docNameMapSidecar);
     expect(existsSync(sidecarPath)).toBe(true);
     const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'));
@@ -304,6 +360,8 @@ describe('runDiagnoseBundle — --redact', () => {
     const { deps } = makeRunnerDeps();
     await runDiagnoseBundle({ contentDir, yes: true, redact: true }, deps);
 
+    // Originals on disk under contentDir/.ok/local/ must be byte-identical to
+    // what we seeded — redaction only touches the staged copies in the bundle.
     const spansOnDisk = readFileSync(
       join(contentDir, '.ok/local/telemetry/spans-current.jsonl'),
       'utf-8',

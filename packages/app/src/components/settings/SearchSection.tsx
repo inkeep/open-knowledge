@@ -1,3 +1,23 @@
+/**
+ * Settings → Search — opt-in semantic (embeddings) ranking for the MCP search
+ * tool. Per-machine (project-local scope) because enabling it sends content to
+ * a third-party embeddings provider; each teammate opts in deliberately on
+ * their own machine rather than inheriting one collaborator's egress choice
+ * through git.
+ *
+ * The toggle reads the synchronous project-local CRDT preference (the same
+ * pattern as the Sync section's Switch — never the server's resolved state,
+ * which round-trips through the persistence debounce + config file-watcher and
+ * would make the control appear to lag). Every off → on transition is gated by
+ * a confirmation dialog that discloses the egress; on → off commits immediately
+ * (the safe direction).
+ *
+ * The status panel below the toggle derives from the server's
+ * `GET /api/semantic-status` probe (`keyPresent` / `ready` / `capable`). The key
+ * is never set here — it's a machine-global credential managed in Settings →
+ * Account (stored in `~/.ok/secrets.yml`); this section only points there when a
+ * key is missing.
+ */
 import { humanFormat } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
@@ -17,6 +37,10 @@ import { Switch } from '@/components/ui/switch';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
 import { useConfigContext } from '@/lib/config-provider';
 
+// Refetch `/api/semantic-status` at these delays (ms) after a toggle so the
+// coverage panel repaints once the persistence debounce + config file-watcher
+// have carried the new `search.semantic.enabled` into the server. The `files`
+// CC1 channel doesn't fire for config-doc edits, so this is the catch-up path.
 const SETTLE_REFRESH_DELAYS_MS = [2500, 5000] as const;
 
 export function SearchSection() {
@@ -63,6 +87,8 @@ export function SearchSection() {
 
   function onToggleRequest(next: boolean) {
     if (next) {
+      // Off → on: gate behind the egress confirmation. On → off is the safe
+      // direction and commits immediately.
       setConfirmOpen(true);
       return;
     }
@@ -70,9 +96,16 @@ export function SearchSection() {
   }
 
   function onConfirm() {
+    // Close only on success so a failed write leaves the dialog open to retry.
     if (write(true)) setConfirmOpen(false);
   }
 
+  // Status derives from the server's resolved view, not the client preference:
+  // `serverEnabled` lags the toggle until the file-watcher settles. `keyPresent`
+  // is a free, prompt-free read (secrets file / env) so "no key" shows the
+  // instant the toggle flips — no waiting for a warm. `ready` = the service has
+  // warmed (used for the coverage line); `capable` = warmed AND the key actually
+  // worked, so `keyPresent && ready && !capable` is "provider rejected the key".
   const serverEnabled = status?.enabled ?? false;
   const keyPresent = status?.keyPresent ?? false;
   const ready = status?.ready ?? false;
@@ -157,6 +190,13 @@ interface SemanticStatusPanelProps {
   total: number;
 }
 
+/**
+ * Read-only readout under the toggle. States, in order: still settling (server
+ * hasn't picked up the toggle), no-key (instant — driven off the free
+ * `keyPresent` read, not a warm), provider-rejected-the-key, not-yet-warmed
+ * (indexes on first search), and live coverage (with a lazy-embedding note while
+ * nothing is embedded yet).
+ */
 function SemanticStatusPanel({
   loaded,
   serverEnabled,
@@ -180,6 +220,8 @@ function SemanticStatusPanel({
   }
 
   if (!keyPresent) {
+    // No key resolvable — instant (a free file/env read, no warm needed). Point
+    // at the canonical home for the machine-global key: Settings → Account.
     return (
       <div
         role="alert"
@@ -196,6 +238,8 @@ function SemanticStatusPanel({
   }
 
   if (ready && !capable) {
+    // A key is present and the service warmed, but the embedder failed to load —
+    // a bad key or an unreachable provider. Distinct from "no key" above.
     return (
       <div
         role="alert"
@@ -245,6 +289,12 @@ interface EnableSemanticSearchConfirmDialogProps {
   onConfirm: () => void;
 }
 
+/**
+ * Guards every off → on transition. The egress disclosure is the load-bearing
+ * content — turning semantic search on is the moment content first leaves the
+ * machine, so the dialog spells out what is sent, where, and that it's
+ * per-machine.
+ */
 function EnableSemanticSearchConfirmDialog({
   open,
   onOpenChange,

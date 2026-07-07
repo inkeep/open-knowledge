@@ -1,3 +1,13 @@
+/**
+ * Unit tests for the shared skill install-state helpers + the build-time
+ * version invariant between `@inkeep/open-knowledge-server`'s `package.json`
+ * and the bundled SKILL.md frontmatter.
+ *
+ * On-disk state lives at `~/.ok/skill-state.yml`, replacing the legacy
+ * `~/.ok/skill-installed-version` sidecar file (migrated on first
+ * encounter).
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -6,17 +16,56 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   readAllTargets,
+  readBundleDecision,
   readServerPackageVersion,
   readSkillInstallStateSnapshot,
   readTargetRecordedAt,
   readTargetVersion,
+  resolveBundleEnabled,
   skillStateYamlPath,
+  writeBundleDecision,
   writeTargetVersion,
 } from './skill-state.ts';
 
 function freshHome(): string {
   return mkdtempSync(join(tmpdir(), 'ok-skill-state-'));
 }
+
+describe('per-bundle opt-in decisions', () => {
+  test('resolveBundleEnabled: explicit decision wins; absent grandfathers to disk', () => {
+    // Fresh machine (no decision, nothing on disk) — stays uninstalled.
+    expect(resolveBundleEnabled(null, { installedOnDisk: false })).toBe(false);
+    // Grandfather: existing install with no recorded decision — enabled.
+    expect(resolveBundleEnabled(null, { installedOnDisk: true })).toBe(true);
+    // Explicit decisions override disk state either way.
+    expect(resolveBundleEnabled(true, { installedOnDisk: false })).toBe(true);
+    expect(resolveBundleEnabled(false, { installedOnDisk: true })).toBe(false);
+  });
+
+  test('readBundleDecision returns null when the file / entry is absent', async () => {
+    const home = freshHome();
+    expect(await readBundleDecision(home, 'open-knowledge-discovery')).toBeNull();
+  });
+
+  test('writeBundleDecision round-trips and preserves other bundles + targets', async () => {
+    const home = freshHome();
+    // Seed an unrelated target so we can assert it survives the RMW.
+    await writeTargetVersion(home, 'cli-hosts', '1.2.3', 'cli-start');
+
+    await writeBundleDecision(home, 'open-knowledge-discovery', true);
+    await writeBundleDecision(home, 'open-knowledge-write-skill', false);
+
+    expect(await readBundleDecision(home, 'open-knowledge-discovery')).toBe(true);
+    expect(await readBundleDecision(home, 'open-knowledge-write-skill')).toBe(false);
+    // The version target is untouched by bundle writes.
+    expect(await readTargetVersion(home, 'cli-hosts')).toBe('1.2.3');
+
+    // A later flip of one bundle leaves the other intact.
+    await writeBundleDecision(home, 'open-knowledge-discovery', false);
+    expect(await readBundleDecision(home, 'open-knowledge-discovery')).toBe(false);
+    expect(await readBundleDecision(home, 'open-knowledge-write-skill')).toBe(false);
+  });
+});
 
 describe('readServerPackageVersion', () => {
   test('reads the version field from `@inkeep/open-knowledge-server`/package.json', async () => {
@@ -27,6 +76,7 @@ describe('readServerPackageVersion', () => {
 });
 
 describe('build-time invariant — package.json version matches SKILL.md metadata.version', () => {
+  // Both bundles version in lockstep with the server package.
   for (const bundle of ['discovery', 'project'] as const) {
     test(`${bundle} bundle SKILL.md metadata.version === server package.json version`, async () => {
       const skillMdUrl = new URL(`../assets/skills/${bundle}/SKILL.md`, import.meta.url);
@@ -59,9 +109,13 @@ describe('readTargetVersion / writeTargetVersion round-trip (YAML)', () => {
     await writeTargetVersion(home, 'cli-hosts', '0.1.0');
     const yamlPath = skillStateYamlPath(home);
     const yaml = readFileSync(yamlPath, 'utf-8');
+    // Validate the YAML mentions the expected version + target key. The exact
+    // serialization shape (indentation, quoting) is yaml@2-implementation-defined;
+    // assert content not formatting.
     expect(yaml).toContain('cli-hosts:');
     expect(yaml).toContain('0.1.0');
     expect(yaml).toContain('schema: 1');
+    // No leftover tmp file with our randomUUID prefix.
     let tmpFound = false;
     for (const f of (await import('node:fs')).readdirSync(dirname(yamlPath))) {
       if (f.startsWith('skill-state.yml.tmp.')) tmpFound = true;
@@ -81,6 +135,7 @@ describe('readTargetVersion / writeTargetVersion round-trip (YAML)', () => {
 
   test('all four surface enum values round-trip correctly', async () => {
     const home = freshHome();
+    // Use both targets to exercise the full enum across two slots.
     await writeTargetVersion(home, 'claude-cowork', '0.3.0', 'server-build-and-open');
     await writeTargetVersion(home, 'cli-hosts', '0.3.0', 'desktop-direct');
     let yaml = readFileSync(skillStateYamlPath(home), 'utf-8');
@@ -106,6 +161,7 @@ describe('readTargetVersion / writeTargetVersion round-trip (YAML)', () => {
     const t1 = await readTargetRecordedAt(home, 'cli-hosts');
     expect(t1).not.toBeNull();
 
+    // Force a measurable delta; ISO datetime has millisecond precision.
     await new Promise((r) => setTimeout(r, 10));
 
     await writeTargetVersion(home, 'cli-hosts', '0.3.0'); // SAME version
@@ -134,6 +190,7 @@ describe('readTargetVersion / writeTargetVersion round-trip (YAML)', () => {
 
     const yaml = readFileSync(skillStateYamlPath(home), 'utf-8');
     expect(yaml).toContain('0.4.0');
+    // Surface from the prior write is preserved when caller omits the arg.
     expect(yaml).toContain('cli-npx-skills-add');
   });
 });
@@ -167,6 +224,7 @@ describe('fail-soft on bad on-disk content', () => {
     });
     expect(state).toBeNull();
 
+    // The orchestrator-level entry points fall through to null too.
     expect(await readTargetVersion(home, 'cli-hosts')).toBeNull();
     expect(await readTargetVersion(home, 'claude-cowork')).toBeNull();
 
@@ -183,8 +241,10 @@ describe('fail-soft on bad on-disk content', () => {
     const home = freshHome();
     const yamlPath = skillStateYamlPath(home);
     await mkdir(dirname(yamlPath), { recursive: true });
+    // Truncated mid-file / nonsense punctuation produces a parse error.
     await writeFile(yamlPath, '{schema: 1, targets:\n  cli-hosts: {version: "0.3.0",\n', 'utf-8');
 
+    // No throw is the contract.
     expect(await readTargetVersion(home, 'cli-hosts')).toBeNull();
     expect(await readTargetVersion(home, 'claude-cowork')).toBeNull();
   });

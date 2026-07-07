@@ -1,3 +1,14 @@
+/**
+ * Behavioral tests for TerminalGate — the renderer-side enforcement.
+ *
+ * The system boundaries are mocked: the consent hook (CRDT-backed config) and
+ * the PTY-spawning TerminalPanel. The assertions pin the default-on contract:
+ * the shell (TerminalPanel) mounts unless the project explicitly opts out
+ * (`terminal.enabled === false`); `null`/default and `true` both mount with no
+ * dialog; `false` shows the not-enabled notice; the notice re-enables via the
+ * writer; the mount is held until the binding syncs so an opted-out project
+ * never flashes the shell.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -66,6 +77,8 @@ describe('TerminalGate', () => {
   test('default (enabled === null) mounts the terminal — available with no dialog', async () => {
     consentState = { enabled: null, synced: true };
     renderGate();
+    // TerminalPanel is React.lazy (keeps xterm out of the initial/web bundle),
+    // so it resolves through Suspense on a microtask rather than synchronously.
     expect(await screen.findByTestId('terminal-panel')).toBeTruthy();
     expect(notice()).toBeNull();
   });
@@ -88,8 +101,17 @@ describe('TerminalGate', () => {
     );
     await screen.findByTestId('terminal-panel');
     expect(lastPanelProps?.onClose).toBe(onClose);
+    // onTitleChange forwarding is the single point of failure for the tab-title
+    // feature at the gate layer: TerminalPanel tests wire it directly and Dock
+    // tests stub the gate, so a dropped forward would otherwise pass every test.
     expect(lastPanelProps?.onTitleChange).toBe(onTitleChange);
+    // launch is the sole carrier of the "Open in terminal" one-shot prompt — a
+    // refactor dropping launch={launch} would otherwise pass every gate test.
     expect(lastPanelProps?.launch).toBe(launch);
+    // onPtyId + adoptPtyId are the reuse/reload-survival wires: the gate is the
+    // only place they cross from host to panel, and every Dock/reload test stubs
+    // the gate, so a dropped forward here would silently break reuse and survivor
+    // adoption while passing all of those.
     expect(lastPanelProps?.onPtyId).toBe(onPtyId);
     expect(lastPanelProps?.adoptPtyId).toBe('pty-survivor');
   });
@@ -109,6 +131,8 @@ describe('TerminalGate', () => {
   });
 
   test('does not flash the shell before the binding syncs (cold start)', () => {
+    // Pre-sync the leaf reads as the cold-start null; mounting now would spawn a
+    // PTY the main backstop refuses if the project turns out to be opted out.
     consentState = { enabled: null, synced: false };
     renderGate();
     expect(screen.queryByTestId('terminal-panel')).toBeNull();
@@ -120,6 +144,9 @@ describe('TerminalGate', () => {
     const view = render(<TerminalGate bridge={bridge} />);
     act(() => screen.getByRole('button', { name: 'Enable terminal' }).click());
     expect(writerCalls).toEqual([true]);
+    // The writer flips the project-local config; once that grant syncs back, the
+    // gate must leave the opt-out notice and mount the shell (otherwise a
+    // regression that never transitions out of the notice would pass).
     consentState = { enabled: true, synced: true };
     view.rerender(<TerminalGate bridge={bridge} />);
     expect(await screen.findByTestId('terminal-panel')).toBeTruthy();

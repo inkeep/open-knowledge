@@ -5,6 +5,7 @@ import {
   type UtilityProcessLike,
 } from './window-manager.ts';
 
+/** Minimal owned-utility-fork stub — only `.kill` is exercised. */
 function ctx(
   ownsServer: boolean,
   kill: ((signal: NodeJS.Signals) => void) | null,
@@ -54,6 +55,7 @@ describe('signalDetachedServerStop (before-quit-for-update teardown)', () => {
       }
     });
     const log = { warn: mock((_o: object, _m: string) => {}) };
+    // The EPERM pid is first to prove iteration continues past a failure.
     const signalled = signalDetachedServerStop(
       [
         ['/proj/locked', 404],

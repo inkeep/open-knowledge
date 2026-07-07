@@ -1,3 +1,16 @@
+/**
+ * end-to-end regression gate — the full handleAgentPatch flow under
+ * a connected WYSIWYG client.
+ *
+ * The repro pinned the reporter's symptom:
+ * "Text not found in document" (404) on the second sequential edit call,
+ * because a non-paired WYSIWYG XmlFragment mutation fired Observer A which
+ * rewrote Y.Text to the canonical serialize(fragment) form, destroying the
+ * raw bytes the agent's `find` targets. This gate wires the exact production
+ * path (Hocuspocus + server observer extension + the agent-patch HTTP
+ * handler) and asserts the second find SUCCEEDS (200) — a byte round-trip
+ * for the byte-requiring consumer, not tolerance-equivalence.
+ */
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -72,6 +85,9 @@ function setup() {
   const projectDir = mkdtempSync(join(tmpdir(), 'ok-prd-6654-e2e-'));
   const contentDir = join(projectDir, 'content');
   mkdirSync(contentDir, { recursive: true });
+  // Wire the production observer extension so per-document Server Observer
+  // A/B actually run — without it the canonicalization path is dormant and
+  // the gate would pass vacuously.
   const hocuspocus = new Hocuspocus({
     quiet: true,
     extensions: [createServerObserverExtension({ mdManager, schema })],
@@ -89,6 +105,15 @@ function setup() {
   };
 }
 
+/**
+ * Non-paired transaction origin simulating a WYSIWYG client touching the
+ * XmlFragment. Uses `source: 'local'` (not 'connection') so Hocuspocus's
+ * `handleDocumentUpdate` doesn't crash on the missing `origin.connection`
+ * field — and omits `context.paired: true` so `isPairedWriteOrigin` returns
+ * false and Observer A fires its non-paired branch. In production this same
+ * branch fires for real WS updates from a WYSIWYG client (their origin shape
+ * is `{ source: 'connection', connection }` and also lacks `paired: true`).
+ */
 const USER_TYPING_ORIGIN = {
   source: 'local' as const,
   context: { origin: 'user-typing' },
@@ -121,12 +146,14 @@ describe('PRD-6654 — full end-to-end gate (handleAgentPatch + WYSIWYG touch)',
       expect(r0.status).toBe(200);
       expect(ytext.toString().includes('| 1 | 2\n')).toBe(true);
 
+      // WYSIWYG client touches the XmlFragment in a different block.
       session.dc.document.transact(() => {
         const para = new Y.XmlElement('paragraph');
         para.insert(0, [new Y.XmlText('hi')]);
         xmlFragment.insert(xmlFragment.length, [para]);
       }, USER_TYPING_ORIGIN);
 
+      // The agent edits "what it just wrote" — the exact bytes from step 1.
       const r2 = await callAgentPatch(env.hocuspocus, env.sessionManager, env.contentDir, {
         docName: 'test-doc',
         find: '| 1 | 2\n',
@@ -146,6 +173,9 @@ describe('PRD-6654 — full end-to-end gate (handleAgentPatch + WYSIWYG touch)',
       const ytext = session.dc.document.getText('source');
       const xmlFragment = session.dc.document.getXmlFragment('default');
 
+      // Seed through the real paired-write primitive so BOTH CRDTs carry
+      // the seeded state (a ytext-only seed leaves the fragment empty and
+      // Observer A would legitimately reconcile toward the fragment).
       session.dc.document.transact(() => {
         composeAndWriteRawBody(session.dc.document, '\n\nhello\n', 'agent');
       }, AGENT_WRITE_ORIGIN);
@@ -197,6 +227,7 @@ describe('PRD-6654 — full end-to-end gate (handleAgentPatch + WYSIWYG touch)',
         } else {
           failures.push(`iter ${i}: status=${r.status} body=${r.body.slice(0, 120)}`);
         }
+        // WYSIWYG noise: half the iterations get a non-paired touch.
         if (i % 2 === 0) {
           session.dc.document.transact(() => {
             const para = new Y.XmlElement('paragraph');

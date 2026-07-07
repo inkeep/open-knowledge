@@ -50,6 +50,12 @@ export function buildFolderOverviewData(
     folderPaths: ReadonlySet<string>;
   },
 ): FolderOverviewData {
+  // Content-root (`folderPath === ''`) has no path prefix — every top-level
+  // docName / folderPath is a direct child. A naive `${folderPath}/` would
+  // produce `'/'`, which `startsWith` never matches against the unrooted
+  // docNames the page list stores (`intro`, `docs/a`), yielding an empty
+  // root overview. Root-folder shares and the in-app root view both
+  // depend on this.
   const prefix = folderPath === '' ? '' : `${folderPath}/`;
 
   const folders: FolderOverviewEntry[] = [...options.folderPaths]

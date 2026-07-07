@@ -103,6 +103,8 @@ describe('validateAndCoerceRenameDestination — allow paths', () => {
   });
 
   test('user omitted the extension → coerce destination back to the source extension', () => {
+    // Basename-only commits can still happen if the user deletes the visible
+    // suffix. This path preserves the source extension on disk.
     expect(validateAndCoerceRenameDestination('foo.md', 'bar', false)).toEqual({
       kind: 'allow',
       destinationPath: 'bar.md',

@@ -1,4 +1,7 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { normalizeTargetPath } from '@/components/navigation-targets';
+import { missDialogStore } from '@/lib/share/miss-dialog-store';
+import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
 import type { OkDesktopBridge, OkDesktopConfig } from './desktop-bridge-types';
 import { deriveShareReceiveToast, installDeepLinkListener } from './install-deep-link-listener';
 
@@ -7,6 +10,7 @@ type DeepLinkPayload = {
   kind?: 'doc' | 'folder';
   branch?: string | null;
   multiCandidate?: boolean;
+  targetMissing?: boolean;
 };
 
 function makeBridge(overrides: Partial<OkDesktopBridge> = {}): OkDesktopBridge & {
@@ -97,6 +101,11 @@ describe('installDeepLinkListener (M4 US-007)', () => {
   });
 
   test('URL-encodes nested doc names (round-trips via docNameFromHash)', () => {
+    // Nested docNames are the common MCP producer shape. The deep-link parser
+    // hands us `docs/a` after URL-decoding the query param; we encode the
+    // WHOLE string with encodeURIComponent so that `/` becomes `%2F`. The
+    // consumer `docNameFromHash` (packages/app/src/lib/doc-hash.ts) splits on
+    // `/` then decodes each segment, reconstructing `docs/a` cleanly.
     const bridge = makeBridge();
     const setHash = mock(() => {});
     installDeepLinkListener({ bridge, setHash });
@@ -148,6 +157,9 @@ describe('installDeepLinkListener (M4 US-007)', () => {
   });
 
   test('legacy doc-only payload (no branch key) still works unchanged', () => {
+    // Asserts the back-compat guarantee: an old emitter that doesn't set
+    // `branch` at all (the field is genuinely missing, not just undefined)
+    // must produce the unchanged `#/<doc>` hash.
     const bridge = makeBridge();
     const setHash = mock(() => {});
     installDeepLinkListener({ bridge, setHash });
@@ -196,6 +208,75 @@ describe('installDeepLinkListener — folder + content-root shares (US-010)', ()
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'docs/sub', kind: 'folder', branch: 'feat/x' });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/docs/sub/');
+  });
+});
+
+describe('installDeepLinkListener — share-receive miss guard arming', () => {
+  afterEach(() => {
+    pendingReceiveNavStore.clear();
+    missDialogStore.dismiss();
+  });
+
+  test('arms the miss guard before navigating a doc share', () => {
+    const bridge = makeBridge();
+    const setHash = mock(() => {});
+    installDeepLinkListener({ bridge, setHash });
+    bridge.fireDeepLink({ doc: 'notes/plan', branch: 'feature' });
+    // Path is the resolver's normalized form so it matches the missing
+    // target's `.target` when navigation lands.
+    expect(pendingReceiveNavStore.getSnapshot()).toEqual({
+      kind: 'doc',
+      path: normalizeTargetPath('notes/plan').normalizedTarget,
+      branch: 'feature',
+    });
+  });
+
+  test('arms with a null branch for a branch-less legacy doc share', () => {
+    const bridge = makeBridge();
+    const setHash = mock(() => {});
+    installDeepLinkListener({ bridge, setHash });
+    bridge.fireDeepLink({ doc: 'intro' });
+    expect(pendingReceiveNavStore.getSnapshot()?.branch).toBeNull();
+  });
+
+  test('arms with the folder kind for a folder share', () => {
+    const bridge = makeBridge();
+    const setHash = mock(() => {});
+    installDeepLinkListener({ bridge, setHash });
+    bridge.fireDeepLink({ doc: 'docs/sub', kind: 'folder' });
+    expect(pendingReceiveNavStore.getSnapshot()?.kind).toBe('folder');
+  });
+
+  // The existing-project leg: main's stat probe already found the target
+  // missing on the receiver's branch. Arm the miss DIALOG and do NOT navigate —
+  // the honest verdict shows as a modal, so no phantom tab opens at the dead
+  // path. The in-tab pendingReceiveNav panel is not armed on this leg.
+  test('arms the miss dialog without navigating when main flags the target missing', () => {
+    const bridge = makeBridge();
+    const setHash = mock(() => {});
+    installDeepLinkListener({ bridge, setHash });
+    bridge.fireDeepLink({ doc: 'notes/plan', branch: 'feature', targetMissing: true });
+    expect(setHash.mock.calls.length).toBe(0);
+    expect(missDialogStore.getSnapshot()).toEqual({
+      kind: 'doc',
+      path: 'notes/plan',
+      branch: 'feature',
+    });
+    expect(pendingReceiveNavStore.getSnapshot()).toBeNull();
+  });
+
+  test('arms the miss dialog for a missing folder target without navigating', () => {
+    const bridge = makeBridge();
+    const setHash = mock(() => {});
+    installDeepLinkListener({ bridge, setHash });
+    bridge.fireDeepLink({ doc: 'docs/sub', kind: 'folder', targetMissing: true });
+    expect(setHash.mock.calls.length).toBe(0);
+    expect(missDialogStore.getSnapshot()).toEqual({
+      kind: 'folder',
+      path: 'docs/sub',
+      branch: null,
+    });
+    expect(pendingReceiveNavStore.getSnapshot()).toBeNull();
   });
 });
 
@@ -296,5 +377,24 @@ describe('installDeepLinkListener — FR9 toast emission', () => {
     installDeepLinkListener({ bridge, setHash, emitToast });
     bridge.fireDeepLink({ doc: 'docs/x.md', branch: 'feat-bar' });
     expect(emitToast.mock.calls).toHaveLength(0);
+  });
+
+  test('suppresses the confirmation toast on a known-missing target (miss dialog is the surface)', () => {
+    const bridge = makeBridge();
+    const setHash = mock(() => {});
+    const emitToast = mock(() => {});
+    installDeepLinkListener({ bridge, setHash, emitToast });
+    // multiCandidate would normally emit "Opened on branch X"; a missing target
+    // shows the verdict dialog without navigating, so the confirmation is
+    // suppressed rather than misleadingly claiming the share opened.
+    bridge.fireDeepLink({
+      doc: 'docs/x.md',
+      branch: 'feat-bar',
+      multiCandidate: true,
+      targetMissing: true,
+    });
+    expect(emitToast.mock.calls).toHaveLength(0);
+    expect(setHash.mock.calls.length).toBe(0);
+    expect(missDialogStore.getSnapshot()?.path).toBe('docs/x.md');
   });
 });

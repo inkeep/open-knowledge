@@ -16,6 +16,17 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { subscribeToTemplatesChanged } from '@/lib/documents-events';
 
+/**
+ * Folder timeline — read-only activity feed over a folder's
+ * `.ok/` artifacts (templates + frontmatter): who created / edited / renamed /
+ * moved / deleted them, when. Reads `GET /api/history?folder=…` (server
+ * `getFolderTimeline`), refreshes on template mutations, and hides itself when
+ * there's no activity so folders without `.ok/` history stay uncluttered.
+ *
+ * Restore is intentionally not wired here — non-doc restore is a tracked
+ * follow-up; this surface is provenance-only, mirroring the doc Timeline's
+ * read side without its diff/restore machinery.
+ */
 function formatRelative(iso: string): string {
   const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (diffSec < 60) return t`just now`;
@@ -25,10 +36,17 @@ function formatRelative(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+/** Basename of a `.ok/` artifact path, sans `.md`. */
 function leafName(path: string): string {
   return (path.split('/').pop() ?? path).replace(/\.md$/, '');
 }
 
+/**
+ * Map a folder-timeline entry's typed commit subject to a human label + icon.
+ * The server only sends recognized artifact-action subjects (it filters via
+ * `isFolderArtifactSubject`), so the `default` branch is a defensive fallback,
+ * not a legacy-salvage path.
+ */
 function describeEntry(entry: TimelineEntry): { Icon: LucideIcon; label: string; detail: string } {
   const message = entry.message;
   const idx = message.indexOf(': ');
@@ -90,6 +108,9 @@ export function FolderTimelineCard({ folderPath }: { folderPath: string }) {
         setLoading(false);
       } catch (err) {
         if (!cancelled) {
+          // Silent-null in the UI (supplementary card), but leave a browser
+          // breadcrumb so a `/api/history` regression isn't indistinguishable
+          // from "no history" in devtools.
           console.warn('[FolderTimelineCard] failed to load folder timeline:', err);
           setError(true);
           setLoading(false);
@@ -98,6 +119,7 @@ export function FolderTimelineCard({ folderPath }: { folderPath: string }) {
     }
     setLoading(true);
     load();
+    // Template/folder mutations change the timeline — refresh on those events.
     const unsubscribe = subscribeToTemplatesChanged(load);
     return () => {
       cancelled = true;
@@ -105,6 +127,8 @@ export function FolderTimelineCard({ folderPath }: { folderPath: string }) {
     };
   }, [folderPath]);
 
+  // Provenance-only: stay invisible until there's something to show, so folders
+  // with no `.ok/` history don't carry a permanently-empty card.
   if (error) return null;
   if (!loading && entries.length === 0) return null;
 

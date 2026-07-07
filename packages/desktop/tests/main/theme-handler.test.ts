@@ -1,3 +1,18 @@
+/**
+ * Pins the `ok:theme:set-source` IPC handler contract:
+ *   - Sets nativeTheme.themeSource to the requested user-intent value.
+ *   - Emits a structured `console.warn` with the previous source so operators
+ *     can correlate theme transitions in DevTools.
+ *   - Does NOT call `setBackgroundColor` on any BrowserWindow — vibrancy
+ *     auto-tracks and setBackgroundColor is a no-op under `transparent: true`.
+ *   - Does NOT write to state.json — themeSource is reconciled at cold-launch
+ *     via the show-gate, not cached.
+ *   - Defensively rejects non-OkThemeSource values at the IPC sender +
+ *     imperative shell boundary. Typed IPC should prevent this in production
+ *     but a future bridge-contract divergence at any of the three mirrors
+ *     (or a non-typed IPC fallback) would land here.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { applyThemeSource, isOkThemeSource } from '../../src/main/theme-handler.ts';
 import type { OkThemeSource } from '../../src/shared/bridge-contract.ts';
@@ -66,6 +81,8 @@ describe('applyThemeSource happy path', () => {
 describe('applyThemeSource defensive rejection', () => {
   test('does not call setThemeSource for an out-of-range value', () => {
     const { deps, trace, getCurrent } = makeDeps('system');
+    // Force the type so we exercise the runtime guard — production wire
+    // would fail typecheck before reaching here.
     const result = applyThemeSource(deps, 'auto' as unknown as OkThemeSource);
     expect(result).toEqual({ ok: true });
     expect(getCurrent()).toBe('system');
@@ -88,6 +105,10 @@ describe('applyThemeSource defensive rejection', () => {
 
 describe('applyThemeSource side-effect boundaries', () => {
   test('does not require setBackgroundColor or saveAppState — those deps are absent', () => {
+    // The dep surface is intentionally narrow: getThemeSource, setThemeSource,
+    // warn. If a future change widens the surface to add setBackgroundColor
+    // or saveAppState, this test (alongside the type signature in the prod
+    // call site) flags the regression — both are STOP-rule violations.
     const { deps } = makeDeps('system');
     const depKeys = new Set(Object.keys(deps));
     expect(depKeys).toEqual(new Set(['getThemeSource', 'setThemeSource', 'warn']));

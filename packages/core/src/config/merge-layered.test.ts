@@ -4,6 +4,9 @@ import type { Config } from './schema.ts';
 import { ConfigSchema } from './schema.ts';
 
 function makeConfig(partial: Record<string, unknown>): Config {
+  // `looseObject` lets us inject extra keys at any depth — tests poke at
+  // both registered scoped fields (appearance.theme, content.dir,
+  // autoSync.enabled) and unregistered free-form keys.
   return ConfigSchema.parse(partial);
 }
 
@@ -85,6 +88,9 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test("scope: 'project' (content.dir) returns project, ignoring project-local", () => {
+    // `content.dir` is a `scope: 'project'` leaf. The project-over-project-local
+    // short-circuit applies — pinning here so the scope: 'project'
+    // branch in mergeLayered doesn't lose coverage.
     const user = makeConfig({ content: { dir: './user' } });
     const project = makeConfig({ content: { dir: './project' } });
     const projectLocal = makeConfig({ content: { dir: './local' } });
@@ -92,6 +98,13 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     const merged = mergeLayered(user, project, projectLocal);
     expect(merged.content?.dir).toBe('./project');
   });
+
+  // Sibling test "scope: 'project' falls back to user when project
+  // undefined" was deleted alongside `preview.baseUrl`. The current
+  // `scope: 'project'` fields carry Zod defaults, so the "project undefined"
+  // branch of the short-circuit can't be cleanly exercised through them.
+  // Restore an equivalent test here if a project-strict field without a
+  // default is reintroduced.
 
   test("scope: 'project-local' (autoSync.enabled) returns project-local, ignoring project + user", () => {
     const user = makeConfig({ autoSync: { enabled: false } });
@@ -103,6 +116,10 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test("scope: 'project-local' = false short-circuits even when project = true", () => {
+    // Inverse of the previous test — pins that `false` is a real value (not
+    // treated as absent / falsy fallthrough). Without this, `??` semantics
+    // could silently degrade to `||` and a user explicitly opting out of
+    // auto-sync on this machine would inherit project: true on next read.
     const user = makeConfig({});
     const project = makeConfig({ autoSync: { enabled: true } });
     const projectLocal = makeConfig({ autoSync: { enabled: false } });
@@ -116,6 +133,10 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     const project = makeConfig({ autoSync: { enabled: true } });
     const projectLocal = makeConfig({ autoSync: { enabled: null } });
 
+    // `??` treats null + undefined alike — null in project-local falls through
+    // to project, mirroring the existing scope: 'project' (project ?? user)
+    // contract. This matches the server's readProjectAutoSyncEnabled which
+    // checks `!== null && !== undefined` before short-circuiting.
     const merged = mergeLayered(user, project, projectLocal);
     expect(merged.autoSync?.enabled).toBe(true);
   });
@@ -157,6 +178,11 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test('a clone without the project-local layer resolves terminal.enabled to null (grant never inherited)', () => {
+    // Simulates a fresh clone/checkout: the gitignored .ok/local/ layer is
+    // absent, and terminal.enabled can never sit in the committed project file
+    // or the user file (the write gate rejects it at any other scope). With no
+    // project-local layer the resolution must fall to the schema default null,
+    // never silently inheriting a teammate's consent.
     const user = makeConfig({});
     const project = makeConfig({});
 

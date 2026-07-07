@@ -1,9 +1,19 @@
+/**
+ * Unit tests for `ok diagnose process` command logic.
+ *
+ * All subprocess calls and filesystem side effects are injected via deps.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { runDiagnose } from './diagnose.ts';
 import type { LockState } from './lock-state.ts';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function makeTmpDir(): string {
   return mkdtempSync(resolve(tmpdir(), 'ok-diagnose-test-'));
@@ -67,6 +77,10 @@ function makeFakeProfile(): string {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Cleanup
+// ---------------------------------------------------------------------------
+
 let tmpDirs: string[] = [];
 
 afterEach(() => {
@@ -75,6 +89,10 @@ afterEach(() => {
   }
   tmpDirs = [];
 });
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 describe('runDiagnose', () => {
   test('exits early when pid does not exist', async () => {
@@ -270,7 +288,9 @@ describe('runDiagnose', () => {
         ...makeBaseDeps(out),
         getEndpoints: () => {
           callCount++;
+          // First call (before SIGUSR1): no inspector yet
           if (callCount === 1) return null;
+          // Second call (after SIGUSR1 + sleep): inspector now open
           return [{ webSocketDebuggerUrl: 'ws://127.0.0.1:9229/abc' }];
         },
         sendSignal: () => {},

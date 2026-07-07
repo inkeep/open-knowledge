@@ -1,7 +1,7 @@
 ---
 title: LLM wiki
 icon: LuBrain
-description: "An AI second brain that doesn't rot: a wiki of your own files an agent reads, writes, and keeps organized. What an LLM wiki is, and how to build one with the Knowledge base starter pack."
+description: "Point an AI at a folder of your own notes and let it keep them organized, linked, and easy to search. The more you add, the tidier it gets instead of messier. Built on the Knowledge base starter pack."
 ---
 
 An LLM wiki is a knowledge base of your own markdown files that an agent reads, writes, and keeps organized. You supply the raw material. The agent files it, links it, and cites it. It gets more organized the more you use it.
@@ -56,10 +56,7 @@ The rest of this guide builds one end to end. The pattern is Andrej Karpathy's, 
 
 The point of this guide is to show how **OpenKnowledge's features compose** to make the pattern feel native: the starter-pack picker scaffolds the layout in one click; per-folder templates + agent-readable folder frontmatter teach the LLM the conventions (Karpathy's centralized `CLAUDE.md` / `AGENTS.md` schema, distributed per-folder); the `workflow` tool's `ingest`, `research`, and `consolidate` kinds cover the sources → provisional → canonical pipeline; the WYSIWYG editor + CRDT keep editing frictionless; the activity panel attributes every write; the `links` tool keeps the source graph clean. Every step uses three or four of these together. That's the product.
 
-## Who this is for
-
-- **You're new to LLM-curated PKM.** You've felt the pull of "the LLM should remember my context for me" but you don't want a vault that turns into a junk drawer of unprocessed clips. Start here.
-- **You already practice Karpathy's pattern in another tool** (Obsidian, plain folders, Claude projects). You want to know what OpenKnowledge does differently, and what you keep.
+If you're new to LLM-curated PKM, the draw is an agent that remembers your context without the vault turning into a junk drawer of unprocessed clips — notes that compound instead of rotting. If you're already practicing Karpathy's pattern in Obsidian, plain folders, or Claude projects, the question is what OpenKnowledge does differently and what carries over.
 
 Either way, by the end of this guide you'll have a working source-grounded knowledge base, a routine for adding sources, and a daily-driver agent setup that interrogates the vault on your behalf.
 
@@ -161,6 +158,10 @@ In the editor, on a fresh project, click the empty-state **Pick a starter pack**
 You'll get `external-sources/`, `research/`, `articles/`, the three matching templates, and `log.md` at the chosen root. The folders carry descriptions written *for the agent*; see them in the file sidebar's folder tooltips, and in any `exec` directory listing from an agent.
 
 The starter-pack picker is idempotent (safe to re-run on the same project).
+
+<Callout type="info" title="Seeding also installs a skill">
+  `ok seed --pack knowledge-base` (or the desktop starter-pack picker) installs the **Knowledge base** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance behind the layer discipline described below — the `ingest` / `research` / `consolidate` conventions and the provisional-to-canonical promotion — read automatically, and editable like any other doc. It lands as a real `SKILL.md` committed to your repo, one per detected editor. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+</Callout>
 
 ### 3. Confirm your agent host is wired
 

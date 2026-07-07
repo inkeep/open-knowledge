@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { createGhTokenSource } from './gh-token-source.ts';
 import type { DetectGhFn } from './github-permissions.ts';
 
+/** A `detectGh` stub that records call count and returns a scripted result. */
 function makeDetectGh(result: ReturnType<DetectGhFn>): { fn: DetectGhFn; calls: () => number } {
   let calls = 0;
   return {
@@ -13,6 +14,7 @@ function makeDetectGh(result: ReturnType<DetectGhFn>): { fn: DetectGhFn; calls: 
   };
 }
 
+/** A mutable clock so TTL expiry can be driven deterministically. */
 function makeClock(start = 1_000): { now: () => number; advance: (ms: number) => void } {
   let t = start;
   return { now: () => t, advance: (ms: number) => (t += ms) };

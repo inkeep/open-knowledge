@@ -44,14 +44,40 @@ export type WikiLinkSuggestionItem =
 
 interface ParsedQuery {
   mode: 'page' | 'anchor';
+  /** The page slug before `#` (only set in anchor mode). */
   pageTarget: string;
+  /** The text after `#` used to filter headings. */
   anchorQuery: string;
 }
 
+/**
+ * Per-popup cap on rendered suggestion items. Applies uniformly to:
+ *   - Page mode, empty query (initial dropdown) — first 8 pages in source order
+ *   - Page mode, filtered query — top 8 matches by `searchWorkspaceCorpus`
+ *     ranking (BM25 + title boost + recency, intent `autocomplete`)
+ *   - Anchor mode — first/top 8 headings of the resolved page
+ *
+ * The menu surfaces a "Showing top N — keep typing to narrow" footer when the
+ * returned items count hits this cap (`items.length >= MAX_ITEMS`), as a
+ * passive signal that more matches may exist below the visible set. The cap
+ * itself is a UX choice (8 fits a popover without scrolling and gives ranking
+ * room to surface the best matches), not a perf gate — the corpus is small
+ * and search runs in-memory.
+ */
 const MAX_ITEMS = 8;
 
+/**
+ * Link-graph context for the `[[` page picker, captured once per suggestion
+ * session. Drives autocomplete re-ranking: the page being edited and the pages
+ * it is connected to (incoming ∪ outgoing links) are the most likely link
+ * targets, so they earn a score boost; docs under skill/tooling folders
+ * (`.agents` / `.claude` / `.cursor`) are noise in a knowledge-base mention and
+ * earn a penalty.
+ */
 export interface WikiLinkContext {
+  /** docName of the page being edited, or null when unknown. */
   currentDocName: string | null;
+  /** docNames linked to/from the current page (incoming ∪ outgoing). */
   connectedDocNames: ReadonlySet<string>;
 }
 
@@ -60,8 +86,25 @@ const EMPTY_WIKI_LINK_CONTEXT: WikiLinkContext = {
   connectedDocNames: new Set(),
 };
 
+/**
+ * Folder names whose docs are agent/editor tooling (skills, rules, configs)
+ * rather than knowledge-base content. Matched per path segment so both
+ * top-level (`.claude/...`) and nested (`some/subtree/.claude/...`) layouts are
+ * caught. Intentionally a narrow, explicit list of agent-tooling folders — not
+ * every dot-prefixed segment (`.obsidian`, `.github`, … stay un-penalized) — so
+ * this deliberately does NOT reuse the broader `isHiddenDocName` predicate.
+ */
 const SKILL_FOLDER_SEGMENTS: ReadonlySet<string> = new Set(['.agents', '.claude', '.cursor']);
 
+// Additive adjustments to the autocomplete ranking score. For `intent:
+// 'autocomplete'` (no semantic input) that score is `lexical + fullText*20 +
+// recency` (recency is 0 here — this corpus carries no modifiedTs), and the
+// lexical match brackets are spaced 50 apart (see `lexicalScore` /
+// `searchWorkspaceCorpus` in core). So skill penalty ≈ 4 lexical brackets down,
+// link-neighbor boost ≈ 2 up, current-page ≈ 1 up. These reorder near-equal
+// matches and dominate the empty/weak-query case, but a sufficiently strong
+// `fullText` match can still outrank a penalized skill — the intended
+// "deprioritized, not hidden" behavior. Tunable.
 const SKILL_FOLDER_PENALTY = 200;
 const LINK_GRAPH_BOOST = 100;
 const CURRENT_PAGE_BOOST = 50;
@@ -70,6 +113,12 @@ export function isSkillFolderDoc(docName: string): boolean {
   return docName.split('/').some((segment) => SKILL_FOLDER_SEGMENTS.has(segment));
 }
 
+/**
+ * Per-doc score adjustment for `[[` autocomplete: deprioritize skill-folder
+ * docs, prioritize the current page and its link-graph neighbors. Returns 0 for
+ * an ordinary doc with an empty context, so callers without context rank
+ * exactly as before.
+ */
 export function autocompleteBoost(docName: string, context: WikiLinkContext): number {
   let boost = 0;
   if (isSkillFolderDoc(docName)) boost -= SKILL_FOLDER_PENALTY;
@@ -90,6 +139,7 @@ interface SuggestionSearchCorpus<T> {
 let cachedPageSearchCorpus: SuggestionSearchCorpus<PageItem> | null = null;
 let cachedHeadingSearchCorpus: SuggestionSearchCorpus<HeadingEntry> | null = null;
 
+/** Split `query` on the first `#` with a non-empty left side. */
 export function parseQuery(query: string): ParsedQuery {
   const hashIdx = query.indexOf('#');
   if (hashIdx > 0) {
@@ -108,6 +158,9 @@ export function filterPages(
   context: WikiLinkContext = EMPTY_WIKI_LINK_CONTEXT,
 ): PageItem[] {
   if (!query) {
+    // No query yet (just typed `[[`): order by context boost, with the original
+    // page order as a stable tiebreak so an empty context returns the same page
+    // references in the same order as `pages.slice(0, MAX_ITEMS)`.
     return pages
       .map((page, index) => ({ page, index, boost: autocompleteBoost(page.docName, context) }))
       .sort((a, b) => b.boost - a.boost || a.index - b.index)
@@ -115,6 +168,11 @@ export function filterPages(
       .map((entry) => entry.page);
   }
   const searchCorpus = getCachedPageSearchCorpus(pages);
+  // Pull the full candidate window (not just MAX_ITEMS) so a boosted neighbor
+  // ranked just outside the natural top-N can still surface, then re-rank by
+  // base score + context boost and trim. With an empty context every boost is 0,
+  // so the comparator matches core's own (score desc, path asc) and the trimmed
+  // top-N is identical to requesting `limit: MAX_ITEMS` directly.
   return searchWorkspaceCorpus(searchCorpus.corpus, query, {
     intent: 'autocomplete',
     limit: MAX_WORKSPACE_SEARCH_LIMIT,
@@ -233,6 +291,13 @@ export function buildAnchorItems(
   }));
 }
 
+/**
+ * Derive wiki-link attrs from a raw query for fallback insertion — used when
+ * Enter is pressed with no item selected. Anchor mode inserts `{ target, anchor }`;
+ * page mode falls back to unresolved link attrs (null if query is empty/unslugable).
+ *
+ * Pure function — exported for testability.
+ */
 export function computeFallbackAttrs(
   query: string,
 ): { target: string; alias: string | null; anchor: string | null } | null {
@@ -243,6 +308,11 @@ export function computeFallbackAttrs(
   return buildUnresolvedWikiLinkAttrs(query);
 }
 
+/**
+ * Custom `findSuggestionMatch` for `@tiptap/suggestion` — detects `[[` paired
+ * delimiters using the same regex as the original ProseMirror plugin. The query
+ * includes `#` so anchor mode (`page#heading`) works transparently.
+ */
 export function wikiLinkMatcher(config: {
   $position: ResolvedPos;
 }): { range: { from: number; to: number }; query: string; text: string } | null {
@@ -311,6 +381,8 @@ export async function fetchPages(): Promise<PageItem[]> {
       return { kind: 'asset', docName: `/${asset.path}`, title };
     });
 
+  // Folders (`kind:'folder'`) carry no `.md` suffix — their `path` is the
+  // workspace-relative folder path the chip serializes to verbatim.
   const folders = docData.documents
     .filter((entry): entry is { kind: 'folder'; path: string } => {
       return entry.kind === 'folder' && typeof entry.path === 'string' && entry.path.length > 0;
@@ -348,10 +420,13 @@ export async function fetchHeadings(docName: string): Promise<HeadingEntry[]> {
   return success.data.headings ?? [];
 }
 
+/** Outgoing doc-link targets of `docName` (external links excluded). */
 async function fetchForwardLinkTargets(docName: string): Promise<string[]> {
   try {
     const r = await fetch(`/api/forward-links?docName=${encodeURIComponent(docName)}`);
     if (!r.ok) {
+      // Distinguish a server error from a genuinely linkless page — otherwise a
+      // 5xx silently disables ranking on every [[ session with no signal.
       console.warn('[wiki-link-suggestion] /api/forward-links responded', r.status, docName);
       return [];
     }
@@ -364,6 +439,7 @@ async function fetchForwardLinkTargets(docName: string): Promise<string[]> {
   }
 }
 
+/** docNames of pages that link to `docName` (incoming links). */
 async function fetchBacklinkSources(docName: string): Promise<string[]> {
   try {
     const r = await fetch(`/api/backlinks?docName=${encodeURIComponent(docName)}`);
@@ -380,6 +456,12 @@ async function fetchBacklinkSources(docName: string): Promise<string[]> {
   }
 }
 
+/**
+ * Capture the current page's link-graph neighbors for autocomplete re-ranking.
+ * Never rejects — link context is a ranking nicety, so any failure degrades to
+ * "no neighbors" rather than blocking the picker. Shared with the source-mode
+ * `[[` completion (`wiki-link-source.ts`) so both surfaces re-rank in lockstep.
+ */
 export async function loadWikiLinkContext(currentDocName: string | null): Promise<WikiLinkContext> {
   if (!currentDocName) return EMPTY_WIKI_LINK_CONTEXT;
   const [outgoing, incoming] = await Promise.all([
@@ -387,11 +469,19 @@ export async function loadWikiLinkContext(currentDocName: string | null): Promis
     fetchBacklinkSources(currentDocName),
   ]);
   const connectedDocNames = new Set<string>([...outgoing, ...incoming]);
+  // The current page gets its own (separate) boost; don't double-count a self-link.
   connectedDocNames.delete(currentDocName);
   return { currentDocName, connectedDocNames };
 }
 
+/**
+ * Returns a `@tiptap/suggestion` plugin for wiki-link `[[` autocompletion.
+ * Replaces the former hand-rolled ProseMirror Plugin with the same Suggestion
+ * framework used by slash commands, plus `onBeforeStart` and
+ * `onBeforeUpdate` hooks for per-mode async loading labels.
+ */
 export function configureWikiLinkSuggestion(editor: Editor) {
+  // Mutable closure state — reset in onExit for behavioral parity
   let cachedPages: PageItem[] = [];
   let pagesLoaded = false;
   let pagesPromise: Promise<PageItem[]> | null = null;
@@ -406,8 +496,12 @@ export function configureWikiLinkSuggestion(editor: Editor) {
     editor,
     pluginKey: wikiLinkSuggestionKey,
     char: '[[',
+    // null allows mid-word triggers — safe because [[ is an unambiguous delimiter (unlike single-char /)
     allowedPrefixes: null,
     findSuggestionMatch: wikiLinkMatcher,
+    // Gate inside @tiptap/suggestion's apply() reducer keeps `state.active`
+    // false in source mode — bridge-propagated `[[` from CodeMirror cannot
+    // mount the page picker popup. Signal lives in `editor-mode-context.ts`.
     allow: ({ editor }) => !getEditorSourceMode(editor),
 
     items: async ({ query }) => {
@@ -432,6 +526,10 @@ export function configureWikiLinkSuggestion(editor: Editor) {
         return buildAnchorItems(pageTarget, headings, anchorQuery);
       }
 
+      // Page mode — two-flag dedupe. Pages + link context load in parallel so
+      // the context fetch doesn't serialize behind the (already awaited) pages
+      // fetch; loadWikiLinkContext never rejects, so allSettled keeps shapes
+      // uniform without a second try/catch.
       if (!pagesLoaded) {
         pagesPromise ||= fetchPages();
         contextPromise ||= loadWikiLinkContext(getEditorDocName(editor));
@@ -451,6 +549,9 @@ export function configureWikiLinkSuggestion(editor: Editor) {
         if (contextResult.status === 'fulfilled') {
           cachedContext = contextResult.value;
         } else {
+          // Unreachable today — loadWikiLinkContext catches internally and never
+          // rejects. Guards a future contract change so a silent throw can't
+          // blank ranking unnoticed.
           console.warn('[wiki-link-suggestion] link context load rejected:', contextResult.reason);
           cachedContext = EMPTY_WIKI_LINK_CONTEXT;
         }
@@ -479,6 +580,9 @@ export function configureWikiLinkSuggestion(editor: Editor) {
 
         editor.chain().focus().deleteRange(range).insertContent({ type: 'wikiLink', attrs }).run();
       } catch (err) {
+        // Silent failure is intentional — TipTap chains are atomic (single transaction),
+        // so partial state (deleteRange applied, insertContent not) cannot occur.
+        // User can retry with [[ if needed.
         console.error('[wiki-link-suggestion] command failed', { item, range }, err);
       }
     },
@@ -508,6 +612,16 @@ export function configureWikiLinkSuggestion(editor: Editor) {
             : mode === 'anchor'
               ? !cachedHeadings.has(pageTarget)
               : !pagesLoaded;
+        // `hasMore` infers cap-hit from item count rather than tracking the
+        // unbounded total alongside (avoids a parallel API mutation across
+        // filterPages/filterHeadings/searchWorkspaceCorpus). The inference is
+        // exact: `filterPages`/`filterHeadings` always trim to MAX_ITEMS, so
+        // `items.length >= MAX_ITEMS` is true exactly when the cap was hit.
+        // The lone false-positive shape — page mode falling back to a single
+        // `'create'` sentinel — is length 1, well below the cap, so the flag
+        // stays false. Skip the hint when the only items are the create-
+        // fallback (page mode) to keep the footer aligned with truncation of
+        // *real* matches.
         const items = props.items ?? [];
         const onlyCreateFallback = items.length === 1 && items[0]?.kind === 'create';
         return {
@@ -529,6 +643,7 @@ export function configureWikiLinkSuggestion(editor: Editor) {
         renderer.updateProps(computeMenuProps(currentProps, loadingOverride, onSelect));
       };
 
+      /** Fallback: insert a wiki-link from the raw query when no item is selected. */
       const fallbackInsert = () => {
         if (!currentProps) return;
         const { editor, range } = currentProps;
@@ -562,6 +677,10 @@ export function configureWikiLinkSuggestion(editor: Editor) {
             editor: props.editor,
           });
           result.popup.appendChild(renderer.element);
+          // startAutoUpdate after content is in popup — autoUpdate fires
+          // doPosition synchronously on setup. Popup remains visibility:hidden
+          // until reveal() is called in onStart (after items load) — this
+          // prevents the loading-state flash at the wrong position.
           posState.stopAutoUpdate = result.startAutoUpdate();
         },
 
@@ -579,6 +698,10 @@ export function configureWikiLinkSuggestion(editor: Editor) {
           currentProps = props;
           selectedIndex = 0;
           rerender(null);
+          // Items have loaded — reveal the popup. reveal() triggers a
+          // doPosition pass that measures the populated content (so flip()
+          // correctly decides above/below), then unhides on resolution.
+          // No separate doPosition call needed — reveal() does it.
           reveal?.();
         },
 
@@ -621,13 +744,16 @@ export function configureWikiLinkSuggestion(editor: Editor) {
         },
 
         onExit() {
+          // Positioning cleanup first (stop autoUpdate → remove popup DOM)
           destroySuggestionPopup(posState);
           doPosition = null;
           reveal = null;
+          // React cleanup last — if destroy() throws, DOM is already clean
           renderer?.destroy();
           renderer = null;
           currentProps = null;
           selectedIndex = 0;
+          // Reset cache — each [[ session re-fetches for freshness
           cachedPages = [];
           cachedContext = EMPTY_WIKI_LINK_CONTEXT;
           cachedHeadings = new Map();

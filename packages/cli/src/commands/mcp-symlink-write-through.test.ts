@@ -9,6 +9,12 @@ import {
 import { EDITOR_TARGETS, type EditorMcpTarget } from './editors.ts';
 import { writeEditorMcpConfig } from './init.ts';
 
+// Drive the real write spine against a symlinked harness config. The pre-fix
+// write did tmp+rename onto the symlink path itself, replacing the link with a
+// regular file and orphaning the dotfiles-repo copy. These tests assert the symlink
+// SURVIVES and the real target received the change — so a regression to the
+// orphaning write fails on the `isSymbolicLink()` check.
+
 const unix = process.platform !== 'win32';
 const dirs: string[] = [];
 
@@ -55,7 +61,10 @@ describe('symlink write-through on the harness write path', () => {
     const result = write(EDITOR_TARGETS.cursor, config);
     expect(result.action).toBe('written');
 
+    // The user's symlink must survive — not be replaced by a regular file.
     expect(lstatSync(config).isSymbolicLink()).toBe(true);
+    // The real dotfiles target received OK's entry, with the comment + sibling
+    // preserved (surgical edit through the resolved path).
     const after = readFileSync(target, 'utf-8');
     expect(after).toContain('// dotfiles-managed cursor config');
     expect(after).toContain('"existing"');
@@ -99,6 +108,8 @@ describe('symlink write-through on the harness write path', () => {
 
   it.skipIf(!unix)('breaks a cyclic symlink into a regular file carrying our entry', () => {
     const home = tempDir('ok-symlink-home-');
+    // config -> a -> b -> a loops; the chain resolves back to the original path,
+    // where a fresh regular-file write breaks the link.
     symlinkSync('b.json', join(home, 'a.json'));
     symlinkSync('a.json', join(home, 'b.json'));
     const config = join(home, 'config.json');
@@ -107,6 +118,7 @@ describe('symlink write-through on the harness write path', () => {
     const result = write(EDITOR_TARGETS.cursor, config);
     expect(result.action).toBe('written');
 
+    // The cyclic symlink collapsed to a regular file rather than looping forever.
     expect(lstatSync(config).isSymbolicLink()).toBe(false);
     expect(readFileSync(config, 'utf-8')).toContain('open-knowledge');
   });

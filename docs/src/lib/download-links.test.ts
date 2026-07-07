@@ -50,6 +50,9 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('ranks by version, not the array order GitHub returns (older beta listed first)', () => {
+    // GitHub's "List releases" order is not a reliable version sort — it has
+    // been observed returning an older beta ahead of newer ones. The newest
+    // must still win regardless of position.
     const url = pickLatestBetaDmgUrl([
       release('v0.20.0-beta.9'),
       release('v0.20.0-beta.8'),
@@ -61,6 +64,7 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('beta.10 outranks beta.9 (no lexical tag compare)', () => {
+    // The classic trap: as strings, "…-beta.9" sorts above "…-beta.10".
     const url = pickLatestBetaDmgUrl([release('v0.20.0-beta.9'), release('v0.20.0-beta.10')]);
     expect(url).toBe(dmgUrl('v0.20.0-beta.10'));
   });

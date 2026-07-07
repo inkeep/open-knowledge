@@ -1,3 +1,15 @@
+/**
+ * Narrow-integration test for the install-projection:
+ * `POST /api/skill/install` + the OF3 marker + reverse-projection on delete.
+ *
+ * Exercises the full Draft → Installed → Uninstalled lifecycle against a real
+ * server (where `projectDir === contentDir`): author a skill, install it into
+ * explicit editor targets, assert verbatim host-dir projections + the
+ * `.ok/local/installed-skills.json` marker, then delete it and assert the
+ * projections + marker entry are reverse-projected away. Plus the
+ * pre-install validity gate (reserved name, conflict markers).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -52,10 +64,12 @@ describe('skill install-projection lifecycle', () => {
       expect(parsed.data.scripts).toBe(false);
     }
 
+    // Verbatim projections exist in each host dir.
     expect(existsSync(hostSkillMd('.claude', 'trip-log'))).toBe(true);
     expect(existsSync(hostSkillMd('.cursor', 'trip-log'))).toBe(true);
     expect(readFileSync(hostSkillMd('.claude', 'trip-log'), 'utf-8')).toContain('# Steps');
 
+    // marker records the install.
     const marker = JSON.parse(readFileSync(markerPath(), 'utf-8')) as {
       skills: Record<string, { hosts: string[]; scope: string }>;
     };
@@ -87,6 +101,7 @@ describe('skill install-projection lifecycle', () => {
     expect(readMarker().skills['rename-me']?.hosts).toEqual(['claude']);
     expect(existsSync(hostSkillMd('.claude', 'rename-me'))).toBe(true);
 
+    // Rename via POST /api/skill (the move spine).
     const moveRes = await fetch(`${base()}/api/skill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -94,6 +109,8 @@ describe('skill install-projection lifecycle', () => {
     });
     expect(moveRes.status).toBe(200);
 
+    // Install-state carries over: new name recorded with the prior hosts, old
+    // name dropped, and the host projection follows the rename.
     const after = readMarker();
     expect(after.skills['rename-me']).toBeUndefined();
     expect(after.skills['renamed-ok']?.hosts).toEqual(['claude']);
@@ -115,6 +132,8 @@ describe('skill install-projection lifecycle', () => {
   });
 
   test('install refuses a source with git conflict markers → 400', async () => {
+    // Inject a conflicted SKILL.md directly on disk (bypassing the write gate)
+    // to prove the pre-install gate refuses it before any host write.
     const dir = join(server.contentDir, '.ok', 'skills', 'conflicted');
     mkdirSync(dir, { recursive: true });
     writeFileSync(

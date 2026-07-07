@@ -1,3 +1,19 @@
+/**
+ * Unit tests for `POST /api/handoff`. Loopback gating is applied at the route
+ * registration layer in `api-extension.ts` and is tested separately through
+ * the integration smoke tests; these tests focus on the handler body — method
+ * gate, body parsing, schema validation, URL-scheme matching, per-target +
+ * per-platform recipe step ordering, and the failure-mode → URN mapping —
+ * with all I/O (sleep + spawn + cursor-binary resolution + scheme-registration
+ * probe) injected.
+ *
+ * Wire shape: 200 success returns `{}` with `Content-Type: application/json`;
+ * every failure mode emits `application/problem+json` per RFC 9457 with the
+ * matching `urn:ok:error:*` URN. The renderer adapter at
+ * `packages/app/src/lib/handoff/dispatch.ts` maps the HTTP status (not the
+ * URN body) back to the in-process `HandoffOutcome` discriminated union.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
@@ -135,10 +151,13 @@ describe('handleHandoffDispatch — app-bundle cross-platform (Windows / Linux)'
     );
     expect(captured.status).toBe(200);
     expect(captured.body).toEqual({});
+    // The availability gate is the scheme probe (no `open -a`), and the launch
+    // is one protocol-URL spawn (the OS handler activates the app itself).
     expect(isSchemeRegistered).toHaveBeenCalledWith('claude');
     expect(calls).toEqual([
       { exec: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', CLAUDE_URL] },
     ]);
+    // No activation settle on non-macOS — there is no activate step to settle.
     expect(sleep).not.toHaveBeenCalled();
   });
 
@@ -242,6 +261,8 @@ describe('handleHandoffDispatch — cursor cross-platform (cli-binary)', () => {
       }),
     );
     expect(captured.status).toBe(200);
+    // The cursor `.cmd` shim is routed through cmd.exe (Node can't exec a .cmd
+    // with shell:false); the URL fire still uses the platform opener.
     expect(calls.length).toBe(2);
     expect(calls[0]?.exec.toLowerCase().endsWith('cmd.exe')).toBe(true);
     expect(calls[0]?.args).toEqual(['/d', '/c', cmdPath, winWorkspace]);
@@ -356,10 +377,12 @@ describe('handleHandoffDispatch — claude-cowork recipe (app-bundle, quitFirst=
     expect(captured.status).toBe(200);
     expect(captured.headers['Content-Type']).toBe('application/json');
     expect(captured.body).toEqual({});
+    // Exactly two spawns — no osascript quit step.
     expect(calls).toEqual([
       { exec: '/usr/bin/open', args: ['-a', 'Claude'] },
       { exec: '/usr/bin/open', args: [CLAUDE_URL] },
     ]);
+    // One sleep between activate and URL.
     expect(sleep).toHaveBeenCalledTimes(1);
   });
 
@@ -454,6 +477,7 @@ describe('handleHandoffDispatch — codex recipe (app-bundle, quitFirst=true)', 
     );
     expect(captured.status).toBe(200);
     expect(captured.body).toEqual({});
+    // Three spawns: osascript quit, open -a Codex, open URL.
     expect(calls).toEqual([
       {
         exec: '/usr/bin/osascript',
@@ -462,6 +486,7 @@ describe('handleHandoffDispatch — codex recipe (app-bundle, quitFirst=true)', 
       { exec: '/usr/bin/open', args: ['-a', 'Codex'] },
       { exec: '/usr/bin/open', args: [CODEX_URL] },
     ]);
+    // Two sleeps: after quit, after activate.
     expect(sleep).toHaveBeenCalledTimes(2);
   });
 
@@ -471,6 +496,7 @@ describe('handleHandoffDispatch — codex recipe (app-bundle, quitFirst=true)', 
     const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
       callCount += 1;
       calls.push({ exec, args: [...args] });
+      // First call is the quit step — return spawn-error to verify it's not a recipe-killer.
       if (callCount === 1) return { ok: false, reason: 'spawn-error' } as SpawnOutcome;
       return { ok: true } as SpawnOutcome;
     });
@@ -492,6 +518,7 @@ describe('handleHandoffDispatch — codex recipe (app-bundle, quitFirst=true)', 
     let callCount = 0;
     const spawnDetached = mock(async () => {
       callCount += 1;
+      // quit passes, activate fails.
       if (callCount === 1) return { ok: true } as SpawnOutcome;
       return { ok: false, reason: 'not-installed' } as SpawnOutcome;
     });

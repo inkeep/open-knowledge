@@ -1,7 +1,23 @@
+/**
+ * Project Navigator — persistent-launcher UI shown when the desktop app
+ * boots without a `lastOpenedProject`, OR when the user holds Option at
+ * launch.
+ *
+ * Three primary cards (Clone from GitHub, Open folder on disk, Create new
+ * project) above a Recent list. Every project pick spawns a NEW editor
+ * window via `ok:project:open` IPC — no switch-in-place. Navigator window
+ * stays open. Create new project opens an in-app `CreateProjectDialog`
+ * inside the Navigator window rather than dispatching to a separate flow.
+ *
+ * Web / CLI distribution never reaches this component — it only renders
+ * when `window.okDesktop?.config.mode === 'navigator'` (gated in
+ * `packages/app/src/main.tsx`).
+ */
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Folder, FolderOpenIcon, GitBranch, Loader2Icon, PlusIcon, XIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { type ComponentType, useEffect, useState } from 'react';
+import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
 import type {
   OkDesktopBridge,
@@ -27,10 +43,19 @@ import { GithubIcon } from './icons/github';
 import { OkIcon } from './icons/ok';
 import { McpConsentDialog } from './McpConsentDialog';
 import { basenameOf } from './project-switcher-recents';
-import { ShareReceiveDialog } from './ShareReceiveDialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 
+// Cold-path launcher surface: renders nothing until main fires
+// `ok:share:received`. Lazy so its clone / auth-preflight / Q2-picker code
+// (and the transports it pulls in) splits out of the main bundle.
+const ShareReceiveDialog = lazy(() =>
+  import('./ShareReceiveDialog').then((m) => ({ default: m.ShareReceiveDialog })),
+);
+
+// Re-exports for tests — keeping the surface here avoids churn in existing
+// test files that import directly from NavigatorApp.tsx and keeps the
+// shared-helper move transparent.
 export { resolveErrorMessage };
 export const runWithErrorStatePure = (
   fn: () => Promise<void>,
@@ -56,23 +81,60 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [returnToCloneAfterAuth, setReturnToCloneAfterAuth] = useState(false);
+  // Pending share-receive sign-in resolver — the share dialog's controller
+  // awaits this when the user clicks "Connect GitHub." Resolved with the
+  // new auth status on success, `null` if the user dismissed the modal.
+  // We re-use the existing AuthModal mount (one modal at a time) rather than
+  // spinning up a second instance. State (not ref) — React Compiler rejects
+  // refs captured by factory closures called during render.
   const [shareSignInResolver, setShareSignInResolver] = useState<
     ((status: OkLocalOpAuthStatusResponse | null) => void) | null
   >(null);
+  // Electron host gates the macOS drag-region treatment. With
+  // `titleBarStyle: 'hiddenInset'` the launcher window has no OS-drawn
+  // titlebar — without an explicit drag region the user has nowhere to
+  // grab the window. Scoped to the launcher's header row only so empty
+  // space below the cards / around the recent list stays non-draggable
+  // (matches the macOS "title bar zone" convention). Detection idiom
+  // matches EditorHeader / FileSidebar.
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
+  // Mirror EditorPane's auth-modal state shape so the two surfaces stay
+  // structurally identical. Today Navigator only ever opens with step
+  // 'auth' (no identity-prompt entry point), but keeping the state +
+  // prop wired prevents silent divergence if Navigator gains an identity
+  // surface later (e.g. profile menu).
   const [authInitialStep, setAuthInitialStep] = useState<'auth' | 'identity'>('auth');
   const { theme: themeValue } = useTheme();
   const { t } = useLingui();
 
+  // Push the user-intent theme to Electron main and release the cold-launch
+  // show-gate via the shared `useThemeBridge` hook. Same hook drives
+  // `ConfigProvider` so both window kinds release the gate the same way;
+  // theme value comes from `next-themes` here (Navigator has no CRDT),
+  // from the merged config in the editor flow.
+  //
+  // Fall back to `'system'` for symmetry with `ConfigProvider`. `next-themes`
+  // does default to `'system'` here today (the launcher window mounts
+  // `<ThemeProvider defaultTheme="system">` in `main.tsx`), so this is
+  // operationally a no-op — but the hook's contract requires a known enum
+  // to fire `signalThemeApplied`, and any future refactor that drops the
+  // ThemeProvider default or sources `themeValue` from a different surface
+  // would otherwise stall the show-gate's 5 s safety timeout.
   useThemeBridge(bridge, themeValue ?? 'system');
 
   useEffect(() => {
     let cancelled = false;
+    // Promise-chain instead of try/catch/finally — React Compiler (BuildHIR)
+    // does not yet support `finally` clauses; `.finally(...)` on the Promise
+    // is equivalent and compiler-safe.
     bridge.project
       .listRecent()
       .then(async (result) => {
         if (cancelled) return;
         setRecents(result);
+        // Best-effort batched HEAD-branch read for every non-missing entry.
+        // `readHeadBranch` is a pure-fs read (no git subprocess) and never
+        // throws; the IPC layer can still reject if the bridge is unavailable.
         const eligible = result.filter((r) => !r.missing);
         const entries = await Promise.all(
           eligible.map(async (r): Promise<[string, string | null]> => {
@@ -85,6 +147,8 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
           }),
         );
         if (cancelled) return;
+        // Merge instead of replace so a user-initiated `onRemoveRecent`
+        // landing while the fetch was in-flight doesn't get resurrected.
         setRecentBranches((prev) => {
           const next = new Map(prev);
           for (const [path, branch] of entries) next.set(path, branch);
@@ -105,6 +169,10 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
     };
   }, [bridge, t]);
 
+  // File → New project… (the `new-project` menu action) opens the same
+  // CreateProjectDialog the "Create new project" card opens. The application
+  // menu fires to whichever window is focused, so the Navigator must react to
+  // it too — not just the editor window's App-root trigger.
   useEffect(() => {
     return bridge.onMenuAction((action) => {
       if (action === 'new-project') setCreateDialogOpen(true);
@@ -112,6 +180,14 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
     });
   }, [bridge]);
 
+  /**
+   * Wrap any bridge call in a visible error state. Without this the IPC
+   * rejection (utility failed to boot, bad folder, dialog rejected) lands as
+   * an unhandled promise rejection and the UI stays frozen in its pre-click
+   * state — no feedback, no retry path. Delegates to the pure
+   * `runWithErrorStatePure` helper so the rejection-handling logic can be
+   * unit-tested without React.
+   */
   const runWithErrorState = (fn: () => Promise<void>, fallback: string) =>
     runWithErrorStatePure(fn, fallback, setError);
 
@@ -144,6 +220,25 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
     }, t`Failed to remove project.`);
 
   return (
+    // Two-layer split: outer fills the full window (bg color); inner is a
+    // full-window-width drag strip at top + a centered content column below.
+    //
+    // The chrome row is intentionally a thin empty strip (h-9, ~36px) at
+    // the top. It owns `-webkit-app-region: drag` so the macOS title-bar
+    // zone (where traffic lights sit) is grabbable. Drag stays scoped to
+    // this strip — applying it to the outer container turns clicks on
+    // empty space below into accidental window drags.
+    //
+    // The visible content (OK icon + title + 3 cards + optional Recents)
+    // lives in a separate `flex-1` column below the chrome row, with the
+    // inner content block using `my-auto` so it vertically centers when it
+    // fits, and gracefully top-aligns when many recents push it past the
+    // available height (recents scroll inside their own `min-h-0
+    // overflow-y-auto` container in that case).
+    //
+    // `overflow-hidden` on the content column + `shrink-0` on every
+    // fixed-height item keeps the primary affordances on-screen at the
+    // default 840×600 Navigator window size.
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-primary-foreground dark:bg-background text-foreground">
       {/* Chrome row is absolutely positioned so it doesn't push content
           out of geometric center. The full window height participates in
@@ -267,6 +362,9 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
           setAuthModalOpen(next);
           if (!next) {
             setReturnToCloneAfterAuth(false);
+            // If a share-receive sign-in was pending and the modal closed
+            // without onSuccess firing, the user cancelled — resolve with
+            // null so the share dialog can stay on its prior state.
             if (shareSignInResolver) {
               shareSignInResolver(null);
               setShareSignInResolver(null);
@@ -282,6 +380,8 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
             setReturnToCloneAfterAuth(false);
             setCloneDialogOpen(true);
           }
+          // Share-receive sign-in completion path (independent of the
+          // CloneDialog's returnToCloneAfterAuth flag).
           if (shareSignInResolver) {
             shareSignInResolver({
               authenticated: true,
@@ -305,6 +405,11 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
           setAuthModalOpen(true);
         }}
         onCloneComplete={({ dir }) => {
+          // Navigator stays open; spawn the cloned project in a new editor
+          // window with the 'pick-existing' entry point — cloned content
+          // lands like a freshly-picked existing folder, so the consent
+          // dialog gate is the right surface for the user to review scope
+          // before scaffolding.
           void runWithErrorState(
             () => openProject(bridge, dir, 'pick-existing'),
             t`Failed to open cloned project.`,
@@ -319,19 +424,22 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
           streamlined clone (folder picker → progress toast → done) via
           the shared cloneController. IPC transports for the Navigator
           window (no backing API server). */}
-      <ShareReceiveDialog
-        bridge={bridge}
-        cloneController={createCloneController({
-          bridge,
-          authQueryTransport: ipcAuthQueryTransport(bridge),
-          cloneTransport: ipcCloneTransport(bridge),
-          openSignIn: () =>
-            new Promise<OkLocalOpAuthStatusResponse | null>((resolve) => {
-              setShareSignInResolver(() => resolve);
-              setAuthModalOpen(true);
-            }),
-        })}
-      />
+      <Suspense fallback={null}>
+        <ShareReceiveDialog
+          bridge={bridge}
+          cloneController={createCloneController({
+            bridge,
+            authQueryTransport: ipcAuthQueryTransport(bridge),
+            cloneTransport: ipcCloneTransport(bridge),
+            openSignIn: () =>
+              new Promise<OkLocalOpAuthStatusResponse | null>((resolve) => {
+                // Wrap in function so useState doesn't treat `resolve` as an updater.
+                setShareSignInResolver(() => resolve);
+                setAuthModalOpen(true);
+              }),
+          })}
+        />
+      </Suspense>
     </div>
   );
 }
@@ -376,6 +484,7 @@ function RecentRow({
   const { t } = useLingui();
   const { name: projectName } = project;
   const isWorktree = project.isLinkedWorktree === true;
+  // Branch chip shows the worktree's own branch, else the project's current branch.
   const rowBranch = isWorktree ? (project.branch ?? branch) : branch;
   return (
     <li className="group flex items-center justify-between rounded-lg hover:bg-accent">

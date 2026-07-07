@@ -1,3 +1,17 @@
+/**
+ * Real-shell-I/O harness for the PTY host — RUN UNDER NODE, not Bun.
+ *
+ * node-pty's PTY-fd reads are driven by libuv and do not pump under Bun's
+ * event loop (a spawned shell produces zero bytes), so `bun test` cannot
+ * exercise the real shell. This harness drives the actual `setupPtyHost`
+ * factory with a real `node-pty` spawn under the Node runtime and asserts the
+ * real-I/O contract end to end. `pty-host-real-io.test.ts` invokes it as a
+ * Node subprocess from Bun and asserts on its exit code + result line.
+ *
+ * Scenarios: real command round-trip, cwd binding + env-marker stripping,
+ * host-survives-PTY-death containment, bad-shell async exit.
+ */
+
 import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -11,6 +25,10 @@ import {
 
 const require = createRequire(import.meta.url);
 
+// node-pty's prebuilt `spawn-helper` ships mode 0644 (node-pty#850); a real
+// PTY spawn fails with "posix_spawnp failed" until it is executable. The
+// packaged app fixes this in afterPack; for the dev node_modules we chmod the
+// current-arch helper here.
 function ensureSpawnHelperExecutable(): void {
   const pkgDir = dirname(dirname(require.resolve('node-pty')));
   const helper = join(pkgDir, 'prebuilds', `${process.platform}-${process.arch}`, 'spawn-helper');
@@ -86,10 +104,14 @@ async function main(): Promise<void> {
 
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pty-harness-')));
 
+  // A real command runs and its evaluated output streams back,
+  // and the prompt sits at the supplied project root.
   await scenario('real command round-trip at project root', async () => {
     const host = createHost(BASE_ENV);
     host.send({ type: 'create', ptyId: 'io', cwd: tmp, cols: 80, rows: 24 });
     await waitFor(() => host.dataOf('io').length > 0, 'shell prompt');
+    // `$((6*7))` only resolves to 42 if the shell evaluated it — the echoed
+    // input line keeps the literal `$((6*7))`, so 42 proves execution.
     host.send({ type: 'input', ptyId: 'io', data: 'echo HARNESS_$((6*7))_DONE\r' });
     await waitFor(() => host.dataOf('io').includes('HARNESS_42_DONE'), 'evaluated command output');
     host.send({ type: 'input', ptyId: 'io', data: 'pwd\r' });
@@ -97,6 +119,7 @@ async function main(): Promise<void> {
     host.killActive();
   });
 
+  // Desktop-only markers are stripped from the user's shell.
   await scenario('strips desktop env markers from the shell', async () => {
     const host = createHost({
       ...BASE_ENV,
@@ -117,6 +140,8 @@ async function main(): Promise<void> {
     host.killActive();
   });
 
+  // Killing the shell (a crash) yields an exit event and the host stays
+  // alive — a fresh PTY spawns in the same host.
   await scenario('host survives a PTY death and respawns', async () => {
     const host = createHost(BASE_ENV);
     host.send({ type: 'create', ptyId: 'c1', cwd: tmp, cols: 80, rows: 24 });
@@ -128,6 +153,8 @@ async function main(): Promise<void> {
     host.killActive();
   });
 
+  // A shell that cannot launch surfaces as a non-zero exit
+  // (node-pty reports this async, NOT as a synchronous throw).
   await scenario('bad shell surfaces as a non-zero exit', async () => {
     const host = createHost(BASE_ENV);
     host.send({
@@ -153,6 +180,7 @@ async function main(): Promise<void> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
+// Hard ceiling so a wedged shell can never hang the parent `bun test`.
 const hardTimeout = setTimeout(() => {
   console.log('HARNESS_RESULT ok=0 fail=1 :: hard timeout');
   process.exit(1);

@@ -104,7 +104,7 @@ Codemod handler TODO-stub grep. Flags handler files under `packages/md-conforman
 
 This is a TODO-stub grep, NOT an exhaustiveness check. Whether a substrate covers every PM node type (the node-set traversal over `packages/core/schema-snapshot.json`) is a separate concern owned by a suite-self-consistency gate. The compile-time backstop for missing methods is the TypeScript handlers-table type check against `ICstEngine`.
 
-**Scoped via `overrides[].plugins`** to `packages/md-conformance/src/substrates/*/handlers/**/*.ts`. The codemod implementation, harness tests, and oracles are out of scope (they legitimately produce strings containing "TODO: implement" in their own contexts).
+**Scoped via `overrides[].plugins`** to the per-substrate handlers/ subtrees (see the biome.jsonc override includes). The codemod implementation, harness tests, and oracles are out of scope (they legitimately produce strings containing "TODO: implement" in their own contexts).
 
 The rule does NOT catch:
 - Missing handler FILES (file-presence is out of GritQL's scope; TypeScript + codemod coverage handle this)
@@ -123,7 +123,7 @@ Class-proof DSL contract enforcement. Two patterns (GritQL `or` — short-circui
 
 Inside the canonical proofs/ dir, neither pattern fires — TypeScript's `ClassProofOptions<M>` signature backstops the missing-args check, and any `defineClassProof` call there is in the sanctioned location.
 
-**Scoped via `overrides[].plugins`** to all `.ts`/`.tsx` files EXCEPT `packages/md-conformance/src/class-proofs/proofs/**` and `*.test.ts`/`*.test.tsx` (test files that exercise the DSL are exempt — `dsl.test.ts` legitimately calls `defineClassProof` outside the canonical dir).
+**Scoped via `overrides[].plugins`** to all `.ts`/`.tsx` files EXCEPT the canonical `class-proofs/proofs/**` dir and `*.test.ts`/`*.test.tsx` (test files that exercise the DSL are exempt — `dsl.test.ts` legitimately calls `defineClassProof` outside the canonical dir).
 
 The rule does NOT catch:
 - Missing-args violations inside the canonical proofs/ dir (TypeScript catches those)
@@ -155,7 +155,7 @@ Forbids the byte-fidelity round-trip oracle in public-mirrored tests. Asserting 
 - The **Bridge-invariant comparator** `normalizeBridge(a) === normalizeBridge(b)` (precedent #38, the documented public contract) contains no `serialize(parse(...))` and is never flagged.
 - The **normalizing-construct detector** `serialize(parse(x)) !== x` uses `!==`, a different operator, and is never flagged.
 
-**Scoped via `overrides[].plugins`** to the public-mirrored test surface (`packages/**/*.test.ts`, `*.test.tsx`, `*.e2e.ts`). The engine-test clusters that legitimately own the oracle are excluded as negative globs: `packages/app/tests/fidelity/**`, `packages/core/src/markdown/**/*.test.ts`, `packages/core/src/bridge/**/*.test.ts`, the enumerated byte-oracle tests, and the `packages/md-conformance/**` estate. Inside those clusters the identity oracle is the whole point; outside them (the public surface) it is forbidden.
+**Scoped via `overrides[].plugins`** to the public-mirrored test surface (`packages/**/*.test.ts`, `*.test.tsx`, `*.e2e.ts`). The internal suites that legitimately own the oracle are excluded as negative globs (see the biome.jsonc override includes); on this surface it is forbidden.
 
 The rule does NOT catch:
 - Round-trip identity through a helper (`mdRoundTrip(x)`, `normalize(...)`) or an intermediate variable (`const out = serialize(parse(x)); expect(out).toBe(x)`) — the pattern matches the inline call shape, not helper bodies or cross-statement data flow. Those forms live in the path-excluded fidelity suite, covered by exclusion.
@@ -176,7 +176,7 @@ Forbids a public-mirrored test from writing a bridge normalization-class value i
 
 The match is quote-style independent (a single-quoted pattern matches the double-quoted form Biome emits). The four **universal text-encoding** classes — `bom`, `crlf`, `trailing-whitespace`, `trailing-newline` — are deliberately NOT matched: they are normalizations every text tool performs, not distinctive classes, and the public floor telemetry runtime (`tolerance-telemetry.ts`) surfaces them, so public tests legitimately assert that runtime emits `class: 'crlf'` for a CRLF input. The 12 markdown-fidelity classes plus those 4 universal classes partition the catalog exactly, and the fixture test's drift canary pins that partition — a class added to `BRIDGE_TOLERANCE_CLASSES` reddens until it is classified into one bucket.
 
-**Scoped via `overrides[].plugins`** to the public-mirrored test surface (`packages/**/*.test.ts`, `*.test.tsx`, `*.e2e.ts`), with the catalog-owning clusters excluded as negative globs (the bridge tests, the markdown precision suite, `packages/app/tests/fidelity/**`, the enumerated byte-oracle one-offs, and `packages/md-conformance/**`), so the catalog stays usable in those clusters but the inline form is forbidden on the public surface.
+**Scoped via `overrides[].plugins`** to the public-mirrored test surface (`packages/**/*.test.ts`, `*.test.tsx`, `*.e2e.ts`), with the catalog-owning internal suites excluded as negative globs (see the biome.jsonc override includes), so the catalog stays usable there but the inline form is forbidden on this surface.
 
 The rule does NOT catch:
 - A class name built by concatenation or template interpolation (`'doc-start-' + 'thematic'`) — neither operand is the whole value.

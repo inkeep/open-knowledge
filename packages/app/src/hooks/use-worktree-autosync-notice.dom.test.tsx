@@ -33,6 +33,7 @@ describe('useWorktreeAutoSyncNotice', () => {
     };
     render(<Probe />);
     await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+    // Clears the one-shot flag so it never repeats.
     expect(patch).toHaveBeenCalledWith({ autoSync: { inheritedNoticePending: null } });
   });
 

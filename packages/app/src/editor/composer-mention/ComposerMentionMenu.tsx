@@ -1,9 +1,23 @@
+/**
+ * Typeahead menu for the bottom composer's `@`-mention input. A thin, page-only
+ * sibling of `WikiLinkSuggestionMenu` — no anchors, no asset/create modes — so
+ * the composer surfaces a clean "reference an existing doc" list. Driven by the
+ * `@tiptap/suggestion` render lifecycle in `composer-mention.ts`; the menu is a
+ * pure render of the current items + selection.
+ */
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useId, useRef } from 'react';
 import { FileEntryPathIcon } from '@/components/file-entry-icon';
 import { mentionPathToDescriptor } from '../registry/file-icons';
 import type { MentionItem } from './composer-mention';
 
+/**
+ * Classify a mention row from its serialized `path` for the row's affordances
+ * (the `data-mention-kind` marker + the folder trailing-slash). Derives via the
+ * shared {@link mentionPathToDescriptor} so the row's folder/page/asset label
+ * agrees with the file-entry icon path. `'document'` collapses to `'page'` here
+ * — a mention path only ever yields folder/page/asset.
+ */
 function mentionItemKind(path: string): 'folder' | 'page' | 'asset' {
   const kind = mentionPathToDescriptor(path).kind;
   return kind === 'folder' || kind === 'asset' ? kind : 'page';
@@ -19,6 +33,7 @@ interface ComposerMentionMenuProps {
    *  silent "no docs" empty state, so a failed load doesn't read as an empty
    *  corpus. The extension retries on the next `@`. */
   error?: boolean;
+  /** True when the list was capped — a passive "keep typing to narrow" hint. */
   hasMore?: boolean;
 }
 
@@ -35,6 +50,9 @@ export function ComposerMentionMenu({
   const listboxId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Keep the active option scrolled into view as the user arrows through. Index
+  // the option list by selectedIndex (rather than a data-attr query) so the
+  // effect genuinely depends on it and re-fires on every move.
   useEffect(() => {
     const options = containerRef.current?.querySelectorAll('[role="option"]');
     options?.item(selectedIndex)?.scrollIntoView({ block: 'nearest' });
@@ -53,6 +71,8 @@ export function ComposerMentionMenu({
           {t`Searching docs`}
         </p>
       ) : error ? (
+        // Distinct from the empty state: a failed fetch reads as broken, not
+        // empty. The extension re-fetches on the next `@`, so tell the user.
         <p className="px-2 py-1.5 text-sm text-muted-foreground" aria-live="assertive">
           {t`Couldn't load docs — type @ again to retry`}
         </p>
@@ -81,6 +101,8 @@ export function ComposerMentionMenu({
             const active = index === selectedIndex;
             const kind = mentionItemKind(item.path);
             const isFolder = kind === 'folder';
+            // Folders read clearer with a trailing slash — the same affordance
+            // file managers use to signal "this is a container, not a leaf".
             const displayPath = isFolder ? `${item.path}/` : item.path;
             return (
               <button
@@ -95,6 +117,8 @@ export function ComposerMentionMenu({
                 className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left ${
                   active ? 'bg-accent text-accent-foreground' : ''
                 }`}
+                // Insert on mousedown rather than click so the editor never
+                // loses focus to the menu button before the chip lands.
                 onMouseDown={(event) => {
                   event.preventDefault();
                   onSelect(item);

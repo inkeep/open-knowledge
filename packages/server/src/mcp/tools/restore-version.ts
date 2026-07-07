@@ -1,3 +1,14 @@
+/**
+ * `restore_version` MCP tool — restore one document to a historical version.
+ *
+ * Wraps `POST /api/rollback`. Append-only: creates a new version with the old
+ * content; all connected editors see the change live. The `version` id is a
+ * 40-char commit SHA from the `history` tool (same field name both sides, so
+ * the handoff is copy-paste).
+ *
+ * Split from the former `version` tool (its `action: "rollback"` branch);
+ * `checkpoint` is the project-wide snapshot counterpart.
+ */
 import { AdvisoryWarningSchema } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import type { AgentIdentity } from '../agent-identity.ts';
@@ -79,6 +90,9 @@ export function register(server: ServerInstance, deps: RestoreVersionDeps): void
         previewUrl: previewUrlOutputField,
         previewUrlSource: previewUrlSourceField,
         summary: summaryOutputSchema.optional(),
+        // Two shapes by restore kind: skill restore returns a plain string list;
+        // document restore returns advisory entries (kind `content-divergence`,
+        // present only when the restored Y.Text did not byte-match the target).
         warnings: z
           .union([z.array(z.string()), z.array(AdvisoryWarningSchema)])
           .optional()
@@ -108,6 +122,7 @@ export function register(server: ServerInstance, deps: RestoreVersionDeps): void
         return textResult('Error: pass EXACTLY ONE of `document` or `skill`.', true);
       }
 
+      // Skill restore — fs-direct (POST /api/skill/restore), no CRDT preview.
       if (args.skill !== undefined) {
         const result = await httpPost(url, '/api/skill/restore', {
           scope: 'project',
@@ -138,6 +153,7 @@ export function register(server: ServerInstance, deps: RestoreVersionDeps): void
       if (!normalized.ok) return textResult(normalized.error, true);
       const docName = normalized.docName;
 
+      // Verify the version exists (and surface what we're restoring).
       const versionResult = await httpGet(
         url,
         `/api/history/${args.version}?docName=${encodeURIComponent(docName)}`,

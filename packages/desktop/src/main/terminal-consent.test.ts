@@ -1,3 +1,16 @@
+/**
+ * Consent backstop for the docked terminal — see terminal-consent.ts.
+ *
+ * Two contracts are pinned here. First, the fail-OPEN posture: the backstop
+ * refuses only an explicit `terminal.enabled: false`; an absent / unreadable /
+ * malformed config, an absent leaf, `null`, and `true` all read as allowed.
+ * Second, the grace budget vs. the server's store debounce: a just-lifted opt-out
+ * reaches `<projectDir>/.ok/local/config.yml` only after the 2000ms
+ * `onStoreDocument` debounce, so a grace window shorter than that can never
+ * observe the re-enable and the terminal refuses until the project is reopened
+ * (the symptom that shipped when the default was 750ms).
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -9,6 +22,7 @@ import {
   TERMINAL_CONSENT_GRACE_TIMEOUT_MS,
 } from './terminal-consent.ts';
 
+/** Hocuspocus L1 store debounce the desktop boots the server with (server-factory `debounce=2000`). */
 const STORE_DEBOUNCE_MS = 2000;
 
 function makeProjectDir(): string {
@@ -107,6 +121,8 @@ describe('isTerminalConsented (fail-open backstop)', () => {
 });
 
 describe('grace budget vs. store debounce', () => {
+  // Guards the calibration directly: shrinking the default back below the
+  // debounce reintroduces the "re-enable does nothing until reopen" bug.
   test('default grace budget exceeds the 2000ms store debounce', () => {
     expect(TERMINAL_CONSENT_GRACE_TIMEOUT_MS).toBeGreaterThan(STORE_DEBOUNCE_MS);
   });
@@ -114,6 +130,9 @@ describe('grace budget vs. store debounce', () => {
   test('a just-lifted opt-out resolves true the moment the re-enable write lands', async () => {
     const dir = makeProjectDir();
     try {
+      // Opted out on disk; the re-enable (false → true) lands after the
+      // synchronous check would have failed, but inside the grace window —
+      // simulating the persistence debounce.
       writeConsent(dir, false);
       setTimeout(() => writeConsent(dir, true), 120);
       expect(isTerminalConsented(dir)).toBe(false);

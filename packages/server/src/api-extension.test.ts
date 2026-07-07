@@ -51,6 +51,9 @@ describe('sanitizeFilename', () => {
   });
 
   test('preserves whitelisted characters (space, dot, dash, underscore)', () => {
+    // Space is whitelisted unicode-preserving sanitization — the
+    // sanitized "my file _1_.png" is filesystem-safe and matches the macOS
+    // Finder/Obsidian ergonomic that users expect.
     expect(sanitizeFilename('my file (1).png')).toBe('my file _1_.png');
   });
 
@@ -83,18 +86,27 @@ describe('sanitizeFilename', () => {
   });
 
   test('emoji preserved — Finder/macOS ergonomics', () => {
+    // Documented behavior: `\p{Extended_Pictographic}` pass through so users
+    // who drop 'emoji 🎉.png' get a faithful filename on disk.
     expect(sanitizeFilename('emoji 🎉.png')).toBe('emoji 🎉.png');
   });
 
   test('combining marks (Vietnamese tone, Devanagari) preserved', () => {
+    // `\p{M}` covers combining marks so characters that decompose into
+    // base+combining (NFD) do not lose their diacritics.
     expect(sanitizeFilename('ghi chú.pdf')).toBe('ghi chú.pdf');
   });
 
   test('path-escape attempt ../etc/passwd is flattened — no traversal survives', () => {
+    // The `/` and `\` are stripped; the remaining `..etcpasswd` sees its
+    // dot-run collapsed and leading dot trimmed → 'etcpasswd'.
     expect(sanitizeFilename('../etc/passwd')).toBe('etcpasswd');
   });
 
   test('Windows-style path traversal stripped', () => {
+    // Backslashes are stripped outright (not replaced with `_`) so the
+    // final shape collapses intermediate separators — matches the existing
+    // shipped behavior for forward slashes (e.g. `foo/bar.png` → `foobar.png`).
     expect(sanitizeFilename('..\\Windows\\System32\\evil.exe')).toBe('WindowsSystem32evil.exe');
   });
 
@@ -139,10 +151,14 @@ describe('sanitizeFilename', () => {
   });
 
   test('long adversarial extension falls back to upload', () => {
+    // ext alone = '.' + 'a'.repeat(300) > 255 bytes; while-loop drains stem to
+    // empty, then `'upload' + ext` still exceeds the ceiling. Final-pass
+    // guard kicks in and substitutes extensionless `'upload'`.
     expect(sanitizeFilename(`x.${'a'.repeat(300)}`)).toBe('upload');
   });
 
   test('pure unsafe-character input falls back to upload', () => {
+    // '!!!' → '___' → '_' → leading underscore trimmed → '' → 'upload'
     expect(sanitizeFilename('!!!')).toBe('upload');
   });
 
@@ -205,6 +221,7 @@ describe('handleUploadAsset', () => {
   });
 
   function createPngBuffer(): Buffer {
+    // Minimal valid PNG (1x1 transparent pixel)
     return Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAABJRElEQrkJggg==',
       'base64',
@@ -238,10 +255,14 @@ describe('handleUploadAsset', () => {
     const body = (await res.json()) as { src: string; path: string; deduped: boolean };
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/json');
+    // Wire shape: flat success (no `ok: true` wrapper). `src` is
+    // the bare filename (co-located-with-parent assumption), `path` is
+    // contentDir-relative and honors a non-default `attachmentFolderPath`.
     expect(body.src).toBe('screenshot.png');
     expect(body.path).toBe('docs/screenshot.png');
     expect(body.deduped).toBe(false);
     expect(existsSync(join(contentDir, 'docs', 'screenshot.png'))).toBe(true);
+    // No `ok: true` discriminator on success path.
     expect((body as Record<string, unknown>).ok).toBeUndefined();
   });
 
@@ -366,6 +387,13 @@ describe('handleUploadAsset', () => {
   });
 
   test('D-M accept-all: spoofed MIME no longer rejects, file is stored under sanitized name', async () => {
+    // behavior rejected with "Unsupported file type". Under
+    // accept-all, every file is accepted; post-streaming there
+    // is no user-facing byte cap either, only disk fullness. The SVG
+    // <img>-only routing relies on a successful magic-byte sniff (
+    // LOAD-BEARING). The "exe spoofed as .png" test now confirms
+    // accept-all + storage; the security posture flips to render-time:
+    // unrecognized types serve as opaque blobs, never inline-executed.
     const exeBuffer = Buffer.from('MZexecutable content here');
     const res = await uploadImage(exeBuffer, 'malicious.png', 'docs/guide.md');
     expect(res.status).toBe(200);
@@ -383,6 +411,10 @@ describe('handleUploadAsset', () => {
   });
 
   test('numeric suffix collision handling — distinct bytes, same filename', async () => {
+    // Pre-seed a file with DIFFERENT bytes than the upload so dedup misses
+    // and the collision-suffix loop produces screenshot-1.png. Under
+    // behavior this fired even with identical bytes;
+    // identical-bytes dedup wins (covered separately in the dedup describe).
     writeFileSync(join(contentDir, 'docs', 'screenshot.png'), Buffer.from('different bytes'));
     const res = await uploadImage(createPngBuffer(), 'screenshot.png', 'docs/guide.md');
     const body = (await res.json()) as { src: string; path: string };
@@ -404,15 +436,24 @@ describe('handleUploadAsset', () => {
   });
 
   test('parent-symlink escape rejected before mkdir creates a directory outside contentDir', async () => {
+    // Invariant: a parent segment that's a symlink whose target sits
+    // outside contentDir must be rejected before `mkdirSync({ recursive: true })`
+    // runs. mkdir follows symlinks, so without a pre-check it would
+    // materialize a fresh directory at the symlinked target — a path-escape
+    // write that survives even though the upload itself is rejected.
     const escapeTarget = join(tmpDir, 'outside-mkdir-target');
     mkdirSync(escapeTarget, { recursive: true });
     symlinkSync(escapeTarget, join(contentDir, 'link'));
 
+    // dirname('link/sub/x.md') = 'link/sub'; destDir resolves through the
+    // `link` symlink to `<tmpDir>/outside-mkdir-target/sub`, which mkdir
+    // would create on the code path.
     const res = await uploadImage(createPngBuffer(), 'test.png', 'link/sub/x.md');
     expect(res.status).toBe(400);
     const body = (await res.json()) as { type: string };
     expect(body.type).toBe('urn:ok:error:path-escape');
 
+    // Load-bearing assertion: nothing was created outside contentDir.
     expect(existsSync(join(escapeTarget, 'sub'))).toBe(false);
   });
 
@@ -432,6 +473,7 @@ describe('handleUploadAsset', () => {
   });
 
   test('D-M: PDF accepts and stores under sanitized name', async () => {
+    // PDF magic bytes start with %PDF-1.x.
     const pdfBuffer = Buffer.from('%PDF-1.4\n%fake pdf content for test');
     const formData = new FormData();
     formData.append('parentDocName', 'docs/guide.md');
@@ -447,6 +489,10 @@ describe('handleUploadAsset', () => {
   });
 
   test('D-M: non-sniffable text file (CSV) accepts under client filename', async () => {
+    // CSV has no magic bytes — `file-type` returns undefined. SVG fallback
+    // does not match. this rejected with "Unsupported file type";
+    // the file lands on disk and emit-shape dispatch decides
+    // (markdown-link in the client).
     const csvBuffer = Buffer.from('a,b,c\n1,2,3\n', 'utf-8');
     const formData = new FormData();
     formData.append('parentDocName', 'docs/guide.md');
@@ -557,6 +603,7 @@ describe('handleUploadAsset — same-dir sha256 dedup (FR-2)', () => {
     expect(second.deduped).toBe(true);
     expect(second.src).toBe('shot.png');
 
+    // Disk still has exactly one file in docs/
     expect(existsSync(join(contentDir, 'docs', 'shot.png'))).toBe(true);
     expect(existsSync(join(contentDir, 'docs', 'shot-1.png'))).toBe(false);
   });
@@ -571,6 +618,7 @@ describe('handleUploadAsset — same-dir sha256 dedup (FR-2)', () => {
       src: string;
       deduped: boolean;
     };
+    // Dedup is content-keyed, so second's src is the original existing basename.
     expect(second.deduped).toBe(true);
     expect(second.src).toBe('shot.png');
   });
@@ -589,11 +637,14 @@ describe('handleUploadAsset — same-dir sha256 dedup (FR-2)', () => {
     };
     expect(inDocs.deduped).toBe(false);
     expect(inArchive.deduped).toBe(false);
+    // Both files exist on disk — same bytes, separate paths.
     expect(existsSync(join(contentDir, 'docs', 'shot.png'))).toBe(true);
     expect(existsSync(join(contentDir, 'archive', 'shot.png'))).toBe(true);
   });
 
   test('dedup ignores non-asset files (markdown sibling does not trigger a hash hit)', async () => {
+    // Pre-seed a markdown file that hashes to anything; the dedup scanner
+    // must skip it because .md is not in ASSET_EXTENSIONS.
     writeFileSync(join(contentDir, 'docs', 'sibling.md'), 'irrelevant');
     const buf = pngFixture();
     const res = (await (await postUpload(buf, 'shot.png', 'docs/guide.md')).json()) as {
@@ -606,6 +657,10 @@ describe('handleUploadAsset — same-dir sha256 dedup (FR-2)', () => {
 });
 
 describe('resumeSyncOnAuthEvent (reconnect → resume wiring)', () => {
+  // Pins the auth-login `complete` → SyncEngine.notifyCredentialsChanged()
+  // wiring that the device-flow `onEvent` callback delegates to, without
+  // spinning up a real device flow. The handler is otherwise entangled with
+  // the subprocess, the streaming response, and the concurrency guard.
   const makeEngineStub = (impl?: () => Promise<void>) => {
     const calls: number[] = [];
     const engine = {
@@ -649,8 +704,10 @@ describe('resumeSyncOnAuthEvent (reconnect → resume wiring)', () => {
 
   test('a rejected notifyCredentialsChanged is swallowed (best-effort)', async () => {
     const stub = makeEngineStub(() => Promise.reject(new Error('boom')));
+    // Must not throw synchronously and must not surface an unhandled rejection.
     expect(() => resumeSyncOnAuthEvent(completeEvent, stub.getSyncEngine)).not.toThrow();
     expect(stub.calls.length).toBe(1);
+    // Give the swallowed rejection a tick to settle without crashing the test.
     await Promise.resolve();
   });
 });

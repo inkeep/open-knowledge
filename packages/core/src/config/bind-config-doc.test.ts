@@ -3,6 +3,11 @@ import * as Y from 'yjs';
 import { bindConfigDoc, type ConfigDocProvider } from './bind-config-doc.ts';
 import { isKnownConfigError } from './errors.ts';
 
+/**
+ * Minimal `ConfigDocProvider` for tests — the structural shape `bindConfigDoc`
+ * needs (`document` + `on('synced')` + `off('synced')`). Keeps tests free of a
+ * runtime `@hocuspocus/provider` dep.
+ */
 function createMockProvider(doc: Y.Doc): ConfigDocProvider & {
   emitSynced(): void;
   syncedListenerCount(): number;
@@ -61,16 +66,19 @@ describe('bindConfigDoc — current()', () => {
     doc.getText('source').insert(0, 'content:\n  dir: [unclosed');
     const binding = bindConfigDoc(provider, 'project');
 
+    // Should not throw; should return defaults.
     expect(() => binding.current()).not.toThrow();
     expect(binding.current().content.dir).toBe('.'); // default
     binding.dispose();
   });
 
   test('schema-failing YAML falls back to defaults', () => {
+    // theme must be a string enum, not a number.
     doc.getText('source').insert(0, 'appearance:\n  theme: 42\n');
     const binding = bindConfigDoc(provider, 'project');
 
     expect(() => binding.current()).not.toThrow();
+    // Defaults — appearance.theme is UNSET, so it's undefined.
     expect(binding.current().appearance?.theme).toBeUndefined();
     binding.dispose();
   });
@@ -94,6 +102,7 @@ describe('bindConfigDoc — patch()', () => {
     expect(result.appliedPaths).toEqual(['appearance.theme']);
     expect(result.effective.appearance?.theme).toBe('dark');
 
+    // Y.Text now holds serialized YAML.
     const ytext = doc.getText('source').toString();
     expect(ytext).toContain('appearance:');
     expect(ytext).toContain('theme: dark');
@@ -133,8 +142,11 @@ describe('bindConfigDoc — patch()', () => {
   test('rejects schema-invalid scalar; Y.Text untouched', () => {
     doc.getText('source').insert(0, 'appearance:\n  theme: dark\n');
     const before = doc.getText('source').toString();
+    // appearance.theme is scope: 'user'; bind to 'user' so the patch
+    // reaches schema validation instead of the scope-violation gate.
     const binding = bindConfigDoc(provider, 'user');
 
+    // theme must be 'light' | 'dark' | 'system'.
     const result = binding.patch({ appearance: { theme: 'midnight' as 'dark' } });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected err');
@@ -145,6 +157,7 @@ describe('bindConfigDoc — patch()', () => {
     expect(result.error.issues.length).toBeGreaterThan(0);
     expect(result.error.issues[0]?.path).toEqual(['appearance', 'theme']);
 
+    // Y.Text byte-equal to before — no mutation.
     expect(doc.getText('source').toString()).toBe(before);
     binding.dispose();
   });
@@ -156,6 +169,7 @@ describe('bindConfigDoc — patch()', () => {
     const result = binding.patch({ appearance: { theme: null } });
     expect(result.ok).toBe(true);
 
+    // appearance.theme is now absent → defaults to UNSET.
     const after = doc.getText('source').toString();
     expect(after).not.toContain('theme: dark');
     expect(binding.current().appearance?.theme).toBeUndefined();
@@ -163,15 +177,22 @@ describe('bindConfigDoc — patch()', () => {
   });
 
   test('self-heals from corrupt Y.Text — patch lands on a fresh doc, dropping the bad bytes', () => {
+    // Duplicate top-level keys is one of the few yaml@2 hard parse errors.
+    // Without self-heal this would lock the user out of the Settings pane —
+    // every patch fails YAML_PARSE because the existing content can't be
+    // round-tripped. Self-heal mirrors L3's revert-to-LKG semantics for
+    // the patch path.
     doc.getText('source').insert(0, 'theme: light\nappearance:\ntheme: light\n');
     const binding = bindConfigDoc(provider, 'project');
 
     const result = binding.patch({ content: { dir: 'docs' } });
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected self-heal recovery');
+    // Y.Text now contains only the patch — corrupt bytes dropped.
     const after = doc.getText('source').toString();
     expect(after).toContain('content:');
     expect(after).toContain('dir: docs');
+    // Duplicate `theme:` lines are gone.
     expect(after.match(/^theme:/gm)?.length ?? 0).toBe(0);
     binding.dispose();
   });
@@ -243,6 +264,7 @@ describe('bindConfigDoc — subscribe()', () => {
       received.push(c.appearance?.theme);
     });
 
+    // Simulate provider reconnect — content unchanged but synced fires.
     provider.emitSynced();
 
     expect(received).toEqual(['dark']);
@@ -287,6 +309,7 @@ describe('bindConfigDoc — hasSynced() / subscribeSynced()', () => {
     provider.emitSynced();
     expect(binding.hasSynced()).toBe(true);
 
+    // Repeated sync events do not flip the flag back.
     provider.emitSynced();
     expect(binding.hasSynced()).toBe(true);
 
@@ -304,6 +327,7 @@ describe('bindConfigDoc — hasSynced() / subscribeSynced()', () => {
     provider.emitSynced();
     expect(calls).toBe(1);
 
+    // Subsequent syncs do not re-fire latch listeners.
     provider.emitSynced();
     provider.emitSynced();
     expect(calls).toBe(1);
@@ -320,6 +344,7 @@ describe('bindConfigDoc — hasSynced() / subscribeSynced()', () => {
     binding.subscribeSynced(() => {
       calls += 1;
     });
+    // Not synchronous — mirrors `subscribe()` contract.
     expect(calls).toBe(0);
     await Promise.resolve();
     expect(calls).toBe(1);
@@ -363,6 +388,7 @@ describe('bindConfigDoc — hasSynced() / subscribeSynced()', () => {
     binding.subscribeSynced(() => {
       calls += 1;
     });
+    // Dispose synchronously between queueMicrotask and microtask drain.
     binding.dispose();
 
     await Promise.resolve();
@@ -408,10 +434,12 @@ describe('bindConfigDoc — dispose()', () => {
     binding.dispose();
     expect(provider.syncedListenerCount()).toBe(0);
 
+    // Subsequent Y.Text mutation does not leak listener invocations.
     let fired = false;
     binding.subscribe(() => {
       fired = true;
     });
+    // Direct Y.Text mutation (not through binding.patch).
     doc.getText('source').insert(0, 'content:\n  dir: docs\n');
     expect(fired).toBe(false); // listener cleared on dispose; new sub but observer detached
   });
@@ -425,6 +453,10 @@ describe('bindConfigDoc — dispose()', () => {
 
 describe('bindConfigDoc — project-local scope', () => {
   test('patch + current round-trip: writes and reads back through Y.Text', () => {
+    // Same shape as the project / user round-trips above — the binding does
+    // not enforce scope-as-constraint, so the contract is identical for the
+    // new third scope. Wire-level proof that callers can switch a binding
+    // from `'project'` to `'project-local'` with no behavior change.
     const binding = bindConfigDoc(provider, 'project-local');
     const result = binding.patch({ autoSync: { enabled: true } });
 
@@ -517,11 +549,19 @@ describe('bindConfigDoc — scope-violation gate', () => {
 
 describe('bindConfigDoc — multi-client / cross-process simulation (NR9 LWW)', () => {
   test('two simultaneous Y.Text replacements via Yjs delta sync — final state is one of the two', () => {
+    // Simulate two separate clients (A, B) each with their own bindings.
+    // Yjs character-level merge under concurrent full-text replacement is
+    // last-write-wins-ish at the character level; the final merged state
+    // must still be valid YAML (or the L3 persistence-hook reverts).
+    // We assert: (a) the final state is parseable; (b)
+    // the YAML is one of the two intended values, OR a CRDT-merged hybrid
+    // that still parses.
     const docA = new Y.Doc();
     const docB = new Y.Doc();
     const provA = createMockProvider(docA);
     const provB = createMockProvider(docB);
 
+    // Seed both with the same starting state.
     const seed = 'appearance:\n  theme: system\n';
     docA.getText('source').insert(0, seed);
     Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
@@ -529,17 +569,26 @@ describe('bindConfigDoc — multi-client / cross-process simulation (NR9 LWW)', 
     const bindingA = bindConfigDoc(provA, 'user');
     const bindingB = bindConfigDoc(provB, 'user');
 
+    // Two simultaneous patches on the same field with different values —
+    // exercises the convergence path when both clients write the same
+    // leaf concurrently.
     const resA = bindingA.patch({ appearance: { theme: 'dark' } });
     const resB = bindingB.patch({ appearance: { theme: 'light' } });
     expect(resA.ok).toBe(true);
     expect(resB.ok).toBe(true);
 
+    // Cross-sync.
     Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
     Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
 
+    // Both docs converge to the same Y.Text content.
     expect(docA.getText('source').toString()).toBe(docB.getText('source').toString());
 
+    // Final state may or may not be parseable depending on character merge.
+    // If parseable, it should reflect one or both patches; if not, the
+    // persistence-hook revert is the safety net at the server.
     const finalConfig = bindingA.current();
+    // At minimum, current() never throws.
     expect(finalConfig).toBeDefined();
 
     bindingA.dispose();
@@ -549,12 +598,17 @@ describe('bindConfigDoc — multi-client / cross-process simulation (NR9 LWW)', 
   });
 
   test('external Y.Text replacement (file-watcher path) fires subscribers', () => {
+    // Simulates applyExternalConfigChange: server-origin Y.Text
+    // replacement caused by an external CLI / hand-edit / MCP-from-other-
+    // session write. The binding's Y.Text observer must fire for the
+    // resulting update.
     const binding = bindConfigDoc(provider, 'user');
     const received: Array<unknown> = [];
     binding.subscribe((c) => {
       received.push(c.appearance?.theme);
     });
 
+    // Direct Y.Text mutation simulating server-origin update.
     const ytext = doc.getText('source');
     doc.transact(() => {
       ytext.insert(0, 'appearance:\n  theme: dark\n');

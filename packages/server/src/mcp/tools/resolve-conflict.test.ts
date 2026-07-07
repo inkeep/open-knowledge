@@ -195,6 +195,12 @@ describe('resolve_conflict MCP tool', () => {
     expect(result.content[0]?.text).toBe(HOCUSPOCUS_NOT_RUNNING_ERROR);
   });
 
+  // ─── RED: 'delete' strategy contract ─────────────────────────────────────
+  // Pins the MCP tool's input schema accepting `strategy: 'delete'`. Today
+  // the enum at resolve-conflict.ts is `['mine', 'theirs', 'content']`
+  // and the handler's args type union mirrors it — neither admits
+  // 'delete'. The fix must thread the new variant through the wire enum,
+  // input schema, handler type, and (server-side) ResolveStrategy.
   test('strategy=delete posts a body without content (DU "stay deleted" / UD "accept deletion")', async () => {
     const { server, registrations } = createCapturingServer();
     const fetchCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
@@ -224,6 +230,9 @@ describe('resolve_conflict MCP tool', () => {
     const { server, registrations } = createCapturingServer();
     register(server, makeDeps('http://localhost:4321'));
     const tool = getTool(registrations, 'resolve_conflict');
+    // Access the registered tool config's inputSchema. The strategy field
+    // MUST be a Zod enum that includes 'delete' once the fix lands. Today,
+    // .options is ['mine', 'theirs', 'content'].
     const inputSchema = (
       tool.config as unknown as {
         inputSchema?: { strategy?: { options?: readonly string[] } };

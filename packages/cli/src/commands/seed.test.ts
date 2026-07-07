@@ -43,6 +43,8 @@ describe('runSeed — happy path', () => {
       expect(existsSync(join(testDir, folder.path))).toBe(true);
     }
     expect(existsSync(join(testDir, 'log.md'))).toBe(true);
+    // Folder defaults now land at nested `<folder>/.ok/frontmatter.yml`
+    // (`config.yml folders:` write path retired).
     for (const folder of STARTER_FOLDERS) {
       const fmPath = join(testDir, folder.path, '.ok', 'frontmatter.yml');
       expect(existsSync(fmPath)).toBe(true);
@@ -62,6 +64,7 @@ describe('runSeed — happy path', () => {
     const result = await runSeed({ cwd: testDir, confirmStream: no() });
     expect(result.status).toBe('cancelled');
     expect(result.exitCode).toBe(0);
+    // No changes applied
     for (const folder of STARTER_FOLDERS) {
       expect(existsSync(join(testDir, folder.path))).toBe(false);
     }
@@ -85,16 +88,21 @@ describe('runSeed — --dry-run', () => {
     const result = await runSeed({ cwd: testDir, pack: 'worldbuilding', dryRun: true });
     expect(result.status).toBe('dry-run');
     const pack = STARTER_PACKS.worldbuilding;
+    // The dry-run message carries each folder's authored "why" (rationale), so
+    // the reader can adapt the pattern — not just a file tree to clone.
     for (const folder of pack.folders) {
       expect(result.message).toContain(folder.description);
     }
     expect(result.message.toLowerCase()).toContain('adapt'); // anti-clone framing
+    // …and still writes nothing.
     for (const folder of pack.folders) {
       expect(existsSync(join(testDir, folder.path))).toBe(false);
     }
   });
 
   test('previews in an uninitialized dir without requiring `ok init`', async () => {
+    // No scaffoldOkDir — the whole point of a dry-run is to preview a pack
+    // before adopting it. The prerequisite gate must not block this path.
     const result = await runSeed({ cwd: testDir, pack: 'knowledge-base', dryRun: true });
     expect(result.status).toBe('dry-run');
     expect(result.exitCode).toBe(0);
@@ -105,6 +113,8 @@ describe('runSeed — --dry-run', () => {
   });
 
   test('returns no-op (not dry-run) when the directory is already fully seeded', async () => {
+    // The already-seeded guard fires before the dry-run branch — pin that
+    // ordering so callers branching on `status === 'dry-run'` stay correct.
     scaffoldOkDir(testDir);
     await runSeed({ cwd: testDir, yes: true });
     const result = await runSeed({ cwd: testDir, dryRun: true });
@@ -144,6 +154,7 @@ describe('runSeed — --root', () => {
       expect(existsSync(join(testDir, folder.path))).toBe(false);
     }
     expect(existsSync(join(testDir, 'brain', 'log.md'))).toBe(true);
+    // Each starter folder under `brain/` gets its nested .ok/frontmatter.yml.
     for (const folder of STARTER_FOLDERS) {
       const fmPath = join(testDir, 'brain', folder.path, '.ok', 'frontmatter.yml');
       expect(existsSync(fmPath)).toBe(true);
@@ -156,6 +167,7 @@ describe('runSeed — --root', () => {
     writeFileSync(join(testDir, 'knowledge', '.keep'), '', 'utf-8');
     const result = await runSeed({ cwd: testDir, root: 'knowledge', yes: true });
     expect(result.status).toBe('applied');
+    // Pre-existing user file is untouched.
     expect(existsSync(join(testDir, 'knowledge', '.keep'))).toBe(true);
     for (const folder of STARTER_FOLDERS) {
       expect(existsSync(join(testDir, 'knowledge', folder.path))).toBe(true);
@@ -186,6 +198,7 @@ describe('runSeed — --root', () => {
     for (const folder of STARTER_FOLDERS) {
       expect(existsSync(join(testDir, 'work', folder.path))).toBe(true);
       expect(existsSync(join(testDir, 'personal', folder.path))).toBe(true);
+      // Each root has its own per-folder nested frontmatter.
       expect(existsSync(join(testDir, 'work', folder.path, '.ok', 'frontmatter.yml'))).toBe(true);
       expect(existsSync(join(testDir, 'personal', folder.path, '.ok', 'frontmatter.yml'))).toBe(
         true,
@@ -205,6 +218,7 @@ describe('runSeed — path argument', () => {
   test('operates on explicit path rather than cwd', async () => {
     scaffoldOkDir(testDir);
     const previousCwd = process.cwd();
+    // Move process cwd somewhere else to ensure explicit cwd wins
     const otherDir = mkdtempSync(join(tmpdir(), 'other-'));
     try {
       process.chdir(otherDir);

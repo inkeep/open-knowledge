@@ -4,9 +4,16 @@ import { Check, Copy } from 'lucide-react';
 import { isValidElement, type ReactNode, useState } from 'react';
 
 type CopyPromptProps = {
+  /**
+   * The prompt. The whole block is clickable; the flattened text content is what
+   * gets copied. Accepts ReactNode (not just string) because a prompt containing
+   * a bare URL gets GFM-autolinked into an <a> by MDX, so children arrive as
+   * nodes rather than a plain string.
+   */
   children: ReactNode;
 };
 
+/** Flatten React children (strings, autolinked `<a>`, etc.) to plain text. */
 function flattenText(node: ReactNode): string {
   if (typeof node === 'string') return node;
   if (typeof node === 'number') return String(node);
@@ -17,6 +24,12 @@ function flattenText(node: ReactNode): string {
   return '';
 }
 
+/**
+ * Click-to-copy prompt block. The entire element is a button, so clicking the
+ * text or the copy affordance copies the prompt to the clipboard and shows a
+ * brief "Copied" confirmation. Surfaces use Fumadocs `fd-*` tokens (light/dark);
+ * the accent comes from `--ok-accent`, which requires the `ok-overview` scope.
+ */
 export function CopyPrompt({ children }: CopyPromptProps) {
   const [copied, setCopied] = useState(false);
   const text = flattenText(children).trim();
@@ -26,7 +39,9 @@ export function CopyPrompt({ children }: CopyPromptProps) {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    } catch {
+      // Clipboard unavailable (insecure context or permission denied) — no-op.
+    }
   };
 
   return (

@@ -47,6 +47,8 @@ describe('findKnee', () => {
 
   describe('synthetic L-shaped curve (AC: ±1 axis-step)', () => {
     test('decreasing L: knee found at x=14 in cap-axis curve', () => {
+      // Replicates MAX_POOL sweep shape: latency drops sharply
+      // until x=14, then flattens. Knee should land at x=14 ±1 axis-step.
       const curve = [
         { x: 5, y: 100 },
         { x: 10, y: 60 },
@@ -56,11 +58,14 @@ describe('findKnee', () => {
         { x: 50, y: 28 },
       ];
       const k = findKnee(curve);
+      // ±1 axis-step from x=14 is [10, 20]; the knee MUST be in this range.
       expect([10, 14, 20]).toContain(k.x);
       expect(k.confidence === 'HIGH' || k.confidence === 'MEDIUM').toBe(true);
     });
 
     test('increasing concave: knee found at the elbow of a saturation curve', () => {
+      // Concave-increasing: think hit-rate as cap grows; knee is where
+      // hit-rate stops increasing meaningfully.
       const curve = [
         { x: 1, y: 0.1 },
         { x: 5, y: 0.4 },
@@ -75,6 +80,8 @@ describe('findKnee', () => {
     });
 
     test('linear curve (no knee) returns LOW confidence', () => {
+      // Truly linear: every diff is zero (after normalization). No
+      // qualifying inflection.
       const curve = [
         { x: 0, y: 0 },
         { x: 10, y: 10 },
@@ -90,6 +97,8 @@ describe('findKnee', () => {
 
   describe('confidence tiering by prominence', () => {
     test('sharp elbow yields HIGH confidence', () => {
+      // y drops 95% in the first segment; the diff curve has a single
+      // very prominent peak.
       const curve = [
         { x: 1, y: 1000 },
         { x: 2, y: 100 },
@@ -132,6 +141,8 @@ describe('findKnee', () => {
       ];
       const defaultK = findKnee(curve, { S: 1.0 });
       const strictK = findKnee(curve, { S: 3.0 });
+      // Strict S should never upgrade confidence vs default; the knee
+      // location is identical (S only modulates the band, not the argmax).
       expect(strictK.x).toBe(defaultK.x);
       const tier = { HIGH: 3, MEDIUM: 2, LOW: 1 } as const;
       expect(tier[strictK.confidence]).toBeLessThanOrEqual(tier[defaultK.confidence]);
@@ -140,6 +151,9 @@ describe('findKnee', () => {
 
   describe('PAV smoothing handles measurement noise', () => {
     test('noisy decreasing curve with one inversion still finds the knee', () => {
+      // Real sweep cells have ~10% replication noise; the curve dips
+      // briefly above its predecessor at x=20 (noise) but the trend
+      // is monotone-decreasing through the knee at x=14.
       const curve = [
         { x: 5, y: 100 },
         { x: 10, y: 65 },
@@ -153,6 +167,8 @@ describe('findKnee', () => {
     });
 
     test('smoothing off: same noisy curve may pick a different knee', () => {
+      // Without PAV, the noise inversion can move the knee — this test
+      // pins that the smoothing flag IS load-bearing, not theoretical.
       const curve = [
         { x: 5, y: 100 },
         { x: 10, y: 65 },
@@ -163,6 +179,10 @@ describe('findKnee', () => {
       ];
       const smoothed = findKnee(curve, { smooth: true });
       const raw = findKnee(curve, { smooth: false });
+      // Both should be valid knees but the algorithm should respond to
+      // the flag. We don't require them to differ on every curve, but the
+      // smoothed run should never have lower confidence than the raw one
+      // for noise-dominant fixtures.
       const tier = { HIGH: 3, MEDIUM: 2, LOW: 1 } as const;
       expect(tier[smoothed.confidence]).toBeGreaterThanOrEqual(tier[raw.confidence] - 1);
     });
@@ -178,6 +198,8 @@ describe('findKnee', () => {
         { x: 30, y: 30 },
         { x: 50, y: 28 },
       ];
+      // Same as the explicit-direction test above — must succeed without
+      // passing the flag.
       const k = findKnee(curve);
       expect([10, 14, 20]).toContain(k.x);
     });
@@ -237,6 +259,7 @@ describe('isotonicSmooth (PAV)', () => {
     ];
     const result = isotonicSmooth(pts, 'decreasing');
     expect(result[0]?.y).toBe(100);
+    // Indices 1 and 2 should be merged to (80 + 90) / 2 = 85.
     expect(result[1]?.y).toBe(85);
     expect(result[2]?.y).toBe(85);
     expect(result[3]?.y).toBe(60);
@@ -251,6 +274,7 @@ describe('isotonicSmooth (PAV)', () => {
       { x: 5, y: 10 },
     ];
     const result = isotonicSmooth(pts, 'decreasing');
+    // Indices 1-3 should merge to (50 + 70 + 60) / 3 = 60.
     expect(result[1]?.y).toBeCloseTo(60, 9);
     expect(result[2]?.y).toBeCloseTo(60, 9);
     expect(result[3]?.y).toBeCloseTo(60, 9);
@@ -274,7 +298,19 @@ describe('isotonicSmooth (PAV)', () => {
 });
 
 describe('findKnee — bimodal CDF input (US-010)', () => {
+  // The MOUNT methodology aggregates non-rejected mount-time samples
+  // across all profiles. The aggregated distribution may be bimodal —
+  // a cold-mount cluster (~30-50ms) plus a warm-path-fallback cluster
+  // (~200-300ms). On the CDF, this shows up as two visible knees.
+  // The NN clamp [3000, 10000] is the guardrail that catches a
+  // wrong-inflection pick: even if kneedle locks onto the wrong
+  // cluster boundary, the recommended cap stays within the perception
+  // band.
+
   test('returns an inflection point on a bimodal CDF', () => {
+    // Build a bimodal CDF: 50% of samples at ~30ms, 50% at ~250ms.
+    // The CDF rises steeply at x=30, plateaus, rises steeply again at
+    // x=250. Either inflection is acceptable kneedle behavior.
     const samples = [
       ...Array.from({ length: 50 }, (_, i) => 25 + i * 0.2), // 25..35ms
       ...Array.from({ length: 50 }, (_, i) => 245 + i * 0.2), // 245..255ms
@@ -284,11 +320,16 @@ describe('findKnee — bimodal CDF input (US-010)', () => {
     const knee = findKnee(cdf, { direction: 'increasing' });
     expect(Number.isFinite(knee.x)).toBe(true);
     expect(knee.x).toBeGreaterThan(0);
+    // The knee can land anywhere in the curve — the contract is just
+    // that it's finite and within the sample range.
     expect(knee.x).toBeLessThanOrEqual(255);
     expect(knee.x).toBeGreaterThanOrEqual(25);
   });
 
   test('handles a uniform distribution by returning LOW confidence', () => {
+    // A perfectly uniform distribution has no inflection. kneedle
+    // returns the midpoint with LOW confidence — the MOUNT
+    // methodology must detect this and fall back to NN ceiling.
     const samples = Array.from({ length: 100 }, (_, i) => i + 1);
     const cdf = samples.map((x, i) => ({ x, y: (i + 1) / samples.length }));
     const knee = findKnee(cdf, { direction: 'increasing' });

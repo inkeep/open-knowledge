@@ -27,14 +27,17 @@ describe('shortestImageRef — F8 4-case rewrite', () => {
   });
 
   test('case 4: cross-tree → ../.../<name>', () => {
+    // mdDir = docs, assetDir = images → ups=1, downs=[images]
     expect(shortestImageRef('images/photo.png', 'docs/guide.md')).toBe('../images/photo.png');
   });
 
   test('case 4b: disjoint deep trees', () => {
+    // mdDir = x/y/z, assetDir = a/b/c → ups=3, downs=[a,b,c]
     expect(shortestImageRef('a/b/c/img.png', 'x/y/z/doc.md')).toBe('../../../a/b/c/img.png');
   });
 
   test('partial overlap — shared ancestor only', () => {
+    // mdDir = shared/docs, assetDir = shared/images → ups=1, downs=[images]
     expect(shortestImageRef('shared/images/photo.png', 'shared/docs/guide.md')).toBe(
       '../images/photo.png',
     );

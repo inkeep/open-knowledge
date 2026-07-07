@@ -1,3 +1,9 @@
+/**
+ * One-shot auth query runners — `auth status` and `auth repos`.
+ *
+ * Both spawn the CLI via `process.execPath -e <script>` for deterministic
+ * testing without depending on the project CLI being installed.
+ */
 import { describe, expect, test } from 'bun:test';
 import { runAuthReposSubprocess, runAuthStatusSubprocess } from './auth-query.ts';
 
@@ -132,6 +138,7 @@ describe('runAuthStatusSubprocess', () => {
   test('uses a custom host when provided', async () => {
     const result = await runAuthStatusSubprocess({
       cliArgs: fixtureCli(`
+        // Echo the --host arg back to verify it was passed through.
         const host = process.argv[process.argv.indexOf('--host') + 1];
         console.log(JSON.stringify({type:'status', host, authenticated:false}));
       `),

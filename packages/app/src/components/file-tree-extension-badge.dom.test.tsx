@@ -1,3 +1,14 @@
+/**
+ * DOM test for the extension-badge processor.
+ *
+ * Mounting the full FileTree needs 8+ contexts plus Pierre's shadow DOM, so we
+ * construct a Pierre-shaped row DOM by hand
+ * — the row markup the badge processor observes in production — and exercise
+ * `applyExtensionBadges` directly. Covers the badge contract: `.md` files
+ * stay bare, every other extension gets an uppercase badge (no leading dot,
+ * no monospace), the basename loses its trailing dot, and folders /
+ * extension-less rows are ignored.
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup } from '@testing-library/react';
 import {
@@ -7,19 +18,41 @@ import {
   OK_FULLNAME_ROW_ATTR,
 } from './file-tree-extension-badge';
 
+// The badge processor is pure DOM (no React), but this test file uses the
+// jsdom substrate (`.dom.test.tsx`) so the substrate's contract
+// requires a runtime RTL import. `cleanup` is a no-op when RTL hasn't
+// rendered anything, but calling it after every test is the right hygiene
+// hook if a future case starts mounting React-wrapped fixtures.
+
 interface PierreRowInit {
+  /** `data-item-path` value — `notes/README.md`, `images/cat.jpg`, `folder/`, etc. */
   path: string;
+  /** Raw filename Pierre's `MiddleTruncate split="extension"` would render. */
   filename: string;
+  /** When set, emits a `[data-item-section="decoration"]` lane before action. */
   includeDecoration?: boolean;
+  /** When set, emits a `[data-item-section="action"]` lane (the `···` slot). */
   includeAction?: boolean;
+  /**
+   * Override the two truncate-segment texts. Pierre center-splits a dot-less
+   * name (`open-knowledge` → `open-kn` + `owledge`); `filename`'s
+   * extension-split heuristic can't model that, so folder cases pass the halves
+   * explicitly.
+   */
   centerSplit?: [string, string];
 }
 
+/**
+ * Build a row element that mirrors Pierre's render output for one item. The
+ * basename gets the dot per Pierre's `splitExtension` semantics (`AGENTS.md`
+ * → `AGENTS.` + `md`).
+ */
 function buildPierreRow(init: PierreRowInit): HTMLElement {
   const row = document.createElement('div');
   row.setAttribute('data-type', 'item');
   row.setAttribute('data-item-path', init.path);
 
+  // [data-item-section="content"] wraps the MiddleTruncate group.
   const contentSection = document.createElement('div');
   contentSection.setAttribute('data-item-section', 'content');
   row.appendChild(contentSection);
@@ -33,6 +66,7 @@ function buildPierreRow(init: PierreRowInit): HTMLElement {
   if (init.centerSplit) {
     [basenameText, extensionText] = init.centerSplit;
   } else {
+    // Split filename with Pierre's `splitExtension` semantics: dot stays in basename.
     const lastDot = init.filename.lastIndexOf('.');
     const splitIndex = lastDot >= 0 ? lastDot + 1 : init.filename.length;
     basenameText = init.filename.slice(0, splitIndex);
@@ -65,6 +99,8 @@ function buildTruncateSegment(
 ): HTMLElement {
   const segment = document.createElement('div');
   segment.setAttribute('data-truncate-segment-priority', priority);
+  // Inner [data-truncate-content="visible"] + [data-truncate-content="overflow"]
+  // mirror Pierre's OverflowContent component. Both carry the same raw text.
   for (const variant of ['visible', 'overflow'] as const) {
     const contentDiv = document.createElement('div');
     contentDiv.setAttribute('data-truncate-content', variant);
@@ -135,6 +171,11 @@ describe('applyExtensionBadges — extension badge injection', () => {
   });
 
   test('multi-dot basename: strips only the trailing dot, preserves interior dots', () => {
+    // Pierre's splitExtension puts the trailing dot in the basename segment:
+    // `report.2026.md` → `report.2026.` + `md`. The regex must trim only the
+    // trailing dot — an accidental change to `replace(/\./g, '')` would
+    // collapse `report.2026` to `report2026` and silently corrupt every
+    // version-stamped filename in the tree.
     const root = document.createElement('div');
     root.appendChild(
       buildPierreRow({
@@ -198,6 +239,7 @@ describe('applyExtensionBadges — extension badge injection', () => {
     expect(action).not.toBeNull();
     expect(badge).not.toBeNull();
 
+    // DOM order: decoration < badge < action
     const order = Array.from(row.children);
     expect(order.indexOf(decoration as Element)).toBeLessThan(order.indexOf(badge as Element));
     expect(order.indexOf(badge as Element)).toBeLessThan(order.indexOf(action as Element));
@@ -256,6 +298,7 @@ describe('applyExtensionBadges — extension badge injection', () => {
     const secondBadge = badgeOf(root.firstElementChild as HTMLElement);
     const secondBasenameText = basenameTextOf(root.firstElementChild as HTMLElement);
 
+    // Same DOM node, same content — no churn.
     expect(secondBadge).toBe(firstBadge);
     expect(secondBasenameText).toBe(firstBasenameText);
   });
@@ -272,7 +315,11 @@ describe('applyExtensionBadges — extension badge injection', () => {
     applyExtensionBadges(root);
     expect(badgeOf(row)?.textContent).toBe('MDX');
 
+    // Simulate rename: Pierre re-renders the row with new data-item-path.
     row.setAttribute('data-item-path', 'notes/ideas.md');
+    // The extension segment text also flips in Pierre's re-render, so the
+    // basename re-acquires the trailing dot if Pierre re-mounts the text node.
+    // (We don't simulate that here — we only need to assert the badge is removed.)
 
     applyExtensionBadges(root);
     expect(badgeOf(row)).toBeNull();
@@ -293,6 +340,7 @@ describe('applyExtensionBadges — extension badge injection', () => {
     const row = root.firstElementChild as HTMLElement;
     const badge = badgeOf(row);
     expect(badge).not.toBeNull();
+    // No action lane → badge is the last child of the row.
     expect(row.lastElementChild).toBe(badge);
   });
 
@@ -309,6 +357,10 @@ describe('applyExtensionBadges — extension badge injection', () => {
   });
 
   test('folder row: recomposes Pierre center-split into a single end-truncating full name', () => {
+    // Pierre center-splits a dot-less folder name (`open-knowledge` →
+    // `open-kn` + `owledge`), which reads as middle-truncation. The recompose
+    // writes the FULL name into the first segment and marks the row so CSS
+    // hides the second segment — so it ellipsizes at the end like files do.
     const root = document.createElement('div');
     root.appendChild(
       buildPierreRow({
@@ -325,6 +377,7 @@ describe('applyExtensionBadges — extension badge injection', () => {
     expect(row.hasAttribute(OK_FULLNAME_ROW_ATTR)).toBe(true);
     expect(row.hasAttribute(OK_EXT_ROW_ATTR)).toBe(false);
     expect(badgeOf(row)).toBeNull();
+    // First segment now carries the full folder name (visible + overflow copies).
     expect(basenameTextOf(row)).toBe('open-knowledge');
   });
 
@@ -349,6 +402,10 @@ describe('applyExtensionBadges — extension badge injection', () => {
   });
 
   test('flattened breadcrumb row (no middle truncate group) is left untouched', () => {
+    // Compact folders (`flattenEmptyDirectories: true`) render
+    // `[data-item-flattened-subitems]` instead of a middle truncate group, so
+    // the recompose finds no group and no-ops — the breadcrumb segments keep
+    // their own truncation, and the badge does not mis-fire.
     const root = document.createElement('div');
     const row = document.createElement('div');
     row.setAttribute('data-type', 'item');

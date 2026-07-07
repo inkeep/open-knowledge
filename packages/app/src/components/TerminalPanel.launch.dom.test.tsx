@@ -1,3 +1,19 @@
+/**
+ * Behavioral tests for the "Open in terminal" launch path in TerminalSession.
+ *
+ * The launch is BAKED into the PTY spawn: the session resolves the fixed
+ * `<bin> [<fixed-args>…] '<prompt>'` command (via a CLI preflight) and passes it
+ * as `terminal.create({ launchCommand })`, where the host runs it on the shell's
+ * `-c` so it never lands in the user's shell history. The command is therefore
+ * NEVER written through `terminal.input` (the old line-editor injection); these
+ * tests assert it rides the `create` call instead, carries no trailing `\r`, and
+ * is gated on a confirmed-present CLI. Claude's `claudePreflight` doubles as the
+ * launch-time MCP pre-approval check; codex/cursor/opencode probe `cliPreflight`.
+ * The escaper is the real core helper (not mocked) so the assertion pins the
+ * exact command string. xterm and the desktop bridge are mocked at the system
+ * boundary, mirroring `TerminalPanel.dom.test.tsx`.
+ */
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -33,10 +49,14 @@ class MockTerminal {
     this.onDataCb = cb;
     return { dispose() {} };
   });
+  // The panel subscribes to OSC 0/2 title changes at mount; this stub only needs
+  // to return a disposable (the launch tests don't exercise title forwarding).
   onTitleChange = mock((_cb: (title: string) => void) => ({ dispose() {} }));
   attachCustomKeyEventHandler = mock((h: (e: KeyboardEvent) => boolean) => {
     this.keyHandler = h;
   });
+  // Production attaches a wheel handler at mount; these launch tests never fire
+  // wheel events, so the no-op presence is all that's needed to avoid throwing.
   attachCustomWheelEventHandler = mock(() => {});
   constructor(options: Record<string, unknown>) {
     this.options = options;
@@ -126,6 +146,13 @@ function launchInputWrites(inputMock: ReturnType<typeof mock>): string[] {
     .filter((d) => typeof d === 'string' && /^(claude|codex|cursor-agent|opencode) /.test(d));
 }
 
+/**
+ * Claude's MCP pre-approval prefix (built from MCP_SERVER_NAME in core's
+ * terminal-launch.ts): the in-app launch carries `--settings` ahead of the
+ * prompt to pre-trust OK's project `.mcp.json` server — but ONLY when the
+ * preflight reports `mcpPreApprovable` (the project entry is verified as OK's
+ * own). Codex/Cursor never carry it, so this prefix is claude-only.
+ */
 const CLAUDE_PRE = `--settings '{"enabledMcpjsonServers":["open-knowledge"]}'`;
 
 describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', () => {
@@ -142,10 +169,15 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt, cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    // The exact command string: the MCP pre-approval flag, then the
+    // single-quote-wrapped prompt. The embedded `'` in "Let's" is escaped via the
+    // POSIX close-escape-reopen idiom. Crucially: NO trailing carriage return
+    // (that's a typed-into-the-shell artifact; a baked `-c` arg has none).
     expect(bakedLaunch(terminal.create)).toBe(
       `claude ${CLAUDE_PRE} 'Let'\\''s work on \`foo.md\` using OpenKnowledge.'`,
     );
     expect(bakedLaunch(terminal.create)).not.toContain('\r');
+    // The launch is never typed into the live shell (the history-pollution fix).
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });
 
@@ -154,6 +186,8 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    // No baked command — the broken `claude` is never run; the readiness banner
+    // gives the actionable not-installed message instead.
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     expect(launchInputWrites(terminal.input)).toEqual([]);
     await screen.findByText(/Claude Code \(claude\) isn't installed/);
@@ -169,6 +203,9 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test("does NOT pre-approve when the project MCP entry is not OK's own (mcpPreApprovable false)", async () => {
+    // Supply-chain gate: a shared/cloned project whose `open-knowledge` entry is
+    // foreign yields mcpPreApprovable:false, so the bake is bare and Claude's own
+    // trust prompt still fires at launch.
     const { bridge, terminal } = makeBridge(WIRED_FOREIGN_PROJECT);
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
@@ -178,15 +215,22 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('verifies pre-approval at LAUNCH time (the bake gates on the fresh preflight, not a stale snapshot)', async () => {
+    // The pre-approval probe runs immediately before the spawn, so the bake
+    // reflects the on-disk `.mcp.json` at launch time. Here it reports a foreign
+    // entry → bare bake, no pre-approval off any stale `true`.
     const { bridge, terminal } = makeBridge(WIRED_FOREIGN_PROJECT);
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(bakedLaunch(terminal.create)).toBe("claude 'hi'");
+    // The preflight ran before create gated the bake.
     expect(terminal.claudePreflight).toHaveBeenCalled();
   });
 
   test('a claude launch-preflight REJECTION spawns a plain shell + surfaces the banner (no command-not-found)', async () => {
+    // If the launch-time preflight IPC throws, presence is unconfirmed — suppress
+    // the bake so the terminal can't show a raw `command not found`, and surface
+    // the readiness banner so the user gets feedback rather than a silent no-op.
     const { bridge, terminal } = makeBridge();
     terminal.claudePreflight = mock(async () => {
       throw new Error('ipc boom');
@@ -200,6 +244,10 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('claude launch-time verdict UNKNOWN spawns a plain shell + surfaces the banner (unknown→not-found for display)', async () => {
+    // resolveLaunchCommand maps an `unknown` preflight to a not-found-for-display
+    // banner and suppresses the bake (no raw command-not-found, never a silent
+    // no-op). Guards the `fresh.claude === 'not-found' ? fresh : {...}` mapping —
+    // an inverted/widened ternary would either show no banner or a false one.
     const { bridge, terminal } = makeBridge({
       claude: 'unknown',
       mcp: 'needs-rewire',
@@ -255,6 +303,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'cursor', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    // Probed twice (initial + one re-probe) before deciding to suppress.
     expect(terminal.cliPreflight).toHaveBeenCalledTimes(2);
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     await screen.findByText(/Cursor \(cursor-agent\) isn't installed/);
@@ -288,6 +337,10 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('an adopted (rehydrated) session does NOT re-bake its launch', async () => {
+    // A reloaded launch tab carries both its survivor ptyId and its (stale) launch
+    // intent. Adoption reconnects the live shell; it must NOT re-issue the launch
+    // (the agent is already running in the adopted shell). So no fresh create and
+    // no baked command.
     const { bridge, terminal } = makeBridge(WIRED);
     render(
       <TerminalPanel
@@ -306,6 +359,11 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('a FAILED adoption (survivor gone) falls through to a plain shell — does NOT re-bake the launch', async () => {
+    // adoptPtyId is set but the survivor exited before this mount, so adopt is
+    // refused and the mount falls through to create. The `adoptPtyId === null`
+    // guard means resolveLaunchCommand is NOT called — the original launch must
+    // not be silently re-issued on a reconnect attempt. So create spawns a plain
+    // shell (no launchCommand) and nothing is baked.
     const { bridge, terminal } = makeBridge(WIRED);
     terminal.adopt = mock(
       async (): Promise<{ ok: true; replay: string } | { ok: false; reason: string }> => ({
@@ -323,6 +381,9 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
 
     await waitFor(() => expect(terminal.adopt).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    // Fell through to a plain shell — no baked launch command, and nothing typed
+    // into the shell. (The post-attach readiness probe still runs here, since this
+    // is now just a plain tab — resolveLaunchCommand never owned readiness.)
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });

@@ -8,10 +8,15 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 
+/** Regex to capture list-item prefix: leading whitespace + marker + optional task marker. */
 const LIST_PREFIX_RE = /^(\s*(?:[-*+]|\d+[.)]) (?:\[[ x]\] )?)/;
 
 const delMark = Decoration.mark({ class: 'cm-del' });
 
+// --list-hang feeds the .cm-line additive-calc that owns per-line indent
+// (!important); without it the base padding overrides the standalone
+// .cm-table-row rule while its negative text-indent still applies, pulling
+// table lines ~2ch left of prose. Same mechanism as .cm-list-item below.
 const tableHeaderLine = Decoration.line({
   class: 'cm-table-header',
   attributes: { style: '--list-hang: 2ch' },
@@ -21,6 +26,7 @@ const tableRowLine = Decoration.line({
   attributes: { style: '--list-hang: 2ch' },
 });
 
+/** Count leading ASCII spaces in a string. Tabs count as 4 visual columns. */
 function countLeadingIndent(text: string): number {
   let indent = 0;
   for (const ch of text) {
@@ -31,6 +37,22 @@ function countLeadingIndent(text: string): number {
   return indent;
 }
 
+/**
+ * Resolve `[fmStartLine, fmEndLine]` (1-indexed, inclusive) when the document
+ * begins with a YAML frontmatter fence (`---\n…\n---`). Returns `null` when
+ * there is no FM region.
+ *
+ * Decorations inside the FM region are skipped — markdown-list and
+ * markdown-table parsing fires on YAML lines like `  - characters` and
+ * `| col |`, but those aren't markdown constructs. The list-item decoration's
+ * negative `text-indent` (`.cm-list-item` in globals.css) clips the leading
+ * YAML indent into negative-x and makes `  - foo` render flush-left.
+ */
+
+// Line-scoped shape of the fence contract, sourced from core so the FM
+// region the user sees styled as YAML matches what the bridge recognizes by
+// construction (no local regex copy to drift). Re-exported for
+// SourceEditor's outline-navigation FM skip.
 import { FM_FENCE_LINE_RE } from '@inkeep/open-knowledge-core';
 
 export { FM_FENCE_LINE_RE };
@@ -67,7 +89,14 @@ export function buildDecorationsForRanges(
       from,
       to,
       enter(node) {
+        // Skip every decoration class for nodes that fall inside the YAML
+        // frontmatter region. The lezer-markdown parser still tokenizes
+        // `  - foo` as a ListItem, but the visual indent + hanging-indent
+        // semantics of `.cm-list-item` (and the list/table/code styling
+        // siblings) don't apply to YAML — applying them clips leading
+        // whitespace into negative-x and makes the line render flush-left.
         if (insideFrontmatter(node.from)) return;
+        // Strikethrough — apply .cm-del to content between ~~ delimiters
         if (node.name === 'Strikethrough') {
           let contentFrom = node.from;
           let contentTo = node.to;
@@ -89,6 +118,10 @@ export function buildDecorationsForRanges(
           return false;
         }
 
+        // List hanging-indent — apply .cm-list-item to the first line of each ListItem.
+        // Do NOT `return false` here: nested lists have ListItem descendants, and
+        // inline content (Strikethrough, etc.) lives inside the item's Paragraph —
+        // both need their own handler fires.
         if (node.name === 'ListItem') {
           const line = state.doc.lineAt(node.from);
           const match = LIST_PREFIX_RE.exec(line.text);
@@ -101,7 +134,13 @@ export function buildDecorationsForRanges(
           return;
         }
 
+        // Fenced code — wrap-preserve-indent on content lines.
+        // The language token (CodeInfo) stays as plain source text; syntax
+        // highlighting for the language comes from the codeLanguages
+        // allowlist (packages/app/src/editor/markdown-code-languages.ts).
         if (node.name === 'FencedCode') {
+          // Code body lines — apply .cm-fenced-code-line with --line-indent.
+          // Skip the opening fence line and closing fence line.
           const startLine = state.doc.lineAt(node.from);
           const endLine = state.doc.lineAt(node.to);
           for (let lineNum = startLine.number + 1; lineNum < endLine.number; lineNum++) {
@@ -117,6 +156,10 @@ export function buildDecorationsForRanges(
           return false;
         }
 
+        // Tables — hanging indent only. Wrapped row continuation aligns under
+        // cell content (not under `|`). NO background, border, accent bar,
+        // cell bands, or font-size/line-height change — explicit scope
+        // boundary.
         if (node.name === 'TableHeader') {
           const line = state.doc.lineAt(node.from);
           decorations.push(tableHeaderLine.range(line.from));
@@ -128,6 +171,10 @@ export function buildDecorationsForRanges(
           return false;
         }
         if (node.name === 'TableDelimiter' && node.node.parent?.name === 'Table') {
+          // The `|---|---|` separator row — a TableDelimiter whose parent is
+          // Table directly (not TableHeader/TableRow). Inline `|` characters
+          // inside rows are also TableDelimiters but their parent is the row,
+          // so the parent check filters them out.
           const line = state.doc.lineAt(node.from);
           decorations.push(tableRowLine.range(line.from));
           return false;

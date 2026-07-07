@@ -8,6 +8,10 @@ import { ObsidianIcon } from './obsidian';
 import { OpenClawIcon } from './openclaw';
 import { OpenCodeIcon } from './opencode';
 
+// Brand logos addressable from `meta.json` / page frontmatter via the
+// `custom/<Name>` icon string (resolved in `src/lib/source.ts`). Each entry is a
+// monochrome `currentColor` mark sized 24×24 to match Lucide, so it inherits the
+// sidebar text color and brightens on hover like every other nav icon.
 export const brandIcons = {
   Claude: ClaudeIcon,
   Cursor: CursorIcon,

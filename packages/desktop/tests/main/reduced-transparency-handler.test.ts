@@ -58,6 +58,10 @@ describe('applyReducedTransparency — disable path (reduced=true)', () => {
   });
 
   test('a window stub without isDestroyed does not throw (optional-chain guard)', () => {
+    // BrowserWindowVibrancyTarget.isDestroyed is optional; the source guards
+    // with `win.isDestroyed?.()`. Pin that the optional chain holds for a
+    // window that omits the method entirely — dropping the `?.` would throw
+    // TypeError mid-loop and abort vibrancy for every remaining window.
     const setVibrancy = mock(() => {});
     const win: BrowserWindowVibrancyTarget = {
       setVibrancy: setVibrancy as unknown as (mat: 'sidebar' | 'window' | null) => void,
@@ -155,11 +159,17 @@ describe('applyReducedTransparency — diagnostic logging', () => {
     applyReducedTransparency(deps, true);
 
     const parsed = JSON.parse(warn.mock.calls[0]?.[0] as unknown as string);
+    // windowCount is "successfully applied", not "all non-destroyed" — the
+    // destroyed window lands in destroyedCount so the partition stays complete.
     expect(parsed.windowCount).toBe(1);
     expect(parsed.destroyedCount).toBe(1);
   });
 
   test('summary partition is complete: all counters sum to getAllWindows().length', () => {
+    // Pins the contract the source comment documents — applied + skipped +
+    // failed + destroyed accounts for every window iterated. Guards a future
+    // compact-log change that drops a zero-valued counter and silently breaks
+    // the completeness operators rely on to tell convergence from failure.
     const a = makeWindow();
     const b = makeWindow({ destroyed: true });
     const warn = mock(() => {});
@@ -218,6 +228,14 @@ describe('applyReducedTransparency — narrow dep surface (STOP rules)', () => {
 });
 
 describe('applyReducedTransparency — per-window throw isolation', () => {
+  // setVibrancy is at a real trust boundary (Electron native NSVisualEffectView
+  // call). The isDestroyed guard handles the common race, but a throw can
+  // still surface — the destroy event can fire between the guard and the
+  // native call on a fast shutdown, and Electron may surface unexpected
+  // native errors. Without a per-window try/catch, one throw aborts the
+  // whole loop: earlier windows have toggled vibrancy, later windows are
+  // untouched, and the diagnostic warn never fires because it follows the
+  // loop. The guard isolates each call.
   function makeThrowingWindow(): WindowFixture {
     const error = new Error('setVibrancy: window destroyed');
     const setVibrancy = mock(() => {
@@ -264,6 +282,7 @@ describe('applyReducedTransparency — per-window throw isolation', () => {
 
     applyReducedTransparency(deps, true);
 
+    // Two warns: one per-window failure + the summary `applied` line.
     const lines = warn.mock.calls.map((call) => JSON.parse(call[0] as unknown as string));
     const failed = lines.find((l) => l.event === 'reduced-transparency-window-failed');
     expect(failed).toBeDefined();
@@ -285,12 +304,16 @@ describe('applyReducedTransparency — per-window throw isolation', () => {
     const lines = warn.mock.calls.map((call) => JSON.parse(call[0] as unknown as string));
     const summary = lines.find((l) => l.event === 'reduced-transparency-applied');
     expect(summary?.windowCount).toBe(1);
+    // The summary partition must be complete: a thrown-and-caught window lands
+    // in failedCount, not in the applied/skipped buckets — so a degraded window
+    // is distinguishable from the healthy converged state.
     expect(summary?.skippedCount).toBe(0);
     expect(summary?.failedCount).toBe(1);
   });
 
   test('per-window failure warn carries the window id for attribution', () => {
     const a = makeWindow();
+    // A throwing window that also exposes a stable id, as real BrowserWindows do.
     const setVibrancy = mock(() => {
       throw new Error('setVibrancy: native failure');
     });
@@ -316,6 +339,10 @@ describe('applyReducedTransparency — per-window throw isolation', () => {
 });
 
 describe('applyReducedTransparency — per-window idempotence memo (flicker guard)', () => {
+  // The memo is module-level and keyed on window object identity. Each test
+  // mints fresh window stubs, so memoized state never leaks across tests — but
+  // WITHIN a test, reusing the same stub across calls is what exercises the
+  // skip path that collapses the N² theme-change re-apply burst.
   function summaries(warn: ReturnType<typeof mock>) {
     return warn.mock.calls
       .map((call) => JSON.parse(call[0] as unknown as string))
@@ -331,6 +358,8 @@ describe('applyReducedTransparency — per-window idempotence memo (flicker guar
       warn,
     };
 
+    // Second apply with the same value is the redundant theme-change re-apply
+    // that used to rebuild the NSVisualEffectView and flicker the chrome.
     applyReducedTransparency(deps, false);
     applyReducedTransparency(deps, false);
 
@@ -362,6 +391,7 @@ describe('applyReducedTransparency — per-window idempotence memo (flicker guar
     const b = makeWindow();
     const warn = mock(() => {});
 
+    // a is present for the first toggle; b opens before the second.
     applyReducedTransparency(
       { getAllWindows: () => [a.win], defaultVibrancy: 'sidebar', warn },
       true,
@@ -371,6 +401,7 @@ describe('applyReducedTransparency — per-window idempotence memo (flicker guar
       true,
     );
 
+    // a already at null → skipped on the second pass; b is new → applied once.
     expect(a.setVibrancy).toHaveBeenCalledTimes(1);
     expect(b.setVibrancy).toHaveBeenCalledTimes(1);
     expect(b.setVibrancy.mock.calls[0]).toEqual([null]);
@@ -394,6 +425,11 @@ describe('applyReducedTransparency — per-window idempotence memo (flicker guar
   });
 
   test('a window that throws is not memoized — the next apply retries instead of skipping', () => {
+    // Contract: lastAppliedMaterial.set runs only AFTER a successful setVibrancy,
+    // so a transient native failure leaves the window unmemoized and the next
+    // pass re-attempts it. Moving the .set before setVibrancy (or into the catch)
+    // would permanently skip a window that hit one transient error — this test
+    // is the regression pin for that.
     let calls = 0;
     const setVibrancy = mock(() => {
       calls += 1;

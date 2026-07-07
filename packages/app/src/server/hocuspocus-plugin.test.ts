@@ -45,7 +45,26 @@ describe('resolveContentConfig', () => {
   });
 });
 
+/**
+ * Middleware-registration ordering contract.
+ *
+ * The plugin's `configureServer` registers the asset-serve middleware
+ * SYNCHRONOUSLY (front of chain, BEFORE Vite installs its own internal
+ * middlewares). This is load-bearing: the asset middleware's 404 guard must run
+ * before Vite's `spaFallbackMiddleware`, otherwise unknown asset URLs return
+ * 200 + text/html instead of 404, and asset URLs that exist return
+ * the SPA shell instead of the asset bytes (naturalWidth = 0,
+ * application/pdf becomes text/html).
+ *
+ * A post-hook approach (`return () => server.middlewares.use(...)`) would
+ * land the middlewares AFTER `spaFallbackMiddleware`, breaking those guards.
+ * This test pins the synchronous-registration contract.
+ */
 describe('hocuspocusPlugin.configureServer middleware ordering', () => {
+  // Save + restore `OK_TEST_CONTENT_DIR` so this test does not leak into
+  // sibling tests in the same `bun test` process (any later test that
+  // dynamically re-imports `hocuspocus-plugin.ts` would otherwise pick up a
+  // stale path pointing at a deleted tmpdir).
   let origEnv: string | undefined;
   beforeEach(() => {
     origEnv = process.env.OK_TEST_CONTENT_DIR;
@@ -53,6 +72,12 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
   afterEach(() => {
     if (origEnv !== undefined) process.env.OK_TEST_CONTENT_DIR = origEnv;
     else delete process.env.OK_TEST_CONTENT_DIR;
+    // `mock.module(...)` writes process-global module state in bun:test and
+    // does NOT auto-restore between test files. Sibling tests in this codebase
+    // document the leak explicitly (`server-factory.test.ts`,
+    // `agent-presence.test.ts`, `provider-pool.test.ts`,
+    // `local-op-security.test.ts`). Restore to keep the global module table
+    // clean for any test that may later import `@inkeep/open-knowledge-server`.
     mock.restore();
   });
 
@@ -60,6 +85,13 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
     const testContentDir = mkTmp();
     process.env.OK_TEST_CONTENT_DIR = testContentDir;
 
+    // Spy on `createAssetServeMiddleware` to verify the asset middleware was
+    // actually constructed (and not, e.g., silently skipped by a regression).
+    // The inner asset fn counts its invocations so the bypass-path assertions
+    // below can confirm bypass routes never reach it. Doesn't depend on JS
+    // NamedEvaluation (which `return (req, res, next) => {…}` does NOT
+    // trigger — `.name` on the real returned fn is `''`, not
+    // `'assetServeMiddleware'`).
     let innerAssetCalls = 0;
     const innerAssetFn = (..._args: unknown[]) => {
       innerAssetCalls += 1;
@@ -92,6 +124,9 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
       updateServerLockPort: () => {},
     }));
 
+    // Re-import the plugin under the mock with a cache-busting query so the
+    // mock applies even when bun:test has previously loaded the module in
+    // this process.
     const { hocuspocusPlugin } = await import('./hocuspocus-plugin.ts?ordering-test');
 
     const httpServer = new EventEmitter() as EventEmitter & {
@@ -118,12 +153,22 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
     // biome-ignore lint/suspicious/noExplicitAny: minimal Vite ViteDevServer stub for the structural assertion
     const result = await (plugin.configureServer as any).call(plugin, viteServerStub);
 
+    // No post-hook returned — both middlewares are registered synchronously.
+    // (Returning a function would defer registration to AFTER Vite's internal
+    // middlewares, which would let `spaFallbackMiddleware` win for asset URLs.)
     expect(result).toBeUndefined();
 
+    // Asset middleware factory was called exactly once.
     expect(createAssetServeMiddlewareSpy).toHaveBeenCalledTimes(1);
 
+    // Two middlewares were registered synchronously: the asset wrapper +
+    // the api handler.
     expect(registered).toHaveLength(2);
 
+    // The first middleware is the asset wrapper. Drive it with Vite-internal
+    // paths; the wrapper must call next() (bypass) instead of the inner
+    // factory-returned fn — otherwise the asset middleware would 404 paths
+    // Vite owns (regressing the original boot-blank-page bug).
     const assetWrapper = registered[0];
     if (!assetWrapper) throw new Error('asset wrapper not registered');
 
@@ -144,8 +189,12 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
       expect(nextCalled, `bypass should fire for ${bypassUrl}`).toBe(true);
     }
 
+    // The inner asset fn must NOT have been called for any bypass route.
     expect(innerAssetCalls).toBe(0);
 
+    // Non-bypassed paths DO delegate to the inner asset fn. Includes query
+    // strings that contain `import` / `html-proxy` as substrings but not as
+    // bare flags — the wrapper must use boundary-aware param matching.
     for (const nonBypassUrl of [
       '/photo.png',
       '/photo.png?reimport=1',

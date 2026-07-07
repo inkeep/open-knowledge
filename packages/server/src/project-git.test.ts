@@ -106,6 +106,11 @@ describe('ensureProjectGit', () => {
   });
 
   test('falls back to a usable git when bare git is unavailable on PATH', async () => {
+    // Bare git off PATH (PATH=/nonexistent) is not "git unavailable": the
+    // setup-boundary preflight resolves the host's git at a detectGit() fallback
+    // path and invokes THAT binary, closing the check/use divergence — so the op
+    // succeeds. ("git unavailable *everywhere* → recoverable typed error" is
+    // owned by project-git.preflight.test.ts.)
     const projectRoot = resolve(tmpDir, 'no-git-binary');
     mkdirSync(projectRoot, { recursive: true });
 
@@ -118,6 +123,7 @@ describe('ensureProjectGit', () => {
       process.env.PATH = originalPath;
     }
 
+    // Init ran via the fallback git, so .git/HEAD exists.
     expect(existsSync(resolve(projectRoot, '.git/HEAD'))).toBe(true);
   });
 
@@ -125,6 +131,14 @@ describe('ensureProjectGit', () => {
     const projectRoot = resolve(tmpDir, 'partial');
     mkdirSync(projectRoot, { recursive: true });
 
+    // Create a fake `git` binary that creates .git/ but NOT .git/HEAD.
+    // Simulates a defensively-checked post-condition failure. It must also pass
+    // the setup-boundary preflight, so it answers `--version` with a valid,
+    // >= MIN_GIT_VERSION string — making detectGit() resolve THIS git (PATH
+    // source) and the op invoke it (rather than falling back to the host git).
+    // The `2.45.0` below is pinned ABOVE MIN_GIT_VERSION (2.31) on purpose: if
+    // the floor is ever bumped past 2.45, bump this stub too, or detectGit()
+    // trips GitTooOldError before the partial-init path under test.
     const fakeBin = resolve(tmpDir, 'fake-bin');
     mkdirSync(fakeBin);
     const fakeGit = resolve(fakeBin, 'git');
@@ -135,6 +149,12 @@ describe('ensureProjectGit', () => {
     );
     await execFileAsync('chmod', ['+x', fakeGit]);
 
+    // The preflight must resolve to THIS stub for the partial-init path to fire.
+    // PATH narrowing makes the `git --version` probe deterministically hit the
+    // stub (2.45.0), but resolveOnPath('git') resolves against the runtime's
+    // startup PATH snapshot (Bun ignores a mid-process PATH mutation for a
+    // no-`env` spawnSync) and would otherwise return the host git. Seed the
+    // resolveOnPath memo so detectGit().resolvedPath IS the stub.
     __resetResolveOnPathCacheForTests();
     __seedResolveOnPathCacheForTests('git', fakeGit);
     const originalPath = process.env.PATH;

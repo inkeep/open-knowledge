@@ -60,6 +60,7 @@ describe('interpretClaudeProbe', () => {
     expect(interpretClaudeProbe(127)).toBe('not-found');
   });
   test('null (probe could not run) → unknown, NOT not-found', () => {
+    // A flaky probe must not masquerade as a definitive "not installed".
     expect(interpretClaudeProbe(null)).toBe('unknown');
   });
 });
@@ -79,6 +80,7 @@ describe('cliProbeArgs', () => {
   test('builds the login-interactive `command -v <bin>` argv for any binary', () => {
     expect(cliProbeArgs('codex')).toEqual(['-l', '-i', '-c', 'command -v codex']);
     expect(cliProbeArgs('cursor-agent')).toEqual(['-l', '-i', '-c', 'command -v cursor-agent']);
+    // The claude argv is just the generic builder applied to `claude`.
     expect(CLAUDE_PROBE_ARGS).toEqual(cliProbeArgs('claude'));
   });
 });
@@ -165,6 +167,7 @@ describe('runLoginShellProbe', () => {
     const { child, wasKilled } = makeFakeChild();
     const { timers, fireTimeout } = makeFakeTimers();
     const p = runLoginShellProbe(() => child, 'zsh', timers, 5000);
+    // Shell never exits — fire the injected timeout.
     fireTimeout();
     expect(await p).toBe(null);
     expect(wasKilled()).toBe(true);
@@ -200,6 +203,9 @@ describe('resolveClaudeReadiness', () => {
   });
 
   test('project pre-approval is independent of global wiring (foreign project entry → false)', async () => {
+    // The supply-chain case: global ~/.claude.json is wired, but the PROJECT's
+    // own `open-knowledge` entry is foreign, so pre-approval is withheld and
+    // Claude's trust prompt stays in place.
     const r = await resolveClaudeReadiness({
       probeClaude: () => Promise.resolve(0),
       classifyMcpEntry: () => 'present',
@@ -277,6 +283,7 @@ describe('resolveCliOnPath', () => {
 
 describe('resolveCliInstalledMap', () => {
   test('maps each CLI probe exit code to installed=true iff the probe exited 0', async () => {
+    // A distinct verdict per CLI: on-PATH (0), absent (127), flaky/unknown (null).
     const codes: Record<TerminalCli, number | null> = {
       claude: 0,
       codex: 127,

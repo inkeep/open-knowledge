@@ -1,3 +1,16 @@
+/**
+ * command-palette-tag-search — pure-function tests for the `tag:`
+ * query parsing + filter ranking.
+ *
+ * Covers:
+ *   - mode discrimination (normal / tag-list / tag-docs)
+ *   - whitespace tolerance after the colon
+ *   - case sensitivity of tag-name matching
+ *   - hierarchical tag names with `/` separators
+ *   - prefix-first ranking, count-desc tiebreak, alphabetical tiebreak
+ *   - returns the full list (no cap — host CommandList scrolls)
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type { TagSummaryEntry } from '../editor/extensions/tag-suggestion.ts';
 import { filterTagList, parseTagPaletteQuery } from './command-palette-tag-search.ts';
@@ -66,6 +79,9 @@ describe('parseTagPaletteQuery — mode discrimination', () => {
   });
 
   test('case-sensitive tag-name match (mixed case stays in tag-list)', () => {
+    // Index has `Frontend` but user typed `tag:frontend` — the suffix
+    // doesn't match exactly, so we stay in tag-list mode (lets the
+    // picker show `Frontend` as a substring match).
     expect(parseTagPaletteQuery('tag:frontend', known('Frontend'))).toEqual({
       kind: 'tag-list',
       query: 'frontend',
@@ -80,6 +96,9 @@ describe('parseTagPaletteQuery — mode discrimination', () => {
   });
 
   test('empty known-set during loading stays in tag-list mode (no flicker)', () => {
+    // While the tag list is fetching, every `tag:foo` query lands in
+    // tag-list mode so the picker can show a loading state instead of
+    // briefly hopping to tag-docs and finding zero matches.
     expect(parseTagPaletteQuery('tag:frontend', known())).toEqual({
       kind: 'tag-list',
       query: 'frontend',

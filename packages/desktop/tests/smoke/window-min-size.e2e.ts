@@ -1,3 +1,26 @@
+/**
+ * Runtime verification that Electron actually applies the `minWidth` /
+ * `minHeight` configured on the Editor and Navigator BrowserWindow
+ * constructors. The Bun-native unit test in
+ * `src/main/window-min-size.test.ts` pins the source-code wiring; this
+ * smoke test proves Electron honors that wiring at runtime by reading
+ * `BrowserWindow.getMinimumSize()` from main-process context.
+ *
+ * Pattern mirrors `navigator-return.e2e.ts`:
+ *   - Seed a tmp HOME with `lastOpenedProject` so the Editor window opens
+ *     first (Navigator stays closed).
+ *   - Launch with `--user-data-dir=<tmpHome>/electron-userdata`.
+ *   - Find Editor window, read its `getMinimumSize()`.
+ *   - Trigger Navigator via `window.okDesktop?.navigator.open()` from the
+ *     editor renderer.
+ *   - Find Navigator window, read its `getMinimumSize()`.
+ *
+ * Skip gates (same as the rest of the smoke suite):
+ *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in.
+ *   - `process.platform !== 'darwin'` — darwin-only.
+ *   - `out/main/index.js` missing — `bun run build:desktop` must have run.
+ */
+
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -103,6 +126,9 @@ interface MinSizeProbe {
 async function readMinSizeFor(app: ElectronApplication, page: Page): Promise<MinSizeProbe> {
   const winHandle: JSHandle = await app.browserWindow(page);
   return winHandle.evaluate((win: unknown) => {
+    // BrowserWindow types are not in scope inside evaluate's V8 context, but
+    // getMinimumSize() / isResizable() are runtime methods on the BrowserWindow
+    // wrapper Playwright hands back. The cast is local to this evaluate.
     const w = win as { getMinimumSize: () => [number, number]; isResizable: () => boolean };
     return { minSize: w.getMinimumSize(), resizable: w.isResizable() };
   });
@@ -123,6 +149,7 @@ test.describe('BrowserWindow min-size smoke', () => {
     const app = await launchApp(tmpHome);
     captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
 
+    // --- Editor ---
     const editor = await findWindow(app, 'editor');
     const editorProbe = await readMinSizeFor(app, editor);
     expect(editorProbe.resizable).toBe(true);
@@ -131,6 +158,9 @@ test.describe('BrowserWindow min-size smoke', () => {
       WINDOW_MIN_SIZE.EDITOR.height,
     ]);
 
+    // --- Navigator ---
+    // Trigger from the editor renderer; Navigator stays closed otherwise
+    // because `lastOpenedProject` was seeded.
     await editor.evaluate(async () => {
       await window.okDesktop?.navigator.open();
     });

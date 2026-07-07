@@ -1,3 +1,12 @@
+/**
+ * Tests for the typing burst detector substrate.
+ *
+ * The wire-site origin gate (drop programmatic / sync transactions) is
+ * documented in the module docstring and exercised by the wire-site
+ * tests in TiptapEditor.test.ts / SourceEditor.test.ts. This file pins
+ * the substrate behavior: per-burst settle, debounce semantics, mark
+ * + histogram emission, multiple-detector isolation.
+ */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { getCollector, getHistogramSnapshot } from '../lib/perf/collector';
@@ -8,6 +17,7 @@ const hadWindow = typeof (globalThis as { window?: unknown }).window !== 'undefi
 
 beforeEach(() => {
   if (!hadWindow) (globalThis as unknown as { window: unknown }).window = globalThis;
+  // Tight debounce for fast assertions.
   window.__okPerfOverrides = { BURST_DEBOUNCE_MS: 50 };
   resetPerfOverrideWarnings();
   getCollector()?.reset();
@@ -39,6 +49,11 @@ describe('typing-burst-detector', () => {
     expect(props?.charsTyped).toBe(3);
     expect(props?.transactions).toBe(3);
     expect(typeof props?.burstDurationMs).toBe('number');
+    // longestTaskMs / cumulativePmUpdateStateMs / cumulativeRenderMs were
+    // trimmed from the payload — no current wire site supplies non-zero
+    // durationMs (see recordUserInput JSDoc in typing-burst-detector.ts).
+    // Pin the negation so a regression that re-adds them without wiring
+    // a real timing source is loud here.
     expect(props?.longestTaskMs).toBeUndefined();
     expect(props?.cumulativePmUpdateStateMs).toBeUndefined();
     expect(props?.cumulativeRenderMs).toBeUndefined();
@@ -91,6 +106,7 @@ describe('typing-burst-detector', () => {
     sampler.recordUserInput(1, 1);
     await wait(30);
     sampler.recordUserInput(1, 1);
+    // Expected: only one final settle ~50ms after the last input.
     await wait(120);
     const settled = getCollector()
       ?.marks.toArray()
@@ -103,6 +119,12 @@ describe('typing-burst-detector', () => {
   });
 
   test('detach() flushes a pending settle synchronously (no debounce wait)', async () => {
+    // Detach contract: if the user typed and then closed the doc / unmounted
+    // the editor before the debounce timer fired, the in-flight burst is
+    // flushed at detach time so short bursts stay visible in traces. A
+    // detach that DROPPED accumulated burst data would silently lose data
+    // for short typing sessions (the canonical "user typed a few chars and
+    // navigated away" case).
     const sampler = attachTypingBurstDetector({
       mode: 'WYSIWYG',
       docName: 'doc-cancel',
@@ -110,6 +132,7 @@ describe('typing-burst-detector', () => {
     });
     sampler.recordUserInput(1, 1);
     sampler.detach();
+    // No `await wait(...)` — detach must flush synchronously.
     const settled = getCollector()
       ?.marks.toArray()
       .filter(

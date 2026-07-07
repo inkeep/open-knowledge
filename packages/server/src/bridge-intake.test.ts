@@ -1,3 +1,33 @@
+/**
+ * Unit tests for the three sibling write-side primitives in
+ * `bridge-intake.ts` — the shared substrate of the Y.Text-is-truth
+ * contract (precedent #38). Each primitive owns one paired-write
+ * semantics and gets its own `describe` block here:
+ *
+ *   - `composeAndWriteRawBody` — file-watcher + agent-write semantics
+ *     (parse → ytext-first applyFastDiff → fragment derive). Item-
+ *     preserving via character-level DMP.
+ *   - `replaceRawBody` — rollback semantics (parse → ytext-first FULL
+ *     OVERWRITE delete/insert → fragment derive). The non-incremental
+ *     replacement is the load-bearing signal to Y.UndoManager that this
+ *     is a rollback, not an edit; DMP-based diff would over-preserve
+ *     Items the user explicitly rolled back.
+ *   - `deriveFragmentFromYtext` — agent-undo semantics (NO ytext write;
+ *     UM.undo() has already mutated ytext to the post-undo state, this
+ *     primitive only re-derives the fragment).
+ *
+ * Properties exercised across the three blocks:
+ *   - Y.Text receives raw bytes verbatim (no canonicalization)
+ *   - XmlFragment derives from `parse(body)` via updateYFragment
+ *   - Both writes are atomic inside the caller's outer transact
+ *   - Write order is ytext-first then fragment
+ *   - Whitespace-meaningful bytes (leading/trailing newlines) survive
+ *   - Source-form delimiters (`__foo__` not `**foo**`) survive
+ *   - No primitive calls doc.transact() itself (caller-wrap is mandatory)
+ *   - The primitive distinguishing-features hold under regression
+ *     (replaceRawBody = full overwrite; deriveFragmentFromYtext = zero
+ *     ytext writes)
+ */
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { normalizeBridge, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
@@ -55,6 +85,9 @@ describe('composeAndWriteRawBody — primitive contract', () => {
       composeAndWriteRawBody(doc, '---\n', 'agent');
     }, FILE_WATCHER_ORIGIN);
 
+    // Under contract, ytext holds the raw user form. `***` and `---` at doc
+    // start are tolerance-equal per normalizeBridge, but ytext bytes preserve
+    // what the user typed.
     expect(doc.getText('source').toString()).toBe('---\n');
   });
 
@@ -94,6 +127,7 @@ describe('composeAndWriteRawBody — primitive contract', () => {
 
     const xmlFragment = doc.getXmlFragment('default');
     expect(xmlFragment.length).toBeGreaterThan(0);
+    // Heading + paragraph (2 children).
     expect(xmlFragment.length).toBe(2);
   });
 
@@ -159,6 +193,10 @@ describe('composeAndWriteRawBody — primitive contract', () => {
   });
 
   test('does not call doc.transact() — caller-wrap is mandatory for atomicity', () => {
+    // If the primitive itself called transact, the inner transact would be
+    // observable as a separate transaction with a different origin. We don't
+    // see two transactions here — only the caller's outer one. Validated by
+    // counting transactions inside one caller-wrap block.
     let tx = 0;
     doc.on('beforeTransaction', () => {
       tx++;
@@ -172,6 +210,20 @@ describe('composeAndWriteRawBody — primitive contract', () => {
   });
 
   test('Y.Text is mutated before XmlFragment (write-order contract per FR-30)', () => {
+    // Pins the load-bearing write order documented at the top of
+    // bridge-intake.ts: applyFastDiff(ytext, ...) MUST run before
+    // updateYFragment(xmlFragment, ...). Under the contract (precedent #38,
+    // Y.Text-is-truth) a partial failure where applyFastDiff succeeds but
+    // updateYFragment then throws leaves ytext correct, and the next observer
+    // dispatch re-derives fragment via parse(ytext). Reversed order would
+    // leave fragment correct and ytext stale; Observer B Phase 1 on the
+    // next non-paired ytext mutation would re-derive fragment from STALE
+    // ytext bytes, silently reverting the write.
+    //
+    // Yjs's transaction.changed is a Map preserved in insertion order; the
+    // type that received its FIRST mutation first fires its observer first.
+    // Observers dispatch post-transaction in that order. If a future refactor
+    // reverses the call sequence, this test catches it via dispatch order.
     const events: string[] = [];
     const xmlFragment = doc.getXmlFragment('default');
     const ytext = doc.getText('source');
@@ -267,6 +319,8 @@ describe('replaceRawBody — primitive contract', () => {
   });
 
   test('preserves source-form delimiters (`__foo__` survives, `_bar_` survives, `~~~` fence survives)', () => {
+    // Same byte-preservation property as composeAndWriteRawBody: rollback
+    // is "restore historical bytes verbatim", NOT "canonicalize on write."
     doc.transact(() => {
       replaceRawBody(doc, '__foo__\n_bar_\n~~~js\nconst x=1;\n~~~\n');
     }, ROLLBACK_ORIGIN);
@@ -332,6 +386,9 @@ describe('replaceRawBody — primitive contract', () => {
   });
 
   test('Y.Text is mutated before XmlFragment (write-order contract per FR-30 D4)', () => {
+    // Same write-order property as composeAndWriteRawBody, applied to the
+    // delete+insert path. Reversed order would re-introduce the silent-
+    // revert failure mode the file-level rationale enumerates.
     const events: string[] = [];
     const xmlFragment = doc.getXmlFragment('default');
     const ytext = doc.getText('source');
@@ -372,6 +429,19 @@ describe('replaceRawBody — primitive contract', () => {
   });
 
   test('FULL OVERWRITE distinguishing-feature: total ytext bytes deleted+inserted equals new content length, not DMP-incremental', () => {
+    // The load-bearing distinction between replaceRawBody and
+    // composeAndWriteRawBody. File-level rationale (bridge-intake.ts):
+    //   "The full overwrite (vs applyFastDiff's incremental DMP) is the
+    //    load-bearing signal to Y.UndoManager that this is a non-
+    //    incremental replacement: rollback discards the user's recent
+    //    edits, so DMP-based Item preservation would defeat the rollback
+    //    by re-using Items the user explicitly rolled back."
+    //
+    // We assert the property by counting characters added in the second
+    // call's ytext.observe event. With incremental DMP (composeAndWrite),
+    // changing a single character would emit a delta of 1; with full
+    // overwrite, the delta covers ALL inserted chars (because the prior
+    // bytes were deleted first). The test pins the latter shape.
     doc.transact(() => {
       replaceRawBody(doc, '# Old long original heading\n\nbody\n');
     }, ROLLBACK_ORIGIN);
@@ -397,6 +467,10 @@ describe('replaceRawBody — primitive contract', () => {
     }, ROLLBACK_ORIGIN);
 
     ytext.unobserve(observer);
+    // Full overwrite shape: the entire new content is inserted, the entire
+    // prior content is deleted. An incremental DMP shape would show much
+    // smaller deltas (e.g. delete of "Old long original heading" and insert
+    // of "New short heading", retaining the surrounding shared bytes).
     expect(insertCharCount).toBe(newContent.length);
     expect(deleteCharCount).toBe('# Old long original heading\n\nbody\n'.length);
   });
@@ -439,6 +513,18 @@ describe('deriveFragmentFromYtext — primitive contract', () => {
   });
 
   test('writes ZERO bytes to Y.Text — distinguishing-feature pin', () => {
+    // Pins the load-bearing distinction between deriveFragmentFromYtext
+    // (used by agent-undo, which mutates ytext via UM.undo() BEFORE this
+    // primitive runs) and composeAndWriteRawBody / replaceRawBody (which
+    // both write ytext). The agent-undo flow MUST NOT double-mutate ytext
+    // — the UM has already consumed the inverse delta. A regression that
+    // accidentally writes ytext here would corrupt the UM stack and
+    // surface as a confusing far-from-cause failure (e.g. attribution
+    // drift on subsequent undo calls).
+    //
+    // Seed ytext with content the FILE_WATCHER_ORIGIN write so the
+    // ytext.observe() under deriveFragmentFromYtext counts only its own
+    // writes (not the seed transaction's).
     doc.transact(() => {
       composeAndWriteRawBody(doc, '# Heading\n\nbody\n', 'file-watcher');
     }, FILE_WATCHER_ORIGIN);

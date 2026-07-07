@@ -1,3 +1,9 @@
+/**
+ * Folder-picker helper tests — covers the OS dialog wiring AND the E2E test
+ * seam (`OK_DESKTOP_TEST_PICKED_PATH`). The seam is double-gated by
+ * `OK_DESKTOP_E2E_SMOKE=1` so a stray env var on a developer's shell can't
+ * bypass the real picker.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { promptForExistingFolder, resolvePickedPathForIndex } from './dialog-helpers.ts';
 

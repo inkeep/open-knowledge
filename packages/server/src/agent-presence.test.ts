@@ -30,6 +30,10 @@ function entry(over: Partial<AgentPresenceEntry> = {}): AgentPresenceEntry {
     color: '#D97757',
     currentDoc: 'foo.md',
     mode: 'writing',
+    // Use a wall-clock-relative default so `setPresence`'s opportunistic
+    // stale-entry eviction (BROADCASTER_EVICTION_MS = 20_000) doesn't drop
+    // test entries whose ts is "ancient" relative to Date.now(). Tests that
+    // want explicit ordering use small OFFSETS from this base.
     ts: Date.now(),
     ...over,
   };
@@ -49,6 +53,11 @@ describe('AgentPresenceBroadcaster', () => {
   });
 
   test('setPresence writes a keyed entry', () => {
+    // Construct the expected entry ONCE and reuse it for both the write and
+    // the assertion. `entry()` defaults `ts: Date.now()` — calling it twice
+    // can straddle a millisecond tick on slower CI runners, producing a
+    // spurious `toEqual` mismatch on the `ts` field (the only difference).
+    // Pinning to a single object eliminates the wall-clock race.
     const e = entry({ displayName: 'Claude', currentDoc: 'a.md' });
     broadcaster.setPresence('uuid-A', e);
     expect(broadcaster.getPresenceMap()).toEqual({ 'uuid-A': e });
@@ -129,6 +138,7 @@ describe('AgentPresenceBroadcaster', () => {
   });
 
   test('touchMode is a no-op when the agent has no existing entry (never creates half-populated)', () => {
+    // Seed another agent's entry so the map isn't trivially empty.
     broadcaster.setPresence('uuid-A', entry({ displayName: 'Claude', currentDoc: 'a.md' }));
 
     broadcaster.touchMode('uuid-ghost', 'writing');
@@ -161,6 +171,10 @@ describe('AgentPresenceBroadcaster', () => {
     expect(map['uuid-A'].icon).toBe('claude');
     expect(map['uuid-A'].color).toBe('#D97757');
     expect(map['uuid-A'].currentDoc).toBe('a.md');
+    // Mode is preserved — unlike touchMode, bumpPresenceTs does not flip
+    // writing→idle. That's the contract the keepalive-timer relies on: an
+    // agent whose last state was `writing` continues to show the pulse
+    // visual until its own touchMode('idle') arrives.
     expect(map['uuid-A'].mode).toBe('writing');
     expect(map['uuid-A'].ts).toBeGreaterThanOrEqual(beforeBump);
     expect(map['uuid-A'].ts).toBeLessThanOrEqual(afterBump);
@@ -175,6 +189,10 @@ describe('AgentPresenceBroadcaster', () => {
   });
 
   test('mutation failures increment agentPresenceMutationErrors counter (regression: silent-drop observability)', () => {
+    // Simulate an awareness that throws from setLocalState (e.g. y-protocols
+    // semantics shift, or a downstream change-subscriber crashing). The
+    // broadcaster's catch swallows the throw and returns false; without the
+    // counter, operators had only a pino ERROR line to alert on.
     resetMetrics();
     const throwingAwareness = {
       getLocalState: () => null,
@@ -191,6 +209,11 @@ describe('AgentPresenceBroadcaster', () => {
     expect(getMetrics().agentPresenceMutationErrors).toBe(0);
     failingBroadcaster.setPresence('uuid-fail', entry({ currentDoc: 'x.md' }));
     expect(getMetrics().agentPresenceMutationErrors).toBe(1);
+    // clearPresence walks through mutateAgentPresence and also tries the
+    // throwing setLocalState — but clearPresence's fast-path short-circuits
+    // when the agent is missing BEFORE the setLocalState call, so the
+    // counter only advances when the mutation actually runs. Seed the map
+    // with a direct state assignment so clearPresence reaches the throw.
     throwingAwareness.getLocalState = () => ({
       agentPresence: {
         'uuid-fail': entry({ currentDoc: 'x.md' }),
@@ -202,6 +225,7 @@ describe('AgentPresenceBroadcaster', () => {
 
   test('graceful no-op when __system__ document is missing', () => {
     const noopBroadcaster = new AgentPresenceBroadcaster(makeMockHocuspocus(null));
+    // None of these should throw, and all reads return empty.
     noopBroadcaster.setPresence('uuid-A', entry({ currentDoc: 'foo.md' }));
     noopBroadcaster.clearPresence('uuid-A');
     noopBroadcaster.touchMode('uuid-A', 'idle');
@@ -228,6 +252,7 @@ describe('AgentPresenceBroadcaster', () => {
   });
 
   test('setPresence preserves unrelated awareness fields on __system__ state', () => {
+    // Simulate the CC1 broadcaster or another subsystem seeding state first.
     awareness.setLocalState({ someOtherField: { v: 1 } });
 
     broadcaster.setPresence('uuid-A', entry({ currentDoc: 'a.md' }));
@@ -241,6 +266,9 @@ describe('AgentPresenceBroadcaster', () => {
   });
 
   test('setPresence opportunistically evicts entries beyond BROADCASTER_EVICTION_MS', () => {
+    // Regression: belt-and-suspenders against unbounded map growth when
+    // the keepalive WS close never fires. Fresh agent-B's setPresence
+    // drops the long-stale agent-A entry in the same sweep.
     const now = Date.now();
     const ancientTs = now - (5_000 * 4 + 1_000); // past the 20s eviction threshold
     broadcaster.setPresence('uuid-A-ghost', entry({ currentDoc: 'a.md', ts: ancientTs }));
@@ -250,6 +278,9 @@ describe('AgentPresenceBroadcaster', () => {
   });
 
   test('setPresence does NOT evict the agent being set, even if its prior entry was stale', () => {
+    // Corner case: an agent's prior entry is ancient (proxy ate the close
+    // frame; agent restarted with same id). Fresh setPresence with the
+    // same id must take precedence — not evict itself during the sweep.
     const now = Date.now();
     const ancientTs = now - (5_000 * 4 + 1_000);
     broadcaster.setPresence('uuid-returning', entry({ currentDoc: 'old.md', ts: ancientTs }));
@@ -259,7 +290,41 @@ describe('AgentPresenceBroadcaster', () => {
     expect(map['uuid-returning'].ts).toBe(now);
   });
 
+  // ──────────────────────────────────────────────────────────────────
+  // Handler try/finally contract
+  // ──────────────────────────────────────────────────────────────────
+  //
+  // These tests pin the invariant that the three agent write handlers in
+  // `api-extension.ts` depend on: when `setPresence(mode:'writing')` + the
+  // transact are wrapped in a `try { ... } finally { touchMode('idle') }`,
+  // any throw reaching the finally must still leave the broadcaster in
+  // `mode:'idle'`. The fix was structural (moving setPresence
+  // inside the try); these tests guard against a future refactor that
+  // moves setPresence back out of the try (which would re-open the stuck-
+  // writing race).
+  //
+  // Why at the broadcaster level: `mock.module` leaks across test files in
+  // the same `bun test` process, so a
+  // direct handler-unit test that forces `applyAgentMarkdownWrite` to throw
+  // is impractical without process isolation. Instead, these tests encode
+  // the exact try/finally shape the handlers use — if the shape changes,
+  // the tests fail.
+  //
+  // Happy-path coverage for the handler is in
+  // `packages/app/tests/integration/multi-agent-presence.test.ts` (a
+  // successful write ends with `mode:'idle'`), which catches the other
+  // half of the regression: a refactor that drops `touchMode('idle')`
+  // entirely.
+
   test('contract: handler try/finally pattern — throw between setPresence and transact reaches touchMode', () => {
+    // Mirrors the handler's exact shape:
+    //   try {
+    //     setPresence(agentId, {..., mode:'writing'});
+    //     <throw point simulating transact failure>;
+    //     <never-reached: recordContributor/etc>
+    //   } finally {
+    //     touchMode(agentId, 'idle');
+    //   }
     const agentId = 'uuid-throw-during-transact';
     const thrown: Error[] = [];
     try {
@@ -267,6 +332,8 @@ describe('AgentPresenceBroadcaster', () => {
         agentId,
         entry({ currentDoc: 'doc.md', mode: 'writing', ts: Date.now() }),
       );
+      // Verify setPresence landed before the throw — if this assert would
+      // fail, the rest of the test would be meaningless.
       expect(broadcaster.getPresenceMap()[agentId].mode).toBe('writing');
       throw new Error('simulated transact failure (applyAgentMarkdownWrite throw)');
     } catch (err) {
@@ -281,10 +348,19 @@ describe('AgentPresenceBroadcaster', () => {
   });
 
   test('contract: touchMode before any setPresence is a no-op (handler finally on pre-setPresence throw)', () => {
+    // If a future refactor moves setPresence OUTSIDE the try and a throw
+    // fires before the try-entry, the handler's finally runs but no entry
+    // exists. touchMode must not create a half-populated entry (invariant
+    // re-asserted here in the handler-shape
+    // context so a regression shows up in this suite). The stuck-editing
+    // race is caught at a different layer — there is no 'editing' entry
+    // to flip, so the client never sees one. This asserts the broadcaster
+    // does not paper over the refactor regression by synthesizing an entry.
     const agentId = 'uuid-refactor-regression';
     try {
       throw new Error('simulated throw before setPresence');
     } catch {
+      // swallow
     } finally {
       broadcaster.touchMode(agentId, 'idle');
     }
@@ -293,6 +369,15 @@ describe('AgentPresenceBroadcaster', () => {
   });
 
   test('principal-prefixed agentId is filtered at the broadcaster boundary (form-write writes never surface as agent presence)', () => {
+    // Form-write handlers attribute writes to `principal-<UUID>` (precedent
+    // #25 writer-ID taxonomy) — the local human editing their own properties
+    // is the principal, not an agent. The structural test pins the
+    // try/finally setPresence/touchMode shape, so write handlers can't omit
+    // the calls at the source level. The broadcaster therefore filters
+    // principal-prefixed ids internally so the awareness fanout stays free
+    // of phantom-agent entries that would render as the user's own avatar
+    // (presence badge in the editor chrome) or animate the body text in
+    // agent colors via the agent-flash plugin.
     broadcaster.setPresence(
       'principal-deadbeef',
       entry({ displayName: 'Local User', currentDoc: 'a.md' }),
@@ -305,9 +390,14 @@ describe('AgentPresenceBroadcaster', () => {
     broadcaster.bumpPresenceTs('principal-deadbeef');
     expect(broadcaster.getPresenceMap()).toEqual({});
 
+    // clearPresence is also gated — there's nothing to clear, but exercising
+    // the path documents that principal ids never reach the awareness
+    // mutation layer.
     broadcaster.clearPresence('principal-deadbeef');
     expect(broadcaster.getPresenceMap()).toEqual({});
 
+    // An adjacent real agent's entry must remain unaffected — the filter is
+    // per-id, not a global short-circuit.
     broadcaster.setPresence('agent-real', entry({ currentDoc: 'b.md' }));
     expect(Object.keys(broadcaster.getPresenceMap())).toEqual(['agent-real']);
     broadcaster.setPresence('principal-deadbeef', entry({ currentDoc: 'should-not-appear.md' }));
@@ -315,18 +405,62 @@ describe('AgentPresenceBroadcaster', () => {
   });
 
   test('structural: every agent write handler pairs setPresence("writing") + touchMode("idle")', () => {
+    // Source-level regression guard. Runtime equivalence is infeasible
+    // because `mock.module` leaks across test files
+    // ; this test reads the handler source and
+    // asserts the try/finally shape. The runtime broadcaster-level tests
+    // prove the pattern IS race-safe.
+    //
+    // The expected-match count is DISCOVERED from the source — counting
+    // `applyAgentMarkdownWrite(` + `applyAgentUndo(` + `applyPatchToFm(`
+    // call sites. That's the load-bearing signal of an "agent write
+    // handler": every handler that dispatches an agent-origin CRDT mutation
+    // must wrap it in the same try/finally + setPresence('writing') shape.
+    // `extractAgentIdentity` call sites are too broad —
+    // it's also called by admin handlers (rollback, create-page,
+    // rename, save-version) that don't produce a live presence badge.
+    //
+    // Frontmatter form writes (browser PropertyPanel) bypass HTTP entirely
+    // via `bindFrontmatterDoc.patch()` — they reach the YAML region of
+    // `Y.Text('source')` through the WebSocket connection's origin, not an
+    // HTTP handler. The MCP `frontmatter_patch` tool's `/api/frontmatter-patch`
+    // handler IS an HTTP path and uses `applyPatchToFm` to splice the FM
+    // region directly inside `session.dc.document.transact(..., session.origin)`
+    // — counted here.
+    //
+    // If you are reading this because this test just failed:
+    //   - If a NEW handler was added that calls applyAgentMarkdownWrite,
+    //     applyAgentUndo, or applyPatchToFm: copy the setPresence/touchMode
+    //     wiring from `handleAgentWriteMd` / `handleFrontmatterPatch` (the
+    //     canonical patterns).
+    //   - If a NEW composer is added (e.g. applyAgentRedo), extend the
+    //     discovery regex to include it.
+    //   - If an EXISTING handler was reformatted: the regexes tolerate
+    //     whitespace, but structural tokens are load-bearing. Do NOT
+    //     loosen the regex to pass — the invariant it guards (
+    //     stuck-writing race) must hold for every handler.
     const dir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
     const src = readFileSync(resolve(dir, 'api-extension.ts'), 'utf-8');
 
+    // Discover agent-write handlers via `applyAgentMarkdownWrite(` /
+    // `applyAgentUndo(` / `applyPatchToFm(` call sites.
     const handlerCallSites = src.match(/apply(?:AgentMarkdownWrite|AgentUndo|PatchToFm)\(/g) ?? [];
     const expectedCount = handlerCallSites.length;
     expect(expectedCount).toBeGreaterThanOrEqual(5); // 3 write + 1 undo + 1 fm-patch
 
+    // Each handler's try block must open with icon/color derivation
+    // immediately followed by setPresence(mode:'writing'). Arbitrary
+    // fields between the `{` and `mode: 'writing'` are allowed so
+    // reordering the entry shape doesn't fail this test — only
+    // relocating setPresence outside the try does.
     const tryShapePattern =
       /try\s*\{\s*const\s+icon\s*=\s*iconFromClientName\([^)]*\);\s*const\s+color\s*=\s*[\s\S]*?;\s*agentPresenceBroadcaster\?\.setPresence\(\s*agentId,\s*\{[\s\S]*?mode:\s*'writing'/g;
     const tryMatches = src.match(tryShapePattern) ?? [];
     expect(tryMatches.length).toBe(expectedCount);
 
+    // Every handler's finally block must call touchMode('idle'). Drop
+    // this pairing and the entry stays in 'writing' until the next
+    // successful write or WS close.
     const finallyPattern =
       /finally\s*\{\s*agentPresenceBroadcaster\?\.touchMode\(agentId,\s*'idle'\);\s*\}/g;
     const finallyMatches = src.match(finallyPattern) ?? [];

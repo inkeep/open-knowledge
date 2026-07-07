@@ -8,6 +8,7 @@ import {
   writePreferredAgent,
 } from './preferred-agent-store.ts';
 
+/** In-memory storage double — mirrors the seam used by sidebar-pin-store tests. */
 function fakeStorage(initial: Record<string, string> = {}): PreferredAgentStorage & {
   map: Record<string, string>;
 } {
@@ -21,6 +22,7 @@ function fakeStorage(initial: Record<string, string> = {}): PreferredAgentStorag
   };
 }
 
+/** Build a full install-state map; unspecified targets read as not-installed. */
 function states(
   overrides: Partial<Record<HandoffTarget, boolean | null>>,
 ): Record<HandoffTarget, InstallState> {
@@ -48,6 +50,8 @@ describe('readPreferredAgent / writePreferredAgent — device-local round-trip',
   });
 
   test('rejects an unknown / corrupt stored value (validates against VISIBLE_TARGETS)', () => {
+    // A stale id from an older build, or a hand-edited value, must not select a
+    // bogus agent — degrade to null so the resolver falls back to Claude.
     expect(readPreferredAgent(fakeStorage({ [PREFERRED_AGENT_KEY]: 'netscape' }))).toBeNull();
   });
 
@@ -66,6 +70,8 @@ describe('readPreferredAgent / writePreferredAgent — device-local round-trip',
   });
 
   test('write survives a throwing storage (quota exceeded) by swallowing silently', () => {
+    // chooseAgent / handleCreate persist on every pick + launch; a throwing
+    // setItem must never bubble up and break those paths.
     const throwing: PreferredAgentStorage = {
       getItem: () => null,
       setItem: () => {
@@ -84,6 +90,7 @@ describe('resolvePreferredAgent — installed-only (last-used → first installe
   });
 
   test('persisted last-used is discarded when not installed here (no dead default)', () => {
+    // Saved Cursor on another machine; here Cursor isn't installed but Claude is.
     expect(
       resolvePreferredAgent({
         lastUsed: 'cursor',
@@ -93,6 +100,7 @@ describe('resolvePreferredAgent — installed-only (last-used → first installe
   });
 
   test('persisted Claude is discarded when Claude Desktop is not installed (no web fallback)', () => {
+    // The key behavior: an uninstalled agent is never returned.
     expect(
       resolvePreferredAgent({ lastUsed: 'claude-code', states: states({ 'claude-code': false }) }),
     ).toBeNull();

@@ -1,3 +1,32 @@
+/**
+ * Right-click context submenu variant of the Open-in-Agent action, mounted
+ * inside FileTree row ContextMenus.
+ *
+ * Behavior:
+ *   - Render only targets where `installStates[t.id].installed === true`.
+ *   - Installed app launchers sit under a "Desktop" section label; the docked
+ *     terminal launchers — one row per agent CLI in `VISIBLE_CLIS` (Claude,
+ *     Codex, Cursor) — sit under a "Terminal" section label, gated on a desktop
+ *     terminal bridge.
+ *   - Empty state: when no targets are install-detected and there is no
+ *     terminal launcher, render a disabled "No installed agents found" item
+ *     (no section labels then).
+ *   - Status-hint code path remains for the `inputMissing` case (right-click
+ *     on a node with no workspace metadata) — orthogonal to install state.
+ *
+ * Why a separate component from `OpenInAgentMenu` / `OpenInAgentMenuItem`:
+ * the file-tree's right-click menu is mounted as a Radix `DropdownMenu` (see
+ * `FileTreeMenu` in `FileTree.tsx`), not `@radix-ui/react-context-menu`. So
+ * this component renders `DropdownMenu*` submenu primitives — identical to
+ * the header `Sparkles` surface. The two callers diverge in row JSX shape
+ * (this one inlines; the header reuses `OpenInAgentMenuItem`), not in the
+ * menu primitive. Mixing the two Radix stacks would detach keyboard nav.
+ *
+ * Input construction is the caller's responsibility: FileTree computes
+ * `input` from the right-clicked node (NOT the active doc) via
+ * `buildHandoffInput({ docName: node.path, workspace })`.
+ */
+
 import {
   type HandoffOutcome,
   type HandoffTarget,
@@ -24,6 +53,12 @@ import { useTerminalLaunch } from './TerminalLaunchContext';
 import { cliIconTargetId, VISIBLE_CLIS } from './terminal-cli-display';
 import type { HandoffDispatchInput } from './useHandoffDispatch';
 
+/**
+ * Status hint shown on the trigger row when the right-clicked node has no
+ * workspace metadata (`inputMissing`). Install-state hints aren't shown — those
+ * rows no longer render in this surface. `inputMissing` is orthogonal to
+ * install state: every row is `disabled` when no workspace is available.
+ */
 export function contextRowHint(inputMissing: boolean): string | null {
   if (inputMissing) return t`No workspace`;
   return null;
@@ -42,6 +77,7 @@ interface OpenInAgentContextSubmenuProps {
    *  Web-host Cursor uses the same probe + filter as every other target now
    *  that `cursor-two-step.ts` has a `/api/spawn-cursor` fetch fallback. */
   readonly isElectronHost: boolean;
+  /** `useHandoffDispatch().dispatch` from the FileTree caller. */
   readonly dispatch: (
     target: HandoffTarget,
     input: HandoffDispatchInput,
@@ -57,6 +93,9 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
   const inputMissing = input === null;
   const hint = contextRowHint(inputMissing);
 
+  // Filter: render only installed targets. Web-host Cursor is already forced
+  // to `installed: false` upstream in `useInstalledAgents`, so the filter
+  // subsumes that case too.
   const installedTargets = VISIBLE_TARGETS.filter(
     (target) => installStates[target.id]?.installed === true,
   );
@@ -65,7 +104,10 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
   );
 
   const showDesktopSection = installedTargets.length > 0;
+  // Desktop-only: `useTerminalLaunch()` is null on the web host (no shell).
   const showTerminalSection = terminalLaunch !== null;
+  // When nothing is install-detected and there's no terminal launcher to fall
+  // back on, surface a disabled hint rather than an empty flyout.
   const showEmptyHint = !showDesktopSection && !showTerminalSection;
 
   return (
@@ -76,6 +118,9 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
         {showTerminalSection ? (
+          // Terminal section leads (the in-app terminal is the first-class path).
+          // Labeled `role="group"` so assistive tech announces the section the
+          // visual header conveys (the label alone is skipped by arrow-key nav).
           <DropdownMenuGroup aria-label={t`Terminal`}>
             <DropdownMenuLabel>
               <Trans>Terminal</Trans>
@@ -112,6 +157,7 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
           </DropdownMenuGroup>
         ) : null}
         {showDesktopSection ? (
+          // Desktop app launchers follow the Terminal section.
           <>
             {/* Separator only when a Terminal section sits above this one. */}
             {showTerminalSection ? <DropdownMenuSeparator /> : null}

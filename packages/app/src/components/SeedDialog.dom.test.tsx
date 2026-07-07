@@ -53,14 +53,22 @@ const applyCalls: Array<{ plan: OkScaffoldPlan; packId?: OkPackId }> = [];
 const knowledgeBasePlan: OkScaffoldPlan = {
   created: [
     { kind: 'folder', path: 'notes' },
-    { kind: 'file', path: 'notes/index.md' },
+    { kind: 'folder', path: 'notes/.ok' },
+    { kind: 'folder', path: 'notes/.ok/templates' },
+    { kind: 'file', path: 'notes/.ok/templates/note.md' },
+    { kind: 'file', path: 'log.md' },
   ],
   skipped: [],
   warnings: [],
 };
 
 const plainNotesPlan: OkScaffoldPlan = {
-  created: [{ kind: 'file', path: 'plain.md' }],
+  created: [
+    { kind: 'folder', path: 'daily' },
+    { kind: 'folder', path: 'daily/.ok' },
+    { kind: 'folder', path: 'daily/.ok/templates' },
+    { kind: 'file', path: 'daily/.ok/templates/daily.md' },
+  ],
   skipped: [],
   warnings: [],
 };
@@ -77,8 +85,8 @@ const packs: OkSeedPackInfo[] = [
     id: 'plain-notes',
     name: 'Plain Notes',
     description: 'A minimal notes setup.',
-    folders: [],
-    entryCounts: { files: 1, folders: 0 },
+    folders: [{ path: 'daily', summary: 'Daily journal' }],
+    entryCounts: { files: 0, folders: 1 },
   },
 ];
 
@@ -170,7 +178,7 @@ describe('SeedDialog runtime behavior', () => {
 
     expect(screen.queryByTestId('pack-card-grid')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
-    expect(await screen.findByText('plain.md')).toBeTruthy();
+    expect(await screen.findByText('daily/')).toBeTruthy();
   });
 
   test('Back returns to the picker and clears the previous pack plan before the next plan resolves', async () => {
@@ -187,20 +195,24 @@ describe('SeedDialog runtime behavior', () => {
     await renderSeedDialog();
     await userEvent.click(await screen.findByRole('button', { name: 'Plain Notes' }));
     expect(await screen.findByText('Initialize Plain Notes')).toBeTruthy();
-    expect(await screen.findByText('plain.md')).toBeTruthy();
+    expect(await screen.findByText('daily/')).toBeTruthy();
 
     await userEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(await screen.findByTestId('pack-card-grid')).toBeTruthy();
 
     await userEvent.click(screen.getByRole('button', { name: 'Knowledge Base' }));
     expect(await screen.findByText('Initialize Knowledge Base')).toBeTruthy();
-    expect(screen.queryByText('plain.md')).toBeNull();
-    expect(screen.getByText('Computing scaffold plan')).toBeTruthy();
+    expect(screen.queryByText('daily/')).toBeNull();
+    // Loading state is now a skeleton grid; assert its status region rather than
+    // visible text.
+    expect(screen.getByRole('status', { name: 'Loading preview' })).toBeTruthy();
 
     await act(async () => {
       resolveKnowledgeBasePlan?.({ ok: true, plan: knowledgeBasePlan });
     });
     expect(await screen.findByText('notes/')).toBeTruthy();
+    // Top-level content files (log.md) render as their own cards.
+    expect(screen.getByText('log.md')).toBeTruthy();
   });
 
   test('Initialize applies the selected pack through seedClient and closes on success', async () => {
@@ -212,7 +224,7 @@ describe('SeedDialog runtime behavior', () => {
       onSeedApplied: () => applied.push('yes'),
     });
 
-    await screen.findByText('plain.md');
+    await screen.findByText('daily/');
     await userEvent.click(screen.getByRole('button', { name: 'Initialize' }));
 
     await waitFor(() => {
@@ -223,5 +235,24 @@ describe('SeedDialog runtime behavior', () => {
     expect(onOpenChangeCalls).toEqual([false]);
     expect(toastSuccesses[0]).toContain('Plain Notes initialized');
     expect(toastErrors).toEqual([]);
+  });
+
+  test('a pending pack skill renders a skill card naming the skill, not a separate reinstall line', async () => {
+    planImpl = async () => ({
+      ok: true,
+      plan: {
+        ...plainNotesPlan,
+        packSkill: { name: 'open-knowledge-pack-plain-notes', pending: true },
+      },
+    });
+
+    await renderSeedDialog({ initialPackId: 'plain-notes' });
+
+    // The skill card surfaces the pack name (prefix-stripped for legibility)
+    // with the full skill name preserved on hover, so users know what installs.
+    const skillName = await screen.findByText('plain-notes');
+    expect(skillName.getAttribute('title')).toBe('open-knowledge-pack-plain-notes');
+    // The old free-standing "will be (re)installed" line is gone.
+    expect(screen.queryByText(/will be \(re\)installed/)).toBeNull();
   });
 });

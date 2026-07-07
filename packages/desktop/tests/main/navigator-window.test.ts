@@ -4,6 +4,13 @@ import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import type { ShareNavigatorPayload } from '../../src/main/url-scheme.ts';
 import type { BrowserWindowLike } from '../../src/main/window-manager.ts';
 
+/**
+ * `tryCloseNavigator` unit tests — exercise the three branches
+ * (null / destroyed / alive) and the throw-swallow guarantee in
+ * milliseconds, instead of relying solely on the smoke E2E to catch a
+ * regression that moves the close call out of the `try` block.
+ */
+
 interface MockNav extends BrowserWindowLike {
   closeMock: ReturnType<typeof mock>;
   setDestroyed: (v: boolean) => void;
@@ -38,6 +45,8 @@ function makeNav(opts?: { destroyed?: boolean; closeImpl?: () => void }): MockNa
 describe('tryCloseNavigator', () => {
   test('no-op when navigator is null', () => {
     const log = mock(() => {});
+    // null branch — caller never opened the Navigator (cold launch with
+    // lastOpenedProject set). Must not throw and must not log.
     tryCloseNavigator(null, { projectPath: '/p' }, log);
     expect(log).not.toHaveBeenCalled();
   });
@@ -45,6 +54,11 @@ describe('tryCloseNavigator', () => {
   test('no-op when window is destroyed', () => {
     const nav = makeNav({ destroyed: true });
     const log = mock(() => {});
+    // Race: the close listener nulls navigatorWindow on user-initiated
+    // close, but in a renderer-crash window between createProjectWindow
+    // resolving and reaching the close call the variable could still
+    // reference a destroyed BrowserWindow. close() throws on destroyed in
+    // real Electron — the guard avoids the throw and the spurious log.
     tryCloseNavigator(nav, { projectPath: '/p' }, log);
     expect(nav.closeMock).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalled();
@@ -65,6 +79,10 @@ describe('tryCloseNavigator', () => {
       },
     });
     const log = mock(() => {});
+    // The throw must NOT propagate — propagation would land in
+    // openProjectOrFallbackToNavigator's catch and surface "Unable to open
+    // project" to the user even though the project did open. The log
+    // captures the failure for triage.
     expect(() => tryCloseNavigator(nav, { projectPath: '/path/to/proj' }, log)).not.toThrow();
     expect(log).toHaveBeenCalledTimes(1);
     expect(log).toHaveBeenCalledWith(
@@ -79,6 +97,8 @@ describe('tryCloseNavigator', () => {
   test('stringifies non-Error throws so the log carries diagnostic signal', () => {
     const nav = makeNav({
       closeImpl: () => {
+        // Native Electron paths can throw non-Error values; the logger
+        // must produce a string instead of `undefined`.
         throw 'native-string-throw';
       },
     });
@@ -92,6 +112,11 @@ describe('tryCloseNavigator', () => {
 });
 
 describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () => {
+  // Light-weight fakes mirroring window-manager.test.ts's makeWindow shape but
+  // pared to what `createNavigatorWindow` actually touches: `webContents.once`,
+  // `webContents.send`, `loadFile`/`loadURL`, `on('closed')`, and the
+  // structural surface BrowserWindowLike asks for. We capture the dom-ready
+  // and did-finish-load callbacks so tests can fire them deterministically.
   interface NavWin extends BrowserWindowLike {
     fireDomReady: () => void;
     fireDidFinishLoad: () => void;
@@ -170,6 +195,8 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
   }
 
   test("cold path: pendingPayload registers webContents.once('dom-ready') BEFORE loadFile", () => {
+    // Mirrors window-manager's pendingDeepLinkDoc regression: registering
+    // the listener after loadFile silently misses dom-ready on a fast load.
     const win = makeNavWindow();
     createNavigatorWindow({
       createWindow: () => win,
@@ -179,14 +206,17 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
       pendingPayload: makePayload(),
     });
 
+    // Pre-loadFile, the dom-ready listener is in place.
     expect(win.onceCalledBeforeLoad).toBe(true);
 
+    // Payload has NOT fired yet.
     expect(
       (win.webContents.send as ReturnType<typeof mock>).mock.calls.find(
         (c) => c[0] === 'ok:share:received',
       ),
     ).toBeUndefined();
 
+    // Firing dom-ready triggers the send.
     win.fireDomReady();
     const shareCall = (win.webContents.send as ReturnType<typeof mock>).mock.calls.find(
       (c) => c[0] === 'ok:share:received',
@@ -205,6 +235,10 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
   });
 
   test('cold path: no pendingPayload → no ok:share:received event fires on dom-ready', () => {
+    // The default Navigator open path (no share in flight) must not register
+    // a stray listener. Without this assertion, a regression that always
+    // registered `once('dom-ready')` would fire a phantom share event on
+    // every Navigator open.
     const win = makeNavWindow();
     createNavigatorWindow({
       createWindow: () => win,

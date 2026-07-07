@@ -1,3 +1,19 @@
+/**
+ * `conflicts` MCP tool — read GitHub-sync merge conflicts.
+ *
+ * - `kind: "list"`    → enumerate every doc tracked in a merge-conflict state
+ *   (`GET /api/sync/conflicts`).
+ * - `kind: "content"` → fetch the three merge stages (base / ours / theirs)
+ *   plus lifecycle status and the conflict `shape` for one `file`
+ *   (`GET /api/sync/conflict-content?file=<path>&source=ytext`).
+ *
+ * Merges the former `list_conflicts` + `get_conflict_content` (both reads;
+ * `resolve_conflict` stays a separate write). Keys on `file` (WITH extension)
+ * — the ONE documented exception to the `document`/`path` vocabulary,
+ * because git stages key on the exact on-disk path and sibling `.md`/`.mdx`
+ * can both conflict. The output's conflict-shape field is `shape` so it
+ * doesn't collide with the input `kind`.
+ */
 import { z } from 'zod';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
@@ -48,6 +64,8 @@ export function register(server: ServerInstance, deps: ConflictsDeps): void {
           ),
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },
+      // Result nests under the `kind` you asked for (exactly one is present):
+      // `list` → the tracked-conflict array; `content` → the merge stages.
       outputSchema: outputSchemaWithText({
         list: looseObjectArray
           .optional()
@@ -98,19 +116,28 @@ export function register(server: ServerInstance, deps: ConflictsDeps): void {
         const base = typeof rec.base === 'string' ? rec.base : '';
         const ours = typeof rec.ours === 'string' ? rec.ours : '';
         const theirs = typeof rec.theirs === 'string' ? rec.theirs : '';
+        // the route emits the conflict-shape as `kind`; surface it as
+        // `shape` so it does not collide with this tool's input `kind`. Fall
+        // back to `both-modified` for stale-server safety.
         const shape: 'both-modified' | 'delete-modify' | 'modify-delete' =
           rec.kind === 'delete-modify' || rec.kind === 'modify-delete' ? rec.kind : 'both-modified';
         const lifecycleStatus =
           typeof rec.lifecycleStatus === 'string' ? rec.lifecycleStatus : null;
         const lifecycleSuffix = lifecycleStatus ? ` (lifecycle: ${lifecycleStatus})` : '';
         const text = `Conflict stages for ${file} (shape: ${shape})${lifecycleSuffix}:\n--- base ---\n${base}\n--- ours ---\n${ours}\n--- theirs ---\n${theirs}`;
+        // Nested under the `content` kind key (mirrors the input `kind`).
         return textPlusStructured(text, {
           content: { file, base, ours, theirs, shape, lifecycleStatus },
         });
       }
 
+      // kind: 'list'
       const result = await httpGet(url, '/api/sync/conflicts');
       if (!result.ok) {
+        // Text-only error: emitting `{ list: [] }` here would be byte-identical
+        // to a successful "no conflicts" response, so an agent pattern-matching
+        // on `structuredContent.list.length === 0` without checking `isError`
+        // would read a server failure as "no conflicts".
         return textResult(`Error: ${result.error as string}`, true);
       }
       const rawConflicts = (result as { conflicts?: unknown }).conflicts;

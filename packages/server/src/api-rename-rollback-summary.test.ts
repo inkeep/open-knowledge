@@ -1,3 +1,11 @@
+/**
+ * Rename and rollback attribution: agentId-guarded routing for the
+ * `handleRenamePath` and `handleRollback` handlers. Their primary callers
+ * include UI-driven paths (FileTree drag-rename, EditorPane Restore button)
+ * that previously stayed anonymous when no agent identity was supplied —
+ * these tests pin that invariant alongside the behavior
+ * where an absent `agentId` falls back to the server-loaded principal.
+ */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
@@ -110,6 +118,12 @@ async function callApi(
       documents: new Map(),
       closeConnections() {},
       unloadDocument: async () => {},
+      // Minimal debouncer stub — flushDocToGit (called by rollback/rename)
+      // reads hocuspocus.debouncer.isDebounced. In this unit
+      // harness there are no loaded docs and no pending debounced writes,
+      // so `isDebounced` always returns false and `executeNow` is never
+      // invoked. The real behavior under a live Hocuspocus instance is
+      // covered end-to-end by summary-e2e.test.ts.
       debouncer: {
         isDebounced: () => false,
         executeNow: async () => undefined,
@@ -181,12 +195,14 @@ describe('handleRenamePath (kind: file) — agentId-guarded attribution', () => 
 
     expect(response.status).toBe(200);
     const body = formatContributorsForTest();
+    // Exactly one contributor entry — the new doc (NOT the rewritten journal.md)
     const lines = body.split('\n').filter((l) => l.startsWith('ok-contributors:'));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('"docs":["renamed-notes"]');
     expect(lines[0]).toContain('"summaries":["Renamed notes → renamed-notes"]');
     expect(getMetrics().agentWriteCalls).toBe(1);
     expect(getMetrics().summariesProvided).toBe(1);
+    // Default summary is well under 80 chars so no truncation.
     expect(getMetrics().summariesTruncated).toBe(0);
 
     const parsed = JSON.parse(response.body);
@@ -209,6 +225,8 @@ describe('handleRenamePath (kind: file) — agentId-guarded attribution', () => 
     expect(formatContributorsForTest()).toContain(
       '"summaries":["Aligned naming with module layout"]',
     );
+    // Rewrites in journal.md (if any) are the default writer's responsibility —
+    // only the new doc has the attribution entry.
     expect(formatContributorsForTest().match(/ok-contributors:/g)?.length ?? 0).toBe(1);
   });
 
@@ -227,6 +245,7 @@ describe('handleRenamePath (kind: file) — agentId-guarded attribution', () => 
     const summaryErr = JSON.parse(response.body) as Record<string, unknown>;
     expect(summaryErr.type).toBe('urn:ok:error:invalid-request');
     expect(typeof summaryErr.title).toBe('string');
+    // File must NOT have been renamed (guard runs before the spine fires)
     expect(readFileSync(join(tmpDir, 'src.md'), 'utf-8')).toBe('# Src\n');
     expect(getMetrics().agentWriteCalls).toBe(0);
     expect(formatContributorsForTest()).toBe('');
@@ -250,6 +269,13 @@ describe('handleRenamePath (kind: file) — agentId-guarded attribution', () => 
   });
 
   test('with agentId + overflow default (long doc paths) → server-generated default is truncated silently (no misleading hint/truncatedFrom in response; no M2 inflation)', async () => {
+    // The default "Renamed X → Y" template can exceed the 80-char cap for
+    // deeply-nested doc paths. The agent did not
+    // submit the long string, so the response must NOT carry `truncatedFrom`,
+    // `hint`, or inflate the `summariesTruncated` counter — doing so would
+    // misattribute blame and muddy the "agent-provided truncation rate" signal.
+    // The stored summary IS still truncated (to 79 visible + '…') so the
+    // TimelinePanel bullet fits the canvas.
     const long = 'a'.repeat(50);
     writeFileSync(join(tmpDir, `${long}.md`), '# Long\n', 'utf-8');
 
@@ -263,14 +289,24 @@ describe('handleRenamePath (kind: file) — agentId-guarded attribution', () => 
 
     expect(response.status).toBe(200);
     const parsed = JSON.parse(response.body);
+    // Default overflowed (50 + 50 + 10 chars of template = 110+), but response
+    // suppresses truncation-diagnostic fields for the server-default path.
     expect(parsed.summary.value.endsWith('…')).toBe(true);
     expect(parsed.summary.truncatedFrom).toBeUndefined();
     expect(parsed.summary.hint).toBeUndefined();
+    // counter stays clean — default-path truncation does not inflate it.
     expect(getMetrics().summariesTruncated).toBe(0);
+    // But adoption metric IS incremented (the handler recorded a summary).
     expect(getMetrics().summariesProvided).toBe(1);
   });
 
   test('no agentId + wrong-type summary → 400 (validation runs unconditionally; attribution still skipped)', async () => {
+    // Defensive validation: even though the rename has no UI call site today,
+    // we want any future MCP-client identity-passthrough regression to surface
+    // as a loud 400 rather than a silent attribution drop. Type-checking the
+    // summary happens before the actor branch even runs, so a malformed
+    // summary body never accidentally lands as a 200 with the summary
+    // silently ignored.
     writeFileSync(join(tmpDir, 'src.md'), '# Src\n', 'utf-8');
 
     const response = await callApi(tmpDir, '/api/rename-path', {
@@ -284,18 +320,39 @@ describe('handleRenamePath (kind: file) — agentId-guarded attribution', () => 
     const summaryErr = JSON.parse(response.body) as Record<string, unknown>;
     expect(summaryErr.type).toBe('urn:ok:error:invalid-request');
     expect(typeof summaryErr.title).toBe('string');
+    // File must NOT have been renamed — validation runs before the rename.
     expect(readFileSync(join(tmpDir, 'src.md'), 'utf-8')).toBe('# Src\n');
+    // No attribution side-effects either (no agentId AND no principal in
+    // this harness means no contributor entry would have been recorded
+    // even on the success path).
     expect(formatContributorsForTest()).toBe('');
     expect(getMetrics().agentWriteCalls).toBe(0);
   });
 });
 
 describe('handleRollback — agentId-guarded attribution (regression gate)', () => {
+  // handleRollback's full path requires a shadow-repo + open Y.Doc which is
+  // out of reach in this fast unit-test harness. The critical invariant is
+  // the agentId guard: a request without identity AND without a loaded
+  // principal MUST produce zero contributor entries and zero counter
+  // increments. That guard fires at the body-parse stage before any shadow
+  // or Y.Doc touch, so we can exercise it by asserting the handler's
+  // early-return shape AND by posting a body that WOULD otherwise flow
+  // through to the shadow-repo error path.
+
   test('no agentId → body parses and short-circuits the attribution branch', async () => {
+    // This hits the shadow-repo "not configured" 503 path, but critically
+    // DOES NOT fire any contributor recording or counter work along the way.
+    // If the attribution guard regressed (e.g. `extractAgentIdentity` ran
+    // unconditionally), the `claude-1/Claude` defaults would be recorded
+    // here.
     const response = await callApi(tmpDir, '/api/rollback', {
       docName: 'test-doc',
       commitSha: 'a'.repeat(40),
     });
+    // Shadow not configured → 503 (server-side state, mirrors sync-not-active
+    // / shadow-not-configured precedent). We ride it to prove no attribution
+    // side-effects fired on the guard path.
     expect(response.status).toBe(503);
     expect(formatContributorsForTest()).toBe('');
     expect(getMetrics().agentWriteCalls).toBe(0);
@@ -303,12 +360,21 @@ describe('handleRollback — agentId-guarded attribution (regression gate)', () 
   });
 
   test('with agentId but non-string summary → 400 summary-error takes precedence over shadow check', async () => {
+    // When the caller supplies agentId and bogus summary, the guard path
+    // still validates — the attribution branch is only entered after the
+    // summary passes normalizeSummary. This proves the 400 summary-error
+    // is reached BEFORE any attribution side-effect fires, even though
+    // shadow-repo is unconfigured (which would otherwise return 400 first).
     const response = await callApi(tmpDir, '/api/rollback', {
       docName: 'test-doc',
       commitSha: 'a'.repeat(40),
       agentId: 'claude-1',
       summary: 42,
     });
+    // The shadow-repo check runs before the body-level agentId guard in
+    // the current implementation; both paths converge on 400 without
+    // firing any attribution counter — that's the load-bearing invariant
+    // for UI-driven rollback (EditorPane.tsx).
     expect(response.status).toBe(400);
     expect(formatContributorsForTest()).toBe('');
     expect(getMetrics().agentWriteCalls).toBe(0);
@@ -316,6 +382,23 @@ describe('handleRollback — agentId-guarded attribution (regression gate)', () 
 });
 
 describe('leak-fix regression', () => {
+  // Prior to the fix: handleRollback called `setReconciledBase(docName, markdown)`
+  // BEFORE `onStoreDocument` fired, which tripped persistence's
+  // "skip write when serialized === currentBase" guard and dropped the L1 disk
+  // write (and thus its `scheduleGitCommit()` call). The pending contributor
+  // entry from `recordContributor(...)` then stayed in `pendingContributors`
+  // until the next UNRELATED write's onStoreDocument fired — polluting that
+  // commit's `ok-contributors:` line with stale "Restored to <sha>" bullets.
+  // handleRenamePath has a parallel exposure because
+  // `_performManagedRenameForDocs` does sync fs writes that bypass
+  // Hocuspocus's onStoreDocument entirely.
+  //
+  // Fix: both handlers now call `flushDocToGit(<docName>, <label>)` after
+  // `recordContributor`. That helper forces the per-doc L1 debouncer
+  // (`onStoreDocument-<docName>`) via `executeNow`, then calls
+  // `flushGitCommit?.()` to drain any pending L2 timer synchronously —
+  // ensuring the rename/rollback's own commit carries its own attribution.
+
   test('handleRenamePath (file) with agentId triggers flushGitCommit after recordContributor', async () => {
     writeFileSync(join(tmpDir, 'notes.md'), '# Notes\n', 'utf-8');
     const spy = createFlushGitCommitSpy();
@@ -335,6 +418,10 @@ describe('leak-fix regression', () => {
     );
 
     expect(response.status).toBe(200);
+    // The fix calls flushDocToGit which ultimately calls flushGitCommit.
+    // Note: flushDocToGit chains `l1.then(() => flushGitCommit?.())` —
+    // the flush is kicked but not awaited by the handler. Give the
+    // microtask queue a beat to resolve.
     await setImmediate();
     expect(spy.calls.length).toBeGreaterThanOrEqual(1);
   });
@@ -357,6 +444,10 @@ describe('leak-fix regression', () => {
 
     expect(response.status).toBe(200);
     await setImmediate();
+    // UI-driven rename path should not kick a flush on its behalf — the
+    // flush is there to drain newly-added attribution; no agentId → no
+    // attribution → no flush. This also keeps UI-driven paths as lean
+    // as they were.
     expect(spy.calls.length).toBe(0);
   });
 
@@ -380,12 +471,17 @@ describe('leak-fix regression', () => {
 
     expect(response.status).toBe(400);
     await setImmediate();
+    // 400 path short-circuits before recordContributor / flushDocToGit.
     expect(spy.calls.length).toBe(0);
   });
 });
 
 describe('handleRenamePath (kind: file) — extension change via explicit .md/.mdx in toPath', () => {
   test('same-base rename with .mdx in toPath physically changes extension on disk', async () => {
+    // `resolveContentEntryPath` honors an explicit
+    // supported extension on the destination path, so `toPath: "foo.mdx"`
+    // physically renames `foo.md → foo.mdx`. The consolidated endpoint
+    // preserves the same behavior for `kind: 'file'`.
     writeFileSync(join(tmpDir, 'foo.md'), '# Foo\n\nOriginal .md content.\n', 'utf-8');
 
     const response = await callApi(tmpDir, '/api/rename-path', {
@@ -416,6 +512,9 @@ describe('handleRenamePath (kind: file) — extension change via explicit .md/.m
   });
 
   test('extension-less toPath preserves source extension (backward compat)', async () => {
+    // Extension-less destinations rely on getDocExtension() to re-derive
+    // the source's extension. Guards against a regression where the
+    // explicit-extension handling breaks the pre-existing behavior.
     writeFileSync(join(tmpDir, 'qux.md'), '# Qux\n', 'utf-8');
 
     const response = await callApi(tmpDir, '/api/rename-path', {
@@ -431,6 +530,10 @@ describe('handleRenamePath (kind: file) — extension change via explicit .md/.m
   });
 
   test('explicit extension matching the source (foo → foo.md when foo.md exists) is a no-op', async () => {
+    // Edge case when the client preserves the typed extension and the user
+    // typed the same name as the source. Both the textual `fromPath === toPath`
+    // short-circuit and the on-disk `sourcePath === destinationPath` short-circuit
+    // must return 200 with renamed:[] rather than 409 Destination already exists.
     writeFileSync(join(tmpDir, 'stable.md'), '# Stable\n', 'utf-8');
 
     const response = await callApi(tmpDir, '/api/rename-path', {
@@ -595,6 +698,7 @@ describe('handleRenamePath — actor identity routing', () => {
     expect(response.status).toBe(200);
     const body = formatContributorsForTest();
     const lines = body.split('\n').filter((l) => l.startsWith('ok-contributors:'));
+    // Exactly one contributor entry — the renamed doc, NOT the rewritten journal.md
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('"docs":["renamed-notes"]');
     expect(lines[0]).not.toContain('journal');

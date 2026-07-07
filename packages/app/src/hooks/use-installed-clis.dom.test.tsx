@@ -1,3 +1,11 @@
+/**
+ * Contract tests for the shared `useInstalledClis` hook — the single desktop
+ * CLI-install probe both the New-chat launchers and the Ask-X bubble read. Pins
+ * the three behaviors a consumer relies on: the capability guard (web-host /
+ * partial-bridge mounts skip the probe without throwing), the success path
+ * (resolved map surfaces), and the `.catch` degradation (a rejected probe leaves
+ * the map empty and warns, so the resolver falls back to the claude default).
+ */
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { useInstalledClis } from './use-installed-clis';

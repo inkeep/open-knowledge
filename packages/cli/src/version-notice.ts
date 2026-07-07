@@ -1,3 +1,6 @@
+// GNU-convention `--version` output: the version line followed by the short
+// copyright / free-software / no-warranty trio (the GPLv3 "Appropriate Legal
+// Notices" surface for the CLI, matching gpg/coreutils).
 export function buildVersionNotice(version: string): string {
   return [
     version,

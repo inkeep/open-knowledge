@@ -66,6 +66,11 @@ export {
   detectAppliedToleranceClasses,
   normalizeBridge,
 } from './normalize.ts';
+export {
+  type BridgeToleranceSignal,
+  isParseEquivalentBridge,
+  PARSE_EQUIVALENCE_TOLERANCE,
+} from './parse-equivalence.ts';
 export { defaultScheduler, type Scheduler } from './scheduler.ts';
 export {
   classifySeverity,

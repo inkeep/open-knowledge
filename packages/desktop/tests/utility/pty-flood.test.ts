@@ -1,5 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 
+/**
+ * Ship gate for the terminal's real-PTY output path: the no-precedent
+ * backpressure + UTF-8-integrity flood seam. node-pty does not pump under Bun,
+ * so the flood drives the real `terminal-manager` ↔ `pty-host` path against
+ * real login shells in `pty-flood.harness.ts` under Node (a hard package engine,
+ * >=24); this test runs that harness as a subprocess and fails unless all four
+ * flood scenarios report green. Until this is green, the real-PTY output path
+ * must not ship — nothing else proves the coalescer keeps the consumer
+ * responsive, that pause/resume bounds in-flight memory, that multibyte UTF-8
+ * survives intact, or that concurrent sessions (tabs) multiplexed through one
+ * host isolate their backpressure and bytes from each other.
+ */
+
 const NODE = Bun.which('node');
 const HARNESS = new URL('./pty-flood.harness.ts', import.meta.url).pathname;
 

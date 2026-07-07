@@ -1,3 +1,8 @@
+/**
+ * `git` check tests — DI'd via the `assert` dep so tests don't depend on
+ * the runner-host's actual git binary.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import {
   type GitDetected,

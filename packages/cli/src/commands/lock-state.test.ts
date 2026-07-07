@@ -53,6 +53,10 @@ describe('inspectLock', () => {
   });
 
   test('foreign host with dead PID classifies dead-pid (hostname drift cleanup)', () => {
+    // macOS BonjourName ↔ FQDN drift across DHCP/VPN/sleep can leave a stale
+    // lock under a previous hostname. Once the recorded PID is gone, the
+    // entry is stale, not a genuine cross-host server — classify as dead-pid
+    // so `ok clean` can prune it and `ok ps` hides it by default.
     const dir = freshLockDir();
     writeFileSync(
       join(dir, 'server.lock'),

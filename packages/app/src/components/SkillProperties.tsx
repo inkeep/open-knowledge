@@ -9,13 +9,31 @@ import { Input } from '@/components/ui/input';
 import { SKILL_SCOPE_ORDER, useSkillScopePillLabels } from '@/lib/skill-scope';
 import { cn } from '@/lib/utils';
 
+/**
+ * `name` is the skill's folder identity (and the id agents invoke it by), so it
+ * is a rename affordance, not a frontmatter property — it is rendered above the
+ * panel and hidden from the panel's auto-rendered rows, exactly as a document's
+ * filename is not one of its properties.
+ */
 const SKILL_RESERVED_KEYS = ['name'] as const;
 
+/** Lets the create flow pick the new skill's scope inline (edit mode omits it). */
 interface ScopeControl {
   scope: SkillScope;
   onScopeChange: (scope: SkillScope) => void;
 }
 
+/**
+ * Skill identity + properties, rendered as the editor's right-hand panel.
+ *
+ * The frontmatter editor is the EXACT document `PropertyPanel` (same component,
+ * same CRDT binding, same recursive object/nested-frontmatter editor + add /
+ * rename / reorder / tags affordances) — skills are not a divergent panel. The
+ * only skill-specific rows are the identity affordances above it: `name` (a
+ * rename → git-mv, never a plain patch) and, in create mode, the scope picker
+ * (an OK concept, not a `SKILL.md` field). `name` is reserved out of the
+ * panel's rows so it is not double-rendered.
+ */
 export function SkillProperties({
   provider,
   name,
@@ -26,13 +44,17 @@ export function SkillProperties({
   nameEditable = true,
 }: {
   provider: HocuspocusProvider;
+  /** Current skill name (identity). In create mode this is the draft name. */
   name: string;
   scopeControl?: ScopeControl;
   /** Commit a rename (edit mode) — fired on the name field's blur/Enter with a
    *  changed, grammar-valid name. Omitted → the name field is read-only. */
   onRename?: (next: string) => void;
+  /** Inline error under the name field (e.g. collision), supplied by the parent. */
   nameError?: string | null;
+  /** Report name keystrokes (create mode scaffolds once the name is valid). */
   onNameDraftChange?: (next: string) => void;
+  /** False → render the name as read-only text (e.g. while a rename is in flight). */
   nameEditable?: boolean;
 }) {
   const { t } = useLingui();
@@ -40,6 +62,7 @@ export function SkillProperties({
   const scopeId = useId();
   const scopeLabels = useSkillScopePillLabels();
 
+  // Local draft for the name field so typing doesn't fight the committed identity.
   const [nameDraft, setNameDraft] = useState(name);
   useEffect(() => setNameDraft(name), [name]);
   const trimmedName = nameDraft.trim();

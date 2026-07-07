@@ -1,3 +1,9 @@
+/**
+ * Unit tests for agent-activity.ts
+ *
+ * Tests the pure diff-synthesis functions and listAgentActivity using
+ * real Y.Doc / Y.UndoManager instances (no mocks of internal CRDT state).
+ */
 import { describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 import {
@@ -7,6 +13,11 @@ import {
 } from './agent-activity.ts';
 import type { AgentSessionManager } from './agent-sessions.ts';
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Create a write origin + UndoManager pair tracking a Y.Text. */
 function makeUMPair(_doc: Y.Doc, text: Y.Text) {
   const origin = Object.freeze({
     source: 'local' as const,
@@ -25,6 +36,10 @@ function makeUMPair(_doc: Y.Doc, text: Y.Text) {
   });
   return { origin, undoOrigin, um };
 }
+
+// ---------------------------------------------------------------------------
+// synthesizeStackItemDiff
+// ---------------------------------------------------------------------------
 
 describe('synthesizeStackItemDiff', () => {
   test('single insert — reports insertion span, no deletions', () => {
@@ -52,10 +67,12 @@ describe('synthesizeStackItemDiff', () => {
     const text = doc.getText('source');
     const { origin, um } = makeUMPair(doc, text);
 
+    // Pre-populate outside tracked origin — not on undo stack.
     doc.transact(() => {
       text.insert(0, 'hello world');
     });
 
+    // Now delete within tracked origin.
     doc.transact(() => {
       text.delete(0, 5); // delete 'hello'
     }, origin);
@@ -75,6 +92,8 @@ describe('synthesizeStackItemDiff', () => {
   test('empty undoStack (no bursts) → synthesize on empty UM returns sensible values', () => {
     const doc = new Y.Doc();
     const text = doc.getText('source');
+    // Just verify synthesize handles an empty text gracefully.
+    // Use createDeleteSet() since DeleteSet is not a public export.
     const dummyStackItem = {
       insertions: Y.createDeleteSet(),
       deletions: Y.createDeleteSet(),
@@ -93,6 +112,7 @@ describe('synthesizeStackItemDiff', () => {
     const text = doc.getText('source');
     const { origin, um } = makeUMPair(doc, text);
 
+    // Insert in two parts that merge into one StackItem (captureTimeout: 0 isolates by transact).
     doc.transact(() => {
       text.insert(0, 'foo');
       text.insert(3, 'bar');
@@ -107,6 +127,10 @@ describe('synthesizeStackItemDiff', () => {
     expect(insertedContent).toContain('bar');
   });
 });
+
+// ---------------------------------------------------------------------------
+// synthesizeStackItemDiffText
+// ---------------------------------------------------------------------------
 
 describe('synthesizeStackItemDiffText', () => {
   test('returns empty string when before === after', () => {
@@ -139,6 +163,16 @@ describe('synthesizeStackItemDiffText', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// listAgentActivity
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal mock of `AgentSessionManager` — exposes the two public accessors
+ * `listAgentActivity` consumes (`sessionsForConnection`, `getLiveSession`).
+ * Tests seed sessions by (docName, agentId) in the key shape the real
+ * AgentSessionManager uses: `${docName}\0${agentId}`.
+ */
 function makeSessionManager(sessions: Map<string, unknown>): AgentSessionManager {
   return {
     *sessionsForConnection(connectionId: string) {
@@ -213,15 +247,18 @@ describe('listAgentActivity', () => {
     const ytextB = docB.getText('source');
     const pairB = makeUMPair(docB, ytextB);
 
+    // Write to A first, then B (so B has a newer timestamp).
     docA.transact(() => {
       ytextA.insert(0, 'aaa');
     }, pairA.origin);
 
+    // Force a small delay between the two operations.
     const tsBefore = Date.now();
     docB.transact(() => {
       ytextB.insert(0, 'bbb');
     }, pairB.origin);
 
+    // Manually set timestamps to guarantee ordering.
     if (pairA.um.undoStack[0].meta instanceof Map) {
       pairA.um.undoStack[0].meta.set('time', tsBefore - 1000);
     }
@@ -263,6 +300,7 @@ describe('listAgentActivity', () => {
     const manager = makeSessionManager(sessions);
     const result = listAgentActivity(manager, 'agent-abc');
 
+    // B should come first (newer timestamp).
     expect(result.files[0].docName).toBe('file-b.md');
     expect(result.files[1].docName).toBe('file-a.md');
   });
@@ -272,6 +310,7 @@ describe('listAgentActivity', () => {
     const ytext = doc.getText('source');
     const { origin, um } = makeUMPair(doc, ytext);
 
+    // captureTimeout: 0 → each transact = one StackItem
     doc.transact(() => {
       ytext.insert(0, 'first\n');
     }, origin);
@@ -311,6 +350,7 @@ describe('listAgentActivity', () => {
 
     const bursts = result.files[0].bursts;
     expect(bursts).toHaveLength(3);
+    // Newest first: stackIndex should descend
     expect(bursts[0].stackIndex).toBeGreaterThan(bursts[1].stackIndex);
     expect(bursts[1].stackIndex).toBeGreaterThan(bursts[2].stackIndex);
   });

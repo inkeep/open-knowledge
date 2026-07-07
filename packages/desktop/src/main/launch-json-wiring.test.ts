@@ -6,6 +6,8 @@ import { LAUNCH_UI_CHAIN_V1 } from '@inkeep/open-knowledge';
 import { checkAndRepairLaunchJsonOnProjectOpen } from './launch-json-wiring.ts';
 
 const EXE = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
+// Current canonical recipe — the `# ok-ui-v1` `/bin/sh` chain that runs
+// `ok start`, the exact shape `scaffoldLaunchJson('published')` writes.
 const CANONICAL_UI = {
   runtimeExecutable: '/bin/sh',
   runtimeArgs: ['-l', '-c', LAUNCH_UI_CHAIN_V1],
@@ -50,6 +52,8 @@ describe('checkAndRepairLaunchJsonOnProjectOpen — force-write posture', () => 
       isPackaged: true,
       platform: 'darwin',
     });
+    // scaffoldLaunchJson treats blank as {} and creates a fresh configurations
+    // array — surfaced as 'created' because the entry didn't exist beforehand.
     expect(result.status).toBe('created');
     const parsed = JSON.parse(readFileSync(path, 'utf8'));
     expect(parsed.configurations[0].name).toBe('open-knowledge-ui');
@@ -60,6 +64,8 @@ describe('checkAndRepairLaunchJsonOnProjectOpen — force-write posture', () => 
     const dir = project();
     mkdirSync(join(dir, '.claude'));
     const path = join(dir, '.claude', 'launch.json');
+    // Seed with the exact shape scaffoldLaunchJson writes (incl. its
+    // `LAUNCH_JSON_PORT` constant) so the second-write byte diff is zero.
     writeFileSync(
       path,
       `${JSON.stringify(
@@ -101,6 +107,9 @@ describe('checkAndRepairLaunchJsonOnProjectOpen — force-write posture', () => 
       isPackaged: true,
       platform: 'darwin',
     });
+    // scaffoldLaunchJson's contract: action='created' when the OK entry didn't
+    // exist before, action='merged' when an OK entry was already present and
+    // got replaced. So new-entry-into-existing-file is 'created', not 'merged'.
     expect(result.status).toBe('created');
     const parsed = JSON.parse(readFileSync(path, 'utf8'));
     expect(parsed.configurations).toHaveLength(2);

@@ -3,6 +3,14 @@ import { PROTOCOL_VERSION, RUNTIME_VERSION, STATE_SCHEMA_VERSION } from './versi
 
 describe('version-constants', () => {
   test('RUNTIME_VERSION resolves from package.json (NOT the unknown sentinel)', () => {
+    // Canary for the runtime `package.json` lookup in `readRuntimeVersion()`.
+    // The fallback `'0.0.0-unknown'` is intentional — it prevents crashes when
+    // the lookup fails — but landing on the fallback in production means lock
+    // files and state-manifest entries lose their diagnostic value (every
+    // writer reports as "0.0.0-unknown"). If `tsdown` ever changes the bundle
+    // layout (e.g., subdirectories under `dist/`) or the dev `src/` resolution
+    // shifts, this test fails and someone fixes the path resolution before it
+    // ships unnoticed.
     expect(RUNTIME_VERSION).not.toBe('0.0.0-unknown');
     expect(RUNTIME_VERSION).toMatch(/^\d+\.\d+\.\d+/);
   });

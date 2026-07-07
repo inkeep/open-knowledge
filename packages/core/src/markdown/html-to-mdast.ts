@@ -15,6 +15,7 @@ import { rehypeStripGsheetsWrapper } from './rehype-plugins/strip-gsheets-wrappe
 import { rehypeStripMsoStyles } from './rehype-plugins/strip-mso-styles.ts';
 import { rehypeStripSlackClasses } from './rehype-plugins/strip-slack-classes.ts';
 import { rehypeStripVscodeSpans } from './rehype-plugins/strip-vscode-spans.ts';
+import { flattenTableCellsInTree } from './table-cell-flatten.ts';
 
 interface HtmlToMdastOptions {
   additionalCleanupPlugins?: Plugin[];
@@ -92,5 +93,6 @@ export function htmlToMdast(html: string, options?: HtmlToMdastOptions): MdastRo
 }
 
 export function mdastToMarkdown(tree: MdastRoot): string {
+  flattenTableCellsInTree(tree);
   return String(unified().use(remarkGfm).use(remarkStringify).stringify(tree));
 }

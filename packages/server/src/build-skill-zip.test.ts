@@ -1,3 +1,10 @@
+/**
+ * Regression tests for cross-platform path handling in the `.skill` ZIP
+ * builder. Covers the Windows class of bug where `sourceDir.split('/').pop()`
+ * leaked the entire absolute path into the ZIP root because Windows paths
+ * use `\` separators.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -118,6 +125,7 @@ describe('resolveBundledSkillDir', () => {
         platform: 'darwin',
         checkDesktop: true,
       });
+      // The Desktop probe fired — the resolved path is inside an `.app` bundle.
       expect(dir).toContain('OpenKnowledge.app');
     } finally {
       rmSync(home, { recursive: true, force: true });
@@ -170,6 +178,12 @@ describe('resolveBundledSkillDir', () => {
     }
   });
 
+  // Pins the load-bearing invariant: when
+  // `checkDesktop` is OMITTED, the resolver must default to `false` and skip
+  // the `/Applications/OpenKnowledge.app` probe — not silently fall back to
+  // `true`. An accidental revert of `?? false` to `?? true`
+  // would pass every other test on every platform;
+  // this one fails.
   test('default (checkDesktop omitted) skips the Desktop probe on darwin', () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-resolver-'));
     try {
@@ -177,6 +191,7 @@ describe('resolveBundledSkillDir', () => {
       const dir = resolveBundledSkillDir('project', {
         home,
         platform: 'darwin',
+        // checkDesktop intentionally omitted — relying on the default.
       });
       expect(dir).not.toContain('OpenKnowledge.app');
     } finally {

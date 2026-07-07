@@ -1,3 +1,20 @@
+/**
+ * Unit coverage for the `POST /api/test-rescan-files` endpoint — the file-index
+ * counterpart of `/api/test-rescan-backlinks`. Both endpoints exist to recover
+ * from the @parcel/watcher + inotify race on Linux CI (dropped IN_CREATE events
+ * for files written into freshly-created subdirectories). See the
+ * `awaitFileWatcherIndexed` helper in `test-harness.ts` for the integration
+ * caller.
+ *
+ * Three scenarios mirror the sibling `POST /api/test-rescan-backlinks` suite
+ * in `api-backlinks.test.ts`:
+ *   1. Happy path — `enableTestRoutes=true` + a configured `rescanFiles`
+ *      callback returns 200 and invokes the callback.
+ *   2. Production gate — without `enableTestRoutes` the route returns 404
+ *      (the route is unregistered, so dispatch falls through to the not-found
+ *      handler).
+ *   3. Method gate — non-POST methods return 405.
+ */
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -82,8 +99,15 @@ describe('POST /api/test-rescan-files', () => {
       });
 
       expect(resp.status).toBe(200);
+      // Closes the parity gap with the sibling `test-rescan-backlinks` suite —
+      // a regression that emits text/plain or omits the Content-Type would
+      // pass otherwise.
       expect(resp.headers['Content-Type']).toBe('application/json');
       expect(JSON.parse(resp.body)).toEqual({});
+      // The callback ran exactly once — this is the load-bearing handoff that
+      // makes the endpoint useful. If the wiring drops to a no-op handler,
+      // tests using `awaitFileWatcherIndexed`'s rescue would silently fail
+      // back to the 45 s timeout error instead of recovering.
       expect(invocations).toBe(1);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
@@ -96,9 +120,14 @@ describe('POST /api/test-rescan-files', () => {
     mkdirSync(contentDir, { recursive: true });
 
     try {
+      // enableTestRoutes=true but rescanFiles omitted from options — this is
+      // the configuration safety net: if a host (e.g. mid-port server-factory
+      // refactor) forgets to wire the watcher's rescanFromDisk callback, the
+      // endpoint fails loud rather than silently no-op-200ing.
       const resp = await callRoute(contentDir, '/api/test-rescan-files', {
         method: 'POST',
         enableTestRoutes: true,
+        // rescanFiles intentionally omitted
       });
 
       expect(resp.status).toBe(503);
@@ -119,10 +148,14 @@ describe('POST /api/test-rescan-files', () => {
     try {
       const resp = await callRoute(contentDir, '/api/test-rescan-files', {
         method: 'POST',
+        // enableTestRoutes intentionally omitted — production-default state
         rescanFiles: () => {
           throw new Error('rescanFiles must not be invoked when the route is unregistered');
         },
       });
+      // Same shape as `/api/test-rescan-backlinks`' production-gate test: the
+      // unregistered route falls through to the dispatch-not-found handler
+      // (RFC 9457 problem+json).
       expect(resp.status).toBe(404);
       expect(resp.headers['Content-Type']).toBe('application/problem+json');
       const body = JSON.parse(resp.body);
@@ -152,6 +185,8 @@ describe('POST /api/test-rescan-files', () => {
       expect(resp.headers.Allow).toBe('POST');
       const body = JSON.parse(resp.body);
       expect(body.type).toBe('urn:ok:error:method-not-allowed');
+      // Method gate fires before the handler runs — rescanFiles must not be
+      // invoked on a wrong-method request.
       expect(invocations).toBe(0);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });

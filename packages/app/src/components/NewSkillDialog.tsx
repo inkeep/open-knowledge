@@ -30,9 +30,16 @@ interface Props {
   defaultScope: SkillScope;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called after a successful create with the new skill's scope + name. */
   onCreated: (created: { scope: SkillScope; name: string }) => void;
 }
 
+/**
+ * Create a new skill: pick a scope (Project vs Global), name it, describe it.
+ * On create the `SKILL.md` is written and the caller opens it as an editor tab —
+ * the live CRDT editor takes over from there (body + description edits are CRDT
+ * mutations). Nothing is written until Create, so there are no orphaned drafts.
+ */
 export function NewSkillDialog({ defaultScope, open, onOpenChange, onCreated }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -73,6 +80,12 @@ function Body({
   const nameCollides = !nameInvalid && nameSets[scope].has(trimmedName);
   const canCreate = !creating && !nameInvalid && !nameCollides;
 
+  // Lenient sanitize while TYPING: lowercase, illegal-char runs → a single
+  // hyphen, collapse hyphen runs, trim only LEADING hyphens. Trailing hyphens
+  // are kept so a hyphenated name (`image-location`) can be typed at all — the
+  // `-` is momentarily trailing as you type it, and trimming it on every
+  // keystroke (the old behavior) made hyphens impossible to enter. A trailing
+  // hyphen is trimmed on blur.
   function sanitizeNameInput(text: string): string {
     return text
       .toLowerCase()

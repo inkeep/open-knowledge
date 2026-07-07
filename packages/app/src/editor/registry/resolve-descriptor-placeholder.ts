@@ -1,3 +1,20 @@
+/**
+ * Empty-state placeholder helpers — decide WHEN to swap the rendered
+ * component for the placeholder pill, and WHAT label / Icon to display.
+ *
+ * Both functions are pure and synchronous so JsxComponentView can call them
+ * inline during render. No DOM, no editor, no React.
+ *
+ * The predicate is intentionally STRICTER than `JsxComponentView`'s
+ * `needsConfig` — `needsConfig` flags any required string prop with a
+ * missing-key decision (e.g. `alt` absent on an `<img>`) and uses the
+ * gear-hint chrome nudge, but the placeholder only fires when the component
+ * literally cannot render anything useful (the autoFocus-flagged required
+ * prop is empty string). Conflating the two would regress images with valid
+ * src + unset alt into placeholder mode AND lose the tri-state alt
+ * distinction (missing key fires the nudge; `alt=''` is the WCAG decorative
+ * opt-in and does NOT fire either signal).
+ */
 import type { LucideIcon } from 'lucide-react';
 import { getAutoFocusedPropName } from '../utils/editor-strings.ts';
 import { resolveIcon } from './icons.ts';

@@ -1,3 +1,15 @@
+/**
+ * Integration tests for the three Publish-to-GitHub server endpoints
+ * Boots a real Hocuspocus + HTTP server with `localOpCliArgs`
+ * pointed at a fixture script that emits the canned NDJSON event each
+ * test expects — so we exercise the full request → spawn → parse →
+ * response loop without touching the real CLI or GitHub.
+ *
+ * Mirrors the `auth-flow.test.ts` fixture pattern
+ *   `[process.execPath, '-e', '<inline-script>']`
+ * so tests don't depend on a built CLI on PATH.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -7,6 +19,11 @@ import { join } from 'node:path';
 import { listenOnLoopback } from '../loopback-rig-test-helpers.ts';
 import type { SyncEngine } from '../sync-engine.ts';
 
+/**
+ * Minimal SyncEngine stand-in that records `refreshRemote()` invocations.
+ * The publish handler fires `refreshRemote()` synchronously before sending
+ * the response, so the counter is observable as soon as the fetch resolves.
+ */
 function makeFakeSyncEngine(): { engine: SyncEngine; refreshRemoteCalls: () => number } {
   let calls = 0;
   const engine = {
@@ -28,7 +45,15 @@ interface TestRig {
   cleanup: () => Promise<void>;
 }
 
+/**
+ * Build a `localOpCliArgs` value that, when spawned with any tail args,
+ * emits the given JSON event line to stdout and exits 0. The script runs
+ * under Node-compatible argv parsing, so any positional `share publish ...`
+ * args this rig is invoked with are ignored by the fixture.
+ */
 function fixtureCliArgs(eventLine: string): readonly string[] {
+  // Use a single-quoted string for the inner JSON so `'` characters in
+  // event payloads (none expected, but defensive) don't break the eval.
   const safe = eventLine.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
   return [process.execPath, '-e', `process.stdout.write(\`${safe}\\n\`);`];
 }
@@ -106,6 +131,8 @@ async function postJson(
   return { status: res.status, body: await res.json() };
 }
 
+// ─── /api/share/publish/owners ───────────────────────────────────────────────
+
 describe('GET /api/share/publish/owners', () => {
   let rig: TestRig;
   afterEach(async () => {
@@ -162,6 +189,8 @@ describe('GET /api/share/publish/owners', () => {
   });
 });
 
+// ─── /api/share/publish/name-check ───────────────────────────────────────────
+
 describe('GET /api/share/publish/name-check', () => {
   let rig: TestRig;
   afterEach(async () => {
@@ -214,6 +243,8 @@ describe('GET /api/share/publish/name-check', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ─── /api/share/publish ──────────────────────────────────────────────────────
 
 describe('POST /api/share/publish', () => {
   let rig: TestRig;
@@ -344,6 +375,11 @@ describe('POST /api/share/publish', () => {
     expect(res.status).toBe(405);
   });
 
+  // Regression: a successful publish adds `origin` to the local repo, but the
+  // sync engine snapshotted `hasRemote: false` at boot. The handler must nudge
+  // it to re-detect so the CC1 'sync-status' push flips the client's hasRemote.
+  // Without this the Share button keeps re-opening the publish wizard and the
+  // republish 422s on the repo that already exists.
   test('successful publish nudges the sync engine to re-detect the remote', async () => {
     const fake = makeFakeSyncEngine();
     rig = await bootRig({

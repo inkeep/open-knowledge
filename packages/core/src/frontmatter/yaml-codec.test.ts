@@ -61,6 +61,10 @@ describe('parseFrontmatterYaml', () => {
   });
 
   test("coerces Obsidian's empty-list / bare-key null shapes instead of rejecting the map", () => {
+    // The disk-side parser shares `FrontmatterMapSchema` with the panel
+    // binding, so the same Obsidian null coercion applies on load: an empty
+    // `tags:\n- ` block sequence reads as an empty list, a bare `tags:` reads
+    // as an empty string, and neither hides the file's other keys.
     expect(parseFrontmatterYaml('tags:\n- \n').map).toEqual({ tags: [] });
     expect(parseFrontmatterYaml('tags:\n').map).toEqual({ tags: '' });
     const mixed = parseFrontmatterYaml('plugin-id: dataview\ntags:\n- \npublish: true\n');
@@ -69,6 +73,8 @@ describe('parseFrontmatterYaml', () => {
   });
 
   test('parses nested objects into a populated map with no parseError', () => {
+    // Recursive value contract — nested mappings round-trip as native JS
+    // objects so the property panel can render them as expandable rows.
     const yaml = 'name: skill\nmetadata:\n  version: 1.0.0\n  author: Inkeep\n';
     const { map, parseError } = parseFrontmatterYaml(yaml);
     expect(parseError).toBeUndefined();
@@ -95,6 +101,10 @@ describe('parseFrontmatterYaml', () => {
   });
 
   test('object array elements are NOT String-coerced (scalar-only coercion)', () => {
+    // Scalar elements still coerce to string (`2026` → `'2026'`) so the tag
+    // indexer + flat list widget stay convergent; object elements pass
+    // through as-is. Without this, `String({})` would yield
+    // `'[object Object]'` and corrupt nested data on every parse.
     const yaml = 'items:\n  - {a: 1}\n  - tag\n  - 2026\n';
     const { map, parseError } = parseFrontmatterYaml(yaml);
     expect(parseError).toBeUndefined();
@@ -102,6 +112,8 @@ describe('parseFrontmatterYaml', () => {
   });
 
   test('returns null map on genuinely malformed YAML (yaml@2 parse error)', () => {
+    // After the recursive widening, parseError is reserved for genuine
+    // yaml@2 errors and non-mapping top levels — NOT for nested values.
     const { map, parseError } = parseFrontmatterYaml('title: foo: bar');
     expect(map).toBeNull();
     expect(parseError).toBeDefined();

@@ -64,6 +64,10 @@ describe('mergeViewMenuState — multi-publisher non-clobbering contract', () =>
   });
 
   test('TerminalDock push (terminalLive only) composes with the other publishers without clobbering', () => {
+    // TerminalDock is the third runtime publisher into the merged menu state
+    // (terminalLive, the Kill-Terminal enablement signal). Its push must not
+    // clobber EditorPane's terminalVisible or the sidebar/doc-panel fields, and
+    // a later terminalVisible push must not clobber terminalLive.
     const afterEditorPane = mergeViewMenuState(initial, { terminalVisible: true });
     const afterTerminalDock = mergeViewMenuState(afterEditorPane, { terminalLive: true });
 
@@ -72,6 +76,7 @@ describe('mergeViewMenuState — multi-publisher non-clobbering contract', () =>
     expect(afterTerminalDock.docPanelVisible).toBe(true);
     expect(afterTerminalDock.sidebarVisible).toBe(true);
 
+    // Reverse direction: a subsequent terminalVisible push preserves terminalLive.
     const afterToggleHide = mergeViewMenuState(afterTerminalDock, { terminalVisible: false });
     expect(afterToggleHide.terminalLive).toBe(true);
     expect(afterToggleHide.terminalVisible).toBe(false);

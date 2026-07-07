@@ -211,6 +211,8 @@ describe('suggestLinks', () => {
 
       conn = await hocuspocus.openDirectConnection('notes');
       const doc = getDoc(conn);
+      // Seed via applyAgentMarkdownWrite so both XmlFragment and Y.Text are populated
+      // (suggest-links reads live state; agent-write path is the post-precedent-#12 template).
       doc.transact(() => {
         applyAgentMarkdownWrite(doc, 'Project Alpha only in live state.\n', 'replace');
       }, AGENT_WRITE_ORIGIN);
@@ -235,6 +237,15 @@ describe('suggestLinks', () => {
   });
 
   test('FR-43: doc-start `---` thematic-break form survives via ytext (discriminating)', async () => {
+    // suggest-links read body via `mdManager.serialize(fragment)`.
+    // mdast canonicalizes a doc-start `---\n` thematic break to `***\n` on
+    // serialize, inserting a blank line because mdast also forces
+    // `\n\n` between blocks. A regression to serialize(fragment)-based
+    // reading would shift "Project Alpha"'s byte offset by exactly the byte
+    // count of that canonicalization difference. Pinning the exact offset
+    // catches the regression — angle-bracket autolinks (the existing
+    // case) round-trip byte-equal under sourceFidelity attrs and so
+    // are NOT discriminating against this class of revert.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-suggest-links-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -245,10 +256,14 @@ describe('suggestLinks', () => {
       writeFileSync(join(contentDir, 'project-alpha.md'), '# Project Alpha\n', 'utf-8');
       writeFileSync(join(contentDir, 'notes.md'), 'Stale disk.\n', 'utf-8');
 
+      // Open notes — gives us a live Document. Seed via applyExternalChange
+      // (FILE_WATCHER_ORIGIN paired-write) so ytext gets the raw bytes
+      // verbatim and fragment derives via parse.
       conn = await hocuspocus.openDirectConnection('notes');
       const doc = getDoc(conn);
       applyExternalChange(hocuspocus, 'notes', '---\n# Notes\n\nProject Alpha discussion.\n');
 
+      // ytext byte-equal: user form preserved.
       const yText = doc.getText('source').toString();
       expect(yText).toBe('---\n# Notes\n\nProject Alpha discussion.\n');
 
@@ -259,6 +274,12 @@ describe('suggestLinks', () => {
       });
 
       expect(result.mentions).toHaveLength(1);
+      // Discriminating: in ytext bytes, "Project Alpha" sits at byte 13
+      // (after `---\n# Notes\n\n` = 4 + 8 + 1 = 13). In canonical bytes
+      // (`***\n\n# Notes\n\nProject Alpha…`), it sits at byte 14 — mdast
+      // serialize emits `***\n\n` (extra blank) instead of `---\n` for the
+      // doc-start thematic break. A regression to serialize(fragment)
+      // makes this assertion fail with offset 14.
       expect(result.mentions[0]?.offset).toBe(13);
       expect(result.mentions[0]?.source).toBe('notes');
     } finally {
@@ -268,6 +289,14 @@ describe('suggestLinks', () => {
   });
 
   test('FR-43: angle-bracket autolink survives in mention excerpt (live doc body via ytext)', async () => {
+    // Under the Y.Text-is-truth contract, suggest-links reads body bytes
+    // from `Y.Text('source')` directly (matching live-derived-index +
+    // persistence). A regression that reverts to `serialize(fragment)`
+    // alongside an fidelity-attr regression would surface the
+    // canonical `[url](url)` form in the excerpt instead of the user-typed
+    // `<url>` autolink — same shape as live-derived-index.test.ts
+    // coverage, here verified at the suggest-links surface that consumers
+    // actually read.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-suggest-links-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -280,6 +309,11 @@ describe('suggestLinks', () => {
 
       conn = await hocuspocus.openDirectConnection('notes');
       const doc = getDoc(conn);
+      // Body keeps the URL host punctuation-free so the snippet's sentence-
+      // boundary truncation (`.` is a stop char in `snippetAround`) does NOT
+      // chop the URL mid-host. Mention sits between the URL and the trailing
+      // period so leftPunc=-1 and rightPunc=trailing period, capturing the
+      // full angle-bracket form in the excerpt.
       doc.transact(() => {
         applyAgentMarkdownWrite(doc, 'Visit <https://example> for Project Alpha.\n', 'replace');
       }, AGENT_WRITE_ORIGIN);
@@ -292,7 +326,13 @@ describe('suggestLinks', () => {
 
       expect(result.mentions).toHaveLength(1);
       const excerpt = result.mentions[0]?.excerpt ?? '';
+      // Angle-bracket autolink form survives — `<` and `>` reach flatText
+      // as plain chars, not stripped as markdown link syntax.
       expect(excerpt).toContain('<https://example>');
+      // Canonical `[url](url)` form would have stripped the angle brackets
+      // (Markdown link readers extract only the visible text). Asserting
+      // its absence catches regressions that route body through serialize
+      // canonicalization instead of raw ytext.
       expect(excerpt).not.toContain('](https://example)');
     } finally {
       if (conn) await conn.disconnect();

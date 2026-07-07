@@ -1,3 +1,18 @@
+/**
+ * File renderer — pure-helper tests for the basename derivation.
+ *
+ * The interactive concerns (PM dispatch, hover state, click-to-download)
+ * are exercised at a higher tier (Playwright E2E + the JsxComponentView
+ * test). The unit-level tests here pin the contract that drives the
+ * `displayName` fallback when an author writes `<File src="..." />`
+ * without an explicit `name` prop:
+ *
+ *   - Strip the query string
+ *   - Strip directory prefix (relative or absolute URL)
+ *   - Percent-decode the final segment
+ *   - Empty / undefined input → `''` (renderer falls back to "Untitled file")
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { basenameFromUrl } from './File.tsx';
 
@@ -7,6 +22,7 @@ describe('basenameFromUrl', () => {
   });
 
   test('absolute URL with hash fragment — kept inside pathname segment', () => {
+    // `URL.pathname` excludes the fragment, so `#section` drops out.
     expect(basenameFromUrl('https://host.example.com/docs/guide.html#install')).toBe('guide.html');
   });
 
@@ -26,6 +42,7 @@ describe('basenameFromUrl', () => {
   });
 
   test('malformed percent-encoding — returns raw segment without throwing', () => {
+    // `decodeURIComponent('%E0%A4%A')` throws URIError; the helper catches.
     expect(basenameFromUrl('https://host/files/bad%E0%A4%A.bin')).toBe('bad%E0%A4%A.bin');
   });
 
@@ -39,10 +56,17 @@ describe('basenameFromUrl', () => {
   });
 
   test('data URL — extracts no filename (no path component)', () => {
+    // `data:` URLs have no usable basename. Returns empty so the renderer's
+    // explicit-`name` prop is the only way to label them.
     expect(basenameFromUrl('data:text/plain;base64,SGVsbG8=')).toBe('');
   });
 
   test('blob URL — extracts no filename (transient browser object URL)', () => {
+    // `blob:` URLs are produced by `URL.createObjectURL()` during
+    // drag-and-drop file uploads — the URL's path segment is an opaque
+    // GUID, not a filename. Returns empty so the renderer's `name`
+    // prop (or "Untitled file" fallback) labels the row instead of
+    // displaying the GUID.
     expect(basenameFromUrl('blob:https://host.example.com/abc-def-123')).toBe('');
     expect(basenameFromUrl('blob:null/d3a1c2-9f8e-7b6c-1d4e')).toBe('');
   });

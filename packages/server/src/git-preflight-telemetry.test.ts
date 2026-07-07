@@ -1,3 +1,14 @@
+/**
+ * Unit tests for `emitPreflightFailureSpan` — the telemetry primitive.
+ *
+ * Mounts an `InMemorySpanExporter` as the global tracer provider so we can
+ * assert the exact span name + attribute shape that downstream dashboards
+ * key on (cardinality discipline).
+ *
+ * The integration-level "the boot catch site invokes the helper" is
+ * covered separately in `git-preflight-boot.test.ts`.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { context, metrics, trace } from '@opentelemetry/api';
 import {
@@ -110,6 +121,8 @@ describe('emitPreflightFailureSpan — cardinality discipline (FR8 AC8.5)', () =
   });
 
   test('does not carry guidance URL or resolved path as attributes', () => {
+    // Free-form strings (URLs, paths) would blow up Tempo's index;
+    // OK's cardinality discipline keeps them out of attributes.
     const err = new GitTooOldError('darwin', '2.20.0', '2.31.0', '/opt/homebrew/bin/git', {
       product: 'Git',
       url: 'https://git-scm.com/download/mac',

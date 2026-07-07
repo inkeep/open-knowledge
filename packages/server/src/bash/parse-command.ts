@@ -1,3 +1,28 @@
+/**
+ * `parseCommand` — the sole primary security boundary for `exec`.
+ *
+ * Uses `shell-quote` to tokenize the user-supplied command string, then
+ * walks the resulting AST and rejects anything not structurally allowed.
+ * A post-exec mtime-scan backstop is the defense-in-depth layer
+ * for any bug that slips past this parser.
+ *
+ * Three layers of validation:
+ *   1. AST-level op denylist — only `|` is allowed; every other operator
+ *      (redirection, sequencing, backgrounding, subshell) rejects with a
+ *      categorized error.
+ *   2. First-token allowlist per pipeline stage — Conservative-plus set:
+ *      cat, ls, grep, find, head, tail, wc, sort, uniq, cut.
+ *      awk/sed/xargs explicitly excluded (program-arg write vectors).
+ *   3. Argument-level flag denylist — universal `-o` / `--output-file` /
+ *      `--output`, plus find-specific `-exec`/`-execdir`/`-delete`/etc.
+ *   4. String-token scan — arguments containing backticks, `$(`, or `${`
+ *      are treated as shell-construct-blocked (injection vectors that
+ *      shell-quote may not split but that just-bash could interpret).
+ *
+ * Error messages are category-specific so agents receive an actionable
+ * next-step, not a wall of allowlist text.
+ */
+
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 import shellQuote from 'shell-quote';
 import { shellEscape } from './shell-escape.ts';
@@ -16,12 +41,20 @@ interface ParseCommandError {
 }
 
 export interface Stage {
+  /** First token — the allowlisted command. */
   command: string;
+  /** All tokens including the command itself. */
   args: string[];
 }
 
 type ParseResult = { stages: Stage[] } | { error: ParseCommandError };
 
+/**
+ * Dirs that are never wiki content. Auto-injected on recursive `grep` (as
+ * `--exclude-dir=`) and on `find` (as `-not -path "/X/"` glob) so agents don't
+ * wait 20s scanning `node_modules/` etc. Users can opt out by passing their
+ * own `--exclude-dir` / `-not -path`.
+ */
 const WIKI_EXCLUDE_DIRS: readonly string[] = [
   'node_modules',
   '.git',
@@ -35,9 +68,20 @@ const WIKI_EXCLUDE_DIRS: readonly string[] = [
   '.parcel-cache',
   '.vercel',
   OK_DIR,
+  // Worktree snapshots + plugin cache duplicate the main repo's content,
+  // producing N× hits for any search. Never wiki content.
   '.claude',
 ];
 
+/**
+ * Per-command strategy for auto-injecting ignored-dir filters so agents don't
+ * waste time walking `node_modules/`, `.git/`, build dirs, etc. Strategies
+ * follow a common shape:
+ *   - `applies`   — stage should be augmented (command matches + recurses)
+ *   - `hasUserExcludes` — user already passed their own excludes; skip injection
+ *   - `buildExcludeArgs` — the tokens to splice in
+ *   - `insertionIndex` — where in stage.args to splice
+ */
 interface ExcludeStrategy {
   command: string;
   applies(args: string[]): boolean;
@@ -59,12 +103,18 @@ const GREP_STRATEGY: ExcludeStrategy = {
   hasUserExcludes: (args) =>
     args.some((a) => a === '--exclude-dir' || a.startsWith('--exclude-dir=')),
   buildExcludeArgs: (dirs) => dirs.map((d) => `--exclude-dir=${d}`),
+  // Right after the command token so excludes appear before pattern/paths.
   insertionIndex: () => 1,
 };
 
 const FIND_STRATEGY: ExcludeStrategy = {
   command: 'find',
+  // `find` is always recursive — augment unconditionally.
   applies: () => true,
+  // Respect user's own filtering. Only `-not` / `!` / `-prune` unambiguously
+  // signal the user is managing exclusions — bare `-path` is also used for
+  // inclusion patterns (e.g. `find . -path "docs/*.md"`), so matching on it
+  // would wrongly disable injection for include-style commands.
   hasUserExcludes: (args) => args.slice(1).some((a) => a === '-not' || a === '!' || a === '-prune'),
   buildExcludeArgs: (dirs) => {
     const out: string[] = [];
@@ -73,6 +123,9 @@ const FIND_STRATEGY: ExcludeStrategy = {
     }
     return out;
   },
+  // Splice before the first expression primary (first arg starting with `-`),
+  // so `find . -name X` becomes `find . -not -path ... -name X`. If no path
+  // arg exists (`find -name X`), splice right after `find`.
   insertionIndex: (args) => {
     for (let i = 1; i < args.length; i++) {
       if (args[i].startsWith('-')) return i;
@@ -83,6 +136,10 @@ const FIND_STRATEGY: ExcludeStrategy = {
 
 const STRATEGIES: readonly ExcludeStrategy[] = [GREP_STRATEGY, FIND_STRATEGY];
 
+/**
+ * Inject `WIKI_EXCLUDE_DIRS` filters into any stage whose command has a
+ * matching strategy. Returns a new stage array — original is not mutated.
+ */
 export function augmentStagesWithExcludes(stages: Stage[]): Stage[] {
   return stages.map((stage) => {
     const strategy = STRATEGIES.find((s) => s.command === stage.command);
@@ -98,10 +155,12 @@ export function augmentStagesWithExcludes(stages: Stage[]): Stage[] {
   });
 }
 
+/** Serialize stages back to a pipeline command string for execBash. */
 export function serializeStages(stages: Stage[]): string {
   return stages.map((s) => s.args.map(shellEscape).join(' ')).join(' | ');
 }
 
+// Conservative-plus allowlist.
 const ALLOWLIST: ReadonlySet<string> = new Set([
   'cat',
   'ls',
@@ -117,8 +176,10 @@ const ALLOWLIST: ReadonlySet<string> = new Set([
 
 const ALLOWLIST_HINT = 'cat, ls, grep, find, head, tail, wc, sort, uniq, cut';
 
+// Redirections (write to file/fd) — write_blocked.
 const WRITE_OPS: ReadonlySet<string> = new Set(['>', '>>', '<', '>&', '<&', '|&']);
 
+// Shell constructs (sequencing, subshell, background, heredoc) — shell_construct_blocked.
 const SHELL_CONSTRUCT_OPS: ReadonlySet<string> = new Set([
   '&',
   ';',
@@ -133,9 +194,11 @@ const SHELL_CONSTRUCT_OPS: ReadonlySet<string> = new Set([
   '<<-',
 ]);
 
+// Flags that write to file on any command.
 const UNIVERSAL_FLAG_DENY: ReadonlySet<string> = new Set(['-o', '--output-file', '--output']);
 const UNIVERSAL_FLAG_PREFIX_DENY = ['-o=', '--output-file=', '--output='];
 
+// find-specific flags that execute arbitrary commands or delete files.
 const FIND_FLAG_DENY: ReadonlySet<string> = new Set([
   '-exec',
   '-execdir',
@@ -147,6 +210,10 @@ const FIND_FLAG_DENY: ReadonlySet<string> = new Set([
   '-okdir',
 ]);
 
+// Injection vectors that may survive shell-quote.parse: backticks, command
+// substitution `$(...)`, variable expansion `${...}`, and ANSI-C quoting
+// `$'...'` (which bash evaluates escape sequences in, distinct from plain
+// single-quoted strings).
 const SUSPICIOUS_STRING_RE = /[`]|\$\(|\$\{|\$'/;
 
 type ShellOpToken = {
@@ -200,10 +267,13 @@ function buildStageArgs(tokens: ShellToken[]): { args: string[] } | { error: Par
         error: { category: 'shell_construct_blocked', message: 'Unrecognized token shape.' },
       };
     }
+    // Glob tokens {op:'glob', pattern:'*.md'} pass through as args — just-bash
+    // expands them inside the sandbox.
     if (token.op === 'glob' && typeof token.pattern === 'string') {
       args.push(token.pattern);
       continue;
     }
+    // Comments shouldn't appear in an `exec` command; reject.
     if (typeof token.comment === 'string') {
       return {
         error: {
@@ -241,6 +311,10 @@ function checkStage(stage: Stage): ParseCommandError | null {
   return null;
 }
 
+/**
+ * Validate a command string and return a parsed pipeline structure, or a
+ * categorized error. Does NOT execute anything.
+ */
 export function parseCommand(commandStr: string): ParseResult {
   const trimmed = commandStr.trim();
   if (!trimmed) {
@@ -261,6 +335,7 @@ export function parseCommand(commandStr: string): ParseResult {
     };
   }
 
+  // Split into pipeline stages at `{ op: '|' }`.
   const stagesTokens: ShellToken[][] = [];
   let current: ShellToken[] = [];
   for (const token of ast) {

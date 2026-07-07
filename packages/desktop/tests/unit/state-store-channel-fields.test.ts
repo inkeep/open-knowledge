@@ -7,6 +7,16 @@ import {
   parseAppState,
 } from '../../src/main/state-store.ts';
 
+/**
+ * AppState schema-version field + tolerance for a legacy `updateChannel`
+ * key on disk.
+ *
+ * The persisted `updateChannel` preference was removed when channels became
+ * install-time-sticky (derived purely from the running build's version
+ * string). `parseAppState` silently ignores the legacy key — old state.json
+ * blobs still load, and the next persist drops the field.
+ */
+
 describe('AppState schema-version field — defaults', () => {
   test('emptyState defaults schemaVersion to CURRENT_SCHEMA_VERSION', () => {
     expect(emptyState().schemaVersion).toBe(CURRENT_SCHEMA_VERSION);

@@ -7,6 +7,11 @@ interface SlashCommandMenuProps {
   selectedIndex: number;
   categoryLabels: Record<string, string>;
   onSelect: (item: SlashCommandItem) => void;
+  /**
+   * Called when the user hovers an option. The extension lifts this into the
+   * same `selectedIndex` cursor that arrow keys drive, so keyboard and mouse
+   * navigation share one source of truth (mirrors Notion's slash menu).
+   */
   onHoverIndex?: (index: number) => void;
 }
 
@@ -25,8 +30,11 @@ export function SlashCommandMenu({
       ? `${listboxId}-option-${selectedIndex}`
       : undefined;
 
+  // Prevent any click on the popup (buttons or empty space) from stealing focus
+  // from the editor — without this, Backspace events go to the popup instead.
   const preventFocusSteal = (e: React.MouseEvent) => e.preventDefault();
 
+  // Scroll selected item into view
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -52,6 +60,7 @@ export function SlashCommandMenu({
     );
   }
 
+  // Group by category, preserving order
   const categories: { key: string; items: SlashCommandItem[] }[] = [];
   let flatIndex = 0;
   const indexMap = new Map<SlashCommandItem, number>();
@@ -68,6 +77,10 @@ export function SlashCommandMenu({
 
   const selectedItem =
     selectedIndex >= 0 && selectedIndex < items.length ? items[selectedIndex] : null;
+  // Reserve preview-panel width whenever ANY item in the current filtered set
+  // has a preview, so navigating between preview/no-preview items doesn't
+  // oscillate the popup width (and floating-ui's computePosition doesn't shift
+  // the popup horizontally on every selection change).
   const hasAnyPreview = items.some((item) => item.preview);
 
   return (

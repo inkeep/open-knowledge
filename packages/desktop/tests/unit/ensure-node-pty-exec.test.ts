@@ -8,6 +8,14 @@ import {
   ensureNodePtySpawnHelperExecutableInNodeModulesSafe,
 } from '../../scripts/ensure-node-pty-exec.mjs';
 
+/**
+ * Behavioral coverage for the afterPack spawn-helper chmod. node-pty's prebuilt
+ * spawn-helper ships mode 0644; asarUnpack preserves that, so without this chmod
+ * the packaged terminal dies with "posix_spawnp failed" (node-pty#850). We
+ * exercise the real filesystem mode bits against a fixture mirroring the packed
+ * `Contents/Resources/app.asar.unpacked/...` layout — no mocks.
+ */
+
 const tmpRoots: string[] = [];
 
 function helperPath(resourcesDir: string, arch: string): string {
@@ -29,6 +37,7 @@ function makeResourcesFixture(archDirs: string[]): string {
     const helper = helperPath(root, arch);
     mkdirSync(join(helper, '..'), { recursive: true });
     writeFileSync(helper, 'fake-mach-o');
+    // Mirror node-pty's shipped non-executable mode so the chmod has work to do.
     chmodSync(helper, 0o644);
   }
   return root;
@@ -72,6 +81,16 @@ describe('ensureNodePtySpawnHelperExecutable', () => {
   });
 });
 
+/**
+ * Behavioral coverage for the dev/CI build+install path — the analog of the
+ * afterPack chmod above. `bun install` lands node-pty's prebuilt spawn-helper
+ * non-executable under the real `node_modules/node-pty/prebuilds/...` tree, and
+ * the dev build (`bun run build:desktop`, electron-vite, no afterPack) has no
+ * step to fix it, so the in-app terminal dies with "posix_spawnp failed". The
+ * desktop postinstall runs this against the real `node_modules` layout; we
+ * exercise the real mode bits against a fixture mirroring it — no mocks.
+ */
+
 function nodeModulesHelperPath(nodePtyDir: string, arch: string): string {
   return join(nodePtyDir, 'prebuilds', arch, 'spawn-helper');
 }
@@ -84,6 +103,7 @@ function makeNodeModulesFixture(archDirs: string[]): string {
     const helper = nodeModulesHelperPath(nodePtyDir, arch);
     mkdirSync(join(helper, '..'), { recursive: true });
     writeFileSync(helper, 'fake-mach-o');
+    // Mirror the non-executable mode bun install leaves behind.
     chmodSync(helper, 0o644);
   }
   return nodePtyDir;
@@ -120,6 +140,12 @@ describe('ensureNodePtySpawnHelperExecutableInNodeModules', () => {
   });
 });
 
+/**
+ * The postinstall's non-throwing contract: a pathological node-pty layout must NEVER
+ * fail `bun install` (that would gate the whole monorepo). The Safe wrapper converts
+ * the hard-error throw above into an `{ ok: false, error }` result so the postinstall
+ * caller stays exit-0. Pinned here so a refactor that drops the swallowing regresses.
+ */
 describe('ensureNodePtySpawnHelperExecutableInNodeModulesSafe', () => {
   test('returns ok + chmodded on a healthy install and actually flips the bit', () => {
     const nodePtyDir = makeNodeModulesFixture(['darwin-arm64']);
@@ -132,6 +158,8 @@ describe('ensureNodePtySpawnHelperExecutableInNodeModulesSafe', () => {
   });
 
   test('does NOT throw when the shipped helper is absent — returns ok:false so postinstall stays exit-0', () => {
+    // arm64 helper missing -> the underlying ...InNodeModules throws; Safe must swallow it.
+    // Calling it directly: if Safe re-threw, this test would error rather than assert.
     const nodePtyDir = makeNodeModulesFixture(['darwin-x64']);
     const result = ensureNodePtySpawnHelperExecutableInNodeModulesSafe(nodePtyDir);
     expect(result.ok).toBe(false);

@@ -1,3 +1,12 @@
+/**
+ * Unit coverage for `computeBaseScale` — the pure layout-math helper that
+ * picks the per-page render scale for each of the five PDF layout modes
+ * (fit-width, fit-height, single, two-odd, two-even). Each branch is
+ * exercised independently so a future tweak to one mode can't silently
+ * regress the others; the toolbar's zoom multiplier composes on top of
+ * these base scales.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { computeBaseScale, type PdfPageInfo } from './pdf-layout.ts';
 
@@ -6,6 +15,7 @@ const A4: PdfPageInfo = { naturalWidth: 612, naturalHeight: 792 };
 describe('computeBaseScale', () => {
   describe('fit-width', () => {
     test('scales width-only to fill (containerW - padX) for an A4 page', () => {
+      // 720 - 24 = 696 → 696 / 612 ≈ 1.137
       expect(computeBaseScale('fit-width', A4, 720, 600)).toBeCloseTo(696 / 612, 5);
     });
 
@@ -20,12 +30,14 @@ describe('computeBaseScale', () => {
     });
 
     test('floors at 0.1 for pathologically small widths', () => {
+      // (30 - 24) / 612 = 0.0098… → floored to 0.1
       expect(computeBaseScale('fit-width', A4, 30, 600)).toBe(0.1);
     });
   });
 
   describe('fit-height', () => {
     test('scales height-only to fill (containerH - padY) for an A4 page', () => {
+      // 1000 - 24 = 976 → 976 / 792 ≈ 1.232
       expect(computeBaseScale('fit-height', A4, 720, 1000)).toBeCloseTo(976 / 792, 5);
     });
 
@@ -50,6 +62,7 @@ describe('computeBaseScale', () => {
 
   describe('two-odd', () => {
     test('halves the container width and subtracts the gutter for an A4 page', () => {
+      // (720 - 24) / 2 - 12 = 348 - 12 = 336 → 336 / 612 ≈ 0.549
       expect(computeBaseScale('two-odd', A4, 720, 600)).toBeCloseTo(336 / 612, 5);
     });
 

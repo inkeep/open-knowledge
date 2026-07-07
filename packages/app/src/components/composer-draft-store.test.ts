@@ -1,3 +1,18 @@
+/**
+ * Unit tests for the shared composer draft store — the module that makes a
+ * brief typed in one "Ask AI" placement (bottom docked field) the same brief the
+ * other placement (create/empty-screen hero) shows, and survive reload. A plain
+ * bun test: the store reads `window.localStorage` at call time behind a
+ * `typeof window` guard, so a stub on `globalThis.window` exercises the
+ * reload-survival path without the jsdom substrate (and keeps this off the
+ * `.dom.test.tsx` mount-test contract — it renders nothing).
+ *
+ * The stored unit is the editor's ProseMirror document JSON (TipTap
+ * `editor.getJSON()` shape), not a flattened string — so atomic `@`-mention
+ * chips survive across placements as real nodes. These tests use small
+ * hand-built doc literals in that shape.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { JSONContent } from '@tiptap/core';
 import {
@@ -11,6 +26,7 @@ import {
 
 const DRAFT_KEY = 'ok-ask-ai-draft-v2';
 
+/** A composer doc literal: one paragraph wrapping the given inline nodes. */
 function doc(...inline: JSONContent[]): JSONContent {
   return { type: 'doc', content: [{ type: 'paragraph', content: inline }] };
 }
@@ -60,12 +76,17 @@ describe('composer-draft-store', () => {
   });
 
   test('a write in one placement is readable by the other (shared draft)', () => {
+    // Placement A writes (e.g. the bottom composer); placement B reads the SAME
+    // store (e.g. the create hero) — no component-local state in between.
     const d = doc(text('condense my AGENTS.md'));
     setComposerDraftDoc(d);
     expect(getComposerDraft().doc).toEqual(d);
   });
 
   test('a mention chip in the draft round-trips as a node (not literal @path text)', () => {
+    // The load-bearing case: a doc carrying an atomic `composerMention` node must
+    // be readable back as that node, so the other placement re-seeds a chip — a
+    // flattened `@path` string is what the lossy v1 store produced.
     const d = doc(text('summarize '), mention('notes.md', 'Notes'));
     setComposerDraftDoc(d);
     const read = getComposerDraft().doc;
@@ -78,6 +99,8 @@ describe('composer-draft-store', () => {
     const d = doc(text('research flightless birds'));
     setComposerDraftDoc(d);
     expect(JSON.parse(window.localStorage.getItem(DRAFT_KEY) ?? 'null')).toEqual(d);
+    // Simulate a reload: drop the in-memory snapshot; the next read re-hydrates
+    // from storage, so the draft is still there.
     __resetComposerDraftForTests();
     expect(getComposerDraft().doc).toEqual(d);
   });
@@ -121,6 +144,7 @@ describe('composer-draft-store', () => {
     expect(getComposerDraft()).toMatchObject({ doc: d, dismissed: true });
     setComposerDismissed(false);
     expect(getComposerDraft().dismissed).toBe(false);
+    // dismissed does NOT persist (per-session latch); only the doc round-trips.
     expect(JSON.parse(window.localStorage.getItem(DRAFT_KEY) ?? 'null')).toEqual(d);
   });
 });

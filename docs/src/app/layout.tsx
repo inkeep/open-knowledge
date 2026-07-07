@@ -54,6 +54,8 @@ const siteLd = {
   description: SITE_DESCRIPTION,
 } satisfies WithContext<WebSite>;
 
+// Normalize through the same layer as every child route so the root isn't the
+// lone description that bypasses metaDescription() (a no-op today at 141 chars).
 const SITE_META_DESCRIPTION = metaDescription(SITE_DESCRIPTION);
 
 export const metadata: Metadata = {

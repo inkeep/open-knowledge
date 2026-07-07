@@ -36,6 +36,8 @@ describe('createMentionCorpus — fetch retry contract', () => {
     let calls = 0;
     const fetch = () => {
       calls += 1;
+      // First `@`: reject (the regression locked the corpus empty here). Second
+      // `@`: resolve, proving the retry path is reachable.
       return calls === 1 ? Promise.reject(new Error('network down')) : Promise.resolve([PAGE]);
     };
     const corpus = createMentionCorpus(fetch);
@@ -43,9 +45,12 @@ describe('createMentionCorpus — fetch retry contract', () => {
     const first = await corpus.getItems('');
     expect(calls).toBe(1);
     expect(first).toEqual([]);
+    // The fix: a failed first fetch must NOT mark the corpus loaded, or the
+    // session is permanently empty. Only `error` flips.
     expect(corpus.snapshot()).toEqual({ loaded: false, error: true });
 
     const second = await corpus.getItems('');
+    // The corpus re-fetched (calls === 2) rather than serving the empty cache.
     expect(calls).toBe(2);
     expect(second.map((i) => i.path)).toEqual(['notes.md']);
     expect(corpus.snapshot()).toEqual({ loaded: true, error: false });

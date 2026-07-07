@@ -21,6 +21,7 @@ const OK_WIRED_MCP_JSON = JSON.stringify({
     'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v1\nexec ok mcp'] },
   },
 });
+/** A `.mcp.json` with an unrelated server and no OK marker. */
 const UNWIRED_MCP_JSON = JSON.stringify({ mcpServers: { other: { command: 'node' } } });
 /** A `.mcp.json` carrying the WINDOWS chain sentinel — written by a Windows
  *  teammate into a shared repo; must still count as wired here. */
@@ -41,7 +42,9 @@ afterEach(() => {
     if (!p) continue;
     try {
       rmSync(p, { recursive: true, force: true });
-    } catch {}
+    } catch {
+      /* best-effort */
+    }
   }
 });
 
@@ -86,8 +89,16 @@ interface FakeDeps {
     version?: string;
     reason?: string;
   }): Promise<void>;
+  readBundleDecision(home: string, bundleName: string): Promise<boolean | null>;
+  writeBundleDecision(home: string, bundleName: string, enabled: boolean): Promise<void>;
+  removeBundleFromDisk(bundleId: string): void;
+  /** Captured state for assertions. */
   stateWrites: Array<{ home: string; version: string }>;
   events: CapturedEvent[];
+  /** Captured per-bundle decisions written (grandfather materialization). */
+  decisionWrites: Array<{ bundleName: string; enabled: boolean }>;
+  /** Captured bundle ids removed on decline. */
+  removals: string[];
 }
 
 /** Default test bundle set — discovery only, so existing single-bundle
@@ -102,9 +113,21 @@ function makeDeps(opts: {
   /** Inject a throw into the writeTargetVersion mock — exercises the
    *  state-write-failure → outcome:'failed' regression guard. */
   stateWriteThrows?: Error;
+  /** Per-bundle opt-in decision the gate reads. Default `true` (consented) so
+   *  existing install-assertion tests hold; `null` grandfathers to disk;
+   *  `false` declines. A map keys by bundle NAME for multi-bundle tests. */
+  bundleDecision?: boolean | null | Record<string, boolean | null>;
 }): FakeDeps {
   const stateWrites: Array<{ home: string; version: string }> = [];
   const events: CapturedEvent[] = [];
+  const decisionWrites: Array<{ bundleName: string; enabled: boolean }> = [];
+  const removals: string[] = [];
+  const decisionFor = (bundleName: string): boolean | null => {
+    const d = opts.bundleDecision;
+    if (d === undefined) return true;
+    if (typeof d === 'object' && d !== null) return d[bundleName] ?? null;
+    return d;
+  };
   return {
     userGlobalBundles: DISCOVERY_ONLY_BUNDLES,
     resolveBundledSkillDir: () => {
@@ -128,8 +151,17 @@ function makeDeps(opts: {
         reason: event.reason,
       });
     },
+    readBundleDecision: async (_home, bundleName) => decisionFor(bundleName),
+    writeBundleDecision: async (_home, bundleName, enabled) => {
+      decisionWrites.push({ bundleName, enabled });
+    },
+    removeBundleFromDisk: (bundleId) => {
+      removals.push(bundleId);
+    },
     stateWrites,
     events,
+    decisionWrites,
+    removals,
   };
 }
 
@@ -176,6 +208,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
   test('installs every user-global bundle (discovery + write-skill) into central + per-host', async () => {
     const home = makeHome();
     const bundle = setupBundle();
+    // A `.claude` host so a per-host (non-central) write also happens.
     mkdirSync(join(home, '.claude', 'skills'), { recursive: true });
     const deps = {
       ...makeDeps({ bundle, version: '1.0.0' }),
@@ -192,10 +225,12 @@ describe('reclaimUserSkillsOnLaunch', () => {
       deps,
     });
     expect(r.status).toBe('done');
+    // Both bundles landed in the central store and the `.claude` host.
     for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
       expect(existsSync(join(home, '.agents', 'skills', name, 'SKILL.md'))).toBe(true);
       expect(existsSync(join(home, '.claude', 'skills', name, 'SKILL.md'))).toBe(true);
     }
+    // One installed event per bundle; the version marker is written once.
     const installed = deps.events.filter((e) => e.outcome === 'installed').map((e) => e.bundle);
     expect(installed.sort()).toEqual(['discovery', 'write-skill']);
     expect(deps.stateWrites).toEqual([{ home, version: '1.0.0' }]);
@@ -218,6 +253,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     });
     expect(r.status).toBe('done');
     expect(readFileSync(join(central, 'SKILL.md'), 'utf8')).toContain('v-new');
+    // stale files inside the dir must be removed before cpSync (replaceDir contract)
     expect(existsSync(join(central, 'orphan.md'))).toBe(false);
     expect(existsSync(join(central, 'extra.md'))).toBe(true);
   });
@@ -225,6 +261,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
   test('per-host write happens only when the host dir exists; missing host is skipped-host-absent', async () => {
     const home = makeHome();
     mkdirSync(join(home, '.claude'), { recursive: true });
+    // .cursor intentionally missing
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '1.2.3' });
     const r = await reclaimUserSkillsOnLaunch({
@@ -248,6 +285,10 @@ describe('reclaimUserSkillsOnLaunch', () => {
   });
 
   test('codex installs to its own .codex host dir, distinct from the .agents central store', async () => {
+    // Codex's per-host skills dir is now `.codex/skills` (not the shared
+    // `.agents`). The all-agents central `.agents/skills/open-knowledge-discovery`
+    // store and codex's per-host copy are distinct paths — both get written,
+    // no collapse.
     const home = makeHome();
     mkdirSync(join(home, '.codex'), { recursive: true });
     const bundle = setupBundle();
@@ -269,11 +310,13 @@ describe('reclaimUserSkillsOnLaunch', () => {
       const central = r.entries.find((e) => e.kind === 'central');
       expect(central?.status).toBe('written');
       expect(central?.path).toContain(join('.agents', 'skills'));
+      // Codex now produces its own host entry at `.codex`, distinct from central.
       const codex = r.entries.find((e) => e.kind === 'host' && e.editorId === 'codex');
       expect(codex?.status).toBe('written');
       expect(codex?.path).toContain(join('.codex', 'skills'));
       expect(codex?.path).not.toBe(central?.path);
     }
+    // Both the central and the codex-host write fire (no collapse).
     expect(events.filter((e) => e.event === 'user-skill-reclaim-central-written')).toHaveLength(1);
     expect(
       events.filter((e) => e.event === 'user-skill-reclaim-host-written' && e.editorId === 'codex'),
@@ -305,6 +348,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
   test('pre-split open-knowledge dirs are removed at every host before the discovery bundle lands', async () => {
     const home = makeHome();
     const legacyHosts = ['.claude', '.cursor', '.agents'] as const;
+    // Plant a stale pre-split install at all three host locations.
     for (const hostDir of legacyHosts) {
       const legacy = join(home, hostDir, 'skills', 'open-knowledge');
       mkdirSync(legacy, { recursive: true });
@@ -321,6 +365,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     });
     expect(r.status).toBe('done');
     for (const hostDir of legacyHosts) {
+      // Legacy dir gone; the new discovery dir is present in its place.
       expect(existsSync(join(home, hostDir, 'skills', 'open-knowledge'))).toBe(false);
       expect(
         existsSync(join(home, hostDir, 'skills', 'open-knowledge-discovery', 'SKILL.md')),
@@ -331,6 +376,8 @@ describe('reclaimUserSkillsOnLaunch', () => {
   test('every write failing → JSONL records outcome:failed reason:all-targets-failed', async () => {
     const home = makeHome();
     const deps = makeDeps({ bundle: setupBundle(), version: '3.2.1' });
+    // Inject an fs whose every write throws — central + per-host replaceDir
+    // all fail, so no write succeeds and the state file is never advanced.
     const r = await reclaimUserSkillsOnLaunch({
       home,
       isPackaged: true,
@@ -392,6 +439,11 @@ describe('reclaimUserSkillsOnLaunch', () => {
   });
 
   test('writeTargetVersion failure → JSONL outcome:failed (not installed) so event log matches state file', async () => {
+    // Regression guard: a writeTargetVersion throw left the JSONL event
+    // recording outcome:'installed' while ~/.ok/skill-state.yml stayed
+    // pinned to a stale version — recreating the exact staleness symptom
+    // this whole module is fixing. Gate the JSONL outcome on the state
+    // write so the diagnostic trail stays coherent.
     const home = makeHome();
     const deps = makeDeps({
       bundle: setupBundle(),
@@ -413,6 +465,106 @@ describe('reclaimUserSkillsOnLaunch', () => {
     expect(failed?.version).toBe('1.2.3');
     expect(failed?.reason ?? '').toContain('state-write-failed');
     expect(failed?.reason ?? '').toContain('ENOSPC');
+  });
+});
+
+describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
+  const DISCOVERY_DIR = ['.agents', 'skills', 'open-knowledge-discovery'] as const;
+
+  function seedCentral(home: string): void {
+    const dir = join(home, ...DISCOVERY_DIR);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL.md'), 'preexisting');
+  }
+
+  test('FR1: fresh machine (no decision, nothing on disk) installs nothing', async () => {
+    const home = makeHome();
+    const deps = makeDeps({ bundle: setupBundle(), bundleDecision: null });
+    const r = await reclaimUserSkillsOnLaunch({
+      home,
+      isPackaged: true,
+      platform: 'darwin',
+      executablePath: EXE,
+      deps,
+    });
+    expect(r.status).toBe('skipped');
+    if (r.status === 'skipped') expect(r.reason).toBe('all-bundles-declined');
+    expect(existsSync(join(home, ...DISCOVERY_DIR, 'SKILL.md'))).toBe(false);
+    expect(deps.events.some((e) => e.outcome === 'installed')).toBe(false);
+  });
+
+  test('D3b: declining an installed bundle removes it and does not re-install', async () => {
+    const home = makeHome();
+    seedCentral(home);
+    const deps = makeDeps({ bundle: setupBundle(), bundleDecision: false });
+    const r = await reclaimUserSkillsOnLaunch({
+      home,
+      isPackaged: true,
+      platform: 'darwin',
+      executablePath: EXE,
+      deps,
+    });
+    expect(r.status).toBe('skipped');
+    if (r.status === 'skipped') expect(r.reason).toBe('all-bundles-declined');
+    expect(deps.removals).toEqual(['discovery']);
+    // No install event for the declined bundle.
+    expect(deps.events.some((e) => e.outcome === 'installed')).toBe(false);
+  });
+
+  test('FR4: grandfather — installed with no decision is kept + records enabled', async () => {
+    const home = makeHome();
+    seedCentral(home);
+    const deps = makeDeps({ bundle: setupBundle(), version: '1.0.0', bundleDecision: null });
+    const r = await reclaimUserSkillsOnLaunch({
+      home,
+      isPackaged: true,
+      platform: 'darwin',
+      executablePath: EXE,
+      deps,
+    });
+    expect(r.status).toBe('done');
+    // Force-written (grandfathered install stays) + decision materialized.
+    expect(existsSync(join(home, ...DISCOVERY_DIR, 'SKILL.md'))).toBe(true);
+    expect(deps.decisionWrites).toEqual([
+      { bundleName: 'open-knowledge-discovery', enabled: true },
+    ]);
+    expect(deps.removals).toEqual([]);
+  });
+
+  test('mixed decision: declined bundle is removed while the enabled bundle installs', async () => {
+    const home = makeHome();
+    // Seed both bundles on disk, then decline ONLY write-skill.
+    for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
+      const dir = join(home, '.agents', 'skills', name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'SKILL.md'), 'preexisting');
+    }
+    const deps = {
+      ...makeDeps({
+        bundle: setupBundle(),
+        version: '1.0.0',
+        bundleDecision: {
+          'open-knowledge-discovery': true,
+          'open-knowledge-write-skill': false,
+        },
+      }),
+      userGlobalBundles: [
+        { id: 'discovery', name: 'open-knowledge-discovery' },
+        { id: 'write-skill', name: 'open-knowledge-write-skill' },
+      ],
+    };
+    const r = await reclaimUserSkillsOnLaunch({
+      home,
+      isPackaged: true,
+      platform: 'darwin',
+      executablePath: EXE,
+      deps,
+    });
+    expect(r.status).toBe('done');
+    // write-skill torn down; discovery installed (its central write landed).
+    expect(deps.removals).toEqual(['write-skill']);
+    const installed = deps.events.filter((e) => e.outcome === 'installed').map((e) => e.bundle);
+    expect(installed).toEqual(['discovery']);
   });
 });
 
@@ -492,6 +644,7 @@ describe('reclaimProjectSkillsOnProjectOpen', () => {
       expect(claude?.status).toBe('reclaimed');
     }
     expect(readFileSync(join(claudeSkill, 'SKILL.md'), 'utf8')).toContain('v-new');
+    // Other host stayed no-token.
     expect(existsSync(join(projectDir, '.cursor'))).toBe(false);
   });
 
@@ -507,6 +660,8 @@ describe('reclaimProjectSkillsOnProjectOpen', () => {
       isPackaged: true,
       platform: 'darwin',
       deps: { resolveBundledSkillDir: () => setupBundle() },
+      // existsSync:true makes every host look reclaim-eligible; the throwing
+      // mkdirSync forces replaceDir to fail for each one.
       fs: {
         existsSync: () => true,
         isDirectory: () => false,
@@ -548,6 +703,8 @@ describe('reclaimProjectSkillsOnProjectOpen — createIfWired (managed heal path
   test('creates SKILL.md for a host wired for OK MCP but missing the skill', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
     cleanupPaths.push(projectDir);
+    // Claude wired (`.mcp.json` carries the marker) but no skill on disk —
+    // the exact MCP-but-no-skill cohort this heals. cursor/codex unwired.
     writeFileSync(join(projectDir, '.mcp.json'), OK_WIRED_MCP_JSON);
     const bundle = setupBundle();
     const events: Array<Record<string, unknown>> = [];
@@ -563,6 +720,7 @@ describe('reclaimProjectSkillsOnProjectOpen — createIfWired (managed heal path
     expect(r.status).toBe('done');
     if (r.status === 'done') {
       expect(r.entries.find((e) => e.editorId === 'claude')?.status).toBe('created');
+      // The other hosts have no wired config → still no-token.
       expect(r.entries.find((e) => e.editorId === 'cursor')?.status).toBe('no-token');
       expect(r.entries.find((e) => e.editorId === 'codex')?.status).toBe('no-token');
     }
@@ -619,6 +777,10 @@ describe('reclaimProjectSkillsOnProjectOpen — createIfWired (managed heal path
   });
 
   test('creates SKILL.md for codex host wired via .codex/config.toml (TOML, marker substring)', async () => {
+    // Codex's wired signal lives in `.codex/config.toml` (TOML), and its skill
+    // installs to `.codex/skills/open-knowledge/` — the config-path → skill-path
+    // mapping a typo could silently break. The marker is a substring of the TOML
+    // bytes, so the format-agnostic `includes` check detects it.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
     cleanupPaths.push(projectDir);
     mkdirSync(join(projectDir, '.codex'), { recursive: true });
@@ -647,6 +809,9 @@ describe('reclaimProjectSkillsOnProjectOpen — createIfWired (managed heal path
   test('does NOT create when a host config exists but has no OK marker', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
     cleanupPaths.push(projectDir);
+    // A `.mcp.json` with an unrelated server — host dir/config present, but the
+    // editor is NOT wired for THIS OK project. Guards the gate against seeding
+    // non-OK-wired editors.
     writeFileSync(join(projectDir, '.mcp.json'), UNWIRED_MCP_JSON);
     const r = await reclaimProjectSkillsOnProjectOpen({
       projectDir,
@@ -672,6 +837,7 @@ describe('reclaimProjectSkillsOnProjectOpen — createIfWired (managed heal path
       executablePath: EXE,
       isPackaged: true,
       platform: 'darwin',
+      // createIfWired omitted → defaults to false.
       deps: { resolveBundledSkillDir: () => setupBundle() },
     });
     expect(r.status).toBe('done');
@@ -706,6 +872,9 @@ describe('reclaimProjectSkillsOnProjectOpen — createIfWired (managed heal path
   test('refuses to create through a host-dir symlink escaping the project', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
     cleanupPaths.push(projectDir);
+    // `.claude` is a symlink to a directory OUTSIDE the project; a wired config
+    // makes the create path eligible. The escape guard must fire BEFORE any
+    // rm/copy so the symlink target stays untouched.
     const escapeTarget = mkdtempSync(join(tmpdir(), 'ok-escape-'));
     cleanupPaths.push(escapeTarget);
     const witness = join(escapeTarget, 'witness.txt');

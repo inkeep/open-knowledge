@@ -7,6 +7,7 @@ import {
   nextFootnoteIdentifier,
 } from './footnote-reference.ts';
 
+/** Build a `FootnoteWalkableDoc` shim from a flat list of (type, size) pairs. */
 function fakeDoc(blocks: Array<{ type: string; size: number }>): FootnoteWalkableDoc {
   return {
     content: { size: blocks.reduce((s, b) => s + b.size, 0) },
@@ -34,6 +35,9 @@ describe('nextFootnoteIdentifier', () => {
   });
 
   test('non-numeric identifiers are ignored', () => {
+    // Authors can rename to `[^note]` etc. The auto-numbering rule walks
+    // only the integer-shaped ones — non-numeric existing IDs never block
+    // a new integer slot.
     expect(nextFootnoteIdentifier(['note', 'aside', 'footnote-x'])).toBe('1');
   });
 
@@ -46,10 +50,17 @@ describe('nextFootnoteIdentifier', () => {
   });
 
   test('negative integers do not lower the floor', () => {
+    // `parseInt('-3', 10)` → -3, which is `< maxId` (initialized to 0), so
+    // the floor stays at 0 and the next ID is "1". Locks the
+    // negative-doesn-decrease invariant against a future refactor that
+    // might switch to `Math.max(maxId, n)` with an inappropriate seed.
     expect(nextFootnoteIdentifier(['-3', '-1'])).toBe('1');
   });
 
   test('numeric-with-suffix ("3a") parses to integer prefix and counts', () => {
+    // `parseInt('3a', 10)` → 3. Matches JS's parseInt prefix-tolerance —
+    // documenting the observable behavior so a future change to
+    // `Number()` parsing (stricter) is a deliberate decision.
     expect(nextFootnoteIdentifier(['3a', '5b'])).toBe('6');
   });
 });
@@ -61,6 +72,7 @@ describe('findFootnoteDefinitionInsertPos', () => {
   });
 
   test('no footnote — returns doc end', () => {
+    // [heading(size=10), paragraph(size=20)]
     const doc = fakeDoc([
       { type: 'heading', size: 10 },
       { type: 'paragraph', size: 20 },
@@ -69,6 +81,8 @@ describe('findFootnoteDefinitionInsertPos', () => {
   });
 
   test('one footnote at end — returns position right after it', () => {
+    // [heading(10), paragraph(20), footnoteDefinition(15)]
+    // last footnoteDef ends at offset 10+20+15 = 45
     const doc = fakeDoc([
       { type: 'heading', size: 10 },
       { type: 'paragraph', size: 20 },
@@ -84,19 +98,28 @@ describe('findFootnoteDefinitionInsertPos', () => {
       { type: 'footnoteDefinition', size: 7 },
       { type: 'footnoteDefinition', size: 4 },
     ]);
+    // last fnDef ends at 10+5+7+4 = 26
     expect(findFootnoteDefinitionInsertPos(doc)).toBe(26);
   });
 
   test('footnote followed by non-footnote — returns end of footnote (NOT doc end)', () => {
+    // Real-world shape: PM appends a trailing empty paragraph after the
+    // last footnoteDefinition. We want to insert BEFORE that trailing
+    // paragraph so the new footnote joins the existing group without
+    // a blank paragraph slotted between them.
     const doc = fakeDoc([
       { type: 'heading', size: 10 },
       { type: 'footnoteDefinition', size: 12 },
       { type: 'paragraph', size: 2 }, // trailing empty p
     ]);
+    // last fnDef ends at 10+12 = 22, not 24
     expect(findFootnoteDefinitionInsertPos(doc)).toBe(22);
   });
 
   test('footnote mid-doc with trailing content — uses end of LAST footnote', () => {
+    // Unusual shape but valid: a footnoteDefinition followed by other
+    // prose, then ANOTHER footnoteDefinition later. Insert after the
+    // later one, keeping the group at the end.
     const doc = fakeDoc([
       { type: 'paragraph', size: 5 },
       { type: 'footnoteDefinition', size: 3 },
@@ -104,6 +127,7 @@ describe('findFootnoteDefinitionInsertPos', () => {
       { type: 'footnoteDefinition', size: 6 },
       { type: 'paragraph', size: 2 }, // trailing empty p
     ]);
+    // last fnDef ends at 5+3+4+6 = 18
     expect(findFootnoteDefinitionInsertPos(doc)).toBe(18);
   });
 });
@@ -147,6 +171,9 @@ describe('collectFootnoteIdentifiers', () => {
   });
 
   test('coerces null / missing identifier to empty string', () => {
+    // Matches the existing collection sites' `String(node.attrs.identifier ?? '')`
+    // behavior — nextFootnoteIdentifier ignores non-integer entries, so an
+    // empty-string identifier doesn't poison the auto-numbering allocation.
     const doc = fakeDescendable([
       { type: 'footnoteDefinition', identifier: null },
       { type: 'footnoteDefinition' },
@@ -156,6 +183,9 @@ describe('collectFootnoteIdentifiers', () => {
   });
 
   test('round-trips into nextFootnoteIdentifier', () => {
+    // Belt-and-suspenders integration test pinning the typical use:
+    // collect → nextId. Catches regressions where one side's contract
+    // drifts away from the other.
     const doc = fakeDescendable([
       { type: 'paragraph' },
       { type: 'footnoteDefinition', identifier: '1' },

@@ -1,3 +1,17 @@
+/**
+ * Canonical / compat split — architecture-locking unit tests.
+ *
+ * Covers:
+ *  - identity `translateProps` on all v1 compat descriptors.
+ *  - slash menu (via `getRegisteredDescriptors` filter contract).
+ *  - registry build is consistent — every compat's `rendersAs` resolves
+ *        to a registered canonical descriptor.
+ *
+ * Round-trip tests for the source-form preservation property live in
+ * `invariant-i13.test.ts` (PBT) and `invariant-
+ * i19.test.ts` (HTML5 details ↔ Accordion structural equivalence).
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { builtInComponents, createRegistry } from './index.ts';
 import type { CompatMeta, JsxComponentMeta } from './types.ts';
@@ -16,6 +30,14 @@ describe('canonical/compat split — registry shape', () => {
 
   test('exactly 14 canonical descriptors (5-pack + Math + MermaidFence + Pdf + File + Tabs + Tab + Embed + Mirror + MirrorSource)', () => {
     expect(canonicalDescriptors.length).toBe(14);
+    // Media canonicals with a matching HTML primitive are lowercase
+    // (img/video/audio). Non-native canonicals stay capitalized
+    // (Callout, Accordion, Math, MermaidFence, Pdf, File, Tabs, Tab,
+    // Embed, Mirror, MirrorSource). The Mermaid canonical is named
+    // `MermaidFence` because the only authoring form is the ` ```mermaid `
+    // fence — `Mermaid` is intentionally NOT a registered name so legacy
+    // `<Mermaid />` JSX content falls through to the wildcard. `Mirror` +
+    // `MirrorSource` are the master/copy block-transclusion pair.
     expect(canonicalDescriptors.map((m) => m.name).sort()).toEqual(
       [
         'Accordion',
@@ -37,6 +59,27 @@ describe('canonical/compat split — registry shape', () => {
   });
 
   test('compat descriptor set covers v1 source-form preservation + WikiEmbed convergence + math syntax', () => {
+    // v1 set: GFMCallout / CommonMarkImage / HtmlDetailsAccordion (alternative
+    // surface forms that already shared canonical's prop spelling — identity
+    // translateProps). WikiEmbedImage / WikiEmbedVideo / WikiEmbedAudio
+    // carry a non-identity translateProps (alias → alt for img;
+    // alias → title for video/audio since neither HTML5 element accepts an
+    // `alt` attribute) — they prove the seam scales beyond identity remaps
+    // and converge media authoring shapes on the same React component
+    // dispatch surface. WikiEmbedFile extended the seam to
+    // any non-media attachment extension (.pdf / .docx / .zip / …) — all
+    // dropped attachments render through `File.tsx`'s inline-row chrome.
+    // DollarMath / MathFence extend the same seam to math
+    // syntax forms. WikiEmbedPdf was removed — the wikilink
+    // form for PDFs now goes through WikiEmbedFile alongside other
+    // attachments; the pdfjs canvas viewer stays available via the
+    // `<Pdf src="..." />` JSX form.
+    //
+    // Mermaid has NO compat row: the ` ```mermaid ` fence is the canonical
+    // authoring form, and the canonical descriptor itself is named
+    // `MermaidFence`. There is no `Mermaid` descriptor — that name
+    // intentionally falls through to the wildcard so legacy `<Mermaid />`
+    // JSX content renders as the raw-mdx editable source block.
     expect(compatDescriptors.map((m) => m.name).sort()).toEqual(
       [
         'CommonMarkImage',
@@ -70,6 +113,11 @@ describe('compat descriptors — contract invariants', () => {
   });
 
   test('v1 compats (Callout/CommonMarkImage/Details) declare identity `translateProps` (T2)', () => {
+    // v1's compat fixtures share canonical's prop-name spelling — identity
+    // remap. WikiEmbedImage and its video/audio siblings carry a non-identity
+    // remap (alias → alt) and are tested separately by their own descriptor
+    // tests; this test pins the v1 set so a regression to one of them shows
+    // up here rather than as a render-shape oddity.
     const v1Names = new Set(['GFMCallout', 'CommonMarkImage', 'HtmlDetailsAccordion']);
     const probe = { type: 'note', title: 'X', src: 'foo.png', alt: 'A', collapsible: true };
     for (const meta of compatDescriptors) {
@@ -129,4 +177,8 @@ describe('compat descriptors — prop-set is a subset of canonical', () => {
       expect(canonicalNames.has(p.name)).toBe(true);
     }
   });
+
+  // Mermaid: fence-only — there is no compat row, so no subset assertion.
+  // The canonical descriptor is `MermaidFence`; its serialize emits the
+  // ` ```mermaid ` fence directly.
 });

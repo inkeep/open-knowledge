@@ -35,11 +35,25 @@ function sanitizeErrorMessage(value) {
 }
 
 function run(command, args, options = {}) {
+  // Drop inherited GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE: every git spawn in
+  // this script targets an explicit clone/worktree via cwd, never the repo a
+  // calling git hook belongs to. In CI these variables are unset (no-op);
+  // locally they leak from pre-push/pre-commit hooks into harnesses that
+  // import this module (the bridge canary) and break explicit-cwd git.
+  // Sanitize AFTER merging a caller-supplied env so the guarantee is
+  // unconditional — an options.env override must not reintroduce the vars.
+  const {
+    GIT_DIR: _d,
+    GIT_WORK_TREE: _w,
+    GIT_INDEX_FILE: _i,
+    ...cleanEnv
+  } = { ...process.env, ...options.env };
   try {
     return execFileSync(command, args, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       ...options,
+      env: cleanEnv,
     }).trim();
   } catch (error) {
     const stderr = sanitizeErrorMessage(error.stderr?.toString().trim() ?? '');
@@ -307,6 +321,68 @@ function buildBridgeMetadata(publicPr, mirrorPath) {
     `mirror_path=${mirrorPath}`,
     '-->',
   ].join('\n');
+}
+
+function fallbackPublicAuthor(publicPr) {
+  return {
+    name: publicPr.user.login,
+    email: `${publicPr.user.id}+${publicPr.user.login}@users.noreply.github.com`,
+  };
+}
+
+function normalizeGitHubUserAuthor(user) {
+  const login = user?.login?.trim();
+  const id = user?.id;
+  if (!login || id === undefined || id === null) return null;
+  if (/\[bot\]$/i.test(login)) return null;
+  return {
+    name: login,
+    email: `${id}+${login}@users.noreply.github.com`,
+  };
+}
+
+function normalizeCommitAuthor(author) {
+  const name = author?.name?.trim();
+  const email = author?.email?.trim();
+  if (!name || !email || !email.includes('@')) return null;
+  if (/[\r\n<>]/.test(name) || /[\r\n<>]/.test(email)) return null;
+  if (/\[bot\]$/i.test(name) || /\[bot\]@users\.noreply\.github\.com$/i.test(email)) {
+    return null;
+  }
+  return { name, email };
+}
+
+function uniqueCommitAuthors(authors, fallbackAuthor) {
+  const unique = new Map();
+  for (const author of authors) {
+    const normalized = normalizeCommitAuthor(author);
+    if (!normalized) continue;
+    unique.set(`${normalized.name.toLowerCase()} <${normalized.email.toLowerCase()}>`, normalized);
+  }
+  return unique.size > 0 ? [...unique.values()] : [fallbackAuthor];
+}
+
+async function listPublicPrCommitAuthors({ token, repo, prNumber, request = githubRequest }) {
+  const commitAuthors = [];
+  let page = 1;
+  while (true) {
+    const commits = await request({
+      token,
+      path: `/repos/${repo}/pulls/${prNumber}/commits?per_page=100&page=${page}`,
+    });
+    commitAuthors.push(
+      ...commits.map((commit) => normalizeGitHubUserAuthor(commit.author) ?? commit.commit?.author),
+    );
+    if (commits.length < 100) break;
+    page++;
+  }
+  return commitAuthors;
+}
+
+function buildCommitAttribution({ commitAuthors, fallbackAuthor }) {
+  const authors = uniqueCommitAuthors(commitAuthors, fallbackAuthor);
+  const trailers = authors.map((author) => `Co-authored-by: ${author.name} <${author.email}>`);
+  return { trailers };
 }
 
 // GitHub PR body hard limit. Exceeding returns 422 "body is too long".
@@ -810,7 +886,22 @@ async function syncPublicPr() {
             'public-pr-bridge@inkeep.com',
           ]);
 
-          const authorEmail = `${publicPr.user.id}+${publicPr.user.login}@users.noreply.github.com`;
+          let commitAuthors = [];
+          try {
+            commitAuthors = await listPublicPrCommitAuthors({
+              token: publicToken,
+              repo: publicRepo,
+              prNumber: publicPr.number,
+            });
+          } catch (error) {
+            console.warn(
+              `Bridge: could not fetch public PR commit authors; falling back to PR opener attribution: ${error.message}`,
+            );
+          }
+          const { trailers } = buildCommitAttribution({
+            commitAuthors,
+            fallbackAuthor: fallbackPublicAuthor(publicPr),
+          });
           const commitMessage = hasConflicts
             ? `chore(sync): mirror ${publicRepo}#${publicPr.number} (${CONFLICT_COMMIT_MARKER})`
             : `chore(sync): mirror ${publicRepo}#${publicPr.number}`;
@@ -818,10 +909,10 @@ async function syncPublicPr() {
             '-C',
             internalRepoDir,
             'commit',
-            '--author',
-            `${publicPr.user.login} <${authorEmail}>`,
             '-m',
             commitMessage,
+            '-m',
+            trailers.join('\n'),
           ]);
 
           run('git', [
@@ -1045,11 +1136,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 export {
   applyPatchWithConflictDetection,
+  buildCommitAttribution,
   buildInternalPrBody,
-  commitIndicatesConflicts,
   buildPublicComment,
   checkOrgMembership,
+  commitIndicatesConflicts,
   createClaGateGh,
+  listPublicPrCommitAuthors,
+  normalizeGitHubUserAuthor,
   postCommitStatus,
   prefixPatchPaths,
   readCommitClaStatus,

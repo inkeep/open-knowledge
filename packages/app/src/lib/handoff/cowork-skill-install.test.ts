@@ -1,3 +1,12 @@
+/**
+ * Unit tests for the lazy Claude Cowork skill-install gate. Exercises the
+ * pure `ensureCoworkSkillInstalled` helper with in-memory storage + installer
+ * doubles. No DOM, no React — matches the repo convention.
+ *
+ * Installer-specific behavior (Electron bridge, HTTP endpoint) is tested in
+ * `skill-installer.test.ts`. This file covers the guard policy.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import {
   buildCoworkSkillGuardKey,
@@ -30,6 +39,9 @@ function fakeInstaller(result: SkillInstallResult): SkillInstaller {
 
 function deps(overrides: Partial<EnsureCoworkSkillDeps> = {}): EnsureCoworkSkillDeps {
   return {
+    // Default snapshot fetcher returns null — simulates server unreachable,
+    // ladder falls through to localStorage. Individual tests can inject
+    // a real snapshot to exercise the server-check path.
     fetchSnapshot: async () => null,
     fallbackSkillVersion: '1.2.3',
     installer: fakeInstaller({ ok: true, path: '/tmp/openknowledge.skill' }),
@@ -151,6 +163,7 @@ describe('ensureCoworkSkillInstalled — guard semantics', () => {
 
     expect(result).toEqual({ kind: 'already-installed', source: 'server' });
     expect(installer.install).not.toHaveBeenCalled();
+    // Server check skipped both localStorage read and write — no implicit heal.
     expect(storage.snapshot()).toEqual({});
   });
 
@@ -173,6 +186,9 @@ describe('ensureCoworkSkillInstalled — guard semantics', () => {
 
     expect(result.kind).toBe('installed-now');
     expect(installer.install).toHaveBeenCalledTimes(1);
+    // localStorage key uses the server-supplied currentVersion, NOT the
+    // fallback — so re-running with the same server snapshot would short-
+    // circuit at step 2 instead of triggering another install.
     expect(storage.snapshot()).toEqual({ 'ok:skill:cowork:installed:v2.0.0': '1' });
   });
 
@@ -194,6 +210,7 @@ describe('ensureCoworkSkillInstalled — guard semantics', () => {
 
     expect(result.kind).toBe('installed-now');
     expect(installer.install).toHaveBeenCalledTimes(1);
+    // Verify force flag was forwarded to the installer.
     expect(installer.install).toHaveBeenCalledWith({ force: true });
   });
 
@@ -246,6 +263,9 @@ describe('ensureCoworkSkillInstalled — concurrency', () => {
     const a = ensureCoworkSkillInstalled(deps({ storage, installer }));
     const b = ensureCoworkSkillInstalled(deps({ storage, installer }));
 
+    // Flush microtasks so runEnsure progresses through the server check,
+    // localStorage check, and the install call. After this `resolver` is
+    // populated by the in-flight installer.install() invocation.
     for (let i = 0; i < 10; i += 1) {
       await Promise.resolve();
     }

@@ -45,6 +45,7 @@ describe('findProjectDir', () => {
   });
 
   test('rejects a regular file named `.ok` and keeps walking up', () => {
+    // Sibling stray `.ok` file in tmpDir should NOT be treated as a project root.
     writeFileSync(resolve(tmpDir, '.ok'), 'oops');
     expect(() => findProjectDir(tmpDir)).toThrow(/No OpenKnowledge project found/);
   });
@@ -55,22 +56,31 @@ describe('findProjectDir', () => {
   });
 
   test('rejects an empty `.ok/` directory with no config.yml and keeps walking up', () => {
+    // Bare .ok/ — looks like a nested folder-rule sidecar would. The walk
+    // must NOT stop here, otherwise tool calls bind to the wrong project root.
     mkdirSync(resolve(tmpDir, '.ok'), { recursive: true });
     expect(() => findProjectDir(tmpDir)).toThrow(/No OpenKnowledge project found/);
   });
 
   test('rejects a folder-rule-style `.ok/frontmatter.yml` without config.yml', () => {
+    // Mimics what `set_folder_rule` writes inside a subfolder — sidecar
+    // metadata that must not register as a project marker.
     mkdirSync(resolve(tmpDir, '.ok'), { recursive: true });
     writeFileSync(resolve(tmpDir, '.ok', 'frontmatter.yml'), 'title: oops\n', 'utf-8');
     expect(() => findProjectDir(tmpDir)).toThrow(/No OpenKnowledge project found/);
   });
 
   test('rejects a directory at `.ok/config.yml` (not a file) and keeps walking up', () => {
+    // Pathological: someone created config.yml as a directory. The marker
+    // must be a regular file.
     mkdirSync(resolve(tmpDir, '.ok', 'config.yml'), { recursive: true });
     expect(() => findProjectDir(tmpDir)).toThrow(/No OpenKnowledge project found/);
   });
 
   test('walks past a folder-rule `.ok/` sidecar to the real project root above', () => {
+    // Real project root at tmpDir. A nested subfolder has folder-rule metadata
+    // (`.ok/frontmatter.yml` only) — the walk MUST step past it and resolve
+    // to tmpDir, not the inner subfolder.
     seedProjectMarker(tmpDir);
     const inner = resolve(tmpDir, 'specs', 'foo');
     mkdirSync(resolve(inner, '.ok'), { recursive: true });
@@ -79,6 +89,8 @@ describe('findProjectDir', () => {
   });
 
   test('prefers the nearest project root over a deeper stray `.ok` file', () => {
+    // Outer dir has a real .ok/config.yml, inner has a regular `.ok` file.
+    // The inner file must NOT short-circuit the walk.
     seedProjectMarker(tmpDir);
     const inner = resolve(tmpDir, 'inner');
     mkdirSync(inner, { recursive: true });
@@ -101,6 +113,8 @@ describe('sanitizeClientName', () => {
   });
 
   test('strips ASCII control characters (0x00-0x1F, 0x7F)', () => {
+    // \x00=NUL, \x07=BEL, \x1F=US, \x7F=DEL — each becomes a space, then
+    // adjacent spaces collapse and the trim drops trailing whitespace.
     expect(sanitizeClientName('cl\x00aud\x07e\x1Fco\x7Fde', 'fb')).toBe('cl aud e co de');
   });
 
@@ -140,6 +154,8 @@ describe('rootUriToFsPath', () => {
 });
 
 describe('tryListRootsFallback', () => {
+  // Sentinel that fails the test if the dependency is touched — the early
+  // returns must short-circuit before listRoots() is called.
   const failIfCalled = (): never => {
     throw new Error('listRoots() should not be called');
   };
@@ -195,6 +211,9 @@ describe('tryListRootsFallback', () => {
   });
 
   test('logs when the single root URI cannot be resolved to a fs path', async () => {
+    // Symmetric to the listRoots-throws diagnostic — operators chasing a
+    // single-root client whose roots can't be resolved (non-`file:`,
+    // malformed) get a breadcrumb instead of just the generic tool error.
     const logs: string[] = [];
     const result = await tryListRootsFallback({
       getClientCapabilities: () => ({ roots: {} }),
@@ -208,6 +227,10 @@ describe('tryListRootsFallback', () => {
   });
 
   test('returns undefined when the listRoots response omits the roots array', async () => {
+    // Pins the `?? []` defensive fallback at the JSON-RPC trust boundary —
+    // the SDK type says `roots` is always present, but a buggy or older
+    // client could return `{}`. Without this test, removing the `?? []`
+    // would silently introduce a runtime crash on the implicit-cwd path.
     const result = await tryListRootsFallback({
       getClientCapabilities: () => ({ roots: {} }),
       listRoots: async () => ({}) as unknown as { roots: { uri: string }[] },
@@ -307,6 +330,9 @@ describe('resolveStickyProjectDir', () => {
   });
 
   test('throws (via findProjectDir) when the root guess returns a non-OK path', async () => {
+    // Symmetric coverage of the explicit-cwd test: the guessed branch
+    // must also walk up to a project root, so a refactor returning the raw
+    // root would regress here.
     const noOkDir = await mkdtemp(resolve(tmpdir(), 'ok-mcp-fallback-no-project-'));
     try {
       await expect(
@@ -318,6 +344,10 @@ describe('resolveStickyProjectDir', () => {
   });
 
   test('re-validates the sticky anchor on reuse: a deleted sticky path throws instead of resolving silently', async () => {
+    // A worktree removed mid-session leaves a stale sticky anchor. Reuse must
+    // walk it back through findProjectDir so the gone path surfaces as the
+    // directive error rather than routing to a dead directory. A refactor that
+    // returned the raw sticky would regress here.
     const goneDir = await mkdtemp(resolve(tmpdir(), 'ok-mcp-sticky-gone-'));
     await rm(goneDir, { recursive: true, force: true });
     await expect(

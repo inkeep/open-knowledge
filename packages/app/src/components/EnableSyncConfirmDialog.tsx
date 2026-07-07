@@ -1,3 +1,11 @@
+/**
+ * EnableSyncConfirmDialog — guards every off → on transition of the git
+ * auto-sync toggle (the SyncStatusBadge popover Switch + the SettingsDialog
+ * Sync section).
+ *
+ * Off → on is the dangerous direction (push to remote, pull may overwrite
+ * local). On → off is safe and skips this dialog.
+ */
 import { Trans } from '@lingui/react/macro';
 import {
   AutoSyncEnableDialogIntro,

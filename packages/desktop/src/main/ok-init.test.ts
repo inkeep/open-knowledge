@@ -1,3 +1,9 @@
+/**
+ * Coverage for the main-process scaffolder. These tests run against real
+ * git worktree fixtures (mkdtemp + `git init` / `git worktree add`) — the
+ * pure-fixture surface area is small enough that mocking adds no signal.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -95,11 +101,13 @@ describe('runOkInit', () => {
     await git(testRoot, 'init', '--initial-branch=main', '.');
     const first = await runOkInit(testRoot);
     expect(first.ok).toBe(true);
+    // Stamp config.yml so the second call's writeIfMissing leaves it alone.
     const configPath = join(testRoot, '.ok', 'config.yml');
     const userMarker = '# user-customized\n';
     writeFileSync(configPath, userMarker);
     const second = await runOkInit(testRoot);
     expect(second.ok).toBe(true);
+    // User's hand-edit is preserved — idempotent path doesn't clobber.
     const { readFileSync } = await import('node:fs');
     expect(readFileSync(configPath, 'utf-8')).toBe(userMarker);
   });
@@ -124,6 +132,7 @@ describe('runOkInit', () => {
     const result = await runOkInit(testRoot);
     expect(result.ok).toBe(true);
     if (result.ok === true) {
+      // Match against realpathSync(testRoot) — macOS resolves /var → /private/var.
       expect(result.projectPath).toBe(realpathSync(testRoot));
     }
   });

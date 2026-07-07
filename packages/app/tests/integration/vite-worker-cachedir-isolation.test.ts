@@ -1,3 +1,64 @@
+/**
+ * Per-worker Playwright dev-server Vite cacheDir isolation contract.
+ *
+ * Pins the foundational invariant violated by the e2e flake
+ * class: each per-worker dev server spawned by the `workerServer` fixture
+ * in `tests/stress/_helpers/fixtures.ts` must own a Vite optimized-dependency
+ * cache directory distinct from every peer worker's.
+ *
+ * Vite's `cacheDir` defaults to `<root>/node_modules/.vite` — single-writer
+ * by construction. `playwright.config.ts` runs `workers: isCI ? 4`, all four
+ * workers spawn `bun run dev` with `cwd = packages/app`, and `vite.config.ts`
+ * declares no `cacheDir`. Result: 4 Vite instances share one
+ * `packages/app/node_modules/.vite/deps/` directory. When any one of them
+ * re-runs the dependency optimizer (lazy-import discovery is routine; the
+ * app has `lazy()` / `lazyWithPreload()` sites in `ConsentDialog`,
+ * `McpConsentDialog`, and `SettingsDialogBodyLazy`, plus dynamic CodeMirror
+ * language loaders), Vite rewrites the chunk hashes and DELETES the old
+ * files. Peer workers' browsers mid-`import` of the just-deleted
+ * `/node_modules/.vite/deps/<hash>.js` 404 on the URL. The ESM graph for
+ * `/src/main.tsx` fails partway, React never mounts, `index.html`'s `#root`
+ * stays empty, and any `waitForProvider()` poll times out for the full
+ * 60 s against a blank page.
+ *
+ * The
+ * migration that introduced the `workerServer` fixture isolated server-runtime
+ * state (port, content dir) but did not enumerate Vite's build-time
+ * cache as a per-process shared resource.
+ *
+ * The contract has two enforcement sites; the five tests below pin both.
+ *
+ *   1. `vite.config.ts` MUST resolve `cacheDir` from a per-worker env
+ *      variable (`OK_TEST_VITE_CACHE_DIR`). Tests A1+A2 use Vite's
+ *      `loadConfigFromFile` to assert this behaviorally — the resolved
+ *      config's `cacheDir` reflects whatever value the env carries, and
+ *      two distinct env values produce two distinct resolved cacheDirs.
+ *
+ *   2. The `workerServer` fixture in `_helpers/fixtures.ts` MUST set
+ *      `OK_TEST_VITE_CACHE_DIR` on the spawned dev server's `env` with
+ *      a value that is per-worker unique — either references
+ *      `workerInfo.workerIndex` (template-literal style) or is computed
+ *      via `mkdtempSync(...)` (fresh per call). Tests B1+B2 inspect the
+ *      fixture source with ts-morph; B2 traces single-level identifier
+ *      references so the fixture can bind the path to a local variable
+ *      (`const viteCacheDir = mkdtempSync(...)`) rather than inlining
+ *      the expression. Test B3 pins the teardown counterpart: every
+ *      `mkdtempSync` allocation must be paired with an `rmSync` so
+ *      per-worker cache directories under `node_modules/` are reclaimed
+ *      on both the happy path (after the spawned server is released)
+ *      and the failure path (caught launch errors that abort `use`).
+ *
+ * Why a meta-test rather than reproducing the race itself: the bug is a
+ * cross-process TOCTOU over the shared directory; it needs CI-grade
+ * contention (4 workers × cold `.vite/deps/`, concurrent prod `vite build`,
+ * shared `ubuntu-64gb` runner) to surface. Local repros across 136
+ * executions (including cold-cache 4-worker runs) returned 0% failure
+ * rate. Asserting the isolation invariant is fully deterministic.
+ *
+ * Pattern precedent: `vite-dedupe-parity.test.ts` (same directory) — pins
+ * the `RENDERER_DEDUPE` cross-config invariant the same way.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 import { type Node, Project, SyntaxKind } from 'ts-morph';
@@ -7,6 +68,13 @@ const APP_PACKAGE_ROOT = resolve(import.meta.dirname, '../..');
 const APP_VITE_CONFIG = resolve(APP_PACKAGE_ROOT, 'vite.config.ts');
 const WORKER_FIXTURES = resolve(APP_PACKAGE_ROOT, 'tests/stress/_helpers/fixtures.ts');
 
+/**
+ * Canonical name for the per-worker cacheDir env var. The fixture writes
+ * it; vite.config.ts reads it. Pinning the name here means both sides
+ * must agree on the wire format — if a future contributor renames either
+ * side without renaming the partner, this test (or the behavioral A1/A2
+ * pair) trips.
+ */
 const CACHE_DIR_ENV_VAR = 'OK_TEST_VITE_CACHE_DIR';
 
 function parseSource(filePath: string) {
@@ -19,6 +87,11 @@ function parseSource(filePath: string) {
   return project.addSourceFileAtPath(filePath);
 }
 
+/**
+ * Snapshot, set, and restore an env var around a body. Avoids leaking
+ * `process.env.OK_TEST_VITE_CACHE_DIR` into peer tests in the same Bun
+ * process — `bun test` shares one process across the whole file.
+ */
 async function withEnv<T>(
   key: string,
   value: string | undefined,
@@ -35,6 +108,26 @@ async function withEnv<T>(
   }
 }
 
+/**
+ * Decide whether an expression node yields a per-worker-unique value.
+ * Two recognized shapes:
+ *
+ *   (a) Inline expression whose source text references
+ *       `workerInfo.workerIndex` (template literal interpolation,
+ *       `join(...)` call argument, etc.) or `mkdtempSync` (fresh tmpdir
+ *       per call → uniqueness by construction).
+ *
+ *   (b) Single-level identifier reference — the property's value is a
+ *       local variable; the variable's declaration must itself match
+ *       shape (a). This lets the fixture write
+ *       `const viteCacheDir = mkdtempSync(...)` and then
+ *       `OK_TEST_VITE_CACHE_DIR: viteCacheDir,` without flattening.
+ *
+ * Shapes deliberately NOT accepted: static string literals
+ * (`'/tmp/vite-cache'` — would be shared across workers), object/array
+ * accesses without per-worker derivation, function calls whose name
+ * doesn't include `mkdtemp` (would need wider whitelist).
+ */
 function classifyPerWorkerExpression(node: Node): { ok: boolean; why: string } {
   const text = node.getText();
   if (text.includes('workerInfo.workerIndex')) {
@@ -83,6 +176,8 @@ function classifyPerWorkerExpression(node: Node): { ok: boolean; why: string } {
 
 describe('per-worker Vite cacheDir isolation — vite.config.ts side', () => {
   test('A1: resolves cacheDir from OK_TEST_VITE_CACHE_DIR env var', async () => {
+    // Pick a path that cannot collide with any default Vite cacheDir
+    // and is unambiguously the test's choice (not Vite's fallback).
     const expected = '/tmp/ok-vite-cachedir-isolation-test-a1';
     await withEnv(CACHE_DIR_ENV_VAR, expected, async () => {
       const result = await loadConfigFromFile(
@@ -95,6 +190,10 @@ describe('per-worker Vite cacheDir isolation — vite.config.ts side', () => {
   });
 
   test('A2: distinct OK_TEST_VITE_CACHE_DIR values produce distinct resolved cacheDirs (anti-vacuousness)', async () => {
+    // Without this, a future regression that hard-codes `cacheDir` to a
+    // single constant path would still satisfy "cacheDir is non-default"
+    // but would re-introduce the shared-directory race the contract
+    // exists to prevent.
     const pathW0 = '/tmp/ok-vite-cachedir-isolation-test-a2-w0';
     const pathW1 = '/tmp/ok-vite-cachedir-isolation-test-a2-w1';
     const cacheW0 = await withEnv(CACHE_DIR_ENV_VAR, pathW0, async () => {
@@ -178,6 +277,14 @@ describe('per-worker Vite cacheDir isolation — workerServer fixture side', () 
   test(`B3: workerServer teardown reclaims the per-worker ${CACHE_DIR_ENV_VAR} at both teardown sites`, () => {
     const sf = parseSource(WORKER_FIXTURES);
 
+    // Step 1: resolve the per-worker cacheDir identifier from the
+    // OK_TEST_VITE_CACHE_DIR property assignment. Cleanup needs a stable
+    // name to pass to `rmSync` at teardown — an inline expression as the
+    // property value (e.g. `OK_TEST_VITE_CACHE_DIR: mkdtempSync(...)`)
+    // discards the resolved path the moment the env-object literal
+    // closes, leaving no handle for teardown to reach. The
+    // `const viteCacheDir = ...` binding shape exists for exactly
+    // this reason — the local variable IS the teardown handle.
     const props = sf
       .getDescendantsOfKind(SyntaxKind.PropertyAssignment)
       .filter((prop) => prop.getName() === CACHE_DIR_ENV_VAR);
@@ -202,6 +309,11 @@ describe('per-worker Vite cacheDir isolation — workerServer fixture side', () 
     }
     const cacheDirVar = initializer.getText();
 
+    // Step 2: enumerate rmSync call sites in the fixture. The two
+    // existing `rmSync(contentDir, ...)` calls anchor the failure-path
+    // catch block and the happy-path after-`use` block — together they
+    // are the two teardown sites the fix must mirror with a paired
+    // `rmSync(${cacheDirVar}, ...)`.
     const allCalls = sf.getDescendantsOfKind(SyntaxKind.CallExpression);
     const rmSyncMatching = (targetName: string) =>
       allCalls.filter((call) => {
@@ -220,6 +332,12 @@ describe('per-worker Vite cacheDir isolation — workerServer fixture side', () 
       );
     }
 
+    // Step 3: pair each contentDir teardown with a sibling
+    // `rmSync(${cacheDirVar}, ...)` in the SAME Block ancestor. This
+    // binds the assertion to BOTH the catch-block (failure path) and
+    // the function-body Block (happy path) without coupling to exact
+    // line numbers — the same nearby-block proximity required
+    // ("directly after each existing `rmSync(contentDir, ...)`").
     const missing: string[] = [];
     for (const cTeardown of contentDirTeardowns) {
       const parentBlock = cTeardown.getFirstAncestorByKind(SyntaxKind.Block);

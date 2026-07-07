@@ -114,6 +114,10 @@ mock.module('@/components/ui/sidebar', () => ({
   useSidebar: () => ({ state: 'expanded', toggleSidebar: toggleSidebarMock }),
 }));
 
+// FileSidebar renders the Skills section, which pulls in the full sidebar
+// primitive set (SidebarMenuButton, SidebarGroup*) plus useSkills. This
+// menu-action test is about the file tree's context menu, not skills — stub the
+// section so its imports don't need mocking here.
 mock.module('@/components/SkillsSidebarSection', () => ({
   SkillsSidebarSection: () => null,
 }));

@@ -1,3 +1,29 @@
+/**
+ * Retrieval-quality eval harness.
+ *
+ * Substantiates the core value claim: with semantic ranking ON, conceptual
+ * query→doc pairs rank the target higher than lexical-only — measured on a
+ * BLIND HELD-OUT split against PRE-REGISTERED thresholds, with the RRF `k`
+ * calibrated ONLY on a disjoint tuning split (anti-circularity).
+ *
+ * The thresholds below are PRE-REGISTERED — fixed before any calibration run,
+ * and carried over from the abandoned local-model design (the bars are
+ * rank-based and conservative; `text-embedding-3-small` scores at least as well
+ * as bge-small on MTEB retrieval, so they transfer). Do NOT tune them to make a
+ * result pass; that is the train-on-test failure the split exists to prevent. A
+ * sub-threshold held-out number does NOT block the merge — it blocks the flag
+ * flip (the feature ships dark either way).
+ *
+ * The provider is symmetric (`text-embedding-3` embeds queries and passages
+ * identically), so there is no query-instruction-prefix knob to calibrate — RRF
+ * `k` is the only tuned hyperparameter, and it is rank-based / scale-insensitive.
+ *
+ * Run the real-API eval (needs a key + network):
+ *   OK_EMBED_SMOKE=1 OK_EMBEDDINGS_API_KEY=sk-... \
+ *     bun run --conditions=development \
+ *     packages/server/src/embeddings/eval/semantic-eval.ts
+ */
+
 import { readFileSync } from 'node:fs';
 import {
   createWorkspaceSearchCorpus,
@@ -10,10 +36,15 @@ import {
 import { chunkDocument } from '../chunking.ts';
 import { cosineSimilarity, type Embedder, loadOpenAiEmbedder } from '../embedder.ts';
 
+// ── PRE-REGISTERED acceptance thresholds (fixed before calibration) ──────────
+/** Held-out semantic MRR@10 must beat lexical-only by at least this margin. */
 const HELD_OUT_MRR_GAIN_MIN = 0.05;
+/** Held-out semantic recall@5 must beat lexical-only by at least this margin. */
 const HELD_OUT_RECALL5_GAIN_MIN = 0.08;
+/** On held-out lexical-strong pairs, semantic may not regress MRR@10 by more than this. */
 const LEXICAL_STRONG_REGRESSION_MAX = 0.03;
 
+/** RRF k values swept on the TUNE split only. */
 const RRF_K_GRID = [10, 20, 40, 60, 80, 120];
 
 interface EvalPair {
@@ -54,6 +85,7 @@ function aggregate(ranks: number[]): Metrics {
   return { n, mrr, recall1, recall5 };
 }
 
+/** Embed every corpus doc to its chunk vectors (the doc side of the index). */
 async function embedCorpusVectors(
   embedder: Embedder,
   docs: readonly WorkspaceSearchDocument[],
@@ -66,6 +98,7 @@ async function embedCorpusVectors(
   return byDoc;
 }
 
+/** Per-doc max chunk cosine for a single query vector. */
 function scoresForQueryVec(
   queryVec: Float32Array,
   docVectors: Map<string, Float32Array[]>,
@@ -82,10 +115,12 @@ function scoresForQueryVec(
 export interface PreparedEval {
   corpus: WorkspaceSearchCorpus;
   docVectors: Map<string, Float32Array[]>;
+  /** queryText → per-doc cosine map. */
   queryScores: Map<string, Map<string, number>>;
   pairs: EvalPair[];
 }
 
+/** Embed the corpus + every distinct query once, up front. */
 export async function prepareEval(embedder: Embedder, set: EvalSet): Promise<PreparedEval> {
   const docs = set.corpus.map((d) =>
     createWorkspaceSearchDocument({
@@ -112,6 +147,7 @@ interface RunConfig {
   semantic: boolean;
 }
 
+/** Metrics over a subset of pairs under a config. */
 function evaluate(prep: PreparedEval, pairs: EvalPair[], cfg: RunConfig): Metrics {
   const ranks = pairs.map((pair) => {
     const sem = cfg.semantic
@@ -135,6 +171,7 @@ interface CalibrationResult {
   grid: Array<{ rrfK: number; mrr: number }>;
 }
 
+/** Sweep RRF k on the TUNE split; pick the highest tuning MRR. */
 function calibrate(prep: PreparedEval): CalibrationResult {
   const tune = prep.pairs.filter((p) => p.split === 'tune');
   const grid = RRF_K_GRID.map((rrfK) => ({
@@ -155,6 +192,14 @@ export interface HeldOutReport {
   passes: boolean;
 }
 
+/**
+ * Full evaluation. The held-out gate is measured at the SHIPPING config — the
+ * canonical RRF k — NOT at the tune-split argmax, because the sweep shows k is
+ * non-critical (a marginal data-derived k would be over-fit to small-N noise;
+ * using the pre-set canonical param is strictly less circular than calibrating).
+ * The calibration sweep is run + reported only to confirm the shipping param
+ * sits in the optimum band.
+ */
 const PRODUCTION_RRF_K = DEFAULT_RRF_K;
 
 export function runHeldOutEval(prep: PreparedEval): HeldOutReport {
@@ -179,6 +224,7 @@ export function runHeldOutEval(prep: PreparedEval): HeldOutReport {
   return { calibration, lexical, semantic, mrrGain, recall5Gain, lexicalStrongRegression, passes };
 }
 
+/** Load the real OpenAI-compatible embedder for an eval run (env config + key). */
 export async function loadEvalEmbedder(): Promise<Embedder | null> {
   return loadOpenAiEmbedder({
     keyStore: null, // env (OK_EMBEDDINGS_API_KEY) fallback only — gated runs set it
@@ -192,6 +238,7 @@ export async function loadEvalEmbedder(): Promise<Embedder | null> {
   });
 }
 
+/** CLI entry: print the calibration + held-out report. */
 async function main(): Promise<void> {
   const embedder = await loadEvalEmbedder();
   if (!embedder) {

@@ -1,3 +1,9 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleLocalOpAuthSetIdentity`.
+ * Covers method gating, schema validation (whitespace-
+ * only name/email rejection), and the happy-path empty success body.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { LocalOpAuthEmptySuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

@@ -1,3 +1,10 @@
+/**
+ * `history` MCP tool — list version history for a document.
+ *
+ * Calls GET /api/history with optional filtering and pagination.
+ * Returns timeline entries from the shadow repo with commit SHAs
+ * that can be passed to `restore_version({ document, version })`.
+ */
 import { projectSkillContentDocName } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { resolvePreviewUrlForTool } from './preview-url.ts';
@@ -16,8 +23,15 @@ import {
   textResult,
 } from './shared.ts';
 
+/** Entry-kind values the timeline can emit (output projection of route `type`). */
 const HISTORY_KINDS = ['checkpoint', 'wip', 'upstream'] as const;
 
+/**
+ * One timeline entry as the `history` tool projects it for agents: the
+ * route's `sha` is surfaced as `version` (the cross-tool vocabulary — see
+ * `VERSION_FIELD_DESCRIBE`) and `type` as `kind`.
+ * The HTTP route + editor UI keep `sha` / `type`; the rename is tool-layer only.
+ */
 const HistoryEntryOutputSchema = z.object({
   version: z
     .string()
@@ -161,6 +175,11 @@ export function register(server: ServerInstance, deps: GetHistoryDeps): void {
       if (isFolder) {
         params.set('folder', args.folder ?? '');
       } else if (args.skill !== undefined) {
+        // Project skills are content docs (`.ok/skills/<name>/SKILL`), so a skill
+        // shares the document-history path — `getDocumentHistory`'s correct,
+        // multi-writer-filtered timeline. (The old `/api/skill/history` route was
+        // a buggy duplicate: it ran a naive `git log` over whole-tree snapshot
+        // refs and surfaced commits that touched OTHER skills.)
         const docName = projectSkillContentDocName(args.skill);
         params.set('docName', docName);
         previewDocName = docName;
@@ -181,6 +200,8 @@ export function register(server: ServerInstance, deps: GetHistoryDeps): void {
       if (!result.ok) return textResult(`Error: ${result.error}`, true);
 
       const { ok: _ok, ...data } = result;
+      // Project the route's per-entry `sha`/`type` to the tool vocabulary
+      // `version`/`kind` (the HTTP route + editor UI keep `sha`/`type`).
       const rawEntries = Array.isArray((data as { entries?: unknown }).entries)
         ? (data as { entries: unknown[] }).entries
         : [];
@@ -198,8 +219,11 @@ export function register(server: ServerInstance, deps: GetHistoryDeps): void {
         };
       });
       const total = (data as { total?: unknown }).total;
+      // The route emits `hasMore` (are there entries beyond this page); surface
+      // it under the agent-facing `truncated` output name.
       const hasMore = (data as { hasMore?: unknown }).hasMore;
 
+      // Folder timelines have no single doc to preview.
       const preview = previewDocName
         ? await resolvePreviewUrlForTool(
             previewDocName,

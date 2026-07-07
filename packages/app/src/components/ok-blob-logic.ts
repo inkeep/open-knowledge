@@ -2,6 +2,9 @@ export type ClickLevel = 0 | 1 | 2 | 3;
 export type ActiveClickLevel = Exclude<ClickLevel, 0>;
 
 export const RAGE_WINDOW_MS = 600;
+// Time before a click level decays + particles clear from the DOM. Must outlast
+// the worst-case particle visual — `maxDelay + durationMax` for the chosen
+// level — or late-spawning particles get cut off mid-flight.
 export const IDLE_RESET_MS = 3100;
 const MAX_LEVEL: ActiveClickLevel = 3;
 
@@ -19,19 +22,29 @@ export function nextClickLevel(
 
 export interface FireworkParticle {
   id: number;
+  /** Horizontal offset from the particle's starting point — what the CSS translates */
   dx: number;
+  /** Vertical offset from the particle's starting point — what the CSS translates */
   dy: number;
+  /** Horizontal offset from the blob center where the particle spawns (on the blob perimeter) */
   originDx: number;
+  /** Vertical offset from the blob center where the particle spawns (on the blob perimeter) */
   originDy: number;
+  /** Particle radius in SVG user units */
   size: number;
+  /** CSS color string (either `var(--…)` or a literal color) */
   color: string;
+  /** Per-particle stagger in ms (adds to the firework's chaos) */
   delay: number;
+  /** Per-particle animation duration in ms */
   duration: number;
 }
 
 interface FireworkLevelConfig {
   count: number;
+  /** Radius at which particles spawn — matched to the blob's silhouette so the burst emerges from the body, not the forehead */
   startRadius: number;
+  /** Additional outward travel from the spawn point (the CSS animation distance) */
   baseDistance: number;
   distanceVariance: number;
   sizeMin: number;
@@ -53,6 +66,9 @@ export const FIREWORK_LEVEL_CONFIG: Record<ClickLevel, FireworkLevelConfig> = {
     durationMin: 0,
     durationMax: 0,
   },
+  // Levels 1 and 2 get the bounce + eye squish only. The firework is reserved
+  // for rage (level 3) so it stays a genuine reward rather than fading into
+  // every click.
   1: {
     count: 0,
     startRadius: 0,
@@ -97,6 +113,14 @@ export const FIREWORK_COLORS: readonly string[] = [
   'var(--color-white-cream)',
 ];
 
+/**
+ * Pure generator for a single firework burst. Called once per click with the
+ * resolved `ClickLevel`. Each particle picks its own angle (evenly sliced
+ * then jittered), distance, size, color, delay, and duration so bursts look
+ * chaotic rather than geometric.
+ *
+ * `rng` is injectable for deterministic tests; production uses `Math.random`.
+ */
 export function generateFireworkParticles(
   level: ClickLevel,
   opts: { rng?: () => number; colors?: readonly string[] } = {},

@@ -4,8 +4,10 @@ import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
 
 const brokenRefMark = Decoration.mark({ class: 'cm-link-ref-broken' });
 
+/** Regex matching a block-level link reference definition: `[label]: url` at line start. */
 const LINK_DEF_RE = /^\s{0,3}\[([^\]]+)\]:\s/;
 
+/** Regex matching an inline reference link: `[text][label]`. */
 const INLINE_REF_RE = /\[([^\]]*)\]\[([^\]]*)\]/g;
 
 /** Lezer node names whose contents are literal code — `[text][label]` inside
@@ -24,6 +26,7 @@ interface PositionRange {
   to: number;
 }
 
+/** True iff `pos` lies strictly inside any code range. Uses binary search. */
 function inCodeRange(pos: number, codeRanges: PositionRange[]): boolean {
   let lo = 0;
   let hi = codeRanges.length - 1;
@@ -37,6 +40,7 @@ function inCodeRange(pos: number, codeRanges: PositionRange[]): boolean {
   return false;
 }
 
+/** Collect doc-wide code ranges from the Lezer tree. Sorted by `from`. */
 function collectCodeRanges(state: EditorState): PositionRange[] {
   const ranges: PositionRange[] = [];
   const tree = syntaxTree(state);
@@ -52,12 +56,15 @@ function collectCodeRanges(state: EditorState): PositionRange[] {
   return ranges;
 }
 
+/** Scan the document to find definitions and inline references, then mark broken ones. */
 export function scanBrokenRefs(state: EditorState): DecorationSet {
   const definitions = new Set<string>();
   const references: InlineRef[] = [];
   const doc = state.doc;
   const codeRanges = collectCodeRanges(state);
 
+  // Pass 1: collect all block-level definitions (skip lines inside code blocks —
+  // a `[label]: url` inside a ```markdown``` fence is literal source, not a def).
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     if (inCodeRange(line.from, codeRanges)) continue;
@@ -67,9 +74,13 @@ export function scanBrokenRefs(state: EditorState): DecorationSet {
     }
   }
 
+  // Pass 2: collect all inline reference links (skip matches inside code ranges —
+  // `[text][label]` inside a fenced code block or inline code is source being
+  // quoted, not a live reference).
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     if (inCodeRange(line.from, codeRanges)) continue;
+    // Skip definition lines — they're not inline references
     if (LINK_DEF_RE.test(line.text)) continue;
 
     INLINE_REF_RE.lastIndex = 0;
@@ -87,6 +98,7 @@ export function scanBrokenRefs(state: EditorState): DecorationSet {
     }
   }
 
+  // Build decorations for broken references
   const decorations: Range<Decoration>[] = [];
   for (const ref of references) {
     if (!definitions.has(ref.label)) {

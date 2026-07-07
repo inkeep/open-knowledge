@@ -33,10 +33,16 @@ export function writeDocPanelWidth(px: number, storage?: WidthStorage): void {
   try {
     const s = storage ?? localStorage;
     s.setItem(DOC_PANEL_WIDTH_KEY, String(clamp(px)));
-  } catch {}
+  } catch {
+    // quota exceeded — in-memory state holds for the session (mirrors sidebar-pin-store)
+  }
 }
 
 export function getInitialDocPanelWidth(): number {
+  // `typeof localStorage` is not safe when localStorage is a property getter
+  // that throws on access (file:// protocol, Safari private mode SecurityError,
+  // sandboxed iframes). Wrap the entire dispatch in try/catch so the
+  // synchronous-init contract survives any storage-restricted host.
   try {
     if (typeof localStorage === 'undefined') return DEFAULT_DOC_PANEL_WIDTH;
     return readDocPanelWidth();

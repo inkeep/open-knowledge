@@ -1,3 +1,21 @@
+/**
+ * Tests for the idempotent `:start` contract on the auth + clone IPC slot
+ * lifecycles.
+ *
+ * Contract: when the renderer-side cancel-IPC fails to fire (modal cleanup
+ * race, IPC drop, Radix Presence never unmounts the dialog, etc.), the
+ * next `handleAuthStart` / `handleCloneStart` MUST atomically cancel the
+ * stale flow and claim a fresh slot. Without this contract, the stale
+ * slot pins until the CLI subprocess's wall-clock timeout (10 min)
+ * clears it and the user is locked out of retry.
+ *
+ * The auth and clone suites both pin the foundational displacement
+ * contract, plus the `.finally()` streamId guard that prevents the
+ * stale subprocess's delayed `done` resolution from clobbering the new
+ * slot. The remaining cases are regression pins for the explicit-cancel
+ * happy path and the streamId-mismatch guard in handleAuthCancel /
+ * handleCloneCancel.
+ */
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { AuthEvent, CloneEvent } from '@inkeep/open-knowledge-server';
 
@@ -29,6 +47,10 @@ mock.module('@inkeep/open-knowledge-server', () => ({
       done,
       cancel: () => {
         entry.cancelCalled = true;
+        // Mirror production: cancel sends SIGTERM; the subprocess exits a
+        // tick later and resolves `done` then. Leave `done` pending so we
+        // observe the synchronous slot-release contract independently of
+        // subprocess exit timing.
       },
     };
   },
@@ -49,6 +71,9 @@ mock.module('@inkeep/open-knowledge-server', () => ({
   validateCloneInputs: () => validateResult,
 }));
 
+// Mutable per-test override for the validateCloneInputs mock. Default `ok: true`
+// keeps every existing test (which exercises slot-lifecycle behavior, not validation)
+// unaffected. B-invalid flips this to assert validate-before-displace ordering.
 let validateResult: { ok: true } | { ok: false; reason: 'invalid-url' | 'invalid-dir' } = {
   ok: true,
 };
@@ -94,14 +119,20 @@ describe('handleAuthStart idempotent against stale slot', () => {
     expect(staleController).toBeDefined();
     expect(deps.state.authInFlight?.streamId).toBe(first.streamId);
 
+    // Simulate the bug: renderer-side cleanup never fired, so no
+    // handleAuthCancel runs between starts.
+
     const second = handleAuthStart(deps, makeSender());
     expect(second.ok).toBe(true);
     if (!second.ok) return;
 
+    // Fresh streamId — slot was atomically replaced.
     expect(second.streamId).not.toBe(first.streamId);
 
+    // Stale subprocess was sent SIGTERM (observable side effect of cancel).
     expect(staleController?.cancelCalled).toBe(true);
 
+    // Slot now tracks the new flow, not the stale one.
     expect(deps.state.authInFlight?.streamId).toBe(second.streamId);
   });
 
@@ -116,6 +147,10 @@ describe('handleAuthStart idempotent against stale slot', () => {
     expect(second.ok).toBe(true);
     if (!second.ok) return;
 
+    // The stale subprocess exits AFTER displacement — its `done.finally`
+    // fires asynchronously. Without the streamId guard in the
+    // `controller.done.finally` hook, the stale `done` resolution would
+    // null the new slot.
     deviceFlowControllers[0]?.resolve();
     await new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -153,6 +188,8 @@ describe('handleAuthStart idempotent against stale slot', () => {
     expect(second.ok).toBe(true);
     if (!second.ok) return;
 
+    // Cancel using the FIRST (now-stale) streamId — must not affect the
+    // active second slot.
     handleAuthCancel(deps, first.streamId);
     expect(deps.state.authInFlight?.streamId).toBe(second.streamId);
   });
@@ -188,6 +225,10 @@ describe('handleCloneStart idempotent against stale slot', () => {
     expect(second.ok).toBe(true);
     if (!second.ok) return;
 
+    // The stale subprocess exits AFTER displacement — its `done.finally`
+    // fires asynchronously. Without the streamId guard in the
+    // `controller.done.finally` hook, the stale `done` resolution would
+    // null the new slot.
     cloneControllers[0]?.resolve();
     await new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -240,14 +281,20 @@ describe('handleCloneStart idempotent against stale slot', () => {
     const staleEntry = cloneControllers[0];
     expect(staleEntry?.cancelCalled).toBe(false);
 
+    // Second start with invalid validation result. handleCloneStart MUST
+    // reject this request BEFORE touching the in-flight slot — otherwise
+    // a typo'd URL in a user's retry would silently kill the running
+    // clone they wanted to keep.
     validateResult = { ok: false, reason: 'invalid-url' };
     const second = handleCloneStart(deps, makeSender(), CLONE_REQ);
 
     expect(second.ok).toBe(false);
     if (second.ok) return;
     expect(second.error).toBe('URL protocol not allowed');
+    // Slot still tracks the original flow; stale controller was NOT cancelled.
     expect(deps.state.cloneInFlight?.streamId).toBe(first.streamId);
     expect(staleEntry?.cancelCalled).toBe(false);
+    // No second subprocess was spawned — validate-then-displace, not the reverse.
     expect(cloneControllers.length).toBe(1);
   });
 });

@@ -12,23 +12,43 @@ import { templateDocName } from '@/lib/managed-artifact-doc-name';
 import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
 import { useSettingsRoute } from '@/lib/use-settings-route';
 
+/**
+ * Shared chrome for a Settings-side template manager — list / edit / delete /
+ * new against `<projectRoot>/.ok/templates/`. Rows, edit, and delete are the
+ * shared template-list components; this component owns the Settings-section
+ * chrome and the scope filter.
+ *
+ * Folder-scoped templates (under `<folder>/.ok/templates/`) stay on each
+ * folder's overview page — those are inherently contextual.
+ */
 interface TemplatesManagerConfig {
+  /** Which `TemplateMenuEntry.scope` rows belong to this manager. */
   scope: TemplateMenuEntry['scope'];
+  /** Section heading. */
   title: string;
+  /** Subheading prose, rendered under the title. */
   description: ReactNode;
+  /** Shown when the resolver returns zero rows for `scope`. */
   emptyMessage: ReactNode;
+  /** Fully-formed, already-translated load-error title. */
   loadErrorTitle: string;
+  /** Per-row badge. */
   badge: { label: string; variant: 'primary' | 'gray' };
+  /** DOM id wiring `<h3>` to `<section aria-labelledby>` for screen readers. */
   settingsId: string;
+  /** Stable suffix for the section `data-testid` selectors. */
   testIdPrefix: string;
 }
 
 export function TemplatesManagerSection({ config }: { config: TemplatesManagerConfig }) {
+  // Project root is the only folderPath that surfaces every scope in one
+  // fetch; filtering client-side keeps the server contract narrow.
   const { state, refresh } = useFolderConfig('');
   const [deleteTarget, setDeleteTarget] = useState<TemplateMenuEntry | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const settingsRoute = useSettingsRoute();
 
+  // Open the template as the active editor tab and close Settings so it's visible.
   function openTemplateTab(folder: string, name: string) {
     openManagedArtifactTab(templateDocName(folder, name));
     settingsRoute.close();
@@ -44,6 +64,8 @@ export function TemplatesManagerSection({ config }: { config: TemplatesManagerCo
       : [];
 
   if (state.status === 'error') {
+    // Keep "+ New template" reachable on a load error — the create POST is its
+    // own request and may well succeed.
     const { loadErrorTitle } = config;
     const { message } = state;
     return (

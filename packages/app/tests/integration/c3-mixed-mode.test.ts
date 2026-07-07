@@ -1,3 +1,16 @@
+/**
+ * C3: Mixed-mode concurrent edits — WYSIWYG + source mode convergence.
+ *
+ * Validates that Client A editing in WYSIWYG (XmlFragment writes) and
+ * Client B editing in source mode (Y.Text writes) converge correctly
+ * under the server-authoritative observer bridge. The server observer
+ * handles all cross-CRDT writes under OBSERVER_SYNC_ORIGIN — client
+ * observers no longer perform cross-representation writes.
+ *
+ * Per-test docName isolation via createTestClients(port, { count }) default.
+ * Client lifecycle in try/finally (not afterEach).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import * as Y from 'yjs';
@@ -23,6 +36,7 @@ afterAll(async () => {
   await server.cleanup();
 });
 
+/** Append a paragraph with the given text to a client's XmlFragment. */
 function appendParagraph(client: TestClient, text: string): void {
   const paragraph = new Y.XmlElement('paragraph');
   const ytext = new Y.XmlText();
@@ -34,6 +48,7 @@ function appendParagraph(client: TestClient, text: string): void {
 /** Assert convergence: polls until all markers appear in BOTH Y.Text and
  *  XmlFragment on all clients, then verifies bridge invariant and consistency. */
 async function assertConverged(clients: TestClient[], markers: string[]): Promise<void> {
+  // Wait until all markers appear in Y.Text AND XmlFragment on all clients
   for (const marker of markers) {
     for (let i = 0; i < clients.length; i++) {
       await pollUntil(
@@ -45,12 +60,15 @@ async function assertConverged(clients: TestClient[], markers: string[]): Promis
     }
   }
 
+  // Wait for server observer debounce + WebSocket propagation to settle
   await wait(500);
 
+  // Verify bridge invariant on all clients
   for (const c of clients) {
     assertBridgeInvariant(c.ytext, c.fragment);
   }
 
+  // Verify all clients have identical Y.Text state
   const ytexts = clients.map((c) => c.ytext.toString());
   for (let i = 1; i < ytexts.length; i++) {
     expect(ytexts[i]).toBe(ytexts[0]);
@@ -64,8 +82,10 @@ describe('C3: mixed-mode concurrent edits', () => {
       perClientOptions: { skipInvariantWatcher: true },
     });
     try {
+      // Client A writes via XmlFragment (WYSIWYG)
       appendParagraph(clients[0], 'C3-WYSIWYG-FROM-A');
 
+      // Client B writes via Y.Text (source mode)
       clients[1].doc.transact(() => {
         clients[1].ytext.insert(0, 'C3-SOURCE-FROM-B\n\n');
       });
@@ -84,21 +104,29 @@ describe('C3: mixed-mode concurrent edits', () => {
       perClientOptions: { skipInvariantWatcher: true },
     });
     try {
+      // Seed via agent write
       await agentWriteMd(server.port, '# Shared Base\n\nSeed content.', { docName });
       await pollUntil(() => clients[0].ytext.toString().includes('Seed content'), 5000);
       await pollUntil(() => clients[1].ytext.toString().includes('Seed content'), 5000);
+      // Wait for bridge to fully settle before client edits
       await wait(500);
 
+      // Client A adds via WYSIWYG
       appendParagraph(clients[0], 'C3-MIXED-WYSIWYG');
 
+      // Wait for A's WYSIWYG edit to fully propagate through the server
+      // observer bridge (XmlFragment → Y.Text) and back to Client B,
+      // ensuring the bridge has settled before B's source-mode write.
       await pollUntil(
         () =>
           clients[1].ytext.toString().includes('C3-MIXED-WYSIWYG') &&
           serializeFragment(clients[1].fragment).includes('C3-MIXED-WYSIWYG'),
         5000,
       );
+      // Give the server observer one more debounce cycle to fully settle
       await wait(200);
 
+      // Client B adds via source mode after bridge is settled
       clients[1].doc.transact(() => {
         clients[1].ytext.insert(clients[1].ytext.length, '\n\nC3-MIXED-SOURCE\n');
       });
@@ -110,6 +138,7 @@ describe('C3: mixed-mode concurrent edits', () => {
         'C3-MIXED-SOURCE',
       ]);
 
+      // Verify seed content appears exactly once (no duplication)
       for (const c of clients) {
         const text = c.ytext.toString();
         const seedCount = text.split('Seed content').length - 1;
@@ -126,9 +155,11 @@ describe('C3: mixed-mode concurrent edits', () => {
       perClientOptions: { skipInvariantWatcher: true },
     });
     try {
+      // Client A writes via WYSIWYG first
       appendParagraph(clients[0], 'C3-SEQ-WYSIWYG-FIRST');
       await pollUntil(() => clients[1].ytext.toString().includes('C3-SEQ-WYSIWYG-FIRST'), 5000);
 
+      // Client B writes via source mode after A's edit arrived
       clients[1].doc.transact(() => {
         clients[1].ytext.insert(clients[1].ytext.length, '\n\nC3-SEQ-SOURCE-SECOND\n');
       });
@@ -145,6 +176,7 @@ describe('C3: mixed-mode concurrent edits', () => {
       perClientOptions: { skipInvariantWatcher: true },
     });
     try {
+      // Client B writes via source mode first
       clients[1].doc.transact(() => {
         clients[1].ytext.insert(0, '# C3-SOURCE-FIRST\n\n');
       });
@@ -153,6 +185,7 @@ describe('C3: mixed-mode concurrent edits', () => {
         5000,
       );
 
+      // Client A writes via WYSIWYG after B's edit arrived
       appendParagraph(clients[0], 'C3-WYSIWYG-SECOND');
 
       await assertConverged(clients, ['C3-SOURCE-FIRST', 'C3-WYSIWYG-SECOND']);
@@ -167,10 +200,13 @@ describe('C3: mixed-mode concurrent edits', () => {
       perClientOptions: { skipInvariantWatcher: true },
     });
     try {
+      // Client A: WYSIWYG
       appendParagraph(clients[0], 'C3-THREE-WYSIWYG-A');
 
+      // Client B: WYSIWYG
       appendParagraph(clients[1], 'C3-THREE-WYSIWYG-B');
 
+      // Client C: source mode
       clients[2].doc.transact(() => {
         clients[2].ytext.insert(0, 'C3-THREE-SOURCE-C\n\n');
       });
@@ -193,12 +229,15 @@ describe('C3: mixed-mode concurrent edits', () => {
       perClientOptions: { skipInvariantWatcher: true },
     });
     try {
+      // Client A: WYSIWYG
       appendParagraph(clients[0], 'C3-AGENT-WYSIWYG');
 
+      // Client B: source mode
       clients[1].doc.transact(() => {
         clients[1].ytext.insert(0, 'C3-AGENT-SOURCE\n\n');
       });
 
+      // Wait for client edits to propagate before agent write
       await pollUntil(
         () =>
           clients[0].ytext.toString().includes('C3-AGENT-SOURCE') &&
@@ -207,6 +246,7 @@ describe('C3: mixed-mode concurrent edits', () => {
       );
       await wait(400);
 
+      // Agent write via HTTP API
       await agentWriteMd(server.port, '\n\nC3-AGENT-SERVER-WRITE\n', {
         docName,
         position: 'append',

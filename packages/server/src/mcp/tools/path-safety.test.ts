@@ -20,6 +20,7 @@ describe('resolveWithinRoot — accepts inputs contained in root', () => {
   });
 
   test('leading / is treated as project-root-anchored when child of root', () => {
+    // resolve('/srv/project', '/srv/project/foo') stays inside.
     const result = resolveWithinRoot('/srv/project', '/srv/project/articles/auth.md');
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -53,6 +54,10 @@ describe('resolveWithinRoot — accepts inputs contained in root', () => {
   });
 
   test('filename literally starting with `..` (e.g. `..abc`) is contained, not rejected', () => {
+    // Regression for the `pathSep` heuristic that inferred the separator
+    // from `rel[2]`. For `..abc` the inferred separator was `'a'` and the
+    // check `rel.startsWith('..a')` matched, false-positive rejecting a
+    // contained file.
     const result = resolveWithinRoot('/srv/project', '..abc');
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -103,6 +108,8 @@ describe('resolveWithinRoot — rejects escapes', () => {
   });
 
   test('refuses sibling that prefix-matches root', () => {
+    // /srv/project-extra is OUTSIDE /srv/project even though startsWith would
+    // accept it without the path.relative containment check.
     const result = resolveWithinRoot('/srv/project', '/srv/project-extra/foo.md');
     expect(result.ok).toBe(false);
   });

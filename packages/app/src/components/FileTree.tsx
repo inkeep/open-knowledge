@@ -243,7 +243,9 @@ function focusEditorAfterRename(docName: string): void {
     if (!editor || editor.isDestroyed) return;
     try {
       editor.commands.focus();
-    } catch {}
+    } catch {
+      // Editor view may be mid-transition; focus is best-effort.
+    }
   });
 }
 
@@ -280,6 +282,9 @@ function setExternalFileDropAffordance(
   ref.current = { row: target.row, root: target.root };
 }
 
+// Module-level functions can't call `useLingui()`, so this file uses the
+// `@lingui/core/macro` `t` (and `plural`) for any localizable string outside a
+// React component; the `t` from `useLingui()` is used inside components.
 async function copyToClipboard(text: string, kind: 'full' | 'relative'): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
@@ -296,19 +301,26 @@ const AGENT_FILE_NAMES = new Set(['agents', 'agent', 'claude', 'skill']);
 const LINK_DECORATION_ICON_ID = 'ok-file-tree-link-decoration';
 const AGENT_DECORATION_ICON_ID = 'ok-file-tree-agent-decoration';
 const MARKDOWN_FILE_ICON_ID = 'ok-file-tree-markdown';
+// Custom Markdown file glyph (document with an "MD" label) overriding Pierre's
+// built-in `complete`-set markdown glyph. `fill="currentColor"` lets
+// `--trees-file-icon-color-markdown` (set in createFileTreeStyle, see
+// file-tree-density.ts) color it.
 const MARKDOWN_FILE_ICON_SYMBOL = `<symbol id="${MARKDOWN_FILE_ICON_ID}" viewBox="${MARKDOWN_FILE_ICON_VIEWBOX}" fill="currentColor"><path d="${MARKDOWN_FILE_ICON_PATH_D}"/></symbol>`;
 
 type IconNode = [string, Record<string, string>][];
 
 function iconNodeToSvg(iconNode: IconNode): string {
-  return iconNode
-    .map(([tag, { key: _, ...attrs }]) => {
-      const attrString = Object.entries(attrs)
-        .map(([k, v]) => `${k}="${v}"`)
-        .join(' ');
-      return `<${tag} ${attrString} />`;
-    })
-    .join('');
+  return (
+    iconNode
+      // remove React key
+      .map(([tag, { key: _, ...attrs }]) => {
+        const attrString = Object.entries(attrs)
+          .map(([k, v]) => `${k}="${v}"`)
+          .join(' ');
+        return `<${tag} ${attrString} />`;
+      })
+      .join('')
+  );
 }
 
 function createLucideSpriteSymbol(id: string, iconNode: IconNode): string {
@@ -322,6 +334,15 @@ const FILE_TREE_DECORATION_SPRITE_SHEET = `<svg data-icon-sprite aria-hidden="tr
   ${MARKDOWN_FILE_ICON_SYMBOL}
 </svg>`;
 
+// Drop-to-root affordance. The patched `@pierre/trees` sets
+// `data-file-tree-root-drag-target="true"` on the virtualized root while an
+// in-tree drag hovers empty content area (or a top-level file) — i.e. when the
+// drop would promote the dragged item to the project root. The library has no
+// row to highlight for a root target, so we paint a container-level ring + tint
+// here. An `::after` overlay (not `outline`) is required: the root carries an
+// inline `outline: none` that a stylesheet rule can't beat without `!important`,
+// and the opaque virtualized-list child would cover an inset box-shadow on the
+// root itself. `pointer-events: none` keeps the overlay out of drop hit-testing.
 const FILE_TREE_ROOT_DROP_CSS = `
   [data-file-tree-virtualized-root][data-file-tree-root-drag-target="true"] {
     position: relative;
@@ -351,6 +372,11 @@ const FILE_TREE_EXTERNAL_FILE_DROP_TARGET_ATTR = 'data-ok-external-file-drop-tar
 const FILE_TREE_EXTERNAL_FILE_DROP_ROOT_ATTR = 'data-ok-external-file-drop-root-target';
 const FILE_TREE_EXTERNAL_FILE_DROP_BUSY_PATH = '__external-file-drop__';
 
+// Cadence for re-attempting the listing fetch while a desktop auto-update
+// relaunch is in flight. The server is intentionally torn down (up to 10s)
+// before `quitAndInstall`, so a steady retry lets the panel self-heal the
+// moment the server returns — e.g. when a relaunch aborts and the app keeps
+// running — instead of latching a stale error until the next focus/CC1 refresh.
 const CONNECTIVITY_RECONNECT_RETRY_MS = 2000;
 const FILE_TREE_EXTERNAL_FILE_DROP_CSS = `
   [data-type="item"][${FILE_TREE_EXTERNAL_FILE_DROP_TARGET_ATTR}="true"] {
@@ -381,6 +407,14 @@ const FILE_TREE_EXTERNAL_FILE_DROP_CSS = `
   }
 `;
 
+// When the creation target is cleared (empty-space click), the active row is
+// deselected but Pierre keeps it DOM-focused (roving focus restores focus to
+// its focused row, so blurring it doesn't stick) — leaving a lingering focus
+// ring. The host carries `data-ok-creation-cleared` while cleared; neutralize
+// the ring color on the focused row so the row reads as fully deselected. The
+// ring redraws the instant a row is selected or navigation re-couples (the
+// attribute drops). `:host([…])` matches the attribute the React wrapper
+// forwards onto the `<file-tree-container>` host.
 const FILE_TREE_CREATION_CLEARED_ATTR = 'data-ok-creation-cleared';
 const FILE_TREE_CREATION_CLEARED_CSS = `
   :host([${FILE_TREE_CREATION_CLEARED_ATTR}]) [data-item-focused="true"] {
@@ -388,6 +422,11 @@ const FILE_TREE_CREATION_CLEARED_CSS = `
   }
 `;
 
+// Pierre's per-extension icon color (specificity 0,1,0 on the inner [data-icon-token]
+// element) wins over the inherited selected-fg color from the parent row, so the
+// markdown icon stays gray when its row is selected. The full styling block lives
+// alongside the badge-injection processor in file-tree-extension-badge.ts so the
+// CSS + DOM-mutation contract stays in one place.
 const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}`;
 
 function isAgentTreePath(treePath: string): boolean {
@@ -412,8 +451,21 @@ interface FileTreeDeleteRequest {
   targets: FileTreeTarget[];
 }
 
+/**
+ * Per-target state retained across a failed Trash IPC so the
+ * `TrashFailureModal` can offer Retry — re-runs Step 1 against the original
+ * targets — and Delete Permanently — calls today's `POST /api/delete-path`
+ * hard-delete against the targets that failed.
+ *
+ * The full original target shape is preserved (not just the path) so the
+ * fallback hard-delete + tab-close cascade has the same data shape today's
+ * single-step delete uses. Cancel dismisses without action; the user's
+ * editor tabs are still open (tab-close only fires after a successful Step 1
+ * trash).
+ */
 interface TrashFailureRequest {
   failed: TrashFailedTarget[];
+  /** Originals — re-fed to Retry; failed targets re-fed to Delete Permanently. */
   originalTargets: FileTreeTarget[];
 }
 
@@ -422,12 +474,26 @@ interface WorkspaceInfo {
   pathSeparator: '/' | '\\';
 }
 
+/**
+ * Platform-specific label for the file-manager reveal action. Mirrors VS Code's copy.
+ * Linux verb asymmetry (Open vs Reveal) is intentional — no stable Linux file-manager
+ * brand to "Reveal in"; a normalizing fix to "Reveal in Files" would be incorrect on
+ * most distros.
+ */
 function revealInFileManagerLabel(platform: 'darwin' | 'win32' | 'linux'): string {
   if (platform === 'darwin') return t`Reveal in Finder`;
   if (platform === 'win32') return t`Reveal in File Explorer`;
   return t`Open containing folder`;
 }
 
+/**
+ * File-tree menu row that opens the OS file manager with the target file/folder
+ * selected. Hidden entirely on the web variant (no useful no-op without a host
+ * filesystem) — the disabled-with-hint pattern used by `OpenInAgentContextSubmenu`
+ * doesn't apply here because reveal has no cross-host fallback. When present but
+ * the workspace metadata hasn't resolved yet, renders disabled with a "No workspace"
+ * affordance mirroring the handoff submenu's pattern.
+ */
 function RevealInFileManagerMenuItem({
   item,
   workspace,
@@ -443,6 +509,9 @@ function RevealInFileManagerMenuItem({
   const platform = bridge.platform;
   const label = revealInFileManagerLabel(platform);
   const hint = !workspace ? t`No workspace` : null;
+  // Per-platform aria-label so the catalog entry carries the literal label
+  // (e.g. `Reveal in Finder, {hint}`) — `t`${label}, ${hint}`` would extract
+  // a context-free `{label}, {hint}` that translators can't render naturally.
   const ariaLabel =
     platform === 'darwin'
       ? hint
@@ -512,6 +581,13 @@ interface FileTreeMenuProps {
   onDelete: (targets: FileTreeTarget[]) => void;
   onExpandSubtree: (treePath: string) => void;
   onCollapseSubtree: (treePath: string) => void;
+  /**
+   * Folder tree paths used to hide the subtree Expand/Collapse-All items
+   * when their action would be a no-op — mirrors the toolbar's Tree View
+   * Options dropdown (FileSidebar.tsx). Iterated through the same predicate
+   * `expandSubtree`/`collapseSubtree` use so the visibility matches the
+   * action surface exactly.
+   */
   folderTreePaths: readonly string[];
   isAsset: boolean;
   /** Authoritative document list — sourced for `docExt` when Pierre's tree
@@ -638,6 +714,13 @@ function FileTreeMenu({
   const hideLabel = isFolder ? t`Hide folder` : t`Hide this file`;
   const showHiddenFiles = mergedConfig?.appearance?.sidebar?.showHiddenFiles ?? false;
   const canToggleVisibility = projectLocalBinding !== null;
+  // Drives the smart-hide of the folder menu's "New from template" submenu.
+  // Only folder rows can fetch (null → idle, no request) and the menu mounts
+  // on-demand per right-click, so this fetch fires once when the menu opens —
+  // not eagerly for every tree row. Optimistic-true while loading mirrors the
+  // toolbar + empty-space gates in FileSidebar: hide the submenu only once we
+  // KNOW the resolved cascade is empty, so a slow cold fetch doesn't flicker
+  // the entry out from under the cursor.
   const folderConfig = useFolderConfig(isFolder ? treeDirectoryPathToFolderPath(item.path) : null);
   const folderHasTemplates =
     folderConfig.state.status === 'ready'
@@ -650,10 +733,20 @@ function FileTreeMenu({
   const deleteTargets = selectedDeleteTargets.length > 1 ? selectedDeleteTargets : [target];
   const deleteCount = deleteTargets.length;
   const deleteLabel = plural(deleteCount, { one: 'Delete', other: 'Delete # items' });
+  // Per-row-type handoff input shape:
+  //   asset  → null (assets still suppress the submenu via the render-time
+  //             `!isAsset` gate below; the helper short-circuits so the
+  //             submenu's `inputMissing` branch never runs for an asset that
+  //             was never going to render anyway)
+  //   folder → folder-scoped helper; cwd lands at `workspace.contentDir`
+  //             (project root) — folder focus rides on the directive prompt
+  //   file   → today's doc-scoped helper
   const handoffInput: HandoffDispatchInput | null = isAsset
     ? null
     : isFolder
       ? buildFolderHandoffInput({
+          // Relative path is the discriminator — dispatch hook picks
+          // `composeFolderPrompt(folderRelativePath)` for the directive.
           folderRelativePath: relativePathForTreeItem(item),
           workspace,
         })
@@ -665,6 +758,8 @@ function FileTreeMenu({
   const closeForInlineSurface = () => context.close({ restoreFocus: false });
   const close = () => context.close();
 
+  // Share is offered for folders and real docs (never assets) and only with a
+  // GitHub remote; no-remote falls back to an explanatory toast.
   const { status: gitSyncStatus } = useGitSyncStatusDetailed();
   const hasRemote = gitSyncStatus?.hasRemote === true;
   const shareInput: ShareTargetInput | null =
@@ -676,6 +771,7 @@ function FileTreeMenu({
   const canShare = hasRemote && shareInput !== null;
   const handleShare = () => {
     if (!shareInput) return;
+    // No popover here (unlike the header button), so let every toast through.
     void runShareAction(
       {
         ...shareInput,
@@ -692,6 +788,7 @@ function FileTreeMenu({
       },
     );
   };
+  // Shared Share item — rendered in both the folder and file menu branches.
   const shareMenuItem = canShare ? (
     <DropdownMenuItem
       data-testid="file-tree-menu-share"
@@ -705,6 +802,14 @@ function FileTreeMenu({
     </DropdownMenuItem>
   ) : null;
 
+  // Project-local visibility toggle for the folder menu's filter section.
+  // Mirrors the empty-space surface's binding patch (FileSidebar). The filter
+  // EFFECT (client dot-segment bypass) is a separate seam; this only flips the
+  // persisted config the filter pipeline reads.
+  //
+  // Validation failures (e.g. doc YAML parse-error in the project-local
+  // config) reject the patch; without surfacing the rejection the checkbox
+  // appears to toggle but silently reverts at the next CRDT push.
   const handleShowHiddenFilesToggle = (checked: boolean) => {
     if (projectLocalBinding === null) return;
     const result = projectLocalBinding.patch({
@@ -717,6 +822,13 @@ function FileTreeMenu({
       });
     }
   };
+  // Smart-hide for the subtree Expand/Collapse-All items — counts folders
+  // under the right-clicked folder (root + descendants) using the same
+  // `folderPath === root || folderPath.startsWith(root)` predicate that
+  // `expandSubtree`/`collapseSubtree` apply, so visibility tracks the
+  // action surface exactly. Mirrors the toolbar dropdown's hide rule:
+  // hide "Expand all" when every folder is already expanded; hide
+  // "Collapse all" when none are expanded.
   let subtreeFolderCount = 0;
   let subtreeExpandedCount = 0;
   if (isFolder) {
@@ -906,6 +1018,9 @@ function FileTreeMenu({
                 const pattern = buildOkignorePatternFromTarget(okignoreTarget);
                 const current = okignoreBinding.current();
                 const doc = parseOkignoreDoc(current);
+                // appendPattern returns the same doc reference for whitespace-only
+                // input AND for duplicates; skip the patch on both no-ops so we
+                // don't churn the Y.Text with identical bytes.
                 const updated = appendPattern(doc, pattern);
                 if (updated === doc) return;
                 okignoreBinding.patch(serializeOkignoreDoc(updated));
@@ -1007,6 +1122,9 @@ function FileTreeMenu({
                   const pattern = buildOkignorePatternFromTarget(okignoreTarget);
                   const current = okignoreBinding.current();
                   const doc = parseOkignoreDoc(current);
+                  // appendPattern returns the same doc reference for whitespace-only
+                  // input AND for duplicates; skip the patch on both no-ops so we
+                  // don't churn the Y.Text with identical bytes.
                   const updated = appendPattern(doc, pattern);
                   if (updated === doc) return;
                   okignoreBinding.patch(serializeOkignoreDoc(updated));
@@ -1051,9 +1169,37 @@ export interface FileTreeHandle {
   createFromTemplate(parentDir: string, templateName: string): void;
   expandAll(): void;
   collapseAll(): void;
+  /**
+   * Snapshot of the tree's folder state, cheap to call on every render.
+   * Reads `folderTreePathsRef.current` for `folderCount` and iterates
+   * `model.getItem(path)?.isExpanded()` for `expandedCount`. FileSidebar
+   * uses this via `useSyncExternalStore` to drive the conditional render
+   * of the Tree view options dropdown — hiding the trigger when there
+   * are no folders, and individual Expand/Collapse-All items when their
+   * action would be a no-op.
+   */
   getFolderState(): { folderCount: number; expandedCount: number };
+  /**
+   * Whether the user has cleared the creation target by clicking the tree's
+   * empty space. When true, FileSidebar routes New file / New folder to the
+   * project root instead of the active item's folder. Re-couples to the active
+   * item on the next navigation.
+   */
   isCreationTargetCleared(): boolean;
+  /**
+   * Clear the creation target imperatively — the same effect as clicking the
+   * tree's empty space, but driven from outside the tree (the sidebar's empty
+   * area below the sections, now that the tree is sized flush to its rows). New
+   * file / New folder then land at the project root; the focused row's ring is
+   * neutralized via the host attribute. Re-couples on the next navigation.
+   */
   clearCreationTarget(): void;
+  /**
+   * Subscribe to changes that affect `getFolderState()` — folder list
+   * mutations from `/api/documents` polling AND per-folder expand/
+   * collapse from the Pierre tree model — and to `isCreationTargetCleared()`.
+   * Returns an unsubscribe.
+   */
   subscribe(listener: () => void): () => void;
 }
 
@@ -1062,6 +1208,13 @@ type ShowAllDepth1ListingResult =
   | { kind: 'http-error'; title: string }
   | { kind: 'network-error'; cause: unknown };
 
+/**
+ * One level of the Show All listing for `dir` (`''` = content root), via the
+ * same NDJSON-or-buffered branching as the root refresh. Failures come back
+ * as values so the component-side caller stays a straight-line function —
+ * React Compiler cannot yet lower `try`/`finally` inside component scope.
+ * Error titles are parameters because translation lives with the caller.
+ */
 async function fetchShowAllDepth1Listing(
   dir: string,
   signal: AbortSignal,
@@ -1091,6 +1244,8 @@ async function fetchShowAllDepth1Listing(
       truncated: success.data.truncated === true,
     };
   } catch (cause) {
+    // A server-emitted NDJSON error line means the server WAS reached — its
+    // problem title is the truthful message, not the connectivity copy.
     if (cause instanceof ShowAllStreamError) {
       return { kind: 'http-error', title: cause.message };
     }
@@ -1098,11 +1253,21 @@ async function fetchShowAllDepth1Listing(
   }
 }
 
+/**
+ * Must be mounted inside a `SidebarProvider` — `useSidebar()` throws otherwise.
+ * Today only `FileSidebar` mounts it, which is always inside the provider.
+ */
 export function FileTree({
   ref,
   onContentHeightChange,
 }: {
   ref?: Ref<FileTreeHandle | null>;
+  /**
+   * Reports the tree's total content height (px) — the virtualized scroller's
+   * scrollHeight, which is the full row count's height regardless of viewport.
+   * Lets a parent size the tree pane to its content (so it doesn't fill / bottom-
+   * dock siblings) while pierre still virtualizes once the pane hits its cap.
+   */
   onContentHeightChange?: (px: number) => void;
 }) {
   const { t, i18n } = useLingui();
@@ -1151,18 +1316,54 @@ export function FileTree({
   const [documents, setDocuments] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // True while the listing is being silently re-attempted after a reachability
+  // failure that coincides with a known desktop auto-update relaunch. Drives a
+  // calm "Relaunching…" notice in place of the red "Could not reach server"
+  // error, and is cleared the moment a fetch succeeds (self-heal) or the
+  // reachability failure outlives the relaunch (then the honest error wins).
   const [reconnecting, setReconnecting] = useState(false);
+  // Drives the render copy + the start/abort flip effect. The fetch closures
+  // read the live value via `getRelaunchInFlightSnapshot()` at failure time
+  // (always current — no effect-synced ref needed).
   const relaunchInFlight = useRelaunchInFlight();
   const connectivityRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Count of entries the server returned when the showAll walk hit its entry
+  // cap (so the list is a partial prefix); null when the list is complete.
   const [truncatedShownCount, setTruncatedShownCount] = useState<number | null>(null);
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<FileTreeDeleteRequest | null>(null);
+  /**
+   * Set when `shell.trashItem` returns `{ ok: false }` for one or more
+   * targets during the Step 1 trash flow. Drives the rendering of
+   * `TrashFailureModal`. Cleared on Cancel; cleared on Delete Permanently /
+   * Retry after the follow-up flow completes.
+   */
   const [trashFailure, setTrashFailure] = useState<TrashFailureRequest | null>(null);
+  // Tracks the project-level conflict list so delete/move-to-trash can refuse
+  // up front when a target (or any child of a target folder) is conflicted.
+  // The HTTP `handleDeletePath` already gates conflicts; the Electron Move-
+  // to-Trash flow does NOT (Step 1 is `shell.trashItem`, an OS call), so we
+  // refuse here before the file leaves disk.
   const { conflicts: activeConflicts } = useConflicts();
+  // Sibling to startCreating's inline-rename UX: opens NewItemDialog when
+  // the user picks "New from template…" from a folder context menu, so the
+  // template picker is reachable without giving up the fast typed-name
+  // path that the toolbar / first-row create still uses.
   const [newItemRequest, setNewItemRequest] = useState<{ parentDir: string } | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
+  // Clicking the tree's empty content area "deselects" the active row *for
+  // creation purposes only*: New file / New folder land at the project root
+  // instead of next to the open doc, while the editor keeps showing whatever
+  // was open (activeTarget is untouched). When set, `activeTreePath` resolves
+  // to null so `useSelectionMirror` drops the row highlight; it re-couples the
+  // moment the active target changes (open a row / navigate elsewhere) or the
+  // user selects another row. FileSidebar reads this via the imperative handle
+  // to route the create parent dir to ''.
   const [creationDirCleared, setCreationDirCleared] = useState(false);
   const creationDirClearedRef = useRef(creationDirCleared);
+  // Imperative-handle subscribers (FileSidebar) that need to react to
+  // `creationDirCleared` changes — Pierre's `model.subscribe` only fires on
+  // tree-model mutations, not React state, so the handle multiplexes both.
   const handleListenersRef = useRef<Set<() => void>>(new Set());
 
   const documentsRef = useRef(documents);
@@ -1240,14 +1441,42 @@ export function FileTree({
     (files: readonly File[], parentDir: string, busyPath: string) => void
   >(() => {});
   const busyPathRef = useRef<string | null>(null);
+  // Tracks locally-added tree paths (file/folder creates) with the timestamp
+  // when they were optimistically inserted into `documents` state. Used by
+  // `refreshDocs` to preserve entries the server's file-watcher index has not
+  // yet picked up — without this, the `setDocuments(serverResponse)` call below
+  // overwrites local optimistic state, dropping the new entry and breaking the
+  // adjacent right-click context-menu flow. The underlying race class is
+  // parcel-watcher inotify-event delivery lag on Linux CI. Entries expire
+  // after STALE_REFRESH_PRESERVE_WINDOW_MS or when the server confirms.
   const recentLocalAddsRef = useRef<Map<string, number>>(new Map());
+  // Lazy Show All expansion (client half): folders fetch their
+  // children on first expand via `?showAll=true&dir=<folder>&depth=1`. All
+  // three refs key by folder TREE path ('team/'). The loaded-dirs cache and
+  // any in-flight child fetches are scoped to one refresh cycle — refreshDocs
+  // aborts the fetches, clears the cache, and bumps the generation stamp so a
+  // child response racing a root re-seed is discarded instead of splicing
+  // stale entries.
   const lazyLoadedDirTreePathsRef = useRef<Set<string>>(new Set());
   const lazyChildFetchControllersRef = useRef<Map<string, AbortController>>(new Map());
   const lazyChildFetchGenerationRef = useRef(0);
+  // Snapshot the expanded-folder diff compares against to detect newly
+  // expanded folders. Pierre has no expand callback, so the model-subscribe
+  // diff is the one mechanism covering row clicks, ArrowRight, drag-hover
+  // auto-open, and programmatic expansion alike.
   const prevExpandedFolderTreePathsRef = useRef<ReadonlySet<string>>(new Set());
   const detectLazyFolderExpansionsRef = useRef<() => void>(() => {});
   const revalidateExpandedLazyDirsRef = useRef<() => void>(() => {});
+  // The async fetch closure in the docs refresh effect is created once at
+  // mount; reading `showHiddenFiles` directly would capture the mount-time
+  // value. The ref lets the closure read the latest toggle state when the
+  // response actually lands. Initialized to `false` (matches the cold-start
+  // default before config loads); synced in the bulk useLayoutEffect below.
   const showHiddenFilesRef = useRef<boolean>(false);
+  // Hoists the docs scheduler's `request()` out of its effect closure so
+  // the showHiddenFiles-flip effect can re-fetch without re-mounting the
+  // listener / scheduler. Set to a callable in the docs effect; cleared on
+  // unmount.
   const refreshDocsScheduleRef = useRef<(() => void) | null>(null);
   const fileTreeHostRef = useRef<HTMLDivElement | null>(null);
   const handleSelectionChangeRef = useRef<(selectedPaths: readonly string[]) => void>(() => {});
@@ -1257,6 +1486,13 @@ export function FileTree({
   const activeTargetRef = useRef(activeTarget);
   const [emptyExternalFileDropActive, setEmptyExternalFileDropActive] = useState(false);
 
+  // --- Reachability handling (desktop auto-update relaunch self-heal) ------
+  // The file tree owns the global "Could not reach server" signal the other
+  // sidebar sections defer to. During a desktop relaunch the server is
+  // intentionally torn down (up to 10s) before `quitAndInstall`, so route
+  // reachability failures through these helpers: stay calm and keep retrying
+  // while a relaunch is in flight, but surface the honest error immediately for
+  // a real outage (unchanged behavior).
   function clearConnectivityRetry() {
     if (connectivityRetryTimerRef.current !== null) {
       clearTimeout(connectivityRetryTimerRef.current);
@@ -1267,12 +1503,19 @@ export function FileTree({
     clearConnectivityRetry();
     setReconnecting(false);
   }
+  // An HTTP response (4xx/5xx, shape mismatch, mid-stream error) proves the
+  // server WAS reachable — drop any calm-reconnect state so the genuine error
+  // is shown, never masked behind the spinner. HTTP errors don't reschedule a
+  // retry, so without this the spinner could latch with the error invisible.
   function reportServerReachableError(title: string) {
     noteConnectivityRecovered();
     setError(title);
   }
   function reportConnectivityFailure() {
     clearConnectivityRetry();
+    // Read the live store snapshot (always current) rather than an effect-synced
+    // ref, so an in-flight fetch failing before a render commits still sees the
+    // relaunch and stays calm.
     if (getRelaunchInFlightSnapshot()) {
       setError(null);
       setReconnecting(true);
@@ -1286,6 +1529,10 @@ export function FileTree({
     setError(t`Could not reach server`);
   }
 
+  // Re-attempt the listing whenever a relaunch starts or aborts: starting → the
+  // failing fetch flips the banner from red to the calm "Relaunching…" copy;
+  // aborting → a successful fetch self-heals the panel without waiting for the
+  // next focus / CC1 refresh. Skips the initial render.
   const isFirstRelaunchEffectRunRef = useRef(true);
   // biome-ignore lint/correctness/useExhaustiveDependencies: relaunchInFlight is a transition trigger, not a read — the body calls the hoisted scheduler ref only. Sibling pattern at the showHiddenFiles flip effect below.
   useEffect(() => {
@@ -1296,6 +1543,10 @@ export function FileTree({
     refreshDocsScheduleRef.current?.();
   }, [relaunchInFlight]);
 
+  // Drop a pending reconnect retry on unmount so a late timer can't touch state
+  // after teardown. `clearConnectivityRetry` only reads a stable ref; it is
+  // intentionally NOT a dep — listing it would re-run this effect (and fire its
+  // cleanup) every render, cancelling live retries.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount/unmount-only; see comment above.
   useEffect(() => clearConnectivityRetry, []);
 
@@ -1416,6 +1667,9 @@ export function FileTree({
       : activeTarget?.kind === 'asset'
         ? activeTarget.assetPath
         : null;
+  // When the user has cleared the creation target (empty-space click), drop the
+  // row highlight without disturbing the editor. `useSelectionMirror` keys off
+  // this null to deselect; the reset effect below re-couples on any nav change.
   const activeTreePath = creationDirCleared ? null : baseActiveTreePath;
 
   const handoffInstallStates = useInstalledAgents().states;
@@ -1488,6 +1742,9 @@ export function FileTree({
         }
         return null;
       }
+      // Symlinked directories carry isSymlink on their FolderEntry. Badge the
+      // alias folder itself (Finder-style — its contents are not separately
+      // marked, since they live behind the one symlink).
       const folder = documentsRef.current.find(
         (entry): entry is FolderEntry =>
           isFolderEntry(entry) &&
@@ -1518,6 +1775,7 @@ export function FileTree({
   const folderTreePaths = collectTreeFolderPathsFromDocuments(documents);
   const folderTreePathsRef = useRef(folderTreePaths);
 
+  // Keep parents visible without forcing the selected folder itself open.
   const activeAncestorTreePaths = selectedFolderPath
     ? computeTreeAncestorPaths(folderPathToTreeDirectoryPath(selectedFolderPath)).slice(0, -1)
     : computeTreeAncestorPaths(activeTreePath ?? activeNavigationPath);
@@ -1552,6 +1810,11 @@ export function FileTree({
     });
   };
 
+  // Fetch one level of children for a folder the user just expanded and
+  // accumulate them into `documents` — the treePathsSignature
+  // reset effect then rebuilds the model with expansion preserved via
+  // `initialExpandedPaths`. Failures surface through the same header error
+  // affordance as the root refresh.
   async function fetchLazyFolderChildren(folderTreePath: string) {
     const generation = lazyChildFetchGenerationRef.current;
     const controller = new AbortController();
@@ -1565,13 +1828,21 @@ export function FileTree({
     if (lazyChildFetchControllersRef.current.get(folderTreePath) === controller) {
       lazyChildFetchControllersRef.current.delete(folderTreePath);
     }
+    // Stale = deliberately aborted, or a refresh cycle (root re-seed / toggle
+    // flip / unmount) superseded this fetch after its response was already
+    // being consumed — either way the result must not touch state. Not
+    // re-marking the dir as loaded keeps the folder re-expandable.
     if (controller.signal.aborted || generation !== lazyChildFetchGenerationRef.current) return;
     if (result.kind === 'network-error') {
       reportConnectivityFailure();
+      // Same folder-scope traceability as the http-error branch below —
+      // concurrent child fetches are otherwise indistinguishable in the log.
       console.warn('[FileTree] lazy folder children fetch failed:', folderTreePath, result.cause);
       return;
     }
     if (result.kind === 'http-error') {
+      // The banner shows only the title — log the folder so a per-directory
+      // failure (4xx/5xx or schema mismatch) is traceable to its scope.
       console.warn('[FileTree] lazy folder children http error:', folderTreePath, result.title);
       reportServerReachableError(result.title);
       return;
@@ -1579,22 +1850,38 @@ export function FileTree({
     const bypassClientDotDrop = showHiddenFilesRef.current;
     const children = filterVisibleEntries(result.entries, bypassClientDotDrop);
     lazyLoadedDirTreePathsRef.current.add(folderTreePath);
+    // Functional update: concurrent child fetches resolve in the same
+    // microtask batch, and `documentsRef` only syncs on commit — reading it
+    // here would let the second splice clobber the first.
     setDocuments((prev) =>
       spliceLazyFolderChildren(prev, folderTreePath, children, recentLocalAddsRef.current),
     );
     setError(null);
     noteConnectivityRecovered();
+    // A truncated child level reuses the root truncation affordance — the
+    // banner describes the most recent capped listing either way.
     if (result.truncated) setTruncatedShownCount(result.entries.length);
   }
 
+  // Diff the expanded-folder set against the previous snapshot on every model
+  // state change and kick off a child fetch for each newly expanded, not-yet-
+  // loaded folder. The sidebar always loads lazily — one level per expand — so
+  // every newly expanded, not-yet-loaded folder fetches its children here.
   const detectLazyFolderExpansions = () => {
     const expanded = collectExpandedFolderTreePaths();
     const previous = prevExpandedFolderTreePathsRef.current;
     prevExpandedFolderTreePathsRef.current = expanded;
     for (const folderTreePath of expanded) {
       if (previous.has(folderTreePath)) continue;
+      // Loaded this refresh cycle — collapse/re-expand serves the cached
+      // children; the next refreshDocs run clears the cache.
       if (lazyLoadedDirTreePathsRef.current.has(folderTreePath)) continue;
+      // Already fetching — a rapid collapse/re-expand rides the in-flight
+      // request instead of duplicating it.
       if (lazyChildFetchControllersRef.current.has(folderTreePath)) continue;
+      // The depth-1 listing stamps `hasChildren` on folders; a server-marked
+      // childless folder expands to empty without a round trip. Folders
+      // without the stamp (optimistic local adds) still fetch.
       const folderPath = treeDirectoryPathToFolderPath(folderTreePath);
       const entry = documentsRef.current.find(
         (candidate): candidate is Extract<FileEntry, { kind: 'folder' }> =>
@@ -1605,6 +1892,15 @@ export function FileTree({
     }
   };
 
+  // After a root re-seed applies, refetch one level for every folder
+  // still expanded so external creates/deletes inside the visible working set
+  // land without a full recursive walk and without waiting for a manual
+  // collapse/re-expand. The caller (refreshDocs) has already cleared the
+  // loaded-dirs cache and aborted prior child fetches, so anything found
+  // loaded or in-flight here was started within the current refresh cycle
+  // (a folder the user expanded mid-refresh) and is already fresh. Unlike the
+  // expansion detector there is no `hasChildren === false` skip: an expanded
+  // empty folder must still learn about children created externally.
   const revalidateExpandedLazyDirs = () => {
     for (const folderTreePath of collectExpandedFolderTreePaths()) {
       if (lazyLoadedDirTreePathsRef.current.has(folderTreePath)) continue;
@@ -1613,6 +1909,13 @@ export function FileTree({
     }
   };
 
+  // Invariant: Pierre's `#focusedPath` and `#selectedPaths` reference paths
+  // in `documentsToTreePaths(documents)`. If the user deletes the suffix
+  // before committing an inline rename, Pierre can leave the store keyed by
+  // the extensionless basename ('bar'), while React documents hold the
+  // canonical 'bar.md' / 'bar.png'. Reconcile by moving Pierre's leftover to
+  // canonical before the natural `resetPaths` gets suppressed by
+  // `markNextDocumentsAsApplied`.
   const reconcileModelAfterExtensionlessRename = (
     current: readonly FileEntry[],
     next: readonly FileEntry[],
@@ -1626,11 +1929,17 @@ export function FileTree({
         (entry): entry is DocumentEntry => isDocumentEntry(entry) && entry.docName === fromDocName,
       );
       if (source == null) continue;
+      // Positive selector for the extensionless commit condition. Drag/drop
+      // + folder-cascade have canonical paths already, so `getItem(toDocName)`
+      // returns null and we skip (which also avoids Pierre's `movePath` throw
+      // on missing source). Idempotent under React StrictMode double-invocation.
       if (model.getItem(toDocName) == null) continue;
       const destination = next.find(
         (entry): entry is DocumentEntry => isDocumentEntry(entry) && entry.docName === toDocName,
       );
       const canonicalTreePath = docNameToTreePath(toDocName, destination?.docExt ?? source.docExt);
+      // `move()` atomically remaps `#focusedPath` AND `#selectedPaths` via
+      // `#applyMutationState` — selection reconciliation depends on this.
       model.move(toDocName, canonicalTreePath);
       lastCanonical = canonicalTreePath;
       reconciledCount += 1;
@@ -1648,6 +1957,10 @@ export function FileTree({
     }
     if (reconciledCount === 0) return;
     resetModelToDocuments(next);
+    // Focus is singular — Pierre's commit invariant means at most one
+    // extensionless inline rename, so `reconciledCount` is ~always 1.
+    // The explicit focus call hedges against `resetPaths` clearing the
+    // in-memory focus state (no-op when already focused or absent).
     if (lastCanonical != null) {
       model.focusPath(lastCanonical);
     }
@@ -1789,10 +2102,16 @@ export function FileTree({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: pending.kind, path: pending.createdPath }),
       });
+      // 404 on cleanup is fine — the entry was never persisted server-side.
+      // Any other non-2xx is a real failure that needs to surface.
       if (!res.ok && res.status !== 404) {
         const kind = pending.kind;
         const createdPath = pending.createdPath;
         const parsed = await parseServerResponse(res, t`Failed to clean up pending ${kind}`);
+        // `parseServerResponse` returns `{ok: false, title}` whenever the
+        // upstream `res.ok` is false — the union's success arm is unreachable
+        // under this branch. Discriminate explicitly for the type system,
+        // and short-circuit the unreachable arm without ceremony.
         if (parsed.ok) return;
         const detail = parsed.title;
         const message = t`${detail} - ${kind} "${createdPath}" still exists on disk`;
@@ -1863,12 +2182,20 @@ export function FileTree({
   // biome-ignore lint/correctness/useExhaustiveDependencies: this is a once-per-`t` mount-lifecycle setup (it wires the refresh scheduler + listeners). The connectivity helpers it calls (reportConnectivityFailure / noteConnectivityRecovered) only touch refs + stable setters and close over the same `t` already in deps, so listing them would re-create the scheduler every render for no behavioral gain.
   useEffect(() => {
     let active = true;
+    // Holds the in-flight refresh's AbortController so a superseding refresh (or
+    // teardown) can cancel the stale fetch — and the server walk behind it —
+    // instead of letting it run to completion. Reassigned on each refreshDocs run.
     let refreshController: AbortController | null = null;
 
     async function refreshDocs() {
+      // Supersede any still-in-flight refresh before starting a new one.
       refreshController?.abort();
       const controller = new AbortController();
       refreshController = controller;
+      // A refresh cycle also supersedes the lazy child-fetch state: abort
+      // in-flight child fetches, invalidate the per-cycle loaded-dirs cache
+      // (external changes refetch on next expand), and stamp a new generation
+      // so an already-resolved child response can't splice stale entries.
       lazyChildFetchGenerationRef.current += 1;
       for (const childController of lazyChildFetchControllersRef.current.values()) {
         childController.abort();
@@ -1876,17 +2203,38 @@ export function FileTree({
       lazyChildFetchControllersRef.current.clear();
       lazyLoadedDirTreePathsRef.current.clear();
       try {
+        // The sidebar always fetches the disk-walk listing lazily — one level
+        // per request (`depth=1`; the empty `dir=` scopes to the content root),
+        // each folder stamped `hasChildren` so it can offer expansion without
+        // the server walking its subtree. The full recursive walk (no `depth`)
+        // remains served for non-sidebar callers.
         const res = await fetch('/api/documents?showAll=true&dir=&depth=1', {
           signal: controller.signal,
+          // Opt into the NDJSON stream so the server walks disk without
+          // buffering the whole listing; the buffered JSON path stays the
+          // fallback for non-streaming servers.
           headers: SHOW_ALL_NDJSON_ACCEPT,
         });
         if (isNdjsonResponse(res)) {
+          // Streaming listing: consume the NDJSON walk one entry at a time, each
+          // validated as it arrives (the per-line analogue of the buffered
+          // whole-array safeParse). Paint each chunk's entries additively so the
+          // sidebar fills in progressively and the skeleton clears on the first
+          // batch — NOT a root splice, which prunes folders not yet streamed.
+          // The authoritative prune + optimistic-merge reconcile is the single
+          // splice once the stream completes, matching the buffered branch.
           const bypassClientDotDrop = showHiddenFilesRef.current;
           let paintedFirstBatch = false;
           const { entries, truncated } = await consumeShowAllStream(res, {
             onBatch: (batch) => {
               if (!active || controller.signal.aborted) return;
               const batchEntries = filterVisibleEntries(toFileEntries(batch), bypassClientDotDrop);
+              // Only act on a batch that yields a VISIBLE row. The server walk
+              // emits hidden entries (dot-dirs/files) in arbitrary readdir order;
+              // the client filters them. Clearing `loading` on an all-hidden
+              // first chunk would render `loading===false && documents===[]` —
+              // the "No files yet" empty state — on a non-empty KB. So defer the
+              // skeleton flip until a real row paints; completion owns the rest.
               if (batchEntries.length === 0) return;
               setDocuments((prev) => mergeRootEntriesAdditive(prev, batchEntries));
               if (!paintedFirstBatch) {
@@ -1899,6 +2247,13 @@ export function FileTree({
           });
           if (!active) return;
           const serverEntries = filterVisibleEntries(toFileEntries(entries), bypassClientDotDrop);
+          // The depth-1 root level replaces in place rather than replacing the
+          // whole document set: children already loaded for folders the server
+          // still returns keep rendering (no flash-empty on every CC1 push),
+          // descendants of folders the server dropped are pruned, and the
+          // revalidation pass below refreshes each still-expanded folder's
+          // level. Functional update: a child splice resolving in the same
+          // batch must not be clobbered.
           setDocuments((prev) =>
             spliceLazyFolderChildren(prev, '', serverEntries, recentLocalAddsRef.current),
           );
@@ -1918,11 +2273,17 @@ export function FileTree({
               reportServerReachableError(t`Documents response did not match expected shape.`);
               setTruncatedShownCount(null);
             } else {
+              // Non-streaming fallback for the same depth-1 listing. The disk
+              // walk ships dot-segment paths; the client-side dot-drop hides
+              // them unless Show hidden files is on.
               const bypassClientDotDrop = showHiddenFilesRef.current;
               const serverEntries = filterVisibleEntries(
                 toFileEntries(success.data.documents),
                 bypassClientDotDrop,
               );
+              // Same in-place root splice + expanded-dir revalidation as the
+              // NDJSON branch above — the buffered JSON shape is the
+              // non-streaming fallback for the identical depth-1 listing.
               setDocuments((prev) =>
                 spliceLazyFolderChildren(prev, '', serverEntries, recentLocalAddsRef.current),
               );
@@ -1936,7 +2297,21 @@ export function FileTree({
           }
         }
       } catch (err) {
+        // A superseded or torn-down refresh aborts this run's controller. That
+        // is a deliberate cancel, not a server-reachability failure, so don't
+        // surface it as an error or clear loading — the trailing re-run (or the
+        // next mount) owns the next UI update.
         if (controller.signal.aborted) return;
+        // Batches already painted via `onBatch` (incremental seed) are NOT rolled
+        // back here: `mergeRootEntriesAdditive` is purely additive, so on a
+        // mid-stream error the tree is left over-inclusive (prior-good entries
+        // plus the partial stream) rather than flashed empty — the safe
+        // direction. The next successful refresh's completion splice reconciles
+        // (prunes the stale rows). The authoritative prune only runs on success.
+        // A mid-stream server error line reached us over a live connection —
+        // the server WAS reachable, so surface its problem title and drop any
+        // reconnect state; everything else is a reachability failure, routed
+        // through the relaunch-aware self-heal path.
         if (active) {
           if (err instanceof ShowAllStreamError) {
             reportServerReachableError(err.message);
@@ -1968,6 +2343,8 @@ export function FileTree({
       active = false;
       refreshDocsScheduleRef.current = null;
       scheduler.dispose();
+      // Lazy child fetches outlive the scheduler's cancel hook — abort them
+      // here so a response landing after teardown can't touch state.
       for (const childController of lazyChildFetchControllersRef.current.values()) {
         childController.abort();
       }
@@ -1978,6 +2355,11 @@ export function FileTree({
     };
   }, [t]);
 
+  // Re-fetch + re-filter when the user flips Show hidden files. The server response
+  // doesn't depend on the toggle (server filters are unaffected), but the
+  // client-side filter does — refreshing keeps the request/response shape
+  // unchanged and reuses the scheduler's in-flight coalescing. Skips on first
+  // render to avoid double-fetching on mount.
   const isFirstShowHiddenFilesEffectRunRef = useRef(true);
   // biome-ignore lint/correctness/useExhaustiveDependencies: showHiddenFiles is a flip-detection trigger, not a read — the effect body reads refs only. Sibling pattern at the treePathsSignature reset effect above.
   useEffect(() => {
@@ -2026,9 +2408,30 @@ export function FileTree({
     activeTreePath,
     activeAncestorTreePathsSignature,
     suppressSelectionRef,
+    // Re-run trigger: re-assert the active-row selection after the tree is
+    // repopulated by `model.resetPaths` (see the reset effect above). Without
+    // this, a direct-URL / hash-nav first paint whose `/api/documents` lands
+    // AFTER the first mirror commit reveals + expands the row but never
+    // selects it (selectedRow count stays 0). Same trigger the reveal-active-
+    // row effect already uses.
     treePathsSignature,
   );
 
+  // Feed the parent pane the tree's true content height so a short tree sits
+  // flush above the Skills section (no bottom-dock / header overlap) and a long
+  // one virtualizes + scrolls internally under the 70vh cap.
+  //
+  // The honest content height is the virtualizer's total-size, which it writes
+  // as an inline `height` on `[data-file-tree-virtualized-list]`. We can NOT use
+  // the scroller's scrollHeight / clientHeight: the shadow stylesheet stretches
+  // the list to `min-height: 100%` (so the drop target fills the pane), so every
+  // box metric clamps to the current pane height — feeding that back ratchets
+  // the pane to its 50vh bootstrap and never shrinks (the bug this fixes). The
+  // inline style is the only metric that reflects rows, not the container.
+  //
+  // Because the list's border-box stays clamped, a ResizeObserver never fires on
+  // content changes — watch the inline `style` attribute with a MutationObserver
+  // instead, plus model events (expand / collapse / add / remove) and resize.
   useEffect(() => {
     if (!onContentHeightChange) return;
     let raf = 0;
@@ -2041,6 +2444,9 @@ export function FileTree({
     const report = () => {
       const list = getList();
       if (!list) return;
+      // Report 0 for a genuinely empty tree (collapses the pane so Skills sits
+      // flush); skip only the pre-paint state where the virtualizer hasn't set
+      // a height yet (the MutationObserver re-fires once it does).
       const h = Number.parseFloat(list.style.height);
       if (Number.isFinite(h)) onContentHeightChange(h);
     };
@@ -2070,16 +2476,33 @@ export function FileTree({
     };
   }, [onContentHeightChange, model]);
 
+  // Re-couple the creation target to the active item whenever navigation moves
+  // it — opening a row, following a link, switching tabs. `baseActiveTreePath`
+  // is the activeTarget-derived path BEFORE the cleared override, so this fires
+  // on real nav changes but NOT when the empty-space click flips `cleared`
+  // (which leaves activeTarget untouched). Keeps "clicked empty space" sticky
+  // until the user actually navigates again.
   // biome-ignore lint/correctness/useExhaustiveDependencies: setCreationDirCleared is a stable state setter; baseActiveTreePath is the sole trigger.
   useEffect(() => {
     setCreationDirCleared(false);
   }, [baseActiveTreePath]);
 
+  // Bridge `creationDirCleared` (React state) to the imperative handle's
+  // subscribers (FileSidebar) — Pierre's model.subscribe doesn't observe React
+  // state, so notify the handle listeners explicitly on change.
   useEffect(() => {
     creationDirClearedRef.current = creationDirCleared;
     for (const listener of handleListenersRef.current) listener();
   }, [creationDirCleared]);
 
+  // Scroll the active document's row into view in the virtualized file tree.
+  // `useSelectionMirror` (above) selects the row and expands its ancestors but
+  // only sets @pierre/trees' *focused index* — Pierre auto-scrolls a focused
+  // row into view solely when the tree owns DOM focus, which a programmatic open
+  // never gives it, so the row can stay below the fold after opening a doc from
+  // a link or switching tabs. Declared after `useSelectionMirror` so it runs
+  // after that effect on the same commit (React flushes same-tier effects in
+  // declaration order); a layout effect would run before it instead.
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeAncestorTreePathsSignature + treePathsSignature are re-run triggers — the row's visible index shifts when ancestors expand or the tree repopulates.
   useEffect(() => {
     if (loading || !activeTreePath) return;
@@ -2098,6 +2521,9 @@ export function FileTree({
     });
   }, [model]);
 
+  // Lazy Show All expansion detector — see detectLazyFolderExpansions. Reads
+  // through the ref so the subscribe callback always sees the latest render's
+  // closure (same latest-handler pattern as the bulk useLayoutEffect refs).
   useEffect(() => {
     return model.subscribe(() => detectLazyFolderExpansionsRef.current());
   }, [model]);
@@ -2170,6 +2596,11 @@ export function FileTree({
         : null);
 
     captureRenameSnapshots(renamed);
+    // Wipe IDB for ends that need it. `planRenameCleanupCalls` gates the
+    // `to` clear behind whether the server-push `onRenameRedirect` path has
+    // already done the close+clear+reopen. The full rationale (race shape,
+    // why the `from` clear stays) is documented at the helper's site in
+    // `file-tree-operations.ts`.
     const cleanupDocNames = [
       ...planRenameCleanupCalls(renamed, getPoolActiveDocName(), poolHas),
       ...docToAssetRenames.keys(),
@@ -2226,6 +2657,10 @@ export function FileTree({
     setError(null);
 
     try {
+      // Operate on RAW event paths — `normalizeTreePathForKind` appends `.md`
+      // to anything not already ending in `.md` / `.mdx`, which would mask
+      // "user changed the extension to .tx" into "user typed weird basename
+      // foo.tx and we appended .md".
       const validation = validateAndCoerceRenameDestination(
         event.sourcePath,
         event.destinationPath,
@@ -2289,6 +2724,14 @@ export function FileTree({
         renamed: [],
         renamedAssets: [],
       });
+      // Split try/catch: server-side rename already committed
+      // (`parsed.ok === true`). A failure inside `applyRenamedDocuments`
+      // (IDB clear, tab remap, document-state reconciliation) is a
+      // client-side reconciliation failure, NOT a network error.
+      // Labeling it "Network error — please try again" would misdirect
+      // the user toward a retry that POSTs against a now-nonexistent
+      // source path and fails differently. The correct recovery is to
+      // refresh and resync with disk truth.
       try {
         await applyRenamedDocuments(
           success.renamed,
@@ -2564,6 +3007,8 @@ export function FileTree({
 
     const pendingCreate = pendingCreateRef.current;
     if (pendingCreate) {
+      // Pierre commits an unchanged inline rename on blur without firing onRename.
+      // Treat the default-named item as committed so toolbar/menu creates still work.
       clearPendingCreate(pendingCreate);
     }
 
@@ -2579,6 +3024,9 @@ export function FileTree({
       let createdPath: string;
       if (kind === 'file') {
         const createPath = createPagePathFromTreeDestination('file', placeholder.addPath);
+        // Template param mirrors NewItemDialog's create call: the server seeds
+        // the new doc from the named template's body + frontmatter. Omitted for
+        // the blank "New file" path so behavior there is unchanged.
         const createBody: { path: string; template?: string } = { path: createPath };
         if (options?.template) createBody.template = options.template;
         const res = await fetch('/api/create-page', {
@@ -2609,7 +3057,16 @@ export function FileTree({
           modified: new Date().toISOString(),
           size: 0,
         };
+        // Mirror `applyRenamedDocuments`'s `addPage(entry.toDocName)`: until
+        // the `/api/pages` refetch lands (50–500ms), `pages.has(docName)`
+        // would otherwise be false and drive `isNewDoc=true` at
+        // `EditorActivityPool.tsx`, flipping the composite TipTap key when
+        // the refetch resolves and forcing a mid-window remount during the
+        // create → inline-rename → click race.
         addPage(docName);
+        // Register the optimistic add inside the updater so the
+        // duplicate-check early-return path doesn't leak a registry entry
+        // for a path we never inserted. See mergeAndPruneRecentLocalAdds.
         setDocuments((current) => {
           if (current.some((entry) => isDocumentEntry(entry) && entry.docName === docName)) {
             return current;
@@ -2756,6 +3213,9 @@ export function FileTree({
       if (selectedPaths.length !== 1) return;
       const selected = selectedPaths[0];
       if (selected) {
+        // Selecting a row re-establishes it as the creation target (the reset
+        // effect also catches this once activeTarget commits, but clearing
+        // eagerly avoids a one-frame deselected flash on the clicked row).
         setCreationDirCleared(false);
         activateTreePath(normalizeSelectionPath(selected), documents);
       }
@@ -2818,6 +3278,12 @@ export function FileTree({
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [model]);
 
+  // `@pierre/trees` renders rows inside an open shadow root and exposes no
+  // per-row attribute hook, so the full-path `title` is stamped imperatively
+  // here. It must also be stamped on the floating `[data-type=context-menu-anchor]`
+  // overlay: @pierre/trees positions that `···` ("Options") trigger over the
+  // hovered row's right edge as a *sibling* of the row, not a descendant — so
+  // the row's own `title` doesn't resolve when the cursor rests there.
   useEffect(() => {
     if (loading || documents.length === 0) return;
     const shadow = fileTreeHostRef.current?.querySelector(FILE_TREE_TAG_NAME)?.shadowRoot;
@@ -2851,6 +3317,10 @@ export function FileTree({
     return () => observer.disconnect();
   }, [loading, documents.length]);
 
+  // Replace Pierre's trailing-dot artifact with an always-visible uppercase
+  // extension badge. Same shadow-root + MutationObserver pattern as
+  // stampTitles above — kept as a separate observer so the watch scope
+  // (textual mutations) doesn't widen stampTitles's attribute-only filter.
   useEffect(() => {
     if (loading || documents.length === 0) return;
     const shadow = fileTreeHostRef.current?.querySelector(FILE_TREE_TAG_NAME)?.shadowRoot;
@@ -2868,6 +3338,15 @@ export function FileTree({
     return () => observer.disconnect();
   }, [loading, documents.length]);
 
+  // Select Pierre's rename-input stem while keeping the extension visible and
+  // editable. Kept separate from the badge observer because the watched event
+  // (childList: the rename input mounting) is structurally different from the
+  // badge's attribute/text watch.
+  //
+  // `data-item-path` attribute observation is needed for the stale-marker
+  // sweep: Pierre's optimistic commit changes the path attribute
+  // without a childList ripple, and the disk-truth refresh that restores
+  // the extension is also an attribute-only mutation.
   useEffect(() => {
     if (loading || documents.length === 0) return;
     const shadow = fileTreeHostRef.current?.querySelector(FILE_TREE_TAG_NAME)?.shadowRoot;
@@ -2884,11 +3363,28 @@ export function FileTree({
     return () => observer.disconnect();
   }, [loading, documents.length]);
 
+  // Snapshot cache for getFolderState() — keeps the returned object
+  // reference-stable when {folderCount, expandedCount} are unchanged so
+  // FileSidebar's `setFolderState(tree.getFolderState())` calls bail
+  // out via React's `Object.is` instead of triggering redundant
+  // re-renders. Allocates a fresh object only when values genuinely
+  // shifted.
   const folderStateCacheRef = useRef<{ folderCount: number; expandedCount: number }>({
     folderCount: 0,
     expandedCount: 0,
   });
 
+  // Stash the inline imperative closures in refs so useImperativeHandle's
+  // deps array can stay `[model]` only. Without this, Biome's
+  // useExhaustiveDependencies forces those identifiers into the deps and then
+  // immediately complains they "change on every re-render" — a no-win box
+  // because manual memoization (useCallback / useMemo) is banned in this
+  // codebase per CLAUDE.md.
+  //
+  // Refs are synced in a useEffect (not during render) — React Compiler
+  // disallows mutating `.current` during render. Effects run after commit
+  // and before paint; by the time the handle methods fire on user
+  // interaction (click), the ref is current.
   const startCreatingRef = useRef(startCreating);
   const startCreatingFromTemplateRef = useRef(startCreatingFromTemplate);
   useEffect(() => {
@@ -2931,6 +3427,9 @@ export function FileTree({
         });
       },
       getFolderState() {
+        // Read fresh from the model on every call — paths reflect any
+        // pending /api/documents update via folderTreePathsRef, isExpanded()
+        // reflects pending tree-model mutations from the current frame.
         const paths = folderTreePathsRef.current;
         let expandedCount = 0;
         for (const p of paths) {
@@ -2952,6 +3451,13 @@ export function FileTree({
         setCreationDirCleared(true);
       },
       subscribe(listener: () => void) {
+        // The Pierre tree model's subscribe fires on ALL tree-state changes:
+        // expand, collapse, focus, AND resetPaths (which is invoked from the
+        // documents-update effect at the resetPaths call site). One
+        // subscription covers both the per-folder expand/collapse path AND
+        // the folder-list-changed path that documents-fetched triggers. The
+        // local listener set adds `creationDirCleared` (React state) changes,
+        // which Pierre's model never observes.
         handleListenersRef.current.add(listener);
         const unsubscribeModel = model.subscribe(listener);
         return () => {
@@ -2963,6 +3469,14 @@ export function FileTree({
     [model],
   );
 
+  /**
+   * Post-delete aftermath shared by both Electron (Step 2) and web
+   * (today's HTTP hard-delete). Handles pending-create reconciliation, tab
+   * closure, IDB clearing for deleted docNames, tree-model removal, and the
+   * documents-state update + change emit. Runs after the deletion source of
+   * truth (disk or Trash) has already removed the items — this only mirrors
+   * the in-memory + UI state to match.
+   */
   async function applyDeleteAftermath(
     successfulTargets: readonly FileTreeTarget[],
     deletedDocNames: readonly string[],
@@ -2999,6 +3513,9 @@ export function FileTree({
       ],
       { force: true },
     );
+    // Clear IDB for each deleted docName so a same-browser delete-then-recreate
+    // (or a sibling rename that lands on this docName) cannot resurrect content
+    // from stale IndexedDB rows.
     await Promise.all([...deleted].map((docName) => closeAndClearForRename(docName)));
 
     for (const target of successfulTargets) {
@@ -3023,6 +3540,13 @@ export function FileTree({
     emitDocumentsChanged(['files', 'backlinks', 'graph']);
   }
 
+  /**
+   * Hard-delete via `POST /api/delete-path` — web mode and the Electron
+   * fallback path (Delete Permanently from `TrashFailureModal`). Iterates
+   * over targets; on per-target failure, applies the aftermath for whatever
+   * succeeded so far and surfaces a toast. Returns `true` iff every target
+   * deleted cleanly.
+   */
   async function hardDeleteTargets(targets: readonly FileTreeTarget[]): Promise<boolean> {
     const deletedDocNames: string[] = [];
     const deletedFolderPaths: string[] = [];
@@ -3037,6 +3561,8 @@ export function FileTree({
       });
       const parsed = await parseServerResponse(res, t`Failed to delete path`);
       if (!parsed.ok) {
+        // Partial-failure recovery — apply aftermath for what succeeded so
+        // the tree stays consistent, then surface the error and bail.
         if (successfulTargets.length > 0) {
           await applyDeleteAftermath(successfulTargets, deletedDocNames, deletedFolderPaths);
         }
@@ -3056,6 +3582,23 @@ export function FileTree({
     return true;
   }
 
+  /**
+   * Electron-only 2-step Trash flow:
+   *   Step 1: `bridge.shell.trashItem(absPath)` — moves the item to ~/.Trash.
+   *           Tab close happens AFTER this succeeds — eliminates the
+   *           fail-forward UX hazard where the tab would close before the
+   *           user knew the trash failed.
+   *   Step 2: `POST /api/trash/cleanup` — server runs
+   *           `captureAndCloseDocuments` + `recentlyRemovedDocs.setDeleted` +
+   *           fileIndex purge + CC1 broadcast. Does NOT touch disk (file is
+   *           already in Trash). Threads `extractActorIdentity` per
+   *           CLAUDE.md STOP rule.
+   *
+   * Returns the targets split by per-step outcome. Step 1 failures populate
+   * `failed` for the `TrashFailureModal` to render. Step 2 failures surface
+   * as a toast since the item IS in the OS Trash — the server-side state
+   * will reconcile via the file-watcher eventually.
+   */
   async function trashTargetsViaShell(
     targets: readonly FileTreeTarget[],
     bridge: NonNullable<typeof window.okDesktop>,
@@ -3077,6 +3620,9 @@ export function FileTree({
           kind: target.kind,
           path: target.path,
           name: target.name,
+          // Narrow over the IPC wire (different process). A widened bridge
+          // contract that adds a new failure reason would otherwise blow
+          // through `as TrashFailureReason` and surface an unmapped label.
           reason: coerceTrashFailureReason(result.reason),
           detail: result.detail,
         });
@@ -3085,6 +3631,19 @@ export function FileTree({
     return { trashed, failed };
   }
 
+  /**
+   * Step 2 of the trash flow — POST cleanup for each successfully trashed
+   * target. Aggregates the server-reported `deletedDocNames` so the in-memory
+   * aftermath uses the same set the server-side index purged.
+   *
+   * Per-target failures DON'T bail the loop: every successful trashItem (Step
+   * 1) deserves its server-side cleanup attempt, and a transient failure on
+   * one target shouldn't strand the others' state. Failures get a single
+   * aggregated toast at the end + a console.warn per failure; the file-watcher
+   * reconciles any state we couldn't push (the file IS already in OS Trash).
+   * Returns `null` only when ALL targets failed (so the caller knows to fall
+   * back to a local aftermath using just the targets themselves).
+   */
   async function postTrashCleanup(
     trashed: readonly FileTreeTarget[],
   ): Promise<{ deletedDocNames: string[]; deletedFolderPaths: string[] } | null> {
@@ -3093,6 +3652,14 @@ export function FileTree({
     const failedCleanups: Array<{ target: FileTreeTarget; reason: string }> = [];
     for (const target of trashed) {
       const kind = target.kind;
+      // Per-iteration try/catch funnels thrown fetch failures (e.g.
+      // `TypeError: Failed to fetch` on network loss) into the same
+      // `failedCleanups` aggregation path the HTTP-level branch uses,
+      // keeping `postTrashCleanup` non-throwing. Without this, a thrown
+      // fetch propagates out to `handleDeleteTargets`'s outer catch and
+      // shows the misleading "Could not complete delete" toast — but
+      // items in `trashed[]` already moved to OS Trash, so the delete
+      // DID succeed; only the cleanup notification failed.
       try {
         const res = await fetch('/api/trash/cleanup', {
           method: 'POST',
@@ -3101,6 +3668,11 @@ export function FileTree({
         });
         const parsed = await parseServerResponse(res, t`Failed to clean up after trash`);
         if (!parsed.ok) {
+          // Continue the loop — file IS in Trash, the file-watcher will
+          // reconcile any server-side state we couldn't push directly. Log
+          // the per-target failure so the diagnostic trail names which targets
+          // need watcher follow-up; the aggregated toast at the end surfaces
+          // a single message to the user rather than N noisy toasts.
           console.warn('[FileTree] trash-cleanup failed', {
             target: `${target.kind}:${target.path}`,
             reason: parsed.title,
@@ -3135,6 +3707,8 @@ export function FileTree({
         },
       );
     }
+    // All targets failed → caller falls back to a local aftermath using just
+    // the targets (everything is in the OS Trash regardless).
     if (failedCleanups.length === trashed.length && trashed.length > 0) {
       return null;
     }
@@ -3148,6 +3722,20 @@ export function FileTree({
     const firstTarget = deleteTargets[0];
     if (!firstTarget) return;
 
+    // Refuse if any target (file) or any conflicted child of a target
+    // (folder) is in conflict. The HTTP `/api/delete-path` route already
+    // refuses with 409 (`urn:ok:error:doc-in-conflict`), but the Electron
+    // Move-to-Trash flow goes through `shell.trashItem` first — by the
+    // time `/api/trash/cleanup` runs the file is already in OS Trash.
+    // Refusing here keeps the source-of-truth gate (server-side) honest
+    // and avoids stranding conflicted files in the OS Trash where the
+    // sync engine can't see them.
+    //
+    // Path-shape mismatch trap: `c.file` is extension-FUL (e.g. `foo.md`);
+    // `FileTreeTarget.path` for files is extension-LESS (`foo`) with the
+    // extension in `t.docExt`. Reconstruct the extension-ful candidate
+    // before the equality check, mirroring the server-side
+    // `${docName}${getDocExtension(...)}` pattern in handleDeletePath.
     const blockingConflicts = activeConflicts.filter((c) =>
       deleteTargets.some((t) => {
         if (t.kind === 'file') {
@@ -3176,6 +3764,7 @@ export function FileTree({
     const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
     try {
       if (bridge && workspace) {
+        // Electron path: 2-step Trash flow.
         const { trashed, failed } = await trashTargetsViaShell(deleteTargets, bridge, workspace);
         if (trashed.length > 0) {
           const cleanup = await postTrashCleanup(trashed);
@@ -3186,21 +3775,33 @@ export function FileTree({
               cleanup.deletedFolderPaths,
             );
           } else {
+            // Step 2 failed but Step 1 succeeded — file is in Trash, server
+            // will reconcile via file-watcher. Apply local aftermath using
+            // the targets themselves so the renderer mirrors the truth on
+            // disk (file is gone).
             const localDocNames = trashed.filter((t) => t.kind === 'file').map((t) => t.path);
             const localFolderPaths = trashed.filter((t) => t.kind === 'folder').map((t) => t.path);
             await applyDeleteAftermath(trashed, localDocNames, localFolderPaths);
           }
         }
         if (failed.length > 0) {
+          // Surface the trash-failure fallback modal for the failed subset;
+          // the successful subset is already committed to the tree.
           setTrashFailure({ failed, originalTargets: [...deleteTargets] });
         }
         setBusyPath(null);
       } else {
+        // Web path: today's HTTP hard-delete (no OS Trash in the browser).
         const ok = await hardDeleteTargets(deleteTargets);
         setBusyPath(null);
         if (!ok) resetModelToDocuments();
       }
     } catch (err) {
+      // Network is one of many failure modes here: tree-model `model.remove`
+      // throws, IDB tab-close persistence errors, the trash IPC link going
+      // away mid-flight, an unexpected `fetch` reject. Generic phrasing
+      // surfaces the underlying error detail (via the toast description)
+      // rather than misattributing every failure as a network error.
       const detail = err instanceof Error ? err.message : String(err);
       console.warn('[FileTree] delete failed:', err);
       toast.error(t`Could not complete delete`, { description: detail });
@@ -3209,6 +3810,11 @@ export function FileTree({
     }
   }
 
+  /**
+   * Delete Permanently from `TrashFailureModal` — hard-delete (today's
+   * `POST /api/delete-path`) for the targets that failed Step 1. Tabs close
+   * + IDB clears via the shared aftermath.
+   */
   async function handleTrashFailureDeletePermanently() {
     if (!trashFailure) return;
     const failedSet = new Set(trashFailure.failed.map((t) => `${t.kind}:${t.path}`));
@@ -3223,6 +3829,11 @@ export function FileTree({
       setBusyPath(null);
       if (!ok) resetModelToDocuments();
     } catch (err) {
+      // Mirror the sibling catch — `hardDeleteTargets` shares the same
+      // failure-mode surface (model.remove throws, IDB tab-close, fetch
+      // reject, …), so the toast generalization applies here too. Surfacing
+      // the underlying error detail beats misattributing every failure as
+      // network noise.
       const detail = err instanceof Error ? err.message : String(err);
       console.warn('[FileTree] hard-delete fallback failed:', err);
       toast.error(t`Could not complete delete`, { description: detail });
@@ -3231,6 +3842,18 @@ export function FileTree({
     }
   }
 
+  /**
+   * Retry from `TrashFailureModal` — re-run Step 1 against the FAILED
+   * subset only. Targets that succeeded in the prior attempt are already
+   * in the system Trash; replaying them produces fresh `not-found` results
+   * (realpath fails for already-trashed items) and re-opens the failure
+   * modal listing items the user already disposed of. Filter to the failed
+   * targets so Retry actually means "try those specific items again."
+   *
+   * Compound `${kind}:${path}` key matches `handleTrashFailureDeletePermanently`
+   * above — same shape `FileTreeTarget` carries (kind ∪ path) so different
+   * target kinds that share the same relative path never alias each other.
+   */
   async function handleTrashFailureRetry() {
     if (!trashFailure) return;
     const failedSet = new Set(trashFailure.failed.map((f) => `${f.kind}:${f.path}`));
@@ -3241,11 +3864,29 @@ export function FileTree({
     await handleDeleteTargets(originals);
   }
 
+  // Hold a ref to handleDeleteTargets so the menu-action subscription
+  // effect below can keep its closure off the latest function identity
+  // without forcing the effect to re-bind on every render. Declared after
+  // the function declaration to keep React Compiler's
+  // `PruneHoistedContexts` pass from tripping on the forward-reference
+  // pattern the earlier startCreating refs benefit from (those functions
+  // are declared above their refs).
   const handleDeleteTargetsRef = useRef(handleDeleteTargets);
   useEffect(() => {
     handleDeleteTargetsRef.current = handleDeleteTargets;
   });
 
+  // Subscribe to the macOS File menu's `move-to-trash` request bus. The
+  // FileSidebar menu-action handler emits when the user picks File → Move
+  // to Trash; we convert the navigation-target snapshot to the same
+  // `FileTreeTarget` shape the row context menu produces and route through
+  // the existing 2-step Trash spine. One subscription owns the
+  // surface so a hot-reload / remount tears down cleanly.
+  //
+  // docExt is looked up from `documentsRef` (the in-memory document list)
+  // at fire-time so document trash flow + downstream rename hints render the
+  // real `.md` / `.mdx` rather than guessing. Assets remain first-class
+  // `kind: 'asset'` targets and share the same delete spine.
   useEffect(() => {
     return subscribeToFileTreeMenuActionDelete((target) => {
       if (target.kind === 'doc' || target.kind === 'folder-index') {
@@ -3283,6 +3924,9 @@ export function FileTree({
         ]);
         return;
       }
+      // missing — File menu's Move to Trash is disabled for this scope
+      // upstream; the emit shouldn't fire. Logging the event so a future
+      // drift between the menu-enable gate and the emitter is caught.
       console.warn(
         JSON.stringify({
           event: 'file-tree-menu-action-delete-unsupported-kind',
@@ -3292,6 +3936,10 @@ export function FileTree({
     });
   }, []);
 
+  // macOS File menu's `duplicate` item bridges to the same HTTP duplicate
+  // spine the row context menu uses. Path resolution mirrors Rename/Delete:
+  // doc + folder-index duplicate the file, folder duplicates the folder, and
+  // asset + missing are guarded upstream by menu enablement.
   useEffect(() => {
     return subscribeToFileTreeMenuActionDuplicate((target: ResolvedNavigationTarget) => {
       if (target.kind === 'doc' || target.kind === 'folder-index') {
@@ -3324,6 +3972,12 @@ export function FileTree({
     });
   }, []);
 
+  // macOS File menu's `rename` item bridges to Pierre's inline-rename via
+  // the model API. Path resolution per kind: doc + folder-index use
+  // `docNameToTreePath(docName, docExt)` (extension lookup from documentsRef
+  // mirrors the delete subscriber); folder uses folderPath directly.
+  // asset uses the raw asset path; missing falls through to a structured
+  // warn because the menu enable gate disables rename for that scope.
   useEffect(() => {
     return subscribeToFileTreeMenuActionRename((target) => {
       if (target.kind === 'doc' || target.kind === 'folder-index') {
@@ -3384,8 +4038,15 @@ export function FileTree({
     if (event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
+    // Pierre only emits selection changes when the selected path changes.
+    // If app navigation lags behind the selected row, a plain click on that
+    // already-selected row still needs to activate the row's target.
     const item = findTreeItemElement(event.nativeEvent);
     if (!item) {
+      // Plain click on the tree's empty content area (no row) deselects the
+      // active row for creation purposes — New file / New folder then land at
+      // the project root. The editor view is untouched. Gated to the scroll
+      // region so clicks on the header / search chrome don't trigger it.
       if (clickIsInTreeContentArea(event.nativeEvent)) {
         setCreationDirCleared(true);
       }
@@ -3440,6 +4101,11 @@ export function FileTree({
     return <FileTreeSkeleton />;
   }
 
+  // Calm reconnect copy shown in place of the red "Could not reach server"
+  // error while the listing is silently re-attempted across a relaunch's full
+  // lifecycle: "Relaunching…" while the relaunch is in flight, and (after an
+  // aborted relaunch clears `relaunchInFlight` while a retry is still settling)
+  // the honest "Reconnecting…".
   const reconnectNotice = reconnecting
     ? relaunchInFlight
       ? t`Relaunching to install the update…`
@@ -3447,6 +4113,9 @@ export function FileTree({
     : null;
 
   if (documents.length === 0) {
+    // The empty tree is the most likely state during a relaunch (zero docs
+    // while the server is down), so both notices carry their live-region role
+    // here too — matching `FileTreeHeaderNotice` on the populated path.
     if (reconnectNotice !== null) {
       return (
         <div className="flex flex-1 items-center justify-center py-8">
@@ -3493,6 +4162,11 @@ export function FileTree({
 
   const anyActionBusy = busyPath !== null;
   const primaryDeleteTarget = deleteRequest?.targets[0] ?? null;
+  // Sidebar files come from the disk walk, not the search index, so the
+  // guidance must not point at search. Under lazy depth-1 loading the cap
+  // applies per fetched level, so the count describes the truncated folder's
+  // level — not the whole tree, which can legitimately show more rows than
+  // the count.
   let truncationNotice: string | null = null;
   if (truncatedShownCount !== null) {
     const formattedCount = new Intl.NumberFormat(i18n.locale).format(truncatedShownCount);
@@ -3521,6 +4195,8 @@ export function FileTree({
           }
           model={model}
           style={createFileTreeStyle(resolvedTheme)}
+          // Forwarded onto the <file-tree-container> host; drives the
+          // focus-ring suppression in FILE_TREE_CREATION_CLEARED_CSS.
           {...{ [FILE_TREE_CREATION_CLEARED_ATTR]: creationDirCleared ? '' : undefined }}
           onClickCapture={handleTreeClickCapture}
           onMouseMove={handleTreeMouseMove}
@@ -3559,6 +4235,8 @@ export function FileTree({
       >
         {deleteRequest && primaryDeleteTarget && (
           <DeleteConfirmationDialog
+            // Trash flow on Electron uses VSCode-verbatim copy;
+            // web mode (no OS Trash) keeps today's hard-delete copy.
             {...(() => {
               const variant: 'electron' | 'web' =
                 typeof window !== 'undefined' && window.okDesktop != null ? 'electron' : 'web';
@@ -3581,6 +4259,7 @@ export function FileTree({
                   ) : null,
                 };
               }
+              // Web mode — preserve today's copy.
               const targetCount = deleteRequest.targets.length;
               const folderName = primaryDeleteTarget.name;
               return {
@@ -3629,6 +4308,9 @@ export function FileTree({
         }}
         kind="file"
         initialDir={newItemRequest?.parentDir ?? ''}
+        // This dialog is only opened via `startCreatingFromTemplate` (the
+        // native macOS File → "New from Template…" item), so default the
+        // picker to the first resolved template rather than Blank note.
         defaultToTemplate
       />
     </>
@@ -3680,6 +4362,11 @@ function resolveExternalFileDropTarget(event: MouseEvent): ExternalFileDropTarge
   };
 }
 
+// True when the click landed inside the tree's scrollable content region (the
+// row list + its empty area below the last row), as opposed to the header /
+// search chrome. Same `[data-file-tree-virtualized-scroll]` anchor the
+// drag-to-root patch uses, reached via composedPath because the tree renders
+// in a shadow root.
 function clickIsInTreeContentArea(event: MouseEvent): boolean {
   for (const entry of event.composedPath()) {
     if (entry instanceof HTMLElement && entry.matches('[data-file-tree-virtualized-scroll]')) {
@@ -3689,6 +4376,10 @@ function clickIsInTreeContentArea(event: MouseEvent): boolean {
   return false;
 }
 
+// Cold-start sidebar fallback. Mimics the row shape of the file tree (chevron
+// + icon affordance + label) so the sidebar feels intentional during the
+// `ready`-gated `/api/documents` round-trip rather than flashing the prior
+// "No files yet" empty-state CTA. Widths are varied to read as a real list.
 const FILE_TREE_SKELETON_ROW_WIDTHS = ['w-3/4', 'w-2/3', 'w-4/5', 'w-1/2', 'w-3/5', 'w-2/3'];
 
 function FileTreeSkeleton() {
@@ -3714,6 +4405,16 @@ function FileTreeSkeleton() {
   );
 }
 
+/**
+ * Contained notice row for the tree header slot: icon + text in a muted
+ * rounded box. `error` renders an assertive `role="alert"` with a warning
+ * icon and destructive tone; `info` renders a polite `role="status"` (the
+ * Show All truncation affordance); `reconnecting` renders a polite
+ * `role="status"` with a spinning icon and muted tone (the desktop-relaunch
+ * self-heal notice). Keep children non-interactive — the row is an aria-live
+ * region, and focusable descendants inside one diverge from what screen
+ * readers announce.
+ */
 function FileTreeHeaderNotice({
   kind,
   children,

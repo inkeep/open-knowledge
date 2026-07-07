@@ -24,6 +24,8 @@ function PopoverContent({
         data-slot="popover-content"
         align={align}
         sideOffset={sideOffset}
+        // Themed with the splash/marketing `slide-*` tokens rather than the
+        // shadcn `--popover` token set (this Fumadocs app doesn't define them).
         className={cn(
           'z-50 w-72 rounded-2xl border bg-slide-bg-elevated p-4 text-slide-text shadow-xl outline-none',
           className,

@@ -1,3 +1,16 @@
+/**
+ * ConnectingBanner — unit tests for the pure `computeBannerMode` helper that
+ * drives the three-state render (hidden / retrying / terminal). Pure-function
+ * altitude — full DOM behavior is covered by Playwright E2E where it matters.
+ *
+ * The grace-period wrapper (useEffect + setTimeout) is mechanical React glue
+ * around this function; the logic under test is the decision table:
+ *
+ *   terminal=true                → 'terminal' (grace ignored)
+ *   collabUrl !== null           → 'hidden'
+ *   collabUrl === null + grace   → 'retrying'
+ *   collabUrl === null + !grace  → 'hidden' (flash prevention)
+ */
 import { describe, expect, test } from 'bun:test';
 import { computeBannerMode, describeError, isNoCollabServerError } from './ConnectingBanner';
 
@@ -20,10 +33,14 @@ describe('computeBannerMode', () => {
   });
 
   test('terminal overrides a resolved URL (defensive — should not occur in practice)', () => {
+    // If state ever ends up terminal=true with a stale non-null URL, terminal
+    // wins — the red banner is a blocking diagnostic, the URL is presumed
+    // stale. Exercising the ordering makes the precedence explicit.
     expect(computeBannerMode('ws://localhost:5173/collab', true, true)).toBe('terminal');
   });
 
   test('full state matrix', () => {
+    // Keyed by [collabUrl === null, terminal, graceElapsed].
     const cases: Array<{ url: string | null; term: boolean; grace: boolean; want: string }> = [
       { url: null, term: false, grace: false, want: 'hidden' },
       { url: null, term: false, grace: true, want: 'retrying' },

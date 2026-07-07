@@ -1,3 +1,13 @@
+/**
+ * `ok init` parity in linked git worktrees.
+ *
+ * After worktree-aware path resolution, `ok init` (the `initContent`
+ * function the CLI calls) needs no worktree-specific behavior. These tests
+ * are the assertion that the design works: P3 (first-time evaluator) gets a
+ * fresh scaffold; P1 (returning developer with committed `.ok/`) sees a
+ * no-op for `config.yml`. After init, the same worktree must boot cleanly.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -28,17 +38,22 @@ describe('initContent in a linked worktree (FR4 / D7)', () => {
 
   test('committed config.yml (P1): writeIfMissing skip leaves bytes unchanged on second init', () => {
     handle = createLinkedWorktree({ seedOkScaffold: false });
+    // Simulate what `git checkout` would have materialized: a custom
+    // committed config.yml + .gitignore. The user's bytes must survive.
     const okDir = resolve(handle.worktreePath, '.ok');
     const customConfig = '# user-customized\nlogLevel: debug\n';
     const customGitignore = '# user-customized\nprincipal.json\n';
+    // Mirror git checkout's behavior — directory + files materialized by it.
     mkdirSync(okDir, { recursive: true });
     writeFileSync(resolve(okDir, 'config.yml'), customConfig, 'utf-8');
     writeFileSync(resolve(okDir, '.gitignore'), customGitignore, 'utf-8');
 
     const result = initContent(handle.worktreePath);
 
+    // config.yml is left exactly as committed.
     expect(readFileSync(resolve(okDir, 'config.yml'), 'utf-8')).toBe(customConfig);
     expect(result.skipped).toContain('config.yml');
+    // .gitignore: merged-on-upgrade is acceptable (existing entries preserved).
     const gitignoreAfter = readFileSync(resolve(okDir, '.gitignore'), 'utf-8');
     expect(gitignoreAfter).toContain('# user-customized');
     expect(gitignoreAfter).toContain('principal.json');
@@ -60,6 +75,7 @@ describe('initContent in a linked worktree (FR4 / D7)', () => {
     });
     try {
       await booted.ready;
+      // Shadow lives under the worktree's gitdir, NOT inside the worktree.
       const expectedShadowHead = resolve(handle.worktreeGitdir, 'ok/HEAD');
       expect(existsSync(expectedShadowHead)).toBe(true);
     } finally {

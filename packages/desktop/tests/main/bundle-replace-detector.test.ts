@@ -6,6 +6,15 @@ import {
   startBundleReplaceWatcher,
 } from '../../src/main/bundle-replace-detector.ts';
 
+/**
+ * The four detector states are mutually exclusive — one per tick. The watcher
+ * arms the prompt once per session and de-arms after the user responds (or
+ * dismisses) so it doesn't bombard the user mid-typing. A transient dialog
+ * failure re-arms so the next tick can retry; a late `stop()` while a dialog
+ * is pending suppresses the relaunch+quit to avoid stacking quits on top of
+ * an already-pending shutdown.
+ */
+
 afterEach(() => {
   mock.restore();
 });
@@ -35,6 +44,8 @@ describe('detectBundleReplace', () => {
   });
 
   test('mtime newer, versions match → no-divergence (file touched, no upgrade)', () => {
+    // Case: codesigning or quarantine attribute change touched the bundle
+    // but the version on disk is the same as the running process.
     const state = detectBundleReplace(
       makeInput({
         statSync: () => ({ mtimeMs: 2_000_000 }),
@@ -47,6 +58,8 @@ describe('detectBundleReplace', () => {
   });
 
   test('mtime newer AND versions differ → upgraded (PROMPT)', () => {
+    // Drag-replace while running: on-disk bundle was overwritten after this
+    // process started, AND the new version differs from `app.getVersion()`.
     const state = detectBundleReplace(
       makeInput({
         statSync: () => ({ mtimeMs: 2_000_000 }),
@@ -83,6 +96,9 @@ describe('detectBundleReplace', () => {
   });
 
   test('mtime equal to process start → unchanged (boundary inclusive of start)', () => {
+    // A swap that landed at the exact same millisecond as process start is
+    // indistinguishable from "this process WAS launched from that newly-
+    // written bundle." Conservative: treat equality as unchanged.
     const state = detectBundleReplace(
       makeInput({
         statSync: () => ({ mtimeMs: 1_000_000 }),
@@ -138,7 +154,9 @@ interface WatcherFixtures {
     info: ReturnType<typeof mock>;
     warn: ReturnType<typeof mock>;
   };
+  /** The callback registered with setInterval — fire to simulate a tick. */
   tickCallback: (() => void) | null;
+  /** Handle returned from the (mock) setInterval — passed to clearInterval. */
   intervalHandle: unknown;
 }
 
@@ -201,15 +219,21 @@ describe('startBundleReplaceWatcher', () => {
       logger: fx.logger,
     });
     fx.tickCallback?.();
+    // Await the dialog promise resolution.
     await new Promise((r) => setImmediate(r));
     expect(fx.showMessageBox).toHaveBeenCalledTimes(1);
 
+    // Subsequent ticks must NOT re-fire — the watcher is single-shot per session.
     fx.tickCallback?.();
     await new Promise((r) => setImmediate(r));
     expect(fx.showMessageBox).toHaveBeenCalledTimes(1);
   });
 
   test('second tick while dialog is still pending does NOT fire a second prompt', async () => {
+    // Pins the disarm-before-await ordering: the watcher must short-circuit
+    // on `armed === false` set before the dialog promise was awaited, not
+    // just after the user responds. Moving `armed = false` after the
+    // `.then` chain would silently break this test.
     const fx = makeFixtures();
     let resolveDialog: ((v: { response: number; checkboxChecked: boolean }) => void) | null = null;
     fx.showMessageBox = mock(
@@ -234,15 +258,20 @@ describe('startBundleReplaceWatcher', () => {
     fx.tickCallback?.();
     expect(fx.showMessageBox).toHaveBeenCalledTimes(1);
 
+    // Fire a second tick while the first dialog is STILL pending.
     fx.tickCallback?.();
     expect(fx.showMessageBox).toHaveBeenCalledTimes(1);
 
+    // Resolve the dialog; the second tick must still not have fired one.
     resolveDialog?.({ response: 1, checkboxChecked: false });
     await new Promise((r) => setImmediate(r));
     expect(fx.showMessageBox).toHaveBeenCalledTimes(1);
   });
 
   test('dialog rejection is swallowed, re-armed for next tick (no crash, no relaunch)', async () => {
+    // Covers the `.catch` branch and the re-arm policy: transient dialog
+    // failures (window destroyed mid-show, framework error) must not
+    // permanently de-arm the session-level prompt.
     const fx = makeFixtures();
     fx.showMessageBox = mock(() => Promise.reject(new Error('dialog destroyed')));
     startBundleReplaceWatcher({
@@ -265,12 +294,18 @@ describe('startBundleReplaceWatcher', () => {
     expect(fx.quit).not.toHaveBeenCalled();
     expect(fx.logger.warn).toHaveBeenCalled();
 
+    // Re-armed: the next tick should attempt the dialog again.
     fx.tickCallback?.();
     await new Promise((r) => setImmediate(r));
     expect(fx.showMessageBox).toHaveBeenCalledTimes(2);
   });
 
   test('stop() while dialog is pending, then dialog rejection: does NOT re-arm', async () => {
+    // Combined-branch coverage: the `!stopped` guard on re-arm prevents a
+    // torn-down session from being revived by a transient failure. Without
+    // the guard, a dialog rejection after `stop()` would re-arm, and a
+    // future tick could attempt to show a dialog into a torn-down Electron
+    // context.
     const fx = makeFixtures();
     let rejectDialog: ((err: Error) => void) | null = null;
     fx.showMessageBox = mock(
@@ -295,17 +330,24 @@ describe('startBundleReplaceWatcher', () => {
     fx.tickCallback?.();
     expect(fx.showMessageBox).toHaveBeenCalledTimes(1);
 
+    // Watcher torn down while dialog is pending.
     handle.stop();
 
+    // Dialog rejects after stop() — must NOT re-arm.
     rejectDialog?.(new Error('window destroyed'));
     await new Promise((r) => setImmediate(r));
 
+    // Even forcing a manual tick: no second prompt, since stopped suppresses.
     fx.tickCallback?.();
     await new Promise((r) => setImmediate(r));
     expect(fx.showMessageBox).toHaveBeenCalledTimes(1);
   });
 
   test('stop() during a pending dialog suppresses relaunch+quit on user response', async () => {
+    // Covers the zombie-relaunch race: when `stop()` runs (typically from
+    // `will-quit` on a concurrent quit path) while the dialog is pending,
+    // a subsequent "Restart now" click must NOT schedule a fresh
+    // relaunch+quit on top of the already-in-flight shutdown.
     const fx = makeFixtures();
     let resolveDialog: ((v: { response: number; checkboxChecked: boolean }) => void) | null = null;
     fx.showMessageBox = mock(
@@ -330,8 +372,10 @@ describe('startBundleReplaceWatcher', () => {
     fx.tickCallback?.();
     expect(fx.showMessageBox).toHaveBeenCalledTimes(1);
 
+    // Watcher gets torn down (e.g., will-quit) while the dialog is still up.
     handle.stop();
 
+    // User clicks "Restart now" after stop() — relaunch+quit must NOT fire.
     resolveDialog?.({ response: 0, checkboxChecked: false });
     await new Promise((r) => setImmediate(r));
     expect(fx.relaunch).not.toHaveBeenCalled();
@@ -339,6 +383,9 @@ describe('startBundleReplaceWatcher', () => {
   });
 
   test('"Restart now" (response 0) calls app.relaunch BEFORE app.quit', async () => {
+    // Ordering is load-bearing: `app.relaunch()` schedules the relaunch on
+    // the next quit. Reversing the two adjacent calls means the app quits
+    // without relaunching.
     const fx = makeFixtures();
     fx.showMessageBox = mock(() => Promise.resolve({ response: 0, checkboxChecked: false }));
     const callOrder: string[] = [];
@@ -388,6 +435,7 @@ describe('startBundleReplaceWatcher', () => {
     await new Promise((r) => setImmediate(r));
     expect(fx.relaunch).not.toHaveBeenCalled();
     expect(fx.quit).not.toHaveBeenCalled();
+    // Handle is still callable for explicit teardown on `will-quit`.
     handle.stop();
     expect(fx.clearInterval).toHaveBeenCalled();
   });

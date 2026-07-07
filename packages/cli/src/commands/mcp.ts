@@ -1,3 +1,16 @@
+/**
+ * `open-knowledge mcp` command.
+ *
+ * Default mode: an inline stdio MCP server that routes per tool call to
+ * whatever OpenKnowledge project the caller's `cwd` argument resolves into.
+ * This makes the binary safe to register globally in MCP hosts (Claude,
+ * etc.) — one registration covers every project on the machine.
+ *
+ * `--port` mode: legacy stdio → HTTP MCP shim that proxies frames to a
+ * specific running `ok start` HTTP MCP endpoint, used when callers want to
+ * pin to one backend explicitly. The shim does not register tools itself.
+ */
+
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import type { Config } from '@inkeep/open-knowledge-server';
@@ -31,6 +44,10 @@ export function mcpCommand(getConfig: () => Config): Command {
         if (opts.port !== undefined) {
           const timeoutMs = parseSpawnTimeoutEnv(process.env.OK_MCP_SPAWN_TIMEOUT_MS);
           await startMcpShim({
+            // The shim never reads `lockDir` / `contentDir` when `portOverride`
+            // is set — those are only used by the auto-spawn / lock-discovery
+            // paths. Pass empty strings so the explicit-port branch stays
+            // bit-for-bit unchanged.
             lockDir: '',
             contentDir: '',
             portOverride: opts.port,

@@ -27,6 +27,10 @@ function TooltipTrigger({
   type,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
+  // A bare trigger renders a <button>, which HTML defaults to type="submit" —
+  // so clicking a tooltip inside a <form> submits the form. Default to
+  // "button" for the rendered-button case; with asChild the child element
+  // owns its own type, so leave it untouched.
   return (
     <TooltipPrimitive.Trigger
       data-slot="tooltip-trigger"

@@ -9,6 +9,11 @@ import {
 } from 'bun:test';
 import { bindTestUiLock } from './preview-url-test-helpers.ts';
 
+// Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in MCP
+// test setup spawns git children that Bun fails to reap on ubuntu-latest
+// GHA runners; post-test cgroup never drains, hanging test (test) at the
+// 15-min timeout. Tests run normally locally; follow-up PR will migrate
+// fixtures to execFileSync.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -56,6 +61,8 @@ beforeAll(() => {
     fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === '/api/history') {
+        // Route shape: per-entry `sha` + `type` (the tool projects these to
+        // `version` + `kind`).
         return Response.json({
           ok: true,
           entries: [
@@ -102,6 +109,8 @@ function makeDeps(): GetHistoryDeps {
 
 describe('history — previewUrl emission', () => {
   test('emits route-only previewUrl + source alongside entries when resolver resolves', async () => {
+    // Bind the UI lock so the route resolves; `previewUrl` is route-only
+    // and carries no host:port.
     bindTestUiLock(tmpDir);
     const { server, getTool } = createFakeServer();
     register(server, makeDeps());

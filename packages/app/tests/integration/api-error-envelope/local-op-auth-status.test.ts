@@ -1,3 +1,10 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleLocalOpAuthStatus`
+ * Covers method gating, body-shape validation, and the
+ * spawn-failure 500 path. The happy-path response shape is pinned by
+ * `LocalOpAuthStatusSuccessSchema` (`.loose()` accepts CLI-emitted extras).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { LocalOpAuthStatusSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -25,6 +32,10 @@ async function postStatus(body: unknown): Promise<Response> {
 
 describe('local-op-auth-status envelope (RFC 9457, US-012)', () => {
   test('spawn failure emits urn:ok:error:auth-failed problem+json 500', async () => {
+    // ENOENT spawn (deterministic via localOpCliArgs override) → child.on('error')
+    // rejects the promise → handler's catch emits errorResponse 500 with
+    // urn:ok:error:auth-failed. The happy-path response shape is pinned by
+    // `LocalOpAuthStatusSuccessSchema` exercised in core/api.test.ts.
     const res = await postStatus({});
     expect(res.status).toBe(500);
     expect(res.headers.get('content-type')).toBe('application/problem+json');
@@ -38,6 +49,8 @@ describe('local-op-auth-status envelope (RFC 9457, US-012)', () => {
   });
 
   test('LocalOpAuthStatusSuccessSchema accepts CLI-emitted shape', () => {
+    // Co-located schema test guarantees the wire-shape contract — a happy
+    // path with a real CLI subprocess is covered by host-network tests.
     expect(LocalOpAuthStatusSuccessSchema.safeParse({ authenticated: false }).success).toBe(true);
     expect(
       LocalOpAuthStatusSuccessSchema.safeParse({

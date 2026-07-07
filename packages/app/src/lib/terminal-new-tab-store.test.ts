@@ -5,6 +5,7 @@ import {
   writePreferBareTerminal,
 } from './terminal-new-tab-store';
 
+/** In-memory Storage stand-in matching the `NewTabStorage` seam. */
 function fakeStorage() {
   const map = new Map<string, string>();
   return {
@@ -30,6 +31,8 @@ describe('terminal-new-tab-store', () => {
     expect(s.has(TERMINAL_NEW_TAB_BARE_KEY)).toBe(true);
     expect(readPreferBareTerminal(s)).toBe(true);
 
+    // Clearing removes the key entirely (rather than storing '0'), so an absent
+    // key and an explicit false are the same on the next read.
     writePreferBareTerminal(false, s);
     expect(s.has(TERMINAL_NEW_TAB_BARE_KEY)).toBe(false);
     expect(readPreferBareTerminal(s)).toBe(false);

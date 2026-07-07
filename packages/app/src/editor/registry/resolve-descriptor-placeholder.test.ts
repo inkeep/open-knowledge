@@ -1,3 +1,17 @@
+/**
+ * `shouldRenderPlaceholder` decides when JsxComponentView swaps the rendered
+ * component for the empty-state placeholder pill (Notion-style "Add an image"
+ * UI). It is intentionally STRICTER than `needsConfig` — `needsConfig` flags
+ * any required string prop with a missing-key decision (e.g. `alt` absent on
+ * an `<img>`), but the placeholder is for cases where the component literally
+ * cannot render anything useful, i.e. the autoFocus-flagged required prop is
+ * empty. `selection-indicator.e2e.ts` is the regression canary for
+ * this distinction.
+ *
+ * `resolveDescriptorPlaceholder` derives the label / Icon to display, with a
+ * fallback ladder: descriptor.placeholder.label || `Add ${displayName.toLowerCase()}`,
+ * and descriptor.placeholder.icon || descriptor.icon || Box.
+ */
 import { describe, expect, test } from 'bun:test';
 import { Box, Image } from 'lucide-react';
 import { getDescriptor } from './index.ts';
@@ -118,3 +132,10 @@ describe('resolveDescriptorPlaceholder', () => {
     ).toBe(Box);
   });
 });
+
+// Note: the broader manifest-level placeholder-contract guard lives in
+// `packages/core/src/registry/registry.test.ts` (asserts defaultValue + autoFocus
+// + not-advanced together on img/video/audio's `src` prop). Keeping the
+// invariant in the manifest test file rather than here puts it next to the
+// source of truth (built-ins.ts) — a future demote/promote PR is more likely
+// to run registry.test.ts than a dedicated resolver test.

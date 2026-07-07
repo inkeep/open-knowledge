@@ -1,3 +1,19 @@
+/**
+ * `ok embeddings` — manage the semantic-search embeddings provider key + status.
+ *
+ * Subcommands:
+ *   - `set-key`   store the provider API key in `~/.ok/secrets.yml` (0600).
+ *   - `clear-key` remove the stored key.
+ *   - `enable` / `disable`  flip `search.semantic.enabled` for the project (project-local).
+ *   - `status`    show key presence (machine-global) + enabled/capability/coverage (per-project).
+ *
+ * The key is read from stdin (piped) or a hidden prompt, stored only in the
+ * 0600 `~/.ok/secrets.yml` file (NOT the OS keychain — a keychain read prompts
+ * the user, unacceptable on the agent-triggered search path), and NEVER echoed,
+ * logged, or written to project config. A sibling of `ok auth` (GitHub-specific,
+ * which DOES use the keychain — it's more sensitive and not search-triggered).
+ */
+
 import { resolve } from 'node:path';
 import { humanFormat } from '@inkeep/open-knowledge-core';
 import { writeConfigPatch } from '@inkeep/open-knowledge-core/server';
@@ -17,6 +33,7 @@ import {
   describeStoredEmbeddingsKey,
 } from '../../auth/embeddings-key-store.ts';
 
+/** Read the key from piped stdin, else a hidden interactive prompt. */
 async function readKey(): Promise<string> {
   if (!process.stdin.isTTY) {
     const chunks: Buffer[] = [];
@@ -26,10 +43,15 @@ async function readKey(): Promise<string> {
   return (await password({ message: 'Enter OpenAI embeddings API key:' })).trim();
 }
 
+// Read `search.semantic.*` through the SAME project-local-only resolver the
+// server uses (`readProjectLocalSemanticConfig`), so `status` can never report a
+// different enabled/capability than the running server. The working dir IS the
+// project root (matches how `ok start` resolves `projectDir`).
 function readSemanticConfig(projectDir: string) {
   return readProjectLocalSemanticConfig(projectDir);
 }
 
+/** Whether a key is resolvable: stored file OR env override. Never prompts. */
 async function resolveKeyPresence(): Promise<{ present: boolean; source: 'file' | 'env' | null }> {
   const stored = await describeStoredEmbeddingsKey();
   if (stored.file) return { present: true, source: 'file' };
@@ -37,6 +59,12 @@ async function resolveKeyPresence(): Promise<{ present: boolean; source: 'file' 
   return { present: false, source: null };
 }
 
+/**
+ * Best-effort live coverage from the project's running server (discovered via
+ * `server.lock`). Returns null — never throws — when no server is running or the
+ * probe fails, so `status` works offline. The probe is the read-only,
+ * side-effect-free `/api/semantic-status` (no embed, no egress, no keychain).
+ */
 async function fetchLiveCoverage(
   projectDir: string,
 ): Promise<{ embedded: number; total: number } | null> {
@@ -66,6 +94,7 @@ function setKeyCommand(): Command {
         return;
       }
       await createEmbeddingsSecretStore().set(key);
+      // Never echo the key.
       process.stderr.write(
         '✓ OpenAI embeddings API key stored in ~/.ok/secrets.yml (0600, this machine only).\n' +
           'Now enable it per project — the easiest path is OK Desktop → Settings → This\n' +
@@ -88,6 +117,12 @@ function clearKeyCommand(): Command {
     });
 }
 
+/**
+ * `enable` / `disable` flip `search.semantic.enabled` in the project-local config
+ * (`<project>/.ok/local/config.yml`) — the same field + scope the Settings toggle
+ * and the server's config watcher use, so a running server picks the change up
+ * live. Human-run (consistent with the field's `agentSettable: false`).
+ */
 function toggleEnabledCommand(name: 'enable' | 'disable', value: boolean): Command {
   return new Command(name)
     .description(`Turn semantic search ${value ? 'on' : 'off'} for this project (project-local)`)
@@ -128,6 +163,7 @@ function statusCommand(): Command {
       const cfg = readSemanticConfig(projectDir);
       const { present: hasKey, source: keySource } = await resolveKeyPresence();
       const capable = cfg.enabled && hasKey;
+      // Coverage is only meaningful once capable; skip the server probe otherwise.
       const coverage = capable ? await fetchLiveCoverage(projectDir) : null;
 
       if (opts.json) {
@@ -188,6 +224,7 @@ function statusCommand(): Command {
     });
 }
 
+/** Build the `embeddings` command group. */
 export function embeddingsCommand(): Command {
   return new Command('embeddings')
     .description('Manage the semantic-search embeddings provider key + status')

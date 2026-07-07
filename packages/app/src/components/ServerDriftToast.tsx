@@ -1,3 +1,13 @@
+/**
+ * Content for the version-drift notification (rendered via sonner's
+ * `toast.custom`). A custom layout is used instead of sonner's built-in
+ * `action` + `cancel` + `description` because that layout collapses the text
+ * column to near-zero width when the copy is long and both buttons are present
+ * — here the warning is a full sentence and the action label is long, so the
+ * text and buttons get their own controlled vertical layout. Presentational:
+ * all copy arrives as props so this stays cycle-free of the listener that
+ * owns the strings.
+ */
 import { TriangleAlertIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 

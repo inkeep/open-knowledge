@@ -1,3 +1,21 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleInstalledAgentsRoute`
+ * `handleInstalledAgentsRoute`.
+ *
+ * The route gates with `checkLocalOpSecurity` (loopback + DNS-rebinding) and
+ * forwards to `handleInstalledAgents` (the underlying probe + 405-on-non-GET
+ * surface in `handoff-api.ts`).
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET /api/installed-agents`:
+ *   - happy path: status 200, `Content-Type: application/json`, body is a
+ *     flat boolean record (`{claude, codex, cursor}`) — no `ok: true`
+ *     discriminator. (Pre-existing wire shape; preserved.)
+ *   - method-not-allowed on POST → 405 `urn:ok:error:method-not-allowed`
+ *     with `Allow: GET`.
+ *   - cross-origin (DNS-rebinding) request → 403 problem+json from the
+ *     `/api/*` Origin gate (`urn:ok:error:invalid-origin`).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { InstalledAgentsSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -22,6 +40,7 @@ describe('installed-agents envelope (RFC 9457)', () => {
     const body = await res.json();
     expect(InstalledAgentsSuccessSchema.safeParse(body).success).toBe(true);
     expect((body as Record<string, unknown>).ok).toBeUndefined();
+    // Each known scheme is a boolean.
     for (const scheme of ['claude', 'codex', 'cursor']) {
       expect(typeof (body as Record<string, unknown>)[scheme]).toBe('boolean');
     }

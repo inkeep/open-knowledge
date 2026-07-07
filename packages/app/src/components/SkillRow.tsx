@@ -20,9 +20,20 @@ interface SkillRowProps {
   onDelete: () => void;
   onInstall: () => void;
   onUninstall: () => void;
+  /** True while this row's install POST is in flight. */
   installing: boolean;
 }
 
+/**
+ * One row in the Skills manager list: the skill's name + description, a state
+ * badge (Installed vs Draft), one badge per editor host it's installed into,
+ * and an Install action + an Edit/Delete menu. A skill with no on-disk
+ * `description` (malformed/empty frontmatter) is surfaced with a "needs
+ * description" note — it still lists rather than silently dropping.
+ *
+ * Clicking the row body opens edit; the 3-dot menu carries Edit + Delete; the
+ * Install button projects the skill into the project's target editors.
+ */
 export function SkillRow({
   skill,
   onEdit,
@@ -33,6 +44,10 @@ export function SkillRow({
 }: SkillRowProps) {
   const { t } = useLingui();
   const workspace = useWorkspace();
+  // "Open with AI" (author-with-AI): hand the skill to an installed agent so it
+  // writes/edits it via the open-knowledge-write-skill meta-skill. Reuses the
+  // shared handoff menu (config-gated on installed agents); `null` input
+  // disables its trigger until the workspace is loaded.
   const handoffInput = buildSkillHandoffInput({
     skillName: skill.name,
     scope: skill.scope,

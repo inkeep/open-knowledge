@@ -3,6 +3,10 @@ import { useEffect, useState } from 'react';
 
 export type SyncStatus = 'connecting' | 'connected' | 'synced' | 'disconnected';
 
+/**
+ * Tracks HocuspocusProvider connection + sync state.
+ * Returns a single status value reflecting the current sync lifecycle.
+ */
 export function useSyncStatus(provider: HocuspocusProvider | null): SyncStatus {
   const [status, setStatus] = useState<SyncStatus>('connecting');
 
@@ -12,6 +16,7 @@ export function useSyncStatus(provider: HocuspocusProvider | null): SyncStatus {
       return;
     }
 
+    // Derive initial state from available properties
     const wsStatus = provider.configuration.websocketProvider.status;
     if (provider.isSynced) {
       setStatus('synced');
@@ -25,6 +30,7 @@ export function useSyncStatus(provider: HocuspocusProvider | null): SyncStatus {
 
     const onStatus = ({ status: s }: { status: string }) => {
       if (s === 'connected') {
+        // Connected but not yet synced — will transition to 'synced' on sync event
         setStatus((prev) => (prev === 'synced' ? 'synced' : 'connected'));
       } else if (s === 'disconnected') {
         setStatus('disconnected');

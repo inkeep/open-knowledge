@@ -1,13 +1,91 @@
+/**
+ * 4-stage per-cap sweep runner for the cap-graduation campaign.
+ *
+ * The runner orchestrates the campaign that graduates MAX_POOL, MAX_CACHE,
+ * and ACTIVITY_MOUNT_LIMIT from convention-derived (10/10/3) to empirically
+ * defended values. Per-cap with cap-ordering — sequential MAX_POOL →
+ * MAX_CACHE → ACTIVITY axes with prior-stage winners pinned, plus a final
+ * boundary-class probe stage to verify silent-skip patterns don't recur at
+ * deliberately-misaligned cap-vectors. Cheaper than a 3-D Cartesian sweep
+ * (22 vs 108 cells/fixture) while preserving correctness coverage via the
+ * boundary probes.
+ *
+ * Design architecture:
+ *
+ *   1. **The runner does not run cells itself.** It takes a `runCell`
+ *      injection — Playwright + CDP + measureCell in production, a
+ *      synthetic stand-in in unit tests. The runner owns stage ordering,
+ *      cell construction, checkpointing, error containment, and
+ *      aggregation. Decoupling cell mechanics from orchestration is what
+ *      lets the runner be unit-testable without a live dev server.
+ *
+ *   2. **Each stage independently checkpoints via `withCheckpoint`.** A
+ *      mid-sweep crash at hour 14 of 16 resumes from the last completed
+ *      cell, NOT from input zero. Stages are sequential (winners pin
+ *      forward) so each stage's checkpoint is its own file — Stage 2
+ *      can't begin until Stage 1's winner is known.
+ *
+ *   3. **Per-cell errors do not abort the sweep.** A throwing `runCell`
+ *      gets wrapped into a synthesized FAIL cell with `errors[]`
+ *      populated; the campaign continues. The MOUNT_STALLED_THRESHOLD_MS
+ *      timeout is implemented as an AbortSignal passed to `runCell` —
+ *      production cells listen to it via CDP; unit-test cells can
+ *      simulate by checking `signal.aborted`. If the signal fires before
+ *      `runCell` resolves, the cell is recorded as FAIL: stuck-mount.
+ *
+ *   4. **The baseline cell is per-fixture and MEDIUM-cap.** A MAX_POOL=14
+ *      MAX_CACHE=14 ACTIVITY=3 cell on the canonical 16 GB+ MacBook host
+ *      measures the architectural floor without confounding from
+ *      memory-pressure-induced latency that a higher cap regime would
+ *      trip. Downstream cells are tagged `arch-bounded` (matching or
+ *      better than floor) vs `cap-bounded` (worse than floor by more
+ *      than tolerance) against this measurement.
+ *
+ *   5. **Aggregation is parallel-N-ready from day one.** `aggregateCampaign`
+ *      accepts `SweepCellResult[]` from any number of producing
+ *      machines — v1 ships N=1 but the contract doesn't constrain that.
+ *      Future cap-tuning campaigns can shard cells across machines and
+ *      feed them through the same aggregator.
+ *
+ * Verdict criteria:
+ *
+ *   - UX axes (latency p95): cold-mount, warm-reopen, tab-switch warm-flip
+ *     (paint-only), tab-switch hidden→visible (re-mount; Electron-stack
+ *     physics ceiling).
+ *
+ *   - Jank rate as the 5th UX axis (per-frame, percent).
+ *
+ *   - Memory-ceiling axis: renderer RSS + macOS vm_pressure; cell hits
+ *     ceiling when either trips.
+ *
+ *   - Server-amplification axis: Hocuspocus process.memoryUsage(); scales
+ *     with MAX_POOL and is invisible to the renderer.
+ *
+ *   - Cell classification: CHAMPION (all 5 UX Excellent + memory PASS +
+ *     server PASS) → WIN (Good + ≥1 Excellent + memory/server PASS-or-WARN)
+ *     → PASS (all Acceptable + memory/server PASS-or-WARN) → FAIL (any
+ *     UX axis Poor OR memory FAIL OR server FAIL).
+ */
+
 import type { CapRegime, WorkloadFixtureRef } from '../fixtures/cache-regime-rotation/types';
 import { findKnee } from './kneedle';
 import { withCheckpoint } from './with-checkpoint';
 
+// ─────────────────────────────────────────────────────────────────────────
+// Public types
+// ─────────────────────────────────────────────────────────────────────────
+
+// `CapRegime` and `WorkloadFixtureRef` are re-exported from the canonical
+// types module so both the runner (orchestration) and the cell-measurement
+// library (instrumentation) share a single source of truth. Adding new
+// coupled caps lands in one place.
 export type { CapRegime, WorkloadFixtureRef };
 
 export interface HostClassFingerprint {
   readonly cpuModel: string;
   readonly totalRamGb: number;
   readonly osVersion: string;
+  /** Canonical short identifier (e.g. "16gb-macbook-m1"). */
   readonly identifier: string;
 }
 
@@ -97,6 +175,12 @@ export interface CampaignVerdict {
   readonly archFloors: ReadonlyMap<WorkloadFixtureRef, BaselineCellResult>;
   readonly winnersPerFixture: ReadonlyMap<WorkloadFixtureRef, CapRegime>;
   readonly verdictPerConstantMd: string;
+  /**
+   * Total count of cells with `errors[].length > 0` — surfaced so an
+   * engineer reviewing the verdict can spot infrastructure flake (e.g.
+   * Playwright cell timeouts contaminating measurement). Error cells are
+   * excluded from kneedle winner detection so they don't bias the knee.
+   */
   readonly erroredCellCount: number;
 }
 
@@ -121,9 +205,23 @@ export interface VerdictCriteria {
     readonly serverMemWarnMb: number;
     readonly serverMemBudgetMb: number;
   };
+  /**
+   * Arch-bounded tolerance: a cell within this multiplier of the per-axis
+   * floor counts as "matching or exceeding" the floor (arch-bounded).
+   * Default 1.10 — 10% tolerance accommodates replication noise without
+   * masking real cap-induced regressions.
+   */
   readonly archBoundedTolerance: number;
 }
 
+/**
+ * Default verdict criteria for the canonical 16 GB+ MacBook host class.
+ * Thresholds anchor in convergent HCI literature (Nielsen / Doherty /
+ * Card+Moran+Newell) and Linear's published numbers as the architectural
+ * peer. Tab-switch is split into two paths per Electron-stack physics —
+ * warm-flip (paint-only, no DOM rebuild) and Activity hidden→visible
+ * (re-mount; bound by Electron compositor cost).
+ */
 export const DEFAULT_VERDICT_CRITERIA_16GB_MACBOOK: VerdictCriteria = {
   ux: {
     coldMountMs: { excellent: 500, good: 1000, acceptable: 2500 },
@@ -144,16 +242,35 @@ export const DEFAULT_VERDICT_CRITERIA_16GB_MACBOOK: VerdictCriteria = {
   archBoundedTolerance: 1.1,
 };
 
+/** Stage 1 MAX_POOL axis. */
 export const CAP_AXIS_MAX_POOL = [5, 10, 14, 20, 30, 50] as const;
+/** Stage 2 MAX_CACHE axis. */
 export const CAP_AXIS_MAX_CACHE = [5, 10, 14, 20, 30, 50] as const;
+/** Stage 3 ACTIVITY_MOUNT_LIMIT axis. Floor=1 safe. */
 export const CAP_AXIS_ACTIVITY = [1, 3, 5, 8] as const;
 
+/**
+ * MEDIUM cap-regime baseline cell — measures architectural floor without
+ * memory-pressure confounding. NOT the highest cap; the highest cap is
+ * most likely to TRIP the composite memory-ceiling signal, contaminating
+ * the floor measurement.
+ */
 export const BASELINE_CAP_REGIME: CapRegime = {
   maxPool: 14,
   maxCache: 14,
   activityMountLimit: 3,
 };
 
+/**
+ * Stage 4 boundary-class probes — deliberately-misaligned cap-vectors
+ * that exercise the silent-skip failure mode:
+ *   - MAX_POOL > MAX_CACHE: pool-warm docs miss V2 cache, pay editor
+ *     reconstruction cost (loss of cache layer).
+ *   - MAX_CACHE > MAX_POOL: orphan cache hits (cached editor with no
+ *     warm provider; reconstruction cost masked at the cache layer).
+ *   - ACTIVITY > MAX_CACHE: Activity-mounted editors without cache
+ *     backing (V2 cache evicts before Activity demotion completes).
+ */
 export const BOUNDARY_PROBES: ReadonlyArray<CapRegime> = [
   { maxPool: 30, maxCache: 10, activityMountLimit: 3 },
   { maxPool: 50, maxCache: 5, activityMountLimit: 3 },
@@ -163,8 +280,22 @@ export const BOUNDARY_PROBES: ReadonlyArray<CapRegime> = [
   { maxPool: 14, maxCache: 3, activityMountLimit: 8 },
 ];
 
+/** Default mount-stalled abort threshold (ms). */
 export const DEFAULT_MOUNT_STALLED_MS = 30_000;
 
+/**
+ * Cell-execution callback. The runner passes a `SweepCellInput` and an
+ * AbortSignal that fires when the mount-stalled threshold elapses. The
+ * implementation drives the cell (Playwright + CDP + measureCell in
+ * production; synthetic in unit tests) and returns a complete
+ * `SweepCellResult` including replication CI.
+ *
+ * The runner does NOT throw on per-cell errors; it expects `runCell` to
+ * either resolve with a FAIL-classified result or to reject — both
+ * paths produce a recorded FAIL cell with `errors[]` populated. The
+ * AbortSignal is informational; a production implementation should
+ * cooperate with it and reject promptly when it fires.
+ */
 export type RunCellFn = (input: SweepCellInput, signal: AbortSignal) => Promise<SweepCellResult>;
 
 export interface RunCampaignOptions {
@@ -172,10 +303,19 @@ export interface RunCampaignOptions {
   readonly runCell: RunCellFn;
   readonly hostClass: HostClassFingerprint;
   readonly criteria?: VerdictCriteria;
+  /**
+   * Optional checkpoint directory. If provided, each stage's results are
+   * persisted to `<dir>/sweep-cache-regime.<stage>-<fixture>.checkpoint.json`
+   * so a mid-campaign crash resumes from the last completed cell.
+   */
   readonly checkpointDir?: string;
   readonly mountStalledThresholdMs?: number;
 }
 
+/**
+ * Run the full cap-graduation campaign: baseline + Stage 1 + Stage 2 +
+ * Stage 3 + Stage 4 per fixture, then aggregate to a single CampaignVerdict.
+ */
 export async function runCapGraduationCampaign(
   options: RunCampaignOptions,
 ): Promise<CampaignVerdict> {
@@ -200,6 +340,15 @@ export async function runCapGraduationCampaign(
       `baseline-${fixture.ref}`,
     );
     const baselineCell = baselineCells[0] as SweepCellResult;
+    // A baseline cell with errors produces an all-zero measurement floor via
+    // makeEmptyMeasurement(). Pinning that floor as the architectural
+    // reference would tag every subsequent stage cell `cap-bounded` against
+    // a zeroed baseline — silently corrupting CampaignVerdict.archFloors so
+    // the verdict markdown reports every cell cap-bounded even when the
+    // configuration is genuinely close to the architectural floor.
+    // Throw loud with the underlying error so the engineer can re-run the
+    // baseline cell deterministically before the multi-hour stage 1-4
+    // sweeps consume CI time.
     if (baselineCell.errors.length > 0) {
       const firstError = baselineCell.errors[0] as CellError;
       throw new Error(
@@ -296,6 +445,12 @@ export async function runCapGraduationCampaign(
   return aggregateCampaign(allCells, baselines);
 }
 
+/**
+ * Aggregate cell results from N machines into a single campaign verdict.
+ * v1 ships with N=1; the contract accepts cells from any number of
+ * machines so future cap-tuning campaigns can shard without re-designing
+ * the aggregator.
+ */
 export function aggregateCampaign(
   cellResults: ReadonlyArray<SweepCellResult>,
   baselines: ReadonlyMap<WorkloadFixtureRef, BaselineCellResult>,
@@ -344,6 +499,10 @@ export function aggregateCampaign(
   const confidence = computeCrossFixtureConfidence(winners);
   const winning = computeFinalCapRegime(winners);
 
+  // Errored-cell count: non-baseline cells with errors[].length>0. Surfacing
+  // this in the verdict lets reviewers spot infrastructure flake when an
+  // unexpectedly high fraction of cells failed (kneedle already excludes
+  // them so the cap-vector itself isn't biased).
   const erroredCellCount = cellResults.filter(
     (c) => !c.cellInput.isBaseline && c.errors.length > 0,
   ).length;
@@ -368,6 +527,11 @@ export function aggregateCampaign(
   };
 }
 
+/**
+ * Classify one cell's measurement against the verdict criteria + a
+ * per-fixture architectural baseline. Exported so the production runCell
+ * can compute the verdict in the same place every consumer does.
+ */
 export function classifyCellVerdict(
   measurement: VerdictMeasurement,
   baseline: BaselineCellResult | undefined,
@@ -428,6 +592,10 @@ export function classifyCellVerdict(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Stage orchestration — internal helpers
+// ─────────────────────────────────────────────────────────────────────────
+
 async function runStageWithCheckpoint(
   inputs: ReadonlyArray<SweepCellInput>,
   options: RunCampaignOptions,
@@ -479,8 +647,19 @@ async function executeCell(
   const startMs = performance.now();
   try {
     const result = await runCell(input, controller.signal);
+    // Stuck-mount detection cannot rely on `runCell` throwing. Production
+    // runCell implementations may respond to abort with an early
+    // `if (signal.aborted) return;` (returning a partial-data result)
+    // rather than a throw. If the abort fired while runCell was running,
+    // the partial result cannot be trusted as a measurement — downgrade
+    // to a stuck-mount FAIL so the campaign verdict isn't biased by
+    // intermittently-stalling cap regimes.
     if (timeoutFired || controller.signal.aborted) {
       const durationMs = performance.now() - startMs;
+      // Preserve the actual replication sample count from the resolved
+      // result so a multi-hour-sweep engineer can distinguish "timed out
+      // at replication 8 of 10" from "timed out before any sample landed"
+      // — they imply different cap behavior (long-tail vs immediate-fail).
       return makeFailCell(
         input,
         baseline,
@@ -500,6 +679,12 @@ async function executeCell(
     const durationMs = performance.now() - startMs;
     const underlyingMessage = err instanceof Error ? err.message : String(err);
     if (timeoutFired || controller.signal.aborted) {
+      // Preserve the original error message — distinguishes "hung
+      // indefinitely" (canonical stuck-mount) from "threw after timeout"
+      // (the abort fired AND runCell crashed for an independent reason
+      // like Playwright disconnect or CDP error). During multi-hour
+      // sweeps, conflating these two failure modes sends the engineer
+      // down the wrong debug path.
       return makeFailCell(input, baseline, criteria, 'stuck-mount', durationMs, {
         kind: 'stuck-mount',
         message: `cell exceeded mount-stalled threshold (${mountStalledThresholdMs}ms); runCell then threw: ${underlyingMessage}`,
@@ -523,6 +708,9 @@ function makeFailCell(
   _reason: 'stuck-mount' | 'thrown',
   durationMs: number,
   error: CellError,
+  // Optional — passed when downgrading a resolved-but-aborted result so the
+  // diagnostic preserves "stuck at replication N of M" context. Defaults to
+  // 0 for the thrown branch where runCell never returned a sample count.
   replicationSampleCount: number = 0,
 ): SweepCellResult {
   const measurement = makeEmptyMeasurement();
@@ -586,6 +774,10 @@ function toBaselineFloor(cell: SweepCellResult, host: HostClassFingerprint): Bas
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Verdict classification helpers
+// ─────────────────────────────────────────────────────────────────────────
+
 type AxisCriteria = { excellent: number; good: number; acceptable: number };
 
 function classifyLatencyAxis(value: number, criteria: AxisCriteria): UxAxisClass {
@@ -617,6 +809,9 @@ function combineClassification(
   if (memory === 'FAIL' || server === 'FAIL') return 'FAIL';
   if (values.includes('Poor')) return 'FAIL';
 
+  // After the early returns above, memory and server are narrowed to
+  // 'PASS' | 'WARN'; the remaining classification keys off UX axes alone
+  // (plus the PASS-required precondition for CHAMPION).
   const allExcellent = values.every((v) => v === 'Excellent');
   if (allExcellent && memory === 'PASS' && server === 'PASS') return 'CHAMPION';
 
@@ -632,6 +827,8 @@ function tagAgainstBaseline(
   baseline: BaselineCellResult,
   tolerance: number,
 ): 'arch-bounded' | 'cap-bounded' {
+  // For latency: cell-bounded if any axis is meaningfully WORSE (higher)
+  // than the baseline floor. For jank: same logic, rate is "lower better".
   const checks: Array<{ cell: number; floor: number }> = [
     { cell: measurement.coldMountP95Ms, floor: baseline.architecturalFloor.coldMountP95Ms },
     { cell: measurement.warmReopenP95Ms, floor: baseline.architecturalFloor.warmReopenP95Ms },
@@ -646,12 +843,31 @@ function tagAgainstBaseline(
     { cell: measurement.perFrameJankRate, floor: baseline.architecturalFloor.jankRatePct },
   ];
   for (const { cell, floor } of checks) {
+    // A zero floor means the baseline didn't observe that axis (synthetic
+    // FAIL cell, etc.); skip — can't tell if cap is the limit.
     if (floor <= 0) continue;
     if (cell > floor * tolerance) return 'cap-bounded';
   }
   return 'arch-bounded';
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Winner detection + cross-fixture aggregation
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Detect the per-stage winning cap value via Kneedle. Filters out cells
+ * that recorded any error so all-zero measurements from synthesized FAIL
+ * cells don't contaminate the curve — a flaky Playwright cell at MAX_POOL=14
+ * and a real memory-ceiling FAIL at MAX_POOL=50 would otherwise both look
+ * like (x, 0) points and bias the knee toward higher cap values.
+ *
+ * Throws when no error-free cells remain. Returning 0 in that case
+ * propagates a value that isn't in any cap axis to downstream stages
+ * (Stage 2 pinned to MAX_POOL=0 etc.) and produces pathological verdicts
+ * like `{maxPool: 0, maxCache: 5, ...}`. Throwing lets the campaign
+ * caller decide whether to abort or retry.
+ */
 function findStageWinner(
   cells: ReadonlyArray<SweepCellResult>,
   xOf: (c: SweepCellResult) => number,
@@ -666,13 +882,27 @@ function findStageWinner(
   }
   const curve = validCells.map((c) => ({ x: xOf(c), y: yOf(c) }));
   curve.sort((a, b) => a.x - b.x);
+  // Kneedle's degenerate short-circuit (length<3) returns the first sorted
+  // point's x — i.e., the smallest cap value — regardless of which cell
+  // has better y. With ≥4 errored cells in a 6-cell stage, that produces
+  // a winner determined by sort order rather than measurement and pins
+  // a non-empirical cap into downstream stages. Below the kneedle
+  // threshold we instead select the point with the best y directly —
+  // a transparent, measurement-driven fallback.
   if (curve.length < 3) {
+    // validCells.length >= 1 was asserted above; sort() preserves the array
+    // identity, so curve[0] is defined. The reassignment in the loop accepts
+    // any candidate with strictly better (lower) y, so the initial seed only
+    // determines the tiebreak when all y values are equal.
     const seed = curve[0];
     if (!seed) {
+      // Unreachable; satisfies the lint without a non-null assertion.
       throw new Error('findStageWinner: unexpected empty curve after non-empty filter');
     }
     let best = seed;
     for (const p of curve) {
+      // Decreasing curve: smaller y is better; on tie, prefer smaller x
+      // (consistent with the conservative-cap default).
       if (p.y < best.y || (p.y === best.y && p.x < best.x)) best = p;
     }
     return best.x;
@@ -697,6 +927,9 @@ function computeCrossFixtureConfidence(
     activityVals.every((v) => v === activityVals[0]);
   if (allEqual) return 'HIGH';
 
+  // Within ±1 axis-step in CAP_AXIS_MAX_POOL/CACHE means winners differ by
+  // at most one position in the axis grid. For MAX_POOL/MAX_CACHE the
+  // largest 1-step gap is 50 → 30 (gap 20). For ACTIVITY it's 5 → 8 (gap 3).
   const adjacentInPool = isAdjacentInAxis(poolVals, CAP_AXIS_MAX_POOL);
   const adjacentInCache = isAdjacentInAxis(cacheVals, CAP_AXIS_MAX_CACHE);
   const adjacentInActivity = isAdjacentInAxis(activityVals, CAP_AXIS_ACTIVITY);
@@ -730,6 +963,9 @@ function medianInt(values: ReadonlyArray<number>): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   if (sorted.length % 2 === 1) return sorted[mid] as number;
+  // Even count: pick the lower of the two middles for cap values (caps
+  // are integers; we don't want a 14.5 cap regime). Lower bias is the
+  // conservative choice for a memory-bound system.
   return sorted[mid - 1] as number;
 }
 

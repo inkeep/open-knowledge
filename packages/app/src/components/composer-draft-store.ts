@@ -1,5 +1,31 @@
+/**
+ * Shared, persisted draft state for the unified "Ask AI" composer.
+ *
+ * One module-level store (the same external-store pattern as
+ * `selection-context.ts`) so the typed brief survives the composer mounting and
+ * unmounting as the user moves between placements — the bottom docked field over
+ * an open doc and the create/empty-screen hero. Because the draft lives here and
+ * not in component-local `useState`, a brief typed in the bottom composer is the
+ * same brief the create screen shows on a new tab, and vice versa. The draft is
+ * persisted to localStorage so it also survives reload.
+ *
+ * The store carries the editor's ProseMirror document JSON (TipTap
+ * `editor.getJSON()`), NOT a flattened instruction string. Atomic `@`-mention
+ * chips are real nodes in that JSON, so seeding the other placement from the doc
+ * restores them as chips — a flattened `@path` string would re-seed as literal
+ * text the `@`-typeahead never re-parses. The other composer seeds from this doc
+ * on mount (`editor.commands.setContent(doc)`) and writes the doc back on every
+ * edit. (Dispatch still flattens the doc to `@path` prose via
+ * `serializeComposerContent`; only the SHARED unit is the doc.) The selected
+ * agent lives in the sibling `unified-agent-store`; `dismissed` is the bottom
+ * field's collapse latch, shared so a reopen survives navigation too.
+ */
+
 import type { JSONContent } from '@tiptap/core';
 
+// v2: the stored unit changed from a plain instruction string to the editor's
+// document JSON. Bumping the key makes any stale v1 plain-text draft simply
+// ignored — drafts are ephemeral, so no migration is needed.
 const DRAFT_STORAGE_KEY = 'ok-ask-ai-draft-v2';
 
 interface ComposerDraftState {
@@ -13,6 +39,11 @@ interface ComposerDraftState {
 
 const EMPTY: ComposerDraftState = { doc: null, dismissed: false };
 
+/**
+ * Resolve a usable Storage. Mirrors the other client-only stores: guarded for
+ * SSR + privacy-mode throws. No injected seam here — the store is exercised via
+ * its public read/write API in the DOM tests.
+ */
 function getStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -47,9 +78,13 @@ function load(): ComposerDraftState {
     const raw = storage.getItem(DRAFT_STORAGE_KEY);
     if (!raw) return EMPTY;
     const parsed = JSON.parse(raw) as unknown;
+    // Guard the shape: a non-object (or an array) is not a document — fall back
+    // to empty rather than feed garbage into `setContent` on the next seed.
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return EMPTY;
     return { doc: parsed as JSONContent, dismissed: false };
   } catch (err) {
+    // Corrupt JSON / availability — ignore the stale draft, but log so a
+    // silently-dropped draft isn't invisible.
     console.warn('failed to parse stored draft — clearing', err);
     return EMPTY;
   }
@@ -66,7 +101,9 @@ function persistDoc(doc: JSONContent | null): void {
   try {
     if (doc && !docIsEmpty(doc)) storage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(doc));
     else storage.removeItem(DRAFT_STORAGE_KEY);
-  } catch {}
+  } catch {
+    // quota / availability — in-memory state is still the source of truth.
+  }
 }
 
 function notify(): void {
@@ -88,6 +125,7 @@ export function setComposerDraftDoc(doc: JSONContent | null): void {
   notify();
 }
 
+/** Set the bottom field's collapse latch. */
 export function setComposerDismissed(dismissed: boolean): void {
   const current = ensureLoaded();
   if (current.dismissed === dismissed) return;
@@ -95,6 +133,7 @@ export function setComposerDismissed(dismissed: boolean): void {
   notify();
 }
 
+/** Clear the draft document (after a successful dispatch). Leaves `dismissed`. */
 export function clearComposerDraft(): void {
   setComposerDraftDoc(null);
 }

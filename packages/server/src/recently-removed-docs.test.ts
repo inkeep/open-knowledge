@@ -36,6 +36,7 @@ describe('RecentlyRemovedDocs — basic shape', () => {
     expect(cache.has('a')).toBe(true);
     expect(cache.has('b')).toBe(true);
     cache.setRenamed('c', 'C');
+    // 'a' must be the LRU since has() did not promote it
     expect(cache.has('a')).toBe(false);
     expect(cache.has('b')).toBe(true);
     expect(cache.has('c')).toBe(true);
@@ -69,6 +70,7 @@ describe('RecentlyRemovedDocs — LRU promotion', () => {
     cache.setRenamed('a', 'A');
     cache.setRenamed('b', 'B');
     cache.setRenamed('c', 'C');
+    // Touch 'a' so 'b' becomes the LRU.
     expect(cache.get('a')?.kind).toBe('renamed');
     cache.setRenamed('d', 'D');
     expect(cache.has('b')).toBe(false);
@@ -94,6 +96,7 @@ describe('RecentlyRemovedDocs — LRU promotion', () => {
     cache.setRenamed('a', 'A');
     cache.setRenamed('b', 'B');
     cache.setRenamed('c', 'C');
+    // Read 'a' three times; should still only count as the same MRU position.
     cache.get('a');
     cache.get('a');
     cache.get('a');
@@ -175,6 +178,7 @@ describe('RecentlyRemovedDocs — boundary capacities', () => {
 
   test('default capacity is 10000 when not specified', () => {
     const cache = new RecentlyRemovedDocs();
+    // Add a small number well under the cap to verify no immediate eviction.
     for (let i = 0; i < 50; i++) cache.setRenamed(`k${i}`, `v${i}`);
     expect(cache.size).toBe(50);
   });
@@ -215,6 +219,9 @@ describe('RecentlyRemovedDocs — addedAt monotonicity', () => {
 
 describe('RecentlyRemovedDocs — chain-walk-friendly read pattern', () => {
   test('multiple gets across a synthetic chain do not perturb the cache contract', () => {
+    // Auth extension walks A -> B -> C; each hop is a get(). The cache's
+    // job is to return correct entries; promotion is a side-effect that's
+    // safe because chain-walked names are by definition still relevant.
     const cache = new RecentlyRemovedDocs(5);
     cache.setRenamed('A', 'B');
     cache.setRenamed('B', 'C');
@@ -227,6 +234,7 @@ describe('RecentlyRemovedDocs — chain-walk-friendly read pattern', () => {
     const z = cache.get('Z');
     expect(z?.kind).toBe('deleted');
 
+    // Subsequent walk returns the same entries.
     const a2 = cache.get('A');
     const b2 = cache.get('B');
     expect(a2).toEqual(a);
@@ -239,6 +247,8 @@ describe('RecentlyRemovedDocs — peek (non-promoting read)', () => {
     const cache = new RecentlyRemovedDocs(2);
     cache.setRenamed('A', 'A2');
     cache.setDeleted('B');
+    // A is currently oldest. peek(A) must NOT promote it; if peek
+    // promoted, the next setDeleted would evict B instead of A.
     const peeked = cache.peek('A');
     expect(peeked).toMatchObject({ kind: 'renamed', newDocName: 'A2' });
     cache.setDeleted('C');

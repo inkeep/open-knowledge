@@ -77,6 +77,8 @@ describe('selectedIdsOrdered', () => {
   test('projects selection back into array preserving detection order', () => {
     const sel = new Set<OkMcpWiringEditorId>(['cursor', 'claude']);
     const out = selectedIdsOrdered(sel, sampleDetection);
+    // Detection order is [claude, claude-desktop, cursor, codex].
+    // Projection keeps that order, dropping unselected entries.
     expect(out).toEqual(['claude', 'cursor']);
   });
 
@@ -136,11 +138,19 @@ describe('McpConsentDialog module shape', () => {
     expect(typeof computeInitialSelection).toBe('function');
     expect(typeof toggleSelectedId).toBe('function');
     expect(typeof selectedIdsOrdered).toBe('function');
+    // ToastImpl is a type; no runtime export — this assertion just ensures
+    // the import resolves at type-check time. The shape is exercised by the
+    // toast injection contract below.
     const toastShape: ToastImpl = { error: () => {} };
     expect(typeof toastShape.error).toBe('function');
   });
 
   test('Pass 0 Critical #1: ToastImpl interface accepts a sonner-shaped error fn', () => {
+    // The dialog's `toast` prop is typed `ToastImpl` so the production
+    // `defaultToast` (which wraps `sonnerToast.error`) can be substituted in
+    // tests by any object with `error(msg: string): void`. This contract test
+    // pins the surface so a future refactor that adds methods (warning,
+    // success) signals the change explicitly.
     const recorded: string[] = [];
     const toast: ToastImpl = {
       error: (msg) => {
@@ -152,6 +162,8 @@ describe('McpConsentDialog module shape', () => {
   });
 
   test('mock module-level usage check: toast.error is invocable from a Set-like context', () => {
+    // Smoke that the ToastImpl shape composes through `mock()` for callers
+    // that want to inject a spy.
     const spy = mock((_msg: string) => {});
     const toast: ToastImpl = { error: spy };
     toast.error('hello');

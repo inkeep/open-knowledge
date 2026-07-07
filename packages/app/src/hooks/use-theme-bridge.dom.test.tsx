@@ -1,3 +1,28 @@
+/**
+ * RTL mount tests for the useThemeBridge hook — `.finally(...)`
+ * chain ordering and cleanup-on-unmount. Exercises the `render` API
+ * surface (via `<HookProbe>` wrapper) under the jsdom substrate
+ * (precedent #43); invocation via `bun run test:dom`. Pairs with the
+ * verbatim user-intent contract documented in precedent #40(a).
+ *
+ * # Root cause of the prior Linux-CI failure (resolved)
+ *
+ * Bun's `mock.module(...)` patches a module in-place for the lifetime of
+ * the `bun test` invocation — the mock persists across sibling test files
+ * (oven-sh/bun#12823). Sibling `src/lib/config-provider.dom.test.tsx`
+ * declares `mock.module('@/hooks/use-theme-bridge', () => ({
+ * useThemeBridge: () => {} }))` at module level. On Linux CI, filesystem
+ * iteration ordered `src/lib/...` before `src/hooks/...`, so by the time
+ * this file ran the hook had already been replaced with a no-op; the
+ * `<HookProbe>` rendered, the (no-op) effect "fired", but nothing pushed
+ * onto `setThemeSourceCalls` — exactly the `Received: 0` mode. On macOS
+ * inode iteration happened to order this file before `config-provider`,
+ * so the leak couldn't surface locally.
+ *
+ * The fix is one line in `scripts/run-test-dom.sh`: pass `--isolate` so
+ * each test file gets a fresh global object and `mock.module` patches
+ * don't bleed across files. Documented in the script's preamble.
+ */
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
@@ -44,6 +69,11 @@ function makeRejectingBridge(rejectionError: Error): StubBridge {
   };
 }
 
+// Probe component for hook testing. Renders a real DOM node so React's
+// commit phase has something to attach against — null-returning probes
+// have shown commit-scheduler divergence on Bun's Linux test runner that
+// suppressed the hook's useEffect from firing observably. The probe div
+// also gives `cleanup()` an unambiguous unmount target.
 function HookProbe({
   bridge,
   themeValue,
@@ -185,6 +215,9 @@ describe('useThemeBridge (Tier-3 mount)', () => {
       <HookProbe bridge={stubBridge as unknown as OkDesktopBridge} themeValue="light" />,
     );
 
+    // Unmount IMMEDIATELY (before effect fires) — the cancelled flag in
+    // the cleanup must suppress the still-pending .finally's
+    // signalThemeApplied call.
     unmount();
     await act(async () => {
       await Promise.resolve();
@@ -216,6 +249,7 @@ describe('useThemeBridge (Tier-3 mount)', () => {
 
     rerender(<HookProbe bridge={stubBridge as unknown as OkDesktopBridge} themeValue="system" />);
 
+    // Idempotency: same-value rerender does NOT re-fire setThemeSource.
     await act(async () => {
       await Promise.resolve();
     });
@@ -225,6 +259,14 @@ describe('useThemeBridge (Tier-3 mount)', () => {
   });
 
   test('rerender with a changed themeValue re-fires setThemeSource and releases gate', async () => {
+    // Tests the deps array + cancellation flag transition that the
+    // idempotency test alone cannot reach. The hook's useEffect deps are
+    // `[bridge, themeValue]`; when `themeValue` changes from `'system'` to
+    // `'dark'`, the previous effect's cleanup sets its `cancelled = true`
+    // (suppressing the stale .finally signal) AND the new effect fires
+    // setThemeSource('dark') + signalThemeApplied. Without this test, a
+    // dropped dep or a broken cancellation flag would compile and pass
+    // every other test in this file.
     const stubBridge = makeStubBridge();
     const { rerender } = render(
       <HookProbe bridge={stubBridge as unknown as OkDesktopBridge} themeValue="system" />,
@@ -252,10 +294,18 @@ describe('useThemeBridge (Tier-3 mount)', () => {
   });
 
   test('rejection path: signalThemeApplied still fires via .finally so the show-gate releases', async () => {
+    // The gate-release contract: when the
+    // IPC roundtrip rejects (channel teardown race, bootstrap ordering
+    // regression), `.finally(...)` MUST still fire signalThemeApplied or
+    // the cold-launch gate stalls blank for the full 5 s safety timeout.
+    // The structured warn in `.catch(...)` keeps the failure observable.
     const rejectionError = new Error('ipc-teardown: setThemeSource bridge unreachable');
     const stubBridge = makeRejectingBridge(rejectionError);
     render(<HookProbe bridge={stubBridge as unknown as OkDesktopBridge} themeValue="system" />);
 
+    // Gate-release contract: signal fires even on the rejection path.
+    // waitFor polls the whole rejection → .catch → .finally chain until
+    // signalThemeApplied lands.
     await waitFor(
       () => {
         expect(stubBridge.signalThemeAppliedCalls.length).toBe(1);
@@ -267,6 +317,7 @@ describe('useThemeBridge (Tier-3 mount)', () => {
     expect(stubBridge.signalThemeAppliedCalls[0]).toEqual({
       reducedTransparency: false,
     });
+    // Observable-failure contract: structured warn emitted from .catch.
     const sawStructuredWarn = consoleWarnSpy.mock.calls.some((call: unknown[]) => {
       const message = call[0];
       if (typeof message !== 'string') return false;

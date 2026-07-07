@@ -1,9 +1,25 @@
+/**
+ * `macos-codesig` check — only meaningful for packaged `.app` runs.
+ *
+ * Outside an Electron app bundle (CLI, `bun run dev`, `bun run check`), return
+ * `pass` with the dev-mode caveat instead of attempting `codesign --verify`.
+ * Detection: `process.execPath` contains `/Contents/MacOS/`.
+ *
+ * Inside a bundle, verify (1) the bundle path is NOT under
+ * `/private/var/folders/` (translocation indicator — Gatekeeper running the
+ * app from a read-only quarantine copy), AND (2) `codesign --verify` exits 0.
+ *
+ * On non-macOS platforms the check returns `pass` with the skip caveat —
+ * keeps the cross-platform check inventory uniform.
+ */
+
 import { spawnSync } from 'node:child_process';
 import type { CheckDefinition, CheckResult } from './types.ts';
 
 interface MacosCodesigCheckDeps {
   platform?: NodeJS.Platform;
   execPath?: string;
+  /** Override the codesign probe; tests substitute. */
   codesignVerify?: (bundlePath: string) => { ok: boolean; stderr: string };
 }
 

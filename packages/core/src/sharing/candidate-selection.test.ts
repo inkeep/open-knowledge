@@ -43,6 +43,11 @@ interface StubOptions {
   readonly okProjectRoots?: ReadonlySet<string>;
   readonly listRecentThrows?: boolean;
   readonly listGitWorktreesThrows?: boolean;
+  /**
+   * Canonical-path map applied by the `realpath` stub. A path not present
+   * maps to itself (identity). Supply entries to simulate `/var` →
+   * `/private/var` style symlink collapse.
+   */
   readonly realpathByPath?: Record<string, string>;
   readonly realpathThrowsFor?: ReadonlySet<string>;
 }
@@ -126,10 +131,13 @@ describe('selectCandidate', () => {
         ],
       },
       headsByPath: { '/main': head('main') },
+      // The worktree-enum path pre-populates HEAD from `git worktree list`,
+      // so readHeadBranch is not consulted for /wt/feat-bar.
       gitDirKindByPath: {
         '/main': 'directory',
         '/wt/feat-bar': 'linked',
       },
+      // /wt/feat-bar lacks .ok/config.yml — the CLI-managed-worktree consent case.
       okProjectRoots: new Set(['/main']),
     });
     const result = await selectCandidate(PAYLOAD, bridge);
@@ -145,6 +153,7 @@ describe('selectCandidate', () => {
     const main = recent({ path: '/main' });
     const featFoo = recent({ path: '/wt/feat-foo' });
     const bridge = makeBridge({
+      // Share is for feat-baz; neither candidate has feat-baz checked out.
       recents: [main, featFoo],
       headsByPath: {
         '/main': head('main'),
@@ -247,6 +256,7 @@ describe('selectCandidate', () => {
       recents: [main],
       worktreesByAnchor: {
         '/main': [
+          // worktree-enum also lists /main — should NOT produce a duplicate
           worktreeEntry({ path: '/main', branch: 'main' }),
           worktreeEntry({ path: '/wt/feat-bar', branch: 'feat-bar' }),
         ],
@@ -255,6 +265,7 @@ describe('selectCandidate', () => {
       gitDirKindByPath: { '/main': 'directory', '/wt/feat-bar': 'linked' },
       okProjectRoots: new Set(['/main', '/wt/feat-bar']),
     });
+    // Branch-match goes to /wt/feat-bar. No duplicate emission for /main.
     const result = await selectCandidate(PAYLOAD, bridge);
     expect(result.kind).toBe('branch-match-ok');
     if (result.kind === 'branch-match-ok') {
@@ -277,6 +288,7 @@ describe('selectCandidate', () => {
     expect(result.kind).toBe('branch-match-ok');
     if (result.kind === 'branch-match-ok') {
       expect(result.candidate.path).toBe('/main');
+      // Adopted from worktree-enum even though Recents has no notion of locked.
       expect(result.candidate.locked).toBe(true);
     }
   });
@@ -284,6 +296,8 @@ describe('selectCandidate', () => {
   test('multiple branch-match candidates log q1_ambiguous_branch_match (quiet tiebreak)', async () => {
     const a = recent({ path: '/main' });
     const b = recent({ path: '/wt/copy' });
+    // Fixture-induced impossibility — git's rules say at most one worktree per
+    // branch, but the algorithm must still produce a deterministic outcome.
     const bridge = makeBridge({
       recents: [a, b],
       headsByPath: {
@@ -301,6 +315,7 @@ describe('selectCandidate', () => {
     try {
       const result = await selectCandidate(PAYLOAD, bridge);
       expect(result.kind).toBe('branch-match-ok');
+      // Recents tiebreak: /main appears first.
       if (result.kind === 'branch-match-ok') expect(result.candidate.path).toBe('/main');
       expect(
         warnings.some((w) => w.includes('q1_ambiguous_branch_match') && w.includes('chosen=/main')),
@@ -343,6 +358,9 @@ describe('selectCandidate', () => {
     if (result.kind === 'branch-match-non-ok') {
       expect(result.candidate.path).toBe('/wt/cli-managed');
       expect(result.candidate.hasOkConfig).toBe(false);
+      // The candidate's OWN Recents entry is null because the CLI-managed
+      // worktree has never been opened in OK. The anchorRecent surfaces a
+      // meaningful "a worktree of <name>" context line.
       expect(result.candidate.recent).toBeNull();
       expect(result.anchorRecent).not.toBeNull();
       expect(result.anchorRecent?.name).toBe('host-checkout');
@@ -354,6 +372,7 @@ describe('selectCandidate', () => {
     const main = recent({ path: '/main' });
     const bridge = makeBridge({
       recents: [main],
+      // No branch-match, no main checkout (gitDirKind is absent), no linked worktree.
       headsByPath: { '/main': head('main') },
       gitDirKindByPath: { '/main': 'absent' },
       okProjectRoots: new Set(),
@@ -363,8 +382,16 @@ describe('selectCandidate', () => {
   });
 
   test('strict branch-match: unreadable HEAD does NOT compete with a true branch match', async () => {
+    // Multi-candidate scenario where one candidate has an unreadable HEAD
+    // (graceful-fail sentinel: currentBranch=null, headSha=null,
+    // detached=false) and another has a true `feat-bar` match. Strict
+    // matching must exclude the unreadable candidate from the branch-match
+    // partition — otherwise pickByRecency could surface it over the true
+    // match.
     const recent1 = recent({
       path: '/main',
+      // Most recent — would beat /wt/feat on recency if the soft match
+      // semantics returned 'true' for unreadable HEAD.
       lastOpenedAt: '2026-05-20T00:00:00.000Z',
     });
     const recent2 = recent({
@@ -383,11 +410,17 @@ describe('selectCandidate', () => {
     const result = await selectCandidate(PAYLOAD, bridge);
     expect(result.kind).toBe('branch-match-ok');
     if (result.kind === 'branch-match-ok') {
+      // True branch match wins over the unreadable-HEAD candidate even
+      // though the unreadable one is more recent.
       expect(result.candidate.path).toBe('/wt/feat');
     }
   });
 
   test('strict branch-match: detached HEAD does NOT count as a branch match', async () => {
+    // Detached HEAD has `currentBranch: null` but `headSha: <sha>` and
+    // `detached: true`. It must fall through to fallback even with a single
+    // candidate — silent dispatch onto a detached HEAD would surprise the
+    // user.
     const main = recent({ path: '/main' });
     const bridge = makeBridge({
       recents: [main],
@@ -404,6 +437,10 @@ describe('selectCandidate', () => {
   });
 
   test('strict branch-match: empty share-branch with multi-candidate falls through to fallback', async () => {
+    // With MULTIPLE candidates, strict matching applies and an empty
+    // share-branch never strictly matches any candidate — fall through to
+    // fallback (main-checkout) instead of letting an unreadable-HEAD
+    // candidate compete on recency.
     const main = recent({ path: '/main' });
     const wt = recent({ path: '/wt/feat' });
     const bridge = makeBridge({
@@ -424,6 +461,9 @@ describe('selectCandidate', () => {
   });
 
   test('legacy soft-match: single-Recent + empty share-branch silent-dispatches (legacy URL)', async () => {
+    // Single-Recent scenario, empty payload.branch (legacy share URL with
+    // no `?branch=`). Soft-match falls through and the candidate is
+    // selected for silent dispatch.
     const main = recent({ path: '/main' });
     const bridge = makeBridge({
       recents: [main],
@@ -432,6 +472,8 @@ describe('selectCandidate', () => {
       okProjectRoots: new Set(['/main']),
     });
     const result = await selectCandidate({ ...PAYLOAD, branch: '' }, bridge);
+    // Soft-match for the lone candidate — classifyBranchMatch returns
+    // 'true' on empty share-branch, so the single candidate is selected.
     expect(result.kind).toBe('branch-match-ok');
     if (result.kind === 'branch-match-ok') {
       expect(result.candidate.path).toBe('/main');
@@ -439,6 +481,7 @@ describe('selectCandidate', () => {
   });
 
   test('legacy soft-match: single-Recent + unreadable HEAD silent-dispatches', async () => {
+    // Single-Recent scenario, unreadable HEAD — graceful degradation.
     const main = recent({ path: '/main' });
     const bridge = makeBridge({
       recents: [main],
@@ -454,13 +497,19 @@ describe('selectCandidate', () => {
   });
 
   test('prunable worktree-enum entry on the share branch is NOT selected', async () => {
+    // A prunable worktree (stale gitdir pointer, dir still on disk) reports a
+    // matching `branch` via porcelain and would strict-match the share
+    // branch — but git considers it dead, so selecting it fails later in
+    // bridge.open.
     const main = recent({ path: '/main' });
     const bridge = makeBridge({
       recents: [main],
       worktreesByAnchor: {
         '/main': [
           worktreeEntry({ path: '/main', branch: 'main' }),
+          // Prunable AND on the share branch — must be excluded.
           worktreeEntry({ path: '/wt/stale', branch: 'feat-bar', prunable: true }),
+          // Healthy candidate on the share branch — should win.
           worktreeEntry({ path: '/wt/live', branch: 'feat-bar' }),
         ],
       },
@@ -475,11 +524,15 @@ describe('selectCandidate', () => {
     const result = await selectCandidate(PAYLOAD, bridge);
     expect(result.kind).toBe('branch-match-ok');
     if (result.kind === 'branch-match-ok') {
+      // The prunable /wt/stale was excluded; the healthy /wt/live wins.
       expect(result.candidate.path).toBe('/wt/live');
     }
   });
 
   test('prunable is the ONLY branch match → falls through to fallback (not selected)', async () => {
+    // With the prunable entry excluded, no candidate's HEAD matches the
+    // share branch — selection routes to fallback (main checkout) rather
+    // than dispatching onto the dead worktree.
     const main = recent({ path: '/main' });
     const bridge = makeBridge({
       recents: [main],
@@ -502,6 +555,9 @@ describe('selectCandidate', () => {
   });
 
   test('locked (but not prunable) worktree on the share branch is still selected', async () => {
+    // Guard against over-filtering: the prunable skip must NOT catch locked
+    // worktrees. A locked worktree on the share branch remains a first-class
+    // candidate and wins on branch match.
     const main = recent({ path: '/main' });
     const bridge = makeBridge({
       recents: [main],
@@ -524,6 +580,11 @@ describe('selectCandidate', () => {
   });
 
   test('Recents /var path collapses onto worktree-enum /private/var via realpath (one candidate)', async () => {
+    // macOS symlink case: a Recents entry stored as the user opened it
+    // (`/var/folders/.../wt`) and a worktree-enum entry git emits
+    // realpath-collapsed (`/private/var/folders/.../wt`) are the SAME
+    // physical dir. Canonicalizing the Recents path through bridge.realpath
+    // makes them collapse to ONE Candidate.
     const varPath = '/var/folders/abc/wt';
     const privateVarPath = '/private/var/folders/abc/wt';
     const main = recent({ path: varPath });
@@ -531,6 +592,9 @@ describe('selectCandidate', () => {
       recents: [main],
       realpathByPath: { [varPath]: privateVarPath },
       worktreesByAnchor: {
+        // listGitWorktrees is anchored on the RAW Recents path (the anchor is
+        // selected before realpath collapse); git emits the realpath-collapsed
+        // /private/var spelling for the entry itself.
         [varPath]: [worktreeEntry({ path: privateVarPath, branch: 'feat-bar' })],
       },
       headsByPath: { [privateVarPath]: head('feat-bar') },
@@ -550,13 +614,18 @@ describe('selectCandidate', () => {
     }
     expect(result.kind).toBe('branch-match-ok');
     if (result.kind === 'branch-match-ok') {
+      // The single physical dir surfaces once — no spurious second row.
       expect(result.candidate.path).toBe(privateVarPath);
+      // multiCandidate must be false: only one candidate exists after collapse.
       expect(result.multiCandidate).toBe(false);
     }
+    // No ambiguous-branch-match diagnostic — the collapse means a single match.
     expect(warnings.some((w) => w.includes('q1_ambiguous_branch_match'))).toBe(false);
   });
 
   test('tiebreak: identical recencyIndex falls through to path lex (stable)', async () => {
+    // Both candidates from worktree-enum (no Recents recency) with the
+    // same branch match. Sorted by worktreeOrder (b comes before a → /wt/b wins).
     const main = recent({ path: '/main' });
     const bridge = makeBridge({
       recents: [main],
@@ -574,10 +643,12 @@ describe('selectCandidate', () => {
     const result = await selectCandidate(PAYLOAD, bridge);
     expect(result.kind).toBe('branch-match-ok');
     if (result.kind === 'branch-match-ok') {
+      // /wt/b has worktreeOrder=1, /wt/a has worktreeOrder=2 → /wt/b wins.
       expect(result.candidate.path).toBe('/wt/b');
     }
   });
 });
 
+// satisfies-style compile check that the public types are exposed
 const _typeChecks: { c: Candidate; s: CandidateSelection } | null = null;
 void _typeChecks;

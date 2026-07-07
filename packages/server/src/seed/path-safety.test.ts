@@ -67,6 +67,8 @@ describe('seed path-safety — apply rejects path traversal in plan entries', ()
   });
 
   test('rejects symlink-escape: folder entry that resolves outside projectDir via symlink', async () => {
+    // Pre-existing symlink in projectDir pointing outside (simulates an
+    // attacker-controlled repo or volume mount).
     const outsideDir = await mkdtemp(join(tmpdir(), 'seed-outside-'));
     try {
       symlinkSync(outsideDir, join(projectDir, 'brain'));
@@ -100,6 +102,8 @@ describe('seed path-safety — apply rejects path traversal in plan entries', ()
   test('rejects symlink-escape: file entry whose ancestor is a symlink to outside', async () => {
     const outsideDir = await mkdtemp(join(tmpdir(), 'seed-outside-'));
     try {
+      // `escaped` symlinks to an outside dir; a file entry under it must
+      // be rejected even though the leaf doesn't exist yet.
       symlinkSync(outsideDir, join(projectDir, 'escaped'));
 
       const result = await applySeed(
@@ -120,6 +124,7 @@ describe('seed path-safety — apply rejects path traversal in plan entries', ()
       expect(result.applied).toBe(0);
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]?.error.toLowerCase()).toContain('symlink');
+      // File must NOT have been written through the symlink.
       expect(
         await Bun.file(join(outsideDir, 'log.md'))
           .exists()
@@ -144,6 +149,7 @@ describe('seed path-safety — apply rejects path traversal in plan entries', ()
       { projectDir },
     );
 
+    // safe-folder + log.md applied; ../evil rejected.
     expect(result.applied).toBe(2);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.path).toBe('../evil');
@@ -155,6 +161,8 @@ describe('seed path-safety — plan rejects rootDir symlink escape', () => {
 
   beforeEach(async () => {
     projectDir = await mkdtemp(join(tmpdir(), 'seed-plan-pathsafe-'));
+    // planSeed's gate is `.ok/config.yml` — seed both so these symlink-escape
+    // tests reach the rootDir validation rather than tripping on the gate.
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(join(projectDir, '.ok', 'config.yml'), '', 'utf-8');
   });
@@ -177,6 +185,7 @@ describe('seed path-safety — plan rejects rootDir symlink escape', () => {
     const outsideDir = await mkdtemp(join(tmpdir(), 'seed-outside-'));
     try {
       symlinkSync(outsideDir, join(projectDir, 'link'));
+      // `link/sub` doesn't exist yet but `link` does and resolves outside.
       await expect(planSeed({ projectDir, rootDir: 'link/sub' })).rejects.toThrow(SeedRootDirError);
     } finally {
       await rm(outsideDir, { recursive: true, force: true });
@@ -184,10 +193,12 @@ describe('seed path-safety — plan rejects rootDir symlink escape', () => {
   });
 
   test('rootDir following an internal symlink (within projectDir) is allowed', async () => {
+    // Symlink that stays inside projectDir — realpath check should pass.
     const targetDir = join(projectDir, 'real-target');
     mkdirSync(targetDir, { recursive: true });
     symlinkSync(targetDir, join(projectDir, 'inside-link'));
 
+    // Plan should succeed and produce entries scoped under inside-link/.
     const plan = await planSeed({ projectDir, rootDir: 'inside-link' });
     expect(plan.created.length).toBeGreaterThan(0);
     for (const entry of plan.created) {
@@ -196,6 +207,9 @@ describe('seed path-safety — plan rejects rootDir symlink escape', () => {
   });
 
   test('writeFileSync attempts via symlinked rootDir would fail apply too (defense-in-depth)', async () => {
+    // Even if a caller hand-constructs a plan that bypasses planSeed (e.g.
+    // HTTP body containing a hand-crafted plan referencing a known symlink),
+    // applySeed must independently reject it.
     const outsideDir = await mkdtemp(join(tmpdir(), 'seed-outside-'));
     try {
       symlinkSync(outsideDir, join(projectDir, 'evil'));
@@ -212,6 +226,7 @@ describe('seed path-safety — plan rejects rootDir symlink escape', () => {
       expect(result.applied).toBe(0);
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]?.error.toLowerCase()).toContain('symlink');
+      // Confirm nothing landed at the symlink target.
       expect(
         await Bun.file(join(outsideDir, 'log.md'))
           .exists()
@@ -223,8 +238,12 @@ describe('seed path-safety — plan rejects rootDir symlink escape', () => {
   });
 
   test('symlink to a path within projectDir but pointing outside via realpath gets rejected', async () => {
+    // A link where the target string is *relative* and walks out via `..`.
+    // realpath canonicalizes this and the check catches it.
     const outsideDir = await mkdtemp(join(tmpdir(), 'seed-outside-'));
     try {
+      // Use a relative target that references outside via ..
+      // Note: symlink contents are stored verbatim and resolved at access time.
       symlinkSync(outsideDir, join(projectDir, 'rel-evil'));
       writeFileSync(join(outsideDir, 'sentinel.md'), '# pre-existing', 'utf-8');
 

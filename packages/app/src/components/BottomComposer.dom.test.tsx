@@ -1,3 +1,19 @@
+/**
+ * RTL behavior tests for the bottom "Ask AI" composer SHELL.
+ *
+ * The rich `@`-mention input (`ComposerMentionInput`) is mocked with a plain
+ * textarea double that mirrors its imperative handle + `onEmptyChange`/`onSubmit`
+ * contract, so these tests stay focused on the shell's responsibilities: the ⌘L
+ * focus shortcut, the rotating/reduced-motion placeholder, agent-picker +
+ * sticky-default wiring, Claude CLI terminal routing, the pending + clear flow,
+ * and the defensive null-input toast. The real input's mention behavior +
+ * active-editor non-pollution are covered in `ComposerMentionInput.dom.test.tsx`.
+ *
+ * `useHandoffDispatch` / `useInstalledAgents` / `useWorkspace` are mocked (the
+ * established pattern from `OpenInAgentMenu.dom.test.tsx`); a recording double of
+ * `buildComposerHandoffInput` mirrors its workspace-null contract and carries the
+ * instruction + mentions through so we can assert they survive to dispatch.
+ */
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -29,6 +45,9 @@ mock.module('@/components/handoff/OpenInAgentMenuItem', () => ({
   TargetIcon: ({ id }: { id: string }) => <span data-testid={`target-icon-${id}`} />,
 }));
 
+// Passthrough the dropdown primitives (used by the shared AgentSplitButton) so
+// jsdom doesn't fight Radix's portal + modal pointer-events trap; the picker's
+// section gating + click handlers are what's under test, not Radix open/close.
 type MenuChild = {
   children?: ReactNode;
   disabled?: boolean;
@@ -53,9 +72,19 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuSeparator: () => <hr data-testid="menu-separator" />,
 }));
 
+// Inline `@`-mention paths the mock input reports (via getContent + the
+// onMentionsChange callback); the test drives this to exercise top-row dedup
+// against inline mentions. Reset per test.
 let mockInlineMentions: string[] = [];
+// Captures the latest `onMentionsChange` so a test can flip the inline set after
+// mount and re-emit it (the real editor re-emits on every edit).
 let emitMentions: ((mentions: string[]) => void) | null = null;
 
+// Textarea double for the rich input: exposes the same imperative handle the
+// shell drives, and routes Enter -> onSubmit + Escape -> blur. `getContent`
+// returns the typed text as the instruction plus `mockInlineMentions` as the
+// inline `@`-mention set (the inline chips + their on-hover × are exercised
+// against the real editor in ComposerMentionInput.dom.test.tsx).
 mock.module('@/editor/ComposerMentionInput', () => ({
   ComposerMentionInput: ({
     ref,
@@ -73,6 +102,8 @@ mock.module('@/editor/ComposerMentionInput', () => ({
     className?: string;
   }) => {
     const localRef = useRef<HTMLTextAreaElement>(null);
+    // Emit the seeded inline-mention set once on mount, mirroring the real
+    // input's initial-seed emission.
     useEffect(() => {
       emitMentions = onMentionsChange ?? null;
       onMentionsChange?.(mockInlineMentions);
@@ -119,6 +150,10 @@ mock.module('@/lib/use-workspace', () => ({
   useWorkspace: () => ({ contentDir: '/tmp/project', pathSeparator: '/' }),
 }));
 
+// Controllable live-selection signals for the selection-pill tests. The composer
+// reads the active body surface AND the `frontmatter` surface; default both null
+// (no selection) keeps the shell tests pill-free. `usePublishFrontmatterSelection`
+// is a no-op here (the publishing path is covered in use-selection-context tests).
 let liveSelection: unknown = null;
 let liveFrontmatterSelection: unknown = null;
 mock.module('@/hooks/use-selection-context', () => ({
@@ -160,6 +195,9 @@ mock.module('@/components/handoff/useHandoffDispatch', () => ({
     selection?: unknown;
   }) => {
     buildArgs.push(args);
+    // Mirror the real builder: null only when the workspace is unresolved (a
+    // null docName is project scope, not a null trigger). The `builderReturnsNull`
+    // flag drives the defensive toast path deterministically.
     if (builderReturnsNull || !args.workspace) return null;
     return {
       compose: {
@@ -198,6 +236,8 @@ async function renderComposer(
   return render(<BottomComposer docName={docName} surface="wysiwyg" {...extra} />);
 }
 
+// Variant that supplies a docked-terminal launcher so the picker offers the
+// "Claude CLI" option (desktop parity). Records every launched input.
 async function renderComposerWithTerminal(docName = 'notes') {
   const { BottomComposer } = await import('./BottomComposer');
   const { TerminalLaunchProvider } = await import('./handoff/TerminalLaunchContext');
@@ -214,6 +254,8 @@ async function renderComposerWithTerminal(docName = 'notes') {
   );
 }
 
+// Variant whose launcher throws (no terminal session could be opened) — exercises
+// the try/catch guard around launchInTerminal.
 async function renderComposerWithThrowingTerminal(docName = 'notes') {
   const { BottomComposer } = await import('./BottomComposer');
   const { TerminalLaunchProvider } = await import('./handoff/TerminalLaunchContext');
@@ -230,6 +272,9 @@ async function renderComposerWithThrowingTerminal(docName = 'notes') {
   );
 }
 
+// Desktop + a CLI install probe: installs a fake terminal bridge exposing
+// `cliInstalledMap` so the no-pick default resolves to the first-installed CLI.
+// (`terminalLaunch` still comes from the provider; the bridge only feeds the probe.)
 async function renderComposerWithInstalledClis(installed: Record<string, boolean>) {
   (window as { okDesktop?: unknown }).okDesktop = {
     terminal: { cliInstalledMap: async () => installed },
@@ -237,6 +282,7 @@ async function renderComposerWithInstalledClis(installed: Record<string, boolean
   return renderComposerWithTerminal();
 }
 
+// Folder mode: the composer is scoped to a folder (no open doc, no surface).
 async function renderFolderComposer(folderPath = 'specs/foo') {
   const { BottomComposer } = await import('./BottomComposer');
   return render(<BottomComposer folderPath={folderPath} />);
@@ -261,6 +307,7 @@ function dispatchOpenAskAiShortcut() {
   });
 }
 
+/** Point matchMedia at a fixed reduced-motion result; returns a restore fn. */
 function stubReducedMotion(matches: boolean): () => void {
   const original = window.matchMedia;
   const stub = ((query: string) => ({
@@ -299,12 +346,16 @@ beforeEach(() => {
   toastErrors.length = 0;
   try {
     window.localStorage.clear();
-  } catch {}
+  } catch {
+    // localStorage may be unavailable in some sandboxes — sticky tests guard.
+  }
 });
 
 afterEach(() => {
   cleanup();
   consoleErrorSpy.mockRestore();
+  // A desktop-default test may install a fake terminal bridge — clear it so the
+  // web-host tests (which expect no bridge) aren't polluted.
   delete (window as { okDesktop?: unknown }).okDesktop;
 });
 
@@ -323,6 +374,7 @@ describe('BottomComposer (shell behavior)', () => {
     expect(screen.queryByRole('button', { name: 'Ask AI' })).toBeNull();
     expect(screen.getByTestId('bottom-composer').querySelector('kbd')).toBeNull();
     if (DEFAULT_AGENT_NAME) {
+      // The resolved agent name now reads on the segmented send button ("Ask <agent>").
       expect(screen.getByTestId('ask-ai-send').textContent).toContain(DEFAULT_AGENT_NAME);
     }
   });
@@ -338,6 +390,13 @@ describe('BottomComposer (shell behavior)', () => {
   });
 
   test('mounting never steals focus, even under StrictMode effect double-invoke', async () => {
+    // The reopen-focus effect must fire only on a genuine dismissed true -> false
+    // transition, never on mount. React StrictMode double-invokes mount effects
+    // in dev (which the app + e2e run under); a naive "skip the first render" ref
+    // does not survive it — the second invoke steals the caret into the composer,
+    // which on doc open closes an in-flight inline rename input. Rendering under
+    // StrictMode reproduces that double-invoke so the previous-value guard stays
+    // honest.
     const { BottomComposer } = await import('./BottomComposer');
     render(
       <StrictMode>
@@ -350,12 +409,15 @@ describe('BottomComposer (shell behavior)', () => {
   test('⌘L is ignored while a native form field is focused (no caret theft)', async () => {
     await renderComposer();
     const composerInput = getInput();
+    // A real native form field elsewhere in the page (e.g. a rename / search box).
     const nativeField = document.createElement('input');
     document.body.appendChild(nativeField);
     try {
       act(() => nativeField.focus());
       expect(document.activeElement).toBe(nativeField);
 
+      // Dispatch ⌘L FROM the native field — the window capture handler sees it
+      // with `event.target` = the native input and must bail before preventDefault.
       const meta = new KeyboardEvent('keydown', {
         key: 'l',
         metaKey: true,
@@ -374,6 +436,8 @@ describe('BottomComposer (shell behavior)', () => {
         nativeField.dispatchEvent(event);
       });
 
+      // Focus stayed in the native field; the composer never stole it, and the
+      // shortcut did not consume the keystroke.
       expect(document.activeElement).toBe(nativeField);
       expect(document.activeElement).not.toBe(composerInput);
       expect(event.defaultPrevented).toBe(false);
@@ -447,6 +511,7 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
       workspace: { contentDir: '/tmp/project', pathSeparator: '/' },
       instruction: 'condense this doc',
     });
+    // The instruction rides the compose scope through to dispatch.
     expect(dispatchCalls[0]?.input).toMatchObject({
       compose: { instruction: 'condense this doc' },
     });
@@ -467,10 +532,14 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     fireEvent.keyDown(getInput(), { key: 'Enter' });
 
     await waitFor(() => expect(dispatchCalls).toHaveLength(1));
+    // Records in the dispatch's .then, gated on a confirmed-successful outcome.
     await waitFor(() => expect(recordAskedAiSpy).toHaveBeenCalledTimes(1));
   });
 
   test('an aborted submit (null compose input) does not record the Ask-AI step', async () => {
+    // buildComposerHandoffInput returns null → dispatchComposed bails at its
+    // input-null guard. The onboarding emit sits AFTER that guard, so it must
+    // not fire — this pins the "only a successful dispatch counts" contract.
     builderReturnsNull = true;
     await renderComposer('specs/foo/SPEC');
     fireEvent.change(getInput(), { target: { value: 'this submit aborts' } });
@@ -504,6 +573,7 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     await user.click(screen.getByTestId('ask-ai-agent-trigger'));
     await user.click(await screen.findByTestId('ask-ai-agent-option-terminal'));
 
+    // Per-CLI sticky id — picking the Claude row persists `terminal-cli:claude`.
     expect(loadStickyDefaultAgent()).toBe('terminal-cli:claude');
 
     fireEvent.change(getInput(), { target: { value: 'summarize this doc' } });
@@ -515,6 +585,8 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
       compose: { instruction: 'summarize this doc' },
     });
     expect(dispatchCalls).toHaveLength(0);
+    // A successful terminal launch records the Ask-AI onboarding step (gated by
+    // the try/catch around launchInTerminal — a launch that throws records nothing).
     expect(recordAskedAiSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -528,6 +600,9 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     fireEvent.change(getInput(), { target: { value: 'summarize this doc' } });
     fireEvent.keyDown(getInput(), { key: 'Enter' });
 
+    // The catch surfaces a retry toast and returns early — so the guard's three
+    // observable outcomes all hold: draft preserved (not cleared), an error toast,
+    // and the Ask-AI onboarding step is NOT recorded (records only on success).
     await waitFor(() => expect(toastErrors.length).toBeGreaterThan(0));
     expect(toastErrors.some((m) => m.includes('open the terminal'))).toBe(true);
     expect(getInput().value).toBe('summarize this doc');
@@ -543,6 +618,7 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     await user.click(await screen.findByTestId('ask-ai-agent-option-terminal-codex'));
 
     expect(loadStickyDefaultAgent()).toBe('terminal-cli:codex');
+    // The send button reads "Ask Codex CLI".
     expect(screen.getByTestId('ask-ai-send').textContent).toContain('Codex CLI');
 
     fireEvent.change(getInput(), { target: { value: 'do the codex thing' } });
@@ -583,11 +659,15 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     await user.click(screen.getByTestId('ask-ai-agent-trigger'));
     await user.click(await screen.findByTestId('ask-ai-agent-option-terminal-codex'));
 
+    // Persisted the moment the user picks, with NO submit.
     expect(loadStickyDefaultAgent()).toBe('terminal-cli:codex');
     expect(terminalLaunchCalls).toHaveLength(0);
   });
 
   test('desktop with no sticky pick leads with the first-installed CLI (Codex when Claude is absent)', async () => {
+    // No sticky (localStorage cleared in beforeEach). codex + cursor on PATH,
+    // claude not → the no-pick default resolves to codex (first by priority),
+    // matching what New chat would launch — NOT the first app target ("Claude").
     await renderComposerWithInstalledClis({
       claude: false,
       codex: true,
@@ -606,6 +686,8 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
       opencode: false,
       cursor: false,
     });
+    // The install-nudge default: launching claude surfaces the "Get Claude" banner.
+    // The " CLI" suffix distinguishes it from the app-target "Claude" (claude-code).
     await waitFor(() =>
       expect(screen.getByTestId('ask-ai-send').textContent).toContain('Claude CLI'),
     );
@@ -616,6 +698,7 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     await renderComposerWithTerminal();
 
     await user.click(screen.getByTestId('ask-ai-agent-trigger'));
+    // The split button's picker leads with Terminal, then Desktop.
     const terminalLabel = await screen.findByText('Terminal');
     const desktopLabel = screen.getByText('Desktop');
     expect(
@@ -711,6 +794,7 @@ describe('BottomComposer (selection pill)', () => {
     liveSelection = inlineSel;
     await renderComposer();
     const pill = screen.getByTestId('composer-selection-pill');
+    // Compact, Cursor-style: name + extent, NOT the raw selected text.
     expect(pill.textContent).toContain('notes.md');
     expect(pill.textContent).not.toContain('hello world');
     expect(screen.getByRole('button', { name: 'Remove selection' })).toBeTruthy();
@@ -752,6 +836,9 @@ describe('BottomComposer (selection pill)', () => {
   });
 
   test('the lead doc is the SELECTION’s own doc, not the active doc (cross-doc pin)', async () => {
+    // Pin a passage from doc A, then render over a DIFFERENT active doc B. The
+    // dispatched lead must follow the selection's own doc (A) so the passage is
+    // attributed to the file it came from, not whatever doc is currently open.
     liveSelection = { ...inlineSel, docName: 'docA' };
     await renderComposer('docB');
     fireEvent.change(getInput(), { target: { value: 'explain this passage' } });
@@ -759,6 +846,7 @@ describe('BottomComposer (selection pill)', () => {
 
     await waitFor(() => expect(dispatchCalls).toHaveLength(1));
     expect(buildArgs[0]?.docName).toBe('docA');
+    // The selection's own doc rides as the lead, never as a mention.
     expect(buildArgs[0]?.mentions).not.toContain('docA.md');
   });
 
@@ -772,6 +860,8 @@ describe('BottomComposer (selection pill)', () => {
 
 describe('BottomComposer (folder mode)', () => {
   test('shows the folder as a top-row context chip from the first render (basename label)', async () => {
+    // Unlike doc mode (chip appears on first keystroke), folder mode shows the
+    // folder chip immediately — it is the composer's scope, not a touched file.
     await renderFolderComposer('specs/foo');
     const chip = await screen.findByTestId('composer-context-chip-file-specs/foo');
     expect(chip.textContent).toContain('foo');
@@ -794,6 +884,7 @@ describe('BottomComposer (folder mode)', () => {
       folderRelativePath: 'specs/foo',
       instruction: 'audit this folder',
     });
+    // The folder is the dispatch lead — it never doubles as a @-mention.
     expect(buildArgs[0]?.mentions).not.toContain('specs/foo');
     expect(dispatchCalls[0]?.target).toBe('claude-code');
   });
@@ -826,10 +917,12 @@ describe('BottomComposer (top-row file-context chips lifecycle)', () => {
     fireEvent.change(getInput(), { target: { value: 'drafting' } });
     await screen.findByTestId('composer-context-chip-file-fileA.md');
 
+    // Switch to a different doc while the draft is still non-empty.
     const { BottomComposer } = await import('./BottomComposer');
     rerender(<BottomComposer docName="fileB" surface="wysiwyg" />);
 
     await screen.findByTestId('composer-context-chip-file-fileB.md');
+    // Both chips coexist.
     expect(screen.getByTestId('composer-context-chip-file-fileA.md')).toBeTruthy();
   });
 
@@ -841,6 +934,7 @@ describe('BottomComposer (top-row file-context chips lifecycle)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Remove fileA\.md from context/i }));
     expect(screen.queryByTestId('composer-context-chip-file-fileA.md')).toBeNull();
 
+    // Returning to fileA (via a round-trip through fileB) does NOT re-add it.
     const { BottomComposer } = await import('./BottomComposer');
     rerender(<BottomComposer docName="fileB" surface="wysiwyg" />);
     await screen.findByTestId('composer-context-chip-file-fileB.md');
@@ -852,6 +946,7 @@ describe('BottomComposer (top-row file-context chips lifecycle)', () => {
     mockInlineMentions = ['fileA.md'];
     await renderComposer('fileA');
     fireEvent.change(getInput(), { target: { value: '@fileA do it' } });
+    // fileA is inline → suppressed from the top row.
     expect(screen.queryByTestId('composer-context-chip-file-fileA.md')).toBeNull();
   });
 
@@ -861,6 +956,7 @@ describe('BottomComposer (top-row file-context chips lifecycle)', () => {
     fireEvent.change(getInput(), { target: { value: '@fileA do it' } });
     expect(screen.queryByTestId('composer-context-chip-file-fileA.md')).toBeNull();
 
+    // The inline mention is removed → the file re-appears as a top chip.
     act(() => emitMentions?.([]));
     expect(await screen.findByTestId('composer-context-chip-file-fileA.md')).toBeTruthy();
   });
@@ -875,6 +971,7 @@ describe('BottomComposer (top-row file-context chips lifecycle)', () => {
 
     fireEvent.click(screen.getByTestId('ask-ai-send'));
     await waitFor(() => expect(dispatchCalls).toHaveLength(1));
+    // Active doc (fileB) is the lead; fileA rides as a mention (lead excluded).
     expect(buildArgs[0]?.docName).toBe('fileB');
     expect(buildArgs[0]?.mentions).toContain('fileA.md');
     expect(buildArgs[0]?.mentions).not.toContain('fileB.md');
@@ -888,6 +985,7 @@ describe('BottomComposer (top-row file-context chips lifecycle)', () => {
 
     fireEvent.click(screen.getByTestId('ask-ai-send'));
     await waitFor(() => expect(dispatchCalls).toHaveLength(1));
+    // No file chips, no inline mentions, no selection → project scope.
     expect(buildArgs[0]?.docName).toBeNull();
     expect(buildArgs[0]?.mentions).toEqual([]);
   });
@@ -898,9 +996,11 @@ describe('BottomComposer (top-row file-context chips lifecycle)', () => {
     await screen.findByTestId('composer-context-chip-file-fileA.md');
 
     fireEvent.click(screen.getByTestId('ask-ai-send'));
+    // After dispatch clears the field, the row is empty (fresh draft).
     await waitFor(() => expect(getInput().value).toBe(''));
     expect(screen.queryByTestId('composer-context-chips')).toBeNull();
 
+    // Typing again re-adds the current file from scratch.
     fireEvent.change(getInput(), { target: { value: 'again' } });
     expect(await screen.findByTestId('composer-context-chip-file-fileA.md')).toBeTruthy();
   });
@@ -935,8 +1035,10 @@ describe('BottomComposer (compact selection chip + preview)', () => {
     liveSelection = headingSel;
     await renderComposer('notes');
     const pill = screen.getByTestId('composer-selection-pill');
+    // No literal markdown syntax leaks into the label.
     expect(pill.textContent).not.toContain('##');
     expect(pill.textContent).not.toContain('- item');
+    // Cursor-style: basename + extent.
     expect(screen.getByTestId('composer-selection-peek').textContent).toContain('notes.md');
   });
 
@@ -949,6 +1051,7 @@ describe('BottomComposer (compact selection chip + preview)', () => {
   test('expanding the chip peeks the light-rendered preview (no literal ## / -)', async () => {
     liveSelection = headingSel;
     await renderComposer('notes');
+    // Collapsed by default — no preview.
     expect(screen.queryByTestId('composer-selection-preview')).toBeNull();
 
     fireEvent.click(screen.getByTestId('composer-selection-peek'));
@@ -964,6 +1067,7 @@ describe('BottomComposer (compact selection chip + preview)', () => {
     await renderComposer('notes');
     const pill = screen.getByTestId('composer-selection-pill');
     expect(pill).toBeTruthy();
+    // It dispatches the frontmatter passage as a normal selection.
     fireEvent.click(screen.getByTestId('ask-ai-send'));
     await waitFor(() => expect(dispatchCalls).toHaveLength(1));
     expect(buildArgs[0]?.selection).toMatchObject({ kind: 'inline' });
@@ -998,6 +1102,15 @@ describe('BottomComposer (dismiss / reopen)', () => {
 });
 
 describe('BottomComposer (conflict footer stacking)', () => {
+  // While a doc is in conflict-resolution mode, DiffView's footer (Exit
+  // merge / Undo / Save resolution) owns the very bottom of the editor
+  // column and publishes its measured height as `--conflict-footer-height`
+  // on the document root. The composer must anchor its bottom to that var
+  // (falling back to 0px outside conflict mode) instead of a hard
+  // `bottom-0`, so it stacks ABOVE the conflict controls rather than
+  // covering them. jsdom performs no layout, so the rendered bottom-anchor
+  // class carrying the var is the observable seam for this cross-component
+  // contract.
   test('the wrapper anchors its bottom to --conflict-footer-height, not a hard bottom-0', async () => {
     await renderComposer('notes');
 
@@ -1021,6 +1134,11 @@ describe('BottomComposer (failure + defensive guards)', () => {
   });
 
   test('an unsuccessful ({ok:false}) dispatch does not record the Ask-AI onboarding step', async () => {
+    // Step 3 ("asked AI") checks off only on a confirmed-successful dispatch. A
+    // failed handoff (agent offline, cowork-skill install error) resolves
+    // { ok: false } and must leave the step unchecked — otherwise a first ask
+    // that never reached an agent still latches the card to "complete". Mirrors
+    // the success-gated terminal path.
     dispatchImpl = () => Promise.resolve({ ok: false });
 
     await renderComposer();
@@ -1028,11 +1146,16 @@ describe('BottomComposer (failure + defensive guards)', () => {
     fireEvent.click(screen.getByTestId('ask-ai-send'));
 
     await waitFor(() => expect(dispatchCalls).toHaveLength(1));
+    // The clear runs in the dispatch's .finally, so an empty field proves the
+    // promise settled and any success-gated record has had its chance to fire.
     await waitFor(() => expect(getInput().value).toBe(''));
     expect(recordAskedAiSpy).not.toHaveBeenCalled();
   });
 
   test('a null build result surfaces a toast instead of a silent no-op', async () => {
+    // buildComposerHandoffInput returns null only when the workspace is
+    // unresolved; the gate keeps that prod-unreachable, so this is defense in
+    // depth. submit must toast.error + skip dispatch rather than do nothing.
     builderReturnsNull = true;
 
     await renderComposer();

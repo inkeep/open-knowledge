@@ -64,6 +64,7 @@ describe('validateSkillForInstall', () => {
       'name: open-knowledge-mine\ndescription: d',
     );
     expect(validateSkillForInstall(dir, 'open-knowledge-mine').ok).toBe(false);
+    // OK's own shipped bundle opts in.
     expect(
       validateSkillForInstall(dir, 'open-knowledge-mine', { allowReservedName: true }).ok,
     ).toBe(true);
@@ -72,6 +73,8 @@ describe('validateSkillForInstall', () => {
   test('allows open-knowledge-pack-* (shipped pack skills) to reinstall', () => {
     const name = 'open-knowledge-pack-knowledge-base';
     const dir = makeSkill(name, '# x', `name: ${name}\ndescription: d`);
+    // Pack skills sit under the reserved prefix but are OK's own shipped content,
+    // so a user-triggered (re)install must not be blocked by the reserved guard.
     expect(validateSkillForInstall(dir, name).ok).toBe(true);
   });
 
@@ -106,21 +109,29 @@ describe('projectSkill / reverseProjectSkill', () => {
       'codex',
       'claude-desktop',
     ]);
+    // claude-desktop has no skill surface → skipped.
     expect(written.sort()).toEqual(['claude', 'codex', 'cursor']);
     for (const host of ['.claude', '.cursor', '.codex']) {
       const link = join(root, host, 'skills', 'trip-log');
+      // It's a symlink, not a copied dir, and it resolves to the source.
       expect(lstatSync(link).isSymbolicLink()).toBe(true);
       expect(existsSync(join(link, 'SKILL.md'))).toBe(true);
+      // Source is inside the project → the link target is relative (portable).
       expect(readlinkSync(link).startsWith('..')).toBe(true);
     }
 
     const removed = reverseProjectSkill('trip-log', root, ['claude', 'cursor', 'codex']);
     expect(removed.sort()).toEqual(['claude', 'codex', 'cursor']);
     expect(existsSync(join(root, '.claude', 'skills', 'trip-log'))).toBe(false);
+    // Uninstall removes only the link — the source is untouched.
     expect(existsSync(join(dir, 'SKILL.md'))).toBe(true);
   });
 
   test('reverse removes a DANGLING projection symlink (source already gone) — B4', () => {
+    // Reproduce the cross-scope-move residue: project, then delete the SOURCE so
+    // the host-dir symlinks dangle. `existsSync` follows the link → false, so the
+    // pre-fix `reverseProjectSkill` skipped them and left orphans (the registry
+    // "duplicate"). The lstat-based check must still remove them.
     const dir = makeSkill('orphan', '# Steps');
     projectSkill(dir, 'orphan', root, ['claude', 'cursor', 'codex']);
     rmSync(dir, { recursive: true, force: true }); // links now dangle
@@ -131,6 +142,7 @@ describe('projectSkill / reverseProjectSkill', () => {
     const removed = reverseProjectSkill('orphan', root, ['claude', 'cursor', 'codex']);
     expect(removed.sort()).toEqual(['claude', 'codex', 'cursor']);
     for (const host of ['.claude', '.cursor', '.codex']) {
+      // The dangling link is gone — lstat throws now (no entry at all).
       expect(() => lstatSync(join(root, host, 'skills', 'orphan'))).toThrow();
     }
   });
@@ -138,11 +150,13 @@ describe('projectSkill / reverseProjectSkill', () => {
   test('install is authoritative — replaces a legacy real-dir copy with a symlink', () => {
     const dir = makeSkill('s', '# v1');
     const dest = skillHostDir(root, 'claude', 's') as string;
+    // Simulate a legacy copy-install: a real directory at the host path.
     mkdirSync(dest, { recursive: true });
     writeFileSync(join(dest, 'stale.md'), 'leftover', 'utf-8');
     expect(lstatSync(dest).isSymbolicLink()).toBe(false);
 
     projectSkill(dir, 's', root, ['claude']);
+    // Now a symlink to the source; the stale real-dir contents are gone.
     expect(lstatSync(dest).isSymbolicLink()).toBe(true);
     expect(existsSync(join(dest, 'stale.md'))).toBe(false);
     expect(existsSync(join(dest, 'SKILL.md'))).toBe(true);
@@ -161,9 +175,11 @@ describe('readSkillBundledFiles', () => {
     mkdirSync(join(dir, 'reference'), { recursive: true });
     writeFileSync(join(dir, 'scripts', 'run.py'), 'print("hi")\n', 'utf-8');
     writeFileSync(join(dir, 'reference', 'notes.md'), '# Notes', 'utf-8');
+    // A binary file (contains a NUL byte) → text is null, never executed/served.
     writeFileSync(join(dir, 'logo.bin'), Buffer.from([0x89, 0x00, 0x01, 0x02]));
 
     const files = readSkillBundledFiles(dir);
+    // SKILL.md is excluded; the rest are sorted by POSIX path.
     expect(files.map((f) => f.path)).toEqual(['logo.bin', 'reference/notes.md', 'scripts/run.py']);
     expect(files.find((f) => f.path === 'scripts/run.py')?.text).toBe('print("hi")\n');
     expect(files.find((f) => f.path === 'reference/notes.md')?.text).toBe('# Notes');
@@ -174,8 +190,12 @@ describe('readSkillBundledFiles', () => {
     expect(readSkillBundledFiles(join(root, 'nope'))).toEqual([]);
   });
 
+  // Root bypasses file permissions, so chmod 000 wouldn't deny the read there.
   const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
   test.skipIf(isRoot)('a genuine IO error THROWS rather than masquerading as binary', () => {
+    // A read error must NOT surface as `text: null`: the cross-scope move skips
+    // null-text files as "binary" and then deletes the source, so a swallowed
+    // read error would be silent data loss. It must throw so the move aborts.
     const dir = makeSkill('locked', '# Body');
     mkdirSync(join(dir, 'reference'), { recursive: true });
     const secret = join(dir, 'reference', 'secret.md');

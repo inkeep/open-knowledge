@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `checkSharePublishName` — covers the 200/404/401/network
+ * decision tree without spawning Octokit or hitting GitHub.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type { Octokit } from '@octokit/rest';
 import { checkSharePublishName } from './name-check.ts';

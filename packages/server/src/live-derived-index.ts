@@ -7,6 +7,11 @@ export const LIVE_DERIVED_INDEX_DEBOUNCE_MS = 100;
 
 export interface LiveDerivedIndexOptions {
   backlinkIndex: BacklinkIndex;
+  /**
+   * Optional. When wired, every backlink-update tick also re-extracts tags
+   * for the changed doc and broadcasts the `'tags'` derived-view channel so
+   * tag-aware UIs can invalidate their caches alongside backlinks/graph.
+   */
   tagIndex?: TagIndex;
   signalChannel?: (channel: 'files' | 'backlinks' | 'graph' | 'tags') => void;
   debounceMs?: number;
@@ -25,6 +30,11 @@ function isLocalOriginLike(origin: unknown): origin is LocalOriginLike {
 }
 
 function serializeLiveDocument(document: Document): string {
+  // Y.Text-is-truth contract (precedent #38): body source is the raw user
+  // bytes in `Y.Text('source')`. Reading from serialize(fragment) would
+  // emit canonical bytes (e.g., `[https://x](https://x)` instead of the
+  // user's typed `<https://x>` autolink form), making backlink snippets
+  // reflect a form the user never chose.
   return document.getText('source').toString();
 }
 
@@ -71,6 +81,7 @@ export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions
     async onChange({ documentName, document, transactionOrigin }) {
       if (isLinkIndexExcludedDoc(documentName)) return;
 
+      // Disk events already update the derived views directly in the watcher path.
       if (
         isLocalOriginLike(transactionOrigin) &&
         transactionOrigin.context?.origin === 'file-watcher'
@@ -78,6 +89,8 @@ export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions
         return;
       }
 
+      // Give the source/tree bridge a short trailing window to converge so we
+      // derive links from settled live document state instead of the 2s store debounce.
       schedule(documentName, document);
     },
 

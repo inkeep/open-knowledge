@@ -1,3 +1,12 @@
+/**
+ * Unit coverage for the client NDJSON consumer. Drives
+ * `consumeShowAllStream` against synthetic `Response` streams to prove
+ * incremental framing (including a line split across chunk boundaries), the
+ * terminal `complete` truncation verdict, mid-stream `error` propagation, and
+ * the per-entry validation that drops malformed / schema-divergent lines
+ * without sinking the listing. `isNdjsonResponse` gates streaming vs the
+ * buffered JSON fallback.
+ */
 import { describe, expect, test } from 'bun:test';
 import {
   consumeShowAllStream,
@@ -27,6 +36,7 @@ function ndjsonResponse(body: string): Response {
   return new Response(body, { headers: { 'content-type': 'application/x-ndjson' } });
 }
 
+/** A Response whose body emits the given byte chunks one at a time. */
 function chunkedResponse(chunks: string[]): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -80,6 +90,7 @@ describe('consumeShowAllStream', () => {
 
   test('reassembles a line split across chunk boundaries', async () => {
     const full = docLine('alpha') + docLine('beta') + completeLine(false, 2);
+    // Split mid-line so the reader must buffer a partial line across reads.
     const mid = Math.floor(full.length / 2);
     const { entries, truncated } = await consumeShowAllStream(
       chunkedResponse([full.slice(0, mid), full.slice(mid)]),
@@ -104,6 +115,11 @@ describe('consumeShowAllStream', () => {
   });
 
   test('a stream that closes without a complete line returns the parsed prefix, untruncated', async () => {
+    // Server ends the response without the terminal verdict (e.g. the walk's
+    // wrapper died after flushing entries). The consumer returns what it
+    // parsed with truncated:false — the prefix is applied as the listing.
+    // Pinned: a caller that needs "ended early" to be an error must rely on
+    // the server's mid-stream `{type:'error'}` line, not on line absence.
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -118,6 +134,10 @@ describe('consumeShowAllStream', () => {
   });
 
   test('a transport error mid-stream rejects so the caller can surface unreachable-server', async () => {
+    // Connection reset / server kill mid-walk: the read rejects rather than
+    // ending cleanly. The consumer must propagate (FileTree's refresh catch
+    // maps it to the unreachable-server alert), never swallow it into a
+    // silently-partial listing presented as complete.
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -130,6 +150,7 @@ describe('consumeShowAllStream', () => {
   });
 
   test('drops a schema-divergent entry line', async () => {
+    // `kind: 'document'` with asset-only fields fails the schema refine.
     const bad = `${JSON.stringify({ kind: 'document', docName: 'x', assetExt: 'png' })}\n`;
     const body = bad + docLine('beta') + completeLine(false, 1);
     const { entries } = await consumeShowAllStream(ndjsonResponse(body));
@@ -145,6 +166,7 @@ describe('consumeShowAllStream', () => {
     const { entries } = await consumeShowAllStream(res, {
       onBatch: (batch) => batches.push(batch.map((e) => e.docName)),
     });
+    // One batch per network chunk; the union equals the full returned set.
     expect(batches).toEqual([['alpha', 'beta'], ['gamma']]);
     expect(entries.map((e) => e.docName)).toEqual(['alpha', 'beta', 'gamma']);
   });
@@ -157,6 +179,8 @@ describe('consumeShowAllStream', () => {
   });
 
   test('a throw from onBatch propagates out of consumeShowAllStream', async () => {
+    // Pins the documented contract: the consumer does not swallow an onBatch
+    // error — the caller's catch owns it (FileTree treats it as a fetch failure).
     const res = chunkedResponse([docLine('alpha'), completeLine(false, 1)]);
     await expect(
       consumeShowAllStream(res, {

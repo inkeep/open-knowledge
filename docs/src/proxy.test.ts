@@ -2,6 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import { NextRequest } from 'next/server';
 import { proxy } from './proxy.ts';
 
+/**
+ * Apple's `swcd` fetches the App Site Association file WITHOUT following
+ * redirects and negative-caches a failure for ~8 days. The desktop entitlement
+ * declares `applinks:openknowledge.ai` AND `applinks:www.openknowledge.ai`, so
+ * BOTH hosts must serve `/.well-known/apple-app-site-association` as a direct
+ * 200 — never a redirect. These tests pin that carve-out alongside the
+ * www -> apex canonicalization that applies to every other path.
+ */
 function run(host: string, pathAndQuery: string) {
   const req = new NextRequest(`https://${host}${pathAndQuery}`, { headers: { host } });
   return proxy(req);

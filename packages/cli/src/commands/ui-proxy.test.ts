@@ -19,6 +19,8 @@ async function rawRequest(opts: {
   return new Promise((done, fail) => {
     const req = httpRequest(
       {
+        // Connect to the loopback literal startProxyServer binds — dialing
+        // the bound literal removes any name-resolution ambiguity.
         host: '127.0.0.1',
         port: opts.port,
         path: opts.path,
@@ -175,6 +177,8 @@ describe('startProxyServer', () => {
   });
 
   test('returns 502 when upstream refuses connection', async () => {
+    // Pick a port unlikely to be bound: start + immediately stop an upstream
+    // so we know the port is free but nobody listens anymore.
     upstream = await startUpstream((_req, res) => res.end('ignored'));
     const deadPort = upstream.port;
     await upstream.close();
@@ -284,6 +288,8 @@ describe('startProxyServer', () => {
   test('listens on the requested port when nonzero', async () => {
     upstream = await startUpstream((_req, res) => res.end('ok'));
 
+    // Grab a kernel-allocated port via a throwaway server, then close it so
+    // the proxy can bind that same port on purpose.
     const pickerSrv = createHttpServer();
     await new Promise<void>((done) => pickerSrv.listen(0, '127.0.0.1', () => done()));
     const requested = (pickerSrv.address() as { port: number }).port;

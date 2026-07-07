@@ -1,3 +1,13 @@
+/**
+ * DocumentErrorBoundary — unit tests for the pure `errorCopy` mapping.
+ *
+ * Component-level rendering behavior (fallback-on-throw, retry invalidate+reset
+ * ordering, back-nav gating, resetKeys clearing) is exercised end-to-end by
+ * Playwright in `tests/stress/docs-open.e2e.ts`. This file
+ * stays at the pure-function altitude that the rest of the repo uses for UI
+ * helpers — no DOM, no React renderer, no @testing-library dependency added.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { MountAbortError } from '@/editor/mount-promise';
 import {
@@ -68,6 +78,10 @@ describe('errorCopy', () => {
   });
 
   test('MountAbortError → "Cancelled" + user-action framing + doc name', () => {
+    // Pin the user-facing copy for the explicit-cancel path. The user
+    // clicked "Cancel" on the stalled-mount affordance — copy frames the
+    // outcome as their action, not a system fault. Cache-driven invalidate
+    // (LRU eviction, park/evict) is silent and never surfaces here.
     const copy = errorCopy(new MountAbortError('docs/abc'));
     expect(copy.title).toBe('Cancelled');
     expect(copy.summary).toContain('docs/abc');
@@ -92,6 +106,12 @@ describe('isServerReachError (gates the "Restart server" affordance)', () => {
 });
 
 describe('errorDocName', () => {
+  // The "Back to previous document" affordance reads `errorDocName(error) ??
+  // activeDocName` — a regression that omits a typed error class from the
+  // union below would silently invalidate the wrong syncPromise on back-nav
+  // (cleared activeDocName instead of the errored target). Pin one row per
+  // typed error so adding a new error class without updating the union
+  // shows up here as a compile failure or a missing test.
   test('SyncTimeoutError → docName', () => {
     expect(errorDocName(new SyncTimeoutError('docs/timeout', 30_000))).toBe('docs/timeout');
   });

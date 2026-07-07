@@ -4,6 +4,14 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createTestClient, createTestServer, type TestServer } from './test-harness.ts';
 
+/**
+ * End-to-end proof through the real server. Project skills are real content
+ * docs (`.ok/skills/<name>/SKILL`): admitted by the content index, the observer
+ * bridge runs, and edits persist verbatim to `.ok/skills/<name>/SKILL.md` via
+ * the content pipeline. Templates remain managed-artifact (`__template__/...`)
+ * docs. Global skills keep the dedicated managed-artifact route (not exercised
+ * here — they live at `<home>/.ok/skills`, outside the test contentDir).
+ */
 describe('skill + template CRDT docs — end to end', () => {
   let server: TestServer;
 
@@ -41,6 +49,8 @@ describe('skill + template CRDT docs — end to end', () => {
     const docName = '.ok/skills/roundtrip/SKILL';
     const src = '---\nname: roundtrip\ndescription: rt\n---\n\nHello.\n';
 
+    // Seed the skill on disk directly (a pre-existing project skill), then open
+    // it as a content doc and assert onLoad hydrates the client from disk.
     const skillFile = resolve(server.contentDir, '.ok', 'skills', 'roundtrip', 'SKILL.md');
     mkdirSync(resolve(skillFile, '..'), { recursive: true });
     writeFileSync(skillFile, src, 'utf-8');
@@ -55,6 +65,16 @@ describe('skill + template CRDT docs — end to end', () => {
   });
 
   test('an external SKILL.md disk edit reconciles into the open project skill doc', async () => {
+    // Seed the skill file BEFORE booting the server so it is present in the
+    // file-watcher's initial recursive scan. Creating a fresh nested
+    // `.ok/skills/<name>/` subdir AFTER the watcher starts races the OS
+    // backend's new-subdir registration — @parcel/watcher (the default backend
+    // on Linux CI) drops the subsequent edit event entirely, so the reconcile
+    // never lands no matter how long we re-emit. With the file watched from
+    // boot, the modify event below is delivered deterministically on every
+    // backend. (The blanket-`.ok` watcher-glob carve-out in content-filter is
+    // the production-side half of the same gap; this contentDir has no `.ok`
+    // ignore pattern, so the glob path isn't what this test exercises.)
     await server.cleanup();
     const seedDir = mkdtempSync(join(tmpdir(), 'ok-skill-reconcile-'));
     mkdirSync(resolve(seedDir, '.ok'), { recursive: true });
@@ -73,6 +93,8 @@ describe('skill + template CRDT docs — end to end', () => {
     }
     expect(client.ytext.toString()).toBe(src);
 
+    // A hand/CLI edit straight to disk to the now-watched skill file. The
+    // content file-watcher reconciles it into the open content doc.
     const edited = '---\nname: watched\ndescription: edited externally\n---\n\n# Watched\n\nv2.\n';
     const start = Date.now();
     while (Date.now() - start < 15000 && client.ytext.toString() !== edited) {
@@ -105,6 +127,8 @@ describe('skill + template CRDT docs — end to end', () => {
     while (Date.now() - start < 5000 && client.ytext.toString() !== expected) {
       await new Promise((r) => setTimeout(r, 50));
     }
+    // The HTTP PUT mutated the SAME Y.Doc the editor client is bound to —
+    // proof the write routes through the doc, not a side-channel fs write.
     expect(client.ytext.toString()).toBe(expected);
 
     const skillFile = resolve(server.contentDir, '.ok', 'skills', 'put-routed', 'SKILL.md');
@@ -115,6 +139,7 @@ describe('skill + template CRDT docs — end to end', () => {
   });
 
   test('a __template__ doc persists folder-addressed to <folder>/.ok/templates/<name>.md', async () => {
+    // Folder-addressed: __template__/<folderRel>/<name>, root folder here.
     const docName = '__template__/daily-note';
     const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
 
@@ -144,12 +169,16 @@ describe('skill + template CRDT docs — end to end', () => {
     });
     expect(res.status).toBe(200);
 
+    // Canonical single-block template file: the picker identity nests under the
+    // reserved `template:` key, the markdown follows. The server composes these
+    // bytes and routes them through the doc's Y.Text verbatim.
     const expected =
       '---\ntemplate:\n  title: Meeting\n  description: Use for meeting notes.\n---\n# Agenda\n\n- item\n';
     const start = Date.now();
     while (Date.now() - start < 5000 && client.ytext.toString() !== expected) {
       await new Promise((r) => setTimeout(r, 50));
     }
+    // The HTTP PUT mutated the SAME Y.Doc the editor client is bound to.
     expect(client.ytext.toString()).toBe(expected);
 
     const tplFile = resolve(server.contentDir, 'notes', '.ok', 'templates', 'meeting.md');
@@ -160,6 +189,8 @@ describe('skill + template CRDT docs — end to end', () => {
   });
 
   test('an external template .md disk edit reconciles into the open doc (root folder)', async () => {
+    // The project root `.ok/templates` is always watched (folder-nested dirs are
+    // enumerated at boot).
     const docName = '__template__/daily';
     const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
 

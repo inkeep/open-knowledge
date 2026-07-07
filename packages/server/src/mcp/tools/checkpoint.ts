@@ -1,3 +1,12 @@
+/**
+ * `checkpoint` MCP tool — project-wide version snapshot of every document.
+ *
+ * Wraps `POST /api/save-version`. An optional `summary` labels the checkpoint
+ * (it threads into the checkpoint commit subject; defaults to "Checkpoint
+ * version"). Find checkpoints later via `history`.
+ *
+ * `restore_version` is the per-doc restore counterpart.
+ */
 import { z } from 'zod';
 import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
@@ -76,8 +85,15 @@ export function register(server: ServerInstance, deps: CheckpointDeps): void {
       });
       if (!result.ok) return textResult(`Error: ${result.error}`, true);
 
+      // The route returns the full ref `refs/checkpoints/<branch>/<sha>`; the
+      // agent-facing `version` must be the bare 40-char SHA (its final segment)
+      // so it round-trips through `restore_version`'s 40-hex input validation.
       const checkpointRef = typeof result.checkpointRef === 'string' ? result.checkpointRef : '';
       const version = checkpointRef.split('/').pop() ?? '';
+      // Guard the round-trip contract: an empty/malformed ref would emit
+      // `version: ''`, which `restore_version` rejects with no hint the
+      // checkpoint itself succeeded. `''.split('/').pop()` is `''` (not
+      // undefined), so the `?? ''` above can't catch it — validate the shape.
       if (!/^[0-9a-f]{40}$/i.test(version)) {
         return textResult(
           `Error: checkpoint committed but the server returned no usable version ref ("${checkpointRef}"). Find the latest checkpoint via \`history\`.`,

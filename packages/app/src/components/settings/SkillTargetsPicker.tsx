@@ -10,11 +10,24 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSkillTargets } from '@/hooks/use-skill-targets';
 
+/**
+ * Project-wide picker for the skill-target editor set (`.ok/skill-targets.json`).
+ * Toggling an editor persists the new set and re-projects every managed skill
+ * (authored + OK's shipped `open-knowledge` bundle) into / out of that editor's
+ * skill folder. Lives at the top of the Skills manager because it governs where
+ * *every* skill in the project installs, not any single one.
+ *
+ * `configured` distinguishes an explicit committed set from one detected from
+ * the project's configured editors — the copy makes that visible so the user
+ * knows whether they're overriding a default or confirming it.
+ */
 export function SkillTargetsPicker() {
   const { t } = useLingui();
   const { state, save, saving } = useSkillTargets();
   const headingId = 'settings-skill-targets-heading';
 
+  // Only editors that have a project skill surface can be targets (claude /
+  // cursor / codex — claude-desktop has no project skill dir).
   const editors = PROJECT_SKILL_EDITOR_IDS as readonly SkillTargetEditor[];
 
   const selected = state.status === 'ready' ? new Set(state.data.targets) : new Set<string>();

@@ -1,6 +1,27 @@
+/**
+ * Unified install-detection primitive for the Open-in-Agent dropdown. Two
+ * probe strategies (one per host):
+ *   - `probeViaElectron` — fans out `detectProtocol(scheme)` IPC calls.
+ *   - `probeViaFetch`    — single `GET /api/installed-agents`; flat
+ *     `{claude,codex,cursor}` response fanned out to scheme keys.
+ *
+ * `createProbeCoordinator` wraps either with throttle + inflight dedup so the
+ * dropdown can `refresh()` liberally. Subscribers fire only on actual state
+ * changes. Pure of React.
+ *
+ * Web-host Cursor used to be forced to `installed: false` because Cursor's
+ * two-step dispatch needed Electron IPC for step 1 (spawn `cursor <path>`).
+ * That override was removed once `cursor-two-step.ts` gained a fetch-based
+ * fallback that posts to the loopback `POST /api/spawn-cursor` endpoint —
+ * web hosts that talk to a local OK server now have feature parity with
+ * Electron for Cursor handoff. Cloud-hosted OK (no loopback) gets a
+ * `not-installed` outcome from the server probe and the row stays disabled.
+ */
+
 import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
 import { KNOWN_TARGETS } from './targets.ts';
 
+/** Unique URL schemes across all known targets. Computed once at module init. */
 export const UNIQUE_SCHEMES: ReadonlyArray<string> = [
   ...new Set(KNOWN_TARGETS.flatMap((t) => t.schemes)),
 ];
@@ -12,10 +33,15 @@ interface SchemeProbeResult {
   readonly displayName?: string;
 }
 
+/** Scheme → probe-result map. Partial during boot; fully populated after a probe. */
 export type SchemeStates = Readonly<Record<string, SchemeProbeResult>>;
 
 export const DEFAULT_THROTTLE_MS = 10_000;
 
+/**
+ * Pure mapping: per-scheme probe results → per-target `InstallState`. Web-host
+ * Cursor is forced to `installed: false` regardless of probed scheme state.
+ */
 export function schemeStatesToTargetStates(
   schemeStates: SchemeStates,
   opts: { isElectronHost: boolean; now?: () => number },
@@ -38,6 +64,7 @@ export function schemeStatesToTargetStates(
   return out;
 }
 
+/** Initial `states` snapshot for a fresh hook mount (pre-probe). */
 export function initialTargetStates(opts: {
   isElectronHost: boolean;
   now?: () => number;
@@ -45,6 +72,15 @@ export function initialTargetStates(opts: {
   return schemeStatesToTargetStates({}, opts);
 }
 
+/**
+ * Electron probe — one IPC call per unique scheme in parallel. Per-scheme
+ * rejection collapses to `installed: false`.
+ *
+ * IPC contract: `detectProtocol` wants the scheme NAME without trailing colon
+ * (`'claude'`, not `'claude:'`). The main-process sanitizer rejects colons
+ * before `getApplicationInfoForProtocol` runs. `KNOWN_TARGETS.schemes`
+ * carries the colonful form to match `URL.protocol`, so we strip here.
+ */
 export async function probeViaElectron(deps: {
   detectProtocol: (schemeName: string) => Promise<SchemeProbeResult>;
   schemes?: ReadonlyArray<string>;
@@ -68,6 +104,12 @@ const CONSERVATIVE_FALSE: SchemeStates = Object.fromEntries(
   UNIQUE_SCHEMES.map((s) => [s, { installed: false } as SchemeProbeResult]),
 );
 
+/**
+ * Web probe — single `GET /api/installed-agents`. Server response is flat
+ * `{claude: bool, codex: bool, cursor: bool}`; we add the colon back for
+ * internal scheme keys. Any failure collapses to all-false conservative
+ * default. AbortError propagates so callers can cancel in-flight fetches.
+ */
 export async function probeViaFetch(deps: {
   fetch: typeof globalThis.fetch;
   signal?: AbortSignal;
@@ -101,12 +143,16 @@ export async function probeViaFetch(deps: {
   return out;
 }
 
+/** Coordinator dependencies. Everything I/O-shaped is injected for testability. */
 export interface ProbeDeps {
   /** One-shot probe — returns `SchemeStates` for every unique scheme.
    *  Strategies (`probeViaElectron`, `probeViaFetch`) satisfy this shape. */
   probe: () => Promise<SchemeStates>;
+  /** Host classifier — true when Electron preload populated `window.okDesktop`. */
   isElectronHost: () => boolean;
+  /** Clock reading. Production: `Date.now`. Tests: virtual. */
   now: () => number;
+  /** Throttle window. Default `DEFAULT_THROTTLE_MS`. */
   throttleMs?: number;
 }
 
@@ -114,7 +160,9 @@ export interface ProbeHandle {
   /** Trigger a probe. Subject to throttle + inflight dedup. Resolves when the
    *  probe completes, or immediately if throttled / already inflight. */
   probe(): Promise<void>;
+  /** Read the current target-state snapshot (synchronous). */
   getTargetStates(): Record<HandoffTarget, InstallState>;
+  /** Subscribe to state-change notifications. Returns an unsubscribe. */
   subscribe(cb: (states: Record<HandoffTarget, InstallState>) => void): () => void;
   /** Stop the coordinator — cancels subscriptions. A pending probe resolves
    *  without notifying. Idempotent. */
@@ -179,6 +227,8 @@ export function createProbeCoordinator(deps: ProbeDeps): ProbeHandle {
         }
         lastProbedAt = deps.now();
       } catch {
+        // Don't ratchet lastProbedAt on error — a transient flake can retry
+        // immediately without waiting for the throttle window.
       } finally {
         inflight = null;
       }

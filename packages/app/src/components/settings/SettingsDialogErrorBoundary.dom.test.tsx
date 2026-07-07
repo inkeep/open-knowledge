@@ -1,3 +1,13 @@
+/**
+ * RTL mount tests for SettingsDialogErrorBoundary: the containment
+ * contract for a failed lazy Settings-body chunk. Without this boundary a
+ * `React.lazy` dynamic-import rejection propagates to the React root and
+ * unmounts the whole app (white screen, unrecoverable). These tests pin
+ * that (a) the fallback renders on a child throw and (b) a sibling
+ * rendered OUTSIDE the boundary stays mounted — i.e. the failure is
+ * contained, the app survives. Throw injection follows the MaybeThrow
+ * (precedent #43(d)); invocation via `bun run test:dom`.
+ */
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import { SettingsDialogErrorBoundary } from './SettingsDialogErrorBoundary';
@@ -45,6 +55,8 @@ describe('SettingsDialogErrorBoundary (Tier-3 mount)', () => {
       </div>,
     );
 
+    // Containment proof: the sibling rendered OUTSIDE the boundary is still
+    // mounted. Pre-fix, the lazy rejection unmounted the entire React root.
     expect(screen.getByTestId('app-survives').textContent).toBe('editor still here');
 
     const alert = screen.getByRole('alert');
@@ -52,6 +64,7 @@ describe('SettingsDialogErrorBoundary (Tier-3 mount)', () => {
     expect(document.getElementById('settings-body-error-title')?.textContent).toBe(
       'Settings failed to load',
     );
+    // The dynamic-import message gets the post-deploy-specific explanation.
     expect(screen.getByText(/newer version may have been deployed/i)).toBeTruthy();
     const reload = screen.getByRole('button', { name: /reload/i });
     expect(reload.tagName).toBe('BUTTON');
@@ -59,6 +72,13 @@ describe('SettingsDialogErrorBoundary (Tier-3 mount)', () => {
   });
 
   test('a bare "Failed to fetch" error (without the dynamic-import phrase) gets the post-deploy explanation', () => {
+    // Browsers/runtimes sometimes surface chunk-load failures as just
+    // "Failed to fetch" without the longer dynamic-import phrasing —
+    // the fallback's discriminator regex matches BOTH arms so users
+    // see the post-deploy-specific message in either case. Pins the
+    // second alternation arm so a future narrowing (e.g. dropping
+    // the `Failed to fetch` token) does not silently downgrade those
+    // errors to the generic message.
     throwError = new Error('Failed to fetch');
     render(
       <SettingsDialogErrorBoundary>

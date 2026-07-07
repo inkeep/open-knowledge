@@ -1,3 +1,28 @@
+/**
+ * Frontmatter widgets for the special `icon` + `cover` keys.
+ *
+ * Both store a plain string — no new `FrontmatterType` is needed (the
+ * `keyName === 'icon' | 'cover'` precedent mirrors the `keyName ===
+ * 'tags'` chip-rendering in `ListWidget`). Storage stays YAML-portable;
+ * the widget just specializes the input UX with affordances tuned to
+ * the value's expected shape.
+ *
+ * `PageIconWidget` — a text input (for direct emoji paste + image
+ * path / URL) PLUS a click-to-pick preview chip on the right that
+ * opens a `frimousse` emoji picker popover. Selecting an emoji
+ * replaces the field value with the chosen glyph.
+ *
+ * `PageCoverWidget` — a file picker that uploads through the editor's
+ * existing `/api/upload` pipeline (`uploadFile` from `image-upload/
+ * upload-file.ts`). The returned content-dir path lands in the
+ * frontmatter; a "paste URL" affordance still accepts an external
+ * `https://` image URL for authors who don't want to upload.
+ *
+ * Classification + safety lives in `page-header-utils.ts` so the
+ * widget previews, property-panel input validation, and the
+ * `PageHeader` renderer share one source of truth.
+ */
+
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: matches the existing PropertyWidgets.tsx posture — raw `<input>` is the typed-input affordance shared across every frontmatter widget; migrating to shadcn `<Input>` is the file-wide pre-rule backlog described in PropertyWidgets.tsx's top-of-file ignore comment.
 
 import { ALLOWED_IMAGE_MIME_TYPES } from '@inkeep/open-knowledge-core';
@@ -12,13 +37,32 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { uploadFile } from '@/editor/image-upload/upload-file';
 import { cn } from '@/lib/utils';
 
+/**
+ * `icon` frontmatter input. Combines a free-form text input (for
+ * pasting emoji or image paths / URLs) with a click-to-open emoji
+ * picker on the preview chip. The picker writes the selected emoji
+ * directly to the frontmatter — no intermediate "press OK" step.
+ *
+ * Shape mirrors `CommonWidgetProps<string>` (from `PropertyWidgets`)
+ * so the `keyName`-conditional dispatch in `FrontmatterRow.Widget`
+ * doesn't have to thread a separate prop type per specialized widget.
+ */
 export function PageIconWidget({ keyName, value, onCommit }: CommonWidgetProps<string>) {
   const { t } = useLingui();
   const [draft, setDraft] = useState(value);
   const focusedRef = useRef(false);
+  // Synchronously flag an in-flight Escape-revert so the blur handler
+  // (which fires immediately after the keydown's `.blur()`) skips the
+  // commit. `setDraft(value)` is async — without this flag, the blur
+  // handler reads the stale draft from the keystroke closure and
+  // commits it before React re-renders with the reverted value.
+  // Mirrors `TextWidget`'s `revertingRef` pattern.
   const revertingRef = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // Resync the local draft from the YAML when the input is not focused
+  // — same pattern as TextWidget. Without this, a remote CRDT edit to
+  // `icon` would be invisible to this widget until the user re-focused.
   useEffect(() => {
     if (!focusedRef.current) setDraft(value);
   }, [value]);
@@ -67,6 +111,8 @@ export function PageIconWidget({ keyName, value, onCommit }: CommonWidgetProps<s
             aria-label={t`Open emoji picker for ${keyName}`}
             data-testid="page-icon-preview"
             data-kind={resolved.kind}
+            // Ghost-style — transparent until hover. Matches the trash /
+            // drag-handle / type-icon buttons in `FrontmatterRow`.
             className={cn(
               'flex h-7 w-7 flex-none items-center justify-center rounded-sm text-base transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               resolved.kind === 'unsupported' && 'text-muted-foreground/60',
@@ -89,6 +135,19 @@ export function PageIconWidget({ keyName, value, onCommit }: CommonWidgetProps<s
   );
 }
 
+/**
+ * `cover` frontmatter input. File-upload posture (not free-form path
+ * typing): the primary affordance is a "Choose image…" button that
+ * opens the native file picker; on selection, the file uploads
+ * through the editor's existing `/api/upload` pipeline and the
+ * returned path lands in the frontmatter. A secondary "paste URL"
+ * input remains visible for authors who want to point at an external
+ * `https://` image without uploading. A current-value preview chip on
+ * the right doubles as a click-target for the file picker AND
+ * surfaces an `X` button to clear the cover entirely.
+ *
+ * See `PageIconWidget` for the `CommonWidgetProps` shape rationale.
+ */
 export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<string>) {
   const { t } = useLingui();
   const [draft, setDraft] = useState(value);
@@ -96,7 +155,14 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const focusedRef = useRef(false);
+  // See `PageIconWidget` — synchronous flag so the blur handler can
+  // skip commit when Escape just reverted the draft.
   const revertingRef = useRef(false);
+  // Guards `handleFile`'s post-await state writes + `onCommit` push
+  // against an unmounted component. `setUploading(false)` on an
+  // unmounted host is benign in React 18+ but `onCommit` writes into
+  // `bindFrontmatterDoc`, which may be disposed by the time the upload
+  // returns — surface check, not the load-bearing dispose guard.
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -114,6 +180,10 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
   async function handleFile(file: File) {
     setUploadError(null);
     setUploading(true);
+    // No `try/finally` — React Compiler's BuildHIR doesn't lower
+    // TryStatement with a finalizer clause. Mirror the cleanup into
+    // both branches; the no-finally split is the established workaround
+    // until the compiler ships finally support.
     try {
       const result = await uploadFile(file, ALLOWED_IMAGE_MIME_TYPES);
       if (!mountedRef.current) return;
@@ -122,6 +192,11 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
       setUploading(false);
     } catch (err) {
       if (!mountedRef.current) return;
+      // Map known error shapes to user-facing strings; raw `err.message`
+      // can leak parser diagnostics ("Upload response is not JSON.") or
+      // stack-trace fragments that confuse end users. `TypeError` from a
+      // failed `fetch()` indicates a connectivity problem; everything
+      // else collapses into a generic retry hint.
       const message =
         err instanceof TypeError
           ? t`Network error — check your connection and try again`
@@ -207,6 +282,7 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
           data-testid="page-cover-preview"
           data-kind={resolved.kind}
           onClick={pickFile}
+          // Ghost-style — transparent until hover.
           className={cn(
             'flex h-7 w-12 flex-none items-center justify-center overflow-hidden rounded-sm text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             resolved.kind === 'unsupported' && 'text-muted-foreground/60',
@@ -239,6 +315,9 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
           tabIndex={-1}
           onChange={(e) => {
             const file = e.target.files?.[0];
+            // Reset the input so picking the same file twice in a row
+            // still fires `change` (browsers de-dupe identical values
+            // by default).
             e.currentTarget.value = '';
             if (file) void handleFile(file);
           }}
@@ -264,6 +343,9 @@ function PageIconPreviewContent({ resolved }: { resolved: ReturnType<typeof reso
         alt=""
         className="h-full w-full rounded-md object-cover"
         draggable={false}
+        // External-host icons (`url` kind) leak Referer without this.
+        // Match the `<PageHeader>` + wiki-link chip + `Embed` /
+        // `CodeBlockView` / `Image` posture.
         referrerPolicy="no-referrer"
       />
     );
@@ -286,6 +368,13 @@ function PageCoverPreviewContent({ resolved }: { resolved: ReturnType<typeof res
   return <ImagePlus className="size-4" aria-hidden />;
 }
 
+/**
+ * Themed component overrides for `EmojiPicker.List` — extracted to a
+ * module-level constant so React Compiler can hoist the object literal
+ * once (the picker re-renders on every keystroke; an inline object
+ * would create a new identity each pass and force the virtualised
+ * list to remount its rows).
+ */
 const EMOJI_LIST_COMPONENTS: EmojiPickerListComponents = {
   CategoryHeader: ({ category, ...props }) => (
     <div
@@ -311,6 +400,14 @@ const EMOJI_LIST_COMPONENTS: EmojiPickerListComponents = {
   ),
 };
 
+/**
+ * Frimousse-backed emoji picker, themed to match OK's shadcn surface
+ * (popover bg, accent on hover, ring on focus). Keeps the picker
+ * compact (320px) and constrained vertically so it fits inside the
+ * popover without scrolling the page. The `onSelect` callback fires
+ * with the rendered emoji string (multi-codepoint sequences already
+ * joined by `frimousse`).
+ */
 function FrimousseEmojiPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
   const { t } = useLingui();
   return (

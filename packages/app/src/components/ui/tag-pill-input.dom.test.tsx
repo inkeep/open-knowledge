@@ -1,3 +1,13 @@
+/**
+ * DOM-substrate tests for TagPillInput's grammar-gate behaviors and
+ * a11y-id wiring. Runs under `bun run test:dom` (jsdom + RTL).
+ *
+ * Covers the aria-describedby clobber, the hardcoded-id collision,
+ * and the input-side rejection UX. These tests live here (rather
+ * than the legacy `tag-pill-input.test.ts` source-text guards) to
+ * satisfy the "Never assert raw source text for JSX / classes /
+ * imports / hooks / props" rule for the grammar-gate additions.
+ */
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { createRef } from 'react';
@@ -38,6 +48,8 @@ describe('TagPillInput — render-side invalid pill flagging', () => {
       value: ['showcase', '2026', 'has spaces', 'proj/team'],
     });
     const invalid = container.querySelectorAll('[data-tag-invalid="true"]');
+    // Only `has spaces` is invalid — the digit-leading `2026` (a year) is a
+    // valid frontmatter tag.
     expect(invalid).toHaveLength(1);
     const texts = Array.from(invalid).map((el) => el.textContent ?? '');
     expect(texts.some((t) => t.includes('2026'))).toBe(false);
@@ -124,6 +136,8 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('Enter on a digit-leading tag like a year (2026) commits', () => {
+    // Digit-leading tags are valid in frontmatter even though the inline
+    // `#tag` surface rejects them.
     const onChange = mock(() => {});
     const { container } = renderInput({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
@@ -158,6 +172,12 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('input strips leading `#` before commit (Obsidian-shape paste tolerance)', () => {
+    // The grammar helper strips a single leading `#` for paste
+    // tolerance, so `#showcase` passes — but the committed list must
+    // hold canonical bare `showcase`. Without this, the next on-disk
+    // YAML parse would silently re-normalize the value (drifting
+    // display) and the dedup check would miss a `#showcase` / `showcase`
+    // pair.
     const onChange = mock(() => {});
     const { container } = renderInput({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
@@ -170,6 +190,9 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('post-normalize dedup catches `#`x vs x (no double commit)', () => {
+    // Before the normalization fix, an author with `showcase` already
+    // in the list could re-add `#showcase` (the raw dedup check would
+    // miss it). Pin post-normalize dedup so this regression stays caught.
     const onChange = mock(() => {});
     const { container } = renderInput({ value: ['showcase'], onChange });
     const input = container.querySelector('input') as HTMLInputElement;
@@ -198,6 +221,10 @@ describe('TagPillInput — a11y id wiring (regression: PR #1288 review findings)
   });
 
   test('grammar-hint id is derived from the caller-supplied `id` prop (per-instance unique)', () => {
+    // Without this, two TagPillInputs on the same page would collide
+    // on a static `tag-pill-grammar-hint` id (HTML uniqueness + AT
+    // ambiguity). Verified by inducing a rejection on a caller-id'd
+    // instance and reading the helper's actual id.
     const { container } = renderInput({ id: 'my-tags-field' });
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'bad!' } });
@@ -207,6 +234,9 @@ describe('TagPillInput — a11y id wiring (regression: PR #1288 review findings)
   });
 
   test('two TagPillInputs on the same page get distinct grammar-hint ids (no static collision)', () => {
+    // Pre-fix this test would have failed: both helpers would share
+    // the static `tag-pill-grammar-hint`. Now each instance gets a
+    // distinct id (caller-supplied or auto-generated via useId).
     const { container } = render(
       <TooltipProvider>
         <TagPillInput id="left" value={[]} onChange={() => {}} />
@@ -225,6 +255,10 @@ describe('TagPillInput — a11y id wiring (regression: PR #1288 review findings)
   });
 
   test('aria-describedby MERGES the caller id with the grammar-hint id (does not clobber)', () => {
+    // RHF wires field-level error messages through `aria-describedby`.
+    // Before the fix, a rejection during an active RHF error would
+    // silently drop the RHF pointer for AT. Now both ids coexist as
+    // a space-separated list.
     const { container } = renderInput({
       id: 'my-field',
       'aria-describedby': 'my-field-rhf-error',

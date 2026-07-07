@@ -1,3 +1,10 @@
+/**
+ * Runtime guards for `update-notices-store.ts`. The store is a module-level
+ * singleton, so this file owns one fake `window.okDesktop` bridge and avoids
+ * `mock.module(...)` entirely. Bun module mocks are process-global and can
+ * leak into later module-load tests.
+ */
+
 import { afterAll, describe, expect, mock, test } from 'bun:test';
 
 const store = await import('./update-notices-store');

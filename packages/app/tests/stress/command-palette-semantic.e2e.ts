@@ -1,3 +1,19 @@
+/**
+ * E2E coverage for the "By meaning" semantic-search mode in the Cmd+K omnibar.
+ *
+ * Capability is faked via route interception so no real embeddings key/provider
+ * is needed:
+ *   - GET /api/semantic-status -> enabled + keyPresent so the pill shows
+ *   - POST /api/search -> canned rows so the deliberate submit has a result set
+ *
+ * The server round-trip (real concept embedder + fusion + the `source` field) is
+ * covered by api-search-semantic{,-factory}.test.ts; this file covers the client
+ * choreography the unit tests cannot: gate -> pill -> mode -> empty-state ->
+ * deliberate submit -> results -> sticky-on-edit -> Escape-exits-mode-first.
+ *
+ * Each test seeds its own unique doc.
+ */
+
 import type { Page } from '@playwright/test';
 import { expect, test } from './_helpers';
 
@@ -15,6 +31,7 @@ const resultsGroup = (page: Page) =>
 const indexingBanner = (page: Page) =>
   page.locator('[data-testid="command-palette-semantic-indexing"]');
 
+// Full SemanticIndexStatus shape — `enabled && keyPresent` is the pill gate.
 const CAPABLE_STATUS = {
   enabled: true,
   keyPresent: true,
@@ -46,6 +63,11 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     await page.setViewportSize(DESKTOP_VIEWPORT);
     await page.goto('/#/s001');
     await page.waitForSelector('[role="treeitem"]', { timeout: 15_000 });
+    // Capture the capability probe (fired when the palette opens) so the
+    // assertion runs AFTER the gate resolved incapable, not merely before the
+    // first fetch. The real e2e server reports enabled:false (no project semantic
+    // flag, no key), so the trigger never appears — while the tag pill, which has
+    // no capability gate, stays visible: the row is otherwise unchanged.
     const statusResolved = page.waitForResponse((r) => r.url().includes('/api/semantic-status'), {
       timeout: 15_000,
     });
@@ -69,6 +91,7 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     await expect(semanticPill(page)).toBeVisible();
     await semanticPill(page).click();
 
+    // Pill active; input placeholder flips; empty-state prompt shows.
     await expect(semanticPill(page)).toHaveAttribute('aria-pressed', 'true');
     await expect(cmdkInput(page)).toHaveAttribute('placeholder', 'Search by meaning');
     await expect(emptyNotice(page)).toBeVisible();
@@ -103,10 +126,12 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     await openPalette(page);
     await semanticPill(page).click();
 
+    // Typing offers a submit row but does NOT embed (deliberate-submit only).
     await page.keyboard.type('auth retries');
     await expect(submitRow(page)).toBeVisible();
     expect(searchBodies.length).toBe(0);
 
+    // Enter fires exactly one semantic search, and the canned hit renders.
     await page.keyboard.press('Enter');
     await expect(resultsGroup(page)).toBeVisible({ timeout: 5_000 });
     await expect(resultsGroup(page).getByText('Session Token Refresh')).toBeVisible();
@@ -116,6 +141,8 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
       source: 'omnibar',
       intent: 'full_text',
       query: 'auth retries',
+      // Bounded by COUNT (nearest-neighbor retrieval has no natural "no match"),
+      // matched to the lexical search cap.
       limit: 30,
     });
   });
@@ -150,6 +177,10 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     await page.keyboard.type('auth');
     await page.keyboard.press('Enter');
 
+    // After a clean fire the results lead: current set, not dimmed, selectable
+    // (so ↵ opens the highlight), no submit row.
+    // The omnibar maps an API `page` row to a `file` entry, so the row testid
+    // reads `file`, not `page` (see toWorkspaceSearchEntry).
     const resultRow = page.locator(
       '[data-testid="command-palette-nav-file-session-token-refresh"]',
     );
@@ -159,12 +190,17 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     await expect(submitRow(page)).toHaveCount(0);
     expect(searchBodies.length).toBe(1);
 
+    // Editing the query marks the held set stale: dimmed AND disabled, so cmdk
+    // skips it and a pointer click can't open a stale row (pointer-events off).
+    // The submit row returns and takes the highlight — keyboard ↵ and a click
+    // both resolve to "re-fire", never "open the stale result".
     await page.keyboard.type(' retries');
     await expect(submitRow(page)).toBeVisible();
     await expect(submitRow(page)).toHaveAttribute('data-selected', 'true');
     await expect(resultsGroup(page)).toHaveAttribute('data-dimmed', 'true');
     await expect(resultRow).toHaveAttribute('aria-disabled', 'true');
 
+    // ↵ re-fires for the edited query instead of opening the (now inert) result.
     await page.keyboard.press('Enter');
     await expect.poll(() => searchBodies.length).toBe(2);
     expect(searchBodies[1]).toMatchObject({
@@ -187,10 +223,12 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     await semanticPill(page).click();
     await expect(semanticPill(page)).toHaveAttribute('aria-pressed', 'true');
 
+    // First Escape: exit the mode, palette still open (protects the sticky set).
     await page.keyboard.press('Escape');
     await expect(cmdkRoot(page)).toBeVisible();
     await expect(semanticPill(page)).toHaveAttribute('aria-pressed', 'false');
 
+    // Second Escape: now lexical, so it closes the dialog.
     await page.keyboard.press('Escape');
     await expect(cmdkRoot(page)).toBeHidden({ timeout: 2_000 });
   });
@@ -205,6 +243,8 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     await page.goto('/#/s006');
     await page.waitForSelector('[role="treeitem"]', { timeout: 15_000 });
     await openPalette(page);
+    // Type a lexical query, THEN switch to by-meaning — the text must survive and
+    // become the pending semantic query (a submit row offers to fire it).
     await page.keyboard.type('auth retries');
     await semanticPill(page).click();
     await expect(semanticPill(page)).toHaveAttribute('aria-pressed', 'true');
@@ -216,6 +256,7 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     page,
     api,
   }) => {
+    // Partial coverage (embedded < total) — the lazy embed is still in progress.
     await page.route('**/api/semantic-status', async (route) => {
       await route.fulfill({ json: { ...CAPABLE_STATUS, embedded: 1, total: 4 } });
     });
@@ -230,6 +271,9 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
   });
 
   test('no indexing banner when the corpus is fully embedded', async ({ page, api }) => {
+    // fakeCapability reports embedded === total (3 of 3) — fully indexed, so the
+    // banner must be absent. Guards the `embedded < total` condition against an
+    // inversion that would warn "results may be incomplete" when they aren't.
     await fakeCapability(page);
     await api.seedDocs([{ name: 's008', markdown: '# s008\n\nBody.' }]);
     await page.setViewportSize(DESKTOP_VIEWPORT);

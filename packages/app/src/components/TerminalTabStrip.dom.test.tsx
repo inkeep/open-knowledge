@@ -15,6 +15,7 @@ function renderStrip(props?: {
   activeSessionId?: string;
   dockPosition?: 'bottom' | 'right';
   newChatSelected?: 'claude' | 'codex' | 'opencode' | 'cursor' | 'terminal';
+  draggable?: boolean;
 }) {
   const onSelect = mock((_id: string) => {});
   const onTabActivate = mock((_id: string) => {});
@@ -25,6 +26,10 @@ function renderStrip(props?: {
   const onToggleDock = mock(() => {});
   const onCollapse = mock(() => {});
   render(
+    // The app mounts a root TooltipProvider (main.tsx); the strip's control
+    // tooltips need that context, so the isolated render supplies its own.
+    // `draggable` mirrors the standalone terminal window's prop shape (same
+    // new-chat model, no dock/collapse controls); the default mirrors the dock.
     <TooltipProvider>
       <TerminalTabStrip
         sessions={props?.sessions ?? SESSIONS}
@@ -36,9 +41,10 @@ function renderStrip(props?: {
         onNewChatPickCli={onNewChatPickCli}
         onNewChatPickTerminal={onNewChatPickTerminal}
         onClose={onClose}
-        dockPosition={props?.dockPosition ?? 'bottom'}
-        onToggleDock={onToggleDock}
-        onCollapse={onCollapse}
+        dockPosition={props?.draggable ? undefined : (props?.dockPosition ?? 'bottom')}
+        onToggleDock={props?.draggable ? undefined : onToggleDock}
+        onCollapse={props?.draggable ? undefined : onCollapse}
+        draggable={props?.draggable}
       />
     </TooltipProvider>,
   );
@@ -66,6 +72,8 @@ describe('TerminalTabStrip', () => {
 
   test('hovering a tab surfaces the full (untruncated) title in a tooltip', async () => {
     const user = userEvent.setup();
+    // A process-set OSC title long enough to hard-clip at the tab's max width;
+    // the tooltip must carry the whole thing so a hover reveals what was cut.
     const longTitle =
       'claude — refactor the terminal dock reveal affordance across every view kind';
     renderStrip({ sessions: [{ id: 's1', label: longTitle }], activeSessionId: 's1' });
@@ -96,6 +104,8 @@ describe('TerminalTabStrip', () => {
     await user.click(screen.getByRole('tab', { name: 'Terminal 2' }));
 
     expect(onSelect).toHaveBeenCalledWith('s2');
+    // No prop change happened, so the strip must still show the original active
+    // tab — the component owns no selection state of its own.
     expect(screen.getByRole('tab', { name: 'Terminal 1' }).getAttribute('aria-selected')).toBe(
       'true',
     );
@@ -108,9 +118,13 @@ describe('TerminalTabStrip', () => {
     const user = userEvent.setup();
     const { onTabActivate } = renderStrip({ activeSessionId: 's1' });
 
+    // Pointer/Enter activation routes through onTabActivate so the consumer can
+    // move focus into the terminal on a deliberate select.
     await user.click(screen.getByRole('tab', { name: 'Terminal 2' }));
     expect(onTabActivate).toHaveBeenCalledWith('s2');
 
+    // Arrow-key navigation must NOT fire onTabActivate — it would steal focus
+    // out of the tablist while the user is arrowing across tabs.
     onTabActivate.mockClear();
     act(() => screen.getByRole('tab', { name: 'Terminal 2' }).focus());
     await user.keyboard('{ArrowRight}');
@@ -167,6 +181,8 @@ describe('TerminalTabStrip', () => {
     const newChat = screen.getByRole('button', { name: 'New Claude chat' });
     const dockToggle = screen.getByRole('button', { name: 'Dock terminal to the right' });
     const collapse = screen.getByRole('button', { name: 'Collapse terminal' });
+    // New chat sits immediately right of the tablist; the spacer pushes the
+    // trailing group (dock-toggle … collapse) to the far right.
     expect(
       newChat.compareDocumentPosition(dockToggle) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -189,6 +205,7 @@ describe('TerminalTabStrip', () => {
 
   test('the dock-toggle reports onToggleDock and labels the resulting position', async () => {
     const user = userEvent.setup();
+    // Bottom-docked → the toggle moves it to the right.
     const bottom = renderStrip({ dockPosition: 'bottom' });
     const toRight = screen.getByRole('button', { name: 'Dock terminal to the right' });
     await user.click(toRight);
@@ -196,6 +213,7 @@ describe('TerminalTabStrip', () => {
     expect(screen.queryByRole('button', { name: 'Dock terminal to the bottom' })).toBeNull();
     cleanup();
 
+    // Right-docked → the toggle moves it to the bottom (label flips).
     const right = renderStrip({ dockPosition: 'right' });
     const toBottom = screen.getByRole('button', { name: 'Dock terminal to the bottom' });
     await user.click(toBottom);
@@ -229,5 +247,32 @@ describe('TerminalTabStrip', () => {
     for (const label of ['Terminal 1', 'Terminal 2', 'Terminal 3']) {
       expect(screen.getByRole('button', { name: `Close ${label}` })).toBeDefined();
     }
+  });
+
+  // The standalone terminal window is frameless (titleBarStyle:'hiddenInset'),
+  // so its tab row doubles as the macOS title bar. The dock (default) must NOT —
+  // it sits at the bottom of the editor, clear of the traffic lights.
+  test('window mode marks the bar as the draggable macOS title region; dock mode does not', () => {
+    renderStrip({ draggable: true });
+    expect(document.querySelector('[data-electron-drag]')).not.toBeNull();
+    // The window has no dock-toggle/collapse — window management is the OS
+    // title bar's job — but keeps the full new-chat affordance (feature parity).
+    expect(screen.queryByRole('button', { name: /Dock terminal/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Collapse terminal' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'New Claude chat' })).toBeDefined();
+    cleanup();
+    renderStrip();
+    expect(document.querySelector('[data-electron-drag]')).toBeNull();
+  });
+
+  test('window mode keeps the tab controls interactive (no-drag opt-out works)', async () => {
+    const user = userEvent.setup();
+    const { onNewChatLaunch, onClose } = renderStrip({ activeSessionId: 's1', draggable: true });
+
+    await user.click(screen.getByRole('button', { name: 'New Claude chat' }));
+    await user.click(screen.getByRole('button', { name: 'Close Terminal 1' }));
+
+    expect(onNewChatLaunch).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith('s1');
   });
 });

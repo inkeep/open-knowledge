@@ -1,8 +1,22 @@
+/**
+ * Shared loading / error panes for the read-only file viewers (`TextViewer`
+ * source render + `SkillMarkdownLoader` rendered-markdown). Both need the same
+ * centered loading spinner and error message + optional "Open file" handoff, so
+ * the markup lives once here instead of being copied per viewer.
+ *
+ * `dataAttr` stamps an identifying attribute on every branch so consumers (DOM
+ * tests, e2e selectors) can find the mounted pane regardless of async state.
+ * The state is exposed as `${dataAttr}-state` ("loading" / "error") and any
+ * extra attributes flow through `extraAttrs` (e.g. the source viewer's
+ * `data-text-viewer-extension`).
+ */
 import { Trans } from '@lingui/react/macro';
 
 interface ViewerStatusPaneBaseProps {
   fileName: string;
+  /** Base data-attribute name, e.g. `data-text-viewer`. Drives the `-state` sibling. */
   dataAttr: string;
+  /** Extra data-attributes stamped on every branch (e.g. the file extension). */
   extraAttrs?: Record<string, string>;
 }
 
@@ -29,6 +43,7 @@ export function ViewerErrorPane({
   openHref,
 }: ViewerStatusPaneBaseProps & {
   message: string;
+  /** "Open file" handoff target. Only the content-dir asset path has one. */
   openHref?: string;
 }) {
   return (

@@ -215,6 +215,8 @@ describe('PublishToGitHubDialog runtime behavior', () => {
 
     expect(screen.getByRole('dialog', { name: 'Publish to GitHub' })).toBeTruthy();
     expect(await screen.findByTestId('publish-owner-radio')).toBeTruthy();
+    // Owners render as radio options; the org is pre-selected over the user
+    // account (pickDefaultOwner) so a team's KB doesn't default to a personal repo.
     expect(screen.getByTestId('publish-owner-option-docs-team').getAttribute('data-state')).toBe(
       'checked',
     );
@@ -259,6 +261,7 @@ describe('PublishToGitHubDialog runtime behavior', () => {
     const { onOpenChange } = await renderDialog();
     await waitForAvailableNameCheck();
 
+    // Default is the org; switch to the personal account before submitting.
     await userEvent.click(screen.getByTestId('publish-owner-option-alice'));
     expect(screen.getByTestId('publish-owner-option-alice').getAttribute('data-state')).toBe(
       'checked',

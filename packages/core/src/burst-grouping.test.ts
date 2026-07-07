@@ -1,3 +1,6 @@
+/**
+ * Unit tests for bucketIntoBursts.
+ */
 import { describe, expect, test } from 'bun:test';
 import { bucketIntoBursts, type SessionTransaction } from './burst-grouping.ts';
 
@@ -32,6 +35,7 @@ describe('bucketIntoBursts — no human edits → one burst per session', () => 
 describe('bucketIntoBursts — human edit between transactions → new burst boundary', () => {
   test('human edit splits a session into two bursts', () => {
     const txs = [tx('agent-a', 100), tx('agent-a', 300)];
+    // Human edit at 200, strictly between 100 and 300
     const bursts = bucketIntoBursts(txs, [{ timestamp: 200 }]);
     expect(bursts).toHaveLength(2);
     expect(bursts[0].start_ts).toBe(100);
@@ -42,6 +46,7 @@ describe('bucketIntoBursts — human edit between transactions → new burst bou
 
   test('human edit at exact transaction timestamp does NOT split (not strictly between)', () => {
     const txs = [tx('agent-a', 100), tx('agent-a', 200)];
+    // Human edit exactly at 200 — not "strictly between" 100 and 200
     const bursts = bucketIntoBursts(txs, [{ timestamp: 200 }]);
     expect(bursts).toHaveLength(1);
   });
@@ -63,10 +68,13 @@ describe('bucketIntoBursts — human edit between transactions → new burst bou
 describe('bucketIntoBursts — multi-session interleaved writes', () => {
   test('each session gets independent bursts regardless of other sessions', () => {
     const txs = [tx('agent-a', 100), tx('agent-b', 110), tx('agent-a', 300), tx('agent-b', 310)];
+    // Human edit at 200 — splits agent-a but agent-b's consecutive pair is 110→310 which spans 200
     const bursts = bucketIntoBursts(txs, [{ timestamp: 200 }]);
     const abursts = bursts.filter((b) => b.session_id === 'agent-a');
     const bbursts = bursts.filter((b) => b.session_id === 'agent-b');
+    // agent-a: 100 and 300 with human edit at 200 → 2 bursts
     expect(abursts).toHaveLength(2);
+    // agent-b: 110 and 310 with human edit at 200 → 200 strictly between 110 and 310 → 2 bursts
     expect(bbursts).toHaveLength(2);
   });
 

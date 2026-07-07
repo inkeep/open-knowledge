@@ -1,3 +1,17 @@
+/**
+ * A write whose disk-persistence step fails must surface the failure, not
+ * report "Written successfully". Previously `onStoreDocument` threw (e.g.
+ * ENOSPC / EACCES / read-only FS), Hocuspocus caught the rethrow and kept the
+ * doc in memory ("stays in memory to avoid data loss"), and the HTTP handler —
+ * which had already returned 200 — told the caller the write succeeded. The
+ * content never reached disk and was lost on restart: silent data loss with a
+ * success response.
+ *
+ * `OK_TEST_STORE_FAULT=<docName>` forces the atomic write to throw a synthetic
+ * ENOSPC for exactly that doc (a non-name failure — over-long names are a
+ * separate validation concern), exercising the real persistence → flush →
+ * surfacing path through the production server boot.
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { createTestServer, type TestServer } from './test-harness.ts';
@@ -31,6 +45,7 @@ describe('disk-persistence failure surfacing (/api/agent-write-md)', () => {
     expect(res.ok).toBe(false);
     expect(res.status).toBeGreaterThanOrEqual(500);
     const body = (await res.json()) as { type?: string; title?: string };
+    // ENOSPC maps to the storage-full problem type (507).
     expect(res.status).toBe(507);
     expect(body.type).toBe('urn:ok:error:storage-full');
   });
@@ -42,6 +57,8 @@ describe('disk-persistence failure surfacing (/api/agent-write-md)', () => {
     const res = await writeMd(server.port, docName);
 
     expect(res.status).toBe(200);
+    // Pin the success shape: a flat success body, not an RFC 9457 problem
+    // document. Guards against a refactor that returns 200 via errorResponse.
     const body = (await res.json()) as { type?: string };
     expect(body.type).toBeUndefined();
   });

@@ -1,0 +1,153 @@
+---
+title: Software lifecycle
+icon: LuGitPullRequest
+description: "One home for the docs an engineering team writes around its code: the pitch for a change, the decision that settles it, the plan to build it, and the write-up when something breaks. Each links to the next, and an AI keeps the connections current. Built on the Software lifecycle starter pack."
+---
+A **software lifecycle** knowledge base is where an engineering team's thinking lives before, during, and after the code: the proposal that argued for a change, the decision that settled it, the spec that built it, and the postmortem written when it broke. Those are the usual names for each stage, and if they're new to you the page explains them as it goes. One folder per stage, one flow connecting them, and an AI that keeps the links between them honest.
+
+```html preview
+<div style="padding:18px">
+  <div id="flow" style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch"></div>
+  <div class="cap">Each stage is a folder of markdown. The arrows are links the agent maintains, so a spec always points back to the decision that authorized it.</div>
+</div>
+<style>
+#flow .node{flex:1;min-width:118px;border:1px solid var(--border);border-radius:12px;padding:11px 13px;background:var(--card);transition:box-shadow .3s,border-color .3s;cursor:pointer}
+#flow .node .t{font-weight:600;font-size:13px}
+#flow .node .s{color:var(--muted-foreground);font-size:11.5px;margin-top:2px}
+#flow .node.on{border-color:var(--primary);box-shadow:0 0 0 3px var(--accent-soft)}
+#flow .node.on .t{color:var(--accent-ink)}
+#flow .arrow{align-self:center;color:var(--muted-foreground)}
+.cap{margin-top:12px;color:var(--muted-foreground);font-size:12.5px}
+.cap::before{content:"\2192  ";color:var(--primary);font-weight:700}
+@media (prefers-reduced-motion:reduce){#flow .node{transition:none}}
+</style>
+<script>
+var steps=[["proposals/","argue for a change"],["decisions/","freeze the ADR"],["specs/","implement it"],["postmortems/","when it breaks"]];
+var flow=document.getElementById("flow"),nodes=[];
+steps.forEach(function(s,i){
+  if(i){var a=document.createElement("div");a.className="arrow";a.textContent="→";flow.appendChild(a);}
+  var d=document.createElement("div");d.className="node";
+  var t=document.createElement("div");t.className="t";t.textContent=s[0];
+  var sub=document.createElement("div");sub.className="s";sub.textContent=s[1];
+  d.appendChild(t);d.appendChild(sub);
+  d.onclick=function(){pinned=true;set(i);};
+  flow.appendChild(d);nodes.push(d);
+});
+var cur=0,pinned=false;
+function set(i){cur=i;nodes.forEach(function(n,j){n.classList.toggle("on",j===i);});}
+set(0);
+if(!matchMedia("(prefers-reduced-motion:reduce)").matches){setInterval(function(){if(!pinned)set((cur+1)%nodes.length);},1500);}
+</script>
+```
+
+The stages are the standard artifacts an engineering org already produces — RFCs, ADRs, specs, blameless postmortems, runbooks — but here they live as linked markdown an agent reads and writes alongside you, not as scattered Google Docs, Notion pages, and Slack threads that nobody can trace six months later.
+
+Engineering leads get every proposal, decision, and spec in one linked graph, with the agent surfacing what supersedes what, so design docs stop rotting across scattered tools. OSS maintainers give contributors the *why* behind the code — in accepted proposals and frozen ADRs — instead of leaving them to do archaeology through closed PRs. On-call engineers get postmortems that link to each other and stub the follow-up guides automatically, so recurring incidents become visible instead of quietly repeating.
+
+## The flow
+
+```
+proposals/    in-flight, RFC-shape design proposals   (draft → fcp → accepted/rejected)
+   ↓ accepted
+decisions/    frozen ADRs — the record of what was decided
+   ↓ derived
+specs/        implementation specs for accepted proposals
+   ↓ when things break
+postmortems/  blameless incident write-ups
+guides/       how-to / onboarding / runbooks — referenced throughout
+```
+
+The pack ships a template for each: `proposal`, `decision`, `spec` / `plan` / `tasks` (the [GitHub spec-kit](https://github.com/github/spec-kit) three-file shape), `postmortem`, and `guide` / `onboarding-guide` / `runbook`. Templates carry only structure; what each section is for is taught to the agent by the folder itself, so document bodies stay clean.
+
+## The scenario
+
+Your team is deciding whether to move the job queue off Postgres onto a dedicated broker. Over two weeks:
+
+1. An engineer writes `proposals/0007-dedicated-job-broker.md` — motivation, design, drawbacks, alternatives, unresolved questions. Status `draft`.
+2. After review it reaches `fcp` (final comment period), then `accepted`. The agent graduates it into `decisions/0007-adopt-nats-for-jobs.md`, a frozen ADR that links back to the proposal.
+3. Implementation gets a `specs/007-job-broker/` folder — `spec.md`, `plan.md`, `tasks.md` — referencing the parent decision.
+4. Three weeks post-ship the broker drops messages under load. `postmortems/2026-07-14-job-broker-message-loss.md` captures the timeline and root cause, and the agent surfaces a `Related:` link to an older queue postmortem that shares the subsystem.
+
+Nothing here is new to your team. What's new: it's all one linked graph an agent can read back to you, and the links stay correct because the agent maintains them.
+
+## What's in your project after seeding
+
+Pick **Software lifecycle** in the starter-pack picker, or run:
+
+```bash
+ok seed --pack software-lifecycle
+```
+
+By default the pack nests everything under a `project-docs/` subfolder:
+
+```
+your-project/
+└── project-docs/
+    ├── proposals/       0001-feature-name.md …
+    ├── decisions/       NNNN-title.md (ADRs)
+    ├── specs/           NNN-name/{spec,plan,tasks}.md
+    ├── postmortems/     YYYY-MM-DD-name.md
+    └── guides/          how-to / onboarding / runbooks
+```
+
+Each folder carries an `.ok/frontmatter.yml` description the agent reads on every directory listing, plus its templates under `.ok/templates/`. That description is where the workflow lives — so the agent knows an accepted proposal graduates to `decisions/`, that ADRs freeze once accepted, and that a new decision superseding an old one links back via `Supersedes:`.
+
+<Callout type="info" title="Seeding also installs a skill">
+  `ok seed --pack software-lifecycle` installs the **Software lifecycle** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance behind the behaviors below — the status flows, the `Supersedes:` scanning, the postmortem follow-ups — read automatically, and editable like any other doc. It lands as a real `SKILL.md` committed to your repo, one per detected editor. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+</Callout>
+
+## What the agent does for you
+
+The pack teaches the agent behaviors you'd otherwise have to remember. _They're encoded in the pack skill and run **when you prompt the agent** — not background automations that fire on a timer._
+
+| When | The agent | Why it matters |
+| --- | --- | --- |
+| A new decision lands | Scans existing ADRs touching the same subsystem, surfaces `Supersedes:` candidates before commit | The decision log stays a true chain, not a pile |
+| A proposal sits at `draft` > 14 days | Surfaces it to advance, park, or close | Stale proposals don't silently die |
+| A postmortem is published | Scans action items for guide-shaped follow-ups and stubs a guide pre-filled with the symptom | The fix becomes documented, not just discussed |
+| A new postmortem | Adds a `Related:` block linking prior postmortems in the same subsystem | Recurring incidents become visible |
+
+## Step by step
+
+### 1. Seed the pack
+
+In a fresh project, open the starter-pack picker and choose **Software lifecycle** (or run `ok seed --pack software-lifecycle`). Confirm the subfolder — leave `project-docs/` or point it at wherever your team's docs live.
+
+### 2. Write the first proposal
+
+In your agent, from a rough idea:
+
+<CopyPrompt>Draft a proposal in proposals/ for moving our job queue off Postgres onto a dedicated broker. Use the proposal template: motivation, design, drawbacks, alternatives, unresolved questions. Status: draft.</CopyPrompt>
+
+Review it in the editor. The frontmatter tracks `status`; advance it to `fcp` then `accepted` as review progresses.
+
+### 3. Graduate it to a decision
+
+<CopyPrompt>This proposal is accepted. Create the ADR in decisions/, link it back to the proposal, and flag any existing decisions it supersedes.</CopyPrompt>
+
+The agent writes the frozen record and — per the pack behavior — checks the subsystem for supersede candidates.
+
+### 4. Derive the spec
+
+<CopyPrompt>Create an implementation spec for the accepted broker decision under specs/, using the spec / plan / tasks templates. Reference the parent decision.</CopyPrompt>
+
+### 5. Write postmortems as incidents happen
+
+<CopyPrompt>Write a blameless postmortem for the job-broker message loss on 2026-07-14: summary, timeline, root cause, what went well, action items. Link related prior postmortems.</CopyPrompt>
+
+## Cadence
+
+| When | Do |
+| --- | --- |
+| Per design change | A proposal in `proposals/`; advance its status as review moves |
+| On acceptance | Graduate to a `decisions/` ADR with a `Supersedes:` chain where relevant |
+| Per implementation | A `specs/NNN-name/` folder derived from the decision |
+| Per incident | A blameless postmortem; let the agent link related ones and stub follow-up guides |
+| Monthly | Ask the agent to surface stale `draft` proposals and guides past their `last_verified` date |
+
+## Further reading
+
+- **[LLM wiki workflow](./karpathy-llm-wiki.mdx).** The source-grounded counterpart, if you're curating external sources rather than a doc lifecycle.
+- **[Codebase wiki workflow](./codebase-wiki.mdx).** An agent-authored wiki of the code the specs implement.
+- **[Agent activity](../features/agent-activity.mdx).** How every proposal, decision, and spec edit lands with attribution.
+- **[Claude Code](../integrations/claude-code.mdx)**, **[Cursor](../integrations/cursor.mdx)**, **[Codex](../integrations/codex.mdx).** MCP-capable agent hosts.

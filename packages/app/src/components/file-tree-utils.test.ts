@@ -55,6 +55,15 @@ describe('defaultInitialDir', () => {
   });
 });
 
+/**
+ * filterVisibleEntries — sidebar render-set parallel to EmptyEditorState.countEntries()'s
+ * hidden rule. Both surfaces delegate to core's `isHiddenDocName`: a per-segment
+ * dot-prefix check at any depth (so a top-level-only check would miss
+ * `brain/.archived/note.md`) plus the non-dotted `HIDDEN_CONFIG_BASENAMES`
+ * allowlist (e.g. `opencode.json`). Without this filter, `.claude/`, `.codex/`,
+ * `.cursor/`, and the seeded `opencode.json` agent config leak into the
+ * sidebar's @pierre/trees model (FileTree.tsx ingestion at setDocuments).
+ */
 describe('filterVisibleEntries', () => {
   test('keeps top-level visible document and folder entries', () => {
     const entries = [
@@ -211,6 +220,12 @@ describe('filterVisibleEntries', () => {
   });
 });
 
+/**
+ * toFileEntries — the wire→sidebar boundary. Fixtures go through the real
+ * schema parse so the test exercises exactly the handoff the FileTree fetch
+ * paths perform; every optional FileEntry field is asserted explicitly because
+ * omitting one in the mapper (e.g. dropping `isSymlink`) still compiles.
+ */
 describe('toFileEntries', () => {
   const modified = '2026-06-12T00:00:00.000Z';
 
@@ -321,6 +336,9 @@ describe('toFileEntries', () => {
   });
 
   test('skips entries the static type admits but the wire refine forbids', () => {
+    // Constructible because the inferred type leaves variant fields optional
+    // (refine guarantees are runtime-only) — the mapper must drop these
+    // rather than fabricate entries with missing identity refs.
     const malformed: DocumentListEntry[] = [
       {
         kind: 'document',

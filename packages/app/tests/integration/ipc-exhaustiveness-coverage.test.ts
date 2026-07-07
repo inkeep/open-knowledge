@@ -1,3 +1,46 @@
+/**
+ * IPC literal-union-member exhaustiveness meta-test.
+ *
+ * Mirrors `exhaustiveness-coverage.test.ts` (which gates HTTP `ProblemType`
+ * + structural-domain DUs) but scoped to IPC-side discriminated unions.
+ * Pins the same architectural property: when a developer adds a new
+ * variant to an IPC discriminated union, every consumer's `switch` over
+ * the discriminator must be updated, OR the consumer must be marked with
+ * a deliberate opt-out comment.
+ *
+ * Scoped to IPC-side DUs that are load-bearing across the renderer:
+ *   - `UrnIpcLookup.kind` ('mapped' | 'http-only' | 'unknown') — the
+ *     discriminated result of `lookupUrnInRegistry` from
+ *     `packages/core/src/handoff/urn-ipc-registry.ts`. Every consumer of
+ *     the registry's lookup function must exhaustively branch on `kind`,
+ *     so adding a fourth case (e.g., `'deprecated'`) fails the build at
+ *     each unhandled consumer. **This is the load-bearing IPC DU because
+ *     the registry is the cross-transport authority** — drift here
+ *     silently produces wrong reason translations.
+ *   - Cursor `SpawnOutcome.reason` ('invalid-path' | 'not-installed' |
+ *     'timeout' | 'spawn-error') — the canonical IPC reason union with
+ *     active consumers (`mapSpawnFailure` in `cursor-two-step.ts`,
+ *     handoff dispatch UI). Adding a fifth value (e.g., 'rate-limited')
+ *     must update every site that branches on this reason.
+ *
+ * Why these two and not all 42 channels: most IPC channels have one
+ * consumer (the dispatch UI in their dropdown) whose switch is colocated
+ * with the channel's invocation. Registering every channel's reason union
+ * here would expand the test's REGISTRY linearly with no architectural
+ * gain — consumers and producers move together. The two registered
+ * unions above are the ones that fan out to multiple consumers across
+ * the renderer; that's where the meta-test earns its weight.
+ *
+ * Helper expectation: each registered DU expects a corresponding
+ * `assertNeverXyz` helper to be called in the `default:` branch. This
+ * matches the existing exhaustiveness-coverage pattern — the helper is
+ * the structural evidence that the switch was deliberately exhaustive.
+ *
+ * Architectural mirror: the test deliberately uses the same registry +
+ * matchesDu + statementCallsHelper machinery as `exhaustiveness-coverage.test.ts`.
+ * Future IPC DU additions extend the REGISTRY here.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -27,16 +70,32 @@ const REGISTRY: readonly DuRegistration[] = [
     name: 'UrnIpcLookup',
     helper: 'assertNeverUrnIpcLookup',
     variantLabels: new Set(['mapped', 'http-only', 'unknown']),
+    // 'mapped' + 'http-only' together uniquely identify the registry's
+    // lookup result in this codebase — the trio is distinctive enough that
+    // any matching switch is over `UrnIpcLookup.kind`.
     uniqueLabels: new Set(['mapped', 'http-only']),
   },
   {
     name: 'SpawnFailureReason',
     helper: 'assertNeverSpawnFailureReason',
     variantLabels: new Set(['invalid-path', 'not-installed', 'timeout', 'spawn-error']),
+    // 'spawn-error' + 'not-installed' together uniquely identify the cursor
+    // SpawnOutcome reason in this codebase (other DUs may have 'invalid-path'
+    // or 'timeout' but not the full quartet).
     uniqueLabels: new Set(['spawn-error', 'not-installed']),
   },
 ];
 
+/**
+ * Maximum number of `// ipc-exhaustiveness-check: opt-out — <reason>` comment
+ * markers allowed across the renderer codebase. Each marker bypasses
+ * exhaustiveness for one switch site (intended for dynamic-dispatch sites
+ * where the heuristic doesn't apply). Starts at 2, which leaves headroom for
+ * legitimate dynamic-dispatch sites without losing the ratchet's value.
+ *
+ * Raising this constant weakens the IPC drift detection — treat any bump
+ * as a deliberate loosening of the ratchet.
+ */
 export const IPC_EXHAUSTIVENESS_OPT_OUT_LIMIT = 2;
 
 const OPT_OUT_MARKER = /\/\/\s*ipc-exhaustiveness-check:\s*opt-out\s*—/;
@@ -109,6 +168,7 @@ function collectSwitches(sf: SourceFile, content: string): SwitchInfo[] {
       }
     }
     if (!nonLiteralCase && caseLabels.length > 0) {
+      // Look at the line preceding the switch for an opt-out comment.
       const start = sw.getStart();
       const lineStart = content.lastIndexOf('\n', start - 1) + 1;
       const previousLineEnd = lineStart - 1;
@@ -212,6 +272,12 @@ function collectViolations(): {
   return { violations, optOutCount };
 }
 
+// Anti-vacuousness floor for the scan. The combined `packages/core/src` +
+// `packages/app/src` tree contains hundreds of .ts/.tsx files. A count
+// below this threshold means one of `SCAN_ROOTS` is wrong (path typo,
+// directory rename) or the glob/exclusion regressed — without this floor,
+// `enumerateSourceFiles` over an invalid root silently yields zero files
+// and the violations array stays empty regardless of switch shape.
 const MIN_SCANNED_FILES = 50;
 
 describe('IPC exhaustiveness coverage', () => {

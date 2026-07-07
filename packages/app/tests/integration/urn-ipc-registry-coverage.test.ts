@@ -1,3 +1,23 @@
+/**
+ * URN→IPC registry coverage meta-test.
+ *
+ * Pins the lockstep-maintenance discipline for the URN→IPC translation
+ * registry. Every URN in `ProblemTypeSchema.options` must appear EITHER:
+ *   - in at least one channel's `URN_IPC_REGISTRY[<channel>]` map (the
+ *     URN has a desktop IPC counterpart), OR
+ *   - in `URN_HTTP_ONLY` (the URN is intentionally HTTP-only).
+ *
+ * Adding a URN to ProblemTypeSchema and forgetting to update the registry
+ * fails this test with a precise message naming the missing URN. Mirrors
+ * `error-envelope-coverage.test.ts` shape — same fail-on-any-occurrence
+ * ratchet, same architectural intent.
+ *
+ * Second invariant: no URN appears in BOTH a channel map and URN_HTTP_ONLY
+ * — those represent contradictory decisions. The intersection check
+ * catches the copy-paste error of moving a URN between Set and channel
+ * map without removing the original.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { ProblemTypeSchema, URN_HTTP_ONLY, URN_IPC_REGISTRY } from '@inkeep/open-knowledge-core';
 

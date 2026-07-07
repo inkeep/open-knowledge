@@ -1,3 +1,20 @@
+/**
+ * Magic-byte buffers for upload e2e tests. Mirror the fixtures used by the
+ * unit-tier `handleUploadAsset` tests in `packages/server/src/api-extension.test.ts`
+ * (which exercise the unified `/api/upload` endpoint). Extracted here so the
+ * e2e suite exercises the same byte sequences the server's
+ * `fileTypeFromBuffer` dispatcher accepts — if `file-type` widens or narrows
+ * its detection ranges, both surfaces fail the same way.
+ *
+ * The optional `salt` parameter appends salt bytes AFTER the format-defining
+ * magic bytes, producing a buffer that still type-sniffs as the intended
+ * format but has a distinct sha256. Required because HEAD's `/api/upload`
+ * pipeline runs same-dir sha256 dedup — two byte-identical payloads collapse
+ * to one stored file, which masks the "second upload replaces src" assertion
+ * with a no-op rename. Pass distinct salts when a test needs distinct uploads.
+ */
+
+/** Minimal valid PNG (1×1 transparent pixel). `file-type` detects as image/png. */
 export function createPngBuffer(salt?: string): Buffer {
   const base = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAABJRElEQrkJggg==',
@@ -6,6 +23,7 @@ export function createPngBuffer(salt?: string): Buffer {
   return salt === undefined ? base : Buffer.concat([base, Buffer.from(salt, 'utf8')]);
 }
 
+/** Minimal valid MP4 — a 24-byte `ftyp` box. `file-type` detects as video/mp4. */
 export function createMp4Buffer(salt?: string): Buffer {
   const base = Buffer.from([
     0x00,
@@ -36,6 +54,7 @@ export function createMp4Buffer(salt?: string): Buffer {
   return salt === undefined ? base : Buffer.concat([base, Buffer.from(salt, 'utf8')]);
 }
 
+/** ID3v2 header + MPEG-1 Layer III sync frame. `file-type` detects as audio/mpeg. */
 export function createMp3Buffer(salt?: string): Buffer {
   const base = Buffer.from([
     0x49,

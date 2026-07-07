@@ -1,3 +1,14 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleOrphans`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET /api/orphans[?mode=...]`:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `OrphansSuccessSchema`, no `ok` discriminator.
+ *   - invalid orphan mode → `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
+ *     `Allow: GET` header.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { OrphansSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

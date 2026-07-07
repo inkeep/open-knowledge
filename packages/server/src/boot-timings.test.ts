@@ -24,9 +24,11 @@ describe('boot-timings', () => {
     const t = getBootTimings();
     expect(t).toBeDefined();
     expect(t?.startedAt).toBe('2026-06-30T00:00:00.000Z');
+    // All duration fields absent until recorded.
     expect(t?.httpListenMs).toBeUndefined();
     expect(t?.readyMs).toBeUndefined();
     expect(t?.fileCount).toBeUndefined();
+    // The monotonic clock is armed, so bootElapsedMs is a finite number.
     expect(typeof bootElapsedMs()).toBe('number');
     expect(bootElapsedMs()).toBeGreaterThanOrEqual(0);
   });
@@ -35,6 +37,7 @@ describe('boot-timings', () => {
     startBootTimings();
     const startedAt = getBootTimings()?.startedAt;
     expect(startedAt).toBeDefined();
+    // Round-trips through Date without becoming Invalid Date.
     expect(Number.isNaN(Date.parse(startedAt as string))).toBe(false);
   });
 

@@ -1,3 +1,13 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleHubs`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET /api/hubs[?limit=N]`:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `HubsSuccessSchema`, no `ok` discriminator.
+ *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
+ *     `Allow: GET` header.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { HubsSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

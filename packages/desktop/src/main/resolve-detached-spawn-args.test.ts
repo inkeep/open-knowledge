@@ -31,6 +31,8 @@ describe('resolveDetachedSpawnArgs', () => {
     expect(file).not.toBe(PARENT_EXEC);
   });
 
+  // Off darwin packaged the parent execPath is used directly — there is no
+  // LaunchServices Dock concern, and shipping a helper bundle is macOS-only.
   test.each([
     ['darwin', false], // dev
     ['linux', true],
@@ -44,12 +46,20 @@ describe('resolveDetachedSpawnArgs', () => {
 
   test('opts.env injects ELECTRON_RUN_AS_NODE=1 and OK_LOCK_KIND=interactive and preserves the inherited env', () => {
     const { opts } = resolveDetachedSpawnArgs(makeInput({ env: { PATH: '/usr/bin', FOO: 'bar' } }));
+    // ELECTRON_RUN_AS_NODE=1 is load-bearing: without it the Electron binary
+    // boots its GUI/Chromium stack instead of running the CLI as plain Node.
     expect(opts.env?.ELECTRON_RUN_AS_NODE).toBe('1');
     expect(opts.env?.OK_LOCK_KIND).toBe('interactive');
+    // PATH is enriched with platform-specific git fallback dirs, so the
+    // inherited `/usr/bin` is preserved but
+    // no longer alone — assert containment, not equality.
     expect(opts.env?.PATH?.split(':')).toContain('/usr/bin');
     expect(opts.env?.FOO).toBe('bar');
   });
 
+  // Closes the Cursor-class "git installed but launchctl-PATH-blind" failure
+  // mode at the Electron server-child spawn site. Two-stage probe in
+  // `git-preflight.ts` remains as defense-in-depth.
   test('darwin → opts.env.PATH prepends macOS git fallback dirs and preserves inherited PATH', () => {
     const { opts } = resolveDetachedSpawnArgs(
       makeInput({ platform: 'darwin', env: { PATH: '/usr/bin:/opt/dev/bin' } }),
@@ -88,6 +98,9 @@ describe('resolveDetachedSpawnArgs', () => {
   });
 
   test('enriched PATH deduplicates dirs already present in inherited PATH', () => {
+    // `/usr/bin` and `/snap/bin` appear in both the Linux fallback set and
+    // the inherited PATH — each must appear exactly once in the enriched
+    // PATH (enrichment-position wins; original PATH order preserved at tail).
     const { opts } = resolveDetachedSpawnArgs(
       makeInput({
         platform: 'linux',
@@ -113,6 +126,10 @@ describe('resolveDetachedSpawnArgs', () => {
   });
 
   test('enriched PATH wins over a PATH value coming in via env (no shadow)', () => {
+    // Catches the wrong-order spread bug: if the resolver placed PATH BEFORE
+    // `...env`, the spread would overwrite enrichment when env.PATH was set.
+    // The enriched value MUST contain the fallback dirs even when env.PATH is
+    // a single absolute path.
     const { opts } = resolveDetachedSpawnArgs(
       makeInput({ platform: 'darwin', env: { PATH: '/some/inherited/path' } }),
     );
@@ -123,6 +140,8 @@ describe('resolveDetachedSpawnArgs', () => {
 
   test('opts wire the detached lifecycle, stderr-only stdio, and content-dir cwd', () => {
     const { opts } = resolveDetachedSpawnArgs(makeInput({ spawnErrorLogFd: 9 }));
+    // detached:true is what lets the server outlive the parent (the point of
+    // the detached spawn); stdin/stdout to /dev/null, stderr to the error fd.
     expect(opts.detached).toBe(true);
     expect(opts.stdio).toEqual(['ignore', 'ignore', 9]);
     expect(opts.cwd).toBe('/tmp/some-project');
@@ -139,6 +158,9 @@ describe('resolveDetachedSpawnArgs', () => {
     ]);
   });
 
+  // Ephemeral single-file mode (`ok <file>`): the resolver appends
+  // `--single-file <file> --project-dir <temp>` and runs cwd at the temp
+  // project root (where the lock lands), NOT the file's real parent.
   test('ephemeral mode appends --single-file + --project-dir and cwds at the temp project root', () => {
     const { args, opts } = resolveDetachedSpawnArgs(
       makeInput({
@@ -158,6 +180,7 @@ describe('resolveDetachedSpawnArgs', () => {
       '--project-dir',
       '/tmp/ok-ephemeral-xyz',
     ]);
+    // cwd is the temp project root (lock anchor), not the real contentDir.
     expect(opts.cwd).toBe('/tmp/ok-ephemeral-xyz');
   });
 

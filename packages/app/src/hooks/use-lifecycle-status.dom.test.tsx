@@ -1,3 +1,14 @@
+/**
+ * RTL behavioral test for `useLifecycleStatus`. Pins:
+ *   - Initial value reflects whatever the doc's `lifecycle.status` Y.Map
+ *     currently holds (mounted-fresh `'conflict'` → returns `'conflict'`).
+ *   - The hook re-renders when the Y.Map fires a change event.
+ *   - Returns `null` when the doc has no pool entry (e.g. it's not loaded).
+ *
+ * Substrate: jsdom via `bun run test:dom`. The DocumentContext is mocked at
+ * its export surface — we don't need the full provider-pool machinery for
+ * a hook that only reads `poolEntries`.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import * as Y from 'yjs';

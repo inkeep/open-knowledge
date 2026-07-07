@@ -2,6 +2,16 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
+/**
+ * Info tooltip carrying the technical detail of what config sharing covers, so
+ * the visible copy can stay plain-language. Shared by the open-folder consent
+ * dialog, the create-project dialog, and Settings → Config sharing.
+ *
+ * The content is wrapped in a single block element on purpose: `TooltipContent`
+ * is an `inline-flex` row, so bare text + `<code>` siblings would each become
+ * flex items and wrap into cramped columns. One block child restores normal
+ * inline text flow.
+ */
 export function ConfigSharingInfoTooltip() {
   const { t } = useLingui();
   return (

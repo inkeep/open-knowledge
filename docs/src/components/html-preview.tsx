@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * Renders a ` ```html preview ` block (base64'd by the remarkHtmlPreview
+ * plugin) as a sandboxed, auto-sizing iframe. The iframe gets the same
+ * OpenKnowledge theme tokens the editor injects, so one authored block looks
+ * identical in the OK editor preview and here on the docs site. Height syncs
+ * back over postMessage; theme follows the docs light/dark toggle.
+ */
+
 import { useTheme } from 'next-themes';
 import { useEffect, useId, useState } from 'react';
 

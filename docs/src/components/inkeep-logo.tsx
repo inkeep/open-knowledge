@@ -1,6 +1,10 @@
 import type { SVGProps } from 'react';
 import { cn } from '@/lib/utils';
 
+// Full Inkeep brand lockup: the two-shape logo mark followed by the "inkeep"
+// wordmark. Colors are normalized to currentColor so the lockup inherits the
+// surrounding text color (and its hover transition), matching how the standalone
+// wordmark behaved in the footer.
 export function InkeepLogo({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -8,6 +12,8 @@ export function InkeepLogo({ className, ...props }: SVGProps<SVGSVGElement>) {
       fill="none"
       viewBox="0 0 896 175"
       xmlns="http://www.w3.org/2000/svg"
+      // Width-only sizing (e.g. `w-20`) scales height from the viewBox; h-auto
+      // keeps the 896×175 aspect ratio instead of stretching to a fixed height.
       className={cn('h-auto', className)}
       {...props}
     >

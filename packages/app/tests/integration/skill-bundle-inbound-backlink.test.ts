@@ -1,6 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createTestServer, pollUntil, type TestServer } from './test-harness.ts';
 
+/**
+ * INBOUND link from a skill's SKILL.md to one of its bundle references.
+ *
+ * The sibling `skill-bundle-files.test.ts` proves the OUTBOUND direction (a
+ * reference's `[[top-level-doc]]` resolves). This proves the inbound case the
+ * user hit: a SKILL.md authored with the natural bundle-relative wiki-link
+ * `[[references/<x>]]` (and the markdown-link form) must create a backlink on
+ * the bundle reference content doc through the LIVE derived-index path — no
+ * test-only rescan route. A bundle-relative wiki-link used to classify as a
+ * bare content-root doc name (`references/<x>` at the root) and silently miss
+ * the ref, leaving it orphaned with 0 backlinks in the graph.
+ */
 describe('skill SKILL.md → references/<x> inbound backlink (live index)', () => {
   let server: TestServer;
   beforeEach(async () => {
@@ -60,8 +72,11 @@ describe('skill SKILL.md → references/<x> inbound backlink (live index)', () =
 
     await pollUntil(async () => (await backlinkSources(refDoc)).includes(skillDoc));
 
+    // The phantom top-level `references/notes` must NOT collect the edge.
     expect(await backlinkSources('references/notes')).not.toContain(skillDoc);
 
+    // The per-doc graph panel (`/api/link-graph`, the surface that showed
+    // "1 node, 0 links") now contains the SKILL.md → ref edge.
     const graph = await graphNeighborhood(skillDoc);
     expect(graph.nodes.map((n) => n.id)).toEqual(expect.arrayContaining([skillDoc, refDoc]));
     expect(graph.links).toEqual(expect.arrayContaining([{ source: skillDoc, target: refDoc }]));

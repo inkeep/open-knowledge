@@ -32,6 +32,7 @@ describe('TerminalNewChatButton', () => {
     await user.click(screen.getByRole('button', { name: 'New Codex chat' }));
 
     expect(onLaunchSelected).toHaveBeenCalledTimes(1);
+    // Primary is a plain launch — it never re-picks.
     expect(onPickCli).not.toHaveBeenCalled();
   });
 
@@ -76,6 +77,7 @@ describe('TerminalNewChatButton', () => {
 
     await user.click(screen.getByRole('button', { name: 'Choose CLI for new chat' }));
 
+    // The active CLI row is programmatically current; siblings + Terminal are not.
     expect(
       (await screen.findByRole('menuitem', { name: 'Codex CLI' })).getAttribute('aria-current'),
     ).toBe('true');

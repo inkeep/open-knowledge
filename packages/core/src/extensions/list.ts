@@ -1,3 +1,23 @@
+/**
+ * Unified list + listItem TipTap extension.
+ *
+ * Single pair of node types matching mdast's nested `list` → `listItem+`
+ * structure (replaces the BulletList/OrderedList/ListItem/TaskList/TaskItem
+ * fragmentation).
+ *
+ * Schema names are mdast-canonical: `list` (not bulletList/orderedList)
+ * and `listItem` (not taskItem). Bullet/ordered/task are distinguished
+ * by attrs (`ordered`, `checked`).
+ *
+ * Commands are TipTap-idiomatic: toggleBulletList, toggleOrderedList,
+ * toggleTaskList — matching existing UI callers in slash-command/items.ts
+ * and bubble-menu/BlockTypeSelector.tsx.
+ *
+ * Keyboard shortcuts use prosemirror-schema-list utilities (wrapInList,
+ * splitListItem, liftListItem, sinkListItem) which are designed for
+ * nested list schemas.
+ */
+
 import { findParentNode, InputRule, mergeAttributes, Node, wrappingInputRule } from '@tiptap/core';
 import type { NodeType, Node as PmNode } from '@tiptap/pm/model';
 import { liftListItem as pmLiftListItem, wrapInList as pmWrapInList } from '@tiptap/pm/schema-list';
@@ -14,14 +34,19 @@ declare module '@tiptap/core' {
   }
 }
 
+// ────────────────────────── Helpers ──────────────────────────
+
+/** Check if a list node is a bullet list (not ordered, no checked items). */
 function isBulletList(node: PmNode): boolean {
   return node.type.name === 'list' && !node.attrs.ordered;
 }
 
+/** Check if a list node is an ordered list. */
 function isOrderedList(node: PmNode): boolean {
   return node.type.name === 'list' && !!node.attrs.ordered;
 }
 
+/** Check if a list has any task items (checked !== null). */
 function hasTaskItems(node: PmNode): boolean {
   let found = false;
   node.forEach((child) => {
@@ -32,6 +57,13 @@ function hasTaskItems(node: PmNode): boolean {
   return found;
 }
 
+/**
+ * Toggle between a specific list kind and no-list.
+ *
+ * If the selection is inside a list matching `predicate`, unwrap.
+ * If inside a different list kind, swap the attrs/items.
+ * If not in a list, wrap.
+ */
 function toggleListKind(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
@@ -44,6 +76,7 @@ function toggleListKind(
   const parentList = findParentNode((node) => node.type.name === 'list')(state.selection);
 
   if (parentList && predicate(parentList.node)) {
+    // Already in target kind → unwrap (lift)
     const { $from, $to } = state.selection;
     const range = $from.blockRange($to);
     if (!range) return false;
@@ -51,12 +84,15 @@ function toggleListKind(
   }
 
   if (parentList) {
+    // Inside a different list kind → swap attrs
     if (!dispatch) return true;
     const { tr } = state;
+    // Update the list node's attrs
     tr.setNodeMarkup(parentList.pos, undefined, {
       ...parentList.node.attrs,
       ...listAttrs,
     });
+    // If switching to/from task, update listItem checked attrs
     if (itemAttrsOverride !== undefined) {
       parentList.node.forEach((child, offset) => {
         if (child.type.name === 'listItem') {
@@ -72,12 +108,15 @@ function toggleListKind(
     return true;
   }
 
+  // Not in a list → wrap
   const canWrap = pmWrapInList(listType, listAttrs)(state, undefined);
   if (!canWrap) return false;
   if (!dispatch) return true;
 
+  // Wrap and optionally set item attrs
   const result = pmWrapInList(listType, listAttrs)(state, (tr) => {
     if (itemAttrsOverride) {
+      // After wrapping, walk up from the mapped position to find the new listItem
       const mappedPos = tr.mapping.map(state.selection.$from.pos);
       const $pos = tr.doc.resolve(mappedPos);
       for (let d = $pos.depth; d > 0; d--) {
@@ -95,6 +134,8 @@ function toggleListKind(
   });
   return result;
 }
+
+// ────────────────────────── List Node ──────────────────────────
 
 export const ListNode = Node.create({
   name: 'list',
@@ -194,6 +235,12 @@ export const ListNode = Node.create({
 
   addInputRules() {
     return [
+      // Bullet list: - , * , + (negative lookahead excludes task list pattern `- [ ] `)
+      // joinPredicate: bullet and ordered lists share the single `list` node
+      // type (distinguished by the `ordered` attr), so the default same-type
+      // join would merge a freshly-typed list into ANY adjacent list. Only
+      // join when the preceding list is the same kind — otherwise typing
+      // `1. ` below a bullet list silently became an empty bullet item.
       wrappingInputRule({
         find: /^\s*([-+*])(?!\s*\[[ xX]\])\s$/,
         type: this.type,
@@ -203,6 +250,7 @@ export const ListNode = Node.create({
         }),
         joinPredicate: (_match, node) => node.attrs.ordered === false,
       }),
+      // Ordered list: 1. or 1)
       wrappingInputRule({
         find: /^\s*(\d+)([.)])\s$/,
         type: this.type,
@@ -213,6 +261,7 @@ export const ListNode = Node.create({
         }),
         joinPredicate: (_match, node) => node.attrs.ordered === true,
       }),
+      // Task list: - [ ] or - [x]
       new InputRule({
         find: /^\s*[-*+]\s\[([ xX])\]\s$/,
         handler: ({ state, range, match }) => {
@@ -231,6 +280,7 @@ export const ListNode = Node.create({
 
           tr.wrap(blockRange, wrapping);
 
+          // Find the newly created listItem and set checked
           const $newPos = tr.doc.resolve(tr.mapping.map(range.from));
           for (let d = $newPos.depth; d > 0; d--) {
             const parentNode = $newPos.node(d);
@@ -256,6 +306,15 @@ export const ListNode = Node.create({
   },
 });
 
+// ────────────────────────── ListItem Node ──────────────────────────
+
+// Do NOT lower this extension's priority below TipTap's built-in `Keymap`
+// (default 100) — Keymap binds Enter → splitBlock, and at priority < 100 it
+// wins the chain and splits the listItem's paragraph in place, producing a
+// second `<p>` inside the same `<li>` instead of a new list item. The
+// default priority (100) matches stock TipTap and lets our splitListItem
+// run first; a previous `priority: 60` here regressed Enter on every list
+// type.
 export const ListItemNode = Node.create({
   name: 'listItem',
   content: 'paragraph block*',
@@ -265,6 +324,12 @@ export const ListItemNode = Node.create({
     return {
       checked: { default: null },
       spread: { default: false },
+      // Source-form fidelity attrs captured at parse time; null = canonical form. sourceMarkerSpacing is the
+      // space run between marker and content (`-  item` → 2);
+      // sourceOrdinal the typed ordered ordinal (`1. a\n1. b` → both 1);
+      // sourceCheckboxChar 'X' for the uppercase task checkbox;
+      // sourceContinuationIndent the nested-list continuation indent
+      // (`- a\n    - b` → 4).
       sourceMarkerSpacing: { default: null, rendered: false },
       sourceOrdinal: { default: null, rendered: false },
       sourceCheckboxChar: { default: null, rendered: false },
@@ -329,6 +394,12 @@ export const ListItemNode = Node.create({
       let checkbox: HTMLInputElement | null = null;
       const contentDiv = document.createElement('div');
 
+      // `disabled` must mirror editability, not snapshot it at creation. A pure
+      // setEditable() flip updates view.editable without a doc change, so
+      // ProseMirror never calls this NodeView's update() — a checkbox created
+      // while read-only (e.g. content injected before the editor goes live)
+      // would stay disabled forever. setEditable() emits 'update', so resync on
+      // it (and in update() below for any silent editability change).
       const syncDisabled = () => {
         if (checkbox) checkbox.disabled = !editor.isEditable;
       };
@@ -365,6 +436,7 @@ export const ListItemNode = Node.create({
         contentDOM: contentDiv,
         update(updatedNode: PmNode) {
           if (updatedNode.type !== node.type) return false;
+          // Handle transition to/from task mode
           if ((updatedNode.attrs.checked !== null) !== (node.attrs.checked !== null)) {
             return false; // force re-create
           }
@@ -387,6 +459,8 @@ export const ListItemNode = Node.create({
     return {
       Enter: () => this.editor.commands.splitListItem(this.name),
       Tab: () => {
+        // Only handle Tab when the cursor is inside a listItem — otherwise
+        // pass through so other extensions (e.g., table) can handle it.
         const { $from } = this.editor.state.selection;
         for (let d = $from.depth; d > 0; d--) {
           if ($from.node(d).type.name === 'listItem') {
@@ -408,5 +482,9 @@ export const ListItemNode = Node.create({
   },
 });
 
+/**
+ * Combined export for registration in shared.ts.
+ * Register both ListNode and ListItemNode to get the full list experience.
+ */
 export const List = ListNode;
 export const ListItem = ListItemNode;

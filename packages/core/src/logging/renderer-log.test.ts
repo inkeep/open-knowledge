@@ -67,6 +67,9 @@ describe('truncateLogMessage', () => {
   });
 
   test('truncated output stays within the cap (suffix reserved) so the server schema accepts it', () => {
+    // The server Zod schema enforces max(RENDERER_LOG_MAX_MESSAGE_BYTES); an
+    // over-long result would reject the whole batch. Cover the suffix-overflow
+    // regression directly.
     for (const n of [RENDERER_LOG_MAX_MESSAGE_BYTES + 1, RENDERER_LOG_MAX_MESSAGE_BYTES + 20000]) {
       expect(truncateLogMessage('x'.repeat(n)).length).toBeLessThanOrEqual(
         RENDERER_LOG_MAX_MESSAGE_BYTES,

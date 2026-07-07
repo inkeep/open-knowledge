@@ -1,3 +1,12 @@
+/**
+ * `server-lock` check — inspects `<cwd>/.ok/local/server.lock` and surfaces
+ * conflicting / foreign-host / dead-pid / corrupt states. Pass when the lock
+ * is missing OR healthy (no conflict + no stale data); fail when an alive
+ * server is holding the lock on this host (would block `ok start`), and warn
+ * for the dead-pid / foreign-host / corrupt cases (degraded but not
+ * blocking).
+ */
+
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { resolveLockDir } from '@inkeep/open-knowledge-server';

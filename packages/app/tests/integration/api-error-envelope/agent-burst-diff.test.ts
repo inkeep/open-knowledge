@@ -1,3 +1,21 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleAgentBurstDiff`
+ *
+ *
+ * Asserts the canonical RFC 9457 wire shape for
+ * `GET /api/agent-burst-diff?agentId=...&docName=...&stackIndex=...`:
+ *   - missing agentId / docName → 400 `urn:ok:error:invalid-request`.
+ *   - reserved docname → 400 `urn:ok:error:reserved-doc-name`.
+ *   - non-numeric / negative stackIndex → 400 `urn:ok:error:invalid-request`.
+ *   - no active session → 404 `urn:ok:error:no-active-session`.
+ *   - method-not-allowed on POST → 405 `urn:ok:error:method-not-allowed`.
+ *
+ * Happy-path coverage lives in
+ * `packages/app/tests/integration/c11-activity-panel-undo.test.ts` (creates a
+ * real session via the agent-write path then exercises the diff
+ * synthesizer); duplicating that setup here is over-coverage.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

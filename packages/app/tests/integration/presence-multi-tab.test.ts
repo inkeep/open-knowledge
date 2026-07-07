@@ -1,3 +1,15 @@
+/**
+ * Integration tests for the human-presence pipeline.
+ *
+ * Tests awareness publication wire format and the dedupe behavior implemented
+ * in dedupeHumansByPrincipalId. Awareness states are driven directly via
+ * provider.awareness.setLocalStateField (same shape as TiptapEditor's
+ * awareness effect) — no React required.
+ *
+ * Per-test docName isolation. Client lifecycle in try/finally per harness
+ * conventions. Never hardcodes 'test-doc' — every docName is a random UUID.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { AwarenessUser } from '../../src/presence/identity';
@@ -73,6 +85,7 @@ describe('presence dedupe — same principalId', () => {
         principalId: PID,
       });
 
+      // Wait until clientA sees clientB's awareness state
       const clientAId = clientA.provider.awareness?.clientID ?? 0;
       const clientBId = clientB.provider.awareness?.clientID ?? 0;
       await pollUntil(() => clientA.provider.awareness?.getStates().has(clientBId) === true, 5000);
@@ -113,33 +126,46 @@ describe('presence dedupe — same principalId', () => {
 
     const clientBId = clientB.provider.awareness?.clientID ?? 0;
     try {
+      // Wait until clientA sees clientB
       await pollUntil(() => clientA.provider.awareness?.getStates().has(clientBId) === true, 5000);
 
+      // Both visible → deduped tabCount should be 2
       const before = dedupeHumansByPrincipalId(buildHumans(clientA.provider));
       expect(before.length).toBe(1);
       expect(before[0].tabCount).toBe(2);
 
+      // Disconnect clientB
       clientB.provider.destroy();
 
+      // Wait until clientA no longer sees clientB's awareness entry
       await pollUntil(
         () => clientA.provider.awareness?.getStates().has(clientBId) === false,
         10_000,
       );
 
       const after = dedupeHumansByPrincipalId(buildHumans(clientA.provider));
+      // Either clientA's own entry only, or no entries (if self not counted)
       const ownEntry = after.find((h) => h.user.principalId === PID);
       expect(ownEntry?.tabCount ?? 1).toBe(1);
     } finally {
       await clientA.cleanup();
+      // clientB already destroyed above — call cleanup for idempotency (best-effort)
       try {
         await clientB.cleanup();
-      } catch {}
+      } catch {
+        /* already destroyed */
+      }
     }
   });
 });
 
 describe('presence dedupe — tab navigates away (clears local awareness without disconnecting)', () => {
   test('when one tab calls setLocalState(null) without disconnecting, peers see the entry vanish and tabCount drops', async () => {
+    // Models the navigate-away path: the provider stays in the pool with its
+    // WebSocket open, but the editor's awareness effect re-runs because
+    // activeDocName changed and calls setLocalState(null). Without this
+    // path, the WebSocket stays connected and the awareness entry persists
+    // forever — peers would still see "· 2 tabs" on a doc the user left.
     const docName = `presence-navigate-away-${crypto.randomUUID()}`;
     const clientA = await createTestClient(server.port, docName);
     const clientB = await createTestClient(server.port, docName);
@@ -166,16 +192,27 @@ describe('presence dedupe — tab navigates away (clears local awareness without
       const clientAId = clientA.provider.awareness?.clientID ?? 0;
       await pollUntil(() => clientB.provider.awareness?.getStates().has(clientAId) === true, 5000);
 
+      // Both tabs present from clientB's perspective — deduped tabCount = 2
       expect(dedupeHumansByPrincipalId(buildHumans(clientB.provider))[0].tabCount).toBe(2);
 
+      // Tab A "navigates away" — provider stays connected (no destroy()), but
+      // its TiptapEditor's awareness effect would call setLocalState(null).
       clientA.provider.awareness?.setLocalState(null);
 
+      // y-protocols deletes the entry from the awareness `states` Map and
+      // broadcasts an awareness-update marking this clientID removed. Peers
+      // see the change immediately — no TTL wait, no disconnect.
       await pollUntil(() => clientB.provider.awareness?.getStates().has(clientAId) === false, 2000);
 
       const afterClear = dedupeHumansByPrincipalId(buildHumans(clientB.provider));
       const ownEntry = afterClear.find((h) => h.user.principalId === PID);
       expect(ownEntry?.tabCount ?? 1).toBe(1);
 
+      // Crucially: clientA's WebSocket is still connected — verify peers see
+      // the entry come back when clientA "navigates back" and republishes.
+      // Use setLocalState (not setLocalStateField) because y-protocols'
+      // setLocalStateField short-circuits when state is null — same atomic
+      // publish pattern TiptapEditor uses.
       clientA.provider.awareness?.setLocalState({
         user: {
           type: 'human' as const,
@@ -223,6 +260,7 @@ describe('presence dedupe — different principalIds', () => {
       await pollUntil(() => clientA.provider.awareness?.getStates().has(clientBId) === true, 5000);
 
       const deduped = dedupeHumansByPrincipalId(buildHumans(clientA.provider));
+      // Two distinct principals → two entries
       expect(deduped.length).toBe(2);
       expect(deduped.every((h) => h.tabCount === 1)).toBe(true);
     } finally {
@@ -238,12 +276,14 @@ describe('awareness payload shape under each principal-resolution state', () => 
     const clientA = await createTestClient(server.port, docName);
     const clientB = await createTestClient(server.port, docName);
     try {
+      // State (a): no principal — random fallback, no principalId
       clientA.provider.awareness?.setLocalStateField('user', {
         type: 'human' as const,
         name: 'Curious Squirrel',
         color: '#f9e1db',
         coeditor: 'standalone',
         tabId: 'tab-state-a',
+        // NO principalId
       });
 
       const clientAId = clientA.provider.awareness?.clientID ?? 0;
@@ -264,6 +304,7 @@ describe('awareness payload shape under each principal-resolution state', () => 
     const clientA = await createTestClient(server.port, docName);
     const clientB = await createTestClient(server.port, docName);
     try {
+      // State (b): git-config principal
       clientA.provider.awareness?.setLocalStateField('user', {
         type: 'human' as const,
         name: 'Ada Lovelace-King',
@@ -291,6 +332,9 @@ describe('awareness payload shape under each principal-resolution state', () => 
     const clientA = await createTestClient(server.port, docName);
     const clientB = await createTestClient(server.port, docName);
     try {
+      // Synthesized principal: random fallback name, no principalId on the
+      // wire — see awareness-user.ts for the rationale (cross-browser-profile
+      // false-dedupe avoidance).
       clientA.provider.awareness?.setLocalStateField('user', {
         type: 'human' as const,
         name: 'Brave Bird',
@@ -319,6 +363,7 @@ describe('synthesized principals never publish principalId — no false dedupe',
     const clientA = await createTestClient(server.port, docName);
     const clientB = await createTestClient(server.port, docName);
     try {
+      // Two different browser profiles: distinct random names, NO principalId
       clientA.provider.awareness?.setLocalStateField('user', {
         type: 'human' as const,
         name: 'Curious Squirrel',
@@ -338,6 +383,7 @@ describe('synthesized principals never publish principalId — no false dedupe',
       await pollUntil(() => clientA.provider.awareness?.getStates().has(clientBId) === true, 5000);
 
       const deduped = dedupeHumansByPrincipalId(buildHumans(clientA.provider));
+      // No principalIds → no dedupe → 2 participants
       expect(deduped.length).toBe(2);
       expect(deduped.every((h) => h.tabCount === 1)).toBe(true);
     } finally {

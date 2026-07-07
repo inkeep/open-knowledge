@@ -1,3 +1,18 @@
+/**
+ * `consolidate` MCP workflow tool — promote research findings into a canonical
+ * article inside the project's content directory.
+ *
+ * Principle: canonical, not provisional. Consolidation is a deliberate step
+ * taken after research has stabilized and a team has made decisions. The
+ * output is the source of truth for future agents — not a snapshot of
+ * uncertainty.
+ *
+ * Relationship to other workflow tools:
+ *   - `ingest`     — captures raw external sources (no analysis)
+ *   - `research`   — synthesizes provisional findings from sources (analysis, uncertain)
+ *   - `consolidate` — promotes research + sources into canonical articles (analysis, decided)
+ */
+
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 
 export function buildConsolidateBody(topic: string, contentDir: string): string {

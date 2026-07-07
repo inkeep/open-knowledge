@@ -7,14 +7,29 @@ import { cn } from '@/lib/utils';
 import { SplashCliBlock } from './splash-cli-block';
 
 interface SplashCliPopoverProps {
+  /**
+   * Opener element, wrapped in PopoverTrigger asChild. A render function so the
+   * caller can animate a caret off the `open` state. Both callers are client
+   * components, so the function prop never crosses the RSC boundary.
+   */
   trigger: (open: boolean) => ReactNode;
   installCommand: string;
+  /** Omitted on the fallback screen (no resolved repo to clone). */
   cloneCommand?: string;
+  /** When set, a "View on GitHub" link-out is appended below the CLI block. */
   githubUrl?: string;
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
 }
 
+/**
+ * The shared "Open with CLI" popover: a copyable install (+ clone) block under
+ * the "Open with CLI" header, optionally followed by a View-on-GitHub link.
+ * Used by the macOS Download split button (caret trigger + GitHub) and the
+ * invalid-share fallback ("Open with CLI" button, install-only) so the two
+ * panels can't drift. Portalled to <body> (never clipped / out-stacked) with
+ * Radix focus-trapping + outside-click/Escape dismissal.
+ */
 export function SplashCliPopover({
   trigger,
   installCommand,

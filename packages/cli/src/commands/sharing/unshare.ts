@@ -1,3 +1,20 @@
+/**
+ * `ok config-sharing unshare` — switch the project to local-only mode by
+ * appending OK artifact paths to `.git/info/exclude`.
+ *
+ * Runs the tracked-files safety check inside
+ * `addOkPathsToGitExclude`. When any OK artifact path is already tracked
+ * upstream, the operation refuses with a multi-line diagnostic naming the
+ * exact `git rm --cached` remediation commands — `.git/info/exclude`
+ * cannot hide tracked files, so silently completing the operation would
+ * mislead the user.
+ *
+ * Exit code:
+ *   0  on a successful transition (or on a no-op when already local-only)
+ *   1  on the tracked-files refusal
+ *   0  on `no-exclude` outcomes (no git repo, etc.) with a warning to stderr
+ */
+
 import { resolve } from 'node:path';
 import { Command } from 'commander';
 import {

@@ -3,6 +3,11 @@ import * as Y from 'yjs';
 import { bindOkignoreDoc, type OkignoreDocProvider } from './bind-okignore-doc.ts';
 import { isKnownConfigError } from './errors.ts';
 
+/**
+ * Minimal `OkignoreDocProvider` for tests — the structural shape
+ * `bindOkignoreDoc` needs (`document` + `on('synced')` + `off('synced')`).
+ * Keeps tests free of a runtime `@hocuspocus/provider` dep.
+ */
 function createMockProvider(doc: Y.Doc): OkignoreDocProvider & {
   emitSynced(): void;
   syncedListenerCount(): number;
@@ -60,6 +65,8 @@ describe('bindOkignoreDoc — current()', () => {
   });
 
   test('unparseable gitignore patterns returned verbatim (no schema validation)', () => {
+    // npm:ignore does not throw on these — they are simply tolerated as
+    // user-data bytes. The binding should not pre-process them.
     const raw = '[unmatched\nlone-!\nsomething\\\n  leading-space\n';
     doc.getText('source').insert(0, raw);
     const binding = bindOkignoreDoc(provider);
@@ -108,6 +115,7 @@ describe('bindOkignoreDoc — patch()', () => {
     const raw = '# header\n\ndrafts/\n\n# another\n*.tmp\n';
     const binding = bindOkignoreDoc(provider);
     binding.patch(raw);
+    // Re-read via current() — must be byte-identical.
     expect(binding.current()).toBe(raw);
     binding.dispose();
   });
@@ -124,6 +132,8 @@ describe('bindOkignoreDoc — patch()', () => {
   });
 
   test('does not perform any client-side syntax validation', () => {
+    // The L1 contract for okignore is text-only: every non-disposed patch
+    // returns Result.ok. The server's L3 is the rejection authority.
     const binding = bindOkignoreDoc(provider);
     const trickyInputs = [
       ' ',
@@ -184,6 +194,7 @@ describe('bindOkignoreDoc — subscribe()', () => {
       received.push(text);
     });
 
+    // Simulate provider reconnect — content unchanged but synced fires.
     provider.emitSynced();
 
     expect(received).toEqual(['drafts/\n']);
@@ -220,6 +231,10 @@ describe('bindOkignoreDoc — subscribe()', () => {
   });
 
   test('external Y.Text replacement (server-origin path) fires subscribers', () => {
+    // Simulates applyExternalConfigChange / file-watcher path: server-origin
+    // Y.Text replacement caused by an external CLI / hand-edit / MCP-from-
+    // other-session write. The binding's Y.Text observer must fire for the
+    // resulting update.
     const binding = bindOkignoreDoc(provider);
     const received: string[] = [];
     binding.subscribe((text) => {
@@ -283,6 +298,7 @@ describe('bindOkignoreDoc — status() + subscribeStatus()', () => {
     expect(binding.status()).toBe('pending');
     binding.notifyRejection({ code: 'OKIGNORE_INVALID', detail: 'whitespace-only line' });
     expect(binding.status()).toBe('rejected');
+    // Wait past the acceptance window — status must NOT flip back to accepted.
     await new Promise((r) => setTimeout(r, 80));
     expect(binding.status()).toBe('rejected');
     binding.dispose();
@@ -323,6 +339,9 @@ describe('bindOkignoreDoc — status() + subscribeStatus()', () => {
     binding.notifyRejection({ code: 'OKIGNORE_INVALID', detail: 'bad' });
     binding.notifyRejection({ code: 'OKIGNORE_INVALID', detail: 'bad again' });
 
+    // Two notifyRejection calls; status was 'idle' → 'rejected' on the
+    // first, then stayed 'rejected' on the second. setStatus short-
+    // circuits identical transitions, so subscribers see one transition.
     expect(seen).toEqual(['rejected']);
     binding.dispose();
   });
@@ -351,10 +370,16 @@ describe('bindOkignoreDoc — subscribeRejection() + notifyRejection()', () => {
   });
 
   test('rejection event carries the post-revert text (current Y.Text snapshot)', () => {
+    // Simulate the sequence: patch lands optimistically; server-side L3
+    // revert mutates Y.Text back to LKG; CC1 broadcast arrives → consumer
+    // calls notifyRejection. By the time notifyRejection runs, Y.Text
+    // is already the LKG content (revert lands on the wire BEFORE the CC1
+    // broadcast).
     doc.getText('source').insert(0, 'lkg/\n');
     const binding = bindOkignoreDoc(provider);
 
     binding.patch('   \n'); // optimistic — would-be-rejected
+    // Simulate the server-side revert: external mutation back to LKG.
     const ytext = doc.getText('source');
     doc.transact(() => {
       ytext.delete(0, ytext.length);
@@ -411,6 +436,7 @@ describe('bindOkignoreDoc — subscribeRejection() + notifyRejection()', () => {
     });
     binding.dispose();
 
+    // Dispatcher could race the dispose — this MUST NOT throw.
     expect(() =>
       binding.notifyRejection({ code: 'OKIGNORE_INVALID', detail: 'late' }),
     ).not.toThrow();
@@ -418,6 +444,10 @@ describe('bindOkignoreDoc — subscribeRejection() + notifyRejection()', () => {
   });
 
   test('forward-compat error envelope (unknown code) is propagated verbatim', () => {
+    // CC1 schema is `.loose()` so future server versions can emit codes the
+    // client doesn't yet recognise. notifyRejection must not require a
+    // KnownConfigValidationError narrowing — it accepts any
+    // ConfigValidationError, including the forward-compat tail.
     const binding = bindOkignoreDoc(provider);
     const captured: Array<{ code: string }> = [];
     binding.subscribeRejection((rej) => {
@@ -441,6 +471,7 @@ describe('bindOkignoreDoc — dispose()', () => {
     binding.dispose();
     expect(provider.syncedListenerCount()).toBe(0);
 
+    // Subsequent Y.Text mutation does not leak listener invocations.
     let fired = false;
     binding.subscribe(() => {
       fired = true;
@@ -463,7 +494,9 @@ describe('bindOkignoreDoc — dispose()', () => {
     });
     binding.patch('drafts/\n');
     binding.dispose();
+    // Wait past the acceptance window — listener MUST NOT fire post-dispose.
     await new Promise((r) => setTimeout(r, 80));
+    // Only the 'pending' transition should appear (fired before dispose).
     expect(seen).toEqual(['pending']);
   });
 
@@ -494,11 +527,15 @@ describe('bindOkignoreDoc — multi-client / cross-process simulation', () => {
     bindingA.patch('shared/\nfromA/\n');
     bindingB.patch('shared/\nfromB/\n');
 
+    // Cross-sync.
     Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
     Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
 
+    // Both docs converge to the same Y.Text content.
     expect(docA.getText('source').toString()).toBe(docB.getText('source').toString());
 
+    // Final state may be a CRDT-merged hybrid; current() must NOT throw and
+    // must return a string.
     expect(typeof bindingA.current()).toBe('string');
 
     bindingA.dispose();

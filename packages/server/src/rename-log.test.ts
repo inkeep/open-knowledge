@@ -255,6 +255,9 @@ describe('appendRenameLogEntry', () => {
   });
 
   test('overwrite of same `to` removes the displaced entry from byFrom', () => {
+    // Two renames that target the same `to` from different `from` values:
+    // a → b, then later c → b. byTo['b'] must point at the latest entry,
+    // and byFrom['a'] (the displaced) must NOT carry the old entry.
     const index = createEmptyIndex();
     appendRenameLogEntry(
       shadowDir,
@@ -354,6 +357,7 @@ describe('expandPredecessors', () => {
     };
     try {
       const { chain } = expandPredecessors('a', 'main', index);
+      // Cycle detection truncates: a → b → (cycle on a) breaks. Returns at least the current doc.
       expect(chain[chain.length - 1]).toEqual({ path: 'a', renameCommit: null });
     } finally {
       console.warn = orig;
@@ -362,6 +366,7 @@ describe('expandPredecessors', () => {
   });
 
   test('missing entry mid-chain → chain stops cleanly', () => {
+    // Renamed b → c but no entry for a → b — chain should stop at b
     const index = createEmptyIndex();
     appendRenameLogEntry(
       shadowDir,
@@ -377,6 +382,7 @@ describe('expandPredecessors', () => {
 
   test('deleted-then-recreated (no entry on the new doc) → chain returns just [newDoc]', () => {
     const index = createEmptyIndex();
+    // No entry pointing at 'orphan' — this is a brand-new doc.
     const { chain } = expandPredecessors('orphan', 'main', index);
     expect(chain).toEqual([{ path: 'orphan', renameCommit: null }]);
   });
@@ -385,11 +391,13 @@ describe('expandPredecessors', () => {
     const index = createEmptyIndex();
     appendRenameLogEntry(shadowDir, entry({ from: 'a', to: 'b', commitSha: '' }), index);
     const { chain, skipped } = expandPredecessors('b', 'main', index);
+    // Skips the empty-commitSha entry → returns post-rename only.
     expect(chain).toEqual([{ path: 'b', renameCommit: null }]);
     expect(skipped).toBe(1);
   });
 
   test('branch mismatch → chain stops at the mismatched step', () => {
+    // Rename was performed on `feature-x` branch, querying from `main`.
     const index = createEmptyIndex();
     appendRenameLogEntry(
       shadowDir,
@@ -401,6 +409,9 @@ describe('expandPredecessors', () => {
   });
 
   test('chain depth > MAX_PREDECESSOR_CHAIN_DEPTH truncates with warning', () => {
+    // Build a synthetic chain longer than the cap. Each entry in the chain
+    // adds one predecessor step; the cap means we materialize at most
+    // MAX_PREDECESSOR_CHAIN_DEPTH predecessors plus the trailing current doc.
     const index = createEmptyIndex();
     const depth = MAX_PREDECESSOR_CHAIN_DEPTH + 5;
     for (let i = 0; i < depth; i++) {
@@ -409,6 +420,8 @@ describe('expandPredecessors', () => {
         entry({
           from: `step-${i}`,
           to: `step-${i + 1}`,
+          // Each step needs a unique non-empty commitSha so the walk
+          // doesn't terminate via the lazy-pop path.
           commitSha: i.toString(16).padStart(40, '0'),
         }),
         index,
@@ -422,6 +435,7 @@ describe('expandPredecessors', () => {
     };
     try {
       const { chain } = expandPredecessors(`step-${depth}`, 'main', index);
+      // Walk produced MAX_PREDECESSOR_CHAIN_DEPTH predecessors + 1 trailing current doc.
       expect(chain.length).toBe(MAX_PREDECESSOR_CHAIN_DEPTH + 1);
       expect(chain[chain.length - 1]).toEqual({ path: `step-${depth}`, renameCommit: null });
     } finally {
@@ -431,8 +445,12 @@ describe('expandPredecessors', () => {
   });
 });
 
+// ─── Property: seeds(R) is monotonic in the same-branch checkpoint set ──────
 describe('buildSeeds — monotonicity property', () => {
   test('adding any post-R checkpoint never grows the seed set', () => {
+    // Property-based test (synthetic — no shadow repo needed). Builds a set of
+    // (date, sha) pairs, picks an R, and asserts that any K with date ≥ R is
+    // not in seeds(R). Mirrors the strict-less-than rule.
     const renameAuthorDate = '2026-05-05T12:00:00.000Z';
     const candidates: Array<{ date: string; sha: string }> = [
       { date: '2026-05-05T11:59:59.000Z', sha: 'pre-1'.padEnd(40, '0') }, // < R → in seeds
@@ -445,6 +463,7 @@ describe('buildSeeds — monotonicity property', () => {
       .map((c) => c.sha)
       .sort();
     expect(filtered).toEqual(['old-1'.padEnd(40, '0'), 'pre-1'.padEnd(40, '0')]);
+    // Adding a new post-R checkpoint never adds it
     const post2 = { date: '2026-05-05T13:00:00.000Z', sha: 'post-2'.padEnd(40, '0') };
     const filteredAfter = [...candidates, post2]
       .filter((c) => c.date < renameAuthorDate)
@@ -453,6 +472,8 @@ describe('buildSeeds — monotonicity property', () => {
     expect(filteredAfter).toEqual(filtered);
   });
 });
+
+// ─── Read primitives that need a real shadow git repo ────────────────────────
 
 describe('rename-log read primitives (shadow-repo backed)', () => {
   let projectRoot: string;
@@ -483,6 +504,9 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     return top;
   }
 
+  // `date` lets the ordering-sensitive tests stamp strictly-increasing commit
+  // timestamps instead of sleeping >1s between commits to clear git's
+  // 1-second-granular committer date.
   async function commit(text: string, file: string, msg: string, date?: string): Promise<string> {
     const path = resolve(contentRoot, file);
     mkdirSync(resolve(path, '..'), { recursive: true });
@@ -494,6 +518,7 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     return saveVersion(shadow, 'content', [writer], 'main', undefined, date ? { date } : undefined);
   }
 
+  /** Strictly-increasing ISO timestamps (1s apart) for the ordering tests. */
   function makeTick(startIso = '2026-05-05T12:00:00.000Z') {
     let t = Date.parse(startIso);
     return () => {
@@ -545,7 +570,22 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
   });
 
   test('batchCheckExistence — exactly one git child process spawned per call regardless of probe count (FR16)', async () => {
+    // perf-critical invariant: chain depth × checkpoint count probes
+    // must amortize across one `cat-file --batch-check` stream, not N
+    // per-probe spawns. Patches the global `child_process.spawn` to a
+    // counting wrapper, then invokes batchCheckExistence with a 50-probe
+    // batch and asserts spawn was called once.
+    //
+    // Direct injection over a behavioural proxy: a perf regression that
+    // reverts to per-probe `cat-file -e` Promise.all would still pass every
+    // functional test (results identical) and only surface ~10× slower —
+    // well within the CI-tolerant 1000ms ceiling on typical hardware. This
+    // assertion is the only one that catches a shape revert.
     const sha = await commit('# Hello\n', 'a.md', 'WIP: a');
+    // Use spyOn rather than direct property reassignment — node:child_process
+    // exports `spawn` as a readonly binding under Bun's ESM loader, so a
+    // raw assignment throws TypeError. spyOn installs a per-test interceptor
+    // and `mockRestore()` reverts cleanly.
     const cp = await import('node:child_process');
     const { spyOn } = await import('bun:test');
     const spy = spyOn(cp, 'spawn');
@@ -574,6 +614,10 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
   });
 
   test('buildSeeds — git show fails for bogus rename commit → falls back to [renameCommit]', async () => {
+    // 40-char hex but not a real commit. `git show -s --format=%aI <bogus>`
+    // throws inside buildSeeds; the fallback returns `[bogusSha]` so callers
+    // still have something to feed `buildAncestorShaSet` (which itself
+    // returns empty on rev-list failure — graceful end-to-end degradation).
     const bogusSha = '0123456789abcdef0123456789abcdef01234567';
     const orig = console.warn;
     let warned = false;
@@ -592,12 +636,16 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
   test('buildSeeds — checkpoint earlier than R → included; checkpoint later than R → excluded', async () => {
     const at = makeTick();
 
+    // Cycle 1: write + saveVersion → K1 (pre-R timestamp)
     await commit('# A v1\n', 'a.md', 'WIP: a v1', at());
     await save(at());
     const k1 = await checkpointSha('main');
 
+    // Cycle 2: a more committed at a later timestamp → R (the rename). Dated
+    // commits make creator_date strict-less-than (K1 < R) deterministic.
     const renameSha = await commit('# A v2 — rename\n', 'a.md', 'rename: a -> b', at());
 
+    // Cycle 3: another saveVersion → K2 (post-R timestamp)
     await commit('# B v1\n', 'b.md', 'WIP: b', at());
     await save(at());
     const k2 = await checkpointSha('main');
@@ -645,6 +693,7 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
 
   test('resolveDocPathAtCommit — unrelated sha → returns null', async () => {
     const index = createEmptyIndex();
+    // 40-char hex SHA that is highly unlikely to exist
     const fakeSha = 'deadbeef'.repeat(5);
     const path = await resolveDocPathAtCommit(
       shadow,
@@ -660,9 +709,13 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
   test('resolveDocPathAtCommit — renamed doc, sha at predecessor name → returns historical path', async () => {
     const at = makeTick();
 
+    // Cycle 1: write a, saveVersion (K1 reaches commitA)
     const commitA = await commit('# A pre-rename\n', 'a.md', 'WIP: a', at());
     await save(at());
 
+    // Cycle 2: pretend rename a → b (we just write the rename commit and an
+    // entry; no actual disk-move needed for the resolver test). Dated so the
+    // rename commit is strictly after K1 without a real-time tick.
     const renameCommit = await commit('# B post-rename\n', 'b.md', 'rename: a -> b', at());
 
     const index = createEmptyIndex();
@@ -672,6 +725,7 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
       index,
     );
 
+    // Should resolve commitA (a pre-rename SHA) to its historical path.
     const path = await resolveDocPathAtCommit(
       shadow,
       'b',
@@ -686,13 +740,16 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
   test('resolveDocPathAtCommit — name-reuse contamination rejected by cycle bound', async () => {
     const at = makeTick();
 
+    // Cycle 1: write a, saveVersion → K1 reaches commitA (which contains a.md only)
     await commit('# A old\n', 'a.md', 'WIP: a', at());
     await save(at());
 
+    // Cycle 2: rename a → b (delete a.md, write b.md → commit's tree has b.md only)
     rmSync(resolve(contentRoot, 'a.md'));
     const renameCommit = await commit('# B fresh\n', 'b.md', 'rename: a -> b', at());
     await save(at());
 
+    // Cycle 3: delete b.md, create NEW a.md → newACommit's tree has a.md only
     rmSync(resolve(contentRoot, 'b.md'));
     const newACommit = await commit('# A new (unrelated)\n', 'a.md', 'WIP: new-a', at());
     await save(at());
@@ -704,6 +761,12 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
       index,
     );
 
+    // Querying the resolver with the new-`a` SHA against doc `b`:
+    //   b probe: false (b.md doesn't exist at newACommit)
+    //   a probe: cycle-bound check — newACommit is NOT in ancestors(seeds(R))
+    //     because seeds(R) excludes K2 (post-R checkpoint) and newACommit is
+    //     a parentless post-saveVersion commit on cycle 3's WIP ref.
+    //   → returns null
     const path = await resolveDocPathAtCommit(
       shadow,
       'b',
@@ -729,6 +792,9 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
       if (typeof msg === 'string' && msg.includes('exceeds hard cap')) warned = true;
     };
     try {
+      // Pass `shadow` so scheduleHardCapGc fires. The entry has a fake-but-
+      // syntactically-valid commitSha that is unreachable from any ref — gc
+      // must drop it, leaving an empty index that triggers truncation.
       appendRenameLogEntry(
         realShadowDir,
         entry({
@@ -746,6 +812,8 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     expect(warned).toBe(true);
     expect(index.byTo.size).toBe(1);
 
+    // Drain the microtask + the async git ops it spawns. Poll up to ~1s for
+    // the sweep to land.
     let drained = false;
     for (let i = 0; i < 50; i++) {
       await new Promise((r) => setTimeout(r, 20));
@@ -757,6 +825,9 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     expect(drained).toBe(true);
 
     const sizeAfter = statSync(path).size;
+    // Proves the file actually shrunk after the microtask GC drained, not
+    // just that the warning was logged. With the only entry GC'd as
+    // unreachable, rewriteJsonlAtomically truncates to 0 bytes.
     expect(sizeAfter).toBeLessThan(sizeBefore);
     expect(sizeAfter).toBeLessThan(RENAME_LOG_HARD_CAP_BYTES);
   });
@@ -776,6 +847,7 @@ describe('batchCheckExistence timeout fallback (FR16 / D-T7)', () => {
     await git.raw('config', 'user.email', 'test@test.com');
     shadow = await initShadowRepo(projectRoot);
 
+    // Fake `git` that hangs forever — used to force the timeout branch.
     fakeBinDir = resolve(shadowDir, 'fake-bin');
     mkdirSync(fakeBinDir, { recursive: true });
     writeFileSync(resolve(fakeBinDir, 'git'), '#!/bin/sh\nsleep 60\n', { mode: 0o755 });
@@ -784,6 +856,8 @@ describe('batchCheckExistence timeout fallback (FR16 / D-T7)', () => {
   test('git binary hang → timeout fires, returns all-false, warns', async () => {
     const origPath = process.env.PATH ?? '';
     const origTimeout = process.env.OK_GIT_TIMEOUT_MS;
+    // Prepend fake-git dir to PATH so spawn('git', ...) resolves to the
+    // hanging stub. node's spawn uses parent process.env.PATH for lookup.
     process.env.PATH = `${fakeBinDir}:${origPath}`;
     process.env.OK_GIT_TIMEOUT_MS = '200';
 
@@ -810,6 +884,8 @@ describe('batchCheckExistence timeout fallback (FR16 / D-T7)', () => {
       expect(warnedTimeout).toBe(true);
       expect(warnMsg).toContain('200ms');
       expect(warnMsg).toContain('3 probes');
+      // Generous CI bound: timeout(200ms) + spawn overhead + SIGKILL cleanup.
+      // Anything > 2s means the timeout branch didn't fire.
       expect(elapsed).toBeLessThan(2000);
     } finally {
       console.warn = orig;
@@ -955,12 +1031,15 @@ describe('backfillRenameLogCommitSha (US-007)', () => {
       index,
     );
 
+    // Pre-backfill: chain truncates at empty-commitSha entry → returns just [b]
     const pre = expandPredecessors('b', 'main', index);
     expect(pre.chain).toEqual([{ path: 'b', renameCommit: null }]);
     expect(pre.skipped).toBe(1);
 
+    // Backfill
     backfillRenameLogCommitSha(shadowDir, 'agent-1', 'a'.repeat(40), index);
 
+    // Post-backfill: chain includes the predecessor
     const post = expandPredecessors('b', 'main', index);
     expect(post.chain).toEqual([
       { path: 'a', renameCommit: 'a'.repeat(40) },
@@ -1059,6 +1138,7 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
 
   test('drops entries whose commitSha is not reachable from any wip/checkpoint ref', async () => {
     const index = createEmptyIndex();
+    // Append an entry pointing at a SHA that doesn't exist as a real commit
     appendRenameLogEntry(
       shadow.gitDir,
       entry({
@@ -1100,6 +1180,7 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
     writeFileSync(resolve(contentRoot, 'a.md'), '# A\n');
     const sha = await commitWip(shadow, writer, 'content', 'WIP: a');
     await saveVersion(shadow, 'content', [writer]);
+    // saveVersion deletes WIP refs but the checkpoint covers the commit.
 
     const index = createEmptyIndex();
     appendRenameLogEntry(
@@ -1118,6 +1199,7 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
   });
 
   test('aborts (preserves all entries) when for-each-ref fails transiently', async () => {
+    // Real entry pointing at a real reachable commit on the working shadow.
     writeFileSync(resolve(contentRoot, 'a.md'), '# A\n');
     const realSha = await commitWip(shadow, writer, 'content', 'WIP: a');
     const index = createEmptyIndex();
@@ -1132,6 +1214,10 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
       index,
     );
 
+    // Construct a shadow handle whose workTree exists but whose gitDir
+    // points at a directory that's not a git repo. simpleGit will accept
+    // the construction; the GIT_DIR env override means `for-each-ref`
+    // dispatches against a non-repo and throws.
     const brokenGitDir = resolve(shadowDir, 'not-a-repo');
     mkdirSync(brokenGitDir, { recursive: true });
     const brokenShadow: ShadowHandle = {
@@ -1147,6 +1233,7 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
     };
     try {
       const result = await gcRenameLog(brokenShadow, index);
+      // Aborted: scanned/dropped/retained all 0 — function bailed before any work.
       expect(result.scanned).toBe(0);
       expect(result.dropped).toBe(0);
       expect(result.retained).toBe(0);
@@ -1154,12 +1241,15 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
       console.warn = origWarn;
     }
     expect(warned).toBe(true);
+    // Entry preserved in memory (not wiped by aborted GC).
     expect(index.byTo.get('b')?.commitSha).toBe(realSha);
+    // jsonl file on disk is also untouched (the real shadow.gitDir copy).
     const reloaded = loadRenameLogIndex(shadow.gitDir);
     expect(reloaded.byTo.get('b')?.commitSha).toBe(realSha);
   });
 
   test('aborts (preserves all entries) when rev-list fails after for-each-ref succeeds', async () => {
+    // Real entry pointing at a real reachable commit.
     writeFileSync(resolve(contentRoot, 'a.md'), '# A\n');
     const realSha = await commitWip(shadow, writer, 'content', 'WIP: a');
     const index = createEmptyIndex();
@@ -1174,8 +1264,14 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
       index,
     );
 
+    // Plant a malformed loose ref under refs/wip/ — content is non-hex
+    // so for-each-ref drops it from output (verified empirically); to make
+    // rev-list throw, write a hex-shaped sha that doesn't resolve to any
+    // git object. for-each-ref returns the ref name; rev-list errors
+    // with "bad revision" because the SHA can't be dereferenced.
     const corruptRefDir = resolve(shadow.gitDir, 'refs', 'wip', 'main');
     mkdirSync(corruptRefDir, { recursive: true });
+    // 40-char hex but not pointing at any object
     writeFileSync(
       resolve(corruptRefDir, 'corrupt-writer'),
       `${'0123456789abcdef0123456789abcdef01234567'}\n`,
@@ -1189,6 +1285,7 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
     };
     try {
       const result = await gcRenameLog(shadow, index);
+      // Aborted: must not drop the legitimate entry even though rev-list failed.
       expect(result.dropped).toBe(0);
     } finally {
       console.warn = origWarn;
@@ -1198,6 +1295,7 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
   });
 
   test('rebuild=true reconstructs entries from OkActorEntry.previous_paths body fields (D2)', async () => {
+    // Manually build a commit body that contains `previous_paths`.
     writeFileSync(resolve(contentRoot, 'b.md'), '# B\n');
     const sg = simpleGit({ baseDir: shadow.workTree }).env({
       GIT_DIR: shadow.gitDir,
@@ -1235,6 +1333,7 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
     ).trim();
     await sg.raw('update-ref', 'refs/wip/main/agent-rebuild', builtSha);
 
+    // Empty index — boot scenario where jsonl was lost
     const index = createEmptyIndex();
     const result = await gcRenameLog(shadow, index, { rebuild: true });
     expect(result.rebuilt).toBeGreaterThan(0);
@@ -1244,6 +1343,9 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
   });
 
   test('rebuild — rename commit reachable only via feature-branch ref → entry attributed to feature branch', async () => {
+    // Build a rename commit reachable ONLY through `refs/wip/feature-x/...`.
+    // The new map-based lookup must walk the per-branch reachability map
+    // and return `feature-x` rather than the `'main'` fallback.
     writeFileSync(resolve(contentRoot, 'b.md'), '# B\n');
     const sg = simpleGit({ baseDir: shadow.workTree }).env({
       GIT_DIR: shadow.gitDir,
@@ -1288,6 +1390,11 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
   });
 
   test('rebuild — commit reachable from refs that have no parseable branch → falls back to "main"', async () => {
+    // Plant a HEAD-style ref outside the wip/checkpoints prefixes (e.g.,
+    // a custom ref that for-each-ref still returns under the prefix filter).
+    // Construct: rename commit reachable through a wip ref AND through a
+    // ref whose branch slug is parseable, then mock the lookup-fallback by
+    // using a ref directly under refs/wip/ without a /branch/ segment.
     writeFileSync(resolve(contentRoot, 'b.md'), '# B\n');
     const sg = simpleGit({ baseDir: shadow.workTree }).env({
       GIT_DIR: shadow.gitDir,
@@ -1323,6 +1430,11 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
         })
         .raw('commit-tree', builtTree, '-m', message)
     ).trim();
+    // Ref WITHOUT a parseable `<branch>/` segment beneath the prefix —
+    // the regex `^refs/(?:wip|checkpoints)/([^/]+)/` requires a trailing
+    // slash, so this ref is dropped from the per-branch map. The commit
+    // is still in `liveShas` (rev-list reaches it), so the rebuild path
+    // tries to attribute it and falls through to 'main'.
     await sg.raw('update-ref', 'refs/wip/orphan-ref-no-branch', builtSha);
 
     const index = createEmptyIndex();
@@ -1370,6 +1482,7 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
     await sg.raw('update-ref', 'refs/wip/main/agent-rebuild', builtSha);
 
     const index = createEmptyIndex();
+    // Pre-populate the index with the same entry that the rebuild would generate.
     appendRenameLogEntry(
       shadow.gitDir,
       entry({
@@ -1441,6 +1554,7 @@ describe('validateEntry self-rename rejection', () => {
     };
     try {
       const index = loadRenameLogIndex(shadowDir);
+      // Self-rename was rejected; the legitimate rename loaded.
       expect(index.byTo.has('x')).toBe(false);
       expect(index.byTo.get('b')).toBeDefined();
     } finally {
@@ -1466,6 +1580,7 @@ describe('backfillRenameLogCommitSha SHA validation', () => {
     try {
       const result = backfillRenameLogCommitSha(shadowDir, 'agent-x', '', index);
       expect(result.updated).toBe(0);
+      // Entry stays in lazy-pop state — recoverable on a subsequent valid backfill.
       expect(index.byTo.get('essays/auth')?.commitSha).toBe('');
     } finally {
       console.warn = orig;
@@ -1501,6 +1616,7 @@ describe('backfillRenameLogCommitSha SHA validation', () => {
     const orig = console.warn;
     console.warn = () => {};
     try {
+      // 40 chars but contains a 'g' — not a valid hex SHA
       const result = backfillRenameLogCommitSha(shadowDir, 'agent-x', 'g'.repeat(40), index);
       expect(result.updated).toBe(0);
     } finally {
@@ -1544,6 +1660,7 @@ describe('buildSeeds — SeedsCache (Consider C2)', () => {
     const cache = createSeedsCache();
     const main = await buildSeeds(shadow, sha, 'main', cache);
     const feature = await buildSeeds(shadow, sha, 'feature-x', cache);
+    // Distinct keys → distinct cache slots; can't be the same reference.
     expect(feature).not.toBe(main);
     expect(cache.size).toBe(2);
   });
@@ -1570,6 +1687,7 @@ describe('gcRenameLog concurrency dedup (Finding 4)', () => {
   });
 
   test('overlapping invocations: second call short-circuits with zero counts', async () => {
+    // Real entry pointing at a real reachable commit.
     writeFileSync(resolve(projectRoot, 'content', 'a.md'), '# A\n');
     const realSha = await commitWip(shadow, writer, 'content', 'WIP: a');
     const index = createEmptyIndex();
@@ -1584,11 +1702,15 @@ describe('gcRenameLog concurrency dedup (Finding 4)', () => {
       index,
     );
 
+    // Launch two concurrent passes. The first holds the gitDir slot in
+    // gcPending across its awaits; the second observes the slot taken and
+    // returns immediately with zero counts.
     const [first, second] = await Promise.all([
       gcRenameLog(shadow, index),
       gcRenameLog(shadow, index),
     ]);
 
+    // One of the two must have done real work (scanned the index).
     const real = first.scanned > 0 ? first : second;
     const skipped = first.scanned > 0 ? second : first;
     expect(real.scanned).toBe(1);

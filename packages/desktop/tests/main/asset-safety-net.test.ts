@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the main-process asset safety net. Covers the two-handler
+ * intercept pattern (`setWindowOpenHandler` + `will-navigate`) and the
+ * URL-matching logic that distinguishes asset URLs from app / Vite-HMR /
+ * external URLs.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import {
   attachAssetSafetyNet,
@@ -29,6 +36,9 @@ describe('matchAssetUrl', () => {
   });
 
   test('content html/htm → null (handled by the renderer dispatcher, not the safety net)', () => {
+    // html/htm are admitted assets but the safety net must NOT claim them — the
+    // app shell shares `index.html`, and content-html clicks route through the
+    // renderer dispatcher (desktop: reveal-in-Finder).
     expect(matchAssetUrl('http://localhost:5173/fishing-log/trip-viewer.html', ORIGIN)).toBeNull();
     expect(matchAssetUrl('http://localhost:5173/notes/legacy.htm', ORIGIN)).toBeNull();
   });
@@ -46,6 +56,10 @@ describe('matchAssetUrl', () => {
   });
 
   test('non-asset extension (.ts, .js, .css) → null', () => {
+    // .js is in EXECUTABLE_BLOCKLIST_EXTENSIONS but NOT in ASSET_EXTENSIONS.
+    // The safety net delegates to the main-process handler for ASSET_EXTENSIONS
+    // only; anything else stays on the default nav path where additional
+    // handlers (Vite HMR, app-bundle fetch) claim it.
     expect(matchAssetUrl('http://localhost:5173/src/main.ts', ORIGIN)).toBeNull();
     expect(matchAssetUrl('http://localhost:5173/styles.css', ORIGIN)).toBeNull();
   });
@@ -61,6 +75,8 @@ describe('matchAssetUrl', () => {
   });
 
   test('percent-encoded space in filename decodes to literal space', () => {
+    // `URL.pathname` percent-encodes spaces; openAssetSafely needs the
+    // decoded string for `realpathSync` to find the actual file.
     expect(matchAssetUrl('http://localhost:5173/my%20photo.png', ORIGIN)).toBe('my photo.png');
   });
 
@@ -69,11 +85,20 @@ describe('matchAssetUrl', () => {
   });
 
   test('malformed percent-encoding → null (no throw)', () => {
+    // `decodeURIComponent('%ZZ.png')` throws URIError — refuse rather
+    // than forward a partially-decoded string downstream.
     expect(matchAssetUrl('http://localhost:5173/%ZZ.png', ORIGIN)).toBeNull();
     expect(matchAssetUrl('http://localhost:5173/%E0%A4.png', ORIGIN)).toBeNull();
   });
 
   test('encoded traversal (`%2E%2E`) is canonicalized by the URL parser', () => {
+    // WHATWG URL parser resolves `.` / `..` segments during pathname
+    // canonicalization, so `/%2E%2E/secret.pdf` becomes `/secret.pdf`
+    // before our decode step ever sees it. The result is a clean,
+    // contained path — no traversal reaches downstream. (The
+    // `isPathWithinProject` containment check in `asset-allowlist.ts`
+    // is the second layer that catches any traversal that does slip
+    // through, e.g. via symlink at the destination.)
     expect(matchAssetUrl('http://localhost:5173/%2E%2E/secret.pdf', ORIGIN)).toBe('secret.pdf');
   });
 });
@@ -86,6 +111,9 @@ describe('matchInAppRoute', () => {
   });
 
   test('different origin (renderer route vs api/editor port) → null', () => {
+    // The leak case: the route origin is the renderer (:5173), NOT editorOrigin.
+    // matchInAppRoute is fed the renderer origin, so an external host or the api
+    // port → null and the URL stays on whatever path the caller chose.
     expect(matchInAppRoute('http://localhost:5173/#/doc', 'http://localhost:8765')).toBeNull();
   });
 
@@ -128,6 +156,7 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
     });
     expect(result).toEqual({ action: 'deny' });
 
+    // Allow the async openAsset to settle.
     await Promise.resolve();
     await Promise.resolve();
     expect(openAsset).toHaveBeenCalledWith('notes/meeting.pdf');
@@ -150,6 +179,7 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
 
     attachAssetSafetyNet(webContents, { openAsset, openExternal, editorOrigin: ORIGIN });
 
+    // Pasted-href / markdown PropPanel "Open in new tab" path.
     const result = installedHandler?.({ url: 'https://example.com/path' });
     expect(result).toEqual({ action: 'deny' });
     await Promise.resolve();
@@ -223,6 +253,10 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
   });
 
   test('same-renderer-origin in-app route (open-in-new-tab) → navigated in-app, NOT openExternal', async () => {
+    // Reproduces the dev tab-flood: the renderer is served at :5173 while
+    // editorOrigin (apiOrigin) is a separate port. `window.open('#/doc')`
+    // resolves to a :5173 route — which must navigate the current window in-app,
+    // not leak to the OS browser.
     const openAsset = mock(async (_: string) => ({ ok: true }) as const);
     const openExternal = mock(noopOpenExternal);
     const executeJavaScript = mock(async (_: string) => undefined);
@@ -249,6 +283,9 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(executeJavaScript).toHaveBeenCalledTimes(1);
+    // Pin the exact script, not just a substring: `navigateToHashScript`'s
+    // `JSON.stringify` is the injection guard for the `executeJavaScript` input,
+    // so the assertion must fail if a refactor drops the encoding.
     expect(executeJavaScript.mock.calls[0]?.[0]).toBe(
       'window.location.hash = "#/people/ray-zaragoza";',
     );
@@ -340,6 +377,8 @@ describe('attachAssetSafetyNet — will-navigate', () => {
   });
 
   test('same-renderer-origin navigation (distinct from editorOrigin) → no preventDefault, no delegation', async () => {
+    // Renderer origin (:5173) differs from editorOrigin (api port) in dev; a
+    // top-level navigate to a :5173 route must stay in-app, not openExternal.
     const openAsset = mock(async (_: string) => ({ ok: true }) as const);
     const openExternal = mock(noopOpenExternal);
 
@@ -370,6 +409,13 @@ describe('attachAssetSafetyNet — will-navigate', () => {
   });
 
   test('malformed URL → silent drop (no preventDefault, no delegation, no crash)', async () => {
+    // Trust-boundary pin: `will-navigate` can fire with URLs Chromium's parser
+    // accepts but WHATWG `new URL()` rejects. Both parse attempts in the
+    // handler (matchAssetUrl + the origin check) fail → we leave Electron's
+    // default handling alone. preventDefault here would block legitimate
+    // same-origin Electron behavior; deferring to Electron's own failure mode
+    // is the conservative choice. This test guards against a future refactor
+    // that removes the try/catch or flips the fallback.
     const openAsset = mock(async (_: string) => ({ ok: true }) as const);
     const openExternal = mock(noopOpenExternal);
 

@@ -1,3 +1,43 @@
+/**
+ * BCa (bias-corrected and accelerated) bootstrap confidence intervals.
+ *
+ * The sweep runner pins per-cell uncertainty so reviewers can compare cells
+ * against each other instead of reading point estimates as if they were exact.
+ * Mozilla Talos uses BCa for cross-run regression detection — the published
+ * 2000-resample default is what this module ships.
+ *
+ * Algorithm reference: Efron 1987, "Better Bootstrap Confidence Intervals"
+ * (https://www.jstor.org/stable/2289144). The bias-correction term z0 corrects
+ * the median-zero assumption of the basic percentile bootstrap; the
+ * acceleration term a (from the jackknife) corrects for non-constant variance
+ * along the parameter axis. The two corrections together let the CI track
+ * skewed distributions — common for p95 latency samples where the upper tail
+ * is the load-bearing observation.
+ *
+ * Edge cases that matter for the sweep harness:
+ *
+ *   - **Empty sample** → returns an all-zeros CI rather than NaN. A cell with
+ *     no measurements isn't a math error, it's a missing observation. The
+ *     caller decides whether absence is fatal.
+ *
+ *   - **Single-value samples** (every measurement identical) → CI collapses
+ *     to [v, v] and bias / acceleration terms degenerate to zero. The
+ *     algorithm falls back to a trivial percentile CI when variance is zero.
+ *
+ *   - **`alpha` outside (0, 0.5)** → caller bug; throws. The caller passes
+ *     the per-tail alpha (0.025 for a 95% CI), not the confidence level
+ *     (which would be 0.95).
+ *
+ * Determinism: the default RNG is `Math.random`. Tests inject a seeded RNG
+ * via `options.rng` so resample sequences are reproducible.
+ */
+
+/**
+ * One-sided percentile bounds + the point estimate for a single statistic.
+ * `lo` and `hi` bracket a (1 - 2*alpha) confidence interval. `estimate` is
+ * the statistic on the ORIGINAL samples, not the bootstrap mean — the
+ * bootstrap distribution corrects the interval, not the central tendency.
+ */
 export interface BootstrapConfidenceInterval {
   readonly lo: number;
   readonly hi: number;
@@ -5,16 +45,39 @@ export interface BootstrapConfidenceInterval {
 }
 
 export interface BcaOptions {
+  /**
+   * Number of bootstrap resamples. Talos uses 2000-10000; 2000 is the
+   * accuracy-vs-cost sweet spot for sweep cells (per-cell BCa adds ~10-50ms
+   * at this count, dwarfed by the cell measurement itself).
+   */
   readonly bootstrapCount?: number;
 
+  /**
+   * RNG returning a number in [0, 1). Defaults to `Math.random`. Tests inject
+   * a seeded RNG so resample sequences are reproducible across runs.
+   */
   readonly rng?: () => number;
 
+  /**
+   * Statistic to compute. Defaults to arithmetic mean. The sweep harness uses
+   * mean for the BCa entrypoint and computes p95 per-axis separately — BCa
+   * on p95 samples directly would need a different jackknife (order statistic
+   * influence is non-smooth) and isn't what Talos's pattern provides.
+   */
   readonly statistic?: (samples: ReadonlyArray<number>) => number;
 }
 
 const DEFAULT_BOOTSTRAP_COUNT = 2000;
 const ZERO_VARIANCE_EPSILON = 1e-12;
 
+/**
+ * Bias-corrected and accelerated bootstrap CI for `statistic(samples)` at
+ * confidence (1 - 2*alpha). Pass `alpha = 0.025` for a 95% CI.
+ *
+ * Returns an all-zeros CI for empty samples; collapses to [v, v] for
+ * zero-variance samples; otherwise computes the BCa-corrected percentile
+ * bounds from `bootstrapCount` resamples.
+ */
 export function bcaConfidenceInterval(
   samples: ReadonlyArray<number>,
   alpha: number,
@@ -41,6 +104,7 @@ export function bcaConfidenceInterval(
     return { lo: estimate, hi: estimate, estimate };
   }
 
+  // Zero-variance short-circuit: avoids NaN from sum-of-cubes / sum-of-squares.
   const allEqual = samples.every(
     (v) => Math.abs(v - (samples[0] as number)) < ZERO_VARIANCE_EPSILON,
   );
@@ -51,9 +115,11 @@ export function bcaConfidenceInterval(
   const replicates = generateBootstrapReplicates(samples, bootstrapCount, statistic, rng);
   replicates.sort((a, b) => a - b);
 
+  // Bias correction z0 = Phi^-1(P(theta* < theta_hat)).
   const belowEstimate = countBelow(replicates, estimate);
   const z0 = normalInvCdf(clampForInvCdf(belowEstimate / replicates.length));
 
+  // Acceleration via jackknife: a = sum((mean - i)^3) / (6 * (sum((mean - i)^2))^1.5).
   const acceleration = computeJackknifeAcceleration(samples, statistic);
 
   const zAlphaLo = normalInvCdf(alpha);
@@ -67,6 +133,8 @@ export function bcaConfidenceInterval(
 
   return { lo, hi, estimate };
 }
+
+// ──────────────────────────── Helpers ─────────────────────────────
 
 function arithmeticMean(samples: ReadonlyArray<number>): number {
   if (samples.length === 0) return 0;
@@ -95,6 +163,7 @@ function generateBootstrapReplicates(
 }
 
 function countBelow(sortedReplicates: ReadonlyArray<number>, target: number): number {
+  // Binary search for the count of values strictly less than `target`.
   let lo = 0;
   let hi = sortedReplicates.length;
   while (lo < hi) {
@@ -136,6 +205,9 @@ function computeJackknifeAcceleration(
 }
 
 function clampForInvCdf(p: number): number {
+  // normalInvCdf domain is (0, 1). Clamp boundary observations to the
+  // smallest representable interior point so the CI doesn't collapse to
+  // ±Infinity when every replicate falls on one side of the estimate.
   if (p <= 0) return 1e-9;
   if (p >= 1) return 1 - 1e-9;
   return p;
@@ -154,6 +226,11 @@ function pickPercentile(sortedSamples: ReadonlyArray<number>, p: number): number
   return (sortedSamples[lo] as number) * (1 - weight) + (sortedSamples[hi] as number) * weight;
 }
 
+/**
+ * Standard normal CDF via Abramowitz & Stegun 7.1.26 (erf approximation).
+ * Max abs error ≈ 1.5e-7 — sufficient for BCa where the result feeds into
+ * a percentile lookup over discrete bootstrap replicates.
+ */
 function normalCdf(x: number): number {
   return 0.5 * (1 + erf(x / Math.SQRT2));
 }
@@ -172,7 +249,14 @@ function erf(x: number): number {
   return sign * y;
 }
 
+/**
+ * Inverse normal CDF via Beasley-Springer-Moro (1995). Max abs error ≈
+ * 4.5e-9 in the central region; tail accuracy ≈ 1.5e-7. The BCa terms only
+ * need this on (epsilon, 1 - epsilon), so the central rational approximation
+ * dominates the cost.
+ */
 function normalInvCdf(p: number): number {
+  // Coefficients per Wichura's AS 241 / Beasley-Springer-Moro.
   const a = [
     -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2,
     -3.066479806614716e1, 2.506628277459239,

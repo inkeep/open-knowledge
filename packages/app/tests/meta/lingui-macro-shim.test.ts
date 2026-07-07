@@ -1,3 +1,16 @@
+/**
+ * Contract tests for the Bun-test Lingui macro shim.
+ *
+ * The shim (`tests/lingui-macro-shim.tsx`) is critical infrastructure — every
+ * component test that imports a macro-wrapped module runs against it. These
+ * tests lock its surface so a regression fails here, loudly and in isolation,
+ * rather than surfacing as a confusing failure in some unrelated component
+ * test that happens to exercise the broken path.
+ *
+ * Lives in `tests/meta/` (run by `test:integration`) — `*.test.*` is excluded
+ * from `lingui extract` (see `lingui.config.ts`), so the macro-looking calls
+ * below never reach the real catalog.
+ */
 import { describe, expect, test } from 'bun:test';
 import { msg, Plural, plural, Select, select, Trans, t, useLingui } from '../lingui-macro-shim';
 
@@ -22,6 +35,9 @@ describe('lingui-macro-shim — @lingui/core/macro', () => {
   });
 
   test('t passes a plain string straight through (the t(msg`…`) shape)', () => {
+    // The shim's `msg` returns a string (English passthrough), and real
+    // code calls `t(msg`…`)` / `t(MESSAGE_MAP[key])` — so `t` reaches the
+    // shim with a string and must return it verbatim, not `''`.
     expect(t(msg`Word wrap`)).toBe('Word wrap');
     expect(t('Already resolved')).toBe('Already resolved');
   });

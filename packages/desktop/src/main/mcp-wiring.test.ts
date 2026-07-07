@@ -18,6 +18,10 @@ import {
   type EditorMcpTarget,
   type McpEntryClassification,
 } from '@inkeep/open-knowledge';
+// Imported from cli source, not the @inkeep/open-knowledge build: the classify
+// the fallback test drives must read the TOML engine it overrides, and only the
+// in-repo source shares the engine singleton with setTomlConfigEngineForTesting.
+// The built package bundles its own engine instance the override can't reach.
 import { classifyExistingMcpEntry as classifyWithOverridableEngine } from '../../../cli/src/commands/init.ts';
 import {
   createTomlConfigEngine,
@@ -31,11 +35,18 @@ import {
   type McpWiringDispatchTarget,
   type McpWiringFsOps,
   type McpWiringPathInstallSurface,
+  type McpWiringSkillsSurface,
   readMcpStatusMarker,
   runMcpWiringOnFirstLaunch,
   writeMcpStatusMarker,
 } from './mcp-wiring.ts';
 
+// The native TOML addon is absent when its napi `.node` wasn't built (a turbo cache
+// miss, or local dev without a build) — classify then falls back to smol-toml. The
+// reset-repro test below asserts the NATIVE `no-entry` precondition, which only
+// holds with the native backend (the CI test cell force-builds it); skip it when
+// unavailable so a fallback host doesn't red it. The fallback path (decline, never
+// reset) is covered by the forced `() => null` engine test below.
 const NATIVE_TOML_AVAILABLE = createTomlConfigEngine().backend === 'native';
 
 function memoryFs(
@@ -201,10 +212,14 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
       fs,
       logger: { info() {}, warn() {}, error() {}, event: (e) => events.push(e) },
     });
+    // The sweep checked the editor and took no repair action.
     expect(result.status).toBe('ok');
+    // No fresh write was dispatched for a config OK couldn't parse.
     expect(order).toEqual([]);
+    // The original file is untouched and no `.broken-*` sidecar was produced.
     expect(fs.files['/home/.config-for-claude.json']).toBe('not-valid-json{');
     expect(Object.keys(fs.files).some((p) => p.includes('.broken-'))).toBe(false);
+    // The only operator-facing trace is the bounded decline signal.
     const decline = events.find((e) => e.event === 'mcp-config-decline');
     expect(decline).toMatchObject({
       event: 'mcp-config-decline',
@@ -213,10 +228,16 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
       editorId: 'claude',
       reason: 'unparseable',
     });
+    // Bounded cardinality: the signal carries no config path or raw contents.
     expect(decline).not.toHaveProperty('configPath');
   });
 
   test('a write that declines (read-then-write race) is not counted as repaired', async () => {
+    // Classify says the editor needs repair (legacy entry), so it enters the
+    // repair list, but the write itself declines (the write path won't safely
+    // rewrite it). A decline leaves the config byte-unchanged, so it is not a
+    // repair: the result must report `ok`, never `repaired` (which fires the
+    // "repaired" toast in the consumer and would overstate what happened).
     const { cli } = buildStartupCli({
       classify: {
         kind: 'present',
@@ -249,6 +270,8 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
       async () => {
         dir = mkdtempSync(join(tmpdir(), 'ok-reset-repro-'));
         const tomlPath = join(dir, 'config.toml');
+        // A real Codex config: comments, a sibling MCP server, and an integer
+        // larger than 2^53 — a value the harness accepts but smol-toml rejects.
         const original = [
           '# my codex config — keep my comments!',
           'model = "gpt-5"',
@@ -271,10 +294,17 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
           scope: 'global',
         };
 
+        // Precondition: the capable parser parses the i64, so this valid file is
+        // seen as a normal config without OK's entry — no-entry, not the
+        // smol-toml-era decline the destructive branch keyed off. Removing the
+        // false-corrupt classification is the primary reset fix. Requires the
+        // native addon (the gate builds it); on the JS fallback this same input
+        // declines, which is also non-destructive.
         expect(classifyExistingMcpEntry(target, '', undefined, tomlPath)).toEqual({
           kind: 'no-entry',
         });
 
+        // A real-fs surface: a reverted destructive rename would hit disk here.
         const realFs: McpWiringFsOps = {
           existsSync: (p) => fsExistsSync(p),
           readFileSync: (p) => fsReadFileSync(p, 'utf8'),
@@ -285,6 +315,7 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
           renameSync: (from, to) => fsRenameSync(from, to),
           unlinkSync: (p) => fsUnlinkSync(p),
         };
+        // A reverted fresh-write would overwrite the real file via this spy.
         const writes: McpWiringEditorId[][] = [];
         const cli: McpWiringCliSurface = {
           detectInstalledEditors: () => ['codex' as McpWiringEditorId],
@@ -318,9 +349,13 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
         });
 
         expect(result.status).toBe('ok');
+        // The file is byte-for-byte unchanged — the reset never reproduces.
         expect(fsReadFileSync(tomlPath, 'utf8')).toBe(original);
+        // No `.broken-*` artifact was produced anywhere in the directory.
         expect(readdirSync(dir).some((name) => name.includes('.broken-'))).toBe(false);
+        // The no-create sweep dispatched no write into the untouched config.
         expect(writes).toEqual([]);
+        // A clean no-entry no-op emits no decline signal — nothing was wrong.
         expect(events.find((e) => e.event === 'mcp-config-decline')).toBeUndefined();
       },
     );
@@ -328,6 +363,11 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
     test('real classify on a genuinely-malformed TOML → decline, byte-unchanged, no write, bounded signal', async () => {
       dir = mkdtempSync(join(tmpdir(), 'ok-decline-sweep-'));
       const tomlPath = join(dir, 'config.toml');
+      // A present, non-empty config no TOML parser can read — the disposition a
+      // no-prebuilt-binary host's smol-toml fallback also reaches (it throws on
+      // the i64 the native addon accepts; here both decline). Unlike the sibling
+      // stub test, this drives the REAL classify end-to-end through the boot
+      // sweep, proving the decline is produced by the parser, not hand-fed.
       const original = ['# keep my comments', 'model = "gpt-5"', 'broken = "unterminated', ''].join(
         '\n',
       );
@@ -344,6 +384,8 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
         scope: 'global',
       };
 
+      // The real classifier DECLINES a present config it cannot parse — never the
+      // creatable-blank disposition, never the destructive reset.
       expect(classifyExistingMcpEntry(target, '', undefined, tomlPath)).toEqual({
         kind: 'decline',
         reason: 'unparseable',
@@ -392,9 +434,13 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
       });
 
       expect(result.status).toBe('ok');
+      // Byte-for-byte unchanged: the unparseable config is left exactly as found.
       expect(fsReadFileSync(tomlPath, 'utf8')).toBe(original);
+      // No `.broken-*` sidecar anywhere — the destructive rename branch is gone.
       expect(readdirSync(dir).some((name) => name.includes('.broken-'))).toBe(false);
+      // No fresh write dispatched into a config OK couldn't parse.
       expect(writes).toEqual([]);
+      // The only operator-facing trace is the bounded decline signal.
       const decline = events.find((e) => e.event === 'mcp-config-decline');
       expect(decline).toMatchObject({
         event: 'mcp-config-decline',
@@ -409,6 +455,12 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
     test('fallback engine: the same valid i64 config is declined, never reset (off-macOS / no-prebuilt-binary host)', async () => {
       dir = mkdtempSync(join(tmpdir(), 'ok-fallback-i64-'));
       const tomlPath = join(dir, 'config.toml');
+      // The same comment-rich, i64-bearing Codex config the sibling native test
+      // uses — valid TOML the native addon accepts. Every host without a
+      // prebuilt binary instead runs the JS smol-toml fallback, which throws on
+      // the 64-bit integer. This pins that path's headline guarantee: a config
+      // the fallback cannot parse is declined and left exactly as found, never
+      // the destructive reset users reported.
       const original = [
         '# my codex config — keep my comments!',
         'model = "gpt-5"',
@@ -464,8 +516,13 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
 
       const events: Array<Record<string, unknown>> = [];
       try {
+        // Force the JS smol-toml fallback regardless of whether this host has a
+        // prebuilt native binary, so the test exercises the exact engine an
+        // off-macOS user runs.
         setTomlConfigEngineForTesting(createTomlConfigEngine(() => null));
 
+        // Precondition: the fallback declines the valid i64 file — never the
+        // creatable-blank disposition, never the destructive reset.
         expect(classifyWithOverridableEngine(target, '', undefined, tomlPath)).toEqual({
           kind: 'decline',
           reason: 'unparseable',
@@ -487,9 +544,13 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
         setTomlConfigEngineForTesting(null);
       }
 
+      // Byte-for-byte unchanged: the fallback never rewrites a config it can't parse.
       expect(fsReadFileSync(tomlPath, 'utf8')).toBe(original);
+      // No `.broken-*` sidecar anywhere — the destructive rename branch is gone.
       expect(readdirSync(dir).some((name) => name.includes('.broken-'))).toBe(false);
+      // Zero destructive writes dispatched into the untouched config.
       expect(writes).toEqual([]);
+      // The only operator-facing trace is the bounded decline signal.
       const decline = events.find((e) => e.event === 'mcp-config-decline');
       expect(decline).toMatchObject({
         event: 'mcp-config-decline',
@@ -498,6 +559,7 @@ describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {
         editorId: 'codex',
         reason: 'unparseable',
       });
+      // Bounded cardinality: the signal carries no config path or raw contents.
       expect(decline).not.toHaveProperty('configPath');
     });
   });
@@ -615,6 +677,25 @@ function stubPathInstall(
   };
 }
 
+/** Skills stub recording `applyConsent` calls. Defaults to NO skill rows so
+ *  existing payload/confirm assertions are unaffected; dedicated skills tests
+ *  pass descriptors. */
+function stubSkills(
+  descriptors: ReturnType<McpWiringSkillsSurface['computeDescriptors']> = [],
+  overrides: Partial<McpWiringSkillsSurface> = {},
+): McpWiringSkillsSurface & { consentCalls: string[][] } {
+  const consentCalls: string[][] = [];
+  return {
+    consentCalls,
+    computeDescriptors: () => descriptors,
+    applyConsent: async (enabledIds) => {
+      consentCalls.push([...enabledIds]);
+      return { ok: true as const };
+    },
+    ...overrides,
+  };
+}
+
 function buildWiringOpts(overrides: Partial<WiringOpts> = {}): WiringOpts {
   const { cli } = buildFirstLaunchCli();
   return {
@@ -625,11 +706,87 @@ function buildWiringOpts(overrides: Partial<WiringOpts> = {}): WiringOpts {
     ipcMain: stubIpcMain(),
     cli,
     pathInstall: stubPathInstall(),
+    skills: stubSkills(),
     fs: memoryFs(),
     logger: SILENT_LOGGER,
     ...overrides,
   };
 }
+
+describe('runMcpWiringOnFirstLaunch — skills consent leg', () => {
+  const TWO_SKILLS = [
+    {
+      id: 'discovery',
+      name: 'open-knowledge-discovery',
+      alreadyInstalled: false,
+    },
+    {
+      id: 'write-skill',
+      name: 'open-knowledge-write-skill',
+      alreadyInstalled: true,
+    },
+  ];
+
+  test('confirm applies the checked skill subset and emits per-bundle telemetry', async () => {
+    const ipcMain = stubIpcMain();
+    const wc = fakeWebContents(11);
+    const fs = memoryFs();
+    const { cli } = buildFirstLaunchCli();
+    const skills = stubSkills(TWO_SKILLS);
+    const events: Array<Record<string, unknown>> = [];
+    const logger = {
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      event: (p: { event: string; [k: string]: unknown }) => events.push(p),
+    };
+    runMcpWiringOnFirstLaunch(
+      buildWiringOpts({ ipcMain, cli, fs, skills, logger, immediateDispatchTarget: wc }),
+    );
+
+    // Skill rows rode along in the show payload.
+    expect(wc.sent[0]?.payload).toMatchObject({ globalSkills: TWO_SKILLS });
+
+    const confirm = ipcMain.handlers.get('ok:mcp-wiring:confirm');
+    const result = await confirm?.(
+      { sender: { id: 11 } },
+      { editorIds: ['claude'], skills: ['discovery'] },
+    );
+    expect(result).toEqual({ ok: true });
+    // Only the checked bundle is enabled; write-skill declined.
+    expect(skills.consentCalls).toEqual([['discovery']]);
+    expect(events).toContainEqual({
+      event: 'mcp-wiring-skill-consent-granted',
+      bundle: 'discovery',
+    });
+    expect(events).toContainEqual({
+      event: 'mcp-wiring-skill-consent-declined',
+      bundle: 'write-skill',
+    });
+  });
+
+  test('a failed skills leg defers the marker so the dialog re-fires', async () => {
+    const ipcMain = stubIpcMain();
+    const wc = fakeWebContents(11);
+    const fs = memoryFs();
+    const { cli } = buildFirstLaunchCli();
+    const skills = stubSkills(TWO_SKILLS, {
+      applyConsent: async () => ({ ok: false as const, error: 'disk full' }),
+    });
+    runMcpWiringOnFirstLaunch(
+      buildWiringOpts({ ipcMain, cli, fs, skills, immediateDispatchTarget: wc }),
+    );
+
+    const confirm = ipcMain.handlers.get('ok:mcp-wiring:confirm');
+    const result = await confirm?.(
+      { sender: { id: 11 } },
+      { editorIds: ['claude'], skills: ['discovery'] },
+    );
+    expect(result?.ok).toBe(false);
+    // Deferred-marker: nothing recorded, so a next-boot re-fire recovers.
+    expect(readMcpStatusMarker('/home/u', fs)).toBeNull();
+  });
+});
 
 describe('runMcpWiringOnFirstLaunch — mid-session immediate dispatch', () => {
   test('show dispatches to the provided target and binds confirm to its sender', async () => {
@@ -652,9 +809,11 @@ describe('runMcpWiringOnFirstLaunch — mid-session immediate dispatch', () => {
             rcFilesToTouch: ['~/.zshrc'],
             alreadyInstalled: false,
           },
+          globalSkills: [],
         },
       },
     ]);
+    // The mount-ack one-shot is consumed by the immediate dispatch.
     expect(ipcMain.handlers.has('ok:mcp-wiring:renderer-ready')).toBe(false);
 
     const confirm = ipcMain.handlers.get('ok:mcp-wiring:confirm');
@@ -675,6 +834,9 @@ describe('runMcpWiringOnFirstLaunch — mid-session immediate dispatch', () => {
     const events: Array<Record<string, unknown>> = [];
     const claude = fakeTarget('claude' as McpWiringEditorId);
     const cursor = fakeTarget('cursor' as McpWiringEditorId);
+    // The user selected two editors; one is wired, the other's config can't be
+    // safely edited so the write declines (a read-then-write race the consent
+    // flow didn't pre-classify).
     const cli: McpWiringCliSurface = {
       detectInstalledEditors: () => ['claude' as McpWiringEditorId, 'cursor' as McpWiringEditorId],
       classifyExistingMcpEntry: () => ({ kind: 'absent' }) as McpEntryClassification,
@@ -712,14 +874,17 @@ describe('runMcpWiringOnFirstLaunch — mid-session immediate dispatch', () => {
     );
 
     const confirm = ipcMain.handlers.get('ok:mcp-wiring:confirm');
+    // Not a failure — the dialog closes and the decision is recorded.
     const result = await confirm?.({ sender: { id: 11 } }, { editorIds: ['claude', 'cursor'] });
     expect(result).toEqual({ ok: true });
 
+    // The marker records only the editor we actually wired, never the declined one.
     expect(readMcpStatusMarker('/home/u', fs)).toMatchObject({
       configured: true,
       editors: ['claude'],
     });
 
+    // The bounded decline signal is emitted for the declined editor.
     const decline = events.find((e) => e.event === 'mcp-config-decline');
     expect(decline).toMatchObject({
       event: 'mcp-config-decline',
@@ -812,11 +977,14 @@ describe('runMcpWiringOnFirstLaunch — mid-session immediate dispatch', () => {
     const ready = ipcMain.handlers.get('ok:mcp-wiring:renderer-ready');
     expect(ready).toBeDefined();
 
+    // The next renderer that loads mount-acks and receives the dialog.
     const wc2 = fakeWebContents(22);
     ready?.({ sender: wc2 });
     expect(wc2.sent.map((s) => s.channel)).toEqual(['ok:mcp-wiring:show']);
     expect(ipcMain.handlers.has('ok:mcp-wiring:renderer-ready')).toBe(false);
 
+    // Confirm binds to the fallback sender — a null or stale binding to the
+    // failed target (id 11) would reject this and leave the dialog inert.
     const confirm = ipcMain.handlers.get('ok:mcp-wiring:confirm');
     const result = await confirm?.({ sender: { id: 22 } }, { editorIds: ['claude'] });
     expect(result).toEqual({ ok: true });
@@ -900,6 +1068,7 @@ describe('runMcpWiringOnFirstLaunch — PATH consent leg', () => {
     const wc = fakeWebContents(11);
     const fs = memoryFs();
     const events: Array<Record<string, unknown>> = [];
+    // First applyConsent fails (rc file unwritable); the retry succeeds.
     const outcomes = [
       { ok: false as const, error: 'EACCES: /home/u/.zshrc' },
       { ok: true as const },
@@ -929,11 +1098,13 @@ describe('runMcpWiringOnFirstLaunch — PATH consent leg', () => {
     )) as { ok: boolean; error?: string };
     expect(first.ok).toBe(false);
     expect(first.error).toContain('PATH');
+    // Marker deferred → the dialog re-fires next boot.
     expect(readMcpStatusMarker('/home/u', fs)).toBeNull();
     expect(events.find((e) => e.event === 'mcp-wiring-path-consent-failed')).toMatchObject({
       decision: 'granted',
     });
 
+    // `handled` was reset — the same still-mounted dialog can retry.
     const second = await confirm?.(
       { sender: { id: 11 } },
       { editorIds: ['claude'], pathInstall: true },

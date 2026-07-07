@@ -1,3 +1,19 @@
+/**
+ * Unit tests for `useHandoffDispatch` — exercises the pure `runHandoffDispatch`
+ * helper with recording doubles. Matches the repo convention (no
+ * `@testing-library/react` / `happy-dom`; Playwright covers live UI flows).
+ *
+ * Covers acceptance criteria:
+ *   - Success outcome renders success toast, records `outcome:'ok'`
+ *   - Failure outcome renders error toast + retry action, records
+ *     `outcome:'error'` with the failure reason
+ *   - Retry action re-invokes dispatch with the same `(target, input)` pair
+ *   - Both paths call `recordHandoff` exactly once per attempt (retry ⇒ +1)
+ *   - The scope-specific directive prompt is composed before dispatch
+ *   - `host` telemetry field reflects `isElectronHost()`
+ *   - Default deps wire production bindings without error
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import type { HandoffOutcome, HandoffPayload, HandoffTarget } from '@inkeep/open-knowledge-core';
@@ -65,9 +81,16 @@ function buildDeps(
           : target === 'codex'
             ? 'Codex'
             : 'Cursor',
+    // Default to `already-installed` so existing tests exercise the URL
+    // dispatch path; install-gate-specific tests override this.
     ensureCoworkSkillInstalled: mock(async () => ({ kind: 'already-installed' }) as const),
+    // Default true to match `defaultHandoffDispatchDeps()` and the cold-start
+    // fallback in the hook; tests covering the `false` branch override this.
     autoOpen: true,
   };
+  // `toast` is the test seam — placed last so the intersection's
+  // `RecordingToast` survives any `overrides.toast` (callers should override
+  // *behavior* deps, not the toast double itself).
   return { ...defaults, ...overrides, toast };
 }
 
@@ -103,6 +126,8 @@ describe('successToastMessage / errorToastMessage — exact copy', () => {
   });
 
   test('error copy on final attempt omits the "try again?" question and names a retry delay', async () => {
+    // bounded retry cap. The final-attempt copy must be distinct so
+    // the user is not trapped in a loop of identical "try again?" toasts.
     const { errorToastMessage, MAX_DISPATCH_ATTEMPTS } = await import('./useHandoffDispatch');
     expect(errorToastMessage('Cursor', MAX_DISPATCH_ATTEMPTS)).toBe(
       "Couldn't reach Cursor — please try again later.",
@@ -191,6 +216,10 @@ describe('runHandoffDispatch — success path', () => {
     expect(payload.docPath).toBe(
       '/tmp/demo-project/specs/2026-04-21-open-in-agent-desktop/SPEC.md',
     );
+    // File template — verbatim. Interpolated paths are wrapped in backticks
+    // per the prompt-injection defense in `sanitizePathForPrompt`. autoOpen
+    // defaults to true, so the trailing "Open the OK editor in web view." directive is
+    // present; legacy " in web view" suffix is dropped.
     expect(payload.prompt).toBe(
       withSkillPointer(
         "Let's work on `specs/2026-04-21-open-in-agent-desktop/SPEC.md` using OpenKnowledge. Open the OK editor in web view.",
@@ -214,6 +243,11 @@ describe('runHandoffDispatch — success path', () => {
   });
 
   test('project-scoped (docContext: null, no folderRelativePath) emits empty-space prompt + empty docPath', async () => {
+    // Pins the runtime contract that empty-state cards rely on: when the
+    // helper-built input has docContext null AND no folderRelativePath,
+    // runHandoffDispatch composes the empty-space directive prompt so the
+    // target editor opens prefilled. docPath stays '' so the URL builders
+    // use the project-scope URL shape.
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const { composeEmptySpacePrompt } = await import('@inkeep/open-knowledge-core');
     const deps = buildDeps();
@@ -233,6 +267,8 @@ describe('runHandoffDispatch — success path', () => {
     expect(payload.projectDir).toBe('/Users/sarah/proj');
     expect(payload.docPath).toBe('');
     expect(payload.prompt).toBe(withSkillPointer(composeEmptySpacePrompt(true)));
+    // autoOpen defaults to true → trailer present, legacy " in web view"
+    // suffix dropped. The dispatch funnel prepends the standing skill pointer.
     expect(payload.prompt).toBe(
       withSkillPointer(
         "Let's work on this project using OpenKnowledge. Open the OK editor in web view.",
@@ -241,6 +277,11 @@ describe('runHandoffDispatch — success path', () => {
   });
 
   test('folder-scoped (docContext: null, folderRelativePath set) emits folder prompt with autoOpen=true trailer', async () => {
+    // Folder-scope dispatch: the input carries folderRelativePath as the
+    // discriminator between folder vs empty-space; runHandoffDispatch picks
+    // composeFolderPrompt(folderRelativePath) and threads it into payload.
+    // projectDir is contentDir (project root) — folder scope conveys focus
+    // via the directive prompt, not via cwd. See `buildFolderHandoffInput`.
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const { composeFolderPrompt } = await import('@inkeep/open-knowledge-core');
     const deps = buildDeps();
@@ -272,6 +313,9 @@ describe('runHandoffDispatch — success path', () => {
 
 describe('runHandoffDispatch — autoOpen=false honors the user preference', () => {
   test('file scope: prompt drops the "Open the OK editor in web view." trailer when autoOpen=false', async () => {
+    // autoOpen=false means the user has opted out of agent-driven preview
+    // navigation. The directive prompt must not contradict that on the
+    // receiving agent's first turn.
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({ autoOpen: false });
     await runHandoffDispatch('codex', sampleInput(), deps);
@@ -356,6 +400,7 @@ describe('runHandoffDispatch — failure path', () => {
   test('retry action re-invokes dispatchHandoff with the same payload', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const dispatch = mock(async (_p: HandoffPayload) => ({ ok: true }) as HandoffOutcome);
+    // First call returns failure; subsequent retries return success.
     let firstCall = true;
     (
       dispatch as unknown as { mockImplementation: (fn: typeof dispatch) => void }
@@ -374,10 +419,13 @@ describe('runHandoffDispatch — failure path', () => {
     expect(first.ok).toBe(false);
     expect(deps.recordHandoff).toHaveBeenCalledTimes(1);
 
+    // Invoke the retry onClick synchronously — it schedules a fresh dispatch.
     const action = deps.toast.errorCalls[0]?.action;
     expect(action).toBeDefined();
     action?.onClick();
 
+    // The retry is fire-and-forget (`void runHandoffDispatch(...)`). Yield so
+    // the second attempt's await-chain completes before assertions.
     await wait(0);
 
     expect(dispatch).toHaveBeenCalledTimes(2);
@@ -386,11 +434,17 @@ describe('runHandoffDispatch — failure path', () => {
       .calls[1]?.[0] as HandoffPayload;
     expect(secondPayload).toEqual(firstPayload);
 
+    // Retry's own telemetry line lands.
     expect(deps.recordHandoff).toHaveBeenCalledTimes(2);
+    // Retry succeeded → a fresh success toast appears.
     expect(deps.toast.successCalls).toEqual(['Opened in Cursor.']);
   });
 
   test('third consecutive failure drops the Retry action (Review M5 bounded retry)', async () => {
+    // The retry chain is capped at MAX_DISPATCH_ATTEMPTS (=3). First failure:
+    // "Retry" button + "try again?" copy. Second failure: "Try one more time"
+    // button + "Still couldn't reach" copy. Third failure: distinct
+    // "please try again later" copy, NO button — user cannot loop further.
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const dispatch = mock(
       async (_p: HandoffPayload) => ({ ok: false, reason: 'dispatch-error' }) as HandoffOutcome,
@@ -398,11 +452,13 @@ describe('runHandoffDispatch — failure path', () => {
     const deps = buildDeps({ dispatchHandoff: dispatch });
     const input = sampleInput();
 
+    // Attempt 1 — initial dispatch.
     await runHandoffDispatch('cursor', input, deps);
     expect(deps.toast.errorCalls).toHaveLength(1);
     expect(deps.toast.errorCalls[0]?.message).toBe("Couldn't reach Cursor — try again?");
     expect(deps.toast.errorCalls[0]?.action?.label).toBe('Retry');
 
+    // Attempt 2 — click Retry.
     const firstAction = deps.toast.errorCalls[0]?.action;
     expect(firstAction).toBeDefined();
     firstAction?.onClick();
@@ -413,6 +469,7 @@ describe('runHandoffDispatch — failure path', () => {
     );
     expect(deps.toast.errorCalls[1]?.action?.label).toBe('Try one more time');
 
+    // Attempt 3 — click Try one more time.
     const secondAction = deps.toast.errorCalls[1]?.action;
     expect(secondAction).toBeDefined();
     secondAction?.onClick();
@@ -421,8 +478,11 @@ describe('runHandoffDispatch — failure path', () => {
     expect(deps.toast.errorCalls[2]?.message).toBe(
       "Couldn't reach Cursor — please try again later.",
     );
+    // CAP ENFORCED — no Retry action on the final toast. The chain terminates
+    // here; there is no button the user can click to fire a fourth attempt.
     expect(deps.toast.errorCalls[2]?.action).toBeUndefined();
 
+    // Three attempts, three telemetry lines.
     expect(deps.recordHandoff).toHaveBeenCalledTimes(3);
     expect(dispatch).toHaveBeenCalledTimes(3);
   });
@@ -465,6 +525,9 @@ describe('defaultHandoffDispatchDeps — production wiring', () => {
     expect(typeof deps.isElectronHost()).toBe('boolean');
     expect(deps.getDisplayName('claude-cowork')).toBe('Claude Cowork');
     expect(typeof deps.ensureCoworkSkillInstalled).toBe('function');
+    // The factory defaults autoOpen to true so non-hook callers preserve the
+    // legacy "agent opens preview" behavior. The hook overrides this with the
+    // live config value at dispatch time.
     expect(deps.autoOpen).toBe(true);
   });
 });
@@ -554,6 +617,7 @@ describe('runHandoffDispatch — Cowork install gate', () => {
     const ensureSpy = mock(async () => ({ kind: 'already-installed' }) as const);
     const deps = buildDeps({ ensureCoworkSkillInstalled: ensureSpy });
 
+    // attempt=2 simulates a retry — the install gate must not re-run.
     await runHandoffDispatch('claude-cowork', sampleInput(), deps, 2);
 
     expect(ensureSpy).not.toHaveBeenCalled();
@@ -618,12 +682,18 @@ describe('buildHandoffInput — shared surface helper (US-011)', () => {
       docName: 'specs/foo/SPEC',
       workspace: { contentDir: 'C:\\repo', pathSeparator: '\\' },
     });
+    // `docContext.relativePath` stays POSIX-form (matches the content-directory
+    // convention + the MCP `read_document` contract). Only `docPath` uses
+    // backslashes because that's the raw OS-native path the target agent's
+    // URL scheme expects for `file=`/`path=`.
     expect(input?.docContext.relativePath).toBe('specs/foo/SPEC.md');
     expect(input?.projectDir).toBe('C:\\repo');
     expect(input?.docPath).toBe('C:\\repo\\specs\\foo\\SPEC.md');
   });
 
   test('empty-string docName is treated as no active doc (null return)', async () => {
+    // The `!args.docName` guard covers empty-string as well as null. Surfaces
+    // sometimes carry an empty-string sentinel before the hash resolves.
     const { buildHandoffInput } = await import('./useHandoffDispatch');
     expect(
       buildHandoffInput({
@@ -689,6 +759,10 @@ describe('buildProjectScopedHandoffInput — empty-state cards helper', () => {
     const input = buildProjectScopedHandoffInput({
       workspace: { contentDir: '/Users/sarah/proj', pathSeparator: '/' },
     });
+    // Project-scoped handoff: empty docPath and null docContext flow through
+    // runHandoffDispatch, which composes the empty-space directive
+    // so the target editor opens prefilled. URL builders still drop the
+    // `file=` param because docPath is empty.
     expect(input).toEqual({
       docContext: null,
       projectDir: '/Users/sarah/proj',
@@ -751,6 +825,9 @@ describe('buildCreateHandoffInput — empty-state create-composer helper', () =>
   });
 
   test('empty description is preserved verbatim (composer degrades it, not the builder)', async () => {
+    // The builder passes the raw textarea value through; trimming + the
+    // bare-directive fallback live in composeCreatePrompt. An empty string is a
+    // valid input that still routes to the create scope.
     const { buildCreateHandoffInput } = await import('./useHandoffDispatch');
     const input = buildCreateHandoffInput({
       workspace: { contentDir: '/Users/sarah/proj', pathSeparator: '/' },
@@ -774,6 +851,8 @@ describe('buildFolderHandoffInput — folder-scoped helper (D23 / FR4 / FR14)', 
   });
 
   test('empty folderRelativePath returns null (renderer-bug short-circuit)', async () => {
+    // If the caller can't derive a tree-item-relative path, short-circuit
+    // before the dispatch hook would try to compose composeFolderPrompt('').
     const { buildFolderHandoffInput } = await import('./useHandoffDispatch');
     expect(
       buildFolderHandoffInput({
@@ -784,6 +863,11 @@ describe('buildFolderHandoffInput — folder-scoped helper (D23 / FR4 / FR14)', 
   });
 
   test('empty workspace.contentDir returns null (total-function ergonomics)', async () => {
+    // The `!args.workspace?.contentDir` guard covers an empty-string
+    // contentDir as well as null (falsy check, not nullish check). Workspace
+    // resolution produces a real path or null in practice, but pinning the
+    // guard keeps the helper total — callers don't have to branch on
+    // truthy-contentDir before the call.
     const { buildFolderHandoffInput } = await import('./useHandoffDispatch');
     expect(
       buildFolderHandoffInput({
@@ -799,6 +883,12 @@ describe('buildFolderHandoffInput — folder-scoped helper (D23 / FR4 / FR14)', 
       folderRelativePath: 'specs/foo',
       workspace: { contentDir: '/Users/sarah/proj', pathSeparator: '/' },
     });
+    // Folder-scoped handoff: docContext null + folderRelativePath set
+    // + empty docPath. The dispatch hook picks composeFolderPrompt; the
+    // per-agent URL builders treat `projectDir` as cwd. Folder scope keeps
+    // cwd at contentDir so project-level agent tooling (`.claude/launch.json`,
+    // `AGENTS.md`, `.codex/`, MCP settings) resolves — folder focus is
+    // conveyed via the directive prompt, not cwd.
     expect(input).toEqual({
       docContext: null,
       folderRelativePath: 'specs/foo',
@@ -810,6 +900,9 @@ describe('buildFolderHandoffInput — folder-scoped helper (D23 / FR4 / FR14)', 
   test('Windows: projectDir carries contentDir backslash path verbatim; folderRelativePath stays POSIX', async () => {
     const { buildFolderHandoffInput } = await import('./useHandoffDispatch');
     const input = buildFolderHandoffInput({
+      // The relative form stays POSIX (same convention as docContext.relativePath
+      // — see `buildHandoffInput` Windows test). The OS-native projection lives
+      // in `workspace.contentDir` and flows through `projectDir`.
       folderRelativePath: 'specs/foo',
       workspace: { contentDir: 'C:\\Users\\sarah\\proj', pathSeparator: '\\' },
     });
@@ -820,6 +913,10 @@ describe('buildFolderHandoffInput — folder-scoped helper (D23 / FR4 / FR14)', 
   });
 
   test('sibling shape parity with buildProjectScopedHandoffInput: same field set + same projectDir', async () => {
+    // The two helpers BOTH set docContext: null + docPath: '' but folder-
+    // scope carries `folderRelativePath` as the discriminator;
+    // project-scope omits it. Both share `projectDir: workspace.contentDir` —
+    // folder focus is conveyed via the directive prompt, not via cwd.
     const { buildFolderHandoffInput, buildProjectScopedHandoffInput } = await import(
       './useHandoffDispatch'
     );
@@ -833,8 +930,12 @@ describe('buildFolderHandoffInput — folder-scoped helper (D23 / FR4 / FR14)', 
     expect(folder?.docContext).toBeNull();
     expect(project?.docPath).toBe('');
     expect(folder?.docPath).toBe('');
+    // Project-scope omits folderRelativePath (discriminator selects empty-
+    // space template); folder-scope carries it (selects folder template).
     expect(project?.folderRelativePath).toBeUndefined();
     expect(folder?.folderRelativePath).toBe('notes');
+    // Both scopes share contentDir as projectDir — folder focus rides on the
+    // prompt template, not on cwd.
     expect(project?.projectDir).toBe('/Users/sarah/proj');
     expect(folder?.projectDir).toBe('/Users/sarah/proj');
   });
@@ -1019,6 +1120,10 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
   });
 
   test('create scope ignores the top-level instruction — createDescription is the only free-text', async () => {
+    // Symmetric to the selection-scope precedence test: when a caller
+    // hand-sets both the toolbar `instruction` and `createDescription`, the
+    // create branch of `selectScopedPrompt` wins and the top-level instruction
+    // is dropped (the directive composers it would feed are never reached).
     const { selectScopedPrompt } = await import('./useHandoffDispatch');
     const out = selectScopedPrompt(
       {
@@ -1037,6 +1142,9 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
   });
 
   test('file scope threads the instruction even when autoOpen=false (trailer dropped, instruction kept)', async () => {
+    // All other instruction-threading tests use autoOpen=true; pin that the
+    // autoOpen=false branch still forwards the instruction to the composer
+    // rather than dropping it alongside the "Open the OK editor" trailer.
     const { selectScopedPrompt } = await import('./useHandoffDispatch');
     const out = selectScopedPrompt(
       {
@@ -1128,6 +1236,9 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
   });
 
   test('create scope with empty createDescription routes to the create composer, NOT empty-space', async () => {
+    // `createDescription: ''` is distinct from absent: an empty string still
+    // selects the create scope (the field is set), so the prompt is the create
+    // composer's bare-directive fallback rather than the empty-space directive.
     const { selectScopedPrompt } = await import('./useHandoffDispatch');
     const { composeCreatePrompt, composeEmptySpacePrompt } = await import(
       '@inkeep/open-knowledge-core'
@@ -1148,6 +1259,12 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
   });
 
   test('precedence: docContext beats folderRelativePath when both are set (defensive ordering)', async () => {
+    // Production helpers never construct an input with both fields — the
+    // helpers are mutually exclusive at the boundary. But if a future
+    // hand-constructed caller passes both, the dispatch picks file scope
+    // (more specific). The two helpers guarantee mutual exclusion in
+    // practice; this test pins the defensive ordering so a future refactor
+    // that reorders the if-chain doesn't silently demote file scope.
     const { selectScopedPrompt } = await import('./useHandoffDispatch');
     const { composeFilePrompt } = await import('@inkeep/open-knowledge-core');
     const out = selectScopedPrompt(
@@ -1185,6 +1302,10 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
   });
 
   test('the standing skill pointer rides every directive scope but NOT selection', async () => {
+    // OK-launched agents are steered to the project skill on the first turn
+    // (file / folder / create / empty-space). Selection is excluded — it already
+    // ends with an explicit "read via OK MCP" directive and is the most
+    // URL-budget-constrained prompt.
     const { selectScopedPrompt } = await import('./useHandoffDispatch');
     const { OK_PROJECT_SKILL_POINTER } = await import('@inkeep/open-knowledge-core');
     const base = { projectDir: '/proj', docPath: '' } as const;
@@ -1222,6 +1343,9 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
   });
 
   test('precedence: selection beats docContext when both are set (defensive ordering)', async () => {
+    // Production helpers never set both — buildSelectionHandoffInput sets
+    // docContext null. The defensive ordering pins selection as the most
+    // specific scope so a future if-chain reorder cannot silently demote it.
     const { selectScopedPrompt } = await import('./useHandoffDispatch');
     const { composeSelectionPrompt } = await import('@inkeep/open-knowledge-core');
     const selection = {
@@ -1269,6 +1393,8 @@ describe('buildSelectionHandoffInput — selection-scoped helper', () => {
   });
 
   test('empty selectionMarkdown returns null (renderer-bug short-circuit)', async () => {
+    // The affordance is render-gated on a non-empty selection upstream, so an
+    // empty serialized selection reaching this helper is a renderer bug.
     const { buildSelectionHandoffInput } = await import('./useHandoffDispatch');
     expect(
       buildSelectionHandoffInput({
@@ -1308,6 +1434,8 @@ describe('buildSelectionHandoffInput — selection-scoped helper', () => {
       instruction: '',
       selectionMarkdown: 'passage',
     });
+    // relativePath stays POSIX (matches docContext.relativePath + the MCP
+    // read_document contract); only docPath uses the OS-native separator.
     expect(input?.selection?.relativePath).toBe('specs/foo/SPEC.md');
     expect(input?.projectDir).toBe('C:\\repo');
     expect(input?.docPath).toBe('C:\\repo\\specs\\foo\\SPEC.md');
@@ -1429,6 +1557,9 @@ describe('runHandoffDispatch — selection scope', () => {
   });
 
   test('selection dispatch on a web host builds a web-tagged line carrying the scope', async () => {
+    // The recording double stands in for the IPC bridge. Production
+    // `recordHandoff` no-ops on a web host (covered in telemetry.test.ts);
+    // the scope tag rides on the line independent of host.
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({ isElectronHost: () => false });
 
@@ -1458,6 +1589,7 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
     expect(out).toBe(composeTerminalBareLaunchPrompt('notes/today.md'));
     expect(out).toContain(OK_TERMINAL_SURFACE_PREAMBLE);
     expect(out).toContain('Read `notes/today.md` via the OpenKnowledge MCP server, then stop.');
+    // No open-ended "Let's work on" invitation and no preview trailer.
     expect(out).not.toContain("Let's work on");
     expect(out).not.toContain('Open the OK editor');
   });
@@ -1496,6 +1628,8 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
   });
 
   test('bare launch is CLI-agnostic — codex / cursor compose the same prompt as claude', async () => {
+    // The load + read + stop wording carries no per-target encoding, so all
+    // three CLIs get byte-identical bare prompts.
     const { composeTerminalLaunchPrompt } = await import('./useHandoffDispatch');
     const input = {
       docContext: { relativePath: 'notes/today.md' },
@@ -1509,6 +1643,11 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
   });
 
   test('typed instruction is preserved per CLI, led by the terminal-surface preamble', async () => {
+    // An explicit instruction is real user intent — the bare load+read+stop
+    // form would discard it, so instruction-bearing launches keep the directive
+    // composer, composed against the CLI's own handoff target. The terminal-
+    // surface preamble leads so the launch still establishes the OK handoff
+    // context before the user's ask (context first, then the typed instruction).
     const { composeTerminalLaunchPrompt, selectScopedPrompt } = await import(
       './useHandoffDispatch'
     );
@@ -1524,16 +1663,26 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
     expect(composeTerminalLaunchPrompt(input, 'codex')).toBe(
       `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'codex', false)}`,
     );
+    // Cursor has a distinct handoffTarget ('cursor') + double-encoding; pin it
+    // so a regression in the TERMINAL_CLIS['cursor'] mapping is caught here too.
     expect(composeTerminalLaunchPrompt(input, 'cursor')).toBe(
       `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'cursor', false)}`,
     );
     const claudeOut = composeTerminalLaunchPrompt(input, 'claude');
+    // Both present: the surface preamble leads, the user's ask follows (no "stop").
     expect(claudeOut).toContain('summarize the open questions');
     expect(claudeOut).toContain(OK_TERMINAL_SURFACE_PREAMBLE);
     expect(claudeOut).not.toContain('Then stop.');
   });
 
   test('composer (compose scope) threads the typed instruction — NOT a bare launch', async () => {
+    // Regression: the unified "Ask AI" composer carries its instruction in
+    // `input.compose.instruction`, never the top-level `input.instruction` the
+    // toolbar popover uses. A guard that checked only the latter dropped every
+    // composer-typed message into the bare load+read+stop prompt — the agent got
+    // a fileless "load OK, then stop" and the user's text vanished. `compose`
+    // must route through `selectScopedPrompt` (-> `assembleHandoffPrompt`) just
+    // like the deep-link path for the same CLI's handoff target.
     const { composeTerminalLaunchPrompt, selectScopedPrompt } = await import(
       './useHandoffDispatch'
     );
@@ -1558,12 +1707,17 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
       `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'cursor', false)}`,
     );
     const claudeOut = composeTerminalLaunchPrompt(input, 'claude');
+    // Both present: the surface preamble leads, the composer's typed ask follows.
     expect(claudeOut).toContain('What does this file do?');
     expect(claudeOut).not.toBe(composeTerminalBareLaunchPrompt('notes/work-log.md'));
     expect(claudeOut).toContain(OK_TERMINAL_SURFACE_PREAMBLE);
   });
 
   test('whitespace-only instruction is treated as a bare launch', async () => {
+    // The `.trim()` guard in composeTerminalLaunchPrompt is deliberate: a
+    // whitespace-only textarea value (e.g. '   ') must route to the bare
+    // load+read+stop prompt, NOT the directive path — otherwise it would
+    // resurface the open-ended "Let's work on X" prompt this PR removes.
     const { composeTerminalLaunchPrompt } = await import('./useHandoffDispatch');
     const out = composeTerminalLaunchPrompt(
       {
@@ -1600,6 +1754,10 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
   });
 
   test('empty create brief still routes to the directive composer (createDescription !== undefined)', async () => {
+    // The guard keys on `createDescription !== undefined`, not truthiness:
+    // `buildCreateHandoffInput` treats the empty string as a valid create-scope
+    // discriminator (it degrades to a generic "set up a new project" directive).
+    // A truthiness refactor would wrongly route empty briefs to the bare prompt.
     const { composeTerminalLaunchPrompt, selectScopedPrompt } = await import(
       './useHandoffDispatch'
     );
@@ -1619,6 +1777,9 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
   });
 
   test('bare terminal launch never carries the web-view preview trailer', async () => {
+    // The terminal launches next to an already-open editor, so the web handoff's
+    // "Open the OK editor in web view." directive must not appear. The web
+    // handoff (autoOpen on) keeps it for the same input.
     const { composeTerminalLaunchPrompt, selectScopedPrompt } = await import(
       './useHandoffDispatch'
     );
@@ -1675,6 +1836,9 @@ describe('buildAskHandoffInput — ask-scoped helper', () => {
       workspace: { contentDir: '/Users/andrew/repo', pathSeparator: '/' },
       instruction: 'condense this doc',
     });
+    // Ask scope names a real doc, so docPath carries the absolute path
+    // (consistent with file + selection scope) even though no URL builder
+    // threads it. docContext stays null — the instruction rides on `ask`.
     expect(input).toEqual({
       docContext: null,
       ask: {
@@ -1693,12 +1857,17 @@ describe('buildAskHandoffInput — ask-scoped helper', () => {
       workspace: { contentDir: 'C:\\repo', pathSeparator: '\\' },
       instruction: '',
     });
+    // relativePath stays POSIX (matches DocContext.relativePath + the MCP
+    // read_document contract); only docPath uses the OS-native separator.
     expect(input?.ask?.relativePath).toBe('specs/foo/SPEC.md');
     expect(input?.projectDir).toBe('C:\\repo');
     expect(input?.docPath).toBe('C:\\repo\\specs\\foo\\SPEC.md');
   });
 
   test('empty instruction is allowed — passes through, not a null trigger', async () => {
+    // composeAskPrompt degrades an empty instruction to the bare doc directive,
+    // so dispatch is valid without one. The builder stays total (mirrors
+    // buildSelectionHandoffInput's empty-instruction tolerance).
     const { buildAskHandoffInput } = await import('./useHandoffDispatch');
     const input = buildAskHandoffInput({
       docName: 'd',
@@ -1711,6 +1880,9 @@ describe('buildAskHandoffInput — ask-scoped helper', () => {
   });
 
   test('sets docContext null and carries the instruction on `ask` (no file-scope leak)', async () => {
+    // Load-bearing: ask scope must route through composeAskPrompt, not the
+    // docContext file path. The builder leaves docContext null and carries the
+    // instruction on `ask` so selectScopedPrompt picks the ask branch.
     const { buildAskHandoffInput } = await import('./useHandoffDispatch');
     const input = buildAskHandoffInput({
       docName: 'notes/today',
@@ -1737,6 +1909,8 @@ describe('selectScopedPrompt — ask scope', () => {
       true,
     );
     expect(out).toBe(composeAskPrompt('notes/today.md', 'condense this doc', true, 'claude-code'));
+    // The typed instruction reaches the composed prompt, blockquoted; the doc is
+    // named as an @-mention.
     expect(out).toContain('> condense this doc');
     expect(out).toContain('@notes/today.md');
   });
@@ -1758,6 +1932,10 @@ describe('selectScopedPrompt — ask scope', () => {
   });
 
   test('R10 regression guard: an ask input does NOT fall through to composeFilePrompt', async () => {
+    // The defining audit finding: with no selection, the legacy fallthrough
+    // composes composeFilePrompt(relativePath) — which carries NO instruction. A
+    // dedicated `ask` discriminator, checked before docContext, keeps the typed
+    // instruction in the prompt. This pins that the ask branch wins.
     const { selectScopedPrompt } = await import('./useHandoffDispatch');
     const { composeFilePrompt, composeAskPrompt } = await import('@inkeep/open-knowledge-core');
     const out = selectScopedPrompt(
@@ -1776,6 +1954,10 @@ describe('selectScopedPrompt — ask scope', () => {
   });
 
   test('precedence: ask beats docContext when both are set (defensive ordering)', async () => {
+    // Production builders never set both — buildAskHandoffInput sets docContext
+    // null. The defensive ordering pins ask ahead of file scope so a future
+    // if-chain reorder cannot silently demote it to composeFilePrompt (which
+    // would drop the instruction).
     const { selectScopedPrompt } = await import('./useHandoffDispatch');
     const { composeAskPrompt } = await import('@inkeep/open-knowledge-core');
     const out = selectScopedPrompt(
@@ -1875,6 +2057,7 @@ describe('runHandoffDispatch — ask scope', () => {
       HandoffPayload,
     ];
     expect(payload.prompt).toContain('research the extinction of flightless birds');
+    // Not the bare file directive — the instruction would be dropped there.
     expect(payload.prompt).not.toBe(composeFilePrompt('guides/style.md', true));
   });
 
@@ -1907,6 +2090,8 @@ describe('runHandoffDispatch — ask scope', () => {
   });
 
   test('end-to-end: buildAskHandoffInput → dispatch carries the instruction', async () => {
+    // Proves the builder + routing compose: the helper-built ask input dispatches
+    // through composeAskPrompt with the typed instruction intact.
     const { runHandoffDispatch, buildAskHandoffInput } = await import('./useHandoffDispatch');
     const { composeAskPrompt } = await import('@inkeep/open-knowledge-core');
     const deps = buildDeps();
@@ -1944,6 +2129,7 @@ describe('buildComposerHandoffInput — compose-scoped helper (US-002)', () => {
   });
 
   test('null docName builds a project-scope compose input (no doc lead, empty docPath)', async () => {
+    // a null docName is the project-scope signal, NOT a disabled trigger.
     const { buildComposerHandoffInput } = await import('./useHandoffDispatch');
     const input = buildComposerHandoffInput({
       docName: null,
@@ -2033,6 +2219,8 @@ describe('buildComposerHandoffInput — compose-scoped helper (US-002)', () => {
       instruction: '',
       mentions: [],
     });
+    // No selection passed → the field is absent. The composer elides an empty
+    // selection before calling the builder.
     expect(noSel?.compose).not.toHaveProperty('selection');
   });
 });
@@ -2053,6 +2241,8 @@ describe('selectScopedPrompt — compose scope (US-002)', () => {
       docPath: '/repo/specs/foo/SPEC.md',
     };
     const out = selectScopedPrompt(input, 'cursor', true);
+    // Byte-equality with the assembler proves the compose path is the holistic
+    // assembler, NOT a per-composer fit.
     expect(out).toBe(
       assembleHandoffPrompt({
         scope: 'doc',
@@ -2153,6 +2343,9 @@ describe('selectScopedPrompt — compose scope (US-002)', () => {
   });
 
   test('precedence: compose beats selection + docContext when several are set (defensive ordering)', async () => {
+    // Production builders never set more than one scope field. The defensive
+    // ordering pins compose as the most specific so a future if-chain reorder
+    // can't silently demote the unified composer path.
     const { selectScopedPrompt } = await import('./useHandoffDispatch');
     const { assembleHandoffPrompt } = await import('@inkeep/open-knowledge-core');
     const input: HandoffDispatchInput = {

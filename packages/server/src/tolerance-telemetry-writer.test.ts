@@ -24,7 +24,9 @@ afterEach(async () => {
   await teardownToleranceTelemetryWriter();
   try {
     rmSync(tmpProjectDir, { recursive: true, force: true });
-  } catch {}
+  } catch {
+    /* best effort */
+  }
 });
 
 describe('isToleranceTelemetryEnabled', () => {
@@ -120,6 +122,8 @@ describe('initToleranceTelemetryWriter', () => {
 
   test('append-failure warning re-arms after teardown (per-boot warn budget)', async () => {
     process.env.OK_BRIDGE_TOLERANCE_TELEMETRY = '1';
+    // A DIRECTORY at the sink path makes every append reject (EISDIR),
+    // exercising the swallowed-failure warn path deterministically.
     const logPath = resolve(tmpProjectDir, '.ok', 'local', 'tolerance-telemetry.jsonl');
     mkdirSync(logPath, { recursive: true });
 
@@ -130,6 +134,9 @@ describe('initToleranceTelemetryWriter', () => {
       await teardownToleranceTelemetryWriter();
       expect(warnSpy.mock.calls.length).toBe(1);
 
+      // Second boot against the same broken sink: the fresh appender gets a
+      // fresh one-shot warn budget — a transient failure in one boot must not
+      // silence the diagnostic for every later boot in the same process.
       initToleranceTelemetryWriter(tmpProjectDir);
       emitToleranceFire(['crlf'], 'b\r\n', 'b\n', 'doc');
       await teardownToleranceTelemetryWriter();

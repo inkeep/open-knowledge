@@ -45,6 +45,13 @@ import { usePublishFrontmatterSelection } from '@/hooks/use-selection-context';
 
 interface PropertyPanelProps {
   provider: HocuspocusProvider;
+  /**
+   * Top-level frontmatter keys to hide from the auto-rendered rows. The skill
+   * panel reserves `name` (it is the skill's folder identity — renamed via a
+   * git-mv affordance, never a plain frontmatter patch, exactly as a document's
+   * filename is not one of its properties). Defaults to none, so the document
+   * panel renders every field unchanged.
+   */
   reservedKeys?: readonly string[];
 }
 
@@ -58,6 +65,9 @@ function readInitialSnapshot(provider: PropertyPanelProps['provider']): Frontmat
 export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
   const { t } = useLingui();
   const reserved = new Set(reservedKeys ?? []);
+  // Binding for read + write — over the YAML region of `Y.Text('source')`.
+  // The initial snapshot is read synchronously from the provider so SSR + the
+  // first client render see the right state without waiting for a useEffect.
   const [binding, setBinding] = useState<FrontmatterBinding | null>(null);
   const [snapshot, setSnapshot] = useState<FrontmatterSnapshot>(() =>
     readInitialSnapshot(provider),
@@ -89,8 +99,16 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
   const [resetCounters, setResetCounters] = useState<Record<string, number>>({});
   const docName = provider.configuration.name ?? '';
 
+  // Publish a highlight inside the property panel into the selection-context
+  // store (keyed `(docName, 'frontmatter')`) so a property-value selection feeds
+  // the Ask AI composer exactly like a body-text selection — no per-row "use as
+  // context" button.
   const panelRef = useRef<HTMLDivElement>(null);
   usePublishFrontmatterSelection(panelRef, docName);
+
+  // A doc's property panel shows the doc's OWN frontmatter only. Folder
+  // frontmatter is descriptive (about the folder) and does not cascade into
+  // child docs, so there are no inherited or declared-field rows here.
 
   function commitPatch(patch: FrontmatterPatch): PatchResult {
     if (!binding) {
@@ -169,10 +187,21 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
     };
   }
 
+  // @dnd-kit row identity. Source-position-suffixed so dup-name rows
+  // (same `key` string twice) get distinct sortable ids — yaml@2 with
+  // `uniqueKeys: false` admits duplicates and the panel surfaces them
+  // as distinct rows.
   function rowId(key: string, idx: number): string {
     return `${key} ${idx}`;
   }
 
+  /**
+   * Drop handler — translates @dnd-kit's `(activeId, overId)` into the
+   * permuted key list and commits via `binding.reorder()`. The binding's
+   * commit recomputes the FM region byte range INSIDE its transact
+   * (STOP_IF), so a peer body edit between mouseup and commit can't corrupt
+   * the FM region.
+   */
   function handleDragEnd(event: DragEndEvent): void {
     if (!binding) return;
     const activeId = String(event.active.id);
@@ -195,12 +224,16 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
     }
   }
 
+  // Pointer + keyboard sensors. KeyboardSensor's
+  // sortableKeyboardCoordinates handles arrow-key navigation between
+  // sortable items + announces moves via @dnd-kit's accessibility preset.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   function setType(key: string, nextType: FrontmatterType) {
+    // Coerce the existing file value to the new type.
     const current = map[key];
     if (current === undefined) return;
     setOverrides((prev) => ({ ...prev, [key]: nextType }));
@@ -215,6 +248,7 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
     setCollapsed(false);
   }
 
+  // Cross-tree signal from the toolbar's "Add Properties" button.
   const { addPropertySignal, clearAddProperty } = useProperties();
   const addSignal = addPropertySignal.get(docName) ?? 0;
   useEffect(() => {
@@ -248,12 +282,17 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
 
   function commitAdd(valueOverride?: FrontmatterValue) {
     if (!adding) return;
+    // Enter-in-value-field carries the freshly-typed value (the draft state
+    // update from the widget's onCommit lands after this synchronous call).
     const value = valueOverride ?? adding.value;
     const trimmed = adding.name.trim();
     if (!trimmed) {
       setAdding({ ...adding, value, error: t`Name is required` });
       return;
     }
+    // Empty value would be dropped server-side by mergePatch; gate here so the
+    // user gets an explicit error rather than a silent no-op (the Enter-to-add
+    // keyboard paths bypass the Add button's disabled state).
     if (isFrontmatterValueEmpty(value)) {
       setAdding({ ...adding, value, error: t`Value is required` });
       return;
@@ -296,6 +335,8 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
     if (!renaming) return;
     const trimmed = renaming.draft.trim();
     if (!trimmed) {
+      // Empty/whitespace name during typing is a transient panel state;
+      // don't commit, just close the editor.
       setRenaming(null);
       return;
     }
@@ -329,10 +370,15 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
     setRenaming({ ...renaming, error: message });
   }
 
+  // Pick render keys from snapshot order. When YAML is malformed, `parseError`
+  // is set and `keys` may be empty (the panel renders the last-valid map's
+  // keys derived from `Object.keys(map)` — a degraded but non-blocking state).
   const renderKeys = (orderedKeys.length > 0 ? orderedKeys : Object.keys(map)).filter(
     (k) => !reserved.has(k),
   );
 
+  // Duplicate-name detection. When the same name appears twice in the
+  // YAML region, mark every affected row with a duplicate-name marker.
   const dupCount = new Map<string, number>();
   for (const k of renderKeys) dupCount.set(k, (dupCount.get(k) ?? 0) + 1);
 
@@ -375,6 +421,17 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
               const declared = overrides[key] ?? inferType(value);
               const renameState = renaming?.key === key ? renaming : null;
               const isDuplicate = (dupCount.get(key) ?? 0) > 1;
+              // File-owned key. The trash icon deletes the key from the
+              // file's own frontmatter.
+              // Position-aware sortable id: dup-name rows share the same
+              // `key` string, so we suffix with the source-order index so
+              // SortableContext can distinguish them. yaml@2 with
+              // `uniqueKeys: false` admits duplicates, and the panel
+              // surfaces them as distinct rows. The index is load-bearing
+              // here precisely because the YAML source order is the
+              // rendered order — biome/lint warns about index keys for
+              // unstable arrays, but FM rows are deterministic by source
+              // position.
               return (
                 <FrontmatterRow
                   // biome-ignore lint/suspicious/noArrayIndexKey: position-aware key for dup-name rows.
@@ -421,6 +478,11 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
             resetCounter={resetCounters.tags ?? 0}
             isPlaceholder
             onCommit={(v) => commitProperty('tags', v)}
+            // No type-change for the virtual row — the chip widget is
+            // the only meaningful editor for `tags`, and
+            // `isPlaceholder` hides the type-icon dropdown anyway.
+            // The handler is required by the type but never reaches
+            // user input here.
             onChangeType={() => {}}
           />
         ) : null}
@@ -434,6 +496,15 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
             onCancel={cancelAdd}
           />
         ) : (
+          // Wrapper mirrors FrontmatterRow's flex layout above: an
+          // aria-hidden `w-4` spacer occupies the drag-handle column,
+          // gap-1 separates it from the Button (which itself starts at
+          // the TypeIcon column edge). Result: the Button's hover
+          // background starts at 20px (=16+4) — the same x as the
+          // TypeIconButton in the rows above — instead of stretching
+          // all the way to the row's left edge as `pl-7` would. The
+          // `+` icon center still lands at ~35px (20+8+7), within ±2px
+          // of the TypeIconButton icon center (34px).
           <div className="mt-1 flex items-center gap-1">
             <span aria-hidden className="h-7 w-4 shrink-0" />
             <Button
@@ -442,6 +513,9 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
               size="sm"
               data-testid="add-property-trigger"
               onClick={beginAdd}
+              // Visible label is just "Add"; the aria-label restores the
+              // action's object so screen readers don't announce a
+              // context-free "Add, button".
               aria-label={t`Add property`}
               className="flex items-center gap-1.5 rounded px-2 py-1 font-medium text-sm hover:bg-muted/50 hover:text-foreground"
             >

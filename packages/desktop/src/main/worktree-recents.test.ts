@@ -98,6 +98,7 @@ describe('classifyRecentGit', () => {
     handle = await makeRepoWithWorktree();
     const first = classifyRecentGit(handle.mainRepo);
     const second = classifyRecentGit(handle.mainRepo);
+    // Same object identity → served from cache.
     expect(first).toBe(second);
   });
 });
@@ -121,6 +122,8 @@ describe('readWorktreeBranch', () => {
 
   test('resolves up from a SUBDIRECTORY of a worktree (the OK-subtree case)', async () => {
     handle = await makeRepoWithWorktree();
+    // A nested dir with no `.git` of its own — the raw `<path>/.git/HEAD` reader
+    // fails here, but git walks up to the worktree's real gitdir.
     const subdir = join(handle.worktree, 'public', 'open-knowledge');
     mkdirSync(subdir, { recursive: true });
     expect(readWorktreeBranch(subdir)).toBe('feature');
@@ -196,6 +199,8 @@ describe('classifyRecentGitAsync', () => {
 
   test('shares the memo with the sync variant (sync populate → async cache hit)', async () => {
     handle = await makeRepoWithWorktree();
+    // Sync call populates the shared memo; the async call must return that same
+    // cached object identity rather than re-spawning git.
     const seeded = classifyRecentGit(handle.mainRepo);
     const fromAsync = await classifyRecentGitAsync(handle.mainRepo);
     expect(fromAsync).toBe(seeded);

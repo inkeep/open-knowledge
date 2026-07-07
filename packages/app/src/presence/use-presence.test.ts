@@ -40,6 +40,7 @@ describe('dedupeHumansByPrincipalId', () => {
     const input = [makeHuman(20, 'pid-1', 'Bob'), makeHuman(10, 'pid-1', 'Alice')];
     const result = dedupeHumansByPrincipalId(input);
     expect(result.length).toBe(1);
+    // clientId 10 is lower — that entry's name wins
     expect(result[0].clientId).toBe(10);
     expect(result[0].user.name).toBe('Alice');
   });
@@ -70,6 +71,7 @@ describe('dedupeHumansByPrincipalId', () => {
   test('mixed: eligible and ineligible entries coexist correctly', () => {
     const input = [makeHuman(1, 'pid-A'), makeHuman(2, undefined), makeHuman(3, 'pid-A')];
     const result = dedupeHumansByPrincipalId(input);
+    // pid-A collapses to 1, the ineligible stays → 2 total
     expect(result.length).toBe(2);
     const eligible = result.find((h) => h.user.principalId === 'pid-A');
     const ineligible = result.find((h) => !h.user.principalId);
@@ -97,6 +99,8 @@ describe('dedupeHumansByPrincipalId', () => {
   });
 
   test('output order follows rep position (rep is first entry here)', () => {
+    // pid-B: entries at pos 0 (clientId 100) and pos 2 (clientId 200).
+    // Rep is clientId 100 (the lower one), which appears first → pid-B emitted at pos 0.
     const input = [makeHuman(100, 'pid-B'), makeHuman(10, 'pid-A'), makeHuman(200, 'pid-B')];
     const result = dedupeHumansByPrincipalId(input);
     expect(result[0].user.principalId).toBe('pid-B');
@@ -105,6 +109,9 @@ describe('dedupeHumansByPrincipalId', () => {
   });
 
   test('output order reflects rep position, not first-occurrence, when rep != first', () => {
+    // pid-B appears at positions 0 (clientId 200) and 2 (clientId 100).
+    // The rep is clientId 100 (lower), which sits at position 2.
+    // Output order therefore puts A (pos 1) before B (pos 2).
     const input = [makeHuman(200, 'pid-B'), makeHuman(10, 'pid-A'), makeHuman(100, 'pid-B')];
     const result = dedupeHumansByPrincipalId(input);
     expect(result.length).toBe(2);
@@ -141,6 +148,9 @@ describe('participantsEqual', () => {
   });
 
   test('returns false when only tabCount differs — guards against stale tooltip on TTL tick', () => {
+    // If participantsEqual didn't compare tabCount, the 1 Hz TTL tick would
+    // short-circuit setState and the tooltip count would go stale when a tab
+    // connects/disconnects.
     const a = [makeParticipantHuman(1, 1)];
     const b = [makeParticipantHuman(1, 2)];
     expect(participantsEqual(a, b)).toBe(false);
@@ -155,6 +165,8 @@ describe('participantsEqual', () => {
 
 describe('isSelfAwarenessEntry — presence self-filter discriminator', () => {
   test('git-config self: principalId match filters across tabs', () => {
+    // Two tabs with the same principalId — the entry must be filtered in
+    // both tabs (multi-tab self collapses to "not visible to me").
     expect(
       isSelfAwarenessEntry({
         entryPrincipalId: 'pid-1',
@@ -196,6 +208,9 @@ describe('isSelfAwarenessEntry — presence self-filter discriminator', () => {
   });
 
   test('synthesized identity multi-tab: second tab visible as remote viewer (accepted edge)', () => {
+    // Documented edge: synthesized users with no principalId open a second
+    // tab. Each tab sees the OTHER tab as a "remote viewer" — clientID-only
+    // filtering can't recognize that both belong to the same human.
     const myClient = 100;
     const otherTabClient = 200;
     expect(
@@ -209,6 +224,8 @@ describe('isSelfAwarenessEntry — presence self-filter discriminator', () => {
   });
 
   test('local empty-string principalId behaves like null (falls through to clientID)', () => {
+    // `buildAwarenessUser` may emit principalId as an empty string in some
+    // states. Treat falsy values uniformly so the predicate is robust.
     expect(
       isSelfAwarenessEntry({
         entryPrincipalId: '',
@@ -228,6 +245,9 @@ describe('isSelfAwarenessEntry — presence self-filter discriminator', () => {
   });
 
   test('initial-connect race (getLocalState undefined → localClientId null): no filter', () => {
+    // When awareness hasn't settled, localClientId is null and the
+    // predicate refuses to filter — the user might briefly see themselves
+    // until awareness fires its next change event. Acceptable transient.
     expect(
       isSelfAwarenessEntry({
         entryPrincipalId: undefined,
@@ -239,6 +259,9 @@ describe('isSelfAwarenessEntry — presence self-filter discriminator', () => {
   });
 
   test('agents are unaffected — they iterate a different awareness surface', () => {
+    // Sanity: the predicate has no notion of agent-vs-human. The hook
+    // applies it only inside the human iteration loop (agents come from
+    // `__system__` awareness through `pickAgentsForDoc`).
     expect(
       isSelfAwarenessEntry({
         entryPrincipalId: 'agent-uid',
@@ -247,5 +270,6 @@ describe('isSelfAwarenessEntry — presence self-filter discriminator', () => {
         localClientId: 100,
       }),
     ).toBe(true);
+    // Not a regression — the AGENT loop never calls this function.
   });
 });

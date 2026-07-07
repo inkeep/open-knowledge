@@ -1,3 +1,10 @@
+/**
+ * Unit tests for sync-promise: module-level cache + timeout + invalidation.
+ *
+ * These tests drive a real HocuspocusProvider pointed at a dummy WS URL
+ * (same pattern as provider-pool.test.ts). The provider never connects,
+ * but emitting `synced` / `close` directly exercises the listener wiring.
+ */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { getCollector, getHistogramSnapshot } from '../lib/perf/collector';
@@ -52,7 +59,9 @@ afterEach(() => {
   for (const p of providers) {
     try {
       p.destroy();
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
   providers = [];
 });
@@ -85,10 +94,15 @@ describe('syncPromise creation + idempotency', () => {
 
 describe('syncPromise resolution', () => {
   test('resolves synchronously when provider is already synced (warm path)', async () => {
+    // Pool-resident reuse path: provider.synced is already true from a prior
+    // mount. Hocuspocus's `set synced` is a no-op when the value is unchanged
+    // so a freshly-attached `'synced'` listener would never fire — without the
+    // fast-path gate this would hang for the full 30s timeout.
     const p = track(makeProvider('warm-doc'));
     p.synced = true;
     const promise = syncPromise('warm-doc', p);
     await expect(promise).resolves.toBeUndefined();
+    // Cache holds a settled sentinel so repeat calls return the same reference.
     expect(__syncPromiseCacheSize()).toBe(1);
     expect(__syncPromiseSettled('warm-doc')).toBe(true);
   });
@@ -98,6 +112,8 @@ describe('syncPromise resolution', () => {
     p.synced = true;
     const a = syncPromise('warm-doc', p);
     const b = syncPromise('warm-doc', p);
+    // Stable reference is what makes React 19's `use()` short-circuit on
+    // subsequent renders (after .status='fulfilled' has been set by React).
     expect(a).toBe(b);
   });
 
@@ -105,9 +121,12 @@ describe('syncPromise resolution', () => {
     const p = track(makeProvider('doc1'));
     const promise = syncPromise('doc1', p);
 
+    // Fire synced on next tick so await sees the pending → resolved transition
     queueMicrotask(() => p.emit('synced', { state: true }));
 
     await expect(promise).resolves.toBeUndefined();
+    // Entry stays in cache after resolve so subsequent calls return the same
+    // resolved promise (warm-path stability).
     expect(__syncPromiseCacheSize()).toBe(1);
     expect(__syncPromiseSettled('doc1')).toBe(true);
   });
@@ -131,6 +150,8 @@ describe('syncPromise resolution', () => {
     await first;
 
     const second = syncPromise('doc1', p);
+    // Cache persists settled entries so React's `use()` sees the same
+    // .status='fulfilled' thenable across re-renders without a Suspense cycle.
     expect(second).toBe(first);
     expect(__syncPromiseCacheSize()).toBe(1);
   });
@@ -146,6 +167,9 @@ describe('syncPromise pre-sync close rejection', () => {
     });
 
     await expect(promise).rejects.toBeInstanceOf(PreSyncDisconnectError);
+    // Rejected entry stays in cache so subsequent renders see the same
+    // .status='rejected' thenable — React's `use()` re-throws without
+    // creating a fresh warm-path resolved promise that would mask the error.
     expect(__syncPromiseSettled('doc1')).toBe(true);
   });
 
@@ -183,6 +207,7 @@ describe('syncPromise pre-sync close rejection', () => {
     p.emit('synced', { state: true });
     await promise;
 
+    // Close after settle — no-op, must not throw
     p.emit('close', { event: { code: 1000, reason: 'normal', wasClean: true } });
     expect(__syncPromiseSettled('doc1')).toBe(true);
   });
@@ -192,11 +217,13 @@ describe('syncPromise timeout', () => {
   test('rejects with SyncTimeoutError after 30s elapsed', async () => {
     const p = track(makeProvider('slow-doc'));
     const origSetTimeout = globalThis.setTimeout;
+    // Monkey-patch setTimeout for this test to capture + fast-fire the 30s timer
     let capturedTimer: (() => void) | null = null;
     // @ts-expect-error — intentional override for test
     globalThis.setTimeout = ((fn: () => void, ms: number) => {
       if (ms === getSyncTimeoutMs()) {
         capturedTimer = fn;
+        // Return a dummy handle that clearTimeout can accept
         return { __dummy: true } as unknown as ReturnType<typeof origSetTimeout>;
       }
       return origSetTimeout(fn, ms);
@@ -205,8 +232,10 @@ describe('syncPromise timeout', () => {
     try {
       const promise = syncPromise('slow-doc', p);
       expect(capturedTimer).not.toBeNull();
+      // Fire the captured timer manually to simulate 30s elapsing
       capturedTimer?.();
       await expect(promise).rejects.toBeInstanceOf(SyncTimeoutError);
+      // Rejected entry stays in cache (settled sentinel).
       expect(__syncPromiseSettled('slow-doc')).toBe(true);
     } finally {
       globalThis.setTimeout = origSetTimeout;
@@ -252,6 +281,8 @@ describe('invalidateSyncPromise', () => {
     invalidateSyncPromise('doc1');
     expect(__syncPromiseCacheSize()).toBe(0);
 
+    // The original promise is orphaned — it neither resolves nor rejects.
+    // Verify with Promise.race against a short delay.
     const result = await Promise.race([
       promise.then(() => 'resolved'),
       promise.catch(() => 'rejected'),
@@ -276,8 +307,10 @@ describe('invalidateSyncPromise', () => {
     p.emit('close', { event: { code: 1006, reason: 'test', wasClean: false } });
     await first.catch(() => {});
 
+    // Repeat call returns SAME rejected promise (boundary keeps catching)
     expect(syncPromise('doc1', p)).toBe(first);
 
+    // Explicit invalidate (e.g. retry button) → next call gets fresh promise
     invalidateSyncPromise('doc1');
     const fresh = syncPromise('doc1', p);
     expect(fresh).not.toBe(first);
@@ -293,6 +326,7 @@ describe('invalidateSyncPromise', () => {
     const orphaned = syncPromise('doc1', p);
     invalidateSyncPromise('doc1');
 
+    // Fire synced — listeners should have been detached, so orphaned stays pending
     p.emit('synced', { state: true });
 
     const result = await Promise.race([
@@ -324,6 +358,11 @@ describe('rejectSyncPromise (BridgeSetupError surface)', () => {
   });
 
   test('rejected entry stays in cache so subsequent renders catch the same error', async () => {
+    // Models the React re-render after rejection: DocumentBoundary's `use()`
+    // sees the same rejected promise and re-throws synchronously, letting
+    // DocumentErrorBoundary render its fallback. Without persistence, a fresh
+    // syncPromise call would warm-path-resolve on the broken provider and
+    // mask the error.
     const p = track(makeProvider('doc1'));
     const first = syncPromise('doc1', p);
     rejectSyncPromise('doc1', new BridgeSetupError('doc1'));
@@ -345,12 +384,18 @@ describe('rejectSyncPromise (BridgeSetupError surface)', () => {
     rejectSyncPromise('doc1', new BridgeSetupError('doc1'));
     await promise.catch(() => {});
 
+    // Second reject is a no-op
     const ok = rejectSyncPromise('doc1', new BridgeSetupError('doc1'));
     expect(ok).toBe(false);
   });
 });
 
 describe('syncPromiseHasResolved (warm-reopen overlay gate)', () => {
+  // EditorArea's deferred-value skeleton overlay reads this helper to skip
+  // the overlay when both promises have resolved entries. Distinct from the
+  // test-only `__syncPromiseSettled` because rejected entries are settled
+  // but their consumers will throw to error boundary, not short-circuit.
+
   test('returns false when no entry exists', () => {
     expect(syncPromiseHasResolved('never-mounted')).toBe(false);
   });
@@ -367,6 +412,7 @@ describe('syncPromiseHasResolved (warm-reopen overlay gate)', () => {
     Object.defineProperty(provider, 'synced', { value: false, configurable: true });
     syncPromise('cold-doc', provider);
     expect(syncPromiseHasResolved('cold-doc')).toBe(false);
+    // Fire synced — listener resolves and flips resolved=true.
     // biome-ignore lint/suspicious/noExplicitAny: protected emit() needs reach for tests
     (provider as any).emit('synced', { state: false });
     expect(syncPromiseHasResolved('cold-doc')).toBe(true);
@@ -402,6 +448,11 @@ describe('syncPromiseHasResolved (warm-reopen overlay gate)', () => {
 });
 
 describe('production dial', () => {
+  // Locks in the production default for `SYNC_TIMEOUT_MS`. The e2e suite
+  // drives the dial down to ~2s via `window.__okPerfOverrides` to exercise
+  // the real `setTimeout` callback without a 30s wall-clock wait — that
+  // override is only safe because this assertion catches accidental drift
+  // in the production constant.
   test('getSyncTimeoutMs() returns 30_000 by default (no override)', () => {
     expect(getSyncTimeoutMs()).toBe(30_000);
   });
@@ -441,6 +492,7 @@ describe('__test_armPendingRejection — race-free e2e error-path hook', () => {
     __test_armPendingRejection('doc-armed-timeout', 'timeout');
     const promise = syncPromise('doc-armed-timeout', p);
     await expect(promise).rejects.toBeInstanceOf(SyncTimeoutError);
+    // Arm should be consumed (one-shot semantics).
     expect(__test_clearArmedRejection('doc-armed-timeout')).toBe(false);
   });
 
@@ -459,6 +511,10 @@ describe('__test_armPendingRejection — race-free e2e error-path hook', () => {
   });
 
   test('arm takes priority over warm-provider fast path', async () => {
+    // Even when provider.synced=true (which would normally short-circuit to
+    // a resolved promise), an armed rejection must win so the error boundary
+    // surfaces. This is load-bearing where the nav target's provider
+    // may have been warm from a prior test step.
     const p = track(makeProvider('doc-armed-warm'));
     p.synced = true;
     __test_armPendingRejection('doc-armed-warm', 'timeout');
@@ -470,26 +526,40 @@ describe('__test_armPendingRejection — race-free e2e error-path hook', () => {
     const p = track(makeProvider('doc-armed-once'));
     __test_armPendingRejection('doc-armed-once', 'timeout');
 
+    // First call consumes the arm → rejected promise cached.
     const first = syncPromise('doc-armed-once', p);
     await expect(first).rejects.toBeInstanceOf(SyncTimeoutError);
 
+    // Second call returns the SAME cached (rejected) promise — the arm was
+    // one-shot and the rejected entry persists for React `use()` stability
+    // (re-throwing synchronously across boundary re-renders).
     const second = syncPromise('doc-armed-once', p);
     expect(second).toBe(first);
 
+    // Arm is consumed — `__test_clearArmedRejection` should see nothing to clear.
     expect(__test_clearArmedRejection('doc-armed-once')).toBe(false);
   });
 
   test('arm is consumed on creation, so a fresh syncPromise after invalidate is NOT armed', async () => {
+    // Arm + create consumes the arm on the first call. After invalidate, a
+    // new syncPromise call MUST follow the normal pending path — proven by
+    // checking the entry is not settled before any async event fires.
     const p = track(makeProvider('doc-consumed-arm'));
     __test_armPendingRejection('doc-consumed-arm', 'timeout');
     const first = syncPromise('doc-consumed-arm', p);
     await expect(first).rejects.toBeInstanceOf(SyncTimeoutError);
 
     invalidateSyncPromise('doc-consumed-arm');
+    // Arm is one-shot; the invalidate + fresh-create sequence starts with no arm.
     expect(__test_clearArmedRejection('doc-consumed-arm')).toBe(false);
 
+    // A fresh syncPromise does NOT synchronously reject (the rejection would
+    // only come from the real provider lifecycle, not the consumed arm).
+    // Snapshot the settled-state BEFORE any async tick so the WS close path
+    // cannot mutate it.
     const fresh = syncPromise('doc-consumed-arm', p);
     expect(__syncPromiseSettled('doc-consumed-arm')).toBe(false);
+    // Prevent unhandled rejection noise from the provider's eventual close.
     fresh.catch(() => {});
   });
 
@@ -508,12 +578,22 @@ describe('__test_armPendingRejection — race-free e2e error-path hook', () => {
 });
 
 describe('tab-sleep resilience (__reapTimedOutEntries)', () => {
+  /**
+   * Browser background-tab throttling can stretch the 30s `setTimeout`
+   * indefinitely, so the visibility-change handler is the deterministic
+   * safety net. The handler itself is a thin DOM-gated wrapper around
+   * `__reapTimedOutEntries(now)` — the pure helper we test here. The
+   * wrapper is verified indirectly via the Playwright suite which runs in
+   * a real browser.
+   */
   test('rejects pending entry when elapsed wall-clock time exceeds timeout', async () => {
     const p = track(makeProvider('sleepy-doc'));
     const promise = syncPromise('sleepy-doc', p);
     const settled = promise.catch((e: unknown) => e);
 
     const createdAt = Date.now();
+    // Simulate "user tabbed back after a 60s tab-sleep" — wall-clock now is
+    // past the 30s timeout for this entry.
     const rejected = __reapTimedOutEntries(createdAt + getSyncTimeoutMs() + 1_000);
 
     expect(rejected).toBe(1);
@@ -539,6 +619,7 @@ describe('tab-sleep resilience (__reapTimedOutEntries)', () => {
     queueMicrotask(() => p.emit('synced', { state: true }));
     await promise;
 
+    // Even far in the future, the settled entry stays settled — no double-reject.
     const rejected = __reapTimedOutEntries(Date.now() + getSyncTimeoutMs() * 2);
 
     expect(rejected).toBe(0);
@@ -547,9 +628,18 @@ describe('tab-sleep resilience (__reapTimedOutEntries)', () => {
 });
 
 describe('mountId payload (US-006 / FR5 / AC13 — cross-namespace correlation)', () => {
+  // Mirrors the equivalent pin in mount-promise.test.ts for the mount
+  // namespace. Every ok/sync/* mark must carry mountId so cross-namespace
+  // correlation by deterministic ID (not timestamp window)
+  // joins sync events with cache/mount/cold/typing for a given doc-mount
+  // cycle. Without this pin, a future refactor that drops the mountId
+  // threading from the sync namespace would silently break correlation —
+  // observable only in production traces.
+
   test('every ok/sync/* mark carries the mountId from the registry (warm-path resolve)', async () => {
     const collector = getCollector();
     if (!collector) {
+      // Collector inactive in this build — skip without failing.
       return;
     }
     setMountId('mid-sync-doc', 'specific-sync-mount-id');
@@ -561,6 +651,7 @@ describe('mountId payload (US-006 / FR5 / AC13 — cross-namespace correlation)'
     const syncMarks = newMarks.filter((m) => m.name.startsWith('ok/sync/'));
     expect(syncMarks.length).toBeGreaterThan(0);
     for (const m of syncMarks) {
+      // Caller-supplied fields land in `properties` per the PerfMark schema.
       expect(m.properties?.mountId).toBe('specific-sync-mount-id');
     }
   });
@@ -584,7 +675,19 @@ describe('mountId payload (US-006 / FR5 / AC13 — cross-namespace correlation)'
 });
 
 describe('ok/sync/resolve-elapsed-ms histogram (cap-graduation sweep substrate)', () => {
+  // The mark.histogram consumer at the resolve sites feeds the distribution
+  // the convention-cap-graduation sweep drains via getHistogramSnapshot.
+  // Bucket name is kebab-case (the mark-name regex rejects dots in the third
+  // segment); the paired DevTools mark — emitted by mark.histogram itself —
+  // carries {docName, mountId, durationMs} plus the warm flag on the warm
+  // path so the sweep can separate cold-only samples.
+  //
+  // The existing `mark('ok/sync/resolve', ...)` emission is preserved
+  // alongside; this test pins that both fire.
+
   beforeEach(() => {
+    // Reset the collector inside this describe so histogram counts isolate
+    // per test (the module-scoped collector accumulates across cases otherwise).
     getCollector()?.reset();
   });
 
@@ -630,6 +733,8 @@ describe('ok/sync/resolve-elapsed-ms histogram (cap-graduation sweep substrate)'
     const snap = getHistogramSnapshot('ok/sync/resolve-elapsed-ms');
     expect(snap).toBeDefined();
     expect(snap?.count).toBe(1);
+    // elapsed is wall-clock — bound the assertion loosely so the test stays
+    // stable on a heavily-loaded CI runner (typical < 50ms; cap generously).
     expect(snap?.max).toBeGreaterThanOrEqual(0);
     expect(snap?.max).toBeLessThan(30_000);
   });
@@ -670,6 +775,16 @@ describe('ok/sync/resolve-elapsed-ms histogram (cap-graduation sweep substrate)'
 });
 
 describe('cold-mount span finalization on reject paths', () => {
+  // Without finalize on reject, the cold-mount root entry lazily created by
+  // provider-pool's `emitColdMountChild` (or by a sibling span emission) stays
+  // in the registry permanently — the entry holds a live Span and the Map key
+  // are both leaked. These tests pin that every reject path settles the
+  // cold-mount span tree symmetrically with the resolve path.
+  //
+  // The pre-emit pattern mirrors the production sequence: pool.open() emits
+  // `ok.provider-pool.open` first (creating the cold-mount root), then sync
+  // either resolves or rejects.
+
   beforeEach(() => {
     __resetColdMountSpans();
   });
@@ -680,6 +795,7 @@ describe('cold-mount span finalization on reject paths', () => {
 
   test('onClose pre-sync-disconnect path finalizes the cold-mount span', async () => {
     setMountId('reject-close', 'reject-close-mid');
+    // Simulate provider-pool's prior emit lazily creating the cold-mount root.
     emitColdMountChild('reject-close-mid', 'ok.provider-pool.open', {}, Date.now(), Date.now() + 1);
     expect(__coldMountSpanCount()).toBe(1);
 

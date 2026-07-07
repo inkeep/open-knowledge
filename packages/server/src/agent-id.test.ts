@@ -34,6 +34,9 @@ describe('validateAgentId', () => {
   });
 
   test('rejects agentIds longer than AGENT_ID_MAX_LEN — DoS bound on session-map keys', () => {
+    // Each unique agentId allocates a (DirectConnection, Y.UndoManager) pair
+    // in AgentSessionManager. Without a length cap, a 1MB body field could
+    // explode the session map memory footprint.
     const atLimit = 'a'.repeat(AGENT_ID_MAX_LEN);
     const overLimit = 'a'.repeat(AGENT_ID_MAX_LEN + 1);
     const wayOverLimit = 'a'.repeat(100_000);
@@ -104,6 +107,7 @@ describe('parseAgentBodyFields', () => {
   test('agentName sanitized; missing defaults to "Claude"', () => {
     expect(parseAgentBodyFields({}).displayName).toBe('Claude');
     expect(parseAgentBodyFields({ agentName: '  Bob  ' }).displayName).toBe('Bob');
+    // sanitizeGitIdentity strips angle brackets + CR/LF
     expect(parseAgentBodyFields({ agentName: 'Eve<script>' }).displayName).toBe('Evescript');
     expect(parseAgentBodyFields({ agentName: 'a\nb' }).displayName).toBe('ab');
   });

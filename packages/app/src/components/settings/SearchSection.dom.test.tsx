@@ -1,8 +1,20 @@
+/**
+ * Tier-3 RTL mount tests for Settings → Search (semantic-search opt-in).
+ *
+ * Behavior is driven through the project-local ConfigContext (mocked binding +
+ * preference) and the `/api/semantic-status` probe (mocked `fetch`), and
+ * asserted on user-visible output: the toggle state, the egress confirmation
+ * gate, the disable-is-immediate path, and the coverage / needs-a-key panel.
+ */
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { Config, ConfigBinding, SemanticIndexStatus } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+// Radix Dialog mounts a focus-trap that reaches for DOM globals the jsdom
+// preload doesn't expose. Hoist the same shims the sibling settings DOM tests
+// use.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -48,6 +60,7 @@ function configWithSemanticEnabled(enabled: boolean): Config {
   return { search: { semantic: { enabled } } } as unknown as Config;
 }
 
+// Records every patch payload so tests can assert the exact CRDT write.
 function makeBinding(): { binding: ConfigBinding; calls: unknown[] } {
   const calls: unknown[] = [];
   const binding = {
@@ -121,6 +134,7 @@ describe('SearchSection', () => {
 
     await user.click(screen.getByTestId('settings-search-semantic-toggle'));
 
+    // Confirmation gate is open with the egress disclosure; nothing written yet.
     expect(await screen.findByText('This sends content off your machine')).toBeDefined();
     expect(calls.length).toBe(0);
 
@@ -196,6 +210,8 @@ describe('SearchSection', () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
     mockProjectLocalConfig = configWithSemanticEnabled(true);
+    // No key, and crucially NOT warmed (ready:false) — the hint must still show
+    // immediately off `keyPresent`, not wait for a warm.
     mockStatus = {
       enabled: true,
       keyPresent: false,
@@ -262,6 +278,7 @@ describe('SearchSection', () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
     mockProjectLocalConfig = configWithSemanticEnabled(true);
+    // Server hasn't picked up the toggle yet (enabled:false at the server).
     mockStatus = {
       enabled: false,
       keyPresent: false,
@@ -300,6 +317,8 @@ describe('SearchSection', () => {
 
   test('write failure keeps the confirm dialog open for retry (egress consent invariant)', async () => {
     const user = userEvent.setup();
+    // A binding whose patch always fails — the dialog must stay open so the user
+    // keeps their retry for a privacy-sensitive action.
     const failBinding = {
       ...makeBinding().binding,
       patch: () => ({ ok: false, error: { code: 'noop', message: 'fail' } }),
@@ -312,6 +331,7 @@ describe('SearchSection', () => {
     await user.click(screen.getByTestId('settings-search-semantic-toggle'));
     await user.click(await screen.findByTestId('settings-search-confirm-enable'));
 
+    // Still open (success-gated close did not fire on the failed write).
     expect(await screen.findByTestId('settings-search-confirm')).toBeDefined();
   });
 });

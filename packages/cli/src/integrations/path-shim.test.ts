@@ -28,6 +28,8 @@ describe('stripManagedPathBlock', () => {
   });
 
   test('reports emptyAfter for an OK-owned file whose only content is the block', () => {
+    // The fish conf file is created solely by OK — after stripping there is
+    // nothing left, so the caller deletes the file rather than leave it blank.
     const { text, changed, emptyAfter } = stripManagedPathBlock(block());
     expect(changed).toBe(true);
     expect(emptyAfter).toBe(true);
@@ -98,10 +100,13 @@ describe('extraSymlinkStillOurs', () => {
       const link = join(dir, 'ok');
       symlinkSync(target, link);
       expect(extraSymlinkStillOurs(link, target)).toBe(true);
+      // Re-pointed → no longer ours.
       expect(extraSymlinkStillOurs(link, join(dir, 'somewhere-else'))).toBe(false);
+      // A regular file at the path → not a symlink.
       const plain = join(dir, 'plain');
       writeFileSync(plain, 'x');
       expect(extraSymlinkStillOurs(plain, target)).toBe(false);
+      // Missing path.
       expect(extraSymlinkStillOurs(join(dir, 'missing'), target)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });

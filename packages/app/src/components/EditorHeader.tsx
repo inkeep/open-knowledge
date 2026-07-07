@@ -33,16 +33,28 @@ interface EditorHeaderProps {
 export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHeaderProps) {
   const { t } = useLingui();
   const { activeDocName, activeTarget } = useDocumentContext();
+  // Managed-artifact tabs (skills/templates) are ordinary docs but carry their
+  // own header treatment: neither skills nor templates are shareable (the
+  // synthetic doc name isn't a real on-disk path to share), so the ShareButton
+  // trigger gates on this. The agent-handoff for a skill lives in the Skills
+  // sidebar (SkillRow / skill-actions), not the header.
   const managedArtifact = activeDocName ? parseManagedArtifactName(activeDocName) : null;
   const { state: sidebarState, isDraggingRail } = useSidebar();
+  // No-project single-file session (`ok <file>`): drop the project chrome
+  // (sidebar toggle, tab strip, Settings) while leaving the editor + the
+  // doc-scoped actions (Share / sync / agent handoff) intact.
   const singleFile = useSingleFileMode();
   const sidebarShortcut = formatShortcut('toggle-files-sidebar');
   const searchShortcut = formatShortcut('command-palette');
   const [publishOpen, setPublishOpen] = useState(false);
+  // Share input for the header button: folder → folder-scope, doc → doc-scope,
+  // empty editor → project root; non-shareable surfaces yield null (disabled).
   const shareInput: ShareTargetInput | null = (() => {
     if (activeTarget?.kind === 'folder') {
       return buildFolderShareInput(activeTarget.folderPath);
     }
+    // Managed-artifact tabs aren't shareable — their synthetic doc name has no
+    // shareable on-disk path.
     if (activeDocName && !managedArtifact) {
       return buildDocShareInput(activeDocName);
     }
@@ -52,7 +64,23 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
     return null;
   })();
 
+  // Electron host gates the macOS chrome-row treatment: a traffic-light
+  // reserve at the inset position, plus a draggable header surface with
+  // explicit no-drag opt-outs on every interactive child. Web hosts (CLI
+  // distribution at `ok ui` localhost) keep the existing layout — no padding
+  // shift, no drag region, no traffic-light reserve. Detection mirrors the
+  // canonical idiom used in OpenInAgentMenu and FileTree.
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
+  // Sidebar collapse drives the traffic-light reserve. When the sidebar is
+  // expanded, the macOS traffic lights overlap the SIDEBAR (not the
+  // EditorHeader), so the reserve is unnecessary and would push every
+  // editor-header child uselessly to the right. When the sidebar collapses
+  // offcanvas, the EditorHeader's left edge becomes the window's left edge
+  // and the reserve is required to keep the SidebarTrigger clear of the
+  // traffic lights. The reserve uses the shared `--ok-titlebar-reserve-left`
+  // token (defined under `html.electron-mode`) so the magic 78px lives in one
+  // place; the `,1rem` fallback is the precedent-#49 safe form. The padding
+  // transition (and its drag-snap exception) is documented at the className.
   const isCollapsed = sidebarState === 'collapsed';
 
   return (
@@ -62,6 +90,13 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
         'flex h-12 shrink-0 items-center bg-muted/35 shadow-[inset_0_-1px_0_var(--border)]',
         isElectronHost && '[-webkit-app-region:drag]',
         isElectronHost && isCollapsed && 'pl-[var(--ok-titlebar-reserve-left,1rem)]',
+        // Animate the reserve in lockstep with the sidebar's 200ms offcanvas
+        // slide on a button/keyboard toggle — but SNAP it while the rail is
+        // being dragged. A drag-collapse sets `data-dragging` on the sidebar
+        // group, which forces `duration-0` on the sidebar's own slide, so the
+        // sidebar vanishes instantly; an animated reserve would lag ~200ms
+        // behind and park the collapse/search controls under the macOS traffic
+        // lights for the length of the animation.
         isElectronHost &&
           !isDraggingRail &&
           'motion-safe:transition-[padding] motion-safe:duration-200 motion-safe:ease-linear',
@@ -134,6 +169,12 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
       <div
         className={cn(
           'flex shrink-0 items-center justify-end gap-2 px-3',
+          // Child-combinator opt-out: every direct DOM child of the right zone
+          // gets `app-region: no-drag` so clicks on Save / OpenInAgentMenu /
+          // SyncStatusBadge / PresenceBar / BetaBadge / SettingsButton /
+          // HelpPopover (and the visual Separator) fire their handlers instead
+          // of initiating a window drag. Each consumer uses Radix asChild so
+          // the rendered DOM root is a single direct child of this zone.
           isElectronHost && '[&>*]:[-webkit-app-region:no-drag]',
         )}
       >

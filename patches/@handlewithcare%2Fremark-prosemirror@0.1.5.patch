@@ -1,11 +1,20 @@
+diff --git a/node_modules/@handlewithcare/remark-prosemirror/.bun-tag-5a1ee271d50e78cc b/.bun-tag-5a1ee271d50e78cc
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/@handlewithcare/remark-prosemirror/.bun-tag-8534289bc1b3df99 b/.bun-tag-8534289bc1b3df99
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/node_modules/@handlewithcare/remark-prosemirror/.bun-tag-c30c30ad62176876 b/.bun-tag-c30c30ad62176876
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/@handlewithcare/remark-prosemirror/.bun-tag-fa6b3e9bc7828de2 b/.bun-tag-fa6b3e9bc7828de2
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/lib/mdast-util-from-prosemirror.js b/lib/mdast-util-from-prosemirror.js
-index 8b1d0173e7a95e5dc57d9b85b2b0a2360190fcb3..7b4c210f2117efb04a49e8e07a19338c7b56637c 100644
+index 8b1d0173e7a95e5dc57d9b85b2b0a2360190fcb3..b4b68ed8ec7d7b41e5e71560359119c00fa4a067 100644
 --- a/lib/mdast-util-from-prosemirror.js
 +++ b/lib/mdast-util-from-prosemirror.js
-@@ -32,55 +32,148 @@ function createState(nodeHandlers, markHandlers) {
+@@ -32,55 +32,155 @@ function createState(nodeHandlers, markHandlers) {
          }
          return null;
      }
@@ -174,6 +183,13 @@ index 8b1d0173e7a95e5dc57d9b85b2b0a2360190fcb3..7b4c210f2117efb04a49e8e07a19338c
 +        // on the same shape without termination guarantee). This branch is
 +        // not expected in practice — kept as safety net.
 +        if (groups.length === 1 && spans.length > 1) {
++            // Silent activation would round-trip subtly wrong mark nesting
++            // with no trace, so make any real-world hit diagnosable.
++            console.warn('[mdast-util-from-prosemirror] degenerate mark partition; falling back to per-span rendering', {
++                spanCount: spans.length,
++                firstSpanMarks: spans[0]?.marks.map((m)=>m.type.name),
++                lastSpanMarks: spans[spans.length - 1]?.marks.map((m)=>m.type.name)
++            });
 +            const result = [];
 +            for (const s of spans) {
 +                for (const r of hydrateMarks([
@@ -199,10 +215,48 @@ index 8b1d0173e7a95e5dc57d9b85b2b0a2360190fcb3..7b4c210f2117efb04a49e8e07a19338c
      function all(pmNode) {
          return hydrateMarks(pmNode.children.map((child)=>({
 diff --git a/lib/mdast-util-to-prosemirror.js b/lib/mdast-util-to-prosemirror.js
-index 8433f31fff4e82e5fbb0fae2bb8ba1f68cc30f35..9adb6cd9be3462cbca81f4b6a0dca30571e3d05a 100644
+index 8433f31fff4e82e5fbb0fae2bb8ba1f68cc30f35..617679158b4d2bb7dab2505e5a2ade7c8266e9c5 100644
 --- a/lib/mdast-util-to-prosemirror.js
 +++ b/lib/mdast-util-to-prosemirror.js
-@@ -167,7 +167,9 @@ function handle(schema, handlers, htmlHandlers, node, parent, state) {
+@@ -45,19 +45,30 @@ export function createState(schema, handlers, htmlHandlers, tree) {
+                 let result = state.one(nodes[index], parent);
+                 // To do: see if we van clean this? Can we merge texts?
+                 if (result) {
+-                    if (index && nodes[index - 1]?.type === "break") {
++                    // Post-break leading-space trimming implements CommonMark's
++                    // "spaces at the beginning of the next line are ignored".
++                    // Inline-HTML breaks (data.sourceStyle === 'html', e.g. a
++                    // promoted `<br />`) create no source line boundary, so the
++                    // following space is ordinary content — skip the trim to
++                    // keep it byte-identical. And a whitespace-only text child
++                    // must drop entirely rather than construct an empty PM text
++                    // node (schema.text('') throws RangeError).
++                    const prevChild = index ? nodes[index - 1] : undefined;
++                    if (prevChild?.type === "break" && prevChild.data?.sourceStyle !== "html") {
+                         if (!Array.isArray(result) && result.type === schema.nodes["text"]) {
+-                            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+-                            result = schema.text(trimMarkdownSpaceStart(result.text));
+-                        }
+-                        if (!Array.isArray(result) && result.type !== schema.nodes["text"]) {
++                            const trimmed = trimMarkdownSpaceStart(result.text);
++                            result = trimmed.length > 0 ? schema.text(trimmed) : undefined;
++                        } else if (!Array.isArray(result) && result.type !== schema.nodes["text"]) {
+                             const head = result.firstChild;
+                             if (head && head.type === schema.nodes["text"]) {
+-                                result = result.copy(Fragment.from(result.content).replaceChild(0, // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+-                                schema.text(trimMarkdownSpaceStart(head.text))));
++                                const trimmed = trimMarkdownSpaceStart(head.text);
++                                const fragment = Fragment.from(result.content);
++                                result = result.copy(trimmed.length > 0 ? fragment.replaceChild(0, schema.text(trimmed)) : fragment.cut(head.nodeSize));
+                             }
+                         }
+                     }
++                }
++                if (result) {
+                     if (Array.isArray(result)) {
+                         values.push(...result);
+                     } else {
+@@ -167,7 +178,9 @@ function handle(schema, handlers, htmlHandlers, node, parent, state) {
                  return schema.text(node.value);
              },
              text (node) {

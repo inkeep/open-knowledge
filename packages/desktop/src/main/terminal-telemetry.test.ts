@@ -1,3 +1,11 @@
+/**
+ * Terminal lifecycle telemetry (main half) — assert each emitter wraps
+ * `withSpanSync` with the canonical span name + bounded-cardinality attribute
+ * shape, and that no command contents / paths can reach a span. `withSpanSync`
+ * is mocked at the module boundary so the assertions hold regardless of whether
+ * the OTel SDK is enabled. The subject mirrors the `onboarding-telemetry.ts`
+ * emitter pattern (same `withSpanSync` + bounded-attribute discipline).
+ */
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
 interface CapturedSpanCall {
@@ -18,9 +26,12 @@ mock.module('@inkeep/open-knowledge-server', () => ({
   },
 }));
 
-const { recordConcurrentSessions, recordShellExit, recordTerminalSession } = await import(
-  '../../src/main/terminal-telemetry.ts'
-);
+const {
+  recordConcurrentSessions,
+  recordShellExit,
+  recordTerminalSession,
+  recordTerminalWindowOpened,
+} = await import('../../src/main/terminal-telemetry.ts');
 
 describe('recordShellExit — span name + crashed attribute', () => {
   beforeEach(() => {
@@ -76,5 +87,18 @@ describe('recordConcurrentSessions — count-only concurrency signal', () => {
     recordConcurrentSessions({ count: 2 });
     const attrs = capturedCalls[0]?.options?.attributes ?? {};
     expect(Object.keys(attrs)).toEqual(['ok.desktop.concurrent_sessions']);
+  });
+});
+
+describe('recordTerminalWindowOpened — count-only adoption marker', () => {
+  beforeEach(() => {
+    capturedCalls.length = 0;
+  });
+
+  test('emits ok.desktop.terminalWindowOpened with no attributes (the span is the count)', () => {
+    recordTerminalWindowOpened();
+    expect(capturedCalls).toHaveLength(1);
+    expect(capturedCalls[0]?.name).toBe('ok.desktop.terminalWindowOpened');
+    expect(capturedCalls[0]?.options?.attributes ?? {}).toEqual({});
   });
 });

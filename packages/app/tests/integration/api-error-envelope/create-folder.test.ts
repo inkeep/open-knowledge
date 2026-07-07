@@ -1,3 +1,17 @@
+/**
+ *
+ * Per-handler narrow-integration smoke test for `handleCreateFolder`.
+ *
+ * Asserts the canonical RFC 9457 wire shape:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `CreateFolderSuccessSchema`, no `ok: true` discriminator.
+ *   - missing path → `urn:ok:error:invalid-request` (schema rejection).
+ *   - reserved `.ok` prefix → `urn:ok:error:reserved-doc-name`.
+ *   - duplicate folder → `urn:ok:error:doc-already-exists` (409).
+ *   - path traversal / non-relative → `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on GET emits `urn:ok:error:method-not-allowed`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { CreateFolderSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

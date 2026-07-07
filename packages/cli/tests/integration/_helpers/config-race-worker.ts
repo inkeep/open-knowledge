@@ -1,5 +1,19 @@
 #!/usr/bin/env bun
 
+/**
+ * Worker for the mcp-host-config concurrent-write race regression test.
+ *
+ * Invokes the production `writeEditorMcpConfig` directly with a
+ * `cursor`-shaped target whose `configPath` and `serverName` are overridden
+ * to point at the test's fixture file. This exercises the actual
+ * locked read-modify-write code path that the race lives in (read the config
+ * text, surgically upsert only our entry, atomic-write), without forcing the
+ * test to build a fake `EditorMcpTarget` from scratch.
+ *
+ * Usage (invoked by the test, never directly):
+ *   bun run config-race-worker.ts <configPath> <serverKey>
+ */
+
 import { EDITOR_TARGETS } from '../../../src/commands/editors.ts';
 import { writeEditorMcpConfig } from '../../../src/commands/init.ts';
 

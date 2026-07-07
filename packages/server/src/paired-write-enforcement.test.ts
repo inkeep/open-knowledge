@@ -1,3 +1,22 @@
+/**
+ * Structural enforcement of the paired-write contract (precedent #38).
+ *
+ * Walks every `<doc>.transact(fn, origin)` call site in `packages/server/src/`
+ * via ts-morph and asserts that paired-write origins route through one of
+ * the three sanctioned sibling primitives in `bridge-intake.ts`:
+ * `composeAndWriteRawBody`, `replaceRawBody`, `deriveFragmentFromYtext`.
+ *
+ * Why structural, not textual: the STOP rule "paired-write origins must call
+ * a sanctioned primitive" had only a sentence backing it. Past
+ * iterations shipped ordering bugs past that sentence. This test fails the
+ * build when a new transact site bypasses the primitive — no reviewer-
+ * attention budget required.
+ *
+ * Allowlists are typed `Set<string>` literals colocated with the test (not
+ * out-of-band). Adding a new entry forces explicit classification: any new
+ * origin name that doesn't match one of the three buckets fails loudly with
+ * a message naming the file:line and the unrecognized origin.
+ */
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { join, relative } from 'node:path';
 import { Glob } from 'bun';
@@ -10,18 +29,58 @@ import {
   SyntaxKind,
 } from 'ts-morph';
 
+// ─── Allowlists ──────────────────────────────────────────────
+
+/**
+ * The three sibling primitives in `bridge-intake.ts`. Any `doc.transact()` with
+ * a paired-write origin must call one of these (directly or transitively).
+ */
 const SANCTIONED_PRIMITIVES = new Set<string>([
   'composeAndWriteRawBody',
   'replaceRawBody',
   'deriveFragmentFromYtext',
 ]);
 
+/**
+ * Functions that wrap a sanctioned primitive on behalf of callers. A transact
+ * body that calls one of these counts as routing through the primitive.
+ *
+ * `applyDiskContentToDoc` (`external-change.ts`) → `composeAndWriteRawBody`
+ * `applyDiskContent` (`persistence.ts` alias of the above for testability)
+ * `applyAgentMarkdownWrite` (`agent-sessions.ts`) → `composeAndWriteRawBody`
+ *
+ * If a future helper joins the chain, add it here. The sibling primitives
+ * themselves stay the canonical surface; this set is the ergonomic shim.
+ */
 const TRANSITIVE_PRIMITIVE_CALLERS = new Set<string>([
   'applyDiskContentToDoc',
   'applyDiskContent',
   'applyAgentMarkdownWrite',
 ]);
 
+/**
+ * Origin names whose transactions do NOT atomically write both Y.Text and
+ * Y.XmlFragment, and therefore do not need to call a sanctioned primitive.
+ *
+ *   OBSERVER_SYNC_ORIGIN — Observer A/B's own cross-CRDT writes (Path B uses
+ *     `applyFastDiff` + `updateYFragment` directly; the observers ARE the
+ *     bridge, so routing them through the bridge primitives would loop).
+ *   CONFIG_VALIDATION_REVERT_ORIGIN, CONFIG_FILE_WATCHER_ORIGIN — config docs
+ *     bypass the markdown bridge entirely (Y.Text-only mutation; see
+ *     `server-observer-extension.ts` config-doc gate).
+ *   PARK_SNAPSHOT_ORIGIN — read-only transact wrapping `serializeDoc` so Y.js
+ *     serializes the snapshot atomically against concurrent writers
+ *     (`server-factory.ts`). `paired: true` makes observers short-
+ *     circuit symmetrically; the body performs no Y.Text/XmlFragment writes,
+ *     so no primitive applies.
+ *   EFFECT_CAPTURE_ORIGIN — `paired: false`; mutates only Y.Map('agent-effects')
+ *     ring-buffer, not the Y.Text/Y.XmlFragment pair (`activity-log.ts`).
+ *
+ * When `FORM_WRITE_ORIGIN` (currently parked — see `mcp/tools/index.ts`,
+ * `mcp/tools/frontmatter-patch.ts`) is reintroduced as a typed origin, add
+ * its identifier here so the existing structural test enforces it without an
+ * out-of-band rule.
+ */
 const SANCTIONED_NON_PRIMITIVE_ORIGINS = new Set<string>([
   'OBSERVER_SYNC_ORIGIN',
   'CONFIG_VALIDATION_REVERT_ORIGIN',
@@ -30,6 +89,17 @@ const SANCTIONED_NON_PRIMITIVE_ORIGINS = new Set<string>([
   'EFFECT_CAPTURE_ORIGIN',
 ]);
 
+/**
+ * Origin names whose transactions DO atomically write both Y.Text and
+ * Y.XmlFragment. Each must call a sanctioned primitive (or transitive caller)
+ * inside its transact body.
+ *
+ * Per-session origins are normally referenced as `session.origin` /
+ * `session.undoOrigin` (matched by `KNOWN_PAIRED_WRITE_ORIGIN_PROPS` below).
+ * `undoOrigin` appears here too because `agent-sessions.ts` destructures
+ * it from `session` before the transact. The destructured-name
+ * pattern is fine; we only need the test to recognize it as paired-write.
+ */
 const KNOWN_PAIRED_WRITE_ORIGINS = new Set<string>([
   'MANAGED_RENAME_ORIGIN',
   'ROLLBACK_ORIGIN',
@@ -38,11 +108,22 @@ const KNOWN_PAIRED_WRITE_ORIGINS = new Set<string>([
   'undoOrigin',
 ]);
 
+/**
+ * Per-session paired-write origins. Match by property-access path, not by the
+ * head identifier (which can be `session`, `dc`, etc.). `createSessionOrigin`
+ * + `createUndoOrigin` in `agent-sessions.ts` make these `PairedWriteOrigin`
+ * by construction. `templateSession.origin` is the managed-artifact template
+ * PUT handler's per-session origin (`api-extension.ts`) — a distinct local name
+ * for the same `getSession(...).origin` value, used in the canonical
+ * `transact(fn, session.origin)` pattern through `composeAndWriteRawBody`.
+ */
 const KNOWN_PAIRED_WRITE_ORIGIN_PROPS = new Set<string>([
   'session.origin',
   'session.undoOrigin',
   'templateSession.origin',
 ]);
+
+// ─── AST helpers ─────────────────────────────────────────────
 
 interface TransactCall {
   readonly file: string;
@@ -53,6 +134,12 @@ interface TransactCall {
 
 const SERVER_SRC_DIR = join(import.meta.dir);
 
+/**
+ * Reuse a single Project across all source files. With `skipFileDependencyResolution`
+ * + `skipLoadingLibFiles` + `noLib`, ts-morph parses each added file but does NOT
+ * walk its imports — this keeps the scan local to the explicitly-added set and
+ * matches the prior raw-`ts.createSourceFile` semantics.
+ */
 function loadServerSourceFiles(): ReadonlyArray<readonly [string, SourceFile]> {
   const project = new Project({
     skipFileDependencyResolution: true,
@@ -74,6 +161,11 @@ function loadServerSourceFiles(): ReadonlyArray<readonly [string, SourceFile]> {
   return out;
 }
 
+/**
+ * Render a property-access chain (`session.dc.document.transact`) to a
+ * dotted string. For nested calls (`getOrigin().origin`), recurse through the
+ * callee so the trailing accessor stays visible for origin matching.
+ */
 function renderAccessChain(node: Node): string {
   if (node.isKind(SyntaxKind.Identifier)) return node.getText();
   if (node.isKind(SyntaxKind.PropertyAccessExpression)) {
@@ -126,6 +218,8 @@ function bodyCallsSanctionedPrimitive(body: Node | undefined): {
     }
     if (!node.isKind(SyntaxKind.CallExpression)) return;
     const callExpr = node as CallExpression;
+    // Resolve callee — Identifier (`composeAndWriteRawBody(...)`) or
+    // PropertyAccess (`mod.composeAndWriteRawBody(...)`).
     const callee = callExpr.getExpression();
     const calleeName = callee.isKind(SyntaxKind.Identifier)
       ? callee.getText()
@@ -141,6 +235,8 @@ function bodyCallsSanctionedPrimitive(body: Node | undefined): {
   });
   return { matched, matchedName };
 }
+
+// ─── Tests ───────────────────────────────────────────────────
 
 describe('paired-write enforcement', () => {
   let sources: ReadonlyArray<readonly [string, SourceFile]>;
@@ -200,6 +296,7 @@ describe('paired-write enforcement', () => {
               `Refactor to call composeAndWriteRawBody / replaceRawBody / deriveFragmentFromYtext.`,
           );
         } else {
+          // Confirm the matched name is actually one of the allowed callees.
           const known =
             SANCTIONED_PRIMITIVES.has(matchedName ?? '') ||
             TRANSITIVE_PRIMITIVE_CALLERS.has(matchedName ?? '');

@@ -4,9 +4,16 @@ import Image from 'next/image';
 type CtaButtonProps = {
   href: string;
   label: string;
+  /** External links open in a new tab. Defaults to true. */
   external?: boolean;
 };
 
+/**
+ * Outline-card call-to-action with the OpenKnowledge logo, matching the docs
+ * card family (WhereToStart). Surfaces/borders/text use Fumadocs
+ * `fd-*` tokens so it tracks light/dark; the accent arrow + hover border come
+ * from `--ok-accent` (scoped to `ok-overview`, which carries the dark override).
+ */
 export function CtaButton({ href, label, external = true }: CtaButtonProps) {
   return (
     <a

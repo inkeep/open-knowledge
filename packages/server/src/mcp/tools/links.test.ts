@@ -16,6 +16,11 @@ import { bindTestUiLock } from './preview-url-test-helpers.ts';
 import type { ServerInstance } from './shared.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
 
+// Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in MCP
+// test setup spawns git children that Bun fails to reap on ubuntu-latest
+// GHA runners; post-test cgroup never drains, hanging test (test) at the
+// 15-min timeout. Tests run normally locally; follow-up PR will migrate
+// fixtures to execFileSync.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
@@ -201,6 +206,8 @@ describe('links — registration + DESCRIPTION', () => {
 
 describe('links — kind=backlinks', () => {
   test('hits /api/backlinks with normalized docName and enriches rows with route-only previewUrl', async () => {
+    // Bind the UI lock so the resolver treats routes as reachable; the
+    // resolved previewUrl is route-only and carries no host:port.
     bindTestUiLock(tmpDir);
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
@@ -214,6 +221,7 @@ describe('links — kind=backlinks', () => {
     expect(s.backlinks[0]?.previewUrl).toBe('/#/alpha');
     expect(s.backlinks[0]?.previewUrlSource).toBe('lock');
     expect(s.backlinks[1]?.previewUrl).toBe('/#/beta');
+    // The `ui` block was removed from list-tool responses.
     expect(s.ui).toBeUndefined();
   });
 
@@ -313,6 +321,9 @@ describe('links — kind=orphans', () => {
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
 
+    // Verify mode-passing via the request URL the fake server recorded —
+    // `runOrphans` namespaces its payload to `{ orphans }` and does not echo
+    // request params back into structuredContent.
     await getTool().handler({ kind: 'orphans' });
     expect(seenRequests.filter((r) => r.startsWith('/api/orphans')).at(-1)).toBe('/api/orphans?');
 
@@ -432,6 +443,7 @@ describe('links — multi-kind (array)', () => {
   test('a per-kind failure surfaces in an `errors` map; other kinds still return', async () => {
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
+    // `backlinks` needs `docName` — omitting it fails just that kind.
     const result = await getTool().handler({ kind: ['dead', 'backlinks'] });
     expect(result.isError).toBeUndefined();
     const s = result.structuredContent as {

@@ -1,3 +1,15 @@
+/**
+ * Pinning tests for the `parse-timeouts.ts` static parser used by the
+ * timeout-calibration check. The calibration assertion is only meaningful if
+ * the parser correctly attributes inner timeouts — these tests pin its
+ * behavior on synthetic inputs that mirror the shapes used in real smoke
+ * files (consent-dialog.e2e.ts / deep-link.e2e.ts / external-link.e2e.ts).
+ *
+ * The synthetic inputs are inlined as strings rather than reading from
+ * disk so this test stays deterministic regardless of the real files'
+ * current state.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -61,14 +73,19 @@ describe('stripCommentsAndStrings', () => {
   test('preserves length for varied mixed input', () => {
     const src = `function f() {
   const a = 'foo'; // a comment
+  /* block */
   return \`tpl-\${a}\`;
 }`;
     const out = stripCommentsAndStrings(src);
     expect(out.length).toBe(src.length);
+    // Newlines inside the source are preserved so line numbers stay aligned.
     expect(out.split('\n').length).toBe(src.split('\n').length);
   });
 
   test('handles escaped quotes inside single-quote strings', () => {
+    // Source text (8 chars including outer quotes): ' d o n \ ' t '
+    // The escaped \' must not terminate the string early; the closing
+    // quote is the trailing apostrophe.
     const src = "'don\\'t'";
     const out = stripCommentsAndStrings(src);
     expect(out.length).toBe(src.length);
@@ -126,16 +143,25 @@ function trackForCleanup(...paths: string[]): void {
   });
 
   test('excludes test() and describe() shadowing', () => {
+    // The function-header regex would match `function test(...)` if the
+    // codebase ever defined one — the helper extractor skips by name.
     const src = `
 function test(name: string) { /* timeout: 99_000 */ }
 function describe(name: string) { /* timeout: 99_000 */ }
 function helper(timeoutMs = 5_000) { return 1; }
 `;
     const helpers = extractHelperBudgets(src);
+    // `test` and `describe` body lines are inside JS comments so wouldn't
+    // contribute timeouts anyway, but the by-name skip is the intentional
+    // guard. `helper` is captured.
     expect(helpers).toEqual([{ name: 'helper', maxTimeoutMs: 5000 }]);
   });
 
   test('helper with multiple timeout literals reports MAX, not SUM', () => {
+    // A helper that performs several timeout-bounded awaits in sequence
+    // doesn't spend their sum — at worst it spends the largest of them
+    // (subsequent ones bail early once the work is done). The cumulative
+    // calibration would over-count if extractHelperBudgets summed.
     const src = `
 async function multiWait() {
   await first({ timeout: 15_000 });
@@ -147,6 +173,11 @@ async function multiWait() {
   });
 
   test('does not detect helpers with caller-supplied timeout (no default)', () => {
+    // Documented limitation: a helper that takes `timeoutMs: number` (no
+    // default literal) and uses it as `{ timeout: timeoutMs }` has no
+    // static budget — the parser cannot know the caller's value. Static
+    // parser can't peer into call sites; addressing this would require an
+    // AST pass or a Biome GritQL rule (tracked as a follow-up).
     const src = `
 async function waitForX(app: any, timeoutMs: number) {
   await expect.poll(fn, { timeout: timeoutMs });
@@ -184,6 +215,7 @@ test('toPass test', async () => {
     const entries = extractTestEntries(src, []);
     expect(entries).toHaveLength(1);
     expect(entries[0].toPassBudgetsMs).toEqual([5000, 15000]);
+    // toPass budgets are ALSO direct timeout literals, so they appear in both.
     expect(entries[0].directTimeoutsMs).toEqual([5000, 15000]);
   });
 
@@ -207,6 +239,7 @@ test('a test', async () => {
     expect(entries[0].helperCallNames).toEqual(['launchApp', 'findWindowByMode']);
     expect(entries[0].tracedHelperBudgetsMs).toEqual([30000, 20000]);
     expect(entries[0].directTimeoutsMs).toEqual([15000]);
+    // 30_000 (launchApp) + 20_000 (findWindowByMode) + 15_000 (toBeVisible) = 65_000
     expect(entries[0].cumulativeMs).toBe(65000);
   });
 
@@ -241,11 +274,15 @@ test('multi-call', async () => {
   });
 
   test('does not detect helper calls inside comments', () => {
+    // A commented-out `// launchApp();` was previously double-counted because
+    // the call-detection regex scanned the raw body. The stripped-body pass
+    // means commented helper references contribute nothing to the cumulative.
     const src = `
 async function launchApp() {
   return electron.launch({ timeout: 30_000 });
 }
 test('a test', async () => {
+  // launchApp();  // commented out
   await something();
 });
 `;
@@ -256,6 +293,10 @@ test('a test', async () => {
   });
 
   test('does not detect helper names inside string literals', () => {
+    // A helper name appearing inside an error message string was previously
+    // matched by the call-detection regex (followed by `(` in the literal).
+    // The stripped-body pass blanks string contents so the false match is
+    // suppressed.
     const src = `
 async function launchApp() {
   return electron.launch({ timeout: 30_000 });
@@ -291,6 +332,10 @@ test('plain test', async () => {
   });
 
   test('multiple test.setTimeout calls — takes the maximum', () => {
+    // When a test conditionally calls setTimeout in multiple branches
+    // (e.g. `if (process.env.CI) test.setTimeout(240_000); else
+    // test.setTimeout(120_000);`), the cumulative invariant must hold for
+    // the LARGEST budget the test might run under.
     const src = `
 test('conditional', async () => {
   if (process.env.CI) {
@@ -306,8 +351,11 @@ test('conditional', async () => {
   });
 
   test('ignores test.setTimeout inside comments and strings', () => {
+    // String-literal and commented-out setTimeout calls must not be
+    // attributed as overrides — same hygiene as helper-call detection.
     const src = `
 test('clean', async () => {
+  // test.setTimeout(999_000);
   const note = 'test.setTimeout(888_000) is what we used to do';
   await something();
 });
@@ -328,7 +376,9 @@ describe('parsePlaywrightConfigTimeout', () => {
     return p;
   }
 
-  beforeAll(() => {});
+  beforeAll(() => {
+    // tmpdirRoot already mkdtemp'd at module load.
+  });
 
   afterAll(() => {
     try {
@@ -386,8 +436,12 @@ export default defineConfig({
   });
 
   test('ignores commented timeout reference before defineConfig', () => {
+    // A stale `// timeout: 30_000, before bump` comment above the real
+    // config used to be the first match. After stripping comments, the
+    // regex matches the actual `timeout:` key inside `defineConfig`.
     const p = writeConfig(`
 import { defineConfig } from '@playwright/test';
+// e.g. timeout: 30_000, before bump
 export default defineConfig({
   timeout: 120_000,
 });
@@ -399,10 +453,22 @@ export default defineConfig({
 });
 
 describe('parseTestFile (real file, sanity)', () => {
+  // Sanity check: parsing the real consent-dialog smoke file should yield
+  // at least one helper with a non-zero budget and at least three tests.
+  // This catches regressions like "the regex stopped matching async
+  // functions" or "the test header regex broke" without coupling to the
+  // specific numeric budgets in the real file (which legitimately drift as
+  // the smoke suite evolves). The synthetic-input tests above are where
+  // exact numeric attribution is pinned — those use controlled inputs.
   test('consent-dialog.e2e.ts yields helpers + tests', () => {
     const fa = parseTestFile(join(__dirname, '..', 'consent-dialog.e2e.ts'));
     expect(fa.helpers.length).toBeGreaterThan(0);
     expect(fa.tests.length).toBeGreaterThanOrEqual(3);
+    // launchApp and findWindowByMode are the load-bearing helpers in
+    // consent-dialog.e2e.ts; both should be detected as helpers with a
+    // non-zero budget. We deliberately do NOT pin the exact ms values —
+    // a future change to electron.launch's or findWindowByMode's budget
+    // is an authoring choice in the smoke file, not a parser regression.
     const byName = new Map(fa.helpers.map((h) => [h.name, h.maxTimeoutMs]));
     expect(byName.get('launchApp') ?? 0).toBeGreaterThan(0);
     expect(byName.get('findWindowByMode') ?? 0).toBeGreaterThan(0);

@@ -7,16 +7,23 @@ import {
   type Principal,
 } from '@inkeep/open-knowledge-core';
 
+/**
+ * The shape `setLocalStateField('user', ...)` expects on the per-doc
+ * awareness map. Keeping the `'human'` discriminator literal-narrowed lets
+ * `usePresence`'s `user.type !== 'human'` filter at the consumer side stay
+ * exhaustive — drop the literal and peers silently skip the entry.
+ */
 type AwarenessUserPayload = AwarenessUser & { type: 'human' };
 
 interface BuildAwarenessUserInput {
+  /** Pre-resolved principal (`null` during the boot fetch). */
   principal: Principal | null;
+  /** Synchronous fallback identity from `getIdentity()` — random name + color cached in localStorage. */
   identity: Identity;
 }
 
 /**
- * Resolve the awareness `user` payload across the three publication states
- * defined in the principal-identity-in-presence design:
+ * Resolve the awareness `user` payload across the three publication states:
  *
  *   (a) `principal === null` (boot race)
  *       — name and color from the random fallback `identity`; no `principalId`.

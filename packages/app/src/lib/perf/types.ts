@@ -1,3 +1,12 @@
+/**
+ * Shared types for the perf emission layer.
+ *
+ * Shape mirrors the Chrome DevTools Extensibility API
+ * (https://developer.chrome.com/docs/devtools/performance/extension) for the
+ * `performance.measure` user-timing path — `detail.devtools` carries the
+ * track-entry payload that DevTools uses to surface custom tracks.
+ */
+
 type DevToolsColor =
   | 'primary'
   | 'primary-light'

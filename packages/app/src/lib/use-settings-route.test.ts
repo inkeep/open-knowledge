@@ -1,3 +1,8 @@
+/**
+ * Pure unit tests for the hash → settings-open parser. Runtime behavior
+ * of `useSettingsRoute` itself lives in `use-settings-route.dom.test.tsx`.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { isSettingsHashOpen, isSettingsShortcut, SETTINGS_OPEN_HASH } from './use-settings-route';
 
@@ -20,6 +25,11 @@ describe('isSettingsHashOpen', () => {
   });
 
   test('legacy sub-routes are no longer recognized', () => {
+    // Pre-redesign hashes (`#settings/project`, `#settings/user`) carried
+    // the scope toggle state. Sub-routes were dropped when the toggle
+    // went away. Anyone still navigating to a sub-route gets `false`
+    // here — entry points (HelpPopover, CommandPalette, Cmd-,, Electron
+    // menu) all use `SETTINGS_OPEN_HASH` so they're unaffected.
     expect(isSettingsHashOpen('#settings/project')).toBe(false);
     expect(isSettingsHashOpen('#settings/user')).toBe(false);
   });

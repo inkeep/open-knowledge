@@ -1,3 +1,15 @@
+/**
+ * `bun` check — probes the `bun --version` binary on the current PATH and
+ * reports a `pass` when present (any version), `fail` when missing.
+ *
+ * scope is detection only. The doctor does NOT enforce a Bun version
+ * floor — OK ships with a `.bun-version` pin handled by `bun install`; users
+ * running an older Bun against the published CLI typically see startup-time
+ * incompatibilities (which themselves bubble up as `fail` paths elsewhere).
+ * If a class of Bun-version-mismatch bug surfaces, an `assertBunAvailable()`
+ * peer to `assertGitAvailable()` can be added later.
+ */
+
 import { spawnSync } from 'node:child_process';
 import type { CheckDefinition, CheckResult } from './types.ts';
 

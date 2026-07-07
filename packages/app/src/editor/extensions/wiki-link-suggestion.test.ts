@@ -230,6 +230,7 @@ describe('computeFallbackAttrs', () => {
   });
 
   test('leading hash is treated as page mode, not anchor mode', () => {
+    // parseQuery only treats `#` as anchor separator when it has a non-empty left side
     expect(computeFallbackAttrs('#bar')).toEqual({
       target: 'bar',
       alias: '#bar',
@@ -239,6 +240,7 @@ describe('computeFallbackAttrs', () => {
 });
 
 describe('wikiLinkMatcher', () => {
+  /** Stub that satisfies the subset of ResolvedPos used by wikiLinkMatcher. */
   function stubPosition(textBefore: string, blockStart: number) {
     const cursorPos = blockStart + textBefore.length;
     return {
@@ -305,6 +307,7 @@ describe('fetchPages', () => {
     return { docName, title, docExt: '.md', size: 1, modified: '2026-06-24T00:00:00.000Z' };
   }
 
+  /** Stub `/api/pages` + `/api/documents` with caller-supplied JSON bodies. */
   function stubFetch(pagesBody: unknown, documentsBody: unknown) {
     globalThis.fetch = mock(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
@@ -322,6 +325,9 @@ describe('fetchPages', () => {
 
   afterEach(() => {
     globalThis.fetch = realFetch;
+    // fetchPages routes /api/documents through the module-global single-flight;
+    // clear the slot so a case that leaves a request in flight can't leak a
+    // stale coalesced promise into the next test.
     __resetDocumentListInflightForTests();
   });
 
@@ -479,6 +485,11 @@ describe('context-aware ranking', () => {
   });
 
   test('typed query: a boosted neighbor ranked outside the natural top-8 still surfaces', () => {
+    // 9 equal-tier matches; without context the alphabetical tiebreak drops
+    // item-9 to 9th, outside the MAX_ITEMS=8 cap. This pins the widened
+    // candidate window (limit 100 → trim 8): reverting to limit MAX_ITEMS would
+    // stop returning item-9 as a candidate at all, so the boost could not pull
+    // it in and this test would fail.
     const corpus: PageItem[] = Array.from({ length: 9 }, (_, i) => ({
       docName: `item-${i + 1}`,
       title: `Item ${i + 1}`,
@@ -498,6 +509,7 @@ describe('context-aware ranking', () => {
 describe('loadWikiLinkContext', () => {
   const realFetch = globalThis.fetch;
 
+  /** Stub `/api/forward-links` + `/api/backlinks` with per-route status/body. */
   function stubLinks(routes: {
     forward?: { status?: number; body: unknown };
     back?: { status?: number; body: unknown };

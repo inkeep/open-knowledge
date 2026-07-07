@@ -1,0 +1,91 @@
+---
+title: Plain notes
+icon: LuNotebookPen
+description: "The simplest setup: one folder for notes and one for a daily journal. Just write, link the things worth linking, and a connected web of notes builds itself. Built on the Plain notes starter pack."
+---
+**Plain notes** is the "I just want to write" layout. Two folders, no structure imposed: a flat `notes/` for topics and a `daily/` journal. You write; you link the things worth linking; and a navigable graph emerges on its own. It's the pack to reach for when the other packs feel like too much scaffolding for what you're actually doing.
+
+```html preview
+<div style="padding:16px">
+  <div id="pn" style="display:flex;gap:18px;flex-wrap:wrap;justify-content:center">
+    <svg id="pn-graph" viewBox="0 0 200 160" style="width:200px;height:160px" role="img" aria-label="Notes linking into a small graph"></svg>
+    <div id="pn-days" style="display:flex;flex-direction:column;gap:6px;justify-content:center"></div>
+  </div>
+  <div class="cap">Left: mention something in a note and it becomes a link — the graph builds itself. Right: each day's entry links to yesterday's, so the journal is also a chain.</div>
+</div>
+<style>
+.cap{margin-top:10px;color:var(--muted-foreground);font-size:12.5px;text-align:center}
+.cap::before{content:"\1F517  ";font-weight:700}
+#pn-graph line{stroke:var(--border);stroke-width:1.5}
+#pn-graph line.lit{stroke:var(--primary)}
+#pn-graph circle{fill:var(--card);stroke:var(--border);stroke-width:1.5;transition:stroke .3s}
+#pn-graph circle.on{stroke:var(--primary)}
+.day{border:1px solid var(--border);border-radius:9px;padding:6px 11px;font-size:12px;font-weight:600;color:var(--muted-foreground);background:var(--card);transition:border-color .3s,color .3s}
+.day.on{border-color:var(--primary);color:var(--accent-ink)}
+@media (prefers-reduced-motion:reduce){#pn-graph circle,#pn-graph line,.day{transition:none}}
+</style>
+<script>
+var P=[[100,30],[45,100],[155,95],[100,140]],GE=[[0,1],[0,2],[1,3],[2,3]];
+var g=document.getElementById("pn-graph"),NS="http://www.w3.org/2000/svg",gl=[],gc=[];
+GE.forEach(function(e){var l=document.createElementNS(NS,"line");l.setAttribute("x1",P[e[0]][0]);l.setAttribute("y1",P[e[0]][1]);l.setAttribute("x2",P[e[1]][0]);l.setAttribute("y2",P[e[1]][1]);g.appendChild(l);gl.push({el:l,a:e[0],b:e[1]});});
+P.forEach(function(p,i){var c=document.createElementNS(NS,"circle");c.setAttribute("cx",p[0]);c.setAttribute("cy",p[1]);c.setAttribute("r",8);g.appendChild(c);gc.push(c);});
+var days=["Mon","Tue","Wed","Thu"],box=document.getElementById("pn-days"),de=[];
+days.forEach(function(d){var el=document.createElement("div");el.className="day";el.textContent=d+" — daily entry";box.appendChild(el);de.push(el);});
+var cur=0;
+function set(i){gc.forEach(function(c,j){c.classList.toggle("on",j===i%gc.length);});gl.forEach(function(o){o.el.classList.toggle("lit",o.a===i%gc.length||o.b===i%gc.length);});de.forEach(function(el,j){el.classList.toggle("on",j===i%de.length);});}
+set(0);
+if(!matchMedia("(prefers-reduced-motion:reduce)").matches){setInterval(function(){cur=(cur+1)%4;set(cur);},1400);}
+</script>
+```
+
+There's no pipeline and no lifecycle here. The only discipline is the linking habit — and OpenKnowledge's graph, backlinks, and search do the rest.
+
+Note-takers get a plain notes app backed by markdown they own, with an agent keeping everything linked and nothing locked in a proprietary format. Journalers get each daily entry chained to the last, with mood and gratitude fields, so the journal is also a navigable graph to look back across. And if you're not sure which pack to pick, this is the lightest possible starting point — begin now and promote notes into a more structured layout later.
+
+## The folders
+
+```
+notes/    one file per topic, flat
+daily/    one journal entry per day (YYYY-MM-DD.md)
+```
+
+The pack ships just two templates — `note` and `daily`. The daily entry has a light shape (morning intentions, capture through the day, evening reflection) plus optional `mood`, `top3`, and `gratitude` frontmatter fields you fill when journaling, so you can look back across days later.
+
+## The one habit: link liberally
+
+The entire value of this pack is the graph that emerges from links. So when a note or entry mentions something worth its own page, link it — and if that page doesn't exist yet, stub it. The agent does this for you:
+
+<CopyPrompt>Turn today's notes into a daily entry. Link anything worth its own page and stub the ones that don't exist yet. Link this entry to yesterday's.</CopyPrompt>
+
+On the first entry of a day the agent links back to yesterday's entry and pre-fills the date, so your linear journal is also a navigable graph you can walk in either direction.
+
+## What's in your project after seeding
+
+Pick **Plain notes** in the starter-pack picker, or run:
+
+```bash
+ok seed --pack plain-notes
+```
+
+The pack creates `notes/` and `daily/` at the project root (no subfolder), each with its `.ok/frontmatter.yml` guidance and template. That's the whole footprint — minimal on purpose.
+
+<Callout type="info" title="Seeding also installs a skill">
+  `ok seed --pack plain-notes` installs the **Plain notes** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance that gives the agent the linking habit and the daily-chain behavior — read automatically, and editable like any other doc. It lands as a real `SKILL.md` committed to your repo, one per detected editor. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+</Callout>
+
+## Cadence
+
+| When | Do |
+| --- | --- |
+| Any time | Drop a note in `notes/`; link the nouns worth their own page |
+| Each morning or evening | A `daily/` entry; let the agent chain it to yesterday and fill mood / gratitude |
+| Weekly | Ask the agent to link loosely-related notes so the graph tightens |
+| When a topic outgrows a note | Promote it — or switch to a more structured pack for that area |
+
+## Further reading
+
+- **[LLM wiki workflow](./karpathy-llm-wiki.mdx).** When your notes become source-grounded research, this is the pack to graduate to.
+- **[Writing pipeline workflow](./writing-pipeline.mdx).** When your notes grow into essays or newsletters, this pack adds ideas → drafts → published stage gates.
+- **[Core Concepts](../reference/core-concepts.md).** Links, backlinks, and the well-connected graph that make the emergent structure visible.
+- **[Skills](../features/skills.mdx).** What the installed pack skill is, and how to edit it.
+- **[Claude Code](../integrations/claude-code.mdx)**, **[Cursor](../integrations/cursor.mdx)**, **[Codex](../integrations/codex.mdx).** MCP-capable agent hosts.

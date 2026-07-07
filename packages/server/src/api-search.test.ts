@@ -49,6 +49,10 @@ function buildFileIndex(dir: string, base = ''): ReadonlyMap<string, FileIndexEn
       }
     } else if (entry.isFile() && entry.name.endsWith('.md')) {
       const stat = statSync(join(dir, entry.name));
+      // `kind:'markdown'` mirrors what the seed walk produces for `.md` files.
+      // Required: `FileIndexEntry.kind` is non-optional, and corpus-build paths
+      // discriminate markdown vs name-only `kind:'file'`. Omitting it here
+      // would compile but downstream code reads the field unconditionally.
       index.set(rel.slice(0, -3), {
         size: stat.size,
         modified: stat.mtime.toISOString(),
@@ -105,9 +109,14 @@ describe('GET /api/search', () => {
   });
 
   test('ranking param orders the same full_text candidate set: navigation by name, relevance by body', async () => {
+    // The omnibar pairs intent `full_text` (content search) with
+    // `ranking: navigation` so an exact filename leads a body-heavier partial;
+    // the MCP tool leaves ranking unset (relevance) and gets the body order.
     const dir = mkdtempSync(join(tmpdir(), 'ok-search-ranking-'));
     try {
+      // Exact name `STORY`, but its body never mentions the query token.
       writeFileSync(join(dir, 'STORY.md'), '# Collaboration\n\nNotes about teamwork.\n', 'utf-8');
+      // Partial name, but the body hammers `story`.
       writeFileSync(
         join(dir, 'storybook-notes.md'),
         '# Storyboard\n\nstory story story story story story story story\n',
@@ -200,9 +209,17 @@ describe('GET /api/search', () => {
       const body = JSON.parse(result.body) as {
         results?: Array<{ kind: string; path: string }>;
       };
+      // Project skills are content docs, so the search hit points at the content
+      // doc path (`.ok/skills/<name>/SKILL`) — clicking it opens the real skill,
+      // not the dead `__skill__/project/<name>` phantom.
       const skillHits = (body.results ?? []).filter(
         (r) => r.path === '.ok/skills/data-pipeline/SKILL',
       );
+      // Exactly once — the dedup guard in buildWorkspaceSearchDocumentsFromIndex
+      // skips `.ok/skills/**` in the all-files loop because
+      // buildSkillSearchDocuments() already indexes each skill under the same
+      // path. Without the skip, the duplicate corpus id throws and 500s the whole
+      // search; the 200 above + a single hit here is the regression pin.
       expect(skillHits).toHaveLength(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -236,6 +253,12 @@ describe('GET /api/search', () => {
   });
 });
 
+// ─── All-files corpus ─────────────────────────────────────
+// These wire BOTH `getFileIndex` (the markdown-only view real consumers see)
+// and `getAllFilesIndex` (the all-files opt-in the corpus build reads). The
+// search corpus is built from the all-files index; non-markdown files enter as
+// name-only `kind:'file'` docs (no content read).
+
 function indexEntry(canonicalPath: string, kind: FileIndexEntry['kind']): FileIndexEntry {
   const stat = statSync(canonicalPath);
   return {
@@ -255,6 +278,8 @@ async function runSearch(
   method = 'GET',
   body = '',
 ): Promise<CapturedResponse> {
+  // The markdown-only view is what `getFileIndex()` returns to the ~16
+  // markdown-assuming consumers; the corpus build opts into `getAllFilesIndex`.
   const markdownOnly = new Map([...allFilesIndex].filter(([, entry]) => entry.kind === 'markdown'));
   const ext = createApiExtension({
     hocuspocus: {} as unknown as Parameters<typeof createApiExtension>[0]['hocuspocus'],
@@ -298,6 +323,7 @@ describe('GET /api/search — all-files coverage', () => {
       const hit = body.results.find((row) => row.path === 'data.csv');
       expect(hit).toBeDefined();
       expect(hit?.kind).toBe('file');
+      // Name-only tier: no content was read, so no body snippet.
       expect(hit?.snippet).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -309,6 +335,9 @@ describe('GET /api/search — all-files coverage', () => {
     try {
       writeFileSync(join(dir, 'guide.md'), '# Guide\n', 'utf-8');
       writeFileSync(join(dir, 'present.log'), 'x', 'utf-8');
+      // On disk but absent from the index — this is what ContentFilter does to
+      // gitignored / node_modules / worktree paths before the corpus ever sees
+      // them. The corpus must reflect the index, never the raw disk.
       writeFileSync(join(dir, 'pruned.log'), 'x', 'utf-8');
       const index = new Map<string, FileIndexEntry>([
         ['guide', indexEntry(join(dir, 'guide.md'), 'markdown')],
@@ -335,6 +364,8 @@ describe('GET /api/search — all-files coverage', () => {
         ['guide', indexEntry(join(dir, 'guide.md'), 'markdown')],
         ['first.csv', indexEntry(join(dir, 'first.csv'), 'file')],
       ]);
+      // Same getAllFilesIndex reference across both calls so the corpus cache
+      // (keyed by contentDir) is exercised; only the fingerprint should bust it.
       const getAll = () => index;
       const markdownOnly = () =>
         new Map([...index].filter(([, entry]) => entry.kind === 'markdown'));
@@ -387,6 +418,8 @@ describe('GET /api/search — folder synthesis from all paths', () => {
       const captured = await runSearch(dir, index, '/api/search?query=assets&intent=omnibar');
       expect(captured.status).toBe(200);
       const body = JSON.parse(captured.body) as { results: Array<{ kind: string; path: string }> };
+      // The `assets` folder holds only a `.png` — (folders derived
+      // from markdown pages only) it would not appear.
       expect(body.results.some((r) => r.kind === 'folder' && r.path === 'assets')).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -396,6 +429,8 @@ describe('GET /api/search — folder synthesis from all paths', () => {
   test('a partial folder-path query resolves a markdown-free folder (AC16)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-search-folderpath-'));
     try {
+      // Markdown lives at the root; the `packages/server/src` subtree holds only
+      // a non-markdown file. The partial-path query must still resolve the folder.
       writeFileSync(join(dir, 'readme.md'), '# Root\n', 'utf-8');
       const deep = join(dir, 'packages', 'server', 'src');
       mkdirSync(deep, { recursive: true });
@@ -457,9 +492,11 @@ describe('GET /api/search — name-only file tier admission cap (D6)', () => {
       };
       const paths = body.results.map((r) => r.path);
       expect(body.truncated).toBe(true);
+      // Three files, cap 2 → the two shallowest are kept, the deepest dropped.
       expect(paths).toContain('data-a.txt');
       expect(paths).toContain('x/data-b.txt');
       expect(paths).not.toContain('x/y/data-c.txt');
+      // Markdown content docs are never subject to the file-tier cap.
       expect(paths).toContain('data-notes');
     } finally {
       if (prev === undefined) delete process.env[KEY];
@@ -487,11 +524,18 @@ describe('GET /api/search — name-only file tier admission cap (D6)', () => {
     }
   });
 
+  // The cap's tie-break is `depth (asc) || path.localeCompare`. Two files at
+  // the same depth — only one fits — assert the locale-earlier path survives.
+  // Without coverage a regression that flipped the comparator or dropped the
+  // tie-break (e.g. relying on Map insertion order) would still pass.
   test('cap tie-break: at equal depth the locale-earlier path wins', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-search-tiebreak-'));
     const prev = process.env[KEY];
     process.env[KEY] = '1';
     try {
+      // Two equal-depth files; both match `data`. With cap = 1 only one
+      // survives. `data-aaa.csv` sorts before `data-bbb.csv` under
+      // `localeCompare`, so it must be the survivor.
       writeFileSync(join(dir, 'data-aaa.csv'), 'x', 'utf-8');
       writeFileSync(join(dir, 'data-bbb.csv'), 'x', 'utf-8');
       const index = new Map<string, FileIndexEntry>([
@@ -514,6 +558,11 @@ describe('GET /api/search — name-only file tier admission cap (D6)', () => {
     }
   });
 
+  // `truncated` is a property of the corpus build, not the request — once a
+  // build flips it, every request served from that cache continues to see
+  // `truncated: true` until the fingerprint changes. Without this the flag
+  // could be set on the cache-miss build and silently dropped from the
+  // cache-hit response, which would silently mask the cap.
   test('truncated persists across a corpus-cache hit (same instance, second request)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-search-truncated-cache-'));
     const prev = process.env[KEY];
@@ -550,8 +599,11 @@ describe('GET /api/search — name-only file tier admission cap (D6)', () => {
         return JSON.parse(captured.body) as { truncated?: boolean };
       };
 
+      // First call: cache miss, build sees both files, cap fires.
       const first = await run('/api/search?query=data&intent=omnibar');
       expect(first.truncated).toBe(true);
+      // Second call: same fingerprint, served from the cache; the flag must
+      // persist (the cache stores the `truncated` outcome alongside the corpus).
       const second = await run('/api/search?query=data-a&intent=omnibar');
       expect(second.truncated).toBe(true);
     } finally {
@@ -562,13 +614,22 @@ describe('GET /api/search — name-only file tier admission cap (D6)', () => {
   });
 });
 
+// `getSearchMaxEntries` is the env-parse seam for the file-tier cap. Cover the
+// invalid-input fallback explicitly: a sibling helper (`getShowAllMaxEntries`)
+// is exported + tested under the same shape, so parity is the cheaper signal
+// than re-checking the runtime cap end-to-end.
 describe('getSearchMaxEntries — env parse', () => {
   const KEY = 'OK_SEARCH_MAX_ENTRIES';
   const cases: Array<[string, number]> = [
+    // Edge cases the `Number()` + `Number.isInteger() && > 0` guard rejects.
+    // `'0'` — non-positive; `'-1'` — non-positive; `'1.5'` — non-integer; `'abc'`
+    // — NaN. All four fall back to the documented default rather than ship a
+    // silently-disabled cap or a nonsensical comparison value.
     ['0', DEFAULT_SEARCH_MAX_ENTRIES],
     ['-1', DEFAULT_SEARCH_MAX_ENTRIES],
     ['1.5', DEFAULT_SEARCH_MAX_ENTRIES],
     ['abc', DEFAULT_SEARCH_MAX_ENTRIES],
+    // Sanity: a valid positive integer lifts cleanly.
     ['7', 7],
   ];
   for (const [raw, expected] of cases) {
@@ -600,6 +661,8 @@ describe('GET /api/search — symlink alias handling (D16)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-search-symlink-'));
     try {
       writeFileSync(join(dir, 'data.csv'), 'x', 'utf-8');
+      // One canonical index entry (the watcher keys by canonical docName / inode
+      // identity, so a symlinked file is ONE entry) whose alias is the mirror path.
       const entry: FileIndexEntry = {
         ...indexEntry(join(dir, 'data.csv'), 'file'),
         aliases: ['mirror/data.csv'],
@@ -614,6 +677,7 @@ describe('GET /api/search — symlink alias handling (D16)', () => {
       const byAlias = resultPaths(
         await runSearch(dir, index, '/api/search?query=mirror&intent=omnibar'),
       );
+      // Found via the folded alias segment, displayed as canonical, exactly once.
       expect(byAlias.filter((p) => p === 'data.csv')).toEqual(['data.csv']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -625,6 +689,9 @@ describe('GET /api/search — operational budget (D15)', () => {
   test('a name-only file entry is searchable without its content being read (AC20)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-search-noread-'));
     try {
+      // canonicalPath points at a file that does NOT exist on disk. If the corpus
+      // build read non-markdown content, this entry would be skipped/warned; the
+      // name-only file tier never reads it, so it stays searchable by name.
       const index = new Map<string, FileIndexEntry>([
         [
           'ghost-data.csv',
@@ -672,6 +739,9 @@ describe('GET /api/search — operational budget (D15)', () => {
       );
       const elapsedMs = performance.now() - startedAt;
       const rssDeltaMb = (process.memoryUsage().rss - rssBefore) / 1e6;
+      // Recorded for the operational budget. NOT a hard perf gate (measurements
+      // are environment-sensitive); the loose ceiling guards only order-of-
+      // magnitude regressions.
       console.warn(
         `[US-013] ${N}-file corpus: build+search ${elapsedMs.toFixed(0)}ms, rssDelta ${rssDeltaMb.toFixed(1)}MB`,
       );
@@ -683,6 +753,14 @@ describe('GET /api/search — operational budget (D15)', () => {
     }
   });
 });
+
+// ─── Hidden / dot-path searchability (predicate split) ──────
+// Dot-paths shown in the tree (`.changeset/*.md`, `.github/**`) were excluded
+// from the search corpus by `isHiddenDocName`. The predicate split admits them to
+// SEARCH (rank-deprioritized in core) while keeping them out of the embedding /
+// egress path. System + config synthetic docs (`__config__/project`) stay out of
+// both. `.ok/` never reaches the index at all (ContentFilter excludes it upstream
+// of this harness, so it is not exercised here).
 
 describe('GET /api/search — dot-path searchability', () => {
   test('a tracked dot-path markdown is searchable (AC3)', async () => {
@@ -712,6 +790,9 @@ describe('GET /api/search — dot-path searchability', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-search-configdoc-'));
     try {
       writeFileSync(join(dir, 'guide.md'), '# Guide\n', 'utf-8');
+      // `__config__/project` is a config synthetic doc — never searchable. Give it
+      // a real backing file so the harness can stat it; the corpus build must drop
+      // it BEFORE the content read regardless.
       mkdirSync(join(dir, '__config__'), { recursive: true });
       writeFileSync(join(dir, '__config__', 'project.md'), '# Project Config\n', 'utf-8');
       const index = new Map<string, FileIndexEntry>([
@@ -760,6 +841,9 @@ describe('GET /api/search — cold-start readiness', () => {
         ready,
       });
 
+      // Warming: boot gate unresolved. The empty result must be flagged
+      // non-authoritative so a consumer (MCP `search`, palette) retries rather
+      // than concluding "no matches".
       const warming = JSON.parse((await onRequest(ext, '/api/search?query=overview')).body) as {
         ready?: boolean;
         results?: unknown[];
@@ -767,6 +851,7 @@ describe('GET /api/search — cold-start readiness', () => {
       expect(warming.ready).toBe(false);
       expect(warming.results).toEqual([]);
 
+      // Boot gate resolves: the next call takes the normal path and serves results.
       resolveReady();
       await ready;
       await new Promise((r) => setTimeout(r, 0));
@@ -794,6 +879,8 @@ describe('GET /api/search — cold-start readiness', () => {
       const ready = new Promise<void>((_resolve, reject) => {
         rejectReady = reject;
       });
+      // Attach a catch so the rejection is not an unhandled rejection in the
+      // test process — the extension attaches its own handler internally.
       ready.catch(() => {});
       const ext = createApiExtension({
         hocuspocus: {} as unknown as Parameters<typeof createApiExtension>[0]['hocuspocus'],
@@ -811,6 +898,7 @@ describe('GET /api/search — cold-start readiness', () => {
         ready?: boolean;
         results?: Array<{ path: string }>;
       };
+      // Degraded boot still serves what it has rather than warming forever.
       expect(body.ready).toBe(true);
       expect(body.results?.some((row) => row.path === 'guide')).toBe(true);
     } finally {
@@ -860,6 +948,9 @@ describe('GET /api/search — incremental corpus (per-page document cache)', () 
       const alphaPath = join(dir, 'alpha.md');
       const betaPath = join(dir, 'beta.md');
       writeFileSync(alphaPath, '# Alpha\n\nalphaversionone\n', 'utf-8');
+      // Capture alpha's entry at v1; we deliberately keep this entry object
+      // constant across an on-disk content change to prove the cache reuses the
+      // parsed doc when the index entry (fingerprint) is unchanged.
       const alphaV1 = indexEntry(alphaPath, 'markdown');
       const index = new Map<string, FileIndexEntry>([['alpha', alphaV1]]);
       const ext = createApiExtension({
@@ -875,19 +966,28 @@ describe('GET /api/search — incremental corpus (per-page document cache)', () 
         (JSON.parse(c.body) as { results?: Array<{ path: string }> }).results?.map((r) => r.path) ??
         [];
 
+      // 1. Initial build indexes alpha's v1 body.
       expect(paths(await run('alphaversionone'))).toContain('alpha');
 
+      // 2. Change alpha's bytes on disk (different length) but keep its index
+      //    entry constant, and add beta so the corpus fingerprint changes and a
+      //    rebuild happens. alpha's entry is unchanged => cache reuse.
       writeFileSync(alphaPath, '# Alpha\n\nalphaversiontwo-now-longer\n', 'utf-8');
       writeFileSync(betaPath, '# Beta\n\nbetafreshbody\n', 'utf-8');
       index.set('beta', indexEntry(betaPath, 'markdown'));
 
+      // Reused doc still carries v1 content; the new on-disk token is NOT found,
+      // while beta (freshly read in the same rebuild) IS — proving reuse + rebuild.
       expect(paths(await run('alphaversiontwo'))).not.toContain('alpha');
       expect(paths(await run('alphaversionone'))).toContain('alpha');
       expect(paths(await run('betafreshbody'))).toContain('beta');
 
+      // 3. Refresh alpha's index entry (new size/mtime) => cache key changes =>
+      //    re-read => the new body is now searchable.
       index.set('alpha', indexEntry(alphaPath, 'markdown'));
       expect(paths(await run('alphaversiontwo'))).toContain('alpha');
 
+      // 4. Delete beta => pruned from the index and from results.
       index.delete('beta');
       expect(paths(await run('betafreshbody'))).not.toContain('beta');
     } finally {
@@ -899,6 +999,9 @@ describe('GET /api/search — incremental corpus (per-page document cache)', () 
     const dir = mkdtempSync(join(tmpdir(), 'ok-search-readfail-'));
     try {
       const alphaPath = join(dir, 'alpha.md');
+      // alpha's entry points at a path that does not exist yet, so the first
+      // build's read throws and produces an empty-body doc. The fix must NOT
+      // cache that, or the page stays unsearchable by body until its entry shifts.
       const alphaEntry: FileIndexEntry = {
         size: 0,
         modified: new Date(0).toISOString(),
@@ -921,8 +1024,11 @@ describe('GET /api/search — incremental corpus (per-page document cache)', () 
         (JSON.parse(c.body) as { results?: Array<{ path: string }> }).results?.map((r) => r.path) ??
         [];
 
+      // First build: alpha read fails (file missing) -> empty body, not cached.
       expect(paths(await run('healedtoken'))).not.toContain('alpha');
 
+      // The file now exists, but alpha's entry is UNCHANGED. A rebuild (bumped by
+      // adding beta) re-reads alpha only because the failed read was not cached.
       writeFileSync(alphaPath, '# Alpha\n\nhealedtoken body\n', 'utf-8');
       writeFileSync(join(dir, 'beta.md'), '# Beta\n\nbetabody\n', 'utf-8');
       index.set('beta', indexEntry(join(dir, 'beta.md'), 'markdown'));

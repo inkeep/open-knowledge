@@ -1,10 +1,24 @@
+/**
+ * Telemetry instruments for the history/timeline read path.
+ *
+ * Lazy-init meters so registration runs against the real provider post-
+ * `initTelemetry` (not the pre-init no-op), matching `embeddings-telemetry.ts`.
+ *
+ * Cardinality discipline (STOP rule): every attribute here is a bounded enum.
+ * Raw ref counts and commit counts are bucketed into string ranges BEFORE they
+ * reach a metric — never recorded as raw integers, which would blow up the
+ * Prometheus label space. No doc names, paths, or content ever reach a metric.
+ */
 import type { Counter, Histogram } from '@opentelemetry/api';
 import { getMeter } from './telemetry.ts';
 
+/** Bounded label: which endpoint mode coalesced. */
 export type TimelineQueryMode = 'doc' | 'folder';
 
+/** Bounded bucket for WIP ref width (how many start refs a walk fanned over). */
 export type WidthBucket = '0' | '1' | '2-5' | '6-20' | '21-50' | '50+';
 
+/** Bounded bucket for commit count gathered by a walk. */
 export type CommitsBucket = '0' | '1-50' | '51-200' | '201-500' | '500+';
 
 export function widthBucket(n: number): WidthBucket {
@@ -44,11 +58,24 @@ function coalescedCounter(): Counter {
   return _coalesced;
 }
 
+/**
+ * Record one history query's wall-clock duration with bucketed attributes.
+ * No-op when OTel is disabled (the meter is a no-op meter).
+ */
 export function recordTimelineQuery(event: {
   durationMs: number;
+  /** Number of start refs the walk fanned over (WIP + checkpoint). */
   width: number;
+  /** Number of commits gathered before pagination. */
   commits: number;
+  /** Whether the git-level depth bound was hit (window saturated). */
   capped: boolean;
+  /**
+   * True when the walk threw and degraded to an empty result (e.g. the 30s git
+   * timeout — the storm signature). Distinguishes an errored query from
+   * a healthy empty one, which otherwise record the same width/commits 0 shape.
+   * Bounded (boolean) — cardinality-safe.
+   */
   error?: boolean;
 }): void {
   queryDurationHist().record(Math.max(0, event.durationMs), {
@@ -59,10 +86,15 @@ export function recordTimelineQuery(event: {
   });
 }
 
+/** Count one request that coalesced onto an in-flight identical walk. */
 export function recordTimelineCoalesced(mode: TimelineQueryMode): void {
   coalescedCounter().add(1, { mode });
 }
 
+/**
+ * Drop cached lazy-init instruments so the next call rebinds against the
+ * currently-registered global MeterProvider. Test-only.
+ */
 export function __resetTimelineTelemetryForTesting(): void {
   _queryDuration = null;
   _coalesced = null;

@@ -79,6 +79,11 @@ describe('file-tree-adapter', () => {
   });
 
   test('excludes .ok/** from collected folder paths (skills are not tree folders)', () => {
+    // Skills-as-content makes `.ok/skills/<name>/SKILL` real content docs and
+    // `.ok` index-descendable, so they now reach the document list — but `.ok`
+    // is internal and must never surface as a visible tree folder (skills live
+    // in the Skills section). Any path with a `.ok` segment is dropped, while
+    // sibling user folders still collect normally.
     expect(
       collectTreeFolderPathsFromDocuments([
         doc('docs/guide'),
@@ -134,10 +139,18 @@ describe('file-tree-adapter', () => {
     ).toBe('archive/docs/');
   });
 
+  // Empty-space-drop → root target. The patched @pierre/trees emits a
+  // `kind: 'root'` drop target when the pointer is over the tree's empty content
+  // area, so a nested folder/file can be promoted back to the project root. The
+  // destination is the bare basename; handleDropComplete filters identity moves
+  // (already-root items) as no-ops.
   test('promotes nested entries to root and treats already-root entries as no-ops', () => {
     const root = dropTarget({ kind: 'root', directoryPath: null });
+    // Nested folder promotes to root, keeping its trailing-slash directory form.
     expect(computeTreeDropDestinationPath('docs/archive/', root)).toBe('archive/');
+    // Deeply nested folder promotes by basename, not full path.
     expect(computeTreeDropDestinationPath('a/b/c/', root)).toBe('c/');
+    // Already-root entries resolve to themselves → handleDropComplete drops them.
     expect(computeTreeDropDestinationPath('guide.md', root)).toBe('guide.md');
     expect(computeTreeDropDestinationPath('archive/', root)).toBe('archive/');
   });
@@ -279,6 +292,26 @@ describe('file-tree-adapter', () => {
     ).toBe('docs/photo.png');
   });
 
+  // Producer-side fix for the right-click→Delete trash regression.
+  //
+  // Pierre's `#completeRenaming` can move the tree node from `Untitled.md` to
+  // the extensionless `Untitled` if the user deletes the suffix before
+  // committing. After that move, `treeItemToTarget(item)` reads
+  // `item.path === 'Untitled'`, the
+  // markdown-extension regex misses, and the target would be classified as
+  // an asset, so `shell.trashItem` ENOENTs on `<contentDir>/Untitled` instead
+  // of `<contentDir>/Untitled.md`.
+  //
+  // The fix surface: thread `documents` into `treeItemToTarget` so the
+  // producer can look up the authoritative `docExt` from the documents list,
+  // the same documents-list lookup the macOS File menu's delete subscriber
+  // performs. The two are deliberately not identical: this producer resolves a
+  // concrete extension (an explicit `.md` fallback for a present-but-
+  // extensionless or missing entry), whereas the subscriber forwards the raw
+  // `docExt` and leaves the undefined case to the downstream `buildTrashAbsPath`
+  // guard. Tests below pin that contract through the producer AND through the
+  // downstream consumer chain that actually drives `shell.trashItem`.
+
   test('treeItemToTarget(item, documents) returns the entry-authoritative docExt for an extensionless .md tree path', () => {
     const item: ContextMenuItem = {
       kind: 'file',
@@ -320,6 +353,9 @@ describe('file-tree-adapter', () => {
     expect(treeItemToTarget(item, documents).docExt).toBe('.md');
   });
   test('treeItemToTarget(item, documents) falls back to .md when no entry exists for an extensionless tree path', () => {
+    // Rare race / stale Pierre state: the docName lookup misses. The producer
+    // commits to a concrete `.md` here to avoid classifying extensionless
+    // names that are almost certainly markdown placeholders as assets.
     const item: ContextMenuItem = {
       kind: 'file',
       name: 'Untitled',
@@ -331,6 +367,9 @@ describe('file-tree-adapter', () => {
   });
 
   test('buildTrashAbsPath(treeItemToTarget(item, documents)) produces a workspace path with the on-disk extension', () => {
+    // End-to-end producer → consumer chain. Before the fix the producer
+    // classified extensionless Pierre paths as assets, producing an ENOENT
+    // at shell.trashItem.
     const item: ContextMenuItem = {
       kind: 'file',
       name: 'Untitled',

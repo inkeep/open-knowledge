@@ -1,3 +1,13 @@
+/**
+ * Behavioral tests for the CLI rows in the toolbar "Open with AI" popover's
+ * "Terminal" section — the in-app twin of the deep-link that launches an agent
+ * CLI (`claude` / `codex` / `cursor-agent`) in the docked terminal. The rows are
+ * desktop-gated: they render only when a `TerminalLaunchProvider` value is
+ * present (the web host passes `null`, so the section is absent). Clicking a row
+ * routes the handoff input — with the typed instruction threaded on — plus the
+ * chosen CLI to the launcher.
+ */
+
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -11,6 +21,8 @@ const input: HandoffDispatchInput = {
   docPath: '/tmp/project/docs/notes.md',
 };
 
+// All installed so the menu has agent rows above the CLI rows (the separator
+// path) and never lands on the empty hint.
 const installedStates = {
   'claude-cowork': { installed: true, lastChecked: 1 },
   'claude-code': { installed: true, lastChecked: 1 },
@@ -91,6 +103,8 @@ describe('Open-with-AI Terminal CLI rows', () => {
     await renderMenu({ launcher: (i, cli) => calls.push({ input: i, cli }) });
     await openMenu();
     await userEvent.click(screen.getByTestId('open-in-agent-terminal-codex'));
+    // `toStrictEqual` proves the launched input is the bare `input` with no
+    // `instruction` key, and that the chosen CLI is threaded through.
     expect(calls).toStrictEqual([{ input, cli: 'codex' }]);
   });
 

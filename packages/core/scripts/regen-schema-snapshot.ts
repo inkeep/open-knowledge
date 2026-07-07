@@ -1,3 +1,17 @@
+/**
+ * One-shot regenerator for `src/schema-snapshot.json`. Mirror of
+ * `captureSchemaShape` in `src/schema-invariant.test.ts`. Run via:
+ *
+ *   bun run packages/core/scripts/regen-schema-snapshot.ts
+ *
+ * After running, diff the snapshot file — landing it requires the diff to
+ * be purely additive (precedent #9).
+ *
+ * Output shape MUST stay byte-aligned with `captureSchemaShape` — including
+ * `marks` (which the schema-invariant tests read to verify
+ * mark add-only invariants). Omitting `marks` here would silently strip
+ * mark coverage from the snapshot the next time someone regenerates.
+ */
 import { writeFileSync } from 'node:fs';
 import { getSchema } from '@tiptap/core';
 import { sharedExtensions } from '../src/extensions/shared.ts';
@@ -52,6 +66,9 @@ for (const [name, markType] of Object.entries(schema.marks)) {
   }
   marks[name] = {
     attrs,
+    // `excludes: undefined` means "exclude marks of the same type" — PM
+    // canonicalizes this to the mark's own name. `''` means "coexist with
+    // everything" (Code mark's deliberate widening per CLAUDE.md STOP).
     excludes: typeof markType.spec.excludes === 'string' ? markType.spec.excludes : name,
     group: markType.spec.group ?? '',
     inclusive: markType.spec.inclusive !== false,

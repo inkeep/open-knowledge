@@ -146,6 +146,7 @@ describe('fetchApiConfig', () => {
   it('propagates AbortError when the signal is aborted before fetch resolves', async () => {
     const ac = new AbortController();
     stubFetch(async (_url, init) => {
+      // Simulate a slow fetch that observes the abort signal.
       return await new Promise<Response>((_resolve, reject) => {
         const sig = (init as RequestInit | undefined)?.signal as AbortSignal | undefined;
         sig?.addEventListener('abort', () => {

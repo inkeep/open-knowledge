@@ -46,6 +46,8 @@ describe('PrincipalSuccessSchema', () => {
       future_field: 'new-server-value',
     });
     expect(result.success).toBe(true);
+    // .loose() must pass unknown fields through to result.data, not strip them.
+    // A change from .loose() to .strip() would make success: true but drop the field.
     if (result.success) {
       expect((result.data as Record<string, unknown>).future_field).toBe('new-server-value');
     }
@@ -69,11 +71,18 @@ describe('PrincipalSuccessSchema', () => {
   });
 
   test('fails when display_name is an empty string', () => {
+    // An empty git-config user.name (template-rendered configs, mis-quoted setup
+    // scripts) must not propagate to the awareness publish-site as name: ''. The
+    // safeParse failure here routes the client to the random-identity fallback
+    // — same path as a 404 / network error.
     const result = PrincipalSuccessSchema.safeParse({ ...validPrincipal, display_name: '' });
     expect(result.success).toBe(false);
   });
 
   test('accepts empty display_email (field is server-only; absence should not discard usable name+id)', () => {
+    // display_email is never rendered in awareness — only used server-side for
+    // shadow-repo authoring / Co-Authored-By. An absent or empty email must not
+    // cause a valid principal (with a good display_name and id) to be rejected.
     const result = PrincipalSuccessSchema.safeParse({ ...validPrincipal, display_email: '' });
     expect(result.success).toBe(true);
   });
@@ -105,6 +114,10 @@ describe('PrincipalSuccessSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// RFC 9457 Problem Details
+// ---------------------------------------------------------------------------
 
 describe('ProblemTypeSchema', () => {
   test('accepts the seeded upload-side URN tokens', () => {
@@ -246,6 +259,9 @@ describe('ProblemDetailsSchema', () => {
   });
 
   test('fails when instance is a bare UUID without urn:uuid: prefix (RFC 9457 §3.1.6)', () => {
+    // RFC 9457 §3.1.6 requires `instance` to be a URI reference. A bare
+    // UUID is the RFC 9562 hex representation, not a URI — schema rejects
+    // it so client + server stay locked to the URN form.
     const result = ProblemDetailsSchema.safeParse({
       ...validProblem,
       instance: '01234567-89ab-4def-8123-456789abcdef',
@@ -302,9 +318,14 @@ describe('UploadAssetSuccessSchema', () => {
   });
 
   test('does NOT contain ok:true wrapper field (D22 success drops wrapper)', () => {
+    // A response shape with `{ ok: true, src: '...' }` is still parsed by .loose()
+    // because .loose() preserves unknown fields. The wire-shape change is enforced
+    // structurally — handlers no longer emit `ok: true`. This test simply documents
+    // the schema shape: top-level fields are flat (no discriminator).
     const result = UploadAssetSuccessSchema.safeParse({ src: 'foo.png' });
     expect(result.success).toBe(true);
     if (result.success) {
+      // No `ok` field exists on the canonical type.
       // @ts-expect-error -- ok is not a field on UploadAssetSuccess
       void result.data.ok;
     }
@@ -424,6 +445,10 @@ describe('LocalOpCloneRequestSchema (US-005)', () => {
   });
 
   test('rejects a leading-dash branch (git CLI flag injection)', () => {
+    // git clone -b <branch> treats its argument literally (not a refspec)
+    // so the risk is lower than git fetch, BUT a leading-dash branch like
+    // `--upload-pack=evil` could be misinterpreted by some git versions as
+    // a flag. Defense-in-depth — same rules as CheckoutRequestSchema.
     const result = LocalOpCloneRequestSchema.safeParse({
       url: 'https://github.com/owner/repo',
       dir: '~/Documents/repo',
@@ -508,3 +533,7 @@ describe('StreamingProblemEventSchema (US-005, D36 c)', () => {
     expect(result.success).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cluster A: agent-write / -write-md / -patch / -undo
+// ---------------------------------------------------------------------------

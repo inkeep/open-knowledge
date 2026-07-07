@@ -1,3 +1,36 @@
+/**
+ * Profile-decomposition probe scenario.
+ *
+ * Decomposes the cold-MISS longest-task into JS-construction vs
+ * browser-layout halves, and the cold-LOAD wall into IDB-hydrate /
+ * WebSocket-sync / PM-build phases. Single-rep per scenario invocation
+ * (per existing scenarios convention); outer drivers aggregate. Brackets
+ * the cold-mount window with `Performance.getMetrics` snapshots so the
+ * style-recalc axis is captured directly instead of relying on
+ * Tracing-domain extraction.
+ *
+ * Composes:
+ *   - `installLongtaskObserver` + `readLongtasks` — long-task array
+ *   - `correlateLongtasksWithMarks` — joins longtasks ↔ ok/* marks
+ *   - `getPmStats` walk inlined here — pmStatsPre + pmStatsPost
+ *   - `capturePerfMetricsWindow` — getMetrics-bracketed window
+ *   - `ok/cold/*` marks — per-NodeView, per-decoration, per-ext
+ *   - `ok/pool/idb-*` + `ok/pool/synced-after-idb` — IDB phases
+ *
+ * Output JSON `metrics`:
+ *   {
+ *     docName, jsMs, layoutMs, recalcStyleMs, taskMs, longestTaskMs,
+ *     longestTaskCorrelation: Array<{name, durationMs, percentOfTask}>,
+ *     idbAttachAtMs, idbHydrateMs, websocketSyncMs, pmBuildMs,
+ *     perExtensionCost: Record<string, number>, // sum of ext-{name}-on-create
+ *     perDecorationCost: Record<string, number>,
+ *     perNodeViewCost: Record<string, number>,
+ *     pmStatsPre,  // null before navigation completes
+ *     pmStatsPost, // populated after editor renders
+ *     pmStatsRuntimeMs,
+ *   }
+ */
+
 import type { CDPSession } from '@playwright/test';
 import {
   capturePerfMetricsWindow,
@@ -23,6 +56,15 @@ interface InlinePmStats {
   runtimeMs: number;
 }
 
+/**
+ * In-page PM-state walk. Mirrors `packages/app/src/lib/perf/get-pm-stats.ts`
+ * but runs inside the browser context via `page.evaluate`. Re-implementing
+ * the walk here is worth the duplication: importing the module would require
+ * either a global exposure on `window.__getPmStats` (invasive at editor mount
+ * time) or a dynamic import (which would re-bundle PM types and fight Vite's
+ * module graph). The walk is structural — it can drift from the production
+ * helper without corrupting any production code path.
+ */
 async function getPmStatsInPage(
   page: import('@playwright/test').Page,
 ): Promise<InlinePmStats | null> {
@@ -79,7 +121,9 @@ async function getPmStatsInPage(
             pluginCount += set.find().length;
           });
         }
-      } catch {}
+      } catch {
+        // buggy plugin — keep walking
+      }
       decorationCountByPlugin[keyStr] = pluginCount;
       decorationCount += pluginCount;
     }
@@ -103,6 +147,10 @@ interface UserMark {
   duration: number;
 }
 
+/**
+ * Drain `performance.getEntriesByType('measure')` for `ok/*` marks. Returns
+ * a flat array; the caller does per-prefix grouping.
+ */
 async function readUserMarks(page: import('@playwright/test').Page): Promise<UserMark[]> {
   return page.evaluate(() => {
     const entries = performance.getEntriesByType('measure');
@@ -150,6 +198,9 @@ export default defineScenario({
   async run(ctx) {
     const { page, cdp, opts } = ctx;
     await installLongtaskObserver(page);
+    // Cast: cdp is a Playwright CDPSession; the helper accepts the structural
+    // MinimalCdpClient shape. Send overload-mismatch is fine — only the two
+    // RPC overloads we exercise are typed in MinimalCdpClient.
     const minimalCdp: MinimalCdpClient = cdp as unknown as MinimalCdpClient;
     await enablePerformanceMetrics(minimalCdp);
 
@@ -157,6 +208,10 @@ export default defineScenario({
     ctx.recordMetric('docName', BIG_DOC);
     ctx.note(`g4 cold-mount probe target=${url}`);
 
+    // Pre-snapshot before navigation. PROJECT-class doc not yet loaded, so
+    // pmStatsPre is null — the active editor doesn't exist yet. Recorded as
+    // a structural sentinel; pre-mount = pre-editor-construction is null by
+    // design.
     const pmStatsPre = await getPmStatsInPage(page).catch(() => null);
 
     const startWall = Date.now();
@@ -190,6 +245,8 @@ export default defineScenario({
     ctx.recordMetric('recalcStyleMs', deltas.recalcStyleMs);
     ctx.recordMetric('scriptMs', deltas.scriptMs);
     ctx.recordMetric('taskMs', deltas.taskMs);
+    // jsMs is the script axis; kept under both keys so consumers that follow
+    // the {jsMs, layoutMs, ...} shape still resolve.
     ctx.recordMetric('jsMs', deltas.scriptMs);
 
     const longTasks = await readLongtasks(page);
@@ -200,6 +257,8 @@ export default defineScenario({
     const marks = await readUserMarks(page);
     ctx.recordMetric('totalUserMarkCount', marks.length);
 
+    // Per-axis decomposition from the user-mark stream emitted by
+    // cold-mount-instrumentation + provider-pool / client-persistence.
     const perExtensionCost = sumByPrefix(
       marks.filter((m) => m.name.endsWith('-on-create')),
       'ok/cold/ext-',
@@ -210,6 +269,11 @@ export default defineScenario({
     ctx.recordMetric('perDecorationCostJson', JSON.stringify(perDecorationCost));
     ctx.recordMetric('perNodeViewCostJson', JSON.stringify(perNodeViewCost));
 
+    // Cold-LOAD phase split via the `ok/pool/*` marks emitted from
+    // provider-pool.ts + client-persistence.ts.
+    //   IDB hydrate phase = idb-attach → synced-after-idb (provider-pool span)
+    //   WebSocket sync = synced-after-idb → editor-mount (post-IDB → first paint)
+    //   PM build = editor-create-view + pm-update-state + pm-set-props sum
     const idbAttach = lastMarkByName(marks, 'ok/pool/idb-attach');
     const syncedAfterIdb = lastMarkByName(marks, 'ok/pool/synced-after-idb');
     const editorMount = lastMarkByName(marks, 'ok/cold/editor-mount');
@@ -239,6 +303,9 @@ export default defineScenario({
       ctx.recordMetric('editorCreateViewMs', Math.round(editorCreateView.duration * 100) / 100);
     }
 
+    // Longest-task ↔ mark correlation. The per-task array attributes spans
+    // within each long task — answers the question "what was the 2.7s task
+    // doing internally."
     const correlation = correlateLongtasksWithMarks(longTasks, marks);
     const longestCorrelated = correlation.reduce(
       (best, cur) => (cur.taskMs > (best?.taskMs ?? 0) ? cur : best),
@@ -255,6 +322,7 @@ export default defineScenario({
       ctx.recordMetric('longestTaskCorrelationMarkCount', 0);
     }
 
+    // Post-mount pmStats snapshot — the structural shape of the rendered doc.
     const pmStatsPost = await getPmStatsInPage(page).catch(() => null);
     if (pmStatsPost) {
       ctx.recordMetric('pmStatsPostNodeCount', pmStatsPost.nodeCount);
@@ -281,4 +349,5 @@ export default defineScenario({
   },
 });
 
+// Type guard for unused CDPSession import warning (cdp is from ScenarioCtx — referenced inline)
 type _CdpSessionAlive = CDPSession;

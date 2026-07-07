@@ -35,8 +35,10 @@ describe('buildCapturePayload', () => {
     expect(typeof p.timestamp).toBe('string');
     expect(p.properties.channel).toBe('stable');
     expect('from_version' in p.properties).toBe(false);
+    // privacy guards
     expect(p.properties.$ip).toBeNull();
     expect(p.properties.$geoip_disable).toBe(true);
+    // never carries identifying request shape
     expect('$useragent' in p.properties).toBe(false);
   });
 });
@@ -109,6 +111,8 @@ describe('captureServerEvent', () => {
 
   test('never throws even when scheduling fails (key set, no request scope)', () => {
     process.env.NEXT_PUBLIC_POSTHOG_KEY = KEY;
+    // after() throws outside a request scope — captureServerEvent must swallow it
+    // so a redirect is never broken by telemetry.
     expect(() => captureServerEvent({ event: 'dmg_downloaded', distinctId: 'd1' })).not.toThrow();
   });
 });

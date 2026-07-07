@@ -48,6 +48,7 @@ describe('SubscribeForm', () => {
       expect(submitSubscribe).toHaveBeenCalledWith('someone@example.com', 'resources_menu'),
     );
     expect(onSuccess).toHaveBeenCalledTimes(1);
+    // Success view: confirmation copy renders and the form collapses away.
     expect(await screen.findByText(/Watch your inbox/i)).not.toBeNull();
     expect(screen.queryByTestId('subscribe-email')).toBeNull();
   });
@@ -60,6 +61,7 @@ describe('SubscribeForm', () => {
     await userEvent.click(screen.getByTestId('subscribe-submit'));
 
     expect(await screen.findByRole('alert')).not.toBeNull();
+    // No success view: the form is still present and the success copy never rendered.
     expect(screen.getByTestId('subscribe-email')).not.toBeNull();
     expect(screen.queryByText(/Watch your inbox/i)).toBeNull();
   });

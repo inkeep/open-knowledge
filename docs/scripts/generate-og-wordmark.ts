@@ -1,6 +1,16 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+// Regenerates src/lib/ok-wordmark.data.ts from public/ok-wordmark.svg.
+//
+// The OG-image renderer (src/lib/og-card.tsx) needs the wordmark as inline
+// bytes for satori. Reading it at runtime via process.cwd()+readFileSync
+// defeats the Next/Turbopack file tracer (it traces the whole project and
+// drops the .next/package.json CJS marker, which breaks require() of
+// on-demand routes on Vercel — ERR_REQUIRE_ESM). Inlining the asset as a
+// module-graph constant removes the runtime read entirely. Run this whenever
+// public/ok-wordmark.svg changes.
+
 const root = path.resolve(import.meta.dirname, '..');
 const svg = readFileSync(path.join(root, 'public', 'ok-wordmark.svg'));
 const dataUrl = `data:image/svg+xml;base64,${svg.toString('base64')}`;

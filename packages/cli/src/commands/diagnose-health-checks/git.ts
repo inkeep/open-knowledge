@@ -1,3 +1,9 @@
+/**
+ * `git` check — wraps the server-package preflight primitive so the doctor
+ * surface and the boot/Electron auto-notice surfaces share one detection
+ * path. Pass on detected ≥ MIN_GIT_VERSION; fail on missing or too-old.
+ */
+
 import {
   assertGitAvailable,
   type GitDetected,
@@ -8,6 +14,7 @@ import {
 import type { CheckDefinition, CheckResult } from './types.ts';
 
 interface GitCheckDeps {
+  /** Replaceable so tests don't depend on the runner-host's actual git. */
   assert?: () => GitDetected;
 }
 

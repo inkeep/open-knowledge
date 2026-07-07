@@ -26,6 +26,9 @@ describe('readProjectLocalSemanticConfig', () => {
     }
   });
 
+  // This is the bug `ok embeddings status` had: it read a user+project merge, so
+  // a committed `enabled: true` reported the feature ON even though the server
+  // (project-local only) ran it OFF. Both now share THIS resolver.
   test('IGNORES a committed project config — project-local only (egress safety)', () => {
     const dir = makeProject();
     try {

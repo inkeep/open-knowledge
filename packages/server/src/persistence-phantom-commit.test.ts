@@ -1,5 +1,5 @@
 /**
- * Regression test for the "phantom principal commit" bug (PR #295).
+ * Regression test for the "phantom principal commit" bug.
  *
  * When a browser-connected client performs a content-bearing CRDT transaction
  * that is a semantic no-op at the markdown layer (the canonical case:
@@ -11,14 +11,14 @@
  * The fix reorders `onStoreDocument` to compute the markdown and compare it
  * against `currentBase` (via `normalizeBridge` for trailing-whitespace
  * tolerance) BEFORE running the safety-net. Semantic no-ops skip both the
- * disk write AND the principal record; real changes still record per US-024.
+ * disk write AND the principal record; real changes still record.
  *
  * These tests drive the production `onStoreDocument` path via `createServer`
  * and trigger connection-origin transactions directly on the server-side
  * Y.Doc. Using the real Hocuspocus plumbing guards the specific ordering of
  * (a) markdown computation, (b) normalizeBridge-tolerant comparison against
  * `currentBase`, (c) `recordContributor` call — a future refactor that moves
- * the safety-net back above the gate silently fails Scenario 1 below.
+ * the safety-net back above the gate silently fails.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -30,6 +30,14 @@ import * as Y from 'yjs';
 import { contributorCount, swapContributors } from './contributor-tracker.ts';
 import { createServer } from './server-factory.ts';
 
+/**
+ * Poll until `predicate()` holds or the timeout elapses. Used instead of a
+ * fixed `setTimeout(N)` so CI-load timing variance can't silently produce a
+ * false-pass (where the debounce never fired AND the assertion just happens
+ * to match zero-valued defaults). Event-driven polling guarantees: if the
+ * predicate isn't satisfied in the budget, the test fails with context
+ * instead of green-ing through a race.
+ */
 async function waitForContributorCount(
   expected: number,
   { timeoutMs = 5_000, pollMs = 10 }: { timeoutMs?: number; pollMs?: number } = {},
@@ -44,6 +52,14 @@ async function waitForContributorCount(
   );
 }
 
+/**
+ * Assert `contributorCount()` stays at `expected` for `durationMs`. For the
+ * negative test: we want the count to NOT increment over a window long
+ * enough to cover the debounce flush + any asynchronous post-processing.
+ * Polling a steady-state is the inversion of the positive-path wait —
+ * fixed sleeps false-pass when the debounce never fires, but a
+ * steady-state poll proves the value stayed put across the window.
+ */
 async function expectContributorCountRemainsAt(
   expected: number,
   { durationMs = 800, pollMs = 50 }: { durationMs?: number; pollMs?: number } = {},
@@ -69,6 +85,8 @@ interface Fixture {
 async function setupFixture(): Promise<Fixture> {
   const tmpDir = mkdtempSync(join(tmpdir(), 'ok-phantom-commit-'));
   const contentDir = tmpDir;
+  // Git init so persistence's shadow-repo helpers don't trip on a missing .git/,
+  // mirroring persistence-fan-out.test.ts's fixture.
   const git = simpleGit({ baseDir: tmpDir });
   await git.init();
   await git.addConfig('user.name', 'Test User');
@@ -103,13 +121,20 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
       contentDir: fixture.contentDir,
       projectDir: fixture.tmpDir,
       quiet: true,
+      // Short debounce so the L1 drain fires before destroy().
       debounce: 100,
       maxDebounce: 500,
       gitEnabled: false,
     });
     await server.ready;
     try {
+      // Load the doc — onLoadDocument populates the fragment AND seeds
+      // reconciledBase. `openDirectConnection` is the cheapest way to
+      // materialize a doc via the real persistence extension.
       const conn = await server.hocuspocus.openDirectConnection('empty-para-doc');
+      // Grab the server-side Y.Doc so we can fire a transaction with a
+      // spoofed connection origin — the same shape `readSyncStep2`
+      // produces for real browser updates (see Hocuspocus server.esm.js).
       const serverDoc = server.hocuspocus.documents.get('empty-para-doc');
       expect(serverDoc).toBeDefined();
       if (!serverDoc) return;
@@ -118,16 +143,28 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
         source: 'connection' as const,
         connection: { context: { principalId: 'principal-test-phantom' } },
       };
+      // Fire the exact YXmlEvent shape captured on the live server:
+      // `[{retain:N}, {insert:[<paragraph></paragraph>]}]` — semantic
+      // no-op, serializes to one extra trailing newline at most.
       serverDoc.transact(() => {
         serverDoc.getXmlFragment('default').push([new Y.XmlElement('paragraph')]);
       }, connectionOrigin);
 
+      // Wait for L1 debounce (100ms) to fire onStoreDocument with the
+      // connection origin, then prove the count STAYED at 0 across a
+      // steady-state window that covers debounce + any asynchronous
+      // post-processing. A fixed sleep here false-passes under CI load
+      // (if onStoreDocument hasn't fired yet, count is zero for the wrong
+      // reason) — a steady-state poll proves the gate short-circuited.
       await expectContributorCountRemainsAt(0, { durationMs: 800 });
       conn.disconnect();
     } finally {
       await server.destroy();
     }
 
+    // The fix's gate: normalizeBridge(markdown) === normalizeBridge(currentBase)
+    // catches this class → safety-net short-circuits → principal is NOT recorded.
+    // This would have been 1 (phantom principal entry).
     expect(contributorCount()).toBe(0);
   });
 
@@ -156,6 +193,10 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
         source: 'connection' as const,
         connection: { context: { principalId: 'principal-test-real-edit' } },
       };
+      // Real user edit: append a paragraph containing visible text. This
+      // produces a markdown change normalizeBridge WILL detect, so the
+      // safety-net must still record the principal (
+      // the fix must not regress the legitimate browser-write case).
       serverDoc.transact(() => {
         const frag = serverDoc.getXmlFragment('default');
         const newPara = new Y.XmlElement('paragraph');
@@ -163,6 +204,11 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
         frag.push([newPara]);
       }, connectionOrigin);
 
+      // Event-driven poll: wait for onStoreDocument to record the
+      // principal. Without this, `server.destroy()` below can race the
+      // debounced store hook and teardown before the safety-net has a
+      // chance to run. Polling until the expected count is observable
+      // replaces fixed sleeps with a deterministic signal.
       await waitForContributorCount(1);
       conn.disconnect();
     } finally {

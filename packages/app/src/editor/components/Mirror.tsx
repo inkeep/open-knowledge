@@ -1,6 +1,33 @@
+/**
+ * `<Mirror src="…" anchor="…" />` — read-only transclusion of a
+ * `<MirrorSource id="…">` block from another doc. Master/copy model: edits
+ * happen at the source; every Mirror reflects the change.
+ *
+ * The render-time fetch + live re-render lives in `useMirrorSource`, which
+ * opens a `HocuspocusProvider` on the source doc, observes its
+ * `Y.Text('source')`, walks the parsed mdast for the matching MirrorSource,
+ * and pipes its subtree through the shared `mdastToHtml` renderer.
+ *
+ * The "Open source" deep-link affordance lives in the universal
+ * `.jsx-component-chrome` bubble — see `JsxComponentView.tsx`'s
+ * `descriptor.name === 'Mirror'` branch. This component paints only the
+ * rendered Mirror (or the appropriate empty / error state).
+ */
+
 import { Trans } from '@lingui/react/macro';
 import { Copy, Link2, Link2Off } from 'lucide-react';
 import { useMirrorSource } from './use-mirror-source.ts';
+
+// "Open source" deep-link affordance lives in the universal
+// `.jsx-component-chrome` bubble (see `JsxComponentView.tsx` — search for
+// `descriptor.name === 'Mirror'`). Putting it there gets bubble parity for
+// free: shows alongside trash + settings on hover-or-selected, same icon
+// size, same hit zone, and a fresh `<a href={hashFromDocName(src, anchor)}>`
+// gets middle-click / cmd-click new-tab and "Copy link address" without
+// custom wiring. The hash navigation is picked up by `DocumentProvider`'s
+// hashchange listener — no React imports from `DocumentContext.tsx` are
+// pulled in here, which dodges a temporal-dead-zone race on cold load
+// (see `use-mirror-source.ts` for the cycle details).
 
 interface MirrorProps {
   src?: string;
@@ -77,6 +104,22 @@ export function Mirror(props: MirrorProps) {
     );
   }
 
+  // Status.kind === 'ready' — render the resolved source HTML inline.
+  // The "Open source" deep-link affordance is rendered by JsxComponentView
+  // as a chrome-bubble button (see header JSDoc for the integration site).
+  //
+  // The dashed border surfaces on `.jsx-component-wrapper:hover` AND
+  // `[data-selected="true"]` — same dual-signal the universal chrome
+  // bubble uses. `-mx-3 px-3` keeps the inner content flush with
+  // surrounding prose at the same x-coordinate (the negative margin
+  // cancels the padding); the dashed border sits outside the text column
+  // so it doesn't shift the content between rest and hover.
+  //
+  // The HTML was already sanitized by `rehypeSanitizeUrls` inside the
+  // shared `mdastToHtml` pipeline (drops dangerous URL schemes; element-
+  // level `<script>` / `<iframe>` injection is dropped because
+  // `allowDangerousHtml` is off). `prose-no-margin` keeps tight spacing in
+  // line with the surrounding doc.
   return (
     <div
       className='ok-mirror-resolved relative -mx-3 prose-no-margin rounded-md border border-dashed border-transparent px-3 py-2 transition-colors [.jsx-component-wrapper:hover_&]:border-border/40 [.jsx-component-wrapper[data-selected="true"]_&]:border-border/40'

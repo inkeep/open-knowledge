@@ -23,6 +23,12 @@ interface TempRepoHandle {
   cleanup(): void;
 }
 
+/**
+ * Build a temp git repo with a main checkout and N linked worktrees on
+ * freshly created branches. Each worktree gets an initial commit so HEAD has
+ * a real SHA. Realpath-resolved so macOS `/private/var` symlink collapse
+ * doesn't confuse comparisons with the implementation's output.
+ */
 async function makeRepoWithWorktrees(branches: readonly string[]): Promise<TempRepoHandle> {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'resolve-share-')));
   const mainRepo = join(root, 'main');

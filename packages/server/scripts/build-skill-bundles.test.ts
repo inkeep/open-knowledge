@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the shared-content composer + CI byte-equality guard.
+ *
+ * `composeSkill` is covered as a pure function with synthetic placeholders.
+ * `buildSkillBundles` + `checkSharedContentByteEquality` are exercised against
+ * tmpdir fixtures, then the guard is run once against the REAL repo assets so
+ * `bun run check` fails on any production drift.
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
@@ -27,11 +35,18 @@ afterEach(() => {
     if (p) {
       try {
         rmSync(p, { recursive: true, force: true });
-      } catch {}
+      } catch {
+        /* best-effort */
+      }
     }
   }
 });
 
+/**
+ * Build a tmpdir fixture with the given per-bundle bodies + _shared files.
+ * `references` seeds arbitrary skillsDir-relative files (e.g.
+ * `project/references/setup.md`) to exercise the full-dir copy.
+ */
 function fixture(opts: {
   discovery: string;
   project: string;
@@ -43,6 +58,9 @@ function fixture(opts: {
   const skillsDir = join(root, 'skills');
   for (const bundle of BUNDLE_IDS) mkdirSync(join(skillsDir, bundle), { recursive: true });
   mkdirSync(join(skillsDir, '_shared'), { recursive: true });
+  // Every bundle needs a SKILL.md to compose; the tests drive discovery/project,
+  // so any other id in BUNDLE_IDS (e.g. write-skill) gets a trivial
+  // placeholder-free default — adding a bundle id never breaks the fixture.
   for (const bundle of BUNDLE_IDS) {
     writeFileSync(join(skillsDir, bundle, 'SKILL.md'), `# ${bundle}\n`);
   }
@@ -98,6 +116,8 @@ describe('buildSkillBundles', () => {
       shared: { 'intro.md': 'SHARED-INTRO' },
     });
     const built = buildSkillBundles(paths);
+    // Every id in the single-sourced BUNDLE_IDS is composed — this is the guard
+    // that caught write-skill being silently omitted from the dist build.
     expect(built.map((b) => b.bundle).sort()).toEqual([...BUNDLE_IDS].sort());
     for (const id of ['discovery', 'project'] as const) {
       const b = built.find((x) => x.bundle === id);
@@ -110,6 +130,9 @@ describe('buildSkillBundles', () => {
   });
 
   test('copies a bundle’s references/ into dist so the complete bundle ships (H1)', () => {
+    // Regression guard: the composer used to write only SKILL.md, so a bundle's
+    // references/ never reached published / desktop builds (resolveBundledSkillDir
+    // prefers dist). The full-dir copy must carry them.
     const paths = fixture({
       discovery: '# d\n',
       project: '# p\n',
@@ -139,6 +162,10 @@ describe('buildSkillBundles', () => {
 });
 
 describe('repo assets — progressive-disclosure references', () => {
+  // Production guard: the real project skill ships its references/ tree (the
+  // core/reference split). Main's test proves the build copies a bundle's
+  // references/ into dist; this asserts the actual shipped project bundle HAS
+  // them, catching a future change that drops the split.
   test('the project bundle ships a non-empty references/ dir', () => {
     const refsDir = join(defaultPaths().skillsDir, 'project', 'references');
     expect(existsSync(refsDir)).toBe(true);
@@ -146,20 +173,29 @@ describe('repo assets — progressive-disclosure references', () => {
     expect(refs.length).toBeGreaterThan(0);
   });
 
+  // Pointer-completeness: progressive disclosure only works if every reference
+  // is reachable from the core by exactly the path the agent will load, and the
+  // core never points at a reference that isn't there. Bidirectional guard:
+  // no dead pointer (core → missing file) and no orphan (file → never pointed at).
   test('every reference is pointed to from the core and every pointer resolves', () => {
     const projectDir = join(defaultPaths().skillsDir, 'project');
     const core = readFileSync(join(projectDir, 'SKILL.md'), 'utf-8');
     const refsDir = join(projectDir, 'references');
     const onDisk = new Set(readdirSync(refsDir).filter((f) => f.endsWith('.md')));
+    // `references/<name>.md` pointers in the core (backtick paths or md links).
+    // The `*`/`<` in prose like `references/*.md` or `references/<topic>.md` is
+    // excluded by the character class, so only real pointers match.
     const pointed = new Set(
       [...core.matchAll(/references\/([A-Za-z0-9._-]+\.md)/g)].map((m) => m[1]),
     );
+    // No dead pointer: every pointer resolves to a file on disk.
     for (const name of pointed) {
       expect({ pointer: name, exists: existsSync(join(refsDir, name)) }).toEqual({
         pointer: name,
         exists: true,
       });
     }
+    // No orphan: every reference file is pointed to from the core.
     for (const name of onDisk) {
       expect({ reference: name, pointed: pointed.has(name) }).toEqual({
         reference: name,
@@ -168,6 +204,9 @@ describe('repo assets — progressive-disclosure references', () => {
     }
   });
 
+  // Enforce the spec's core-body byte gate (<= 20,000 bytes, ~5k
+  // tokens) in CI — it was documented but unenforced. Strip the YAML frontmatter
+  // and measure the body the agent actually loads on every activation.
   test('project core body is within the 20,000-byte gate (spec V4/R-IS1)', () => {
     const raw = readFileSync(join(defaultPaths().skillsDir, 'project', 'SKILL.md'), 'utf-8');
     const body = raw.replace(/^---\n[\s\S]*?\n---\n/, '');
@@ -191,6 +230,10 @@ describe('buildPackSkills', () => {
     expect(buildPackSkills(fixture({ discovery: '# d\n', project: '# p\n' }))).toEqual([]);
   });
 
+  // Production guard (read-only): every shipped pack must have a source SKILL.md,
+  // so the build copies it into dist. Without it, `ok seed`'s pack-skill install
+  // resolves only against the source tree (dev) and silently no-ops in built
+  // CLI / desktop artifacts.
   test('repo assets — all eight starter packs are present to build', () => {
     const packsDir = join(defaultPaths().skillsDir, 'packs');
     const expected = [
@@ -243,15 +286,21 @@ describe('repo assets — production guard', () => {
     expect(result.ok).toBe(true);
   });
 
-  test('every real source bundle exists and the _shared directory is present', () => {
+  test('every real source bundle exists and shared placeholders are resolvable', () => {
     const { skillsDir } = defaultPaths();
     for (const bundle of BUNDLE_IDS) {
       expect(existsSync(join(skillsDir, bundle, 'SKILL.md'))).toBe(true);
     }
-    expect(existsSync(join(skillsDir, '_shared'))).toBe(true);
+    const hasSharedSources = existsSync(join(skillsDir, '_shared'));
+    const bundlesReferenceShared = BUNDLE_IDS.some((bundle) =>
+      readFileSync(join(skillsDir, bundle, 'SKILL.md'), 'utf-8').includes('{{> _shared/'),
+    );
+    expect(hasSharedSources || !bundlesReferenceShared).toBe(true);
   });
 
   test('every bundle carries a distinct frontmatter name: value (shadow prevention)', () => {
+    // Distinct `name:` values are load-bearing — a same-name global-scope
+    // skill would shadow the project-scope one in the host hierarchy.
     const { skillsDir } = defaultPaths();
     const expected: Record<(typeof BUNDLE_IDS)[number], string> = {
       discovery: 'open-knowledge-discovery',

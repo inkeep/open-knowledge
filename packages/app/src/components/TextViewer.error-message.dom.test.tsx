@@ -1,3 +1,16 @@
+/**
+ * Pin the human-readable error mapping in `TextViewer`. When
+ * `/api/asset-text` answers with a non-OK status, the viewer must render a
+ * plain-language explanation — not a bare "HTTP 413" status code.
+ *
+ * The 413 case is load-bearing: it's exactly what a user hits when opening
+ * a large GPX / CSV / log file through "View as text"
+ * (the server caps the text-viewer response at 1 MiB). Before this mapping
+ * the pane showed only "Failed to load file (HTTP 413)", which is opaque to
+ * anyone not reading the source.
+ *
+ * Runs under `bun run test:dom` (jsdom substrate).
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup, render, waitFor } from '@testing-library/react';
 
@@ -37,6 +50,7 @@ describe('TextViewer — human-readable load errors', () => {
     const text = container.textContent ?? '';
     expect(text).toContain('too large to open in the built-in text editor');
     expect(text).toContain('1 MB limit');
+    // The opaque code the old message surfaced must be gone.
     expect(text).not.toContain('HTTP 413');
   });
 

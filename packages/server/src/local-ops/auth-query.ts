@@ -1,7 +1,26 @@
+/**
+ * One-shot auth query runners — `auth status` + `auth repos`.
+ *
+ * Both spawn the CLI, collect stdout, parse the last `{type:'status'|'repos'}`
+ * JSON line, and return a structured response. Used by both the HTTP relay
+ * (api-extension.ts) and the desktop-main IPC handler (Navigator window).
+ *
+ * Unlike the device-flow + clone runners, these are bounded — `auth status`
+ * emits one line then exits, `auth repos` collects all repos in a single
+ * line. No streaming surface needed.
+ */
+
 import { runSubprocess } from './subprocess.ts';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/**
+ * `tier` reflects the credential source used by the CLI:
+ *   A — `gh` CLI delegation (no keychain entry needed)
+ *   B — HTTPS token from the OK TokenStore
+ *   C — SSH-paired token from the OK TokenStore
+ * Omitted on the negative branch and when older CLIs don't emit it.
+ */
 export type AuthStatusResponse =
   | {
       authenticated: true;

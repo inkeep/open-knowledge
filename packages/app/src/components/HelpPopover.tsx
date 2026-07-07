@@ -17,6 +17,9 @@ import { DiscordIcon } from './icons/discord';
 import { GithubIcon } from './icons/github';
 import { XTwitterIcon } from './icons/x-twitter';
 
+// Proper-noun labels (Discord, X, GitHub) stay plain strings — not translated;
+// the common-noun labels are lazy MessageDescriptors resolved per-render via
+// useLingui()'s t.
 interface ResourceLink {
   label: string | MessageDescriptor;
   href: string;
@@ -50,6 +53,8 @@ const sections: ResourceSection[] = [
   },
 ];
 
+// "What's new" lives in the Product-updates section next to the Subscribe
+// action, so it's rendered out of the `sections` loop below.
 const WHATS_NEW_HREF = `${GITHUB_REPO_URL}/releases`;
 
 const rowClassName =
@@ -107,6 +112,10 @@ export const HelpPopover: FC = () => {
   const [subscribeOpen, setSubscribeOpen] = useState(false);
   const [starCount, setStarCount] = useState<number | null>(null);
 
+  // Fetch the repo's star count the first time the menu opens (GitHub's public
+  // API sends `Access-Control-Allow-Origin: *`, so the cross-origin GET works
+  // from the renderer). Best-effort: getGitHubStars collapses every failure to
+  // null, so a hidden count is the only failure surface.
   useEffect(() => {
     if (!popoverOpen || starCount !== null) return;
     const controller = new AbortController();
@@ -121,6 +130,8 @@ export const HelpPopover: FC = () => {
       open={popoverOpen}
       onOpenChange={(open) => {
         setPopoverOpen(open);
+        // Reset the nested Subscribe popover when the menu closes, so it
+        // doesn't re-appear already-open on the next menu open.
         if (!open) setSubscribeOpen(false);
       }}
     >
@@ -193,6 +204,9 @@ export const HelpPopover: FC = () => {
                       source="resources_menu"
                       autoFocus
                       onDismiss={() => setSubscribeOpen(false)}
+                      // Subscribing here also satisfies the returning-user
+                      // subscribe card's suppression flag — one subscribe, from
+                      // any surface, stops the nudge.
                       onSuccess={() => subscribeCardStore.markSubscribed()}
                     />
                   </PopoverContent>

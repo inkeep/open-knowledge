@@ -1,3 +1,12 @@
+/**
+ * `links` MCP tool — unified link-graph reader.
+ *
+ * Six link-graph reads behind a `kind` discriminator that accepts a single
+ * kind OR an array. A multi-kind call fans out over the independent endpoints
+ * and merges into one payload — `links({ kind: ["dead", "orphans", "hubs"] })`
+ * is a one-call graph audit. All six are reads → single-risk-level.
+ */
+
 import { ORPHAN_MODES, type OrphanMode } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { buildListResolver, type PreviewUrlDeps, resolvePreviewUrlForTool } from './preview-url.ts';
@@ -69,6 +78,8 @@ interface LinksArgs {
 
 type ListResolve = Awaited<ReturnType<typeof buildListResolver>>['resolve'];
 
+// A single kind's result: either its data fragment (merged into the response)
+// or an error string (collected into the response's `errors` map).
 type KindOutcome = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
 
 export function register(server: ServerInstance, deps: LinksDeps): void {
@@ -107,6 +118,9 @@ export function register(server: ServerInstance, deps: LinksDeps): void {
           .describe('Maximum number of hubs to return (default 20, max 100). Used by kind=hubs.'),
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },
+      // The response nests each requested kind under its own key (only the
+      // kinds you asked for are present); a multi-kind call merges them. Per-kind
+      // failures land in `errors`. Rows carry a route-only `previewUrl` each.
       outputSchema: outputSchemaWithText({
         backlinks: looseObjectArray
           .optional()
@@ -143,7 +157,10 @@ export function register(server: ServerInstance, deps: LinksDeps): void {
       const { cwd, url } = context;
       if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
 
+      // De-dupe so `kind: ["dead","dead"]` doesn't fan out twice.
       const kinds = Array.isArray(args.kind) ? [...new Set(args.kind)] : [args.kind];
+      // One resolver for the whole call — every kind shares the route-only
+      // previewUrl enrichment.
       const { resolve } = await buildListResolver(deps, cwd);
 
       const outcomes = await Promise.all(
@@ -158,6 +175,8 @@ export function register(server: ServerInstance, deps: LinksDeps): void {
         else errors[kind] = outcome.error;
       });
 
+      // Every requested kind failed — surface as an error (this preserves the
+      // single-kind behavior of the old per-tool getters).
       if (Object.keys(merged).length === 0) {
         const message =
           kinds.length === 1
@@ -242,6 +261,8 @@ async function runForwardLinks(
   if (!result.ok) return { ok: false, error: String(result.error) };
   const { ok: _ok, ...rest } = result;
   const data = rest as ForwardLinksPayload;
+  // 'doc' kind entries have a resolvable docName; 'external' kind entries
+  // point at arbitrary URLs and always emit previewUrl: null.
   const forwardLinks = (data.forwardLinks ?? []).map((row) => {
     const docName = row.kind === 'doc' && typeof row.docName === 'string' ? row.docName : null;
     const resolved = docName ? resolve(docName) : null;
@@ -270,6 +291,9 @@ async function runDeadLinks(
   if (!result.ok) return { ok: false, error: String(result.error) };
   const { ok: _ok, ...rest } = result;
   const data = rest as DeadLinksPayload;
+  // Target previewUrls point at redlinks (the UI renders unresolved docs as
+  // a "page doesn't exist yet" state); sources previewUrls point at the live
+  // source doc that contains the broken link.
   const deadLinks = (data.deadLinks ?? []).map((row) => {
     const target = typeof row.target === 'string' ? row.target : null;
     const resolvedTarget = target ? resolve(target) : null;
@@ -352,6 +376,9 @@ async function runSuggest(
     { config: deps.config, resolveCwd: deps.resolveCwd },
     cwd,
   );
+  // Namespaced under `suggest` so the multi-kind `Object.assign` merge can't
+  // collide — every other kind nests under its own key (`backlinks`,
+  // `deadLinks`, …); a bare spread of the raw response would shadow them.
   return {
     ok: true,
     data: {

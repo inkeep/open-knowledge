@@ -19,6 +19,7 @@ let activeDocName: string | null = 'docs/notes';
 let activeTarget: unknown = { kind: 'doc' };
 let sidebarState: 'expanded' | 'collapsed' = 'expanded';
 let isDraggingRail = false;
+// Captures the `input` prop EditorHeader hands to ShareButton.
 let lastShareInput: unknown;
 
 mock.module('@/editor/DocumentContext', () => ({
@@ -158,6 +159,10 @@ describe('EditorHeader runtime behavior', () => {
   });
 
   test('rail drag keeps the reserve but drops the padding transition so it snaps with the sidebar', async () => {
+    // During a rail drag the sidebar group runs duration-0 and collapses
+    // instantly; an animated reserve would lag behind and park the
+    // collapse/search controls under the traffic lights. The reserve must be
+    // present (collapsed) but the transition must be absent (snap).
     setElectronHost(true);
     sidebarState = 'collapsed';
     isDraggingRail = true;
@@ -193,6 +198,7 @@ describe('EditorHeader runtime behavior', () => {
   });
 
   test('nothing open or selected defaults to sharing the project root', async () => {
+    // No target, no doc → empty editor defaults to the content root.
     activeDocName = null;
     activeTarget = null;
     await renderHeader();
@@ -201,6 +207,7 @@ describe('EditorHeader runtime behavior', () => {
   });
 
   test('a managed-artifact doc (skill/template) keeps the share trigger disabled', async () => {
+    // Managed-artifact doc name (`__skill__/<scope>/<name>`) must not be shareable.
     activeDocName = '__skill__/project/my-skill';
     activeTarget = { kind: 'doc' };
     await renderHeader();
@@ -209,6 +216,7 @@ describe('EditorHeader runtime behavior', () => {
   });
 
   test('a non-shareable asset target keeps the share trigger disabled', async () => {
+    // Asset target has no shareable doc name and must not fall through to root.
     activeDocName = null;
     activeTarget = { kind: 'asset', assetPath: 'img/logo.png' };
     await renderHeader();

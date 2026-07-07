@@ -1,3 +1,14 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleSkillInstallState`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET /api/skill/install-state`:
+ *   - happy path: 200 + flat success body parses against
+ *     `SkillInstallStateSuccessSchema` (currentVersion + targets snapshot).
+ *   - method-not-allowed on POST emits 405 + `Allow: GET`.
+ *   - cross-origin request → 403 + `urn:ok:error:invalid-origin` (the
+ *     /api/* origin gate fires before the handler).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, SkillInstallStateSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

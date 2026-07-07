@@ -1,9 +1,21 @@
 #!/usr/bin/env bun
+/**
+ * Aggregate tolerance-class fire-rate data from the JSONL telemetry log
+ * produced by OK_BRIDGE_TOLERANCE_TELEMETRY=1.
+ *
+ * Usage:
+ *   bun run packages/cli/scripts/aggregate-tolerance-class-fires.ts <path-to-tolerance-telemetry.jsonl>
+ *
+ * Output: JSON to stdout with per-class, per-document, and per-severity breakdowns.
+ */
 
 import { readFileSync } from 'node:fs';
 
 import type { ToleranceFireLine } from '@inkeep/open-knowledge-server';
 
+// The line shape is owned by the writer (tolerance-telemetry-writer.ts) and
+// imported here so a producer-side field rename fails this script's
+// typecheck instead of silently desyncing the aggregation.
 type FireRecord = ToleranceFireLine;
 
 interface ClassStats {
@@ -35,6 +47,9 @@ function main(): void {
         records.push(parsed);
       }
     } catch {
+      // Torn/truncated lines are expected after sink rotation
+      // (RotatingAppender ring); count rather than silently drop so a
+      // corrupt log can't under-report totals without a signal.
       skipped += 1;
     }
   }

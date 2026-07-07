@@ -1,3 +1,21 @@
+/**
+ * Integration tests for `POST /api/create-page` covering the new-file/new-folder
+ * sidebar flows.
+ *
+ * Spins up a real Hocuspocus server via createTestServer (random port,
+ * tmp contentDir, debounce=200ms). Every case below uses raw `fetch` against
+ * the server exactly as NewItemDialog does in the browser.
+ *
+ * Scenarios covered:
+ *   - simple file creation
+ *   - composite folder create (kind='folder' flow)
+ *   - 409 EEXIST surfaces with structured error body
+ *   - server rejects ".." / leading-/ / backslash / null-byte
+ *   - reserved __system__ name rejected with 400
+ *   - mkdirSync recursive for deep, not-yet-existing folder paths
+ *   - `.md` suffix is required (server's hard contract)
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -39,6 +57,7 @@ describe('/api/create-page — simple file', () => {
   });
 
   test('creates a file in an existing subdirectory', async () => {
+    // Create parent via an earlier composite so the directory already exists.
     await createPage('qa-pre/seed.md');
     const { status, body } = await createPage('qa-pre/child.md');
     expect(status).toBe(200);
@@ -123,6 +142,10 @@ describe('/api/create-page — reserved name (QA-010)', () => {
 });
 
 describe('/api/create-page — template seeding', () => {
+  // Seeds a root-level template on disk; the resolver reads `.ok/templates/`
+  // live per request, so writing the file before the call is enough. Both the
+  // inline-rename flow (FileTree) and the dialog (NewItemDialog) post the same
+  // `{ path, template }` contract this exercises.
   async function createPageWithTemplate(path: string, template: string) {
     const res = await fetch(`http://127.0.0.1:${server.port}/api/create-page`, {
       method: 'POST',
@@ -151,7 +174,9 @@ describe('/api/create-page — template seeding', () => {
     const created = readFileSync(join(server.contentDir, 'from-template.md'), 'utf-8');
     expect(created).toContain('# Meeting Notes');
     expect(created).toContain('Created on ');
+    // Frontmatter is stripped from the template before seeding.
     expect(created).not.toContain('title: Meeting');
+    // {{date}} is substituted, not passed through literally.
     expect(created).not.toContain('{{date}}');
     expect(created).toMatch(/\d{4}-\d{2}-\d{2}/);
   });
@@ -165,11 +190,14 @@ describe('/api/create-page — template seeding', () => {
     expect(status).toBe(200);
 
     const created = readFileSync(join(server.contentDir, 'from-single-block.md'), 'utf-8');
+    // Doc-frontmatter keys land in the new doc...
     expect(created).toContain('type: research-note');
     expect(created).toContain('status: provisional');
     expect(created).toContain('## Question');
+    // ...the template identity does NOT...
     expect(created).not.toContain('template:');
     expect(created).not.toContain('title: Research Log');
+    // ...and {{date}} is substituted.
     expect(created).not.toContain('{{date}}');
     expect(created).toMatch(/created: \d{4}-\d{2}-\d{2}/);
   });

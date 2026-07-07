@@ -1,3 +1,10 @@
+/**
+ * Integration tests for Y.Map('agent-effects') ring-buffer.
+ *
+ * Verifies that agent writes populate Y.Map('agent-effects') with EffectValue
+ * entries, that the ring-buffer eviction caps at 50 entries, and that concurrent
+ * sessions produce distinct per-session entries.
+ */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -29,6 +36,7 @@ describe('activity-log ring-buffer — agent-effects Y.Map', () => {
 
     const client = await createTestClient(server.port, docName);
     try {
+      // Send raw UUID — extractAgentIdentity prepends 'agent-' making sessionId = `agent-${rawUuid}`
       const rawUuid = randomUUID();
       const expectedSessionId = `agent-${rawUuid}`;
       await agentWriteMd(server.port, '# Hello World', { docName, agentId: rawUuid });
@@ -38,6 +46,7 @@ describe('activity-log ring-buffer — agent-effects Y.Map', () => {
       expect(effectsMap.size).toBeGreaterThanOrEqual(1);
 
       const entries = [...effectsMap.entries()] as [string, EffectValue][];
+      // Find the entry for our expectedSessionId
       const agentEntry = entries.find(([k]) => k.startsWith(`${expectedSessionId}:`));
       if (!agentEntry) throw new Error(`Expected entry for sessionId ${expectedSessionId}`);
       const [key, value] = agentEntry;
@@ -59,6 +68,7 @@ describe('activity-log ring-buffer — agent-effects Y.Map', () => {
 
     const client = await createTestClient(server.port, docName);
     try {
+      // Make 60 writes from distinct agent IDs (each becomes a captureEffect call)
       for (let i = 0; i < 60; i++) {
         const agentId = `agent-${randomUUID()}`;
         await agentWriteMd(server.port, `# Write ${i}`, { docName, agentId });
@@ -79,6 +89,7 @@ describe('activity-log ring-buffer — agent-effects Y.Map', () => {
 
     const client = await createTestClient(server.port, docName);
     try {
+      // Send raw UUIDs — extractAgentIdentity prepends 'agent-'
       const rawUuidA = randomUUID();
       const rawUuidB = randomUUID();
       const sessionA = `agent-${rawUuidA}`;
@@ -97,6 +108,7 @@ describe('activity-log ring-buffer — agent-effects Y.Map', () => {
       expect(entryA).toBeDefined();
       expect(entryB).toBeDefined();
 
+      // Keys must be distinct and session-prefixed
       if (!entryA || !entryB) throw new Error('Expected both entries to be defined');
       const [keyA] = entryA;
       const [keyB] = entryB;

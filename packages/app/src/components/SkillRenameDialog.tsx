@@ -16,12 +16,21 @@ import { Label } from '@/components/ui/label';
 import { moveSkill } from '@/lib/skills-api';
 
 interface Props {
+  /** The skill to rename; `null` keeps the dialog closed. */
   skill: SkillsListEntry | null;
+  /** Existing names in this skill's scope, for the collision check. */
   existingNames: ReadonlySet<string>;
   onOpenChange: (open: boolean) => void;
+  /** Called after a successful rename with the new name. */
   onRenamed?: (name: string) => void;
 }
 
+/**
+ * Rename a skill. Thin wrapper over `moveSkill` (the same POST `/api/skill`
+ * rename the editor's name field uses) with the shared `SKILL_NAME_REGEX` +
+ * collision validation, so a skill can be renamed from its row without opening
+ * the editor — mirroring the file row's Rename.
+ */
 export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRenamed }: Props) {
   const { t } = useLingui();
   const open = skill !== null;
@@ -29,6 +38,7 @@ export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRename
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Seed the field from the skill each time the dialog opens for a new target.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-seed only when the target skill changes, not on every keystroke.
   useEffect(() => {
     if (skill) setName(skill.name);

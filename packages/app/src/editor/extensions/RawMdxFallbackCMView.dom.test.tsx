@@ -7,6 +7,9 @@ import { RawMdxFallbackView } from './RawMdxFallbackCMView';
 
 const originalFetch = globalThis.fetch;
 
+// CodeMirror checks the bare `Window` constructor during async layout
+// measurement. The shared jsdom preload installs `window` but not this
+// constructor alias, so provide it for the mounted EditorView path here.
 (globalThis as { Window?: typeof window.Window }).Window = window.Window;
 
 function makeConfigValue(wordWrap: boolean): ConfigContextValue {

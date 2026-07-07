@@ -13,6 +13,7 @@ describe('isSafeNavigationUrl', () => {
     expect(isSafeNavigationUrl('tel:+15555551234')).toBe(true);
   });
 
+  // These MUST return false.
   test('rejects javascript: URLs (browser RCE vector)', () => {
     expect(isSafeNavigationUrl('javascript:alert(1)')).toBe(false);
     expect(isSafeNavigationUrl('JAVASCRIPT:alert(1)')).toBe(false);

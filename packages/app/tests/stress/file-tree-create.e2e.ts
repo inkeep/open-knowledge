@@ -57,6 +57,9 @@ async function restoreRequiredFixtureEntries(baseURL: string, api: ApiHelpers): 
 
 async function expectDocumentLoads(baseURL: string, docName: string): Promise<void> {
   const res = await fetch(`${baseURL}/api/document?docName=${encodeURIComponent(docName)}`);
+  // RFC 9457 success body — flat `{ docName, body, ... }` shape, no
+  // `{ ok: true }` discriminator. Status code is the authoritative
+  // success/error gate.
   const data: { docName?: string } = await res.json();
 
   expect(res.status).toBe(200);
@@ -148,6 +151,17 @@ async function commitDefaultFolderCreate(page: Page, folderName: string): Promis
   });
 }
 
+/**
+ * Navigate to the workspace root and wait until the sidebar file tree has
+ * rendered at least one row. `waitForLoadState('domcontentloaded')` only
+ * means the HTML parsed — the React app and the sidebar-tree CRDT may not be
+ * hydrated yet, so a toolbar click ("New File" / "New Folder") fired right
+ * after can land before its handler is wired and silently no-op, leaving the
+ * inline rename input that the test then waits for permanently absent.
+ * Gating on a rendered treeitem proves the app is interactive before the
+ * first interaction. The worker fixture seeds `test-doc.md` + `sidebar-folder`,
+ * so at least one row is always present at the start of every test.
+ */
 async function gotoRootAndAwaitSidebar(page: Page): Promise<void> {
   await page.goto('/');
   await page.waitForLoadState('domcontentloaded');
@@ -270,6 +284,9 @@ async function installDelayedDesktopSessionBridge(
           authStatus: async () => ({ authenticated: false, host: 'github.com' }),
           authRepos: async () => ({ ok: true, host: 'github.com', repos: [] }),
         },
+        // useThemeBridge calls these on every cold-launch / theme change.
+        // Both are required by the OkDesktopBridge type contract; without
+        // them the hook throws "X is not a function" before tabs render.
         setThemeSource: async () => ({ ok: true as const }),
         signalThemeApplied: () => {},
       };
@@ -324,6 +341,12 @@ test.describe('FileTree sidebar create', () => {
       await page.goto('/#/zz-bulk-delete-a');
       await page.waitForLoadState('domcontentloaded');
 
+      // Gate on the tree having rendered at all (same condition as
+      // gotoRootAndAwaitSidebar) before waiting on specific rows: the
+      // first refreshDocs that flips the sidebar out of loading can
+      // exceed the per-row 10s budget under 4-worker CI contention, and
+      // the per-row waits below are meant to measure incremental updates,
+      // not the cold first render.
       await expect(
         page.locator('[data-slot="sidebar-container"]').getByRole('treeitem').first(),
       ).toBeVisible({ timeout: 30_000 });
@@ -332,6 +355,10 @@ test.describe('FileTree sidebar create', () => {
       const secondItem = await visibleSidebarItemByPath(page, 'zz-bulk-delete-b.md');
 
       await firstItem.click();
+      // The plain click re-runs the singleton tree-selection mirror when
+      // its activation commits; a cmd-click extending the selection during
+      // that window gets wiped by the mirror re-run. Wait for the first click's
+      // selection to commit before extending it.
       await expect(firstItem).toHaveAttribute('aria-selected', 'true');
       await secondItem.click({
         modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],
@@ -533,6 +560,15 @@ test.describe('FileTree sidebar create', () => {
       }
 
       for (const folderName of folderNames) {
+        // The sidebar's "New Folder" button now creates inside the active
+        // tab's folder. After each folder is created, it gets
+        // navigated-to (FileTree's `navigateToFolderWithPulse`), so the next
+        // click would create a NESTED folder named "New Folder" (no collision
+        // in the empty subfolder), breaking the at-root default-name
+        // sequence this test relies on. Click a root-level file before each
+        // iteration to reset `activeTarget` to a root file so
+        // `defaultInitialDir` returns `""` (root) and the auto-name
+        // increments globally.
         await sidebarTreeItem(page, `${fileNames[0]}.md`).click();
         await commitDefaultFolderCreate(page, folderName);
       }
@@ -738,6 +774,12 @@ test.describe('FileTree sidebar create', () => {
       await createFolderViaSidebar(page, name);
       const folderItem = await visibleSidebarItemByPath(page, `${name}/`);
 
+      // The previous folder-create navigated into the new folder (via
+      // `navigateToFolderWithPulse`), so `activeTarget.kind === 'folder'`
+      // and the sidebar's New File button would create inside it.
+      // This test needs the file as a ROOT SIBLING of the folder (same
+      // basename, different kinds), so reset the URL hash to the workspace
+      // root before clicking New File.
       await page.evaluate(() => {
         window.location.hash = '#/';
       });
@@ -747,6 +789,10 @@ test.describe('FileTree sidebar create', () => {
       await expect(editorTabButton(page, `${name}/`).first()).toBeVisible();
 
       await folderItem.click();
+      // URL first: the hash commit is the click's direct effect; the
+      // active-tab flip derives from it. Asserting in causal order makes
+      // a swallowed click fail at the URL step instead of timing out on
+      // the derived tab state.
       await expect(page).toHaveURL(new RegExp(`#/${name}/$`));
       await expect(activeEditorTabButton(page, `${name}/`)).toBeVisible({
         timeout: 10_000,

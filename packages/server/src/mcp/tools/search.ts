@@ -1,3 +1,16 @@
+/**
+ * `search` MCP tool — ranked workspace retrieval (cmd-K parity).
+ *
+ * Wraps `POST /api/search` over HTTP so the prewarmed Orama corpus and the
+ * snippet builder are reused. Result ranking matches what the cmd-K palette
+ * receives: lexical brackets + body BM25 + recency.
+ *
+ * For literal-string matching across content, use `exec` (its `grep`) — it
+ * walks the filesystem with frontmatter enrichment and needs no server.
+ *
+
+ */
+
 import { z } from 'zod';
 import {
   buildListResolver,
@@ -80,6 +93,8 @@ const SearchResultRowSchema = z.object({
     lexical: z.number(),
     fullText: z.number(),
     recency: z.number(),
+    // Max chunk cosine for this result; present only when semantic ranking
+    // contributed to it. Absent on the lexical path.
     vector: z.number().optional(),
   }),
   snippet: z.string().optional(),
@@ -87,6 +102,9 @@ const SearchResultRowSchema = z.object({
   previewUrlSource: z.enum(PREVIEW_URL_SOURCES).optional(),
 });
 
+// Non-content semantic status, surfaced only when the workspace has semantic
+// search enabled and this call opted in. Lets the agent see that the vector
+// signal is (or isn't yet) contributing, and how much of the corpus is embedded.
 const SearchSemanticStatusSchema = z.object({
   capable: z.boolean(),
   applied: z.boolean(),
@@ -101,6 +119,9 @@ const OutputSchema = outputSchemaWithText({
   results: z.array(SearchResultRowSchema),
   elapsedMs: z.number().nullable(),
   semantic: SearchSemanticStatusSchema.optional(),
+  // Emitted only as `false` (or omitted) — the tool surfaces the warming state
+  // but never a phantom `ready: true`; absent means complete. `z.literal(false)`
+  // makes the never-emitted `true` unrepresentable.
   ready: z.literal(false).optional(),
 });
 
@@ -129,6 +150,9 @@ interface SearchApiResponse {
   results?: SearchApiRow[];
   elapsedMs?: number;
   semantic?: SearchApiSemanticStatus;
+  // Cold-start warming signal. `false` while the index is still building, so
+  // the empty `results` is NOT authoritative — the agent should retry. Absent
+  // on older servers, which means ready.
   ready?: boolean;
   [key: string]: unknown;
 }
@@ -159,6 +183,7 @@ interface SearchStructuredResult {
   results: SearchResultRow[];
   elapsedMs: number | null;
   semantic?: SearchSemanticStatus;
+  // Only ever `false` or absent — see the conditional spread in the handler.
   ready?: false;
 }
 
@@ -176,10 +201,13 @@ function normalizeSignals(signals: SearchApiRow['signals']): {
     lexical: typeof signals?.lexical === 'number' ? signals.lexical : 0,
     fullText: typeof signals?.fullText === 'number' ? signals.fullText : 0,
     recency: typeof signals?.recency === 'number' ? signals.recency : 0,
+    // Pass `vector` through only when present — the lexical path omits it, and
+    // a result row should not advertise a vector signal it didn't have.
     ...(typeof signals?.vector === 'number' ? { vector: signals.vector } : {}),
   };
 }
 
+/** Normalize the optional non-content semantic status block from the API. */
 function normalizeSemanticStatus(
   semantic: SearchApiSemanticStatus | undefined,
 ): SearchSemanticStatus | undefined {
@@ -194,6 +222,11 @@ function normalizeSemanticStatus(
   };
 }
 
+/**
+ * A one-line non-content note about the semantic signal so an agent knows
+ * whether vectors contributed and whether coverage is still filling in. Absent
+ * when the feature is off / the call didn't opt in.
+ */
 function formatSemanticNote(semantic: SearchSemanticStatus | undefined): string {
   if (!semantic) return '';
   if (!semantic.capable) {
@@ -261,6 +294,9 @@ export function register(server: ServerInstance, deps: SearchDeps): void {
 
         const intent = args.intent ?? 'full_text';
         const limit = args.limit ?? 20;
+        // This is the agent retrieval surface — opt into semantic by default
+        // (the server gates on the capability flag + key; with the feature off
+        // it is a no-op lexical search). `semantic: false` forces lexical.
         const body: Record<string, unknown> = {
           query: args.query,
           intent,
@@ -272,6 +308,9 @@ export function register(server: ServerInstance, deps: SearchDeps): void {
 
         const result = (await httpPost(url, '/api/search', body)) as SearchApiResponse;
         if (!result.ok) {
+          // `result.error` is guaranteed to be a string by
+          // `normalizeResponse` — RFC 9457 `title`, body's
+          // `error`/`message`, or generic `'Server returned HTTP <N>'`.
           return textResult(`Error: ${result.error}`, true);
         }
 
@@ -297,6 +336,7 @@ export function register(server: ServerInstance, deps: SearchDeps): void {
         });
 
         const semantic = normalizeSemanticStatus(result.semantic);
+        // Absent `ready` means an older server that never warms — treat as ready.
         const ready = result.ready !== false;
         const structured: SearchStructuredResult = {
           cwd,
@@ -311,6 +351,8 @@ export function register(server: ServerInstance, deps: SearchDeps): void {
 
         const header = `## Search results for "${args.query}" (${rows.length} hit${rows.length === 1 ? '' : 's'}, intent: ${intent})`;
         const semanticNote = formatSemanticNote(semantic);
+        // Cold start: the index is still building, so an empty result is not
+        // authoritative — tell the agent to retry rather than conclude "no hits".
         const resultsText = !ready
           ? `The workspace search index is still warming — results for "${args.query}" are not ready yet. Wait ~2-3 seconds, then retry; if it is still warming after 2-3 retries, use \`exec("grep ...")\` for an index-free search instead.`
           : rows.length === 0

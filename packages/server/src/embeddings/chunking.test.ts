@@ -22,14 +22,17 @@ describe('chunkDocument', () => {
   });
 
   test('long doc splits into overlapping chunks that cover all content', () => {
+    // Build a long doc of distinct numbered words so we can check coverage.
     const words = Array.from({ length: 1200 }, (_, i) => `word${i}`);
     const text = words.join(' ');
     const chunks = chunkDocument(text);
     expect(chunks.length).toBeGreaterThan(1);
+    // Every word appears in at least one chunk (no content dropped).
     const joined = chunks.join(' ');
     for (const w of [words[0], words[600], words[words.length - 1]]) {
       expect(joined.includes(w)).toBe(true);
     }
+    // Consecutive chunks overlap (the tail of one reappears in the next).
     const firstTail = chunks[0].slice(-CHUNK_OVERLAP_CHARS / 2);
     expect(chunks[1].includes(firstTail.trim().split(' ')[0])).toBe(true);
   });

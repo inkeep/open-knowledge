@@ -1,3 +1,10 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleSyncConflicts`.
+ * When the engine is null the handler returns
+ * an empty conflicts list (success path), so happy-path is reachable
+ * in the test harness.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, SyncConflictsSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

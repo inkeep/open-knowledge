@@ -59,10 +59,12 @@ describe('mergeAndPruneRecentLocalAdds', () => {
 
     const result = mergeAndPruneRecentLocalAdds(server, local, recentAdds, NOW);
 
+    // Server's metadata is returned (modified=10:00, not the stale 09:00).
     expect(result).toEqual(server);
     expect(result[0]?.kind === 'document' ? result[0].modified : null).toBe(
       '2026-05-21T10:00:00.000Z',
     );
+    // Registry pruned — confirmation removes the optimistic record.
     expect(recentAdds.has('a.md')).toBe(false);
   });
 
@@ -107,6 +109,11 @@ describe('mergeAndPruneRecentLocalAdds', () => {
   });
 
   test('in-window-preserved: folder entry (kind:"folder") keyed by trailing-slash path is preserved', () => {
+    // Folder optimistic-adds register `path + "/"` (see fileEntryToTreePath +
+    // folderPathToTreeDirectoryPath); the merge function delegates path
+    // computation, so a folder entry preserved here proves the slash-suffix
+    // key shape round-trips end-to-end. Guards FileTree.tsx's create-folder
+    // branch (which registers `recentLocalAddsRef.current.set('docs/', now)`).
     const NOW = 1_700_000_000_000;
     const server: FileEntry[] = [];
     const local = [folder('docs')];
@@ -137,6 +144,10 @@ describe('mergeAndPruneRecentLocalAdds', () => {
   });
 
   test('boundary: addedAt exactly at the preserve-window edge — preserved (strict ">", not ">=")', () => {
+    // Deterministic via injected `now`: addedAt = NOW - WINDOW, so
+    // `now - addedAt === WINDOW`, and the strict `>` comparison preserves.
+    // The companion window-expired test (offset +100) locks the other side
+    // of the boundary; together they pin the comparator semantics.
     const NOW = 1_700_000_000_000;
     const server: FileEntry[] = [];
     const local = [doc('edge')];
@@ -146,6 +157,7 @@ describe('mergeAndPruneRecentLocalAdds', () => {
 
     const result = mergeAndPruneRecentLocalAdds(server, local, recentAdds, NOW);
 
+    // The check is `now - addedAt > WINDOW`, so exactly-at-window is preserved.
     expect(result).toEqual([doc('edge')]);
     expect(recentAdds.has('edge.md')).toBe(true);
   });
@@ -153,6 +165,9 @@ describe('mergeAndPruneRecentLocalAdds', () => {
 
 describe('spliceLazyFolderChildren', () => {
   test('a splice for a target folder absent from the entry set is a no-op', () => {
+    // Deleted-externally race: a child fetch can resolve after the folder's
+    // entry vanished but before the trailing refresh bumps the generation —
+    // splicing then would re-imply the deleted folder as a phantom ancestor.
     const current = [folder('team'), doc('README')];
     const result = spliceLazyFolderChildren(current, 'gone/', [doc('gone/x')], new Map());
     expect(result).toEqual(current);
@@ -175,6 +190,9 @@ describe('spliceLazyFolderChildren', () => {
   });
 
   test('a parent-level resplice leaves already-loaded grandchildren untouched', () => {
+    // team/ and team/sub/ are both loaded; resplicing team/ replaces only
+    // team's DIRECT children — team/sub's children are deeper than the
+    // spliced level and must survive.
     const current = [folder('team'), folder('team/sub'), doc('team/sub/deep'), doc('team/notes')];
     const children = [folder('team/sub')]; // team/notes gone server-side
     const recentAdds = new Map<string, number>();
@@ -185,6 +203,8 @@ describe('spliceLazyFolderChildren', () => {
   });
 
   test('sibling folders sharing the name prefix are not treated as children', () => {
+    // 'teammates' must not match the 'team/' level — the trailing slash on
+    // the folder tree path is the boundary.
     const current = [folder('team'), folder('teammates'), doc('teammates/roster')];
     const children = [doc('team/notes')];
     const recentAdds = new Map<string, number>();
@@ -212,6 +232,10 @@ describe('spliceLazyFolderChildren', () => {
   });
 
   test('descendants of a child folder the server no longer returns are pruned with it', () => {
+    // team/sub was deleted externally between loads. Its previously-loaded
+    // descendants must not pass through — a surviving 'team/sub/deep' path
+    // would re-imply the deleted folder as a phantom ancestor when the tree
+    // rebuilds its folder set from entry paths.
     const current = [folder('team'), folder('team/sub'), doc('team/sub/deep'), doc('team/notes')];
     const children = [doc('team/notes')]; // team/sub gone server-side
     const recentAdds = new Map<string, number>();
@@ -234,6 +258,8 @@ describe('spliceLazyFolderChildren', () => {
 
     const result = spliceLazyFolderChildren(current, '', children, recentAdds);
 
+    // team/notes survives (team is still at root); gone/stale is pruned with
+    // its vanished root folder; the root level itself is the server's.
     expect(result).toEqual([doc('team/notes'), folder('team'), doc('README'), doc('NEW')]);
   });
 
@@ -271,6 +297,9 @@ describe('mergeRootEntriesAdditive', () => {
   });
 
   test('de-dupes by tree path — the existing entry wins on collision', () => {
+    // A streaming batch re-sends a row already painted by a prior batch. The
+    // existing metadata is kept; the duplicate is dropped (the authoritative
+    // completion splice refreshes metadata later).
     const current = [doc('a', '2026-01-01T00:00:00.000Z')];
     const incoming = [doc('a', '2099-12-31T00:00:00.000Z'), doc('b')];
     const result = mergeRootEntriesAdditive(current, incoming);
@@ -278,6 +307,8 @@ describe('mergeRootEntriesAdditive', () => {
   });
 
   test('a folder and a document collide only when their tree paths match', () => {
+    // doc('team') → 'team.md'; folder('team') → 'team/' — distinct tree paths,
+    // so both survive.
     const result = mergeRootEntriesAdditive([folder('team')], [folder('team'), doc('team')]);
     expect(result).toEqual([folder('team'), doc('team')]);
   });

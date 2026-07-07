@@ -1,5 +1,10 @@
 import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'bun:test';
 
+// Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in MCP
+// test setup spawns git children that Bun fails to reap on ubuntu-latest
+// GHA runners; post-test cgroup never drains, hanging test (test) at the
+// 15-min timeout. Tests run normally locally; follow-up PR will migrate
+// fixtures to execFileSync.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -23,6 +28,9 @@ afterEach(async () => {
 
 describe('resolvePreviewUrl — lock edges', () => {
   test('lock returns route-only url when ui.lock is bound', () => {
+    // `previewUrl` is route-only — no scheme/host/port. The lock
+    // is read only for reachability; a bound lock means the route is
+    // navigable in a running UI.
     acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
     updateUiLockPort(lockDir, 5173);
     const result = resolvePreviewUrl('docs/a', { lockDir });
@@ -30,12 +38,17 @@ describe('resolvePreviewUrl — lock edges', () => {
   });
 
   test('lock with port=0 returns null (no further sources)', () => {
+    // The deployed-wiki `config` fallback was removed alongside the
+    // `preview.baseUrl` schema field, so an unbound lock leaves nothing
+    // for the resolver to return.
     acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
     const result = resolvePreviewUrl('docs/a', { lockDir });
     expect(result).toBeNull();
   });
 
   test('route is identical regardless of the lock port', () => {
+    // Route-only: the port no longer rides the resolved url. Any bound
+    // port produces the same `/#/<doc>` route.
     acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
     updateUiLockPort(lockDir, 4242);
     const result = resolvePreviewUrl('docs/a', { lockDir });
@@ -48,6 +61,10 @@ describe('resolvePreviewUrl — lock edges', () => {
   });
 
   test('never emits openknowledge:// scheme — the url is a bare route', () => {
+    // Regression pin: the OK_ELECTRON_PROTOCOL_HOST short-circuit was dropped
+    // because external agent in-app browsers can only render http(s) URLs.
+    // Setting the env var here MUST NOT change resolver output — the resolved
+    // url is now a route fragment with no scheme at all.
     const prior = process.env.OK_ELECTRON_PROTOCOL_HOST;
     try {
       process.env.OK_ELECTRON_PROTOCOL_HOST = '1';
@@ -119,6 +136,7 @@ describe('resolvePreviewUrl — docName encoding (via lock branch)', () => {
 });
 
 describe('resolvePreviewUrl — round-trip via docNameFromHash', () => {
+  // Mirror of packages/app/src/lib/doc-hash.ts (docNameFromHash).
   function docNameFromHash(hash: string): string | null {
     if (!hash.startsWith('#/')) return null;
     const rest = hash.slice(2);
@@ -157,6 +175,9 @@ describe('resolvePreviewUrl — round-trip via docNameFromHash', () => {
   });
 
   test('trailing slash docName: decoder is lossy but safe', () => {
+    // Trailing slashes produce empty trailing segments. The decoder joins
+    // back with '/' and the trailing empty segment survives. Verify round-trip
+    // holds for this edge case too.
     const result = resolvePreviewUrl('trail/', { lockDir });
     const hash = result?.url.slice(result.url.indexOf('#'));
     expect(hash).toBe('#/trail/');

@@ -3,7 +3,6 @@ import { DiscordIcon } from '@/components/icons/discord';
 import { GitHubIcon } from '@/components/icons/github';
 import { XIcon } from '@/components/icons/x';
 import { InkeepLogo } from '@/components/inkeep-logo';
-import { SubscribeForm } from '@/components/subscribe-form';
 import { BRAND_ROUTE } from '@/lib/brand-assets';
 import { DISCORD_URL, GITHUB_URL, X_URL } from '@/lib/site';
 import { DotTexture } from './dot-texture';
@@ -24,15 +23,10 @@ const legalLinks = [
   { href: 'https://inkeep.com/policies/privacy', label: 'Privacy', external: true },
 ];
 
-export function SiteFooter({ showSubscribe = true }: { showSubscribe?: boolean }) {
+export function SiteFooter() {
   return (
     <footer className="relative space-y-16 overflow-hidden px-6 py-10">
       <DotTexture variant="left" className="bottom-0 left-0 w-32 sm:w-60 lg:w-96" />
-      {showSubscribe ? (
-        <div className="container relative z-10 mx-auto">
-          <SubscribeForm />
-        </div>
-      ) : null}
       <div className="container relative z-10 mx-auto mt-8 grid grid-cols-1 items-center gap-6 min-[24rem]:grid-cols-[auto_auto] min-[24rem]:justify-between sm:grid-cols-3 sm:justify-normal">
         <div className="flex items-center justify-center gap-5 min-[24rem]:justify-start">
           {socialLinks.map(({ href, label, Icon }) => (

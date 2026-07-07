@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { getCollector, recordMark, recordVital } from './collector';
 
+// Bun's test runner doesn't provide a DOM (env-override.test.ts shares
+// this rationale). Stub `window` to globalThis so window.__okPerfOverrides
+// is reachable in tests.
 const hadWindow = typeof (globalThis as { window?: unknown }).window !== 'undefined';
 beforeAll(() => {
   if (!hadWindow) {
@@ -15,6 +18,8 @@ afterAll(() => {
 
 describe('getCollector', () => {
   beforeEach(() => {
+    // Ensure a fresh buffer per test; reset() preserves the same object ref
+    // so consumers reading the global don't see a stale one.
     getCollector()?.reset();
   });
 
@@ -34,6 +39,9 @@ describe('getCollector', () => {
 
   test('attaches the collector at globalThis.__ok_perf', () => {
     getCollector();
+    // `globalThis.__ok_perf === window.__ok_perf` in a browser; using
+    // globalThis lets the same test run under both browser (Playwright) and
+    // Node (Bun test) environments.
     expect((globalThis as { __ok_perf?: unknown }).__ok_perf).toBeDefined();
   });
 });
@@ -98,6 +106,9 @@ describe('collector.reset', () => {
   });
 
   test('marks ring evicts oldest at capacity (MAX_RING_ENTRIES)', () => {
+    // Override to a tiny capacity so the eviction is fast and observable.
+    // The collector caches its instance globally — destroy and recreate
+    // by clearing the global and setting the override before re-fetch.
     (globalThis as { __ok_perf?: unknown }).__ok_perf = undefined;
     window.__okPerfOverrides = { MAX_RING_ENTRIES: 3 };
     try {
@@ -113,6 +124,7 @@ describe('collector.reset', () => {
       }
       expect(c?.marks.length).toBe(3);
       const names = c?.marks.toArray().map((m) => m.name) ?? [];
+      // Oldest two evicted; surviving entries remain in chronological order.
       expect(names).toEqual(['ok/test/seq-2', 'ok/test/seq-3', 'ok/test/seq-4']);
     } finally {
       delete window.__okPerfOverrides;

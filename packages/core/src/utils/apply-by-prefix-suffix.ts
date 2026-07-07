@@ -1,5 +1,17 @@
 import type * as Y from 'yjs';
 
+/**
+ * Apply `newText` to `ytext` with minimal CRDT mutation: find matching prefix
+ * and suffix, delete + insert only the differing middle region. Preserves
+ * Y.Text Items in the prefix/suffix (and thus their transaction origins).
+ *
+ * Shared between client-side Observer A (Path B three-way merge result application)
+ * and server-side agent-write path (applyAgentMarkdownWrite).
+ * Same semantics, one implementation.
+ *
+ * @see PRECEDENTS.md precedent #9 (minimize CRDT mutation in sync bridges)
+ * @see PRECEDENTS.md precedent #10 (XmlFragment-authoritative, Y.Text mirrors)
+ */
 export function applyByPrefixSuffix(ytext: Y.Text, currentText: string, newText: string): void {
   if (currentText === newText) return;
 

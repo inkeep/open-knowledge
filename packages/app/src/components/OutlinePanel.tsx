@@ -26,6 +26,12 @@ import { useActiveHeading } from '@/hooks/useActiveHeading';
 import { ProfilerBoundary } from '@/lib/perf';
 import { cn } from '@/lib/utils';
 
+/**
+ * Debounce window for Y.Doc update → page-headings invalidation. Matches the
+ * `TYPING_DEFER_MS` convention from precedent #11 — a 300 ms trailing-edge
+ * window coalesces bursts of keystrokes into a single fetch while still
+ * updating the outline fast enough to feel live.
+ */
 const OUTLINE_INVALIDATE_DEBOUNCE_MS = 300;
 
 async function fetchHeadings(docName: string): Promise<HeadingEntry[]> {
@@ -57,6 +63,8 @@ async function fetchHeadings(docName: string): Promise<HeadingEntry[]> {
   return success.data.headings ?? [];
 }
 
+// Button height (py-1.5 = 12px + text-sm line-height 20px). Marker is
+// vertically centred against this — keep in sync with the button className.
 const ITEM_H = 32;
 const LEVEL_W = 12;
 const MARKER_SIZE = 6;
@@ -102,9 +110,23 @@ function OutlinePanelInner({
     queryKey: ['page-headings', docName],
     queryFn: () => fetchHeadings(docName),
     enabled: !loading && (pages.has(docName) || isManagedArtifactDocName(docName)),
+    // The Y.Doc `update` subscription below is authoritative for freshness —
+    // background refetch on window-focus/reconnect would add wasted fetches
+    // for data already guaranteed-current. Per TkDodo (TanStack Query
+    // maintainer) guidance for subscription-source-authoritative queries:
+    // https://tkdodo.eu/blog/using-web-sockets-with-react-query
     staleTime: Number.POSITIVE_INFINITY,
   });
 
+  // Precise-trigger invalidation. The active doc's Y.Doc `update` event fires
+  // on every mutation — local typing, remote peer edits arriving via
+  // WebSocket, and agent writes — so the outline stays fresh without
+  // polling. We gate on `activeDocName === docName` because
+  // `OutlinePanel` may briefly render for a doc that isn't the active one
+  // during a navigation transition; in that case the initial query fetch is
+  // sufficient and there's no point subscribing to a provider for a different
+  // doc. `DocPanel` in practice only mounts one `OutlinePanel` at a time, but
+  // the guard keeps this robust under future layout changes.
   useEffect(() => {
     if (!activeProvider || activeDocName !== docName) return;
     const doc = activeProvider.document;
@@ -140,6 +162,7 @@ function OutlinePanelInner({
   }
 
   const activeLevel = activeIndex >= 0 ? headings[activeIndex].level : 1;
+  // Centre marker horizontally on the level column, vertically on the row.
   const markerX = (activeLevel - 1) * LEVEL_W + (LEVEL_W - MARKER_SIZE) / 2;
   const markerY = activeIndex * ITEM_H + (ITEM_H - MARKER_SIZE) / 2;
 

@@ -1,3 +1,25 @@
+/**
+ * Curated lucide-icon → inline-SVG-string renderer for imperative (non-React)
+ * DOM, used by the composer's `@`-mention node view (ProseMirror-managed plain
+ * DOM, so it cannot render a React `<Icon />`). The string is injected via
+ * `innerHTML` so the inline chip's leading glyph is pixel-identical to the
+ * top-row chip's React-rendered lucide icon and inherits `currentColor`.
+ *
+ * Why a curated map and not `renderToStaticMarkup(<Icon />)`: `react-dom/server`
+ * is absent from the production bundle, and the composer ships in the EAGER
+ * bundle, which sits ~4 kB under the `size-limit` gate. Pulling in
+ * `react-dom/server` (~30 kB gzipped) to render ≤6 tiny icons would blow that
+ * gate. The geometry below is the inner body of each lucide icon, verbatim from
+ * `lucide-react`; `lucide-svg.test.ts` renders each component with the test-only
+ * `react-dom/server` and asserts this map still matches, so a lucide upgrade that
+ * redraws a glyph fails loudly rather than silently drifting.
+ *
+ * Only the small set of icons the chips can show are curated: the five
+ * `getFileIcon` can return (`FolderOpen`, `FileText`, `Image`, `Film`,
+ * `Volume2`), the search/sidebar file-entry fallbacks (`File`, `ImageIcon`),
+ * plus the `X` remove glyph. An unmapped icon falls back to `FileText`'s body
+ * so the chip always renders something.
+ */
 import {
   File,
   FileText,
@@ -10,6 +32,12 @@ import {
   X,
 } from 'lucide-react';
 
+/**
+ * Inner SVG geometry (the `<path>`/`<rect>`/`<circle>` children) of each lucide
+ * icon, keyed by the component reference. Copied verbatim from each
+ * `lucide-react` component's rendered output; the outer `<svg>` wrapper is
+ * authored in {@link lucideIconToSvgString}. Drift-pinned by `lucide-svg.test.ts`.
+ */
 const ICON_BODIES = new Map<LucideIcon, string>([
   [
     FolderOpen,
@@ -46,6 +74,18 @@ const ICON_BODIES = new Map<LucideIcon, string>([
  *  so build it once per `LucideIcon` component. */
 const SVG_CACHE = new Map<LucideIcon, string>();
 
+/**
+ * Render a (curated) lucide icon to a self-contained inline-SVG string sized to
+ * match the top-row chip's `size-3` icon (0.75rem) and stroked with
+ * `currentColor`, so the host's `color` (muted-foreground → foreground on hover)
+ * drives the glyph. Result memoized per icon component.
+ *
+ * The wrapper mirrors lucide's own attributes (`viewBox="0 0 24 24"`,
+ * `stroke-width="2"`, round caps/joins, `fill="none"`) so the rendered glyph is
+ * identical to the React `<Icon className="size-3" />` the top-row chip paints;
+ * `width`/`height` are pinned to `0.75rem` to match `size-3`. Unmapped icons fall
+ * back to `FileText`'s body.
+ */
 export function lucideIconToSvgString(icon: LucideIcon): string {
   const cached = SVG_CACHE.get(icon);
   if (cached !== undefined) return cached;

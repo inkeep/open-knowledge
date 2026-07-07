@@ -11,8 +11,19 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { moveTemplate, saveTemplate } from '@/lib/folder-config-api';
 
+/** Filename grammar: ASCII alnum + `_` + `-`. The id agents pass to write. */
 const NAME_RE = /^[A-Za-z0-9_-]+$/;
 
+/**
+ * Derive a filesystem-safe template filename from the human-facing name:
+ * lowercase, every non-alphanumeric run collapsed to a single `-`, edges
+ * trimmed. The result satisfies NAME_RE, or is empty when the name has no
+ * alphanumeric content — callers treat empty as invalid.
+ *
+ * Distinct from `toWikiLinkSlug` in `@inkeep/open-knowledge-core`, which
+ * preserves Unicode letters and digits; this is ASCII-only on purpose so
+ * the derived filename always satisfies NAME_RE.
+ */
 export function slugifyTemplateName(name: string): string {
   return name
     .toLowerCase()
@@ -20,6 +31,11 @@ export function slugifyTemplateName(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+/**
+ * Build the `{title?, description?}` frontmatter payload — trimmed, with
+ * empties dropped. The server distinguishes absent from empty-string: an
+ * absent key lets the folder cascade fall back to an inherited value.
+ */
 function buildTemplateFrontmatter(args: { title: string; description: string }): {
   title?: string;
   description?: string;
@@ -32,11 +48,23 @@ function buildTemplateFrontmatter(args: { title: string; description: string }):
   return out;
 }
 
+/** A single default-property row: a frontmatter key and its raw YAML value text. */
 export interface PropRow {
+  /** Stable id for React list keys (not persisted). */
   id: string;
   key: string;
+  /** Raw value text after `key: ` — e.g. `provisional`, `[]`, `{{date}}`. */
   value: string;
 }
+
+/**
+ * The doc-frontmatter a template stamps onto new docs lives in the starter
+ * content's leading frontmatter block, but is surfaced in the dialog as a
+ * dedicated `type` field + editable property rows. These helpers split it out
+ * for editing and recompose it on save. They work at the TEXT level (no YAML
+ * parse) so `{{date}}`/`{{user}}` tokens and value shapes (`[]`, flow lists)
+ * survive verbatim.
+ */
 
 let propRowSeq = 0;
 function nextRowId(): string {
@@ -44,6 +72,12 @@ function nextRowId(): string {
   return `prop-${propRowSeq}`;
 }
 
+/**
+ * Split a template body into its `type`, the remaining doc-frontmatter rows,
+ * and the markdown. Each frontmatter line `key: value` becomes one row;
+ * indented continuation lines fold into the prior row's value so nothing is
+ * lost on a multi-line value.
+ */
 export function parseDocBody(rawBody: string): {
   type: string;
   properties: PropRow[];
@@ -56,6 +90,7 @@ export function parseDocBody(rawBody: string): {
   for (const line of unwrapFrontmatterFences(frontmatter).split('\n')) {
     if (line.trim() === '') continue;
     const colon = line.indexOf(':');
+    // Indented or colon-less lines are continuations of the previous value.
     if ((/^\s/.test(line) || colon === -1) && parsed.length > 0) {
       const prev = parsed[parsed.length - 1];
       if (prev) prev.value += `\n${line}`;
@@ -80,6 +115,11 @@ export function parseDocBody(rawBody: string): {
   return { type, properties, markdown: body };
 }
 
+/**
+ * Recompose a template body from the `type` field, the property rows, and the
+ * markdown. `type` is written first; empty-key rows are dropped; no rows at all
+ * → markdown only (no empty frontmatter block).
+ */
 export function composeDocBody(args: {
   type: string;
   properties: PropRow[];
@@ -90,6 +130,8 @@ export function composeDocBody(args: {
   if (type) lines.push(`type: ${type}`);
   for (const row of args.properties) {
     const key = row.key.trim();
+    // Skip empty keys, and `type` — it is owned by the dedicated Type field;
+    // a property row also named `type` would emit a duplicate YAML key.
     if (key === '' || key === 'type') continue;
     lines.push(row.value === '' ? `${key}:` : `${key}: ${row.value}`);
   }
@@ -99,6 +141,7 @@ export function composeDocBody(args: {
 }
 
 interface TemplateFormInitial {
+  /** Filename (slug). Empty in create mode; the immutable name in edit mode. */
   name: string;
   title: string;
   description: string;
@@ -108,19 +151,37 @@ interface TemplateFormInitial {
 interface UseTemplateFormArgs {
   mode: 'create' | 'edit';
   folderPath: string;
+  /**
+   * Resolution scope of the template being edited. Only a `local` template can
+   * be renamed in place — a rename is a `git mv` of this folder's own file.
+   * An `inherited` template is owned by an ancestor; renaming here would touch
+   * every folder that inherits it, so the filename stays locked. Defaults to
+   * `local` (create always authors a local template).
+   */
   scope?: 'local' | 'inherited';
   initial: TemplateFormInitial;
+  /**
+   * Template names already resolving for this folder (create mode only). A
+   * match surfaces a shadow warning — saving a local template of the same
+   * name supersedes the inherited one per closest-wins.
+   */
   existingNames?: ReadonlySet<string>;
+  /** Called after a successful create/save/rename with the committed filename. */
   onCommitted: (committedName: string) => void;
 }
 
 export interface TemplateFormState {
   mode: 'create' | 'edit';
+  /** The human-facing name (stored as frontmatter `title`). */
   title: string;
+  /** The filename without `.md` (stored as the file `name`). */
   slug: string;
   description: string;
+  /** OKF `type` for created docs; lifted out of the starter-content frontmatter. */
   type: string;
+  /** The remaining default doc-frontmatter, as editable key/value rows. */
   properties: PropRow[];
+  /** Starter content as pure markdown (frontmatter lifted into type + properties). */
   body: string;
   setTitle: (next: string) => void;
   setSlug: (next: string) => void;
@@ -138,11 +199,26 @@ export interface TemplateFormState {
   slugInvalid: boolean;
   slugShadows: boolean;
   trimmedSlug: string;
+  /** The filename shown in edit mode (the rename source / read-only display). */
   fixedName: string;
+  /**
+   * Whether the filename is editable in edit mode (a local template). Drives
+   * whether the edit dialog shows an editable Filename field or the locked
+   * read-only display. Always `false` in create mode (the slug field is its
+   * own affordance there).
+   */
   canRename: boolean;
   submit: () => Promise<void>;
 }
 
+/**
+ * State + submit logic for the template create/edit form. The user fills one
+ * `Name` field; the filename `slug` is derived from it until the user takes
+ * manual control via the `Edit` affordance, after which the two decouple.
+ *
+ * Rendering is `TemplateFormFields` — split out so the create and edit dialogs
+ * can place the fields and footer buttons in different DOM parents.
+ */
 export function useTemplateForm({
   mode,
   folderPath,
@@ -154,6 +230,9 @@ export function useTemplateForm({
   const [title, setTitleState] = useState(initial.title);
   const [slug, setSlugState] = useState(initial.name);
   const [description, setDescription] = useState(initial.description);
+  // The doc-frontmatter is lifted out of the starter content: `type` gets a
+  // dedicated field, the rest become editable property rows, and the body
+  // textarea shows only the markdown.
   const initialDoc = useState(() => parseDocBody(initial.body))[0];
   const [type, setType] = useState(initialDoc.type);
   const [properties, setProperties] = useState<PropRow[]>(initialDoc.properties);
@@ -174,6 +253,8 @@ export function useTemplateForm({
 
   function setTitle(next: string) {
     setTitleState(next);
+    // Keep the filename in lockstep with the name until the user takes
+    // manual control of it via the Edit affordance.
     if (mode === 'create' && !slugManuallyEdited) {
       setSlugState(slugifyTemplateName(next));
     }
@@ -184,6 +265,9 @@ export function useTemplateForm({
     setSlugManuallyEdited(true);
   }
 
+  // A local template can be renamed in place (edit mode); the filename field
+  // is editable and validated just like create's slug. Inherited templates
+  // keep the locked read-only filename.
   const canRename = mode === 'edit' && scope === 'local';
   const slugEditable = mode === 'create' || canRename;
 
@@ -197,12 +281,17 @@ export function useTemplateForm({
 
   async function submit() {
     if (!canSubmit) {
+      // Reveal the name error if the user submits an untouched empty form.
       setTitleTouched(true);
       return;
     }
     setSaving(true);
     const frontmatter = buildTemplateFrontmatter({ title, description });
+    // Recompose the starter content: type + property rows back into the
+    // leading frontmatter, above the markdown body.
     const composedBody = composeDocBody({ type, properties, markdown: body });
+    // Edit mode + changed filename on a local template → a move/rename
+    // (git mv), carrying the edited content so it's one atomic server op.
     const renaming = canRename && trimmedSlug !== initial.name;
     const result = renaming
       ? await moveTemplate({
@@ -238,6 +327,7 @@ export function useTemplateForm({
     } else {
       toast.success(t`Template saved`);
     }
+    // The committed filename: the slug on create/rename, else the unchanged name.
     onCommitted(mode === 'create' || renaming ? trimmedSlug : initial.name);
   }
 
@@ -271,6 +361,10 @@ export function useTemplateForm({
   };
 }
 
+/**
+ * Renders the template form's fields: the `Name` field (with the derived,
+ * overridable filename beneath it), `Description`, and the body.
+ */
 export function TemplateFormFields({
   form,
   bodyPlaceholder,
@@ -373,6 +467,11 @@ export function TemplateFormFields({
   );
 }
 
+/**
+ * The default doc-frontmatter every new document inherits, as editable key/value
+ * rows. Values are raw YAML text (e.g. `[]`, `[a, b]`, `{{date}}`) so any value
+ * shape and the `{{date}}`/`{{user}}` tokens round-trip untouched.
+ */
 function TemplateDefaultProperties({ form }: { form: TemplateFormState }) {
   const { t } = useLingui();
   return (
@@ -439,10 +538,18 @@ function TemplateDefaultProperties({ form }: { form: TemplateFormState }) {
   );
 }
 
+/**
+ * The filename line beneath the `Name` field (create mode). Collapsed, it
+ * shows the derived `<slug>.md` with an `Edit` affordance; expanded — or when
+ * the derived slug is unusable — it shows the editable filename input.
+ */
 function DerivedFilename({ form }: { form: TemplateFormState }) {
   const { t } = useLingui();
   const slugId = useId();
   const [editing, setEditing] = useState(false);
+  // Force the editor open once the user has engaged the name and the derived
+  // slug is either unusable or would shadow an inherited template, so the error
+  // or the shadow warning shows without the user having to open Edit.
   const showEditor = editing || (form.titleTouched && (form.slugInvalid || form.slugShadows));
   const { slug, trimmedSlug } = form;
 
@@ -506,6 +613,13 @@ function DerivedFilename({ form }: { form: TemplateFormState }) {
   );
 }
 
+/**
+ * The editable filename field shown in edit mode for a LOCAL template. Changing
+ * it renames the template — a `git mv` of `<folder>/.ok/templates/<name>.md`,
+ * carrying any body/description edits in the same save. Inherited templates
+ * never render this (their filename is locked); create mode uses
+ * `DerivedFilename` (which derives the slug from the name).
+ */
 function EditFilename({ form }: { form: TemplateFormState }) {
   const { t } = useLingui();
   const slugId = useId();

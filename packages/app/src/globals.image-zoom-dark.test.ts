@@ -1,3 +1,12 @@
+/**
+ * Image-zoom modal must honor the active theme. `react-medium-image-zoom`'s
+ * shipped stylesheet hardcodes `[data-rmiz-modal-overlay="visible"] {
+ * background-color: rgba(255, 255, 255, 1); }`; without an app-side `.dark`
+ * counterpart referencing a theme token the lightbox flashes solid white in
+ * dark mode. The override convention is the `.dark .activity-panel-diff …`
+ * block already in globals.css.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

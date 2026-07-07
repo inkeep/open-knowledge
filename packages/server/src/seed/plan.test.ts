@@ -14,6 +14,8 @@ describe('planSeed — nested .ok/ era', () => {
 
   beforeEach(async () => {
     projectDir = await mkdtemp(join(tmpdir(), 'seed-plan-'));
+    // Simulate `ok init` having created `.ok/config.yml` already — the
+    // canonical project-root marker.
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(join(projectDir, '.ok', 'config.yml'), '', 'utf-8');
   });
@@ -32,6 +34,8 @@ describe('planSeed — nested .ok/ era', () => {
   });
 
   test('throws SeedPrerequisiteError when .ok/ exists but config.yml is absent', async () => {
+    // Mimics a nested folder-rule sidecar — `.ok/` with no `config.yml`.
+    // The gate must reject this, not accept it as a valid project root.
     const bare = await mkdtemp(join(tmpdir(), 'seed-sidecar-'));
     try {
       mkdirSync(join(bare, '.ok'), { recursive: true });
@@ -66,6 +70,7 @@ describe('planSeed — nested .ok/ era', () => {
         true,
       );
     }
+    // Plus root log.md.
     expect(createdPaths.has('log.md')).toBe(true);
   });
 
@@ -88,6 +93,7 @@ describe('planSeed — nested .ok/ era', () => {
   });
 
   test('skips entries that already exist on disk', async () => {
+    // Pre-create one folder + its nested frontmatter.
     mkdirSync(join(projectDir, 'external-sources', '.ok'), { recursive: true });
     writeFileSync(
       join(projectDir, 'external-sources', '.ok', 'frontmatter.yml'),
@@ -100,6 +106,7 @@ describe('planSeed — nested .ok/ era', () => {
     expect(skippedPaths.has('external-sources/.ok')).toBe(true);
     expect(skippedPaths.has('external-sources/.ok/frontmatter.yml')).toBe(true);
 
+    // Other folders still planned.
     const createdPaths = new Set(plan.created.map((e) => e.path));
     expect(createdPaths.has('research')).toBe(true);
     expect(createdPaths.has('articles')).toBe(true);

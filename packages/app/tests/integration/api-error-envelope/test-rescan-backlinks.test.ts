@@ -1,3 +1,19 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleTestRescanBacklinks`
+ * Dev-only route gated on `enableTestRoutes`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for
+ * `POST /api/test-rescan-backlinks`:
+ *   - happy path: status 200, `Content-Type: application/json`, flat body
+ *     `{}` (no `ok: true` discriminator).
+ *   - method-not-allowed on GET → 405 `urn:ok:error:method-not-allowed`
+ *     with `Allow: POST`.
+ *
+ * The 503 `urn:ok:error:backlink-index-not-configured` path is
+ * unreachable in `createTestServer` (the harness wires up a real
+ * `BacklinkIndex`); covered by `packages/server/src/api-backlinks.test.ts`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   ProblemDetailsSchema,

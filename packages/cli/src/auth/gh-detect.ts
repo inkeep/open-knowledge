@@ -9,6 +9,14 @@ export interface GhDetectResult {
 export type ExecFileSyncFn = typeof execFileSync;
 type FileExistsFn = (path: string) => boolean;
 
+/**
+ * Standard install locations for `gh` on macOS + Linux. Checked when the bare
+ * `gh` lookup via `PATH` fails — which happens whenever OpenKnowledge runs
+ * from a context that doesn't inherit the user's shell PATH. The macOS GUI
+ * launch path (`launchd` → Electron → utility fork → spawned CLI) is the
+ * load-bearing case: `launchd` provides only `/usr/bin:/bin:/usr/sbin:/sbin`,
+ * so Homebrew-installed binaries at `/opt/homebrew/bin` are invisible.
+ */
 const KNOWN_GH_PATHS: readonly string[] = [
   '/opt/homebrew/bin/gh', // macOS Apple Silicon Homebrew
   '/usr/local/bin/gh', // macOS Intel Homebrew / manual install
@@ -18,10 +26,25 @@ const KNOWN_GH_PATHS: readonly string[] = [
 ];
 
 interface DetectGhOptions {
+  /** Injectable for tests. */
   _exec?: ExecFileSyncFn;
+  /** Injectable for tests. */
   _fileExists?: FileExistsFn;
 }
 
+/**
+ * Detect whether `gh` CLI is on PATH (or a known absolute install path) and
+ * currently authenticated. Returns the token from `gh auth token` on success.
+ *
+ * When `host` is provided, scopes the lookup with `--hostname <host>` so a
+ * GHES-only login isn't mistaken for github.com auth (or vice versa). Note
+ * the flag spelling — `gh auth token` rejects `--host` with "unknown flag";
+ * the canonical name is `--hostname` (alias `-h`).
+ *
+ * Lookup order: bare `gh` via `PATH` first (fast path for shell launches),
+ * then `KNOWN_GH_PATHS` in order (only paths that exist on disk are tried).
+ * Stops at the first command that returns a non-empty token.
+ */
 export function detectGh(host?: string, options: DetectGhOptions = {}): GhDetectResult {
   const exec = options._exec ?? execFileSync;
   const fileExists = options._fileExists ?? existsSync;
@@ -38,7 +61,9 @@ export function detectGh(host?: string, options: DetectGhOptions = {}): GhDetect
         .toString()
         .trim();
       if (token.length > 0) return { available: true, token };
-    } catch {}
+    } catch {
+      // Try next candidate
+    }
   }
   return { available: false };
 }

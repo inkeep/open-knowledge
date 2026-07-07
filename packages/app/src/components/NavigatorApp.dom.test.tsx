@@ -218,8 +218,10 @@ describe('NavigatorApp launcher runtime behavior', () => {
     await renderNavigator(bridge);
 
     const list = await screen.findByTestId('nav-recent-list');
+    // Worktree row: name up top, a "worktree" badge, and an "of <parent>" subline.
     expect(list.textContent).toContain('dev');
     expect(list.textContent).toContain('pnw-fishing');
+    // Plain project row keeps its name + full path, unlabeled.
     expect(list.textContent).toContain('Plain Notes');
     expect(list.textContent).toContain('/Users/x/plain-notes');
   });
@@ -247,6 +249,9 @@ describe('NavigatorApp launcher runtime behavior', () => {
     const [worktreeRow, plainRow] = rows;
     if (!worktreeRow || !plainRow) throw new Error('expected two recent rows');
 
+    // every row leads with the same folder icon; a worktree
+    // is flagged by a "worktree" pill + an "of <parent>" subline, and every row
+    // gets a right-aligned branch chip.
     expect(worktreeRow.querySelector('svg.lucide-folder')).not.toBeNull();
     expect(worktreeRow.textContent).toContain('dev');
     expect(worktreeRow.textContent).toContain('worktree');
@@ -257,6 +262,8 @@ describe('NavigatorApp launcher runtime behavior', () => {
       ),
     ).not.toBeNull();
 
+    // Plain project: same folder icon, its full path, and NO worktree pill. (Its
+    // branch chip comes from async git detection — exercised in real use, not here.)
     expect(plainRow.querySelector('svg.lucide-folder')).not.toBeNull();
     expect(plainRow.textContent).toContain('Plain Notes');
     expect(plainRow.textContent).toContain('/Users/x/plain-notes');

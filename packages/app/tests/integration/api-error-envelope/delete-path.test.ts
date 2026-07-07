@@ -1,3 +1,14 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleDeletePath`.
+ *
+ * Asserts the canonical RFC 9457 wire shape:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `DeletePathSuccessSchema`, no `ok: true` discriminator.
+ *   - unknown kind → `urn:ok:error:invalid-request`.
+ *   - target doesn’t exist → `urn:ok:error:doc-not-found`.
+ *   - method-not-allowed on GET emits `urn:ok:error:method-not-allowed`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { DeletePathSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

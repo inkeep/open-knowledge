@@ -1,4 +1,23 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+/**
+ * Ignore-patterns section.
+ *
+ * Project-scoped — `.okignore` is a per-project artifact and SettingsDialog
+ * wires this section under the THIS PROJECT → Ignore patterns sidebar item.
+ * The binding lives on `<ConfigProvider>` so FileTree right-click "Hide this
+ * file/folder" can patch the same Y.Text from outside this dialog.
+ *
+ * Surface: list editor with per-row edit / remove / drag-handle reorder
+ * + Add-pattern affordance. Each commit flashes a per-row green check
+ * (matching the existing Settings auto-save UX). Heuristic warnings +
+ * persistence-time rejection flash, "Show advanced" raw-text fallback,
+ * and per-row "matches N files" preview layer on top of the same binding.
+ *
+ * Round-trip discipline: the underlying Y.Text body is the source of
+ * truth. All structural edits go through the pure parser/serializer in
+ * `./okignore-doc.ts` so comments + blank lines round-trip byte-identically
+ * when the user makes no list-editor changes.
+ */
 
 import {
   closestCenter,
@@ -109,6 +128,9 @@ function OkignoreSectionBody({ binding }: { binding: OkignoreBinding }) {
     });
   }, [binding]);
 
+  // Project-relative file paths from the same `/api/documents` PageList already
+  // serves to FileTree. Reused for client-side per-row pattern preview so
+  // there's no extra fetch — the React Compiler memoizes the derived array.
   const { pages, pageMeta, assetPaths } = usePageList();
   const filePaths = derivePreviewPaths(pages, pageMeta, assetPaths);
 
@@ -139,6 +161,11 @@ function OkignoreSectionBody({ binding }: { binding: OkignoreBinding }) {
     [],
   );
 
+  // CC1 OKIGNORE_INVALID arrives after the server has already L3-reverted
+  // Y.Text to LKG. Route the envelope into the binding so its status state
+  // machine flips to 'rejected'; consumers (this section's banner) react
+  // off the binding's subscribeRejection. We filter on docName here — the
+  // binding has no docName context (per its API, callers route).
   useEffect(() => {
     return subscribeToConfigValidationRejected((event) => {
       if (event.docName !== CONFIG_DOC_NAME_OKIGNORE) return;
@@ -156,6 +183,11 @@ function OkignoreSectionBody({ binding }: { binding: OkignoreBinding }) {
     });
   }, [binding]);
 
+  // Nested `.okignore` parse errors arrive on the dedicated CC1 channel
+  // (`config-ignore-nested-error`). The server has already fallen back to
+  // the previous filter — the workspace continues functioning. Surface a
+  // non-blocking Sonner toast with the actionable project-relative path so
+  // the user can fix the file in an external editor.
   useEffect(() => {
     return subscribeToConfigIgnoreNestedError((event) => {
       const { path } = event;
@@ -215,6 +247,9 @@ function OkignoreSectionBody({ binding }: { binding: OkignoreBinding }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // Latest-rejection identity used as a flash key for the AddPatternRow.
+  // Renews per rejection so a second rejection re-triggers the flash even
+  // if the visible row is the same.
   const rejectionFlashKey = rejection !== null ? `rejection-${rejection.ts}` : null;
 
   const [showAdvanced, setShowAdvanced] = useShowAdvanced();
@@ -278,6 +313,14 @@ function OkignoreSectionBody({ binding }: { binding: OkignoreBinding }) {
   );
 }
 
+/**
+ * Raw-text editor for full gitignore syntax (negation, globs, anchoring).
+ * Mirrors the Y.Text body byte-for-byte when the user makes no edits — no
+ * parse/serialize round-trip, so comments and blank lines pass through
+ * unchanged. Edits debounced-commit to Y.Text after `RAW_TEXT_COMMIT_MS`;
+ * blur and unmount flush any pending commit so a toggle-off mid-typing
+ * doesn't drop typed content.
+ */
 function OkignoreAdvancedEditor({ binding, text }: { binding: OkignoreBinding; text: string }) {
   const { t } = useLingui();
   const [draft, setDraft] = useState(text);
@@ -286,6 +329,9 @@ function OkignoreAdvancedEditor({ binding, text }: { binding: OkignoreBinding; t
   const draftRef = useRef(text);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Re-sync from binding when not focused — mirrors PatternRowInput's
+  // keepDirtyValues semantic so a remote-peer edit doesn't stomp the
+  // local keystroke.
   useEffect(() => {
     if (focusedRef.current) return;
     if (text === lastSyncedRef.current) return;
@@ -298,6 +344,8 @@ function OkignoreAdvancedEditor({ binding, text }: { binding: OkignoreBinding; t
     draftRef.current = draft;
   }, [draft]);
 
+  // Cleanup-flush: on unmount (toggle-off, route change, etc.), commit any
+  // pending draft so the user's typed content is never silently dropped.
   useEffect(() => {
     return () => {
       if (commitTimerRef.current) {
@@ -374,6 +422,8 @@ function ShowAdvancedToggle({ enabled, onToggle }: { enabled: boolean; onToggle:
 function RejectionBanner({ rejection }: { rejection: RejectionState }) {
   const { t } = useLingui();
   const { lineNumber, message } = rejection;
+  // Build the banner text via `t` so the optional line-number clause stays a
+  // single translatable message rather than a concatenation of fragments.
   const bannerText =
     lineNumber !== undefined
       ? t`Pattern syntax error (line ${lineNumber}): ${message}`
@@ -552,6 +602,14 @@ function SortablePatternRow({
   );
 }
 
+/**
+ * Per-row controlled input. Local draft state survives remote Y.Text updates
+ * while the input has focus (matches RHF's keepDirtyValues semantic) — this
+ * prevents a remote peer's edit on a different row from stomping a local
+ * keystroke that hasn't blurred yet. When the input is unfocused, remote
+ * updates re-init the draft so the visible row reflects the latest server
+ * state.
+ */
 function PatternRowInput({
   patternIndex,
   initialText,
@@ -725,6 +783,11 @@ function WarningIndicator({ warnings }: { warnings: OkignoreWarning[] }) {
   );
 }
 
+/**
+ * Polite-live-region green check matching the SavedIndicator pattern in
+ * SettingsDialog. The wrapper is always rendered so screen readers see a
+ * stable live region; only the visible icon toggles.
+ */
 function SavedIndicator({ visible }: { visible: boolean }) {
   return (
     <span
@@ -745,6 +808,12 @@ function SavedIndicator({ visible }: { visible: boolean }) {
   );
 }
 
+/**
+ * Parse the raw `.okignore` text body into the visible-pattern rows used
+ * for empty-state detection + read-only display. Comments and blank lines
+ * are metadata at this layer (the full list editor preserves them in the
+ * underlying text).
+ */
 export function parseRows(text: string): string[] {
   return listPatterns(parseOkignoreDoc(text)).map((p) => p.text);
 }
@@ -772,6 +841,12 @@ function pickOkignoreDetail(
   return { detail: error.detail, lineNumber: error.lineNumber };
 }
 
+/**
+ * Debounce heuristic warnings on an evolving input. Keeps the typing
+ * experience snappy: while the user is mid-keystroke, the indicator
+ * doesn't flicker every character. 150ms matches the human perceptual
+ * "settled" threshold — same constant as the live preview.
+ */
 function useDebouncedHeuristicWarnings(input: string): OkignoreWarning[] {
   const [warnings, setWarnings] = useState<OkignoreWarning[]>(() =>
     input.length === 0 ? [] : checkHeuristicWarnings(input),
@@ -789,6 +864,14 @@ function useDebouncedHeuristicWarnings(input: string): OkignoreWarning[] {
   return warnings;
 }
 
+/**
+ * Debounce per-row "matches N files" preview. Returns null while
+ * the pattern is empty so the consumer can hide the label entirely
+ * (otherwise we'd show "matches 0" on an unblurred empty input).
+ *
+ * The npm:ignore instance is cached per pattern string in the underlying
+ * `countMatches` so re-typing the same pattern across rows is free.
+ */
 function useDebouncedPreview(pattern: string, filePaths: ReadonlyArray<string>): number | null {
   const trimmed = pattern.trim();
   const [count, setCount] = useState<number | null>(() =>
@@ -807,6 +890,15 @@ function useDebouncedPreview(pattern: string, filePaths: ReadonlyArray<string>):
   return count;
 }
 
+/**
+ * Per-row preview label. Hidden while count is null (empty input). The
+ * primary affordance ("matches N files") is muted at zero so the
+ * row height doesn't jump when the user types a typo. The honesty caveat
+ * "(some may already be hidden by other rules)" only appears at zero,
+ * where it directly answers "why zero?" — at non-zero counts the user is
+ * already getting useful feedback and the universal caveat trains them
+ * to ignore it.
+ */
 function PatternPreview({ count }: { count: number | null }) {
   if (count === null) {
     return (
@@ -838,6 +930,13 @@ function PatternPreview({ count }: { count: number | null }) {
   );
 }
 
+/**
+ * Build the project-relative file-path list for the per-row preview from
+ * the same `usePageList()` data FileTree consumes. Documents lose their
+ * extension in PageListContext (it only carries `docName`); reattach it
+ * from `pageMeta.docExt` (default `.md` when missing). Asset paths are
+ * already path-shaped.
+ */
 export function derivePreviewPaths(
   pages: ReadonlySet<string>,
   pageMeta: ReadonlyMap<string, { docExt?: string }>,
@@ -854,6 +953,11 @@ export function derivePreviewPaths(
   return out;
 }
 
+/**
+ * `okignore-show-advanced` toggle persistence. Trust boundary: localStorage
+ * throws in Safari private mode and on quota exceedance. Falls back to
+ * default-off on any failure.
+ */
 export function readShowAdvanced(): boolean {
   try {
     return globalThis.localStorage?.getItem(SHOW_ADVANCED_LS_KEY) === 'true';
@@ -866,6 +970,9 @@ export function writeShowAdvanced(next: boolean): void {
   try {
     globalThis.localStorage?.setItem(SHOW_ADVANCED_LS_KEY, next ? 'true' : 'false');
   } catch (e) {
+    // localStorage unavailable (Safari private mode, quota, SSR). Surface a
+    // single debug line so a developer chasing "why doesn't the toggle
+    // persist?" sees the failure without it spamming each mount.
     console.debug(
       '[OkignoreSection] localStorage unavailable; advanced toggle will not persist:',
       e,
@@ -882,6 +989,12 @@ function useShowAdvanced(): [boolean, (next: boolean) => void] {
   return [enabled, setEnabled];
 }
 
+/**
+ * Toggles `true` for `REJECTION_FLASH_MS` whenever `key` changes to a new
+ * non-null value. Used to flash the AddPatternRow input red when L3 rejects
+ * a commit. A new key (timestamp-based) on each rejection re-triggers the
+ * flash even when the visible content is identical.
+ */
 function useRejectionFlash(key: string | null): boolean {
   const [flashing, setFlashing] = useState(false);
   useEffect(() => {

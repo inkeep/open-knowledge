@@ -115,6 +115,8 @@ function summarizeStructuredContentForLog(
   if ('previewUrlSource' in structured) {
     summary.previewUrlSource = structured.previewUrlSource;
   }
+  // Body size is captured by `contentTextChars` at the result level; no tool
+  // carries a raw `structuredContent.stdout` channel anymore.
   if (Array.isArray(structured.warnings)) {
     summary.warningsCount = structured.warnings.length;
   }
@@ -224,6 +226,10 @@ export function wrapToolHandlerForLogging(
   };
 }
 
+/**
+ * Return a server instance whose `tool(...)` and `registerTool(...)`
+ * registration wraps handlers with request-aware structured logging.
+ */
 export function createLoggedServer(
   server: ServerInstance,
   opts: LoggedToolServerOptions,
@@ -231,6 +237,8 @@ export function createLoggedServer(
   if (!opts.logger) return server;
 
   const originalTool = (server as unknown as { tool: AnyToolHandler }).tool.bind(server);
+  // registerTool is the modern MCP SDK registration API; older mocks/test stubs may not
+  // expose it. Wrap only when present so consumers using the legacy `tool()` shape still work.
   const rawRegisterTool = (server as unknown as { registerTool?: (...args: unknown[]) => unknown })
     .registerTool;
   const originalRegisterTool =

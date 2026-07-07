@@ -1,3 +1,15 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleForwardLinks`.
+ *
+ * Asserts the canonical RFC 9457 wire shape for `GET /api/forward-links?docName=...`:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `ForwardLinksSuccessSchema`, no `ok` discriminator.
+ *   - missing docName query param → `urn:ok:error:invalid-request`.
+ *   - unsafe docName → `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
+ *     `Allow: GET` header.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ForwardLinksSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

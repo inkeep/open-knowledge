@@ -34,6 +34,7 @@ import { positionAwareBlankLineJoin } from './position-aware-join.ts';
 import { remarkMdxAgnostic } from './remark-mdx-agnostic.ts';
 import { singleDollarMathPromoterPlugin } from './single-dollar-math-promoter.ts';
 import { remarkTags } from './tag-to-markdown.ts';
+import { voidBrPromoterPlugin } from './void-br-promoter.ts';
 import { remarkWikiLink } from './wiki-link-micromark.ts';
 
 interface PipelineOptions {
@@ -78,6 +79,7 @@ export const ACTIVE_MDAST_PLUGINS = [
   },
   { name: 'callout-transformer', plugin: calloutTransformerPlugin },
   { name: 'restore-from-mdx', plugin: restoreFromMdx },
+  { name: 'void-br-promoter', plugin: voidBrPromoterPlugin },
   { name: 'restore-entity-refs', plugin: restoreEntityRefsPlugin },
   { name: 'restore-backslash-escapes', plugin: restoreBackslashEscapesPlugin },
   { name: 'details-accordion-promoter', plugin: detailsAccordionPromoterPlugin },

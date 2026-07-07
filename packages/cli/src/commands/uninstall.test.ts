@@ -233,6 +233,7 @@ describe('runUninstall', () => {
           runRemovalDeps: {
             clearToken: async () => ({ touched: [] }),
             clearEmbeddingsKey: async () => ({ touched: [] }),
+            // The SIGTERM fails → the stop-server op is `failed`.
             stopServer: () => ({ stopped: 0, failed: [{ pid: 99, error: 'EPERM' }] }),
           },
         },
@@ -274,6 +275,8 @@ describe('runUninstall', () => {
         deps: {
           discoverLockDirs: async () => [],
           detectInstallMethods: () => [],
+          // Stub the machine-touching primitives so the real keychain is never
+          // touched; fs ops run for real against the temp home.
           runRemovalDeps: {
             clearToken: async () => ({ touched: ['file'] }),
             clearEmbeddingsKey: async () => ({ touched: [] }),
@@ -284,6 +287,8 @@ describe('runUninstall', () => {
       expect(result.status).toBe('done');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('Removed');
+      // The machinery is gone (the ~/.ok dir itself is kept in non-purge mode
+      // for the skills carve-out, but its contents are removed).
       expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(false);
       expect(existsSync(join(home, '.agents', 'skills', 'open-knowledge-discovery'))).toBe(false);
     } finally {

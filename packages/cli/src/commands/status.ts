@@ -1,3 +1,11 @@
+/**
+ * `open-knowledge status` — human-readable inspection of the server / ui
+ * lockfile state.
+ *
+ * Exits 0 regardless of whether processes are live; this is a pure query
+ * command. Prints formatted text by default, JSON with `--json`.
+ */
+
 import { type Config, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { inspectLock, type LockState } from './lock-state.ts';
@@ -83,6 +91,7 @@ function renderEntry(entry: StatusEntry): string {
   if (entry.state === 'dead-pid') {
     return `${label}  stale (dead pid=${entry.pid}) — run \`ok clean\``;
   }
+  // alive
   return `${label}  alive  pid=${entry.pid} port=${entry.port} started=${entry.startedAt}`;
 }
 
@@ -110,6 +119,10 @@ export function statusCommand(getConfig: () => Config): Command {
     .description('Show live state of the server + ui lockfiles for this project')
     .option('--json', 'Emit structured JSON instead of formatted text')
     .action((opts: { json?: boolean }) => {
+      // Lock anchor is the project root (cwd for the CLI), not contentDir —
+      // `server-factory.ts` writes `<projectDir>/.ok/local/server.lock`. When
+      // `content.dir` is a sub-folder (git-root-promotion case), resolving
+      // through `resolveContentDir` would look in the wrong tree.
       getConfig(); // still load config to surface any project-config errors
       const lockDir = resolveLockDir(process.cwd());
       runStatus({ lockDir, json: opts.json === true });

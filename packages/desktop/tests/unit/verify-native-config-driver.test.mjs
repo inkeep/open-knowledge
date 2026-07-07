@@ -52,6 +52,7 @@ describe('resolveBundledNativeDirInDir', () => {
 
   test('finds the loader when <dir> is itself the native dir', () => {
     const existsSyncMock = mock((p) => p === '/proj/native/index.js');
+    // The first candidate '.' checks /proj/index.js (absent), then 'native'.
     expect(resolveBundledNativeDirInDir('/proj', { existsSync: existsSyncMock })).toBe(
       '/proj/native',
     );

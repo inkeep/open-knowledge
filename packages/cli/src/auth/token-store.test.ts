@@ -3,6 +3,11 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// Mutable mock state shared with the mocked `@napi-rs/keyring`. Each test
+// resets this via `resetKeyringMockState()` in beforeEach. The mock's `Entry`
+// export is a getter so we can simulate both failure branches of
+// `createTokenStore`'s probe: module-evaluation failure (throwOnImport) and
+// constructor failure (throwOnConstruct).
 interface KeyringCall {
   service: string;
   account: string;
@@ -14,6 +19,9 @@ interface SetPasswordCall extends KeyringCall {
 const keyringMockState = {
   throwOnImport: false,
   throwOnConstruct: false,
+  // Simulate a keychain read that fails (locked keychain / ACL denial / ABI
+  // mismatch) — `getPassword()` throws rather than returning null. Drives the
+  // `read-error` vs `absent` diagnostic distinction.
   throwOnGetPassword: false,
   setPasswordCalls: [] as SetPasswordCall[],
   deletePasswordCalls: [] as KeyringCall[],
@@ -70,6 +78,10 @@ class MockKeyringEntry {
 mock.module('@napi-rs/keyring', () => ({ Entry: MockKeyringEntry }));
 
 import { FileBackend } from './token-store.ts';
+
+// ---------------------------------------------------------------------------
+// File backend — tested directly with a tmp directory
+// ---------------------------------------------------------------------------
 
 describe('FileBackend', () => {
   let tmpDir: string;
@@ -143,9 +155,12 @@ describe('FileBackend', () => {
   test('auth.yml file has mode 0600', async () => {
     await store.set('github.com', 'alice', 'gho_abc123');
     const stat = Bun.file(authFile);
+    // The file should exist
     expect(await stat.exists()).toBe(true);
+    // Verify mode via Node fs stat
     const { statSync } = await import('node:fs');
     const mode = statSync(authFile).mode & 0o777;
+    // 0600 on Unix; Windows may return different value
     if (process.platform !== 'win32') {
       expect(mode).toBe(0o600);
     }
@@ -155,8 +170,10 @@ describe('FileBackend', () => {
     await store.set('github.com', 'alice', 'gho_abc123');
     await store.set('gitlab.com', 'bob', 'glpat_xyz');
     const raw = readFileSync(authFile, 'utf-8');
+    // Should contain both hostnames as YAML keys
     expect(raw).toContain('github.com');
     expect(raw).toContain('gitlab.com');
+    // Token values present
     expect(raw).toContain('gho_abc123');
     expect(raw).toContain('glpat_xyz');
   });
@@ -180,6 +197,10 @@ describe('FileBackend', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// createTokenStore — integration smoke test
+// ---------------------------------------------------------------------------
+
 describe('createTokenStore', () => {
   beforeEach(resetKeyringMockState);
 
@@ -194,6 +215,15 @@ describe('createTokenStore', () => {
     expect(typeof store.clear).toBe('function');
   });
 });
+
+// ---------------------------------------------------------------------------
+// TokenStoreDiagnostics — keychain read outcome + backend selection
+//
+// These hooks are the only signal that distinguishes a genuinely-absent
+// credential (errSecItemNotFound → null) from a keychain read that failed
+// (locked / ACL-denied / ABI mismatch → throw). Both return null to callers,
+// so without the diagnostic the cause of a vanished credential is unknowable.
+// ---------------------------------------------------------------------------
 
 describe('createTokenStore diagnostics', () => {
   let tmpDir: string;
@@ -247,15 +277,23 @@ describe('createTokenStore diagnostics', () => {
       onKeychainRead: (info) => reads.push(info),
     });
     const entry = await store.get('github.com');
+    // Behaviour preserved: a failed read still resolves to null for callers.
     expect(entry).toBeNull();
     expect(reads).toHaveLength(1);
     expect(reads[0]?.kind).toBe('read-error');
     expect(reads[0]?.host).toBe('github.com');
+    // Only the error NAME is surfaced (e.g. 'Error'), never the message — a
+    // native keychain error string could echo stored credential bytes.
     expect(reads[0]?.error).toBe('Error');
+    // The mock throws `new Error('keychain read denied')`; the message must not
+    // reach the diagnostic.
     expect(JSON.stringify(reads)).not.toContain('keychain read denied');
   });
 
   test('onKeychainRead reports corrupt-entry (no stored bytes) when JSON.parse fails', async () => {
+    // A non-JSON value masquerading as a stored token. Its bytes must never
+    // appear in the emitted diagnostic — a JSON.parse SyntaxError message would
+    // echo ~20 chars of the raw value otherwise.
     const TOKEN_BYTES = 'gho_corrupt_secret_value_xyz';
     keyringMockState.getPasswordReturns.set(`open-knowledge:github.com`, TOKEN_BYTES);
     const { createTokenStore } = await import('./token-store.ts');
@@ -264,15 +302,22 @@ describe('createTokenStore diagnostics', () => {
       onKeychainRead: (info) => reads.push(info),
     });
     const entry = await store.get('github.com');
+    // Behaviour preserved: an unparseable entry still resolves to null.
     expect(entry).toBeNull();
     expect(reads).toHaveLength(1);
+    // Distinct from a genuine keychain access failure.
     expect(reads[0]?.kind).toBe('corrupt-entry');
     expect(reads[0]?.host).toBe('github.com');
+    // Fixed marker, no bytes.
     expect(reads[0]?.error).toBe('corrupt-entry');
+    // The token bytes must not leak across the full serialized diagnostic.
     expect(JSON.stringify(reads)).not.toContain(TOKEN_BYTES);
   });
 
   test('a throwing onKeychainRead callback never breaks the lookup', async () => {
+    // Diagnostics are best-effort; an exception in the observer must not abort
+    // get() or strand the caller. Exercised on the absent path (the only path
+    // that emits onKeychainRead when nothing is stored).
     const { createTokenStore } = await import('./token-store.ts');
     const store = await createTokenStore(join(tmpDir, 'auth.yml'), {
       onKeychainRead: () => {
@@ -294,6 +339,18 @@ describe('createTokenStore diagnostics', () => {
     expect(await store.get('github.com')).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// KeyringBackend upsert semantics
+//
+// Reachability-tested via `createTokenStore` + mock.module rather than
+// importing KeyringBackend directly, to avoid widening token-store.ts's
+// public surface.
+//
+// Negative control (documented, not implemented): a broken `set()` impl that
+// replaced `entry.setPassword(...)` with `entry.deletePassword(); entry.setPassword(...)`
+// would fail the "never calls deletePassword during refresh" assertion below.
+// ---------------------------------------------------------------------------
 
 describe('KeyringBackend upsert semantics', () => {
   let tmpDir: string;
@@ -361,6 +418,10 @@ describe('KeyringBackend upsert semantics', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// createTokenStore fallback to FileBackend
+// ---------------------------------------------------------------------------
+
 describe('createTokenStore fallback to FileBackend', () => {
   let tmpDir: string;
   let authFile: string;
@@ -417,6 +478,16 @@ describe('createTokenStore fallback to FileBackend', () => {
     expect(await store.get('github.com')).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// clearTokenFromAllBackends — defensive signout
+//
+// Guarantees signout clears credentials from every backend regardless of
+// which one createTokenStore resolves today. The load-bearing leak scenario:
+// the keyring native binding fails to load on session A (token writes go to
+// ~/.ok/auth.yml) but loads on session B (signout clears the empty keychain
+// and leaves auth.yml untouched). The defensive helper closes that gap.
+// ---------------------------------------------------------------------------
 
 describe('clearTokenFromAllBackends', () => {
   let tmpDir: string;
@@ -529,6 +600,18 @@ describe('clearTokenFromAllBackends', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// createTokenStore cross-backend read fallback + migration
+//
+// Regression guard for the silent-plaintext / split-brain bug: when the
+// bundled desktop CLI could not resolve `@napi-rs/keyring`, auth tokens were
+// written to the plaintext file backend (~/.ok/auth.yml). A later run whose
+// keyring DID load resolved the keychain backend, read an empty keychain, and
+// reported the user logged out — the file-stored token was invisible. The
+// keychain-backed store now falls back to the file backend on a miss and
+// migrates the orphaned token into the keychain.
+// ---------------------------------------------------------------------------
+
 describe('createTokenStore cross-backend read fallback', () => {
   let tmpDir: string;
   let authFile: string;
@@ -542,11 +625,13 @@ describe('createTokenStore cross-backend read fallback', () => {
   });
 
   test('keychain-backed store finds a token stored only in the file backend', async () => {
+    // Simulate the bug: a credential written only to the plaintext file.
     const { FileBackend, createTokenStore } = await import('./token-store.ts');
     await new FileBackend(authFile).set('github.com', 'octocat', 'gho_file', {
       gitProtocol: 'https',
     });
 
+    // Keyring resolves (mock available) → keychain backend, keychain empty.
     const store = await createTokenStore(authFile);
     expect(store.backend).toBe('keyring');
 
@@ -566,6 +651,7 @@ describe('createTokenStore cross-backend read fallback', () => {
     const store = await createTokenStore(authFile);
     await store.get('github.com');
 
+    // Migrated into the keychain (service 'open-knowledge', account host) ...
     const migrated = keyringMockState.setPasswordCalls.find(
       (c) => c.service === 'open-knowledge' && c.account === 'github.com',
     );
@@ -574,6 +660,7 @@ describe('createTokenStore cross-backend read fallback', () => {
     expect(payload.token).toBe('gho_file');
     expect(payload.email).toBe('octo@github.com');
 
+    // ... and the plaintext copy removed.
     expect(await new FileBackend(authFile).get('github.com')).toBeNull();
   });
 
@@ -588,6 +675,7 @@ describe('createTokenStore cross-backend read fallback', () => {
     const entry = await store.get('github.com');
 
     expect(entry?.token).toBe('gho_keychain');
+    // No migration write — the keychain already had it.
     expect(keyringMockState.setPasswordCalls).toHaveLength(0);
   });
 

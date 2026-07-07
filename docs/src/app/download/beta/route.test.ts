@@ -9,8 +9,12 @@ import {
 
 const TEST_DMG_URL = `https://github.com/inkeep/open-knowledge/releases/download/v0.1.0-beta.1/${DMG_ASSET_NAME}`;
 
+// Mutable reference — each test sets this before calling GET so the injected
+// resolver reflects the scenario under test.
 let _redirect: BetaRedirect = { kind: 'fresh', url: TEST_DMG_URL };
 
+// Mock must be registered before route.ts is loaded so the module-scope
+// `createBetaResolver()` call in route.ts uses the injected resolver.
 mock.module('../../../lib/download-links.ts', () => ({
   createBetaResolver: () => () => Promise.resolve(_redirect),
   toRedirectResponse: (r: BetaRedirect): Response =>
@@ -37,6 +41,7 @@ mock.module('../../../lib/track.ts', () => ({
   referrerHostname: () => undefined,
 }));
 
+// Dynamic import ensures route.ts imports the mocked modules above.
 const { GET } = await import('./route.ts');
 
 function call(): Promise<Response> {

@@ -10,6 +10,15 @@ import {
 } from '@/lib/og-card';
 import { source } from '@/lib/source';
 
+/**
+ * Per-docs-page OpenGraph image. Mounted here (not as a file-based
+ * `opengraph-image.tsx` co-located with the page) because Turbopack
+ * rejects metadata files nested inside catch-all `[...slug]` segments
+ * ("catch-all segment must be the last segment modifying the path"). A
+ * route handler whose own catch-all IS the last segment sidesteps that
+ * constraint; the page's `generateMetadata` references this URL in its
+ * `openGraph.images` array.
+ */
 export const dynamic = 'force-static';
 
 interface RouteProps {

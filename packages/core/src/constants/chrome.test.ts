@@ -40,11 +40,20 @@ describe('chrome.ts drift-check', () => {
 });
 
 describe('chrome-resolver: selector matching is exact (not wildcard)', () => {
+  // The selector argument feeds a `new RegExp(...)` — any unescaped regex
+  // metacharacter (`.`, `*`, etc.) silently widens the match. Real CSS
+  // can contain neighbouring blocks that match a wildcard interpretation
+  // of `.dark` (e.g. `Xdark { ... }`), and selecting them would resolve
+  // chrome to the wrong color. Exercise that exact shape — synthetic CSS
+  // where a literal `.dark` and a same-position `Xdark` differ in their
+  // `--sidebar` value, so the wrong selector match is observable.
   let tmpDir: string;
 
   test('matches `.dark` literally, not `<any-char>dark`', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'chrome-resolver-test-'));
     const cssPath = join(tmpDir, 'globals.css');
+    // `Xdark { --sidebar: oklch(0.5 0 0); }` must NOT match the `.dark`
+    // selector — the resolver should pick the literal `.dark` block.
     const css = `
 :root {
   --sidebar: oklch(0.985 0 0);
@@ -61,7 +70,12 @@ Xdark {
     writeFileSync(cssPath, css, 'utf8');
     try {
       const tokens = resolveChromeTokensFromCss(cssPath);
+      // Light value is `:root` only (unaffected); pin it to confirm the
+      // light branch still resolves correctly under the same harness.
       expect(tokens.light).toBe('#fafafa');
+      // Dark value MUST come from `.dark`, not `Xdark`. With a broken
+      // selector escape, the wildcard `.` would match `X` first and the
+      // resolver would resolve to the wrong color.
       expect(tokens.dark).toBe('#171717');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });

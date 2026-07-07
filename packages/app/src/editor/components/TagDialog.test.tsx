@@ -1,3 +1,9 @@
+/**
+ * TagDialog body unit tests — covers the fetch-state branches in isolation
+ * via static `renderToString`. The full event-listen + fetch + nav flow is
+ * exercised in Playwright E2E (the wiring at app scope mounts during
+ * editor bootstrap and only fires post-click).
+ */
 import { describe, expect, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
 import { TagDialogBody } from './TagDialog.tsx';
@@ -60,8 +66,17 @@ describe('TagDialogBody', () => {
     expect(html).toContain('Alpha title');
     expect(html).toContain('alpha');
     expect(html).toContain('beta');
+    // Two rows
     const rowMatches = html.match(/data-testid="tag-dialog-row"/g);
     expect(rowMatches).not.toBeNull();
     expect(rowMatches?.length).toBe(2);
   });
+
+  // Real click → navigation routing is intentionally NOT tested here.
+  // `renderToString` doesn't preserve event handlers, so any "test" we'd
+  // write at this tier is tautological — invoking the handler we just
+  // declared, ignoring whether the rendered DOM actually wires it. The
+  // wiring is covered by Playwright E2E (browser-tier real click against
+  // a real `<button data-testid="tag-dialog-row">`); attempting it here
+  // would build false confidence that survives an `onClick` removal.
 });

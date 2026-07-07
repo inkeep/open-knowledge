@@ -1,3 +1,12 @@
+/**
+ * Lowlight-based ProseMirror decoration plugin for fenced code blocks.
+ *
+ * Mirrors @tiptap/extension-code-block-lowlight's plugin so we can extend the
+ * existing core CodeBlockFidelity (which carries the fence-fidelity attrs)
+ * without forking the schema. Only redraws decorations on doc mutations that
+ * affect a code block — selection-only transactions reuse the cached set.
+ */
+
 import { findChildren } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
@@ -49,11 +58,17 @@ function getDecorations(opts: {
 }): DecorationSet {
   const { doc, name, lowlight, defaultLanguage } = opts;
   const decorations: Decoration[] = [];
+  // `listLanguages()` allocates a fresh array per call — hoist outside the
+  // per-block loop so we pay O(1) lookups instead of O(N) array materializations.
   const registeredLanguages = lowlight.listLanguages();
 
   findChildren(doc, (node) => node.type.name === name).forEach((block) => {
     let from = block.pos + 1;
     const lang = (block.node.attrs.language || defaultLanguage) as string | null;
+    // Plain text path — `language === null` is the picker's explicit "no
+    // highlighting" choice. Skip lowlight entirely so we (a) honour the user's
+    // intent and (b) avoid the per-keystroke ~38-grammar `highlightAuto` scan
+    // over every plain block.
     if (!lang) return;
     const supported = registeredLanguages.includes(lang) || (lowlight.registered?.(lang) ?? false);
     if (!supported) return;
@@ -91,6 +106,9 @@ export function LowlightPlugin(opts: {
     state: {
       init: (_config, { doc }) => getDecorations({ doc, name, lowlight, defaultLanguage }),
       apply: (transaction, decorationSet, oldState, newState) => {
+        // Selection-only transactions never need a redecoration — short-circuit
+        // before doing two full document tree walks. Remote-peer awareness
+        // ticks and local cursor moves both land here.
         if (!transaction.docChanged) {
           return decorationSet.map(transaction.mapping, transaction.doc);
         }
@@ -105,6 +123,12 @@ export function LowlightPlugin(opts: {
           transaction.steps.some((step) => {
             const s = step as unknown as { from?: number; to?: number };
             if (s.from === undefined || s.to === undefined) return false;
+            // Intersection (not containment): a remote-peer keystroke
+            // inside a code block produces a step whose [from, to] lies
+            // INSIDE the node — containment ("step encloses node") misses
+            // those, leaving stale highlight tokens until the next
+            // selection-into-block tick. Intersection covers both
+            // directions: step inside node OR step encloses node.
             return oldNodes.some(
               (node) =>
                 (s.from as number) < node.pos + node.node.nodeSize && (s.to as number) > node.pos,

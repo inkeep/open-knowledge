@@ -43,9 +43,12 @@ async function loadHooks() {
   return hooks;
 }
 
-function ConfirmProbe({ writer }: { writer: Writer }) {
+function ConfirmProbe({ writer, onEnabled }: { writer: Writer; onEnabled?: () => void }) {
   if (!hooks) throw new Error('hooks not loaded');
-  latestConfirmState = hooks.useEnableSyncWithConfirm(writer);
+  latestConfirmState = hooks.useEnableSyncWithConfirm(
+    writer,
+    onEnabled ? { onEnabled } : undefined,
+  );
   return <div data-testid="confirm-open">{String(latestConfirmState.confirmOpen)}</div>;
 }
 
@@ -138,6 +141,40 @@ describe('useEnableSyncWithConfirm runtime behavior', () => {
     expect(screen.getByTestId('confirm-open').textContent).toBe('true');
     expect(toastErrors).toEqual(['Failed to enable sync — branch is protected']);
   });
+
+  test('fires opts.onEnabled once, only after a successful confirm', async () => {
+    await loadHooks();
+    let enabledCalls = 0;
+    const writer: Writer = () => ({ ok: true });
+    render(<ConfirmProbe writer={writer} onEnabled={() => enabledCalls++} />);
+
+    await act(async () => {
+      latestConfirmState?.onToggleRequest(true);
+    });
+    expect(enabledCalls).toBe(0); // not until the user confirms
+
+    await act(async () => {
+      latestConfirmState?.onConfirm();
+    });
+    expect(enabledCalls).toBe(1);
+  });
+
+  test('does not fire opts.onEnabled when the enable write fails', async () => {
+    await loadHooks();
+    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    let enabledCalls = 0;
+    const writer: Writer = () => ({ ok: false, error: 'branch is protected' });
+    render(<ConfirmProbe writer={writer} onEnabled={() => enabledCalls++} />);
+
+    await act(async () => {
+      latestConfirmState?.onToggleRequest(true);
+      latestConfirmState?.onConfirm();
+    });
+
+    expect(enabledCalls).toBe(0);
+    // Confirm dialog stays open on failure so the user can retry.
+    expect(screen.getByTestId('confirm-open').textContent).toBe('true');
+  });
 });
 
 describe('useSyncEnabledWriter runtime behavior', () => {
@@ -212,6 +249,9 @@ describe('useSyncDefaultWriter runtime behavior', () => {
         return { ok: true };
       },
     };
+    // A project-local binding is also mounted: the scope-collision regression
+    // (targeting projectLocalBinding instead of projectBinding) would land the
+    // write here, silently writing per-machine config instead of committed.
     projectLocalBinding = {
       patch: (patch: unknown) => {
         localPatches.push(patch);
@@ -224,6 +264,7 @@ describe('useSyncDefaultWriter runtime behavior', () => {
     expect(committedPatches).toEqual([{ autoSync: { default: false } }]);
     expect(localPatches).toEqual([]);
 
+    // `null` clears the committed key (RFC 7396 delete) → reset to ask.
     expect(latestDefaultWriter?.(null)).toEqual({ ok: true });
     expect(committedPatches).toEqual([
       { autoSync: { default: false } },

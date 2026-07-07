@@ -1,7 +1,37 @@
+/**
+ * Layered config merge: combine user / project / project-local layers into
+ * the single `Config` consumed by the editor + Settings pane.
+ *
+ * Default precedence (highest wins): project-local > project > user. Each
+ * leaf's registered `scope` short-circuits the merge — a stale value in a
+ * layer that does not own the field never reaches the merged view.
+ *
+ * Scope rules (applied at every leaf):
+ *   - `'user'`         → user wins (project + project-local ignored)
+ *   - `'project'`      → project wins, falling back to user if project is
+ *                        undefined (project-local ignored unless the field
+ *                        is also a `'project-local'` leaf — which can't
+ *                        happen, scopes are exclusive)
+ *   - `'project-local'`→ project-local wins, falling back to project then
+ *                        user when undefined
+ *   - `'either'` / no  → default deep-merge precedence (project-local >
+ *                        project > user)
+ *
+ * Object branches deep-merge. Arrays replace wholesale (matches
+ * `applyPatchToDocument` semantics + RFC 7396 §1).
+ */
+
 import type { Config } from './schema.ts';
 import { ConfigSchema } from './schema.ts';
 import { getLeafFieldMeta } from './schema-leaf.ts';
 
+/**
+ * Merge user / project / project-local layers into a single Config.
+ *
+ * `projectLocal` is optional so existing call sites that pre-date the
+ * project-local layer continue to compile. When omitted, the merge
+ * behaves like the prior two-layer version.
+ */
 export function mergeLayered(user: Config, project: Config, projectLocal?: Config): Config {
   return mergeDeep([user, project, projectLocal], []) as Config;
 }
@@ -14,6 +44,8 @@ function mergeDeep(layers: readonly unknown[], path: (string | number)[]): unkno
     if (meta?.scope === 'project-local') return layers[2] ?? layers[1] ?? layers[0];
   }
 
+  // Default precedence: highest non-undefined layer wins for non-objects;
+  // object layers deep-merge with project-local highest.
   const top = topDefined(layers);
   if (top === undefined) return undefined;
   if (top === null) return null;

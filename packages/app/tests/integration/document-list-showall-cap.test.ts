@@ -1,3 +1,8 @@
+/**
+ * Entry-cap floor for `GET /api/documents?showAll=true`. A content directory
+ * pointed at a large tree must not accumulate unbounded entries — the walk
+ * stops at `OK_SHOWALL_MAX_ENTRIES` and the response reports `truncated`.
+ */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -67,8 +72,12 @@ describe('GET /api/documents?showAll=true entry cap', () => {
   });
 
   test('the non-showAll branch never emits a truncated key (AC3 / D3)', async () => {
+    // `truncated` is set ONLY by the showAll branch; absence means
+    // "not applicable", keeping legacy clients valid. Assert key ABSENCE on
+    // the raw body — `'truncated' in body === false`, not merely `== null`.
     const body = await fetchDefaultRaw();
     expect('truncated' in body).toBe(false);
+    // The body still satisfies the shared success schema (truncated optional).
     expect(DocumentListSuccessSchema.safeParse(body).success).toBe(true);
   });
 });

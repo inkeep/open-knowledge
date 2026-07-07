@@ -54,6 +54,7 @@ describe('readConfigSafely', () => {
     if (!result.valid) {
       expect(result.error.code).toBe('YAML_PARSE');
       expect(result.value.content.dir).toBe('.'); // defaults
+      // File should have been sidelined.
       expect(existsSync(path)).toBe(false);
       expect(result.sidelinedTo).toBeDefined();
       if (result.sidelinedTo) {
@@ -61,10 +62,15 @@ describe('readConfigSafely', () => {
         expect(result.sidelinedTo).toContain('.invalid-');
       }
     }
+    // Warning was logged.
     expect(warnings.length).toBeGreaterThan(0);
   });
 
   test('removed config key → valid=false, error.code=REMOVED_KEY, file sidelined, value is defaults', () => {
+    // Removed keys pass loose-mode schema validation, so this is the cold-start
+    // recovery contract: a stale user-global config is sidelined and OK boots
+    // on defaults rather than applying a no-op key the user believes took
+    // effect. The project loader throws instead.
     const path = resolve(testDir, 'stale.yml');
     writeFileSync(path, 'folders:\n  - path: "x/**"\nserver:\n  host: 0.0.0.0\n', 'utf-8');
     const warnings: string[] = [];
@@ -80,6 +86,7 @@ describe('readConfigSafely', () => {
       expect(existsSync(path)).toBe(false); // sidelined, not crashed
       expect(result.sidelinedTo).toBeDefined();
     }
+    // Warning names every removed key found in one pass.
     expect(warnings.join('\n')).toContain('folders');
     expect(warnings.join('\n')).toContain('server.host');
   });
@@ -117,6 +124,7 @@ describe('readConfigSafely', () => {
         expect(issue.source?.file).toBe(path);
         expect(issue.source?.line).toBe(2);
       }
+      // File sidelined.
       expect(existsSync(path)).toBe(false);
       expect(result.sidelinedTo).toBeDefined();
     }
@@ -138,6 +146,9 @@ describe('readConfigSafely', () => {
   });
 
   test('sideline rename failure logs warning and falls through (file stays in place)', () => {
+    // Simulate a schema-invalid file with sideline=false to verify the
+    // warn-and-fall-through pathway. The schema-invalid sideline-disabled case
+    // asserts `sidelinedTo` is undefined; here we verify the warn path fires.
     const path = resolve(testDir, 'broken.yml');
     writeFileSync(path, 'appearance:\n  theme: midnight\n', 'utf-8');
     const warnings: string[] = [];
@@ -156,13 +167,17 @@ describe('readConfigSafely', () => {
     writeFileSync(path, 'appearance:\n  theme: midnight\n', 'utf-8');
     const result = readConfigSafely({
       absPath: path,
+      // Real ISO format includes colons; helper should sanitize them.
       timestamp: '2026-04-29T01:23:45.678Z',
       warn: () => {},
     });
     expect(result.valid).toBe(false);
     if (!result.valid && result.sidelinedTo) {
+      // Colons + dots inside the timestamp portion get replaced.
       const tail = result.sidelinedTo.split('.invalid-')[1] ?? '';
       expect(tail.includes(':')).toBe(false);
+      // Note: `.invalid-` itself contains a dot, so we check the timestamp
+      // portion specifically — colons are the platform-portable concern.
     }
   });
 
@@ -190,8 +205,10 @@ describe('readConfigSafely', () => {
     const result = readConfigSafely({ absPath: path });
     expect(result.valid).toBe(true);
     expect(existsSync(path)).toBe(true);
+    // No `.invalid-*` siblings created.
     const siblings = readdirSync(testDir).filter((f) => f.includes('.invalid-'));
     expect(siblings).toEqual([]);
+    // Original content preserved.
     expect(readFileSync(path, 'utf-8')).toContain('dir: docs');
   });
 });

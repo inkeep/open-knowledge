@@ -1,3 +1,9 @@
+/**
+ * `shadow-health` check tests. Facts are injected so the
+ * degraded/healthy decision is exercised without building a real degraded
+ * shadow repo; the no-init warn paths use real dirs.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,6 +19,7 @@ afterEach(() => {
   tmpDirs = [];
 });
 
+/** A project with a `.git/` and an existing shadow dir, so the check reaches readFacts. */
 function makeProjectWithShadow(): { cwd: string; shadowDir: string } {
   const cwd = mkdtempSync(join(tmpdir(), 'ok-health-sh-'));
   tmpDirs.push(cwd);
@@ -102,6 +109,8 @@ describe('shadow-health check', () => {
   });
 
   test('unfolded dead chains trip the warn even when width is fine', async () => {
+    // The maintenance-health signal is distinct from raw width: a narrow journal
+    // (3 refs) with many stale agent chains means consolidation is not running.
     const { cwd, shadowDir } = makeProjectWithShadow();
     const result = await check({ ...HEALTHY, deadChains: 12 }, shadowDir).run({ cwd });
     expect(result.status).toBe('warn');
@@ -110,6 +119,7 @@ describe('shadow-health check', () => {
 
   test('dead-chain warn boundary: 5 stays quiet, 6 warns (strict >)', async () => {
     const { cwd, shadowDir } = makeProjectWithShadow();
+    // DEAD_CHAIN_WARN is 5 with a strict `>`, so exactly 5 is not yet degraded.
     const atThreshold = await check({ ...HEALTHY, deadChains: 5 }, shadowDir).run({ cwd });
     expect(atThreshold.status).toBe('pass');
     const over = await check({ ...HEALTHY, deadChains: 6 }, shadowDir).run({ cwd });
@@ -118,6 +128,9 @@ describe('shadow-health check', () => {
   });
 
   test('heavy live load (wide journal, zero dead chains) does not warn on dead chains', async () => {
+    // 50 live agents = wide journal but zero UNFOLDED dead chains. The dead-chain
+    // signal must stay quiet (total ref count fires under live load; the
+    // strict dead-chain count does not). Width still warns as a read-latency note.
     const { cwd, shadowDir } = makeProjectWithShadow();
     const result = await check({ ...HEALTHY, wipWidth: 50, deadChains: 0 }, shadowDir).run({ cwd });
     expect(result.status).toBe('warn'); // width still flags read latency
@@ -137,6 +150,8 @@ describe('shadow-health check', () => {
   test('does not leak KB-owner-facing consolidation/maintenance marketing copy', async () => {
     const { cwd, shadowDir } = makeProjectWithShadow();
     const result = await check({ ...HEALTHY, wipWidth: 40 }, shadowDir).run({ cwd });
+    // Operator-precise git terms are fine; the user-facing "Save Version groups
+    // your changes" framing must not appear here.
     expect(result.summary.toLowerCase()).not.toContain('save version');
   });
 });

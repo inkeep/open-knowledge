@@ -1,3 +1,17 @@
+/**
+ * Unit tests for the bundle redactor.
+ *
+ * The redactor walks staged JSONL + JSON files under a bundle's staging dir
+ * and produces:
+ *   - doc.name attribute values replaced by `doc:<8 hex>` BLAKE2b-256 hashes
+ *   - the absolute content-dir prefix replaced with the literal `<CONTENT_DIR>`
+ *   - a stable per-bundle inverse map (`hashed → original`) for `manifest.json`
+ *
+ * Tests use real disk fixtures (no fs mocks) since the module's job is
+ * filesystem-shaped. We seed JSONL + JSON in a tmpdir, call the redactor,
+ * and assert on the rewritten files + the returned map.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -34,6 +48,10 @@ function readStaged(stagingDir: string, relPath: string): string {
   return readFileSync(join(stagingDir, relPath), 'utf-8');
 }
 
+// ---------------------------------------------------------------------------
+// OTLP attribute-pair shape gets doc.name hashed
+// ---------------------------------------------------------------------------
+
 describe('redactStagedBundle — tracer bullet', () => {
   test('hashes the OTLP attribute-pair `doc.name` stringValue', () => {
     const stagingDir = makeStagingDir();
@@ -60,6 +78,7 @@ describe('redactStagedBundle — tracer bullet', () => {
     expect(after).not.toContain('my-secret-doc');
     expect(after).toMatch(/"doc:[a-f0-9]{8}"/);
 
+    // The inverse map records hashed → original.
     const entries = Object.entries(result.docNameMap);
     expect(entries).toHaveLength(1);
     const [hashed, original] = entries[0] ?? ['', ''];
@@ -67,6 +86,10 @@ describe('redactStagedBundle — tracer bullet', () => {
     expect(hashed).toMatch(/^doc:[a-f0-9]{8}$/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Pino flat-key shape + nested objects
+// ---------------------------------------------------------------------------
 
 describe('redactStagedBundle — Pino + nested shapes', () => {
   test('hashes a Pino flat-key `doc.name` value in a log record', () => {
@@ -182,17 +205,22 @@ describe('redactStagedBundle — Pino + nested shapes', () => {
         },
       ],
     });
+    // Two complete lines + one unterminated trailing fragment (mid-write).
     const body = `${completeLine}\n${completeLine}\n{"resourceSpans"`;
     writeStaged(stagingDir, 'telemetry/spans-current.jsonl', body);
 
     redactStagedBundle({ stagingDir, contentDir: '/x' });
 
     const after = readStaged(stagingDir, 'telemetry/spans-current.jsonl');
+    // Trailing fragment preserved verbatim — recipients skip it the same way.
     expect(after.endsWith('{"resourceSpans"')).toBe(true);
+    // Both complete lines were redacted.
     expect(after).not.toContain('"a"');
   });
 
   test('non-string doc.name values pass through unchanged (only strings hash)', () => {
+    // A doc.name attribute with an intValue (theoretically possible) should
+    // NOT be hashed. The redactor only touches stringValue/string forms.
     const stagingDir = makeStagingDir();
     const otlpLine = JSON.stringify({
       resourceSpans: [
@@ -221,6 +249,10 @@ describe('redactStagedBundle — Pino + nested shapes', () => {
     expect(result.docNameMap).toEqual({});
   });
 });
+
+// ---------------------------------------------------------------------------
+// contentDir → <CONTENT_DIR> substring substitution
+// ---------------------------------------------------------------------------
 
 describe('redactStagedBundle — contentDir substitution', () => {
   test('replaces contentDir prefix in span string-value attributes', () => {
@@ -369,6 +401,7 @@ describe('redactStagedBundle — contentDir substitution', () => {
     const result = redactStagedBundle({ stagingDir, contentDir: '/x' });
     expect(Object.keys(result.docNameMap)).toHaveLength(3);
     expect(Object.values(result.docNameMap).sort()).toEqual(['a', 'b', 'c']);
+    // Hashes are deterministic but distinct.
     const hashes = Object.keys(result.docNameMap);
     expect(new Set(hashes).size).toBe(3);
   });
@@ -380,6 +413,9 @@ describe('redactStagedBundle — contentDir substitution', () => {
   });
 
   test('empty contentDir does not insert tokens between characters', () => {
+    // Defensive guard against a degenerate config that hands the redactor an
+    // empty string. Without the guard, split('').join('<CONTENT_DIR>') would
+    // explode every string into per-character tokens.
     const stagingDir = makeStagingDir();
     const pinoLine = JSON.stringify({ level: 30, msg: 'abc' });
     writeStaged(stagingDir, 'logs/server-current.jsonl', `${pinoLine}\n`);
@@ -393,6 +429,12 @@ describe('redactStagedBundle — contentDir substitution', () => {
 
 describe('hashOrLookup — collision detection', () => {
   test('first occurrence of a hash claims the inverse-map entry; subsequent distinct collisions go to docNameCollisions', () => {
+    // We exercise the internal recordHash helper directly because finding
+    // two distinct doc names that produce the same BLAKE2b-256 8-hex prefix
+    // is infeasible. The unit test pins the *behavior* a real collision
+    // would trigger — first value wins the docNameMap slot; later distinct
+    // colliding values are surfaced separately so the user does not silently
+    // lose one original from the inverse map.
     const ctx = {
       contentDir: '/tmp/c',
       docNameMap: {} as Record<string, string>,
@@ -402,6 +444,7 @@ describe('hashOrLookup — collision detection', () => {
     _recordHashForTests(ctx, 'first-value', 'collide');
     _recordHashForTests(ctx, 'second-value', 'collide');
     _recordHashForTests(ctx, 'third-value', 'collide');
+    // Repeat shouldn't double-record.
     _recordHashForTests(ctx, 'second-value', 'collide');
     expect(ctx.docNameMap.collide).toBe('first-value');
     expect(ctx.docNameCollisions.collide).toEqual(['second-value', 'third-value']);
@@ -421,6 +464,9 @@ describe('hashOrLookup — collision detection', () => {
   });
 
   test('RedactStagedBundleResult surfaces an empty docNameCollisions when nothing collides', () => {
+    // No collision-free workspace should pay for collision tracking; the
+    // field is present on the result type so consumers can rely on it,
+    // but should be an empty object when no real collision occurred.
     const stagingDir = mkdtempSync(resolve(tmpdir(), 'ok-redact-collision-'));
     tmpDirs.push(stagingDir);
     mkdirSync(join(stagingDir, 'telemetry'));
@@ -492,6 +538,9 @@ describe('redactStagedBundle — process/ subdirectory', () => {
     const contentDir = '/Users/test/notes';
     const secretDoc = 'private-folder/auth-doc';
 
+    // Telemetry walked FIRST populates ctx.originalToHashed via the
+    // OTLP attribute-pair walker, so the substring scrub knows what
+    // literal to look for once the JSON walker hits the corrupt state.
     const otlpLine = JSON.stringify({
       resourceSpans: [
         {
@@ -521,11 +570,25 @@ describe('redactStagedBundle — process/ subdirectory', () => {
 
 describe('redactStagedBundle — cross-platform basename dispatch', () => {
   test('stdlib pin: node:path.win32.basename strips backslash-joined Windows paths to the file name', async () => {
+    // Stdlib documentation pin — NOT an end-to-end test of the production
+    // dispatch through redactStagedBundle. The production dispatch (with
+    // POSIX paths) is covered by the "replaces contentDir in state/
+    // agent-presence.json walker pass" test above and the corrupt-
+    // state-file test in the process/ describe block; both call
+    // redactStagedBundle and assert the JSON walker route fires (doc.name
+    // hashed). The Windows leg of the dispatch can't be exercised from a
+    // macOS host (Node's default `import { basename } from 'node:path'`
+    // resolves to path.posix.basename at runtime; only path.win32.basename
+    // honors backslashes regardless of host), so this test pins the
+    // stdlib contract the production fix relies on — when Node runs on
+    // Windows, the same `import { basename }` resolves to path.win32.basename
+    // and the dispatch routes correctly.
     const { posix, win32 } = await import('node:path');
     expect(win32.basename('C:\\Users\\jane\\stage\\state\\agent-presence.json')).toBe(
       'agent-presence.json',
     );
     expect(win32.basename('C:\\stage\\state\\runtime.json')).toBe('runtime.json');
+    // POSIX path is unchanged on both variants (no regression).
     expect(posix.basename('/Users/jane/stage/state/agent-presence.json')).toBe(
       'agent-presence.json',
     );

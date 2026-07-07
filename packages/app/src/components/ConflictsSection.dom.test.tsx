@@ -1,3 +1,20 @@
+/**
+ * RTL behavioral tests for `ConflictsSection`.
+ *
+ * Pins:
+ *   - Renders null when the conflict list is empty (auto-hide at zero).
+ *   - Renders header `⚠ Conflicts` + a count badge equal to `conflicts.length`,
+ *     plus one row per entry.
+ *   - Each row uses a shadcn `Button` (NOT raw `<button>`); clicking it
+ *     navigates to the doc by setting `window.location.hash` to
+ *     `#/<docName-without-md-extension>`. This is the same primitive the
+ *     existing FileTree and EditorTabs use, so the doc becomes the active
+ *     tab and the editor-area DiffViewBoundary mounts via the lifecycle
+ *     observer.
+ *   - The section is NO-quick-action: no [Keep mine] / [Keep theirs] buttons.
+ *
+ * Substrate: jsdom via `bun run test:dom`.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
@@ -106,6 +123,11 @@ describe('ConflictsSection', () => {
     expect(screen.getByTestId('conflicts-section-count').textContent).toBe('3');
   });
 
+  // The hook tracks `error: 'server' | 'network'` so consumers can branch
+  // on the failure shape. `'server'` means the conflicts endpoint failed
+  // while the rest of the app may still be loading — hiding the section
+  // would mask real tracked conflicts (a user with conflicts sees an empty
+  // sidebar identical to the resolved state). Surface the visible band.
   test('renders an error band when the hook reports a server-side fetch error', () => {
     mockResult = { conflicts: [], loading: false, error: 'server' };
     render(<ConflictsSection />);
@@ -114,6 +136,12 @@ describe('ConflictsSection', () => {
     expect(errorBand.textContent ?? '').toMatch(/Couldn't load conflicts/i);
   });
 
+  // `'network'` means the server is entirely unreachable. FileTree owns the
+  // global "Could not reach server" signal in that case; a second amber
+  // band claiming the conflicts subsystem specifically failed is redundant
+  // noise that misframes the failure. The masking concern that motivates
+  // the band on `'server'` doesn't apply — nothing is editable, so a user
+  // cannot accidentally write into a conflicted doc.
   test('returns null on a network-level fetch error (FileTree owns the global signal)', () => {
     mockResult = { conflicts: [], loading: false, error: 'network' };
     const { container } = render(<ConflictsSection />);

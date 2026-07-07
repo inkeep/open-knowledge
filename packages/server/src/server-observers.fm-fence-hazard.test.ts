@@ -4,7 +4,7 @@
  * A source-mode (W2) keystroke that appends trailing whitespace to a
  * frontmatter fence line is within normalizeBridge tolerance, so Observer B
  * early-exits without refreshing witnesses. The partition-invariance
- * contract (see packages/core/src/bridge/fm-partition-invariance.test.ts)
+ * contract
  * requires that such an edit must not change FM-region recognition; when it
  * does, Observer A's next Path B merge composes its user input without the
  * FM region and destroys it.
@@ -48,6 +48,7 @@ function canonicalOf(raw: string): string {
   return prependFrontmatter(frontmatter, mdManager.serialize(mdManager.parseWithFallback(body)));
 }
 
+/** Seed a doc production-order: paired-write intake first, attach second. */
 function seedThenAttach(raw: string, docName: string) {
   const doc = new Y.Doc();
   const xmlFragment = doc.getXmlFragment('default');
@@ -78,6 +79,7 @@ function findTextNodeContaining(
   return null;
 }
 
+/** Insert one character at the start of the text node containing `needle`. */
 function typeIntoParagraph(doc: Y.Doc, xmlFragment: Y.XmlFragment, needle: string): void {
   doc.transact(() => {
     const textNode = findTextNodeContaining(xmlFragment, needle);
@@ -86,6 +88,7 @@ function typeIntoParagraph(doc: Y.Doc, xmlFragment: Y.XmlFragment, needle: strin
   }, USER_TYPING_ORIGIN);
 }
 
+/** Run `fn` capturing emitted structured bridge events with the given name. */
 function captureBridgeEvents(eventName: string, fn: () => void): Record<string, unknown>[] {
   const originalWarn = console.warn;
   const warnings: string[] = [];
@@ -166,18 +169,30 @@ describe('FM-fence trailing whitespace + adjacent WYSIWYG edit', () => {
       );
       expect(ytext.toString()).toBe(RAW);
 
+      // W2 source-mode keystroke: trailing whitespace at the end of a fence
+      // line — within normalizeBridge tolerance, so Observer B early-exits.
       doc.transact(() => {
         ytext.insert(variant.insertAt(ytext.toString()), variant.ws);
       }, USER_TYPING_ORIGIN);
       expect(ytext.toString()).toContain(`---${variant.ws}\n`);
 
+      // WYSIWYG edit in the first body block — the next settlement drain.
       typeIntoParagraph(doc, xmlFragment, 'First paragraph');
 
       const finalText = ytext.toString();
+      // (a) the FM region's bytes are still present
       expect(finalText).toContain('title: Fence hazard');
+      // (b) the user's keystroke is not reverted
       if (variant.fence === 'open') {
         expect(finalText).toContain(`---${variant.ws}\n`);
       } else {
+        // Close-fence byte-exactness is NOT pinned here: Observer A Path B's
+        // merge-input doc-boundary misalignment (a separate invariant with
+        // its own fix scope) currently fabricates one extra whitespace byte
+        // on the close fence (`---  \n` for `--- \n`). THIS bug's invariant:
+        // the keystroke is not REVERTED — the close fence still carries
+        // trailing whitespace of the user's class, not canonicalized back to
+        // bare `---`.
         const closeFence = finalText
           .split('\n')
           .slice(1)
@@ -185,8 +200,11 @@ describe('FM-fence trailing whitespace + adjacent WYSIWYG edit', () => {
         expect(closeFence).toMatch(/^---[ \t]+$/);
         expect(closeFence).toContain(variant.ws);
       }
+      // (c) the WYSIWYG edit is applied
       expect(finalText).toContain('ZFirst paragraph body.');
+      // floor: untouched content survives
       expect(finalText).toContain('Second paragraph stays.');
+      // (d) the FM region is not re-derived into the WYSIWYG body
       expect(serializeFragmentBody(xmlFragment)).not.toContain('title: Fence hazard');
 
       cleanup();
@@ -208,6 +226,13 @@ describe('FM-fence trailing whitespace + distal WYSIWYG edit', () => {
         ytext.insert(variant.insertAt(ytext.toString()), variant.ws);
       }, USER_TYPING_ORIGIN);
 
+      // WYSIWYG edit far from the FM region (last body block). The settlement
+      // must be coherent: bridge-split-brain-rederive's own contract is that
+      // no organic input produces the witness/Y.Text divergence it reports —
+      // an in-tolerance fence keystroke followed by a body edit is organic
+      // input. A split-brain settlement here leaves the doc poisoned: its
+      // witnesses no longer carry the FM region, so a later adjacent edit
+      // destroys it.
       const splitBrainEvents = captureBridgeEvents('bridge-split-brain-rederive', () => {
         typeIntoParagraph(doc, xmlFragment, 'Second paragraph');
       });
@@ -218,6 +243,9 @@ describe('FM-fence trailing whitespace + distal WYSIWYG edit', () => {
       if (variant.fence === 'open') {
         expect(finalText).toContain(`---${variant.ws}\n`);
       } else {
+        // Same class pin as the adjacent block: close-fence byte-exactness
+        // belongs to the merge-input doc-boundary alignment bug; THIS bug's
+        // invariant is that the keystroke is not REVERTED.
         const closeFence = finalText
           .split('\n')
           .slice(1)
@@ -227,6 +255,7 @@ describe('FM-fence trailing whitespace + distal WYSIWYG edit', () => {
       }
       expect(finalText).toContain('ZSecond paragraph stays.');
       expect(finalText).toContain('First paragraph body.');
+      // The FM region must not be re-derived into the WYSIWYG body as text.
       expect(serializeFragmentBody(xmlFragment)).not.toContain('title: Fence hazard');
 
       cleanup();

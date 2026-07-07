@@ -1,4 +1,18 @@
 #!/usr/bin/env bun
+/**
+ * Layer B: HTTP + server-side CRDT stress script.
+ *
+ * Runs against a dev server (bun run dev on port 5173). Exercises:
+ *   POST /api/agent-write-md
+ *   POST /api/agent-undo  (per-session, requires connectionId)
+ *   POST /api/test-reset
+ *
+ * Does NOT assert the bridge invariant (that's Layer A's job).
+ * Reads Y.Text only via HocuspocusProvider.
+ * Assertions are containment-based.
+ *
+ * Usage: bun run tests/stress/stress-api.ts
+ */
 
 import { setTimeout as wait } from 'node:timers/promises';
 import { HocuspocusProvider } from '@hocuspocus/provider';
@@ -6,7 +20,10 @@ import * as Y from 'yjs';
 import { generateMarkdown } from './synthetic';
 
 const BASE = process.env.STRESS_BASE_URL ?? 'http://localhost:5173';
+// Hocuspocus WebSocket server is mounted at /collab in hocuspocus-plugin.ts
 const WS_URL = `${BASE.replace('http', 'ws')}/collab`;
+
+// ---------- scale tiers ----------
 
 interface Tier {
   name: string;
@@ -19,6 +36,8 @@ const TIERS: Tier[] = [
   { name: 'medium-realistic', lines: 2000, timeout: 30_000 },
   { name: 'large-realistic', lines: 10000, timeout: 60_000 },
 ];
+
+// ---------- helpers ----------
 
 async function resetServer(): Promise<void> {
   const res = await fetch(`${BASE}/api/test-reset`, { method: 'POST' });
@@ -47,6 +66,7 @@ async function agentUndo(
   return res.ok ? { ok: true } : { ok: false };
 }
 
+/** Create a fresh HocuspocusProvider connected to the dev server. */
 function createProvider(): { provider: HocuspocusProvider; doc: Y.Doc; destroy: () => void } {
   const doc = new Y.Doc();
   const provider = new HocuspocusProvider({
@@ -66,19 +86,25 @@ function createProvider(): { provider: HocuspocusProvider; doc: Y.Doc; destroy: 
   };
 }
 
+/** Wait for provider to sync initial state. */
 async function waitForSync(provider: HocuspocusProvider, timeoutMs = 10_000): Promise<void> {
   return new Promise((resolve, reject) => {
+    // Attach listener BEFORE checking isSynced to avoid TOCTOU race
+    // where sync completes between the check and listener attachment.
     const timer = setTimeout(() => reject(new Error('Provider sync timeout')), timeoutMs);
     provider.on('synced', () => {
       clearTimeout(timer);
       resolve();
     });
+    // Check after attaching — if already synced, resolve immediately
     if (provider.isSynced) {
       clearTimeout(timer);
       resolve();
     }
   });
 }
+
+// ---------- test runner ----------
 
 interface ScenarioResult {
   scenario: string;
@@ -123,6 +149,8 @@ async function runScenario(
     await wait(200);
   }
 }
+
+// ---------- scenarios ----------
 
 async function runS1(tier: Tier, doc: Y.Doc): Promise<void> {
   const content = generateMarkdown(tier.lines);
@@ -189,11 +217,14 @@ async function runS8(tier: Tier, doc: Y.Doc): Promise<void> {
   }
 }
 
+// ---------- main ----------
+
 async function main(): Promise<void> {
   console.log(`\n[stress-api] Starting HTTP + server-side CRDT stress tests`);
   console.log(`[stress-api] Base URL: ${BASE}`);
   console.log(`[stress-api] WebSocket URL: ${WS_URL}\n`);
 
+  // Verify server is reachable
   try {
     await fetch(`${BASE}/api/document`);
   } catch {
@@ -201,22 +232,27 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // S1: Propagation
   for (const tier of TIERS) {
     await runScenario('S1-propagation', tier, (doc) => runS1(tier, doc));
   }
 
+  // S3: Undo chain
   for (const tier of TIERS) {
     await runScenario('S3-undo-chain', tier, (doc) => runS3(tier, doc));
   }
 
+  // S5: Rapid writes
   for (const tier of TIERS) {
     await runScenario('S5-rapid-writes', tier, (doc) => runS5(tier, doc));
   }
 
+  // S8: Unicode propagation
   for (const tier of TIERS) {
     await runScenario('S8-unicode', tier, (doc) => runS8(tier, doc));
   }
 
+  // Summary
   console.log('\n[stress-api] === SUMMARY ===');
   console.log(
     `[stress-api] Total: ${results.length}, Pass: ${results.length - failures}, Fail: ${failures}`,

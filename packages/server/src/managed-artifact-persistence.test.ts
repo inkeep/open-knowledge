@@ -70,9 +70,11 @@ describe('managedArtifactAbsPath', () => {
 
   test('templates resolve folder-addressed under <folder>/.ok/templates/<name>.md', () => {
     const ctx = makeCtx();
+    // Root template (empty folder).
     expect(managedArtifactAbsPath('__template__/daily-note', ctx)).toBe(
       resolve(projectDir, '.ok', 'templates', 'daily-note.md'),
     );
+    // Nested-folder template.
     expect(managedArtifactAbsPath('__template__/notes/sub/meeting', ctx)).toBe(
       resolve(projectDir, 'notes', 'sub', '.ok', 'templates', 'meeting.md'),
     );
@@ -94,6 +96,8 @@ describe('managedArtifactAbsPath', () => {
 
 describe('store/load round-trip', () => {
   const SRC = '---\nname: demo\ndescription: a demo skill\n---\n\n# Demo\n\nBody line.\n';
+  // Global scope — the surviving managed-artifact load/store flow. Project
+  // skills are content docs now (guarded to a no-op in load/store).
   const docName = '__skill__/global/demo';
 
   test('store serializes Y.Text("source") verbatim to .ok/skills/<n>/SKILL.md', async () => {
@@ -126,15 +130,24 @@ describe('store/load round-trip', () => {
   });
 
   test('project-skill synthetic doc is INERT in load + store (double-doc guard)', async () => {
+    // A project skill is a CONTENT doc (`.ok/skills/<name>/SKILL`); the synthetic
+    // `__skill__/project/<name>` must NEVER become a second CRDT doc competing for
+    // the same file. load early-returns (seeds nothing) and store no-ops — the
+    // sole defense against double-doc corruption. This is the only
+    // test that exercises that guard, on a mutating write spine.
     const ctx = makeCtx();
     const projectDocName = '__skill__/project/demo';
     const projectPath = managedArtifactAbsPath(projectDocName, ctx);
 
+    // store: a populated doc must NOT persist under the synthetic project name.
     const doc = new Y.Doc();
     doc.transact(() => doc.getText('source').insert(0, SRC), 'agent');
     expect(await storeManagedArtifactDoc(doc, projectDocName, 'agent', ctx)).toBe('no-op');
     expect(existsSync(projectPath)).toBe(false);
 
+    // load: even with a real file on disk at the resolved project path, the
+    // synthetic doc seeds NOTHING (the guard returns before reading) — so it
+    // can't shadow the content doc.
     mkdirSync(resolve(projectPath, '..'), { recursive: true });
     writeFileSync(projectPath, SRC, 'utf-8');
     const fresh = new Y.Doc();
@@ -148,6 +161,7 @@ describe('store/load round-trip', () => {
     const doc = new Y.Doc();
     doc.transact(() => doc.getText('source').insert(0, SRC), 'agent');
     expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('persisted');
+    // second store, unchanged content → no-op
     expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('no-op');
   });
 
@@ -171,6 +185,11 @@ describe('store/load round-trip', () => {
     expect(existsSync(managedArtifactAbsPath(docName, ctx))).toBe(false);
   });
 
+  // Anti-duplication guard: every seed-from-disk is a NEW Yjs lineage, so the
+  // load mints a fresh `lifecycle.epoch`. The client's lineage guard reads this
+  // to DISCARD a stale IndexedDB copy on reconnect instead of merging it — which
+  // is what stops the global-skill self-duplication (two independent same-text
+  // seeds concatenating). Mirrors the content-persistence epoch mint.
   test('load mints a fresh lineage epoch on each seed-from-disk', () => {
     const path = managedArtifactAbsPath(docName, makeCtx());
     mkdirSync(resolve(path, '..'), { recursive: true });
@@ -182,6 +201,8 @@ describe('store/load round-trip', () => {
     expect(typeof epochA).toBe('string');
     expect((epochA as string).length).toBeGreaterThan(0);
 
+    // A second fresh-doc load (the reseed-after-eviction case) is a DISTINCT
+    // lineage → a different epoch, so the client can tell the lineage changed.
     const docB = new Y.Doc();
     loadManagedArtifactDoc(docB, docName, makeCtx());
     expect(docB.getMap('lifecycle').get(LINEAGE_EPOCH_KEY)).not.toBe(epochA);
@@ -200,6 +221,8 @@ describe('store/load round-trip', () => {
 });
 
 describe('concurrent-writer reconcile', () => {
+  // Global scope — the surviving managed-artifact load/store flow. Project
+  // skills are content docs now (guarded to a no-op in load/store).
   const docName = '__skill__/global/demo';
 
   test('store reconciles instead of clobbering when disk diverged from LKG', async () => {
@@ -211,10 +234,12 @@ describe('concurrent-writer reconcile', () => {
     );
     await storeManagedArtifactDoc(doc, docName, 'agent', ctx); // LKG = 'A' version
 
+    // Another writer changes the file underneath us.
     const path = managedArtifactAbsPath(docName, ctx);
     const otherWriter = '---\nname: demo\ndescription: a\n---\nOTHER WRITER\n';
     writeFileSync(path, otherWriter, 'utf-8');
 
+    // Our doc now has a different local edit; store should reconcile (import disk), not clobber.
     doc.transact(
       () => doc.getText('source').insert(doc.getText('source').length, 'local edit'),
       'agent',
@@ -244,8 +269,10 @@ describe('concurrent-writer reconcile', () => {
     const ctx = makeCtx();
     const doc = new Y.Doc();
     const raw = '---\nname: demo\ndescription: a\n---\nBODY\n';
+    // Simulate persistence having just written `raw` to disk (sets LKG).
     ctx.lkgCache.set(docName, raw);
     expect(applyExternalManagedArtifactChange(doc, docName, raw, ctx)).toBe('no-op');
+    // Doc untouched — Y.Text stays empty, no reconcile.
     expect(doc.getText('source').toString()).toBe('');
     expect(reconciled.has(docName)).toBe(false);
   });
@@ -254,9 +281,12 @@ describe('concurrent-writer reconcile', () => {
 describe('managedArtifactDocNameForPath (reverse resolver)', () => {
   test('maps a global SKILL.md leaf back to its doc name; project paths are content', () => {
     const ctx = makeCtx();
+    // Project skills are content docs now — a project skill path no longer maps
+    // to a synthetic managed-artifact name.
     expect(
       managedArtifactDocNameForPath(resolve(projectDir, '.ok/skills/my-skill/SKILL.md'), ctx),
     ).toBeNull();
+    // Global skills still reconcile through the dedicated managed-artifact route.
     expect(
       managedArtifactDocNameForPath(resolve(home, '.ok/skills/notes-helper/SKILL.md'), ctx),
     ).toBe('__skill__/global/notes-helper');
@@ -264,9 +294,11 @@ describe('managedArtifactDocNameForPath (reverse resolver)', () => {
 
   test('maps a template .md leaf back to its folder-addressed doc name', () => {
     const ctx = makeCtx();
+    // Root template.
     expect(managedArtifactDocNameForPath(resolve(projectDir, '.ok/templates/daily.md'), ctx)).toBe(
       '__template__/daily',
     );
+    // Nested-folder template.
     expect(
       managedArtifactDocNameForPath(resolve(projectDir, 'notes/sub/.ok/templates/meeting.md'), ctx),
     ).toBe('__template__/notes/sub/meeting');
@@ -274,6 +306,8 @@ describe('managedArtifactDocNameForPath (reverse resolver)', () => {
 
   test('round-trips with managedArtifactAbsPath (skills + templates)', () => {
     const ctx = makeCtx();
+    // Project skills omitted — they are content docs, so their disk path does
+    // not round-trip through the managed-artifact reverse resolver anymore.
     for (const name of [
       '__skill__/global/beta-2',
       '__template__/daily',

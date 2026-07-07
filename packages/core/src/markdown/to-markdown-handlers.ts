@@ -11,6 +11,7 @@ declare module 'mdast-util-to-markdown' {
     comment: 'comment';
     commentBlock: 'commentBlock';
     strikethrough: 'strikethrough';
+    okAtxHeading: 'okAtxHeading';
   }
 }
 
@@ -242,7 +243,12 @@ export const toMarkdownHandlers = {
     return node.data?.sourceRaw ?? '---';
   },
 
-  break(node) {
+  break(node, _parent, state) {
+    const raw = node.data?.sourceRaw;
+    if (typeof raw === 'string' && raw.length > 0) return raw;
+    if (state.stack.includes('tableCell') || state.stack.includes('okAtxHeading')) {
+      return '<br />';
+    }
     if (node.data?.sourceStyle === 'backslash') return '\\\n';
     return '  \n';
   },
@@ -345,11 +351,13 @@ export const toMarkdownHandlers = {
     const interior =
       typeof interiorCount === 'number' && interiorCount >= 2 ? ' '.repeat(interiorCount) : ' ';
     const hashes = '#'.repeat(depth);
+    const atxExit = state.enter('okAtxHeading');
     const content = state.containerPhrasing(node, {
       ...info,
       before: `${hashes} `,
       after: '\n',
     });
+    atxExit();
     const trailingCount = node.data?.sourceTrailingHashes;
     if (typeof trailingCount === 'number' && trailingCount > 0) {
       const trailing = '#'.repeat(trailingCount);
@@ -462,6 +470,11 @@ export const toMarkdownHandlers = {
     const headerWidth = matrix[0]?.length ?? 0;
     const bodyWidth = matrix.slice(1).reduce((m, r) => Math.max(m, r.length), 0);
     const mostCellsPerRow = Math.max(headerWidth, bodyWidth, alignArr.length);
+
+    if (mostCellsPerRow === 0) {
+      console.warn(JSON.stringify({ event: 'table-serialize-dropped-empty', rows: rows.length }));
+      return '';
+    }
 
     const alignmentCells: string[] = [];
     for (let col = 0; col < mostCellsPerRow; col++) {

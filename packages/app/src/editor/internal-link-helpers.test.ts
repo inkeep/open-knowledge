@@ -7,6 +7,12 @@ import {
 
 const originalWindow = globalThis.window;
 
+/**
+ * Covers the prop-panel destination click wiring shared by
+ * InternalLinkPropPanel + WikiLinkPropPanel. The regression surface is the
+ * preventDefault dedup (so the JS nav and the native <a href> don't both
+ * fire) and the same-tab-only close.
+ */
 describe('handleChipLinkClick', () => {
   function makeEvent(overrides: Partial<{ metaKey: boolean; ctrlKey: boolean }> = {}) {
     return {
@@ -56,6 +62,14 @@ describe('handleChipLinkClick', () => {
   });
 });
 
+/**
+ * The asset-link activation routing shared by `internal-link.ts` +
+ * `wiki-link-embed.ts`. Regression surface: bare click must navigate to the
+ * in-app asset preview (sidebar parity) rather than OS-delegate, while
+ * Cmd/Ctrl/middle-click keeps the OS-delegation escape hatch. Deps are
+ * injected so the branching is asserted without touching `window` /
+ * `dispatchAssetClick`'s real Electron+web fallback.
+ */
 describe('activateAssetLink', () => {
   const params = {
     url: './report.html',
@@ -92,6 +106,12 @@ describe('activateAssetLink', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  // The cases above inject both deps to isolate the branching. This one
+  // exercises the REAL default `navigate` (the module-private
+  // `navigateToAssetPreview`) against a stubbed `window`, so a future change
+  // that wires the default to the wrong helper — e.g. doc hash nav instead
+  // of the `#/__asset__/…` asset hash — fails here at unit tier rather than
+  // only at the E2E. `window` stub mirrors `documents-events.test.ts`.
   afterEach(() => {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,

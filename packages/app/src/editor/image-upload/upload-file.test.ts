@@ -1,3 +1,11 @@
+/**
+ * Unit tests for `uploadFile` — POSTs a File to the unified `/api/upload`
+ * endpoint and unwraps the response into `{ url }`.
+ *
+ * Uses dependency-injection (the optional `deps` arg) to pass mock fetch +
+ * docName directly. No `globalThis.fetch =` mutation — the prior pattern
+ * proved flaky on Linux Bun. DI tests are platform-stable.
+ */
 import { describe, expect, test } from 'bun:test';
 import { uploadFile } from './upload-file.ts';
 
@@ -79,6 +87,9 @@ describe('uploadFile', () => {
   });
 
   test('upload uses /api/upload regardless of MIME prefix (server is sole policy point)', async () => {
+    // The client does not gate on MIME prefix; the unified endpoint is
+    // accept-all by extension (ASSET_EXTENSIONS), so PDFs etc. travel
+    // through identically. The server is the sole policy point.
     const { fetch, calls } = captureFetch(() =>
       jsonResponse(200, { ok: true, src: 'doc.pdf', path: 'doc.pdf', deduped: false }),
     );
@@ -91,6 +102,10 @@ describe('uploadFile', () => {
   });
 
   test('returns server-absolute { url } from the server path field on success', async () => {
+    // `path` is contentDir-relative (no leading slash from `relative()`);
+    // upload-file.ts prefixes `/` so the URL is rooted at origin and
+    // resolves correctly under hash routing for any subdir doc. Mirror of
+    // the drop path's `resolvedSrc = `/${assetContentPath}``.
     const { fetch } = captureFetch(() =>
       jsonResponse(200, {
         ok: true,
@@ -116,6 +131,8 @@ describe('uploadFile', () => {
   });
 
   test('preserves an already-server-absolute path without double-slashing', async () => {
+    // Defensive: if the server starts emitting `/`-prefixed paths in a
+    // future iteration, the client must not produce `//foo.png`.
     const { fetch } = captureFetch(() =>
       jsonResponse(200, { ok: true, src: 'photo.png', path: '/docs/photo.png' }),
     );

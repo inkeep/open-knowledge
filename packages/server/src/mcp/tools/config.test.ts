@@ -1,5 +1,10 @@
 import { describe as _bunDescribe, expect, test } from 'bun:test';
 
+// Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in MCP
+// test setup spawns git children that Bun fails to reap on ubuntu-latest
+// GHA runners; post-test cgroup never drains, hanging test (test) at the
+// 15-min timeout. Tests run normally locally; follow-up PR will migrate
+// fixtures to execFileSync.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -68,6 +73,9 @@ describe('config tool', () => {
   });
 
   test('returns null + exists:false for a nonexistent path', async () => {
+    // Wire-format note: `JSON.stringify(undefined)` returns the JS value
+    // `undefined` rather than a JSON string, so we surface absence as
+    // `{ value: null, exists: false }` and a human-readable text body.
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-config-'));
     const handler = captureRegistration(cwd);
     const result = await handler({ key: 'nonexistent.leaf' });
@@ -84,6 +92,9 @@ describe('config tool', () => {
   });
 
   test('reads any field — no allowlist gating on read', async () => {
+    // Sanity-check: the read path doesn't filter fields. `appearance.theme` is
+    // `agentSettable: false` (writes via Settings pane only), but reads are
+    // unrestricted.
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-config-'));
     const handler = captureRegistration(cwd);
     const result = await handler({ key: 'appearance.theme' });
@@ -95,6 +106,7 @@ describe('config tool', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-config-disk-'));
     mkdirSync(join(cwd, '.ok'), { recursive: true });
     writeFileSync(join(cwd, '.ok', 'config.yml'), 'appearance:\n  theme: light\n');
+    // Simulate the resolver pattern (loads on-disk config per cwd).
     const merged: Config = {
       ...BASE_CONFIG,
       appearance: { theme: 'light' },

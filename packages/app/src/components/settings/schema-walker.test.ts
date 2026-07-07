@@ -1,3 +1,9 @@
+/**
+ * Pure tests for the schema-walker helpers. Runs against the real
+ * `ConfigSchema` from `@inkeep/open-knowledge-core`, so any drift between
+ * the published schema and the form's introspection surfaces here.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { ConfigSchema } from '@inkeep/open-knowledge-core';
 import {

@@ -46,6 +46,8 @@ const originalFetch = globalThis.fetch;
 
 describe('HelpPopover runtime behavior', () => {
   beforeEach(() => {
+    // Stub the GitHub star-count fetch so the count is deterministic and no
+    // real network call fires during the test.
     globalThis.fetch = mock(
       async () =>
         new Response(JSON.stringify({ stargazers_count: 1234 }), {
@@ -120,7 +122,7 @@ describe('HelpPopover runtime behavior', () => {
       },
       {
         label: 'X (Twitter)',
-        href: 'https://x.com/OpenKnowledgeAI',
+        href: 'https://x.com/OpenKnowledge',
         target: '_blank',
         rel: 'noopener noreferrer',
         hasIcon: true,

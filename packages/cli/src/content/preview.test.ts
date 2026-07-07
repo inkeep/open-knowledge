@@ -120,7 +120,12 @@ describe('previewContent', () => {
 
   it('ignores files outside the asset allowlist and the supported-doc extensions', () => {
     writeFileSync(join(testDir, 'readme.md'), '# Readme');
+    // TypeScript source is in EXECUTABLE_BLOCKLIST_EXTENSIONS territory and
+    // outside the supported-doc extension whitelist (.md / .mdx) —
+    // `isSupportedDocFile` rejects it before the filter sees it.
     writeFileSync(join(testDir, 'script.ts'), 'export {}');
+    // Truly unknown extension — outside ASSET_EXTENSIONS, outside the
+    // doc-extension gate — falls through to step 4 default-exclude.
     writeFileSync(join(testDir, 'arbitrary.xyz'), 'data');
 
     const result = previewContent({ projectDir: testDir, contentDir: testDir });

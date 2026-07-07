@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { type EvalSet, loadEvalSet } from './semantic-eval.ts';
 
+/**
+ * Structural validation of the eval set (CI-safe — no model). Enforces the
+ * anti-circularity properties the design challenge requires, so the
+ * gated real-model eval can't silently pass on a degenerate set.
+ */
 function tokens(s: string): Set<string> {
   return new Set(
     s
@@ -57,6 +62,7 @@ describe('FR2 eval set structure', () => {
       const qt = [...tokens(p.query)].filter((t) => !STOP.has(t));
       const dt = tokens(`${doc?.title} ${doc?.path} ${doc?.content}`);
       const shared = qt.filter((t) => dt.has(t));
+      // "≈zero shared tokens" — at most one incidental overlap allowed.
       expect(
         shared.length,
         `zero-overlap "${p.query}" shares ${JSON.stringify(shared)} with ${p.target}`,

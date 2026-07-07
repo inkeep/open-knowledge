@@ -5,6 +5,14 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { PropertyProvider } from './PropertyContext';
 import { PropertyPanel } from './PropertyPanel';
 
+// Renders PropertyPanel inside PropertyProvider — the panel reads
+// `useProperties()` for the cross-tree add-property signal and would throw
+// "must be used within <PropertyProvider />" without this wrapper.
+//
+// TooltipProvider wraps the tree because PropertyWidgets' `ListWidget`
+// surface wraps invalid-tag chips in `<Tooltip>` (carrying the grammar-
+// hint copy). Production has a root-level TooltipProvider so the
+// component renders fine; the test substrate needs to opt in.
 function renderPanel(provider: HocuspocusProvider): string {
   return renderToString(
     <TooltipProvider>
@@ -28,10 +36,17 @@ afterEach(() => {
   for (const p of providers.splice(0)) {
     try {
       p.destroy();
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 });
 
+/**
+ * Seed the FM region of `Y.Text('source')` directly. The YAML
+ * region IS the FM source of truth; the panel reads through `bindFrontmatterDoc`
+ * which observes Y.Text.
+ */
 function seedYTextFm(provider: HocuspocusProvider, fenced: string): void {
   const ytext = provider.document.getText('source');
   provider.document.transact(() => {
@@ -174,12 +189,18 @@ describe('PropertyPanel row chrome', () => {
 
 describe('PropertyPanel tags placeholder row', () => {
   test('renders the placeholder row when `tags` key is absent from YAML', () => {
+    // Empty-YAML / single-other-key docs surface the placeholder so the
+    // user discovers tags exists without us writing an empty `tags: []`
+    // to disk on every fresh doc.
     const provider = makeProvider('tags-absent-doc');
     seedYTextFm(provider, '---\ntitle: Hello\n---\n');
     const html = renderPanel(provider);
+    // Static identity column shows the placeholder testids (no live
+    // TypeIconButton, no rename KeyNameButton).
     expect(html).toContain('data-testid="property-placeholder-name"');
     expect(html).toContain('data-testid="property-placeholder-icon"');
     expect(html).toContain('data-key="tags"');
+    // No live affordances for the placeholder row.
     const placeholderName = html.match(
       /data-testid="property-placeholder-name"[^>]*data-key="tags"/,
     );
@@ -187,10 +208,15 @@ describe('PropertyPanel tags placeholder row', () => {
   });
 
   test('does NOT render the placeholder when `tags: []` is in YAML (explicit empty)', () => {
+    // `tags: []` is a real YAML key — render it through the regular row
+    // plumbing at its source-order position, never as a placeholder. The
+    // user picked an explicit empty array; they don't want a duplicate
+    // discoverability affordance pinned at the end.
     const provider = makeProvider('tags-empty-array-doc');
     seedYTextFm(provider, '---\ntags: []\n---\n');
     const html = renderPanel(provider);
     expect(html).not.toContain('data-testid="property-placeholder-name"');
+    // Real list row for tags surfaces instead.
     expect(html).toContain('data-widget-type="list"');
     expect(html).toContain('data-key="tags"');
   });
@@ -205,6 +231,9 @@ describe('PropertyPanel tags placeholder row', () => {
   });
 
   test('placeholder identity column dims via muted-foreground/60 (visual placeholder cue)', () => {
+    // Pin the muted styling — distinguishes the row visually from a real
+    // property without dropping affordances the user might still want to
+    // tab into.
     const provider = makeProvider('tags-styling-doc');
     seedYTextFm(provider, '---\ntitle: Hello\n---\n');
     const html = renderPanel(provider);
@@ -218,12 +247,28 @@ describe('PropertyPanel add-property trigger', () => {
     seedYTextFm(provider, '---\ntitle: A\n---\n');
     const html = renderPanel(provider);
     expect(html).toContain('data-testid="add-property-trigger"');
+    // Label is "Add" (no "property" suffix); the `>Add<` boundary pins the
+    // exact span content and rejects the historical "Add property" shape
+    // appearing as visible label text. The `aria-label="Add property"`
+    // attribute (accessible name) IS allowed and intentional — it
+    // restores the action's object for screen-reader users so they don't
+    // hear a context-free "Add, button". So the negative assertion targets
+    // the visible-text shape specifically: ">Add property<" appearing
+    // inside any tag (the historical label slot).
     expect(html).toContain('>Add<');
     expect(html).not.toMatch(/>Add property</);
+    // The trigger Button MUST NOT carry `pl-7` anymore — the previous
+    // padding-left approach made the Button's hover background span the
+    // full row width (20px too wide on the left). The current scheme uses
+    // a sibling `<span aria-hidden className="h-7 w-4 shrink-0" />` spacer
+    // to reserve the drag-handle column, then `gap-1` + `px-2` on the
+    // Button lands the `+` icon center at the TypeIcon column edge.
     const triggerTagMatch = html.match(/<[^>]*data-testid="add-property-trigger"[^>]*>/);
     expect(triggerTagMatch).not.toBeNull();
     expect(triggerTagMatch?.[0]).not.toContain('pl-7');
     expect(triggerTagMatch?.[0]).toContain('px-2');
+    // The aria-hidden drag-handle spacer must precede the trigger Button
+    // in the rendered HTML so it lands in DOM order LEFT of the Button.
     const spacerIdx = html.search(/<span\s+aria-hidden[^>]*class="h-7 w-4 shrink-0"/);
     const triggerIdx = html.indexOf('data-testid="add-property-trigger"');
     expect(spacerIdx).toBeGreaterThan(-1);
@@ -231,6 +276,10 @@ describe('PropertyPanel add-property trigger', () => {
   });
 
   test('the add-property trigger carries `aria-label="Add property"` for screen readers', () => {
+    // Visible label is shortened to "Add"; the aria-label restores
+    // the action's object so assistive tech announces "Add property,
+    // button" instead of the context-free "Add, button". Pin so a
+    // refactor that drops the attribute regresses screen-reader UX.
     const provider = makeProvider('add-trigger-aria-doc');
     seedYTextFm(provider, '---\ntitle: A\n---\n');
     const html = renderPanel(provider);
@@ -249,6 +298,8 @@ describe('PropertyPanel add-property trigger', () => {
 describe('PropertyPanel duplicate-name surfacing', () => {
   test('two rows with the same name both render with a duplicate-name marker (D17/FR6)', () => {
     const provider = makeProvider('dup-name-doc');
+    // yaml@2 with `uniqueKeys: false` admits duplicate keys; both are
+    // emitted by Document.toString and parsed via readFmKeys.
     seedYTextFm(provider, '---\ntitle: First\ntitle: Second\n---\n');
     const html = renderPanel(provider);
     const dupMarkerMatches = html.match(/data-testid="property-duplicate-marker"/g) ?? [];
@@ -266,6 +317,9 @@ describe('PropertyPanel malformed YAML banner (FR9)', () => {
   });
 
   test('does not show YAML-malformed banner when array contains non-string scalars', () => {
+    // Array-coercion bug: `tags: [travel, spain, 2026]`
+    // with an unquoted integer is well-formed YAML 1.2 — the panel must
+    // render the row + all three pills, NOT the malformed-YAML banner.
     const provider = makeProvider('mixed-scalar-array-doc');
     seedYTextFm(provider, '---\ntags: [travel, spain, 2026]\n---\n');
     const html = renderPanel(provider);
@@ -282,6 +336,11 @@ describe('PropertyPanel malformed YAML banner (FR9)', () => {
 
 describe('PropertyPanel nested-value rendering', () => {
   test('skill-shaped nested frontmatter renders every top-level row + no banner', () => {
+    // A SKILL.md-like file with a
+    // nested `metadata:` map. Today the read path returns
+    // a populated map; this test pins that the panel renders all three
+    // top-level keys — including the nested one — and the malformed
+    // banner stays hidden because the YAML is well-formed.
     const provider = makeProvider('nested-skill-doc');
     seedYTextFm(
       provider,
@@ -302,17 +361,28 @@ describe('PropertyPanel nested-value rendering', () => {
     );
     const html = renderPanel(provider);
     expect(html).toContain('data-testid="object-widget"');
+    // The metadata row container carries the complex-value flag so the
+    // panel chrome can style it accordingly.
     expect(html).toMatch(/data-key="metadata"[^>]*data-complex-value="true"/);
+    // ObjectWidget is scoped to the metadata key.
     expect(html).toMatch(/data-testid="object-widget"[^>]*data-key="metadata"/);
+    // No text-widget for the metadata key — that scalar fallthrough would
+    // have rendered `[object Object]` via `String(value)`.
     expect(html).not.toMatch(
       /data-testid="text-widget"[^>]*data-key="metadata"|data-key="metadata"[^>]*data-testid="text-widget"/,
     );
+    // Object-row is not a ComplexValueWidget — that placeholder is reserved
+    // for array-of-objects.
     expect(html).not.toMatch(/data-testid="complex-value-widget"[^>]*data-key="metadata"/);
+    // Children render so the user can navigate the nested structure.
     expect(html).toContain('version');
     expect(html).toContain('author');
   });
 
   test('sibling scalar keys around a nested value still render their interactive widgets', () => {
+    // Valid scalar rows (name, description) remain
+    // visible and editable alongside the nested row. The scalar siblings
+    // must keep their normal type-icon picker + scalar widget.
     const provider = makeProvider('nested-skill-siblings-doc');
     seedYTextFm(
       provider,
@@ -322,21 +392,32 @@ describe('PropertyPanel nested-value rendering', () => {
     expect(html).toContain('data-testid="text-widget"');
     expect(html).toContain('data-key="name"');
     expect(html).toContain('data-key="description"');
+    // Both scalar keys carry the interactive type-picker.
     expect(html).toContain('aria-label="name type: Text. Click to change."');
     expect(html).toContain('aria-label="description type: Text. Click to change."');
   });
 
   test('nested row carries a static (non-dropdown) type icon — no coercion footgun', () => {
+    // The type-picker dropdown coerces via `coerceValue(value, target)`,
+    // which `String()`s objects to '[object Object]' and would corrupt
+    // the YAML on commit. The complex row swaps the picker for a static
+    // glyph; the static icon reflects the inferred type ('object' here).
     const provider = makeProvider('nested-static-icon-doc');
     seedYTextFm(provider, '---\nmetadata:\n  version: "1.0"\n---\n');
     const html = renderPanel(provider);
     expect(html).toMatch(
       /data-testid="type-icon-static"[^>]*data-key="metadata"[^>]*data-type="object"/,
     );
+    // No live picker on the metadata row — the only row in this doc is
+    // `metadata`, so a global negative is exhaustive here.
     expect(html).not.toMatch(/data-testid="type-icon-button"[^>]*data-key="metadata"/);
   });
 
   test('array-of-objects value renders as indexed ArrayOfObjectsWidget (not the read-only complex preview)', () => {
+    // Arrays whose elements are objects route to the indexed-item editor
+    // — every item is a plain object so each can render as its own nested
+    // ObjectWidget. ComplexValueWidget is reserved for shapes the indexed
+    // editor cannot represent (heterogeneous arrays).
     const provider = makeProvider('array-of-objects-doc');
     seedYTextFm(
       provider,
@@ -347,7 +428,9 @@ describe('PropertyPanel nested-value rendering', () => {
     expect(html).toMatch(
       /data-testid="array-of-objects-widget"[^>]*data-key="plugins"|data-key="plugins"[^>]*data-testid="array-of-objects-widget"/,
     );
+    // The trigger summary reflects item count, not the read-only preview.
     expect(html).toContain('2 items');
+    // No read-only complex preview for this row.
     expect(html).not.toMatch(/data-testid="complex-value-widget"[^>]*data-key="plugins"/);
   });
 
@@ -365,9 +448,13 @@ describe('PropertyPanel ObjectWidget recursive rendering', () => {
     seedYTextFm(provider, '---\nmetadata:\n  version: "1.0"\n  author: Inkeep\n---\n');
     const html = renderPanel(provider);
     expect(html).toMatch(/data-testid="object-widget-trigger"[^>]*data-key="metadata"/);
+    // Top-level depth-0 object expands by default — the trigger reports
+    // its open state via aria-expanded so screen readers track it.
     expect(html).toMatch(
       /data-testid="object-widget-trigger"[^>]*data-key="metadata"[^>]*aria-expanded="true"|data-key="metadata"[^>]*data-testid="object-widget-trigger"[^>]*aria-expanded="true"/,
     );
+    // Accessible name on the expand control — required for keyboard +
+    // screen-reader navigation.
     expect(html).toMatch(/aria-label="Collapse metadata"|aria-label="Expand metadata"/);
   });
 
@@ -378,14 +465,21 @@ describe('PropertyPanel ObjectWidget recursive rendering', () => {
       '---\nmetadata:\n  version: "1.0"\n  author: Inkeep\n  repository: github.com/x\n---\n',
     );
     const html = renderPanel(provider);
+    // Each child key gets a full FrontmatterRow inside the object-widget-
+    // children container. Children are full rows so they carry the same
+    // CRUD affordances (type picker, rename, delete) as top-level rows —
+    // path-addressed through the binding's local API.
     expect(html).toMatch(/data-testid="property-row"[^>]*data-key="version"/);
     expect(html).toMatch(/data-testid="property-row"[^>]*data-key="author"/);
     expect(html).toMatch(/data-testid="property-row"[^>]*data-key="repository"/);
+    // The children container's data-key pins the parent map.
     expect(html).toMatch(/data-testid="object-widget-children"[^>]*data-key="metadata"/);
   });
 
   test('scalar leaves at depth 1 render via the existing scalar widgets per inferType', () => {
     const provider = makeProvider('object-widget-scalar-leaves-doc');
+    // version is text, count is number, active is boolean — every existing
+    // scalar widget is exercised under the same nested parent.
     seedYTextFm(provider, '---\nmetadata:\n  version: "1.0"\n  count: 42\n  active: true\n---\n');
     const html = renderPanel(provider);
     expect(html).toMatch(/data-testid="text-widget"[^>]*data-key="version"/);
@@ -394,33 +488,50 @@ describe('PropertyPanel ObjectWidget recursive rendering', () => {
   });
 
   test('nested object at depth 2 renders its own ObjectWidget recursively', () => {
+    // A map-in-a-map exercises the recursion: the inner `details` value is
+    // itself an object, so it must dispatch back into ObjectWidget — but at
+    // depth 1, where it defaults collapsed (depth-0 is the only level that
+    // auto-expands).
     const provider = makeProvider('object-widget-recursive-doc');
     seedYTextFm(
       provider,
       '---\nmetadata:\n  version: "1.0"\n  details:\n    license: MIT\n    notes: hello\n---\n',
     );
     const html = renderPanel(provider);
+    // Outer object widget (depth 0) is expanded by default.
     expect(html).toMatch(/data-testid="object-widget"[^>]*data-key="metadata"[^>]*data-depth="0"/);
+    // Inner object widget (depth 1) is rendered inside, also as an ObjectWidget.
     expect(html).toMatch(/data-testid="object-widget"[^>]*data-key="details"[^>]*data-depth="1"/);
+    // The row that owns `details` (inside metadata's object-widget-children)
+    // is a complex-value FrontmatterRow.
     expect(html).toMatch(/data-testid="property-row"[^>]*data-key="details"/);
   });
 
   test('depth>=1 ObjectWidgets default to collapsed (avoid drowning the panel)', () => {
+    // The depth-0 metadata widget auto-expands; the depth-1 details widget
+    // does NOT. This keeps deep trees from auto-exploding on open.
     const provider = makeProvider('object-widget-depth-default-doc');
     seedYTextFm(
       provider,
       '---\nmetadata:\n  details:\n    license: MIT\n    repo: github.com/x\n---\n',
     );
     const html = renderPanel(provider);
+    // Depth-0 trigger reports aria-expanded=true (auto-expanded).
     expect(html).toMatch(
       /data-testid="object-widget-trigger"[^>]*data-key="metadata"[^>]*aria-expanded="true"|data-key="metadata"[^>]*data-testid="object-widget-trigger"[^>]*aria-expanded="true"/,
     );
+    // Depth-1 trigger reports aria-expanded=false (auto-collapsed).
     expect(html).toMatch(
       /data-testid="object-widget-trigger"[^>]*data-key="details"[^>]*aria-expanded="false"|data-key="details"[^>]*data-testid="object-widget-trigger"[^>]*aria-expanded="false"/,
     );
   });
 
   test('nested scalar rows carry interactive type-icon-button (live picker) per leaf', () => {
+    // Nested scalar leaves are full FrontmatterRows with the
+    // interactive type-picker dropdown — the user can change a nested scalar's
+    // type just like a top-level scalar (coerceValue handles scalar↔scalar).
+    // The static-icon path is reserved for COMPLEX values (nested object,
+    // array of objects) where coercion would corrupt the structure.
     const provider = makeProvider('nested-icon-types-doc');
     seedYTextFm(provider, '---\nmetadata:\n  version: "1.0"\n  count: 42\n  active: true\n---\n');
     const html = renderPanel(provider);
@@ -440,6 +551,7 @@ describe('PropertyPanel ObjectWidget recursive rendering', () => {
     seedYTextFm(provider, '---\nmetadata: {}\n---\n');
     const html = renderPanel(provider);
     expect(html).toMatch(/data-testid="object-widget"[^>]*data-key="metadata"/);
+    // The children container exists but is empty — no property-row inside it.
     expect(html).toMatch(
       /data-testid="object-widget-children"[^>]*data-key="metadata"[^>]*><\/div>/,
     );

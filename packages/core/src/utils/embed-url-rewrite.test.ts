@@ -53,18 +53,29 @@ describe('rewriteEmbedUrl — Vimeo', () => {
   });
 
   test('vimeo.com/<id>/<hash> unlisted-link form → player.vimeo.com/video/<id>', () => {
+    // Unlisted videos take a path-hash after the ID. The hash is required
+    // for authentication on the player surface — Vimeo's iframe normally
+    // honors it via a sibling `h=` query param. Today this rewrite drops
+    // the hash; that's a known gap (unlisted videos won't authenticate
+    // through the rewritten URL).
+    // authors who hit it can paste the player.vimeo.com URL directly.
     expect(rewriteEmbedUrl('https://vimeo.com/123456789/abc123')).toBe(
       'https://player.vimeo.com/video/123456789',
     );
   });
 
   test('player.vimeo.com/video/ID (already embed) → unchanged', () => {
+    // Returning the embed URL verbatim is the right answer — short-
+    // circuiting the rewrite would also be correct but adds branches.
     expect(rewriteEmbedUrl('https://player.vimeo.com/video/123456789')).toBe(
       'https://player.vimeo.com/video/123456789',
     );
   });
 
   test('vimeo.com/channels/foo (no ID) → unchanged', () => {
+    // Channel / group / showcase pages have no per-video iframe
+    // equivalent. The rewrite returns the input so the iframe fails
+    // visibly and the author switches to the canonical URL.
     const channelUrl = 'https://vimeo.com/channels/staffpicks';
     expect(rewriteEmbedUrl(channelUrl)).toBe(channelUrl);
   });
@@ -101,10 +112,14 @@ describe('rewriteEmbedUrl — passthrough', () => {
   });
 
   test('malformed URL → unchanged', () => {
+    // No URL parse → no rewriter recognizes it → returned as-is.
     expect(rewriteEmbedUrl('not a url at all')).toBe('not a url at all');
   });
 
   test('javascript: / data: schemes → unchanged (caller still gates on scheme)', () => {
+    // `<Embed>` itself refuses non-http(s) schemes upstream; the rewriter
+    // shouldn't second-guess that — leave the URL as-is so the gate
+    // produces the right placeholder.
     expect(rewriteEmbedUrl('javascript:alert(1)')).toBe('javascript:alert(1)');
     expect(rewriteEmbedUrl('data:text/html,<script>')).toBe('data:text/html,<script>');
   });

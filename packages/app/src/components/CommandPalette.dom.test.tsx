@@ -40,6 +40,8 @@ const installedAgentStates = {
 };
 const workspaceValue = { rootPath: '/workspace' };
 let pageListLoading = false;
+// Comfortably longer than two warming-poll cadences (600ms each), so a test can
+// assert that a stopped poll fires no further requests.
 const COMMAND_PALETTE_POLL_GRACE_MS = 1400;
 
 mock.module('@lingui/react/macro', () => ({
@@ -183,6 +185,9 @@ mock.module('@/components/command-palette-tag-search', () => ({
   fetchDocsForTag: mock(() => Promise.resolve([])),
 }));
 
+// The cached worktree model is read via useWorktrees (backed by window.okDesktop,
+// not the bridge prop). Default null so the existing suite sees no Worktrees
+// group; the dedicated test sets a model.
 let worktreeModelMock: import('@inkeep/open-knowledge-core').WorktreeSelectorModel | null = null;
 mock.module('@/hooks/use-worktrees', () => ({
   useWorktrees: () => worktreeModelMock,
@@ -419,6 +424,7 @@ describe('CommandPalette DOM behavior', () => {
     await waitFor(() =>
       expect(screen.getByTestId('command-palette-search-preparing')).not.toBeNull(),
     );
+    // The misleading failure / empty copy must be suppressed while warming.
     expect(screen.queryByText('Search failed.')).toBeNull();
     expect(screen.queryByText('No matching commands.')).toBeNull();
 
@@ -454,6 +460,9 @@ describe('CommandPalette DOM behavior', () => {
     const fetchMock = globalThis.fetch as unknown as { mock: { calls: unknown[][] } };
     expect(fetchMock.mock.calls.some((call) => call[0] === '/api/search')).toBe(false);
 
+    // The page list finishes its initial load: the effect's `pagesLoading`
+    // dependency flips, the effect re-runs, and the body search fires. This is
+    // the "search runs automatically once the workspace is ready" contract.
     pageListLoading = false;
     rerender(<CommandPalette bridge={null} open={true} onOpenChange={onOpenChange} />);
 
@@ -464,6 +473,8 @@ describe('CommandPalette DOM behavior', () => {
   });
 
   test('server warming (ready:false) shows the preparing state and polls until the index is ready', async () => {
+    // First /api/search answers warming; later answers ready with a hit. Any
+    // non-search fetch (e.g. the semantic-capability probe) stays the default.
     let searchCalls = 0;
     globalThis.fetch = mock((input: unknown) => {
       if (input === '/api/search') {
@@ -480,11 +491,14 @@ describe('CommandPalette DOM behavior', () => {
     await renderPalette({ bridge: null });
     await setQuery('arch');
 
+    // Warming response -> preparing status, not a failure, no premature empty.
     await waitFor(() =>
       expect(screen.getByTestId('command-palette-search-preparing')).not.toBeNull(),
     );
     expect(screen.queryByText('Search failed.')).toBeNull();
 
+    // The poll re-fires the search; once it reports ready, the preparing state
+    // clears without the user re-typing.
     await waitFor(() => expect(searchCalls).toBeGreaterThanOrEqual(2), { timeout: 3000 });
     await waitFor(() =>
       expect(screen.queryByTestId('command-palette-search-preparing')).toBeNull(),
@@ -517,8 +531,10 @@ describe('CommandPalette DOM behavior', () => {
       fetchMock.mock.calls.filter((call) => call[0] === '/api/search').length;
     const callsAtClose = searchCalls();
 
+    // Close the palette: the effect cleanup must cancel the in-flight poll.
     rerender(<CommandPalette bridge={null} open={false} onOpenChange={onOpenChange} />);
 
+    // Past two poll cadences, the count must not grow.
     await new Promise((resolve) => setTimeout(resolve, COMMAND_PALETTE_POLL_GRACE_MS));
     expect(searchCalls()).toBe(callsAtClose);
   });
@@ -553,6 +569,8 @@ describe('CommandPalette DOM behavior', () => {
       expect(screen.getByTestId('command-palette-search-preparing')).not.toBeNull(),
     );
 
+    // The error on call #2 must not abandon to "Search failed." — warming keeps
+    // polling, and call #3 (ready) clears the preparing state.
     await waitFor(() => expect(call).toBeGreaterThanOrEqual(3), { timeout: 3000 });
     expect(screen.queryByText('Search failed.')).toBeNull();
     await waitFor(() =>
@@ -565,6 +583,7 @@ describe('CommandPalette DOM behavior', () => {
       mainRoot: '/projects/current',
       currentBranch: 'main',
       entries: [
+        // The current window's own worktree — excluded (no self-switch).
         {
           branch: 'main',
           worktreePath: '/projects/current',
@@ -572,6 +591,7 @@ describe('CommandPalette DOM behavior', () => {
           isMain: true,
           locked: false,
         },
+        // An existing sibling worktree — opens its window directly.
         {
           branch: 'dev',
           worktreePath: '/projects/current/.ok/worktrees/dev',
@@ -579,6 +599,7 @@ describe('CommandPalette DOM behavior', () => {
           isMain: false,
           locked: false,
         },
+        // A branch with no worktree yet — created on demand, then opened.
         {
           branch: 'feature-x',
           worktreePath: null,
@@ -590,8 +611,10 @@ describe('CommandPalette DOM behavior', () => {
     };
     const { bridge } = await renderPalette();
 
+    // The current worktree is not offered as a switch target.
     expect(screen.queryByTestId('command-palette-worktree-main')).toBeNull();
 
+    // Existing worktree → open its window with the worktree entry point.
     fireEvent.click(screen.getByTestId('command-palette-worktree-dev'));
     await waitFor(() => {
       expect(bridge?.project.open).toHaveBeenCalledWith({
@@ -601,6 +624,7 @@ describe('CommandPalette DOM behavior', () => {
       });
     });
 
+    // Un-opened branch → create the worktree, refresh the cache, then open it.
     fireEvent.click(screen.getByTestId('command-palette-worktree-feature-x'));
     await waitFor(() => {
       expect(bridge?.worktree.create).toHaveBeenCalledWith({
@@ -624,6 +648,9 @@ describe('NavigationItem path subtitle', () => {
     cleanup();
   });
 
+  // Every result row shows its full path so same-named files are
+  // distinguishable. Two files share the basename `data.csv`; the row content
+  // must carry each one's distinct path.
   test('a file result row renders its path so same-named siblings are distinguishable', async () => {
     const { NavigationItem } = await import('./CommandPalette');
     const fileA = {

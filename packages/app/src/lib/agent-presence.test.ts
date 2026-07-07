@@ -71,6 +71,7 @@ describe('pickAgentsForDoc', () => {
     const awareness = makeAwareness([{ agentPresence: { 'uuid-A': a, 'uuid-B': b } }]);
     const { current, crossDoc } = pickAgentsForDoc(awareness, null, NOW);
     expect(current).toEqual([]);
+    // Sort by entry.currentDoc for stable comparison (Biome-safe no-non-null).
     const byDoc = (x: { entry: AgentPresenceEntry }, y: { entry: AgentPresenceEntry }): number =>
       (x.entry.currentDoc ?? '').localeCompare(y.entry.currentDoc ?? '');
     expect([...crossDoc].sort(byDoc)).toEqual(
@@ -119,6 +120,9 @@ describe('pickAgentsForDoc', () => {
   });
 
   test('returns agentId keys paired with entries (O(N) lookup contract)', () => {
+    // Regression: pickAgentsForDoc must return {agentId, entry} pairs so
+    // downstream consumers don't need a second O(N²) reverse-lookup to
+    // recover the key from the entry ref.
     const e = entry({ currentDoc: 'foo.md', ts: NOW });
     const awareness = makeAwareness([{ agentPresence: { 'uuid-specific': e } }]);
     const { current } = pickAgentsForDoc(awareness, 'foo.md', NOW);

@@ -1,3 +1,27 @@
+/**
+ * `ok diagnose health` — runs every environment check (git, Bun, config,
+ * content dir, server lock, shadow repo, macOS code-sig) and emits a
+ * structured report. Sibling of `ok diagnose process <pid>`; shares the
+ * parent `diagnose` command-group.
+ *
+ * Flags:
+ *   --json              NDJSON output (one CheckResult per line)
+ *   --verbose           include detail field + probe-context in human output
+ *   --check <name>      run only the named check (single name; multi-check
+ *                       via comma-list is intentionally not supported — keep
+ *                       the contract simple and shell-loop friendly)
+ *   --quiet             suppress output; exit code only
+ *
+ * Exit codes:
+ *   0 = all pass (warn does NOT fail)
+ *   1 = any fail
+ *   2 = usage error (unknown check name)
+ *
+ * Each check runs through `runCheck` (timeout + try/catch). The runner never
+ * short-circuits — every selected check runs, so the user sees a complete
+ * report even when an earlier check fails.
+ */
+
 import { Command } from 'commander';
 import pc from 'picocolors';
 import {
@@ -27,11 +51,15 @@ export interface RunHealthChecksOpts {
 
 export interface RunHealthChecksDeps {
   checks?: readonly CheckDefinition[];
+  /** Injectable for tests. */
   stdout?: (line: string) => void;
+  /** Injectable for tests. */
   stderr?: (line: string) => void;
+  /** Override per-check timeout (testing only). */
   timeoutMs?: number;
 }
 
+/** Build the default check registry. Order matches the human-readable output. */
 export function defaultChecks(): CheckDefinition[] {
   return [
     makeGitCheck(),
@@ -79,6 +107,11 @@ function summarize(results: readonly CheckResult[]): string {
   return parts.join(', ');
 }
 
+/**
+ * Run the health checks and return the process exit code (0/1/2). Returns
+ * rather than calling `process.exit` directly — easier to test, easier to
+ * compose.
+ */
 export async function runHealthChecks(
   opts: RunHealthChecksOpts,
   deps: RunHealthChecksDeps = {},
@@ -134,6 +167,7 @@ export async function runHealthChecks(
   return anyFail ? 1 : 0;
 }
 
+/** Build the `health` subcommand and attach it to the parent `diagnose` root. */
 export function healthCommand(): Command {
   return new Command('health')
     .description(`Run environment health checks (${CHECK_NAMES.join(', ')})`)

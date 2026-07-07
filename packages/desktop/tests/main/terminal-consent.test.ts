@@ -7,6 +7,16 @@ import {
   isTerminalConsentedWithGrace,
 } from '../../src/main/terminal-consent.ts';
 
+/**
+ * Trust-boundary backstop: `ok:pty:create` refuses a real shell only when the
+ * window's project-local config explicitly sets `terminal.enabled: false`. The
+ * posture is fail-OPEN — an absent / unreadable / malformed config, an absent
+ * leaf, `null`, and `true` all read as allowed. This is the same
+ * `<projectDir>/.ok/local/config.yml` the renderer's opt-out writer patches;
+ * main re-reads it so a renderer regression/compromise can't spawn a shell
+ * against a project that explicitly opted out.
+ */
+
 const created: string[] = [];
 
 function makeProject(localConfigYaml: string | null): string {
@@ -69,6 +79,8 @@ describe('isTerminalConsentedWithGrace', () => {
   });
 
   test('resolves true once a re-enable lands partway through the grace window', async () => {
+    // Persistence-debounce shape: opted out when the shell-open fires, then the
+    // re-enable (false → true) lands mid-window.
     const projectDir = makeProject('terminal:\n  enabled: false\n');
     setTimeout(() => writeLocalConfig(projectDir, 'terminal:\n  enabled: true\n'), 120);
     expect(await isTerminalConsentedWithGrace(projectDir, { timeoutMs: 750, intervalMs: 25 })).toBe(

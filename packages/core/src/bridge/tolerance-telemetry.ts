@@ -1,10 +1,10 @@
-import type { BridgeToleranceClass } from './normalize.ts';
+import type { BridgeToleranceSignal } from './parse-equivalence.ts';
 
 export type ToleranceClassSeverity = 'pm-model-caused' | 'parser-caused' | 'serializer-caused';
 
 export interface ToleranceFireRecord {
   timestamp: string;
-  className: BridgeToleranceClass;
+  className: BridgeToleranceSignal;
   documentName: string | undefined;
   codeUnitPosition: number;
   severity: ToleranceClassSeverity;
@@ -29,9 +29,10 @@ const SEVERITY_BY_CLASS = {
   'trailing-whitespace': 'serializer-caused',
   'blank-line-collapse': 'serializer-caused',
   'trailing-newline': 'serializer-caused',
-} as const satisfies Record<BridgeToleranceClass, ToleranceClassSeverity>;
+  'parse-equivalence': 'parser-caused',
+} as const satisfies Record<BridgeToleranceSignal, ToleranceClassSeverity>;
 
-export function classifySeverity(cls: BridgeToleranceClass): ToleranceClassSeverity {
+export function classifySeverity(cls: BridgeToleranceSignal): ToleranceClassSeverity {
   return SEVERITY_BY_CLASS[cls];
 }
 
@@ -51,7 +52,7 @@ export function setToleranceTelemetryHook(h: ToleranceTelemetryHook | null): voi
 }
 
 export function emitToleranceFire(
-  classes: readonly BridgeToleranceClass[],
+  classes: readonly BridgeToleranceSignal[],
   left: string,
   right: string,
   documentName: string | undefined,

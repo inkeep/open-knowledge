@@ -72,6 +72,9 @@ describe('parseFrontmatter', () => {
   });
 
   test('parses frontmatter whose opening fence carries a trailing space', () => {
+    // CommonMark / micromark-extension-frontmatter tolerate spaces/tabs
+    // after the fence sequence; the CLI parser must agree, or a stray fence
+    // keystroke makes the whole block invisible.
     const content = '--- \ntitle: Hello\ndescription: World\n---\n\nBody text.';
     expect(parseFrontmatter(content)).toEqual({ title: 'Hello', description: 'World' });
   });

@@ -57,7 +57,9 @@ export function readPins(storage?: PinStorage): StoredPins {
 function writePins(pins: StoredPins, storage: PinStorage): void {
   try {
     storage.setItem(SIDEBAR_PINS_KEY, JSON.stringify(pins));
-  } catch {}
+  } catch {
+    // quota exceeded — in-memory state holds for the session
+  }
 }
 
 export function resolveEffectiveState(

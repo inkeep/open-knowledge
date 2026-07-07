@@ -1,5 +1,15 @@
+/**
+ * Deterministic synthetic markdown generator for CRDT stress tests.
+ *
+ * Produces reproducible markdown at any requested line count with realistic
+ * structure: headings, paragraphs, lists, code blocks. Line N always produces
+ * the same content given the same parameters.
+ */
+
 interface GenerateMarkdownOptions {
+  /** Include emoji, CJK, and combining marks in content */
   unicode?: boolean;
+  /** Omit trailing newline to exercise applyUserDelta unterminated-final-line path */
   noTrailingNewline?: boolean;
 }
 
@@ -84,21 +94,42 @@ const UNICODE_WORDS = [
   '\u{1F469}\u{200D}\u{1F52C}sci',
 ];
 
+/** Deterministic word selection based on line index + position */
 function word(lineIdx: number, wordIdx: number, unicode: boolean): string {
   const pool = unicode ? UNICODE_WORDS : LOREM_WORDS;
   const idx = (((lineIdx * 31 + wordIdx * 7) % pool.length) + pool.length) % pool.length;
   return pool[idx];
 }
 
+/** Generate a deterministic sentence fragment for a given line index */
 function sentence(lineIdx: number, wordCount: number, unicode: boolean): string {
   const words: string[] = [];
   for (let i = 0; i < wordCount; i++) {
     words.push(word(lineIdx, i, unicode));
   }
+  // Capitalize first word
   words[0] = words[0].charAt(0).toUpperCase() + words[0].slice(1);
   return words.join(' ');
 }
 
+/**
+ * Generate deterministic markdown at any requested line count.
+ *
+ * Structure cycles through a repeating pattern per 20-line block:
+ * - Line 0: ## heading
+ * - Lines 1-4: paragraph (4 lines of prose)
+ * - Line 5: empty line
+ * - Lines 6-9: bullet list (4 items)
+ * - Line 10: empty line
+ * - Lines 11-16: code block (``` + 4 code lines + ```)
+ * - Line 17: empty line
+ * - Line 18: wiki-link paragraph (~5% frequency — atom-node coverage)
+ * - Line 19: short paragraph
+ *
+ * Per 20-line block: 7 prose lines (35%), 4 list lines (20%), 6 code lines
+ * incl. fences (30%), 3 blank lines (15%). One of the prose lines is a wiki-link
+ * paragraph (atom-node coverage) — included in the prose share.
+ */
 export function generateMarkdown(lineCount: number, options: GenerateMarkdownOptions = {}): string {
   const { unicode = false, noTrailingNewline = false } = options;
   const lines: string[] = [];

@@ -1,3 +1,11 @@
+/**
+ * Languages available in the visual-mode code block picker.
+ *
+ * Values match the canonical `highlight.js` / `lowlight` language IDs (those
+ * are also what we store in markdown info-strings, so round-trip is byte-stable).
+ * Aliases let users type `js` / `ts` / `sh` / etc. in the filter input.
+ */
+
 interface CodeLanguageOption {
   value: string;
   label: string;
@@ -6,6 +14,10 @@ interface CodeLanguageOption {
 
 export const CODE_BLOCK_LANGUAGES: CodeLanguageOption[] = [
   { value: 'plaintext', label: 'Plain text', aliases: ['text', 'txt', 'none'] },
+  // `'shell'` is intentionally NOT an alias of `bash` — the canonical
+  // `'shell'` entry below is a distinct highlight.js grammar (shell-session
+  // prompt + output). Listing it here would have been overwritten by the
+  // canonical entry anyway (last write wins in ALIAS_MAP).
   { value: 'bash', label: 'Bash', aliases: ['sh', 'zsh'] },
   { value: 'c', label: 'C' },
   { value: 'cpp', label: 'C++', aliases: ['c++'] },
@@ -48,6 +60,10 @@ const ALIAS_MAP: Map<string, string> = (() => {
   return m;
 })();
 
+/**
+ * Map a user-supplied language token to its canonical lowlight key.
+ * Returns `null` when the value is empty (= plain text).
+ */
 export function normalizeCodeLanguage(language: string | null | undefined): string | null {
   if (!language) return null;
   return ALIAS_MAP.get(language.toLowerCase()) ?? language.toLowerCase();

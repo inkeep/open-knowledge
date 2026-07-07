@@ -1,3 +1,13 @@
+/**
+ * Integration tests for the write-time `brokenLinks` validation contract,
+ * exercised end-to-end through the real MCP tool surface
+ * (tool → HTTP handler → BacklinkIndex/extractors → response).
+ *
+ * Broken outbound links are surfaced in the SAME write/edit response, computed
+ * synchronously from the just-written bytes — NOT the 100ms-debounced
+ * BacklinkIndex — so the assertions deliberately read the write response
+ * directly with no quiescence flush (freshness).
+ */
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -12,6 +22,11 @@ interface InitializedSession {
   protocolVersion: string;
 }
 
+// Mirrors the core `BrokenLink` type but is defined locally ON PURPOSE: this
+// test asserts the actual MCP wire shape the agent receives, independent of the
+// declared core types. Importing the core type would let a silent type↔wire
+// drift pass unnoticed — the literal expectations below are the contract, not
+// the TypeScript declarations.
 interface BrokenLink {
   href: string;
   resolvedTo: string | null;
@@ -104,10 +119,14 @@ afterAll(async () => {
   await server.cleanup();
 });
 
+// ── R2 — write-time brokenLinks validation ────────────────────────────────────
+
 test('write surfaces broken outbound links (doubling + escape-root + broken wiki) in the same response', async () => {
   const session = await openMcpSession(server.port);
   const folder = `wiki-${randomUUID().slice(0, 8)}`;
   const docName = `${folder}/OVERVIEW`;
+  // Authored from inside `${folder}/`, so `./${folder}/...` doubles. The escape
+  // walks above the content root, and the wiki target doesn't exist.
   const content = [
     '# Wiki Overview',
     '',
@@ -126,6 +145,9 @@ test('write surfaces broken outbound links (doubling + escape-root + broken wiki
   );
   expect(result.isError ?? false).toBe(false);
 
+  // read brokenLinks straight off the write response, with NO
+  // awaitDocQuiescence / pollUntil flush first. The index is still debounced;
+  // a correct implementation computed these from the just-written bytes.
   const doc = docResult(result.structuredContent);
   const broken = doc.brokenLinks as BrokenLink[];
   expect(broken).toEqual([
@@ -138,6 +160,8 @@ test('write surfaces broken outbound links (doubling + escape-root + broken wiki
     { href: '[[Ghost Page]]', resolvedTo: 'Ghost Page', reason: 'no-such-doc' },
   ]);
 
+  // stored bytes are exactly as authored: no auto-correct of the
+  // doubling, and the write still succeeded.
   const stored = readFileSync(join(server.contentDir, `${docName}.md`), 'utf-8');
   expect(stored).toContain(`[tasks](./${folder}/modules/tasks)`);
   expect(stored).toContain('[escape](../../../way-out.md)');
@@ -147,6 +171,7 @@ test('write surfaces broken outbound links (doubling + escape-root + broken wiki
 test('a write whose links all resolve returns brokenLinks: [] (positive confirmation)', async () => {
   const session = await openMcpSession(server.port);
   const docName = `clean-${randomUUID().slice(0, 8)}`;
+  // A self-link and an anchor/external link — none are broken doc links.
   const content = [
     '# Clean',
     '',
@@ -170,10 +195,16 @@ test('a write whose links all resolve returns brokenLinks: [] (positive confirma
 test('write validates links to any file on disk, not just docs (source-file depth)', async () => {
   const session = await openMcpSession(server.port);
   const uid = randomUUID().slice(0, 8);
+  // A real source file on disk under the content root — not a CRDT doc.
   const relFile = `src/probe-${uid}.py`;
   mkdirSync(join(server.contentDir, 'src'), { recursive: true });
   writeFileSync(join(server.contentDir, relFile), 'def probe(): ...\n');
 
+  // Authored from `wiki-${uid}/modules/`, so the content root is `../../`.
+  // This is the exact codebase-wiki break: a correct-depth source link is
+  // clean, one extra `../` overshoots the root (404s silently in the editor +
+  // is invisible to the .md-only link graph), and an in-root path with no file
+  // is a distinct miss.
   const docName = `wiki-${uid}/modules/m`;
   const content = [
     '# Module',
@@ -193,6 +224,8 @@ test('write validates links to any file on disk, not just docs (source-file dept
   );
   expect(result.isError ?? false).toBe(false);
   const broken = docResult(result.structuredContent).brokenLinks as BrokenLink[];
+  // The correct-depth link is absent (it resolves to the real file); only the
+  // overshoot and the missing-file links are reported.
   expect(broken).toEqual([
     { href: `../../../${relFile}`, resolvedTo: null, reason: 'unresolvable' },
     {
@@ -265,6 +298,7 @@ test('a link to a doc that actually exists is not flagged (admitted-set membersh
     { document: { path: target, content: '# Install\n\nSteps.\n', position: 'replace' } },
     server.contentDir,
   );
+  // The membership check reads the live file index, populated by the watcher.
   await awaitFileWatcherIndexed(server, target);
 
   const result = await callTool(

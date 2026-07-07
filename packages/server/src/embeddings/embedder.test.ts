@@ -17,6 +17,7 @@ interface FetchCall {
   authHeader: string | undefined;
 }
 
+/** A stub fetch that records calls and replays a scripted sequence of replies. */
 function stubFetch(replies: Array<{ status?: number; json?: unknown } | { abortable: true }>): {
   fetchImpl: typeof fetch;
   calls: FetchCall[];
@@ -46,6 +47,7 @@ function stubFetch(replies: Array<{ status?: number; json?: unknown } | { aborta
   return { fetchImpl, calls };
 }
 
+/** Build a canned OpenAI embeddings response of `count` vectors of `dims`. */
 function embeddingsResponse(count: number, dims: number, totalTokens = 7): unknown {
   return {
     data: Array.from({ length: count }, (_, index) => ({
@@ -72,6 +74,7 @@ describe('createOpenAiEmbedder', () => {
     const out = await embedder.embed(['alpha', 'beta'], { role: 'document' });
     expect(out.length).toBe(2);
     expect(out[0].length).toBe(1536);
+    // L2-normalized → self-cosine ~1.
     expect(cosineSimilarity(out[0], out[0])).toBeCloseTo(1, 5);
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe('https://api.openai.com/v1/embeddings');
@@ -152,6 +155,9 @@ describe('createOpenAiEmbedder', () => {
   });
 
   test('a provider error body echoing the key never leaks into the thrown error (R4)', async () => {
+    // A misbehaving provider that reflects the request (key included) in its
+    // error body. The embedder drains but never surfaces the body — only the
+    // status — so the key cannot escape via an error message or a log.
     const { fetchImpl } = stubFetch([
       { status: 500, json: { error: `bad auth for Bearer ${KEY}` } },
     ]);

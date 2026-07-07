@@ -323,6 +323,7 @@ describe('readSyncRemoteInfo', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = https://user:p@ss@gitlab.com/org/repo.git\n',
     });
+    // The `@`-in-password segment must be fully consumed — no `ss@gitlab...` leak.
     expect(readSyncRemoteInfo(dir)).toEqual({ label: 'gitlab.com/org/repo', webUrl: null });
   });
 
@@ -342,12 +343,16 @@ describe('linked-worktree common-dir resolution', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'share-git-worktree-'));
+    // Common (main) git dir: holds config + remote-tracking refs — NOT the
+    // per-worktree git dir.
     const commonDir = join(root, 'main-git');
     mkdirSync(commonDir, { recursive: true });
     writeFileSync(join(commonDir, 'config'), CANONICAL_CONFIG_HTTPS, 'utf-8');
     const refDir = join(commonDir, 'refs', 'remotes', 'origin');
     mkdirSync(refDir, { recursive: true });
     writeFileSync(join(refDir, 'feat-bar'), 'abc123\n', 'utf-8');
+    // Linked-worktree git dir: per-worktree HEAD + a relative `commondir`
+    // pointer, exactly as git writes it (`.git/worktrees/<name>/commondir`).
     const worktreeGitDir = join(commonDir, 'worktrees', 'wt');
     mkdirSync(worktreeGitDir, { recursive: true });
     writeFileSync(join(worktreeGitDir, 'HEAD'), 'ref: refs/heads/feat-bar\n', 'utf-8');
@@ -356,6 +361,7 @@ describe('linked-worktree common-dir resolution', () => {
       `${relative(worktreeGitDir, commonDir)}\n`,
       'utf-8',
     );
+    // The worktree checkout: its `.git` is a file pointing at the worktree dir.
     project = join(root, 'wt-checkout');
     mkdirSync(project, { recursive: true });
     writeFileSync(join(project, '.git'), `gitdir: ${worktreeGitDir}\n`, 'utf-8');

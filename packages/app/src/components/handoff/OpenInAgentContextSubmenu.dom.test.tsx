@@ -184,16 +184,20 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
 
     expect(screen.getByText('Desktop')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
+    // Terminal-first: the Terminal section label precedes the Desktop one.
     expect(
       screen.getByText('Terminal').compareDocumentPosition(screen.getByText('Desktop')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // Separator divides the two populated sections.
     expect(document.querySelector('[data-slot="dropdown-menu-separator"]')).toBeTruthy();
 
     const terminalRow = screen.getByTestId('file-tree-open-in-terminal-claude');
+    // Visible text is the brand "Claude"; accessible name is "Claude CLI".
     expect(terminalRow.textContent).toContain('Claude');
     expect(terminalRow.textContent).not.toContain('CLI');
     expect(terminalRow.getAttribute('aria-label')).toBe('Claude CLI');
+    // Codex + Cursor rows sit alongside, each with its own "<Brand> CLI" name.
     expect(screen.getByTestId('file-tree-open-in-terminal-codex').getAttribute('aria-label')).toBe(
       'Codex CLI',
     );
@@ -215,6 +219,8 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     await renderSubmenu({ input: null, withTerminal: true });
 
     const terminalRow = screen.getByTestId('file-tree-open-in-terminal-claude');
+    // WCAG 2.5.3: the accessible name must contain the visible label "Claude";
+    // when input is missing the hint is appended in this exact order.
     expect(terminalRow.getAttribute('aria-label')).toBe('Claude CLI, No workspace');
     expect(terminalRow.getAttribute('data-disabled')).toBe('');
 

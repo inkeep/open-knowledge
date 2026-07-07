@@ -16,6 +16,11 @@ import { expect, resetContentToFixtureBaseline, test } from './_helpers';
 
 const SIDEBAR = '[data-slot="sidebar-container"]';
 
+/**
+ * Click the sidebar's empty filler below the sections — the deselect-to-root hit
+ * target. The file tree is sized flush to its rows (no empty space of its own),
+ * so the leftover sidebar space below Files + Skills owns this gesture.
+ */
 async function clickEmptyTreeArea(page: Page): Promise<void> {
   const filler = page.locator('[data-sidebar-empty-deselect]');
   await expect(filler).toBeVisible();
@@ -24,6 +29,12 @@ async function clickEmptyTreeArea(page: Page): Promise<void> {
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 }
 
+/**
+ * Create a file through the sidebar's inline New File flow and return the
+ * docName it landed at, read from the authoritative `/api/documents` listing.
+ * The placeholder is created at the computed parent dir the instant New File is
+ * clicked, so the rename only sets the leaf name.
+ */
 async function createFileAndGetDocName(
   page: Page,
   baseURL: string,
@@ -50,6 +61,12 @@ async function createFileAndGetDocName(
 }
 
 test.describe('file-tree deselect-to-root', () => {
+  // The worker server is shared across the whole suite and `seedDocs`'
+  // `testReset()` only clears the `test-doc` doc, so without this reset every
+  // prior spec's docs pile up in this worker's tree. A full tree fills the
+  // sidebar and shrinks the empty deselect filler to nothing (it flex-grows only
+  // into leftover space), pushing `clickEmptyTreeArea`'s target out of view.
+  // Start each test from the boot-seeded baseline instead.
   test.beforeEach(async ({ workerServer }) => {
     await resetContentToFixtureBaseline(workerServer.baseURL, workerServer.contentDir);
   });
@@ -64,6 +81,8 @@ test.describe('file-tree deselect-to-root', () => {
       { name: 'top', markdown: '# Top\n' },
     ]);
 
+    // Open the nested doc → its folder becomes the create target and its row is
+    // selected.
     await page.goto('/#/folder/note');
     const sidebar = page.locator(SIDEBAR);
     const selectedNote = sidebar.getByRole('treeitem', {
@@ -72,11 +91,16 @@ test.describe('file-tree deselect-to-root', () => {
       selected: true,
     });
     await expect(selectedNote).toBeVisible({ timeout: 20_000 });
+    // The editor is showing the nested doc — the route is its hash.
     await expect(page).toHaveURL(/folder\/note$/, { timeout: 10_000 });
 
+    // Click the row so the tree owns DOM focus — that is what paints Pierre's
+    // focus ring (the lingering "blue outline" this guards). A programmatic
+    // hash-nav open selects but never focuses the row.
     await selectedNote.click();
     const focusedRow = page.locator('[data-item-path="folder/note.md"][data-item-focused="true"]');
     await expect(focusedRow).toHaveCount(1, { timeout: 10_000 });
+    // The ring is visible (a real, non-transparent color) before the deselect.
     const ringColorBefore = await focusedRow.evaluate((el) =>
       getComputedStyle(el).getPropertyValue('--trees-focus-ring-color').trim(),
     );
@@ -85,18 +109,24 @@ test.describe('file-tree deselect-to-root', () => {
 
     await clickEmptyTreeArea(page);
 
+    // The row is no longer selected …
     await expect(
       sidebar.getByRole('treeitem', { name: 'note.md', exact: true, selected: true }),
     ).toHaveCount(0, { timeout: 10_000 });
+    // … and although Pierre keeps the row DOM-focused (roving focus), the focus
+    // ring is neutralized — no lingering blue outline.
     await expect(async () => {
       const ringColorAfter = await page
         .locator('[data-item-path="folder/note.md"][data-item-focused="true"]')
         .evaluate((el) => getComputedStyle(el).getPropertyValue('--trees-focus-ring-color').trim());
       expect(ringColorAfter).toBe('transparent');
     }).toPass({ timeout: 10_000 });
+    // … but the doc row is still present and the editor still shows it (the
+    // route never changed — the empty-space click did not navigate).
     await expect(sidebar.getByRole('treeitem', { name: 'note.md', exact: true })).toBeVisible();
     await expect(page).toHaveURL(/folder\/note$/);
 
+    // New File now lands at the project root, not inside `folder/`.
     const names = await createFileAndGetDocName(page, workerServer.baseURL, 'created-at-root');
     expect(names).toContain('created-at-root');
     expect(names).not.toContain('folder/created-at-root');
@@ -118,6 +148,7 @@ test.describe('file-tree deselect-to-root', () => {
       sidebar.getByRole('treeitem', { name: 'note.md', exact: true, selected: true }),
     ).toBeVisible({ timeout: 20_000 });
 
+    // No empty-space click — creation should follow the active folder.
     const names = await createFileAndGetDocName(page, workerServer.baseURL, 'created-in-folder');
     expect(names).toContain('folder/created-in-folder');
     expect(names).not.toContain('created-in-folder');

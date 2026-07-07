@@ -21,6 +21,8 @@ describe('formatContainerAriaLabel', () => {
   });
 
   test('irregular noun is not inflected — "item/items" stays fixed', () => {
+    // The new shape ignores childName for the output prose so irregular
+    // plurals are unreachable.
     expect(formatContainerAriaLabel('Feet', 'Foot', 3)).toBe('Feet with 3 items');
   });
 });

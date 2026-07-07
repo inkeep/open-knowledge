@@ -53,6 +53,7 @@ describe('terminal-dock-store', () => {
       },
     };
     expect(readTerminalDock(throwing)).toBe('right');
+    // Must not throw out to the caller — the write swallows quota/security errors.
     expect(() => writeTerminalDock('bottom', throwing)).not.toThrow();
   });
 });

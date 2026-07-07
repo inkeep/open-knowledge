@@ -1,5 +1,13 @@
 import type { ReactNode } from 'react';
 
+/**
+ * Shared "Install" body for the MCP integrations — Claude Code, Codex, and
+ * Cursor. Covers both ways the editor gets wired up: the macOS desktop app's
+ * first-launch consent dialog, and `ok init` for the web app / terminal path.
+ * The reset path (`~/.ok/mcp-status.json`) is single-sourced here. Optional
+ * editor-specific notes go in `children`. Claude Desktop's DMG install is
+ * bespoke and does not use this.
+ */
 export function McpInstall({ editor, children }: { editor: string; children?: ReactNode }) {
   return (
     <>

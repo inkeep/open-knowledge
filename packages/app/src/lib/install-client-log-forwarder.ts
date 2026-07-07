@@ -1,3 +1,25 @@
+/**
+ * Web/browser client-log forwarder. Captures renderer `console` output
+ * (`log`/`info`/`warn`/`error`) plus uncaught `error` / `unhandledrejection`
+ * and POSTs batches to `POST /api/client-logs`, which writes them to the
+ * server `renderer` pino log so they reach the diagnostics bundle. This is the
+ * only way client-side events (e.g. provider-pool's "Failed to connect") get
+ * persisted in the web / `ok ui` distribution.
+ *
+ * Gated OFF in the Electron app: there the main process captures the renderer
+ * console directly via `console-message` (see
+ * `packages/desktop/src/main/renderer-console-capture.ts`), so running the
+ * forwarder too would double-log.
+ *
+ * Safety: the patched console always calls the original first; an `inForward`
+ * re-entrancy guard plus a swallow-everything flush path ensure the forwarder
+ * can never recurse through its own (or a transitive) console call, and a
+ * failed POST is dropped silently — diagnostics must never surface to the user.
+ *
+ * The `console` / `window` / `document` / `now` collaborators are injectable
+ * (defaulting to the real globals) so the logic is unit-testable without a DOM.
+ */
+
 import {
   type ClientLogEntry,
   parseStructuredConsoleMessage,
@@ -22,6 +44,7 @@ const LEVEL_BY_METHOD: Record<ConsoleMethod, ClientLogEntry['level']> = {
 
 type ConsoleLike = Record<ConsoleMethod, (...args: unknown[]) => void>;
 
+/** Narrow `window` subset — gate flag, transport, listener registration. */
 interface ForwarderWindowLike {
   okDesktop?: unknown;
   fetch: typeof fetch;
@@ -29,6 +52,7 @@ interface ForwarderWindowLike {
   removeEventListener(type: string, listener: (event: Event) => void): void;
 }
 
+/** Narrow `document` subset — unload-flush trigger. */
 interface ForwarderDocumentLike {
   readonly visibilityState: string;
   addEventListener(type: string, listener: () => void): void;
@@ -36,16 +60,24 @@ interface ForwarderDocumentLike {
 }
 
 export interface ClientLogForwarderHandle {
+  /** Flush the current queue immediately (used on unload + in tests). */
   flushNow(): void;
+  /** Restore the original console + remove listeners + clear the marker. */
   uninstall(): void;
 }
 
 export interface InstallClientLogForwarderOptions {
+  /** Override the POST transport (tests). Defaults to the resolved window `fetch`. */
   fetchImpl?: typeof fetch;
+  /** Trailing-edge flush debounce. Defaults to 2000ms. */
   flushIntervalMs?: number;
+  /** Console to patch + restore. Defaults to the global `console`. */
   consoleObj?: ConsoleLike;
+  /** Window-like for the gate, transport, and listeners. Defaults to global `window`. */
   windowObj?: ForwarderWindowLike & { [FORWARDER_MARKER]?: true };
+  /** Document-like for the visibility/unload flush. Defaults to global `document`. */
   documentObj?: ForwarderDocumentLike | null;
+  /** Timestamp source. Defaults to `Date.now`. */
   now?: () => number;
 }
 
@@ -59,17 +91,27 @@ function stringifyArg(arg: unknown): string {
   }
 }
 
+/** Cheap upper-bound byte estimate for an entry's JSON payload. */
 function estimateEntryBytes(entry: ClientLogEntry): number {
   let n = entry.message.length + 80;
   if (entry.event) n += entry.event.length;
   if (entry.fields) {
     try {
       n += JSON.stringify(entry.fields).length;
-    } catch {}
+    } catch {
+      // Non-serializable fields shouldn't reach here (they came from JSON.parse),
+      // but never let estimation throw.
+    }
   }
   return n;
 }
 
+/**
+ * Install the forwarder. No-op (returns `undefined`) when there is no window,
+ * when running inside Electron (`window.okDesktop` present), or when already
+ * installed. Idempotent via a marker symbol (guards React StrictMode double
+ * invoke + HMR).
+ */
 export function installClientLogForwarder(
   options: InstallClientLogForwarderOptions = {},
 ): ClientLogForwarderHandle | undefined {
@@ -79,6 +121,9 @@ export function installClientLogForwarder(
   if (!resolvedWin) return undefined;
   if (resolvedWin.okDesktop) return undefined; // Electron main captures the console directly.
 
+  // Bind a non-undefined-typed local so the closures below (flush, listeners,
+  // uninstall) see it as defined — TS does not carry top-level narrowing into
+  // nested function bodies.
   const win: ForwarderWindowLike & { [FORWARDER_MARKER]?: true } = resolvedWin;
   if (win[FORWARDER_MARKER]) return undefined;
   win[FORWARDER_MARKER] = true;
@@ -97,6 +142,8 @@ export function installClientLogForwarder(
   const queue: ClientLogEntry[] = [];
   let pendingBytes = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  // Set while flushing so neither the flush path nor any transitive console
+  // call it triggers gets re-captured (recursion guard).
   let inForward = false;
 
   const original: ConsoleLike = {
@@ -121,8 +168,12 @@ export function installClientLogForwarder(
         headers: { 'content-type': 'application/json' },
         keepalive: true,
         body: JSON.stringify({ entries }),
-      }).catch(() => {});
+      }).catch(() => {
+        // Network failure — drop. Never surface; never console.* here (would
+        // re-capture). The entries are already removed from the queue.
+      });
     } catch {
+      // Synchronous failure (e.g. serialization) — drop the batch.
     } finally {
       inForward = false;
     }
@@ -131,10 +182,14 @@ export function installClientLogForwarder(
   function enqueue(entry: ClientLogEntry): void {
     queue.push(entry);
     pendingBytes += estimateEntryBytes(entry);
+    // Bounded ring — drop oldest under sustained backpressure.
     if (queue.length > RENDERER_LOG_MAX_ENTRIES) {
       const dropped = queue.shift();
       if (dropped) pendingBytes -= estimateEntryBytes(dropped);
     }
+    // Flush on entry count OR byte budget — the byte cap keeps each POST under
+    // the browser's ~64KB `keepalive` limit so unload-time flushes aren't
+    // silently dropped.
     if (queue.length >= RENDERER_LOG_MAX_ENTRIES || pendingBytes >= RENDERER_LOG_MAX_BATCH_BYTES) {
       flushNow();
       return;
@@ -146,12 +201,20 @@ export function installClientLogForwarder(
     if (inForward) return;
     try {
       const message = truncateLogMessage(args.map(stringifyArg).join(' '));
+      // Only attempt the structured JSON.parse on a reasonably-sized first arg —
+      // a multi-MB `console.log(hugeJsonString)` would otherwise block the
+      // caller's hot path parsing bytes we'd discard anyway (the message is
+      // already truncated and oversized fields are dropped below).
       const firstArg = args[0];
       const firstString =
         typeof firstArg === 'string' && firstArg.length <= RENDERER_LOG_MAX_BATCH_BYTES
           ? firstArg
           : undefined;
       const structured = firstString ? parseStructuredConsoleMessage(firstString) : null;
+      // Bound the lifted fields so a single oversized structured entry can't
+      // blow past the batch byte budget (and the keepalive limit). Drop fields
+      // when serialized over the per-message cap — the truncated `message`
+      // still carries the gist.
       let fields = structured?.fields;
       if (fields) {
         try {
@@ -167,7 +230,9 @@ export function installClientLogForwarder(
         ...(structured?.event ? { event: structured.event } : {}),
         ...(fields ? { fields } : {}),
       });
-    } catch {}
+    } catch {
+      // Capturing must never throw back into the caller's console.* call.
+    }
   }
 
   for (const method of CONSOLE_METHODS) {

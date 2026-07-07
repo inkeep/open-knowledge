@@ -1,3 +1,12 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleRescueList`.
+ *
+ *   - happy path: 200, application/json, body parses against
+ *     `RescueListSuccessSchema` (flat array shape).
+ *   - method-not-allowed on POST → `urn:ok:error:method-not-allowed`
+ *     + `Allow: GET`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, RescueListSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

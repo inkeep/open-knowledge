@@ -1,3 +1,13 @@
+/**
+ * Telemetry instruments for semantic search. Lazy-init meters so registration
+ * runs against the real provider post-`initTelemetry` (not the pre-init no-op),
+ * matching `frontmatter-telemetry.ts`.
+ *
+ * Cardinality discipline (STOP rule): every label here is a bounded enum. NO
+ * query text, document content, paths, or the API key ever reaches a span or
+ * metric — only counts, durations, and enum outcomes. That is what makes the
+ * "tokens embedded / spend" counter legible without leaking what was embedded.
+ */
 import type { SearchSource } from '@inkeep/open-knowledge-core';
 import type { Counter, Histogram } from '@opentelemetry/api';
 import { getLogger } from '../logger.ts';
@@ -5,8 +15,10 @@ import { getMeter } from '../telemetry.ts';
 
 const log = getLogger('embeddings');
 
+/** Bounded label: which side of retrieval the tokens were spent on. */
 export type EmbeddingRoleLabel = 'query' | 'document';
 
+/** Bounded label: why a provider request failed (drives the error-rate metric). */
 export type EmbeddingErrorReason =
   | 'rate_limit'
   | 'timeout'
@@ -15,6 +27,7 @@ export type EmbeddingErrorReason =
   | 'dims_mismatch'
   | 'malformed_response';
 
+/** Bounded label: the net outcome of a semantic-requested query. */
 export type SemanticQueryOutcome =
   | 'applied' // a vector signal contributed to ≥1 result
   | 'no_match' // capable + warm, but no doc cleared the floor
@@ -68,18 +81,27 @@ function queryEmbedDurationHist(): Histogram {
   return _queryEmbedDuration;
 }
 
+/** Count tokens billed for an embeddings request. No-op when OTel is disabled. */
 export function recordEmbeddingTokens(role: EmbeddingRoleLabel, tokens: number): void {
   if (tokens > 0) tokensCounter().add(tokens, { role });
 }
 
+/** Count a provider failure by bounded reason. */
 export function recordEmbeddingProviderError(reason: EmbeddingErrorReason): void {
   errorsCounter().add(1, { reason });
 }
 
+/** Record one embeddings request's wall-clock duration. */
 export function recordEmbeddingRequestDuration(role: EmbeddingRoleLabel, ms: number): void {
   requestDurationHist().record(Math.max(0, ms), { role });
 }
 
+/**
+ * Emit the per-query retrieval event. One bounded-cardinality metric pair plus a
+ * structured debug log carrying only counts/latency/outcome/source — never the
+ * query text or any document content. `source` is the caller surface so the
+ * interactive (omnibar) cost can be read apart from the agent (mcp) cost.
+ */
 export function recordSemanticQuery(event: {
   outcome: SemanticQueryOutcome;
   source: SearchSource;
@@ -106,6 +128,10 @@ export function recordSemanticQuery(event: {
   );
 }
 
+/**
+ * Drop cached lazy-init instruments so the next call rebinds against the
+ * currently-registered global MeterProvider. Test-only.
+ */
 export function __resetEmbeddingsTelemetryForTesting(): void {
   _tokens = null;
   _errors = null;

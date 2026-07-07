@@ -1,3 +1,17 @@
+/**
+ * Symmetry contract between HTTP and IPC clone transports.
+ *
+ * The share-receive flow's `cloneController.runClone({url, branch})` is
+ * transport-agnostic: it calls `transport.start({url, dir, branch})` and
+ * iterates the returned `events` for `progress` / `branch-fallback` /
+ * `complete` / `error`. Both transports MUST thread `branch` through to the
+ * subprocess AND forward `branch-fallback` events back so the receiver-side
+ * "Branch X no longer exists" toast renders regardless of which window
+ * (editor → HTTP, Navigator → IPC) drove the share.
+ *
+ * Without this symmetry, opening a share link
+ * in the Navigator silently drops branch + the fallback signal.
+ */
 import { describe, expect, test } from 'bun:test';
 import type { OkDesktopBridge, OkLocalOpCloneEvent } from '@/lib/desktop-bridge-types';
 import { ipcCloneTransport } from './clone-transport';
@@ -24,6 +38,8 @@ function makeBridge(captured: CapturedStart[], events: OkLocalOpCloneEvent[]): O
       },
     },
   };
+  // Cast through unknown — only `localOp.clone.start` is exercised; the
+  // rest of the bridge surface is irrelevant to this test.
   return bridge as unknown as OkDesktopBridge;
 }
 
@@ -102,17 +118,26 @@ describe('ipcCloneTransport — branch threading symmetry with HTTP transport', 
 
 describe('CloneTransport contract — shape symmetry between HTTP + IPC', () => {
   test('both transports accept the same start() request shape', () => {
+    // Type-level: assigning a single request literal to both transport
+    // factories' parameter types must compile. Runtime no-ops the body —
+    // the test value is the type-system gate, not assertion behavior.
     const request: { url: string; dir: string; branch?: string | null } = {
       url: 'https://github.com/o/r.git',
       dir: '/tmp/r',
       branch: 'feat/foo',
     };
 
+    // IPC side — runtime check the IPC transport's start accepts the shape.
     const captured: CapturedStart[] = [];
     const ipc = ipcCloneTransport(makeBridge(captured, []));
     ipc.start(request);
     expect(captured[0]?.url).toBe(request.url);
     expect(captured[0]?.dir).toBe(request.dir);
     expect(captured[0]?.branch).toBe('feat/foo');
+
+    // The HTTP transport's start() signature is structurally identical
+    // (CloneTransport interface) — symmetry is enforced at compile time
+    // by both factories returning `CloneTransport`. No runtime fetch
+    // invocation needed; the type-system gate is sufficient.
   });
 });

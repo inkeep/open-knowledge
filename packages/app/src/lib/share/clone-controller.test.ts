@@ -1,3 +1,12 @@
+/**
+ * Contract test for `createCloneController().runClone` failure handling.
+ *
+ * The share-receive dialog now owns failure presentation (a persistent error
+ * view listing likely causes), so the controller must NOT fire a transient
+ * error toast on clone failure — it dismisses the in-progress toast and returns
+ * the raw git message as `detail` for the dialog to render.
+ */
+
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualSonner from 'sonner';
 import type { OkLocalOpCloneEvent } from '@/lib/desktop-bridge-types';
@@ -10,7 +19,15 @@ const toast = {
   dismiss: mock((_id?: unknown) => {}),
 };
 
+// Spread the real module so unmocked sonner exports stay bound for any test
+// file that loads after this one in the shared bun-test process.
 mock.module('sonner', () => ({ ...actualSonner, toast }));
+
+// NOTE: do not mock.module('@lingui/core/macro') here. bunfig's `[test] preload`
+// (tests/lingui-macro-preload.ts) already shims the macro to an English
+// passthrough for the whole process. A per-file mock.module override leaks into
+// every test file that runs after this one in the shared `bun test` process and
+// breaks their `t`-derived assertions (e.g. component-items.test.ts).
 
 type CloneEvent = OkLocalOpCloneEvent | { type: 'complete'; port: number; dir: string };
 
@@ -50,6 +67,7 @@ describe('createCloneController().runClone failure handling', () => {
 
     expect(result).toEqual({ kind: 'error', detail: 'remote: Repository not found' });
     expect(toast.error).not.toHaveBeenCalled();
+    // The infinite-duration progress toast must be dismissed, not left hanging.
     expect(toast.dismiss).toHaveBeenCalled();
   });
 
@@ -93,6 +111,9 @@ describe('createCloneController().runClone failure handling', () => {
       ...makeDeps([]),
       cloneTransport: {
         start: mock(() => ({
+          // Async iterable whose first .next() rejects — models a transport
+          // whose stream throws instead of emitting a typed error event. (Not a
+          // generator: a generator with only a throw trips biome's useYield.)
           events: {
             [Symbol.asyncIterator]: () => ({
               next: () => Promise.reject(new Error('IPC channel closed')),

@@ -14,6 +14,7 @@ describe('createSingleFlight (PRD-6972 FR2)', () => {
       return gate;
     };
 
+    // 5 concurrent runs on the same tick, same key.
     const runs = Array.from({ length: 5 }, () => sf.run('k', fn));
     expect(calls).toBe(1); // exactly one git walk
     expect(runs.filter((r) => r.coalesced)).toHaveLength(4); // N-1 coalesced
@@ -50,6 +51,7 @@ describe('createSingleFlight (PRD-6972 FR2)', () => {
 
     const first = sf.run('k', fn);
     await first.promise;
+    // Let the finally() eviction microtask run.
     await Promise.resolve();
     expect(sf.size).toBe(0);
 

@@ -1,3 +1,20 @@
+/**
+ * OTel-instrumented wrappers around `node:fs` write operations.
+ *
+ * Every wrapper creates a span named `fs.<operation>` (e.g. `fs.writeFile`)
+ * with attributes:
+ *   - `fs.operation`       — the function name (writeFile / rename / mkdir / ...)
+ *   - `fs.path`            — normalized relative path (last two segments) to keep cardinality bounded
+ *   - `fs.path.role`       — logical classifier (`content-md`, `shadow-repo`, `lock`, `principal`, `conflict`, `other`)
+ *   - `fs.bytes`           — byte length for write operations
+ *
+ * Never throws extra errors — the original fs exception is propagated to the caller
+ * after being recorded on the span. Safe to use from any call site.
+ *
+ * When telemetry is disabled (OTEL_SDK_DISABLED != 'false'), the tracer is a no-op
+ * and the overhead is a single function-call indirection.
+ */
+
 import type { RmOptions, WriteFileOptions } from 'node:fs';
 import {
   appendFileSync,
@@ -17,12 +34,23 @@ import type { AtomicWriteFsAdapter } from '@inkeep/open-knowledge-core/server';
 import type { Attributes } from '@opentelemetry/api';
 import { withSpan, withSpanSync } from './telemetry.ts';
 
+/**
+ * Normalize an absolute path to its last two segments plus a leading ellipsis,
+ * so traces don't explode attribute cardinality with full user-home paths.
+ *
+ * Example: `/Users/alice/Documents/project/.git/ok/HEAD` →
+ *          `.../ok/HEAD`
+ */
 export function normalizeFsPath(p: string): string {
   const segments = p.split(sep).filter(Boolean);
   if (segments.length <= 2) return p;
   return `...${sep}${segments.slice(-2).join(sep)}`;
 }
 
+/**
+ * Classify a path by logical role for span attributes. Avoids per-file
+ * cardinality blow-up while keeping meaningful filtering in Grafana Tempo.
+ */
 export function classifyFsPath(p: string): string {
   if (p.includes(`${sep}.git${sep}ok${sep}`) || p.includes('shadow-repo')) {
     return 'shadow-repo';
@@ -57,6 +85,8 @@ function byteLength(data: string | Uint8Array | ArrayBufferView): number {
   return data.byteLength ?? 0;
 }
 
+// ── async wrappers ──────────────────────────────────────────────────────────
+
 export async function tracedWriteFile(
   path: string,
   data: string | Uint8Array,
@@ -89,6 +119,8 @@ export async function tracedMkdir(
     return mkdir(path, options);
   });
 }
+
+// ── sync wrappers ───────────────────────────────────────────────────────────
 
 export function tracedWriteFileSync(
   path: string,
@@ -201,6 +233,13 @@ export function tracedRmdirSync(path: string): void {
   });
 }
 
+/**
+ * Single shared traced-fs adapter for core's `atomicWriteFile` — so the atomic
+ * tmp-write + rename lands as `fs.*` spans (the server disk-write STOP rule)
+ * while reusing core's crash-orphan stale-tmp sweep instead of a per-file copy.
+ * Every server caller passes THIS object (`atomicWriteFile(path, content, { fs:
+ * tracedAtomicFs })`) rather than re-declaring `{ writeFile, rename }` inline.
+ */
 export const tracedAtomicFs: AtomicWriteFsAdapter = {
   writeFile: (path, content, opts) => tracedWriteFile(path, content, opts),
   rename: (from, to) => tracedRename(from, to),

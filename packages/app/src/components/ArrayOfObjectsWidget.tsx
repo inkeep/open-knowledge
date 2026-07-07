@@ -1,3 +1,22 @@
+/**
+ * CRUD widget for arrays whose every element is a plain object (e.g.
+ * `contributors: [{ name, role }, ...]`). Outer Collapsible mirrors
+ * {@link ObjectWidget}; inside, each item renders as its own indexed
+ * section with a drag-handle + delete and a recursive `ObjectWidget` for
+ * the item's fields. Item-level mutations route through the binding's
+ * LOCAL path API:
+ *   - add item → `binding.patchPath([...path, currentLength], {})`
+ *   - delete item → `binding.deletePath([...path, idx])` (yaml@2 splices)
+ *   - reorder items → `binding.reorderSeqPath(path, oldIndicesInNewOrder)`
+ * Field-level mutations within each item flow through the nested
+ * `ObjectWidget` and reach the binding at `[...path, idx, fieldKey]`.
+ *
+ * Per-item index identity. Sortable IDs are positional (`item-${idx}`)
+ * because array items have no stable keys. Index-as-React-key is
+ * intentional here — items are addressed by index throughout the binding
+ * path API, and reorder/delete operations refresh the whole list anyway.
+ */
+
 import {
   closestCenter,
   DndContext,
@@ -68,9 +87,16 @@ export function ArrayOfObjectsWidget({
   function removeItem(idx: number) {
     if (!binding) return;
     clearItemError(idx);
+    // Removing the final item would leave a bare `[]`, which is type-ambiguous
+    // (empty scalar array vs empty object array) and re-dispatches to the
+    // scalar chip widget — a dead-end with no way to add object items back.
+    // Drop the whole property instead so the row clears cleanly.
     const result =
       value.length <= 1 ? binding.deletePath(path) : binding.deletePath(pathOfItem(idx));
     if (result.ok) {
+      // Remaining items shift down a slot; positional `itemErrors` keys would
+      // now point at the wrong items. They are transient last-commit-failed
+      // markers, so drop them all rather than attempt a fragile remap.
       setItemErrors({});
       return;
     }
@@ -109,6 +135,8 @@ export function ArrayOfObjectsWidget({
 
     const result = binding.reorderSeqPath(path, want);
     if (result.ok) {
+      // Positions changed; positional `itemErrors` keys would misalign. Drop
+      // the transient markers rather than remap them to new slots.
       setItemErrors({});
       return;
     }

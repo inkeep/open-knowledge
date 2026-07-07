@@ -1,3 +1,11 @@
+/**
+ * `config-yaml` check — verifies the project's `.ok/config.yml` parses against
+ * `ConfigSchema`. Emits `warn` (NOT `fail`) when the project isn't initialized
+ * (no `.ok/config.yml`), so health checks double as a pre-`ok init` sanity
+ * surface — a developer can run them from a fresh directory to confirm git +
+ * Bun are available before scaffolding.
+ */
+
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from '../../config/loader.ts';

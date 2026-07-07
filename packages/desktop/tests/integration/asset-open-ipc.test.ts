@@ -1,3 +1,30 @@
+/**
+ * Integration tests for the asset-click dispatcher IPC channels
+ * (`ok:shell:open-asset`, `ok:shell:reveal-asset`, `ok:shell:show-asset-menu`).
+ *
+ * Scope: this file verifies the WIRE contract — channel name + `createHandler`
+ * + `createInvoker` + the `openAssetSafely` / `revealAssetSafely` impls —
+ * composes correctly end-to-end. Unit-level coverage of the gate semantics
+ * (containment / existence / extension blocklist) lives at
+ * `tests/main/asset-open-handlers.test.ts`; this file's signal is that
+ * registration + invocation + result propagation work when plugged through
+ * the real typed factories.
+ *
+ * What's newly tested here (not at the unit tier):
+ *   - Typed-IPC round-trip: renderer invokes with a project-relative path;
+ *     response shape (`{ok:true}` | `{ok:false, reason:…}`) survives the
+ *     invoke channel intact.
+ *   - Refusal result-object (NOT Promise rejection) is the contract for
+ *     `open-asset` — the bridge-contract type says `Promise<{ok:…}>`, not
+ *     `Promise<void>` that throws. An accidentally-throwing handler would
+ *     regress into the `spawnCursor` shape.
+ *   - `show-asset-menu` placeholder (resolves undefined) holds until the real
+ *     menu construction lands.
+ *
+ * Electron is NOT imported — same in-memory bus pattern as
+ * `handoff-ipc.test.ts`, extended with injected FS / shell-open deps.
+ */
+
 import { describe, expect, mock, test } from 'bun:test';
 import type { IpcMain, IpcMainInvokeEvent, IpcRenderer } from 'electron';
 import { openAssetSafely, revealAssetSafely } from '../../src/main/asset-allowlist.ts';
@@ -89,6 +116,8 @@ describe("'ok:shell:open-asset' round-trip", () => {
       ),
     );
 
+    // Important: the invoke does NOT reject — the refusal is a structured
+    // result object. Renderer's dispatcher logs it and falls through.
     const result = await invoke('ok:shell:open-asset', '../../etc/passwd');
     expect(result).toEqual({ ok: false, reason: 'path-escape' });
     expect(openPath).not.toHaveBeenCalled();

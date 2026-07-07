@@ -3,6 +3,10 @@ import { ALL_EDITOR_IDS, EDITOR_LABELS } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+// Spy on the sonner toast surface so the empty-name submit can be asserted
+// deterministically (the e2e can't reliably catch the transient portal toast
+// in Electron). Mock before importing the component so its `toast` binding
+// resolves to the spy.
 const toastErrorSpy = mock((_message: string) => {});
 mock.module('sonner', () => ({
   toast: { error: toastErrorSpy, success: () => {}, warning: () => {}, message: () => {} },
@@ -170,6 +174,8 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(browse.type).toBe('button');
     expect(nameInput.tagName).toBe('INPUT');
 
+    // The Name input is the FIRST focusable form control: it precedes
+    // Browse in document order.
     const formInputs = Array.from(
       form.querySelectorAll('input, button, [role="checkbox"], [role="radio"]'),
     ) as HTMLElement[];
@@ -180,6 +186,9 @@ describe('CreateProjectDialog runtime wiring', () => {
 
     await waitForLocationHydrate();
 
+    // Config sharing and the editor controls both live inside the collapsed
+    // "Advanced settings" section (Radix unmounts collapsed content), so
+    // neither is in the DOM until the section is expanded.
     expect(screen.queryByTestId('create-sharing')).toBeNull();
     expect(screen.queryByTestId('create-editor-cursor')).toBeNull();
     fireEvent.click(screen.getByTestId('create-advanced-trigger'));
@@ -217,6 +226,10 @@ describe('CreateProjectDialog runtime wiring', () => {
   });
 
   test('reopening the dialog re-collapses Advanced so sharing is hidden again', async () => {
+    // Sharing now lives inside Advanced, so "the dialog leads with just name +
+    // location" depends on the on-open reset collapsing Advanced every time.
+    // Guard it: expand once, close, reopen, and assert the sharing control is
+    // gone again (not left mounted from the prior expand).
     const stub = makeBridge();
     const onOpenChange = mock(() => {});
     const { rerender } = render(
@@ -241,10 +254,12 @@ describe('CreateProjectDialog runtime wiring', () => {
   test('Location hydrates from defaultProjectsRoot and Browse picks a fresh parent', async () => {
     const stub = await renderDialog();
 
+    // Hydrated on open.
     await waitForLocationHydrate();
     const displayInitial = screen.getByTestId('create-location-display').textContent ?? '';
     expect(displayInitial).toContain(PARENT);
 
+    // Browse picks the parent — display updates, name is untouched.
     stub.setPickedParent(SECOND_PARENT);
     fireEvent.click(screen.getByTestId('create-browse'));
     await waitFor(
@@ -255,6 +270,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     );
     expect((screen.getByTestId('create-name') as HTMLInputElement).value).toBe('');
 
+    // Browse passed the prior location as the picker's defaultPath hint.
     expect(stub.openFolderArgs.at(-1)).toEqual({ defaultPath: PARENT });
   });
 
@@ -263,6 +279,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     await waitForLocationHydrate();
 
     const caption = screen.getByTestId('create-target-caption');
+    // Hidden when name is empty.
     expect(caption.textContent ?? '').toBe('');
 
     await typeProjectName('Plant Care');
@@ -275,6 +292,7 @@ describe('CreateProjectDialog runtime wiring', () => {
       { timeout: 2000 },
     );
 
+    // Clearing the name hides the caption again.
     await typeProjectName('');
     await waitFor(
       () => {
@@ -307,6 +325,8 @@ describe('CreateProjectDialog runtime wiring', () => {
     await typeProjectName(PROJECT_NAME);
     await waitForSubmitEnabled();
 
+    // Sharing now lives inside "Advanced settings" — expand it before the radio
+    // is in the DOM.
     fireEvent.click(screen.getByTestId('create-advanced-trigger'));
     await userEvent.click(screen.getByTestId('create-sharing-local-only'));
 
@@ -336,9 +356,12 @@ describe('CreateProjectDialog runtime wiring', () => {
       },
       { timeout: 2000 },
     );
+    // No standalone subfolder-rescue mounts.
     expect(screen.queryByTestId('create-subfolder-rescue')).toBeNull();
+    // Telemetry still fires for the nonempty banner kind.
     expect(stub.bannerCalls).toContain('nonempty');
 
+    // Typing a different name clears the inline error.
     await typeProjectName('Fresh Name');
     await waitFor(
       () => {
@@ -373,6 +396,8 @@ describe('CreateProjectDialog runtime wiring', () => {
 
     const nameInput = screen.getByTestId('create-name') as HTMLInputElement;
 
+    // A valid name is not flagged invalid and is described only by the live
+    // resolved-path caption (so AT announces the target path as the user types).
     await typeProjectName('Fresh Name');
     await waitFor(() => {
       expect(nameInput.getAttribute('aria-invalid')).toBe('false');
@@ -381,6 +406,8 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(captionId).not.toBe('');
     expect(nameInput.getAttribute('aria-describedby')).toBe(captionId);
 
+    // A name colliding with a non-empty sibling folder is flagged invalid, and
+    // describedby appends the role="alert" error so AT announces caption + error.
     await typeProjectName(TAKEN);
     await waitFor(() => {
       expect(nameInput.getAttribute('aria-invalid')).toBe('true');
@@ -391,6 +418,8 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(describedBy).toContain(captionId);
     expect(describedBy).toContain(takenError.id);
 
+    // A name that sanitizes to empty is likewise flagged invalid with a
+    // role="alert" error.
     await typeProjectName('....');
     await waitFor(() => {
       expect(nameInput.getAttribute('aria-invalid')).toBe('true');
@@ -402,8 +431,12 @@ describe('CreateProjectDialog runtime wiring', () => {
     const stub = await renderDialog();
     await waitForLocationHydrate();
 
+    // The info trigger lives in the sharing field inside "Advanced settings" —
+    // expand the section first so it's in the DOM.
     fireEvent.click(screen.getByTestId('create-advanced-trigger'));
     const info = screen.getByTestId('config-sharing-info') as HTMLButtonElement;
+    // A trigger that renders a <button> inside a <form> defaults to
+    // type="submit" — it MUST be type="button" or it fires the form.
     expect(info.type).toBe('button');
 
     fireEvent.click(info);
@@ -416,6 +449,9 @@ describe('CreateProjectDialog runtime wiring', () => {
     await renderDialog();
     await waitForLocationHydrate();
 
+    // A slash is rewritten to a dash by sanitizeFolderName — valid but
+    // diverged, so the muted "Will be saved as <sanitized>" hint appears
+    // while Create stays usable (the divergence is informational, not a block).
     await typeProjectName('Plant/Care');
 
     await waitFor(
@@ -426,11 +462,16 @@ describe('CreateProjectDialog runtime wiring', () => {
       },
       { timeout: 2000 },
     );
+    // The caption shows the sanitized target and submit is not blocked.
     expect(screen.getByTestId('create-target-caption').textContent).toContain(
       `${PARENT}/Plant-Care`,
     );
     await waitForSubmitEnabled();
 
+    // The diverged hint is a polite status (non-blocking), NOT a role="alert"
+    // error, and is wired into the name input's aria-describedby so AT
+    // announces the caption plus the "Will be saved as" hint. aria-invalid
+    // stays false — divergence is informational, not a validation failure.
     const divergedHint = screen.getByTestId('create-name-hint-diverged');
     expect(divergedHint.getAttribute('role')).toBe('status');
     const divergedNameInput = screen.getByTestId('create-name') as HTMLInputElement;
@@ -441,6 +482,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(divergedDescribedBy).toContain(divergedHint.id);
     expect(divergedDescribedBy).toContain(screen.getByTestId('create-target-caption').id);
 
+    // Clearing the name removes the hint.
     await typeProjectName('');
     await waitFor(
       () => {
@@ -455,6 +497,9 @@ describe('CreateProjectDialog runtime wiring', () => {
     stub.setDefaultProjectsRootImpl(() => Promise.reject(new Error('no default root')));
     await renderDialog(stub);
 
+    // Once the rejected probe settles, the field must stop claiming it is
+    // still "Resolving" — that present-participle implies in-flight work that
+    // has actually finished and failed. It shows actionable empty-state copy.
     await waitFor(
       () => {
         const display = screen.getByTestId('create-location-display').textContent ?? '';
@@ -464,6 +509,7 @@ describe('CreateProjectDialog runtime wiring', () => {
       { timeout: 2000 },
     );
 
+    // Browse is still usable from the empty Location and updates the field.
     stub.setPickedParent(SECOND_PARENT);
     fireEvent.click(screen.getByTestId('create-browse'));
     await waitFor(
@@ -476,6 +522,8 @@ describe('CreateProjectDialog runtime wiring', () => {
 
   test('createNew failure surfaces the inline error strip, keeps the dialog open, and re-enables Create', async () => {
     const stub = makeBridge();
+    // The IPC rejects with a reason-prefixed message — Electron strips the
+    // Error subclass over IPC, so the renderer recovers the reason from text.
     stub.setCreateNewImpl(() =>
       Promise.reject(
         new Error(`target-not-empty: Target folder is not empty: ${PARENT}/${PROJECT_NAME}`),
@@ -488,6 +536,8 @@ describe('CreateProjectDialog runtime wiring', () => {
     await waitForSubmitEnabled();
     fireEvent.click(screen.getByTestId('create-submit'));
 
+    // The reason-mapped inline strip renders as a role="alert"; the dialog
+    // stays open (onOpenChange(false) only fires on the success path).
     await waitFor(() => {
       expect(screen.queryByTestId('create-submit-error')).not.toBeNull();
     });
@@ -495,6 +545,8 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(stub.createNewCalls).toHaveLength(1);
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
 
+    // Create re-enables for retry — the catch resets `busy`. Without that
+    // reset the dialog would freeze with every control disabled and no recovery.
     await waitFor(() => {
       expect((screen.getByTestId('create-submit') as HTMLButtonElement).disabled).toBe(false);
     });
@@ -502,6 +554,8 @@ describe('CreateProjectDialog runtime wiring', () => {
 
   test('while createNew is in-flight the busy guard blocks dialog dismissal until it settles', async () => {
     const stub = makeBridge();
+    // Hold createNew pending so `busy` stays true after submit; capture the
+    // resolver so we can release it and confirm dismissal works again after.
     let releaseCreate: () => void = () => {};
     stub.setCreateNewImpl(
       () =>
@@ -516,14 +570,20 @@ describe('CreateProjectDialog runtime wiring', () => {
     await waitForSubmitEnabled();
     fireEvent.click(screen.getByTestId('create-submit'));
 
+    // In-flight: the submit button flips to its busy label and disables.
     await waitFor(() => {
       expect((screen.getByTestId('create-submit') as HTMLButtonElement).disabled).toBe(true);
     });
 
+    // Requesting dismissal via the close (X) control is a no-op while busy:
+    // onOpenChangeInternal's `if (busy) return` swallows it, so the parent's
+    // onOpenChange is never told to close.
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
 
+    // Once the in-flight call resolves, the success path closes the dialog —
+    // proving the guard gates on `busy`, not a permanent block.
     releaseCreate();
     await waitFor(() => {
       expect(onOpenChange).toHaveBeenCalledWith(false);

@@ -83,6 +83,10 @@ describe('readPins', () => {
     expect(readPins(s).left).toBeUndefined();
   });
 
+  // Browser-storage trust boundary: localStorage.getItem can throw SecurityError
+  // in Safari private browsing (and equivalent modes in other engines). The
+  // readPins try/catch is the producer-cannot-enforce surface for that throw —
+  // pin the fallback to {} via the public PinStorage seam.
   test('readPins returns empty when getItem throws (SecurityError / private browsing)', () => {
     const throwingStorage: PinStorage = {
       getItem: () => {
@@ -191,8 +195,11 @@ describe('applyToggle (per-partition slot)', () => {
 
   test('scenario: pin in narrow survives a wide round-trip (the D13 canary)', () => {
     const s = memoryStorage();
+    // Pin right OPEN at narrow.
     applyToggle('right', 'below', 'open', s);
+    // Resize wide; user toggles right COLLAPSED at wide. Should NOT clear below.
     applyToggle('right', 'above', 'collapsed', s);
+    // Resize back to narrow — below slot must still hold the original 'open'.
     const pins = readPins(s);
     expect(resolveEffectiveState('right', 'below', pins)).toBe('open');
     expect(resolveEffectiveState('right', 'above', pins)).toBe('collapsed');
@@ -201,6 +208,10 @@ describe('applyToggle (per-partition slot)', () => {
     });
   });
 
+  // Browser-storage trust boundary: localStorage.setItem can throw
+  // QuotaExceededError when origin storage is full. The writePins try/catch
+  // preserves the in-memory result so the session keeps working even when
+  // persistence fails — pin that contract via the public PinStorage seam.
   test('applyToggle returns the merged pins even when storage.setItem throws (quota exceeded)', () => {
     const throwingStorage: PinStorage = {
       getItem: () => null,

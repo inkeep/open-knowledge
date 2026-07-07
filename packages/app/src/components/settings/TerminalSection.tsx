@@ -1,3 +1,14 @@
+/**
+ * Settings → Terminal: the per-project opt-out toggle for the in-app real OS
+ * shell.
+ *
+ * The terminal is available by default; this toggle is the silent opt-out. Reads
+ * + writes the project-local `terminal.enabled` leaf (human-only —
+ * `agentSettable:false`). On → off writes `false` (opt out, tearing down any
+ * running shell via the gate); off → on writes `true` (re-enable). Only an
+ * explicit `false` reads as off, so the toggle shows on for the default
+ * (never-chosen) state.
+ */
 import { useLingui } from '@lingui/react/macro';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';

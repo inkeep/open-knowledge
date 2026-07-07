@@ -1,3 +1,15 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleAgentUndo`.
+ *
+ * Asserts the canonical RFC 9457 wire shape:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `AgentUndoSuccessSchema` (docName + scope + undone), no
+ *     `ok: true` discriminator.
+ *   - missing connectionId → `urn:ok:error:invalid-request` (pre-identity).
+ *   - no active session → 404 `urn:ok:error:no-active-session` (post-identity).
+ *   - reserved docname → 400 `urn:ok:error:reserved-doc-name` (post-identity).
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { AgentUndoSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -27,6 +39,7 @@ describe('agent-undo envelope (RFC 9457)', () => {
   test('happy path emits flat success body with application/json', async () => {
     const docName = `agent-undo-success-${crypto.randomUUID().slice(0, 8)}`;
     const agentIdSuffix = `undo-${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
+    // Create a session by writing first.
     await agentWriteMd(server.port, '# initial\n', {
       docName,
       position: 'replace',

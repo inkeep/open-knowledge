@@ -67,6 +67,7 @@ import {
   serializeMd,
 } from './pipeline.ts';
 import { normalizeDocRelativeAssetUrl } from './resolve-image-url.ts';
+import { flattenCellBlocks } from './table-cell-flatten.ts';
 import { toMarkdownHandlers } from './to-markdown-handlers.ts';
 import {
   decodeInlineWhitespaceNumericCharRefRun,
@@ -601,6 +602,7 @@ function buildMdastToPmHandlers(
     handlers.break = (node: Break) =>
       n.hardBreak.createAndFill({
         hardBreakStyle: node.data?.sourceStyle ?? 'spaces',
+        sourceRaw: node.data?.sourceRaw ?? null,
       });
   }
 
@@ -1096,7 +1098,12 @@ function buildPmToMdastHandlers(schema: Schema): {
   if (n.hardBreak) {
     nodeHandlers.hardBreak = (pmNode: PmNode) => ({
       type: 'break' as const,
-      data: { sourceStyle: pmNode.attrs.hardBreakStyle },
+      data: {
+        sourceStyle: pmNode.attrs.hardBreakStyle,
+        ...(typeof pmNode.attrs.sourceRaw === 'string' && pmNode.attrs.sourceRaw.length > 0
+          ? { sourceRaw: pmNode.attrs.sourceRaw }
+          : {}),
+      },
     });
   }
 
@@ -1184,21 +1191,25 @@ function buildPmToMdastHandlers(schema: Schema): {
     };
   }
   if (n.tableRow) nodeHandlers.tableRow = fromPmNode('tableRow');
-  const cellToMdast = (pmNode: PmNode) => {
+  const buildCellNode = (pmNode: PmNode, children: MdastNodes[]): TableCell => {
+    const cell: TableCell = { type: 'tableCell', children: flattenCellBlocks(children) };
     const padding = pmNode.attrs.sourcePadding;
-    const data: { sourcePadding?: { left: number; right: number } } = {};
     if (
       padding !== null &&
       typeof padding === 'object' &&
       typeof (padding as { left?: unknown }).left === 'number' &&
       typeof (padding as { right?: unknown }).right === 'number'
     ) {
-      data.sourcePadding = padding as { left: number; right: number };
+      cell.data = { sourcePadding: padding as { left: number; right: number } };
     }
-    return Object.keys(data).length > 0 ? { data } : {};
+    return cell;
   };
-  if (n.tableCell) nodeHandlers.tableCell = fromPmNode('tableCell', cellToMdast);
-  if (n.tableHeader) nodeHandlers.tableHeader = fromPmNode('tableCell', cellToMdast);
+  if (n.tableCell)
+    nodeHandlers.tableCell = (pmNode: PmNode, _parent, state) =>
+      buildCellNode(pmNode, state.all(pmNode));
+  if (n.tableHeader)
+    nodeHandlers.tableHeader = (pmNode: PmNode, _parent, state) =>
+      buildCellNode(pmNode, state.all(pmNode));
 
   if (n.image) {
     nodeHandlers.image = (pmNode: PmNode) => ({

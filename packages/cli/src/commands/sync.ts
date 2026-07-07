@@ -1,3 +1,10 @@
+/**
+ * `open-knowledge sync` — commit + pull + push.
+ *
+ * Server-first: discovers a running Hocuspocus server via server.lock and
+ * delegates to POST /api/sync/trigger { op: 'sync' }. Falls back to a
+ * one-shot simple-git workflow when no live server is found.
+ */
 import { clientVersionHeaders } from '@inkeep/open-knowledge-core';
 import {
   type Config,
@@ -17,14 +24,20 @@ interface SyncOptions {
   op?: 'sync' | 'push' | 'pull';
 }
 
+/**
+ * Core sync logic — tries the live server first, falls back to simple-git.
+ */
 export async function runSync(
   opts: SyncOptions,
   _config: Config,
   cwd = process.cwd(),
 ): Promise<void> {
   const op = opts.op ?? 'sync';
+  // Lock anchor is the project root (cwd), not contentDir — see
+  // server-factory.ts. simple-git fallback uses cwd directly as baseDir.
   const lockDir = resolveLockDir(cwd);
 
+  // Server-first: delegate to running server if available.
   const lock = readServerLock(lockDir);
   if (lock && lock.port > 0) {
     const url = `http://127.0.0.1:${lock.port}/api/sync/trigger`;
@@ -41,6 +54,9 @@ export async function runSync(
         body: JSON.stringify({ op }),
       });
       if (!res.ok) {
+        // RFC 9457 problem+json — read `title` for the user-visible
+        // message; fall back through legacy `error`/`message` for forward-
+        // compat with older servers, then HTTP status as a last resort.
         const body = (await res.json().catch(() => ({}))) as {
           title?: string;
           error?: string;
@@ -56,6 +72,7 @@ export async function runSync(
       }
       return;
     } catch (err) {
+      // Fall through to simple-git on network error
       const msg = err instanceof Error ? err.message : String(err);
       if (!opts.json) {
         process.stderr.write(`Server trigger failed (${msg}), running directly\n`);
@@ -63,6 +80,7 @@ export async function runSync(
     }
   }
 
+  // Fallback: one-shot simple-git
   if (!opts.json) {
     process.stderr.write(`Running ${op} directly (no live server)\n`);
   }

@@ -1,3 +1,14 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleSyncStatus`
+ * Asserts the canonical RFC 9457 wire shape for
+ * `GET /api/sync/status`:
+ *   - happy path: status 200, `Content-Type: application/json`, flat
+ *     SyncStatus body (no `ok` discriminator). Test environment has no
+ *     remote, so the handler returns the dormant fallback.
+ *   - method-not-allowed on POST → 405 `urn:ok:error:method-not-allowed`
+ *     with `Allow: GET`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, SyncStatusSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -23,6 +34,7 @@ describe('sync-status envelope (RFC 9457)', () => {
     const parsed = SyncStatusSchema.safeParse(body);
     expect(parsed.success).toBe(true);
     if (parsed.success) {
+      // Test harness has no git remote → engine doesn't start → dormant fallback.
       expect(parsed.data.state).toBe('dormant');
     }
     expect((body as Record<string, unknown>).ok).toBeUndefined();

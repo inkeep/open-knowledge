@@ -1,3 +1,15 @@
+/**
+ * Per-branch unit coverage for `resolveUploadDestDir` — the exported
+ * 4-branch dispatch that honors the documented `content.attachmentFolderPath`
+ * matrix (docs/content/guides/assets-and-embeds.mdx §"Where files land on
+ * disk"). The upload handler's HTTP-integration tests exercise the `'./'`
+ * default incidentally; this file covers the three branches not reached
+ * by the happy path so a future refactor that flips the `'/'`-vs-`'./'`
+ * semantics OR breaks bare-name resolution fails at PR time instead of
+ * surfacing as a storage-location regression on an Obsidian-refugee
+ * vault open (the acceptance scenario that depends on the
+ * bare-name branch specifically).
+ */
 import { describe, expect, test } from 'bun:test';
 import { resolveUploadDestDir } from './api-extension.ts';
 

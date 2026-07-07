@@ -1,5 +1,7 @@
 import type { SVGProps } from 'react';
 
+// Model Context Protocol mark — stroke-based, so it tracks `currentColor` and the
+// sidebar hover state like the other nav icons.
 export function McpIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

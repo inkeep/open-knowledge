@@ -1,3 +1,27 @@
+/**
+ * Server-authoritative observer bridge — single-writer cross-CRDT sync.
+ *
+ * Mirrors the client-side observer bridge's write-side logic on the server:
+ *   Observer A: XmlFragment → Y.Text (Path A: applyIncrementalDiff; Path B: mergeThreeWay + applyFastDiff)
+ *   Observer B: Y.Text → XmlFragment (via updateYFragment)
+ *
+ * Runs on the server's copy of the Y.Doc so concurrent client edits converge
+ * through one writer instead of N. Client observer cross-CRDT write paths are
+ * deleted (not gated) — see precedent #14.
+ *
+ * Dispatch model (precedent #13(b)): the
+ * observers use `doc.on('afterAllTransactions', ...)` — per-drain, not
+ * per-transaction, and not a wall-clock `setTimeout` debounce. One outermost
+ * `doc.transact(...)` call = one drain = one settlement fire. Observer
+ * callbacks set dirty flags; the settlement handler dispatches synchronous
+ * sync work (A before B) and clears the flags.
+ *
+ * No typing-defer logic (server never types — that was client-specific UX).
+ * No REMOTE_TREE_SYNC_GRACE_MS (origin guards replace the timing guard).
+ * Fires on BOTH transaction.local=true (server-local) and local=false (remote).
+ *
+ */
+
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import {
@@ -5,6 +29,7 @@ import {
   applyIncrementalDiff,
   BridgeInvariantViolationError,
   BridgeMergeContentLossError,
+  isParseEquivalentBridge,
   mergeThreeWay,
   normalizeBridge,
   prependFrontmatter,
@@ -20,6 +45,7 @@ import { attachQuiescenceTracker } from './bridge-quiescence.ts';
 import {
   assertBridgeInvariant,
   type BridgeSplitBrainSite,
+  createDocCanonicalizer,
   emitBridgeSplitBrainRederive,
   emitObserverAPathBFired,
 } from './bridge-watchdog.ts';
@@ -40,12 +66,52 @@ import {
 import { type ShadowHandle, saveInMemoryCheckpoint } from './shadow-repo.ts';
 import { setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
 
+// ─────────────────────────────────────────────────────────────
+// Origin constant
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Transaction origin for server observer cross-CRDT writes.
+ *
+ * Object reference per precedent #1 — identity-based matching in
+ * Set.has / Y.UndoManager.trackedOrigins / attachBridgeInvariantWatcher
+ * enforcing sets requires the exact object ref.
+ *
+ * skipStoreHooks: true — prevents observer → persistence → file-watcher →
+ * observer feedback loop. Same pattern as
+ * FILE_WATCHER_ORIGIN in external-change.ts. Verified by the
+ * persistenceDiskWrites counter in `server-observer-feedback-loop.test.ts`.
+ */
 export const OBSERVER_SYNC_ORIGIN = {
   source: 'local',
   skipStoreHooks: true,
   context: { origin: 'observer-sync' },
 } as const satisfies LocalTransactionOrigin;
 
+/**
+ * Branded `LocalTransactionOrigin` for paired-write semantics — transactions
+ * where the caller atomically writes BOTH Y.XmlFragment and Y.Text inside
+ * one `doc.transact(..., ORIGIN)` block.
+ *
+ * Compile-time extension of precedent #1.
+ * Origin literals opt in by asserting `satisfies
+ * PairedWriteOrigin` at their definition site; that annotation forces the
+ * literal to carry `context.paired: true` and prevents typos. See the
+ * five paired origins in the repo — AGENT_WRITE_ORIGIN, FILE_WATCHER_ORIGIN,
+ * ROLLBACK_ORIGIN, MANAGED_RENAME_ORIGIN, PARK_SNAPSHOT_ORIGIN
+ * (server-factory.ts) — each satisfies this shape.
+ *
+ * Runtime remains structural (`context.paired === true`) so remote-arriving
+ * transactions (where the origin object identity is reconstructed by Yjs)
+ * still match; `satisfies PairedWriteOrigin` is the authoring-site gate,
+ * not a runtime `instanceof` narrowing.
+ *
+ * Today's paired origin count: 5. When adding a 6th, the ONLY required
+ * change is `satisfies PairedWriteOrigin` at the literal. No registry
+ * update. No Observer A/B wiring. No `BRIDGE_ENFORCING_ORIGINS` change
+ * (that set is unrelated — it enforces the bridge-invariant watcher's
+ * post-transaction assertion, not paired-write short-circuit).
+ */
 export type PairedWriteOrigin = LocalTransactionOrigin & {
   readonly context: {
     readonly origin: string;
@@ -53,16 +119,59 @@ export type PairedWriteOrigin = LocalTransactionOrigin & {
   };
 };
 
+/**
+ * Semantic match (precedent #1 extension).
+ *
+ * When an observer callback sees a paired-write origin, it refreshes the
+ * raw Y.Text witness synchronously from the post-write state and declines to
+ * set its dirty flag — the settlement handler then has no work to dispatch
+ * for this drain (the paired writer already made both CRDTs consistent).
+ *
+ * The structural runtime check covers both locally-written origins (where the
+ * object identity is the one we exported) and remote-arriving transactions
+ * (where Yjs may have reconstructed the origin from the wire payload). The
+ * `PairedWriteOrigin` brand above is the authoring-site compile-time gate;
+ * this predicate is the read-site runtime gate. Both together close the
+ * loop the regression class left open.
+ *
+ * Fuzz reproduction: `STRESS_FUZZ_SEED=1776325179241 bun test
+ * packages/app/tests/stress/bridge-convergence.fuzz.test.ts` produces an
+ * "Oracle (e) content-set violation — missing 'M3-charlie hotel echo'" failure
+ * whose proximate cause is a duplicated `M0-alpha echo` line that a later
+ * agent-patch `indexOf('alpha')` locks onto instead of the intended target.
+ */
 export const isPairedWriteOrigin = (origin: unknown): origin is PairedWriteOrigin => {
   if (origin == null || typeof origin !== 'object') return false;
   const ctx = (origin as { context?: { paired?: boolean } }).context;
   return ctx?.paired === true;
 };
 
+/**
+ * Affirmative throw gate for `BridgeMergeContentLossError` inside Observer A
+ * Path B. Production commits to the silent-checkpoint recovery path (log +
+ * queue checkpoint + apply merge as-computed) so the editor keeps responding;
+ * tests want the error loud so regressions surface.
+ *
+ * The check is affirmative rather than `NODE_ENV !== 'production'` because
+ * Bun leaves `NODE_ENV` undefined when the runtime is `bun run` or
+ * `open-knowledge start` — the negative form inverted the contract and
+ * re-threw in production. `bun test`
+ * auto-populates `NODE_ENV=test`, which is the primary signal; callers that
+ * want loud failures outside `bun test` (integration harnesses launched via
+ * `bun run`, spike scripts) opt in with `OK_RETHROW_BRIDGE_LOSS=1`.
+ *
+ * Exported for the unit-test regression guard — the gate decision is a
+ * first-class concern, not an implementation detail.
+ */
 export function shouldRethrowBridgeMergeLoss(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.NODE_ENV === 'test' || env.OK_RETHROW_BRIDGE_LOSS === '1';
 }
 
+/**
+ * Y.Text-relative splice — translated from `MapDrivenSplice`'s body-relative
+ * offsets by the frontmatter prefix length so the caller can apply directly
+ * inside a `doc.transact(..., OBSERVER_SYNC_ORIGIN)` block.
+ */
 interface YTextMapDrivenSplice {
   readonly spliceStart: number;
   readonly spliceEnd: number;
@@ -77,6 +186,10 @@ interface TryComputeMapDrivenSpliceArgs {
   readonly docName: string | undefined;
 }
 
+// Warn-once: the parse-error fallback metric is a bounded-cardinality counter
+// and cannot carry the failing error's message — without this breadcrumb the
+// first serializer/parser regression leaves no signal naming the failure while
+// every drain quietly routes through the lossier incremental-diff fallback.
 let mapDrivenParseErrorWarned = false;
 
 /** Test-only: re-arm the parse-error warn-once (process-global, so an earlier
@@ -133,12 +246,55 @@ function applyMapDrivenSplice(ytext: Y.Text, splice: YTextMapDrivenSplice): void
   if (splice.newSlice.length > 0) ytext.insert(splice.spliceStart, splice.newSlice);
 }
 
+// Bridge utilities (applyIncrementalDiff, applyFastDiff, mergeThreeWay,
+// diffLinesFast, getFrontmatter, normalizeBridge) are imported from
+// `@inkeep/open-knowledge-core` so they live in one place shared with the
+// client observer (precedent #4: shared computation, per-surface rendering).
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Accessor for a `ShadowHandle` that may be lazy-initialized in the server
+ * lifecycle. Observer A Path B's silent-checkpoint writer reads this
+ * indirectly so a not-yet-ready shadow simply skips the checkpoint
+ * (logging continues regardless — telemetry still records the violation).
+ */
 type ShadowAccessor = () => ShadowHandle | undefined;
 
+/**
+ * Accessor for the current project branch name; used in the
+ * `refs/checkpoints/<branch>/<sha>` ref namespace. Returns 'main' when the
+ * git HEAD resolver isn't available (e.g., standalone repos without a
+ * project `.git/`).
+ */
 type BranchAccessor = () => string;
 
+/**
+ * Decision surfaced by the settlement handler on each drain it processes.
+ *
+ * - `'none'`: drain contained only observer-self or paired-write origins
+ *   (baselines refreshed synchronously in the observer callback; no dispatch
+ *   needed).
+ * - `'a'`: Observer A's sync work ran (XmlFragment → Y.Text).
+ * - `'b'`: Observer B's sync work ran (Y.Text → XmlFragment).
+ *
+ * A single drain can produce `'a'` followed by `'b'` — Observer A runs
+ * before Observer B so any Y.Text write from A is visible to B.
+ */
 export type ObserverDispatchKind = 'none' | 'a' | 'b';
 
+/**
+ * Test-only hook — invoked after the settlement handler makes its dispatch
+ * decision for a drain. Production code omits this; unit tests use it to
+ * assert that paired-write drains produce `'none'` (no observer-layer work)
+ * and that non-paired drains produce the expected 'a' and/or 'b' dispatches.
+ *
+ * Never throws — the settlement handler runs in `doc.on('afterAllTransactions')`
+ * and a throw from here would propagate through Yjs's transaction machinery.
+ * Tests use `expect` calls outside the hook body.
+ */
 type ObserverDispatchHook = (kind: ObserverDispatchKind) => void;
 
 export interface SetupServerObserversOpts {
@@ -147,27 +303,115 @@ export interface SetupServerObserversOpts {
   ytext: Y.Text;
   mdManager: MarkdownManager;
   schema: Schema;
+  /**
+   * Per-document name; used as the tree-path + filename inside the silent
+   * checkpoint commit so TimelinePanel can attribute the artifact to the
+   * doc that produced the loss. Omit for unit tests that only exercise
+   * the bridge mechanics; Path B then skips the checkpoint but still
+   * emits the structured log and metrics counter.
+   */
   docName?: string;
+  /** Accessor for the shadow handle (lazy; may return undefined pre-init). */
   shadow?: ShadowAccessor;
+  /** Accessor for the current branch name. Defaults to 'main' when omitted. */
   getBranch?: BranchAccessor;
+  /** Absolute content root (used to place the blob inside the checkpoint tree). */
   contentRoot?: string;
+  /**
+   * Basename-index resolver used by `mdManager.parse` so `![[photo.png]]`
+   * wiki-embed refs resolve to the right disk path before dispatch to the
+   * PM image / link node. When omitted OR when the resolver returns `null`,
+   * the handler falls back to the literal target
+   * (broken-ref placeholder via `<img onerror>` / `<a href>` — browsers
+   * surface missing assets without throwing).
+   *
+   * Resolver signature matches `packages/core/src/utils/path-resolve.ts`:
+   * `(basename, sourcePath) => path | null`.
+   */
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
+  /**
+   * Byte-size resolver for `![[file.ext]]` wikilinks whose extension is
+   * in `FILE_ATTACHMENT_EXTENSIONS`. Mirrors `resolveEmbed`'s signature;
+   * the parser's wikiLinkEmbed handler calls this with the same
+   * `(target, sourcePath)` it passes to `resolveEmbed`, formats the
+   * result with `formatFileSize`, and stamps it on the jsxComponent's
+   * `size` prop. Omit on unit / client paths.
+   */
   resolveSize?: (basename: string, sourcePath: string) => number | null;
+  /**
+   * Test-only dispatch hook. Omitted in production. When provided, called
+   * once per drain (from inside `afterAllTransactions`) with the dispatch
+   * decision the settlement handler made.
+   */
   onDispatch?: ObserverDispatchHook;
+  /**
+   * Test-only seam for Observer A Path B's three-way merge. Omitted in
+   * production (defaults to the real `mergeThreeWay`). The
+   * `BridgeMergeContentLossError` recovery arm cannot be reached organically:
+   * Observer A's agent side (the current Y.Text) only ever drifts from the
+   * merge baseline by in-tolerance whitespace, so the hybrid merge never drops
+   * non-whitespace content from a constructible fixture (the residual is a
+   * rare multi-edit fuzz artifact, not a fixture). A production-policy test
+   * forces the throw through this seam to pin the recovery arm's boundary
+   * re-projection.
+   */
   mergeThreeWay?: typeof mergeThreeWay;
 }
 
+/**
+ * Split-brain settlement predicate (the precedent #38 comparison): true when
+ * a drain is about to settle with Y.Text and the canonical fragment
+ * serialization (`md`) diverged beyond `normalizeBridge` tolerance. The
+ * byte-identity short-circuit skips the O(N) normalize passes on the common
+ * in-sync case. Single-sourced so both Observer A detection sites (identity
+ * gate + post-merge baseline check) apply the identical predicate.
+ */
 function settlesSplitBrain(settledText: string, md: string, normMdPre?: string): boolean {
   return settledText !== md && normalizeBridge(settledText) !== (normMdPre ?? normalizeBridge(md));
 }
 
+/**
+ * Set up server-side bidirectional observers between Y.XmlFragment and Y.Text.
+ *
+ * Observer A (XmlFragment → Y.Text): mirrors client Observer A's write-side
+ * logic — Path A (diffLines + content-comparison gate when Y.Text in sync
+ * with baseline) and Path B (DMP three-way merge when Y.Text diverged).
+ *
+ * Observer B (Y.Text → XmlFragment): parses Y.Text markdown, applies to
+ * XmlFragment via updateYFragment. Handles frontmatter sync (Y.Text ↔ Y.Map).
+ *
+ * Dispatch (precedent #13(b)): Observer callbacks only flag dirty state.
+ * The `afterAllTransactions` listener runs Observer A's sync work first
+ * (so any Y.Text write is visible to Observer B) and then Observer B's,
+ * clearing the dirty flags afterwards. One outermost `doc.transact()` call
+ * produces exactly one settlement dispatch.
+ *
+ * Returns a cleanup function that detaches the observers and the settlement
+ * handler. The settlement handler holds no timers; cleanup is O(1).
+ */
 export function setupServerObservers(opts: SetupServerObserversOpts): () => void {
   const { doc, xmlFragment, ytext, mdManager, schema } = opts;
 
+  /**
+   * Structured-log + silent-checkpoint writer for mergeThreeWay post-condition
+   * violations. Fire-and-forget on the checkpoint; the
+   * bridge hot path never awaits the git commit. When `opts.shadow` /
+   * `opts.docName` / `opts.contentRoot` aren't provided (unit tests), skip
+   * the checkpoint — telemetry still records the violation.
+   */
   const handleBridgeMergeLoss = (
     err: BridgeMergeContentLossError,
     preMergeBaseline: string,
   ): void => {
+    // Structured log — machine-consumable, keyed shape so log aggregators
+    // can chart rate-per-doc over time.
+    // JSON.stringify for machine-read events, bracket-prefix for ad-hoc
+    // operational warnings.
+    //
+    // `lostSubstrings` is redacted by default (length + FNV-1a digest) so
+    // verbatim user content doesn't flow into log aggregators. Operators
+    // running a single-tenant local deployment can opt in to raw strings
+    // via `OK_TELEMETRY_VERBOSE=1`.
     const verbose = process.env.OK_TELEMETRY_VERBOSE === '1';
     console.warn(
       JSON.stringify({
@@ -215,7 +459,27 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     });
   };
 
+  /**
+   * Telemetry for the split-brain settlement check. The settlement predicate
+   * tolerates resting serializer canonicalizations of organic input via the
+   * parse-equivalence fallback (`settlesSplitBrainChecked` — fragment ≡
+   * parse(ytext) verified through the doc's own parse pipeline), so a fire
+   * means the fragment genuinely does not derive from Y.Text: dependency/
+   * plugin drift or a degraded fragment. That makes this event the drift
+   * alert — and the operator's only handle on a doc stuck re-deriving
+   * its fragment on every drain. Rate-limited per (site, doc) through
+   * `emitBridgeSplitBrainRederive` (mirroring `emitObserverAPathBFired`);
+   * the counter increments only on emit, the suppressed counter inside the
+   * gate, so `actual_rate = fires + suppressed` holds. Bounded-cardinality
+   * attrs only: doc.name + enum site.
+   */
   const recordSplitBrainRederive = (site: BridgeSplitBrainSite): void => {
+    // No-throw is structural, not incidental: every call site runs inside
+    // runObserverASyncImpl's try, after the state-critical witness writes and
+    // the `textDirty = true` B-enqueue. A throw escaping here would route
+    // through the outer catch, whose baseline recovery re-arms the
+    // false-witness state this telemetry reports on. Side-channel
+    // observability must never feed back into the write spine.
     try {
       if (emitBridgeSplitBrainRederive(site, opts.docName)) {
         incrementBridgeSplitBrainRederives();
@@ -232,60 +496,200 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     }
   };
 
+  // ─── Observer A: XmlFragment → Y.Text ─────────────────────
+  // Two witnesses, one lifecycle. A single baseline variable here previously
+  // conflated two incompatible surface contracts: gate 1 needs the canonical
+  // serialization of the fragment as of the last settlement, while the
+  // Path A/B router + mergeThreeWay base need the raw Y.Text bytes as of the
+  // last settlement. The surfaces coincide only on round-trip-byte-stable
+  // docs (raw === serialize(parse(raw)) + FM), so a canonical value written
+  // where the router strict-compares raw bytes misroutes the first fragment
+  // change on any residual-bearing doc to Path B.
   let lastSyncedCanonicalMd = '';
   let lastSyncedYTextBytes = '';
+  // Coherence flag — true iff BOTH witnesses were recorded together at a
+  // real settlement. The router's witness-vs-witness residual-tolerance
+  // comparison is only meaningful within one settlement generation:
+  // paired-write short-circuits refresh the raw witness ONLY (perf — no
+  // O(N) serialize on the hot path), splitting the generations, and the
+  // error-recovery `''` canonical sentinel must never feed `mergeThreeWay`
+  // as a base (an empty base would re-insert the whole doc). When the flag
+  // is false the router falls back to Path A — exactly what the pre-split
+  // code did in those windows.
   let canonicalWitnessCoherent = false;
   let xmlDirty = false;
   let textDirty = false;
 
+  /**
+   * STOP: the Path A/B router strict-compares this witness against
+   * `ytext.toString()`, and `mergeThreeWay`'s diverged-branch base must be a
+   * true Y.Text ancestor. It must only ever hold a real Y.Text byte
+   * snapshot — never assign a serialized/recomposed string here.
+   */
   const refreshYTextWitness = (): void => {
     lastSyncedYTextBytes = ytext.toString();
     canonicalWitnessCoherent = false;
   };
 
+  /**
+   * Record a settlement point — fragment and Y.Text are mutually consistent
+   * NOW (or `canonicalMd === ''` to fail gate 1 open after an error). The raw
+   * side is always read from `ytext.toString()` at call time, never from a
+   * computed string — that single discipline is what keeps the router's
+   * comparand on the raw surface. The coherence flag is set AFTER the raw
+   * refresh so the paired-write helper's `false` can't clobber a settlement's
+   * `true`; the `''` sentinel stays incoherent so it can never become a
+   * merge base.
+   */
   const recordSettledBaselines = (canonicalMd: string): void => {
     lastSyncedCanonicalMd = canonicalMd;
     refreshYTextWitness();
     canonicalWitnessCoherent = canonicalMd !== '';
   };
 
+  /**
+   * Record a diverged attach — observers attached while the fragment is NOT
+   * the parse of current Y.Text (e.g. after a partially-failed paired write
+   * left Y.Text ahead of the fragment). Not a settlement point: there is no
+   * true Y.Text ancestor to snapshot, so both witnesses take the fragment's
+   * canonical serialization. Observer B's early-exit then sees Y.Text as
+   * divergent and re-derives the fragment on the next settlement, and the
+   * router treats Y.Text as holding unabsorbed changes (Path B) with the
+   * fragment's last state as the best-available merge base. This is the one
+   * sanctioned non-Y.Text value for the raw witness.
+   */
   const recordDivergedAttachBaselines = (canonicalMd: string): void => {
     lastSyncedCanonicalMd = canonicalMd;
     lastSyncedYTextBytes = canonicalMd;
+    // A diverged attach is NOT a real settlement, so the flag stays false to
+    // match the `canonicalWitnessCoherent` invariant. Behavior-neutral here:
+    // both witnesses are equal, so the router's `===` residual-tolerance
+    // shortcut keeps the residual merge ineligible regardless of the flag.
     canonicalWitnessCoherent = false;
   };
 
+  /**
+   * Reset ONLY the canonical witness after an Observer B failure — not a
+   * settlement point. The raw witness deliberately stays at the last true
+   * settlement (B failed to absorb Y.Text, so the next Path B fire needs
+   * that true ancestor base), which means the witnesses now span two
+   * settlement generations: the coherence flag MUST drop so the router's
+   * residual-tolerance comparison (meaningless across generations) falls
+   * back to Path A instead of feeding `mergeThreeWay` a cross-generation
+   * canonical base.
+   */
   const refreshCanonicalWitnessOnly = (canonicalMd: string): void => {
     lastSyncedCanonicalMd = canonicalMd;
     canonicalWitnessCoherent = false;
   };
 
+  /**
+   * Record a COHERENT split-brain pair after an Observer A error recovery —
+   * the recomputed canonical fragment form (`canonicalMd`) and the current
+   * raw Y.Text diverge beyond `normalizeBridge` tolerance, but both are read
+   * NOW from a consistent in-memory state, so they belong to one settlement
+   * generation. Unlike the `''` sentinel, this pair is deliberately coherent:
+   * the router must take the byte-preserving residual-merge (row 2) on the
+   * next fragment-change drain rather than a wholesale Path A rewrite, which
+   * is what protects the divergent source bytes. The same-drain Observer B
+   * re-derive the caller enqueues then rebuilds the fragment from Y.Text
+   * (Y.Text-is-truth, precedent #38), so the split-brain state converges.
+   */
   const recordSplitBrainRecoveryBaselines = (canonicalMd: string): void => {
     lastSyncedCanonicalMd = canonicalMd;
     lastSyncedYTextBytes = ytext.toString();
     canonicalWitnessCoherent = true;
   };
 
+  /**
+   * Read the current FM region directly from Y.Text. The YAML region of
+   * `Y.Text('source')` IS the FM source of truth — no Y.Map metadata, no
+   * recompose needed.
+   */
   const readCurrentFm = (): string => stripFrontmatter(ytext.toString()).frontmatter;
 
+  /** Parse options for THIS doc's text→tree derivations. One shape shared by
+   *  Observer B's full fire, the attach-time settlement check, and the
+   *  parse-equivalence canonicalizer, so every parse of this doc resolves
+   *  embeds identically — a mismatched pipeline would read the same bytes
+   *  into different trees. */
+  const observerParseOpts =
+    opts.resolveEmbed && opts.docName
+      ? {
+          resolveEmbed: opts.resolveEmbed,
+          resolveSize: opts.resolveSize,
+          sourcePath: opts.docName,
+        }
+      : undefined;
+
+  /** Canonicalize a body through this doc's own parse pipeline — the
+   *  parse-equivalence fallback's callback (`isParseEquivalentBridge`). */
+  const canonicalizeBody = createDocCanonicalizer(mdManager, {
+    resolveEmbed: opts.resolveEmbed,
+    resolveSize: opts.resolveSize,
+    docName: opts.docName,
+  });
+
+  // Positive-result memo for the parse-equivalence fallback. A doc resting
+  // on a serializer canonicalization (lazy continuations et al.) hits the
+  // settlement checks on every drain with the SAME byte pair; the memo
+  // caps that at one parse per distinct pair (string compares are 10-100×
+  // cheaper than a parse on the per-drain hot path). Negative results are
+  // deliberately NOT cached — genuine divergence must keep re-evaluating
+  // (and alerting) as the doc changes.
+  let memoParseEquivalentLeft = '';
+  let memoParseEquivalentRight = '';
+  let hasParseEquivalentMemo = false;
+  const isRestingParseEquivalent = (left: string, right: string): boolean => {
+    if (
+      hasParseEquivalentMemo &&
+      left === memoParseEquivalentLeft &&
+      right === memoParseEquivalentRight
+    ) {
+      return true;
+    }
+    const equivalent = isParseEquivalentBridge(left, right, canonicalizeBody);
+    if (equivalent) {
+      memoParseEquivalentLeft = left;
+      memoParseEquivalentRight = right;
+      hasParseEquivalentMemo = true;
+    }
+    return equivalent;
+  };
+
+  /**
+   * Health-check refinement of `settlesSplitBrain`: a drain settles
+   * split-brain only when the byte comparison fails AND the pair is not
+   * parse-equivalent. Beyond-tolerance bytes whose parse matches the
+   * fragment (organic resting canonicalizations — CommonMark lazy
+   * continuations and kin) are a healthy steady state: the router still
+   * classifies them as residual-bearing (normalizeBridge untouched, so
+   * fragment edits keep the byte-preserving residual merge), but no
+   * re-derive is enqueued and no split-brain telemetry fires. The parse
+   * runs only after byte + normalize inequality — the drains that would
+   * otherwise settle split-brain and pay a full Observer B re-derive.
+   */
+  const settlesSplitBrainChecked = (settledText: string, md: string, normMdPre?: string): boolean =>
+    settlesSplitBrain(settledText, md, normMdPre) && !isRestingParseEquivalent(settledText, md);
+
+  /** Initialize Observer A baseline from current XmlFragment state. */
   try {
     const initialJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
     const initialBody = mdManager.serialize(initialJson);
     const initialFrontmatter = readCurrentFm();
     const canonicalInit = prependFrontmatter(initialFrontmatter, initialBody);
-    const initParseOpts =
-      opts.resolveEmbed && opts.docName
-        ? {
-            resolveEmbed: opts.resolveEmbed,
-            resolveSize: opts.resolveSize,
-            sourcePath: opts.docName,
-          }
-        : undefined;
-    const ytextCanonicalBody = mdManager.serialize(
-      mdManager.parseWithFallback(stripFrontmatter(ytext.toString()).body, initParseOpts),
-    );
-    const stripDocBoundary = (b: string): string => b.replace(/^\n+/, '').replace(/\n+$/, '');
-    if (stripDocBoundary(ytextCanonicalBody) === stripDocBoundary(initialBody)) {
+    // Observers normally attach after the persistence paired-write seed, so
+    // fragment = parse(ytext) and attach is a true settlement point — the raw
+    // witness then captures the seed bytes so the first fragment change on a
+    // residual-bearing doc routes Path A instead of a spurious Path B merge.
+    // But that is an assumption, not a given: a partially-failed paired write
+    // can leave the fragment behind Y.Text at attach. Verify parse-
+    // equivalence: canonical-vs-canonical through the doc's own parse
+    // pipeline (tolerance-independent, residual bytes never flip it), with
+    // the boundary-newline handling documented on `isParseEquivalentBridge`
+    // (parse(ytext) re-captures sourceDocBoundary forms the live fragment
+    // structurally drops — pinned by doc-boundary-fragment-drop.test.ts).
+    if (isRestingParseEquivalent(ytext.toString(), canonicalInit)) {
       recordSettledBaselines(canonicalInit);
     } else {
       recordDivergedAttachBaselines(canonicalInit);
@@ -296,9 +700,16 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       '[Server Observer A] Baseline init failed — starting from empty snapshot:',
       err instanceof Error ? err.message : String(err),
     );
+    // Canonical '' fails gate 1 open (no short-circuit until a real
+    // settlement); the raw witness still snapshots Y.Text so a Path B fire
+    // before that settlement merges against a true ancestor, not ''.
     recordSettledBaselines('');
   }
 
+  /**
+   * Observer A sync work. Computes delta between the settled baselines and
+   * current XmlFragment, applies ONLY that delta to Y.Text.
+   */
   const runObserverASyncImpl = (): void => {
     try {
       const json = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
@@ -306,13 +717,70 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       const frontmatter = readCurrentFm();
       const md = prependFrontmatter(frontmatter, body);
 
+      // Gate 1 (fragment-unchanged): the fragment's canonical serialization is
+      // identical to the recorded canonical witness. Two concerns split here.
+      //
+      // (1) Split-brain re-derive (correctness, coherence-gated like the
+      //     short-circuit below). When the serialization didn't move (e.g. a
+      //     blur upgrade swapping a degraded fallback for an empty paragraph)
+      //     but Y.Text diverges from the canonical form BEYOND tolerance, the
+      //     drain would settle split-brain. There is no fragment delta to
+      //     route — `md` equals the canonical witness — so the router cannot
+      //     reconcile it; only an Observer B re-derive can rebuild the
+      //     fragment from Y.Text (Y.Text-is-truth, precedent #38). Enqueue the
+      //     same-drain B and return. Incoherent diverged-attach states do NOT
+      //     take this path — they fall through the guard to the router, where
+      //     Path B with equal witnesses leaves Y.Text unchanged and the
+      //     post-merge settlement check enqueues the same Observer B
+      //     re-derive.
+      //
+      // (2) Perf short-circuit (coherence-GATED). Absent split-brain, skip the
+      //     router only when the canonical witness is COHERENT — recorded
+      //     together with the raw witness at a real settlement. After a
+      //     paired-write reset the canonical witness is deliberately stale
+      //     (raw-only refresh, perf), so an incoherent `lastSyncedCanonicalMd
+      //     === md` is a cross-generation coincidence that does NOT certify
+      //     Y.Text is in sync — fall through to the raw-witness router so the
+      //     content propagates.
       if (canonicalWitnessCoherent && lastSyncedCanonicalMd === md) {
-        if (settlesSplitBrain(ytext.toString(), md)) {
+        // Fragment serialization is identical to the canonical witness AND the
+        // witness is coherent (recorded with the raw witness at a real
+        // settlement). Two outcomes:
+        //
+        // (1) Split-brain re-derive. If Y.Text still diverges from the
+        //     canonical form BEYOND tolerance (e.g. a blur upgrade swapped a
+        //     degraded fallback for an empty paragraph while Y.Text holds the
+        //     true broken source), the drain would settle split-brain. There
+        //     is no fragment delta to route — `md` equals the canonical
+        //     witness — so only an Observer B re-derive can rebuild the
+        //     fragment from Y.Text (Y.Text-is-truth, precedent #38). Enqueue
+        //     the same-drain B. Coherence is the discriminator from the
+        //     forward-propagation case (a paired-write reset leaves the
+        //     canonical witness STALE/incoherent at a prior content's form
+        //     that the repopulated fragment coincidentally re-matches — there
+        //     Y.Text must be updated FROM the fragment via the router, so that
+        //     case is excluded by the coherence guard and falls through).
+        //
+        // (2) Perf short-circuit. Absent split-brain, the fragment is at the
+        //     witnessed settlement and Y.Text agrees — nothing to do.
+        if (settlesSplitBrainChecked(ytext.toString(), md)) {
+          // Force Observer B to re-derive in this same drain: move BOTH
+          // witnesses to the canonical form so B's early-exit comparand
+          // (`normalizeBridge(lastSyncedYTextBytes)`) no longer matches the
+          // divergent Y.Text and B rebuilds the fragment from Y.Text. This is
+          // the diverged-attach witness shape (canonical-for-both, incoherent)
+          // — the router would treat Y.Text as holding unabsorbed changes, but
+          // we enqueue B directly so the fragment converges this drain. B's
+          // post-fire `recordSettledBaselines` re-establishes the true
+          // settlement witnesses.
           recordDivergedAttachBaselines(md);
           textDirty = true;
           recordSplitBrainRederive('identity-gate');
           setActiveSpanAttributes({ 'observer.a.path': 'gated-fragment-unchanged-rederive' });
         } else {
+          // Bounded enum, same value set as the router below — every exit
+          // path of the sync impl stamps `observer.a.path`, so a missing
+          // attribute in a trace means a real gap, not a silent short-circuit.
           setActiveSpanAttributes({ 'observer.a.path': 'gated-fragment-unchanged' });
         }
         return;
@@ -320,6 +788,16 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
 
       const currentText = ytext.toString();
 
+      // Already-in-sync gate: if Y.Text already matches XmlFragment (after
+      // bridge normalization), just update baselines — the gate certifies a
+      // settlement point. The normalization handles trailing newline
+      // differences between raw Y.Text and serialized XmlFragment
+      // (remark-stringify adds a trailing newline). The normalized forms are
+      // cached for the drain: every additional full-doc normalizeBridge pass
+      // is O(doc bytes), and on large docs the per-drain normalize count is
+      // what bounds convergence latency under bursts (measured: the fuzz
+      // convergence budget overran ~50% on a 675 KB doc before the residual
+      // classification below went lazy).
       const normCurrent = normalizeBridge(currentText);
       const normMd = normalizeBridge(md);
       if (normCurrent === normMd) {
@@ -330,11 +808,30 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
 
       const preMergeBaseline = lastSyncedYTextBytes;
       const ytextInSync = currentText === lastSyncedYTextBytes;
+      // Witness-vs-witness residual classification — meaningful only when
+      // both witnesses come from the same settlement generation (coherence
+      // flag). In-sync docs whose settled bytes diverge from canonical BEYOND
+      // normalizeBridge tolerance (NG-class constructs: un-padded GFM tables,
+      // multi-blank lines, doc-start thematic breaks, PUA sentinels — storage
+      // never sanitizes) must NOT be wholesale-rewritten toward canonical:
+      // that would mutate user files on a mere editor-mount artifact.
+      // Evaluation is LAZY left-to-right: the normalize pass runs only on
+      // in-sync, coherent, witness-distinct drains — a diverged or
+      // incoherent drain (where the classification cannot matter: the router
+      // takes path-b / the Path-A fallback regardless) pays zero extra
+      // passes. `ytextInSync` implies `lastSyncedYTextBytes === currentText`,
+      // so the raw-witness normalize reuses the gate-2 `normCurrent`; the
+      // marginal cost is one normalize of the canonical witness.
       const residualMergeEligible =
         ytextInSync &&
         canonicalWitnessCoherent &&
         lastSyncedYTextBytes !== lastSyncedCanonicalMd &&
         normCurrent !== normalizeBridge(lastSyncedCanonicalMd);
+      // Routing decision, span-visible. The outcomes are byte-different
+      // write behaviors that are otherwise indistinguishable in traces.
+      // Bounded cardinality: a 4-value enum — 'map-driven-splice' overrides
+      // below once the splice computation succeeds (it is computed after
+      // this stamp because it needs the parse).
       setActiveSpanAttributes({
         'observer.a.path': ytextInSync
           ? residualMergeEligible
@@ -342,14 +839,37 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             : 'path-a'
           : 'path-b',
       });
+      // Captured merged-text length, populated inside the transact closure
+      // when either merge branch runs. Plain object container so TS widening
+      // through the closure assignment doesn't collapse to `never`.
       const pathBState: { mergedText: string | null } = { mergedText: null };
 
+      // Map-driven Path A (default): when Y.Text matches baseline + this
+      // isn't a synthetic doc, compute a block-aligned source-byte splice
+      // from the mdast position map and rewrite only the changed range.
+      // Bytes outside the splice survive in Y.Text byte-identically — a
+      // concurrent non-paired WYSIWYG edit no longer canonicalizes the
+      // untouched blocks an agent's exact-match find targets. Falls back
+      // to applyIncrementalDiff when the splice can't be computed (parse
+      // failure, a block missing mdast position offsets). The structural
+      // block comparison inside computeMapDrivenBodySplice is data-aware
+      // (data.source* differences count as changes) — stripping data from
+      // that comparison silently drops concurrent source-form edits such
+      // as delimiter-row padding changes; see the dash-count tripwire in
+      // map-driven-observer-a.test.ts.
       const spliceComputeStart = performance.now();
       const mapDrivenSplice =
+        // Beyond-tolerance in-sync docs belong to the residual merge below
+        // (canonical-base fragment-delta splice into raw bytes) — the splice
+        // owns Path A's domain only, replacing the wholesale canonical
+        // rewrite, never the residual-preservation path.
         ytextInSync && residualMergeEligible
           ? null
           : tryComputeMapDrivenSplice({
               currentText,
+              // The raw settled witness — the same router-comparable surface
+              // `ytextInSync` reads, so the splice's internal text-match gate
+              // is exactly the in-sync predicate.
               lastSyncedXmlMd: lastSyncedYTextBytes,
               json,
               mdManager,
@@ -358,17 +878,54 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       if (mapDrivenSplice) {
         setActiveSpanAttributes({
           'observer.a.path': 'map-driven-splice',
+          // The splice's three full-document passes are the documented
+          // unbounded-by-doc-size cost on this path (map-driven-splice.ts
+          // perf envelope) — stamped so a large-doc drain-latency trace
+          // answers "where did the time go" without reproduction. Integer ms
+          // keeps the attribute bounded-cardinality.
           'observer.a.splice.compute_ms': Math.round(performance.now() - spliceComputeStart),
         });
       }
 
       doc.transact(() => {
         if (mapDrivenSplice) {
+          // Map-driven splice — Path A's default: block-aligned source-byte
+          // rewrite of only the changed range, strictly more byte-preserving
+          // than the wholesale canonical rewrite below. Residual-eligible
+          // docs never reach here (nulled at computation), and a diverged
+          // doc fails the splice's internal text-match — so this branch
+          // serves exactly the in-sync-within-tolerance drains.
           applyMapDrivenSplice(ytext, mapDrivenSplice);
         } else if (ytextInSync && !residualMergeEligible) {
+          // Path A: Y.Text at baseline AND residual within tolerance (or
+          // witness state unusable: stale-after-paired-write / error-recovery
+          // '') — the sanctioned canonical rewrite.
           applyIncrementalDiff(ytext, currentText, md);
         } else {
+          // Single merge call site, conditional base:
+          //  - in-sync + beyond-tolerance residual → canonical-base
+          //    fragment-delta merge: diff3 computes base→ours (the fragment
+          //    edit, in canonical space) and splices ONLY that delta into the
+          //    raw Y.Text bytes; untouched NG-class constructs survive. NOT a
+          //    divergence fire — no telemetry below.
+          //  - diverged → Path B with the raw-witness base (a true Y.Text
+          //    ancestor).
+          // mergeThreeWay's post-condition throws BridgeMergeContentLossError
+          // if content is dropped by the merge. Production policy: log a
+          // structured event, queue a silent version-history checkpoint of
+          // the pre-merge state (`saveInMemoryCheckpoint`), and apply the
+          // merge as-computed so the editor keeps responding. Dev/test
+          // re-throws so integration tests and fuzz runs fail loudly.
           const mergeBase = ytextInSync ? lastSyncedCanonicalMd : preMergeBaseline;
+          // Doc-boundary byte-space alignment (full mechanism in
+          // doc-boundary-space.ts): `md` is a fragment serialization that
+          // lacks the FM-close-fence-to-body newline run the raw-space inputs
+          // carry, so the line-positional diff3 would misalign at the boundary
+          // and fabricate content. Project all three inputs into one merge
+          // byte-space, merge, and re-attach the current Y.Text's boundary
+          // bytes verbatim — Y.Text is the only surface that can author them
+          // (precedent #38). Both apply paths project through the same closure
+          // so they cannot drift.
           const { boundary } = splitLeadingDocBoundary(currentText);
           const projectMerged = (merged: string): string =>
             reattachLeadingDocBoundary(splitLeadingDocBoundary(merged).text, boundary);
@@ -385,8 +942,18 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             pathBState.mergedText = mergedText;
           } catch (mergeErr) {
             if (!(mergeErr instanceof BridgeMergeContentLossError)) throw mergeErr;
+            // Checkpoint payload stays the raw witness: in the in-sync branch
+            // it equals currentText (the true pre-merge Y.Text state).
             handleBridgeMergeLoss(mergeErr, preMergeBaseline);
+            // Throw-gate polarity: throw only when the runtime affirmatively
+            // identifies itself as a test (see `shouldRethrowBridgeMergeLoss`
+            // JSDoc for why the gate is affirmative, not `!== 'production'`).
             if (shouldRethrowBridgeMergeLoss()) throw mergeErr;
+            // Apply the merge's as-computed result so the editor progresses,
+            // boundary re-projected exactly as the success path does. The
+            // `bridge-merge-content-loss` event above logged the pre-projection
+            // `info.result`, so its `resultLen` is the merge-space length, not
+            // the length of these applied bytes.
             const asComputed = projectMerged(mergeErr.info.result);
             applyFastDiff(ytext, currentText, asComputed);
             pathBState.mergedText = asComputed;
@@ -394,8 +961,33 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         }
       }, OBSERVER_SYNC_ORIGIN);
 
+      // Splice-path health counter — the fallback side increments inside
+      // `tryComputeMapDrivenSplice`, so `applied / (applied + Σfallback)`
+      // tracks how often the byte-preserving default actually serves drains.
       if (mapDrivenSplice) incrementMapDrivenSpliceApplied();
 
+      // Telemetry: emit one structured event per Path B fire so
+      // operators can track the slow-path cost. Bounded cardinality —
+      // attrs are booleans + a numeric byte-delta, no doc content. This
+      // sits AFTER the transact so the merged-text length is known.
+      //
+      // Gated on the DIVERGENCE branch (`!ytextInSync`), not on "the merge
+      // machinery ran": the in-sync canonical-base residual merge is not a
+      // Path-B fire, so "Path B fires iff Y.Text diverged" stays literally
+      // true and `fires + suppressed` keeps counting divergence fires
+      // exactly.
+      //
+      // Rate-limited per doc through `emitObserverAPathBFired` (mirroring
+      // the watchdog's `bridge-invariant-violation` and
+      // `bridge-tolerance-applied` rate-limiters): under multi-peer
+      // concurrent editing or a degenerate baseline-staleness loop, Path
+      // B can fire many times per second per doc, drowning the very
+      // signal operators need. The counter increments only on emit,
+      // matching the bridge-invariant-violation pattern; the suppressed
+      // counter is bumped inside `emitObserverAPathBFired` when the gate
+      // closes, so `actual_rate = observerAPathBFires +
+      // observerAPathBFiresSuppressed` holds (each fire bumps exactly
+      // one of the two).
       if (pathBState.mergedText !== null && !ytextInSync) {
         if (emitObserverAPathBFired(opts.docName)) {
           incrementObserverAPathBFires();
@@ -403,6 +995,8 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             JSON.stringify({
               event: 'observer-a-path-b-fired',
               'doc.name': opts.docName ?? null,
+              // Gate 1 above structurally guarantees the fragment's canonical
+              // form advanced before this site is reachable.
               xmlFragmentAdvanced: true,
               ytextDiverged: !ytextInSync,
               mergeBytesChanged: Math.abs(pathBState.mergedText.length - currentText.length),
@@ -411,28 +1005,86 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         }
       }
 
+      // Volume signal for the in-sync canonical-base residual merge — the
+      // sibling slow path the divergence-scoped Path B counters deliberately
+      // exclude. Counter only: no per-fire console event, nothing to
+      // rate-limit.
       if (pathBState.mergedText !== null && ytextInSync) {
         incrementObserverAResidualMergeRuns();
       }
 
       incrementServerObserverFire('a');
+      // The raw witness snapshots the ACTUAL Y.Text state after the write,
+      // not the XmlFragment serialization (md). Under either merge branch,
+      // the merged bytes preserve content from Y.Text that wasn't in
+      // XmlFragment (concurrent source-mode edits under Path B; untouched
+      // NG-class residual bytes under the in-sync canonical-base merge). A
+      // canonical-form raw witness would cause the NEXT firing to re-diff
+      // "old XmlFragment → new XmlFragment" and re-include content already
+      // in Y.Text — producing duplication.
+      // The canonical witness records `md` (the serialization just computed)
+      // so gate 1 keeps short-circuiting fragment-unchanged settlements on
+      // residual docs.
       recordSettledBaselines(md);
 
-      if (settlesSplitBrain(ytext.toString(), md, normMd)) {
+      // Split-brain settlement guard (Y.Text-is-truth, precedent #38). After
+      // the write, the raw witness is at the post-write ytext and the canonical
+      // witness is at md. The checked predicate fires on a beyond-tolerance
+      // residual whose parse does NOT match the fragment — a genuinely
+      // degraded divergence. A parse-equivalent resting canonicalization
+      // (lazy continuations and other organic constructs the serializer
+      // re-shapes: storage never sanitizes) is a healthy steady state and is
+      // excluded here, while the two-witness router still classifies it as
+      // residual-bearing: the next fragment-change drain sees the
+      // beyond-tolerance residual and routes the byte-preserving
+      // residual-merge (row 2), never a wholesale Path A rewrite. On a
+      // genuine fire we enqueue a same-drain Observer B to ATTEMPT
+      // convergence (Y.Text-is-truth re-derive), deliberately WITHOUT moving
+      // the witnesses to the canonical form: only a genuinely irreducible
+      // fallback divergence keeps B re-deriving (B early-exits when its
+      // raw-witness comparand equals the current ytext). Forcing the
+      // diverged-attach witness shape here would wrongly re-derive every
+      // residual doc on every WYSIWYG edit (regressing the residual-merge
+      // steady state); the bytes are already safe either way.
+      if (settlesSplitBrainChecked(ytext.toString(), md, normMd)) {
         textDirty = true;
         recordSplitBrainRederive('post-merge');
       }
     } catch (err) {
+      // A BridgeMergeContentLossError rethrown by Path B's single catch site
+      // (under `shouldRethrowBridgeMergeLoss`) is a dev/test loud-failure
+      // signal, not an Observer A failure to recover from. Pass it through
+      // this soft-recovery layer so the test runner sees it, mirroring
+      // Observer B's `BridgeInvariantViolationError` rethrow. This is a
+      // rethrow passthrough, NOT a second handle site: Path B remains the
+      // only place that logs + checkpoints + applies the merge.
       if (err instanceof BridgeMergeContentLossError) {
         throw err;
       }
       incrementServerObserverError('a');
       console.error('[Server Observer A] Failed to sync tree→text:', err);
+      // Reset the witnesses so the next retry computes a fresh delta instead
+      // of re-applying the stale diff that just failed. The naive reset
+      // records the raw Y.Text as a settled witness, but if the throw
+      // happened BEFORE the settlement check (e.g. inside a merge transact
+      // while Y.Text is still divergent), that is a FALSE witness: the next
+      // drain would see Y.Text in sync with the (incoherent) router and could
+      // rewrite Y.Text toward the fallback-derived serialization, destroying
+      // the source bytes. So recompute the canonical form and, when it still
+      // settles split-brain vs Y.Text, record a coherent split-brain pair
+      // (canonical = recoveryMd truthful, raw = the divergent Y.Text) and
+      // enqueue a same-drain Observer B re-derive — the next A drain then sees
+      // a beyond-tolerance residual and takes the byte-preserving
+      // residual-merge (row 2) while B rebuilds the fragment from Y.Text
+      // (Y.Text-is-truth, precedent #38), the identical correction the two
+      // settlement-exit sites apply. When NOT split-brain, Y.Text and the
+      // fragment agree within tolerance — a true settlement, so record both
+      // witnesses coherently at the recovered canonical form.
       try {
         const recoveryJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
         const recoveryBody = mdManager.serialize(recoveryJson);
         const recoveryMd = prependFrontmatter(readCurrentFm(), recoveryBody);
-        if (settlesSplitBrain(ytext.toString(), recoveryMd)) {
+        if (settlesSplitBrainChecked(ytext.toString(), recoveryMd)) {
           recordSplitBrainRecoveryBaselines(recoveryMd);
           textDirty = true;
           recordSplitBrainRederive('error-recovery');
@@ -440,6 +1092,15 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           recordSettledBaselines(recoveryMd);
         }
       } catch (innerErr) {
+        // Recompute itself can throw (the original failure may have come from
+        // serialize). With no canonical form available, the divergence check
+        // is impossible — witnessing raw Y.Text here could be the same false
+        // witness the settlement sites guard against. Fall back to the empty
+        // unknown-baseline sentinel (the baseline-init failure fallback
+        // above): the next drain fails Path A's gate and routes through Path
+        // B's byte-protective merge instead of an unguarded rewrite. An
+        // operator triaging the double failure needs the doc and the original
+        // error correlated in one line, not two disconnected ones.
         console.warn(
           '[Server Observer A] Baseline recovery also failed',
           JSON.stringify({
@@ -448,6 +1109,15 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             recoveryError: innerErr instanceof Error ? innerErr.message : String(innerErr),
           }),
         );
+        // Last-resort unknown-baseline sentinel: no canonical form is
+        // computable (the recovery serialize threw too), so the divergence
+        // check is impossible and witnessing the raw Y.Text could be the same
+        // false witness the settlement sites guard against. Set BOTH witnesses
+        // to the empty sentinel: canonical '' fails gate 1 open, and an empty
+        // raw witness makes the next drain's `ytextInSync` comparison FALSE,
+        // routing through Path B's byte-protective merge against a true
+        // (empty) ancestor rather than a wholesale Path A rewrite that would
+        // destroy the divergent source. Coherence stays false.
         lastSyncedCanonicalMd = '';
         lastSyncedYTextBytes = '';
         canonicalWitnessCoherent = false;
@@ -455,6 +1125,14 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     }
   };
 
+  // Wrap with withSpanSync so Observer A emits an OTel span per fire.
+  // The router inside the impl stamps the routing decision on the active
+  // span as 'observer.a.path' ('map-driven-splice' | 'path-a' |
+  // 'residual-merge' | 'path-b'); the gate short-circuits stamp
+  // 'gated-fragment-unchanged-rederive' / 'gated-fragment-unchanged' /
+  // 'gated-in-sync', so every exit path of the sync impl sets the attribute.
+  // Zero-overhead when OTEL_SDK_DISABLED is true (recordException
+  // is no-op when the tracer is disabled).
   const runObserverASync = (): void => {
     withSpanSync(
       'observer.runASync',
@@ -463,13 +1141,43 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     );
   };
 
+  /**
+   * Observer A callback — fires on every XmlFragment deep change.
+   * Origin guards prevent infinite loops and opt the paired-write fast-path
+   * out of settlement-handler dispatch.
+   */
   const observerA = (_events: Y.YEvent<Y.XmlFragment>[], transaction: Y.Transaction) => {
+    // Self-skip: our own cross-CRDT write
     if (transaction.origin === OBSERVER_SYNC_ORIGIN) return;
 
+    // Paired-write origins atomically wrote both XmlFragment and Y.Text inside
+    // this transaction. Under the Y.Text-is-truth contract, ytext holds the
+    // raw bytes the writer composed (which may diverge from serialize(fragment)
+    // on inputs where parse→serialize normalizes — e.g., a leading "\n\n"
+    // delimiter that mdast drops). We refresh the raw witness from ytext to
+    // match the post-Path-A/B convention at the end of `runObserverASync`. A
+    // serialize(fragment) value here would force every subsequent user
+    // keystroke through Path B's mergeThreeWay because the strict-equality
+    // Path A gate fails (raw ≠ canonical) — under stress this exceeds the
+    // multi-turn timeout. See `isPairedWriteOrigin` JSDoc for the fuzz seed.
+    // The canonical witness is deliberately left stale: serializing the
+    // fragment here would add an O(N) serialize to the synchronous paired
+    // hot path, and gate-1 staleness is fail-open (md ≠ stale-canonical →
+    // proceed to gate 2/router, which are correct). The raw-only refresh
+    // also clears the coherence flag — the witnesses now span two settlement
+    // generations, so the router's residual-tolerance comparison is
+    // meaningless and it falls back to Path A in this window.
     if (isPairedWriteOrigin(transaction.origin)) {
       try {
         const frontmatter = readCurrentFm();
         refreshYTextWitness();
+        // Refresh the FM telemetry baseline alongside the bridge baseline.
+        // Without this, an agent paired-write that changes FM advances
+        // the raw witness but leaves `priorFmForTelemetry` stale; the
+        // next user source-mode body-only edit then fires a spurious
+        // `recordFrontmatterEditSurface('source-mode')` because the FM
+        // comparison sees the agent's FM change. Telemetry-only impact —
+        // double-attribution of FM edits to the wrong surface.
         priorFmForTelemetry = frontmatter;
       } catch (err) {
         incrementServerObserverError('a');
@@ -477,6 +1185,9 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           '[Server Observer A] Paired-write baseline refresh failed — falling through to settlement:',
           err instanceof Error ? err.message : String(err),
         );
+        // Fall through to the settlement path so the next afterAllTransactions
+        // dispatch can recover. The runObserverASync catch block resets the
+        // baseline from Y.Text if the underlying issue persists.
         xmlDirty = true;
       }
       return;
@@ -485,6 +1196,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     xmlDirty = true;
   };
 
+  // ─── Initial sync: populate Y.Text from XmlFragment if empty ──
   if (xmlFragment.length > 0 && ytext.length === 0) {
     try {
       const json = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
@@ -494,21 +1206,54 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       doc.transact(() => {
         ytext.insert(0, md);
       }, OBSERVER_SYNC_ORIGIN);
+      // ytext was just set to md inside the transact, so the raw read
+      // returns md — the surfaces coincide at this settlement point.
       recordSettledBaselines(md);
     } catch (err) {
       incrementServerObserverError('a');
       console.error('[Server Observer A] Failed initial sync:', err);
+      // Reset baselines to match Y.Text's actual state (still empty) so the
+      // next Observer A firing treats the entire XmlFragment as new content
+      // via Path A (incremental diff from empty → full doc). Without this,
+      // the witnesses hold the full doc from init while Y.Text is empty —
+      // Path B's DMP patch_apply would fail (no matching context in empty
+      // string). The raw read returns '' here because the insert never ran.
       recordSettledBaselines('');
     }
   }
 
+  // ─── Observer B: Y.Text → XmlFragment ─────────────────────
+
+  /**
+   * Observer B sync work. Parses Y.Text markdown and applies to XmlFragment
+   * via updateYFragment. Frontmatter lives in Y.Text directly — the
+   * observer only needs to strip the FM region before parsing the body.
+   *
+   * Under the settlement dispatcher, this always runs AFTER runObserverASync
+   * within the same drain (when both flags are set), so any fresh XmlFragment
+   * state from Observer A's write is already visible to this pass.
+   */
   let priorFmForTelemetry = readCurrentFm();
   const runObserverBSyncImpl = (): void => {
     try {
       const md = ytext.toString();
       const { frontmatter, body } = stripFrontmatter(md);
 
+      // Early-exit: if Y.Text already matches the last settled Y.Text
+      // snapshot (via normalizeBridge), tree and text are in sync.
+      // Uses the maintained raw witness instead of a fresh
+      // serialize(XmlFragment) call — the witness is refreshed on every
+      // Observer A path and on every paired-write origin's synchronous
+      // short-circuit, so it always reflects the last settlement. Reading
+      // the raw witness keeps this comparand uniform with the router's:
+      // an in-tolerance parse-invisible Y.Text edit early-exits here
+      // WITHOUT refreshing any witness, so the router still sees it as
+      // real divergence and routes the next fragment change through the
+      // byte-preserving Path B merge.
       if (normalizeBridge(lastSyncedYTextBytes) === normalizeBridge(md)) {
+        // Tree and text are already in sync. FM region is already where it
+        // should be (Y.Text is the source of truth). Just emit telemetry if
+        // the FM changed.
         if (priorFmForTelemetry !== frontmatter) {
           recordFrontmatterEditSurface('source-mode');
           priorFmForTelemetry = frontmatter;
@@ -516,15 +1261,15 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         return;
       }
 
-      const parseOpts =
-        opts.resolveEmbed && opts.docName
-          ? {
-              resolveEmbed: opts.resolveEmbed,
-              resolveSize: opts.resolveSize,
-              sourcePath: opts.docName,
-            }
-          : undefined;
-      const parsedJson = mdManager.parseWithFallback(body, parseOpts);
+      // Bridge always-live: parseWithFallback never throws — it always
+      // produces a valid JSONContent tree, falling back to rawMdxFallback
+      // for unparseable spans. `observerParseOpts` threads `resolveEmbed` +
+      // `sourcePath` so `![[photo.png]]` mdast nodes resolve to disk paths
+      // before PM dispatch. Under server-authoritative architecture
+      // (precedent #14), this observer is the sole writer for XmlFragment —
+      // the "always-live" contract here means no client sees frozen WYSIWYG
+      // when another peer is mid-typing a broken MDX tag.
+      const parsedJson = mdManager.parseWithFallback(body, observerParseOpts);
 
       const pmNode = opts.schema.nodeFromJSON(parsedJson);
 
@@ -540,15 +1285,47 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
 
       incrementServerObserverFire('b');
 
+      // Y.Text-is-truth contract: no canonicalize-write-back to Y.Text.
+      // Y.Text holds the user's intended source-form bytes; XmlFragment
+      // derives via parse(ytext). The watchdog asserts the bridge invariant
+      // (modulo `normalizeBridge` tolerance) and fires telemetry/throws on
+      // outside-tolerance divergence; it does NOT mutate Y.Text.
+      //
+      // The right-hand side of the bridge invariant is `serialize(parsedJson)`
+      // — equivalent to `serialize(fragment)` after Phase 1's updateYFragment
+      // landed `parsedJson` into XmlFragment. Using parsedJson (already in
+      // scope) instead of re-reading XmlFragment avoids one O(N) traversal
+      // per fire — under bursty edits (chunked-paste is 20× 50 KB
+      // transactions, each triggering one B fire), the difference matters.
+      // The compose can throw on a non-roundtrip-stable parse; baseline
+      // recovery falls back to the input body so Observer A's next delta
+      // computation sees a coherent starting point.
       try {
         const canonicalBody = mdManager.serialize(parsedJson);
         const canonicalYText = prependFrontmatter(frontmatter, canonicalBody);
         assertBridgeInvariant(ytext.toString(), canonicalYText, {
           site: 'observer-b',
           docName: opts.docName,
+          // One-shot reuse of the canonicalization this fire just computed:
+          // the watchdog's fallback canonicalizes the SAME body B parsed
+          // above, and re-running parse+serialize per fire is exactly the
+          // extra O(N) pass the parsedJson reuse note above exists to avoid.
+          canonicalizeBody: (b) => (b === body ? canonicalBody : canonicalizeBody(b)),
         });
+        // Maintain Observer A's witnesses — B just absorbed Y.Text into the
+        // fragment, a true settlement point. The canonical witness records
+        // the canonical serialization so Observer A's gate 1
+        // (`lastSyncedCanonicalMd === md`) short-circuits while the fragment
+        // is unchanged; the raw witness snapshots the actual (possibly
+        // residual-bearing) Y.Text bytes the router strict-compares — a
+        // canonical value there would misroute the next fragment change to
+        // Path B on any in-tolerance residual doc.
         recordSettledBaselines(canonicalYText);
       } catch (reserializeErr) {
+        // Watchdog violations re-throw past every soft-recovery catch up to
+        // whatever drove the original transaction. In test mode the test
+        // runner sees the loud failure; in prod the watchdog already emits
+        // (rate-limited) and returns, so this path is unreachable.
         if (reserializeErr instanceof BridgeInvariantViolationError) {
           throw reserializeErr;
         }
@@ -559,17 +1336,33 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         recordSettledBaselines(prependFrontmatter(frontmatter, body));
       }
     } catch (err) {
+      // Watchdog violations re-throw all the way past the outer Observer B
+      // recovery. The error is not an Observer B failure to recover from —
+      // it's a dev/test-only contract violation that should fail loud.
       if (err instanceof BridgeInvariantViolationError) {
         throw err;
       }
       incrementServerObserverError('b');
       console.error('[Server Observer B] Failed to sync text→tree:', err);
+      // Reset the canonical witness to current XmlFragment state so the next
+      // retry computes a fresh delta instead of re-applying the stale diff
+      // that just failed. The raw witness is deliberately NOT touched: this
+      // is not a settlement point — B failed to absorb Y.Text, so fragment
+      // and Y.Text are genuinely diverged. Leaving the raw witness at the
+      // last true settlement means the next fragment change routes Path B
+      // with a true ancestor base and merges the unabsorbed Y.Text content.
       try {
         const postJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
         const postBody = mdManager.serialize(postJson);
         const fm = readCurrentFm();
         refreshCanonicalWitnessOnly(prependFrontmatter(fm, postBody));
       } catch (innerErr) {
+        // Mirror the two `instanceof BridgeInvariantViolationError` catches
+        // above — preserve `BridgeInvariantViolationError` throws past this
+        // soft-recovery layer. No current path through `mdManager.serialize`
+        // raises a contract error, but a future change adding an
+        // `assertBridgeInvariant` inside the recovery body would otherwise
+        // be silently swallowed, defeating the dev/test loud-failure gate.
         if (innerErr instanceof BridgeInvariantViolationError) {
           throw innerErr;
         }
@@ -578,6 +1371,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     }
   };
 
+  // Wrap with withSpanSync so Observer B emits an OTel span per fire.
   const runObserverBSync = (): void => {
     withSpanSync(
       'observer.runBSync',
@@ -586,13 +1380,36 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     );
   };
 
+  /**
+   * Observer B callback — fires on every Y.Text change.
+   * Origin guards prevent infinite loops and opt the paired-write fast-path
+   * out of settlement-handler dispatch.
+   */
   const observerB = (_event: Y.YTextEvent, transaction: Y.Transaction) => {
+    // Self-skip: our own cross-CRDT write
     if (transaction.origin === OBSERVER_SYNC_ORIGIN) return;
 
+    // Paired-write origins atomically wrote both XmlFragment and Y.Text inside
+    // this transaction. Symmetric counterpart to Observer A's branch above.
+    // Under the Y.Text-is-truth contract
+    // ytext holds the raw bytes the writer composed (which may diverge from
+    // serialize(fragment) on inputs where parse→serialize normalizes), so
+    // the raw witness must be refreshed from ytext to match the
+    // post-Path-A/B convention. Today `composeAndWriteRawBody` writes ytext
+    // first → fragment second, so Observer A's symmetric branch above runs
+    // last and would win regardless. We still refresh from ytext here for
+    // structural symmetry — a future paired-write origin that mutates
+    // fragment first → ytext second (or only ytext) would otherwise leave
+    // a stale raw witness and re-introduce the bug class. Decline
+    // to set textDirty — the settlement handler has nothing to dispatch
+    // for this drain on the paired-write path.
     if (isPairedWriteOrigin(transaction.origin)) {
       try {
         const frontmatter = readCurrentFm();
         refreshYTextWitness();
+        // Refresh FM telemetry baseline alongside the bridge baseline.
+        // Symmetric counterpart to Observer A's fast-path branch — see the
+        // rationale comment there.
         priorFmForTelemetry = frontmatter;
       } catch (err) {
         incrementServerObserverError('b');
@@ -600,6 +1417,8 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           '[Server Observer B] Paired-write baseline refresh failed — falling through to settlement:',
           err instanceof Error ? err.message : String(err),
         );
+        // Fall through so the next afterAllTransactions can reconcile via
+        // runObserverBSync's own recovery branches.
         textDirty = true;
       }
       return;
@@ -608,7 +1427,24 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     textDirty = true;
   };
 
+  // ─── Settlement dispatcher (precedent #13(b)) ────────
+  /**
+   * Runs once per outermost `doc.transact()` drain after observers have fired
+   * synchronously. Inspects the batch of transactions:
+   *
+   * - If no observer flagged dirty state (self-origin or paired-write only),
+   *   dispatch nothing — baseline was already kept consistent inside the
+   *   observer callbacks.
+   * - Otherwise dispatch Observer A's sync first (its Y.Text write is
+   *   visible to B's read), then Observer B's. Both are synchronous; each
+   *   clears its flag before running so a reentrant transact started by
+   *   the sync work doesn't double-dispatch.
+   */
   const afterAll = (_doc: Y.Doc, transactions: Y.Transaction[]): void => {
+    // Wrap the dispatch decision in a span so OTLP queries can attribute
+    // work to the right kind ('a' / 'b' / 'a-then-b' / 'none'). Inner code
+    // stamps the dispatch attribute via setActiveSpanAttributes once the
+    // decision is made.
     withSpanSync(
       'observer.dispatch',
       { attributes: { 'doc.name': opts.docName ?? '' } },
@@ -626,18 +1462,37 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           return;
         }
 
+        // Observer A FIRST: when both flags are set — either a single
+        // non-paired transaction mutated both CRDTs (rare), or A's
+        // settlement check (`settlesSplitBrain`) enqueued a same-drain B
+        // re-derive because the drain would otherwise settle beyond bridge
+        // tolerance — A's write of Y.Text is visible to B's subsequent read
+        // and B either early-exits via its normalize gate or rebuilds the
+        // fragment from Y.Text. The A-before-B execution order is
+        // load-bearing: B's `if (textDirty)` guard reads the live flag, so A
+        // must run first to get the chance to enqueue B into the same drain.
+        // This mirrors the debounce-era "defer Observer B while Observer A
+        // pending" behavior but is now synchronous and ordered rather than
+        // time-coupled.
         const ranA = xmlDirty;
         if (xmlDirty) {
           xmlDirty = false;
           opts.onDispatch?.('a');
           runObserverASync();
         }
+        // Span-label accuracy only: the `if (textDirty)` guard below reads
+        // the live flag either way, so B always ran correctly — capturing
+        // `ranB` after A runs just makes the span attribute report
+        // 'a-then-b' for drains where A's settlement check enqueued B.
         const ranB = textDirty;
         if (textDirty) {
           textDirty = false;
           opts.onDispatch?.('b');
           runObserverBSync();
         }
+        // Stamp the final dispatch decision on the span. 'a-then-b'
+        // is reported when both ran in the same drain (rare but
+        // semantically distinct from sequential 'a' or 'b').
         span.setAttribute(
           'observer.dispatch',
           ranA && ranB ? 'a-then-b' : ranA ? 'a' : ranB ? 'b' : 'none',
@@ -646,11 +1501,17 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     );
   };
 
+  // ─── Subscribe ─────────────────────────────────────────────
   xmlFragment.observeDeep(observerA);
   ytext.observe(observerB);
   doc.on('afterAllTransactions', afterAll);
+  // Quiescence tracking lives in its own module to avoid `Date.now()` /
+  // `setTimeout` here (precedent #13(b) — bridge-no-wallclock guard).
+  // `attachQuiescenceTracker` hooks `afterTransaction` + `afterAllTransactions`
+  // and exposes `isDocQuiescent(doc)` for the persistence quiescence gate.
   const detachQuiescence = attachQuiescenceTracker(doc);
 
+  // ─── Cleanup ───────────────────────────────────────────────
   return () => {
     detachQuiescence();
     doc.off('afterAllTransactions', afterAll);

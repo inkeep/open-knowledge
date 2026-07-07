@@ -7,6 +7,9 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { applyGitEnv, buildGitEnv, createGitInstance, type GitHandle } from './git-handle.ts';
 import { withParentLock } from './git-mutex.ts';
 
+// simple-git's .env(obj) REPLACES the child env, so these tests set/restore
+// process.env around a buildGitEnv() call to prove which vars survive that
+// replacement. Module-scoped so both describe blocks below can use it.
 function withEnvEntries(entries: Record<string, string | undefined>, fn: () => void): void {
   const saved = new Map<string, string | undefined>();
   for (const key of Object.keys(entries)) {
@@ -33,6 +36,9 @@ describe('buildGitEnv', () => {
   });
 
   test('disables terminal prompts (no-TTY server-spawned git)', () => {
+    // Without this, a credential-less fetch/push opens /dev/tty and dies with
+    // "could not read Username … Device not configured". Disabled, git
+    // fail-fasts with "terminal prompts disabled".
     expect(buildGitEnv().GIT_TERMINAL_PROMPT).toBe('0');
   });
 
@@ -73,6 +79,10 @@ describe('buildGitEnv', () => {
   });
 
   test('preserves ELECTRON_RUN_AS_NODE so the packaged credential helper runs as Node', () => {
+    // Regression: the desktop server runs as Electron-as-Node and re-invokes
+    // the Electron binary as the credential helper. Dropping this var made the
+    // binary boot a GUI app and FATAL ("Unable to find helper app") before
+    // returning credentials.
     withEnvEntries({ ELECTRON_RUN_AS_NODE: '1' }, () => {
       expect(buildGitEnv().ELECTRON_RUN_AS_NODE).toBe('1');
     });
@@ -96,6 +106,9 @@ describe('buildGitEnv', () => {
 });
 
 describe('createGitInstance (credential.helper config)', () => {
+  // Tier A (gh) and Tier B/C (stored token) both pass a
+  // `credential.helper=!…` config string. Keep a regression test that the
+  // SimpleGit constructor accepts it with our current package version.
   let tmpDir: string;
 
   function readEnv(handle: GitHandle): Record<string, string> {
@@ -116,6 +129,9 @@ describe('createGitInstance (credential.helper config)', () => {
     const handle = createGitInstance(tmpDir, {
       credentialArgs: ['-c', 'credential.helper=!open-knowledge auth git-credential'],
     });
+    // Any command triggers simple-git's block-unsafe-operations plugin, which
+    // scans argv synchronously before spawning git. `--version` is the lightest
+    // probe that exercises that plugin path.
     const version = await handle.git.raw(['--version']);
     expect(version).toContain('git version');
   });
@@ -137,6 +153,9 @@ describe('createGitInstance (credential.helper config)', () => {
   });
 
   test('pins commit.gpgsign and core.autocrlf off, overriding repo config', async () => {
+    // Set the unsafe directives in the repo's own config; the `-c` flags the
+    // handle passes outrank even repo-local config, so every server-spawned
+    // command resolves them to false.
     execSync('git config commit.gpgsign true', { cwd: tmpDir });
     execSync('git config core.autocrlf true', { cwd: tmpDir });
 
@@ -195,5 +214,6 @@ describe('withParentLock', () => {
   });
 });
 
+// Suppress unused import warnings for lifecycle hooks
 void beforeEach;
 void afterEach;

@@ -1,3 +1,12 @@
+/**
+ * Server-independent wiring tests for the `skills` READ tool's bundle-file
+ * surface (the list-then-read contract). These exercise the input gating that
+ * short-circuits BEFORE any network call — a `file` selector requires a `name`,
+ * and a bad bundle-file path is rejected by the shared allowlist — so they run
+ * without a Hocuspocus server (like `skill-target.test.ts`). The full
+ * round-trip (a project `.md` ref joining the link graph, a script round-trip
+ * read) lives in the integration suite.
+ */
 import { describe, expect, test } from 'bun:test';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { BUNDLE_SKILL_NAME } from '../../skill-bundles.ts';
@@ -32,6 +41,8 @@ function captureSkills(serverUrl: string | undefined): Handler {
 const text = (r: ToolResult) => r.content.map((c) => c.text).join('\n');
 
 describe('skills read tool — bundle-file gating short-circuits before the network', () => {
+  // A defined-but-unreachable URL proves the gate fires first: a real fetch
+  // would refuse, so reaching the teaching error means no request was made.
   const UNREACHABLE = 'http://127.0.0.1:1';
 
   test('`file` without `name` returns the teaching error', async () => {
@@ -66,6 +77,10 @@ describe('skills read tool — server-required', () => {
 });
 
 describe('skills read tool — built-in OK skills short-circuit before the network', () => {
+  // No server URL at all: reaching the teaching error proves the built-in guard
+  // fires before any cwd/server resolution. This is the exact collision from the
+  // field — an agent told to "load the open-knowledge skill" calls
+  // skills({ name: "open-knowledge" }) and must be taught, not 404'd.
   test('READ open-knowledge teaches instead of looking it up', async () => {
     const handler = captureSkills(undefined);
     const r = await handler({ name: 'open-knowledge', scope: 'project' });
@@ -91,6 +106,8 @@ describe('skills read tool — built-in OK skills short-circuit before the netwo
   });
 
   test('a user-authored pack skill is NOT treated as built-in', async () => {
+    // `open-knowledge-pack-*` lives under the reserved prefix but is real KB
+    // content, so it must fall through to the normal (server-required) path.
     const handler = captureSkills(undefined);
     const r = await handler({ name: 'open-knowledge-pack-fishing' });
     expect(r.isError).toBe(true);

@@ -16,6 +16,7 @@ mock.module('../../../../lib/track.ts', () => ({
   resolveDistinctId: () => 'splash-1',
 }));
 
+// Flip the decoded-share outcome per test.
 let _viewKind: 'ok' | 'invalid' | 'unsupported-version' = 'ok';
 mock.module('../../../../lib/share-splash.ts', () => ({
   buildSplashViewModel: () => ({ kind: _viewKind }),

@@ -15,6 +15,9 @@ describe('isFrontmatterValueEmpty', () => {
   });
 
   test('treats `0` and `false` as non-empty (valid stored values)', () => {
+    // Load-bearing carve-out: a loose `!value` check would reject numeric
+    // 0 and boolean false, corrupting properties whose intended stored
+    // value is one of those literals. Keep these explicit.
     expect(isFrontmatterValueEmpty(0)).toBe(false);
     expect(isFrontmatterValueEmpty(false)).toBe(false);
   });
@@ -69,12 +72,17 @@ describe('frontmatterValuesEqual', () => {
   });
 
   test('structurally-equal nested objects are equal across references', () => {
+    // The regression this guards: two objects parsed from the same
+    // YAML on consecutive observer events are distinct references. Reference
+    // equality would (wrongly) report them unequal and re-fire listeners on
+    // every body keystroke.
     expect(
       frontmatterValuesEqual(
         { version: '1.0.0', author: 'Inkeep' },
         { version: '1.0.0', author: 'Inkeep' },
       ),
     ).toBe(true);
+    // Key order does not matter.
     expect(frontmatterValuesEqual({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
   });
 
@@ -113,6 +121,9 @@ describe('frontmatterValuesEqual', () => {
   });
 
   test('null is handled by the guard path (only equal to itself)', () => {
+    // The binding passes raw map values, which can be `undefined`/`null` for an
+    // absent key; the `a !== null && b !== null` guard must keep null from
+    // entering the object branch.
     expect(frontmatterValuesEqual(null, null)).toBe(true);
     expect(frontmatterValuesEqual(null, {})).toBe(false);
     expect(frontmatterValuesEqual({}, null)).toBe(false);
@@ -125,6 +136,11 @@ describe('frontmatterValuesEqual', () => {
 });
 
 describe('FrontmatterMapSchema — Obsidian null coercion', () => {
+  // yaml@2 parses Obsidian's empty-list / bare-key shapes to `null`; the read
+  // schema deliberately excludes `null` (it's the RFC 7396 delete sentinel),
+  // so it coerces those to empty values at the map boundary rather than
+  // rejecting the whole map. See `coerceNullFrontmatter` in schema.ts.
+
   test('drops null sequence elements ([null] → [])', () => {
     const result = FrontmatterMapSchema.safeParse({ tags: [null] });
     expect(result.success).toBe(true);

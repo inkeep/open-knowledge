@@ -48,6 +48,9 @@ describe('FileEmbeddingsBackend', () => {
   });
 
   test('re-asserts 0600 on a pre-existing, looser-permissioned secrets file', async () => {
+    // Simulate a secrets file created world-readable by an older build / external
+    // tool. `writeFileSync`'s mode only applies at creation, so the rewrite must
+    // chmod it back to 0600.
     mkdirSync(join(dir, '.ok'), { recursive: true });
     writeFileSync(secretsFile, 'other: keep-me\n');
     chmodSync(secretsFile, 0o644);
@@ -56,6 +59,9 @@ describe('FileEmbeddingsBackend', () => {
   });
 
   test('get() self-heals a world-readable file to 0600 on the read path (no write needed)', async () => {
+    // The key is read on every search but rewritten rarely, so a file left
+    // group/other-readable (older build / external tool / hand-edit) must be
+    // tightened on READ — otherwise it could stay world-readable indefinitely.
     mkdirSync(join(dir, '.ok'), { recursive: true });
     writeFileSync(secretsFile, `OPENAI_API_KEY: ${KEY}\n`);
     chmodSync(secretsFile, 0o644);
@@ -82,12 +88,14 @@ describe('FileEmbeddingsBackend', () => {
     await store.set(KEY);
     expect(existsSync(secretsFile)).toBe(true);
     await store.clear();
+    // No stray empty file left behind (matches the method's stated intent).
     expect(existsSync(secretsFile)).toBe(false);
   });
 
   test('clear preserves other secrets in the file', async () => {
     const store = new FileEmbeddingsBackend(secretsFile);
     await store.set(KEY);
+    // Simulate a co-resident secret written by a future feature.
     const raw = readFileSync(secretsFile, 'utf-8');
     writeFileSync(secretsFile, `${raw}other: keep-me\n`);
     await store.clear();
@@ -101,6 +109,8 @@ describe('FileEmbeddingsBackend', () => {
   });
 
   test('get() falls back to a key stored under the legacy `embeddings` field', async () => {
+    // A key written by an earlier build (before the rename to OPENAI_API_KEY)
+    // must still resolve, not silently vanish.
     mkdirSync(join(dir, '.ok'), { recursive: true });
     writeFileSync(secretsFile, `embeddings: ${KEY}\n`);
     expect(await new FileEmbeddingsBackend(secretsFile).get()).toBe(KEY);

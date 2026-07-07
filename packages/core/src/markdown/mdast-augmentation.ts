@@ -139,6 +139,7 @@ declare module 'mdast' {
   }
   interface BreakData {
     sourceStyle?: string;
+    sourceRaw?: string;
   }
   interface HeadingData {
     sourceStyle?: string;

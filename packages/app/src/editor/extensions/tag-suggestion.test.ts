@@ -1,3 +1,12 @@
+/**
+ * tag-suggestion — pure-function tests for the filter / rank logic.
+ *
+ * Boundary semantics for `tagMatcher` are covered by precision tests
+ * downstream (where a real ProseMirror document tree is available);
+ * this file pins the filter ranking, the "create new tag" affordance,
+ * and the case-sensitivity of the duplicate check.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { buildTagSuggestionItems, type TagSummaryEntry, tagMatcher } from './tag-suggestion.ts';
 
@@ -30,12 +39,21 @@ describe('buildTagSuggestionItems — filter + rank', () => {
       ]),
       'front',
     );
+    // Create row is appended because `front` is a valid name with no
+    // exact match. The filter behavior is observed in the tag rows.
     const tagsOnly = out.filter((i) => i.kind === 'tag').map((i) => i.kind === 'tag' && i.value);
-    expect(tagsOnly).toEqual(['frontend', 'Frontend-mobile']);
+    expect(tagsOnly).toEqual([
+      // both prefix-match — count desc tiebreaks
+      'frontend',
+      'Frontend-mobile',
+    ]);
+    // `backend` filtered out because it doesn't contain `front`.
     expect(tagsOnly).not.toContain('backend');
   });
 
   test('prefix-matches outrank substring matches', () => {
+    // `web` substring-matches in `webapp` (prefix) AND `myweb` (mid).
+    // Prefix should sort first regardless of count.
     const out = buildTagSuggestionItems(
       tags([
         ['myweb', 100],
@@ -68,6 +86,9 @@ describe('buildTagSuggestionItems — filter + rank', () => {
   });
 
   test('different-case match still offers Create (tags are case-sensitive)', () => {
+    // `Frontend` and `frontend` are distinct in the index — when the
+    // user types `Frontend`, offer to create that variant even though
+    // `frontend` exists.
     const out = buildTagSuggestionItems(tags([['frontend', 5]]), 'Frontend');
     expect(out[out.length - 1]).toEqual({ kind: 'create', value: 'Frontend' });
   });
@@ -83,6 +104,7 @@ describe('buildTagSuggestionItems — filter + rank', () => {
   });
 
   test('hierarchical tag names work end-to-end', () => {
+    // `proj/team/2026` is a valid value (slash is allowed mid-name).
     const out = buildTagSuggestionItems(
       tags([
         ['proj', 10],
@@ -96,6 +118,7 @@ describe('buildTagSuggestionItems — filter + rank', () => {
       'proj/team',
       'proj/team/2026',
     ]);
+    // No Create row — `proj` matches exactly.
     expect(out.find((i) => i.kind === 'create')).toBeUndefined();
   });
 
@@ -199,6 +222,8 @@ describe('tagMatcher — boundary semantics', () => {
   });
 
   test('`#9foo` (digit-leading) does NOT trigger — body must start with a letter', () => {
+    // The regex body is `[a-zA-Z][\w/-]*` — digits in first position
+    // disqualify, matching the parser's TAG_VALID_RE.
     expect(tagMatcher(stubPosition('#9foo', 1) as never)).toBeNull();
   });
 
@@ -207,6 +232,9 @@ describe('tagMatcher — boundary semantics', () => {
   });
 
   test('matches `#tag` after an inline-atom placeholder (textBetween emits ￼)', () => {
+    // textBetween substitutes `￼` for inline atoms; the matcher's
+    // boundary class includes the placeholder so the trigger fires
+    // immediately after a wiki-link or other atom.
     const result = tagMatcher(stubPosition('￼#wip', 1) as never);
     expect(result).toEqual({
       range: { from: 2, to: 6 },

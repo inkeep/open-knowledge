@@ -1,3 +1,12 @@
+/**
+ * MCP write-path tools: `summary` Zod param + pass-through to the HTTP body +
+ * structured-response surfacing, plus the move/restore_version identity passthrough
+ * that lets the server-side attribution guard fire for MCP-driven calls.
+ *
+ * Covers the write-like tools: write, edit, move (description sentinel only —
+ * the real filesystem-probe roundtrip lives in mcp-move-real-roundtrip), and
+ * restore_version.
+ */
 import {
   describe as _bunDescribe,
   afterAll,
@@ -8,6 +17,10 @@ import {
   test,
 } from 'bun:test';
 
+// Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in MCP
+// test setup spawns git children that Bun fails to reap on ubuntu-latest
+// GHA runners; post-test cgroup never drains, hanging test at the 15-min
+// timeout. Tests run normally locally.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -169,6 +182,7 @@ describe('summary + identityRef passthrough across MCP write-path tools', () => 
         document: { path: 'foo', content: '# hi', position: 'append' },
         summary: 'x'.repeat(200),
       });
+      // write nests the single-doc result under the `document` target key.
       expect(
         (result.structuredContent?.document as { summary?: unknown } | undefined)?.summary,
       ).toEqual({
@@ -227,6 +241,10 @@ describe('summary + identityRef passthrough across MCP write-path tools', () => 
     });
   });
 
+  // The merged `move` tool's identity + summary passthrough is exercised
+  // end-to-end (including filesystem-probe dispatch) by
+  // mcp-move-real-roundtrip. Only the description-level sentinel is pinned
+  // here as a cross-cutting guard.
   describe('move — description sentinel', () => {
     test('description mentions the default substitution sentence', () => {
       const cap = createCaptureServer();

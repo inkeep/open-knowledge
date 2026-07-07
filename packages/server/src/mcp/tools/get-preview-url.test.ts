@@ -1,3 +1,15 @@
+/**
+ * Unit tests for the `preview_url` MCP tool.
+ *
+ * `preview_url` is the one tool that hands an agent the browser-reachable
+ * preview URL — per-response `previewUrl` fields are route-only. Branches:
+ *   - UI running (`ui.lock` bound) → composed full URL.
+ *   - No UI + registration has server authority → backend demand-ensure
+ *     (auto-spawn via the `serverUrl` resolver), bounded `ui.lock` wait.
+ *   - Still no UI → `{ url: null, running: false }` + a state-accurate
+ *     recovery hint (`ok start` vs `ok ui` by `server.lock` liveness).
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -135,6 +147,7 @@ describe('preview_url tool — UI running', () => {
       const text = result.content[0]?.text ?? '';
       expect(text).toContain('ok open specs/foo/SPEC');
       expect(text).toMatch(/Don't navigate the URL|reference only/);
+      // The URL is still present (reference); the command is also machine-readable.
       expect(result.structuredContent?.running).toBe(true);
       expect(result.structuredContent?.okOpenCommand).toBe('ok open specs/foo/SPEC');
     });
@@ -183,11 +196,13 @@ describe('preview_url tool — UI running', () => {
       const handler = captureRegistration(cwd);
       const result = await handler({ document: 'specs/foo/SPEC' });
       expect(result.content[0]?.text ?? '').not.toContain('ok open');
+      // No steer command in structured output either.
       expect(result.structuredContent?.okOpenCommand ?? null).toBeNull();
     });
 
     test('desktop terminal + no UI running: steer + okOpenCommand still fire (ok open does not need the UI)', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      // No bindTestUiLock / bindTestServerLock — nothing is running.
       const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
       const result = await handler({ document: 'specs/foo/SPEC' });
       expect(result.structuredContent?.running).toBe(false);
@@ -208,11 +223,13 @@ describe('preview_url tool — UI running', () => {
       bindTestUiLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
       const result = await handler({ document: "Q&A/what's new" });
+      // POSIX single-quote escape: close-quote, escaped-quote, reopen → '\''
       expect(result.structuredContent?.okOpenCommand).toBe("ok open 'Q&A/what'\\''s new'");
     });
 
     test('desktop terminal + no UI + folder: okOpenCommand still fires', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      // No bindTestUiLock — nothing running.
       const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
       const result = await handler({ folder: 'specs/foo' });
       expect(result.structuredContent?.running).toBe(false);
@@ -227,6 +244,7 @@ describe('preview_url tool — UI running', () => {
     const result = await handler({ document: 'specs/foo/SPEC', folder: 'specs/foo' });
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain('mutually exclusive');
+    // Nothing armed even if both + arm were passed.
     expect(readArmedPaneTarget(resolveLockDir(cwd))).toBeNull();
   });
 
@@ -299,6 +317,7 @@ describe('preview_url tool — no UI running', () => {
     expect(result.structuredContent?.autoOpen).toBe(true);
     expect(result.content[0]?.text).toContain('No OpenKnowledge server is running');
     expect(result.content[0]?.text).toContain('`ok start`');
+    // `ok ui` alone would produce a backend-less UI shell in this state.
     expect(result.content[0]?.text).not.toContain('`ok ui`');
   });
 
@@ -332,6 +351,8 @@ describe('preview_url tool — backend demand-ensure', () => {
       serverUrl: async () => {
         resolverCalls += 1;
         bindTestServerLock(cwd);
+        // The real spawn's `ok ui` sibling binds asynchronously — model the
+        // lag so the test exercises the bounded wait, not a lucky fast path.
         setTimeout(() => {
           uiBase = bindTestUiLock(cwd);
         }, 30);
@@ -377,6 +398,8 @@ describe('preview_url tool — backend demand-ensure', () => {
     expect(result.structuredContent?.url).toBeNull();
     expect(result.content[0]?.text).toContain('`ok start`');
     expect(result.content[0]?.text).toContain('OK_MCP_AUTOSTART=0');
+    // `ok ui` alone would produce a backend-less UI shell in this state — same
+    // wrong-state guard as the no-server and bind-timeout branches.
     expect(result.content[0]?.text).not.toContain('`ok ui`');
   });
 
@@ -406,6 +429,8 @@ describe('preview_url tool — backend demand-ensure', () => {
     expect(result.structuredContent?.running).toBe(false);
     expect(result.content[0]?.text).toContain('OK server is running');
     expect(result.content[0]?.text).toContain('`ok ui`');
+    // Symmetric with the no-server branch: a hint-selector regression that
+    // emitted the wrong-state message would advise `ok start` here.
     expect(result.content[0]?.text).not.toContain('`ok start`');
   });
 
@@ -633,6 +658,8 @@ describe('preview_url tool — file branch boot-on-demand', () => {
     expect(result.content[0]?.text).toContain('absolute');
   });
   test('boot reports success but the session is not discoverable → falls back to the hint', async () => {
+    // ensure claims it booted, but discovery never sees the session (it vanished
+    // or never registered) — the second resolve still misses, so we hint.
     const empty: OffCwdResolverDeps = {
       discover: async () => [],
       inspect: async () => null,

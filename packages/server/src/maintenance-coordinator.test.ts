@@ -46,6 +46,10 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
+// Seed N distinct, REACHABLE loose objects fast: write N files, `git add` them
+// (creates N blobs), write-tree + commit-tree, and point a WIP ref at the
+// commit. All N blobs + the tree + the commit are reachable, so `git gc` packs
+// them (vs. unreachable loose objects, which gc leaves loose within the grace).
 async function seedReachableLooseObjects(n: number): Promise<void> {
   const sg = shadowGit(shadow);
   for (let i = 0; i < n; i++) {
@@ -73,6 +77,10 @@ async function seedReachableLooseObjects(n: number): Promise<void> {
   rmSync(idx, { force: true });
 }
 
+// Spy on the private compound-maintenance entry point that every trigger
+// (noteFlushCommit / onSessionClose / boot) invokes. Trigger-wiring tests assert
+// "the trigger fired maintenance" at this seam — the gc/consolidate/reap legs run
+// under it without re-acquiring the gate, so spying a single leg would miss it.
 type WithScheduledMaintenance = { runScheduledMaintenance(trigger: string): Promise<void> };
 function spyScheduledMaintenance(coord: MaintenanceCoordinator) {
   return spyOn(coord as unknown as WithScheduledMaintenance, 'runScheduledMaintenance');
@@ -106,10 +114,13 @@ describe('MaintenanceCoordinator.runGc (PRD-6972 FR4)', () => {
     expect(after.looseObjects).toBeLessThan(before.looseObjects);
   }, 60_000);
 
+  // A1 (STOP_IF gate): git gc --auto must be safe against the shadow layout
+  // (core.bare unset, core.worktree set) WITH concurrent commits.
   test('A1: gc is safe against the shadow layout with a concurrent commit', async () => {
     await seedReachableLooseObjects(1500);
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
 
+    // gc and a fresh WIP commit race.
     writeFileSync(resolve(contentDir, 'intro.md'), '# concurrent edit\n');
     const [gcResult, concurrentSha] = await Promise.all([
       coord.runGc('test'),
@@ -118,16 +129,20 @@ describe('MaintenanceCoordinator.runGc (PRD-6972 FR4)', () => {
 
     expect(gcResult.ran).toBe(true);
 
+    // The repo is structurally valid after the race (no corruption).
     const sg = shadowGit(shadow);
     const fsck = await sg.raw('fsck', '--full', '--strict');
     expect(fsck).not.toContain('error');
     expect(fsck).not.toContain('missing');
 
+    // The concurrent commit survived and is reachable.
     const head = (await sg.raw('rev-parse', 'refs/wip/main/human-ada')).trim();
     expect(head).toBe(concurrentSha);
   }, 60_000);
 
   test('detects + surfaces a gc.log latch', async () => {
+    // Simulate a prior gc failure: a recent gc.log makes `git gc --auto` decline
+    // to run and leaves the latch in place.
     writeFileSync(resolve(shadow.gitDir, 'gc.log'), 'warning: prior gc failed\n');
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
     const result = await coord.runGc('test');
@@ -171,6 +186,8 @@ describe('MaintenanceCoordinator triggers (PRD-6972 FR4 / D8 / D12)', () => {
   test('noteFlushCommit fires gc every FLUSH_GC_INTERVAL commits, then resets', async () => {
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
     const spy = spyScheduledMaintenance(coord).mockResolvedValue(undefined);
+    // noteFlushCommit fires runScheduledMaintenance fire-and-forget, so drain
+    // microtasks before asserting maintenance was reached.
     const drain = () => new Promise((r) => setTimeout(r, 0));
 
     for (let i = 0; i < FLUSH_GC_INTERVAL - 1; i++) coord.noteFlushCommit();
@@ -180,6 +197,7 @@ describe('MaintenanceCoordinator triggers (PRD-6972 FR4 / D8 / D12)', () => {
     await drain();
     expect(spy).toHaveBeenCalledTimes(1);
 
+    // Counter reset — the next interval is needed to fire again.
     for (let i = 0; i < FLUSH_GC_INTERVAL - 1; i++) coord.noteFlushCommit();
     await drain();
     expect(spy).toHaveBeenCalledTimes(1);
@@ -211,6 +229,7 @@ describe('MaintenanceCoordinator triggers (PRD-6972 FR4 / D8 / D12)', () => {
 
   test('runReap no-ops when projectGitDir is not configured', async () => {
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
+    // No projectGitDir → reap disabled; must not throw and must not run gc.
     await coord.runReap('test');
     expect(coord.isRunning).toBe(false);
   });
@@ -227,6 +246,7 @@ describe('MaintenanceCoordinator triggers (PRD-6972 FR4 / D8 / D12)', () => {
     const start = performance.now();
     await coord.runBootMaintenance(50); // 50ms cap
     const elapsed = performance.now() - start;
+    // Returned at the cap, not after the (still-pending) maintenance run.
     expect(elapsed).toBeLessThan(2000);
     resolveMaintenance(); // let the background run settle so it does not dangle
   });

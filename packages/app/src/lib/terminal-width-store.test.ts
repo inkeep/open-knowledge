@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
   DEFAULT_TERMINAL_WIDTH,
-  MAX_TERMINAL_WIDTH,
   MIN_TERMINAL_WIDTH,
   readTerminalWidth,
   TERMINAL_WIDTH_KEY,
@@ -36,9 +35,9 @@ describe('readTerminalWidth', () => {
     expect(readTerminalWidth(s)).toBe(MIN_TERMINAL_WIDTH);
   });
 
-  test('width above ceiling is clamped to MAX', () => {
+  test('wide stored width is preserved (no pixel ceiling — layout constraints bound it)', () => {
     const s = memoryStorage({ [TERMINAL_WIDTH_KEY]: '9999' });
-    expect(readTerminalWidth(s)).toBe(MAX_TERMINAL_WIDTH);
+    expect(readTerminalWidth(s)).toBe(9999);
   });
 
   test('non-numeric value falls back to default', () => {
@@ -70,10 +69,10 @@ describe('writeTerminalWidth', () => {
     expect(s.getItem(TERMINAL_WIDTH_KEY)).toBe(String(MIN_TERMINAL_WIDTH));
   });
 
-  test('clamps to MAX on write above ceiling', () => {
+  test('wide width is written unclamped (no pixel ceiling — layout constraints bound it)', () => {
     const s = memoryStorage();
     writeTerminalWidth(9999, s);
-    expect(s.getItem(TERMINAL_WIDTH_KEY)).toBe(String(MAX_TERMINAL_WIDTH));
+    expect(s.getItem(TERMINAL_WIDTH_KEY)).toBe('9999');
   });
 
   test('rounds floating-point input before write', () => {

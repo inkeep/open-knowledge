@@ -1,3 +1,8 @@
+/**
+ * `config-yaml` check tests — exercises the warn-on-uninitialized + pass + fail
+ * paths via a fresh tmp project per case.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

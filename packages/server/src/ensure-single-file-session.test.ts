@@ -7,6 +7,7 @@ import {
 
 afterEach(() => __resetEnsureSingleFileInflightForTests());
 
+/** Deterministic clock: each injected sleep advances `now` by the slept ms. */
 function makeClock() {
   let t = 0;
   return {
@@ -48,6 +49,7 @@ describe('ensureSingleFileSession', () => {
     const spawn = { calls: [] as string[] };
     let checks = 0;
     const deps = makeDeps(async () => {
+      // not serving on the pre-spawn check + first poll, serving on the second poll
       checks += 1;
       return checks >= 3;
     }, spawn);

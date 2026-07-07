@@ -1,3 +1,28 @@
+/**
+ * AuthModal — GitHub sign-in dialog.
+ *
+ * Device Flow: shows user_code, polls for completion, 2-minute timeout.
+ * Calls POST /api/local-op/auth/login (streaming JSONL).
+ *
+ * Variant props:
+ *   identityPrompt — when true, this is the "set git identity" entry point (the
+ *                    sync popover's "Set identity" nudge). An already-signed-in
+ *                    user is taken straight to the Name + Email step — the device
+ *                    flow is skipped unless the on-open status probe reports the
+ *                    user is NOT authenticated (then it falls back to sign-in,
+ *                    showing the identity fields after success). Setting git
+ *                    identity does not require re-authenticating.
+ *   reauth        — when true, shows "Re-authenticate" heading instead of "Connect".
+ *
+ * On success: calls onSuccess({ login, name, avatarUrl }) and closes.
+ *
+ * Layout note: this dialog follows the sibling header/body/footer shape
+ * (PublishToGitHubDialog, CloneDialog, CreateProjectDialog) — action buttons
+ * live in <DialogFooter>, which must be a direct sibling of <DialogBody> under
+ * <DialogContent> (the footer's `-mx-6 -mb-6` breakout assumes that position).
+ * The identity field state is therefore lifted to this component so the
+ * footer buttons can read it; the body panels below are presentational.
+ */
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Check, Copy } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -19,10 +44,14 @@ import {
 } from './ui/dialog';
 import { Input } from './ui/input';
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+
 async function copyToClipboard(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
-  } catch {}
+  } catch {
+    /* ignore — clipboard not available */
+  }
 }
 
 interface AuthSuccessResult {
@@ -36,11 +65,26 @@ interface AuthModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: (result: AuthSuccessResult) => void;
+  /** Show git identity fields (Name + Email) after sign-in. */
   identityPrompt?: boolean;
+  /** Show "Re-authenticate" heading. */
   reauth?: boolean;
+  /**
+   * Transport for the device-flow subprocess. Defaults to the HTTP path
+   * (POST /api/local-op/auth/login) so existing editor / web callers
+   * don't change. The Project Navigator passes an IPC transport because
+   * its window has no backing API server.
+   */
   transport?: AuthTransport;
+  /**
+   * Transport for the on-open auth-status probe used by the `identityPrompt`
+   * path to decide whether to skip the device flow. Defaults to the HTTP
+   * path (POST /api/local-op/auth/status). Injectable for tests.
+   */
   queryTransport?: AuthQueryTransport;
 }
+
+// ── Device Flow panel ─────────────────────────────────────────────────────────
 
 interface DeviceFlowPanelProps {
   onSuccess: (result: AuthSuccessResult) => void;
@@ -64,6 +108,9 @@ function DeviceFlowPanel({ onSuccess, transport }: DeviceFlowPanelProps) {
     try {
       const handle = transport.start();
       cancelRef.current = handle.cancel;
+      // Manual iterator drive — React Compiler (BuildHIR) does not yet
+      // support `for await ... of` lowering, so we walk the iterator with
+      // explicit `next()` calls instead.
       const iter = handle.events[Symbol.asyncIterator]();
       let sawTerminal = false;
       let result = await iter.next();
@@ -105,6 +152,15 @@ function DeviceFlowPanel({ onSuccess, transport }: DeviceFlowPanelProps) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: start device flow once on mount
   useEffect(() => {
+    // Defer the start by one microtask so React StrictMode's dev-mode
+    // mount→cleanup→remount cycle coalesces into a single start. The IPC
+    // main side is now idempotent (a second `:start` atomically displaces
+    // the stale slot rather than rejecting), but spawning a throwaway
+    // device-flow subprocess on every Strict double-mount still burns a
+    // device code with GitHub and emits a spurious displacement warn.
+    // The microtask defer lets the first mount's cleanup set
+    // `cancelled = true` before its start ever fires, leaving only the
+    // second mount's start to run.
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
@@ -118,6 +174,7 @@ function DeviceFlowPanel({ onSuccess, transport }: DeviceFlowPanelProps) {
     };
   }, []);
 
+  // Countdown timer
   useEffect(() => {
     if (!userCode) return;
     const start = Date.now();
@@ -165,6 +222,10 @@ function DeviceFlowPanel({ onSuccess, transport }: DeviceFlowPanelProps) {
           <Button
             type="button"
             variant="outline"
+            // Whole box is the copy target; the icon swaps in place (no width
+            // change) so nothing shifts between the copy and copied states.
+            // Static label names the action + code; success is announced via the
+            // sibling live region below (a changing aria-label is not announced).
             aria-label={t`Copy code ${userCode}`}
             onClick={() =>
               void copyToClipboard(userCode).then(() => {
@@ -202,6 +263,10 @@ function DeviceFlowPanel({ onSuccess, transport }: DeviceFlowPanelProps) {
   );
 }
 
+// ── Identity body ─────────────────────────────────────────────────────────────
+// Presentational — shows who connected plus the Name + Email fields. The
+// "Save" / "Skip" buttons live in the dialog footer.
+
 interface IdentityBodyProps {
   login: string;
   name: string;
@@ -237,8 +302,17 @@ function IdentityBody({ login, name, onNameChange, email, onEmailChange }: Ident
   );
 }
 
+// ── Main modal ────────────────────────────────────────────────────────────────
+
+// `checking` is the brief on-open auth-status probe for the identityPrompt
+// path (deciding skip-to-identity vs fall-back-to-device-flow).
 type AuthStep = 'checking' | 'auth' | 'identity' | 'done';
 
+// Upper bound on the on-open status probe. The relay is localhost and answers
+// near-instantly when healthy, but the HTTP transport's `fetch` has no timeout
+// of its own — a hung relay would otherwise leave the user on the checking
+// spinner indefinitely. On expiry we fall back to the device flow (which has a
+// Cancel), the same terminal state as a rejected probe.
 const IDENTITY_PROBE_TIMEOUT_MS = 10_000;
 
 export function AuthModal({
@@ -251,25 +325,45 @@ export function AuthModal({
   queryTransport,
 }: AuthModalProps) {
   const { t } = useLingui();
+  // Default to the HTTP path so existing editor / web callers don't need
+  // to change. Navigator passes its IPC transport explicitly.
   const resolvedTransport = transport ?? httpAuthTransport();
   const resolvedQueryTransport = queryTransport ?? httpAuthQueryTransport();
   const [step, setStep] = useState<AuthStep>('auth');
   const [authResult, setAuthResult] = useState<AuthSuccessResult | null>(null);
 
+  // Identity-step field state, lifted so the footer "Save" button can read it.
   const [idName, setIdName] = useState('');
   const [idEmail, setIdEmail] = useState('');
 
+  // Synchronous step decision in a layout effect so it commits BEFORE the
+  // browser paints. In a passive effect the first painted frame would show the
+  // stale `step` (often 'auth', since this modal stays mounted and `step`
+  // persists across open/close), briefly flashing the device-flow panel on the
+  // set-identity path before the probe decision lands.
   useLayoutEffect(() => {
     if (!open) return;
     setAuthResult(null);
     setIdName('');
     setIdEmail('');
+    // Sign-in path: device flow as before. Set-identity path: show the probe
+    // spinner; the async effect below resolves it to 'identity' or 'auth'.
     setStep(identityPrompt ? 'checking' : 'auth');
   }, [open, identityPrompt]);
 
+  // Set-identity path only: probe auth status to decide skip-to-identity vs
+  // fall-back-to-device-flow. The user reached this from the "git identity
+  // isn't set" nudge and is almost always already signed in — setting git
+  // user.name/user.email needs no re-auth. If authenticated, jump straight to
+  // the identity fields (pre-filled from the OAuth profile); otherwise fall
+  // back to the device flow.
   // biome-ignore lint/correctness/useExhaustiveDependencies: probe runs on open / identityPrompt change; resolvedQueryTransport is a fresh object each render and excluded intentionally
   useEffect(() => {
     if (!open || !identityPrompt) return;
+    // `settled` latches the first terminal transition. The probe result, the
+    // timeout, and cleanup all race; first writer wins, later ones no-op. This
+    // also stops a slow-but-eventually-resolving probe from yanking the user
+    // off the device flow after the timeout already fell back to it.
     let settled = false;
     const settle = (next: AuthStep) => {
       if (settled) return;
@@ -295,6 +389,8 @@ export function AuthModal({
         }
       })
       .catch(() => {
+        // Probe failed (offline, server hiccup) — fall back to the device flow
+        // rather than stranding the user on a spinner.
         settle('auth');
       });
     return () => {
@@ -305,6 +401,11 @@ export function AuthModal({
 
   function handleAuthSuccess(result: AuthSuccessResult) {
     setAuthResult(result);
+    // identityPrompt = the set-identity entry point. Reaching device-flow
+    // success here means the on-open probe found the user unauthenticated and
+    // fell back to sign-in; now land on the identity fields (pre-filled from
+    // the OAuth profile) so the original intent — writing git user.name/email —
+    // is actually carried out instead of closing the moment a token exists.
     if (identityPrompt) {
       setIdName(result.name ?? '');
       setIdEmail(result.email ?? '');
@@ -319,11 +420,18 @@ export function AuthModal({
   }
 
   function handleIdentitySave(name: string, email: string) {
+    // Persist git identity via the correct endpoint (best-effort).
+    // /api/local-op/auth/set-identity writes to the active checkout's git
+    // config (per-worktree on a linked worktree, repo-local otherwise) and
+    // nudges the sync engine to re-probe so the unresolved-identity UI
+    // banner clears on the next push cycle.
     void fetch('/api/local-op/auth/set-identity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email }),
-    }).catch(() => {});
+    }).catch(() => {
+      /* ignore */
+    });
 
     const result = { ...(authResult ?? { login: '' }), name, email };
     setStep('done');
@@ -354,6 +462,8 @@ export function AuthModal({
             {reauth ? (
               <Trans>Re-authenticate with GitHub</Trans>
             ) : identityPrompt && step !== 'auth' ? (
+              // identityPrompt + non-`auth` step = the set-identity path with a
+              // signed-in user; `auth` means the probe fell back to sign-in.
               <Trans>Set git identity</Trans>
             ) : (
               <Trans>Connect GitHub</Trans>

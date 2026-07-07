@@ -1,3 +1,12 @@
+/**
+ * Verbatim-copy tests for the VSCode-parity Trash confirm modal. Every
+ * single-target / multi-target permutation is pinned at the string level so a
+ * future refactor that "improves" the phrasing cannot silently drift away
+ * from VSCode parity.
+ *
+ * VSCode source: `microsoft/vscode/blob/main/src/vs/workbench/contrib/files/browser/fileActions.ts`
+ */
+
 import { describe, expect, test } from 'bun:test';
 import type { FileTreeTarget } from '@/components/file-tree-operations';
 import {

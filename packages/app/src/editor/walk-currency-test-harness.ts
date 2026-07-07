@@ -1,3 +1,18 @@
+/**
+ * Shared test substrate for the Pattern D pre-warm / walk-currency suites
+ * (`pattern-d-walk-currency.test.ts`, `walk-currency-extension.test.ts`,
+ * `pattern-d-schema-identity.test.ts`, `TiptapEditor.test.tsx`).
+ * Test-only module — not imported by production code.
+ *
+ * These suites need raw DOM globals for a real ProseMirror EditorView but no
+ * React runtime, so they do not use the `*.dom.test.tsx` RTL tier (whose
+ * jsdom arrives process-wide via `tests/dom/jsdom-preload.ts`). Instead each
+ * file calls `installDomGlobals()` in its own `beforeAll` and runs the
+ * returned restore in `afterAll` — sibling unit-tier files run in the same
+ * `bun test` process and rely on the no-DOM contract; do not remove the
+ * restore.
+ */
+
 import { randomUUID } from 'node:crypto';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { type Editor, Extension } from '@tiptap/core';
@@ -7,6 +22,11 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import type { buildPatternDConstructorOptions } from './TiptapEditor';
 
+/**
+ * Install jsdom-backed DOM globals, returning a restore function that puts
+ * back the previous global descriptors (or deletes ones we introduced) and
+ * closes the jsdom window.
+ */
 export function installDomGlobals(): () => void {
   const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
     url: 'http://localhost:5173',
@@ -56,6 +76,10 @@ export function installDomGlobals(): () => void {
 
 type ClipboardArg = Parameters<typeof buildPatternDConstructorOptions>[0]['clipboard'];
 
+// Shape-only clipboard fake — avoids importing buildClipboardState (which
+// would touch the markdown pipeline + DOM-style polyfills). The handlers are
+// stored on editorProps, never invoked by construct/mount; `html.setView` IS
+// invoked by onCreate, hence the no-op.
 export const fakeClipboard = {
   mdManager: {},
   text: () => '',
@@ -71,6 +95,7 @@ export function seedFragmentParagraph(ydoc: Y.Doc, text: string): void {
   fragment.insert(0, [paragraph]);
 }
 
+/** Selection-only transaction — the "one click" of the production scenario. */
 export function dispatchSelectionOnly(editor: Editor): void {
   const { state } = editor.view;
   editor.view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, 1)));
@@ -82,9 +107,19 @@ export interface SeededPatternDProvider {
   fragment: Y.XmlFragment;
   awareness: Awareness;
   provider: HocuspocusProvider;
+  /** Destroys the awareness + ydoc this builder created — nothing else. */
   cleanup: () => void;
 }
 
+/**
+ * Provider stand-in for the Pattern D suites: a real Y.Doc + Awareness behind
+ * the minimal HocuspocusProvider surface `buildPatternDConstructorOptions`
+ * reads (`document`, `configuration.name`, `awareness`), with the `'default'`
+ * fragment seeded before the provider is handed out so the pre-warm walk has
+ * content to cache. The per-suite construct/mount tails (new Editor,
+ * editor.mount, host removal, editor.destroy) legitimately differ and stay at
+ * the call site; `cleanup` covers only what this builder created.
+ */
 export function buildSeededPatternDProvider(
   docNamePrefix: string,
   seed: (ydoc: Y.Doc) => void = (ydoc) => seedFragmentParagraph(ydoc, 'hello world'),
@@ -110,6 +145,11 @@ export function buildSeededPatternDProvider(
  *  origin is the HocuspocusProvider instance. */
 const REMOTE_PROVIDER_ORIGIN = Object.freeze({ kind: 'remote-provider-stand-in' });
 
+/**
+ * Apply a remote peer's edit to `local` exactly the way a provider does:
+ * replicate state to a second Y.Doc, mutate there, apply the diff update
+ * back into `local` with a non-binding origin.
+ */
 export function applyRemoteEdit(local: Y.Doc, mutate: (fragment: Y.XmlFragment) => void): void {
   const remote = new Y.Doc();
   Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
@@ -143,10 +183,31 @@ export async function flushMicrotasksAndTimers(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
+/**
+ * Ordering recorder for the construct→mount-gap timing invariant.
+ *
+ * The gap tests rely on a `queueMicrotask`-applied edit landing in the
+ * post-construct `await scheduler.yield()` window — after `construct()`
+ * returns and BEFORE `editor.mount()` creates the EditorView. That ordering
+ * is the whole point of the fix under test: if `scheduler.yield()` ever
+ * resolved on the microtask queue, the gap edit would land post-mount and the
+ * binding's own observer would handle it normally — the tests would pass
+ * vacuously without exercising the walk-currency guard at all.
+ *
+ * The recorder stamps a monotonically-increasing ordinal at two points: when
+ * the gap edit is applied (`recordGapEdit`) and when the EditorView is created
+ * (`recordViewCreated`, driven by a one-shot ProseMirror `view()` hook — the
+ * precise mount signal, fired synchronously during `editor.mount()`, unlike
+ * TipTap's `create` event which it defers via `setTimeout(0)`). Ordinals
+ * (not timestamps) avoid same-millisecond ties on fast machines. Each slot is
+ * stamped at most once.
+ */
 export interface GapOrderingRecorder {
   recordGapEdit(): void;
   recordViewCreated(): void;
+  /** Ordinal stamped when the gap edit was applied; null if it never ran. */
   readonly gapEditOrdinal: number | null;
+  /** Ordinal stamped when the EditorView was created; null if it never ran. */
   readonly viewCreatedOrdinal: number | null;
 }
 
@@ -176,6 +237,14 @@ export function createGapOrderingRecorder(): GapOrderingRecorder {
   };
 }
 
+/**
+ * Test-only extension contributing a ProseMirror plugin whose `view()` hook
+ * fires `record.recordViewCreated()` the instant the EditorView is
+ * constructed (i.e. inside `editor.mount()`). Mirrors the production
+ * walk-currency extension's `new Plugin({ view })` shape. Appended to the
+ * Pattern D constructor options so the mount signal is captured on the real
+ * mount spine without touching production code.
+ */
 export function viewCreationSignalExtension(record: GapOrderingRecorder): Extension {
   return Extension.create({
     name: 'viewCreationSignal',

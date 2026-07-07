@@ -7,6 +7,7 @@ describe('parseLoomUrl', () => {
       id: 'abc123def456ghi789jk',
       startRaw: null,
     });
+    // No www
     expect(parseLoomUrl('https://loom.com/share/abc123def456ghi789jk')).toEqual({
       id: 'abc123def456ghi789jk',
       startRaw: null,
@@ -29,6 +30,9 @@ describe('parseLoomUrl', () => {
   });
 
   test('preserves the raw `?t=` timestamp verbatim for documented grammar', () => {
+    // Loom accepts both integer-seconds and `<H>h<M>m<S>s` shorthand —
+    // both are honored by the embed player verbatim, so we don't
+    // normalize. Anything outside the grammar fails the parse.
     for (const t of ['42', '42s', '2m30s', '1h2m3s', '45s', '1h', '30m', '0']) {
       expect(parseLoomUrl(`https://www.loom.com/share/abc123def456ghi789jk?t=${t}`)).toEqual({
         id: 'abc123def456ghi789jk',
@@ -38,6 +42,14 @@ describe('parseLoomUrl', () => {
   });
 
   test('drops malformed `?t=` values to prevent embed-URL param injection', () => {
+    // `URLSearchParams.get('t')` returns the URL-decoded value. Without
+    // a grammar gate, an author-supplied `?t=42%26autoplay%3Dfalse`
+    // would decode to `42&autoplay=false`, then `Video.tsx` would
+    // interpolate `t=${startRaw}` into the embed URL — silently
+    // injecting an extra Loom param the renderer didn't choose.
+    // `LOOM_TIMESTAMP_RE` rejects anything outside the documented
+    // grammar so `startRaw` is null for these inputs and never reaches
+    // the iframe.
     const malformedCases = [
       '42&autoplay=false', // raw injection attempt
       '42 OR 1=1', // garbage
@@ -60,6 +72,13 @@ describe('parseLoomUrl', () => {
   });
 
   test('bare `?t=` (empty value) collapses to null (pins the load-bearing length guard)', () => {
+    // `LOOM_TIMESTAMP_RE`'s alternative `(?:\d+h)?(?:\d+m)?(?:\d+s)?`
+    // matches the empty string (all groups optional). The
+    // `tRaw.length > 0` guard in `parseLoomUrl` prevents that match
+    // from sneaking through — without it, `?t=` would produce
+    // `startRaw: ''` and inject a bare `t=` into the embed URL.
+    // Pin this so a future "simplification" that drops the length
+    // guard breaks loudly.
     expect(parseLoomUrl('https://www.loom.com/share/abc123def456ghi789jk?t=')).toEqual({
       id: 'abc123def456ghi789jk',
       startRaw: null,

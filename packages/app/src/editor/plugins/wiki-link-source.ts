@@ -1,3 +1,18 @@
+/**
+ * Wiki link support for CodeMirror (source mode):
+ *
+ * 1. Mark decorations — highlights [[...]] patterns so they're visually
+ *    distinct from surrounding text.
+ *
+ * 2. Ctrl/Cmd+click navigation — follows the link using the same hash route
+ *    shape as WYSIWYG wiki links.
+ *
+ * 3. Completion source — registered via markdownLanguage.data so it
+ *    hooks into basicSetup's autocompletion() without adding a second
+ *    conflicting autocompletion state field.
+ *    - Type [[page... → fuzzy page completions (inserts docName]])
+ *    - Type [[page#... → fuzzy heading completions (inserts slug]])
+ */
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { markdownLanguage } from '@codemirror/lang-markdown';
 import { type Extension, RangeSetBuilder } from '@codemirror/state';
@@ -26,12 +41,22 @@ import {
   shouldOpenInNewTab,
 } from '../internal-link-helpers';
 
+// ── Data fetching (module-level TTL cache wrapping shared fetchers) ──────────
+//
+// Source mode fires completion requests per keystroke, so a short TTL cache
+// is needed to avoid hitting /api/pages on every character. WYSIWYG uses a
+// session-scoped cache (bounded by each `[[` trigger) — see wiki-link-suggestion.ts.
+// Divergent caching strategy is intentional; the HTTP fetch itself is shared.
+
 const PAGES_CACHE_TTL_MS = 5_000;
 
 let pagesCache: PageItem[] | null = null;
 let pagesCacheTime = 0;
 let knownTargetSet: Set<string> | null = null;
 const headingsCache = new Map<string, { headings: HeadingEntry[]; time: number }>();
+// Per-docName link-graph context for autocomplete re-ranking, TTL-cached like
+// pages so the per-keystroke completion source doesn't refetch backlinks on
+// every character. Keeps source-mode `[[` ranking in lockstep with WYSIWYG.
 const contextCache = new Map<string, { context: WikiLinkContext; time: number }>();
 
 async function getWikiLinkContext(docName: string | null): Promise<WikiLinkContext> {
@@ -65,11 +90,15 @@ async function getHeadings(docName: string): Promise<HeadingEntry[]> {
     return h;
   } catch (err) {
     console.warn('[wiki-link-source] /api/page-headings fetch failed:', err);
+    // Cache empty to prevent retry storm within TTL.
     headingsCache.set(docName, { headings: [], time: now });
     return [];
   }
 }
 
+// ── Mark decorations ──────────────────────────────────────────────────────────
+
+// Matches complete [[...]] (lazy, no nested brackets needed)
 const WIKI_LINK_RE = /\[\[[^\]]*?\]\]/g;
 const wikiLinkMark = Decoration.mark({ class: 'cm-wiki-link' });
 const wikiLinkBrokenMark = Decoration.mark({
@@ -118,6 +147,8 @@ export function extractWikilinkTarget(inner: string): string {
 
 function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
+  // Cache-cold → all wikilinks get plain mark (no false-positive broken flash)
+  // Warm cache → doc names, titles, and folder paths count as known targets.
   const targetSet = pagesCache ? knownTargetSet : null;
 
   for (const { from, to } of view.visibleRanges) {
@@ -163,7 +194,9 @@ const wikiLinkDecorations = ViewPlugin.fromClass(
         .then(() => {
           try {
             view.dispatch({});
-          } catch {}
+          } catch {
+            /* view destroyed before cache resolved */
+          }
         })
         .catch((err) => {
           console.warn('[wiki-link-source] warmCache fetch failed:', err);
@@ -172,6 +205,8 @@ const wikiLinkDecorations = ViewPlugin.fromClass(
   },
   { decorations: (v) => v.decorations },
 );
+
+// ── Ctrl/Cmd+click navigation ─────────────────────────────────────────────────
 
 const WIKI_LINK_FULL_RE = /\[\[([^[\]|#]+?)(?:#([^\]|]+?))?(?:\|([^\]]+?))?\]\]/g;
 
@@ -195,6 +230,10 @@ const wikiLinkClickHandler = EditorView.domEventHandlers({
           if (!classified) return false;
           event.preventDefault();
           if (classified.kind === 'external') {
+            // classifyWikiLinkTarget admits any URI scheme via isExternalHref,
+            // so a raw window.open of an authored URL would execute
+            // javascript:/data:/etc. payloads in the viewer's origin.
+            // openHashHrefInNewTab gates the scheme via isSafeNavigationUrl.
             openHashHrefInNewTab(classified.url);
           } else if (classified.kind === 'asset') {
             const assetPath =
@@ -225,12 +264,23 @@ const wikiLinkClickHandler = EditorView.domEventHandlers({
   },
 });
 
+// ── Completion source ─────────────────────────────────────────────────────────
+//
+// Uses `filterPages` / `filterHeadings` from the shared module so source-mode
+// and WYSIWYG surfaces stay in lockstep on filter behavior — e.g. searching
+// pages by both `title` and `docName` — AND on context-aware ranking:
+// `currentDocName` lets `filterPages` apply the same link-graph boost +
+// skill-folder penalty the WYSIWYG `[[` picker uses. It's threaded in from the
+// editor (the CodeMirror CompletionContext has no docName of its own); a null
+// docName degrades to filter-only ranking.
+
 async function wikiLinkCompletionSource(
   context: CompletionContext,
   currentDocName: string | null,
 ): Promise<CompletionResult | null> {
   const textBefore = context.state.doc.sliceString(0, context.pos);
 
+  // Only activate when cursor is inside an open [[...  (no closing ]])
   const match = textBefore.match(/\[\[([^\]]*)$/);
   if (!match) return null;
 
@@ -238,6 +288,7 @@ async function wikiLinkCompletionSource(
   const triggerPos = context.pos - query.length; // position right after [[
   const hashIdx = query.indexOf('#');
 
+  // ── Anchor mode: [[page#anchorQuery ────────────────────────────────────────
   if (hashIdx > 0) {
     const pageTarget = query.slice(0, hashIdx);
     const anchorQuery = query.slice(hashIdx + 1);
@@ -266,6 +317,7 @@ async function wikiLinkCompletionSource(
     };
   }
 
+  // ── Page mode: [[query ─────────────────────────────────────────────────────
   const [pages, linkContext] = await Promise.all([
     getPages().catch((err) => {
       console.warn('[wiki-link-source] Failed to fetch pages:', err);
@@ -293,6 +345,8 @@ async function wikiLinkCompletionSource(
   };
 }
 
+// ── Theme ─────────────────────────────────────────────────────────────────────
+
 const wikiLinkTheme = EditorView.theme({
   '.cm-wiki-link': {
     color: 'oklch(52.7% 0.154 228.4)', // sky-700
@@ -304,11 +358,24 @@ const wikiLinkTheme = EditorView.theme({
   },
 });
 
+// ── Export ────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the set of CodeMirror extensions for wiki link support.
+ * Safe to add alongside basicSetup — uses markdownLanguage.data for
+ * completions so there's no second autocompletion state field.
+ *
+ * `currentDocName` (the doc this editor is bound to) is captured for
+ * autocomplete re-ranking; pass null for nested/sub-document CMs that have no
+ * single owning page (they fall back to filter-only ranking).
+ */
 export function createWikiLinkSourceExtension(currentDocName: string | null = null): Extension {
   return [
     wikiLinkDecorations,
     wikiLinkClickHandler,
     wikiLinkTheme,
+    // Additive: contributes our source to markdown's language data,
+    // which basicSetup's autocompletion() already consults.
     markdownLanguage.data.of({
       autocomplete: (context: CompletionContext) =>
         wikiLinkCompletionSource(context, currentDocName),

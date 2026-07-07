@@ -1,3 +1,33 @@
+/**
+ * Tag suggestion plugin — `#` typeahead for inserting `tag` PM atoms.
+ *
+ * Mirrors the wiki-link `[[` plugin (`./wiki-link-suggestion.ts`):
+ * `@tiptap/suggestion` Plugin + custom `findSuggestionMatch` + React-
+ * rendered `TagSuggestionMenu`. Uses the same floating-ui popup helper
+ * (`./suggestion-floating-ui.ts`) and the same hidden-then-reveal
+ * pattern so the loading-state flash never measures at the wrong
+ * position.
+ *
+ * Trigger semantics mirror `core/markdown/tag-promotion.ts`'s inline
+ * boundary rule: `#` is a trigger only at start-of-block or after
+ * whitespace. Matching `# ` (heading shortcut) does NOT trigger because
+ * the regex requires the character after `#` to be either empty or a
+ * valid first tag char (`[a-zA-Z]`); a space disqualifies. Matching
+ * `abc#tag` (mid-word) does NOT trigger either because the regex
+ * requires whitespace or paragraph-start before the `#`.
+ *
+ * The trigger query is the bare tag value (without the `#`), so the
+ * `TagIndex` API contract (`/api/tags`) and the PM `tag` atom's `value`
+ * attribute share the same shape.
+ *
+ * Tags are case-sensitive (matches Obsidian + the server-side
+ * `TagIndex`). Filter is case-INsensitive substring with prefix-first
+ * ranking + count-desc tiebreak — same UX Obsidian's `#` typeahead
+ * uses. The "create new tag" item appears when the typed query is a
+ * valid tag name (`/^[a-zA-Z][\w/-]*$/`, mirroring the parser regex)
+ * AND no existing tag in the index matches it exactly.
+ */
+
 import type { Editor } from '@tiptap/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
 import { PluginKey } from '@tiptap/pm/state';
@@ -25,8 +55,23 @@ export type TagSuggestionItem =
 
 const MAX_ITEMS = 8;
 
+/**
+ * Mirror of `tag-promotion.ts`'s inline-tag value pattern: starts with a
+ * letter, continues with word chars, slashes, or hyphens. Used to gate
+ * the "create new tag" affordance — typing `#9foo` or `#-bar` should
+ * NOT surface a "Create" row because the parser would reject those
+ * inputs on save.
+ */
 const TAG_VALID_RE = /^[a-zA-Z][\w/-]*$/;
 
+/**
+ * Fetch the workspace tag summary list. Single source of truth for
+ * `/api/tags` consumption in the app — both the editor's `#`
+ * typeahead (this module) and the command palette's `tag:` filter
+ * (`command-palette-tag-search.ts`) call this. Sister to
+ * `wiki-link-suggestion.ts`'s `fetchPages` (also exported, also
+ * single-source).
+ */
 export async function fetchTags(): Promise<TagSummaryEntry[]> {
   const r = await fetch('/api/tags');
   if (!r.ok) throw new Error(`/api/tags responded with ${r.status}`);
@@ -34,6 +79,22 @@ export async function fetchTags(): Promise<TagSummaryEntry[]> {
   return Array.isArray(data.tags) ? data.tags : [];
 }
 
+/**
+ * Ranking algorithm used by both the inline `#` typeahead and the
+ * command palette's `tag:` picker — exported so the two surfaces
+ * share one definition of "best match" instead of drifting.
+ *
+ * Filter: case-insensitive substring match against the trimmed query
+ * (empty query returns every tag).
+ *
+ * Sort (descending priority):
+ *   1. Tags whose name STARTS WITH the query come before substring-
+ *      only matches.
+ *   2. Within each tier, higher `count` wins.
+ *   3. Tiebreak by alphabetical name.
+ *
+ * Returns a NEW sorted array — input is never mutated.
+ */
 export function rankTagsByQuery(
   tags: readonly TagSummaryEntry[],
   query: string,
@@ -52,6 +113,19 @@ export function rankTagsByQuery(
   return filtered;
 }
 
+/**
+ * Editor-surface presentation: rank tags via the shared
+ * `rankTagsByQuery`, cap at MAX_ITEMS for the floating popover's
+ * limited vertical space, and append a "create new tag" affordance
+ * (below the existing-tag matches) when the query is a valid tag name
+ * not yet in the index.
+ *
+ * The "create" check uses the FULL tag list (case-sensitive equality)
+ * — tags themselves are case-sensitive (`Project` and `project` are
+ * distinct in the index), so offering "Create #Project" when
+ * `project` exists is correct (creates a sibling, which is what the
+ * user wants).
+ */
 export function buildTagSuggestionItems(
   tags: readonly TagSummaryEntry[],
   query: string,
@@ -72,17 +146,38 @@ export function buildTagSuggestionItems(
   return items;
 }
 
+/**
+ * Custom `findSuggestionMatch` for `@tiptap/suggestion`. Triggers on
+ * `#` at start-of-block or after whitespace, with optional valid
+ * tag-name body. Returns null otherwise — including for `# ` (heading
+ * shortcut) and `abc#foo` (mid-word).
+ *
+ * Pure function — exported for unit testing the boundary semantics
+ * without a live editor.
+ */
 export function tagMatcher(config: {
   $position: ResolvedPos;
 }): { range: { from: number; to: number }; query: string; text: string } | null {
   const { $position } = config;
   const textBefore = $position.parent.textBetween(0, $position.parentOffset, undefined, '￼');
 
+  // Match `(boundary)#(body)` at end-of-input. Boundary is start-of-text
+  // OR a whitespace / atom-leaf (`￼` is the object-replacement char
+  // `textBetween` substitutes for inline atoms). Body is empty (just
+  // typed `#`) OR a valid tag-name continuation.
+  //
+  // The trailing space disqualifier is implicit: a space after `#`
+  // wouldn't be captured by `[\w/-]*` and would push `$` past the body
+  // group, failing the match. That's the heading-shortcut guard.
   const match = textBefore.match(/(^|[\s￼])#([a-zA-Z][\w/-]*)?$/);
   if (!match) return null;
 
   const query = match[2] ?? '';
   const blockStart = $position.start();
+  // Position of the `#`. The boundary char (whitespace or atom) is at
+  // index `match.index`; the `#` is one char after when boundary is a
+  // real char, OR at index 0 when boundary is start-of-text (match[1]
+  // is empty).
   const boundaryLen = match[1].length;
   const hashOffset = (match.index ?? 0) + boundaryLen;
   const triggerPos = blockStart + hashOffset;
@@ -94,6 +189,12 @@ export function tagMatcher(config: {
   };
 }
 
+/**
+ * Build the @tiptap/suggestion plugin. Sister to
+ * `configureWikiLinkSuggestion` — same lifecycle, same
+ * popup-positioning helper, same hidden-then-reveal pattern that
+ * prevents the loading flash from measuring at the wrong position.
+ */
 export function configureTagSuggestion(editor: Editor) {
   let cachedTags: TagSummaryEntry[] = [];
   let tagsLoaded = false;
@@ -104,8 +205,14 @@ export function configureTagSuggestion(editor: Editor) {
     editor,
     pluginKey: tagSuggestionKey,
     char: '#',
+    // null lets the custom matcher decide. The default `[' ']`
+    // allowedPrefixes wouldn't trigger at start-of-paragraph; our
+    // matcher handles that case explicitly.
     allowedPrefixes: null,
     findSuggestionMatch: tagMatcher,
+    // Gate inside @tiptap/suggestion's apply() reducer keeps `state.active`
+    // false in source mode — bridge-propagated `#` from CodeMirror cannot
+    // mount the tag picker popup. Signal lives in `editor-mode-context.ts`.
     allow: ({ editor }) => !getEditorSourceMode(editor),
 
     items: async ({ query }) => {
@@ -131,6 +238,9 @@ export function configureTagSuggestion(editor: Editor) {
       try {
         const value = item.value;
         if (!value || !TAG_VALID_RE.test(value)) return;
+        // Replace `#query` (the trigger range) with the `tag` atom.
+        // Append a trailing space so the cursor moves cleanly past
+        // the atom — mirrors slash-command insertion ergonomics.
         editor
           .chain()
           .focus()
@@ -156,6 +266,14 @@ export function configureTagSuggestion(editor: Editor) {
         currentProps?.command(item);
       };
 
+      // Hover-driven highlight tracking: pointer movement over an
+      // option updates `selectedIndex` so the visible highlight and
+      // the Enter target stay unified. Without this, a user who
+      // moved the pointer would see one row highlighted (last
+      // arrow-key target) while Enter committed a different one
+      // (whatever the keyboard had selected). The check vs. the
+      // current value avoids redundant rerenders when `pointermove`
+      // fires repeatedly on the same row.
       const onHover = (index: number) => {
         if (selectedIndex === index) return;
         selectedIndex = index;
@@ -206,6 +324,10 @@ export function configureTagSuggestion(editor: Editor) {
           currentProps = props;
           selectedIndex = 0;
           rerender(null);
+          // Items have loaded — reveal the popup. reveal() triggers a
+          // doPosition pass that measures the populated content (so
+          // flip() correctly decides above/below), then unhides on
+          // resolution. No separate doPosition call needed.
           reveal?.();
         },
 
@@ -238,6 +360,9 @@ export function configureTagSuggestion(editor: Editor) {
               currentProps.command(item);
               return true;
             }
+            // No item selected — fall back to inserting the typed
+            // query as a new tag IF it parses. Otherwise let the
+            // event propagate (e.g. Tab continues default behavior).
             const trimmed = (currentProps.query ?? '').trim();
             if (trimmed && TAG_VALID_RE.test(trimmed)) {
               currentProps.command({ kind: 'create', value: trimmed });
@@ -252,6 +377,9 @@ export function configureTagSuggestion(editor: Editor) {
         },
 
         onExit() {
+          // Positioning cleanup first (stop autoUpdate → remove popup
+          // DOM); React cleanup last so if destroy() throws the DOM
+          // is already clean.
           destroySuggestionPopup(posState);
           doPosition = null;
           reveal = null;
@@ -259,6 +387,10 @@ export function configureTagSuggestion(editor: Editor) {
           renderer = null;
           currentProps = null;
           selectedIndex = 0;
+          // Reset cache — each `#` session re-fetches for freshness.
+          // Tag list mutates often (every save can add new tags); a
+          // stale cache would offer dead suggestions immediately
+          // after deleting a tag elsewhere.
           cachedTags = [];
           fetchError = null;
           tagsLoaded = false;

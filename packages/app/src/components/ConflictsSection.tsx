@@ -1,3 +1,26 @@
+/**
+ * ConflictsSection — pinned section at the top of the left sidebar listing
+ * every doc whose `.ok/conflicts.json` entry is currently active.
+ *
+ * Renders nothing when `conflicts.length === 0` (auto-hide at zero;
+ * auto-appears at >0 — no manual collapse / expand state). Rows are
+ * informational navigation targets: clicking one focuses the doc (the
+ * editor-area DiffViewBoundary mounts as soon as the doc's lifecycle Y.Map
+ * status propagates). There are NO inline [Keep mine] / [Keep theirs]
+ * quick-action buttons — every resolution requires seeing the DiffView first
+ * (informed-consent + byte-equality discipline; the editor-area DiffView is
+ * the single UI dispatch surface).
+ *
+ * Count parity:
+ *   - Section count comes from `useConflicts()` → `/api/sync/conflicts`.
+ *   - Topbar `SyncStatusBadge`'s `conflictCount` comes from `/api/sync/status`,
+ *     which itself derives `conflictCount` from the same `.ok/conflicts.json`.
+ *     CC1 `sync-status` invalidates both in lockstep.
+ *   - Tab-badge counts come from per-doc Y.Map `lifecycle.status` (live CRDT),
+ *     pushed by the server's file-watcher / reconciliation paths on the same
+ *     edges that flip `conflicts.json`. They converge in steady state; a
+ *     brief mismatch window may exist during the propagation round-trip.
+ */
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConflicts } from '@/hooks/use-conflicts';
@@ -15,8 +38,21 @@ function navigateToConflictedDoc(filePath: string) {
 export function ConflictsSection() {
   const { conflicts, loading, error } = useConflicts();
 
+  // Initial fetch in flight — render nothing rather than flash an empty
+  // section that disappears once the fetch resolves.
   if (loading) return null;
 
+  // Server reachable but `/api/sync/conflicts` specifically failed (5xx,
+  // schema drift, etc.) — surface a visible error band rather than hiding
+  // the section. Hiding here is indistinguishable from "no conflicts" and
+  // can mask real tracked conflicts while the rest of the app looks fine,
+  // leading users to write into docs that bounce with 409 a moment later.
+  //
+  // `'network'` errors mean the server is entirely unreachable — the
+  // FileTree below already shows "Could not reach server" as the global
+  // signal, and nothing is editable in the first place, so the masking
+  // concern doesn't apply. A second amber band claiming we couldn't load
+  // conflicts specifically is redundant noise that misframes the failure.
   if (error === 'server') {
     return (
       <section

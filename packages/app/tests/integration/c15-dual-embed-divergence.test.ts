@@ -1,3 +1,22 @@
+/**
+ * C15: Dual `html preview` embeds under a divergence/reconnect window.
+ *
+ * The bug class: a doc with two `html preview` `<script>` embeds
+ * (the second declaring `const DATA={…}`) corrupted the second embed's script
+ * head (`const`→`{onst`) and triplicated the body under multi-replica merges.
+ * This drives that construct at integration fidelity — two real clients editing
+ * across a pause/resume divergence window — and asserts the embeds survive
+ * intact: scripts still parse, the brace-injection signature never appears, the
+ * `const DATA=` head is preserved, and the doc stays within a byte budget.
+ *
+ * NOTE: the bug's PRODUCTION trigger is a knowingly-deferred
+ * embed-root-fix concern. This is the test-side observability of
+ * the construct (an approximation of OS-process duplicate-server divergence via
+ * the two-client harness), not a production mitigation.
+ *
+ * Per-test docName isolation; client lifecycle in try/finally.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import * as Y from 'yjs';
@@ -22,6 +41,8 @@ afterAll(async () => {
   await server.cleanup();
 });
 
+// Two `html preview` embeds; the second declares `const DATA={…}` — the M-6955
+// brace-injection target. Each script carries a unique anchor.
 const DUAL_EMBED_SEED = [
   '# C15 chart doc',
   '',
@@ -67,6 +88,11 @@ function extractScriptBodies(doc: string): string[] {
   return bodies;
 }
 
+// Real JS-syntax validation. `new Function()` parses eagerly and throws on a
+// syntax error under both Bun and Node; `new vm.Script()` compiles lazily under
+// Bun and never throws, which would silently make this oracle vacuous (it would
+// pass even on the brace-corrupted `{onst DATA=` head). Mirrors `jsParses` in
+// packages/core/src/markdown/embed-script-fidelity.test.ts.
 function jsParses(code: string): boolean {
   try {
     new Function(code);
@@ -97,6 +123,7 @@ describe('C15: dual html-preview embeds under divergence', () => {
       await agentWriteMd(server.port, DUAL_EMBED_SEED, { docName, position: 'replace' });
       await awaitAllContain(clients, ['C15-FIRST-SCRIPT', 'C15-SECOND-SCRIPT']);
 
+      // Divergence window: client 0 stops syncing, both edit concurrently.
       clients[0].pauseSync();
       appendParagraph(clients[0], 'C15-WYSIWYG-A');
       appendParagraph(clients[1], 'C15-WYSIWYG-B');
@@ -115,6 +142,8 @@ describe('C15: dual html-preview embeds under divergence', () => {
 
       const converged = ytexts[0];
 
+      // embed integrity: no brace-injection signature, the `const DATA=`
+      // head is preserved verbatim, and every extracted script still parses.
       expect(BRACE_INJECTION_RE.test(converged)).toBe(false);
       expect(converged).toContain('const DATA = {');
       const scripts = extractScriptBodies(converged);
@@ -123,10 +152,12 @@ describe('C15: dual html-preview embeds under divergence', () => {
         expect(jsParses(body)).toBe(true);
       }
 
+      // No duplication of either embed (the triplication signature).
       for (const m of ['C15-FIRST-SCRIPT', 'C15-SECOND-SCRIPT']) {
         expect(converged.split(m).length - 1).toBe(1);
       }
 
+      // byte budget: bounded by the authored input.
       const authoredBytes =
         Buffer.byteLength(DUAL_EMBED_SEED) + Buffer.byteLength('C15-WYSIWYG-A C15-WYSIWYG-B');
       expect(Buffer.byteLength(converged)).toBeLessThanOrEqual(authoredBytes * 3);

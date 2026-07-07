@@ -1,3 +1,17 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleCreatePage`.
+ *
+ * Asserts the canonical RFC 9457 wire shape:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `CreatePageSuccessSchema`, no `ok: true` discriminator.
+ *   - missing path → `urn:ok:error:invalid-request` (schema rejection).
+ *   - reserved docname → `urn:ok:error:reserved-doc-name`.
+ *   - duplicate path → `urn:ok:error:doc-already-exists` (409).
+ *   - path traversal → `urn:ok:error:path-escape`.
+ *   - unsupported extension → `urn:ok:error:invalid-request`.
+ *   - method-not-allowed on GET emits `urn:ok:error:method-not-allowed`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -78,6 +92,10 @@ describe('create-page envelope (RFC 9457)', () => {
   });
 
   test('rejects a .ok/skills/** target and writes nothing', async () => {
+    // `.ok/skills/**` is indexed/served content, so a raw create-page here would
+    // bypass the skill-schema validation (name/description/XML-ban) and surface
+    // as a malformed phantom skill. The handler must reject it like a reserved
+    // doc and leave nothing on disk.
     const relPath = 'skills/phantom-from-create-page/SKILL.md';
     const res = await postCreate({ path: `.ok/${relPath}` });
     expect(res.status).toBe(400);

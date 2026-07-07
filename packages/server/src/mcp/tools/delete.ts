@@ -1,3 +1,13 @@
+/**
+ * `delete` MCP tool — remove one thing, polymorphic over
+ * `document` / `folder` / `template` / `asset`.
+ *
+ * Backends by target:
+ *   - document → `POST /api/delete-path` (kind: file) [Requires: Hocuspocus]
+ *   - folder   → `POST /api/delete-path` (kind: folder)
+ *   - asset    → `POST /api/delete-path` (kind: asset)
+ *   - template → `DELETE /api/template` (server, attributed) [Requires: Hocuspocus]
+ */
 import { z } from 'zod';
 import type { AgentIdentity } from '../agent-identity.ts';
 import { resolvePreviewUrlForTool } from './preview-url.ts';
@@ -66,6 +76,10 @@ async function deleteOneDoc(
   deps: DeleteDeps,
 ): Promise<DeleteOneResult> {
   const normalized = normalizeDocName(rawDocName);
+  // Store a bare reason (normalizeDocName pre-prefixes "Error: "; the httpPost
+  // path below stores a bare error) so callers add a single prefix — avoids the
+  // double "Error: Error:" when the single-doc error branch below wraps it as
+  // `Error: ${r.error}`.
   if (!normalized.ok)
     return { docName: rawDocName, ok: false, error: normalized.error.replace(/^Error:\s*/, '') };
   const result = await httpPost(url, '/api/delete-path', {
@@ -95,6 +109,8 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
       description: DESCRIPTION,
       inputSchema: {
         document: z
+          // A `{ path }` object is accepted as an alias for the bare string so
+          // the `write`/`edit` Pattern-B mental model carries over to `delete`.
           .union([
             z.string(),
             z.array(z.string()).min(1),
@@ -140,6 +156,10 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
           .describe('A binary asset to delete.'),
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },
+      // Output mirrors the Pattern-B input: the result nests under the target
+      // key you deleted (`document` / `folder` / `template` / `asset`, or
+      // `documents` for a batch). `previousPreviewUrl` is the uniform top-level
+      // envelope.
       outputSchema: outputSchemaWithText({
         document: z
           .object({
@@ -199,6 +219,8 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { cwd, url } = context;
 
+      // Unwrap the `{ path }` Pattern-B alias to the bare path(s) the rest of
+      // the handler expects.
       const folderPath = typeof args.folder === 'object' ? args.folder.path : args.folder;
       const documentArg =
         args.document && typeof args.document === 'object' && !Array.isArray(args.document)
@@ -214,6 +236,9 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
       ]);
       if (teaching) return textResult(`Error: ${teaching}`, true);
 
+      // Skill — server-routed (DELETE /api/skill[-file]) so the delete is
+      // attributed in the folder timeline. `files` present → per-file deletes;
+      // absent → whole-skill delete (shared `deleteSkill`).
       if (args.skill !== undefined) {
         const skill = args.skill;
         if (skill.files !== undefined && skill.files.length > 0) {
@@ -259,6 +284,9 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
         });
       }
 
+      // Template — server-routed (DELETE /api/template) so the delete is
+      // attributed in the folder timeline. Requires the Hocuspocus server,
+      // like every other attributed mutation; identity rides the query string.
       if (args.template !== undefined) {
         const resolved = resolveTemplatePath(args.template.path);
         if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
@@ -281,6 +309,7 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
 
       if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
 
+      // Folder.
       if (args.folder !== undefined) {
         const result = await httpPost(url, '/api/delete-path', {
           kind: 'folder',
@@ -295,6 +324,7 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
         );
       }
 
+      // Asset.
       if (args.asset !== undefined) {
         const path = args.asset.path.replace(/^\/+/, '').replace(/\/+$/, '');
         const result = await httpPost(url, '/api/delete-path', {
@@ -306,6 +336,7 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
         return textPlusStructured(`Deleted asset ${path}.`, { asset: { ok: true, path } });
       }
 
+      // Document(s).
       const doc = documentArg as string | string[];
       if (Array.isArray(doc)) {
         const results = await Promise.all(doc.map((d) => deleteOneDoc(d, url, cwd, deps)));

@@ -47,6 +47,7 @@ describe('useOnboardingFileCompletion', () => {
     const store = freshStore();
     store.activate();
     render(<Probe store={store} />);
+    // Initial mount saw an empty project; now the first file lands.
     mockDocuments([aDocument]);
     emitDocumentsChanged(['files']);
     await waitFor(() => expect(store.getSnapshot().steps.file).toBe(true));
@@ -60,8 +61,10 @@ describe('useOnboardingFileCompletion', () => {
     const store = freshStore();
     store.activate();
     render(<Probe store={store} />);
+    // Let the mount-time probe settle, then baseline the call count.
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(1));
     const afterMount = fetchMock.mock.calls.length;
+    // Non-files channels must be filtered out — no additional /api/documents read.
     emitDocumentsChanged(['graph']);
     emitDocumentsChanged(['backlinks']);
     await act(async () => {});
@@ -85,6 +88,9 @@ describe('useOnboardingFileCompletion', () => {
     store.activate();
     render(<Probe store={store} />);
     emitDocumentsChanged(['files']);
+    // Wait for evidence both count reads ran (mount + the files event), flush the
+    // resolution chain, then assert the empty project left the step incomplete —
+    // a deterministic checkpoint instead of an arbitrary fixed delay.
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2));
     await act(async () => {});
     expect(store.getSnapshot().steps.file).toBe(false);
@@ -99,8 +105,10 @@ describe('useOnboardingFileCompletion', () => {
     store.activate();
     store.markStepComplete('file'); // already complete before mount
     render(<Probe store={store} />);
+    // The mount-time guard short-circuits: no /api/documents read at all...
     await act(async () => {});
     expect(fetchMock).not.toHaveBeenCalled();
+    // ...and no subscription was registered, so a later files event is ignored.
     emitDocumentsChanged(['files']);
     await act(async () => {});
     expect(fetchMock).not.toHaveBeenCalled();

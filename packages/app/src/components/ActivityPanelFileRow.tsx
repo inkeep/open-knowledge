@@ -1,4 +1,27 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+/**
+ * ActivityPanelFileRow — one file entry in the Activity Panel's scrollable
+ * body. The header row is:
+ *   {carrot, filename link, [↶] Undo last, [⏪] Undo all, +N −M, timestamp,
+ *    optional writing indicator}.
+ *
+ * The two undo buttons are icon-only (`Undo2` + `Rewind` from lucide) with
+ * tooltips; they live on the header row rather than the expanded-section
+ * footer so per-file actions are discoverable without first expanding the
+ * burst list. Carrot click toggles expand/collapse; filename click navigates
+ * the main editor without closing the panel. The undo buttons
+ * `stopPropagation` so clicking them doesn't also toggle the carrot.
+ *
+ * Expanded state renders each burst via <ActivityPanelBurstRow>.
+ *
+ * Undo semantics:
+ *   - `[↶]` Undo last — fires immediately, no confirm (matches today).
+ *   - `[⏪]` Undo all — opens a shadcn Dialog; confirm dispatches onUndoAll.
+ *     Blast-radius asymmetry is intentional.
+ *
+ * Both buttons disabled when `sessionAlive === false` OR `bursts.length === 0`.
+ * The row itself also disappears when `bursts.length === 0`.
+ */
 import { t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDown, ChevronRight, Rewind, Undo2 } from 'lucide-react';
@@ -54,12 +77,19 @@ export function ActivityPanelFileRow({
   const [expanded, setExpanded] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [undoInFlight, setUndoInFlight] = useState(false);
+  // `Date.now()` is an impure function — calling it directly in render
+  // violates React Compiler's purity contract. Seed `now` once at mount + tick
+  // it every ~30 s so the relative timestamp ("15s ago") stays reasonably
+  // fresh without re-rendering every frame.
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
 
+  // Empty rows disappear. Defensive guard in the component itself in case
+  // the parent hasn't filtered yet (should be rare since the hook's
+  // data.files is the source of truth and typically pre-filters).
   if (file.bursts.length === 0) return null;
 
   const disabled = !sessionAlive || file.bursts.length === 0 || undoInFlight;

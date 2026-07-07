@@ -1,3 +1,23 @@
+/**
+ * DOM tests for `FootnoteBubbleButton`'s gating predicates — these guard
+ * against two regressions that would silently corrupt user content:
+ *
+ *   1. `selectionContainsFootnoteRef` prevents the `[^[^N]]` nesting bug
+ *      (wrapping a `footnoteReference` atom inside another reference would
+ *      emit malformed GFM that breaks markdown round-trip).
+ *   2. `hasFootnoteSchema` prevents a TipTap dispatch crash on stripped
+ *      schemas where the footnote nodes are absent (e.g. read-only preview
+ *      surfaces, future minimal-feature builds).
+ *
+ * Both predicates drive the `disabled` attribute on the rendered button —
+ * tested through DOM observation rather than internal call patterns so the
+ * tests survive refactors that preserve the behavioral contract.
+ *
+ * Repo convention (see `EditWithAiBubbleButton.dom.test.tsx`,
+ * `ActivityPanelBurstRow.test.tsx`): no @testing-library/react interaction
+ * helpers — assert through queries on the rendered DOM after `render`.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { cleanup, render } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
@@ -11,6 +31,15 @@ interface FakeEditorOpts {
   selectionCrossesBlocks?: boolean;
 }
 
+/**
+ * Minimal Editor stub satisfying every property the button reads:
+ *   - `schema.nodes` for `hasFootnoteSchema`
+ *   - `state.selection.empty` + `.$from`/`.$to` for the cross-block guard
+ *   - `state.doc.nodesBetween` for `selectionContainsFootnoteRef`
+ *   - The Tiptap React `useEditorState` hook subscribes via `on`/`off` —
+ *     we no-op the listener; the selector runs synchronously on first
+ *     mount which is the only state we care about asserting.
+ */
 function makeEditor(opts: FakeEditorOpts = {}): Editor {
   const {
     hasSchema = true,

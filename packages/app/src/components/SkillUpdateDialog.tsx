@@ -1,3 +1,9 @@
+/**
+ * SkillUpdateDialog — confirm refreshing a starter-pack skill from OK's bundled
+ * source. The update REPLACES the current content; the server checkpoints the
+ * doc first, so the pre-update version is recoverable from version history. The
+ * confirmation names both (replaces edits / restorable) so the choice is informed.
+ */
 import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
@@ -17,8 +23,10 @@ import { skillDisplayName } from '@/lib/skill-scope';
 import { updatePackSkill } from '@/lib/skills-api';
 
 interface Props {
+  /** The pack skill to update; `null` keeps the dialog closed. */
   skill: SkillsListEntry | null;
   onOpenChange: (open: boolean) => void;
+  /** Called after a successful update so the parent re-fetches. */
   onUpdated: () => void;
 }
 
@@ -35,6 +43,8 @@ export function SkillUpdateDialog({ skill, onOpenChange, onUpdated }: Props) {
       toast.error(t`Couldn't update skill: ${result.error}`);
       return;
     }
+    // The pre-update content is checkpointed server-side — name the restore path
+    // so a user who didn't mean to lose edits knows where to recover them.
     toast.success(
       result.checkpointRef
         ? t`Updated "${display}" to ${result.version} — your previous version is in history if you need to restore it.`

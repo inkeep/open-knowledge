@@ -1,3 +1,11 @@
+/**
+ * Telemetry assertions for the rename + rollback handlers — locks in the
+ * `ok.rename.attribution_kind` counter shape (per-rename increment with
+ * `kind` ∈ {rename-file, rename-folder, rollback} × `attribution_kind` ∈
+ * {agent, principal, anonymous}). A regression that drops the counter
+ * call, mistypes the attribute keys, or fires on a 400-validation path
+ * would silently degrade observability without these assertions.
+ */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -152,6 +160,9 @@ async function collectAttributionPoints(): Promise<CounterPoint[]> {
   await reader.forceFlush();
   const collected = exporter.getMetrics();
   const points: CounterPoint[] = [];
+  // Only the latest export — `exporter.reset()` clears prior accumulations
+  // so each call returns the cumulative state at this moment, not the
+  // history of every prior collect (which compounds the apparent value).
   for (const rm of collected) {
     for (const sm of rm.scopeMetrics) {
       for (const metric of sm.metrics) {

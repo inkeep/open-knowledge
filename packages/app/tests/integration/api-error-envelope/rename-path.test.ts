@@ -1,3 +1,15 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleRenamePath`.
+ *
+ * Asserts the canonical RFC 9457 wire shape:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `RenamePathSuccessSchema`, no `ok: true` discriminator.
+ *   - unknown kind → `urn:ok:error:invalid-request`.
+ *   - source doesn't exist → `urn:ok:error:doc-not-found`.
+ *   - destination already exists → `urn:ok:error:doc-already-exists`.
+ *   - method-not-allowed on GET emits `urn:ok:error:method-not-allowed`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, RenamePathSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

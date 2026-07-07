@@ -1,3 +1,12 @@
+/**
+ * RTL behavior tests for `EditWithAiPanel` — the "Edit with AI" popover
+ * body (the instruction prompt box + installed-agent list). The panel is pure
+ * (install state + pick handler injected), so it renders without the dispatch /
+ * install-probe hooks.
+ *
+ * Invocation: `bun run test:dom` from `packages/app/`.
+ */
+
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
@@ -8,6 +17,10 @@ afterEach(() => {
   cleanup();
 });
 
+/**
+ * Build a `states` map from a per-target install flag. Targets not named
+ * default to `null` (pre-probe), matching a fresh `useInstalledAgents` mount.
+ */
 function installStates(
   flags: Partial<Record<HandoffTarget, boolean | null>>,
 ): Record<HandoffTarget, InstallState> {
@@ -105,6 +118,9 @@ describe('EditWithAiPanel', () => {
   });
 
   test('the install-state region is an aria-live region so its async transition is announced', () => {
+    // The text flips from "Checking for installed agents" to "No installed
+    // agents found" once the probe resolves. Without aria-live a screen reader
+    // never hears the transition.
     render(
       <EditWithAiPanel
         installStates={installStates({ 'claude-code': null, codex: null, cursor: null })}

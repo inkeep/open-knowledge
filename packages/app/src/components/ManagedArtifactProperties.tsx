@@ -17,6 +17,15 @@ import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
 import { useSkillScopeLabels } from '@/lib/skill-scope';
 import { moveSkill, moveSkillScope } from '@/lib/skills-api';
 
+/**
+ * The identity/frontmatter panel for a managed-artifact tab (skill or template),
+ * rendered by `EditorActivityPool` in place of the document `PropertyPanel`. The
+ * frontmatter fields (description / title) bind live to the same provider the
+ * body editor edits — so editing a managed artifact IS editing a document. The
+ * `name` (and a skill's `scope`) are identity, not free-form frontmatter:
+ * committing them relocates the artifact on disk (`git mv`) and re-points the
+ * open tab to the new doc name.
+ */
 export function ManagedArtifactProperties({
   docName,
   provider,
@@ -45,6 +54,9 @@ export function ManagedArtifactProperties({
       />
     );
   }
+  // Project skills open as content docs (`.ok/skills/<name>/SKILL`) rather than
+  // `__skill__/project/...`, but render the SAME identity panel as global
+  // skills so the two scopes aren't a disconnected experience.
   const projectSkillName = parseProjectSkillContentDocName(docName);
   if (projectSkillName) {
     return (
@@ -54,10 +66,17 @@ export function ManagedArtifactProperties({
   return null;
 }
 
+/**
+ * Re-point the open tab from one managed-artifact doc name to another after a
+ * rename / scope move. Opens the relocated doc (which becomes active) before
+ * closing the old tab, so there's no flash of empty editor in between.
+ */
 function useManagedArtifactRetarget(): (fromDocName: string, toDocName: string) => void {
   const { closeDocument } = useDocumentContext();
   return (fromDocName, toDocName) => {
     if (fromDocName === toDocName) return;
+    // Navigate to the relocated doc via the hash (activates it + keeps the hash
+    // consistent), then drop the now-stale old tab.
     openManagedArtifactTab(toDocName);
     closeDocument(fromDocName);
   };
@@ -89,6 +108,10 @@ function SkillPropertiesPanel({
       return;
     }
     toast.success(t`Skill renamed`);
+    // Route to the renamed skill's LIVE doc — a project skill is a content doc
+    // (`.ok/skills/<name>/SKILL`), not `__skill__/project/<name>`. `skillLiveDocName`
+    // maps each scope to its real doc; a bare synthetic builder would open a
+    // phantom empty tab for a project skill (the round-trip data-loss class).
     retarget(docName, skillLiveDocName(scope, next));
   }
 
@@ -109,6 +132,9 @@ function SkillPropertiesPanel({
     } else {
       toast.success(t`Moved "${name}" to ${scopeLabels[next]}`);
     }
+    // Route to the destination scope's LIVE doc — a project skill is a content
+    // doc, not `__skill__/project/<name>`. Bare `skillDocName` here opened a
+    // phantom empty tab and was half of the round-trip data-loss bug.
     retarget(docName, skillLiveDocName(next, name));
   }
 
@@ -124,6 +150,12 @@ function SkillPropertiesPanel({
   );
 }
 
+/**
+ * Identity panel for a PROJECT skill — same `SkillProperties` UI as global
+ * skills, but the doc is a content doc (`.ok/skills/<name>/SKILL`), so a rename
+ * retargets to the renamed content doc and a scope move to global retargets to
+ * the managed-artifact tab.
+ */
 function ProjectSkillPropertiesPanel({
   provider,
   docName,
@@ -168,6 +200,7 @@ function ProjectSkillPropertiesPanel({
     } else {
       toast.success(t`Moved "${name}" to ${scopeLabels[next]}`);
     }
+    // Route to the destination scope's LIVE doc (global → managed-artifact).
     retarget(docName, skillLiveDocName(next, name));
   }
 

@@ -50,6 +50,12 @@ mock.module('./EditorHeader', () => ({
   EditorHeader: () => <div data-testid="editor-header" />,
 }));
 
+// EditorArea renders the bottom layout shell + reports the terminal placement up;
+// the live session host now lives in EditorPane as a sibling of EditorArea (so a
+// dock toggle can't remount it). EditorPane still owns the open/⌘J/menu/telemetry
+// state. The EditorArea mock is a bare stand-in; the TerminalSessionsHost mock
+// (below) surfaces the threaded `visible` + `launch` props so these tests keep
+// asserting EditorPane's wiring across the prop boundary.
 mock.module('./EditorArea', () => ({
   EditorArea: () => <div data-testid="editor-area" />,
 }));
@@ -99,6 +105,9 @@ mock.module('./AutoSyncOnboardingDialog', () => ({
 async function renderEditorPane() {
   const { EditorPane } = await import('./EditorPane');
   render(<EditorPane />);
+  // Flush the mount-time async dock-state restore (getDockState) and the
+  // re-render it triggers, so the now-gated View-menu push settles
+  // deterministically before assertions read viewMenuPushes / data-visible.
   await act(async () => {});
 }
 
@@ -130,6 +139,7 @@ describe('EditorPane auto-sync onboarding gate', () => {
   });
 
   test.each([
+    // label, hasRemote, projectSynced, projectLocalSynced, projectLocalConfig, projectConfig
     [
       'no remote',
       false,
@@ -224,6 +234,14 @@ describe('EditorPane auto-sync onboarding gate', () => {
   });
 });
 
+// Minimal faithful stand-in for the desktop bridge surfaces EditorPane's
+// terminal wiring touches: `onMenuAction` (subscribe), the View-menu-state push,
+// `terminal.getDockState` (read once on mount to restore dock visibility after a
+// reload), and `terminal.cliInstalledMap` (read once on mount for the New-chat
+// default CLI). The real `window.okDesktop` always exposes these, so an empty
+// `{}` stub would no longer model the boundary now that EditorPane calls them on
+// mount. getDockState resolves `visible: false` so the restore is a no-op —
+// these tests exercise the start-hidden toggle/launch behavior.
 function makeOkDesktopStub(
   getDockState: () => Promise<{ visible: boolean }> = async () => ({ visible: false }),
 ) {
@@ -279,6 +297,9 @@ describe('EditorPane terminal dock wiring', () => {
     (window as { okDesktop?: unknown }).okDesktop = makeOkDesktopStub().stub;
     await renderEditorPane();
 
+    // The header and the live terminal session host are both siblings of the
+    // editor area now (the host lives in EditorPane so a dock toggle can't remount
+    // it). The host renders only when the desktop bridge is present.
     expect(screen.getByTestId('editor-header')).toBeTruthy();
     expect(screen.getByTestId('editor-area')).toBeTruthy();
     expect(screen.queryByTestId('terminal-dock')).not.toBeNull();
@@ -290,6 +311,7 @@ describe('EditorPane terminal dock wiring', () => {
     await renderEditorPane();
 
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
+    // Mount pushes terminalVisible:false so the View menu reads "Show Terminal".
     expect(desk.viewMenuPushes.at(-1)).toEqual({ terminalVisible: false });
 
     act(() => desk.dispatchMenuAction('toggle-terminal'));
@@ -310,14 +332,20 @@ describe('EditorPane terminal dock wiring', () => {
     const dock = () => screen.getByTestId('terminal-dock');
     expect(dock().getAttribute('data-launch-nonce')).toBe('none');
 
+    // "Open in terminal" opens the dock and carries a one-shot launch intent.
     act(() => requestTerminalLaunch('work on docs/notes', 'claude'));
     expect(dock().getAttribute('data-visible')).toBe('true');
     expect(dock().getAttribute('data-launch-nonce')).toBe('1');
 
+    // Hiding clears the spent intent. A kill drops the dock's mount latch and
+    // destroys the session's once-per-nonce guard; both kill and the ⌘J toggle
+    // hide via onVisibleChange(false). Without clearing here, the next fresh
+    // mount would replay the old prompt instead of opening blank.
     act(() => desk.dispatchMenuAction('toggle-terminal'));
     expect(dock().getAttribute('data-visible')).toBe('false');
     expect(dock().getAttribute('data-launch-nonce')).toBe('none');
 
+    // Reopening (New Terminal) is blank — no stale launch intent re-applied.
     act(() => desk.dispatchMenuAction('new-terminal'));
     expect(dock().getAttribute('data-visible')).toBe('true');
     expect(dock().getAttribute('data-launch-nonce')).toBe('none');
@@ -334,9 +362,14 @@ describe('EditorPane terminal dock wiring', () => {
     act(() => requestTerminalLaunch('first', 'claude'));
     expect(dock().getAttribute('data-launch-nonce')).toBe('1');
 
+    // Hide clears the spent intent.
     act(() => desk.dispatchMenuAction('toggle-terminal'));
     expect(dock().getAttribute('data-launch-nonce')).toBe('none');
 
+    // The second, distinct click must NOT reuse nonce 1. The nonce is drawn
+    // from a monotonic source rather than the previous intent's value — if it
+    // restarted at 1 after the hide-clear, the dock's per-nonce dedup would see
+    // a repeat of the already-opened tab and drop it, opening no new tab.
     act(() => requestTerminalLaunch('second', 'codex'));
     expect(dock().getAttribute('data-launch-nonce')).toBe('2');
   });
@@ -351,6 +384,8 @@ describe('EditorPane terminal dock wiring', () => {
     act(() => desk.dispatchMenuAction('new-terminal'));
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('true');
 
+    // Idempotent open: a second New Terminal keeps it open. The View toggle
+    // would have hidden it here — that is the behavioral split between them.
     act(() => desk.dispatchMenuAction('new-terminal'));
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('true');
   });
@@ -369,6 +404,7 @@ describe('EditorPane terminal dock wiring', () => {
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     await renderEditorPane();
 
+    // Starts hidden — the mount run of the effect must not record an open.
     expect(terminalOpenedCalls).toHaveLength(0);
 
     act(() => desk.dispatchMenuAction('toggle-terminal')); // hidden → open
@@ -382,6 +418,13 @@ describe('EditorPane terminal dock wiring', () => {
   });
 
   test('desktop: a reload re-expands a dock that was open before it (retained visibility is not clobbered)', async () => {
+    // Model main's per-window dock-visibility map at the boundary the hardcoded
+    // `visible: false` stub can't: the renderer's view-menu push WRITES it,
+    // getDockState READS it back. It starts `true` — the dock was open before
+    // this reload. The bug is an ordering race between the two channels: the
+    // mount-initial `false` push must not land in the shared map before the
+    // restore reads it, or the read returns false and the dock comes back
+    // collapsed (the whole feature dead).
     let retainedDockVisible = true;
     (window as { okDesktop?: unknown }).okDesktop = {
       onMenuAction: () => () => {},
@@ -397,11 +440,18 @@ describe('EditorPane terminal dock wiring', () => {
 
     await renderEditorPane();
 
+    // Restored: the dock comes back expanded without a user re-open, and the
+    // restore reveal is NOT counted as a user-initiated terminal open.
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('true');
     expect(terminalOpenedCalls).toHaveLength(0);
   });
 
   test('desktop: a rejecting getDockState still settles the gate so the view-menu push converges', async () => {
+    // getDockState rejects (IPC torn down mid-reload). The restore's `.finally`
+    // must still settle dockRestoreSettled so the deferred mount push lands —
+    // mirrors TerminalDock's "rejecting list() still settles" guard. A
+    // regression that settled only on the success branch would gate the View
+    // menu's terminal item forever.
     const desk = makeOkDesktopStub(async () => {
       throw new Error('ipc boom');
     });
@@ -409,6 +459,7 @@ describe('EditorPane terminal dock wiring', () => {
     await renderEditorPane();
 
     expect(desk.viewMenuPushes.at(-1)).toEqual({ terminalVisible: false });
+    // With no restored state the dock stays hidden (the breadcrumb is logged).
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
   });
 

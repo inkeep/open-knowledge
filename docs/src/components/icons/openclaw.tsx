@@ -1,5 +1,9 @@
 import type { SVGProps } from 'react';
 
+// OpenClaw brand mark: a smooth vector lobster, flattened to a single `currentColor`
+// silhouette so it tracks the sidebar text color and brightens on hover like every
+// other brand icon. Antennae are currentColor strokes; the two eyes are punched out
+// via a mask so the mark reads as a creature instead of a solid blob.
 export function OpenClawIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

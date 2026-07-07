@@ -1,3 +1,16 @@
+/**
+ * tests for the composer's `@`-mention input.
+ *
+ * Two groups:
+ *   - Serialization: a directly-constructed TipTap editor (the same extension
+ *     set the component mounts) exercises `serializeComposerContent` +
+ *     `isComposerEmpty` — chips serialize inline as `@path`, mentions are
+ *     ordered + de-duplicated.
+ *   - Component: the rendered input exposes a `textbox`, routes Enter -> onSubmit
+ *     (but not Shift+Enter), and — load-bearing — does NOT register itself in the
+ *     active-editor registry, so `getEditorForDoc` keeps returning the real
+ *     document editor (which selection-as-passage reads from).
+ */
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Content, JSONContent } from '@tiptap/core';
@@ -28,6 +41,8 @@ function mentionNode(path: string, label = path): Content {
 let consoleErrorSpy: ReturnType<typeof spyOn>;
 
 beforeEach(() => {
+  // The editor's async mount emits act() warnings under jsdom; real failures
+  // still surface as missing-element assertion failures.
   consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -162,23 +177,41 @@ describe('ComposerMentionInput (component)', () => {
         initialDoc={paragraph(mentionNode('notes.md', 'Notes')) as JSONContent}
       />,
     );
+    // The mention renders via its node view: a compact chip (`.composer-mention-chip`,
+    // styled single-line + ellipsis + max-width in globals.css so a long label never
+    // wraps) whose LEADING icon doubles as an aria-labeled remove control that
+    // deletes the node from the prompt — the inline counterpart of the top-row
+    // chip's leading-icon remove button.
     const removeBtn = screen.getByRole('button', { name: /Remove Notes/i });
     expect(removeBtn).toBeTruthy();
     const chip = removeBtn.closest('.composer-mention-chip');
     expect(chip).not.toBeNull();
+    // The chip surfaces its full name/path on hover (the label ellipsizes).
     expect(chip?.getAttribute('title')).toBe('Notes');
+    // The label carries the truncation hook so a long mention ellipsizes.
     expect(chip?.querySelector('.composer-mention-label')?.textContent).toBe('Notes');
+    // The remove control IS the LEADING icon cell (Cursor pattern): the
+    // `.composer-mention-icon` button — NOT a trailing ×. It holds two stacked
+    // glyphs (the file/type icon at rest, × on reveal) that cross-fade via
+    // opacity ONLY (the transition lives in CSS), so the cell never changes size
+    // and the chip box never reflows. There is NO trailing `.composer-mention-remove`
+    // slot.
     expect(removeBtn.classList.contains('composer-mention-icon')).toBe(true);
     expect(removeBtn.matches('.composer-mention-chip > .composer-mention-icon:first-child')).toBe(
       true,
     );
     expect(chip?.querySelector('.composer-mention-remove')).toBeNull();
+    // Both glyphs are inline SVGs (not the literal `@`/`×` text). The resting
+    // glyph is the same file-entry icon used by search/sidebar rows, and the
+    // hover glyph is the lucide X. Assert each cell holds an <svg>, not text.
     const restIcon = removeBtn.querySelector('.composer-mention-glyph-icon');
     const hoverIcon = removeBtn.querySelector('.composer-mention-glyph-x');
     expect(restIcon?.querySelector('svg')).not.toBeNull();
     expect(hoverIcon?.querySelector('svg')).not.toBeNull();
     expect(restIcon?.textContent).not.toContain('@');
     expect(hoverIcon?.textContent).not.toContain('×');
+    // The resting <svg> is the custom markdown file glyph for a `.md` mention,
+    // inheriting the chip color via currentColor.
     const restSvg = restIcon?.querySelector('svg');
     expect(restSvg?.getAttribute('fill')).toBe('currentColor');
     expect(ref.current?.getContent().mentions).toEqual(['notes.md']);
@@ -207,6 +240,10 @@ describe('ComposerMentionInput (component)', () => {
         }
       />,
     );
+    // The leading cell injects the same file-entry glyph the picker + top-row
+    // chip resolve for this path. Normalize both sides through the DOM: jsdom
+    // re-serializes the injected `<path .../>` as `<path ...></path>`, so compare
+    // parsed-element outerHTML, not raw strings.
     const normalizeSvg = (markup: string | undefined) => {
       const host = document.createElement('div');
       host.innerHTML = markup ?? '';
@@ -233,10 +270,15 @@ describe('ComposerMentionInput (component)', () => {
     expect(videoSvg).toBeDefined();
     expect(videoSvg).toBe(normalizeSvg(fileEntryPathIconToSvgString('clips/demo.mp4')));
 
+    // The two folder vs page glyphs are genuinely different (type-awareness, not
+    // a constant icon).
     expect(folderSvg).not.toBe(pageSvg);
   });
 
   test('mounting does NOT register in the active-editor registry', () => {
+    // Seed a real document editor for some doc; the composer must not displace
+    // it (getEditorForDoc keeps returning the document editor — the registry the
+    // selection-passage feature reads from).
     const docEditor = makeEditor();
     registerEditor('some-doc', docEditor);
     try {
@@ -251,10 +293,33 @@ describe('ComposerMentionInput (component)', () => {
   });
 });
 
+/**
+ * Enter must defer to an open `@`-mention popup: while the suggestion plugin is
+ * active, plain Enter commits the highlighted item (the plugin's own onKeyDown
+ * owns that) and must NOT submit the prompt; with the popup closed, Enter
+ * submits. This is a ProseMirror prop-precedence path — the component's
+ * `editorProps.handleKeyDown` and the suggestion plugin's `props.handleKeyDown`
+ * are both registered keydown handlers, and the fix makes the component's
+ * handler yield (`return false`) when the popup is open.
+ *
+ * The component's editor is reached via the textbox DOM node, which TipTap
+ * tags with the live `editor` instance — inserting `@foo` flips the suggestion
+ * plugin's `active` state synchronously (it matches the `@`-trigger against the
+ * doc text, independent of the async page fetch resolving), so the precedence
+ * can be exercised with a real keydown.
+ *
+ * A Playwright case is still recommended to cover the full popup→arrow→Enter
+ * keystroke flow (including the chip actually inserting); this jsdom test pins
+ * the load-bearing branch: submit-vs-defer keyed on plugin `active` state.
+ */
 describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   let fetchSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
+    // The suggestion's async `items` step calls `fetch('/api/pages')`; jsdom has
+    // no backend, so stub it to an empty corpus. The plugin's `active` state
+    // does not depend on the fetch resolving — it is computed synchronously from
+    // the inserted `@`-trigger — so the empty corpus does not affect the assertion.
     fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(
       async () =>
         new Response(JSON.stringify({ pages: [], documents: [] }), {
@@ -269,6 +334,8 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   });
 
   function getComposerEditor(box: HTMLElement): Editor {
+    // TipTap's EditorContent tags the contenteditable host node with the live
+    // editor instance; the textbox role resolves to that same node.
     return (box as unknown as { editor: Editor }).editor;
   }
 
@@ -300,6 +367,7 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     const box = screen.getByRole('textbox', { name: 'Ask AI' });
     const editor = getComposerEditor(box);
 
+    // Typing `@foo` opens the mention popup (plugin `active` flips synchronously).
     editor.commands.insertContent('@foo');
     expect(isSuggestionActive(editor)).toBe(true);
 
@@ -320,6 +388,7 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(onSubmit).toHaveBeenCalledTimes(0);
 
+    // Clearing the field tears the trigger down; Enter submits again.
     editor.commands.clearContent(true);
     expect(isSuggestionActive(editor)).toBe(false);
     fireEvent.keyDown(box, { key: 'Enter' });

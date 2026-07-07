@@ -1,3 +1,14 @@
+/**
+ * Integration test: the MCP `write` tool's explicit `extension` field creates
+ * a `.mdx` file end-to-end (tool → /api/agent-write-md → persistence → disk).
+ *
+ * Guards the agent-facing affordance, not just the engine: the prior
+ * `mdx-extension.test.ts` proves the HTTP `extension` param and the
+ * file-watcher, but the `write` tool only exposed extension as a suffix smuggled
+ * into `path` (its schema even said "no extension"). These tests pin that the
+ * declared `extension` field reaches disk, and that it wins over a suffix typed
+ * into `path`.
+ */
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -102,6 +113,7 @@ test('explicit `extension: ".mdx"` on a suffix-less path creates a .mdx file', a
   );
   expect(result.isError ?? false).toBe(false);
 
+  // pollUntil throws on timeout, so it doubles as the "file was created" assertion.
   await pollUntil(() => existsSync(join(server.contentDir, `${docName}.mdx`)));
   expect(existsSync(join(server.contentDir, `${docName}.md`))).toBe(false);
 });
@@ -110,6 +122,7 @@ test('the `extension` field wins over an extension typed into `path`', async () 
   const session = await openMcpSession(server.port);
   const docName = `mdx-precedence-${randomUUID().slice(0, 8)}`;
 
+  // Path carries a `.md` suffix, but the explicit field asks for `.mdx`.
   const result = await callWrite(
     server.port,
     session,
@@ -118,10 +131,14 @@ test('the `extension` field wins over an extension typed into `path`', async () 
   );
   expect(result.isError ?? false).toBe(false);
 
+  // pollUntil throws on timeout, so it doubles as the "file was created" assertion.
   await pollUntil(() => existsSync(join(server.contentDir, `${docName}.mdx`)));
   expect(existsSync(join(server.contentDir, `${docName}.md`))).toBe(false);
 });
 
+// Regression: write({ document: { template } }) must instantiate a single-block
+// template via the same path the create-page API uses, keeping the doc-frontmatter
+// (type/status). A plain stripFrontmatter here would drop it.
 test('write({ document: { template } }) keeps a single-block template doc-frontmatter', async () => {
   const session = await openMcpSession(server.port);
   mkdirSync(join(server.contentDir, '.ok', 'templates'), { recursive: true });
@@ -142,11 +159,14 @@ test('write({ document: { template } }) keeps a single-block template doc-frontm
 
   await pollUntil(() => existsSync(join(server.contentDir, `${docName}.md`)));
   const created = readFileSync(join(server.contentDir, `${docName}.md`), 'utf-8');
+  // Doc-frontmatter survives instantiation...
   expect(created).toContain('type: research-note');
   expect(created).toContain('status: provisional');
   expect(created).toContain('## Question');
+  // ...the template identity does not...
   expect(created).not.toContain('template:');
   expect(created).not.toContain('title: Research Log');
+  // ...and {{date}} is substituted.
   expect(created).not.toContain('{{date}}');
   expect(created).toMatch(/created: \d{4}-\d{2}-\d{2}/);
 });
@@ -156,6 +176,8 @@ test('batch `documents` write honors a per-entry `extension`', async () => {
   const a = `mdx-batch-a-${randomUUID().slice(0, 8)}`;
   const b = `mdx-batch-b-${randomUUID().slice(0, 8)}`;
 
+  // The batch target reuses the same docTargetShape as the single doc, so the
+  // `extension` field must flow through each entry to disk.
   const result = await callWrite(
     server.port,
     session,

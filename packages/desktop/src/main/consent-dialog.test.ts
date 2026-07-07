@@ -1,3 +1,10 @@
+/**
+ * Per-project consent dialog — main-side IPC + lifecycle.
+ *
+ * Pure-function tests against an injected `ConsentIpcMainLike` stub. No real
+ * Electron runtime, no real fs writes (the probe walk uses real fs to enable
+ * an integration assertion against a tmp-dir fixture).
+ */
 import { describe, expect, test } from 'bun:test';
 import type { Dirent } from 'node:fs';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -103,7 +110,13 @@ describe('requestUserConsent — proactive show (real WebContents path)', () => 
       { ipcMain, navigator: navigatorWithId, previewContent: fakePreview },
       SAMPLE_PAYLOAD,
     );
+    // Show event must have fired without bindSender — this proves the
+    // proactive-show path is what makes the production flow work (the
+    // renderer signals ready ONCE at module-init, well before openProject
+    // registers the renderer-ready handler).
     expect(navigator.sent.find((s) => s.channel === 'ok:onboarding:show')).toBeDefined();
+    // Confirm/cancel from the same sender id must be accepted (sender
+    // captured eagerly).
     await ipcMain.invoke('ok:onboarding:confirm', 7, SAMPLE_CONFIRM);
     await expect(promise).resolves.toMatchObject({ outcome: 'confirm' });
   });
@@ -111,11 +124,14 @@ describe('requestUserConsent — proactive show (real WebContents path)', () => 
   test('navigator without .id falls back to renderer-ready handshake', async () => {
     const ipcMain = createIpcStub();
     const navigator = fakeNavigator();
+    // No .id on the webContents — proactive path must skip.
     const promise = requestUserConsent(
       { ipcMain, navigator: navigator.webContents, previewContent: fakePreview },
       SAMPLE_PAYLOAD,
     );
+    // Without .id, no proactive show fired.
     expect(navigator.sent.find((s) => s.channel === 'ok:onboarding:show')).toBeUndefined();
+    // Renderer-ready handshake still works.
     const captured = await ipcMain.bindSender(1);
     expect(captured.find((c) => c.channel === 'ok:onboarding:show')).toBeDefined();
     await ipcMain.invoke('ok:onboarding:cancel', 1);
@@ -133,6 +149,7 @@ describe('requestUserConsent — mount-ack handshake', () => {
     );
     const captured = await ipcMain.bindSender(1);
     expect(captured.find((c) => c.channel === 'ok:onboarding:show')).toBeDefined();
+    // Promise still pending — caller must invoke confirm/cancel.
     await ipcMain.invoke('ok:onboarding:cancel', 1);
     await expect(promise).resolves.toEqual({ outcome: 'cancel' });
   });
@@ -145,15 +162,24 @@ describe('requestUserConsent — mount-ack handshake', () => {
       SAMPLE_PAYLOAD,
     );
     await ipcMain.bindSender(1);
+    // Handler stays armed after the first dispatch — disarming early would
+    // trap a re-arming renderer (mid-reload) without a way to re-dispatch.
     expect(ipcMain.handlers.has('ok:onboarding:renderer-ready')).toBe(true);
     await ipcMain.invoke('ok:onboarding:cancel', 1);
     await promise;
+    // Handler is removed once the dialog resolves (teardown).
     expect(ipcMain.handlers.has('ok:onboarding:renderer-ready')).toBe(false);
   });
 });
 
 describe('requestUserConsent — proactive-show race (renderer-not-bound-yet)', () => {
   test('renderer-ready re-dispatches show after proactive send already captured the same-sender id', async () => {
+    // Production race: navigator has `.id`, proactive `webContents.send` fires,
+    // but the renderer hasn't yet attached its `ok:onboarding:show` listener
+    // via the preload bridge (preload + renderer.attach race). Electron
+    // silently drops the payload. Then the renderer mounts, binds its
+    // listener, and calls `signalReady` — the renderer-ready handler MUST
+    // re-dispatch the payload to event.sender so the dialog can render.
     const ipcMain = createIpcStub();
     const navigator = fakeNavigator();
     const navigatorWithId = { ...navigator.webContents, id: 9 };
@@ -162,6 +188,7 @@ describe('requestUserConsent — proactive-show race (renderer-not-bound-yet)', 
       SAMPLE_PAYLOAD,
     );
     expect(navigator.sent.find((s) => s.channel === 'ok:onboarding:show')).toBeDefined();
+    // Renderer mounts, signalReady arrives — same sender id as the navigator.
     const captured = await ipcMain.bindSender(9);
     expect(captured.find((c) => c.channel === 'ok:onboarding:show')).toBeDefined();
     await ipcMain.invoke('ok:onboarding:cancel', 9);
@@ -169,6 +196,8 @@ describe('requestUserConsent — proactive-show race (renderer-not-bound-yet)', 
   });
 
   test('renderer-ready from a foreign sender (different .id) after proactive show is ignored', async () => {
+    // Original window owns the session — a stray window's signalReady must
+    // not cause main to push the payload to the foreign WebContents.
     const ipcMain = createIpcStub();
     const navigator = fakeNavigator();
     const navigatorWithId = { ...navigator.webContents, id: 9 };
@@ -212,6 +241,7 @@ describe('requestUserConsent — confirm', () => {
       error?: string;
     };
     expect(result.ok).toBe(false);
+    // Promise still pending.
     await ipcMain.invoke('ok:onboarding:cancel', 1);
     await promise;
   });
@@ -264,6 +294,7 @@ describe('requestUserConsent — confirm', () => {
     };
     expect(result.ok).toBe(false);
     expect(result.error).toBe('Content directory must be inside the project');
+    // Promise stays pending — let the test proceed by cancelling.
     await ipcMain.invoke('ok:onboarding:cancel', 1);
     await promise;
   });
@@ -415,6 +446,12 @@ describe('runProbe', () => {
 
 describe('walkExceedsCap — async chunked yields', () => {
   test('yields the event loop between chunks of entries', async () => {
+    // Synthetic flat tree of 5,000 entries via injectable readdir — exercises
+    // the chunkYieldEvery path without writing 5k files to disk. With a
+    // synchronous walk, the only event-loop yield is the single setImmediate
+    // gate inside runProbe (which we don't hit here — we call walkExceedsCap
+    // directly), so the tickCounter would fire AT MOST ONCE between callsite
+    // microtask boundaries. The async chunked walk must fire it many times.
     const fakeEntries = Array.from({ length: 5000 }, (_, i) => ({
       name: `f${i}.md`,
       isDirectory: () => false,
@@ -437,6 +474,8 @@ describe('walkExceedsCap — async chunked yields', () => {
     });
     walkCompleted = true;
 
+    // 5000 entries / chunkYieldEvery 500 = ~10 yields; assert ≥5 to leave
+    // headroom for scheduler ordering on slow CI.
     expect(yieldsDuringWalk).toBeGreaterThanOrEqual(5);
     expect(truncated).toBe(false);
   });
@@ -459,6 +498,9 @@ describe('walkExceedsCap — async chunked yields', () => {
 
 describe('requestUserConsent — probe-content pins to captured projectDir', () => {
   test('IPC probe-content uses captured payload.projectDir; renderer-supplied projectDir is ignored', async () => {
+    // Threat model: a compromised renderer cannot redirect the probe's walk
+    // root by inventing a `projectDir`. Main pins the walk to the projectDir
+    // it captured when it dispatched `ok:onboarding:show`.
     const tmp = mkdtempSync(join(tmpdir(), 'ok-probe-pin-'));
     writeFileSync(join(tmp, 'a.md'), '# a');
     let capturedProjectDir = '';
@@ -476,6 +518,10 @@ describe('requestUserConsent — probe-content pins to captured projectDir', () 
       payload,
     );
     await ipcMain.bindSender(1);
+    // Compromised-renderer simulation: the wire shape is `{ contentDir }` only,
+    // but a malicious sender could attempt to inject extra fields. The stub's
+    // `invoke` is `unknown[]` so runtime injection is possible — we cast here
+    // to express "extra fields a malicious renderer might smuggle in".
     const evilRequest = { projectDir: '/etc', contentDir: '.' } as unknown as {
       contentDir: string;
     };
@@ -483,6 +529,9 @@ describe('requestUserConsent — probe-content pins to captured projectDir', () 
       ok: boolean;
     };
     expect(result.ok).toBe(true);
+    // Critical assertion: the walk operated against the captured tmp dir, NOT
+    // the renderer-supplied '/etc'. If runProbe ever reads projectDir from the
+    // request again, this fails.
     expect(capturedProjectDir).toBe(tmp);
     expect(capturedContentDir).toBe(tmp);
     expect(capturedProjectDir).not.toBe('/etc');

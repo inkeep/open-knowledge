@@ -1,3 +1,25 @@
+/**
+ * Reproduction — warm switch-back to a previously-loaded small doc after
+ * visiting a large doc.
+ *
+ * Workflow:
+ *   1. Cold-load README (small, 5 KB).
+ *   2. Navigate to PROJECT (large, multi-MB) — waits for PROJECT content.
+ *   3. Click sidebar's README entry — measure wall-clock until README's
+ *      visible ProseMirror is rendered with README-specific content.
+ *
+ * The user-visible symptom is "click a sidebar entry → noticeable hitch"
+ * after visiting a big doc, so the scenario measures the full click→content
+ * pipeline. The timing starts at the sidebar click and ends when the visible
+ * editor contains README content — which is the user-perceived "switch
+ * completed" moment.
+ *
+ * Pre-fix baseline: warmSwitchMs ≥ 500.
+ * Post-fix target: warmSwitchMs < 100 AND README content continuity
+ * preserved during the transition (precedent #18 G2 — verified by Playwright
+ * E2E tests `docs-open.e2e.ts` which aren't re-run here, just not regressed).
+ */
+
 import { markerFor } from '../lib/doc-markers';
 import { installLongtaskObserver } from '../lib/longtask-observer';
 import { defineScenario } from '../lib/scenario';
@@ -29,6 +51,9 @@ async function waitForVisibleProseMirrorForDoc(
     );
     return;
   }
+  // Fallback: no registered marker — accept any visible ProseMirror with
+  // substantial content (>500 chars). Scenarios should register markers in
+  // `lib/doc-markers.ts` for deterministic doc-identity detection.
   await page.waitForFunction(
     () => {
       const nodes = document.querySelectorAll('.ProseMirror');
@@ -54,6 +79,7 @@ export default defineScenario({
 
     await installLongtaskObserver(page);
 
+    // ─── Step 1: cold-load the small doc so it is pool-warm. ────────────
     await page.goto(`${opts.target}/#/${encodeURIComponent(SMALL_DOC)}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
@@ -66,6 +92,7 @@ export default defineScenario({
       return;
     }
 
+    // ─── Step 2: navigate to the big doc, wait for it to render. ────────
     await page.goto(`${opts.target}/#/${encodeURIComponent(BIG_DOC)}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
@@ -78,11 +105,17 @@ export default defineScenario({
       return;
     }
 
+    // Breathe — let any pending microtasks / debounces drain before timing
+    // the switch-back. No arbitrary magic number; 250ms matches the
+    // observer-A baseline-settle debounce bound in the repo.
     await page.waitForTimeout(250);
 
+    // ─── Step 3: click sidebar entry for the small doc, measure wall-clock. ─
     const sidebar = page.locator('[data-slot="sidebar-container"]');
     const smallDocRow = sidebar.getByText(`${SMALL_DOC}.md`, { exact: true });
 
+    // Confirm the row is attached BEFORE timing — we measure the switch,
+    // not the sidebar's own first render (which already happened in step 1).
     await smallDocRow.waitFor({ state: 'visible', timeout: 10_000 });
 
     const clickAt = Date.now();

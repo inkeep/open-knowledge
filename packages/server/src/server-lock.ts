@@ -1,3 +1,19 @@
+/**
+ * Server-level process lock — exclusive per-project server ownership.
+ *
+ * Thin adapter around `acquireProcessLock` in `process-lock.ts`. Only one
+ * OpenKnowledge server process may own a given contentDir at a time. The
+ * lock file at `<lockDir>/server.lock` contains JSON metadata used for
+ * stale detection and for MCP port discovery.
+ *
+ * `lockDir` is `<contentDir>/.ok/local` by convention.
+ *
+ * Sibling of `shadow-lock.ts` (guards a shadow repo) and `ui-lock.ts`
+ * (guards the UI process). All three share `process-lock.ts` for the lock
+ * acquisition/release/port-update plumbing and `process-alive.ts` for
+ * liveness checks.
+ */
+
 import {
   acquireProcessLock,
   type LockKind,
@@ -31,6 +47,7 @@ export function acquireServerLock(
     const handle = acquireProcessLock({ lockName: 'server', lockDir, metadata: init });
     return handle.lockPath;
   } catch (err) {
+    // Re-brand generic collision as ServerLockCollisionError for backward compat.
     if (err instanceof ProcessLockCollisionError && err.lockName === 'server') {
       throw new ServerLockCollisionError(err.existing, err.lockPath);
     }

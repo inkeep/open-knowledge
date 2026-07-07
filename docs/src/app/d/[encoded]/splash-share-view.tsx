@@ -10,8 +10,13 @@ import { SplashButtonLabel, splashPrimaryButton } from './splash-buttons';
 import { SplashCliButton } from './splash-cli-button';
 import { SplashCtaPanel } from './splash-cta-panel';
 
+/** The decoded, well-formed share view (blob → doc, tree → folder). */
 type OkSplashView = Extract<SplashView, { kind: 'ok' }>;
 
+/**
+ * The "ok" share splash: headline + repo/branch context + the OS-aware CTA
+ * panel, in the shared page shell (chrome + footer).
+ */
 export function SplashShareView({ encoded, view }: { encoded: string; view: OkSplashView }) {
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-slide-bg font-[family-name:var(--font-dm-sans)]">
@@ -88,12 +93,15 @@ export function SplashShareView({ encoded, view }: { encoded: string; view: OkSp
       </section>
 
       <div className="relative z-10">
-        <SiteFooter showSubscribe={false} />
+        <SiteFooter />
       </div>
     </main>
   );
 }
 
+// Shared page chrome: the dot-pattern background pair + the home-linking
+// wordmark header. Both SplashShareView and SplashFallback render this once so
+// the texture sizing/opacity lives in a single place.
 function SplashChrome() {
   return (
     <>
@@ -119,6 +127,7 @@ function SplashChrome() {
   );
 }
 
+/** Rendered for the `invalid` and `unsupported-version` decode outcomes. */
 export function SplashFallback({ heading }: { heading: string }) {
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-slide-bg font-[family-name:var(--font-dm-sans)]">
@@ -140,7 +149,7 @@ export function SplashFallback({ heading }: { heading: string }) {
       </section>
 
       <div className="relative z-10">
-        <SiteFooter showSubscribe={false} />
+        <SiteFooter />
       </div>
     </main>
   );

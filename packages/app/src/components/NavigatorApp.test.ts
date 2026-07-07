@@ -163,6 +163,8 @@ describe('NavigatorApp bridge contract', () => {
   test('readHeadBranch sentinel collapses non-git / unreadable projects to all-null', async () => {
     const bridge = makeBridge();
     const info = await bridge.project.readHeadBranch('/tmp/no-git');
+    // Default makeBridge stub returns the graceful-fail sentinel — the
+    // shape NavigatorApp treats as "no branch label, render nothing."
     expect(info).toEqual({ currentBranch: null, headSha: null, detached: false });
   });
 });

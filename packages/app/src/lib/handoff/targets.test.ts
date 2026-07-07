@@ -47,12 +47,19 @@ describe('KNOWN_TARGETS', () => {
 });
 
 describe('VISIBLE_TARGETS (UI render allow-list)', () => {
+  // VISIBLE_TARGETS is what every Open-in-Agent render surface iterates
+  // (header dropdown, FileTree context submenu, command palette agent group,
+  // empty-state "Create with <agent>" composer). Dispatch by ID still routes through
+  // KNOWN_TARGETS so power users / deep links retain every target —
+  // VISIBLE_TARGETS only governs what the UI exposes.
   test('hides claude-cowork from the UI', () => {
     const ids = new Set(VISIBLE_TARGETS.map((t) => t.id));
     expect(ids.has('claude-cowork')).toBe(false);
   });
 
   test('hides the terminal-only opencode target from the GUI deep-link list', () => {
+    // OpenCode surfaces as a terminal-CLI launch row (TERMINAL_CLI_IDS), not a
+    // GUI deep-link target, so it must not appear in VISIBLE_TARGETS.
     const ids = new Set(VISIBLE_TARGETS.map((t) => t.id));
     expect(ids.has('opencode')).toBe(false);
   });

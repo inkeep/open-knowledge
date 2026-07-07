@@ -1,6 +1,31 @@
+/**
+ * Pure parser + serializer + structural ops for the okignore Y.Text body.
+ *
+ * The raw `.okignore` text is the source of truth. Each line is classified as
+ * pattern | comment | blank. Comments and blank lines are non-rendering
+ * metadata preserved verbatim through any mutation (add, edit, remove,
+ * reorder).
+ *
+ * Critical invariant: `serializeOkignoreDoc(parseOkignoreDoc(text)) === text`
+ * for every input.
+ *
+ * Reorder semantics: pattern entries (raw + text together) move between
+ * pattern-only slots; comments and blank lines stay at their original line
+ * positions. This is the simplest correct behavior — full comment-tracking
+ * reorder is reserved for the raw-text mode.
+ *
+ * Edit-to-empty == remove: an edit that produces a whitespace-only string is
+ * treated as a delete so the persistence-time validator never sees an
+ * `OKIGNORE_INVALID` line from a list-editor path. Adversarial paths (Add
+ * input, raw-text mode, multi-client merge) still surface rejections via
+ * the binding's subscribeRejection event.
+ */
+
 export interface PatternLine {
   kind: 'pattern';
+  /** Verbatim original line bytes (no trailing newline). */
   raw: string;
+  /** Trimmed pattern text used as the row label and for L1 dispatch. */
   text: string;
 }
 
@@ -23,6 +48,9 @@ function classifyLine(raw: string): Line {
 }
 
 export function parseOkignoreDoc(text: string): ParsedDoc {
+  // String.split('\n') reverses cleanly: 'a\nb\n' -> ['a', 'b', ''] -> 'a\nb\n'.
+  // Preserving the trailing empty entry from a trailing newline lets us serialize
+  // back byte-identically without a separate trailingNewline flag.
   const rawLines = text.split('\n');
   const lines: Line[] = rawLines.map(classifyLine);
   return { lines };
@@ -32,10 +60,24 @@ export function serializeOkignoreDoc(doc: ParsedDoc): string {
   return doc.lines.map((line) => line.raw).join('\n');
 }
 
+/** All visible pattern lines, in document order. */
 export function listPatterns(doc: ParsedDoc): PatternLine[] {
   return doc.lines.filter((line): line is PatternLine => line.kind === 'pattern');
 }
 
+/**
+ * Append a new pattern line at the end of the doc. Preserves trailing-newline
+ * behavior — if the doc ends with a blank-empty line (representing a trailing
+ * `\n`), the new pattern is inserted before that blank so the body still ends
+ * with `\n`. Empty/whitespace input is rejected with the original doc unchanged
+ * so the L3 path can't see whitespace-only adds from the list editor.
+ *
+ * Dedup: if the trimmed pattern already exists as a pattern line (compared by
+ * trimmed `.text`), return the original doc reference unchanged. Both call
+ * sites — settings "ADD PATTERN" and the sidebar "Hide folder" / "Hide this
+ * file" context-menu actions — append through this primitive, so the dedup applies
+ * to both. Comments are not considered pattern duplicates.
+ */
 export function appendPattern(doc: ParsedDoc, newText: string): ParsedDoc {
   const trimmed = newText.trim();
   if (trimmed.length === 0) return doc;
@@ -53,6 +95,7 @@ export function appendPattern(doc: ParsedDoc, newText: string): ParsedDoc {
   return { lines };
 }
 
+/** Index of the first pattern line with this trimmed text, or -1 if none. */
 export function findPatternIndex(doc: ParsedDoc, patternText: string): number {
   const trimmed = patternText.trim();
   if (trimmed.length === 0) return -1;
@@ -66,6 +109,11 @@ export function findPatternIndex(doc: ParsedDoc, patternText: string): number {
   return -1;
 }
 
+/**
+ * Replace the n-th pattern (0-indexed across pattern lines only) with the
+ * trimmed `newText`. Empty/whitespace `newText` removes the line instead —
+ * keeps L3 from receiving an OKIGNORE_INVALID line from the list editor.
+ */
 export function editPatternAt(doc: ParsedDoc, patternIndex: number, newText: string): ParsedDoc {
   const trimmed = newText.trim();
   if (trimmed.length === 0) return removePatternAt(doc, patternIndex);
@@ -84,6 +132,11 @@ export function removePatternAt(doc: ParsedDoc, patternIndex: number): ParsedDoc
   return { lines };
 }
 
+/**
+ * Move the pattern at `fromIndex` to `toIndex` within the pattern-only
+ * sequence. Comments and blank lines hold their original line positions —
+ * pattern entries (raw + text together) rotate through pattern slots.
+ */
 export function reorderPatterns(doc: ParsedDoc, fromIndex: number, toIndex: number): ParsedDoc {
   if (fromIndex === toIndex) return doc;
   const slots: number[] = [];

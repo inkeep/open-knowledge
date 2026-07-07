@@ -1,3 +1,18 @@
+/**
+ * Per-handler narrow-integration smoke test for `handleAgentWrite`.
+ *
+ * Asserts the canonical RFC 9457 wire shape:
+ *   - happy path: status 200, `Content-Type: application/json`, body parses
+ *     against `AgentWriteSuccessSchema`, no `ok: true` discriminator.
+ *   - body-shape errors (pre-identity, anonymous): malformed JSON, missing
+ *     POST method → `urn:ok:error:invalid-request` / `method-not-allowed`.
+ *   - semantic errors (post-identity, attributed): reserved doc name →
+ *     `urn:ok:error:reserved-doc-name`.
+ *
+ * Real server + real handler + real schema. Mocks only the in-process
+ * test-harness boundary.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { AgentWriteSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -36,10 +51,14 @@ describe('agent-write envelope (RFC 9457)', () => {
     if (parsed.success) {
       expect(parsed.data.timestamp.length).toBeGreaterThan(0);
     }
+    // Wire shape: no `ok: true` discriminator on success bodies.
     expect((body as Record<string, unknown>).ok).toBeUndefined();
   });
 
   test('reserved docname emits urn:ok:error:reserved-doc-name', async () => {
+    // `__system__` is a reserved synthetic doc; the handler short-circuits
+    // before any Y.Doc mutation. Note: this rejection is post-identity
+    // (semantic, attributed), not body-shape.
     const res = await postWrite({ docName: '__system__', content: 'should reject' });
     expect(res.status).toBe(400);
     expect(res.headers.get('content-type')).toBe('application/problem+json');

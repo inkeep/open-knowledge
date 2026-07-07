@@ -1,3 +1,13 @@
+/**
+ * Integration tests for `ok config-sharing share` / `ok config-sharing unshare` /
+ * `ok config-sharing status`. Drives the Commander commands via `parseAsync` so
+ * the same code path that hits the user's terminal is exercised.
+ *
+ * The refusal path and the `git rm --cached` recovery path live here;
+ * the module-level
+ * mechanics are pinned in `../../sharing/git-exclude.test.ts`.
+ */
+
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -25,6 +35,15 @@ function readExclude(dir: string): string {
   return readFileSync(join(dir, '.git', 'info', 'exclude'), 'utf-8');
 }
 
+/**
+ * Capture stdout + stderr while a Promise runs. Each `process.stdout.write`
+ * and `process.stderr.write` is intercepted; the originals are restored
+ * after. Returns the captured strings + the promise's resolved value.
+ *
+ * The sharing commands write a mix of human-readable lines to stderr and
+ * JSON payloads to stdout (matching the ok clone --json convention), so we
+ * need both streams.
+ */
 async function capture<T>(fn: () => Promise<T>): Promise<{
   result: T;
   stdout: string;
@@ -77,6 +96,7 @@ describe('ok config-sharing unshare → share round-trip', () => {
   });
 
   it('share removes OK artifact paths and leaves the rest byte-identical', async () => {
+    // Seed: write a user-authored exclude with an OK line mixed in.
     const original = '# user header\n*.tmp\n';
     writeFileSync(join(dir, '.git', 'info', 'exclude'), original, 'utf-8');
     await capture(async () => {
@@ -89,6 +109,7 @@ describe('ok config-sharing unshare → share round-trip', () => {
     await capture(async () => {
       await sharingShareCommand().parseAsync(['node', 'share', '--project', dir]);
     });
+    // After share, the user's two lines survive byte-identical, OK lines gone.
     expect(readExclude(dir)).toBe(original);
   });
 
@@ -138,6 +159,8 @@ describe('ok config-sharing unshare — §5.5 tracked-files refusal', () => {
     expect(stderr).toContain('git rm --cached .mcp.json');
     expect(stderr).toContain('your teammates will see a deletion on their next pull');
 
+    // Critically: no OK paths landed in the exclude file (git init seeds
+    // its own default template, so we assert the OK markers are absent).
     const after = readExclude(dir);
     expect(after).not.toContain('.ok/');
     expect(after).not.toContain('.mcp.json');

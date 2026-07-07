@@ -1,3 +1,15 @@
+/**
+ * Tests for TipTap input rule for thematic break threads the user's
+ * chosen delimiter form (`---`, `***`, `___`) into `sourceRaw` via
+ * `getAttributes`. WYSIWYG-typed `*** ` lands as a thematicBreak node with
+ * `sourceRaw='***'`; the to-markdown handler emits the same form (modulo
+ * the doc-start `---` → `***` rewrite).
+ *
+ * Approach mirrors emphasis-fidelity.test.ts: synthetic ProseMirror
+ * EditorState (no DOM), invoke the rule's handler directly with a regex
+ * match.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { getSchema } from '@tiptap/core';
 import { EditorState } from '@tiptap/pm/state';
@@ -119,6 +131,8 @@ describe('ThematicBreakFidelity addInputRules wires getAttributes (FR-25)', () =
   test('`---` rule applies sourceRaw="---"', () => {
     const rules = getRules(ThematicBreakFidelity, 'thematicBreak');
     const tr = fireRule(rules[0], '---');
+    // After the rule fires, the doc structure should have a thematicBreak
+    // node inserted. Find it and inspect its attrs.
     let found: unknown;
     tr.doc.descendants((n) => {
       if (n.type.name === 'thematicBreak') found = n.attrs;

@@ -1,3 +1,16 @@
+/**
+ * Instructional body for the `discover` MCP tool.
+ *
+ * Split from `discover.ts` so the markdown content lives in a file dedicated
+ * to it, while the registration / schema / handler logic stays focused. Body
+ * is interpolated with the project's resolved `contentDir` at call time;
+ * everything else is a constant.
+ *
+ * **Sources of truth**:
+ *   - This file is the canonical body the calling agent reads.
+ *
+ */
+
 export function buildDiscoverBody(contentDir: string): string {
   return `# Discover — Project Convention Extraction + Link Graph Activation
 
@@ -113,6 +126,11 @@ For **each** folder the user marked \`[KB]\`:
 5. **Propose folder frontmatter + template.** One \`write\`/\`edit\` call per target:
 
    \`\`\`ts
+   // Folder frontmatter → writes <folder>/.ok/frontmatter.yml.
+   // Open-shape (any key, like a doc's); here the conventional
+   // title/description/tags describing the FOLDER. Self-only — does NOT
+   // cascade into child docs. Use \`write({ folder })\` for a new folder,
+   // \`edit({ folder })\` to add keys to an existing one (merge-patch).
    edit({
      folder: {
        path: '<folder>',
@@ -124,6 +142,9 @@ For **each** folder the user marked \`[KB]\`:
      },
    })
 
+   // Template → writes <folder>/.ok/templates/<name>.md. This is where
+   // recurring per-doc starting values live (status, owner, …) — bake them
+   // into the template body's frontmatter region so new docs start with them.
    write({
      template: {
        path: '<folder>/<inferred-name>', // e.g., 'specs/SPEC', 'reports/REPORT'

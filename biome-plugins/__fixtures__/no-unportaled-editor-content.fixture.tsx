@@ -38,8 +38,8 @@ export function Positive3() {
 // === Negative cases — must NOT fire ===
 
 // (1) Canonical sanctioned createPortal shape — production uses this at
-//     TiptapEditor.tsx:992. Suppressed inline because the JSX literal
-//     itself matches the pattern (Option A: match-and-suppress).
+//     TiptapEditor.tsx. Suppressed inline because the JSX literal
+//     itself matches the pattern.
 export function Negative1() {
   return createPortal(
     // biome-ignore lint/plugin/no-unportaled-editor-content: canonical portaled site — H6 fix per PRECEDENTS.md #44
@@ -49,7 +49,7 @@ export function Negative1() {
 }
 
 // (2) <PureEditorContent /> — sibling named export from @tiptap/react. Not
-//     subject to the H6 vacuum (it's the inner React class TipTap uses for
+//     subject to the vacuum (it's the inner React class TipTap uses for
 //     prototype-level instrumentation), and the rule scopes by JSX element
 //     name. Must NOT fire.
 export function Negative2() {

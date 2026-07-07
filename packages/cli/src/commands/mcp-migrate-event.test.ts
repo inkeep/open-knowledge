@@ -48,6 +48,9 @@ describe('buildMcpConfigMigrateEvent', () => {
   });
 
   it('passes non-string args through unchanged (only string elements truncate)', () => {
+    // A foreign config could theoretically carry numeric or object args.
+    // The truncation guards against unbounded strings; numbers/objects
+    // pass through so the event still surfaces the shape.
     const event = buildMcpConfigMigrateEvent({
       scope: 'user',
       surface: 'cli-repair',

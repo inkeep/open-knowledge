@@ -51,6 +51,7 @@ describe('resolveTemplatesAvailable', () => {
 
   test('inherited templates: ancestor templates surface as scope inherited', () => {
     writeTemplate('meetings', 'prep-notes', withFm('Meeting Prep', 'Top-level prep.'));
+    // No local templates at meetings/prep-notes/
     mkdirSync(join(projectDir, 'meetings', 'prep-notes'), { recursive: true });
 
     const tpls = resolveTemplatesAvailable(projectDir, 'meetings/prep-notes');
@@ -87,21 +88,28 @@ describe('resolveTemplatesAvailable', () => {
     const tpls = resolveTemplatesAvailable(projectDir, 'research');
     expect(tpls).toHaveLength(1);
     expect(tpls[0]?.name).toBe('research-log');
+    // meetings/prep-notes must NOT appear here
     expect(tpls.find((t) => t.name === 'prep-notes')).toBeUndefined();
   });
 
   test('descendant templates do NOT surface in the parent folder (D17 — two-value scope)', () => {
+    // Template lives at meetings/prep-notes/.ok/templates/agenda.md
     writeTemplate(
       'meetings/prep-notes',
       'agenda',
       withFm('Detailed Agenda', 'For larger meetings.'),
     );
 
+    // From parent `meetings/`, agenda is NOT visible — it lives in a subfolder.
     expect(resolveTemplatesAvailable(projectDir, 'meetings')).toEqual([]);
 
+    // depth>1 is reserved for forward-compat; currently a no-op (descendants
+    // are surfaced by list_documents via subfolders[] enrichment, not this
+    // resolver).
     expect(resolveTemplatesAvailable(projectDir, 'meetings', { depth: 2 })).toEqual([]);
     expect(resolveTemplatesAvailable(projectDir, 'meetings', { depth: Infinity })).toEqual([]);
 
+    // From the OWN folder, the template is local.
     const ownTpls = resolveTemplatesAvailable(projectDir, 'meetings/prep-notes');
     expect(ownTpls).toHaveLength(1);
     expect(ownTpls[0]?.name).toBe('agenda');
@@ -112,11 +120,13 @@ describe('resolveTemplatesAvailable', () => {
   test('depth parameter is a no-op — no descent into subfolders from the resolver', () => {
     writeTemplate('a/b/c', 'deep', withFm('Deep', 'Buried in a/b/c.'));
 
+    // From `a/`: deep doesn't surface, regardless of depth.
     expect(resolveTemplatesAvailable(projectDir, 'a')).toEqual([]);
     expect(resolveTemplatesAvailable(projectDir, 'a', { depth: 2 })).toEqual([]);
     expect(resolveTemplatesAvailable(projectDir, 'a', { depth: 100 })).toEqual([]);
     expect(resolveTemplatesAvailable(projectDir, 'a', { depth: Infinity })).toEqual([]);
 
+    // From `a/b/c/`: visible as local.
     const own = resolveTemplatesAvailable(projectDir, 'a/b/c');
     expect(own).toHaveLength(1);
     expect(own[0]?.name).toBe('deep');
@@ -124,6 +134,7 @@ describe('resolveTemplatesAvailable', () => {
   });
 
   test('templates without description still surface; title is required at write time but readable here without it (resolver tolerates legacy)', () => {
+    // No frontmatter at all
     writeTemplate('meetings', 'no-meta', '# Just a body\n');
 
     const tpls = resolveTemplatesAvailable(projectDir, 'meetings');
@@ -135,6 +146,9 @@ describe('resolveTemplatesAvailable', () => {
   });
 
   test('frontmatter whose opening fence carries a trailing space still surfaces metadata', () => {
+    // `--- ` is one in-tolerance keystroke away from `---`; recognition must
+    // agree with core's FRONTMATTER_RE so the templates listing and
+    // GET /api/template see the same metadata.
     writeTemplate(
       'meetings',
       'prep-notes',
@@ -183,6 +197,7 @@ describe('resolveTemplatesAvailable', () => {
   test('project-root templates are inherited everywhere', () => {
     writeTemplate('', 'global', withFm('Global Template', 'Available everywhere.'));
 
+    // From a deep nested folder, inherit it
     mkdirSync(join(projectDir, 'meetings', 'prep-notes'), { recursive: true });
     const tpls = resolveTemplatesAvailable(projectDir, 'meetings/prep-notes');
     expect(tpls).toHaveLength(1);
@@ -269,14 +284,22 @@ describe('resolveProjectTemplates', () => {
   });
 
   test('walker terminates within PROJECT_TEMPLATE_SCAN_CAP — guards against pathological trees', () => {
+    // Build a wide tree exceeding the 2000-dir cap to verify the walker
+    // bails out cleanly rather than hanging or stack-overflowing AND
+    // collects templates queued before the cap. The `aa-` prefix makes
+    // the early folder sort alphabetically before `bulk-*` (so it's
+    // queued first on hash-bucket-order filesystems like Linux ext4 as
+    // well as creation-order filesystems like APFS).
     writeTemplate('', 'visible-root', withFm('Root', 'At root'));
     writeTemplate('aa-early', 'visible-early', withFm('Early', 'Early in BFS'));
+    // 2100 sibling dirs at root — exceeds the cap by ~5%.
     for (let i = 0; i < 2100; i++) {
       mkdirSync(join(projectDir, `bulk-${i}`), { recursive: true });
     }
     const result = resolveProjectTemplates(projectDir);
     expect(result.templates.some((t) => t.name === 'visible-root')).toBe(true);
     expect(result.templates.some((t) => t.name === 'visible-early')).toBe(true);
+    // Cap was exceeded — flag must be set so the UI / response can signal it.
     expect(result.truncated).toBe(true);
   });
 

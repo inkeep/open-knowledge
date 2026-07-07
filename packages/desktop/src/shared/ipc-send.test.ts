@@ -36,6 +36,8 @@ describe('registerPendingDelivery', () => {
       multiCandidate: false,
     });
 
+    // Register-before-load invariant: nothing is delivered until the renderer
+    // signals readiness, so a `send` can never beat the subscriber mount.
     expect(fake.hasListener('dom-ready')).toBe(true);
     expect(fake.sent).toHaveLength(0);
 
@@ -72,6 +74,9 @@ describe('registerPendingDelivery', () => {
       multiCandidate: false,
     });
 
+    // The register→readiness race: the user closes the window during the
+    // loading spinner. `webContents.send` throws on a destroyed WebContents
+    // and would crash main — the guard must skip the send entirely.
     fake.destroy();
     fake.fire('dom-ready');
     expect(fake.sent).toHaveLength(0);

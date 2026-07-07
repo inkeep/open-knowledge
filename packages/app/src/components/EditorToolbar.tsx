@@ -11,6 +11,9 @@ import { cn } from '@/lib/utils';
 import { EditorBreadcrumb } from './EditorBreadcrumb';
 import { EditorModeToggle } from './EditorModeToggle';
 
+// Lazy-loaded: skill install/history chrome (+ the shared useSkillActions
+// dialogs) only mounts when the active doc is a skill, so it stays out of the
+// eager toolbar bundle that every document loads.
 const SkillEditorActions = lazy(async () => ({
   default: (await import('./SkillEditorActions')).SkillEditorActions,
 }));
@@ -45,7 +48,13 @@ export function EditorToolbar({
   const { t } = useLingui();
   const panelShortcut = formatShortcut('toggle-document-panel');
   const panelShortcutLabel = formatShortcutLabel('toggle-document-panel');
+  // Skills carry install/uninstall + history chrome in this per-doc toolbar
+  // (templates + documents don't — only skills are installed). Install is a
+  // live symlink, so there's no reinstall step.
   const managed = activeDocName ? parseManagedArtifactName(activeDocName) : null;
+  // Skills carry the install chrome whether they're global (managed-artifact
+  // docs) or project (content docs `.ok/skills/<name>/SKILL`) — same identity,
+  // same toolbar chrome, so the two scopes aren't disconnected.
   const projectSkillName = activeDocName ? parseProjectSkillContentDocName(activeDocName) : null;
   const activeSkill: { scope: SkillScope; name: string } | null =
     managed?.kind === 'skill'
@@ -100,6 +109,8 @@ export function EditorToolbar({
       <div
         className={cn(
           'pointer-events-auto absolute top-0 right-0 flex items-center justify-end gap-1 py-2 pr-2',
+          // Clear the far-right "Show terminal" reveal tab (icon-sm, flush to the
+          // edge) so the action buttons sit to its left in the same row.
           reserveRightGutter && 'pr-9',
         )}
       >
@@ -109,6 +120,11 @@ export function EditorToolbar({
           </Suspense>
         ) : null}
         {showAddPropertyButton && (
+          // PropertyPanel only mounts in WYSIWYG mode (gated in
+          // EditorActivityPool). Hiding the button in source mode prevents
+          // the click → CustomEvent → no-listener no-op that surfaces as
+          // unresponsive UI. Source-mode users edit FM directly in the
+          // CodeMirror YAML.
           <Tooltip>
             <Button
               variant="ghost"

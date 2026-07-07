@@ -1,3 +1,21 @@
+/**
+ * Adjusts Pierre's sidebar rename input after it mounts inside the open shadow
+ * root. Pierre owns focus, value changes, blur-to-commit, and the `onRename`
+ * event; this module only selects the editable filename stem while leaving the
+ * extension visible and editable.
+ *
+ * Same shadow-root + MutationObserver pattern as `file-tree-extension-badge.ts`.
+ * Verified against `@pierre/trees@1.0.0-beta.3`.
+ *
+ * **Pierre store reconciliation contract (load-bearing).** Pierre can still
+ * commit an extensionless destination if the user deletes the suffix before
+ * commit. React documents normalize to the canonical with-extension form, so
+ * the two stores diverge — any later `model.resetPaths(canonicalPaths)` falls
+ * back to index 0 because the extensionless key isn't in the canonical set.
+ * Consumers MUST reconcile via `model.move(basename, canonical)` post-rename;
+ * Pierre's `#applyMutationState` then remaps focus + selection atomically.
+ */
+
 import {
   getFileExtension,
   hasSupportedDocumentExtension,
@@ -6,10 +24,31 @@ import {
 export const OK_RENAMING_ATTR = 'data-ok-renaming';
 const RENAME_SELECTION_MARKER = 'data-ok-rename-selection-applied';
 
+/**
+ * Module-scope state of the in-flight extension-bearing rename. Set when the
+ * rename input mounts; consulted on every subsequent observer tick
+ * to apply the `data-ok-renaming` marker to the selected extensionless row
+ * that Pierre's optimistic commit produces. The marker is intentionally not
+ * set while the rename input is open because the canonical row already has
+ * the correct icon. Cleared when no extensionless rows remain in the tree.
+ *
+ * Fallback timeout guarantees the flag drops even if the disk-truth refresh
+ * never lands (network failure, server error) — without it, a stuck flag
+ * would re-stamp unrelated extensionless files indefinitely.
+ */
 let activeRenameExt: string | null = null;
 let activeRenameTimer: ReturnType<typeof setTimeout> | null = null;
 const ACTIVE_RENAME_TIMEOUT_MS = 5_000;
 
+/**
+ * CSS rules that apply inside Pierre's shadow root. Concatenated into
+ * `FILE_TREE_UNSAFE_CSS` in FileTree.tsx so a single `unsafeCSS` payload
+ * keeps the cascade predictable.
+ *
+ * The CSS is limited to the transient markdown-icon overlay; selection
+ * behavior is handled imperatively because Pierre renders the input inside a
+ * shadow root.
+ */
 export const FILE_TREE_RENAME_INPUT_CSS = `
   /* Pierre's icon decoration keys off the row's data-item-path. If the user
      deletes the extension before commit, Pierre can temporarily key the row
@@ -44,7 +83,19 @@ export const FILE_TREE_RENAME_INPUT_CSS = `
   }
 `;
 
+/**
+ * Find the (zero-or-one) active rename input under `root` and select its
+ * filename stem on first sight. Idempotent — repeated calls during the same
+ * rename session are no-ops thanks to the `RENAME_SELECTION_MARKER` dataset
+ * attribute on the input.
+ *
+ * Designed for invocation from a `MutationObserver` that watches Pierre's
+ * shadow root for childList changes inside `[data-item-section="content"]`.
+ */
 export function applyRenameInputAffordance(root: ParentNode): void {
+  // Phase 1 — sweep stale markers + maintain the in-flight overlay on the
+  // selected extensionless row Pierre's optimistic commit produces. Runs
+  // on every observer tick so the marker survives Pierre's row remount.
   syncRenameOverlay(root);
 
   const input = root.querySelector<HTMLInputElement>('[data-item-rename-input]');
@@ -82,6 +133,23 @@ export function __resetRenameInputAffordanceForTesting(): void {
   clearActiveRenameExt();
 }
 
+/**
+ * Per-tick overlay maintenance. Two concerns:
+ *
+ *   1. Stale-marker sweep — when a marked row's input is gone AND its path
+ *      has the expected extension (settled / cancelled), or the path's
+ *      extension diverges from the saved one (row recycled to an unrelated
+ *      file), drop the marker. Without this, the CSS overlay would linger.
+ *
+ *   2. In-flight reapply — when `activeRenameExt` is set, find the selected
+ *      extensionless row and stamp the marker. Scoped to
+ *      `data-item-selected="true"` to avoid false positives on the legitimate
+ *      extensionless files in the tree (`Makefile`, `Dockerfile`, README
+ *      without extension, …).
+ *
+ * Clear `activeRenameExt` once no extensionless rows remain AND no rename
+ * input is open — the disk-truth refresh has settled.
+ */
 function syncRenameOverlay(root: ParentNode): void {
   const markedRows = root.querySelectorAll<HTMLElement>(`[${OK_RENAMING_ATTR}]`);
   for (const row of markedRows) {

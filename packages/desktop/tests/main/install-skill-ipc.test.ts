@@ -1,3 +1,12 @@
+/**
+ * Unit tests for the Electron IPC handler `handleBuildAndOpen`. Covers the
+ * install-state gate, force bypass, legacy-sidecar migration, and post-build
+ * state-write — the four behaviors the renderer's "Open in Cowork" click
+ * depends on.
+ *
+ * Spec: (two write sites).
+ */
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -90,6 +99,7 @@ describe('handleBuildAndOpen — install-state gate', () => {
       expect(result.path).toContain('openknowledge.skill');
     }
     expect(shell.openPath).toHaveBeenCalledTimes(1);
+    // State file populated with the freshly-built skill version.
     expect(await readTargetVersion(home, 'claude-cowork')).toBe(currentVersion);
   });
 
@@ -128,9 +138,11 @@ describe('handleBuildAndOpen — force bypass (FR12)', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
+      // Force path proceeds to build → not skipped.
       expect(result.skipped).not.toBe(true);
     }
     expect(shell.openPath).toHaveBeenCalledTimes(1);
+    // State file updated with a fresh recordedAt.
     expect(await readTargetVersion(home, 'claude-cowork')).toBe(currentVersion);
   });
 });
@@ -151,6 +163,8 @@ describe('handleBuildAndOpen — handoff failure', () => {
       expect(result.reason).toBe('open-failed');
       expect(result.message).toContain('no default handler');
     }
+    // State file populated even though the OS handoff failed — the bundle
+    // is on disk and a future click should skip the rebuild.
     expect(await readTargetVersion(home, 'claude-cowork')).toBe(currentVersion);
   });
 

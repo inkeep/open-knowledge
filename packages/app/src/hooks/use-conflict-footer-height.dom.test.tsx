@@ -1,3 +1,13 @@
+/**
+ * tests for `useConflictFooterHeightVar`'s ownership token — the
+ * guard that keeps a stale hook instance (unmounting AFTER a newer conflict
+ * surface claimed the var) from blanking `--conflict-footer-height` and
+ * re-introducing the composer-covers-conflict-controls occlusion.
+ *
+ * Substrate: jsdom via `bun run test:dom`. jsdom performs no layout, so
+ * every published value is '0px' — these are lifecycle/ownership pins, not
+ * geometry assertions (real heights are covered by the browser).
+ */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup, render } from '@testing-library/react';
 import { useConflictFooterHeightVar } from './use-conflict-footer-height';

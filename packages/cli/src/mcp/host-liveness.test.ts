@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { type HostLivenessScheduler, startHostLivenessWatch } from './host-liveness.ts';
 
+/**
+ * A scheduler that captures the tick callback so the test drives it manually.
+ * A `tick()` after `clearInterval` is a no-op — faithful to real `setInterval`,
+ * so tests can assert that `stop()` (which clears) actually halts polling.
+ */
 function manualScheduler(): {
   scheduler: HostLivenessScheduler;
   tick: () => void;

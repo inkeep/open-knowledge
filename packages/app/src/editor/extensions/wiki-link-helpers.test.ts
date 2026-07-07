@@ -77,6 +77,10 @@ describe('resolveWikiLinkAssetTarget', () => {
   });
 });
 
+// a wikilink to an EXISTING non-markdown file that is NOT a
+// renderable asset (e.g. `[[data/example.csv]]`) must resolve, not render
+// dead. Pin the file-paths partition the resolver consults alongside
+// assetPaths.
 describe('resolveWikiLinkAssetTarget — file-paths partition', () => {
   test('resolves a tracked non-markdown file by exact path', () => {
     const assets = new Set<string>();
@@ -108,6 +112,10 @@ describe('resolveWikiLinkAssetTarget — file-paths partition', () => {
   });
 
   test('asset partition still wins when both partitions hold the target path', () => {
+    // Production never emits the same path as both 'asset' AND 'file' (server
+    // dedupes), but the resolver should still prefer the asset hit if drift
+    // happens — assets carry richer downstream metadata (mediaKind,
+    // referencedBy) the file row can't.
     const assets = new Set(['shared.png']);
     const files = new Set(['shared.png']);
     expect(resolveWikiLinkAssetTarget('shared.png', assets, files)).toBe('shared.png');
@@ -143,8 +151,23 @@ describe('isResolvedWikiLinkTarget — non-markdown file existence (US-009)', ()
   });
 });
 
+// Regression guard: `buildUnresolvedWikiLinkAttrs` stores
+// the lowercased slug as target (e.g. `README.md` drop → target='readme'),
+// but the page-list cache populated from /api/documents is keyed by
+// case-preserved docName (`README`). Exact `pages.has(target)` never matches,
+// and `getWikiLinkResolutionCandidates` adds no candidate when input already
+// equals its own slug. Result: every non-lowercase-alphanum filename drop OR
+// hand-typed wiki-link (via fallback/create paths in the suggestion menu)
+// shows "Page not found" in the PropPanel even though the doc exists.
+//
+// Fix contract: resolver must recognize case-preserved cache entries. These
+// tests pin the case-insensitive fallback behavior so it survives future
+// refactors of `buildUnresolvedWikiLinkAttrs` / the slug function / the
+// suggestion-menu paths.
 describe('isResolvedWikiLinkTarget — case-insensitive resolution against case-preserved pages cache', () => {
   test('lowercased slug resolves against case-preserved cache entry', () => {
+    // Simulates: user drops `README.md` → `buildUnresolvedWikiLinkAttrs`
+    // stores target='readme'. Cache has 'README' from /api/documents.
     const pages = new Set(['README']);
     expect(isResolvedWikiLinkTarget('readme', pages)).toBe(true);
   });
@@ -155,6 +178,7 @@ describe('isResolvedWikiLinkTarget — case-insensitive resolution against case-
   });
 
   test('underscore/case filename (BA_for_Depression_Research) resolves', () => {
+    // Common real-world shape: snake_case or mixed-case doc names.
     const pages = new Set(['BA_for_Depression_Research']);
     expect(isResolvedWikiLinkTarget('ba-for-depression-research', pages)).toBe(true);
     expect(isResolvedWikiLinkTarget('BA_for_Depression_Research', pages)).toBe(true);
@@ -173,6 +197,10 @@ describe('isResolvedWikiLinkTarget — case-insensitive resolution against case-
   });
 
   test('subdirectory-preserving docName (packages/server/README) resolves case-insensitively', () => {
+    // Page cache stores full subdirectory paths like `packages/server/README`.
+    // A hand-typed `[[packages/server/README]]` should resolve. The drop
+    // flow wouldn't produce this target (file.name is basename-only), but
+    // the resolver still needs to work for hand-typed cross-subdir links.
     const pages = new Set(['packages/server/README']);
     expect(isResolvedWikiLinkTarget('packages/server/README', pages)).toBe(true);
     expect(isResolvedWikiLinkTarget('packages/server/readme', pages)).toBe(true);
@@ -224,6 +252,10 @@ describe('resolveWikiLinkTargetDocName', () => {
   });
 
   test('returns the case-preserved docName when target is a slug-form alias', () => {
+    // Mirrors the dropped-file flow: `README.md` dropped → `buildUnresolvedWikiLinkAttrs`
+    // stores target='readme'; cache holds case-preserved 'README'. Without a
+    // slug-based fallback, the icon lookup misses and the chip renders
+    // iconless even though the page exists.
     const pages = new Set(['README']);
     expect(resolveWikiLinkTargetDocName('readme', pages)).toBe('README');
   });
@@ -274,6 +306,10 @@ describe('basename resolution — bare-name target finds a file in a subfolder',
     expect(resolveWikiLinkTargetDocName('foo', pages)).toBe('foo');
   });
 
+  // Production hot path goes through the snapshot fast path
+  // (`PageListCacheSnapshot.pagesByBasename`), not the bare-Set scan.
+  // Pin parity between the two paths so a future regression in either
+  // branch surfaces here.
   test('snapshot input resolves via the prebuilt pagesByBasename index', () => {
     const snapshot = {
       pages: new Set(['andrew-data/project-x/analysis']),
@@ -296,12 +332,18 @@ describe('basename resolution — bare-name target finds a file in a subfolder',
       pagesBySlug: new Map<string, string>([
         ['andrew-data-project-x-analysis', 'andrew-data/project-x/analysis'],
       ]),
+      // pagesByBasename intentionally omitted — backward compat with snapshots
+      // that predate the index.
     };
     expect(resolveWikiLinkTargetDocName('analysis', snapshot)).toBeUndefined();
     expect(isResolvedWikiLinkTarget('analysis', snapshot)).toBe(false);
   });
 
   test('canonical folder-index wins over basename in chip resolution (parity with navigation)', () => {
+    // [[reports]] with both `reports/index` and `other/reports` existing —
+    // navigation lands on `reports/index` (folder-index), so the chip's
+    // icon must come from the same docName. Without folder-index check
+    // in the chip resolver, the icon would mismatch the click target.
     const pages = new Set(['reports/index', 'other/reports']);
     expect(resolveWikiLinkTargetDocName('reports', pages)).toBe('reports/index');
     expect(isResolvedWikiLinkTarget('reports', pages)).toBe(true);
@@ -326,6 +368,9 @@ describe('basename resolution — bare-name target finds a file in a subfolder',
   });
 
   test('snapshot tie-break uses the prebuilt index value, not a Set scan', () => {
+    // The snapshot's pagesByBasename is built once and reused. The lookup
+    // returns whatever the index holds — alphabetical-first by construction
+    // in PageListContext, but the helper does not re-derive. Pin that.
     const snapshot = {
       pages: new Set(['z/foo', 'a/foo']),
       folderPaths: new Set<string>(),

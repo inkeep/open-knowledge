@@ -118,6 +118,8 @@ describe('bootRestoreDecision', () => {
     expect(decision).toEqual({ clearSnapshot: false, action: 'navigator' });
   });
 
+  // urlLaunch — a single-file deep-link (`ok <file>`) claims the launch, so the
+  // boot path opens NO default window (the URL flush owns it).
   test('urlLaunch suppresses lastOpened restore (action none)', () => {
     const decision = bootRestoreDecision({
       pendingRestore: null,
@@ -141,6 +143,9 @@ describe('bootRestoreDecision', () => {
   });
 
   test('urlLaunch does NOT override an update-relaunch restore (snapshot wins)', () => {
+    // A real update relaunch carries no deep-link, so this combo is theoretical
+    // — but the restore must never be dropped, so the snapshot ranks above
+    // urlLaunch.
     const decision = bootRestoreDecision({
       pendingRestore: ['/projects/a', '/projects/b'],
       lastOpenedProject: '/projects/last',

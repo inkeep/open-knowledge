@@ -218,6 +218,8 @@ describe('symlink-safe atomic write', () => {
   });
 });
 
+// ─── resolveWriterFromOrigin ───────────────────────
+
 describe('resolveWriterFromOrigin', () => {
   test('local origin with session_id → agent-<sessionId> writer', () => {
     const origin = {
@@ -310,10 +312,13 @@ describe('resolveWriterFromOrigin', () => {
       context: { origin: 'agent-write', session_id: 'conn-priority' },
     };
     const writer = resolveWriterFromOrigin(origin);
+    // session_id path wins over classified-origin path
     expect(writer?.id).toBe('agent-conn-priority');
   });
 
   test('connection origin matching loaded principal → uses real display_name/email', () => {
+    // When ctx.principalId matches loadedPrincipal.id, resolveWriterFromOrigin
+    // must emit the real git-config display_name/email instead of "Local User".
     const principalId = 'principal-abc-123';
     const origin = {
       source: 'connection',
@@ -333,6 +338,9 @@ describe('resolveWriterFromOrigin', () => {
   });
 
   test('connection origin with mismatched principalId → stub fallback', () => {
+    // Claim doesn't match loaded principal — emit stub so the caller can see
+    // the attribution fell through (the onAuthenticate pin prevents this in
+    // practice, but resolveWriterFromOrigin should still be safe if reached).
     const origin = {
       source: 'connection',
       connection: { context: { principalId: 'principal-different' } },
@@ -359,37 +367,71 @@ describe('resolveWriterFromOrigin', () => {
   });
 });
 
+// ─── captureDocSnapshotForPersistence — atomic pre-write snapshot ────────────
+//
+// The disk-ack watermark contract depends on the SV being captured at the
+// SAME synchronous instant the JSON is read. Any update applied to the doc
+// AFTER this helper returns is — by construction — NOT in the markdown that
+// will land on disk; including it in the watermark would tell clients
+// "the server has durably persisted this update" when the server has not.
+//
+// Returning both as a single value lifts the co-capture into the type system:
+// the helper's contract is "sv reflects exactly the doc state from which json
+// was extracted." The tests below pin that contract so a future refactor that
+// (a) splits the destructure across an await boundary, or (b) re-captures the
+// SV after some downstream mutation, breaks loudly.
+
 describe('captureDocSnapshotForPersistence', () => {
   test('returns sv and json together, both reflecting doc state at call time', () => {
     const doc = new Y.Doc();
     doc.getXmlFragment('default'); // Materialize the fragment that
+    // `yXmlFragmentToProseMirrorRootNode` reads — without it the fragment is
+    // implicitly created but stays empty, which is fine for this test.
 
     const snapshot = captureDocSnapshotForPersistence(doc);
     expect(snapshot.sv).toBeInstanceOf(Uint8Array);
     expect(snapshot.json).toBeDefined();
+    // Empty doc — sv is the trivial state vector.
     expect(snapshot.sv.byteLength).toBeGreaterThan(0);
     doc.destroy();
   });
 
   test('captured sv is a snapshot — does NOT reflect updates applied after capture', () => {
+    // The load-bearing test: after calling the helper, mutate the doc.
+    // The captured sv MUST be byte-identical to a fresh sv taken at the
+    // pre-mutation state. If a future refactor changed the helper to
+    // return a live reference (or to capture sv lazily), this test would
+    // catch it before clients started discarding unsynced edits.
+
+    // Build a "BEFORE" baseline state we can replay onto a peer doc
+    // (Y.js item references have to resolve, so the peer needs the
+    // 'BEFORE' clientID's items present before applying any 'AFTER' delta).
     const docBefore = new Y.Doc();
     docBefore.getText('source').insert(0, 'BEFORE');
     const beforeUpdate = Y.encodeStateAsUpdate(docBefore);
     docBefore.destroy();
 
+    // Test doc starts at 'BEFORE' (carrying docBefore's clientID's items).
     const doc = new Y.Doc();
     Y.applyUpdate(doc, beforeUpdate);
 
     const snapshotBefore = captureDocSnapshotForPersistence(doc);
     const svBeforeBytes = new Uint8Array(snapshotBefore.sv);
 
+    // Apply an update AFTER capture — this represents updates landing
+    // during the disk-write async window in production.
     doc.getText('source').insert(6, 'AFTER');
 
     const snapshotAfter = captureDocSnapshotForPersistence(doc);
     const svAfterBytes = new Uint8Array(snapshotAfter.sv);
 
+    // The post-mutation snapshot's sv MUST differ from the pre-mutation one.
     expect(Array.from(svAfterBytes)).not.toEqual(Array.from(svBeforeBytes));
 
+    // Verify snapshotBefore.sv reflects the pre-AFTER state by computing
+    // the delta from it to current — that delta should reconstitute
+    // exactly the 'AFTER' insertion when applied to a peer at
+    // 'BEFORE' state.
     const delta = Y.encodeStateAsUpdate(doc, svBeforeBytes);
     const peer = new Y.Doc();
     Y.applyUpdate(peer, beforeUpdate);
@@ -402,6 +444,11 @@ describe('captureDocSnapshotForPersistence', () => {
   });
 
   test('helper is uninterruptible — sv and json reflect the same instant', () => {
+    // Single-threaded JS guarantees no Y.js transaction can interleave
+    // between `Y.encodeStateVector` and `yXmlFragmentToProseMirrorRootNode`
+    // inside the helper. This test exercises that property by inserting
+    // many updates in a tight synchronous loop and asserting that the
+    // helper, called once, returns a self-consistent (sv, json) pair.
     const doc = new Y.Doc();
     const text = doc.getText('source');
     for (let i = 0; i < 100; i++) {
@@ -409,10 +456,15 @@ describe('captureDocSnapshotForPersistence', () => {
     }
     const snapshot = captureDocSnapshotForPersistence(doc);
 
+    // Reconstruct the doc from the captured state vector — every update
+    // before the capture should be reachable.
     const reconstructed = new Y.Doc();
     Y.applyUpdate(reconstructed, Y.encodeStateAsUpdate(doc));
     const fullText = reconstructed.getText('source').toString();
 
+    // Verify the snapshot's sv represents the same state as the doc.
+    // (Asserting the json's content directly is brittle to schema changes;
+    // verifying via the sv proves co-capture without testing JSON shape.)
     expect(snapshot.sv.byteLength).toBeGreaterThan(0);
     expect(fullText.length).toBeGreaterThan(0);
 

@@ -1,3 +1,19 @@
+/**
+ * `LruStringCache` — a Map-insertion-order LRU cache with string values.
+ *
+ * Behavior:
+ *   - `get`: returns the value (or undefined). On hit, re-inserts the key
+ *     to mark it as most-recently-used. Map iteration order in JS / V8 /
+ *     JSC is insertion order, so re-inserting deterministically promotes
+ *     the entry without a separate timestamp or counter.
+ *   - `set`: writes the entry (re-inserting if already present so the key
+ *     is MRU), then evicts oldest entries until size <= limit.
+ *   - `clear`: empties the map.
+ *
+ * The cache is intentionally minimal — string values, no TTL, no eviction
+ * callback — because the consumers (`useActivityPanel`, `useTimelineEntryDiff`)
+ * only need fast in-memory hits keyed by stable string identifiers.
+ */
 export class LruStringCache {
   private readonly map = new Map<string, string>();
 

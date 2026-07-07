@@ -122,6 +122,7 @@ describe('asset reference extraction', () => {
         }),
       ).toBe(realpathSync(resolve(dir, 'vault/Board.canvas')));
 
+      // Wiki-link style (bare filename, no ./)
       expect(
         resolveReferencedAssetPath({
           contentDir: dir,
@@ -326,6 +327,11 @@ describe('asset reference extraction', () => {
       });
     }));
 
+  // Links to existing, referenced non-markdown files (html viewer,
+  // gpx track, xml/7z data) rendered as redlinks because collectReferencedAssets
+  // gates on ASSET_EXTENSIONS, which omitted these even though the frontend
+  // classifies any non-md/mdx href as an asset link. An existing + referenced
+  // file of these types must be collected so its link resolves.
   test('collects referenced existing html / gpx / xml / 7z assets (PRD-6948)', () =>
     withFixture((dir) => {
       mkdirSync(join(dir, 'fishing-log'), { recursive: true });

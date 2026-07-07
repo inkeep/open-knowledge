@@ -17,6 +17,11 @@ import {
 import { CHAIN_V1, EDITOR_TARGETS, type EditorMcpTarget } from './editors.ts';
 import { writeEditorMcpConfig } from './init.ts';
 
+// Drive the real write spine (native toml_edit addon) against a temp Codex
+// config, so this exercises the JS<->Rust boundary the engine unit tests can't:
+// the BOM/EOL/trailing-newline wrapper and the register-vs-update labeling, end
+// to end through writeEditorMcpConfig.
+
 function codexTargetForFile(configPath: string): EditorMcpTarget {
   return { ...EDITOR_TARGETS.codex, configPath: () => configPath };
 }
@@ -30,6 +35,12 @@ function writeCodex(configPath: string) {
 
 const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V1] };
 
+// Independent CAPABLE parse for data-equality. Bun.TOML.parse is itself weak —
+// it rejects microsecond datetimes and is lossy on 64-bit integers, the very
+// values this feature exists to preserve — so the byte-level `toContain`
+// assertions are the parser-independent fidelity proof, and this capable read
+// (toml_edit's parse path, a different code path from the write) confirms the
+// document is well-formed and our entry decodes correctly.
 // biome-ignore lint/suspicious/noExplicitAny: structured nested access in tests.
 function parseToml(raw: string): any {
   const engine = createTomlConfigEngine();
@@ -41,6 +52,8 @@ describe('surgical TOML MCP write', () => {
   let dir: string;
 
   beforeEach(() => {
+    // Force the real native engine — the format-preserving path. Fail loudly if
+    // the addon wasn't built so the gate cannot vacuously pass on the fallback.
     const engine = createTomlConfigEngine();
     if (engine.backend !== 'native') {
       throw new Error('native toml_edit addon must be built for the surgical TOML write gate');
@@ -63,6 +76,8 @@ describe('surgical TOML MCP write', () => {
     () => {
       const configPath = tempFile('config.toml');
       writeFileSync(configPath, '# my codex config\nmodel = "gpt-5"\n');
+      // A tightened Codex config (it carries provider tokens) must not be
+      // widened to group/world-readable when OK adds its entry.
       chmodSync(configPath, 0o600);
 
       const result = writeCodex(configPath);
@@ -94,6 +109,8 @@ describe('surgical TOML MCP write', () => {
     expect(result.action).toBe('written');
 
     const after = readFileSync(configPath, 'utf-8');
+    // Comments + the int-valued float, the i64, and the microsecond datetime
+    // survive byte-for-byte (toml_edit preserves their representation).
     expect(after).toContain('# hand-written header');
     expect(after).toContain('command = "linear-cmd"  # keep this note');
     expect(after).toContain('timeout = 30.0');
@@ -102,6 +119,8 @@ describe('surgical TOML MCP write', () => {
     expect(after).toContain('server.host = "localhost"');
     expect(after).toContain('[mcp_servers.open-knowledge]');
 
+    // Independent parse confirms data-equality: the sibling is untouched and our
+    // entry is added with the published chain shape.
     const parsed = parseToml(after);
     expect(parsed.model).toBe('gpt-5');
     expect(parsed.timeout).toBe(30.0);
@@ -114,6 +133,8 @@ describe('surgical TOML MCP write', () => {
 
   it('appends our entry with the rest of the file byte-identical (only-additive)', () => {
     const configPath = tempFile('config.toml');
+    // No existing mcp_servers table, so toml_edit appends our entry at the end;
+    // everything before it must be byte-identical to the original.
     const original = '# my config\nmodel = "gpt-5"\n';
     writeFileSync(configPath, original);
 
@@ -125,6 +146,7 @@ describe('surgical TOML MCP write', () => {
 
   it('preserves a leading UTF-8 BOM byte-for-byte', () => {
     const configPath = tempFile('config.toml');
+    // Explicit escape — never an invisible BOM literal in source.
     const original = '\uFEFF# bom config\nmodel = "gpt-5"\n';
     writeFileSync(configPath, original);
 
@@ -147,9 +169,12 @@ describe('surgical TOML MCP write', () => {
     expect(result.action).toBe('written');
 
     const after = readFileSync(configPath, 'utf-8');
+    // Every newline in the file is CRLF — no lone LF leaked in.
     expect(after.replace(/\r\n/g, '')).not.toContain('\n');
     expect(after).toContain('# crlf config');
 
+    // The chain decodes to pure LF despite the surrounding CRLF: our string
+    // values serialize single-line-escaped, so the `\n` escapes stay LF.
     const parsed = parseToml(after);
     expect(parsed.mcp_servers.other).toEqual({ command: 'node' });
     expect(parsed.mcp_servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
@@ -160,6 +185,10 @@ describe('surgical TOML MCP write', () => {
 
   it('does not double the CR of a CRLF multi-line string sibling', () => {
     const configPath = tempFile('config.toml');
+    // A uniformly-CRLF file with a sibling multi-line basic string whose interior
+    // newlines toml_edit preserves verbatim (as CRLF). A blanket `\n`->`\r\n`
+    // re-apply would turn each preserved `\r\n` into `\r\r\n`, corrupting a value
+    // OK does not own.
     const original =
       '# crlf config\r\nmodel = "gpt-5"\r\n\r\n[server]\r\nnotes = """\r\nline one\r\nline two\r\n"""\r\n';
     writeFileSync(configPath, original);
@@ -168,14 +197,20 @@ describe('surgical TOML MCP write', () => {
     expect(result.action).toBe('written');
 
     const after = readFileSync(configPath, 'utf-8');
+    // No CR was doubled anywhere in the file.
     expect(after).not.toContain('\r\r');
+    // The sibling multi-line string round-trips byte-identical.
     expect(after).toContain('notes = """\r\nline one\r\nline two\r\n"""');
+    // Independent capable parse confirms the decoded sibling value is unchanged.
     const parsed = parseToml(after);
     expect(parsed.server.notes).toBe('line one\r\nline two\r\n');
   });
 
   it('keeps an LF-dominant file LF despite a stray CRLF (dominant EOL, not presence)', () => {
     const configPath = tempFile('config.toml');
+    // The file is LF-dominant with a single stray CRLF. Detecting CRLF by mere
+    // presence would rewrite every structural newline to CRLF; capturing the
+    // dominant EOL keeps the file LF.
     const original = 'model = "gpt-5"\r\n# one stray crlf above, rest LF\nname = "ok"\n';
     writeFileSync(configPath, original);
 
@@ -183,6 +218,7 @@ describe('surgical TOML MCP write', () => {
     expect(result.action).toBe('written');
 
     const after = readFileSync(configPath, 'utf-8');
+    // The structural newlines OK emits stay LF — no blanket CRLF conversion.
     expect(after).not.toContain('\r');
     expect(parseToml(after).mcp_servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
   });
@@ -205,6 +241,9 @@ describe('surgical TOML MCP write', () => {
     writeFileSync(configPath, original);
 
     writeCodex(configPath);
+    // No `.ok-backup` sidecar: a whole-file copy beside the (possibly git-tracked,
+    // symlink-resolved) target would snapshot sibling MCP servers' secrets; the
+    // atomic tmp+rename already guards against a torn write.
     expect(existsSync(`${configPath}.ok-backup`)).toBe(false);
   });
 
@@ -255,6 +294,7 @@ describe('surgical TOML MCP write', () => {
     const after = readFileSync(configPath, 'utf-8');
     expect(after.endsWith('\n')).toBe(true);
     expect(parseToml(after).mcp_servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
+    // No backup on a fresh create — there was nothing to preserve.
     expect(existsSync(`${configPath}.ok-backup`)).toBe(false);
   });
 });

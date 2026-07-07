@@ -1,5 +1,11 @@
 import type { Thing, WithContext } from 'schema-dts';
 
+/**
+ * Replace any `</script>` sequences in the serialized JSON so a future
+ * dynamic schema input (e.g. page title containing literal `</script>`)
+ * can't escape the surrounding <script type="application/ld+json"> tag.
+ * Current inputs are static literals — this is defense-in-depth.
+ */
 function safeJsonLdSerialize(value: unknown): string {
   return JSON.stringify(value).replace(/<\/script/gi, '<\\/script');
 }

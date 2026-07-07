@@ -5,6 +5,16 @@ import {
   extractWikilinkTarget,
 } from './wiki-link-source';
 
+/**
+ * Unit tests for the wikilink broken-detection primitives.
+ *
+ * The plugin itself runs inside a ViewPlugin closure that needs a live CM6
+ * EditorView (DOM-bound), so full behavior is covered by Playwright. These
+ * tests focus on the pure helpers — `buildPageNameSet` (normalization) and
+ * `extractWikilinkTarget` (parsing) — which are where target-matching
+ * false-positives / false-negatives would come from.
+ */
+
 describe('buildPageNameSet', () => {
   test('empty input → empty set', () => {
     expect(buildPageNameSet([]).size).toBe(0);
@@ -36,6 +46,7 @@ describe('buildPageNameSet', () => {
     const s = buildPageNameSet([{ docName: 'ReadMe', title: 'The README' }]);
     expect(s.has('readme')).toBe(true);
     expect(s.has('the readme')).toBe(true);
+    // Should not contain the original-case strings
     expect(s.has('ReadMe')).toBe(false);
     expect(s.has('The README')).toBe(false);
   });
@@ -85,6 +96,7 @@ describe('extractWikilinkTarget', () => {
   });
 
   test('strips both (alias first — whichever delimiter comes first wins)', () => {
+    // The split regex is /[#|]/ — splits on whichever appears first.
     expect(extractWikilinkTarget('SomePage|display#anchor')).toBe('somepage');
   });
 
@@ -147,6 +159,8 @@ describe('end-to-end target matching', () => {
   });
 
   test('empty target (bare #anchor in wikilink) matches nothing', () => {
+    // The plugin's check `target && !pageSet.has(target)` treats empty target
+    // as a no-op (never emits broken-mark); verified here by the truthy check.
     const target = extractWikilinkTarget('#anchor-only');
     expect(target).toBe('');
     expect(Boolean(target)).toBe(false);

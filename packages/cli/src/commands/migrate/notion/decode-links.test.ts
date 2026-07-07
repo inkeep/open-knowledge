@@ -65,6 +65,8 @@ describe('decodeLinks', () => {
   });
 
   test('does not mis-toggle fence state on a mismatched fence character', () => {
+    // A backtick block containing a `~~~` line must stay a code block; the link
+    // after the real closing ``` must still be rewritten.
     const input = [
       '```',
       '[x](Foo%20Bar.md)',

@@ -1,3 +1,24 @@
+/**
+ * CRUD-capable widget for nested object values. Renders a Collapsible whose
+ * content lists each child key as a {@link FrontmatterRow}. Mutation routes
+ * through the {@link FrontmatterBinding}'s LOCAL path API
+ * (`patchPath` / `deletePath` / `renamePath` / `reorderPath`) so a depth-N
+ * leaf edit preserves sibling subtrees + comments + flow style. The public
+ * wire patch contract stays RFC-7396 whole-subtree merge with no path syntax;
+ * the LOCAL panel/binding gets path-addressed precision.
+ *
+ * Nested reorder uses its OWN `<DndContext>` so dnd-kit's drag events stay
+ * scoped to this map (a top-level `<DndContext>` would receive every nested
+ * drag and the drag-end handler would not know which level was active). The
+ * panel-level `<DndContext>` in {@link PropertyPanel} handles top-level rows
+ * separately.
+ *
+ * State (rename draft, errors, add draft, expand/collapse) lives at the
+ * ObjectWidget level — each nested map manages its own CRUD lifecycle
+ * independently. Allows two open rename drafts at different depths, which
+ * matches the existing top-level posture of one draft per panel.
+ */
+
 import {
   closestCenter,
   DndContext,
@@ -37,7 +58,18 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 interface ObjectWidgetProps {
   keyName: string;
   value: { [key: string]: FrontmatterValue };
+  /**
+   * Path TO this object (e.g. `['metadata']` for a top-level `metadata:` key,
+   * `['metadata', 'details']` for a depth-2 nested object). Used to address
+   * the binding's path API for every CRUD operation on this object's
+   * children.
+   */
   path: ReadonlyArray<string | number>;
+  /**
+   * Nesting depth — `0` = direct child of a top-level row. Top-level objects
+   * expand by default (one level of nesting visible on doc open); deeper
+   * objects collapse by default to keep deep trees from drowning the panel.
+   */
   depth?: number;
 }
 
@@ -210,9 +242,13 @@ export function ObjectWidget({ keyName, value, path, depth = 0 }: ObjectWidgetPr
 
     const result = binding.reorderPath(path, next);
     if (result.ok) {
+      // Clear any error left by a prior failed reorder of this key, symmetric
+      // with ArrayOfObjectsWidget's success-path clearing.
       clearError(moved);
       return;
     }
+    // Surface reorder failures on the active key; the row remounts via
+    // resetCounters so any uncommitted draft state clears.
     const message = describeError(result.error, moved, t`Failed to reorder`);
     applyError(moved, message);
   }

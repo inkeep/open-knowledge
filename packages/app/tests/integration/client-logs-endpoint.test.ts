@@ -1,3 +1,15 @@
+/**
+ * Integration tests for `POST /api/client-logs` — the web/browser path that
+ * ingests renderer `console` output into the server `renderer` pino log.
+ *
+ * Covers: happy-path accept count, body validation (bad level / over the entry
+ * cap → 400), method gate (GET → 405), and the DNS-rebinding Host gate (bad
+ * Host from a loopback peer → 403, fired before the handler). The level-mapping
+ * and structured-message lifting are unit-tested in
+ * `packages/core/src/logging/renderer-log.test.ts`; the schema bounds in
+ * `packages/core/src/schemas/api/client-logs.test.ts`.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { RENDERER_LOG_MAX_ENTRIES } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';

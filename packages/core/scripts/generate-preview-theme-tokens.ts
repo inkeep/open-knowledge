@@ -1,3 +1,15 @@
+/**
+ * One-shot regenerator for `src/constants/preview-theme-tokens.ts`. Reads the
+ * preview token subset from `packages/app/src/globals.css`, resolves `var()`
+ * indirections, and writes the constants module verbatim. Run via:
+ *
+ *   bun run packages/core/scripts/generate-preview-theme-tokens.ts
+ *
+ * After running, diff the output — landing it should only flip values when a
+ * listed token in `globals.css` actually moved. The drift test in
+ * `packages/core/src/constants/preview-theme-tokens.test.ts` enforces parity
+ * at CI time (no separate `--check` mode needed — the unit test is the gate).
+ */
 import { writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -1,6 +1,27 @@
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { installClientFetchWrapper } from './client-fetch';
 
+/**
+ * Unit tests for the always-installed renderer fetch wrapper. These exercise
+ * the pure wrapper logic — no DOM or Electron runtime needed. The real
+ * window.fetch is replaced by a stub so we can assert on the URL + headers
+ * passed through.
+ *
+ * Isolation contract: Bun's test runner shares a single process across test
+ * files, so we preserve + restore `globalThis.window` and `globalThis.fetch`
+ * around this suite. Other suites (e.g. `handle-paste.test.ts`) depend on the
+ * ambient `window` object being untouched — without this restoration they'd see
+ * our stub and fail with "window.getSelection is not a function" or similar.
+ *
+ * Coverage:
+ *  - version headers injected on every /api/* request (web mode, no apiOrigin)
+ *  - desktop mode: relative /api/* rewritten to apiOrigin AND headers injected
+ *  - absolute apiOrigin /api/* (skill installer shape) → headers, no double-rewrite
+ *  - non-/api requests + absolute externals → untouched, no headers
+ *  - Request objects → rewritten, method/body preserved, headers injected
+ *  - double-install is idempotent
+ */
+
 type GlobalLike = {
   window?: Window;
   fetch?: typeof fetch;
@@ -25,17 +46,22 @@ function stubWindowFetch() {
     fetch: fetchStub,
     location: { origin: 'http://localhost:5173' },
   } as unknown as Window;
+  // Replace globalThis.fetch too since `window.fetch.bind(window)` reads the
+  // identity from the `window` binding we just installed.
   g.fetch = fetchStub as unknown as typeof fetch;
   return { calls, fetchStub };
 }
 
+/** Read a header off a recorded call's init (the wrapper always passes Headers). */
 function header(call: Recorded | undefined, name: string): string | null | undefined {
   const h = call?.init?.headers;
   return h instanceof Headers ? h.get(name) : undefined;
 }
 
 describe('installClientFetchWrapper', () => {
-  beforeAll(() => {});
+  beforeAll(() => {
+    // Capture whatever ambient globals exist at suite entry.
+  });
 
   afterAll(() => {
     if (originalWindow === undefined) delete g.window;
@@ -45,10 +71,12 @@ describe('installClientFetchWrapper', () => {
   });
 
   afterEach(() => {
+    // Fresh window per test so the Symbol.for marker doesn't leak across.
     delete g.window;
     delete g.fetch;
   });
 
+  // web mode (no apiOrigin) — headers on every /api/* call, URL unchanged.
   test('web mode injects version headers on relative /api/* without rewriting', async () => {
     const { calls } = stubWindowFetch();
     installClientFetchWrapper();
@@ -68,6 +96,8 @@ describe('installClientFetchWrapper', () => {
     expect(header(calls[0], KIND)).toBe('web');
   });
 
+  // A caller that pre-prepends apiOrigin (skill installer)
+  // must still be instrumented even though it bypasses the relative-path rewrite.
   test('absolute apiOrigin /api/* gets headers without double-rewrite', async () => {
     const { calls } = stubWindowFetch();
     installClientFetchWrapper({ apiOrigin: 'http://localhost:59534' });
@@ -131,6 +161,7 @@ describe('installClientFetchWrapper', () => {
     expect(rewritten).toBeInstanceOf(Request);
     expect((rewritten as Request).url).toBe('http://localhost:59534/api/agent-write-md');
     expect((rewritten as Request).method).toBe('POST');
+    // Version headers ride in the override init; original Content-Type preserved.
     expect(header(calls[0], KIND)).toBe('web');
     expect(header(calls[0], 'content-type')).toBe('application/json');
   });
@@ -139,6 +170,7 @@ describe('installClientFetchWrapper', () => {
     const { fetchStub } = stubWindowFetch();
     const before = window.fetch;
     installClientFetchWrapper({ apiOrigin: '' });
+    // Wrapper installed even with empty apiOrigin (headers must reach web mode).
     expect(window.fetch).not.toBe(before);
     expect(window.fetch).not.toBe(fetchStub as unknown as typeof fetch);
   });

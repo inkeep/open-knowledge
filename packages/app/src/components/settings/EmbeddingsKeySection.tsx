@@ -1,3 +1,15 @@
+/**
+ * Settings → Account — the embeddings provider API key control.
+ *
+ * The key is machine-global (one for all projects, stored in `~/.ok/secrets.yml`),
+ * so it lives here next to the GitHub credential rather than in the per-project
+ * Search section. Write-only: the key is never displayed or returned — the UI
+ * shows only presence (`keyPresent` from `GET /api/semantic-status`) and lets the
+ * user set / replace / clear it through the loopback transport.
+ *
+ * HTTP-only (Settings renders only in the editor window, which has the API
+ * server) — the transport is caller-injected for tests, defaulting to HTTP.
+ */
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';

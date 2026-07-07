@@ -1,4 +1,22 @@
 #!/usr/bin/env node
+/**
+ * Force-install @napi-rs/keyring darwin prebuilds for BOTH architectures
+ * before electron-builder's universal-DMG merge runs.
+ *
+ * @napi-rs/keyring publishes per-arch native binaries as optionalDependencies
+ * with `cpu`/`os` constraints. Bun (and npm/pnpm) skip optionalDependencies
+ * whose cpu/os doesn't match the host. On an arm64 macOS runner only
+ * @napi-rs/keyring-darwin-arm64 gets installed; the darwin-x64 binary is
+ * missing, and electron-builder's @electron/universal lipo-merge step either
+ * errors or hangs waiting for x64 inputs that don't exist.
+ *
+ * Pulls each missing tarball from registry.npmjs.org and extracts to
+ * <repo-root>/node_modules/@napi-rs/keyring-darwin-<arch>/, matching the
+ * layout bun produces for the host arch. Idempotent: skips when the target
+ * dir already has a matching-version package.json.
+ *
+ * No-op on non-darwin hosts.
+ */
 import { execFileSync } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `ok ps` command logic.
+ *
+ * All filesystem and process-scan side effects are injected via the `deps`
+ * argument — no actual processes or lock files needed.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { extractOkBinaryPath } from '../utils/process-scan.ts';
 import type { LockState } from './lock-state.ts';
@@ -5,6 +12,10 @@ import { isDesktopCommand, renderTable, runPs, timeAgo } from './ps.ts';
 
 const ELECTRON_UTILITY_COMMAND =
   '/path/to/Electron Helper.app/Contents/MacOS/Electron Helper --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function makeAliveServer(overrides?: {
   worktreeRoot?: string;
@@ -74,6 +85,10 @@ const corruptLock: LockState = {
   lockPath: '/tmp/notes/.ok/ui.lock',
 };
 
+// ---------------------------------------------------------------------------
+// timeAgo tests
+// ---------------------------------------------------------------------------
+
 describe('timeAgo', () => {
   test('returns seconds when diff < 60s', () => {
     const now = new Date('2026-05-05T10:00:30.000Z').getTime();
@@ -99,6 +114,10 @@ describe('timeAgo', () => {
     expect(timeAgo('not-a-date')).toBe('—');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Default filter: alive + foreign-host (dead-pid hidden)
+// ---------------------------------------------------------------------------
 
 describe('runPs default (alive + foreign-host)', () => {
   test('shows alive server, hides dead-pid server', async () => {
@@ -165,6 +184,10 @@ describe('runPs default (alive + foreign-host)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// --all flag: includes dead-pid and foreign-host
+// ---------------------------------------------------------------------------
+
 describe('runPs --all', () => {
   test('includes dead-pid entries', async () => {
     const aliveServerState = makeAliveServer({ worktreeRoot: '/tmp/notes' });
@@ -208,6 +231,10 @@ describe('runPs --all', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Desktop label override
+// ---------------------------------------------------------------------------
+
 describe('isDesktopCommand', () => {
   test('returns true for Electron utility process with NodeService sub-type', () => {
     expect(isDesktopCommand(ELECTRON_UTILITY_COMMAND)).toBe(true);
@@ -224,6 +251,9 @@ describe('isDesktopCommand', () => {
   });
 
   test('returns false for non-Electron Chromium utility (e.g. VS Code, Slack)', () => {
+    // VS Code Helper carries `--type=utility` but a different sub-type
+    // (network.mojom.NetworkService etc.). Without NodeService pairing we
+    // must NOT misidentify it as our desktop server.
     expect(
       isDesktopCommand(
         '/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper --type=utility --utility-sub-type=network.mojom.NetworkService',
@@ -256,6 +286,8 @@ describe('runPs desktop labeling', () => {
   });
 
   test('foreign-host server with --type=utility command shows "desktop", not "foreign"', async () => {
+    // Hostname-drift case: lock written when hostname=Mac, current host=foo.local.
+    // Since the live process is an Electron utility, surface it as desktop.
     const foreignServerState = makeForeignServer({ worktreeRoot: '/tmp/vault' });
 
     const lines: string[] = [];
@@ -306,6 +338,11 @@ describe('runPs desktop labeling', () => {
   });
 
   test('dead-pid + Electron command keeps "stale" label (not "desktop")', async () => {
+    // Pins the displayStatus invariant: the desktop override only fires for
+    // alive/foreign-host server states. A dead PID plus an Electron utility
+    // command is still stale — `isDesktopCommand` succeeding doesn't tell us
+    // whether the dead process was actually OUR desktop, and surfacing
+    // `desktop` would make `ok stop` and `ok clean` semantics inconsistent.
     const deadServerState = makeDeadServer({ worktreeRoot: '/tmp/notes' });
 
     const lines: string[] = [];
@@ -322,6 +359,10 @@ describe('runPs desktop labeling', () => {
     expect(output).not.toContain('desktop');
   });
 });
+
+// ---------------------------------------------------------------------------
+// --json flag: always includes all statuses
+// ---------------------------------------------------------------------------
 
 describe('runPs --json', () => {
   test('includes all statuses unconditionally', async () => {
@@ -458,6 +499,10 @@ describe('runPs --json', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// PORTS column format
+// ---------------------------------------------------------------------------
+
 describe('PORTS column', () => {
   test('server port 0 shows (starting)', async () => {
     const startingServer = makeAliveServer({ worktreeRoot: '/tmp/starting', port: 0 });
@@ -513,6 +558,9 @@ describe('PORTS column', () => {
   });
 
   test('foreign-host ui shows port in PORTS (post inspectLock-reorder)', async () => {
+    // After the inspectLock liveness-first reorder, foreign-host means the PID
+    // is alive locally — hostname drift, not a remote server. Hiding the port
+    // (the previous behavior) made orphan UIs invisible.
     const aliveServer = makeAliveServer({ worktreeRoot: '/tmp/notes', port: 5173 });
     const foreignUi: LockState = {
       status: 'foreign-host',
@@ -537,6 +585,10 @@ describe('PORTS column', () => {
     expect(output).toContain('5173 / 3001');
   });
 });
+
+// ---------------------------------------------------------------------------
+// ui-orphan label
+// ---------------------------------------------------------------------------
 
 describe('ui-orphan label', () => {
   function makeAliveUi(overrides?: { pid?: number; port?: number }): LockState {
@@ -638,6 +690,8 @@ describe('ui-orphan label', () => {
   });
 
   test('ui-orphan row shows live UI PID, not dead server PID', async () => {
+    // Footer hint says `ok stop <pid>`; pointing at the dead server PID
+    // would be a dead end. Show the UI PID so copy-paste works.
     const deadServer = makeDeadServer({ worktreeRoot: '/tmp/notes', pid: 44444 });
     const aliveUi = makeAliveUi({ pid: 23456 });
 
@@ -654,6 +708,10 @@ describe('ui-orphan label', () => {
     expect(output).not.toContain('44444'); // dead server PID
   });
 });
+
+// ---------------------------------------------------------------------------
+// Discard entries with missing or corrupt server lock
+// ---------------------------------------------------------------------------
 
 describe('server lock missing/corrupt discards entry', () => {
   test('missing server lock: entry discarded', async () => {
@@ -680,6 +738,10 @@ describe('server lock missing/corrupt discards entry', () => {
     expect(output).toBe('No open-knowledge servers found.');
   });
 });
+
+// ---------------------------------------------------------------------------
+// renderTable tests
+// ---------------------------------------------------------------------------
 
 describe('renderTable', () => {
   test('renders header row', () => {
@@ -718,6 +780,10 @@ describe('renderTable', () => {
     expect(output).toContain('/tmp/open-knowledge/packages/cli/src/cli.ts');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Binary path extraction
+// ---------------------------------------------------------------------------
 
 describe('extractOkBinaryPath', () => {
   test('extracts source cli path from node invocation', () => {

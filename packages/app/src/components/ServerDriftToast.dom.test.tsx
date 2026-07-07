@@ -16,6 +16,8 @@ describe('ServerDriftToast', () => {
   test('renders the body, the full warning, and both buttons', () => {
     render(<ServerDriftToast {...baseProps} onRestart={() => {}} onDismiss={() => {}} />);
     expect(screen.getByText(baseProps.body)).toBeDefined();
+    // The full warning renders as a single text node (it must not collapse to a
+    // per-word column the way sonner's built-in description layout did).
     expect(screen.getByText(baseProps.warning)).toBeDefined();
     expect(screen.getByRole('button', { name: baseProps.restartLabel })).toBeDefined();
     expect(screen.getByRole('button', { name: baseProps.cancelLabel })).toBeDefined();

@@ -19,6 +19,9 @@ describe('nativePickerValue', () => {
   });
 
   test('returns safe fallback (#000000) for non-hex strings', () => {
+    // The browser's <input type="color"> only honors 7-char `#RRGGBB`.
+    // Free-string values like CSS color names / rgb() / var() / empty
+    // strings can't seed the picker; black is the inert fallback.
     expect(nativePickerValue('')).toBe('#000000');
     expect(nativePickerValue('red')).toBe('#000000');
     expect(nativePickerValue('rgb(240,80,50)')).toBe('#000000');

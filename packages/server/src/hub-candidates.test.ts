@@ -27,6 +27,7 @@ describe('findHubCandidates', () => {
       'reports/r1/evidence/REPORT',
       'reports/r1/evidence/a',
     ]);
+    // evidence/REPORT is nearer than reports/r1/INDEX — should appear first.
     const result = findHubCandidates('reports/r1/evidence/a', index);
     expect(result[0]).toBe('reports/r1/evidence/REPORT');
     expect(result).toContain('reports/r1/INDEX');
@@ -43,6 +44,7 @@ describe('findHubCandidates', () => {
     ]);
     const result = findHubCandidates('reports/r1/foo', index);
     expect(result.length).toBe(3);
+    // INDEX > README > REPORT priority preserved
     expect(result).toEqual(['reports/r1/INDEX', 'reports/r1/README', 'reports/r1/REPORT']);
   });
 
@@ -57,6 +59,7 @@ describe('findHubCandidates', () => {
   });
 
   test('excludes the target doc itself', () => {
+    // If somehow the target doc has a hub-matching name, it's not its own hub.
     const index = makeIndex(['reports/r1/INDEX']);
     expect(findHubCandidates('reports/r1/INDEX', index)).toEqual([]);
   });
@@ -72,6 +75,8 @@ describe('findHubCandidates', () => {
   });
 
   test('no folder-name-match at content root (empty folder has no basename)', () => {
+    // A doc at content root has parentFolder = '' — there is no folder basename
+    // to probe. Only fixed hub names match.
     const index = makeIndex(['foo', 'bar']);
     expect(findHubCandidates('foo', index)).toEqual([]);
   });

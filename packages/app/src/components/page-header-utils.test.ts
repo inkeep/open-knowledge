@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { resolvePageCover, resolvePageIcon } from './page-header-utils';
 
+// ---------------------------------------------------------------------------
+// resolvePageIcon
+// ---------------------------------------------------------------------------
+
 describe('resolvePageIcon', () => {
   test('classifies a single emoji as emoji', () => {
     expect(resolvePageIcon('📝')).toEqual({ kind: 'emoji', value: '📝' });
@@ -78,28 +82,45 @@ describe('resolvePageIcon', () => {
   });
 
   test('strips query / hash from URL extension check (URL branch only)', () => {
+    // `image.png?v=2` on the URL branch classifies by `png`, not
+    // `png?v=2` — the browser fetches URLs directly and ignores
+    // server-side `extname` lookup.
     expect(resolvePageIcon('https://example.com/image.png?v=2').kind).toBe('url');
     expect(resolvePageIcon('https://example.com/image.png#anchor').kind).toBe('url');
   });
 
   test('rejects query / hash on the path branch (would 415 server-side)', () => {
+    // Path-branch values flow into `/api/asset?path=...`. The server
+    // runs `extname(path)` against the literal string and would see
+    // `.png?v=2`, 415ing on missing mime. We pre-reject so the failure
+    // is visible at storage / render time rather than at network.
     expect(resolvePageIcon('assets/image.png?v=2').kind).toBe('unsupported');
     expect(resolvePageIcon('assets/image.png#anchor').kind).toBe('unsupported');
   });
 
   test('tolerates a single leading slash (upload-pipeline shape)', () => {
+    // `/api/upload` returns `/attachments/foo.png` for every successful
+    // upload; the widget commits that string verbatim into frontmatter.
+    // Resolver must classify as `path` AND strip the leading slash
+    // before encoding into `/api/asset?path=...` so the server-side
+    // `resolve(contentDir, ...)` doesn't discard `contentDir`.
     const r = resolvePageIcon('/attachments/banner.png');
     expect(r.kind).toBe('path');
     expect(r.value).toContain('/api/asset?path=');
+    // No leading slash inside the encoded path query.
     expect(r.value).toContain(encodeURIComponent('attachments/banner.png'));
     expect(r.value).not.toContain(encodeURIComponent('/attachments/banner.png'));
   });
 
   test('rejects a double leading slash (network-relative URL)', () => {
+    // `//evil.com/foo.png` would `<img src>` cross-origin without
+    // triggering `isSafeUrl` (no scheme to inspect). Reject.
     expect(resolvePageIcon('//evil.com/logo.png').kind).toBe('unsupported');
   });
 
   test('rejects a non-Latin word that ASCII-only letter check would let through', () => {
+    // `привет` and `γειά` had no `[a-zA-Z]` chars so the
+    // emoji classifier accepted them. `\p{L}/u` closes that.
     expect(resolvePageIcon('привет').kind).toBe('unsupported');
     expect(resolvePageIcon('γειά').kind).toBe('unsupported');
     expect(resolvePageIcon('مرحبا').kind).toBe('unsupported');
@@ -111,6 +132,10 @@ describe('resolvePageIcon', () => {
     expect(resolvePageIcon('assets/icon.webp').kind).toBe('path');
   });
 });
+
+// ---------------------------------------------------------------------------
+// resolvePageCover
+// ---------------------------------------------------------------------------
 
 describe('resolvePageCover', () => {
   test('rejects emoji (covers require an image)', () => {

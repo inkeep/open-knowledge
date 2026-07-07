@@ -1,9 +1,28 @@
+/**
+ * Tier-3 RTL behavior tests for `EditWithAiPopover` — the controlled popover
+ * shell that anchors the instruction panel to the trigger, refreshes install
+ * state on open, and routes a target pick through
+ * `buildSelectionOrDocHandoffInput` -> `useHandoffDispatch().dispatch` against
+ * the caller-supplied snapshot.
+ *
+ * `useInstalledAgents` + `useHandoffDispatch` are mocked so the test controls
+ * install state and observes the dispatch wiring without the real probe /
+ * URL-dispatch graph. The pure panel rendering is covered separately by
+ * `EditWithAiPanel.dom.test.tsx`.
+ *
+ * Invocation: `bun run test:dom` from `packages/app/`.
+ */
+
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Button } from '@/components/ui/button';
 import type { EditWithAiSelectionSnapshot } from './EditWithAiPopover';
 
+// Radix UI's Popover uses `react-focus-scope` + Floating UI, which touch DOM
+// globals the shared jsdom preload deliberately omits. Hoist what this popover
+// needs locally — copied byte-for-byte from `SettingsDialogShell.dom.test.tsx`
+// so the regression surface across Radix-layer mounts stays uniform.
 type WindowGlobals = {
   MutationObserver?: typeof MutationObserver;
   NodeFilter?: typeof NodeFilter;
@@ -72,6 +91,10 @@ mock.module('./useHandoffDispatch', () => ({
     },
     reinstallCoworkSkill: () => Promise.resolve({ kind: 'already-installed' }),
   }),
+  // Records its args and returns a recognizable non-null input so the popover
+  // proceeds to dispatch. The real builder is unit-tested in
+  // `useHandoffDispatch.test.ts`. Mirrors the real builder's null-return on an
+  // empty selection so the popover's null-branch toast can be exercised.
   buildSelectionOrDocHandoffInput: (args: { selectionMarkdown: string }) => {
     buildArgs.push(args);
     return args.selectionMarkdown === '' ? null : { __built: true };
@@ -156,6 +179,10 @@ describe('EditWithAiPopover', () => {
   });
 
   test('null input from the builder surfaces a toast and skips dispatch', async () => {
+    // The builder returns null when docName / workspace are unresolved or the
+    // selection serialized to empty. Without the popover's null-branch toast,
+    // the dispatch would silently no-op while the popover closed — invisible to
+    // the user. This pin asserts the toast fires + dispatch is skipped.
     const user = userEvent.setup();
     renderPopover({ open: true, snapshot: { ...SNAPSHOT, selectionMarkdown: '' } });
 

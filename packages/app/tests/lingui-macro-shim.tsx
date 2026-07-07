@@ -1,6 +1,27 @@
+/**
+ * Test-only runtime stand-in for the Lingui macros (`@lingui/react/macro` +
+ * `@lingui/core/macro`).
+ *
+ * `bun test` does not run the Lingui Babel macro transform, so importing the
+ * real `@lingui/{react,core}/macro` modules throws ("Cannot find package
+ * 'babel-plugin-macros'"). `tests/lingui-macro-preload.ts` aliases the macro
+ * specifiers to this shim.
+ *
+ * The shim is English-passthrough: it renders the source-locale text directly.
+ * That is exactly what the real macro-transformed code renders once the `en`
+ * catalog is active, so component behaviour tests — which assert source-locale
+ * strings — stay valid. The shim deliberately does NOT exercise catalog lookup
+ * or message-ID generation; those are build-time concerns covered by
+ * `lingui extract` + the production build.
+ */
 import { i18n } from '@lingui/core';
 import type { ReactNode } from 'react';
 
+/**
+ * A Lingui message descriptor — the object call shape, e.g.
+ * `t({ message: 'Back', comment: 'nav' })`. The real macro accepts both this
+ * and the tagged-template form, so the shim must accept both as well.
+ */
 type MessageDescriptor = {
   id?: string;
   message?: string;
@@ -8,6 +29,10 @@ type MessageDescriptor = {
   comment?: string;
 };
 
+// A plain `string` is in the set because the shim's own `msg` returns a
+// string (English passthrough), and the real macro `t` accepts a `msg`
+// result — so `t(msg\`…\`)` reaches the shim as `t(string)` and must pass
+// the string straight through rather than treat it as a descriptor.
 type MacroArg = TemplateStringsArray | MessageDescriptor | string;
 
 function isTemplateStrings(arg: MacroArg): arg is TemplateStringsArray {
@@ -36,6 +61,12 @@ function resolveMessage(arg: MacroArg, values: readonly unknown[]): string {
   return isTemplateStrings(arg) ? interpolate(arg, values) : fromDescriptor(arg);
 }
 
+/* ---------- @lingui/core/macro ---------- */
+
+// Each accepts BOTH call shapes the real macro supports: the tagged-template
+// form (`` t`Back` ``) and the descriptor-object form (`t({ message: 'Back',
+// comment: 'nav' })`).
+
 export function t(arg: MacroArg, ...values: unknown[]): string {
   return resolveMessage(arg, values);
 }
@@ -59,6 +90,12 @@ export function select(value: string, options: Record<string, string>): string {
 
 export const selectOrdinal = select;
 
+/* ---------- @lingui/react/macro ---------- */
+
+// Renders the macro's children form (`<Trans>Hello {name}</Trans>` — children
+// already carry the interpolated nodes). Also tolerates the descriptor-prop
+// form (`message` + `values`, no children) and ignores translator-only props
+// (`id`, `comment`, `components`).
 export function Trans({
   children,
   message,
@@ -99,6 +136,10 @@ export function Select({
 
 export const SelectOrdinal = Select;
 
+// `_` is the low-level runtime translate fn from `useLingui()` — it takes a
+// message id/descriptor (often a `msg` result) and optional values. Route
+// objects through `fromDescriptor` so a descriptor never stringifies to
+// `[object Object]`.
 function underscore(
   descriptor: string | MessageDescriptor,
   values?: Record<string, unknown>,

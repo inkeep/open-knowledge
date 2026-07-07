@@ -1,3 +1,20 @@
+/**
+ * RTL behavior tests for `EditWithAiBubbleButton` — the WYSIWYG
+ * bubble-menu "Ask AI" selection affordance.
+ *
+ * Covers the embedded render gate, the cross-platform button, the macOS-only
+ * keyboard shortcut, and the open+focus wiring: clicking the trigger (or, on
+ * macOS, pressing Cmd+Shift+I) dispatches the shared `open-ask-ai-composer`
+ * window event that `BottomComposer` subscribes to — the same path the ⌘L
+ * shortcut runs — rather than opening any popover. The test observes dispatches
+ * through the real `subscribeToOpenAskAiComposer` subscriber, so it asserts the
+ * actual cross-component contract.
+ *
+ * The editor is a minimal `doc > paragraph > text` fake.
+ *
+ * Invocation: `bun run test:dom` from `packages/app/`.
+ */
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -10,6 +27,9 @@ import { setEditorDocName } from '../extensions/doc-context.ts';
 
 mock.module('sonner', () => ({ toast: { error: () => {}, success: () => {} } }));
 
+// The click handler defers its action to the next animation frame; jsdom under
+// bun does not always define rAF, so polyfill it to a microtask and flush via
+// `waitFor` at the assertions.
 if (typeof globalThis.requestAnimationFrame === 'undefined') {
   globalThis.requestAnimationFrame = ((callback) => {
     queueMicrotask(() => callback(0));
@@ -34,6 +54,7 @@ const schema = new Schema({
  *  name (`setEditorDocName` deletes the entry), exercising the ungrounded path. */
 function makeEditor(docName: string | null, text: string, collapsed = false): Editor {
   const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text(text)])]);
+  // Position 1 is just inside the paragraph, before the first char.
   const from = 1;
   const to = collapsed ? 1 : 1 + text.length;
   const editor = {
@@ -47,6 +68,7 @@ function makeEditor(docName: string | null, text: string, collapsed = false): Ed
   return editor;
 }
 
+/** `@tiptap/core`'s `isMacOS()` reads `navigator.platform` at call time. */
 function setPlatform(platform: string): void {
   Object.defineProperty(globalThis.navigator, 'platform', {
     value: platform,
@@ -54,6 +76,7 @@ function setPlatform(platform: string): void {
   });
 }
 
+/** `useIsEmbedded` reads `navigator.userAgent` (via `detectEmbeddedHostFromBrowser`). */
 function setUserAgent(userAgent: string): void {
   Object.defineProperty(globalThis.navigator, 'userAgent', {
     value: userAgent,
@@ -64,8 +87,11 @@ function setUserAgent(userAgent: string): void {
 const PLAIN_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120 Safari/537.36';
 const EMBEDDED_UA = `${PLAIN_UA} Cursor/1.2.3`;
 
+// Count open+focus requests reaching BottomComposer's subscriber path.
 let openRequests = 0;
 let unsubscribe: (() => void) | null = null;
+// Capture text routed to the active-terminal input channel (TerminalSessionsHost's
+// subscriber path in production).
 let terminalInputs: string[] = [];
 let unsubscribeTerminal: (() => void) | null = null;
 
@@ -146,6 +172,8 @@ describe('EditWithAiBubbleButton', () => {
     renderButton({ editor });
 
     await act(async () => {
+      // The real Windows/Linux chord for this shortcut IS the browser DevTools
+      // shortcut; the listener must not be bound off macOS, so nothing fires.
       window.dispatchEvent(
         new KeyboardEvent('keydown', {
           key: 'I',
@@ -179,6 +207,15 @@ describe('EditWithAiBubbleButton', () => {
 
     await user.click(screen.getByTestId('edit-with-ai-bubble-button'));
 
+    // The button hands the selection to the terminal-input channel; the real
+    // pub/sub is exercised (the `beforeEach` subscriber captures the payload),
+    // only the PTY host (`TerminalSessionsHost`) is not mounted here. In
+    // production that host decides reuse vs. composer-fallback. The
+    // passage is NOT pasted raw — it rides as the grounded selection prompt
+    // (`composeSelectionPrompt`), naming the doc as an `@`-mention alongside the
+    // passage. The exact wording is `composeSelectionPrompt`'s own contract
+    // (tested in core); here we assert the grounding is present. Dispatch is
+    // deferred a frame, so flush it before asserting.
     await waitFor(() => expect(terminalInputs).toHaveLength(1));
     const [prompt] = terminalInputs;
     expect(prompt).toContain('@specs/foo/SPEC.md');
@@ -202,6 +239,9 @@ describe('EditWithAiBubbleButton', () => {
   test('clicking with no registered doc name opens the composer instead', async () => {
     setPlatform('MacIntel');
     const user = userEvent.setup();
+    // A non-empty selection, but the editor has no registered doc name (null):
+    // there is no doc to ground the passage against, so the button opens the
+    // composer instead of pasting an ungrounded prompt (mirrors the empty path).
     const editor = makeEditor(null, 'A passage.');
     renderButton({ editor });
 

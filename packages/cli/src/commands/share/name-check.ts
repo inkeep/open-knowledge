@@ -1,3 +1,14 @@
+/**
+ * `open-knowledge share name-check` — probe whether `<owner>/<name>` already
+ * exists on GitHub so the wizard can surface inline conflicts before submit
+ *. 200 OK → name is taken; 404 → name is available; anything else is
+ * network.
+ *
+ * Events:
+ *   { type: 'name-check', available: boolean }
+ *   { type: 'error', code: 'auth-required' | 'network' }
+ */
+
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import type { TokenStore } from '../../auth/token-store.ts';
@@ -16,6 +27,14 @@ type NameCheckResult =
   | { kind: 'auth-required' }
   | { kind: 'network' };
 
+/**
+ * Issue `GET /repos/{owner}/{name}` against the authenticated Octokit. The
+ * SDK returns the typed body on 200 and throws `RequestError` with `.status`
+ * on any non-2xx, so we branch on `status === 404` (available) vs anything
+ * else (taken / transient). Auth failures (401) surface as `auth-required`
+ * so the wizard re-prompts; 403s without SSO context fall through to
+ * `network`.
+ */
 export async function checkSharePublishName(
   octokit: Octokit,
   owner: string,

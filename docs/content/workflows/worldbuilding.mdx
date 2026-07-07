@@ -1,0 +1,108 @@
+---
+title: Worldbuilding
+icon: LuSparkles
+description: "A living encyclopedia for a story you're writing: characters, places, factions, and lore, each on its own page that links to the others. Mention someone new and the AI adds a page for them; contradict your own canon and it flags it. Built on the Worldbuilding starter pack."
+---
+A **worldbuilding** knowledge base is a living encyclopedia of your story world. Characters, settings, themes, factions, and lore — each its own page, all linking to each other. The graph *is* the product: the value isn't any single entry, it's the web connecting them, and an agent that grows and guards that web as you write.
+
+```html preview
+<div style="padding:16px">
+  <svg id="web" viewBox="0 0 460 220" style="width:100%;max-width:520px;display:block;margin:0 auto" role="img" aria-label="A graph of story entities linking to each other"></svg>
+  <div class="cap">Mention a name that isn't captured yet and the agent stubs its page and backlinks it. Every entity becomes a hub for everywhere it appears.</div>
+</div>
+<style>
+.cap{margin-top:10px;color:var(--muted-foreground);font-size:12.5px;text-align:center}
+.cap::before{content:"\29C9  ";color:var(--primary);font-weight:700}
+#web line{stroke:var(--border);stroke-width:1.5}
+#web line.lit{stroke:var(--primary)}
+#web .n circle{fill:var(--card);stroke:var(--border);stroke-width:1.5;transition:stroke .3s,filter .3s}
+#web .n.on circle{stroke:var(--primary);filter:drop-shadow(0 0 5px var(--accent-soft))}
+#web .n text{fill:var(--muted-foreground);font-size:10px;text-anchor:middle;font-weight:600}
+#web .n.on text{fill:var(--accent-ink)}
+@media (prefers-reduced-motion:reduce){#web .n circle,#web line{transition:none}}
+</style>
+<script>
+var N=[["Kael",120,50],["Iron Pact",300,45],["Duskfen",70,150],["The Sundering",250,160],["Betrayal",380,120]];
+var E=[[0,1],[0,2],[1,3],[2,3],[0,4],[3,4]];
+var svg=document.getElementById("web"),NS="http://www.w3.org/2000/svg",lines=[],nodes=[];
+E.forEach(function(e){var l=document.createElementNS(NS,"line");l.setAttribute("x1",N[e[0]][1]);l.setAttribute("y1",N[e[0]][2]);l.setAttribute("x2",N[e[1]][1]);l.setAttribute("y2",N[e[1]][2]);svg.appendChild(l);lines.push({el:l,a:e[0],b:e[1]});});
+N.forEach(function(n,i){var g=document.createElementNS(NS,"g");g.setAttribute("class","n");var c=document.createElementNS(NS,"circle");c.setAttribute("cx",n[1]);c.setAttribute("cy",n[2]);c.setAttribute("r",7);var t=document.createElementNS(NS,"text");t.setAttribute("x",n[1]);t.setAttribute("y",n[2]-12);t.textContent=n[0];g.appendChild(c);g.appendChild(t);g.onclick=function(){pinned=true;set(i);};svg.appendChild(g);nodes.push(g);});
+var cur=0,pinned=false;
+function set(i){cur=i;nodes.forEach(function(g,j){g.classList.toggle("on",j===i);});lines.forEach(function(o){o.el.classList.toggle("lit",o.a===i||o.b===i);});}
+set(0);
+if(!matchMedia("(prefers-reduced-motion:reduce)").matches){setInterval(function(){if(!pinned)set((cur+1)%nodes.length);},1500);}
+</script>
+```
+
+Unlike the other packs, the flow here isn't a pipeline — it's a network that thickens over time. Your job is to write scenes and notes; the agent's job is to keep the encyclopedia consistent with them.
+
+Novelists and screenwriters lean on it to stop losing track of their own canon as the story grows. Game masters keep a navigable world bible — who controls which region, which faction hates which. Narrative-design teams use it to hold a shared setting together as more people contribute.
+
+## The folders
+
+| Folder | Holds | The story question it answers |
+| --- | --- | --- |
+| `characters/` | One page per character (PC + NPC); type, status, faction, first appearance | *Who* |
+| `settings/` | Locations, regions, world-rules; region, controlling faction, danger level | *Where* |
+| `themes/` | Recurring narrative concerns (love, betrayal, identity), each with its tension | *Why* |
+| `factions/` | Political, social, criminal, magical, religious groups | *Who's aligned with whom* |
+| `lore/` | History, mythology, cosmology, magic systems | *What's true about the world* |
+
+The pack ships templates for the shapes that recur — `faction`, `political-faction`, `religion`, `lore`, `magic-system`, `historical-event`, and the core character / setting / theme pages.
+
+## The two behaviors that make it worth it
+
+This is where the agent earns its keep:
+
+- **Auto-stub on mention.** When a chapter, session log, or existing entry names someone or somewhere not yet captured, the agent stubs a page in the right folder and backlinks it to where it came up. Your canon grows as you write, not in a separate cataloguing session.
+- **Flag contradictions.** When a character's `faction` contradicts their actions in a scene, or a setting gets described two ways, the agent *surfaces* the conflict rather than silently "fixing" it — because in fiction a contradiction is often a plot point, not a bug. You decide whether it's a mistake or a mystery.
+
+## The scenario
+
+You write a chapter where Kael, a member of the Iron Pact, quietly warns the people of Duskfen before a raid. You drop the scene in and ask:
+
+<CopyPrompt>Update the world encyclopedia from this chapter. Stub any characters, settings, or factions I mention that don't have pages yet, and link them. Flag anything that contradicts existing canon.</CopyPrompt>
+
+The agent stubs `characters/kael.md` linked to `factions/iron-pact.md` and `settings/duskfen.md` — then notes that Kael warning Duskfen contradicts the Iron Pact's stated hostility toward it. Is Kael a traitor, a double agent, or did you misremember the Pact's alignment? That flag is the agent doing worldbuilding *with* you.
+
+## What's in your project after seeding
+
+Pick **Worldbuilding** in the starter-pack picker, or run:
+
+```bash
+ok seed --pack worldbuilding
+```
+
+By default the pack nests under a `world/` subfolder:
+
+```
+your-project/
+└── world/
+    ├── characters/
+    ├── settings/
+    ├── themes/
+    ├── factions/
+    └── lore/
+```
+
+Each folder's `.ok/frontmatter.yml` teaches the agent that entity type and its auto-stub / contradiction behavior, so the guidance never clutters the entries themselves.
+
+<Callout type="info" title="Seeding also installs a skill">
+  `ok seed --pack worldbuilding` installs the **Worldbuilding** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance behind the auto-stub and contradiction-flagging behaviors — read automatically, and editable like any other doc. It lands as a real `SKILL.md` committed to your repo, one per detected editor. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+</Callout>
+
+## Cadence
+
+| When | Do |
+| --- | --- |
+| After writing a scene or session | Ask the agent to update the encyclopedia — stub new entities, link mentions, flag contradictions |
+| Periodically | Thread the graph: ask it to link characters ↔ factions ↔ settings ↔ lore so each entry is a hub |
+| Before a big reveal | Ask it to surface every page that touches the character or lore involved, so continuity holds |
+| Monthly | Ask the agent to audit dead links and stubbed-but-never-filled entities |
+
+## Further reading
+
+- **[LLM wiki workflow](./karpathy-llm-wiki.mdx).** The same wiki-graph discipline, aimed at real-world sources instead of a fictional world.
+- **[Entity vault workflow](./entity-vault.mdx).** The non-fiction sibling — track real people, companies, and meetings the same way you track characters and factions.
+- **[Core Concepts](../reference/core-concepts.md).** Links and backlinks — the connected graph you navigate the world through.
+- **[Claude Code](../integrations/claude-code.mdx)**, **[Cursor](../integrations/cursor.mdx)**, **[Codex](../integrations/codex.mdx).** MCP-capable agent hosts.

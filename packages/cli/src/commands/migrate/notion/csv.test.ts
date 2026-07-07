@@ -30,6 +30,7 @@ describe('parseCsv', () => {
     const { header, rows } = parseCsv('a,b\n"line one\nline two",2\n');
     expect(header).toEqual(['a', 'b']);
     expect(rows).toEqual([['line one\nline two', '2']]);
+    // Critically, it did NOT split into two rows.
     expect(rows).toHaveLength(1);
   });
 

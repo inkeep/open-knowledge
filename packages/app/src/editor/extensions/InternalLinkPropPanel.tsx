@@ -1,3 +1,27 @@
+/**
+ * InternalLinkPropPanel — singleton React UI for the active internal link mark.
+ *
+ * Replaces the per-instance `InternalLinkView` React MarkView with a single
+ * subtree rendered at editor root via the InteractionLayer. The chip itself
+ * is plain DOM (see `internal-link.ts` `renderHTML`), so on a
+ * PROJECT.md-scale doc 768 React portals collapse to one.
+ *
+ * Reads live MarkInfo via `getCurrentMarkInfo(editor.state, nodeId)` (the
+ * `mark-interaction-bridge` contract) so positions stay current as the user
+ * edits — captured `from`/`to` would go stale across transactions.
+ *
+ * **Trigger model**: bare click on the chip navigates
+ * via `internal-link.ts` `handlePrimary`; the panel only opens on hover (or
+ * keyboard focus). The panel renders Edit / Copy / Remove for resolved
+ * targets and adds a Create-page action for unresolved doc references.
+ *
+ * The PropPanel is anchored to the chip via the shared `InteractionPropPanel`
+ * primitive — a Radix `Popover` whose `PopoverAnchor` is a zero-pointer-
+ * events span positioned each frame by `@floating-ui/dom` `autoUpdate` over
+ * the chip's `posToDOMRect`. Radix handles flip + shift + focus + outside
+ * dismissal; the layer's hover state machine owns the open/close decision.
+ */
+
 import {
   type ClassifiedLinkTarget,
   classifyMarkdownHref,
@@ -68,11 +92,19 @@ function getInitialMarkdownLinkEditMode(target: ClassifiedLinkTarget | null): Ma
 interface EditMarkdownLinkDialogProps {
   open: boolean;
   href: string;
+  /** Current visible link text. Pre-fills the Label input. */
   text: string;
   pages: Set<string>;
   folderPaths: Set<string>;
   loading: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * `labelChanged` is true iff the user typed a new value into the Label
+   * input during this open session (computed against the snapshot taken
+   * when the dialog opened). Parent uses it to decide between href-only
+   * update vs replace-mark-range — never re-derived from the live editor
+   * state, which can drift mid-dialog via remote CRDT writes.
+   */
   onSave: (href: string, text: string, labelChanged: boolean) => void;
 }
 
@@ -96,6 +128,13 @@ function EditMarkdownLinkDialog({
   const headingListId = useId();
   const { t } = useLingui();
 
+  // CRDT safety: snapshot all initial state on the open transition only.
+  // Reacting to `href`/`text` changes WHILE the dialog is open would clobber
+  // the user's in-progress edits whenever a remote peer mutates the live
+  // mark/text. `prevOpenRef` gates the init block to fire exactly once per
+  // open lifecycle; `labelSnapshotRef` stores the open-time text so save
+  // can compare against the snapshot rather than the (possibly drifted)
+  // live value.
   const prevOpenRef = useRef(false);
   const labelSnapshotRef = useRef('');
 
@@ -136,6 +175,10 @@ function EditMarkdownLinkDialog({
     const nextHref = docTargetMode
       ? buildCurrentRelativeMarkdownHref(docTarget, editAnchor.trim() || null)
       : trimmedTarget;
+    // Compare against the open-time snapshot, not the live editor state —
+    // remote CRDT writes during dialog-open can mutate the chip's text
+    // beneath us. Trimmed-equal means "user didn't meaningfully change the
+    // label" → safe to do an href-only update.
     const labelChanged = editLabel.trim() !== labelSnapshotRef.current.trim();
     onSave(nextHref, editLabel, labelChanged);
     onOpenChange(false);
@@ -283,6 +326,15 @@ interface InternalLinkPropPanelProps {
   nodeId: string;
   sourceDocName: string;
   onClose: () => void;
+  /**
+   * Routes the clickable destination text through the chip's primary
+   * navigation (the extension's `handlePrimary`). Returns true when the
+   * navigation was handled. Keeps resolution / safe-scheme behavior
+   * single-source between the chip and this panel. Required — the only
+   * caller (internal-link.ts) always supplies it; a missing handler would
+   * silently fall back to the native `<a href>`, bypassing the safe-scheme
+   * gating and asset/folder fall-through that `handlePrimary` owns.
+   */
   onNavigate: (newTab: boolean) => boolean;
 }
 
@@ -299,6 +351,12 @@ export function InternalLinkPropPanel({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
+  // Auto-open the URL editor for a freshly slash-inserted link.
+  // The "Link" slash command flags the new mark id via
+  // `setPendingLinkEdit`, then activates this panel; we consume the flag
+  // here and open the edit dialog so the author types the URL immediately.
+  // Keyed on `nodeId` (not bare mount): the panel instance is reused across
+  // activations for different marks, so a `[]` effect would miss the flag.
   useEffect(() => {
     if (consumePendingLinkEdit(nodeId)) setEditDialogOpen(true);
   }, [nodeId]);
@@ -307,6 +365,7 @@ export function InternalLinkPropPanel({
   const { t } = useLingui();
 
   if (!info) {
+    // Mark removed mid-render — gracefully close.
     return null;
   }
 
@@ -318,6 +377,8 @@ export function InternalLinkPropPanel({
     if (!live) return;
     const trimmedText = nextText.trim();
     if (!labelChanged || !trimmedText) {
+      // User didn't change the label (or trimmed to empty) — keep existing
+      // text content + inner marks; just update href.
       editor
         .chain()
         .setTextSelection({ from: live.from, to: live.to })
@@ -326,6 +387,12 @@ export function InternalLinkPropPanel({
         .run();
       return;
     }
+    // User explicitly changed the label — replace mark range with a single
+    // text node carrying the new link mark. Drops any inner formatting marks
+    // (bold, italic, code) inside the link — accepted trade-off (rare in
+    // practice; user can re-add inline). Note: this still overwrites any
+    // concurrent remote-peer edit to this mark's text — accepted because
+    // the user's explicit label change is the more recent user intent.
     const linkType = editor.schema.marks.link;
     if (!linkType) return;
     const linkMark = linkType.create({ href: nextHref });
@@ -382,6 +449,9 @@ export function InternalLinkPropPanel({
     return <>{editDialog}</>;
   }
 
+  // Human-readable display path. Strips markdown-link surface
+  // (`./` prefix, `.md` suffix) for doc kinds; preserves the URL form
+  // for external; preserves `#anchor` for in-doc anchor jumps.
   const displayHref =
     target?.kind === 'doc'
       ? `${target.docName}${target.anchor ? `#${target.anchor}` : ''}`
@@ -407,6 +477,7 @@ export function InternalLinkPropPanel({
       .run();
   }
 
+  // Determine resolution state for the panel header label.
   let stateLabel: { icon: React.ReactNode; text: string; className: string };
   let isUnresolved = false;
   let isFolder = false;
@@ -471,6 +542,12 @@ export function InternalLinkPropPanel({
     };
   }
 
+  // Make the destination text a real link. The click routes through the
+  // chip's primary navigation (`onNavigate` → handlePrimary), so resolution /
+  // safe-scheme behavior stays single-source. `linkHref` is set only for
+  // native affordances (status-bar URL, middle-click, right-click "copy link
+  // address") — the click handler owns left/Cmd-click. Unresolved / folder /
+  // asset / loading states have no destination, so they stay plain text.
   const isExternalLink = target?.kind === 'external';
   const linkHref =
     target?.kind === 'doc'
@@ -487,6 +564,9 @@ export function InternalLinkPropPanel({
       target?.kind === 'external' ||
       (target?.kind === 'doc' && !isUnresolved && !isFolder));
 
+  // Floating-UI virtual reference. Each tick `getCurrentMarkInfo` resolves
+  // the current mark range from PM state, then `posToDOMRect` yields the
+  // chip's rect. Tracks live edits + scroll. Mirrors WikiLinkPropPanel.
   const triggerReference = {
     getBoundingClientRect: () => {
       const live = getCurrentMarkInfo(editor.state, nodeId);
@@ -519,6 +599,12 @@ export function InternalLinkPropPanel({
     }
   }
 
+  // Icon node renders inside a Tooltip wrapper for the unresolved state so
+  // mouse users see the "Page not found" cue (screen readers already get it
+  // via the panel's aria-label). Resolved/external/loading/asset states show
+  // the icon plain — no tooltip needed. Span (phrasing content) on purpose:
+  // TooltipTrigger asChild slots onto a span, so any nested element must
+  // also be phrasing content to keep the HTML well-formed.
   const iconNode = (
     <span className={cn('flex shrink-0', stateLabel.className)}>{stateLabel.icon}</span>
   );

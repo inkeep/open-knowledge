@@ -1,3 +1,13 @@
+/**
+ * Tests for GET /api/template frontmatter partitioning — the handler-local
+ * frontmatter parser (`parseTemplateFile`) must agree with core
+ * `stripFrontmatter` about fence recognition, including fences carrying
+ * trailing whitespace (the fm-delimiter-hazard class: `--- ` is one
+ * in-tolerance keystroke away from `---`).
+ *
+ * Harness mirrors `api-pages.test.ts`: createApiExtension with stub
+ * hocuspocus/sessionManager, dispatch through `onRequest`.
+ */
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -73,6 +83,7 @@ describe('GET /api/template — fence trailing whitespace (fm-delimiter hazard)'
         title: 'Trip Log',
         description: 'Catch log',
       });
+      // The FM lines must not leak into the returned body.
       expect(body.template?.body).not.toContain('title: Trip Log');
     } finally {
       rmSync(dir, { recursive: true, force: true });
