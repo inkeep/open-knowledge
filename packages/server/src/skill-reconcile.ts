@@ -2,7 +2,7 @@
  * Skill install reconcile — the detect / adopt / heal pass that runs on project
  * open (and on skill create/delete). It brings the on-disk reality into line
  * with the symlink install model: every editor skill entry is either absent or
- * a symlink into `.ok/skills/<name>`; no real-dir skill copies linger in editor
+ * a symlink (junction on Windows) into `.ok/skills/<name>`; no real-dir skill copies linger in editor
  * dirs. Install state is the on-disk symlink reality — the marker is only a
  * cache, refreshed here as a side effect.
  *
@@ -60,10 +60,10 @@ import {
 import { parse as parseYaml } from 'yaml';
 import {
   tracedCpSync,
+  tracedDirectorySymlinkSync,
   tracedMkdirSync,
   tracedRenameSync,
   tracedRmSync,
-  tracedSymlinkSync,
 } from './fs-traced.ts';
 import { readInstalledSkills, recordSkillInstall } from './installed-skills-marker.ts';
 import { getLogger } from './logger.ts';
@@ -249,11 +249,11 @@ function moveDir(from: string, to: string): void {
   }
 }
 
-/** Place a symlink at `linkPath` pointing to the in-project `sourceDir`. */
+/** Place a symlink (junction on Windows) at `linkPath` pointing to `sourceDir`. */
 function linkInto(hostRoot: string, linkPath: string, sourceDir: string): void {
   tracedRmSync(linkPath, { recursive: true, force: true });
   tracedMkdirSync(hostRoot, { recursive: true });
-  tracedSymlinkSync(relativeLinkTarget(hostRoot, sourceDir), linkPath, 'dir');
+  tracedDirectorySymlinkSync(relativeLinkTarget(hostRoot, sourceDir), linkPath);
 }
 
 /** Does an editor entry symlink resolve to the expected `.ok/skills/<name>` source? */

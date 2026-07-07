@@ -3,7 +3,7 @@
  * editor host dirs (`.claude/skills/<name>/` etc.) by SYMLINK, plus the
  * pre-install validity gate and reverse-projection (uninstall).
  *
- * Install = symlink, not copy: the host entry is a link back to the single
+ * Install = symlink (junction on Windows), not copy: the host entry is a link back to the single
  * source of truth at `.ok/skills/<name>/`, so editing the source is instantly
  * visible to every installed editor and there is nothing to re-project on edit.
  * The link target is relative when the source lives inside the project (the
@@ -37,7 +37,12 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { parse as parseYaml } from 'yaml';
 import { resolveBundledSkillDir } from './build-skill-zip.ts';
-import { tracedCpSync, tracedMkdirSync, tracedRmSync, tracedSymlinkSync } from './fs-traced.ts';
+import {
+  tracedCpSync,
+  tracedDirectorySymlinkSync,
+  tracedMkdirSync,
+  tracedRmSync,
+} from './fs-traced.ts';
 
 /**
  * Narrow a persisted `string[]` host list (from the marker, whose JSON is
@@ -229,7 +234,8 @@ function skillLinkTarget(cwd: string, hostRoot: string, skillDir: string): strin
 }
 
 /**
- * Install a skill source dir into each target editor's host dir by SYMLINK.
+ * Install a skill source dir into each target editor's host dir by SYMLINK
+ * (or junction on Windows, where directory symlinks often need elevation).
  * Removes any existing entry first (authoritative replace — a stale/broken
  * link or a legacy real-dir copy is dropped before the link is made). Returns
  * the editor ids actually written (skipping editors with no skill surface).
@@ -249,7 +255,7 @@ export function projectSkill(
     if (hostSkillsRootEscapes(cwd, hostRoot)) continue;
     tracedRmSync(dest, { recursive: true, force: true });
     tracedMkdirSync(hostRoot, { recursive: true });
-    tracedSymlinkSync(skillLinkTarget(cwd, hostRoot, skillDir), dest, 'dir');
+    tracedDirectorySymlinkSync(skillLinkTarget(cwd, hostRoot, skillDir), dest);
     written.push(editor);
   }
   return written;

@@ -221,6 +221,10 @@ export function tracedSymlinkSync(
   );
 }
 
+export function tracedDirectorySymlinkSync(target: string, linkPath: string): void {
+  tracedSymlinkSync(target, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+}
+
 export function tracedRmSync(path: string, options?: RmOptions): void {
   withSpanSync('fs.rmSync', { attributes: buildAttrs('rmSync', path) }, () => {
     rmSync(path, options);

@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   hostSkillsRootEscapes,
   projectSkill,
@@ -116,8 +116,14 @@ describe('projectSkill / reverseProjectSkill', () => {
       // It's a symlink, not a copied dir, and it resolves to the source.
       expect(lstatSync(link).isSymbolicLink()).toBe(true);
       expect(existsSync(join(link, 'SKILL.md'))).toBe(true);
-      // Source is inside the project → the link target is relative (portable).
-      expect(readlinkSync(link).startsWith('..')).toBe(true);
+      // Source is inside the project → POSIX symlink targets stay relative
+      // (portable). Windows junctions avoid elevated symlink privileges and
+      // Node reads them back as absolute targets.
+      if (process.platform === 'win32') {
+        expect(resolve(readlinkSync(link))).toBe(resolve(dir));
+      } else {
+        expect(readlinkSync(link).startsWith('..')).toBe(true);
+      }
     }
 
     const removed = reverseProjectSkill('trip-log', root, ['claude', 'cursor', 'codex']);
