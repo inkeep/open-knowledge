@@ -435,6 +435,10 @@ describe('registerProtocolHandler — queue-then-flush', () => {
       sendDeepLink: env.sendDeepLink,
       getAnyReadyWindow: env.getAnyReadyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+      // Pin non-darwin so the darwin-only cold-start settle grace does not arm
+      // an extra timer in this shared queue — the flush-retry loop under test is
+      // platform-independent; the grace behavior is covered by the settle suite.
+      platform: 'linux',
     });
     env.app.fireOpenUrl('openknowledge://open?project=/tmp/p&doc=a.md');
     env.app.resolveReady();
@@ -635,6 +639,10 @@ describe('registerProtocolHandler — single-file launch control', () => {
       sendDeepLink: env.sendDeepLink,
       getAnyReadyWindow: env.getAnyReadyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+      // Pin non-darwin so the darwin-only cold-start settle grace does not arm
+      // an extra timer in this shared queue — the suppress-path drain under test
+      // is platform-independent; the grace behavior is covered by the settle suite.
+      platform: 'linux',
     });
     env.app.fireOpenUrl(FILE_URL);
     env.app.resolveReady();

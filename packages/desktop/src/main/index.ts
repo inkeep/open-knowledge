@@ -133,7 +133,7 @@ import {
   channelFromVersion,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
-import { bootRestoreDecision } from './boot-restore-decision.ts';
+import { resolveBootRestoreDecision } from './boot-restore-decision.ts';
 import { runBootstrap } from './bootstrap.ts';
 import {
   type BranchInfoProxyDeps,
@@ -4292,17 +4292,27 @@ function bootPrimaryInstance(): void {
       //   2. Otherwise restore `lastOpenedProject` into one editor window.
       //   3. Holding Option (`--navigator`) or having nothing to restore
       //      opens the Navigator instead.
-      const decision = bootRestoreDecision({
+      const decision = await resolveBootRestoreDecision({
         pendingRestore: appState.pendingWindowRestore,
         lastOpenedProject: appState.lastOpenedProject,
         optionHeld: process.argv.includes('--navigator'),
         pathExists: existsSync,
         // A launch-claiming URL that opens its own window — a single-file open
         // (`ok <file>`) OR a valid share — suppresses the default boot-restore
-        // window so the URL flush owns the launch. Without this a cold-start
-        // share opens the previously-opened project instead of the shared target.
-        urlLaunch: protocolControl.urlLaunchOwnsWindow(),
+        // window so the URL flush owns the launch. Read AFTER the settle barrier
+        // resolves: on macOS the `open-url` Apple Event can land after this point
+        // in the boot chain, so reading the flag synchronously here would miss a
+        // cold-start share and open the previously-opened project instead.
+        urlLaunchOwnsWindow: protocolControl.urlLaunchOwnsWindow,
+        waitForUrlLaunchSettled: protocolControl.waitForUrlLaunchSettled,
       });
+      // Field signal distinguishing "a URL owned the launch" from "restored
+      // despite an inbound share" — the settled flag/decision pair is otherwise
+      // unobservable outside a debugger.
+      getLogger('startup').info(
+        { urlLaunch: protocolControl.urlLaunchOwnsWindow(), action: decision.action },
+        'boot-restore decision',
+      );
       if (decision.clearSnapshot) {
         appState = { ...appState, pendingWindowRestore: null };
         if (!saveAppState(appState)) {

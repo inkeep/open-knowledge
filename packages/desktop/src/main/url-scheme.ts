@@ -670,6 +670,13 @@ interface ProtocolHandlerDeps {
   getInitialArgv?: () => readonly string[];
   /** Test injection for `setTimeout`. Defaults to the global. */
   setTimeout?: (cb: () => void, ms: number) => unknown;
+  /**
+   * Host platform, for the cold-start settle gate. Off macOS there is no
+   * `open-url` Apple Event (argv is scanned synchronously before `whenReady`),
+   * so `waitForUrlLaunchSettled` resolves immediately. Defaults to
+   * `process.platform`; tests inject `'linux'` to exercise the non-darwin gate.
+   */
+  platform?: NodeJS.Platform;
   /** Test injection for the dedup clock. Defaults to `Date.now`. */
   now?: () => number;
   /** Optional structured logger. */
@@ -732,6 +739,16 @@ interface ProtocolHandlerControl {
    * Subject to the same near-simultaneous-duplicate dedup as every other share.
    */
   routeUrl(url: string): void;
+  /**
+   * Resolves once cold-start URL delivery has settled — the settle SOURCE the
+   * boot coordinator (`resolveBootRestoreDecision`) awaits before reading
+   * `urlLaunchOwnsWindow`. Resolves on WHICHEVER comes first: a launch-claiming
+   * URL flipping the flag (early resolve — a URL launch pays ~0 wait) OR a
+   * bounded grace window elapsing (`URL_LAUNCH_SETTLE_GRACE_MS`, armed at
+   * `whenReady` — the safety net for a late Apple Event). Off macOS, or when the
+   * launch is already claimed before this is awaited, it resolves immediately.
+   */
+  waitForUrlLaunchSettled(): Promise<void>;
 }
 
 /**
@@ -746,6 +763,19 @@ const QUEUE_FLUSH_MAX_ATTEMPTS = 10;
 const QUEUE_FLUSH_INTERVAL_MS = 500;
 
 /**
+ * Bounded grace the cold-start boot path waits before committing the default
+ * boot-restore window, so a macOS `open-url` Apple Event that lands slightly
+ * after `whenReady` still flips `urlLaunchOwnsWindow` in time to suppress it.
+ * Armed at `whenReady` so it overlaps `migrateLegacyUserDataDir` + `runBootstrap`
+ * — on a normal no-URL cold start bootstrap usually exhausts it, so the marginal
+ * added delay is typically ~0; a launch-claiming URL early-resolves it. A
+ * calibration knob: larger values catch later Apple Events at the cost of more
+ * no-URL delay. The residual is inherently unbounded (OS delivery has no upper
+ * latency bound), so this narrows the race window rather than closing it.
+ */
+const URL_LAUNCH_SETTLE_GRACE_MS = 250;
+
+/**
  * Wire `open-url` + `second-instance` handlers synchronously. Call from the
  * main-process entry BEFORE `app.whenReady()` — on macOS the `open-url` Apple
  * Event can arrive before any `ready` lifecycle hook, and even before
@@ -757,6 +787,7 @@ const QUEUE_FLUSH_INTERVAL_MS = 500;
  */
 export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHandlerControl {
   const schedule = deps.setTimeout ?? ((cb, ms) => setTimeout(cb, ms));
+  const platform = deps.platform ?? process.platform;
   const urlQueue: string[] = [];
   // Canonical-sharedUrl → last-routed timestamp, for SHARE_DEDUP_WINDOW_MS
   // near-simultaneous-duplicate suppression (deferred redemption vs splash
@@ -775,6 +806,23 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
   // suppress the default boot-restore window so the URL flush owns the launch.
   // Superset of `singleFileLaunch`; same sticky/never-reset rationale.
   let urlLaunchOwnsWindow = false;
+
+  // Cold-start settle barrier (the source `waitForUrlLaunchSettled` exposes).
+  // Resolves once — on the flag flip (a launch-claiming URL arrived) or the
+  // grace window elapsing at `whenReady`, whichever comes first. Created eagerly
+  // so `settleResolve` is bound synchronously before any `open-url` listener can
+  // fire; idempotent via the `settled` guard.
+  let settled = false;
+  let settleResolve: (() => void) | null = null;
+  const settlePromise = new Promise<void>((res) => {
+    settleResolve = res;
+  });
+  const settleNow = (): void => {
+    if (settled) return;
+    settled = true;
+    settleResolve?.();
+    settleResolve = null;
+  };
 
   // Dev-mode registration — unpackaged Electron's Info.plist belongs to the
   // Electron.app shell, not this app, so Launch Services has no binding.
@@ -1227,6 +1275,10 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     // double-parse pattern as the single-file branch above.
     if (isSingleFile || parseShareUrl(url)?.kind === 'ok') {
       urlLaunchOwnsWindow = true;
+      // A launch-claiming URL arrived — early-resolve the cold-start settle
+      // barrier so the boot path commits its (suppressed-window) decision now,
+      // rather than waiting out the full grace window.
+      settleNow();
     }
     if (flushed) {
       routeUrl(url);
@@ -1311,6 +1363,14 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
   // booting would either crash or vanish; the 10 × 500ms retry is the VS
   // Code `ElectronURLListener` convention.
   void deps.app.whenReady().then(() => {
+    // Arm the bounded cold-start settle grace (darwin only — off macOS there is
+    // no Apple Event, so settle resolves immediately without a timer). If no
+    // launch-claiming URL flips the flag before it elapses, `settleNow` releases
+    // the boot path to its normal `lastOpenedProject` restore. Uses the same
+    // injectable `schedule` as the flush loop, so tests fire it deterministically.
+    if (platform === 'darwin') {
+      schedule(() => settleNow(), URL_LAUNCH_SETTLE_GRACE_MS);
+    }
     const tryFlush = (attempt: number): void => {
       if (urlQueue.length === 0 || deps.getAnyReadyWindow()) {
         drainAll();
@@ -1335,5 +1395,14 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     // the empty queue; otherwise drains immediately for the suppress path.
     drainQueuedUrls: () => drainAll(),
     routeUrl: (url) => enqueueOrRoute(url),
+    waitForUrlLaunchSettled: () => {
+      // Non-darwin: no Apple Event exists (argv is scanned synchronously before
+      // `whenReady`), so there is nothing to wait for.
+      if (platform !== 'darwin') return Promise.resolve();
+      // The launch is already claimed — a URL flipped the flag before the boot
+      // path awaited settle, so commit immediately without a grace wait.
+      if (urlLaunchOwnsWindow) return Promise.resolve();
+      return settlePromise;
+    },
   };
 }
