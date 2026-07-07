@@ -7,7 +7,7 @@ description: Every file OpenKnowledge creates or changes — when, where, in-pro
 
 OpenKnowledge keeps your knowledge base as plain markdown in your own project directory, but the tooling around it — the CLI, the MCP server, and the desktop app — also writes a handful of supporting files, some of them **outside the project**, in your home directory, your shell startup files, your editors' configs, and the OS credential store.
 
-This page lists every one of them: **when** each write happens, **what** it is, and **where** it lands. Everything here is verified against the source.
+This page lists every one of them: **when** each write happens, **what** it is, and **where** it is written.
 
 <Callout type="info" title="The short version">
   **Nothing leaves your machine by default.** Diagnostic logs and telemetry are local-only — there's no usage phone-home. The handful of things that *can* send data off your machine — semantic search, a diagnostic bundle, GitHub sync, and the desktop app's update check — are opt-in or on-demand, except the desktop app's update check, which runs automatically on launch. All of them are listed under [What leaves your machine](#what-leaves-your-machine).
