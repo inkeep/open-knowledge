@@ -1065,6 +1065,28 @@
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 55%, transparent);
 }
 
+.ProseMirror .ok-comment {
+  border-radius: 0.18rem;
+  background-color: rgb(250 204 21 / 0.28);
+  box-shadow: inset 0 -1px 0 rgb(202 138 4 / 0.55);
+  color: inherit;
+  cursor: pointer;
+}
+
+.ProseMirror .ok-comment-active {
+  background-color: rgb(34 197 94 / 0.22);
+  box-shadow:
+    0 0 0 1px rgb(22 163 74 / 0.45),
+    inset 0 -1px 0 rgb(22 163 74 / 0.6);
+}
+
+.ProseMirror .ok-comment-pending {
+  border-radius: 0.18rem;
+  background-color: color-mix(in oklab, var(--primary) 22%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--primary) 50%, transparent);
+  color: inherit;
+}
+
 .ProseMirror h1,
 .ProseMirror h2,
 .ProseMirror h3 {

@@ -42,6 +42,8 @@ import {
   createHandleDrop,
   createHandlePaste,
 } from './clipboard/index.ts';
+import { CommentSelectionButton } from './comments/CommentSelectionButton';
+import { createDocumentCommentDecorationExtension } from './comments/comment-decoration';
 import { useDocumentContext } from './DocumentContext';
 import { setEditorDocName } from './extensions/doc-context.ts';
 import { setEditorSourceMode } from './extensions/editor-mode-context.ts';
@@ -353,6 +355,7 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
         return [uploadDecorationPlugin];
       },
     }),
+    createDocumentCommentDecorationExtension(provider.configuration.name ?? ''),
     // Use yCursorPlugin from @tiptap/y-tiptap directly (same module
     // as Collaboration v3) to avoid ySyncPluginKey mismatch.
     Extension.create({
@@ -1427,6 +1430,12 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
         />,
         portalTarget,
       )}
+      <CommentSelectionButton
+        editor={editor}
+        docName={docName}
+        activeDocName={activeDocName}
+        isSourceMode={isSourceMode}
+      />
       {/* Aria-live announcer for selection changes. Always in the DOM
           (role=status + sr-only) and updates imperatively. */}
       <SelectionAnnouncer editor={editor} />

@@ -1,11 +1,11 @@
 /**
  * Behavioral tests for DocPanel's single-file tab gating.
  *
- * Single-file `ok <file>` keeps only the Outline tab — Links/Graph need a
- * multi-doc knowledge base and Timeline is git history, all empty/inert for a
- * lone git-off file. Asserts the rendered tab set (by `role="tab"` count, so the
- * test doesn't depend on localized label text) and that a persisted
- * links/graph/timeline selection coerces back to Outline.
+ * Single-file `ok <file>` keeps only document-local tabs — Outline and Comments.
+ * Links/Graph need a multi-doc knowledge base and Timeline is git history, all
+ * empty/inert for a lone git-off file. Asserts the rendered tab set (by
+ * `role="tab"` count, so the test doesn't depend on localized label text) and
+ * that a persisted links/graph/timeline selection coerces back to Outline.
  */
 
 import { afterEach, describe, expect, mock, test } from 'bun:test';
@@ -48,13 +48,16 @@ mock.module('@/components/OutlinePanel', () => ({
 mock.module('@/components/LinksPanel', () => ({
   LinksPanel: () => <div data-testid="links-panel" />,
 }));
+mock.module('@/components/DocumentCommentsPanel', () => ({
+  DocumentCommentsPanel: () => <div data-testid="comments-panel" />,
+}));
 mock.module('@/components/TimelinePanel', () => ({
   TimelineContent: () => <div data-testid="timeline-panel" />,
 }));
 
 const { DocPanel } = await import('./DocPanel');
 
-function renderPanel(activeTab: 'outline' | 'links' | 'graph' | 'timeline') {
+function renderPanel(activeTab: 'outline' | 'comments' | 'links' | 'graph' | 'timeline') {
   return render(
     <TooltipProvider>
       <DocPanel
@@ -74,19 +77,26 @@ afterEach(() => {
 });
 
 describe('DocPanel — single-file tab gating', () => {
-  test('project mode renders the full tab strip (outline + links + graph + timeline)', () => {
+  test('project mode renders the full tab strip (outline + comments + links + graph + timeline)', () => {
     singleFileValue = false;
     renderPanel('outline');
-    expect(screen.getAllByRole('tab')).toHaveLength(4);
+    expect(screen.getAllByRole('tab')).toHaveLength(5);
     expect(screen.getByTestId('outline-panel')).toBeTruthy();
   });
 
-  test('single-file mode drops the tab strip and shows only the Outline', () => {
+  test('single-file mode keeps Outline and Comments and coerces hidden tabs back to Outline', () => {
     singleFileValue = true;
     // Persisted selection is 'graph' — it must coerce back to Outline rather
     // than render a now-hidden panel.
     renderPanel('graph');
-    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
     expect(screen.getByTestId('outline-panel')).toBeTruthy();
+  });
+
+  test('single-file mode can render the Comments panel', () => {
+    singleFileValue = true;
+    renderPanel('comments');
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getByTestId('comments-panel')).toBeTruthy();
   });
 });

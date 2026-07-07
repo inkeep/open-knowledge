@@ -1,8 +1,9 @@
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Clock, Link2, ListTree, Network } from 'lucide-react';
+import { Clock, Link2, ListTree, MessageSquareText, Network } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import type { DiffLayout } from '@/components/DiffView';
+import { DocumentCommentsPanel } from '@/components/DocumentCommentsPanel';
 import { LinksPanel } from '@/components/LinksPanel';
 import { OutlinePanel } from '@/components/OutlinePanel';
 import { TimelineContent } from '@/components/TimelinePanel';
@@ -10,10 +11,11 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 
-export type PanelTab = 'outline' | 'links' | 'graph' | 'timeline';
+export type PanelTab = 'outline' | 'comments' | 'links' | 'graph' | 'timeline';
 
 export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
   { id: 'outline', icon: ListTree },
+  { id: 'comments', icon: MessageSquareText },
   { id: 'links', icon: Link2 },
   { id: 'graph', icon: Network },
   { id: 'timeline', icon: Clock },
@@ -22,6 +24,7 @@ export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
 /** Localized display label for a doc-panel tab. */
 function tabLabel(id: PanelTab): string {
   if (id === 'outline') return t`Outline`;
+  if (id === 'comments') return t`Comments`;
   if (id === 'links') return t`Links`;
   if (id === 'graph') return t`Graph`;
   return t`Timeline`;
@@ -72,13 +75,14 @@ export function DocPanel({
   // TimelineContent unmounts when activeTab leaves 'timeline'.
   const { t } = useLingui();
   const [diffLayout, setDiffLayout] = useState<DiffLayout>('unified');
-  // Single-file `ok <file>` keeps only the Outline tab. Links/Graph need a
-  // multi-doc knowledge base, and Timeline is git history — all empty or inert
-  // for a lone git-off file. Coerce a persisted links/graph/timeline selection
-  // back to outline so the rail never renders a now-hidden panel, and drop the
-  // one-item tab strip entirely.
+  // Single-file `ok <file>` keeps document-local panels only. Links/Graph need
+  // a multi-doc knowledge base, and Timeline is git history — all empty or
+  // inert for a lone git-off file. Coerce a persisted links/graph/timeline
+  // selection back to outline so the rail never renders a now-hidden panel.
   const singleFile = useSingleFileMode();
-  const tabs = singleFile ? TABS.filter((tab) => tab.id === 'outline') : TABS;
+  const tabs = singleFile
+    ? TABS.filter((tab) => tab.id === 'outline' || tab.id === 'comments')
+    : TABS;
   const effectiveTab: PanelTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'outline';
   const showTabStrip = mode === 'doc' && tabs.length > 1;
   return (
@@ -139,6 +143,7 @@ export function DocPanel({
           {effectiveTab === 'outline' && (
             <OutlinePanel docName={docName} isSourceMode={isSourceMode} />
           )}
+          {effectiveTab === 'comments' && <DocumentCommentsPanel docName={docName} />}
           {effectiveTab === 'links' && <LinksPanel docName={docName} />}
           {effectiveTab === 'graph' && (
             <Suspense
