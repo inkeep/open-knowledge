@@ -61,10 +61,10 @@ Every section links to the others: a flow page links every module it crosses; a 
 
 You don't configure the wiki in a settings file — you say what you want in plain language, and the choice is recorded in `OVERVIEW.md` frontmatter so refreshes stay consistent.
 
-| Knob | Values | What it changes |
-| --- | --- | --- |
-| **audience** | `internal` (default) · `public` | `public` means polished prose, no secrets or internal infra or ticket numbers, and GitHub-URL source references instead of relative paths |
-| **depth** | `tour` · `standard` (default) · `exhaustive` | Scales coverage from OVERVIEW + architecture + top flows, up through per-package module pages, concepts, and task guides |
+| Knob | Values | Default | What it changes |
+| --- | --- | --- | --- |
+| **audience** | `internal`, `public` | `internal` | `public` means polished prose, no secrets or internal infra or ticket numbers, and GitHub-URL source references instead of relative paths |
+| **depth** | `tour`, `standard`, `exhaustive` | `standard` | Scales coverage from OVERVIEW + architecture + top flows, up through per-package module pages, concepts, and task guides |
 
 So "build the wiki, public and exhaustive" and "just give me a quick internal tour" produce very different artifacts from the same pack.
 
