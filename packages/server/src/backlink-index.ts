@@ -727,6 +727,23 @@ export interface BrokenOutboundLink {
 }
 
 /**
+ * True for the OKF reserved change-history file (`log.md`).
+ *
+ * An append-only log legitimately references docs that were later moved or
+ * deleted, so a broken outbound link in it is expected, not an authoring
+ * defect — callers exempt it from broken-link reporting.
+ *
+ * Basename match, extension-insensitive: the log is scaffolded at varying
+ * paths (root `log.md`, nested `wiki/log.md`) and the docName may arrive with
+ * or without a `.md`/`.mdx` extension.
+ */
+export function isAppendOnlyLogDoc(sourceDocName: string): boolean {
+  const withoutExt = sourceDocName.replace(/\.mdx?$/i, '');
+  const base = withoutExt.slice(withoutExt.lastIndexOf('/') + 1);
+  return base.toLowerCase() === 'log';
+}
+
+/**
  * Resolve a just-written doc's outbound internal links against the live set of
  * docs that exist, and return the ones that don't resolve. This is the
  * write-time validation primitive behind the `brokenLinks` response field.
@@ -766,6 +783,8 @@ export function computeBrokenOutboundLinks(
   admittedDocs: Iterable<string>,
   fileExists?: (contentRootRelativePath: string) => boolean,
 ): BrokenOutboundLink[] {
+  if (isAppendOnlyLogDoc(sourceDocName)) return [];
+
   const admitted = admittedDocs instanceof Set ? admittedDocs : new Set(admittedDocs);
 
   let body: string;

@@ -18,6 +18,7 @@ import {
   type ExtractedWikiLink,
   extractMarkdownLinksFromMarkdown,
   extractWikiLinksFromMarkdown,
+  isAppendOnlyLogDoc,
   resolveMarkdownHref,
 } from './backlink-index.ts';
 import { _resetDocExtensionsForTests } from './doc-extensions.ts';
@@ -1599,5 +1600,32 @@ describe('computeBrokenOutboundLinks', () => {
       'Image ![alt](./local.png).',
     ].join('\n');
     expect(computeBrokenOutboundLinks(md, 'notes/a', new Set(), fileOracle([]))).toEqual([]);
+  });
+
+  test('the append-only log is exempt — never reports broken links', () => {
+    // Same markdown from a content doc would flag both as `no-such-doc`.
+    const md = 'See [[captures/gone]] and [old note](./external-sources/removed.md).';
+    expect(computeBrokenOutboundLinks(md, 'log', new Set())).toEqual([]);
+    expect(computeBrokenOutboundLinks(md, 'wiki/log', new Set())).toEqual([]);
+    expect(computeBrokenOutboundLinks(md, 'log.md', new Set())).toEqual([]);
+  });
+});
+
+describe('isAppendOnlyLogDoc', () => {
+  test('matches the reserved log by basename, extension-insensitive', () => {
+    expect(isAppendOnlyLogDoc('log')).toBe(true);
+    expect(isAppendOnlyLogDoc('log.md')).toBe(true);
+    expect(isAppendOnlyLogDoc('log.mdx')).toBe(true);
+    expect(isAppendOnlyLogDoc('wiki/log')).toBe(true);
+    expect(isAppendOnlyLogDoc('wiki/log.md')).toBe(true);
+    expect(isAppendOnlyLogDoc('LOG.md')).toBe(true);
+  });
+
+  test('does not match content docs that merely contain "log"', () => {
+    expect(isAppendOnlyLogDoc('articles/changelog')).toBe(false);
+    expect(isAppendOnlyLogDoc('blog')).toBe(false);
+    expect(isAppendOnlyLogDoc('logs/2026-01')).toBe(false);
+    expect(isAppendOnlyLogDoc('log/entry')).toBe(false);
+    expect(isAppendOnlyLogDoc('index')).toBe(false);
   });
 });
