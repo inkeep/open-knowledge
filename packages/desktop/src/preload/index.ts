@@ -237,6 +237,19 @@ function readConfigFromArgv(): OkDesktopConfig {
   });
 }
 
+// Live assistive-tech mirror: seeded from the window-creation arg (main reads
+// `app.isAccessibilitySupportEnabled()` at createWindow time) and kept current
+// by the `ok:accessibility:changed` broadcast — so `isScreenReaderActive()` is
+// a synchronous read that is correct even for a terminal mounted long after a
+// screen reader attached. A method (not the frozen config) because
+// `contextBridge` captures plain values at exposure time; a closure read stays
+// live (electron/electron#25516).
+let screenReaderActive = parseArg('screen-reader-active') === '1';
+// biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+ipcRenderer.on('ok:accessibility:changed', (_event, info: { screenReaderActive: boolean }) => {
+  screenReaderActive = info.screenReaderActive === true;
+});
+
 const bridge: OkDesktopBridge = {
   config: readConfigFromArgv(),
 
@@ -692,6 +705,17 @@ const bridge: OkDesktopBridge = {
     cliPreflight: (cli) => invoke('ok:terminal:cli-preflight', { cli }),
     cliInstalledMap: () => invoke('ok:terminal:cli-installed-map'),
     rewireClaudeMcp: () => invoke('ok:terminal:claude-assist', { action: 'rewire' }),
+  },
+
+  accessibility: {
+    isScreenReaderActive: () => screenReaderActive,
+    onScreenReaderChanged(cb) {
+      const listener = (_event: IpcRendererEvent, info: { screenReaderActive: boolean }) =>
+        cb(info.screenReaderActive === true);
+      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      ipcRenderer.on('ok:accessibility:changed', listener);
+      return () => ipcRenderer.removeListener('ok:accessibility:changed', listener);
+    },
   },
 
   platform: process.platform as 'darwin' | 'win32' | 'linux',

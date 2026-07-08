@@ -42,10 +42,18 @@ class MockTerminal {
   // 'DEFAULT' X10 = defer to xterm). Exposed via the `_core` getter below to
   // mirror xterm's internal shape the production handler reads.
   mouseEncoding = 'SGR' as string;
+  // Captures the synchronous render-debouncer flush the resize path invokes to
+  // repaint in the same frame (the WebGL canvas is cleared on resize; without
+  // the flush the glyphs land one frame late — a visible blank flash).
+  renderFlush = mock(() => {});
+  refresh = mock((_start: number, _end: number) => {});
   get _core() {
     return {
       coreMouseService: { activeEncoding: this.mouseEncoding },
-      _renderService: { dimensions: { css: { cell: { width: 10, height: 17 } } } },
+      _renderService: {
+        dimensions: { css: { cell: { width: 10, height: 17 } } },
+        _renderDebouncer: { _innerRefresh: this.renderFlush },
+      },
     };
   }
   // The wheel handler reads `term.element` to hit-test the pointer's cell for
@@ -57,7 +65,15 @@ class MockTerminal {
   keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
   wheelHandler: ((e: WheelEvent) => boolean) | null = null;
   options: Record<string, unknown>;
-  open = mock(() => {});
+  // Builds the minimal WebGL-renderer DOM (.xterm-screen > canvas) so the
+  // panel's device-pixel canvas observer — the second-clear repaint hook —
+  // has a canvas to find, matching real xterm's structure.
+  open = mock((container: HTMLElement) => {
+    const screen = document.createElement('div');
+    screen.className = 'xterm-screen';
+    screen.appendChild(document.createElement('canvas'));
+    container.appendChild(screen);
+  });
   focus = mock(() => {});
   dispose = mock(() => {});
   write = mock((_data: string, cb?: () => void) => {
@@ -107,14 +123,22 @@ let mockResolvedTheme: string | undefined = 'dark';
 // Capturing ResizeObserver — the jsdom preload installs a no-op one whose
 // callback never fires, so override it to drive the resize path explicitly.
 let roCallback: (() => void) | null = null;
-let lastRO: MockResizeObserver | null = null;
+// Every constructed observer, so tests can find a specific one by its
+// observed target (e.g. the device-pixel canvas observer vs the container
+// refit observer — `roCallback` only tracks the most recent construction).
+let allROs: MockResizeObserver[] = [];
 class MockResizeObserver {
-  observe = mock(() => {});
+  cb: () => void;
+  observed: Array<{ el: Element; opts?: ResizeObserverOptions }> = [];
+  observe = mock((el: Element, opts?: ResizeObserverOptions) => {
+    this.observed.push({ el, opts });
+  });
   unobserve = mock(() => {});
   disconnect = mock(() => {});
   constructor(cb: () => void) {
+    this.cb = cb;
     roCallback = cb;
-    lastRO = this;
+    allROs.push(this);
   }
 }
 
@@ -199,8 +223,8 @@ describe('TerminalPanel', () => {
   beforeEach(() => {
     lastTerm = null;
     lastFit = null;
-    lastRO = null;
     roCallback = null;
+    allROs = [];
     webglThrows = false;
     mockResolvedTheme = 'dark';
     (globalThis as { ResizeObserver: unknown }).ResizeObserver = MockResizeObserver;
@@ -216,6 +240,8 @@ describe('TerminalPanel', () => {
     const region = screen.getByRole('region', { name: 'Terminal' });
     expect(region).toBeTruthy();
 
+    // No `accessibility` surface on this bridge → the fail-accessible default:
+    // screen-reader mode stays ON when the assistive-tech signal is absent.
     expect(lastTerm?.options.screenReaderMode).toBe(true);
     expect(lastTerm?.options.minimumContrastRatio).toBe(4.5);
     expect(lastTerm?.unicode.activeVersion).toBe('11');
@@ -228,6 +254,59 @@ describe('TerminalPanel', () => {
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(terminal.create).toHaveBeenCalledWith({ cols: 80, rows: 24 });
+  });
+
+  test('screen-reader mode follows the assistive-tech signal: off when inactive, live-toggled on attach', async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    const a11ySubs: Array<(active: boolean) => void> = [];
+    const a11yUnsub = mock(() => {});
+    const withA11y = {
+      ...(bridge as unknown as Record<string, unknown>),
+      accessibility: {
+        isScreenReaderActive: () => false,
+        onScreenReaderChanged: (cb: (active: boolean) => void) => {
+          a11ySubs.push(cb);
+          return a11yUnsub;
+        },
+      },
+    } as unknown as OkDesktopBridge;
+    const { unmount } = render(<TerminalPanel bridge={withA11y} />);
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+
+    // No assistive tech detected → xterm skips its a11y DOM mirror (the
+    // dominant typing/scrolling cost when no screen reader is attached).
+    expect(lastTerm?.options.screenReaderMode).toBe(false);
+
+    // A screen reader attaching mid-session re-skins the live terminal in
+    // place — no restart, the PTY and scrollback survive.
+    act(() => {
+      for (const f of a11ySubs) f(true);
+    });
+    expect(lastTerm?.options.screenReaderMode).toBe(true);
+    act(() => {
+      for (const f of a11ySubs) f(false);
+    });
+    expect(lastTerm?.options.screenReaderMode).toBe(false);
+
+    // The subscription is released with the panel — a leaked listener would
+    // keep touching a disposed terminal on later attach/detach flips.
+    act(() => unmount());
+    expect(a11yUnsub).toHaveBeenCalledTimes(1);
+  });
+
+  test('the smoke suite pins screen-reader mode on even with no assistive tech (assertions read the a11y tree)', async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    const smokeBridge = {
+      ...(bridge as unknown as Record<string, unknown>),
+      config: { e2eSmoke: true },
+      accessibility: {
+        isScreenReaderActive: () => false,
+        onScreenReaderChanged: () => () => {},
+      },
+    } as unknown as OkDesktopBridge;
+    render(<TerminalPanel bridge={smokeBridge} />);
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(lastTerm?.options.screenReaderMode).toBe(true);
   });
 
   test('reload rehydration: adopts a surviving session instead of spawning a fresh one', async () => {
@@ -495,6 +574,79 @@ describe('TerminalPanel', () => {
     expect(terminal.resize).toHaveBeenCalledWith('pty-1', 80, 24);
   });
 
+  test('a resize burst fits per event (no flicker) but coalesces PTY resizes: one leading, one trailing', async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(roCallback).toBeTruthy());
+
+    const fitsBefore = lastFit?.fit.mock.calls.length ?? 0;
+    const resizesBefore = terminal.resize.mock.calls.length;
+    // Simulate a section drag: a stream of ResizeObserver callbacks inside one
+    // throttle interval. Every event fits — the grid stays glued to the panel
+    // edge (throttling the fit made it visibly step/flicker) — but only the
+    // leading PTY resize goes out; unthrottled, each one SIGWINCHes the
+    // running TUI into a full repaint per pointer frame.
+    act(() => {
+      roCallback?.();
+      roCallback?.();
+      roCallback?.();
+    });
+    expect((lastFit?.fit.mock.calls.length ?? 0) - fitsBefore).toBe(3);
+    expect(terminal.resize.mock.calls.length - resizesBefore).toBe(1);
+
+    // The trailing PTY resize lands after the interval so the shell settles at
+    // the final drag size (PTY_RESIZE_THROTTLE_MS = 100).
+    await waitFor(() => expect(terminal.resize.mock.calls.length - resizesBefore).toBe(2), {
+      timeout: 1000,
+    });
+  });
+
+  test('a grid-changing fit repaints synchronously in the same frame (no blank-frame flash)', async () => {
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(roCallback).toBeTruthy());
+
+    // A resize that does NOT cross a cell boundary leaves the canvas bitmap
+    // intact — no forced repaint.
+    act(() => roCallback?.());
+    expect(lastTerm?.renderFlush).not.toHaveBeenCalled();
+
+    // A fit that changes the grid resizes the WebGL canvas, which clears its
+    // bitmap; xterm's own repaint is rAF-scheduled (one frame LATE, after the
+    // browser paints the cleared canvas). The panel must queue a full refresh
+    // and flush the render debouncer synchronously so the glyphs are back
+    // before this frame paints.
+    lastFit?.fit.mockImplementation(() => {
+      if (lastTerm) lastTerm.cols = 100;
+    });
+    act(() => roCallback?.());
+    expect(lastTerm?.refresh).toHaveBeenCalled();
+    expect(lastTerm?.renderFlush).toHaveBeenCalledTimes(1);
+  });
+
+  test("the WebGL canvas's device-pixel re-clear also repaints in the same frame", async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+
+    // The panel wires its own device-pixel-content-box observer on the WebGL
+    // canvas: the addon's sibling observer re-sets canvas.width (a SECOND
+    // bitmap clear, after the fit-path repaint) whenever a fractional CSS
+    // width snaps differently to device pixels, and its own redraw is a frame
+    // late. Find the observer whose target is the canvas.
+    const canvas = document.querySelector('.xterm-screen canvas');
+    expect(canvas).toBeTruthy();
+    const canvasRO = allROs.find((ro) => ro.observed.some((o) => o.el === canvas));
+    expect(canvasRO).toBeTruthy();
+    expect(canvasRO?.observed[0]?.opts).toEqual({ box: 'device-pixel-content-box' });
+
+    // Firing it (the addon just cleared the bitmap) must flush a repaint
+    // synchronously so the blank canvas is never painted.
+    const flushesBefore = lastTerm?.renderFlush.mock.calls.length ?? 0;
+    act(() => canvasRO?.cb());
+    expect((lastTerm?.renderFlush.mock.calls.length ?? 0) - flushesBefore).toBe(1);
+  });
+
   test('cancels the browser default for Shift+Tab only; every other key (incl. Escape) reaches the PTY', async () => {
     const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
     render(<TerminalPanel bridge={bridge} />);
@@ -741,14 +893,19 @@ describe('TerminalPanel', () => {
     await waitFor(() => expect(roCallback).toBeTruthy());
 
     const term = lastTerm;
-    const ro = lastRO;
+    const ros = allROs.slice();
+    // Two observers per session: the container refit observer and the
+    // device-pixel canvas observer (the second-clear repaint hook).
+    expect(ros.length).toBe(2);
     act(() => unmount());
 
     expect(term?.dispose).toHaveBeenCalledTimes(1);
     expect(terminal.kill).toHaveBeenCalledWith('pty-1');
     expect(unsubData).toHaveBeenCalledTimes(1);
     expect(unsubExit).toHaveBeenCalledTimes(1);
-    expect(ro?.disconnect).toHaveBeenCalledTimes(1);
+    // EVERY observer disconnects — a surviving canvas observer would keep
+    // flushing renders into a disposed terminal.
+    for (const ro of ros) expect(ro.disconnect).toHaveBeenCalledTimes(1);
   });
 
   test('degrades to the DOM renderer when WebGL is unavailable instead of failing the mount', async () => {

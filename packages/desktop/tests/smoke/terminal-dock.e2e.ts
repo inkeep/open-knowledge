@@ -201,7 +201,11 @@ const readinessBanner = (page: Page) => page.getByTestId('terminal-readiness-ban
 
 /** Open the dock (via the real menu toggle) and wait for the panel to mount. */
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
-  await clickViewTerminalItem(app);
+  const clicked = await clickViewTerminalItem(app);
+  // Fail loud when the menu item is missing — otherwise the click silently
+  // no-ops and the failure surfaces 15s later as an unrelated-looking
+  // "Terminal section not visible" timeout.
+  expect(clicked, 'View menu should expose a Show/Hide Terminal item').not.toBe(false);
   await expect(terminalSection(page)).toBeVisible({ timeout: 15_000 });
 }
 
@@ -390,6 +394,54 @@ test.describe('Docked terminal — live Electron', () => {
     await expect
       .poll(() => readTerminalText(page), { timeout: 15_000 })
       .toContain('OK_E2E_MARKER_123');
+  });
+
+  // Resize storm at real-PTY fidelity: a section/window drag resizes the
+  // terminal container on every pointer frame; the panel fits xterm per event
+  // but coalesces the PTY resize (leading + trailing throttle), so a storm
+  // must (1) never wedge the shell and (2) always settle the PTY at the final
+  // fitted grid — a dropped trailing resize would leave the shell's winsize at
+  // a mid-drag width. The storm returns the window to its starting size, so
+  // `tput cols` before and after must agree.
+  test('a window-resize storm keeps the shell responsive and settles the PTY at the fitted grid', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('resize-storm', { consent: true });
+    track(s.tmpHome, s.projectDir);
+    const app = await launchApp(s, { restrictPath: true });
+    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    await openTerminal(app, page);
+    await waitForStatus(page, 'running', 25_000);
+
+    await typeInTerminal(page, 'echo BEFORE_COLS=$(tput cols)\r');
+    await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toMatch(/BEFORE_COLS=\d+/);
+    const before = (await readTerminalText(page)).match(/BEFORE_COLS=(\d+)/)?.[1];
+
+    // Real window resizes from main — each one reflows the panel group and
+    // fires the terminal container's ResizeObserver, like a drag frame.
+    await app.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (!win) throw new Error('no window to resize');
+      const [w, h] = win.getSize();
+      for (let i = 0; i < 24; i++) {
+        const dw = (i % 2 === 0 ? -1 : 1) * (8 + (i % 5) * 6);
+        win.setSize(w + dw, h, false);
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      win.setSize(w, h, false);
+    });
+
+    // The shell still echoes (no wedged PTY, no dead renderer), and its
+    // winsize settled back to the pre-storm width — the trailing throttled
+    // resize landed. Polled: the trailing PTY resize lands within ~100ms of
+    // the last step, but the storm's queued SIGWINCH redraws drain async.
+    await typeInTerminal(page, 'echo AFTER_COLS=$(tput cols)\r');
+    await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toMatch(/AFTER_COLS=\d+/);
+    expect(before).toBeTruthy();
+    await expect
+      .poll(() => readTerminalText(page), { timeout: 10_000 })
+      .toContain(`AFTER_COLS=${before}`);
   });
 
   // Dock controls — the click toggle replaced the drag grip. This asserts the UI

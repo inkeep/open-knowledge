@@ -1901,6 +1901,28 @@ export interface OkDesktopBridge {
     rewireClaudeMcp(): Promise<ClaudeReadiness>;
   };
 
+  /**
+   * OS assistive-tech signal — Electron's `app.isAccessibilitySupportEnabled()`,
+   * true while a screen reader (VoiceOver, NVDA) is attached. The terminal gates
+   * xterm's `screenReaderMode` on it: the mode mirrors the viewport into a live
+   * accessibility DOM on every write/scroll — a significant rendering cost per
+   * xterm's own docs — so it stays off until assistive tech is detected (the
+   * VS Code model), and screen-reader users still get the full a11y tree.
+   *
+   * `isScreenReaderActive` is a synchronous read of the preload's live mirror
+   * (seeded from the `--ok-screen-reader-active` window arg, updated by
+   * `ok:accessibility:changed`), so the terminal can set its a11y posture at
+   * construction with no async flash. The subscription re-skins an already-open
+   * terminal in place when a screen reader attaches or detaches mid-session.
+   *
+   * Structurally mirrored in the app bridge copy, where it is OPTIONAL —
+   * consumers treat an absent surface as screen-reader-active (fail-accessible).
+   */
+  accessibility: {
+    isScreenReaderActive(): boolean;
+    onScreenReaderChanged(cb: (active: boolean) => void): OkUnsubscribe;
+  };
+
   readonly platform: 'darwin' | 'win32' | 'linux';
   readonly appVersion: string;
 

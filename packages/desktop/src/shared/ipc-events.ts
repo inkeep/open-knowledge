@@ -269,10 +269,11 @@ export interface EventChannels {
 
   /**
    * Main → renderer coalesced PTY output. Main batches the utilityProcess's
-   * node-pty reads on an 8-16ms timer and pushes one combined UTF-8 string
-   * per tick. node-pty's StringDecoder keeps multibyte sequences intact per
-   * read, and main only ever concatenates whole reads (never slices a
-   * string), so codepoints never split across a coalesce boundary.
+   * node-pty reads on a 5ms trailing timer (VS Code's bufferer window; see
+   * `DEFAULT_COALESCE_MS` in terminal-manager.ts) and pushes one combined
+   * UTF-8 string per tick. node-pty's StringDecoder keeps multibyte sequences
+   * intact per read, and main only ever concatenates whole reads (never
+   * slices a string), so codepoints never split across a coalesce boundary.
    */
   'ok:pty:data': { payload: OkPtyData };
   /**
@@ -281,4 +282,13 @@ export interface EventChannels {
    * normal exit carries `exitCode`/`signal`.
    */
   'ok:pty:exit': { payload: OkPtyExit };
+  /**
+   * Main → every window when Electron's assistive-tech signal flips
+   * (`app.on('accessibility-support-changed')` — a screen reader such as
+   * VoiceOver attached or detached). The cold-start value rides window
+   * creation as the `--ok-screen-reader-active=1` argv flag; this event keeps
+   * the preload's live mirror current so an already-open terminal can toggle
+   * xterm's `screenReaderMode` in place.
+   */
+  'ok:accessibility:changed': { payload: { screenReaderActive: boolean } };
 }

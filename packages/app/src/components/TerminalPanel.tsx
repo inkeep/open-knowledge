@@ -21,8 +21,20 @@ import { filesFromExternalDrop, isExternalFileDrag } from './file-tree-adapter';
 import { TerminalCliMissingBanner } from './TerminalCliMissingBanner';
 import { type TerminalExitInfo, TerminalExitNotice } from './TerminalExitNotice';
 import { TerminalRefusalNotice } from './TerminalRefusalNotice';
+import { createSameFrameRepaint } from './terminal-render-flush';
+import { createResizeThrottle } from './terminal-resize-throttle';
 import { xtermThemeForMode } from './terminal-theme';
 import { nextWheelReports, sgrWheelReport, wheelReportPosition } from './terminal-wheel';
+
+/**
+ * Interval for the PTY-resize throttle (see terminal-resize-throttle.ts).
+ * Bounds the SIGWINCH → full-TUI-repaint → output-flood loop to ~10×/s during
+ * a section drag; the trailing call lands the final size. The xterm fit itself
+ * is NOT throttled — stepping it made the grid visibly jump ("flicker") during
+ * drags, and it is cheap per event (FitAddon only reflows when a cell boundary
+ * is actually crossed).
+ */
+const PTY_RESIZE_THROTTLE_MS = 100;
 
 interface TerminalPanelProps {
   /** Desktop bridge — the panel is rendered only on the Electron host, where
@@ -196,9 +208,20 @@ function TerminalSession({
     let unsubExit: (() => void) | undefined;
     let titleDisposable: { dispose(): void } | undefined;
     let observer: ResizeObserver | undefined;
+    let canvasPixelObserver: ResizeObserver | undefined;
+    let ptyResizeThrottle: ReturnType<typeof createResizeThrottle> | undefined;
 
+    // xterm's screen-reader mode mirrors the viewport into a live a11y DOM on
+    // every write and scroll — "a significant performance drop" per xterm's own
+    // docs, and the largest single cost on the typing/scrolling path. Gate it
+    // on the OS assistive-tech signal (the VS Code model): screen-reader users
+    // get the full a11y tree, everyone else gets native-feeling latency. An
+    // absent bridge surface fails accessible (mode on). The smoke suite pins it
+    // on — its assertions read the .xterm-accessibility tree.
+    const screenReaderModeAtMount =
+      bridge.config.e2eSmoke === true || (bridge.accessibility?.isScreenReaderActive() ?? true);
     const term = new Terminal({
-      screenReaderMode: true,
+      screenReaderMode: screenReaderModeAtMount,
       minimumContrastRatio: 4.5,
       allowProposedApi: true,
       cursorBlink: true,
@@ -266,6 +289,38 @@ function TerminalSession({
     }
 
     fit.fit();
+
+    // Same-frame repaint after anything clears the canvas bitmap — see
+    // terminal-render-flush.ts for the full why (canvas resize clears by
+    // spec; xterm's own repaint is a frame late).
+    const repaintSameFrame = createSameFrameRepaint(term);
+
+    // The WebGL addon watches its canvas with a device-pixel-content-box
+    // ResizeObserver and, when the device-pixel snap of a fractional CSS width
+    // differs from the bitmap the grid resize set, re-sets canvas.width — a
+    // SECOND clear that lands in a later RO delivery iteration of the same
+    // frame (deeper target), i.e. AFTER the fit-path repaint. Observing the
+    // same canvas with the same box, registered after the addon, puts this
+    // callback after the addon's in that iteration, so the flush repaints
+    // after its clear. Drawing to the bitmap changes no layout, so this adds
+    // no further RO iterations. The DOM renderer path has no canvas and never
+    // wires this.
+    const webglCanvas = container.querySelector<HTMLCanvasElement>('.xterm-screen canvas');
+    if (webglCanvas !== null) {
+      canvasPixelObserver = new ResizeObserver(() => repaintSameFrame());
+      try {
+        canvasPixelObserver.observe(webglCanvas, { box: 'device-pixel-content-box' });
+      } catch (err) {
+        // Electron is always Chromium, which supports device-pixel-content-box
+        // — so any throw here is unexpected (detached canvas, a future API
+        // change), and it silently disables the flicker fix. Surface it so the
+        // symptom (resize flicker returns) is correlatable in logs; the addon's
+        // own sibling observer degrades the same way, so wiring stays off.
+        console.warn('[terminal] device-pixel canvas observe failed:', err);
+        canvasPixelObserver.disconnect();
+        canvasPixelObserver = undefined;
+      }
+    }
 
     // Surface OSC 0/2 title changes the running program emits (shell prompt,
     // `vim`, the `claude` TUI) so the dock can label the tab with what the
@@ -418,9 +473,24 @@ function TerminalSession({
         onExitRef.current?.({ exitCode: msg.exitCode, signal: msg.signal });
       });
 
-      observer = new ResizeObserver(() => {
-        fit.fit();
+      // Fit runs on every resize event so the grid stays glued to the panel
+      // edge (throttling it steps the canvas — visible flicker during drags);
+      // it is cheap per event since FitAddon reflows only when a cell boundary
+      // is crossed. The PTY resize is the throttled half: unthrottled, a drag
+      // SIGWINCHes the running TUI into a full repaint whose output floods
+      // back through IPC + render on every pointer frame — the drag lag users
+      // hit with a terminal open. Leading call keeps a lone resize instant;
+      // the trailing call always lands the final size (the kernel skips the
+      // SIGWINCH when dimensions are unchanged, so redundant sends are inert).
+      ptyResizeThrottle = createResizeThrottle(() => {
         if (ptyId) bridge.terminal.resize(ptyId, term.cols, term.rows);
+      }, PTY_RESIZE_THROTTLE_MS);
+      observer = new ResizeObserver(() => {
+        const colsBefore = term.cols;
+        const rowsBefore = term.rows;
+        fit.fit();
+        if (term.cols !== colsBefore || term.rows !== rowsBefore) repaintSameFrame();
+        ptyResizeThrottle?.request();
       });
       observer.observe(container);
 
@@ -614,6 +684,8 @@ function TerminalSession({
       onPtyIdRef.current?.(null);
       termRef.current = null;
       observer?.disconnect();
+      canvasPixelObserver?.disconnect();
+      ptyResizeThrottle?.cancel();
       unsubData?.();
       unsubExit?.();
       titleDisposable?.dispose();
@@ -636,6 +708,20 @@ function TerminalSession({
     if (term === null) return;
     term.options.theme = xtermThemeForMode(resolvedTheme);
   }, [resolvedTheme]);
+
+  // Follow assistive-tech attach/detach in place: toggling
+  // `term.options.screenReaderMode` builds or tears down xterm's a11y DOM
+  // mirror without touching the PTY, so a screen reader started mid-session
+  // gets the accessible tree without a restart. The smoke suite pins the mode
+  // on (see the mount option above), so it never subscribes.
+  useEffect(() => {
+    const accessibility = bridge.accessibility;
+    if (accessibility == null || bridge.config.e2eSmoke === true) return;
+    return accessibility.onScreenReaderChanged((active) => {
+      const term = termRef.current;
+      if (term !== null) term.options.screenReaderMode = active;
+    });
+  }, [bridge]);
 
   // Drop a file onto the terminal -> insert its shell-escaped absolute path at
   // the prompt (VS Code / Cursor / JetBrains parity). We deliberately do NOT try

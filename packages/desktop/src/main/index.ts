@@ -901,7 +901,15 @@ function withDebugFlagIfAllowed(args: readonly string[]): string[] {
   // (vs a blanket --disable-gpu) keeps Electron GPU acceleration on, so the
   // suite doesn't trigger whole-app software rendering that starves CPU on
   // constrained CI runners. See TerminalPanel's WebGL gate.
-  return process.env.OK_DESKTOP_E2E_SMOKE === '1' ? [...withDebug, '--ok-e2e-smoke=1'] : withDebug;
+  const withSmoke =
+    process.env.OK_DESKTOP_E2E_SMOKE === '1' ? [...withDebug, '--ok-e2e-smoke=1'] : withDebug;
+  // Cold-start assistive-tech signal for the preload's live mirror (see
+  // `ok:accessibility:changed` in ipc-events.ts): the terminal gates xterm's
+  // costly `screenReaderMode` on it. Read per window creation so a window
+  // opened after VoiceOver attaches starts with the right posture.
+  return app.isAccessibilitySupportEnabled()
+    ? [...withSmoke, '--ok-screen-reader-active=1']
+    : withSmoke;
 }
 
 function ensureDebugIpc(): DebugIpcHandle {
@@ -4714,6 +4722,17 @@ function bootPrimaryInstance(): void {
   // before `whenReady` so every window's webContents is covered from creation.
   app.on('web-contents-created', (_event, contents) => {
     attachRendererConsoleCapture(contents);
+  });
+
+  // Assistive-tech flips (e.g. VoiceOver, NVDA attach/detach) fan out to every window so
+  // the preload's live mirror stays current and an open terminal can toggle
+  // xterm's `screenReaderMode` in place. Cold-start value rides window
+  // creation via `--ok-screen-reader-active` (see withDebugFlagIfAllowed).
+  app.on('accessibility-support-changed', (_event, screenReaderActive) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.webContents.isDestroyed()) continue;
+      sendToRenderer(win.webContents, 'ok:accessibility:changed', { screenReaderActive });
+    }
   });
 
   // URL-scheme handler — register BEFORE `whenReady` so macOS cold-start

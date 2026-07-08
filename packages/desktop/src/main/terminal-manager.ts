@@ -9,8 +9,10 @@
  *   - routes `input` / `resize` / `kill` / `drain` to the addressed session
  *     within the host, dropping an unknown ptyId so a stale renderer can't
  *     drive a sibling or successor PTY;
- *   - coalesces each session's `data` reads on a short timer and pushes one
- *     combined UTF-8 string per tick (the renderer-freeze guard);
+ *   - coalesces each session's `data` reads on a short trailing timer (5ms,
+ *     VS Code's bufferer window) and pushes one combined UTF-8 string per
+ *     tick — the renderer-freeze guard, and it keeps a TUI redraw burst
+ *     (erase + repaint) in one push so partial states never render as tearing;
  *   - bounds each session's in-flight bytes with a high/low-water
  *     `pause()`/`resume()` loop driven by the renderer's `drain` acks (the
  *     backpressure seam) — a flood in one tab pauses only its PTY;
@@ -53,7 +55,7 @@ export interface TerminalManagerDeps {
   setTimer: (cb: () => void, ms: number) => TimerToken;
   /** Cancel a scheduled flush. `clearTimeout` in production. */
   clearTimer: (token: TimerToken) => void;
-  /** Coalesce window in ms (8-16ms keeps pushes bounded by tick rate). Default 12. */
+  /** Coalesce window in ms. Default `DEFAULT_COALESCE_MS` (5, VS Code's bufferer window). */
   coalesceMs?: number;
   /** Pause the host once un-drained in-flight bytes exceed this. Default 1 MiB. */
   highWaterBytes?: number;
@@ -170,7 +172,16 @@ interface PtyWindowHandle {
   sessions: Map<string, SessionState>;
 }
 
-const DEFAULT_COALESCE_MS = 12;
+/**
+ * Trailing coalesce window per session. 5ms matches VS Code's terminal data
+ * bufferer: short enough that keystroke echo latency is imperceptible, long
+ * enough that a TUI redraw burst (erase + repaint) usually lands in ONE push —
+ * splitting a burst across pushes renders the erased/partial intermediate
+ * state for a frame (visible tearing/flicker). Delivery is deliberately NOT
+ * leading-edge for the same reason: the first read of a redraw burst would
+ * flush alone.
+ */
+const DEFAULT_COALESCE_MS = 5;
 const DEFAULT_HIGH_WATER = 1024 * 1024;
 const DEFAULT_LOW_WATER = 256 * 1024;
 /**
@@ -295,11 +306,12 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     deps.sendExit(handle.webContents, payload);
   }
 
-  function flush(windowId: number, ptyId: string): void {
-    const handle = handles.get(windowId);
-    const session = handle?.sessions.get(ptyId);
-    if (!handle || !session) return;
-    session.flushToken = null;
+  /**
+   * Push the session's buffered outbound to the renderer, with backpressure
+   * accounting. Delivery only — never touches the flush timer; callers own
+   * scheduling.
+   */
+  function deliver(handle: PtyWindowHandle, ptyId: string, session: SessionState): void {
     // pushData skips the send on a destroyed WebContents; bail before touching
     // pendingBytes so backpressure accounting doesn't drift on bytes that were
     // never delivered.
@@ -317,9 +329,17 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     }
   }
 
+  function flushTick(windowId: number, ptyId: string): void {
+    const handle = handles.get(windowId);
+    const session = handle?.sessions.get(ptyId);
+    if (!handle || !session) return;
+    session.flushToken = null;
+    deliver(handle, ptyId, session);
+  }
+
   function scheduleFlush(windowId: number, ptyId: string, session: SessionState): void {
     if (session.flushToken !== null) return;
-    session.flushToken = deps.setTimer(() => flush(windowId, ptyId), coalesceMs);
+    session.flushToken = deps.setTimer(() => flushTick(windowId, ptyId), coalesceMs);
   }
 
   function clearFlush(session: SessionState): void {
@@ -386,7 +406,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         // the window's other tabs (and a later restart).
         const { ptyId } = message;
         clearFlush(session);
-        flush(windowId, ptyId);
+        deliver(handle, ptyId, session);
         maybeRecordSession(session);
         handle.sessions.delete(ptyId);
         deps.recordShellExit?.({ crashed: false });

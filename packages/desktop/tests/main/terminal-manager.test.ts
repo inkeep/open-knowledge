@@ -112,7 +112,8 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
     sent.filter((s) => s.channel === 'ok:pty:data').map((s) => s.payload.data as string);
   const exits = (): Array<Record<string, unknown>> =>
     sent.filter((s) => s.channel === 'ok:pty:exit').map((s) => s.payload);
-  return { mgr, sent, forked, warns, runTimers, dataPayloads, exits };
+  const liveTimerCount = (): number => timers.filter((t) => t !== null).length;
+  return { mgr, sent, forked, warns, runTimers, dataPayloads, exits, liveTimerCount };
 }
 
 const PROJECT = '/Users/me/project';
@@ -234,6 +235,9 @@ describe('createTerminalManager — coalescing + UTF-8 integrity', () => {
       cols: 80,
       rows: 24,
     });
+    // Trailing-only on purpose: a TUI redraw burst (erase + repaint) must land
+    // as ONE push — a leading-edge flush would deliver the erase fragment
+    // alone and render the partial state for a frame (visible tearing).
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'a' });
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'b' });
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'c' });
@@ -471,6 +475,20 @@ describe('createTerminalManager — destroyed-window guard', () => {
     h.runTimers();
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
     expect(h.sent).toEqual([]);
+  });
+
+  test('a dead page does not spin the flush timer: a tick that delivered nothing stays disarmed', () => {
+    const h = makeManager();
+    const wc = makeWebContents();
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
+    // The page dies with output buffered inside the coalesce window.
+    wc.destroyed = true;
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'a' });
+    h.runTimers();
+    // Nothing deliverable → no re-arm (a dead page must not tick a timer
+    // forever). The buffered output stays put for a later adopt's replay path.
+    expect(h.liveTimerCount()).toBe(0);
+    expect(h.dataPayloads()).toEqual([]);
   });
 });
 

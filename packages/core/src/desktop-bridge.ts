@@ -1582,6 +1582,17 @@ export interface OkDesktopBridge {
     rewireClaudeMcp(): Promise<ClaudeReadiness>;
   };
 
+  /**
+   * OS assistive-tech signal gating xterm's `screenReaderMode`. Canonical
+   * JSDoc in `bridge-contract.ts`. Optional in this mirror: session-only
+   * bridges omit it, and consumers treat an absent surface as
+   * screen-reader-active (fail-accessible).
+   */
+  accessibility?: {
+    isScreenReaderActive(): boolean;
+    onScreenReaderChanged(cb: (active: boolean) => void): OkUnsubscribe;
+  };
+
   /** Current platform — `process.platform` reported by preload. */
   readonly platform: 'darwin' | 'win32' | 'linux';
   /** Electron app version (from main's `app.getVersion()`). */
