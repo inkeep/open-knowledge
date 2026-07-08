@@ -39,6 +39,7 @@ import { toast } from 'sonner';
 import {
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuPortal,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -413,9 +414,27 @@ function FlyoutGroup({
 /**
  * The side-flyout content for one project: a search box over that project's
  * worktrees + local branches, then the ordered list (main pinned, opened
- * worktrees by recency, create-on-demand branches last). Rendered as a
- * DropdownMenuSubContent — a real submenu, so it isn't clipped by the parent
- * menu's scroll container (Radix positions it fixed against the trigger).
+ * worktrees by recency, create-on-demand branches last).
+ *
+ * Rendered as a DropdownMenuSubContent wrapped in DropdownMenuPortal. shadcn's
+ * SubContent is NOT portaled by default (unlike DropdownMenuContent), so inline
+ * it renders as a descendant of the project menu's Popper wrapper. Radix
+ * positions that wrapper `position: fixed`, but the parent DropdownMenuContent's
+ * own Popper wrapper carries a `transform` — which makes it the containing block
+ * for the fixed SubContent — and both it and the recents list
+ * (`max-h-64 overflow-x-hidden` in ProjectSwitcher) have `overflow-x-hidden`. So
+ * the SubContent is clipped by that ancestor overflow rather than being placed
+ * fully on-screen: a w-96 flyout off a ~260px menu is visually cut off at the
+ * menu's right edge. Portaling it to the body removes those transform/overflow
+ * ancestors so the panel renders as an independent floating layer, unclipped. It
+ * always opens to the RIGHT and never flips left (`avoidCollisions={false}`); a
+ * small negative `sideOffset` overlaps the menu's right edge slightly so the
+ * panel stays visible near a narrow window's edge (see the props below). The
+ * submenu stays anchored to its trigger, and the parent still force-closes it on
+ * scroll via the hoisted flyout state (see ProjectSwitcher) — that path is
+ * independent of where the content mounts, and Radix still only mounts the
+ * content while the sub is open, so the focus-into-search effect below fires
+ * unchanged.
  */
 function WorktreeFlyout({
   group,
@@ -447,8 +466,10 @@ function WorktreeFlyout({
   // from the open transition instead. The content — and this input — only mounts
   // while open, so searchRef is live by the time this runs, and it lands after
   // Radix's own focus so the input wins. `preventScroll` so focusing the input
-  // can't nudge the parent recents scroll container, whose onScroll close would
-  // otherwise self-dismiss the flyout the instant it opens.
+  // can't scroll any ancestor into view — now that the content is portaled the
+  // input no longer lives inside the recents scroll container, but the guard
+  // stays as defense in depth against a focus-driven scroll re-triggering the
+  // parent's onScroll close.
   useEffect(() => {
     if (open) searchRef.current?.focus({ preventScroll: true });
   }, [open]);
@@ -508,114 +529,129 @@ function WorktreeFlyout({
   const canCreate = isCurrentProject && typedName.length > 0;
 
   return (
-    <DropdownMenuSubContent
-      sideOffset={4}
-      className="flex max-h-80 w-96 flex-col gap-1 overflow-hidden p-1"
-      data-testid={`project-switcher-flyout-${group.project.path}`}
-    >
-      <InputGroup className="mb-1 h-8 shrink-0">
-        {/* Search magnifier leads so the row reads as a typeable field; the
+    <DropdownMenuPortal>
+      <DropdownMenuSubContent
+        // Independent floating panel: always opens to the RIGHT of the project
+        // menu and never flips left. SubContent already hardcodes side="right"
+        // (for LTR) internally — Radix sets it AFTER spreading our props, so a
+        // `side` prop here would be silently ignored; what actually pins it right
+        // is disabling Popper's collision logic. avoidCollisions={false} turns off
+        // both the flip and the shift, so no window edge can send it left.
+        avoidCollisions={false}
+        // With collisions off, nothing shifts the panel to keep it on-screen, so
+        // it opens flush-right of the ~260px menu; the anchor sits at the left of
+        // the navigator (min width 640px), leaving room for the w-96 panel. This
+        // small negative offset just pulls it a few px LEFT so it overlaps the
+        // menu's right edge slightly rather than floating detached — the
+        // maintainer OK'd a slight overlap since it's an independent panel.
+        sideOffset={-8}
+        className="flex max-h-80 w-96 flex-col gap-1 overflow-hidden p-1"
+        data-testid={`project-switcher-flyout-${group.project.path}`}
+      >
+        <InputGroup className="mb-1 h-8 shrink-0">
+          {/* Search magnifier leads so the row reads as a typeable field; the
           default InputGroup border + focus ring (restored by dropping the
           border-0 / ring-0 overrides) is what signals "you can type here". */}
-        <InputGroupAddon align="inline-start">
-          <Search aria-hidden="true" />
-        </InputGroupAddon>
-        <InputGroupInput
-          ref={searchRef}
-          aria-label={t`Search worktrees and branches`}
-          placeholder={t`Search worktrees`}
-          value={flyoutQuery}
-          onChange={(e) => setFlyoutQuery(e.target.value)}
-          // ArrowDown steps from the search box into the entry list (focus the
-          // first row); typing still filters. Intercept BEFORE stopPropagation —
-          // the stop keeps the enclosing submenu's typeahead/roving from stealing
-          // the keys, but would also swallow ArrowDown, so nav has to run first.
-          // Escape still closes (Radix's document-level dismiss ignores React
-          // stopPropagation); ArrowLeft stays a cursor move inside the input.
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              focusRowAt(0);
-            }
-            e.stopPropagation();
-          }}
-          data-testid={`project-switcher-flyout-search-${group.project.path}`}
-        />
-      </InputGroup>
-      <div
-        ref={listRef}
-        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain subtle-scrollbar"
-      >
-        {visible.length === 0 ? (
-          <>
-            <DropdownMenuLabel
-              className="font-normal text-muted-foreground text-xs"
-              role="status"
-              aria-live="polite"
-            >
-              {t`No matching worktrees or branches.`}
-            </DropdownMenuLabel>
-            {/* No match, but a name was typed — offer to create a worktree with
+          <InputGroupAddon align="inline-start">
+            <Search aria-hidden="true" />
+          </InputGroupAddon>
+          <InputGroupInput
+            ref={searchRef}
+            aria-label={t`Search worktrees and branches`}
+            placeholder={t`Search worktrees`}
+            value={flyoutQuery}
+            onChange={(e) => setFlyoutQuery(e.target.value)}
+            // ArrowDown steps from the search box into the entry list (focus the
+            // first row); typing still filters. Intercept BEFORE stopPropagation —
+            // the stop keeps the enclosing submenu's typeahead/roving from stealing
+            // the keys, but would also swallow ArrowDown, so nav has to run first.
+            // Escape still closes (Radix's document-level dismiss ignores React
+            // stopPropagation); ArrowLeft stays a cursor move inside the input.
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                focusRowAt(0);
+              }
+              e.stopPropagation();
+            }}
+            data-testid={`project-switcher-flyout-search-${group.project.path}`}
+          />
+        </InputGroup>
+        <div
+          ref={listRef}
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain subtle-scrollbar"
+        >
+          {visible.length === 0 ? (
+            <>
+              <DropdownMenuLabel
+                className="font-normal text-muted-foreground text-xs"
+                role="status"
+                aria-live="polite"
+              >
+                {t`No matching worktrees or branches.`}
+              </DropdownMenuLabel>
+              {/* No match, but a name was typed — offer to create a worktree with
               it. Only for the current project (creation anchors to the current
               window). Closes the switcher + opens the pre-filled dialog. */}
-            {canCreate ? (
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  if (guardStaleSelect(e)) return;
-                  openNewWorktreeWith(typedName);
-                }}
-                onKeyDown={(e) => onRowKeyDown(e, () => openNewWorktreeWith(typedName))}
-                className="flex items-center gap-2"
-                data-testid="project-switcher-flyout-create"
-              >
-                <Plus aria-hidden="true" className="size-3.5 shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-sm" title={typedName}>
-                  <Trans>
-                    Create worktree{' '}
-                    <span className="font-medium">
-                      “<span className="font-mono">{typedName}</span>”
-                    </span>
-                  </Trans>
-                </span>
-              </DropdownMenuItem>
-            ) : null}
-          </>
-        ) : (
-          visible.map((entry) => {
-            const key = entry.path ?? `branch:${entry.branch}`;
-            const label = entry.branch ?? t`(detached)`;
-            return (
-              <DropdownMenuItem
-                key={key}
-                onSelect={(e) => {
-                  if (guardStaleSelect(e)) return;
-                  onPickFlyoutEntry(entry);
-                }}
-                onKeyDown={(e) => onRowKeyDown(e, () => onPickFlyoutEntry(entry))}
-                className="flex items-center gap-2"
-                data-testid={`project-switcher-flyout-entry-${key}`}
-                data-current={entry.isCurrent ? 'true' : undefined}
-              >
-                <span className="min-w-0 flex-1 truncate text-sm" title={label}>
-                  {label}
-                </span>
-                {entry.isMain ? (
-                  <span className="shrink-0 text-muted-foreground text-xs">{t`default`}</span>
-                ) : !entry.opened ? (
-                  <span
-                    className="shrink-0 text-muted-foreground text-xs"
-                    title={t`Create a worktree from this branch`}
-                  >
-                    {t`create worktree`}
+              {canCreate ? (
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    if (guardStaleSelect(e)) return;
+                    openNewWorktreeWith(typedName);
+                  }}
+                  onKeyDown={(e) => onRowKeyDown(e, () => openNewWorktreeWith(typedName))}
+                  className="flex items-center gap-2"
+                  data-testid="project-switcher-flyout-create"
+                >
+                  <Plus aria-hidden="true" className="size-3.5 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate text-sm" title={typedName}>
+                    <Trans>
+                      Create worktree{' '}
+                      <span className="font-medium">
+                        “<span className="font-mono">{typedName}</span>”
+                      </span>
+                    </Trans>
                   </span>
-                ) : null}
-                {entry.isCurrent ? <CurrentCheck /> : null}
-              </DropdownMenuItem>
-            );
-          })
-        )}
-      </div>
-    </DropdownMenuSubContent>
+                </DropdownMenuItem>
+              ) : null}
+            </>
+          ) : (
+            visible.map((entry) => {
+              const key = entry.path ?? `branch:${entry.branch}`;
+              const label = entry.branch ?? t`(detached)`;
+              return (
+                <DropdownMenuItem
+                  key={key}
+                  onSelect={(e) => {
+                    if (guardStaleSelect(e)) return;
+                    onPickFlyoutEntry(entry);
+                  }}
+                  onKeyDown={(e) => onRowKeyDown(e, () => onPickFlyoutEntry(entry))}
+                  className="flex items-center gap-2"
+                  data-testid={`project-switcher-flyout-entry-${key}`}
+                  data-current={entry.isCurrent ? 'true' : undefined}
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm" title={label}>
+                    {label}
+                  </span>
+                  {entry.isMain ? (
+                    <span className="shrink-0 text-muted-foreground text-xs">{t`default`}</span>
+                  ) : !entry.opened ? (
+                    <span
+                      className="shrink-0 text-muted-foreground text-xs"
+                      title={t`Create a worktree from this branch`}
+                    >
+                      {t`create worktree`}
+                    </span>
+                  ) : null}
+                  {entry.isCurrent ? <CurrentCheck /> : null}
+                </DropdownMenuItem>
+              );
+            })
+          )}
+        </div>
+      </DropdownMenuSubContent>
+    </DropdownMenuPortal>
   );
 }
 

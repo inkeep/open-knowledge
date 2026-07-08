@@ -41,6 +41,15 @@ mock.module('@/components/ui/dropdown-menu', () => ({
     </div>
   ),
   DropdownMenuLabel: ({ children, ...props }: ItemProps) => <div {...props}>{children}</div>,
+  // The worktree flyout content is wrapped in DropdownMenuPortal so it escapes
+  // the project menu's overflow-x-hidden clip (see RecentProjectsMenu's
+  // WorktreeFlyout doc). The real Portal renders into document.body; here it is a
+  // marked passthrough container so the portal-presence test can assert the
+  // SubContent is routed through it. jsdom has no layout, so this asserts the
+  // wiring (regression guard), not the off-screen geometry.
+  DropdownMenuPortal: ({ children }: { children?: ReactNode }) => (
+    <div data-slot="dropdown-menu-portal">{children}</div>
+  ),
   DropdownMenuSub: ({
     children,
     open,
@@ -94,8 +103,9 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuSubContent: ({
     children,
     sideOffset: _sideOffset,
+    avoidCollisions: _avoidCollisions,
     ...props
-  }: ItemProps & { sideOffset?: number }) => {
+  }: ItemProps & { sideOffset?: number; avoidCollisions?: boolean }) => {
     const { open, onOpenChange } = use(SubStateContext);
     if (!open) return null;
     // role="menu" mirrors the real DropdownMenuSubContent and satisfies the
@@ -325,6 +335,25 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
       expect(screen.getByTestId('project-switcher-flyout-/repo')).not.toBeNull();
     });
     expect(bridge.project.open).not.toHaveBeenCalled();
+  });
+
+  test('the open flyout content is rendered through DropdownMenuPortal (escapes the menu overflow clip)', async () => {
+    // Regression guard for the off-screen clip: shadcn's DropdownMenuSubContent
+    // is NOT portaled by default, so inline it was clipped by the recents list's
+    // overflow-x-hidden and never flipped left near the window edge. The fix
+    // wraps it in DropdownMenuPortal. jsdom can't verify the resulting geometry
+    // (no layout), but it CAN assert the SubContent is routed through the portal
+    // wrapper — drop the wrapper and this fails. (The visual "flips left / fits
+    // on screen" behavior must be confirmed live in the Electron app.)
+    renderMenu({
+      recents: [
+        main('/repo', '/repo/.git'),
+        worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
+      ],
+    });
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
+    const flyout = await screen.findByTestId('project-switcher-flyout-/repo');
+    expect(flyout.closest('[data-slot="dropdown-menu-portal"]')).not.toBeNull();
   });
 
   test('the flyout closes when the pointer leaves both the row and the flyout (close-on-hover-out)', async () => {

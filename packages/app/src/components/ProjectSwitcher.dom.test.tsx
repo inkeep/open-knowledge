@@ -45,6 +45,11 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuLabel: ({ children, ...props }: ItemProps) => <div {...props}>{children}</div>,
   DropdownMenuSeparator: () => <hr />,
   DropdownMenuTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  // RecentProjectsMenu's worktree flyout wraps its SubContent in
+  // DropdownMenuPortal (escapes the menu's overflow clip). Passthrough here — the
+  // real portal-to-body isn't observable in jsdom and doesn't affect this file's
+  // hoisted-flyout + close-on-scroll assertions.
+  DropdownMenuPortal: ({ children }: { children?: ReactNode }) => <>{children}</>,
   DropdownMenuSub: ({ children, open, onOpenChange }: MenuProps) => (
     <SubStateContext value={{ open: !!open, onOpenChange: onOpenChange ?? (() => {}) }}>
       {children}
@@ -84,7 +89,12 @@ mock.module('@/components/ui/dropdown-menu', () => ({
       </div>
     );
   },
-  DropdownMenuSubContent: ({ children, sideOffset: _sideOffset, ...props }: ItemProps) => {
+  DropdownMenuSubContent: ({
+    children,
+    sideOffset: _sideOffset,
+    avoidCollisions: _avoidCollisions,
+    ...props
+  }: ItemProps) => {
     const { open } = use(SubStateContext);
     if (!open) return null;
     return <div {...props}>{children}</div>;
