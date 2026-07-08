@@ -20,7 +20,7 @@ jobs:
     # repo, so every public PR revision needs maintainer approval before crossing
     # into agents-private.
     if: github.event.action != 'closed' && github.event.pull_request.head.ref != 'copybara/sync'
-    environment: sync-to-agents-private
+    environment: inkeep-oss-sync
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
