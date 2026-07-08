@@ -76,6 +76,7 @@ import { cn } from '@/lib/utils';
 import { docNameToRelativePath } from '@/lib/workspace-paths';
 import { emitOpenAskAiComposer, subscribeToOpenAskAiComposer } from './ask-ai-composer-events';
 import { clearComposerDraft, getComposerDraft, setComposerDraftDoc } from './composer-draft-store';
+import { focusComposerInputOnCardPointer } from './focus-composer-on-card-pointer';
 import { usePageList } from './PageListContext';
 
 // Each suggestion holds long enough to read, then cross-fades to the next.
@@ -702,9 +703,15 @@ export function BottomComposer({
   // the card stacks its children vertically. The card markup is mode-agnostic;
   // only the outer host wrapper (overlay vs in-flow) differs below.
   const card = (
+    // biome-ignore lint/a11y/noStaticElementInteractions: pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⌘L).
     <div
       ref={cardRef}
-      className="pointer-events-auto group relative flex flex-col gap-1.5 rounded-2xl border border-border/60 bg-card px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50"
+      // Click anywhere in the card's whitespace (padding, row gaps, the space
+      // beside the short single-line input) focuses the field — the standard
+      // chat-composer affordance. Presses on the send button / chips / editable
+      // are left alone. See focus-composer-on-card-pointer.ts.
+      onMouseDown={(event) => focusComposerInputOnCardPointer(event, inputRef)}
+      className="pointer-events-auto group relative flex cursor-text flex-col gap-1.5 rounded-2xl border border-border/60 bg-card px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50"
     >
       {/* Collapse handle — a small tab centered above the card's top edge,
           revealed on hover/focus. Collapses the composer to the footer tab. Doc

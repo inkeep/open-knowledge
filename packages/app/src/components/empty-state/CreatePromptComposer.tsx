@@ -11,6 +11,7 @@ import {
   type CreateScenario,
   useCreateSuggestions,
 } from '@/components/empty-state/use-create-suggestions';
+import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
 import { cliIconTargetId, VISIBLE_CLIS } from '@/components/handoff/terminal-cli-display';
@@ -291,7 +292,15 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
 
   return (
     <div className={cn('flex w-full flex-col gap-3', className)}>
-      <div className="flex w-full flex-col rounded-2xl border border-border/60 bg-card shadow-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⌘L). */}
+      <div
+        // Click anywhere in the card's whitespace (the padding around the input,
+        // the footer row beside the Create button) focuses the field — the
+        // standard chat-composer affordance. Presses on the Create split button /
+        // chips / editable are left alone. See focus-composer-on-card-pointer.ts.
+        onMouseDown={(event) => focusComposerInputOnCardPointer(event, inputRef)}
+        className="flex w-full cursor-text flex-col rounded-2xl border border-border/60 bg-card shadow-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50"
+      >
         {/* The card owns the border + focus ring; the mention input is bare (no
             border/ring of its own) so the whole card lights up on focus instead
             of nesting a second outline. The `@`-typeahead reuses the workspace
