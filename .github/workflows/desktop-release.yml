@@ -95,10 +95,12 @@ jobs:
     # electron-builder compiles `build/okglass.icon` → `Assets.car` via
     # `actool`, which only ships with Xcode 26+.
     runs-on: macos-26
-    # 45 min budget — same as desktop-build.yml. Signed builds add 2-5 min
-    # of notary round-trip over the unsigned path; 45 min leaves headroom
-    # for cold caches and notary queue spikes.
-    timeout-minutes: 45
+    # 75 min budget. A signed build + notary round-trip is ~20-30 min; the
+    # build+publish step retries once on a transient failure (see below), so
+    # the worst case is two full signed builds back-to-back. 75 min covers
+    # that plus cold caches and notary queue spikes. desktop-build.yml has no
+    # retry and stays at 45.
+    timeout-minutes: 75
     steps:
       # On `repository_dispatch`, check out the ref supplied by the upstream
       # workflow via `client_payload.ref` — that's the exact commit
@@ -194,9 +196,11 @@ jobs:
           # Strip leading `v` (electron-builder + npm want bare semver).
           VERSION="${RELEASE_TAG#v}"
           if [[ "$VERSION" == *-beta.* ]]; then
-            echo "channel=beta" >> "$GITHUB_OUTPUT"
-            echo "release_type=prerelease" >> "$GITHUB_OUTPUT"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            {
+              echo "channel=beta"
+              echo "release_type=prerelease"
+              echo "version=$VERSION"
+            } >> "$GITHUB_OUTPUT"
             echo "::notice::Building BETA channel from tag $RELEASE_TAG"
           elif [[ "$VERSION" == *-beta ]]; then
             # The `*-beta.*` glob above requires a dot after `beta` (i.e.
@@ -210,9 +214,11 @@ jobs:
             echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — only -beta.N is supported. See packages/desktop/README.md beta-channel runbook for the supported lifecycle."
             exit 1
           else
-            echo "channel=latest" >> "$GITHUB_OUTPUT"
-            echo "release_type=release" >> "$GITHUB_OUTPUT"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            {
+              echo "channel=latest"
+              echo "release_type=release"
+              echo "version=$VERSION"
+            } >> "$GITHUB_OUTPUT"
             echo "::notice::Building LATEST channel from tag $RELEASE_TAG"
           fi
 
@@ -359,10 +365,43 @@ jobs:
           # bundled SKILL.md asset's metadata.version; those are baked in
           # at Build time, so the workspace-wide on-disk override step
           # above is what makes them match the tag. See PRD-6650.
-          bun run build:desktop && bunx electron-builder --mac --publish always \
-            --config.extraMetadata.version=${{ steps.channel.outputs.version }} \
-            --config.publish.channel=${{ steps.channel.outputs.channel }} \
-            --config.publish.releaseType=${{ steps.channel.outputs.release_type }}
+          #
+          # Retry the build+publish once on failure. The two observed
+          # stuck-draft causes were both transient and un-retried: a bare EOF
+          # fetching the Electron runtime zip during packaging (app-builder's
+          # DownloadNoRetry path aborts on a single dropped connection), and a
+          # 403 from uploads.github.com mid-publish after a fully successful
+          # sign+notarize (concurrent-upload throttling). Either aborts the run
+          # before the Promote step and orphans the draft release. Re-running
+          # the whole invocation is idempotent: electron-builder deletes then
+          # re-uploads same-named assets on republish, so a partial asset set
+          # left by a failed first attempt is overwritten, not duplicated. A
+          # persistent (non-transient) failure still exits non-zero after the
+          # final attempt and lands in the Warn-on-stuck-draft path + the
+          # scheduled draft-release janitor.
+          set -uo pipefail
+          attempt=1
+          max_attempts=2
+          while true; do
+            echo "::group::electron-builder publish attempt ${attempt}/${max_attempts}"
+            if bun run build:desktop && bunx electron-builder --mac --publish always \
+              --config.extraMetadata.version=${{ steps.channel.outputs.version }} \
+              --config.publish.channel=${{ steps.channel.outputs.channel }} \
+              --config.publish.releaseType=${{ steps.channel.outputs.release_type }}; then
+              echo "::endgroup::"
+              echo "electron-builder succeeded on attempt ${attempt}."
+              break
+            fi
+            echo "::endgroup::"
+            if [ "${attempt}" -ge "${max_attempts}" ]; then
+              echo "::error::electron-builder failed after ${max_attempts} attempts."
+              exit 1
+            fi
+            backoff=$((attempt * 30))
+            echo "::warning::electron-builder attempt ${attempt} failed; retrying in ${backoff}s (transient sign/notarize/upload/download flakes are retried once)."
+            sleep "${backoff}"
+            attempt=$((attempt + 1))
+          done
 
       # Closes the publish-window race: release.yml / promote-stable.yml
       # create the GitHub Release as --draft so it stays out of the .atom

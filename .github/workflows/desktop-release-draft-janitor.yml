@@ -1,0 +1,105 @@
+name: Draft release janitor
+
+# Sweeps orphaned draft GitHub Releases off inkeep/open-knowledge.
+#
+# release.yml creates every beta as `--draft --prerelease`; promote-stable.yml
+# does the same for stable. desktop-release.yml flips `draft=false` ONLY after
+# the signed DMG + channel manifest (beta-mac.yml / latest-mac.yml) upload
+# succeeds — the draft gate keeps a manifest-less release out of the auto-update
+# .atom feed. When that build fails (both historical cases were transient:
+# an Electron-runtime-download EOF and a GitHub-upload 403, neither retried
+# at the time), the release is stranded as a draft. It never entered the feed,
+# so auto-update never saw it, but it stays pinned to the top of the web
+# releases page forever while the next cut rolls forward past it.
+#
+# This janitor removes such orphans on a schedule. It is deliberately
+# conservative: it deletes a stuck draft beta ONLY once a published STABLE
+# release covers that beta's X.Y.Z cycle. That gate is load-bearing — a beta's
+# changelog delta lives ONLY in its GitHub Release body, and promote-stable.yml
+# aggregates the whole cycle's beta bodies (by tag, via `gh release view`) into
+# the stable release notes at promotion time (packages/*/CHANGELOG.md no longer
+# accumulates per-beta under the zero-commit-bump cadence). Deleting a beta
+# before its cycle is promoted would drop that increment from the stable
+# changelog (it renders as "release body unavailable"). Once the cycle's stable
+# exists, every in-range beta body has already been aggregated (and a later beta
+# on an already-promoted base is never aggregated by any future stable), so the
+# body is safe to reap. Drafts on a not-yet-promoted cycle are left for a human
+# to re-run desktop-release.yml against or promote. The git TAG is always kept
+# (npm-provenance source ref + version lineage); only the Release object goes.
+
+on:
+  schedule:
+    # Every 6 hours, off the hour to avoid the top-of-hour scheduler surge.
+    - cron: "37 */6 * * *"
+  # Manual sweep, e.g. right after a known stuck-draft incident.
+  workflow_dispatch:
+
+permissions:
+  # contents: write is required to delete Release objects via the API.
+  contents: write
+
+concurrency:
+  group: desktop-release-draft-janitor
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete superseded stuck draft releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          ALL=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 300 \
+            --json tagName,isDraft,isPrerelease,createdAt)
+
+          # Highest published STABLE (non-draft AND non-prerelease) version,
+          # bare (leading v stripped). We gate on a STABLE, not merely a newer
+          # beta: a stuck draft beta's body must survive until its cycle has
+          # been promoted to stable (see header). `sort -V` is GNU coreutils on
+          # ubuntu-latest; both operands here are bare X.Y.Z (no prerelease
+          # suffix), so version-sort ordering is unambiguous.
+          maxstable=$(printf '%s' "$ALL" \
+            | jq -r '.[] | select((.isDraft | not) and (.isPrerelease | not)) | .tagName' \
+            | sed 's/^v//' \
+            | sort -V | tail -n1)
+          if [ -z "${maxstable}" ]; then
+            echo "No published stable release yet; keeping all drafts (their bodies feed the first stable's changelog)."
+            exit 0
+          fi
+          echo "Highest published stable version: ${maxstable}"
+
+          # Candidates: draft AND prerelease AND older than 90 min. The age
+          # gate must exceed desktop-release.yml's job budget (75 min) so a
+          # draft that a still-running per-tag build will promote is never
+          # swept — 5400s leaves margin above the timeout.
+          candidates=$(printf '%s' "$ALL" | jq -r --argjson maxage 5400 '
+            .[]
+            | select(.isDraft and .isPrerelease)
+            | select((now - (.createdAt | fromdateiso8601)) > $maxage)
+            | .tagName')
+
+          if [ -z "${candidates}" ]; then
+            echo "No stuck draft prereleases older than 90 min; nothing to sweep."
+            exit 0
+          fi
+
+          printf '%s\n' "${candidates}" | while IFS= read -r tag; do
+            [ -z "${tag}" ] && continue
+            base="${tag#v}"; base="${base%-beta.*}"   # vX.Y.Z-beta.N -> X.Y.Z
+            # Delete only once a published stable covers this beta's cycle,
+            # i.e. base <= maxstable. top==maxstable holds when base < maxstable
+            # (older closed cycle) and when base == maxstable (this cycle's
+            # stable exists). base > maxstable => cycle not yet promoted => keep.
+            top=$(printf '%s\n%s\n' "${base}" "${maxstable}" | sort -V | tail -n1)
+            if [ "${top}" = "${maxstable}" ]; then
+              echo "::notice::Sweeping stuck draft ${tag}: its ${base} cycle is closed (stable ${maxstable} exists), so its body is already aggregated. Git tag kept."
+              gh release delete "${tag}" --repo "$GITHUB_REPOSITORY" --yes
+            else
+              echo "Keeping ${tag}: cycle ${base} not yet promoted (newest stable ${maxstable}) — its body still feeds the future stable changelog. Re-run desktop-release.yml or promote it."
+            fi
+          done
+          echo "Draft-release janitor sweep complete."
