@@ -5,7 +5,7 @@
  *   - File: Switch project (open Navigator), Open folder (native picker),
  *     Recent project submenu, Close Window
  *   - Edit: macOS defaults (Undo/Redo/Cut/Copy/Paste/Select All)
- *   - View: zoom / fullscreen always; Reload / Force Reload / Toggle DevTools
+ *   - View: Reload / Force Reload / zoom / fullscreen always; Toggle DevTools
  *     gated on `showDevToolsMenu` (dev + beta only) — Electron built-in roles
  *   - Window: macOS defaults (Minimize / Zoom / Bring to Front)
  *
@@ -42,8 +42,9 @@ export interface MenuDeps {
   /** `app.name` — the running app's name, used for the macOS App menu label. */
   appName: string;
   /**
-   * Gates the View → Reload / Force Reload / Toggle Developer Tools cluster.
-   * When false, all three are omitted. Caller decides; this module just renders.
+   * Gates the View → Toggle Developer Tools item. When false, only that item is
+   * omitted — Reload / Force Reload render unconditionally (all channels).
+   * Caller decides; this module just renders.
    */
   showDevToolsMenu: boolean;
   /** `electron.dialog` — injected so the File → Open folder click handler
@@ -584,14 +585,17 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     {
       label: 'View',
       submenu: [
+        // Reload / Force Reload ship on every channel — a page-level recovery
+        // affordance for stable users (parity with Electron apps like Claude
+        // Code Desktop), not a dev-only tool. Toggle Developer Tools stays
+        // gated on `showDevToolsMenu` (dev + beta), so stable doesn't expose
+        // the raw web inspector.
+        { role: 'reload' as const },
+        { role: 'forceReload' as const },
         ...(deps.showDevToolsMenu
-          ? ([
-              { role: 'reload' as const },
-              { role: 'forceReload' as const },
-              { role: 'toggleDevTools' as const },
-              { type: 'separator' as const },
-            ] satisfies MenuItemConstructorOptions[])
+          ? ([{ role: 'toggleDevTools' as const }] satisfies MenuItemConstructorOptions[])
           : []),
+        { type: 'separator' as const },
         // Sidebar visibility toggle. Apple HIG convention: a single row whose
         // label flips between "Show sidebar" / "Hide sidebar" based on the
         // current state (Finder's pattern), rather than a checkbox row. ⌥⌘S

@@ -203,7 +203,7 @@ describe('buildMenuTemplate', () => {
     expect(topLabels).toContain('Help');
   });
 
-  describe('View → Reload / Force Reload / Toggle Developer Tools cluster', () => {
+  describe('View → Reload / Force Reload always; Toggle Developer Tools gated', () => {
     function viewRoles(deps: MenuDeps): Array<string | undefined> {
       const template = buildMenuTemplate(deps);
       const view = template.find((t) => t.label === 'View');
@@ -211,7 +211,7 @@ describe('buildMenuTemplate', () => {
       return sub?.map((item) => item.role) ?? [];
     }
 
-    test('showDevToolsMenu: true exposes the dev cluster (dev + beta channel)', () => {
+    test('showDevToolsMenu: true exposes Reload / Force Reload / DevTools (dev + beta channel)', () => {
       const roles = viewRoles(makeDeps({ showDevToolsMenu: true }));
       expect(roles).toContain('reload');
       expect(roles).toContain('forceReload');
@@ -225,10 +225,13 @@ describe('buildMenuTemplate', () => {
       expect(roles).toContain('togglefullscreen');
     });
 
-    test('showDevToolsMenu: false hides the dev cluster (stable channel)', () => {
+    test('showDevToolsMenu: false keeps Reload / Force Reload, hides only DevTools (stable channel)', () => {
       const roles = viewRoles(makeDeps({ showDevToolsMenu: false }));
-      expect(roles).not.toContain('reload');
-      expect(roles).not.toContain('forceReload');
+      // Reload / Force Reload are page-level recovery affordances shipped on
+      // every channel — stable must keep them. Only the raw web inspector
+      // (Toggle Developer Tools) is gated off stable.
+      expect(roles).toContain('reload');
+      expect(roles).toContain('forceReload');
       expect(roles).not.toContain('toggleDevTools');
       // Zoom + fullscreen entries still present so View isn't empty.
       expect(roles).toContain('resetZoom');
