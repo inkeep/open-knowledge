@@ -131,6 +131,40 @@ function applyWithAppend(
   return intermediate.apply(appended);
 }
 
+/**
+ * Positions of every jsxComponent in the doc, in document order. Re-locating
+ * blocks after an edit shifts their positions lets an assertion on the
+ * untouched sibling read the right node instead of a stale offset.
+ */
+function componentPositions(state: EditorState): number[] {
+  const positions: number[] = [];
+  state.doc.descendants((node, p) => {
+    if (node.type.name === 'jsxComponent') positions.push(p);
+  });
+  return positions;
+}
+
+/**
+ * Apply an in-place text edit inside the first jsxComponent's paragraph child —
+ * the interior-content route, distinct from the prop-edit route the other cases
+ * drive via setNodeMarkup. `firstComponentPos + 2` is the start of the paragraph's
+ * inline content: +1 enters the jsxComponent, +1 enters the paragraph. Passing
+ * `syncMeta` stamps the transaction as CRDT-origin so the deny-list treats it as
+ * non-user-intent.
+ */
+function editInteriorText(
+  plugin: Plugin,
+  state: EditorState,
+  text: string,
+  syncMeta?: unknown,
+): EditorState {
+  const innerTextPos = firstComponentPos(state) + 2;
+  return applyWithAppend(plugin, state, (tr) => {
+    if (syncMeta !== undefined) tr.setMeta(ySyncPluginKey, syncMeta);
+    return tr.insertText(text, innerTextPos);
+  });
+}
+
 describe('SourceDirtyObserver origin guard', () => {
   test('user-intent prop edit marks only the mutated jsxComponent dirty', () => {
     const plugin = getPlugin();
@@ -283,5 +317,65 @@ describe('SourceDirtyObserver origin guard', () => {
     // sourceRaw → guard fires → NOT dirty, even though the node has
     // content AND non-empty props.
     expect(isDirty(next, insertPos)).toBe(false);
+  });
+
+  test('deny-list gates the interior-content route by origin, not by content', () => {
+    const plugin = getPlugin();
+
+    // User-intent interior text edit (no ySyncPluginKey meta): the deny-list's
+    // hasUserTransaction check must admit it, and the contentChanged branch must
+    // flip the edited component dirty while leaving the untouched sibling pristine.
+    {
+      const initial = buildInitialState(plugin);
+      const next = editInteriorText(plugin, initial, 'X');
+      const [firstPos, secondPos] = componentPositions(next);
+      expect(isDirty(next, firstPos)).toBe(true);
+      expect(isDirty(next, secondPos)).toBe(false);
+    }
+
+    // The SAME content mutation stamped CRDT-origin is suppressed by the deny-list.
+    // This control proves the flip above is the guard admitting a genuine user
+    // transaction, not interior edits flipping unconditionally.
+    {
+      const initial = buildInitialState(plugin);
+      const next = editInteriorText(plugin, initial, 'X', { isChangeOrigin: true });
+      const [firstPos] = componentPositions(next);
+      expect(isDirty(next, firstPos)).toBe(false);
+    }
+  });
+
+  test('freshly-inserted component stays pristine on insert, but its first interior edit flips', () => {
+    const plugin = getPlugin();
+    const initial = buildInitialState(plugin);
+    const insertPos = initial.doc.content.size;
+
+    // Insert a fresh registered component carrying an authoritative sourceRaw:
+    // the fresh-insert guard preserves it verbatim (pristine, not dirty).
+    const afterInsert = applyWithAppend(plugin, initial, (tr) => {
+      const node = schema.node(
+        'jsxComponent',
+        {
+          content: '',
+          componentName: 'Callout',
+          kind: 'element',
+          attributes: [],
+          sourceRaw: '<Callout type="info">\n\nfresh\n\n</Callout>',
+          sourceDirty: false,
+          props: { type: 'info' },
+        },
+        [schema.node('paragraph', null, [schema.text('fresh')])],
+      );
+      return tr.insert(insertPos, node);
+    });
+    expect(isDirty(afterInsert, insertPos)).toBe(false);
+
+    // A genuine interior edit on the now-existing component: the fresh-insert
+    // guard is one-shot at insert time (oldNode is now a jsxComponent, so
+    // isFreshInsert is false), so the edit re-derives and must flip dirty. A
+    // guard keyed on sourceRaw alone would wrongly keep it pristine here.
+    const afterEdit = applyWithAppend(plugin, afterInsert, (tr) =>
+      tr.insertText('!', insertPos + 2),
+    );
+    expect(isDirty(afterEdit, insertPos)).toBe(true);
   });
 });

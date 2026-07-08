@@ -23,8 +23,21 @@
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 
-/** Shared server-side MarkdownManager instance. */
-export const mdManager = new MarkdownManager({ extensions: sharedExtensions });
+/**
+ * Shared server-side MarkdownManager instance.
+ *
+ * `deriveStructuralFreshness` is on for the server: every server serialize
+ * (Observer A's byte-fate write, persistence's fragment serialize, the
+ * watchdog's canonicalizer) runs through this one instance, so promoting
+ * state-divergence into the serialize decision here keeps them all agreeing on
+ * the fresh bytes — a node whose children have diverged from a stale `sourceRaw`
+ * re-derives instead of emitting the stale slice, and the bridge invariant
+ * (`serialize(fragment)` === Y.Text) holds because both sides re-derive.
+ */
+export const mdManager = new MarkdownManager({
+  extensions: sharedExtensions,
+  deriveStructuralFreshness: true,
+});
 
 /** Shared server-side ProseMirror schema, derived from sharedExtensions. */
 export const schema = getSchema(sharedExtensions);

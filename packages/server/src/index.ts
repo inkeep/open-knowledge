@@ -418,7 +418,10 @@ export {
 export {
   isPairedWriteOrigin,
   OBSERVER_SYNC_ORIGIN,
+  type ObserverDispatchKind,
   type PairedWriteOrigin,
+  type SetupServerObserversOpts,
+  setupServerObservers,
 } from './server-observers.ts';
 export {
   buildWipTree,

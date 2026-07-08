@@ -15,7 +15,8 @@ declare module '@tiptap/core' {
  *
  * Children are recursively-walked mdast children from mdxJsxFlowElement.
  * Descriptor dispatch at render time determines the NodeView branch
- * (registered → live React, wildcard → UnregisteredBadge, error → nested CM).
+ * (registered → live React; wildcard and render error both auto-convert to
+ * the rawMdxFallback nested CodeMirror source editor — Precedent #28/#30).
  *
  * Attrs:
  *   - componentName: the JSX tag name (e.g., 'Callout', 'Accordion')

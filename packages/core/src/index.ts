@@ -381,7 +381,7 @@ export {
   htmlToMdast,
   mdastToMarkdown,
 } from './markdown/html-to-mdast.ts';
-export { MarkdownManager } from './markdown/index.ts';
+export { MarkdownManager, type SerializeCallOptions } from './markdown/index.ts';
 export { markdownToHtml, mdastToHtml } from './markdown/mdast-to-html.ts';
 export { normalizeDocRelativeAssetUrl } from './markdown/resolve-image-url.ts';
 export {
@@ -974,7 +974,11 @@ export {
   type BridgeToleranceClass,
   type BridgeToleranceSignal,
   bindFrontmatterDoc,
+  type ComparePmStructuralOptions,
   classifySeverity,
+  comparePmStructural,
+  compareRoundTripStructural,
+  createStructuralFreshnessChecker,
   type DiffChange,
   type DocBoundarySplit,
   defaultScheduler,
@@ -1006,6 +1010,7 @@ export {
   normalizeBridge,
   PARSE_EQUIVALENCE_TOLERANCE,
   type ParsedFmRegion,
+  type PmStructuralNode,
   parseFencedFmRegion,
   parseFmRegion,
   projectMergeBoundarySpace,
@@ -1014,8 +1019,14 @@ export {
   readFmRegionWithError,
   reattachLeadingDocBoundary,
   type Scheduler,
+  type StructuralDegradeLabel,
+  type StructuralDivergenceReason,
+  type StructuralEquivalenceResult,
+  type StructuralFreshnessChecker,
+  type StructuralFreshnessCheckerOptions,
   setToleranceTelemetryHook,
   splitLeadingDocBoundary,
+  structuralDivergence,
   type ToleranceClassSeverity,
   type ToleranceFireRecord,
   type ToleranceTelemetryHook,

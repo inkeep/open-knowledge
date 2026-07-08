@@ -23,6 +23,7 @@ import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   agentWriteMd,
+  assertAllConverged,
   assertBridgeInvariant,
   createTestClients,
   createTestServer,
@@ -163,6 +164,61 @@ describe('C15: dual html-preview embeds under divergence', () => {
       expect(Buffer.byteLength(converged)).toBeLessThanOrEqual(authoredBytes * 3);
     } finally {
       for (const c of clients) await c.cleanup();
+    }
+  }, 30_000);
+});
+
+const FENCE = '`'.repeat(3);
+
+describe('QA canary — html-preview <script> embed under concurrent source edits', () => {
+  /**
+   * A single large html-preview embed with a <script> body; two peers edit
+   * distinct prose regions concurrently. The embed must survive as exactly one
+   * copy — no triplication, no astral-brace injection into the script head.
+   *
+   */
+  test('concurrent edits around an html-preview <script> embed do not duplicate or brace-inject', async () => {
+    const docName = `canary-embed-${crypto.randomUUID()}`;
+    const seed = [
+      '# Demo',
+      '',
+      'Para A.',
+      '',
+      'Para B.',
+      '',
+      `${FENCE}html`,
+      '<div id="app"></div>',
+      '<script>',
+      'const greeting = "hello world";',
+      'document.getElementById("app").textContent = greeting;',
+      '</script>',
+      FENCE,
+      '',
+    ].join('\n');
+    await agentWriteMd(server.port, seed, { docName, position: 'replace' });
+    await wait(300);
+    const clients = await createTestClients(server.port, { count: 2, docName });
+    try {
+      await assertAllConverged(clients, { timeout: 5000 });
+      // Concurrent source-side edits in distinct prose regions (W2 path per peer).
+      const a = clients[0].ytext;
+      const b = clients[1].ytext;
+      const ia = a.toString().indexOf('Para A.') + 'Para A.'.length;
+      clients[0].doc.transact(() => a.insert(ia, ' edit-A'));
+      const ib = b.toString().indexOf('Para B.') + 'Para B.'.length;
+      clients[1].doc.transact(() => b.insert(ib, ' edit-B'));
+      await assertAllConverged(clients, { timeout: 5000 });
+
+      const after = clients[0].ytext.toString();
+      expect(after).toContain('edit-A');
+      expect(after).toContain('edit-B');
+      expect((after.match(/<script>/g) ?? []).length).toBe(1); // no triplication
+      expect((after.match(/const greeting/g) ?? []).length).toBe(1);
+      expect(after).not.toContain('{onst'); // no astral-brace injection
+      expect(after).not.toContain('{ons{');
+      expect(after.length).toBeLessThan(seed.length + 64); // no growth blow-up
+    } finally {
+      await Promise.all(clients.map((c) => c.cleanup()));
     }
   }, 30_000);
 });

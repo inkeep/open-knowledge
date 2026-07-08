@@ -49,6 +49,10 @@ import type {
   MdxTextExpression,
 } from 'mdast-util-mdx';
 import type { Processor } from 'unified';
+import {
+  createStructuralFreshnessChecker,
+  type StructuralFreshnessChecker,
+} from '../bridge/structural-freshness.ts';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
 import { createRegistry } from '../registry/index.ts';
 import type { PropDef } from '../registry/types.ts';
@@ -83,6 +87,18 @@ import './mdast-augmentation.ts';
 
 interface MarkdownManagerOptions {
   extensions: Extensions;
+  deriveStructuralFreshness?: boolean;
+}
+
+export interface SerializeCallOptions {
+  skipFreshnessDerive?: boolean;
+}
+
+/** Holder for the freshness checker so a `serialize()` call can suppress it
+ *  for its own synchronous duration (same pattern as `ParseContextHolder`:
+ *  handlers close over the holder, not the value). */
+interface FreshnessCheckerHolder {
+  checker: StructuralFreshnessChecker | undefined;
 }
 
 interface ParseContext {
@@ -101,11 +117,20 @@ export class MarkdownManager {
   private parseProcessor: Processor;
   private serializeProcessor: Processor;
   private parseCtx: ParseContextHolder = { current: {} };
+  private freshnessHolder: FreshnessCheckerHolder = { checker: undefined };
 
   constructor(options: MarkdownManagerOptions) {
     this.schema = getSchema(options.extensions);
     this.handlers = buildMdastToPmHandlers(this.schema, this.parseCtx);
-    const { nodeHandlers, markHandlers } = buildPmToMdastHandlers(this.schema);
+    this.freshnessHolder.checker = options.deriveStructuralFreshness
+      ? createStructuralFreshnessChecker({
+          parse: (sourceRaw) => this.parseWithFallback(sourceRaw),
+        })
+      : undefined;
+    const { nodeHandlers, markHandlers } = buildPmToMdastHandlers(
+      this.schema,
+      this.freshnessHolder,
+    );
     this.pmNodeHandlers = nodeHandlers;
     this.pmMarkHandlers = markHandlers;
 
@@ -148,7 +173,7 @@ export class MarkdownManager {
     return parseWithFallback(markdown, { parse: (md) => this.parse(md, opts) });
   }
 
-  serialize(json: JSONContent): string {
+  serialize(json: JSONContent, opts?: SerializeCallOptions): string {
     let doc: PmNode;
     try {
       doc = this.schema.nodeFromJSON(json) as PmNode;
@@ -156,11 +181,17 @@ export class MarkdownManager {
       const msg = `MarkdownManager.serialize() failed: schema rejected JSONContent (type=${json.type}, childCount=${json.content?.length ?? 0})`;
       throw new Error(msg, { cause: err });
     }
-    return serializeMd(doc, this.serializeProcessor, {
-      schema: this.schema,
-      pmNodeHandlers: this.pmNodeHandlers,
-      pmMarkHandlers: this.pmMarkHandlers,
-    });
+    const heldChecker = this.freshnessHolder.checker;
+    if (opts?.skipFreshnessDerive) this.freshnessHolder.checker = undefined;
+    try {
+      return serializeMd(doc, this.serializeProcessor, {
+        schema: this.schema,
+        pmNodeHandlers: this.pmNodeHandlers,
+        pmMarkHandlers: this.pmMarkHandlers,
+      });
+    } finally {
+      this.freshnessHolder.checker = heldChecker;
+    }
   }
 }
 
@@ -226,8 +257,9 @@ function hasDirtyDescendant(node: PmNode): boolean {
   return found;
 }
 
-function effectiveDirty(node: PmNode): boolean {
-  return node.attrs.sourceDirty || hasDirtyDescendant(node);
+function effectiveDirty(node: PmNode, freshnessChecker?: StructuralFreshnessChecker): boolean {
+  if (node.attrs.sourceDirty || hasDirtyDescendant(node)) return true;
+  return freshnessChecker ? freshnessChecker.isDiverged(node.toJSON()) : false;
 }
 
 function isEmptyMdastParagraph(node: MdastNodes): boolean {
@@ -1029,7 +1061,10 @@ function buildMdastToPmHandlers(
   return handlers as RemarkProseMirrorOptions['handlers'];
 }
 
-function buildPmToMdastHandlers(schema: Schema): {
+function buildPmToMdastHandlers(
+  schema: Schema,
+  freshness: FreshnessCheckerHolder,
+): {
   nodeHandlers: FromProseMirrorOptions<string, string>['nodeHandlers'];
   markHandlers: FromProseMirrorOptions<string, string>['markHandlers'];
 } {
@@ -1280,7 +1315,7 @@ function buildPmToMdastHandlers(schema: Schema): {
         ? (pmNode.attrs.attributes as Array<MdxJsxAttribute | MdxJsxExpressionAttribute>)
         : [];
 
-      if (!effectiveDirty(pmNode) && pmNode.attrs.sourceRaw) {
+      if (!effectiveDirty(pmNode, freshness.checker) && pmNode.attrs.sourceRaw) {
         return {
           type: 'mdxJsxFlowElement' as const,
           name: componentName,

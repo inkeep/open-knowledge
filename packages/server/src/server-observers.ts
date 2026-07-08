@@ -23,12 +23,17 @@
  */
 
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
-import type { MarkdownManager } from '@inkeep/open-knowledge-core';
+import type {
+  MarkdownManager,
+  PmStructuralNode,
+  StructuralDivergenceReason,
+} from '@inkeep/open-knowledge-core';
 import {
   applyFastDiff,
   applyIncrementalDiff,
   BridgeInvariantViolationError,
   BridgeMergeContentLossError,
+  comparePmStructural,
   isParseEquivalentBridge,
   mergeThreeWay,
   normalizeBridge,
@@ -60,6 +65,9 @@ import {
   incrementMapDrivenSpliceFallback,
   incrementObserverAPathBFires,
   incrementObserverAResidualMergeRuns,
+  incrementProducerGuardCheckpointCreated,
+  incrementProducerGuardFires,
+  incrementProducerGuardFiresSuppressed,
   incrementServerObserverError,
   incrementServerObserverFire,
 } from './metrics.ts';
@@ -165,6 +173,69 @@ export const isPairedWriteOrigin = (origin: unknown): origin is PairedWriteOrigi
  */
 export function shouldRethrowBridgeMergeLoss(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.NODE_ENV === 'test' || env.OK_RETHROW_BRIDGE_LOSS === '1';
+}
+
+/**
+ * The producer-guard violation payload — parity with `BridgeMergeContentLossInfo`
+ * so both bridge-content-loss detection sites carry a named, structured shape
+ * rather than an inlined object literal.
+ */
+export interface ProducerGuardViolationInfo {
+  docName?: string;
+  reason: StructuralDivergenceReason;
+  detail: string;
+}
+
+/**
+ * Raised by the Observer-A producer guard when the bytes about to be persisted
+ * fail structural legality — a fresh parse loses authored content. Distinct
+ * class so the sync-impl's soft-recovery catch can pass it through (like
+ * `BridgeMergeContentLossError`) to reach the dev/test runner instead of
+ * swallowing it as a recoverable observer fault. Never thrown in the packaged
+ * posture (there the guard logs + checkpoints and returns).
+ */
+export class ProducerGuardViolationError extends Error {
+  readonly info: ProducerGuardViolationInfo;
+  constructor(info: ProducerGuardViolationInfo) {
+    super(
+      `Observer-A producer guard: serialize output failed structural legality (${info.reason}: ${info.detail})`,
+    );
+    this.name = 'ProducerGuardViolationError';
+    this.info = info;
+  }
+}
+
+/**
+ * Node types where the ProseMirror space exceeds what markdown can spell — the
+ * only place block-in-cell / stale-jsx-interior content-loss is representable.
+ * A fragment carrying none of these round-trips by construction, so the
+ * producer-guard parse is skipped for it, bounding the detection cost to the
+ * danger space in every posture.
+ */
+const PRODUCER_GUARD_DANGER_TYPES = new Set(['jsxComponent', 'table', 'tableCell', 'tableHeader']);
+
+function fragmentContainsDangerSpace(node: PmStructuralNode): boolean {
+  if (node.type && PRODUCER_GUARD_DANGER_TYPES.has(node.type)) return true;
+  if (node.content) {
+    for (const child of node.content) {
+      if (fragmentContainsDangerSpace(child)) return true;
+    }
+  }
+  return false;
+}
+
+/** Content-free locator for a guard fire: the sorted set of danger-space node
+ *  types present in the fragment (e.g. `jsxComponent,tableCell`). Bounded
+ *  cardinality (a subset of the four danger types), never raw content — safe on
+ *  a log field and a persisted checkpoint metadata line. */
+function dangerSpaceLocator(node: PmStructuralNode): string {
+  const present = new Set<string>();
+  const walk = (n: PmStructuralNode): void => {
+    if (n.type && PRODUCER_GUARD_DANGER_TYPES.has(n.type)) present.add(n.type);
+    if (n.content) for (const child of n.content) walk(child);
+  };
+  walk(node);
+  return [...present].sort().join(',');
 }
 
 /**
@@ -519,6 +590,14 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   let canonicalWitnessCoherent = false;
   let xmlDirty = false;
   let textDirty = false;
+  // Timestamp of the last EXTERNAL Y.Text change (user typing via collab, an
+  // agent's raw write — anything that is not our own cross-CRDT write). The
+  // freshness re-derive is gated on this being quiet (the quiescence gate in
+  // `runObserverASyncImpl`): during an active typing burst, in-flight client
+  // ops can race a re-derived (respelled) write at the CRDT level even when
+  // the raw witness LOOKS coherent at drain time, so witness coherence alone
+  // cannot certify that de-anchoring the emission is safe.
+  let lastExternalYtextChangeMs = 0;
 
   /**
    * STOP: the Path A/B router strict-compares this witness against
@@ -706,6 +785,162 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     recordSettledBaselines('');
   }
 
+  // Producer guard (read-only). Caps the check at one parse per distinct
+  // serialization; a stuck doc re-emitting the same illegal bytes every drain
+  // only parses once.
+  let lastGuardedBody: string | undefined;
+  // Per-doc trailing throttle for the packaged-posture LOG so a doc stuck
+  // re-emitting illegal bytes cannot flood the local diagnostics; the throttled
+  // count rides the next emit (`fires + suppressed` = actual rate). The throttle
+  // gates only the log — the recovery checkpoint is written regardless.
+  const PRODUCER_GUARD_LOG_COOLDOWN_MS = 5_000;
+  // Quiescence window for the freshness re-derive (see the gate in
+  // `runObserverASyncImpl`): an external Y.Text write inside this window marks
+  // the doc as actively edited, and the re-derive defers to the next quiet
+  // drain. Sized to cover a typing burst's inter-keystroke gaps plus sync
+  // jitter under load; costs only re-derive LATENCY on a doc being actively
+  // typed into (where the pristine emission is the anchored, safe one anyway).
+  const FRESHNESS_QUIESCENCE_MS = 2_000;
+  const guardLogState = new Map<string, { lastMs: number; suppressed: number }>();
+  // Per-doc last pre-loss source already checkpointed. `lastGuardedBody` dedups
+  // identical serializations upstream, but distinct losing bodies can share the
+  // same last-good Y.Text; keying the checkpoint on the pre-loss source anchors
+  // that state once instead of re-writing an identical checkpoint per body. The
+  // entry is set synchronously (before the async write) so concurrent drains
+  // and a stuck doc re-emitting the same body dedup to one checkpoint, but it is
+  // cleared again if that write fails — a transient failure must not permanently
+  // close the recovery window for the pre-loss content.
+  const guardCheckpointedPreLoss = new Map<string, string>();
+
+  /**
+   * Report a producer-guard content-loss in the packaged posture: a rate-limited
+   * structured event (bounded cardinality — doc.name + reason/degrade enums + a
+   * construct locator, never raw content) plus a silent checkpoint of the
+   * pre-loss source so the state stays user-recoverable. Never throws, never
+   * corrective-writes (precedent #38): the drain still persists the bytes
+   * as-computed. The guard is a second DETECTION site for the bridge-content-loss
+   * class, not a second `BridgeMergeContentLossError` recovery — it uses its own
+   * `producer-guard-loss` checkpoint kind and its own fire/suppressed counters.
+   *
+   * The log throttle and the checkpoint are independent: throttling the log must
+   * not drop the recovery anchor, so the checkpoint always attempts (deduped on
+   * the pre-loss source) even when the log is suppressed.
+   */
+  const reportProducerGuardViolation = (
+    verdict: Extract<ReturnType<typeof comparePmStructural>, { equivalent: false }>,
+    construct: string,
+  ): void => {
+    const key = opts.docName ?? '__nodoc__';
+    const now = Date.now();
+    const prev = guardLogState.get(key);
+    const throttled = prev !== undefined && now - prev.lastMs < PRODUCER_GUARD_LOG_COOLDOWN_MS;
+    if (throttled) {
+      prev.suppressed += 1;
+      incrementProducerGuardFiresSuppressed();
+    } else {
+      const suppressedSincePrevious = prev?.suppressed ?? 0;
+      guardLogState.set(key, { lastMs: now, suppressed: 0 });
+      incrementProducerGuardFires();
+      console.warn(
+        JSON.stringify({
+          event: 'producer-guard-violation',
+          docName: opts.docName ?? null,
+          reason: verdict.reason,
+          construct,
+          appliedDegrades: verdict.appliedDegrades,
+          suppressedSincePrevious,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+    }
+
+    const shadow = opts.shadow?.();
+    if (!shadow || !opts.docName) return;
+    // Y.Text still holds the last-good source at this point — Observer A writes
+    // the (lossy) delta later in the drain — so it is the pre-loss restore
+    // anchor, mirroring Path B's pre-merge baseline.
+    const preLossSource = ytext.toString();
+    if (guardCheckpointedPreLoss.get(key) === preLossSource) return;
+    guardCheckpointedPreLoss.set(key, preLossSource);
+    const branch = opts.getBranch?.() ?? 'main';
+    const contentRoot = opts.contentRoot ?? '';
+    const docName = opts.docName;
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadow, contentRoot, {
+        kind: 'producer-guard-loss',
+        docName,
+        contents: preLossSource,
+        label: `Before producer-guard content-loss @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { construct },
+      })
+        .then((sha) => {
+          incrementProducerGuardCheckpointCreated();
+          console.warn(
+            JSON.stringify({
+              event: 'producer-guard-checkpoint-created',
+              docName,
+              sha,
+              kind: 'producer-guard-loss',
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        })
+        .catch((checkpointErr: unknown) => {
+          // The write failed, so the pre-loss content was NOT actually
+          // checkpointed. Reopen the retry window by clearing our dedup entry —
+          // only if a later, different pre-loss body has not since replaced it —
+          // so the next guard violation on this body attempts the write again
+          // instead of permanently skipping via the line-843 early return. The
+          // synchronous set() above still dedups concurrent drains and a stuck
+          // doc re-emitting the same body while a write is in flight.
+          if (guardCheckpointedPreLoss.get(key) === preLossSource) {
+            guardCheckpointedPreLoss.delete(key);
+          }
+          const e =
+            checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
+          console.warn('[Server Observer A] Producer-guard checkpoint write failed:', {
+            name: e.name,
+            message: e.message,
+            stack: e.stack?.split('\n').slice(0, 4).join('\n'),
+          });
+        });
+    });
+  };
+
+  /**
+   * Producer guard at the moment byte-fate is decided (the Observer-A
+   * serialize). A fresh parse of the bytes we are about to persist must
+   * reconstruct the same authored CONTENT: markdown never legitimately drops
+   * text on a round-trip, so a content-loss verdict means the serializer emitted
+   * corrupt bytes that only a fresh parser sees. Container-shatter is
+   * deliberately NOT a fire condition — some shatters are inherent CommonMark
+   * round-trip limits (a blockquote nested in a Callout re-merges on parse), a
+   * fidelity gap the offline I22 property test owns; firing on them here would
+   * cry wolf on legal-but-lossy nestings. Dev/test throw loud; packaged reports.
+   */
+  const runProducerGuard = (json: PmStructuralNode, body: string): void => {
+    if (body === lastGuardedBody) return;
+    lastGuardedBody = body;
+    if (!fragmentContainsDangerSpace(json)) return;
+
+    const reparsed = mdManager.parseWithFallback(body, observerParseOpts) as PmStructuralNode;
+    const verdict = comparePmStructural(json, reparsed);
+    // Narrow to the failure branch, then to the one reason the guard fires on.
+    // The union makes `reason`/`detail` reachable only here, and `detail`
+    // required — no optional-fallback crutch.
+    if (verdict.equivalent || verdict.reason !== 'content-loss') return;
+
+    if (shouldRethrowBridgeMergeLoss()) {
+      throw new ProducerGuardViolationError({
+        docName: opts.docName,
+        reason: verdict.reason,
+        detail: verdict.detail,
+      });
+    }
+    reportProducerGuardViolation(verdict, dangerSpaceLocator(json));
+  };
+
   /**
    * Observer A sync work. Computes delta between the settled baselines and
    * current XmlFragment, applies ONLY that delta to Y.Text.
@@ -713,7 +948,36 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   const runObserverASyncImpl = (): void => {
     try {
       const json = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
-      const body = mdManager.serialize(json);
+      // Freshness-safety, read BEFORE serialize (the drain is synchronous).
+      // The freshness re-derive RESPELLS pristine components (indented nested
+      // JSX vs the flush-left bytes the raw history holds), and every
+      // convergence mechanism this serialization feeds (the fragment-unchanged
+      // gate, the normalize gate, the splice text-match, Path B's line-based
+      // diff3, CRDT merge against concurrent keystrokes) anchors on serialize
+      // output matching raw-history bytes. A de-anchored write racing live
+      // typing duplicates the block in the authoritative bytes (the `<Steps>`
+      // source-authoring corruption), so the re-derive is allowed only when
+      // BOTH hold:
+      //   1. the raw witness is coherent (Y.Text has not visibly advanced past
+      //      the settlement this drain anchors on), AND
+      //   2. Y.Text is QUIESCENT (no external write within the window) — a
+      //      typing burst's in-flight ops can race the write at the CRDT level
+      //      even when the witness looks coherent at drain time.
+      // Freshness is a standing state check, not an edge trigger: a suppressed
+      // divergence is re-observed on the next safe drain, so a genuinely stale
+      // component still re-derives (G1 holds) — the deny-listed-origin edits
+      // freshness exists for land on fragment-only transactions that never
+      // reset the quiescence clock. Only racy drains defer.
+      const rawWitnessCoherent = ytext.toString() === lastSyncedYTextBytes;
+      const ytextQuiescent = Date.now() - lastExternalYtextChangeMs >= FRESHNESS_QUIESCENCE_MS;
+      const freshnessSafe = rawWitnessCoherent && ytextQuiescent;
+      const body = mdManager.serialize(json, { skipFreshnessDerive: !freshnessSafe });
+      // The guard adjudicates the bytes ONLY when they are current-intent: on a
+      // suppressed drain the emission is knowingly historical (pristine
+      // sourceRaw a generation behind the live children), so a content-loss
+      // verdict would be a false alarm — the next safe drain re-runs the
+      // guard against the re-derived bytes.
+      if (freshnessSafe) runProducerGuard(json as PmStructuralNode, body);
       const frontmatter = readCurrentFm();
       const md = prependFrontmatter(frontmatter, body);
 
@@ -1059,6 +1323,12 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // rethrow passthrough, NOT a second handle site: Path B remains the
       // only place that logs + checkpoints + applies the merge.
       if (err instanceof BridgeMergeContentLossError) {
+        throw err;
+      }
+      // Same passthrough for the producer guard's dev/test loud-failure throw —
+      // it fires before any Y.Text write, so there is nothing to recover; let
+      // the test runner see it. Packaged posture never throws here.
+      if (err instanceof ProducerGuardViolationError) {
         throw err;
       }
       incrementServerObserverError('a');
@@ -1424,6 +1694,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       return;
     }
 
+    lastExternalYtextChangeMs = Date.now();
     textDirty = true;
   };
 

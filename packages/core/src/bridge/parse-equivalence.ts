@@ -1,5 +1,6 @@
 import { stripFrontmatter } from '../extensions/frontmatter.ts';
 import type { BridgeToleranceClass } from './normalize.ts';
+import { isSubsequence } from './subsequence.ts';
 
 export const PARSE_EQUIVALENCE_TOLERANCE = 'parse-equivalence' as const;
 
@@ -35,17 +36,6 @@ function contentSkeleton(body: string): string {
  *  without any per-drain flood. */
 const warnedCanonicalizeErrors = new Set<string>();
 const MAX_WARNED_CANONICALIZE_ERRORS = 8;
-
-/** True when `needle` appears in `haystack` as a subsequence (two-pointer,
- *  O(n+m)). Insertions in `haystack` are free; any dropped or substituted
- *  `needle` byte fails. */
-function isSubsequence(needle: string, haystack: string): boolean {
-  let i = 0;
-  for (let j = 0; j < haystack.length && i < needle.length; j++) {
-    if (needle[i] === haystack[j]) i++;
-  }
-  return i === needle.length;
-}
 
 export function isParseEquivalentBridge(
   left: string,

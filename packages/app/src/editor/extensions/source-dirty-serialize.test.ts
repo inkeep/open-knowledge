@@ -1,19 +1,15 @@
 /**
- * Source-dirty observer origin-guard tests.
+ * Source-dirty SERIALIZATION tests.
  *
- * Tests the γ pattern's dirty-tracking correctness via the MarkdownManager
- * parse/serialize round-trip. Since the source-dirty observer is a PM plugin
- * that operates inside a TipTap editor instance, and testing full editor instances
- * is done in integration tests, these tests verify the serialization behavior
- * that the dirty flag controls:
+ * These pin the serialization behavior the `sourceDirty` flag controls, via
+ * the MarkdownManager parse/serialize round-trip — NOT the observer that sets
+ * the flag (that plugin's origin-guard truth table lives in
+ * source-dirty-observer.origin-guard.test.ts; a real-editor interior-edit pin
+ * lives in source-dirty-flip.dom.test.tsx):
  *
  * - Pristine (sourceDirty:false) → sourceRaw emitted (byte-identical)
  * - Dirty (sourceDirty:true) → reconstruction path emitted
  * - effectiveDirty (descendant dirty) → parent reconstructs
- *
- * The actual origin-guard behavior (which PM transactions mark dirty) is
- * tested in integration/bridge-matrix tests where real editor instances
- * exist.
  */
 import { describe, expect, test } from 'bun:test';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';

@@ -607,6 +607,19 @@ export type ParsedCheckpoint =
       metadata: { lostSubstrings: string[] };
     }
   | {
+      // Observer A's producer guard detected serialize output that fails
+      // structural legality (a fresh parse loses authored content) at the
+      // serialize boundary — distinct from `bridge-merge-loss` (a Path B merge
+      // drop) so the two detection sites keep separate retention budgets and
+      // TimelinePanel can tell serializer-corruption from merge-drop. `construct`
+      // is a bounded, content-free locator of the danger-space node types
+      // present (e.g. `jsxComponent,tableCell`), never raw content.
+      kind: 'producer-guard-loss';
+      docName: string | null;
+      size: number | null;
+      metadata: { construct: string };
+    }
+  | {
       kind: 'external-change-rescue';
       docName: string | null;
       size: number | null;
@@ -664,6 +677,18 @@ export function parseCheckpoint(body: string): ParsedCheckpoint | null {
           docName,
           size,
           metadata: { lostSubstrings: m.lostSubstrings as string[] },
+        };
+      }
+      return null;
+    }
+    if (kind === 'producer-guard-loss') {
+      const m = metadata as { construct?: unknown };
+      if (typeof m.construct === 'string') {
+        return {
+          kind: 'producer-guard-loss',
+          docName,
+          size,
+          metadata: { construct: m.construct },
         };
       }
       return null;

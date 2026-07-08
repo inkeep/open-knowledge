@@ -1014,6 +1014,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
     const result = await gcCheckpointRefs(shadow, 'main', {
       maxBridgeMergeLoss: 3,
+      maxProducerGuardLoss: 50,
       maxExternalChangeRescue: 50,
       maxAutoConsolidation: 2,
       ttlMs: 0, // disable TTL; only count-based cap applies
@@ -1033,6 +1034,52 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     expect(remaining).toHaveLength(3);
   });
 
+  test('keeps only the most-recent N producer-guard-loss refs per branch', async () => {
+    // The producer-guard kind has its own retention budget
+    // (maxProducerGuardLoss), independent of maxBridgeMergeLoss — a stuck
+    // serializer must not evict merge-drop recovery anchors (or vice versa).
+    const { gcCheckpointRefs } = await import('./shadow-repo.ts');
+    for (let i = 0; i < 7; i++) {
+      await saveInMemoryCheckpoint(shadow, 'content/docs', {
+        kind: 'producer-guard-loss',
+        docName: `doc-${i}.md`,
+        contents: `contents ${i}\n`,
+        label: `guard loss ${i}`,
+        metadata: { construct: 'table' },
+      });
+    }
+    // One bridge-merge-loss alongside: its budget (50) must shield it from the
+    // producer-guard cap.
+    await saveInMemoryCheckpoint(shadow, 'content/docs', {
+      kind: 'bridge-merge-loss',
+      docName: 'merge.md',
+      contents: '# pre-merge\n',
+      label: 'merge loss',
+      metadata: { lostSubstrings: ['x'] },
+    });
+
+    const result = await gcCheckpointRefs(shadow, 'main', {
+      maxBridgeMergeLoss: 50,
+      maxProducerGuardLoss: 3,
+      maxExternalChangeRescue: 50,
+      maxAutoConsolidation: 2,
+      ttlMs: 0, // disable TTL; only count-based cap applies
+    });
+
+    expect(result.scanned).toBe(8);
+    expect(result.deletedProducerGuardLoss).toBe(4); // 7 - 3 kept
+    expect(result.deletedBridgeMergeLoss).toBe(0);
+
+    const sg = shadowGit(shadow);
+    const remaining = (
+      await sg.raw('for-each-ref', '--format=%(refname)', 'refs/checkpoints/main/')
+    )
+      .trim()
+      .split('\n')
+      .filter(Boolean);
+    expect(remaining).toHaveLength(4); // 3 producer-guard + 1 bridge-merge
+  });
+
   test('applies TTL independently of the count cap', async () => {
     // Write 2 checkpoints with a TTL of 0 ms to force both past the deadline.
     for (let i = 0; i < 2; i++) {
@@ -1050,6 +1097,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
     const result = await gcCheckpointRefs(shadow, 'main', {
       maxBridgeMergeLoss: 50,
+      maxProducerGuardLoss: 50,
       maxExternalChangeRescue: 50,
       maxAutoConsolidation: 2,
       ttlMs: 1, // everything older than 1 ms is eligible
@@ -1094,6 +1142,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
     const result = await gcCheckpointRefs(shadow, 'main', {
       maxBridgeMergeLoss: 0, // forces deletion of the typed checkpoint
+      maxProducerGuardLoss: 0,
       maxExternalChangeRescue: 0,
       maxAutoConsolidation: 2,
       ttlMs: 0,
@@ -1170,6 +1219,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
     const result = await gcCheckpointRefs(shadow, 'main', {
       maxBridgeMergeLoss: 50,
+      maxProducerGuardLoss: 50,
       maxExternalChangeRescue: 50,
       maxAutoConsolidation: 2,
       ttlMs: 0,
@@ -1201,6 +1251,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     // a dormant repo could lose the anchor the chained history hangs from.
     const result = await gcCheckpointRefs(shadow, 'main', {
       maxBridgeMergeLoss: 50,
+      maxProducerGuardLoss: 50,
       maxExternalChangeRescue: 50,
       maxAutoConsolidation: 2,
       ttlMs: 1,

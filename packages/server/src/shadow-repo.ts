@@ -719,6 +719,11 @@ export async function safetyCheckpoint(
  *   content-preservation post-condition flagged the result, and we want a
  *   silent Notion-style restore artifact on the timeline. `contents` is the
  *   pre-merge baseline (the state the user saw before the conflict merge).
+ * - `producer-guard-loss` — Observer A's producer guard detected serialize
+ *   output that fails structural legality (a fresh parse loses authored
+ *   content) at the serialize boundary. `contents` is the pre-loss source (the
+ *   last-good Y.Text); `construct` is a bounded, content-free locator of the
+ *   danger-space node types present.
  * - `external-change-rescue` — an external disk write (reconcile-delete or
  *   branch-switch path) would otherwise have discarded dirty Y.Doc content.
  *   `contents` is the rescued in-memory markdown; `incomingDiskSha` names
@@ -732,6 +737,14 @@ export type InMemoryCheckpointParams =
       label: string;
       branch?: string;
       metadata: { lostSubstrings: string[] };
+    }
+  | {
+      kind: 'producer-guard-loss';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { construct: string };
     }
   | {
       kind: 'external-change-rescue';
@@ -780,20 +793,35 @@ export async function saveInMemoryCheckpoint(
   // read path can render the listing without spawning a per-ref `git ls-tree`
   // subprocess.
   const size = Buffer.byteLength(params.contents, 'utf-8');
-  const parsed: ParsedCheckpoint =
-    params.kind === 'bridge-merge-loss'
-      ? {
-          kind: 'bridge-merge-loss',
-          docName: params.docName,
-          size,
-          metadata: params.metadata,
-        }
-      : {
-          kind: 'external-change-rescue',
-          docName: params.docName,
-          size,
-          metadata: params.metadata,
-        };
+  // Reconstruct the parsed shape per kind so each metadata type stays bound to
+  // its own discriminant (the switch is exhaustive over InMemoryCheckpointParams).
+  let parsed: ParsedCheckpoint;
+  switch (params.kind) {
+    case 'bridge-merge-loss':
+      parsed = {
+        kind: 'bridge-merge-loss',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'producer-guard-loss':
+      parsed = {
+        kind: 'producer-guard-loss',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'external-change-rescue':
+      parsed = {
+        kind: 'external-change-rescue',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+  }
   const bodyLine = formatCheckpointBodyLine(parsed);
   const message = `checkpoint: ${params.label}\n\n${bodyLine}`;
 
@@ -963,6 +991,13 @@ export interface CheckpointRetentionPolicy {
    */
   maxBridgeMergeLoss: number;
   /**
+   * Maximum `producer-guard-loss` checkpoints to keep per branch. Written when
+   * Observer A's producer guard detects illegal serialize output. Its own
+   * budget so a stuck serializer cannot evict merge-drop recovery anchors (and
+   * vice versa). Default 50.
+   */
+  maxProducerGuardLoss: number;
+  /**
    * Maximum `external-change-rescue` checkpoints to keep per branch. These
    * are written on reconcile-delete / branch-switch disk-overrode-memory
    * paths. Default 50.
@@ -991,6 +1026,7 @@ export interface CheckpointRetentionPolicy {
 
 export const DEFAULT_CHECKPOINT_RETENTION: CheckpointRetentionPolicy = {
   maxBridgeMergeLoss: 50,
+  maxProducerGuardLoss: 50,
   maxExternalChangeRescue: 50,
   maxAutoConsolidation: 2,
   ttlMs: 30 * 24 * 60 * 60 * 1000,
@@ -999,6 +1035,7 @@ export const DEFAULT_CHECKPOINT_RETENTION: CheckpointRetentionPolicy = {
 export interface CheckpointGcResult {
   scanned: number;
   deletedBridgeMergeLoss: number;
+  deletedProducerGuardLoss: number;
   deletedExternalChangeRescue: number;
   deletedAutoConsolidation: number;
   retained: number;
@@ -1022,6 +1059,7 @@ export async function gcCheckpointRefs(
   const result: CheckpointGcResult = {
     scanned: 0,
     deletedBridgeMergeLoss: 0,
+    deletedProducerGuardLoss: 0,
     deletedExternalChangeRescue: 0,
     deletedAutoConsolidation: 0,
     retained: 0,
@@ -1073,7 +1111,11 @@ export async function gcCheckpointRefs(
     return result;
   }
 
-  type TypedKind = 'bridge-merge-loss' | 'external-change-rescue' | 'auto-consolidation';
+  type TypedKind =
+    | 'bridge-merge-loss'
+    | 'producer-guard-loss'
+    | 'external-change-rescue'
+    | 'auto-consolidation';
   interface Entry {
     sha: string;
     timestamp: number; // ms since epoch
@@ -1097,6 +1139,7 @@ export async function gcCheckpointRefs(
   // kind to the parser without adding it here is the bug this guards against.
   const byKind: Record<TypedKind, Entry[]> = {
     'bridge-merge-loss': [],
+    'producer-guard-loss': [],
     'external-change-rescue': [],
     'auto-consolidation': [],
   };
@@ -1114,7 +1157,11 @@ export async function gcCheckpointRefs(
   const planDeletions = (
     list: Entry[],
     limit: number,
-    counter: 'deletedBridgeMergeLoss' | 'deletedExternalChangeRescue' | 'deletedAutoConsolidation',
+    counter:
+      | 'deletedBridgeMergeLoss'
+      | 'deletedProducerGuardLoss'
+      | 'deletedExternalChangeRescue'
+      | 'deletedAutoConsolidation',
     // auto-consolidation is count-only: TTL must never be able to reap every
     // surviving auto-checkpoint, or the chained consolidated history it anchors
     // becomes unreachable. Pass false to disable the TTL lower bound.
@@ -1138,6 +1185,11 @@ export async function gcCheckpointRefs(
     }
   };
   planDeletions(byKind['bridge-merge-loss'], policy.maxBridgeMergeLoss, 'deletedBridgeMergeLoss');
+  planDeletions(
+    byKind['producer-guard-loss'],
+    policy.maxProducerGuardLoss,
+    'deletedProducerGuardLoss',
+  );
   planDeletions(
     byKind['external-change-rescue'],
     policy.maxExternalChangeRescue,

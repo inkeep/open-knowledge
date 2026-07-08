@@ -60,6 +60,27 @@ export interface ReconciliationMetrics {
    *  checkpoints written via saveInMemoryCheckpoint. Bounds the rate a user
    *  might see in TimelinePanel; if high, coalescing becomes worth adding. */
   bridgeMergeCheckpointCreated: number;
+  /** Bridge-correctness — count of Observer A producer-guard fires: the bytes
+   *  about to persist failed structural legality (a fresh parse loses authored
+   *  content). Separate rate accounting from `bridgeMergeContentLoss` — the
+   *  guard is an independent detection site at the serialize boundary, not a
+   *  Path B merge-drop. The counter increments only on emit; the companion
+   *  `producerGuardFiresSuppressed` counts fires the per-doc log throttle
+   *  dropped, so `actual_rate = fires + suppressed`. */
+  producerGuardFires: number;
+  /** Companion to `producerGuardFires` — count of producer-guard fires whose
+   *  structured log the per-doc cooldown suppressed. The recovery checkpoint is
+   *  written regardless of this throttle (it gates only the log), so a
+   *  suppressed fire still leaves a restore anchor. */
+  producerGuardFiresSuppressed: number;
+  /** Bridge-correctness — count of producer-guard recovery checkpoints written
+   *  via saveInMemoryCheckpoint on the `producer-guard-loss` path. Kept
+   *  separate from `bridgeMergeCheckpointCreated` so an operator dashboarding on
+   *  checkpoint rate can distinguish producer-guard recoveries (serialize-
+   *  boundary content-loss) from Path-B merge-drop recoveries; the rest of the
+   *  feature is likewise separately observable (`producerGuardFires` /
+   *  `producerGuardFiresSuppressed`). */
+  producerGuardCheckpointCreated: number;
   /** Y.Text-is-truth contract — count of bridge invariant violation events
    *  emitted by the watchdog (Observer B post-Phase-1, the persistence
    *  pre-write sanity check, and any test-harness watcher).
@@ -382,6 +403,9 @@ const counters: ReconciliationMetrics = {
   persistenceDiskWrites: 0,
   bridgeMergeContentLoss: 0,
   bridgeMergeCheckpointCreated: 0,
+  producerGuardFires: 0,
+  producerGuardFiresSuppressed: 0,
+  producerGuardCheckpointCreated: 0,
   bridgeInvariantViolations: 0,
   bridgeInvariantViolationsSuppressed: 0,
   persistenceSkipNonQuiescent: 0,
@@ -504,6 +528,18 @@ export function incrementSummariesTruncated(): void {
 
 export function incrementBridgeMergeCheckpointCreated(): void {
   counters.bridgeMergeCheckpointCreated++;
+}
+
+export function incrementProducerGuardCheckpointCreated(): void {
+  counters.producerGuardCheckpointCreated++;
+}
+
+export function incrementProducerGuardFires(): void {
+  counters.producerGuardFires++;
+}
+
+export function incrementProducerGuardFiresSuppressed(): void {
+  counters.producerGuardFiresSuppressed++;
 }
 
 export function incrementBridgeInvariantViolations(): void {
@@ -734,6 +770,9 @@ export function resetMetrics(): void {
   counters.persistenceDiskWrites = 0;
   counters.bridgeMergeContentLoss = 0;
   counters.bridgeMergeCheckpointCreated = 0;
+  counters.producerGuardFires = 0;
+  counters.producerGuardFiresSuppressed = 0;
+  counters.producerGuardCheckpointCreated = 0;
   counters.bridgeInvariantViolations = 0;
   counters.bridgeInvariantViolationsSuppressed = 0;
   counters.persistenceSkipNonQuiescent = 0;

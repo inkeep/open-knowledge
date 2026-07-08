@@ -71,7 +71,22 @@ export {
   isParseEquivalentBridge,
   PARSE_EQUIVALENCE_TOLERANCE,
 } from './parse-equivalence.ts';
+export {
+  type ComparePmStructuralOptions,
+  comparePmStructural,
+  compareRoundTripStructural,
+  type PmStructuralNode,
+  type StructuralDegradeLabel,
+  type StructuralDivergenceReason,
+  type StructuralEquivalenceResult,
+  structuralDivergence,
+} from './pm-structural-equivalence.ts';
 export { defaultScheduler, type Scheduler } from './scheduler.ts';
+export {
+  createStructuralFreshnessChecker,
+  type StructuralFreshnessChecker,
+  type StructuralFreshnessCheckerOptions,
+} from './structural-freshness.ts';
 export {
   classifySeverity,
   emitToleranceFire,

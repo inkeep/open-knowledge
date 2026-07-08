@@ -761,6 +761,29 @@ describe('parseCheckpoint / formatCheckpointBodyLine (bridge-correctness SPEC §
     }
   });
 
+  test('round-trips producer-guard-loss with its construct locator', () => {
+    const line = formatCheckpointBodyLine({
+      kind: 'producer-guard-loss',
+      docName: 'notes/table.md',
+      size: 128,
+      metadata: { construct: 'jsxComponent,tableCell' },
+    });
+    const body = `checkpoint: Before producer-guard content-loss\n\n${line}`;
+    const parsed = parseCheckpoint(body);
+    expect(parsed?.kind).toBe('producer-guard-loss');
+    if (parsed?.kind === 'producer-guard-loss') {
+      expect(parsed.metadata.construct).toBe('jsxComponent,tableCell');
+      expect(parsed.docName).toBe('notes/table.md');
+      expect(parsed.size).toBe(128);
+    }
+  });
+
+  test('producer-guard-loss with a non-string construct is rejected (unknown-shape fallback)', () => {
+    const body =
+      'checkpoint: X\n\nok-checkpoint-v1: {"kind":"producer-guard-loss","metadata":{"construct":5}}';
+    expect(parseCheckpoint(body)).toBe(null);
+  });
+
   test('backward-compat: pre-enrichment body without docName/size returns nulls', () => {
     // Simulates a checkpoint commit written before the docName/size enrichment.
     // The rescue read path's fallback
