@@ -304,17 +304,29 @@ function FlyoutGroup({
   const { t } = useLingui();
   const projectIsCurrent = group.project.path === currentPath;
 
-  // Two-target row on a real submenu (restores the pre-migration ergonomics):
-  //   - HOVER anywhere on the row opens the worktree flyout (native Radix
-  //     safe-triangle + close-on-leave-both), and ArrowRight opens it by keyboard.
-  //   - CLICK / Enter / Space open the PROJECT (its root) directly — one click,
-  //     same as a flat row. Radix's SubTrigger opens the submenu on click and on
-  //     the SUB_OPEN_KEYS (Enter/Space/ArrowRight); it bails when our handler
-  //     already called preventDefault (onClick: `if (event.defaultPrevented) return`;
-  //     onKeyDown: composed with checkForDefaultPrevented), so preventing default
-  //     on click + Enter/Space suppresses the open and lets navigation win while
-  //     ArrowRight still falls through to open the flyout. guardStaleSelect
-  //     swallows the Electron menu-open click fall-through, as on the flat rows.
+  // Two-target worktree row on a real submenu (restores #2339's "the name opens
+  // the project, the rest expands"), fixing the hover-only discoverability gap
+  // from #2473 (which intercepted every click to open the project, so there was
+  // no click path to the submenu):
+  //   - CLICK the project NAME (tagged [data-project-open]) opens the bare
+  //     project root. CLICK anywhere else on the row opens the worktree flyout.
+  //     Radix's SubTrigger opens the (controlled) sub on click UNLESS our handler
+  //     preventDefaults, so the onClick only preventDefaults + opens the project
+  //     when the click landed on the name target; every other click falls through
+  //     to Radix and opens the flyout. The name is a passive [data-project-open]
+  //     click-zone, NOT its own interactive element — the handler lives on the
+  //     Radix SubTrigger (a real role="menuitem"), so there is no nested
+  //     <span onClick> and no extra focus stop.
+  //   - HOVER anywhere on the row opens the flyout (native Radix safe-triangle +
+  //     close-on-leave-both).
+  //   - KEYBOARD (row focused): Enter / Space open the PROJECT — matching the
+  //     name being the primary target — so we preventDefault to suppress Radix's
+  //     SUB_OPEN of the flyout, then open. ArrowRight still falls through to Radix
+  //     to open the flyout (the standard submenu key), and ArrowLeft / Escape
+  //     close it. Redefining Enter/Space's action (rather than removing keyboard
+  //     nav) keeps the submenu keyboard-reachable via ArrowRight.
+  // guardStaleSelect swallows the Electron menu-open click fall-through on the
+  // project-open path, as on the flat rows.
   const openProjectFromRow = (nativeEvent: Event): void => {
     if (guardStaleSelect(nativeEvent)) return;
     onPickProject();
@@ -323,10 +335,17 @@ function FlyoutGroup({
     <DropdownMenuSub open={flyoutOpen} onOpenChange={setFlyoutOpen}>
       <DropdownMenuSubTrigger
         onClick={(e) => {
+          // Only a click on the project-name target opens the project; every
+          // other click falls through to Radix and opens the flyout. `e.target`
+          // may be an SVGElement (the current-project check icon), so cast to the
+          // Element interface `.closest` lives on rather than HTMLElement.
+          if ((e.target as Element).closest('[data-project-open]') === null) return;
           e.preventDefault();
           openProjectFromRow(e.nativeEvent);
         }}
         onKeyDown={(e) => {
+          // Enter / Space open the project (the name's action); ArrowRight is
+          // left to Radix to open the flyout.
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             openProjectFromRow(e.nativeEvent);
@@ -341,7 +360,15 @@ function FlyoutGroup({
           disambiguates same-named checkouts. No folder icon: the switcher stays
           focused on project names, reclaiming the horizontal space. */}
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate font-medium text-sm" title={group.project.name}>
+          {/* The project name is the direct open-project target: a passive
+            click-zone the row's onClick routes on via [data-project-open]. Every
+            other part of the row (the path line, the count chip, empty space)
+            opens the worktree flyout instead. */}
+          <span
+            className="truncate font-medium text-sm"
+            data-project-open=""
+            title={group.project.name}
+          >
             {group.project.name}
           </span>
           <span className="truncate text-muted-foreground text-xs" title={group.project.path}>

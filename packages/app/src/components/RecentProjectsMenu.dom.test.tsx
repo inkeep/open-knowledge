@@ -65,9 +65,10 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   }) => {
     const { onOpenChange } = use(SubStateContext);
     // Model Radix's SubTrigger composition: our handler runs first, and Radix
-    // opens the sub only if we did NOT preventDefault. The component's onClick /
-    // Enter+Space preventDefault (they navigate to the project instead), so those
-    // do NOT open the flyout; hover and ArrowRight still do.
+    // opens the sub only if we did NOT preventDefault. The component preventDefaults
+    // a click on the project-name target (data-project-open) and Enter / Space, to
+    // open the project instead — so those do NOT open the flyout; a click elsewhere
+    // on the row, hover, and ArrowRight open the flyout; ArrowLeft / Escape close it.
     return (
       <div
         role="menuitem"
@@ -249,7 +250,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     expect(row.querySelector('svg')).toBeNull();
   });
 
-  test('clicking a worktree-bearing row opens the PROJECT (root) directly, not the flyout', async () => {
+  test('clicking the row body (not the name) opens the worktree flyout, not the project', async () => {
     const { bridge } = renderMenu({
       recents: [
         main('/repo', '/repo/.git'),
@@ -270,9 +271,35 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     expect(toggle.textContent).toContain('1 worktree');
     expect(toggle.textContent).not.toContain('1 worktrees');
 
-    // Two-target row: a direct CLICK opens the bare project (root) in one click,
-    // and does NOT open the flyout (the click preventDefaults Radix's open).
-    fireEvent.click(screen.getByTestId('project-switcher-group-/repo'));
+    // Two-target row: clicking a NON-name part of the row (here the count chip)
+    // opens the submenu (flyout) — the big, easy target — and does NOT open the
+    // project. Radix's SubTrigger opens the sub on click because the handler only
+    // preventDefaults for the name target (see the next test).
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      expect(screen.getByTestId('project-switcher-flyout-/repo')).not.toBeNull();
+    });
+    expect(bridge.project.open).not.toHaveBeenCalled();
+  });
+
+  test('clicking the project name opens the project (root) directly, not the flyout', async () => {
+    const { bridge } = renderMenu({
+      recents: [
+        main('/repo', '/repo/.git'),
+        worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
+      ],
+    });
+    const groupRow = screen.getByTestId('project-switcher-group-/repo');
+    expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
+
+    // The project name is the direct open-project target (tagged
+    // data-project-open); the row's onClick routes name-clicks to the project.
+    const nameTarget = groupRow.querySelector('[data-project-open]');
+    expect(nameTarget?.textContent).toBe('repo');
+
+    // Name-click opens the bare project (root) in one click, and does NOT also
+    // open the flyout — the click preventDefaults Radix's open (no double-fire).
+    fireEvent.click(nameTarget as Element);
     await waitFor(() => {
       expect(bridge.project.open).toHaveBeenCalledWith({
         path: '/repo',
@@ -331,8 +358,9 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     const row = screen.getByTestId('project-switcher-group-/repo');
     expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
 
-    // ArrowRight (the count-chip trigger is out of roving focus) opens the flyout
-    // from the focused row — without opening the project.
+    // ArrowRight is the standard submenu key and is not intercepted, so it opens
+    // the flyout from the focused row — without opening the project (Enter/Space
+    // open the project instead; see the two-target test above).
     fireEvent.keyDown(row, { key: 'ArrowRight' });
     await waitFor(() => {
       expect(screen.getByTestId('project-switcher-flyout-/repo')).not.toBeNull();
@@ -374,7 +402,8 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     const row = screen.getByTestId('project-switcher-group-/repo');
 
     // Enter opens the bare project (the SUB_OPEN key is preventDefaulted so Radix
-    // does not open the submenu instead) and leaves the flyout closed.
+    // does not open the submenu instead) and leaves the flyout closed — matching
+    // the name being the primary target. ArrowRight (below) opens the submenu.
     fireEvent.keyDown(row, { key: 'Enter' });
     await waitFor(() => {
       expect(bridge.project.open).toHaveBeenCalledWith({
@@ -684,9 +713,9 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
   });
 
   test('the flyout’s pinned "default" entry also opens the project root (secondary path to the same action)', async () => {
-    // Row-click is the primary one-click open (covered above); the repo's
-    // default/main checkout is also the pinned first flyout entry, opening the
-    // same bare root with the `recents` entry point.
+    // Clicking the project name is the primary one-click open (covered above);
+    // the repo's default/main checkout is also the pinned first flyout entry,
+    // opening the same bare root with the `recents` entry point.
     const { bridge } = renderMenu({
       recents: [
         main('/repo', '/repo/.git'),
