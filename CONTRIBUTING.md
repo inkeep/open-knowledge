@@ -48,10 +48,11 @@ Run a single package's scripts from its directory, e.g. `cd packages/app && bun 
 
 ## Opening a pull request
 
-First-time contributors are asked to sign our [Contributor License Agreement](./CLA.md) — a bot comments a one-click signing link on your PR (Inkeep employees are exempt automatically).
+First-time contributors are asked to sign our [Contributor License Agreement](./CLA.md) — a bot comments a one-click signing link on your PR (Inkeep employees are exempt automatically). Please follow the checklist in our [Pull Request Template](./.github/PULL_REQUEST_TEMPLATE.md):
 
 - Keep PRs focused and small enough to review.
 - Add tests — or a clear manual-verification note — for behavior changes.
+- Add a changeset by running `bun run changeset` if your pull request changes user-facing or programmatic behavior.
 - Run `bun run check` and confirm it passes.
 - Commit `bun.lock` when dependencies change, and run `bun run notices` to refresh `THIRD_PARTY_NOTICES.md` if third-party packages changed.
 - Never include secrets, credentials, customer data, or local machine paths.
