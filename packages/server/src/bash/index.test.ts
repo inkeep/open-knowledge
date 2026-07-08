@@ -69,6 +69,26 @@ describe('just-bash + ReadWriteFs (per-call cwd)', () => {
       expect(result.stdout).toContain('sub');
     });
 
+    // Subdirectory reads/lists: the exact operations that broke on Windows
+    // before just-bash 2.14.3. Its sandbox-containment gate (isPathWithinRoot)
+    // hardcoded the POSIX `/` separator, so backslash-separated real paths below
+    // the root were rejected and `cat sub/x` / `ls sub` returned "No such file or
+    // directory" (upstream fix: vercel-labs/just-bash#187). Passes on POSIX either
+    // way; documents the sub-path contract and guards a Windows regression.
+    it('reads a file inside a subdirectory', async () => {
+      const bash = createBashInstance(root);
+      const result = await execBash(bash, 'cat sub/nested.md');
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe('nested content\n');
+    });
+
+    it('lists a subdirectory', async () => {
+      const bash = createBashInstance(root);
+      const result = await execBash(bash, 'ls sub');
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('nested.md');
+    });
+
     it('supports pipes between stages', async () => {
       const bash = createBashInstance(root);
       writeFileSync(join(root, 'many.txt'), 'one\ntwo\nthree\nfour\nfive\n');

@@ -24,6 +24,11 @@
  *   - StdoutOverflowError — thrown when output exceeds the 16 MB cap
  */
 import { isAbsolute, resolve } from 'node:path';
+// just-bash >= 2.14.3 is required: earlier versions' sandbox-containment gate
+// (isPathWithinRoot) hardcoded the POSIX `/` separator, so on Windows every
+// backslash-separated real path below the root failed containment and exec reads
+// returned "No such file or directory" (upstream fix: vercel-labs/just-bash#187).
+// Keep the floor in packages/server/package.json at ^2.14.3 or higher.
 import { Bash, ReadWriteFs } from 'just-bash';
 
 /** Hard cap on stdout bytes returned by `execBash` (16 MB). */

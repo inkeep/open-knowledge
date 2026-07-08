@@ -877,7 +877,7 @@ https://github.com/DataDog/import-in-the-middle repository:
     limitations under the License.
 ```
 
-### `just-bash@2.14.2`
+### `just-bash@2.14.5`
 Homepage: https://github.com/vercel-labs/just-bash#readme
 
 Copyright 2025 Vercel Inc.
@@ -1589,6 +1589,11 @@ Copyright (c) 2022 Paul Miller (https://paulmillr.com)
 Homepage: https://paulmillr.com/noble/
 
 Copyright (c) 2022 Paul Miller (https://paulmillr.com)
+
+### `@nodable/entities@2.2.0`
+Homepage: https://github.com/nodable/val-parsers
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
 ### `@nodelib/fs.scandir@2.1.5`
 Homepage: https://github.com/nodelib/nodelib/tree/master/packages/fs/fs.scandir
@@ -2689,6 +2694,11 @@ Homepage: https://github.com/chalk/ansi-styles
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
+### `anynum@1.0.1`
+Homepage: https://github.com/NaturalIntelligence/anynum
+
+Copyright (c) 2026 Natural Intelligence
+
 ### `aria-hidden@1.2.6`
 Homepage: https://github.com/theKashey/aria-hidden#readme
 
@@ -3354,12 +3364,12 @@ Homepage: https://github.com/43081j/fast-wrap-ansi#readme
 Copyright (c) 2025 James Garbutt
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `fast-xml-builder@1.1.4`
+### `fast-xml-builder@1.2.0`
 Homepage: https://github.com/NaturalIntelligence/fast-xml-builder
 
 Copyright (c) 2026 Natural Intelligence
 
-### `fast-xml-parser@5.5.12`
+### `fast-xml-parser@5.9.3`
 Homepage: https://github.com/NaturalIntelligence/fast-xml-parser
 
 Copyright (c) 2017 Amit Kumar Gupta
@@ -3803,6 +3813,11 @@ Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 Homepage: https://github.com/sindresorhus/is-unicode-supported
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+
+### `is-unsafe@1.0.1`
+Homepage: https://github.com/NaturalIntelligence/is-unsafe
+
+Copyright (c) 2026 Natural Intelligence
 
 ### `is-wsl@3.1.1`
 Homepage: https://github.com/sindresorhus/is-wsl
@@ -5313,7 +5328,7 @@ Homepage: https://github.com/sindresorhus/strip-json-comments
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
-### `strnum@2.2.3`
+### `strnum@2.4.1`
 Homepage: https://github.com/NaturalIntelligence/strnum
 
 Copyright (c) 2021 Natural Intelligence
@@ -5707,6 +5722,11 @@ Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com> Copyright (c) 2013 Ar
 Homepage: https://github.com/sindresorhus/wsl-utils
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+
+### `xml-naming@0.1.0`
+Homepage: https://github.com/NaturalIntelligence/xml-naming
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
 ### `y-codemirror.next@0.3.5`
 Homepage: https://github.com/yjs/y-codemirror.next#readme
@@ -6119,11 +6139,6 @@ Homepage: https://github.com/isaacs/yallist
 Copyright (c) Isaac Z. Schlueter and Contributors
 
 ### `yaml@2.9.0`
-Homepage: https://eemeli.org/yaml/
-
-Copyright Eemeli Aro <eemeli@gmail.com>
-
-### `yaml@2.8.3`
 Homepage: https://eemeli.org/yaml/
 
 Copyright Eemeli Aro <eemeli@gmail.com>
