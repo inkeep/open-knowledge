@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { type ExecFileSyncOptionsWithStringEncoding, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
 export interface GhDetectResult {
@@ -24,6 +24,13 @@ const KNOWN_GH_PATHS: readonly string[] = [
   '/snap/bin/gh', // Linux snap
   '/usr/bin/gh', // Linux distro packages
 ];
+
+const GH_AUTH_TOKEN_OPTIONS: ExecFileSyncOptionsWithStringEncoding = {
+  encoding: 'utf-8',
+  stdio: ['ignore', 'pipe', 'pipe'],
+  timeout: 5000,
+  windowsHide: true,
+};
 
 interface DetectGhOptions {
   /** Injectable for tests. */
@@ -53,13 +60,7 @@ export function detectGh(host?: string, options: DetectGhOptions = {}): GhDetect
 
   for (const cmd of candidates) {
     try {
-      const token = exec(cmd, args, {
-        encoding: 'utf-8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 5000,
-      })
-        .toString()
-        .trim();
+      const token = exec(cmd, args, GH_AUTH_TOKEN_OPTIONS).toString().trim();
       if (token.length > 0) return { available: true, token };
     } catch {
       // Try next candidate

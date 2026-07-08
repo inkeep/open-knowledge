@@ -16,6 +16,7 @@ import { execFile } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import {
   assertGitAvailable,
   type GitDetected,
@@ -50,9 +51,11 @@ export interface EnsureProjectGitResult {
 
 async function isInsideExistingWorkTree(gitBin: string, cwd: string): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync(gitBin, ['rev-parse', '--is-inside-work-tree'], {
-      cwd,
-    });
+    const { stdout } = await execFileAsync(
+      gitBin,
+      ['rev-parse', '--is-inside-work-tree'],
+      withHiddenWindowsConsole({ cwd, encoding: 'utf-8' }),
+    );
     return stdout.trim() === 'true';
   } catch {
     // Non-zero `rev-parse` here means "not a work tree" (or an unreadable cwd)
@@ -147,7 +150,11 @@ export async function ensureProjectGit(projectRoot: string): Promise<EnsureProje
 
   let stderr = '';
   try {
-    const result = await execFileAsync(gitBin, ['init', '--initial-branch=main', abs]);
+    const result = await execFileAsync(
+      gitBin,
+      ['init', '--initial-branch=main', abs],
+      withHiddenWindowsConsole({ encoding: 'utf-8' }),
+    );
     stderr = result.stderr ?? '';
   } catch (err) {
     const capturedStderr =

@@ -28,6 +28,7 @@ import { type SpawnSyncOptions, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, delimiter as PATH_DELIM } from 'node:path';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 
 /**
  * Minimum git version OK requires.
@@ -198,11 +199,11 @@ type ProbeResult =
  * stderr text in stable English (important if downstream regex inspects it).
  */
 function probeGit(command: string): ProbeResult {
-  const opts: SpawnSyncOptions = {
+  const opts: SpawnSyncOptions = withHiddenWindowsConsole({
     encoding: 'utf-8',
     timeout: PROBE_TIMEOUT_MS,
     env: { ...process.env, LANG: 'C', LC_ALL: 'C' },
-  };
+  });
   const result = spawnSync(command, ['--version'], opts);
   if (result.error) {
     // `spawnSync` sets `signal` to `'SIGTERM'` on timeout.
@@ -318,7 +319,11 @@ export function resolveOnPath(name: string): string | null {
   // install guidance.
   let resolved: string | null;
   if (process.platform === 'win32') {
-    const result = spawnSync('where', [name], { encoding: 'utf-8', timeout: PROBE_TIMEOUT_MS });
+    const result = spawnSync(
+      'where',
+      [name],
+      withHiddenWindowsConsole({ encoding: 'utf-8', timeout: PROBE_TIMEOUT_MS }),
+    );
     if (result.status !== 0) {
       resolved = null;
     } else {
@@ -329,10 +334,14 @@ export function resolveOnPath(name: string): string | null {
     }
   } else {
     // POSIX: `command -v` is a shell builtin, not a binary on disk.
-    const result = spawnSync('/bin/sh', ['-c', `command -v ${name}`], {
-      encoding: 'utf-8',
-      timeout: PROBE_TIMEOUT_MS,
-    });
+    const result = spawnSync(
+      '/bin/sh',
+      ['-c', `command -v ${name}`],
+      withHiddenWindowsConsole({
+        encoding: 'utf-8',
+        timeout: PROBE_TIMEOUT_MS,
+      }),
+    );
     if (result.status !== 0) {
       resolved = null;
     } else {

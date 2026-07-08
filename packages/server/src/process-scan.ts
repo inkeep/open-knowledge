@@ -16,6 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { basename, isAbsolute, join } from 'node:path';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 
 const SPAWN_TIMEOUT_MS = 2000;
 const LOCK_SCAN_MAX_DEPTH = 3;
@@ -145,10 +146,14 @@ function parsePsOutput(output: string): OkProcessEntry[] {
  * pgrep exit code 1 means "no matches" — that is NOT a fallback trigger.
  */
 async function findOkProcessEntries(): Promise<OkProcessEntry[]> {
-  const pgrepResult = spawnSync('pgrep', ['-a', '-f', OK_PROCESS_PGREP_QUERY], {
-    encoding: 'utf-8',
-    timeout: SPAWN_TIMEOUT_MS,
-  });
+  const pgrepResult = spawnSync(
+    'pgrep',
+    ['-a', '-f', OK_PROCESS_PGREP_QUERY],
+    withHiddenWindowsConsole({
+      encoding: 'utf-8',
+      timeout: SPAWN_TIMEOUT_MS,
+    }),
+  );
 
   const pgrepUnavailable =
     pgrepResult.error != null && (pgrepResult.error as NodeJS.ErrnoException).code === 'ENOENT';
@@ -163,10 +168,14 @@ async function findOkProcessEntries(): Promise<OkProcessEntry[]> {
   }
 
   // pgrep not available or returned PID-only lines — fall back to ps
-  const psResult = spawnSync('ps', ['-axo', 'pid,command'], {
-    encoding: 'utf-8',
-    timeout: SPAWN_TIMEOUT_MS,
-  });
+  const psResult = spawnSync(
+    'ps',
+    ['-axo', 'pid,command'],
+    withHiddenWindowsConsole({
+      encoding: 'utf-8',
+      timeout: SPAWN_TIMEOUT_MS,
+    }),
+  );
 
   if (psResult.error != null || !psResult.stdout) {
     return [];
@@ -208,10 +217,14 @@ export function extractOkBinaryPath(command: string): string | null {
 }
 
 export function processCommand(pid: number): string | null {
-  const result = spawnSync('ps', ['-p', String(pid), '-o', 'command='], {
-    encoding: 'utf-8',
-    timeout: SPAWN_TIMEOUT_MS,
-  });
+  const result = spawnSync(
+    'ps',
+    ['-p', String(pid), '-o', 'command='],
+    withHiddenWindowsConsole({
+      encoding: 'utf-8',
+      timeout: SPAWN_TIMEOUT_MS,
+    }),
+  );
 
   if (result.error != null || !result.stdout) return null;
   return result.stdout.trim() || null;
@@ -223,10 +236,14 @@ export interface ProcessUsage {
 }
 
 export function processUsage(pid: number): ProcessUsage | null {
-  const result = spawnSync('ps', ['-p', String(pid), '-o', '%cpu=,%mem='], {
-    encoding: 'utf-8',
-    timeout: SPAWN_TIMEOUT_MS,
-  });
+  const result = spawnSync(
+    'ps',
+    ['-p', String(pid), '-o', '%cpu=,%mem='],
+    withHiddenWindowsConsole({
+      encoding: 'utf-8',
+      timeout: SPAWN_TIMEOUT_MS,
+    }),
+  );
 
   if (result.error != null || !result.stdout) return null;
   const [cpuRaw, memRaw] = result.stdout.trim().split(/\s+/);
@@ -237,10 +254,14 @@ export function processUsage(pid: number): ProcessUsage | null {
 }
 
 export async function pidCwd(pid: number): Promise<string | null> {
-  const result = spawnSync('lsof', ['-p', String(pid), '-a', '-d', 'cwd', '-Fn'], {
-    encoding: 'utf-8',
-    timeout: SPAWN_TIMEOUT_MS,
-  });
+  const result = spawnSync(
+    'lsof',
+    ['-p', String(pid), '-a', '-d', 'cwd', '-Fn'],
+    withHiddenWindowsConsole({
+      encoding: 'utf-8',
+      timeout: SPAWN_TIMEOUT_MS,
+    }),
+  );
 
   if (result.error != null) {
     // ENOENT = lsof unavailable; ETIMEDOUT / killed by timeout signal
@@ -366,10 +387,14 @@ export async function discoverLockDirs(): Promise<string[]> {
   }
 
   // Step 3: supplementary port scan — catches PIDs missed by process matching
-  const lsofResult = spawnSync('lsof', ['-iTCP', '-sTCP:LISTEN', '-nP'], {
-    encoding: 'utf-8',
-    timeout: SPAWN_TIMEOUT_MS,
-  });
+  const lsofResult = spawnSync(
+    'lsof',
+    ['-iTCP', '-sTCP:LISTEN', '-nP'],
+    withHiddenWindowsConsole({
+      encoding: 'utf-8',
+      timeout: SPAWN_TIMEOUT_MS,
+    }),
+  );
 
   if (lsofResult.error == null && lsofResult.stdout) {
     const listeningPids = parseListeningPids(lsofResult.stdout);

@@ -6,7 +6,7 @@
  * and the Vite dev plugin.
  */
 
-import { spawn } from 'node:child_process';
+import { type SpawnOptions, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,
@@ -423,6 +423,7 @@ import {
 import { getBootTimings } from './boot-timings.ts';
 import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import type { ResolveStrategy } from './conflict-storage.ts';
 import type { ContentFilter } from './content-filter.ts';
 import {
@@ -11023,6 +11024,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const LOCAL_OP_TIMEOUT_MS = 10 * 60 * 1000;
   /** Max time to wait for a spawned server's lock file to show a port > 0. */
   const LOCAL_OP_OPEN_TIMEOUT_MS = 45_000;
+  const LOCAL_OP_STDERR_ONLY_OPTIONS: { stdio: ['ignore', 'ignore', 'pipe'] } = {
+    stdio: ['ignore', 'ignore', 'pipe'],
+  };
+  const LOCAL_OP_PIPE_STDIO_OPTIONS: { stdio: ['ignore', 'pipe', 'pipe'] } = {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  };
+  const LOCAL_OP_IGNORED_STDIO_OPTIONS: Pick<SpawnOptions, 'stdio'> = {
+    stdio: 'ignore',
+  };
 
   /**
    * POST /api/local-op/clone
@@ -11296,15 +11306,19 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     const spawnAndAwaitUi = async (
       cliCmd: 'ui' | 'start',
     ): Promise<{ port: number } | { error: string; exited: boolean }> => {
-      const child = spawn(cmd, buildArgs(cliCmd), {
-        cwd: absDir,
-        detached: true,
-        stdio: ['ignore', 'ignore', 'pipe'],
-        // Explicit `interactive` — `OK_LOCK_KIND` may be inherited from a
-        // surrounding MCP-spawn parent and we don't want a user-driven
-        // clone relay to mark its child server as `mcp-spawned`.
-        env: { ...process.env, OK_LOCK_KIND: 'interactive' },
-      });
+      const child = spawn(
+        cmd,
+        buildArgs(cliCmd),
+        withHiddenWindowsConsole({
+          ...LOCAL_OP_STDERR_ONLY_OPTIONS,
+          cwd: absDir,
+          detached: true,
+          // Explicit `interactive` — `OK_LOCK_KIND` may be inherited from a
+          // surrounding MCP-spawn parent and we don't want a user-driven
+          // clone relay to mark its child server as `mcp-spawned`.
+          env: { ...process.env, OK_LOCK_KIND: 'interactive' },
+        }),
+      );
 
       const stderrChunks: Buffer[] = [];
       child.stderr?.on('data', (chunk: Buffer) => {
@@ -11793,10 +11807,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const spawnArgs = [...baseArgs, 'auth', 'status', '--json', '--host', host];
 
         const output = await new Promise<string>((resolve, reject) => {
-          const child = spawn(cmd, spawnArgs, {
-            stdio: ['ignore', 'pipe', 'pipe'],
-            env: { ...process.env },
-          });
+          const child = spawn(
+            cmd,
+            spawnArgs,
+            withHiddenWindowsConsole({
+              ...LOCAL_OP_PIPE_STDIO_OPTIONS,
+              env: { ...process.env },
+            }),
+          );
           let timedOut = false;
           const killTimer = setTimeout(() => {
             timedOut = true;
@@ -11929,10 +11947,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
     let settled = false;
     let stdoutBuffer = '';
-    const child = spawn(cmd, spawnArgs, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
-    });
+    const child = spawn(
+      cmd,
+      spawnArgs,
+      withHiddenWindowsConsole({
+        ...LOCAL_OP_PIPE_STDIO_OPTIONS,
+        env: { ...process.env },
+      }),
+    );
 
     const killTimer = setTimeout(() => {
       child.kill('SIGTERM');
@@ -12063,10 +12085,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const spawnArgs = [...baseArgs, 'auth', 'signout', '--host', host];
 
         await new Promise<void>((resolve, reject) => {
-          const child = spawn(cmd, spawnArgs, {
-            stdio: 'ignore',
-            env: { ...process.env },
-          });
+          const child = spawn(
+            cmd,
+            spawnArgs,
+            withHiddenWindowsConsole({
+              ...LOCAL_OP_IGNORED_STDIO_OPTIONS,
+              env: { ...process.env },
+            }),
+          );
           const killTimer = setTimeout(() => {
             child.kill('SIGTERM');
           }, 30_000);
@@ -16847,10 +16873,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     const [cmd, ...baseArgs] = localOpCliArgs;
     const spawnArgs = [...baseArgs, ...args];
     return await new Promise<{ stdout: string; code: number | null }>((resolveSpawn, reject) => {
-      const child = spawn(cmd, spawnArgs, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env },
-      });
+      const child = spawn(
+        cmd,
+        spawnArgs,
+        withHiddenWindowsConsole({
+          ...LOCAL_OP_PIPE_STDIO_OPTIONS,
+          env: { ...process.env },
+        }),
+      );
       let timedOut = false;
       const killTimer = setTimeout(() => {
         timedOut = true;

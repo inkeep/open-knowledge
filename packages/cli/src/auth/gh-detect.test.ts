@@ -35,6 +35,24 @@ describe('detectGh', () => {
     expect(calls[0]).toBe('gh auth token --hostname github.acme.com');
   });
 
+  test('hides Windows console windows when probing gh auth token', () => {
+    let seenOptions: unknown;
+    const exec = ((_cmd: string, _args: readonly string[], options?: unknown) => {
+      seenOptions = options;
+      return 'ghu_hidden';
+    }) as unknown as ExecFileSyncFn;
+
+    const result = detectGh(undefined, { _exec: exec, _fileExists: () => false });
+
+    expect(result).toEqual({ available: true, token: 'ghu_hidden' });
+    expect(seenOptions).toMatchObject({
+      encoding: 'utf-8',
+      timeout: 5000,
+      windowsHide: true,
+    });
+    expect((seenOptions as { stdio?: unknown }).stdio).toEqual(['ignore', 'pipe', 'pipe']);
+  });
+
   test('returns available:false when bare gh and no known paths exist', () => {
     const { exec } = makeExec({});
     const result = detectGh(undefined, { _exec: exec, _fileExists: () => false });

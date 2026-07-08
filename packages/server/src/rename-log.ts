@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseOkActors } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import {
   tracedAppendFileSync,
   tracedRenameSync,
@@ -584,6 +585,12 @@ export async function buildSeeds(
  * and other arguments while keeping the fast path for typical small lists.
  */
 const REV_LIST_STDIN_THRESHOLD_BYTES = 100 * 1024;
+const GIT_STDIN_STDIO_OPTIONS: { stdio: ['pipe', 'pipe', 'pipe'] } = {
+  stdio: ['pipe', 'pipe', 'pipe'],
+};
+const GIT_BATCH_CHECK_STDIO_OPTIONS: { stdio: ['pipe', 'pipe', 'ignore'] } = {
+  stdio: ['pipe', 'pipe', 'ignore'],
+};
 
 /**
  * Run `git rev-list <refs>` over an arbitrary-size ref list. Falls through
@@ -601,10 +608,14 @@ async function revListReachable(shadow: ShadowHandle, refs: string[]): Promise<s
   }
   const timeoutMs = parseGitTimeoutMs();
   return new Promise<string>((resolvePromise, rejectPromise) => {
-    const child = spawn('git', ['rev-list', '--stdin'], {
-      env: { ...process.env, GIT_DIR: shadow.gitDir, GIT_WORK_TREE: shadow.workTree },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      'git',
+      ['rev-list', '--stdin'],
+      withHiddenWindowsConsole({
+        ...GIT_STDIN_STDIO_OPTIONS,
+        env: { ...process.env, GIT_DIR: shadow.gitDir, GIT_WORK_TREE: shadow.workTree },
+      }),
+    );
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     child.stdout.on('data', (c: Buffer) => stdoutChunks.push(c));
@@ -677,10 +688,14 @@ export async function logSeededReachable(
     // from argv after `--`. Combining stdin + argv pathspec is documented
     // and stable across git versions.
     const args = ['log', '--stdin', ...flags, ...(pathspec ? ['--', pathspec] : [])];
-    const child = spawn('git', args, {
-      env: { ...process.env, GIT_DIR: shadow.gitDir, GIT_WORK_TREE: shadow.workTree },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      'git',
+      args,
+      withHiddenWindowsConsole({
+        ...GIT_STDIN_STDIO_OPTIONS,
+        env: { ...process.env, GIT_DIR: shadow.gitDir, GIT_WORK_TREE: shadow.workTree },
+      }),
+    );
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     child.stdout.on('data', (c: Buffer) => stdoutChunks.push(c));
@@ -803,10 +818,14 @@ export function batchCheckExistence(
     // typical) and block the child until the timeout fires — git can write
     // diagnostic messages to stderr under repository corruption or
     // concurrent gc, both of which are realistic failure modes here.
-    const child = spawn('git', ['cat-file', '--batch-check', '--buffer'], {
-      env: { ...process.env, GIT_DIR: shadow.gitDir, GIT_WORK_TREE: shadow.workTree },
-      stdio: ['pipe', 'pipe', 'ignore'],
-    });
+    const child = spawn(
+      'git',
+      ['cat-file', '--batch-check', '--buffer'],
+      withHiddenWindowsConsole({
+        ...GIT_BATCH_CHECK_STDIO_OPTIONS,
+        env: { ...process.env, GIT_DIR: shadow.gitDir, GIT_WORK_TREE: shadow.workTree },
+      }),
+    );
 
     const stdoutChunks: Buffer[] = [];
     child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));

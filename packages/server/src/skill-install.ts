@@ -7,6 +7,7 @@ import {
   buildSkillZip,
   resolveBundledSkillDir,
 } from './build-skill-zip.ts';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { tracedMkdir } from './fs-traced.ts';
 import { BUNDLE_SKILL_NAME, type BundleId } from './skill-bundles.ts';
 import { recordSkillInstallEvent, type SkillInstallEventOutcome } from './skill-install-events.ts';
@@ -165,11 +166,15 @@ function runSpawn(
     const useShell = platform === 'win32';
     const spawnArgs = useShell ? args.map(quoteForWindowsShell) : args;
     try {
-      child = spawnFn(command, spawnArgs, {
-        env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        ...(useShell ? { shell: true } : {}),
-      });
+      child = spawnFn(
+        command,
+        spawnArgs,
+        withHiddenWindowsConsole({
+          env,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          ...(useShell ? { shell: true } : {}),
+        }),
+      );
     } catch (err) {
       resolve({ kind: 'spawn-error', stderr: '', error: err as Error });
       return;
@@ -525,7 +530,10 @@ function invokeFileAssociation(
   platformName: NodeJS.Platform,
   spawnFn: SpawnLike,
 ): { ok: true } | { ok: false; reason: 'unsupported-platform' | 'spawn-error'; message: string } {
-  const detached: SpawnOptions = { detached: true, stdio: 'ignore' };
+  const detached: SpawnOptions = withHiddenWindowsConsole({
+    detached: true,
+    stdio: 'ignore',
+  });
   try {
     if (platformName === 'darwin') {
       spawnFn('open', [skillPath], detached).unref();

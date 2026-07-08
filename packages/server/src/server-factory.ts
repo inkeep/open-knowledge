@@ -49,6 +49,7 @@ import {
   isReservedForUserTree,
   SYSTEM_DOC_NAME,
 } from './cc1-broadcast.ts';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { getLocalDir } from './config/paths.ts';
 import {
   type ConfigFileWatcherUnsubscribe,
@@ -445,7 +446,7 @@ export function resolveUpstreamChanges(
         '--name-only',
         '--format=C%x00%an%x00%ae',
       ],
-      { cwd: projectDir, encoding: 'utf-8', timeout: 5000 },
+      withHiddenWindowsConsole({ cwd: projectDir, encoding: 'utf-8', timeout: 5000 }),
     );
   } catch (err) {
     // spawnSync normally surfaces ENOENT/timeout via result.error rather than
@@ -3081,11 +3082,15 @@ export function createServer(options: ServerOptions): ServerInstance {
       // it up.
       let gitInfoExcludePath: string | null = null;
       try {
-        const probe = spawnSync('git', ['rev-parse', '--git-common-dir'], {
-          cwd: projectDir,
-          encoding: 'utf-8',
-          timeout: 5_000,
-        });
+        const probe = spawnSync(
+          'git',
+          ['rev-parse', '--git-common-dir'],
+          withHiddenWindowsConsole({
+            cwd: projectDir,
+            encoding: 'utf-8',
+            timeout: 5_000,
+          }),
+        );
         if (probe.status === 0 && probe.stdout) {
           const commonDir = resolve(projectDir, probe.stdout.trim());
           const candidate = join(commonDir, 'info', 'exclude');

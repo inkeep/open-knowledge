@@ -51,6 +51,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { posix as pathPosix, win32 as pathWin32 } from 'node:path';
 import { SpawnCursorSuccessSchema } from '@inkeep/open-knowledge-core';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { errorResponse } from './http/error-response.ts';
 import {
   PayloadTooLargeError,
@@ -325,14 +326,19 @@ export async function resolveCursorBinaryDefault(timeoutMs: number): Promise<str
   // PATH lookup — covers all platforms including Linux (no bundle paths).
   return new Promise((resolve) => {
     const cmd = process.platform === 'win32' ? 'where' : 'which';
-    execFile(cmd, ['cursor'], { timeout: timeoutMs, encoding: 'utf-8' }, (err, stdout) => {
-      if (err) {
-        resolve(null);
-        return;
-      }
-      const first = stdout.split(/\r?\n/)[0]?.trim();
-      resolve(first && first.length > 0 ? first : null);
-    });
+    execFile(
+      cmd,
+      ['cursor'],
+      withHiddenWindowsConsole({ timeout: timeoutMs, encoding: 'utf-8' }),
+      (err, stdout) => {
+        if (err) {
+          resolve(null);
+          return;
+        }
+        const first = stdout.split(/\r?\n/)[0]?.trim();
+        resolve(first && first.length > 0 ? first : null);
+      },
+    );
   });
 }
 

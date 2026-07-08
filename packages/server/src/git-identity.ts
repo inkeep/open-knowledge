@@ -18,6 +18,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,11 +62,15 @@ export type GitConfigReader = (
 const defaultGitConfigReader: GitConfigReader = (projectDir, key, scope) => {
   const scopeFlag =
     scope === 'worktree' ? '--worktree' : scope === 'local' ? '--local' : '--global';
-  const result = spawnSync('git', ['config', scopeFlag, key], {
-    cwd: projectDir,
-    encoding: 'utf-8',
-    timeout: 5_000,
-  });
+  const result = spawnSync(
+    'git',
+    ['config', scopeFlag, key],
+    withHiddenWindowsConsole({
+      cwd: projectDir,
+      encoding: 'utf-8',
+      timeout: 5_000,
+    }),
+  );
   if (result.status !== 0 || !result.stdout) return null;
   return result.stdout.trim() || null;
 };
@@ -83,16 +88,24 @@ const defaultGitConfigReader: GitConfigReader = (projectDir, key, scope) => {
  * the `--worktree` flag (which requires `extensions.worktreeConfig`).
  */
 function isLinkedWorktree(projectDir: string): boolean {
-  const gd = spawnSync('git', ['rev-parse', '--git-dir'], {
-    cwd: projectDir,
-    encoding: 'utf-8',
-    timeout: 5_000,
-  });
-  const cd = spawnSync('git', ['rev-parse', '--git-common-dir'], {
-    cwd: projectDir,
-    encoding: 'utf-8',
-    timeout: 5_000,
-  });
+  const gd = spawnSync(
+    'git',
+    ['rev-parse', '--git-dir'],
+    withHiddenWindowsConsole({
+      cwd: projectDir,
+      encoding: 'utf-8',
+      timeout: 5_000,
+    }),
+  );
+  const cd = spawnSync(
+    'git',
+    ['rev-parse', '--git-common-dir'],
+    withHiddenWindowsConsole({
+      cwd: projectDir,
+      encoding: 'utf-8',
+      timeout: 5_000,
+    }),
+  );
   if (gd.status !== 0 || cd.status !== 0) return false;
   const gdPath = resolve(projectDir, gd.stdout.trim());
   const cdPath = resolve(projectDir, cd.stdout.trim());
@@ -112,18 +125,26 @@ function ensureWorktreeConfigExtension(projectDir: string): void {
   // the same scope. Git only honors `extensions.*` from the repo-level config,
   // so a stray `extensions.worktreeConfig=true` in `~/.gitconfig` would short-
   // circuit a scope-less probe but git would still reject `--worktree`.
-  const probe = spawnSync('git', ['config', '--local', '--get', 'extensions.worktreeConfig'], {
-    cwd: projectDir,
-    encoding: 'utf-8',
-    timeout: 5_000,
-  });
+  const probe = spawnSync(
+    'git',
+    ['config', '--local', '--get', 'extensions.worktreeConfig'],
+    withHiddenWindowsConsole({
+      cwd: projectDir,
+      encoding: 'utf-8',
+      timeout: 5_000,
+    }),
+  );
   if (probe.status === 0 && /^(true|yes|on|1)$/i.test(probe.stdout.trim())) return;
 
-  const enable = spawnSync('git', ['config', '--local', 'extensions.worktreeConfig', 'true'], {
-    cwd: projectDir,
-    encoding: 'utf-8',
-    timeout: 5_000,
-  });
+  const enable = spawnSync(
+    'git',
+    ['config', '--local', 'extensions.worktreeConfig', 'true'],
+    withHiddenWindowsConsole({
+      cwd: projectDir,
+      encoding: 'utf-8',
+      timeout: 5_000,
+    }),
+  );
   if (enable.status !== 0) {
     const stderr = enable.stderr?.trim() ?? '';
     const spawnErr = enable.error ? ` [${enable.error.message}]` : '';
@@ -220,11 +241,15 @@ export function writeGitIdentity(projectDir: string, name: string, email: string
     scopeFlag = '--worktree';
   }
   const setConfig = (key: string, value: string) => {
-    const result = spawnSync('git', ['config', scopeFlag, key, value], {
-      cwd: projectDir,
-      encoding: 'utf-8',
-      timeout: 5_000,
-    });
+    const result = spawnSync(
+      'git',
+      ['config', scopeFlag, key, value],
+      withHiddenWindowsConsole({
+        cwd: projectDir,
+        encoding: 'utf-8',
+        timeout: 5_000,
+      }),
+    );
     if (result.status !== 0) {
       const stderr = result.stderr?.trim() ?? '';
       const spawnErr = result.error ? ` [${result.error.message}]` : '';

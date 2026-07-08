@@ -13,6 +13,11 @@
 
 import { spawn } from 'node:child_process';
 import { delimiter as PATH_DELIMITER } from 'node:path';
+import { withHiddenWindowsConsole } from '../child-process-windows-hide.ts';
+
+const SUBPROCESS_PIPE_STDIO_OPTIONS: { stdio: ['ignore', 'pipe', 'pipe'] } = {
+  stdio: ['ignore', 'pipe', 'pipe'],
+};
 
 /** A parsed JSON line plus the raw line (for HTTP NDJSON pass-through). */
 interface ParsedLine {
@@ -96,11 +101,15 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
       .join(PATH_DELIMITER);
   }
 
-  const child = spawn(cmd, argv, {
-    cwd: opts.cwd,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: childEnv,
-  });
+  const child = spawn(
+    cmd,
+    argv,
+    withHiddenWindowsConsole({
+      ...SUBPROCESS_PIPE_STDIO_OPTIONS,
+      cwd: opts.cwd,
+      env: childEnv,
+    }),
+  );
 
   const killTimer = setTimeout(() => {
     timedOut = true;

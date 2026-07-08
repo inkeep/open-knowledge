@@ -23,6 +23,7 @@
 import { execFile } from 'node:child_process';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { InstalledAgentsSuccessSchema } from '@inkeep/open-knowledge-core';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { errorResponse } from './http/error-response.ts';
 import { successResponse } from './http/success-response.ts';
 
@@ -54,7 +55,7 @@ const MACOS_APP_NAMES: Record<InstalledAgentScheme, ReadonlyArray<string>> = {
 export type ExecFileLike = (
   file: string,
   args: readonly string[],
-  opts: { timeout?: number; encoding?: BufferEncoding },
+  opts: { timeout?: number; encoding?: BufferEncoding; windowsHide?: boolean },
   cb: (err: (Error & { code?: number | string }) | null, stdout: string, stderr: string) => void,
 ) => void;
 
@@ -259,7 +260,10 @@ function probeMacOs(scheme: InstalledAgentScheme, exec: ExecFileLike): Promise<b
       exec(
         'osascript',
         ['-e', `id of app "${appName}"`],
-        { timeout: INSTALLED_AGENTS_PROBE_TIMEOUT_MS, encoding: 'utf-8' },
+        withHiddenWindowsConsole({
+          timeout: INSTALLED_AGENTS_PROBE_TIMEOUT_MS,
+          encoding: 'utf-8',
+        }),
         (err, stdout) => {
           if (err) {
             resolve(false);
@@ -285,7 +289,10 @@ function probeWindows(scheme: InstalledAgentScheme, exec: ExecFileLike): Promise
     exec(
       'reg',
       ['query', `HKCR\\${scheme}`, '/ve'],
-      { timeout: INSTALLED_AGENTS_PROBE_TIMEOUT_MS, encoding: 'utf-8' },
+      withHiddenWindowsConsole({
+        timeout: INSTALLED_AGENTS_PROBE_TIMEOUT_MS,
+        encoding: 'utf-8',
+      }),
       (err) => {
         resolve(!err);
       },
@@ -298,7 +305,10 @@ function probeLinux(scheme: InstalledAgentScheme, exec: ExecFileLike): Promise<b
     exec(
       'xdg-mime',
       ['query', 'default', `x-scheme-handler/${scheme}`],
-      { timeout: INSTALLED_AGENTS_PROBE_TIMEOUT_MS, encoding: 'utf-8' },
+      withHiddenWindowsConsole({
+        timeout: INSTALLED_AGENTS_PROBE_TIMEOUT_MS,
+        encoding: 'utf-8',
+      }),
       (err, stdout) => {
         if (err) {
           resolve(false);

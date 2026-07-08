@@ -19,10 +19,11 @@
  * the production surface (self-spawn via this process's own CLI entry).
  */
 
-import { spawn } from 'node:child_process';
+import { type SpawnOptions, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { realpath as fsRealpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { isSupportedDocFile } from './doc-extensions.ts';
 import { createOffCwdResolverDeps, resolveOffCwdTarget } from './off-cwd-resolver.ts';
 
@@ -54,6 +55,10 @@ const DEFAULT_POLL_INTERVAL_MS = 500;
 // the first `preview_url({file})` returns a URL (opens in the in-app browser)
 // instead of timing out and pushing the agent to the `ok open` (Desktop) hint.
 const DEFAULT_TIMEOUT_MS = 15000;
+const SINGLE_FILE_SESSION_SPAWN_OPTIONS: Pick<SpawnOptions, 'detached' | 'stdio'> = {
+  detached: true,
+  stdio: 'ignore',
+};
 
 /** Module-level single-flight: realpath → in-flight ensure promise. */
 const inflight = new Map<string, Promise<boolean>>();
@@ -145,11 +150,14 @@ export function createEnsureSingleFileSession(): (absFile: string) => Promise<bo
         OK_SINGLE_FILE_NO_OPEN: '1',
         ELECTRON_RUN_AS_NODE: '1',
       };
-      const child = spawn(process.execPath, [entry, absFile], {
-        detached: true,
-        stdio: 'ignore',
-        env,
-      });
+      const child = spawn(
+        process.execPath,
+        [entry, absFile],
+        withHiddenWindowsConsole({
+          ...SINGLE_FILE_SESSION_SPAWN_OPTIONS,
+          env,
+        }),
+      );
       child.unref();
     },
     isServing: async (absFile) =>

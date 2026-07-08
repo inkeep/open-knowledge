@@ -19,7 +19,14 @@
  * wire boundary; this helper never constructs problem+json bodies itself.
  */
 
-import { spawn as nodeSpawn } from 'node:child_process';
+import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
+import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
+
+const DETACHED_IGNORED_STDIO_OPTIONS: Pick<SpawnOptions, 'detached' | 'stdio' | 'shell'> = {
+  detached: true,
+  stdio: 'ignore',
+  shell: false,
+};
 
 export type SpawnDetachedOutcome =
   | { ok: true }
@@ -52,11 +59,11 @@ export function spawnDetached(
     };
     const timer = setTimeout(() => settle({ ok: false, reason: 'timeout' }), timeoutMs);
     try {
-      const child = nodeSpawn(exec, [...args], {
-        detached: true,
-        stdio: 'ignore',
-        shell: false,
-      });
+      const child = nodeSpawn(
+        exec,
+        [...args],
+        withHiddenWindowsConsole(DETACHED_IGNORED_STDIO_OPTIONS),
+      );
       child.once('error', (err) => {
         clearTimeout(timer);
         settle(classifySpawnError(err));

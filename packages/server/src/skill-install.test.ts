@@ -551,12 +551,14 @@ describe('buildAndOpenSkill', () => {
   function makeFakeSpawn(capture: {
     command?: string;
     args?: readonly string[];
+    opts?: SpawnOptions;
     threw?: Error;
   }): SpawnLike {
-    return ((command: string, args: readonly string[]) => {
+    return ((command: string, args: readonly string[], opts: SpawnOptions) => {
       if (capture.threw) throw capture.threw;
       capture.command = command;
       capture.args = args;
+      capture.opts = opts;
       return { unref: () => {} } as ReturnType<SpawnLike>;
     }) as SpawnLike;
   }
@@ -580,7 +582,7 @@ describe('buildAndOpenSkill', () => {
 
   test('darwin: spawns `open <path>` and returns status="installed"', async () => {
     const home = freshHome();
-    const capture: { command?: string; args?: readonly string[] } = {};
+    const capture: { command?: string; args?: readonly string[]; opts?: SpawnOptions } = {};
     const out = join(home, 'darwin.skill');
 
     const result = await buildAndOpenSkill({
@@ -593,11 +595,12 @@ describe('buildAndOpenSkill', () => {
     expect(result.status).toBe('installed');
     expect(capture.command).toBe('open');
     expect(capture.args).toEqual([out]);
+    expect(capture.opts?.windowsHide).toBe(true);
   });
 
   test('win32: spawns `cmd /c start "" <path>` and returns status="installed"', async () => {
     const home = freshHome();
-    const capture: { command?: string; args?: readonly string[] } = {};
+    const capture: { command?: string; args?: readonly string[]; opts?: SpawnOptions } = {};
     const out = join(home, 'win32.skill');
 
     const result = await buildAndOpenSkill({
@@ -612,11 +615,12 @@ describe('buildAndOpenSkill', () => {
     expect(capture.args?.[0]).toBe('/c');
     expect(capture.args?.[1]).toBe('start');
     expect(capture.args?.[3]).toBe(out);
+    expect(capture.opts?.windowsHide).toBe(true);
   });
 
   test('linux: spawns `xdg-open <path>` and returns status="installed"', async () => {
     const home = freshHome();
-    const capture: { command?: string; args?: readonly string[] } = {};
+    const capture: { command?: string; args?: readonly string[]; opts?: SpawnOptions } = {};
 
     const result = await buildAndOpenSkill({
       home,
@@ -627,6 +631,7 @@ describe('buildAndOpenSkill', () => {
 
     expect(result.status).toBe('installed');
     expect(capture.command).toBe('xdg-open');
+    expect(capture.opts?.windowsHide).toBe(true);
   });
 
   test('unsupported platform: status="built" with handoffError reason=unsupported-platform', async () => {
