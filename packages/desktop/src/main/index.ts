@@ -79,6 +79,7 @@ import {
   BUNDLE_SKILL_NAME,
   classifyFsPath,
   createEphemeralProjectDir,
+  discoverLockDirs,
   ensureProjectGit,
   findEnclosingGitRoot,
   findEnclosingProjectRoot,
@@ -100,7 +101,7 @@ import {
   writeBundleDecision,
   writeTargetVersion,
 } from '@inkeep/open-knowledge-server';
-import type { BrowserWindowConstructorOptions } from 'electron';
+import type { BrowserWindowConstructorOptions, MessageBoxOptions } from 'electron';
 import {
   app,
   BrowserWindow,
@@ -173,6 +174,26 @@ import {
 } from './create-new-project.ts';
 import { createDebugIpc, type DebugIpcHandle } from './debug-ipc.ts';
 import { flushDesktopLogger, getLogger, getRootDesktopLogger } from './desktop-logger.ts';
+import {
+  buildDesktopUninstallNoticeHtml,
+  buildDesktopUninstallProgressHtml,
+  buildDesktopUninstallProjectPickerHtml,
+  collectDesktopUninstallProjectCandidates,
+  type DesktopUninstallNoticeSpec,
+  type DesktopUninstallProjectCandidate,
+  defaultDesktopUninstallLogPath,
+  desktopUninstallCompletionNotice,
+  desktopUninstallConfirmNotice,
+  desktopUninstallFailureNotice,
+  desktopUninstallFinalStepNotice,
+  isSupportedApplicationsBundle,
+  parseDesktopUninstallNoticeUrl,
+  parseDesktopUninstallProjectPickerUrl,
+  readDesktopUninstallLogForDisplay,
+  resolveAppBundleFromExecPath,
+  resolveDesktopUninstallProjectSelection,
+  runDesktopUninstallCleanup,
+} from './desktop-uninstall.ts';
 import { promptForExistingFolder } from './dialog-helpers.ts';
 import {
   type DriverUtilityLike,
@@ -2093,6 +2114,15 @@ async function runApplicationMenuRefresh(): Promise<void> {
           });
         }
       : undefined,
+    onUninstall: desktopSelfUninstallAvailable()
+      ? () =>
+          void startDesktopSelfUninstallFlow().catch((err) => {
+            getLogger('lifecycle').error(
+              { err: err instanceof Error ? err.message : String(err) },
+              'desktop self-uninstall flow failed',
+            );
+          })
+      : undefined,
     // File menu state-aware items. activeTarget drives enable/disable;
     // per-item handlers fire `ok:menu-action` to the focused renderer which
     // already knows the current scope (sidebar selection + editor
@@ -2150,6 +2180,308 @@ async function runApplicationMenuRefresh(): Promise<void> {
     spellCheckEnabled: appState.spellCheckEnabled,
     onToggleSpellCheck: () => setSpellCheckEnabledAppWide(!appState.spellCheckEnabled),
   });
+}
+
+function desktopSelfUninstallAvailable(): boolean {
+  if (process.platform !== 'darwin' || !app.isPackaged) return false;
+  const appBundlePath = resolveAppBundleFromExecPath(process.execPath, process.platform);
+  return appBundlePath !== null && isSupportedApplicationsBundle(appBundlePath, osHomedir());
+}
+
+async function showMessageBoxAttached(options: MessageBoxOptions) {
+  const target = BrowserWindow.getFocusedWindow();
+  return target ? dialog.showMessageBox(target, options) : dialog.showMessageBox(options);
+}
+
+/**
+ * Show a `DesktopUninstallNoticeSpec` in a styled utility window and resolve
+ * true on confirm. Closing the window without a button press means Cancel for
+ * a two-button notice; a single-button notice proceeds either way (there is
+ * nothing else to choose, and the flow must still quit).
+ */
+async function showDesktopUninstallNotice(
+  spec: DesktopUninstallNoticeSpec,
+  options: { width?: number; height?: number; resizable?: boolean } = {},
+): Promise<boolean> {
+  const parent = BrowserWindow.getFocusedWindow();
+  const closeMeansConfirm = spec.cancelLabel === undefined;
+  return new Promise((resolveNotice) => {
+    const win = createDesktopUninstallUtilityWindow({
+      parent,
+      width: options.width ?? 480,
+      height: options.height ?? 300,
+      title: spec.title,
+      modal: parent != null,
+      resizable: options.resizable ?? false,
+    });
+
+    let settled = false;
+    const finish = (confirmed: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolveNotice(confirmed);
+      if (!win.isDestroyed()) win.destroy();
+    };
+
+    win.webContents.on('will-navigate', (event, url) => {
+      const action = parseDesktopUninstallNoticeUrl(url);
+      if (action !== null) {
+        event.preventDefault();
+        finish(action === 'confirm');
+        return;
+      }
+      if (!url.startsWith('data:text/html')) event.preventDefault();
+    });
+
+    win.on('close', (event) => {
+      if (settled) return;
+      event.preventDefault();
+      finish(closeMeansConfirm);
+    });
+    win.on('closed', () => {
+      if (settled) return;
+      settled = true;
+      resolveNotice(closeMeansConfirm);
+    });
+    win.once('ready-to-show', () => {
+      if (!win.isDestroyed()) win.show();
+    });
+
+    void win
+      .loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(buildDesktopUninstallNoticeHtml(spec))}`,
+      )
+      .catch((err) => {
+        getLogger('lifecycle').warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          'desktop uninstall notice failed to load',
+        );
+        finish(closeMeansConfirm);
+      });
+  });
+}
+
+function createDesktopUninstallUtilityWindow(options: {
+  parent: BrowserWindow | null;
+  width: number;
+  height: number;
+  minWidth?: number;
+  minHeight?: number;
+  title: string;
+  modal?: boolean;
+  resizable?: boolean;
+}): BrowserWindow {
+  const win = new BrowserWindow({
+    width: options.width,
+    height: options.height,
+    minWidth: options.minWidth,
+    minHeight: options.minHeight,
+    parent: options.parent ?? undefined,
+    modal: options.modal ?? options.parent != null,
+    resizable: options.resizable ?? true,
+    minimizable: false,
+    maximizable: false,
+    show: false,
+    title: options.title,
+    fullscreenable: false,
+    webPreferences: {
+      ...DEFAULT_WIN_OPTS.webPreferences,
+    },
+  });
+  win.setMenu(null);
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  return win;
+}
+
+async function showDesktopUninstallProjectPicker(
+  candidates: readonly DesktopUninstallProjectCandidate[],
+): Promise<DesktopUninstallProjectCandidate[] | null> {
+  const parent = BrowserWindow.getFocusedWindow();
+  const workArea = (
+    parent ? screen.getDisplayMatching(parent.getBounds()) : screen.getPrimaryDisplay()
+  ).workArea;
+  const width = Math.max(560, Math.min(820, workArea.width - 80));
+  const height = Math.max(460, Math.min(680, workArea.height - 80));
+
+  return new Promise((resolveSelection) => {
+    const win = createDesktopUninstallUtilityWindow({
+      parent,
+      width,
+      height,
+      minWidth: 560,
+      minHeight: 420,
+      title: 'Uninstall OpenKnowledge',
+    });
+
+    let settled = false;
+    const finish = (raw: unknown) => {
+      if (settled) return;
+      settled = true;
+      resolveSelection(resolveDesktopUninstallProjectSelection(candidates, raw));
+      if (!win.isDestroyed()) win.destroy();
+    };
+
+    win.webContents.on('will-navigate', (event, url) => {
+      const pickerResult = parseDesktopUninstallProjectPickerUrl(url);
+      if (pickerResult !== null) {
+        event.preventDefault();
+        finish(pickerResult);
+        return;
+      }
+      if (!url.startsWith('data:text/html')) event.preventDefault();
+    });
+
+    win.on('close', (event) => {
+      if (settled) return;
+      event.preventDefault();
+      finish({ action: 'cancel' });
+    });
+    win.on('closed', () => {
+      if (settled) return;
+      settled = true;
+      resolveSelection(null);
+    });
+    win.once('ready-to-show', () => {
+      if (!win.isDestroyed()) win.show();
+    });
+
+    void win
+      .loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(
+          buildDesktopUninstallProjectPickerHtml(candidates),
+        )}`,
+      )
+      .catch((err) => {
+        getLogger('lifecycle').warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          'desktop uninstall project picker failed to load',
+        );
+        finish({ action: 'cancel' });
+      });
+  });
+}
+
+async function withDesktopUninstallProgress<T>(work: () => Promise<T>): Promise<T> {
+  const parent = BrowserWindow.getFocusedWindow();
+  const win = createDesktopUninstallUtilityWindow({
+    parent,
+    width: 420,
+    height: 220,
+    title: 'Uninstalling OpenKnowledge',
+    modal: parent != null,
+    resizable: false,
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith('data:text/html')) event.preventDefault();
+  });
+  const preventClose = (event: { preventDefault(): void }) => event.preventDefault();
+  win.on('close', preventClose);
+  win.once('ready-to-show', () => {
+    if (!win.isDestroyed()) win.show();
+  });
+
+  try {
+    // The progress window is cosmetic — a failed load must neither skip the
+    // cleanup nor (being outside the finally) leak the close-prevented window.
+    try {
+      await win.loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(buildDesktopUninstallProgressHtml())}`,
+      );
+    } catch (err) {
+      getLogger('lifecycle').warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        'desktop uninstall progress window failed to load',
+      );
+    }
+    return await work();
+  } finally {
+    if (!win.isDestroyed()) {
+      win.removeListener('close', preventClose);
+      win.destroy();
+    }
+  }
+}
+
+async function startDesktopSelfUninstallFlow(): Promise<void> {
+  const appBundlePath = resolveAppBundleFromExecPath(process.execPath, process.platform);
+  if (appBundlePath === null || !isSupportedApplicationsBundle(appBundlePath, osHomedir())) {
+    await showMessageBoxAttached({
+      type: 'error',
+      message: 'OpenKnowledge cannot uninstall itself from this location.',
+      detail:
+        'Self-uninstall only works when OpenKnowledge.app is in Applications. Move this copy to the Trash manually.',
+    });
+    return;
+  }
+
+  let lockDirs: string[] = [];
+  try {
+    lockDirs = await discoverLockDirs();
+  } catch (err) {
+    getLogger('lifecycle').warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'desktop self-uninstall could not discover running project locks',
+    );
+  }
+
+  const projectCandidates = collectDesktopUninstallProjectCandidates({
+    recentProjects: appState.recentProjects,
+    openProjectPaths: wm?.getOpenProjectPaths() ?? [],
+    lockDirs,
+  });
+  let projectPaths: string[] = [];
+  if (projectCandidates.length > 0) {
+    const selectedProjects = await showDesktopUninstallProjectPicker(projectCandidates);
+    if (selectedProjects === null) return;
+    projectPaths = selectedProjects.map((candidate) => candidate.path);
+  } else {
+    const confirmed = await showDesktopUninstallNotice(desktopUninstallConfirmNotice(), {
+      height: 280,
+    });
+    if (!confirmed) return;
+  }
+
+  const includeProjects = projectPaths.length > 0;
+  const logPath = defaultDesktopUninstallLogPath(osHomedir());
+  const cleanup = await withDesktopUninstallProgress(() =>
+    runDesktopUninstallCleanup({
+      cliPath: wrapperPathInBundle(process.execPath),
+      projectPaths,
+      logPath,
+    }),
+  );
+  if (!cleanup.ok) {
+    // Cleanup ran but reported problems (a refused path, a failed deinit…).
+    // Surface the log inline so the user doesn't have to hunt for the file,
+    // then continue to the remove-the-app step — the user asked to uninstall,
+    // and the log spells out anything that needs manual follow-up.
+    getLogger('lifecycle').warn(
+      { includeProjects, projectCount: projectPaths.length, logPath, error: cleanup.error },
+      'desktop self-uninstall cleanup reported failures',
+    );
+    await showDesktopUninstallNotice(
+      desktopUninstallFailureNotice({
+        error: cleanup.error,
+        logPath,
+        logText: readDesktopUninstallLogForDisplay(logPath),
+      }),
+      { width: 560, height: 520, resizable: true },
+    );
+    await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
+  } else {
+    getLogger('lifecycle').info(
+      { includeProjects, projectCount: projectPaths.length, logPath },
+      'desktop self-uninstall cleanup finished',
+    );
+    await showDesktopUninstallNotice(
+      desktopUninstallCompletionNotice({ projectCount: projectPaths.length, logPath }),
+      { height: 320 },
+    );
+  }
+
+  shell.showItemInFolder(appBundlePath);
+  autoUpdaterHandle?.suppressAutoInstallOnQuit();
+  app.quit();
 }
 
 /**

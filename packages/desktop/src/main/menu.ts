@@ -111,6 +111,12 @@ export interface MenuDeps {
    */
   onCheckForUpdates?(): void;
   /**
+   * macOS App menu → Uninstall OpenKnowledge… click handler. Optional so the
+   * row is hidden in dev, non-packaged, non-macOS, or unsupported install
+   * locations; the handler owns the destructive confirmation dialog.
+   */
+  onUninstall?(): void;
+  /**
    * Active editor target snapshot — drives the macOS File menu's
    * state-aware item-management section. Renderer pushes this via
    * `ok:editor:active-target-changed` after each navigation; main calls
@@ -363,6 +369,15 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
               { role: 'hideOthers' as const },
               { role: 'unhide' as const },
               { type: 'separator' as const },
+              ...(deps.onUninstall
+                ? ([
+                    {
+                      label: 'Uninstall OpenKnowledge…',
+                      click: () => deps.onUninstall?.(),
+                    },
+                    { type: 'separator' as const },
+                  ] satisfies MenuItemConstructorOptions[])
+                : []),
               { role: 'quit' as const },
             ],
           },

@@ -380,6 +380,43 @@ describe('buildMenuTemplate', () => {
     });
   });
 
+  describe('Uninstall OpenKnowledge… menu item', () => {
+    test('omitted entirely when onUninstall dep is undefined', () => {
+      const template = buildMenuTemplate(makeDeps());
+      expect(findByLabel(template, 'Uninstall OpenKnowledge…')).toBeUndefined();
+    });
+
+    if (process.platform === 'darwin') {
+      test('macOS: appears in the App menu before Quit when wired', () => {
+        const onUninstall = mock(() => {});
+        const deps = makeDeps({ onUninstall });
+        const template = buildMenuTemplate(deps);
+        const appMenu = template.find((t) => t.label === deps.appName);
+        const sub = appMenu?.submenu as MenuItemConstructorOptions[] | undefined;
+        if (!sub) throw new Error('App submenu missing');
+        const uninstallIdx = sub.findIndex((i) => i.label === 'Uninstall OpenKnowledge…');
+        const quitIdx = sub.findIndex((i) => i.role === 'quit');
+        expect(uninstallIdx).toBeGreaterThanOrEqual(0);
+        expect(uninstallIdx).toBeLessThan(quitIdx);
+      });
+    }
+
+    test('click dispatches deps.onUninstall()', () => {
+      const onUninstall = mock(() => {});
+      const item = findByLabel(
+        buildMenuTemplate(makeDeps({ onUninstall })),
+        'Uninstall OpenKnowledge…',
+      );
+      if (process.platform !== 'darwin') {
+        expect(item).toBeUndefined();
+        return;
+      }
+      if (!item || typeof item.click !== 'function') throw new Error('uninstall click missing');
+      (item.click as () => void)();
+      expect(onUninstall).toHaveBeenCalledTimes(1);
+    });
+  });
+
   test('File close item follows the current test host branch', () => {
     // `buildMenuTemplate` reads `process.platform` directly — we can assert
     // the consistent cross-shape pairing rather than stubbing the platform.

@@ -81,6 +81,25 @@ describe('removeProjectSkill', () => {
     }
   });
 
+  test('removes a skill dir that is itself a symlink, leaving the link target intact', () => {
+    // A projection-style install: the managed dir is a symlink into `.ok/skills`.
+    const skillPath = CLAUDE.projectSkillPath?.(dir);
+    if (!skillPath) throw new Error('claude has no projectSkillPath');
+    const skillDir = dirname(skillPath);
+    const source = join(dir, '.ok', 'skills', 'open-knowledge');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'SKILL.md'), '# open-knowledge\n');
+    mkdirSync(dirname(skillDir), { recursive: true });
+    symlinkSync(source, skillDir, 'dir');
+
+    const result = removeProjectSkill(CLAUDE, dir);
+
+    expect(result.action).toBe('removed');
+    expect(existsSync(skillDir)).toBe(false);
+    // Only the link was removed; the projection source survives.
+    expect(existsSync(join(source, 'SKILL.md'))).toBe(true);
+  });
+
   test('reports skipped-unsupported for an editor with no project skill path', () => {
     const noSkill = EDITOR_TARGETS['claude-desktop'];
     expect(noSkill.projectSkillPath).toBeUndefined();

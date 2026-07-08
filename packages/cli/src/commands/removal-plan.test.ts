@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -248,6 +249,93 @@ describe('runRemoval — project path containment guard', () => {
       const outcome = await runRemoval({ scope: 'deinit', ops: [escaping] }, stubDeps());
       expect(outcome.failed).toHaveLength(1);
       // The file behind the escaping symlink is untouched.
+      expect(existsSync(join(outside, 'keep.txt'))).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  // OK installs pack/authored skill projections AS symlinks
+  // (`.claude/skills/<name> -> ../../.ok/skills/<name>`); deinit must remove
+  // the link itself, not refuse it as a write-through hazard.
+  test('removes an OK skill-projection symlink, leaving the link target intact', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-projlink-'));
+    try {
+      const projectRoot = join(home, 'proj');
+      write(join(projectRoot, '.ok', 'skills', 'pack-kb', 'SKILL.md'), '# pack\n');
+      mkdirSync(join(projectRoot, '.claude', 'skills'), { recursive: true });
+      symlinkSync(
+        join('..', '..', '.ok', 'skills', 'pack-kb'),
+        join(projectRoot, '.claude', 'skills', 'pack-kb'),
+      );
+
+      const op = {
+        kind: 'remove-path' as const,
+        group: 'test',
+        label: 'Remove .claude/skills/pack-kb/',
+        path: join(projectRoot, '.claude', 'skills', 'pack-kb'),
+        containWithin: projectRoot,
+      };
+      const outcome = await runRemoval({ scope: 'deinit', ops: [op] }, stubDeps());
+      expect(outcome.failed).toHaveLength(0);
+      expect(outcome.removed).toHaveLength(1);
+      expect(
+        lstatSync(join(projectRoot, '.claude', 'skills', 'pack-kb'), { throwIfNoEntry: false }),
+      ).toBeUndefined();
+      // The projection source behind the link is untouched.
+      expect(existsSync(join(projectRoot, '.ok', 'skills', 'pack-kb', 'SKILL.md'))).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('removes a DANGLING projection symlink instead of reporting not-present', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-danglink-'));
+    try {
+      const projectRoot = join(home, 'proj');
+      mkdirSync(join(projectRoot, '.claude', 'skills'), { recursive: true });
+      symlinkSync(
+        join('..', '..', '.ok', 'skills', 'already-swept'),
+        join(projectRoot, '.claude', 'skills', 'already-swept'),
+      );
+
+      const op = {
+        kind: 'remove-path' as const,
+        group: 'test',
+        label: 'Remove .claude/skills/already-swept/',
+        path: join(projectRoot, '.claude', 'skills', 'already-swept'),
+        containWithin: projectRoot,
+      };
+      const outcome = await runRemoval({ scope: 'deinit', ops: [op] }, stubDeps());
+      expect(outcome.removed).toHaveLength(1);
+      expect(
+        lstatSync(join(projectRoot, '.claude', 'skills', 'already-swept'), {
+          throwIfNoEntry: false,
+        }),
+      ).toBeUndefined();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('a leaf symlink pointing outside the project is unlinked; its target survives', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-leafout-'));
+    try {
+      const projectRoot = join(home, 'proj');
+      const outside = join(home, 'outside-secret');
+      write(join(outside, 'keep.txt'), 'do not delete');
+      mkdirSync(join(projectRoot, '.claude', 'skills'), { recursive: true });
+      symlinkSync(outside, join(projectRoot, '.claude', 'skills', 'planted'));
+
+      const op = {
+        kind: 'remove-path' as const,
+        group: 'test',
+        label: 'Remove .claude/skills/planted/',
+        path: join(projectRoot, '.claude', 'skills', 'planted'),
+        containWithin: projectRoot,
+      };
+      const outcome = await runRemoval({ scope: 'deinit', ops: [op] }, stubDeps());
+      expect(outcome.removed).toHaveLength(1);
       expect(existsSync(join(outside, 'keep.txt'))).toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });

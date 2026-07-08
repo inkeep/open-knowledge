@@ -16,7 +16,7 @@
  * `~/.ok/logs`) survives until the end.
  */
 
-import { existsSync, readdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 // `resolveShadowDir` (resolves `<gitdir>/ok/`, worktree-aware; throws on a
@@ -39,7 +39,7 @@ import {
   stripManagedPathBlock,
 } from '../integrations/path-shim.ts';
 import { userGlobalSkillBundleTargets } from '../integrations/skill-teardown.ts';
-import { assertProjectPathSafe } from '../integrations/write-project-skill.ts';
+import { assertProjectRemovalSafe } from '../integrations/write-project-skill.ts';
 import {
   getExcludedOkPaths,
   getOkArtifactPaths,
@@ -93,11 +93,13 @@ export type RemovalOp =
       requireOurState?: boolean;
       /**
        * Assert `path` is contained within this project root before removing
-       * (via `assertProjectPathSafe`) — set for project-scoped removals so a
-       * planted symlink (a `.claude -> /etc` in a cloned repo) or a poisoned
-       * skill name in `installed-skills.json` can't route the `rmSync` outside
-       * the project. Unset for out-of-project targets (`~/.ok`, `~/Library`,
-       * the shadow repo — which legitimately lives outside a linked worktree).
+       * (via `assertProjectRemovalSafe`) — set for project-scoped removals so
+       * a planted ancestor symlink (a `.claude -> /etc` in a cloned repo) or a
+       * poisoned skill name in `installed-skills.json` can't route the `rmSync`
+       * outside the project. A symlink at `path` itself is fine (OK's skill
+       * projections are symlinks; removal unlinks the link, not its target).
+       * Unset for out-of-project targets (`~/.ok`, `~/Library`, the shadow
+       * repo — which legitimately lives outside a linked worktree).
        */
       containWithin?: string;
     };
@@ -626,13 +628,29 @@ function executeRemovePath(op: Extract<RemovalOp, { kind: 'remove-path' }>): Rem
   if (op.requireOurState && !stateDirIsOurs(op.path)) {
     return { op, status: 'skipped', detail: 'not verified as OpenKnowledge — left untouched' };
   }
-  // For project-scoped removals, refuse to rmSync through a symlink that escapes
-  // the project (a planted `.claude -> /etc`, or a poisoned skill name). Throws
-  // on escape → caught by the per-op try/catch as `failed` (the safe direction).
+  // For project-scoped removals, refuse to rmSync through a symlinked ANCESTOR
+  // that escapes the project (a planted `.claude -> /etc`). Throws on escape →
+  // caught by the per-op try/catch as `failed` (the safe direction). A symlink
+  // AT the path is allowed: OK installs skill projections as symlinks, and
+  // removal unlinks the link itself without touching its target.
   if (op.containWithin) {
-    assertProjectPathSafe(op.path, op.containWithin);
+    assertProjectRemovalSafe(op.path, op.containWithin);
   }
-  if (!existsSync(op.path)) return { op, status: 'not-present' };
+  // lstat, not existsSync: existsSync follows the leaf, so a DANGLING
+  // projection symlink (target already swept) would read as absent and the
+  // orphan link would be left behind.
+  let leafStat: ReturnType<typeof lstatSync> | undefined;
+  try {
+    leafStat = lstatSync(op.path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  if (!leafStat) return { op, status: 'not-present' };
+
+  if (leafStat.isSymbolicLink()) {
+    unlinkSync(op.path);
+    return { op, status: 'removed' };
+  }
 
   if (op.preserve && op.preserve.length > 0) {
     // Remove every child EXCEPT the preserved names, leaving the dir itself

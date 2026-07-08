@@ -325,6 +325,13 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
     expect(rig.updater.channel).toBe('latest');
   });
 
+  test('suppressAutoInstallOnQuit disables install-on-quit for self-uninstall', () => {
+    const { rig, handle } = makeRig();
+    expect(rig.updater.autoInstallOnAppQuit).toBe(true);
+    handle.suppressAutoInstallOnQuit();
+    expect(rig.updater.autoInstallOnAppQuit).toBe(false);
+  });
+
   // smoke plumbing regression. Added when manual `bun run dev` revealed that
   // `OK_UPDATER_FEED_URL` was documented in the PR body but never actually
   // wired into main — feedUrl would be set but setFeedURL was never called,

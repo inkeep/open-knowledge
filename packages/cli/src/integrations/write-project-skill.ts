@@ -38,13 +38,6 @@ import type { EditorId, EditorMcpTarget } from '../commands/editors.ts';
  * with `~/.cursor/mcp.json` (and friends) symlinked to a managed location.
  */
 export function assertProjectPathSafe(targetPath: string, cwd: string): void {
-  let realCwd: string;
-  try {
-    realCwd = realpathSync(cwd);
-  } catch {
-    realCwd = resolve(cwd);
-  }
-
   let leafStat: ReturnType<typeof lstatSync> | undefined;
   try {
     leafStat = lstatSync(targetPath);
@@ -56,6 +49,30 @@ export function assertProjectPathSafe(targetPath: string, cwd: string): void {
       `Refusing to write through a symbolic link at ${targetPath}. ` +
         'Remove the symlink and re-run project setup.',
     );
+  }
+
+  assertProjectAncestorsContained(targetPath, cwd);
+}
+
+/**
+ * The removal-side counterpart of `assertProjectPathSafe`. A symlink AT the
+ * target path is fine here — removal unlinks the link itself and never touches
+ * what it points to, and OK's own skill projections are installed as symlinks
+ * (see `projectSkill` in `@inkeep/open-knowledge-server`), so refusing leaf
+ * symlinks would strand OK's own footprint on `ok deinit`. The ancestor check
+ * still applies: a symlinked parent (`.claude -> /etc`) would route a recursive
+ * removal outside the project tree.
+ */
+export function assertProjectRemovalSafe(targetPath: string, cwd: string): void {
+  assertProjectAncestorsContained(targetPath, cwd);
+}
+
+function assertProjectAncestorsContained(targetPath: string, cwd: string): void {
+  let realCwd: string;
+  try {
+    realCwd = realpathSync(cwd);
+  } catch {
+    realCwd = resolve(cwd);
   }
 
   let cursor = dirname(targetPath);
@@ -155,9 +172,10 @@ export interface ProjectSkillRemoveResult {
  * whole-directory. The presence of the managed `SKILL.md` at
  * `projectSkillPath` is the ownership marker: a directory at the managed path
  * WITHOUT it is not something OK authored and is left untouched
- * (`not-present`). The same symlink-escape guard the write path uses runs
- * before the `rmSync`, so a symlinked ancestor (`.claude -> /etc`) can never
- * route the recursive removal outside the project tree.
+ * (`not-present`). The removal-side guard runs before the `rmSync`, so a
+ * symlinked ancestor (`.claude -> /etc`) can never route the recursive
+ * removal outside the project tree — while a symlink AT the path (a skill
+ * projection) is still removable.
  */
 export function removeProjectSkill(target: EditorMcpTarget, cwd: string): ProjectSkillRemoveResult {
   const skillPath = target.projectSkillPath?.(cwd);
@@ -181,8 +199,9 @@ export function removeProjectSkill(target: EditorMcpTarget, cwd: string): Projec
         path: skillPath,
       };
     }
-    // Refuse before `rmSync` runs, exactly as the write path does.
-    assertProjectPathSafe(targetDir, cwd);
+    // Refuse escaping ancestors before `rmSync` runs; a leaf symlink is fine
+    // to unlink on the removal side.
+    assertProjectRemovalSafe(targetDir, cwd);
     rmSync(targetDir, { recursive: true, force: true });
     return {
       editorId: target.id,

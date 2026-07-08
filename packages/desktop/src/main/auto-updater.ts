@@ -286,6 +286,12 @@ export interface StartAutoUpdaterHandle {
    * so a project opened shortly after an update still shows the card.
    */
   getActiveWhatsNew(): { version: string; releaseUrl: string } | null;
+  /**
+   * Uninstall path: prevent a staged update from auto-installing on the quit
+   * that hands control to the detached uninstall helper. Otherwise Squirrel.Mac
+   * can swap/relaunch the bundle while the helper is trying to trash it.
+   */
+  suppressAutoInstallOnQuit(): void;
 }
 
 interface Logger {
@@ -1627,6 +1633,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         return null;
       }
       return { version: activeWhatsNew.version, releaseUrl: activeWhatsNew.releaseUrl };
+    },
+    suppressAutoInstallOnQuit(): void {
+      updater.autoInstallOnAppQuit = false;
+      logger.info('autoInstallOnAppQuit suppressed for uninstall');
     },
     destroy(): void {
       if (timerHandle) {
