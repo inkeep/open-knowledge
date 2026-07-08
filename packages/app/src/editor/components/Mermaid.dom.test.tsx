@@ -79,7 +79,7 @@ mock.module('@panzoom/panzoom', () => ({
   default: createPanzoom,
 }));
 
-const { MermaidView } = await import('./Mermaid');
+const { MermaidView, flashLinkedLabels } = await import('./Mermaid');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
 
 function renderMermaidView(chart: string) {
@@ -307,5 +307,35 @@ describe('MermaidView editBinding (standalone .mmd path)', () => {
     expect(screen.getByRole('toolbar')).toBeDefined();
     // No label interaction happened, so the binding was not invoked.
     expect(committed).toBeNull();
+  });
+});
+
+describe('flashLinkedLabels', () => {
+  test('flashes every occurrence when a label appears 2+ times (linked)', () => {
+    const c = document.createElement('div');
+    c.innerHTML =
+      '<svg><text class="actor">Test123</text></svg>' +
+      '<svg><text class="actor">Test123</text></svg>' +
+      '<span class="nodeLabel">Untouched</span>';
+    expect(flashLinkedLabels(c, 'Test123')).toBe(2);
+    expect(c.querySelectorAll('.mermaid-label-flash').length).toBe(2);
+    // Non-matching label is left alone.
+    expect(c.querySelector('.nodeLabel')?.classList.contains('mermaid-label-flash')).toBe(false);
+  });
+
+  test('stays quiet for a lone occurrence (no related text to signal)', () => {
+    const c = document.createElement('div');
+    c.innerHTML = '<span class="nodeLabel">Solo</span><span class="nodeLabel">Other</span>';
+    expect(flashLinkedLabels(c, 'Solo')).toBe(0);
+    expect(c.querySelector('.mermaid-label-flash')).toBeNull();
+  });
+
+  test('matches trimmed text and ignores blank values', () => {
+    const c = document.createElement('div');
+    c.innerHTML = '<text class="messageText">  Ping  </text><text class="messageText">Ping</text>';
+    expect(flashLinkedLabels(c, 'Ping')).toBe(2);
+    const blank = document.createElement('div');
+    blank.innerHTML = '<text class="actor"> </text><text class="actor"> </text>';
+    expect(flashLinkedLabels(blank, '   ')).toBe(0);
   });
 });

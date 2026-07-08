@@ -749,6 +749,83 @@ export function findSequenceBlockConditionInSource(
   return null;
 }
 
+// Label selectors that carry visible text across the diagram types inline
+// editing supports (flowchart node/edge labels are HTML spans; sequence
+// actors/messages/notes/loops are SVG `<text>`).
+const FLASHABLE_LABEL_SELECTOR =
+  '.nodeLabel, .edgeLabel, text.actor, text.messageText, text.noteText, text.loopText';
+
+/**
+ * Flash the rendered label occurrences whose text matches `value` — the "this
+ * text changed too" cue used after a WYSIWYG label edit propagates to LINKED
+ * occurrences (a renamed sequence participant renders in BOTH its top and
+ * bottom actor boxes, so renaming once changes both). Adds the
+ * `mermaid-label-flash` class (globals.css) to each match.
+ *
+ * Flashes only when 2+ occurrences match: a lone label edit has no "related"
+ * text to signal, so it stays quiet. Mermaid re-renders the whole SVG on every
+ * edit, so the class lands on fresh nodes and the one-shot animation plays
+ * without a restart dance. Returns the count flashed.
+ */
+/**
+ * Pulse one label's glyph paint to the agent accent and back, twice, by
+ * toggling INLINE `!important` fill/color. Why inline `!important` and not a CSS
+ * class animation: mermaid injects a `<style>` into every rendered SVG whose
+ * `.actor` / `tspan` fill rules can out-specify (or `!important`-beat) a
+ * class-based `fill` animation, silently cancelling it. An inline `!important`
+ * declaration beats those, so the pulse always shows. `fill` colors SVG
+ * `<tspan>` glyphs; `color` colors HTML (`.nodeLabel`/`.edgeLabel`) labels —
+ * setting both covers either carrier. Honors reduce-motion with one softer
+ * pulse. Self-cleans via `removeProperty`; safe if a later re-render detaches
+ * the node (the timers just no-op on a detached element).
+ */
+function pulseGlyphPaint(el: Element): void {
+  const style = (el as SVGElement | HTMLElement).style as CSSStyleDeclaration | undefined;
+  if (!style) return;
+  const on = () => {
+    style.setProperty('fill', 'var(--color-agent)', 'important');
+    style.setProperty('color', 'var(--color-agent)', 'important');
+  };
+  const off = () => {
+    style.removeProperty('fill');
+    style.removeProperty('color');
+  };
+  const reduce =
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  if (reduce) {
+    on();
+    setTimeout(off, 600);
+    return;
+  }
+  const beat = 170;
+  on();
+  setTimeout(off, beat);
+  setTimeout(on, beat * 2);
+  setTimeout(off, beat * 3);
+}
+
+export function flashLinkedLabels(container: HTMLElement, value: string): number {
+  const needle = value.trim();
+  if (!needle) return 0;
+  const matches = Array.from(container.querySelectorAll<Element>(FLASHABLE_LABEL_SELECTOR)).filter(
+    (el) => (el.textContent ?? '').trim() === needle,
+  );
+  if (matches.length < 2) return 0;
+  for (const el of matches) {
+    // Flash the innermost paint carrier, not the outer element. Mermaid paints
+    // the glyph color on an inner `<tspan>` (SVG text) / `<p>` (foreignObject
+    // label). The carrier collapses to the element itself when there's no
+    // inner tspan/p. The `mermaid-label-flash` class is kept as a semantic
+    // marker (and a bonus CSS glow for HTML labels, where `filter` isn't
+    // clipped); `pulseGlyphPaint` drives the guaranteed-visible color pulse.
+    const carrier = el.querySelector('tspan') ?? el.querySelector('p') ?? el;
+    carrier.classList.add('mermaid-label-flash');
+    pulseGlyphPaint(carrier);
+  }
+  return matches.length;
+}
+
 export function MermaidView({ chart = '', className, editBinding }: MermaidProps) {
   const reactId = useId();
   const renderId = `mermaid-${reactId.replaceAll(':', '_')}`;
@@ -802,6 +879,11 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
   // Tracks the currently-editing label so we can tear it down cleanly
   // when the SVG re-renders (or component unmounts) mid-edit.
   const editSessionRef = useRef<{ cleanup: () => void } | null>(null);
+  // Set to the just-committed label value when a WYSIWYG edit changed the
+  // chart; consumed by the post-render effect below to flash the LINKED
+  // occurrences (e.g. a renamed participant's other actor box) once the SVG
+  // re-renders. Null when no flash is pending.
+  const flashValueRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!chart.trim()) {
@@ -835,6 +917,25 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
       cancelled = true;
     };
   }, [chart, renderId, colorMode]);
+
+  // After a WYSIWYG edit re-renders the SVG, flash the linked occurrences of
+  // the just-committed value (armed by `commitLabelChangeGeneric`). Keyed on
+  // `state.svg`, NOT `state.status`: a warm re-render can batch the
+  // `rendering`→`ready` transition so `status` collapses `ready`→`ready` and a
+  // `[state.status]` effect never re-runs. The svg string changes on every
+  // successful render, so keying on it fires reliably once the new SVG is in
+  // the DOM. Consume-and-clear so an unrelated re-render (theme flip, remote
+  // edit) never replays a stale flash.
+  useEffect(() => {
+    const value = flashValueRef.current;
+    if (value === null) return;
+    // A successful render always produces a non-empty svg; skip the idle/error
+    // renders (svg === '') where there are no nodes to flash.
+    if (!state.svg) return;
+    flashValueRef.current = null;
+    const container = containerRef.current;
+    if (container) flashLinkedLabels(container, value);
+  }, [state.svg]);
 
   useEffect(() => {
     if (state.status !== 'ready') return;
@@ -915,6 +1016,11 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
         if (match) newChart = spliceNewLabel(chartNow, match, newLabel);
       }
       if (newChart === null) return;
+      // Arm the linked-occurrence flash only when the edit actually changed the
+      // source — so the post-render effect fires once on the resulting re-render
+      // (a no-op edit produces no re-render, which would otherwise leave a stale
+      // value to flash on the next unrelated render).
+      if (newChart !== chartNow) flashValueRef.current = newLabel.trim();
       commitChartSource(newChart);
     }
 

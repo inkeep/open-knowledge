@@ -828,6 +828,46 @@
   padding-bottom: var(--ask-composer-height, 0px);
 }
 
+/* Mermaid label flash — the "this text just changed too" cue when a WYSIWYG
+   label edit propagates to linked occurrences (e.g. a renamed sequence
+   participant appears in its top AND bottom actor boxes). Same accent family
+   as the agent flash (`--color-agent`), but a `filter` glow rather than the
+   box-shadow/background agent-flash keyframes use — filter renders on SVG
+   `<text>` (sequence actors/messages) as well as HTML label spans (flowchart
+   nodes), where box-shadow/background do not. */
+@keyframes mermaid-label-flash {
+  0%,
+  100% {
+    /* Unset paint at the ends so the element returns to its own base
+       fill/color when the animation finishes. */
+    filter: none;
+  }
+  25% {
+    /* Pulse the glyph paint itself to the agent accent — `fill` colors SVG
+       `<tspan>` glyphs, `color` colors HTML labels (`.nodeLabel`/`.edgeLabel`).
+       This is the loud, UNCLIPPED cue: an SVG `filter` drop-shadow on small
+       `<text>` gets clipped by the default filter region and reads as nothing.
+       The small glow is a bonus for HTML labels, where `filter` isn't clipped. */
+    fill: var(--color-agent);
+    color: var(--color-agent);
+    filter: drop-shadow(0 0 4px var(--color-agent));
+  }
+}
+.mermaid-label-flash {
+  /* Two quick pulses (~1s total) read unmistakably as "this changed too",
+     where a single slow fade went unnoticed. No `forwards` — the animation
+     ends on its natural 100% (base paint), restoring the label. */
+  animation: mermaid-label-flash 0.5s var(--ease-out-strong) 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mermaid-label-flash {
+    /* Reduced cue: one slower color pulse — no repeated flashing, but
+       reduce-motion users still get the "this changed too" signal (a color
+       fade, not vestibular motion). */
+    animation: mermaid-label-flash 0.9s var(--ease-out-strong) 1;
+  }
+}
+
 /* Conflict-mode DiffView scroller: same composer inset so the last hunks (and
    their inline Accept/Reject controls) can scroll clear of the floating
    composer. The content-side padding rule lives next to the
