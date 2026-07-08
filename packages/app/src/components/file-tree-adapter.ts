@@ -1,4 +1,5 @@
 import {
+  isMermaidDocFile,
   mediaKindForSidebarAssetExtension,
   type UploadAssetSuccess,
 } from '@inkeep/open-knowledge-core';
@@ -27,7 +28,10 @@ export function docNameToTreePath(
   docName: string,
   docExt: string = DEFAULT_TREE_EXTENSION,
 ): string {
-  if (TREE_EXTENSION_PATTERN.test(docName)) return docName;
+  // A Mermaid docName already carries its `.mmd`/`.mermaid` extension (it IS the
+  // filename), so it maps to the tree path verbatim — appending `.md` would
+  // point at a nonexistent file and break tree-highlight matching.
+  if (TREE_EXTENSION_PATTERN.test(docName) || isMermaidDocFile(docName)) return docName;
   return `${docName}${docExt}`;
 }
 

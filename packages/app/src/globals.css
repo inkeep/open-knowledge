@@ -818,6 +818,16 @@
   padding-bottom: var(--ask-composer-height, 0px);
 }
 
+/* Standalone Mermaid docs render OUTSIDE `.editor-doc-scroll` — a diagram +
+   source pane, not a ProseMirror/CM scroll surface — so the inset above never
+   reaches them. Reserve the composer height on the whole editor so a full-page
+   panzoom diagram (which does not scroll) and the source pane's last lines clear
+   the floating card. The var is 0 when the composer is collapsed/hidden, so the
+   space is reclaimed with no class to fall out of sync. */
+[data-mermaid-doc-editor] {
+  padding-bottom: var(--ask-composer-height, 0px);
+}
+
 /* Conflict-mode DiffView scroller: same composer inset so the last hunks (and
    their inline Accept/Reject controls) can scroll clear of the floating
    composer. The content-side padding rule lives next to the

@@ -45,7 +45,7 @@ import { LINEAGE_EPOCH_KEY } from './auth-token-schema.ts';
 import type { BacklinkIndex } from './backlink-index.ts';
 import { getMsSinceLastUserTx, isDocQuiescent } from './bridge-quiescence.ts';
 import { assertBridgeInvariant, createDocCanonicalizer } from './bridge-watchdog.ts';
-import { isConfigDoc, isManagedArtifactDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { isConfigDoc, isManagedArtifactDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { type ConfigPersistenceCtx, loadConfigDoc, storeConfigDoc } from './config-persistence.ts';
 import type { ContributorEntry } from './contributor-tracker.ts';
 import {
@@ -68,6 +68,11 @@ import {
   storeManagedArtifactDoc,
 } from './managed-artifact-persistence.ts';
 import { mdManager, schema } from './md-manager.ts';
+import {
+  loadMermaidDoc,
+  type MermaidPersistenceCtx,
+  storeMermaidDoc,
+} from './mermaid-persistence.ts';
 import {
   incrementDeferredStoreFailures,
   incrementGitAutoSaveFailure,
@@ -683,6 +688,15 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     lkgCache: managedArtifactLkgCache,
     setReconciledBase,
     getReconciledBase,
+  };
+
+  // Mermaid (`.mmd`/`.mermaid`) persistence ctx. Y.Text-only, content-dir paths,
+  // its own LKG cache (distinct doc-name space). No reconciled-base: the markdown
+  // observer bridge is gated off for these, so there is no baseline to track.
+  const mermaidLkgCache = new Map<string, string>();
+  const mermaidPersistenceCtx: MermaidPersistenceCtx = {
+    contentDir,
+    lkgCache: mermaidLkgCache,
   };
 
   // Frontmatter lives in the YAML region of `Y.Text('source')`:
@@ -2050,6 +2064,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         loadManagedArtifactDoc(document, documentName, managedArtifactCtx);
         return;
       }
+      if (isMermaidDoc(documentName)) {
+        loadMermaidDoc(document, documentName, mermaidPersistenceCtx);
+        return;
+      }
       ensureHistograms();
       const started = Date.now();
       return withSpan(
@@ -2266,6 +2284,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             }
           }
         }
+        return;
+      }
+      if (isMermaidDoc(documentName)) {
+        await storeMermaidDoc(document, documentName, lastTransactionOrigin, mermaidPersistenceCtx);
         return;
       }
       if (isBatchInProgress()) {

@@ -95,6 +95,12 @@ export function resolveFileTreeSelectionAction(
     return { kind: 'document', path: documentDocName };
   }
   if (entry && isAssetEntry(entry)) {
+    // Mermaid files (`.mmd`/`.mermaid`) are served as assets but open as editable
+    // CRDT docs, not the read-only asset viewer. Their docName IS the asset path
+    // (extension retained), so route the selection as a document.
+    if (entry.mediaKind === 'mermaid') {
+      return { kind: 'document', path: entry.path };
+    }
     return {
       kind: 'asset',
       path: entry.path,

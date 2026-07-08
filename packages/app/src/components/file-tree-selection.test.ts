@@ -253,3 +253,20 @@ describe('resolveFileTreeSelectionAction', () => {
     });
   });
 });
+
+describe('resolveFileTreeSelectionAction — Mermaid assets', () => {
+  test('routes a mermaid asset row to document navigation (not the asset hash)', () => {
+    expect(
+      resolveFileTreeSelectionAction('assets/flow.mmd', [
+        {
+          kind: 'asset',
+          path: 'assets/flow.mmd',
+          assetExt: '.mmd',
+          mediaKind: 'mermaid',
+          size: 0,
+          modified: '',
+        },
+      ]),
+    ).toEqual({ kind: 'document', path: 'assets/flow.mmd' });
+  });
+});

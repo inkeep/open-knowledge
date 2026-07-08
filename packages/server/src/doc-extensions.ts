@@ -29,6 +29,7 @@ import { extname } from 'node:path';
 import {
   DEFAULT_DOC_EXTENSION,
   type DocExtension,
+  isMermaidDocFile,
   SUPPORTED_DOC_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
 
@@ -167,7 +168,12 @@ export function getDocExtension(docName: string): string {
  * traversal validation against their target root after resolving the result.
  */
 export function docNameToRelativePath(docName: string): string {
-  return isSupportedDocFile(docName) ? docName : `${docName}${getDocExtension(docName)}`;
+  // Mermaid docs (`assets/flow.mmd`) retain their extension in the docName, so
+  // — like `.md`/`.mdx` supported docs — the docName IS already the full
+  // filename; only extension-less markdown docNames get an extension appended.
+  return isSupportedDocFile(docName) || isMermaidDocFile(docName)
+    ? docName
+    : `${docName}${getDocExtension(docName)}`;
 }
 
 /** Clear the recorded extension for a docName (e.g. on file delete). */

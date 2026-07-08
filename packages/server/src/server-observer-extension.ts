@@ -12,7 +12,7 @@ import type { Extension } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import type { Schema } from '@tiptap/pm/model';
 import type * as Y from 'yjs';
-import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { isConfigDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { incrementServerObserverError } from './metrics.ts';
 import { setupServerObservers } from './server-observers.ts';
 import type { ShadowRef } from './shadow-repo.ts';
@@ -64,7 +64,10 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
 
   return {
     async afterLoadDocument({ documentName, document }) {
-      if (isSystemDoc(documentName) || isConfigDoc(documentName)) return;
+      // Mermaid docs are Y.Text-only like config docs — the markdown bridge must
+      // NOT run (it would re-canonicalize the diagram source through remark).
+      if (isSystemDoc(documentName) || isConfigDoc(documentName) || isMermaidDoc(documentName))
+        return;
       if (cleanups.has(documentName)) return;
 
       const doc = document as unknown as Y.Doc;

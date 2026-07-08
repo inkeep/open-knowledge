@@ -344,10 +344,18 @@ describe('rewriteSequenceParticipant', () => {
     expect(out).toContain('Author->>Bob: hi');
   });
 
-  test('bare + display with whitespace forces quoted alias', () => {
+  test('bare + display with whitespace stays unquoted (mermaid reads alias to end of line)', () => {
     const src = 'sequenceDiagram\n  participant Author\n';
     const out = rewriteSequenceParticipant(src, 'Author', 'Alice Smith');
-    expect(out).toContain('participant Author as "Alice Smith"');
+    expect(out).toContain('participant Author as Alice Smith');
+    expect(out).not.toContain('"Alice Smith"');
+  });
+
+  test('bare + display with a mermaid-syntactic char forces quoted alias', () => {
+    const src = 'sequenceDiagram\n  participant Author\n';
+    const out = rewriteSequenceParticipant(src, 'Author', 'Users[team]');
+    // `[` is a mermaid-syntactic delimiter → quote wraps.
+    expect(out).toContain('participant Author as "Users[team]"');
   });
 
   test('aliased quoted `X as "Display"` replaces in place', () => {
@@ -357,11 +365,41 @@ describe('rewriteSequenceParticipant', () => {
     expect(out).toContain('A->>Bob: hi');
   });
 
-  test('aliased unquoted `X as Display` replaces in place, adds quotes for special chars', () => {
+  test('aliased unquoted `X as Display` — whitespace-only content stays unquoted (mermaid reads alias to end of line)', () => {
     const src = 'sequenceDiagram\n  participant A as Author\n';
     const out = rewriteSequenceParticipant(src, 'Author', 'Two Words');
-    // Two words → quotes required.
-    expect(out).toContain('participant A as "Two Words"');
+    // Whitespace is safe inside a participant alias — no wrapping quotes.
+    expect(out).toContain('participant A as Two Words');
+    expect(out).not.toContain('"Two Words"');
+  });
+
+  test('aliased unquoted → quotes only when the new display contains mermaid-syntactic chars', () => {
+    const src = 'sequenceDiagram\n  participant A as Author\n';
+    const out = rewriteSequenceParticipant(src, 'Author', 'Users[team]');
+    // `[` is a mermaid-syntactic delimiter → quote.
+    expect(out).toContain('participant A as "Users[team]"');
+  });
+
+  test('aliased unquoted collapses back to bare when new display equals the id', () => {
+    const src = 'sequenceDiagram\n  participant Editor as EditorX\n';
+    const out = rewriteSequenceParticipant(src, 'EditorX', 'Editor');
+    // No redundant `Editor as Editor` — collapse to bare form.
+    expect(out).toContain('participant Editor');
+    expect(out).not.toContain('as Editor');
+  });
+
+  test('aliased quoted collapses back to bare when new display equals the id', () => {
+    const src = 'sequenceDiagram\n  participant Editor as "EditorX"\n';
+    const out = rewriteSequenceParticipant(src, 'EditorX', 'Editor');
+    expect(out).toContain('participant Editor');
+    expect(out).not.toContain('as');
+  });
+
+  test('bare participant → space-in-alias stays unquoted', () => {
+    const src = 'sequenceDiagram\n  participant Author\n  Author->>Bob: hi\n';
+    const out = rewriteSequenceParticipant(src, 'Author', 'Author S');
+    expect(out).toContain('participant Author as Author S');
+    expect(out).not.toContain('"Author S"');
   });
 
   test('actor keyword also supported', () => {

@@ -34,7 +34,7 @@
  *   (invalidate + nav), or (c) Activity eviction from the MRU mount list.
  */
 
-import { isManagedArtifactDocName } from '@inkeep/open-knowledge-core';
+import { isManagedArtifactDocName, isMermaidDocFile } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Loader2, RefreshCw } from 'lucide-react';
 import {
@@ -72,6 +72,13 @@ import { Button } from './ui/button';
 // lazy SourceEditor).
 const ManagedArtifactProperties = lazy(async () => ({
   default: (await import('./ManagedArtifactProperties')).ManagedArtifactProperties,
+}));
+
+// Standalone Mermaid doc editor (diagram + editable source). Lazy so the mermaid
+// renderer + `codemirror-lang-mermaid` grammar stay out of the first-load bundle
+// for projects without any `.mmd`/`.mermaid` files.
+const MermaidDocEditor = lazy(async () => ({
+  default: (await import('./MermaidDocEditor')).MermaidDocEditor,
 }));
 
 /**
@@ -424,7 +431,10 @@ function EditorActivityPoolInner({
           isSourceMode={isSourceMode}
           editorPlaceholder={editorPlaceholder}
           isNewDoc={
-            !loading && !pages.has(entry.docName) && !isManagedArtifactDocName(entry.docName)
+            !loading &&
+            !pages.has(entry.docName) &&
+            !isManagedArtifactDocName(entry.docName) &&
+            !isMermaidDocFile(entry.docName)
           }
           previousDocName={previousDocName}
           onNavigateBack={onNavigateBack}
@@ -746,6 +756,9 @@ function ActivityEntry({
   // when the per-doc lifecycle Y.Map changes.
   const lifecycleStatus = useLifecycleStatus(entry.docName);
   const isConflict = lifecycleStatus === 'conflict';
+  // Standalone Mermaid docs (`.mmd`/`.mermaid`) render a dedicated diagram+source
+  // editor instead of the markdown dual-editor (they are Y.Text-only, no bridge).
+  const isMermaid = isMermaidDocFile(entry.docName);
 
   // Per-Activity portal target for <EditorContent>. Stable DOM element
   // exclusively owned by THIS ActivityEntry — `useState` with a lazy
@@ -985,6 +998,17 @@ function ActivityEntry({
                        not boundaries). Y.Doc identity is unchanged across
                        the swap, so Y.Text content + undo history survive. */
                     <DiffViewBoundary docName={entry.docName} provider={entry.provider} />
+                  ) : isMermaid ? (
+                    /* Standalone Mermaid doc: dedicated diagram (wysiwyg) + editable
+                       source editor, both bound to this doc's Y.Text('source').
+                       Swaps the editor CHILDREN inside the same DocumentBoundary
+                       (like the conflict branch above) so the precedent #18(b)
+                       hybrid render tree + Y.Doc identity are preserved. */
+                    <MermaidDocEditor
+                      docName={entry.docName}
+                      provider={entry.provider}
+                      isSourceMode={isSourceMode}
+                    />
                   ) : (
                     /* Dual-editor mount with size-gated defer for large docs. Small
                   docs render both (pre-mount-both default — mode swap stays

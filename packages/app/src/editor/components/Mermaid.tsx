@@ -93,9 +93,29 @@ import { useJsxComponentHost } from './jsx-host-context.tsx';
 // and no production code path can thread them to this component (the
 // promoter emits `{chart}` only). Re-adding either to this interface would
 // create a parallel render-side surface that nothing reaches.
+/**
+ * Read/write binding for the chart source that backs inline WYSIWYG editing.
+ * Decouples `MermaidView` from its edit host so the SAME label-splice machinery
+ * serves two surfaces: a codefenced ` ```mermaid ` fence (source lives on a
+ * TipTap `jsxComponent` node) and a standalone `.mmd` doc (source is a CRDT
+ * `Y.Text`). `getChart` is read live at commit time (never closure-captured) so
+ * a concurrent peer edit between click and commit doesn't desync.
+ */
+export interface MermaidSourceBinding {
+  canEdit: boolean;
+  getChart: () => string;
+  commitChart: (next: string) => void;
+}
+
 interface MermaidProps {
   chart?: string;
   className?: string;
+  /**
+   * When provided, inline editing writes back through this binding instead of
+   * the JSX-component host (the standalone `.mmd` doc path). Absent for
+   * codefenced fences, which derive the binding from `useJsxComponentHost()`.
+   */
+  editBinding?: MermaidSourceBinding;
 }
 
 interface RenderState {
@@ -560,35 +580,47 @@ export function rewriteSequenceParticipant(
 
   const kw = '(?:participant|actor)';
 
-  // Aliased, quoted: `participant Id as "Display"`
-  const rQuoted = new RegExp(`^([ \\t]*${kw}[ \\t]+\\S+[ \\t]+as[ \\t]+")${esc}(")`, 'gm');
-  const mQuoted = findMatch(rQuoted, (m) => `${m[1]}${escapedNew}${m[2]}`);
+  // Aliased, quoted: `participant Id as "Display"`. If the new display
+  // equals the id, collapse back to bare so we don't leave a redundant
+  // `X as X` in the source.
+  const rQuoted = new RegExp(
+    `^([ \\t]*${kw}[ \\t]+)(\\S+)([ \\t]+as[ \\t]+")${esc}(")([ \\t]*)$`,
+    'gm',
+  );
+  const mQuoted = findMatch(rQuoted, (m) => {
+    const idToken = m[2];
+    if (newDisplay === idToken) return `${m[1]}${idToken}${m[5]}`;
+    return `${m[1]}${idToken}${m[3]}${escapedNew}${m[4]}${m[5]}`;
+  });
   if (mQuoted)
     return source.slice(0, mQuoted.range[0]) + mQuoted.replacement + source.slice(mQuoted.range[1]);
 
-  // Aliased, unquoted: `participant Id as Display`
-  const rUnquoted = new RegExp(`^([ \\t]*${kw}[ \\t]+\\S+[ \\t]+as[ \\t]+)${esc}([ \\t]*)$`, 'gm');
+  // Aliased, unquoted: `participant Id as Display`. Same collapse rule
+  // as the quoted variant when the new display matches the id.
+  const rUnquoted = new RegExp(
+    `^([ \\t]*${kw}[ \\t]+)(\\S+)([ \\t]+as[ \\t]+)${esc}([ \\t]*)$`,
+    'gm',
+  );
   const mUnquoted = findMatch(rUnquoted, (m) => {
-    const needsQuote = /[\s"#|;<>&]/.test(newDisplay);
-    const rendered = needsQuote ? `"${escapedNew}"` : newDisplay;
-    return `${m[1]}${rendered}${m[2]}`;
+    const idToken = m[2];
+    if (newDisplay === idToken) return `${m[1]}${idToken}${m[4]}`;
+    const rendered = labelNeedsQuoting(newDisplay) ? `"${escapedNew}"` : newDisplay;
+    return `${m[1]}${idToken}${m[3]}${rendered}${m[4]}`;
   });
   if (mUnquoted)
     return (
       source.slice(0, mUnquoted.range[0]) + mUnquoted.replacement + source.slice(mUnquoted.range[1])
     );
 
-  // Bare: `participant Display` — must PRESERVE the id (Display is
-  // used as an id elsewhere in the chart via `Display->>Other`), so
-  // add an `as "New"` alias instead of overwriting.
+  // Bare: `participant Display` — the display IS the id, referenced
+  // elsewhere via `Display->>Other`, so preserve it and add an
+  // `as "New"` alias instead of overwriting. Quoting rule unified with
+  // the aliased variants: whitespace is safe in a participant alias
+  // (mermaid reads the alias to end of line), so only quote when the
+  // new label contains an actual mermaid-syntactic delimiter.
   const rBare = new RegExp(`^([ \\t]*${kw}[ \\t]+)${esc}([ \\t]*)$`, 'gm');
   const mBare = findMatch(rBare, (m) => {
-    // Unquoted-alias when the new display is a simple identifier
-    // (letters/digits/underscore, no whitespace or mermaid-syntactic
-    // chars). Otherwise wrap in quotes. Mermaid renders literal quotes
-    // when they're used unnecessarily, so keep the source clean.
-    const needsQuote = /[^\w]/.test(newDisplay);
-    const rendered = needsQuote ? `"${escapedNew}"` : newDisplay;
+    const rendered = labelNeedsQuoting(newDisplay) ? `"${escapedNew}"` : newDisplay;
     return `${m[1]}${currentDisplay}${m[2]} as ${rendered}`;
   });
   if (mBare)
@@ -717,7 +749,7 @@ export function findSequenceBlockConditionInSource(
   return null;
 }
 
-export function MermaidView({ chart = '', className }: MermaidProps) {
+export function MermaidView({ chart = '', className, editBinding }: MermaidProps) {
   const reactId = useId();
   const renderId = `mermaid-${reactId.replaceAll(':', '_')}`;
   const [state, setState] = useState<RenderState>({ status: 'idle', svg: '', error: '' });
@@ -741,7 +773,9 @@ export function MermaidView({ chart = '', className }: MermaidProps) {
     return () => observer.disconnect();
   }, []);
   const host = useJsxComponentHost();
-  const canEdit = host?.editor.isEditable ?? false;
+  // An explicit `editBinding` (standalone `.mmd` doc) wins; otherwise editing is
+  // gated on the JSX host being editable (codefenced fence).
+  const canEdit = editBinding ? editBinding.canEdit : (host?.editor.isEditable ?? false);
   const containerRef = useRef<HTMLDivElement>(null);
   // `useJsxComponentHost()` returns a fresh object literal on every
   // parent render (JsxComponentView constructs `{editor, getPos, ...}`
@@ -757,6 +791,14 @@ export function MermaidView({ chart = '', className }: MermaidProps) {
   useLayoutEffect(() => {
     hostRef.current = host;
   }, [host]);
+  // Same ref treatment for the optional standalone binding: the parent may
+  // hand a fresh object each render, so read it live through the ref inside
+  // handlers to keep the edit-session effect deps (`[state.status, canEdit]`)
+  // stable.
+  const editBindingRef = useRef(editBinding);
+  useLayoutEffect(() => {
+    editBindingRef.current = editBinding;
+  }, [editBinding]);
   // Tracks the currently-editing label so we can tear it down cleanly
   // when the SVG re-renders (or component unmounts) mid-edit.
   const editSessionRef = useRef<{ cleanup: () => void } | null>(null);
@@ -813,7 +855,28 @@ export function MermaidView({ chart = '', className }: MermaidProps) {
     // handler effect below so the same helper owns both the widened
     // hit-testing and the delegated click routing.
 
-    function commitLabelChangeGeneric(target: EditTarget, newLabel: string): void {
+    // Read the current chart source live at call time. Standalone binding wins;
+    // otherwise read the JSX-host `jsxComponent` node's `chart` prop.
+    function readChartSource(): string | null {
+      const binding = editBindingRef.current;
+      if (binding) return binding.getChart();
+      const h = hostRef.current;
+      if (!h) return null;
+      const pos = h.getPos();
+      if (typeof pos !== 'number') return null;
+      const node = h.editor.state.doc.nodeAt(pos);
+      if (!node || node.type.name !== 'jsxComponent') return null;
+      return ((node.attrs.props as Record<string, unknown>)?.chart as string) ?? '';
+    }
+
+    // Write the new chart source back. Standalone binding wins; otherwise
+    // dispatch one `setNodeMarkup` on the JSX-host `jsxComponent` node.
+    function commitChartSource(newChart: string): void {
+      const binding = editBindingRef.current;
+      if (binding) {
+        binding.commitChart(newChart);
+        return;
+      }
       const h = hostRef.current;
       if (!h) return;
       const pos = h.getPos();
@@ -821,17 +884,6 @@ export function MermaidView({ chart = '', className }: MermaidProps) {
       const node = h.editor.state.doc.nodeAt(pos);
       if (!node || node.type.name !== 'jsxComponent') return;
       const currentProps = (node.attrs.props as Record<string, unknown>) ?? {};
-      const chartNow = (currentProps.chart as string) ?? '';
-      // Prefer applyRewrite (participant paths); otherwise fall back
-      // to locate + spliceNewLabel.
-      let newChart: string | null = null;
-      if (target.applyRewrite) {
-        newChart = target.applyRewrite(chartNow, newLabel);
-      } else if (target.locate) {
-        const match = target.locate(chartNow);
-        if (match) newChart = spliceNewLabel(chartNow, match, newLabel);
-      }
-      if (newChart === null) return;
       // `setNodeMarkup` throws `RangeError` when `pos` has been
       // invalidated by a concurrent CRDT update between `getPos()` and
       // dispatch. That's a benign miss (the user's next mount resyncs
@@ -848,6 +900,22 @@ export function MermaidView({ chart = '', className }: MermaidProps) {
       } catch (err) {
         if (!(err instanceof RangeError)) throw err;
       }
+    }
+
+    function commitLabelChangeGeneric(target: EditTarget, newLabel: string): void {
+      const chartNow = readChartSource();
+      if (chartNow === null) return;
+      // Prefer applyRewrite (participant paths); otherwise fall back
+      // to locate + spliceNewLabel.
+      let newChart: string | null = null;
+      if (target.applyRewrite) {
+        newChart = target.applyRewrite(chartNow, newLabel);
+      } else if (target.locate) {
+        const match = target.locate(chartNow);
+        if (match) newChart = spliceNewLabel(chartNow, match, newLabel);
+      }
+      if (newChart === null) return;
+      commitChartSource(newChart);
     }
 
     interface EditTarget {
@@ -888,13 +956,8 @@ export function MermaidView({ chart = '', className }: MermaidProps) {
 
     function tryEnterEditWithTarget(target: EditTarget, event: MouseEvent): boolean {
       const { labelSpan, outlineShape } = target;
-      const h = hostRef.current;
-      if (!h) return false;
-      const pos = h.getPos();
-      if (typeof pos !== 'number') return false;
-      const pmNode = h.editor.state.doc.nodeAt(pos);
-      if (!pmNode || pmNode.type.name !== 'jsxComponent') return false;
-      const currentChart = ((pmNode.attrs.props as Record<string, unknown>)?.chart as string) ?? '';
+      const currentChart = readChartSource();
+      if (currentChart === null) return false;
       const currentLabel = target.sourceLabel ?? (labelSpan.textContent ?? '').trim();
       if (!currentLabel) return false;
       const rewriteHit = target.applyRewrite?.(currentChart, currentLabel);

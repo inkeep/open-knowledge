@@ -18,7 +18,7 @@ import {
 import { formatReconcileSubject } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import type * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
-import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { isConfigDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { isDocInConflict } from './conflict-errors.ts';
 import { recordContributor } from './contributor-tracker.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
@@ -133,7 +133,7 @@ export function applyExternalChange(
   resolveEmbed?: (basename: string, sourcePath: string) => string | null,
   resolveSize?: (basename: string, sourcePath: string) => number | null,
 ): void {
-  if (isSystemDoc(docName) || isConfigDoc(docName)) return;
+  if (isSystemDoc(docName) || isConfigDoc(docName) || isMermaidDoc(docName)) return;
   const document = hocuspocus.documents.get(docName);
   if (!document) return;
 
@@ -361,7 +361,7 @@ export function reconcileDiskBeforeAgentWrite(
   contentDir: string,
   resolveEmbed?: (basename: string, sourcePath: string) => string | null,
 ): ReconcileBeforeWriteResult {
-  if (isSystemDoc(docName) || isConfigDoc(docName)) return NOT_RECONCILED;
+  if (isSystemDoc(docName) || isConfigDoc(docName) || isMermaidDoc(docName)) return NOT_RECONCILED;
 
   // Never reconcile a doc that's mid-conflict: disk carries merge markers, and
   // the mutating write is about to be refused with DocInConflictError. Ingesting

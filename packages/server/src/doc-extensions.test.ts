@@ -79,6 +79,13 @@ describe('docNameToRelativePath', () => {
   test('defaults extension-less docNames to .md', () => {
     expect(docNameToRelativePath('docs/new')).toBe('docs/new.md');
   });
+
+  test('returns Mermaid docNames verbatim (extension retained, no .md appended)', () => {
+    // A Mermaid docName IS the filename (`assets/flow.mmd`) — it must map 1:1 to
+    // the on-disk path, never `assets/flow.mmd.md`.
+    expect(docNameToRelativePath('assets/flow.mmd')).toBe('assets/flow.mmd');
+    expect(docNameToRelativePath('diagrams/seq.mermaid')).toBe('diagrams/seq.mermaid');
+  });
 });
 
 describe('registerDocExtension / getDocExtension', () => {

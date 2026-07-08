@@ -4119,6 +4119,10 @@ msgstr "MCP connections"
 msgid "Medium section heading."
 msgstr "Medium section heading."
 
+#: src/components/MermaidDocEditor.tsx
+msgid "Mermaid diagram"
+msgstr "Mermaid diagram"
+
 #: src/editor/components/Mermaid.tsx
 msgid "Mermaid diagram controls"
 msgstr "Mermaid diagram controls"

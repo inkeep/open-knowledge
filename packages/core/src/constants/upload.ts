@@ -681,6 +681,23 @@ export const TEXT_VIEWER_FALLBACK_EXTENSIONS: ReadonlySet<string> = new Set(['ba
 // view in the app-side viewer, so the file always reads.
 export const MERMAID_FILE_EXTENSIONS: ReadonlySet<string> = new Set(['mmd', 'mermaid']);
 
+/**
+ * True when a path/docName names a standalone Mermaid source file. Pure string
+ * op (no `node:path`) so it runs in the browser too — core stays server-free.
+ *
+ * Unlike markdown docNames (which are extension-LESS), a Mermaid doc's docName
+ * RETAINS its extension (`assets/flow.mmd`), so this predicate doubles as the
+ * `isMermaidDoc(documentName)` doc-class discriminator. Edge case: a markdown
+ * file literally named `X.mermaid.md` strips to docName `X.mermaid` and would
+ * collide here — pathological and unsupported (name markdown files without a
+ * trailing `.mmd`/`.mermaid` stem segment).
+ */
+export function isMermaidDocFile(path: string): boolean {
+  const lastDot = path.lastIndexOf('.');
+  if (lastDot < 0) return false;
+  return MERMAID_FILE_EXTENSIONS.has(path.slice(lastDot + 1).toLowerCase());
+}
+
 // Code-file extensions live in a sibling module so the
 // language→extension table can be shared with the app-side TextViewer
 // (which maps the same canonical IDs to CodeMirror language packs).

@@ -68,6 +68,9 @@ const TRANSITIVE_PRIMITIVE_CALLERS = new Set<string>([
  *   CONFIG_VALIDATION_REVERT_ORIGIN, CONFIG_FILE_WATCHER_ORIGIN — config docs
  *     bypass the markdown bridge entirely (Y.Text-only mutation; see
  *     `server-observer-extension.ts` config-doc gate).
+ *   MERMAID_SOURCE_ORIGIN — standalone `.mmd`/`.mermaid` docs; Y.Text-only, the
+ *     markdown bridge is gated off (same config-doc gate), so seed/reconcile
+ *     writes mutate only Y.Text and need no bridge-intake primitive.
  *   PARK_SNAPSHOT_ORIGIN — read-only transact wrapping `serializeDoc` so Y.js
  *     serializes the snapshot atomically against concurrent writers
  *     (`server-factory.ts`). `paired: true` makes observers short-
@@ -85,6 +88,7 @@ const SANCTIONED_NON_PRIMITIVE_ORIGINS = new Set<string>([
   'OBSERVER_SYNC_ORIGIN',
   'CONFIG_VALIDATION_REVERT_ORIGIN',
   'CONFIG_FILE_WATCHER_ORIGIN',
+  'MERMAID_SOURCE_ORIGIN',
   'PARK_SNAPSHOT_ORIGIN',
   'EFFECT_CAPTURE_ORIGIN',
 ]);

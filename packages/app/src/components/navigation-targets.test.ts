@@ -510,3 +510,25 @@ describe('downgradeFolderIndexForHashNav', () => {
     expect(downgradeFolderIndexForHashNav(missing)).toBe(missing);
   });
 });
+
+describe('resolveNavigationTarget — Mermaid docs', () => {
+  test('resolves a .mmd / .mermaid path to a doc target even when absent from pages', () => {
+    // Mermaid docs are served as assets (never in the markdown page set) but
+    // open as editable CRDT docs — the docName retains its extension.
+    const pages = new Set<string>();
+    expect(resolveNavigationTarget('assets/flow.mmd', { pages })).toEqual({
+      kind: 'doc',
+      target: 'assets/flow.mmd',
+      docName: 'assets/flow.mmd',
+    });
+    expect(resolveNavigationTarget('diagrams/seq.mermaid', { pages })).toEqual({
+      kind: 'doc',
+      target: 'diagrams/seq.mermaid',
+      docName: 'diagrams/seq.mermaid',
+    });
+  });
+
+  test('a trailing-slash (folder) form is not treated as a Mermaid doc', () => {
+    expect(resolveNavigationTarget('assets/flow.mmd/', { pages: new Set() }).kind).not.toBe('doc');
+  });
+});

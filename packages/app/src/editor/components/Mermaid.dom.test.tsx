@@ -282,3 +282,30 @@ describe('MermaidView controls', () => {
     expect(screen.queryByRole('button', { name: 'Zoom in' })).toBeNull();
   });
 });
+
+describe('MermaidView editBinding (standalone .mmd path)', () => {
+  test('renders an editable diagram with no JSX host when an editBinding is supplied', async () => {
+    // The standalone `.mmd` doc path passes an `editBinding` and mounts OUTSIDE
+    // any JsxComponentHost. The editable effect (canEdit=true) must run without a
+    // host and without throwing; the diagram still renders its toolbar.
+    let committed: string | null = null;
+    render(
+      <TooltipProvider>
+        <MermaidView
+          chart="graph TD; A-->B;"
+          editBinding={{
+            canEdit: true,
+            getChart: () => 'graph TD; A-->B;',
+            commitChart: (next) => {
+              committed = next;
+            },
+          }}
+        />
+      </TooltipProvider>,
+    );
+    await waitForPanzoomInstance();
+    expect(screen.getByRole('toolbar')).toBeDefined();
+    // No label interaction happened, so the binding was not invoked.
+    expect(committed).toBeNull();
+  });
+});

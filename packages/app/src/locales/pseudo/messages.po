@@ -4114,6 +4114,10 @@ msgstr ""
 msgid "Medium section heading."
 msgstr ""
 
+#: src/components/MermaidDocEditor.tsx
+msgid "Mermaid diagram"
+msgstr ""
+
 #: src/editor/components/Mermaid.tsx
 msgid "Mermaid diagram controls"
 msgstr ""

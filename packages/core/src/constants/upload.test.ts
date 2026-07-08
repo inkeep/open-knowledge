@@ -5,6 +5,7 @@ import {
   FILE_ATTACHMENT_EXTENSIONS,
   IMAGE_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
+  isMermaidDocFile,
   LINKABLE_ASSET_EXTENSIONS,
   MERMAID_FILE_EXTENSIONS,
   mediaKindForSidebarAssetExtension,
@@ -257,5 +258,27 @@ describe('mediaKindForSidebarAssetExtension', () => {
     expect(mediaKindForSidebarAssetExtension('.PDF')).toBe('pdf');
     expect(mediaKindForSidebarAssetExtension('.PnG')).toBe('image');
     expect(mediaKindForSidebarAssetExtension('PDF')).toBe('pdf');
+  });
+});
+
+describe('isMermaidDocFile', () => {
+  test('true for .mmd / .mermaid paths (any casing)', () => {
+    expect(isMermaidDocFile('assets/flow.mmd')).toBe(true);
+    expect(isMermaidDocFile('diagram.mermaid')).toBe(true);
+    expect(isMermaidDocFile('deep/nested/chart.MMD')).toBe(true);
+  });
+
+  test('false for markdown + other extensions + extension-less names', () => {
+    expect(isMermaidDocFile('notes/todo.md')).toBe(false);
+    expect(isMermaidDocFile('docs/guide.mdx')).toBe(false);
+    expect(isMermaidDocFile('assets/photo.png')).toBe(false);
+    expect(isMermaidDocFile('reports/index')).toBe(false);
+    expect(isMermaidDocFile('README')).toBe(false);
+  });
+
+  test('matches only the final extension segment', () => {
+    // A markdown doc whose stem merely contains `mmd`/`mermaid` is not a match.
+    expect(isMermaidDocFile('mmd-notes/plan')).toBe(false);
+    expect(isMermaidDocFile('flow.mmd.md')).toBe(false);
   });
 });

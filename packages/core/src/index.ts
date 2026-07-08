@@ -242,6 +242,7 @@ export {
   IMAGE_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
   type InlineAssetMediaKind,
+  isMermaidDocFile,
   LINKABLE_ASSET_EXTENSIONS,
   MERMAID_FILE_EXTENSIONS,
   mediaKindForSidebarAssetExtension,

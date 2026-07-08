@@ -16,6 +16,7 @@ import {
   type ConfigValidationError,
   type DerivedViewChannel,
   isManagedArtifactDocName,
+  isMermaidDocFile,
   SYSTEM_DOC_NAME,
 } from '@inkeep/open-knowledge-core';
 import { getLogger } from './logger.ts';
@@ -77,6 +78,25 @@ export function isConfigDoc(documentName: string): boolean {
  */
 export function isManagedArtifactDoc(documentName: string): boolean {
   return isManagedArtifactDocName(documentName);
+}
+
+/**
+ * True for standalone Mermaid docs — `.mmd` / `.mermaid` files whose docName
+ * RETAINS its extension (`assets/flow.mmd`). A FOURTH doc class:
+ *
+ *  - like CONFIG docs on the persistence-body axis — `Y.Text('source')`-only,
+ *    the markdown observer bridge is gated OFF (source stored verbatim, no
+ *    remark round-trip that would corrupt diagram syntax);
+ *  - but UNLIKE config/managed-artifact docs on admission — a Mermaid doc is
+ *    real user content: it stays in the document tree AND the link/graph index.
+ *    So it must NOT join `isReservedForUserTree` or `isLinkIndexExcludedDoc`;
+ *    tree/index sites let it fall through as normal content.
+ *
+ * Bridge / persistence dispatch sites short-circuit on this (like `isConfigDoc`)
+ * so a Mermaid doc never runs the markdown bridge or the XmlFragment store path.
+ */
+export function isMermaidDoc(documentName: string): boolean {
+  return isMermaidDocFile(documentName);
 }
 
 /**
