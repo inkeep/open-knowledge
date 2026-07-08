@@ -43,6 +43,7 @@ import {
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { tracedMkdirSync, tracedRenameSync, tracedWriteFileSync } from './fs-traced.ts';
+import { listTreeLongEntries } from './git-paths.ts';
 import { incrementShadowMigrationLegacyRefsDeleted } from './metrics.ts';
 import { acquireLock, releaseLock } from './shadow-lock.ts';
 import { withSpan } from './telemetry.ts';
@@ -951,15 +952,11 @@ export async function listRescueCheckpoints(
     // populated both fields.
     if (!docName) {
       try {
-        const tree = (await sg.raw('ls-tree', '-r', '--long', sha)).trim();
-        const line = tree.split('\n')[0];
-        if (line) {
-          const cols = line.split(/\s+/);
-          const pathIdx = 4;
-          const sizeIdx = 3;
-          if (size === 0) size = Number(cols[sizeIdx] ?? '0');
+        const entry = (await listTreeLongEntries(sg, ['ls-tree', '-r', '--long', sha]))[0];
+        if (entry) {
+          if (size === 0) size = entry.size;
           docName =
-            (cols[pathIdx] ?? '')
+            entry.path
               .replace(/\.mdx?$/, '')
               .split('/')
               .slice(-1)[0] ?? '';

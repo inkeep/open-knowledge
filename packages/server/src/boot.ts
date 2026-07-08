@@ -43,7 +43,7 @@ import type { Config } from './config/schema.ts';
 import { ConflictStore } from './conflict-storage.ts';
 import { stripDocExtension } from './doc-extensions.ts';
 import { normalizeFsPath } from './fs-traced.ts';
-import { splitNulSeparatedPaths } from './git-handle.ts';
+import { listNames } from './git-paths.ts';
 import {
   assertGitAvailable,
   type GitDetected,
@@ -1118,8 +1118,7 @@ export async function restoreLifecycleFromConflictsJson(args: {
       return;
     }
     const pg = simpleGit({ baseDir: projectDir, timeout: { block: 5_000 } });
-    const out = await pg.raw(['diff', '--name-only', '--diff-filter=U', '-z']);
-    stillUnmerged = new Set(splitNulSeparatedPaths(out));
+    stillUnmerged = new Set(await listNames(pg, ['diff', '--name-only', '--diff-filter=U']));
   } catch (err) {
     // Probe failed — fall through and restore everything; the sync
     // engine's own reconcile on `start()` will mop up any stragglers.

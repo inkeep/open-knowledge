@@ -9,25 +9,12 @@
  * them.
  */
 
-import { createGitInstance, splitNulSeparatedPaths } from './git-handle.ts';
+import { createGitInstance } from './git-handle.ts';
+import { listNames, listPorcelainPaths } from './git-paths.ts';
 
 export interface DirtyOverlapResult {
   conflicts: boolean;
   files: string[];
-}
-
-function parsePorcelainPaths(porcelain: string): string[] {
-  // -z porcelain: NUL-separated "XY PATH" records; a rename/copy emits the
-  // original path as the following record, without a status prefix.
-  const paths: string[] = [];
-  const records = porcelain.split('\0');
-  for (let i = 0; i < records.length; i++) {
-    const record = records[i] ?? '';
-    if (record.length < 4) continue;
-    paths.push(record.slice(3));
-    if (record[0] === 'R' || record[0] === 'C') i++;
-  }
-  return paths;
 }
 
 /**
@@ -51,19 +38,18 @@ export async function dirtyFilesOverlapWith(
 ): Promise<DirtyOverlapResult> {
   const { git } = createGitInstance(cwd);
 
-  const [porcelain, diff] = await Promise.all([
-    git.raw(['status', '--porcelain', '-z']),
+  const [dirtyList, changed] = await Promise.all([
+    listPorcelainPaths(git),
     // Two-dot diff — all files differing between HEAD and targetRef, in either
     // direction. Three-dot (`HEAD...targetRef`) resolves to merge-base..targetRef
     // and misses files HEAD changed since divergence, which `git checkout` would
     // still restore to the target's view.
-    git.raw(['diff', '--name-only', '-z', `HEAD..${targetRef}`]),
+    listNames(git, ['diff', '--name-only', `HEAD..${targetRef}`]),
   ]);
 
-  const dirty = new Set(parsePorcelainPaths(porcelain));
+  const dirty = new Set(dirtyList);
   if (dirty.size === 0) return { conflicts: false, files: [] };
 
-  const changed = splitNulSeparatedPaths(diff);
   if (changed.length === 0) return { conflicts: false, files: [] };
 
   const overlap = new Set<string>();

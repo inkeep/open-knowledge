@@ -27,6 +27,7 @@ import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { classifyGitError } from './error-classification.ts';
+import { listNames } from './git-paths.ts';
 import type { DetectGhFn } from './github-permissions.ts';
 import type { SyncState } from './sync-engine.ts';
 import { SyncEngine } from './sync-engine.ts';
@@ -1344,9 +1345,7 @@ describe('SyncEngine push cycle with non-ASCII filenames', () => {
       await engine.start();
       await engine.trigger('push');
 
-      const headPaths = (await git.raw(['ls-tree', '-r', '--name-only', '-z', 'HEAD']))
-        .split('\0')
-        .filter(Boolean);
+      const headPaths = await listNames(git, ['ls-tree', '-r', '--name-only', 'HEAD']);
       expect(headPaths).toContain('README.md');
       expect(headPaths).not.toContain(fileName);
 

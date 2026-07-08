@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import type { ShareTargetStatusResponse } from '@inkeep/open-knowledge-core';
 import { truncateError } from '../error-format.ts';
 import { createGitInstance } from '../git-handle.ts';
+import { listNameStatus, type NameStatusRow } from '../git-paths.ts';
 import { getLogger } from '../logger.ts';
 
 /** Single source of truth for the handler tag used in logs + telemetry. */
@@ -25,34 +26,8 @@ export const SHARE_TARGET_STATUS_HANDLER_TAG = 'share-target-status';
 /** Block timeout for the fetch — a hung fetch degrades to `unknown`. */
 const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 
-interface DiffRow {
-  status: string;
-  from: string;
-  to: string;
-}
-
-/**
- * Parse `git diff-tree --name-status` rows (tab-separated). Rename/copy rows
- * carry a score and two paths (`R100\told\tnew`); every other status carries
- * one path (`D\told`).
- */
-function parseNameStatus(output: string): DiffRow[] {
-  const rows: DiffRow[] = [];
-  for (const line of output.split('\n')) {
-    if (line.trim() === '') continue;
-    const parts = line.split('\t');
-    const status = parts[0] ?? '';
-    if ((status.startsWith('R') || status.startsWith('C')) && parts.length >= 3) {
-      rows.push({ status, from: parts[1] ?? '', to: parts[2] ?? '' });
-    } else {
-      rows.push({ status, from: parts[1] ?? '', to: parts[1] ?? '' });
-    }
-  }
-  return rows;
-}
-
 /** Classify a doc removal: the row whose source is exactly the shared path. */
-function classifyDoc(rows: DiffRow[], gitPath: string): ShareTargetStatusResponse {
+function classifyDoc(rows: NameStatusRow[], gitPath: string): ShareTargetStatusResponse {
   for (const row of rows) {
     if (row.from !== gitPath) continue;
     if (row.status.startsWith('R')) return { verdict: 'renamed', renamedTo: row.to };
@@ -69,7 +44,7 @@ function classifyDoc(rows: DiffRow[], gitPath: string): ShareTargetStatusRespons
  * the common prefix across those rows; anything else (deletes, inconsistent
  * destinations) is a deletion.
  */
-function classifyFolder(rows: DiffRow[], folderPath: string): ShareTargetStatusResponse {
+function classifyFolder(rows: NameStatusRow[], folderPath: string): ShareTargetStatusResponse {
   const prefix = folderPath.endsWith('/') ? folderPath : `${folderPath}/`;
   const newPrefixes = new Set<string>();
   for (const row of rows) {
@@ -162,12 +137,12 @@ export async function computeShareTargetStatus(
 
     // Diff the removing commit against its FIRST parent explicitly. A bare
     // `diff-tree <commit>` on a merge commit emits combined-diff format (one
-    // status column per parent), which `parseNameStatus` can't read — so a path
-    // removed via a merge would misclassify. `<commit>^1 <commit>` forces the
-    // standard single-status format and is equivalent to the bare form for
+    // status column per parent), which the name-status parse can't read — so a
+    // path removed via a merge would misclassify. `<commit>^1 <commit>` forces
+    // the standard single-status format and is equivalent to the bare form for
     // ordinary single-parent commits. A removal only ever reachable through the
     // second parent falls through to the honest `deleted` verdict.
-    const nameStatus = await git.raw([
+    const rows = await listNameStatus(git, [
       'diff-tree',
       '-M',
       '-r',
@@ -176,7 +151,6 @@ export async function computeShareTargetStatus(
       `${removingCommit}^1`,
       removingCommit,
     ]);
-    const rows = parseNameStatus(nameStatus);
     const classified =
       kind === 'folder' ? classifyFolder(rows, gitPath) : classifyDoc(rows, gitPath);
 

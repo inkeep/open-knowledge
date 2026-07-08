@@ -30,14 +30,9 @@ import {
   type UserFacingErrorCode,
 } from './error-classification.ts';
 import { createGhTokenSource, type GhTokenSource } from './gh-token-source.ts';
-import {
-  applyGitEnv,
-  createGitInstance,
-  type GitHandle,
-  splitNulSeparatedPaths,
-  withParentLock,
-} from './git-handle.ts';
+import { applyGitEnv, createGitInstance, type GitHandle, withParentLock } from './git-handle.ts';
 import { resolveGitIdentity } from './git-identity.ts';
+import { listNames } from './git-paths.ts';
 import {
   type CheckPushPermissionOptions,
   type DetectGhFn,
@@ -490,8 +485,9 @@ export class SyncEngine {
       // Merge still in progress — drop any tracked entries git considers resolved.
       try {
         const handle = this.gitHandle();
-        const out = await handle.git.raw(['diff', '--name-only', '--diff-filter=U', '-z']);
-        const stillUnmerged = new Set(splitNulSeparatedPaths(out));
+        const stillUnmerged = new Set(
+          await listNames(handle.git, ['diff', '--name-only', '--diff-filter=U']),
+        );
         const before = this.conflictCount;
         for (const entry of this.conflictStore.list()) {
           if (!stillUnmerged.has(entry.file)) {
@@ -1039,8 +1035,9 @@ export class SyncEngine {
     } else {
       try {
         const handle = this.gitHandle();
-        const out = await handle.git.raw(['diff', '--name-only', '--diff-filter=U', '-z']);
-        const stillUnmerged = new Set(splitNulSeparatedPaths(out));
+        const stillUnmerged = new Set(
+          await listNames(handle.git, ['diff', '--name-only', '--diff-filter=U']),
+        );
         for (const entry of this.conflictStore.list()) {
           if (!stillUnmerged.has(entry.file)) {
             this.conflictStore.removeConflict(entry.file);
@@ -1445,15 +1442,13 @@ export class SyncEngine {
         let changedProjectRelPaths: string[] = [];
         let changedContentRelPaths: string[] = [];
         try {
-          const diffOut = await handle.git.raw([
+          const diffPaths = await listNames(handle.git, [
             'diff-tree',
             '--name-only',
-            '-z',
             '-r',
             headSha,
             newTreeSha,
           ]);
-          const diffPaths = splitNulSeparatedPaths(diffOut);
           if (diffPaths.length > 0) {
             const contentFileByProjRel = new Map(
               contentFiles.map((f) => [f.projectRelPath, f.contentRelPath]),
@@ -1669,15 +1664,13 @@ export class SyncEngine {
       if (newTreeSha === headTreeSha) return null;
       let changedProjectRelPaths: string[] = [];
       try {
-        const diffOut = await isoHandle.git.raw([
+        changedProjectRelPaths = await listNames(isoHandle.git, [
           'diff-tree',
           '--name-only',
-          '-z',
           '-r',
           headSha,
           newTreeSha,
         ]);
-        changedProjectRelPaths = splitNulSeparatedPaths(diffOut);
       } catch {
         changedProjectRelPaths = contentFiles.map((f) => f.projectRelPath).concat(deleted);
       }
@@ -1759,9 +1752,9 @@ export class SyncEngine {
     // the merge would create the same path, which git surfaces at merge
     // time with a specific error — we don't pre-pause for build artifacts,
     // IDE state, or scratch notes.
-    let dirtyOut = '';
+    let dirtyPaths: string[];
     try {
-      dirtyOut = await handle.git.raw(['diff-index', '--name-only', '-z', 'HEAD']);
+      dirtyPaths = await listNames(handle.git, ['diff-index', '--name-only', 'HEAD']);
     } catch (err) {
       // Fail-open is correct (git merge will surface real conflicts), but
       // log so triage can spot a degraded pre-check (stale remote ref,
@@ -1769,22 +1762,24 @@ export class SyncEngine {
       log.warn({ err, branch }, '[sync] diff-index failed — allowing merge attempt');
       return { proceed: true, needsStashPop: false };
     }
-    const dirtyPaths = splitNulSeparatedPaths(dirtyOut);
     if (dirtyPaths.length === 0) return { proceed: true, needsStashPop: false };
 
     // Intersect with the set of paths the incoming merge actually touches.
     // `diff --name-only HEAD..origin/<branch>` reports every path differing
-    // between HEAD and the remote tip (renames decompose into delete+add
-    // by default — a superset of paths that could conflict, which keeps
-    // the intersection safe).
-    let mergeOut = '';
+    // between HEAD and the remote tip. Git's rename detection reports only the
+    // rename DESTINATION, so a file dirty at its old name that the incoming
+    // merge renames is not caught here — the real protection is fail-open: the
+    // actual `git merge` still surfaces that conflict, this pre-check only
+    // avoids pausing on the common clean cases.
+    let mergePaths: Set<string>;
     try {
-      mergeOut = await handle.git.raw(['diff', '--name-only', '-z', `HEAD..origin/${branch}`]);
+      mergePaths = new Set(
+        await listNames(handle.git, ['diff', '--name-only', `HEAD..origin/${branch}`]),
+      );
     } catch (err) {
       log.warn({ err, branch }, '[sync] merge-path diff failed — allowing merge attempt');
       return { proceed: true, needsStashPop: false };
     }
-    const mergePaths = new Set(splitNulSeparatedPaths(mergeOut));
     const blocking = dirtyPaths.filter((p) => mergePaths.has(p));
 
     if (blocking.length > 0) {
@@ -1871,8 +1866,8 @@ export class SyncEngine {
   private async listHeadContentPaths(handle: GitHandle, headSha: string): Promise<Set<string>> {
     const paths = new Set<string>();
     try {
-      const lsOut = await handle.git.raw(['ls-tree', '-r', '--name-only', '-z', headSha]);
-      for (const projRelPath of splitNulSeparatedPaths(lsOut)) {
+      const headPaths = await listNames(handle.git, ['ls-tree', '-r', '--name-only', headSha]);
+      for (const projRelPath of headPaths) {
         const absPath = join(this.projectDir, projRelPath);
         const contentRelPath = toPosix(relative(this.contentDir, absPath));
         if (!contentRelPath.startsWith('..') && !this.contentFilter.isExcluded(contentRelPath)) {
@@ -1938,8 +1933,7 @@ export class SyncEngine {
     // produce a malformed commit.
     let conflictedFiles: string[] = [];
     try {
-      const out = await handle.git.raw(['diff', '--name-only', '--diff-filter=U', '-z']);
-      conflictedFiles = splitNulSeparatedPaths(out);
+      conflictedFiles = await listNames(handle.git, ['diff', '--name-only', '--diff-filter=U']);
     } catch (e) {
       log.error(
         { err: e },

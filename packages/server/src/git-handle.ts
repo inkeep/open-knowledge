@@ -160,13 +160,6 @@ export function applyGitEnv(
   return handle.git.env(env);
 }
 
-// Path-listing git commands must run with -z and be split here: without -z,
-// core.quotepath makes git C-quote non-ASCII filenames (e.g. "s\303\266in.md"),
-// and the escaped string matches nothing when reused as a pathspec.
-export function splitNulSeparatedPaths(out: string): string[] {
-  return out.split('\0').filter((path) => path.length > 0);
-}
-
 /**
  * Create a SimpleGit instance rooted at `projectDir` with optional credential
  * args and index file isolation. Env construction (and the reasons each var is

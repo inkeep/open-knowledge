@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -18,6 +18,7 @@ import {
   GIT_UPSTREAM_WRITER,
   type InMemoryCheckpointParams,
   initShadowRepo,
+  listRescueCheckpoints,
   type ParkableDoc,
   parkBranch,
   readParkedState,
@@ -914,6 +915,84 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
       throw new Error('expected external-change-rescue kind');
     }
     expect(parsed.metadata.incomingDiskSha).toBe('abc123def456');
+  });
+
+  test('lists external-change-rescue checkpoints written by saveInMemoryCheckpoint', async () => {
+    const docName = 'hyvää yötä.md';
+    const contents = '# Rescued fast-path content\n';
+
+    const sha = await saveInMemoryCheckpoint(shadow, 'content/docs', {
+      kind: 'external-change-rescue',
+      docName,
+      contents,
+      label: 'Fast-path rescue',
+      metadata: { incomingDiskSha: 'abc123' },
+    });
+
+    const entries = await listRescueCheckpoints(shadow, 'main');
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      docName,
+      size: Buffer.byteLength(contents, 'utf-8'),
+      sha,
+      label: 'Fast-path rescue',
+      incomingDiskSha: 'abc123',
+    });
+    expect(entries[0]?.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  test('lists legacy external-change-rescue checkpoints with non-ASCII docNames', async () => {
+    const docName = 'hyvää yötä.md';
+    const contents = '# Rescued legacy content\n';
+    const sg = shadowGit(shadow);
+    const tmpIndex = resolve(shadow.gitDir, 'index-legacy-rescue-test');
+    const tmpBlobFile = resolve(shadow.gitDir, 'tmp-legacy-rescue.md');
+
+    try {
+      writeFileSync(tmpBlobFile, contents);
+      const blobSha = (
+        await sg
+          .env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex })
+          .raw('hash-object', '-w', tmpBlobFile)
+      ).trim();
+      await sg
+        .env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex })
+        .raw('update-index', '--add', '--cacheinfo', `100644,${blobSha},content/docs/${docName}`);
+      const treeSha = (
+        await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex }).raw('write-tree')
+      ).trim();
+      const body =
+        'checkpoint: Legacy rescue\n\n' +
+        'ok-checkpoint-v1: {"kind":"external-change-rescue","metadata":{"incomingDiskSha":"abc123"}}';
+      const sha = (
+        await sg
+          .env({
+            GIT_DIR: shadow.gitDir,
+            GIT_AUTHOR_NAME: 'openknowledge',
+            GIT_AUTHOR_EMAIL: 'noreply@openknowledge.local',
+            GIT_COMMITTER_NAME: 'openknowledge',
+            GIT_COMMITTER_EMAIL: 'noreply@openknowledge.local',
+          })
+          .raw('commit-tree', treeSha, '-m', body)
+      ).trim();
+      await sg.raw('update-ref', `refs/checkpoints/main/${sha}`, sha);
+
+      const entries = await listRescueCheckpoints(shadow, 'main');
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        docName: 'hyvää yötä',
+        size: Buffer.byteLength(contents, 'utf-8'),
+        sha,
+        label: 'Legacy rescue',
+        incomingDiskSha: 'abc123',
+      });
+      expect(entries[0]?.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    } finally {
+      rmSync(tmpIndex, { force: true });
+      rmSync(tmpBlobFile, { force: true });
+    }
   });
 
   test('does NOT touch refs/wip/* — distinct from saveVersion', async () => {

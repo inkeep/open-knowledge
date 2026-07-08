@@ -13,6 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { getLocalDir } from './config/paths.ts';
+import { listNames } from './git-paths.ts';
 import { getLogger } from './logger.ts';
 import { isWithinDir } from './path-utils.ts';
 
@@ -255,9 +256,10 @@ export class ConflictStore {
         const detectedAt = new Date().toISOString();
         let reAdded = false;
         try {
-          const { splitNulSeparatedPaths } = await import('./git-handle.ts');
-          const raw = await handle.git.raw(['diff', '--name-only', '--diff-filter=U', '-z']);
-          const unmerged = splitNulSeparatedPaths(raw);
+          // git-paths.ts has no runtime simple-git dependency, so this needs no
+          // dynamic import (unlike createGitInstance above) to keep simple-git
+          // out of the CRUD-test module graph.
+          const unmerged = await listNames(handle.git, ['diff', '--name-only', '--diff-filter=U']);
           for (const f of unmerged) {
             this.addConflict({ file: f, detectedAt });
           }

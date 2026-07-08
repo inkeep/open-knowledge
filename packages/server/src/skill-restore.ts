@@ -17,7 +17,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 import { tracedMkdirSync, tracedRmSync, tracedWriteFileSync } from './fs-traced.ts';
-import { splitNulSeparatedPaths } from './git-handle.ts';
+import { listNames } from './git-paths.ts';
 import { type ShadowHandle, shadowGit } from './shadow-repo.ts';
 
 /** Shadow-repo path of a project-scope skill's source dir for a content root. */
@@ -76,9 +76,9 @@ export async function restoreSkillVersion(opts: {
   const shadowPath = skillShadowPath(contentRoot, name);
   const sg = shadowGit(shadow);
 
-  let fileList: string;
+  let files: string[];
   try {
-    fileList = await sg.raw('ls-tree', '-r', '--name-only', '-z', version, '--', shadowPath);
+    files = await listNames(sg, ['ls-tree', '-r', '--name-only', version, '--', shadowPath]);
   } catch (e) {
     // Distinguish "this commit/SHA genuinely isn't in the shadow repo" (a client
     // 404) from a git I/O failure — git binary missing, repo corrupt, etc. (a
@@ -94,7 +94,6 @@ export async function restoreSkillVersion(opts: {
           error: `Failed to read version ${version.slice(0, 8)}: ${msg}`,
         };
   }
-  const files = splitNulSeparatedPaths(fileList);
   if (files.length === 0) {
     return {
       ok: false,
