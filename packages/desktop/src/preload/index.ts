@@ -49,7 +49,12 @@ import type {
   OkUpdateStuckHintInfo,
   OkWhatsNewInfo,
 } from '../shared/bridge-contract.ts';
-import type { IntegrationsSetResult, IntegrationsStatus } from '../shared/ipc-channels.ts';
+import type {
+  IntegrationsSetResult,
+  IntegrationsStatus,
+  ProjectIntegrationsSetResult,
+  ProjectIntegrationsStatus,
+} from '../shared/ipc-channels.ts';
 import { createInvoker } from '../shared/ipc-invoke.ts';
 import { resolveOkDesktopMode } from '../shared/ok-desktop-mode.ts';
 
@@ -514,6 +519,22 @@ const bridge: OkDesktopBridge = {
         component: request.component,
         enabled: request.enabled,
       }) as Promise<IntegrationsSetResult>,
+  },
+
+  projectIntegrations: {
+    // Project-scoped sibling — same discriminated channel
+    // (`ok:project-integrations:dispatch`), scoped in main to the sender
+    // window's project. Each method casts the union result to its own arm.
+    status: () =>
+      invoke('ok:project-integrations:dispatch', {
+        kind: 'status',
+      }) as Promise<ProjectIntegrationsStatus>,
+    setComponent: (request) =>
+      invoke('ok:project-integrations:dispatch', {
+        kind: 'set',
+        component: request.component,
+        enabled: request.enabled,
+      }) as Promise<ProjectIntegrationsSetResult>,
   },
 
   onboarding: {

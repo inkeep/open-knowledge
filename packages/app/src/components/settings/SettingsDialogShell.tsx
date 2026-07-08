@@ -120,6 +120,9 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
         { id: 'sync', label: t`Sync` },
         { id: 'search', label: t`Search` },
         ...(isOkDesktopHost ? [{ id: 'terminal', label: t`Terminal` }] : []),
+        // Per-project MCP wiring + runtime skill — desktop-only because the
+        // install actors live in the Electron main process (like Terminal).
+        ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),
         { id: 'project-templates', label: t`Templates` },
         { id: 'skills', label: t`Skills` },
         { id: 'okignore', label: t`Ignore patterns` },

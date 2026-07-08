@@ -780,6 +780,11 @@ msgstr "Agent Skills"
 msgid "AI tool management is only available in the OpenKnowledge desktop app."
 msgstr "AI tool management is only available in the OpenKnowledge desktop app."
 
+#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "AI tools"
+msgstr "AI tools"
+
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "AI tools & CLI"
@@ -1135,6 +1140,10 @@ msgstr "By tag"
 #: src/components/CreateProjectDialog.tsx
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
 msgstr "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
+
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "Can't safely edit this project config"
+msgstr "Can't safely edit this project config"
 
 #: src/components/settings/AiToolsSection.tsx
 msgid "Can't safely edit this tool's config"
@@ -1567,6 +1576,10 @@ msgstr "Connect GitHub to continue."
 msgid "Connect OpenKnowledge to other tools you use."
 msgstr "Connect OpenKnowledge to other tools you use."
 
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
+msgstr "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
+
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Connect this project to GitHub to share."
@@ -1621,6 +1634,11 @@ msgstr "Connection error — try again"
 #: src/presence/use-sync-toasts.ts
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "Connection lost — keep this tab open, your edits will sync when reconnected"
+
+#. Next step for a Codex project MCP row
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "Connects automatically the next time you open this project in a trusted Codex session."
+msgstr "Connects automatically the next time you open this project in a trusted Codex session."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Content directory"
@@ -1850,6 +1868,7 @@ msgstr "Could not write project files. Try a different location."
 
 #. placeholder {0}: err instanceof Error ? err.message : String(err)
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "Couldn't apply the change: {0}"
 
@@ -2218,6 +2237,7 @@ msgid "Custom HTML with a live preview pane (sandboxed iframe)."
 msgstr "Custom HTML with a live preview pane (sandboxed iframe)."
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Custom open-knowledge entry — not managed by OpenKnowledge"
 msgstr "Custom open-knowledge entry — not managed by OpenKnowledge"
 
@@ -2751,6 +2771,7 @@ msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Entry"
 msgstr "Entry"
 
@@ -3057,6 +3078,7 @@ msgid "Fetching"
 msgstr "Fetching"
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "File"
@@ -3208,6 +3230,7 @@ msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "Folder target: {linkTitle}. Click to open the overview."
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Folders"
 msgstr "Folders"
 
@@ -3724,6 +3747,7 @@ msgid "Install skills into"
 msgstr "Install skills into"
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
 #: src/components/SkillRow.tsx
 #: src/components/SkillStateBadge.tsx
@@ -4058,6 +4082,10 @@ msgstr "Manage the GitHub account OpenKnowledge uses to browse and sync your rep
 msgid "Managing AI tools is unavailable in this build."
 msgstr "Managing AI tools is unavailable in this build."
 
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "Managing project AI tools is unavailable in this build."
+msgstr "Managing project AI tools is unavailable in this build."
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
 msgstr "Map the architecture"
@@ -4079,9 +4107,11 @@ msgid "Match case"
 msgstr "Match case"
 
 #. Group label above the per-editor MCP list in Settings → AI tools & CLI — each row wires OpenKnowledge's MCP server into that tool
+#. Group label above the per-editor project MCP list in Settings → This project → AI tools
 #. Section label above the editor checkbox list in the first-launch dialog — each row wires OpenKnowledge's MCP server into that tool
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 msgid "MCP connections"
 msgstr "MCP connections"
 
@@ -4725,6 +4755,16 @@ msgstr "On"
 msgid "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
 msgstr "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
 
+#. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "One more step: enable it in Cursor → Settings → Tools & MCP (Cursor leaves project servers off until you turn them on)."
+msgstr "One more step: enable it in Cursor → Settings → Tools & MCP (Cursor leaves project servers off until you turn them on)."
+
+#. Next step for a Claude Code project MCP row
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "One more step: run <0>claude</0> in this project and approve OpenKnowledge once."
+msgstr "One more step: run <0>claude</0> in this project and approve OpenKnowledge once."
+
 #: src/components/ConsentDialogBody.tsx
 msgid "One pattern per line — appended to <0>.okignore</0>."
 msgstr "One pattern per line — appended to <0>.okignore</0>."
@@ -4774,6 +4814,10 @@ msgstr "Open a doc to share its URL."
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Open a project to edit."
 msgstr "Open a project to edit."
+
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "Open a project to manage its AI tool connections."
+msgstr "Open a project to manage its AI tool connections."
 
 #: src/presence/PresenceBar.tsx
 msgid "Open activity panel for {tooltipName}"
@@ -5308,6 +5352,10 @@ msgstr "project"
 msgid "Project"
 msgstr "Project"
 
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "Project AI tool management is only available in the OpenKnowledge desktop app."
+msgstr "Project AI tool management is only available in the OpenKnowledge desktop app."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "Project folder created, but git init failed. Try again."
@@ -5320,6 +5368,11 @@ msgstr "Project name"
 #: src/components/SeedDialog.tsx
 msgid "Project root"
 msgstr "Project root"
+
+#. Group label above the project runtime-skill row in Settings → This project → AI tools
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "Project skill"
+msgstr "Project skill"
 
 #: src/lib/skill-scope.ts
 msgid "Project Skill"
@@ -6756,6 +6809,11 @@ msgstr "Task List"
 msgid "Teach agents a repeatable task. You can edit the body after creating."
 msgstr "Teach agents a repeatable task. You can edit the body after creating."
 
+#. Subtext for the project runtime-skill row
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "Teaches coding agents in this project to read and write through OpenKnowledge."
+msgstr "Teaches coding agents in this project to read and write through OpenKnowledge."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Team Wiki"
 msgstr "Team Wiki"
@@ -7665,6 +7723,7 @@ msgid "What this changes"
 msgstr "What this changes"
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 msgid "What this checkbox changes"
 msgstr "What this checkbox changes"
 

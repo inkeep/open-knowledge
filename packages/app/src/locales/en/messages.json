@@ -527,6 +527,7 @@
     "CWzc2T": [
       "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
     ],
+    "CXTwen": ["Can't safely edit this project config"],
     "CXj9C-": ["New property name"],
     "C_WGy8": [
       "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
@@ -743,6 +744,7 @@
     "HM56Bx": ["Creating..."],
     "HPTPGr": ["Create a new spec file for my user story"],
     "HSh8u_": ["Folders"],
+    "HTW0Zw": ["One more step: run <0>claude</0> in this project and approve OpenKnowledge once."],
     "HXFyWD": ["Split diff"],
     "HdkSiO": ["New file"],
     "HfI1dR": ["I already have it locally →"],
@@ -895,6 +897,7 @@
     "LpB85N": ["Plain"],
     "LtI9AS": ["Owner"],
     "LtSYdi": ["Reveal in Finder"],
+    "LtiJ5c": ["Project skill"],
     "LuoJWu": [
       [
         "truncatedShownCount",
@@ -966,6 +969,9 @@
     "NIWAux": ["No docs registered under #", ["tagDocsName"], "."],
     "NJyQi_": ["Branch ", ["shareBranch"], " no longer exists on the remote."],
     "NKkZXl": ["Initialize and open"],
+    "NNJsn7": [
+      "One more step: enable it in Cursor → Settings → Tools & MCP (Cursor leaves project servers off until you turn them on)."
+    ],
     "NOHyEE": ["Retry push"],
     "NORKZU": ["Pattern warnings: ", ["summary"]],
     "NQ8llq": ["Add item"],
@@ -1413,6 +1419,9 @@
     "ZWwYwM": ["Base branch"],
     "ZWxfrc": ["cleared folder properties"],
     "ZWyHmq": ["This project"],
+    "ZYtq3m": [
+      "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
+    ],
     "Zf0w-R": [
       "Take a piece of writing from a rough idea to a finished draft to something you're ready to share. Good for blog posts, essays, or anything you want to move through clear stages."
     ],
@@ -1441,6 +1450,7 @@
       "</1>."
     ],
     "_BthEY": ["Open in ", ["shareBranch"]],
+    "_NX6gG": ["Managing project AI tools is unavailable in this build."],
     "_PACVa": ["Release notes"],
     "_PBJRl": ["Add at least one letter or number."],
     "_QwkMu": ["No matching paths"],
@@ -1554,6 +1564,7 @@
     "cn1sLi": ["Couldn't connect OpenKnowledge tools to Claude Code. Please try again."],
     "cnGeoo": ["Delete"],
     "cqQyPB": ["Folder name"],
+    "crqzW5": ["AI tools"],
     "cs4mps": ["Config sharing"],
     "csDS2L": ["Available"],
     "ct2kv5": ["No headings in ", ["pageTarget"]],
@@ -1665,6 +1676,7 @@
     "fwhX-N": ["Indent or outdent source"],
     "fxbCNQ": ["Synced. The link is up to date."],
     "g3UF2V": ["Accept"],
+    "g4WlQK": ["Project AI tool management is only available in the OpenKnowledge desktop app."],
     "g4XBm0": ["Small section heading."],
     "g58Kwy": [
       "<",
@@ -1867,6 +1879,7 @@
     "k_yIIc": ["Will be created at: <0>", ["targetPreview"], "</0>"],
     "kdzzOK": ["Off — search ranks by keyword only. No content leaves this computer."],
     "keNFEd": ["Set identity"],
+    "khCa4M": ["Teaches coding agents in this project to read and write through OpenKnowledge."],
     "kj9pAE": ["Creating page"],
     "kknhfj": ["No changes"],
     "kmKqZg": ["Clusters"],
@@ -1969,6 +1982,9 @@
       "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
     ],
     "n7aopT": ["Editor mode"],
+    "n8DwqQ": [
+      "Connects automatically the next time you open this project in a trusted Codex session."
+    ],
     "nCzR-G": ["Copy code ", ["userCode"]],
     "nD7Fx9": [
       "This replaces the current skill content with the bundled version ",
@@ -2410,6 +2426,7 @@
     "yYR6za": ["Display text"],
     "yZmvQ4": ["This project's server (v", ["0"], ") is newer than this app (v", ["1"], ")."],
     "y_5CE8": ["Item ", ["0"]],
+    "yaPGPa": ["Open a project to manage its AI tool connections."],
     "yf5r22": [
       ["keyName"],
       " type: ",

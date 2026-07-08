@@ -470,6 +470,47 @@ type OkIntegrationsSetResult =
   | { readonly ok: true; readonly status: OkIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: OkIntegrationsStatus };
 
+/** Post-install manual step a project MCP config needs before OK's tools
+ *  connect: `approve-once` (Claude Code), `enable-manually` (Cursor, silently
+ *  disabled until toggled), `auto-connect` (Codex on a trusted project),
+ *  `none`. */
+type OkProjectIntegrationsFollowUp = 'approve-once' | 'enable-manually' | 'auto-connect' | 'none';
+
+/** Component inventory for Settings → This project → AI tools (per-editor
+ *  PROJECT MCP config files + the single project runtime skill), scoped to the
+ *  project the requesting window has open. `hasProject: false` → empty state;
+ *  `available: false` → read-only. */
+interface OkProjectIntegrationsStatus {
+  readonly available: boolean;
+  readonly hasProject: boolean;
+  readonly projectDir: string | null;
+  readonly editors: readonly {
+    readonly id: OkMcpWiringEditorId;
+    readonly label: string;
+    readonly state: OkIntegrationsEditorState;
+    readonly configPath: string;
+    readonly entryLocator: string;
+    readonly followUp: OkProjectIntegrationsFollowUp;
+  }[];
+  readonly skill: {
+    readonly installed: boolean;
+    readonly paths: readonly string[];
+  } | null;
+}
+
+/** One toggle for `projectIntegrations.setComponent`. The skill is a single
+ *  row (no id) — it fans out across every capable editor. */
+interface OkProjectIntegrationsSetRequest {
+  readonly component:
+    | { readonly kind: 'editor'; readonly id: OkMcpWiringEditorId }
+    | { readonly kind: 'skill' };
+  readonly enabled: boolean;
+}
+
+type OkProjectIntegrationsSetResult =
+  | { readonly ok: true; readonly status: OkProjectIntegrationsStatus }
+  | { readonly ok: false; readonly error: string; readonly status: OkProjectIntegrationsStatus };
+
 /**
  * Per-project consent dialog — renderer-facing payload + result shapes.
  * Mirrors the desktop and app copies; drift caught by the
@@ -1377,6 +1418,17 @@ export interface OkDesktopBridge {
   integrations: {
     status(): Promise<OkIntegrationsStatus>;
     setComponent(request: OkIntegrationsSetRequest): Promise<OkIntegrationsSetResult>;
+  };
+
+  /**
+   * Settings → This project → AI tools: live per-component install state +
+   * one-component install/uninstall for OK's PROJECT-LOCAL footprint (per-editor
+   * project MCP config files + the project runtime skill) against the project
+   * the requesting window has open. Mutations serialize in main.
+   */
+  projectIntegrations: {
+    status(): Promise<OkProjectIntegrationsStatus>;
+    setComponent(request: OkProjectIntegrationsSetRequest): Promise<OkProjectIntegrationsSetResult>;
   };
 
   /**

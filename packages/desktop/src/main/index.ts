@@ -56,12 +56,14 @@ import {
   previewContent,
   readExistingMcpEntry,
   removeOwnMcpEntry,
+  removeProjectSkill,
   removeUserGlobalSkillBundle,
   runStop,
   type TrackedRefusal,
   validateLocalFolderForShare,
   writeEditorMcpConfig,
   writeProjectAiIntegrations,
+  writeProjectSkill,
   writeUserMcpConfigs,
 } from '@inkeep/open-knowledge';
 import {
@@ -233,6 +235,10 @@ import {
   removePathShimFromRcFiles,
 } from './path-install.ts';
 import { installStdioBrokenPipeGuard } from './process-safety-net.ts';
+import {
+  type ProjectIntegrationsCliSurface,
+  registerProjectIntegrationsSettings,
+} from './project-integrations-settings.ts';
 import {
   checkAndRepairProjectMcpOnProjectOpen,
   type ProjectMcpReclaimCliSurface,
@@ -3882,6 +3888,7 @@ function registerIpcHandlers() {
   });
 
   registerIntegrationsSettingsIpc();
+  registerProjectIntegrationsSettingsIpc();
 }
 
 /**
@@ -3909,7 +3916,11 @@ function registerIntegrationsSettingsIpc(): void {
     available,
     ipcMain,
     cli: {
-      allEditorIds: ALL_EDITOR_IDS,
+      // User-global surface only: `scope: 'project'` targets (Pi) have no
+      // user-global MCP config to manage — their `configPath()` throws — so
+      // they must not surface as a row here, mirroring the consent dialog's
+      // and startup repair sweep's scope filter in `mcp-wiring.ts`.
+      allEditorIds: ALL_EDITOR_IDS.filter((id) => EDITOR_TARGETS[id].scope === 'global'),
       editorLabel: (editorId) => EDITOR_TARGETS[editorId].label,
       detectInstalledEditors: (cwd, home) => detectInstalledEditors(cwd, home),
       classifyExistingMcpEntry: (editorId, home) =>
@@ -4045,6 +4056,104 @@ function registerIntegrationsSettingsIpc(): void {
       warn: (msg, ctx) => integrationsLogger.warn((ctx ?? {}) as Record<string, unknown>, msg),
       error: (msg, ctx) => integrationsLogger.error((ctx ?? {}) as Record<string, unknown>, msg),
       event: (payload) => integrationsLogger.info(payload, payload.event),
+    },
+  });
+}
+
+/**
+ * Settings → This project → AI tools: persistent status/toggle IPC over the
+ * same PROJECT-LOCAL install actors as the per-project onboarding dialog and
+ * the reclaim-on-open sweep — `writeEditorMcpConfig` / `removeOwnMcpEntry` with
+ * a project config-path override for the per-editor MCP files, and
+ * `writeProjectSkill` / `removeProjectSkill` for the project runtime skill.
+ * Every request resolves the sender window's project (webContents →
+ * ProjectContext) so the renderer can never target a foreign directory.
+ * `available` mirrors the global surface's gate set.
+ */
+function registerProjectIntegrationsSettingsIpc(): void {
+  const projectLogger = getLogger('project-integrations-settings');
+  const available =
+    process.env.OK_RECLAIM_DISABLE !== '1' &&
+    process.platform === 'darwin' &&
+    (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
+    /\.app\/Contents\/MacOS\/[^/]+$/.test(app.getPath('exe'));
+  const tildifyHomePath = (path: string): string => {
+    const home = osHomedir();
+    return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+  };
+  // The canonical project skill lives under Claude Code's `.claude/skills/`; its
+  // presence is the single row's checked state (the write fans out to every
+  // capable editor, but the `.claude` copy is the one the discovery skill and
+  // CLAUDE.md reference).
+  const canonicalSkillTarget = EDITOR_TARGETS.claude;
+  const projectInstallOpts: McpInstallOptions = { mode: 'published', skipAvailabilityCheck: true };
+
+  const cli: ProjectIntegrationsCliSurface = {
+    allEditorIds: ALL_EDITOR_IDS,
+    editorLabel: (id) => EDITOR_TARGETS[id].label,
+    projectConfigPath: (id, projectDir) =>
+      EDITOR_TARGETS[id].projectConfigPath?.(projectDir) ?? null,
+    projectSkillPath: (id, projectDir) => EDITOR_TARGETS[id].projectSkillPath?.(projectDir) ?? null,
+    entryLocator: (id) => {
+      const target = EDITOR_TARGETS[id];
+      // `format: 'file'` targets (Pi) own a whole managed file, not a keyed
+      // entry — there is no dotted/table locator to show.
+      if (target.format === 'file') return 'open-knowledge (managed extension file)';
+      const server = target.serverName('');
+      return target.format === 'toml'
+        ? `[${target.topLevelKey}.${server}]`
+        : [target.topLevelKey, target.serverMapSubKey, server].filter(Boolean).join('.');
+    },
+    classifyExistingProjectMcpConfig: (id, projectDir, projectPath) =>
+      classifyExistingMcpEntry(EDITOR_TARGETS[id], projectDir, undefined, projectPath),
+    isOwnEntry: (entry) => isEntryUpToDate(entry) || isOwnManagedEntry(entry),
+    writeProjectMcpConfig: ({ id, projectDir, projectPath }) => {
+      const result = writeEditorMcpConfig(
+        EDITOR_TARGETS[id],
+        projectDir,
+        projectInstallOpts,
+        undefined,
+        projectPath,
+      );
+      if (result.action === 'written' || result.action === 'overwritten') {
+        return { action: result.action };
+      }
+      if (result.action === 'declined') {
+        return { action: 'declined', reason: result.declineReason };
+      }
+      return { action: 'failed', error: result.error };
+    },
+    removeProjectMcpEntry: (id, projectDir, projectPath) =>
+      removeOwnMcpEntry(EDITOR_TARGETS[id], projectDir, undefined, projectPath),
+    isProjectSkillInstalled: (projectDir) => {
+      const skillPath = canonicalSkillTarget.projectSkillPath?.(projectDir);
+      return skillPath !== undefined && existsSync(skillPath);
+    },
+    writeProjectSkill: (id, projectDir) => {
+      const result = writeProjectSkill(EDITOR_TARGETS[id], projectDir);
+      return { action: result.action, ...(result.error ? { error: result.error } : {}) };
+    },
+    removeProjectSkill: (id, projectDir) => {
+      const result = removeProjectSkill(EDITOR_TARGETS[id], projectDir);
+      return { action: result.action, ...(result.error ? { error: result.error } : {}) };
+    },
+  };
+
+  registerProjectIntegrationsSettings({
+    available,
+    ipcMain,
+    cli,
+    resolveProjectDir: (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return null;
+      return (
+        wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike)?.projectPath ?? null
+      );
+    },
+    tildify: tildifyHomePath,
+    logger: {
+      warn: (msg, ctx) => projectLogger.warn((ctx ?? {}) as Record<string, unknown>, msg),
+      event: (payload) => projectLogger.info(payload, payload.event),
     },
   });
 }

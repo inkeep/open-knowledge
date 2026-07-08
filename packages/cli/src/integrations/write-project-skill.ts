@@ -133,3 +133,70 @@ export function writeProjectSkill(target: EditorMcpTarget, cwd: string): Project
     };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Project-local skill uninstaller
+// ---------------------------------------------------------------------------
+
+export interface ProjectSkillRemoveResult {
+  readonly editorId: EditorId;
+  readonly label: string;
+  readonly action: 'removed' | 'not-present' | 'skipped-unsupported' | 'failed';
+  readonly path: string;
+  readonly error?: string;
+}
+
+/**
+ * Targeted uninstall of the project-local runtime skill — the reverse of
+ * `writeProjectSkill`, for the Settings-driven per-component toggle.
+ *
+ * OpenKnowledge owns the whole `<host>/skills/open-knowledge/` directory (the
+ * write path `cpSync`s the bundle into it wholesale), so removal is
+ * whole-directory. The presence of the managed `SKILL.md` at
+ * `projectSkillPath` is the ownership marker: a directory at the managed path
+ * WITHOUT it is not something OK authored and is left untouched
+ * (`not-present`). The same symlink-escape guard the write path uses runs
+ * before the `rmSync`, so a symlinked ancestor (`.claude -> /etc`) can never
+ * route the recursive removal outside the project tree.
+ */
+export function removeProjectSkill(target: EditorMcpTarget, cwd: string): ProjectSkillRemoveResult {
+  const skillPath = target.projectSkillPath?.(cwd);
+  if (!skillPath) {
+    return {
+      editorId: target.id,
+      label: target.label,
+      action: 'skipped-unsupported',
+      path: '',
+    };
+  }
+  try {
+    const targetDir = dirname(skillPath);
+    // No managed SKILL.md at the path → nothing of ours to remove. Idempotent
+    // re-run and "a foreign directory squatting the name" both land here.
+    if (!existsSync(skillPath)) {
+      return {
+        editorId: target.id,
+        label: target.label,
+        action: 'not-present',
+        path: skillPath,
+      };
+    }
+    // Refuse before `rmSync` runs, exactly as the write path does.
+    assertProjectPathSafe(targetDir, cwd);
+    rmSync(targetDir, { recursive: true, force: true });
+    return {
+      editorId: target.id,
+      label: target.label,
+      action: 'removed',
+      path: skillPath,
+    };
+  } catch (err) {
+    return {
+      editorId: target.id,
+      label: target.label,
+      action: 'failed',
+      path: skillPath,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}

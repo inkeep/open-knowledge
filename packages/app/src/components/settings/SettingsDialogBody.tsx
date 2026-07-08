@@ -109,6 +109,7 @@ import { AccountSection } from './AccountSection';
 import { AiToolsSection } from './AiToolsSection';
 import { EmbeddingsKeySection } from './EmbeddingsKeySection';
 import { OkignoreSection } from './OkignoreSection';
+import { ProjectAiToolsSection } from './ProjectAiToolsSection';
 import { ProjectTemplatesSection } from './ProjectTemplatesSection';
 import { SearchSection } from './SearchSection';
 import { SkillsManagerSection } from './SkillsManagerSection';
@@ -248,6 +249,12 @@ export function SettingsDialogBody({
     // Global AI-tool management — desktop-only (nav item gated to the
     // Electron host). Talks to main over the integrations bridge.
     return <AiToolsSection />;
+  }
+  if (activeId === 'project-ai-tools') {
+    // Project-local AI-tool management — desktop-only (nav item gated to the
+    // Electron host). Talks to main over the projectIntegrations bridge,
+    // scoped to the window's open project.
+    return <ProjectAiToolsSection />;
   }
   if (activeId === 'claude-desktop') {
     return <IntegrationsSection />;

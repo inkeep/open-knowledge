@@ -115,7 +115,15 @@ export {
 // Security-critical symlink-escape guard for project-scope writes. Re-exported
 // so the Desktop's skill-reclaim sweep shares the one canonical implementation
 // rather than duplicating it (precedent: single source of truth for guards).
-export { assertProjectPathSafe } from './integrations/write-project-skill.ts';
+// `removeProjectSkill` is the Settings-driven uninstall reverse of
+// `writeProjectSkill` (which the Desktop reaches via `applyProjectIntegrations`).
+export {
+  assertProjectPathSafe,
+  type ProjectSkillRemoveResult,
+  type ProjectSkillResult,
+  removeProjectSkill,
+  writeProjectSkill,
+} from './integrations/write-project-skill.ts';
 export {
   addOkPathsToGitExclude,
   type ExcludeWriteResult,

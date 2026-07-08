@@ -1,4 +1,3 @@
-
 import type { Nodes, Root } from 'mdast';
 import { visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
@@ -467,8 +466,7 @@ export function applyPositionSliceToNode(
         const first = source[startOff];
         if (first !== '[' && first !== '<' && !node.title) {
           node.data.sourceStyle = 'gfm-autolink';
-        }
-        else if (first === '[') {
+        } else if (first === '[') {
           const slice = source.slice(startOff, endOff);
           const closeBracketIdx = slice.lastIndexOf('](');
           if (closeBracketIdx !== -1) {

@@ -30,7 +30,7 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 78 (ratchet cap 78). The 74→75 bump reconciled a merge collision:
+ * Count is 79 (ratchet cap 79). The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -38,8 +38,10 @@
  * on main in parallel. The 76→77 bump added the share-receive branch-switch
  * dialog's verdict probe (`ok:project:fetch-target-status`). The 77→78 bump
  * added Settings → AI tools (`ok:integrations:dispatch`, a status+set
- * discriminated fold per the worktree-dispatch precedent). Full rationale in
- * the ratchet test header.
+ * discriminated fold per the worktree-dispatch precedent). The 78→79 bump added
+ * its project-scoped sibling Settings → This project → AI tools
+ * (`ok:project-integrations:dispatch`, same status+set fold, scoped to the
+ * sender window's project). Full rationale in the ratchet test header.
  */
 
 import type {
@@ -491,6 +493,73 @@ export interface IntegrationsSetRequest {
 export type IntegrationsSetResult =
   | { readonly ok: true; readonly status: IntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: IntegrationsStatus };
+
+// ---------------------------------------------------------------------------
+// Project-scope siblings — Settings → This project → AI tools
+// ---------------------------------------------------------------------------
+
+/** Post-install manual step a project MCP config needs before OK's tools
+ *  actually connect — surfaced per row so a project-only install isn't a silent
+ *  dead-end.
+ *   - `approve-once`    — Claude Code: one per-user approval prompt per project.
+ *   - `enable-manually` — Cursor: written but sits disabled until the user
+ *     flips it in Settings → Tools & MCP (per user × workspace × machine; can't
+ *     be pre-seeded from the repo).
+ *   - `auto-connect`    — Codex: connects on the next turn for a trusted project.
+ *   - `none`            — no known extra step. */
+export type ProjectIntegrationsFollowUp =
+  | 'approve-once'
+  | 'enable-manually'
+  | 'auto-connect'
+  | 'none';
+
+/** Per-editor project MCP config row. `state` reuses `IntegrationsEditorState`
+ *  (installed / not-installed / foreign / unmanageable). `configPath` is
+ *  project-relative (e.g. `.mcp.json`, `.cursor/mcp.json`). */
+export interface ProjectIntegrationsEditorStatus {
+  readonly id: McpWiringEditorId;
+  readonly label: string;
+  readonly state: IntegrationsEditorState;
+  readonly configPath: string;
+  readonly entryLocator: string;
+  readonly followUp: ProjectIntegrationsFollowUp;
+}
+
+/** The single project runtime-skill row. A toggle installs/removes the skill
+ *  across every project-skill-capable editor at once; `paths` lists each
+ *  project-relative dir it touches. `installed` reflects the canonical
+ *  `.claude/skills/open-knowledge` copy being on disk. */
+export interface ProjectIntegrationsSkillStatus {
+  readonly installed: boolean;
+  readonly paths: readonly string[];
+}
+
+/** Component inventory for Settings → This project → AI tools. `hasProject:
+ *  false` means no project resolved from the requesting window (the section
+ *  shows an empty state; status still returns). `available: false` renders the
+ *  section read-only. `projectDir` is tildified, disclosure only. */
+export interface ProjectIntegrationsStatus {
+  readonly available: boolean;
+  readonly hasProject: boolean;
+  readonly projectDir: string | null;
+  readonly editors: readonly ProjectIntegrationsEditorStatus[];
+  readonly skill: ProjectIntegrationsSkillStatus | null;
+}
+
+/** One toggleable component in Settings → This project → AI tools. The skill is
+ *  a single row (no id) — it fans out across every capable editor. */
+export type ProjectIntegrationsComponentRef =
+  | { readonly kind: 'editor'; readonly id: McpWiringEditorId }
+  | { readonly kind: 'skill' };
+
+export interface ProjectIntegrationsSetRequest {
+  readonly component: ProjectIntegrationsComponentRef;
+  readonly enabled: boolean;
+}
+
+export type ProjectIntegrationsSetResult =
+  | { readonly ok: true; readonly status: ProjectIntegrationsStatus }
+  | { readonly ok: false; readonly error: string; readonly status: ProjectIntegrationsStatus };
 
 /** Options for the open-folder native picker. `defaultPath` seeds the initial
  *  directory shown to the user (e.g., the project root for the consent dialog's
@@ -1157,6 +1226,18 @@ export interface RequestChannels {
   'ok:integrations:dispatch': {
     args: [request: { kind: 'status' } | ({ kind: 'set' } & IntegrationsSetRequest)];
     result: IntegrationsStatus | IntegrationsSetResult;
+  };
+
+  /**
+   * Settings → This project → AI tools. Project-scoped sibling of
+   * `ok:integrations:dispatch`: same discriminated `status` read + one-component
+   * `set`, but scoped to the project the SENDER window has open (main resolves
+   * webContents → ProjectContext; the renderer never names a directory). Covers
+   * the per-editor project MCP config files + the single project runtime skill.
+   */
+  'ok:project-integrations:dispatch': {
+    args: [request: { kind: 'status' } | ({ kind: 'set' } & ProjectIntegrationsSetRequest)];
+    result: ProjectIntegrationsStatus | ProjectIntegrationsSetResult;
   };
 
   /**

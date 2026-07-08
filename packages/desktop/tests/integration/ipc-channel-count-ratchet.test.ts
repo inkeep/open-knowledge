@@ -275,8 +275,28 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  *     guards), and their confirm semantics are batched consent, not
  *     per-component install/uninstall with live status. New
  *     `ok:integrations:*` namespace, single member.
+ *
+ * Bumped from 78 to 79 for Settings → This project → AI tools (per-component
+ * install/uninstall of OK's PROJECT-LOCAL footprint):
+ *
+ *   - `ok:project-integrations:dispatch` — the project-scoped sibling of
+ *     `ok:integrations:dispatch`. Status read + one-component set folded into a
+ *     single discriminated channel (same `ok:worktree:dispatch` precedent), so
+ *     the surface costs one slot, not two. Could NOT fold into
+ *     `ok:integrations:dispatch`: that channel is user-global (keyed on
+ *     `osHomedir()`, no active project), whereas this one MUST resolve the
+ *     sender window's project (webContents → ProjectContext) and its component
+ *     set differs (per-editor PROJECT config files + a project skill; no
+ *     PATH/Claude-Desktop rows). A shared channel would have to carry a
+ *     scope discriminant AND branch every actor internally — two surfaces
+ *     wearing one channel. Could not fold into `ok:onboarding:*` (the one-shot
+ *     per-project consent dialog with sender-binding + mount-ack idempotence,
+ *     batched consent rather than live per-component toggles). New
+ *     `ok:project-integrations:*` namespace, single member. The typed-ipc
+ *     migration remains the committed end state; scoped exception with the
+ *     `ipc-channels.ts` header commitment updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 78;
+const REQUEST_CHANNEL_CAP = 79;
 
 /**
  * Extract the body of an interface block by name. Returns the substring
