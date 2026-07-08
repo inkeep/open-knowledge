@@ -147,9 +147,15 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
+      # Pinned to the 11.x line, NOT npm@latest: npm 12.0.0's published
+      # tarball omits the top-level bundled `sigstore` module that
+      # libnpmpublish requires, so publishing with provenance dies with
+      # MODULE_NOT_FOUND the moment `latest` serves 12.x (broke the
+      # 0.28.1-beta.0/.1 cuts on 2026-07-08). Bump the pin only after
+      # verifying `npm publish` with NPM_CONFIG_PROVENANCE works on it.
       - name: Ensure npm 11.5.1+ for OIDC + provenance
         run: |
-          npm install -g npm@latest
+          npm install -g npm@11
           echo "npm $(npm --version)"
 
       - name: Install
