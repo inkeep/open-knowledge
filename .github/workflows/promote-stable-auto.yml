@@ -1,0 +1,191 @@
+name: Auto-promote stable
+
+# Scheduled gatekeeper on inkeep/open-knowledge that AUTOMATICALLY promotes the
+# LATEST beta that has soaked >= 24h online to stable, but only fires the
+# promotion inside the US business-hours window (9am ET .. 4pm PT, Mon-Fri).
+#
+# "Latest soaked" (not simply "newest"): it walks the beta tags newest -> oldest
+# in the established version order and promotes the first that is unpromoted,
+# fully cut, and >= 24h online. A fresher beta cut < 24h ago is skipped in favor
+# of the previous soaked beta; the skipped beta's changeset rolls forward into a
+# later beta/stable via the cumulative changeset model, so nothing is lost. The
+# descent stops at the first already-promoted beta, so it never reaches back
+# across a promoted cycle boundary. This selection logic lives in
+# .github/scripts/promote-stable-auto.mjs (unit-tested under `bun test --cwd
+# .github/scripts`), not inline bash — it is the sole safety gate for automated
+# promotions (see NOTE below), so it is fail-loud and test-covered.
+#
+# This workflow does NOT reimplement promotion. It dispatches promote-stable.yml
+# with an EXPLICIT beta_tag (the selected beta); promote-stable tags vX.Y.Z,
+# creates the Release, and cascades npm --tag latest + signed stable DMG +
+# main-reset unchanged. "OK desktop to stable" is covered for free via the
+# promote-stable -> desktop-release cascade (latest-mac.yml + DMG). NOTE:
+# promote-stable's Guard A/B run only on its blank/auto path, so the explicit
+# dispatch bypasses them; the script performs the unpromoted + fully-cut checks
+# itself, and fails loud (job error, retry next tick) on any non-404 gh/git
+# error rather than folding an infra failure into a promote/no-op decision.
+#
+# Why a schedule is the backbone (not push alone): eligibility here is reached
+# by the passage of TIME (a beta crossing 24h old), not by a commit. During a
+# quiet stretch with no pushes an eligible beta would never promote if we only
+# ran on commits. The cron is what notices "24h has now elapsed"; the push
+# trigger is an additive fast-path so an already-eligible beta promotes promptly
+# when a Copybara mirror commit lands in-hours.
+#
+# Weekend latency: the cron is Mon-Fri, so a beta that crosses 24h over the
+# weekend promotes on the next weekday tick — a Friday-published beta can be up
+# to ~71h online before its Monday-morning promotion. This is the intended "no
+# weekend promotions" behavior; workflow_dispatch (which bypasses the hours gate)
+# is the escape hatch for an urgent out-of-hours promotion.
+#
+# DST correctness: GitHub Actions cron is UTC and ignores daylight saving, so a
+# hard-coded "9am ET" would drift an hour twice a year. The cron fires hourly
+# across the UTC band that brackets the ET/PT window year-round; the
+# AUTHORITATIVE business-hours decision is made in-script against the
+# America/New_York clock (see the "Business-hours gate" step), so the window
+# stays exact through DST transitions. 4pm PT == 7pm ET == 19:00 ET, so the ET
+# window is 09:00 (inclusive) .. 19:00 (exclusive).
+#
+# Concurrency + de-dupe: this evaluator carries its own group (distinct from the
+# ok-release-cadence lock that release.yml / promote-stable.yml share) so it
+# never blocks a real cut. Double-promotion is prevented three ways:
+# (1) cancel-in-progress supersedes an overlapping eval, (2) a fail-loud in-flight
+# check skips when a promote-stable run is already in_progress/queued, and
+# (3) the script stops at the first already-promoted beta and never selects one
+# whose stable tag already exists.
+
+on:
+  schedule:
+    # Hourly at :17 (off the :00 scheduler spike), 13:00-23:59 UTC, Mon-Fri.
+    # This UTC band brackets the ET/PT window across DST (9am ET = 13:00 UTC
+    # under EDT / 14:00 UTC under EST; 4pm PT = 23:00 UTC under PDT / 00:00 UTC
+    # under PST). The in-script ET gate is authoritative and rejects any tick
+    # outside 09:00-19:00 ET for the current DST state, so band-edge over-firing
+    # is a clean no-op. Ticks land at :17, so up to ~1h can elapse before a
+    # newly-soaked beta is noticed, and the final ~40 min before the window
+    # closes falls between the last in-window tick and the boundary; both are
+    # covered by the next in-window tick or the push fast-path.
+    - cron: "17 13-23 * * 1-5"
+  # Fast-path: re-evaluate the gate when Copybara mirrors a commit to main so an
+  # already-eligible beta promotes promptly in-hours. Additive to the schedule;
+  # the same in-script business-hours + soak gate applies.
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Evaluate the gate and log the decision without dispatching promote-stable."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  # actions:write is required to dispatch promote-stable.yml (workflow_dispatch
+  # via the API) and covers the read for the in-flight `gh run list` check.
+  # contents:read to read tags. No id-token and no App token here — promote-stable
+  # mints its own App token for the identity-asserting work (tag push, cross-repo
+  # main-reset dispatch), so this evaluator stays minimally scoped.
+  contents: read
+  actions: write
+
+concurrency:
+  # Deliberately NOT the shared ok-release-cadence group — a read-only evaluator
+  # must never queue behind (or delay) a real beta cut / stable promotion.
+  # cancel-in-progress:true lets a newer eval (e.g. a push arriving mid-cron-tick)
+  # supersede an older one; the eval is idempotent so a cancelled run loses nothing.
+  group: ok-auto-promote-stable
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    name: Evaluate 24h soak + business-hours gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Business-hours gate (America/New_York)
+        id: hours
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # Manual runs bypass the business-hours gate so an operator can test the
+          # soak logic at any time; schedule + push obey the window.
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "workflow_dispatch — bypassing business-hours gate (soak + guards still apply)."
+            echo "open=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          DOW=$(TZ="America/New_York" date +%u)   # 1=Mon .. 7=Sun
+          HOUR=$(TZ="America/New_York" date +%H)   # 00 .. 23
+          HOUR=$((10#$HOUR))                       # strip leading zero (octal-safe)
+          # Window: weekdays, 09:00 ET (inclusive) .. 19:00 ET (exclusive).
+          # 19:00 ET == 16:00 PT == 4pm PT, the requested upper bound.
+          if (( DOW >= 1 && DOW <= 5 )) && (( HOUR >= 9 && HOUR < 19 )); then
+            echo "In business hours (ET: DOW=$DOW HOUR=$HOUR)."
+            echo "open=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Outside business hours (ET: DOW=$DOW HOUR=$HOUR; window Mon-Fri 09:00-18:59 ET = 9am ET .. 4pm PT). No-op."
+            echo "open=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout (need full tag history for beta resolution)
+        if: steps.hours.outputs.open == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          # Read-only job: it resolves tags with git and talks to GitHub via a
+          # separate GH_TOKEN; it never pushes, so don't persist GITHUB_TOKEN into
+          # the runner's .git/config (least privilege for a release-dispatching job).
+          persist-credentials: false
+
+      - name: Set up Node
+        if: steps.hours.outputs.open == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - name: Select the beta to promote
+        id: select
+        if: steps.hours.outputs.open == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOAK_SECONDS: "86400" # 24h online soak
+        # Writes target= / stable= to GITHUB_OUTPUT (empty target => no-op). Exits
+        # non-zero (fails the job) on any non-404 gh/git infra error — a fail-loud
+        # retry-next-tick, never a silent skip. Logic + tests:
+        # .github/scripts/promote-stable-auto.{mjs,test.mjs}.
+        run: node .github/scripts/promote-stable-auto.mjs
+
+      - name: Guard against an in-flight promotion, then dispatch
+        if: steps.hours.outputs.open == 'true' && steps.select.outputs.target != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ steps.select.outputs.target }}
+          TARGET_STABLE: ${{ steps.select.outputs.stable }}
+          # workflow_dispatch supplies the boolean; schedule/push leave inputs
+          # null, so default to "false" (never a dry run on the automated path).
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+          # Don't double-fire while a promote-stable run is already active — covers
+          # the window between dispatch and promote-stable pushing the stable tag
+          # (after which the script's stop-at-already-promoted catches it). Fail
+          # loud on a query error: an evaluator that cannot confirm "no promotion
+          # in flight" must abort and retry next tick, not assume zero (no
+          # `|| echo 0`).
+          active=$(gh run list --workflow=promote-stable.yml --json status \
+            --jq '[.[] | select(.status=="in_progress" or .status=="queued")] | length')
+          if [[ "$active" -gt 0 ]]; then
+            echo "::notice::A promote-stable run is already in_progress/queued (${active}); skipping to avoid a duplicate promotion."
+            exit 0
+          fi
+          if [[ "$DRY_RUN" == "true" ]]; then
+            echo "::notice::DRY RUN: would dispatch promote-stable.yml with beta_tag=${TARGET} -> ${TARGET_STABLE}."
+            exit 0
+          fi
+          # Explicit beta_tag (not blank): a blank dispatch auto-resolves the NEWEST
+          # beta, but under "latest soaked" the target may sit below the head.
+          # promote-stable's explicit-tag path skips its own Guard A/B, so the
+          # script's unpromoted + fully-cut checks are the safety net for this dispatch.
+          gh workflow run promote-stable.yml -f beta_tag="$TARGET"
+          echo "::notice::Dispatched promote-stable for ${TARGET} -> ${TARGET_STABLE} (npm --tag latest + stable DMG + main-reset)."

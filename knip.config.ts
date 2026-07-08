@@ -76,6 +76,7 @@ export default {
     '.github/scripts/cla-gate.test.mjs': ['files'],
     '.github/scripts/cla-gate.mjs': ['exports'],
     '.github/scripts/bridge-public-pr-to-monorepo.test.mjs': ['files'],
+    '.github/scripts/promote-stable-auto.test.mjs': ['files'],
     'docs/src/lib/share-splash.ts': ['exports', 'types'],
     'packages/app/src/components/PublishToGitHubDialog.tsx': ['types'],
     'packages/app/src/components/ShareButton.tsx': ['types'],
