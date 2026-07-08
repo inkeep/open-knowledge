@@ -1846,7 +1846,7 @@ export class SyncEngine {
           if (!dirRelPath.startsWith('..') && this.contentFilter.isDirExcluded(dirRelPath))
             continue;
           walk(fullPath);
-        } else if (entry.isFile()) {
+        } else if (entry.isFile() || entry.isSymbolicLink()) {
           const contentRelPath = toPosix(relative(this.contentDir, fullPath));
           // Only include files inside contentDir that pass the filter
           if (!contentRelPath.startsWith('..') && !this.contentFilter.isExcluded(contentRelPath)) {
