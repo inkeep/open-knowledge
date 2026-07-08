@@ -24,6 +24,7 @@ import {
   LAUNCH_CONFIG_NAME,
   LAUNCH_JSON_CANONICAL_ARGS,
   LAUNCH_UI_CHAIN_SENTINEL,
+  LAUNCH_UI_WIN_CHAIN_SENTINEL,
   type LaunchJsonResult,
   scaffoldLaunchJson,
 } from './init.ts';
@@ -48,15 +49,22 @@ export type LaunchJsonEntryClassification = 'canonical' | 'legacy-bare' | 'prese
  * for direct unit testing. Unlike MCP config repair, launch.json has no
  * namespace-ownership semantics, so custom command shapes are preserved.
  *
- * - `canonical` — the current `# ok-ui-v1` `/bin/sh` chain; no repair.
+ * - `canonical` — the current `# ok-ui-v1` `/bin/sh` chain (macOS/Linux) OR the
+ *   current `# ok-ui-win-v1` `powershell` chain (Windows); no repair. BOTH
+ *   platforms' canonical shapes are recognized regardless of the CURRENT host
+ *   platform: a committed `.claude/launch.json` written on one platform must
+ *   classify as canonical on the other, or a macOS user and a Windows user
+ *   sharing the repo would have their startup repair sweeps rewrite the shared
+ *   file back and forth forever. Writers always EMIT the local platform's shape;
+ *   this predicate only decides "leave it alone".
  * - `legacy-bare` — an earlier npx-`ui` shape (any of `LEGACY_NPX_UI_FORMS`)
- *   OR an older `# ok-ui-vN` chain we own but no longer ship; rewriting forward
- *   to the current chain unwedges the worktree-no-collab-server hang (and, for
- *   the bare-npx forms, npm's engine-aware stale-release downgrade).
- * - `preserved` — anything else: version-pinned npx, a foreign `/bin/sh`
- *   command, `node /path/cli.mjs` dev mode, custom command, foreign-customized
- *   args, or any shape we don't recognize. Left alone — preserving user intent
- *   matters more than aggressive normalization.
+ *   OR an older `# ok-ui-vN` / `# ok-ui-win-vN` chain we own but no longer ship;
+ *   rewriting forward to the current chain unwedges the worktree-no-collab-server
+ *   hang (and, for the bare-npx forms, npm's engine-aware stale-release downgrade).
+ * - `preserved` — anything else: version-pinned npx, a foreign `/bin/sh` or
+ *   `powershell` command, `node /path/cli.mjs` dev mode, custom command,
+ *   foreign-customized args, or any shape we don't recognize. Left alone —
+ *   preserving user intent matters more than aggressive normalization.
  */
 export function classifyLaunchJsonEntry(
   entry: Record<string, unknown>,
@@ -70,6 +78,18 @@ export function classifyLaunchJsonEntry(
     if (typeof chain === 'string') {
       if (chain.includes(LAUNCH_UI_CHAIN_SENTINEL)) return 'canonical';
       if (/# ok-ui-v\d+/.test(chain)) return 'legacy-bare';
+    }
+    return 'preserved';
+  }
+  // Windows `powershell` chain — the same sentinel logic on `args[3]` (the
+  // `-Command` payload sits after `-NoProfile -NonInteractive -Command`). This
+  // branch is platform-independent by design (see the mutual-recognition note
+  // above): a Unix host must still see a Windows-committed entry as canonical.
+  if (entry.runtimeExecutable === 'powershell' && Array.isArray(entry.runtimeArgs)) {
+    const chain = entry.runtimeArgs[3];
+    if (typeof chain === 'string') {
+      if (chain.includes(LAUNCH_UI_WIN_CHAIN_SENTINEL)) return 'canonical';
+      if (/# ok-ui-win-v\d+/.test(chain)) return 'legacy-bare';
     }
     return 'preserved';
   }

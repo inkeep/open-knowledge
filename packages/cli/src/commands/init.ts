@@ -892,6 +892,76 @@ done
 echo "OpenKnowledge: install OK Desktop or Node.js 24+, then restart your editor" >&2
 exit 127`;
 
+/**
+ * Version sentinel for the Windows published-mode launch.json recipe — the
+ * PowerShell sibling of `LAUNCH_UI_CHAIN_SENTINEL`. First line of the chain,
+ * doubling as a PowerShell comment. Bump the suffix (`win-v2`, …) on any
+ * structurally-different chain so the repair sweep rewrites stale text forward.
+ */
+export const LAUNCH_UI_WIN_CHAIN_SENTINEL = '# ok-ui-win-v1';
+
+/**
+ * Windows published-mode `.claude/launch.json` recipe — the PowerShell member
+ * of the two-shape canonical set (Unix sibling: `LAUNCH_UI_CHAIN_V1`). Claude
+ * Code Desktop's preview pane spawns this to bring the folder's editor up on
+ * Windows, where `/bin/sh` does not exist. Mirrors the proven `# ok-mcp-win-v1`
+ * chain (`CHAIN_WIN_V1` in editors.ts) — resolves the npm-global `ok.cmd` shim
+ * first, then `npx.cmd` from PATH, then explicit version-manager/installer
+ * dirs — but runs `ok start --ui-port`, not `ok mcp`, so the opened folder
+ * gets its OWN collab server (the worktree fix). No OK Desktop bundle branches:
+ * OK Desktop does not ship on Windows, so `npm i -g @inkeep/open-knowledge` is
+ * the primary install persona, and the pinned global shim outranks `npx
+ * @latest` so the launched UI resolves to the SAME installed version as the
+ * user's hand-run `ok`.
+ *
+ * Port handling mirrors the Unix chain: capture the pane's watched `PORT` env
+ * into `$UIPORT`, defaulting to `LAUNCH_JSON_PORT` (the same port the pane
+ * probes) when `PORT` is absent, then clear `PORT` so the auto-spawned collab
+ * server kernel-allocates instead of fighting its UI sibling for the env port.
+ * `--ui-port` is always passed — that arms `ok start`'s
+ * connect-instead-of-exit-1 fallback so one committed recipe is safe on both
+ * the main checkout and a fresh worktree.
+ *
+ * Each PowerShell detail is load-bearing exactly as documented on `CHAIN_WIN_V1`:
+ * `powershell` (5.1, preinstalled everywhere) not `cmd`/`pwsh`; `-NoProfile
+ * -NonInteractive` for a deterministic, fail-loud spawn; zero double-quote
+ * characters in the body (single-quoted literals + `Join-Path` only) so the
+ * script survives the host's argument-quoting layer as one argv element;
+ * `.cmd` shims only (a `.ps1` re-enters execution policy); `exit
+ * $LASTEXITCODE` after each invocation (PowerShell has no `exec`); null-guarded
+ * env probes (`Join-Path` on an unset var throws); and the PATHEXT guard on
+ * line 2 — Electron hosts spawn with a PATHEXT that omits `.CMD`, which makes
+ * `& <path>\ok.cmd` a SILENT no-op, so the guard prepends the standard
+ * executable extensions.
+ */
+export const LAUNCH_UI_WIN_CHAIN_V1 = `${LAUNCH_UI_WIN_CHAIN_SENTINEL}
+if ($env:PATHEXT -notmatch 'CMD') { $env:PATHEXT = '.COM;.EXE;.BAT;.CMD;' + $env:PATHEXT }
+$UIPORT = if ($env:PORT) { $env:PORT } else { '${LAUNCH_JSON_PORT}' }
+Remove-Item Env:PORT -ErrorAction SilentlyContinue
+if ($env:APPDATA) {
+  $shim = Join-Path $env:APPDATA 'npm\\ok.cmd'
+  if (Test-Path -LiteralPath $shim -PathType Leaf) { & $shim start --ui-port $UIPORT; exit $LASTEXITCODE }
+}
+$ok = Get-Command ok.cmd -CommandType Application -ErrorAction SilentlyContinue
+if ($ok) { & $ok.Source start --ui-port $UIPORT; exit $LASTEXITCODE }
+$npx = Get-Command npx.cmd -CommandType Application -ErrorAction SilentlyContinue
+if ($npx) { & $npx.Source -y '@inkeep/open-knowledge@latest' start --ui-port $UIPORT; exit $LASTEXITCODE }
+$dirs = @()
+if ($env:ProgramFiles) { $dirs += Join-Path $env:ProgramFiles 'nodejs' }
+if ($env:NVM_SYMLINK) { $dirs += $env:NVM_SYMLINK }
+if ($env:LOCALAPPDATA) {
+  $dirs += Join-Path $env:LOCALAPPDATA 'fnm\\aliases\\default'
+  $dirs += Join-Path $env:LOCALAPPDATA 'Volta\\bin'
+  $dirs += Join-Path $env:LOCALAPPDATA 'pnpm'
+}
+if ($env:USERPROFILE) { $dirs += Join-Path $env:USERPROFILE 'scoop\\shims' }
+foreach ($d in $dirs) {
+  $probe = Join-Path $d 'npx.cmd'
+  if (Test-Path -LiteralPath $probe -PathType Leaf) { & $probe -y '@inkeep/open-knowledge@latest' start --ui-port $UIPORT; exit $LASTEXITCODE }
+}
+[Console]::Error.WriteLine('OpenKnowledge: install Node.js 24+ (npm i -g @inkeep/open-knowledge), then restart your editor')
+exit 127`;
+
 type LaunchJsonAction = 'created' | 'merged' | 'failed';
 
 export interface LaunchJsonResult {
@@ -927,12 +997,17 @@ export function scaffoldLaunchJson(
   // port, passes via `PORT`, still routes through the proxy branch. Full pairing
   // rationale on `LAUNCH_JSON_PORT` in `ui.ts`.
   //
-  // The recipe runs `ok start` (not bare `ok ui`) via a `/bin/sh` chain so the
-  // opened folder — crucially, a worktree — gets its OWN collab server, not just
-  // a UI. `ok start` connects-instead-of-erroring on a live lock (the `--ui-port`
-  // path), so the same committed recipe is correct on both the main checkout and
-  // a fresh worktree. Dev mode pins the chain's exec to the local CLI dist; both
-  // modes carry the `# ok-ui-v1` sentinel so the repair sweep recognizes them.
+  // The recipe runs `ok start` (not bare `ok ui`) so the opened folder —
+  // crucially, a worktree — gets its OWN collab server, not just a UI. `ok
+  // start` connects-instead-of-erroring on a live lock (the `--ui-port` path),
+  // so the same committed recipe is correct on both the main checkout and a
+  // fresh worktree. The published recipe uses the local platform's interpreter:
+  // a `/bin/sh` chain (`# ok-ui-v1`) on macOS/Linux, a `powershell` chain
+  // (`# ok-ui-win-v1`) on Windows, since `/bin/sh` does not exist there and the
+  // preview pane could not otherwise launch the UI. Dev mode stays `/bin/sh`
+  // (monorepo development is Unix-only) and pins the chain's exec to the local
+  // CLI dist. Every shape carries its platform's sentinel so the repair sweep
+  // recognizes them.
   //
   // `resolveDevCliDistPath()` is resolved LAZILY (dev branch only) — it throws
   // when the repo root can't be inferred, which is the normal case for the
@@ -941,6 +1016,9 @@ export function scaffoldLaunchJson(
 UIPORT="\${PORT:-${LAUNCH_JSON_PORT}}"
 unset PORT
 exec node "${resolveDevCliDistPath()}" start --ui-port "$UIPORT"`;
+  // Writers never set `platformName`; a machine always emits its own platform's
+  // shape. Tests inject it to pin either shape on any host.
+  const platformName = installOptions.platformName ?? process.platform;
   const entry: {
     name: string;
     runtimeExecutable: string;
@@ -956,13 +1034,21 @@ exec node "${resolveDevCliDistPath()}" start --ui-port "$UIPORT"`;
           port: LAUNCH_JSON_PORT,
           autoPort: true,
         }
-      : {
-          name: LAUNCH_CONFIG_NAME,
-          runtimeExecutable: '/bin/sh',
-          runtimeArgs: ['-l', '-c', LAUNCH_UI_CHAIN_V1],
-          port: LAUNCH_JSON_PORT,
-          autoPort: true,
-        };
+      : platformName === 'win32'
+        ? {
+            name: LAUNCH_CONFIG_NAME,
+            runtimeExecutable: 'powershell',
+            runtimeArgs: ['-NoProfile', '-NonInteractive', '-Command', LAUNCH_UI_WIN_CHAIN_V1],
+            port: LAUNCH_JSON_PORT,
+            autoPort: true,
+          }
+        : {
+            name: LAUNCH_CONFIG_NAME,
+            runtimeExecutable: '/bin/sh',
+            runtimeArgs: ['-l', '-c', LAUNCH_UI_CHAIN_V1],
+            port: LAUNCH_JSON_PORT,
+            autoPort: true,
+          };
 
   try {
     assertProjectPathSafe(configPath, cwd);

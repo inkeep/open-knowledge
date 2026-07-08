@@ -51,6 +51,7 @@ import {
   initCommand,
   LAUNCH_UI_CHAIN_SENTINEL,
   LAUNCH_UI_CHAIN_V1,
+  LAUNCH_UI_WIN_CHAIN_SENTINEL,
   MANAGED_FILE_BUILDERS,
   readExistingMcpEntry,
   resolveInitSkillEnablement,
@@ -58,6 +59,7 @@ import {
   resolveRequestedContentDir,
   resolveSharingMode,
   runInit,
+  scaffoldLaunchJson,
   writeEditorMcpConfig,
   writeUserMcpConfigs,
 } from './init.ts';
@@ -1096,6 +1098,39 @@ describe('runInit', () => {
       const result = await runInitForTest({ editors: ['cursor'] });
       expect(result.launchJson).toBeUndefined();
       expect(existsSync(join(testDir, '.claude', 'launch.json'))).toBe(false);
+    });
+
+    it('emits the powershell `# ok-ui-win-v1` chain on Windows', () => {
+      // Windows has no `/bin/sh`, so the preview pane cannot launch the posix
+      // chain. `platformName` is injected (rather than spoofing the ambient
+      // `process.platform`) since a machine always writes its own platform's
+      // shape; the option exists purely to pin either shape under test.
+      const result = scaffoldLaunchJson(testDir, { platformName: 'win32' });
+      expect(result.action).toBe('created');
+
+      const parsed = JSON.parse(readFileSync(join(testDir, '.claude', 'launch.json'), 'utf-8'));
+      expect(parsed.configurations).toHaveLength(1);
+      const entry = parsed.configurations[0];
+      expect(entry.name).toBe('open-knowledge-ui');
+      expect(entry.runtimeExecutable).toBe('powershell');
+      expect(entry.runtimeArgs.slice(0, 3)).toEqual(['-NoProfile', '-NonInteractive', '-Command']);
+      const chain = entry.runtimeArgs[3];
+      expect(chain).toContain(LAUNCH_UI_WIN_CHAIN_SENTINEL);
+      expect(chain).toContain('start --ui-port');
+      expect(chain).not.toContain('/bin/sh');
+      // The body must carry zero double-quote characters: it travels as one
+      // argv element through the host's Windows argument-quoting layer, and any
+      // `"` would be mangled there.
+      expect(chain).not.toContain('"');
+      expect(entry.port).toBe(LAUNCH_JSON_PORT);
+      expect(entry.autoPort).toBe(true);
+    });
+
+    it('emits the posix `/bin/sh` chain when the platform is macOS', () => {
+      const result = scaffoldLaunchJson(testDir, { platformName: 'darwin' });
+      expect(result.action).toBe('created');
+      const parsed = JSON.parse(readFileSync(join(testDir, '.claude', 'launch.json'), 'utf-8'));
+      assertChainEntry(parsed.configurations[0]);
     });
   });
 

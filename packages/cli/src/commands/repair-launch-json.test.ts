@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { LAUNCH_UI_CHAIN_SENTINEL, LAUNCH_UI_CHAIN_V1 } from './init.ts';
+import { LAUNCH_UI_CHAIN_SENTINEL, LAUNCH_UI_CHAIN_V1, LAUNCH_UI_WIN_CHAIN_V1 } from './init.ts';
 import {
   classifyLaunchJsonEntry,
   type LaunchJsonRepairLogEvent,
@@ -45,6 +45,18 @@ const LEGACY_BARE_WITH_Y_ENTRY = {
   autoPort: true,
 };
 
+// Current canonical Windows recipe — the `# ok-ui-win-v1` `powershell` chain a
+// Windows `ok init` commits. A macOS/Linux checkout that reads this shared file
+// MUST classify it canonical, or the two platforms' startup repair sweeps would
+// rewrite the committed entry back and forth forever.
+const CANONICAL_WIN_ENTRY = {
+  name: 'open-knowledge-ui',
+  runtimeExecutable: 'powershell',
+  runtimeArgs: ['-NoProfile', '-NonInteractive', '-Command', LAUNCH_UI_WIN_CHAIN_V1],
+  port: 50219,
+  autoPort: true,
+};
+
 /** Assert a rewritten entry is the current canonical chain shape. */
 function expectCanonicalChain(entry: { runtimeExecutable: string; runtimeArgs: string[] }): void {
   expect(entry.runtimeExecutable).toBe('/bin/sh');
@@ -56,6 +68,52 @@ function expectCanonicalChain(entry: { runtimeExecutable: string; runtimeArgs: s
 describe('classifyLaunchJsonEntry', () => {
   it('returns "canonical" for the current ok-start `# ok-ui-v1` chain', () => {
     expect(classifyLaunchJsonEntry(CANONICAL_ENTRY)).toBe('canonical');
+  });
+
+  it('returns "canonical" for the current Windows `# ok-ui-win-v1` powershell chain', () => {
+    expect(classifyLaunchJsonEntry(CANONICAL_WIN_ENTRY)).toBe('canonical');
+  });
+
+  it('recognizes BOTH platform canonicals regardless of the host platform (no ping-pong)', () => {
+    // The load-bearing mutual-recognition invariant: a macOS user and a Windows
+    // user sharing one committed `.claude/launch.json` must both see the other's
+    // committed shape as canonical, so neither startup repair sweep rewrites it.
+    // `classifyLaunchJsonEntry` is platform-independent by construction — assert
+    // it on every host, spoofing `process.platform` both ways to prove it never
+    // consults the ambient platform.
+    const originalPlatform = process.platform;
+    try {
+      for (const spoofed of ['darwin', 'linux', 'win32'] as const) {
+        Object.defineProperty(process, 'platform', { value: spoofed, configurable: true });
+        expect(classifyLaunchJsonEntry(CANONICAL_ENTRY)).toBe('canonical');
+        expect(classifyLaunchJsonEntry(CANONICAL_WIN_ENTRY)).toBe('canonical');
+      }
+    } finally {
+      Object.defineProperty(process, 'platform', {
+        value: originalPlatform,
+        configurable: true,
+      });
+    }
+  });
+
+  it('returns "legacy-bare" for an older `# ok-ui-win-vN` powershell chain we no longer ship', () => {
+    expect(
+      classifyLaunchJsonEntry({
+        name: 'open-knowledge-ui',
+        runtimeExecutable: 'powershell',
+        runtimeArgs: ['-NoProfile', '-NonInteractive', '-Command', '# ok-ui-win-v0\nok start'],
+      }),
+    ).toBe('legacy-bare');
+  });
+
+  it('returns "preserved" for a foreign powershell command without our sentinel', () => {
+    expect(
+      classifyLaunchJsonEntry({
+        name: 'open-knowledge-ui',
+        runtimeExecutable: 'powershell',
+        runtimeArgs: ['-NoProfile', '-Command', 'Start-Process my-own-launcher'],
+      }),
+    ).toBe('preserved');
   });
 
   it('returns "legacy-bare" for the pre-D5 published `npx @latest ui` shape', () => {
@@ -248,6 +306,24 @@ describe('repairLaunchJson', () => {
     const configPath = writeLaunchJson({
       version: '0.0.1',
       configurations: [CANONICAL_ENTRY],
+    });
+    const before = readFileSync(configPath, 'utf-8');
+
+    const result = repairLaunchJson({ projectDir, logger });
+
+    expect(result.outcome.outcome).toBe('canonical');
+    expect(result.repairedCount).toBe(0);
+    expect(readFileSync(configPath, 'utf-8')).toBe(before);
+    expect(logEvents.filter((e) => e.event === 'launch-json-repair-applied')).toHaveLength(0);
+  });
+
+  it('leaves a Windows-committed canonical entry untouched on this host (no ping-pong)', () => {
+    // The sweep-level guarantee behind the classifier's mutual recognition: a
+    // `.claude/launch.json` committed by a Windows teammate must survive an
+    // `ok start` repair sweep on macOS/Linux with zero rewrite, and vice versa.
+    const configPath = writeLaunchJson({
+      version: '0.0.1',
+      configurations: [CANONICAL_WIN_ENTRY],
     });
     const before = readFileSync(configPath, 'utf-8');
 
