@@ -26,7 +26,7 @@
  */
 
 import type { Mark, Node as PmNode } from '@tiptap/pm/model';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { type EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
 
 /**
  * Minimal shape we consume from ProseMirror's `Mapping` — a `map(pos, bias)`
@@ -195,12 +195,21 @@ function attrsEqual(a: Record<string, unknown>, b: Record<string, unknown>): boo
     const va = a[k];
     const vb = b[k];
     if (va === vb) continue;
-    // Allow nested comparison for arrays / plain objects.
+    // Allow nested comparison for arrays / plain objects — and ONLY those
+    // shapes. A key-walk over exotic objects lies: an array vs an index-keyed
+    // object would compare equal, and two Dates/Maps (no own enumerable keys)
+    // always would, silently reusing a mark ID across different marks.
+    if (typeof va !== 'object' || va === null || typeof vb !== 'object' || vb === null) {
+      return false;
+    }
+    const bothArrays = Array.isArray(va) && Array.isArray(vb);
+    const bothPlainObjects =
+      !Array.isArray(va) &&
+      !Array.isArray(vb) &&
+      Object.getPrototypeOf(va) === Object.prototype &&
+      Object.getPrototypeOf(vb) === Object.prototype;
     if (
-      typeof va === 'object' &&
-      va !== null &&
-      typeof vb === 'object' &&
-      vb !== null &&
+      (bothArrays || bothPlainObjects) &&
       attrsEqual(va as Record<string, unknown>, vb as Record<string, unknown>)
     ) {
       continue;
@@ -229,6 +238,25 @@ export function diffMarkIdentity(
     if (!nextIds.has(id)) onDeregister?.(id);
   }
   return nextIds;
+}
+
+/**
+ * Resolve the stable id of a `markType` mark covering `pos` from this
+ * plugin's state. IDs are assigned synchronously during the dispatch that
+ * inserts the mark, so this reads them off a state immediately after an
+ * insert transaction applies. Returns null when the plugin isn't installed
+ * (non-app editors / tests) or no tracked mark covers `pos` — callers
+ * degrade gracefully.
+ */
+export function findMarkIdAt(state: EditorState, pos: number, markType: string): string | null {
+  const identity = markIdentityKey.getState(state);
+  if (!identity) return null;
+  for (const info of identity.byId.values()) {
+    if (info.markType === markType && info.from <= pos && pos < info.to) {
+      return info.id;
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

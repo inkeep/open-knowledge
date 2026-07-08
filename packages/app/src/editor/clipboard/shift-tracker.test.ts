@@ -51,9 +51,17 @@ let mod: any;
 
 beforeAll(async () => {
   mod = await import('./shift-tracker.ts');
+  // The attach guard is a module singleton: a sibling test file in the same
+  // bun process (e.g. handle-paste.test.ts) may have already wired the
+  // tracker to ITS window, in which case installShiftTracker() would
+  // early-return and our fake window's dispatches would reach nobody.
+  // Detach from whatever came before so beforeEach re-attaches to the fake.
+  mod.__resetShiftTrackerForTests();
 });
 
 afterAll(() => {
+  // Leave the singleton detached so later files re-wire to their own window.
+  mod.__resetShiftTrackerForTests();
   (globalThis as { window?: unknown }).window = origWindow;
 });
 

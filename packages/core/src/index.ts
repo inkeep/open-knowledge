@@ -282,7 +282,7 @@ export { HtmlBlockFidelity } from './extensions/html-block-fidelity.ts';
 export { ImageSrcFidelity } from './extensions/image-src-fidelity.ts';
 export { JsxComponent } from './extensions/jsx-component.ts';
 export { JsxInline } from './extensions/jsx-inline.ts';
-export { LinkFidelity } from './extensions/link-fidelity.ts';
+export { isAllowedLinkUri, LinkFidelity, type LinkStyle } from './extensions/link-fidelity.ts';
 export { LinkRefDefFidelity } from './extensions/link-ref-def-fidelity.ts';
 export { List, ListItem, ListItemNode, ListNode } from './extensions/list.ts';
 export { MathInline } from './extensions/math-inline.ts';

@@ -4,6 +4,9 @@
  * The dispatcher is a priority-ordered series of guards:
  *   0. Cmd+Shift+V escape hatch
  *   0. Cursor-in-codeBlock short-circuit
+ *   0. Lone-URL step: single-URL payloads linkify (over-selection keeps
+ *      the selected text; cursor converts GFM shapes via the markdown
+ *      parse); everything else falls through
  *   A. vscode-editor-data → fenced code block
  *   B. text/x-gfm → MarkdownManager.parse
  *   B. Markdown-first tiebreak: plain (markdown-shaped) + html → mdManager.parse(plain).
@@ -22,10 +25,15 @@
  * `state.tr.*`, `dispatch`).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as actualCore from '@inkeep/open-knowledge-core';
+import { LinkFidelity, MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
+import { Editor, type Extensions } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
 import * as actualSonner from 'sonner';
 
+import { GfmAutolink } from '../gfm-autolink-plugin.ts';
+import { flushMicrotasksAndTimers, installDomGlobals } from '../walk-currency-test-harness.ts';
 import { createHandlePaste } from './handle-paste.ts';
 
 // Mock the shared pipeline so tests don't exercise the full rehype stack.
@@ -75,7 +83,7 @@ function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
   };
   return {
     state: {
-      selection: { $from },
+      selection: { $from, empty: true },
       schema: {
         nodes: { codeBlock: codeBlockType },
         text: (s: string) => ({ textContent: s }),
@@ -90,6 +98,9 @@ function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
           return this;
         }),
         replaceSelection: mock(function (this: unknown, _slice: unknown) {
+          return this;
+        }),
+        setMeta: mock(function (this: unknown, _key: unknown, _value: unknown) {
           return this;
         }),
         scrollIntoView: mock(function (this: unknown) {
@@ -194,10 +205,44 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
     // payload. The exact branch isn't load-bearing here — the test pins
     // that the catch path returned false so the dispatcher could continue
     // (i.e., the throw didn't escape).
-    expect(() => paste(view, evt)).not.toThrow();
+    expect(paste(view, evt)).toBe(true);
     // Branch A's codeBlock.create must NOT have been called — the throw
     // happened before dispatch.
     expect(view.state.schema.nodes.codeBlock.create).not.toHaveBeenCalled();
+  });
+
+  test('Branch B: a throwing mdManager.parse falls through instead of escaping', () => {
+    // tryBranchMarkdown shares the parse->apply path with Branch E and the
+    // lone-URL cursor branch; its catch contract (return false, dispatcher
+    // continues) is as load-bearing as Branch A's. A narrowed/removed catch
+    // would lose the user's clipboard content with an uncaught throw.
+    const throwingMd = {
+      parse: mock(() => {
+        throw new Error('parse exploded');
+      }),
+    };
+    // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+    const paste = createHandlePaste({ mdManager: throwingMd as any });
+    const view = fakeView();
+    const evt = fakeDT({ 'text/x-gfm': '# heading', 'text/plain': '# heading' });
+    expect(paste(view, evt)).toBe(true);
+    expect(throwingMd.parse).toHaveBeenCalled();
+  });
+
+  test('lone-URL cursor paste: a throwing mdManager.parse falls through to plain insert', () => {
+    const throwingMd = {
+      parse: mock(() => {
+        throw new Error('parse exploded');
+      }),
+    };
+    // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+    const paste = createHandlePaste({ mdManager: throwingMd as any });
+    const view = fakeView();
+    const evt = fakeDT({ 'text/plain': 'https://example.com' });
+    expect(paste(view, evt)).toBe(true);
+    expect(throwingMd.parse).toHaveBeenCalled();
+    // The URL still reached the doc via a later branch's dispatch.
+    expect(view.dispatch).toHaveBeenCalled();
   });
 
   test('Branch C: data-pm-slice fingerprint returns false (PM handles)', () => {
@@ -376,5 +421,289 @@ describe('WYSIWYG paste dispatcher — markdown-first tiebreak ordering (D5/D13)
     });
     expect(paste(view, evt)).toBe(false);
     expect(md.parse).not.toHaveBeenCalled();
+  });
+});
+
+describe('WYSIWYG paste dispatcher — lone-URL routing', () => {
+  test('lone GFM URL at a cursor routes through the markdown parse (payload trimmed)', () => {
+    const md = fakeMdManager();
+    const paste = createHandlePaste({
+      // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+      mdManager: md as any,
+    });
+    const view = fakeView();
+    const evt = fakeDT({ 'text/plain': 'https://inkeep.com\n' });
+    expect(paste(view, evt)).toBe(true);
+    expect(md.parse).toHaveBeenCalledWith('https://inkeep.com');
+  });
+
+  test('lone GFM URL wins over a text/html sibling (browser link-copy shape)', () => {
+    // A browser URL copy carries an <a> wrapper in text/html; without the
+    // lone-URL step it would take Branch D's html pipeline. The step runs
+    // first so the bytes come from the markdown parse of the plain URL.
+    const md = fakeMdManager();
+    const paste = createHandlePaste({
+      // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+      mdManager: md as any,
+    });
+    const view = fakeView();
+    const evt = fakeDT({
+      'text/plain': 'https://inkeep.com',
+      'text/html': '<a href="https://inkeep.com">https://inkeep.com</a>',
+    });
+    expect(paste(view, evt)).toBe(true);
+    expect(md.parse).toHaveBeenCalledWith('https://inkeep.com');
+  });
+
+  test('lone non-GFM token (bare domain) at a cursor inserts verbatim', () => {
+    const md = fakeMdManager();
+    const paste = createHandlePaste({
+      // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+      mdManager: md as any,
+    });
+    const view = fakeView();
+    const evt = fakeDT({ 'text/plain': 'example.com' });
+    expect(paste(view, evt)).toBe(true);
+    expect(md.parse).not.toHaveBeenCalled();
+    expect(view.state.tr.replaceSelectionWith).toHaveBeenCalled();
+  });
+
+  test('URL inside plain prose inserts verbatim (not a lone URL)', () => {
+    const md = fakeMdManager();
+    const paste = createHandlePaste({
+      // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+      mdManager: md as any,
+    });
+    const view = fakeView();
+    const evt = fakeDT({ 'text/plain': 'see https://inkeep.com for the docs' });
+    expect(paste(view, evt)).toBe(true);
+    expect(md.parse).not.toHaveBeenCalled();
+    expect(view.state.tr.replaceSelectionWith).toHaveBeenCalled();
+  });
+
+  test('Cmd+Shift+V of a lone URL pastes verbatim (plain-paste gate runs first)', () => {
+    const md = fakeMdManager();
+    const paste = createHandlePaste({
+      // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+      mdManager: md as any,
+    });
+    const view = fakeView();
+    const evt = fakeDT({ 'text/plain': 'https://inkeep.com' });
+    Object.defineProperty(evt, 'shiftKey', { value: true, configurable: true });
+    expect(paste(view, evt)).toBe(true);
+    expect(md.parse).not.toHaveBeenCalled();
+    expect(view.state.tr.replaceSelectionWith).toHaveBeenCalled();
+  });
+
+  test('lone URL pasted into a codeBlock inserts verbatim (code gate runs first)', () => {
+    const md = fakeMdManager();
+    const paste = createHandlePaste({
+      // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+      mdManager: md as any,
+    });
+    const view = fakeView({ inCodeBlock: true });
+    const evt = fakeDT({ 'text/plain': 'https://inkeep.com' });
+    expect(paste(view, evt)).toBe(true);
+    expect(md.parse).not.toHaveBeenCalled();
+    expect(view.state.tr.replaceSelectionWith).toHaveBeenCalled();
+  });
+});
+
+describe('WYSIWYG paste dispatcher — lone-URL linkification (real editor)', () => {
+  let restoreDomGlobals: (() => void) | null = null;
+  let mdManager: MarkdownManager;
+
+  beforeAll(() => {
+    restoreDomGlobals = installDomGlobals();
+    mdManager = new MarkdownManager({ extensions: sharedExtensions });
+  });
+  afterAll(() => {
+    restoreDomGlobals?.();
+    restoreDomGlobals = null;
+  });
+
+  function makeRealEditor(content: string, extraExtensions: Extensions = []): Editor {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    return new Editor({
+      element: host,
+      content,
+      extensions: [
+        // StarterKit v3 bundles its own Link; drop it so the fidelity mark
+        // (which carries `linkStyle`) is the only `link` in the schema.
+        StarterKit.configure({ link: false }),
+        LinkFidelity.configure({ autolink: false }),
+        ...extraExtensions,
+      ],
+    });
+  }
+
+  function pasteInto(editor: Editor, data: Record<string, string>): boolean {
+    const paste = createHandlePaste({ mdManager });
+    return paste(editor.view, fakeDT(data));
+  }
+
+  /** Select `text` by content offset — valid for single-paragraph fixtures
+   *  (the +1 crosses the paragraph's opening boundary). */
+  function selectText(editor: Editor, text: string): void {
+    const idx = editor.state.doc.textContent.indexOf(text);
+    if (idx < 0) throw new Error(`selectText: "${text}" not in doc`);
+    editor.commands.setTextSelection({ from: idx + 1, to: idx + 1 + text.length });
+  }
+
+  function linkMarks(editor: Editor): Array<{ text: string; attrs: Record<string, unknown> }> {
+    const found: Array<{ text: string; attrs: Record<string, unknown> }> = [];
+    editor.state.doc.descendants((node) => {
+      if (!node.isText) return;
+      const mark = node.marks.find((m) => m.type.name === 'link');
+      if (mark) found.push({ text: node.text ?? '', attrs: mark.attrs });
+    });
+    return found;
+  }
+
+  test('cursor paste of a URL creates a gfm-autolink mark over the bare literal', () => {
+    const editor = makeRealEditor('<p></p>');
+    try {
+      expect(pasteInto(editor, { 'text/plain': 'https://inkeep.com' })).toBe(true);
+      expect(editor.state.doc.textContent).toBe('https://inkeep.com');
+      const marks = linkMarks(editor);
+      expect(marks).toHaveLength(1);
+      expect(marks[0]?.text).toBe('https://inkeep.com');
+      expect(marks[0]?.attrs.href).toBe('https://inkeep.com');
+      expect(marks[0]?.attrs.linkStyle).toBe('gfm-autolink');
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  test('cursor paste of a bare domain stays plain text', () => {
+    const editor = makeRealEditor('<p></p>');
+    try {
+      expect(pasteInto(editor, { 'text/plain': 'example.com' })).toBe(true);
+      expect(editor.state.doc.textContent).toBe('example.com');
+      expect(linkMarks(editor)).toHaveLength(0);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  test('paste over a selection keeps the selected text and links it', () => {
+    const editor = makeRealEditor('<p>read the docs today</p>');
+    try {
+      selectText(editor, 'docs');
+      expect(pasteInto(editor, { 'text/plain': 'https://inkeep.com' })).toBe(true);
+      expect(editor.state.doc.textContent).toBe('read the docs today');
+      const marks = linkMarks(editor);
+      expect(marks).toHaveLength(1);
+      expect(marks[0]?.text).toBe('docs');
+      expect(marks[0]?.attrs.href).toBe('https://inkeep.com');
+      // Default style — serializes as [docs](https://inkeep.com).
+      expect(marks[0]?.attrs.linkStyle).toBe('inline');
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  test.each([
+    ['example.com', 'https://example.com'],
+    ['www.example.com', 'https://www.example.com'],
+    ['nick@inkeep.com', 'mailto:nick@inkeep.com'],
+  ])('paste of %s over a selection links to %s', (payload, expectedHref) => {
+    const editor = makeRealEditor('<p>read the docs today</p>');
+    try {
+      selectText(editor, 'docs');
+      expect(pasteInto(editor, { 'text/plain': payload })).toBe(true);
+      expect(editor.state.doc.textContent).toBe('read the docs today');
+      expect(linkMarks(editor)[0]?.attrs.href).toBe(expectedHref);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  test('paste of a non-allowlisted scheme over a selection never links — the payload lands as inert plain text', () => {
+    const editor = makeRealEditor('<p>read the docs today</p>');
+    try {
+      selectText(editor, 'docs');
+      pasteInto(editor, { 'text/plain': 'javascript:alert(1)' });
+      expect(linkMarks(editor)).toHaveLength(0);
+      // Fall-through = ordinary replace: the string is text, never an href.
+      expect(editor.state.doc.textContent).toBe('read the javascript:alert(1) today');
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  test('paste of a URL over a code-marked selection falls through to a plain replace', () => {
+    const editor = makeRealEditor('<p>run <code>bun install</code> now</p>');
+    try {
+      selectText(editor, 'install');
+      pasteInto(editor, { 'text/plain': 'https://inkeep.com' });
+      expect(linkMarks(editor)).toHaveLength(0);
+      expect(editor.state.doc.textContent).toBe('run bun https://inkeep.com now');
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  test('paste of a URL over a cross-block selection falls through (no link mark)', () => {
+    const editor = makeRealEditor('<p>one</p><p>two</p>');
+    try {
+      editor.commands.setTextSelection({ from: 2, to: 8 });
+      pasteInto(editor, { 'text/plain': 'https://inkeep.com' });
+      expect(linkMarks(editor)).toHaveLength(0);
+      // The fall-through is the normal paste path: the cross-block selection
+      // is replaced by the URL as plain text — content delivered, not dropped.
+      expect(editor.state.doc.textContent).toContain('https://inkeep.com');
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  test('paste of a URL over already-linked text re-points the link, keeping the text', () => {
+    const editor = makeRealEditor('<p><a href="https://old.example">docs</a> page</p>');
+    try {
+      selectText(editor, 'docs');
+      expect(pasteInto(editor, { 'text/plain': 'https://new.example' })).toBe(true);
+      expect(editor.state.doc.textContent).toBe('docs page');
+      const marks = linkMarks(editor);
+      expect(marks).toHaveLength(1);
+      expect(marks[0]?.text).toBe('docs');
+      expect(marks[0]?.attrs.href).toBe('https://new.example');
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  test('pasted prose ending in a URL + space is never linkified by the typed-autolink plugin', async () => {
+    // The verbatim Branch E insert looks exactly like "typed a URL then a
+    // boundary" to the autolink plugin's changed-range scan. The dispatcher
+    // stamps its transactions with preventAutolink so paste output is never
+    // re-scanned as typing — pasted prose stays byte-identical.
+    const editor = makeRealEditor('<p></p>', [
+      GfmAutolink.configure({ isActiveEditor: () => true }),
+    ]);
+    try {
+      expect(pasteInto(editor, { 'text/plain': 'see https://inkeep.com ' })).toBe(true);
+      await flushMicrotasksAndTimers();
+      expect(linkMarks(editor)).toHaveLength(0);
+      expect(editor.state.doc.textContent).toBe('see https://inkeep.com ');
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  test('lone-URL cursor paste with the typed-autolink plugin active yields exactly one mark', async () => {
+    const editor = makeRealEditor('<p></p>', [
+      GfmAutolink.configure({ isActiveEditor: () => true }),
+    ]);
+    try {
+      pasteInto(editor, { 'text/plain': 'https://inkeep.com' });
+      await flushMicrotasksAndTimers();
+      const marks = linkMarks(editor);
+      expect(marks).toHaveLength(1);
+      expect(marks[0]?.attrs.linkStyle).toBe('gfm-autolink');
+    } finally {
+      editor.destroy();
+    }
   });
 });

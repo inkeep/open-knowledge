@@ -14,6 +14,7 @@ export { resetContentToFixtureBaseline } from './content-reset.ts';
 export {
   focusEditor,
   selectAllAndWaitForSelection,
+  selectText,
   waitForPmSelectionInNode,
 } from './editor-state.ts';
 export { filterCriticalErrors, type LogEntry } from './error-filters.ts';

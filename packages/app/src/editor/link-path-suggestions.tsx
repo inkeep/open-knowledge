@@ -210,7 +210,12 @@ export function LinkPathSuggestionInput({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (showSuggestionOptions) {
+    // Gate on the options being VISIBLE (panel open), not merely existing:
+    // suggestions still exist for the current value after an Escape dismissal,
+    // and swallowing keys against an invisible panel strands the user — the
+    // next Escape must reach the parent popover/dialog (as the branch below
+    // documents) and Enter must reach the parent's apply handler.
+    if (showSuggestions && showSuggestionOptions) {
       if (event.key === 'ArrowDown') {
         event.preventDefault();
         setHighlightedIndex((current) => Math.min(current + 1, suggestions.length - 1));

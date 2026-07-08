@@ -1,7 +1,7 @@
 ---
 title: Editor
 icon: LuPenLine
-description: The OpenKnowledge editor. WYSIWYG markdown, source toggle, content blocks, inline frontmatter, and the file sidebar.
+description: The OpenKnowledge editor. WYSIWYG markdown, source toggle, content blocks, link authoring, inline frontmatter, and the file sidebar.
 ---
 The editor is where you read, write, and collaborate on your docs, and where AI agents land when they edit. WYSIWYG by default with a source-mode toggle, a frontmatter properties pane, real-time CRDT collaboration, and a file sidebar that organizes the project.
 
@@ -39,6 +39,15 @@ An `html preview` code fence renders its contents live in a sandboxed iframe ins
 ### Find and replace
 
 `Cmd+F` opens find in the visual editor; `Cmd+Option+F` (`Ctrl+H` on Windows / Linux) adds the replace controls. `Cmd+G` and `Shift+Cmd+G` step through matches.
+
+## Links
+
+Links work the way they do in the editors you already know:
+
+- **Type a URL, then press space or enter.** A full URL (`https://…`, `www.…`, or an email address) becomes a link when you press space or enter after it. Plain words and filenames like `AGENTS.md` are left alone, and one `Cmd+Z` turns a conversion back into plain text.
+- **Paste or drag in a URL.** Pasted (or dropped) on its own, it becomes a link. Pasted over selected text, it links that text instead — the text stays, the URL becomes its destination. `Cmd+Shift+V` pastes plain, with no linking.
+- **Type `[text](url)`.** Closing the parenthesis converts the markdown shorthand into a real link; `Cmd+Z` restores the literal text.
+- **Press `Cmd+K` with text selected.** The link popover opens with the URL field focused, pre-filled from your clipboard when it holds a URL. With the cursor inside an existing link, `Cmd+K` opens that link for editing. With no selection, `Cmd+K` keeps opening the command palette, as everywhere else.
 
 ## Right-click menu and spell check
 
@@ -185,6 +194,7 @@ Keyboard shortcuts (use `Ctrl` on Windows / Linux in place of `Cmd`, unless the 
 | `Cmd+1` ... `Cmd+8` | Jump to one of the first eight editor tabs. |
 | `Cmd+9` | Jump to the last editor tab. |
 | `Cmd+Shift+T` | Reopen the most recently closed editor tab. |
+| `Cmd+K` | Command palette — or, with text selected in the visual editor, add a link (cursor inside a link edits it). |
 | `Cmd+Option+S` | Show / Hide the file sidebar (left). Matches Apple's standard sidebar accelerator. |
 | `Cmd+Option+B` | Show / Hide the document panel (right). Matches VS Code's Secondary Side Bar accelerator. |
 | `Cmd+J` | Show / Hide the docked terminal (desktop app). |

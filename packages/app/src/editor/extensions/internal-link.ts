@@ -108,6 +108,13 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
   },
 
   addProseMirrorPlugins() {
+    // Intentionally does NOT spread `this.parent?.()`: the stock TipTap link
+    // plugins (autolink, linkOnPaste, clickHandler) inherited from LinkFidelity
+    // are dropped here because OK supplies its own, purpose-built replacements —
+    // GfmAutolink for typed linkification, the clipboard dispatcher for paste,
+    // and the InteractionLayer bridge below for chip clicks. Re-adding the
+    // parent plugins would double-handle paste/click and reintroduce the stock
+    // autolinker (which lacks OK's CRDT origin guard).
     const docName = this.options.docName ?? '';
     // Single source for chip primary-navigation. Referenced by both the
     // InteractionLayer (bare / Cmd / middle-click + Enter on the chip) and the

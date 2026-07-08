@@ -180,6 +180,7 @@
         "@testing-library/jest-dom": "^6",
         "@testing-library/react": "^16",
         "@testing-library/user-event": "^14",
+        "@tiptap/starter-kit": "^3.22.3",
         "@types/jsdom": "^28",
         "@types/react": "^19.2.14",
         "@types/react-dom": "^19.2.3",

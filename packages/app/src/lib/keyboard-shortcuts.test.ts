@@ -309,14 +309,37 @@ describe('keyboard shortcut registry', () => {
     ).toBe(true);
   });
 
-  test('matches command palette with allowed extra modifiers and rejects missing mod', () => {
+  test('matches command palette on exact Cmd/Ctrl+K only', () => {
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, key: 'k' },
+        'command-palette',
+        'mac',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, key: 'k' },
+        'command-palette',
+        'windowsLinux',
+      ),
+    ).toBe(true);
+    // ⇧⌘K must NOT open the palette — that chord belongs to CodeMirror's
+    // delete-line in source mode.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'k' },
         'command-palette',
         'mac',
       ),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: true, key: 'k' },
+        'command-palette',
+        'mac',
+      ),
+    ).toBe(false);
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: false, altKey: false, key: 'k' },
@@ -324,6 +347,53 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
+  });
+
+  test('add-link shares the exact ⌘K chord with the palette and excludes extra modifiers', () => {
+    expect(formatShortcut('add-link', 'mac')).toBe('⌘ K');
+    expect(formatShortcut('add-link', 'windowsLinux')).toBe('Ctrl K');
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, key: 'k' },
+        'add-link',
+        'mac',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, key: 'k' },
+        'add-link',
+        'windowsLinux',
+      ),
+    ).toBe(true);
+    // Wrong platform modifier: Ctrl+K on macOS must NOT match (mod is exact).
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, key: 'k' },
+        'add-link',
+        'mac',
+      ),
+    ).toBe(false);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'k' },
+        'add-link',
+        'mac',
+      ),
+    ).toBe(false);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: true, key: 'k' },
+        'add-link',
+        'mac',
+      ),
+    ).toBe(false);
+    // One exact chord, two consumers: matching is identical for both ids;
+    // routing between them is contextual (capture-phase claim in the editor
+    // vs. the palette's window-bubble fallthrough).
+    const exactCmdK = { metaKey: true, ctrlKey: false, altKey: false, key: 'k' };
+    expect(matchesKeyboardShortcut(exactCmdK, 'add-link', 'mac')).toBe(true);
+    expect(matchesKeyboardShortcut(exactCmdK, 'command-palette', 'mac')).toBe(true);
   });
 
   test('matches source-aware replace shortcuts per platform', () => {

@@ -5,30 +5,14 @@ import { useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { useRef, useState } from 'react';
 import { Separator } from '@/components/ui/separator';
-import { getFindReplaceState } from '../find-replace/tiptap-find-replace-extension';
 import { BlockTypeSelector } from './BlockTypeSelector';
+import { shouldShowBubbleMenu } from './bubble-menu-state';
 import { EditWithAiBubbleButton } from './EditWithAiBubbleButton';
 import { FileBubbleButtons, isFileNodeSelected } from './FileBubbleButtons';
 import { FootnoteBubbleButton } from './FootnoteBubbleButton';
 import { ImageAlignButtons, isImageNodeSelected } from './ImageAlignButtons';
 import { InlineFormatButtons } from './InlineFormatButtons';
 import { LinkEditPopover } from './LinkEditPopover';
-
-function shouldShowBubbleMenu({ editor }: { editor: Editor }): boolean {
-  if (getFindReplaceState(editor.state).query) return false;
-  if (editor.isActive('codeBlock')) return false;
-  // Image / File NodeSelection — show the menu so the per-type buttons
-  // (`ImageAlignButtons` / `FileBubbleButtons`) are reachable even though
-  // `textBetween` is empty across a leaf atom. Bypasses the text-bearing-
-  // selection guards below.
-  if (isImageNodeSelected(editor)) return true;
-  if (isFileNodeSelected(editor)) return true;
-  if (editor.state.selection.empty) return false;
-  const { from, to } = editor.state.selection;
-  const text = editor.state.doc.textBetween(from, to, ' ');
-  if (!text.trim()) return false;
-  return true;
-}
 
 export function BubbleMenuBar({
   editor,
@@ -124,7 +108,11 @@ export function BubbleMenuBar({
           <Separator orientation="vertical" className="mx-0.5 h-5 data-vertical:self-center" />
           <InlineFormatButtons key={tooltipKey} editor={editor} />
           <Separator orientation="vertical" className="mx-0.5 h-5 data-vertical:self-center" />
-          <LinkEditPopover key={`${tooltipKey}-link`} editor={editor} />
+          <LinkEditPopover
+            key={`${tooltipKey}-link`}
+            editor={editor}
+            shortcutEnabled={shortcutEnabled}
+          />
           <FootnoteBubbleButton key={`${tooltipKey}-footnote`} editor={editor} />
           <EditWithAiBubbleButton
             key={`${tooltipKey}-edit-ai`}

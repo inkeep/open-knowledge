@@ -8,7 +8,9 @@ import { Extension } from '@tiptap/core';
 import FileHandler from '@tiptap/extension-file-handler';
 import { KeyboardNav } from '../block-ux/keyboard-nav';
 import { TiptapFindReplace } from '../find-replace/tiptap-find-replace-extension';
+import { GfmAutolink } from '../gfm-autolink-plugin';
 import { uploadAndInsert } from '../image-upload/index.ts';
+import { InlineLinkInputRule } from '../inline-link-input-rule';
 import { getComponentItems, getInlineComponentItems } from '../slash-command/component-items';
 import { getEmbedStarterItems } from '../slash-command/embed-starter-items';
 import { getSlashCommandItems } from '../slash-command/items';
@@ -141,6 +143,14 @@ export const sharedExtensions = [
   // BlockDragHandle; keyboard parity lives in the TableCellHandles dropdowns.
   TableInsertControls,
   SourceDirtyObserver,
+  // Typed-URL autolink. Origin-guarded (never converts CRDT-sync-tagged
+  // peer/agent/disk edits) and active-editor-gated (never converts in a pooled
+  // hidden editor), so it stays a client-side behavior of the foreground doc.
+  GfmAutolink,
+  // Typed `[text](url)` shorthand → inline link on the closing paren. Same
+  // client-side, foreground-only surface as GfmAutolink; keeps its own undo
+  // step so one Cmd+Z restores the literal.
+  InlineLinkInputRule,
   KeyboardNav,
   // Selection layer — must come after BridgeIdPlugin so ancestor-chain
   // lookups resolve stable IDs. Order is load-bearing only wrt BridgeId;

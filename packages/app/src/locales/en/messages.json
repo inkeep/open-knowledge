@@ -1001,6 +1001,9 @@
     "ODGGlj": ["Folder name: ", ["detail"]],
     "OETysD": ["No hub pages yet. Hubs appear once pages accumulate inbound graph links."],
     "OEu_0l": ["Failed to load skills: ", ["0"]],
+    "OFBmkg": [
+      "Search files, commands, projects, and AI handoff actions. With text selected in the visual editor, this chord adds a link instead."
+    ],
     "OJTOUj": ["Requires ", ["brand"], "."],
     "OJeiSH": ["Failed to add property"],
     "OLBz-_": ["Mermaid diagram failed to render."],
@@ -1053,7 +1056,6 @@
     "PR9FSv": ["Move to the next visual-editor find result."],
     "PRnH8G": ["of ", ["0"]],
     "PVUn_c": ["Open folder"],
-    "PZt1uN": ["Search files, commands, projects, and AI handoff actions."],
     "P_bX4O": ["How to set up"],
     "PdA9NZ": [["ahead"], " ahead"],
     "PdJZ5p": ["No skills yet."],
@@ -1262,6 +1264,7 @@
     "VuxVSP": ["Start source completion"],
     "VvS_k_": ["Config sharing is now local-only."],
     "VxO6wR": ["Delete selected files or folders"],
+    "VzGJRl": ["Add link"],
     "W-ntoW": ["heading-slug"],
     "W0i24j": ["Object"],
     "W1qRuM": ["This document is already active in the editor. Use Open to collapse the graph."],
@@ -2228,6 +2231,7 @@
     "u3wRF-": ["Published"],
     "u6Hp4N": ["Markdown"],
     "u7H-Wn": ["Show panel (", ["panelShortcutLabel"], ")"],
+    "u7U_Ij": ["Link the selected text, or edit the link under the caret."],
     "uA_jXp": ["Switch and update branch"],
     "uCaIdy": ["GitHub sign-in is missing or expired. Reconnect to resume syncing."],
     "uDlyqd": [
@@ -2278,6 +2282,7 @@
         { "one": ["Uploaded one file"], "other": ["Uploaded ", ["uploadedCount"], " files"] }
       ]
     ],
+    "v77jrg": ["Visual editor selection"],
     "v7hK0U": ["Use lowercase letters, digits, and hyphens only."],
     "v7lbnC": ["Find next match"],
     "vAYoCZ": ["Couldn't open the worktree. Try again."],

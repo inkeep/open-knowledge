@@ -23,6 +23,20 @@
  * codeBlock short-circuit: cursor inside a codeBlock → skip all branches,
  * insert text/plain verbatim.
  *
+ * Lone-URL step: after those two gates and before the MIME branches, a
+ * payload whose text/plain is a single URL token linkifies instead of
+ * falling into the branch tree. Over a one-block text selection the
+ * selected text is kept and link-marked (trust-the-gesture policy — see
+ * lone-url.ts); at a cursor only GFM autolink shapes convert, routed
+ * through MarkdownManager.parse so the mark and bytes are exactly what the
+ * pipeline itself produces. Everything else falls through unchanged. The
+ * step runs before Branch A/D so a browser link-copy (which also carries
+ * text/html) converts the selection rather than replacing it.
+ *
+ * Every dispatcher-minted transaction carries `preventAutolink` meta:
+ * paste output is never re-scanned by the typed-autolink plugin, so a URL
+ * inside pasted prose stays exactly as pasted.
+ *
  * Cmd+Shift+V (paste): detected via `pasteShiftHeld(event)` which checks
  * the most-recent keyboard event (real browsers don't set `shiftKey` on
  * ClipboardEvent) plus a Playwright-test-style injected property. Drop
@@ -46,7 +60,9 @@
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import { htmlToMdast, mdastToMarkdown } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
+import { PREVENT_AUTOLINK_META } from '../gfm-autolink-plugin.ts';
 import { type ClipboardSource, detectSource } from './detect-source.ts';
 import {
   type ClipboardBranch,
@@ -56,6 +72,7 @@ import {
   logSourceDetected,
 } from './instrument.ts';
 import { isMarkdown } from './is-markdown.ts';
+import { detectLoneGfmUrl, detectLoneTrustedUrl } from './lone-url.ts';
 import { notifyPasteDegraded } from './paste-failure-toast.ts';
 import { pasteShiftHeld } from './shift-tracker.ts';
 
@@ -133,6 +150,25 @@ function handleDropOrPaste(
     logSourceDetected({ view: 'wysiwyg', branch: 'codeblock', source });
     logIfSlow(start, { op: surface, view: 'wysiwyg', branch: 'codeblock', source });
     return true;
+  }
+
+  // Lone-URL step (see file header). Non-matching payloads fall through.
+  if (plain) {
+    if (!view.state.selection.empty) {
+      const href = detectLoneTrustedUrl(plain);
+      if (href && linkifySelection(view, href, source)) {
+        logSourceDetected({ view: 'wysiwyg', branch: 'url', source });
+        logIfSlow(start, { op: surface, view: 'wysiwyg', branch: 'url', source });
+        return true;
+      }
+    } else {
+      const gfmToken = detectLoneGfmUrl(plain);
+      if (gfmToken && tryBranchMarkdown(view, gfmToken, deps, 'url', source)) {
+        logSourceDetected({ view: 'wysiwyg', branch: 'url', source });
+        logIfSlow(start, { op: surface, view: 'wysiwyg', branch: 'url', source });
+        return true;
+      }
+    }
   }
 
   // Branch A: VS Code with language metadata.
@@ -226,10 +262,59 @@ function isCursorInCodeBlock(view: EditorView): boolean {
   return false;
 }
 
+/**
+ * Add a link mark across the current selection, keeping the selected text
+ * (default `linkStyle` — serializes as `[selected text](url)`). Returns
+ * false — fall through to the normal branch tree, i.e. plain replace — when
+ * the selection isn't a single-textblock text selection, any of it carries
+ * an inline code mark, or the schema has no link mark. A selection that
+ * already carries a link keeps its text and gets the new href: pasting a
+ * URL onto linked text means "re-point this link" everywhere else, and the
+ * fall-through alternative would destroy the text outright.
+ */
+function linkifySelection(view: EditorView, href: string, source: ClipboardSource): boolean {
+  try {
+    const { state } = view;
+    const selection = state.selection;
+    if (!(selection instanceof TextSelection)) return false;
+    if (!selection.$from.sameParent(selection.$to)) return false;
+    const linkType = state.schema.marks.link;
+    if (!linkType) return false;
+    const codeType = state.schema.marks.code;
+    if (codeType && state.doc.rangeHasMark(selection.from, selection.to, codeType)) return false;
+    view.dispatch(
+      state.tr
+        .addMark(selection.from, selection.to, linkType.create({ href }))
+        .setMeta(PREVENT_AUTOLINK_META, true),
+    );
+    return true;
+  } catch (err) {
+    logConversionFail({
+      view: 'wysiwyg',
+      stage: 'linkifySelection',
+      source,
+      branch: 'url',
+      reason: `${(err as Error)?.message ?? 'unknown'} (href=${href})`,
+      errorClass: classifyError(err),
+    });
+    // Same degradation contract as Branch D: tell the user, then fall through
+    // (return false) so the normal branch tree delivers the clipboard content
+    // as a standard paste. Claiming the paste here would drop the content
+    // entirely — the one outcome the file header forbids.
+    notifyPasteDegraded('wysiwyg', 'Pasted without linking — the link could not be applied.');
+    return false;
+  }
+}
+
 function insertPlainText(view: EditorView, text: string): void {
   const { schema, tr } = view.state;
   if (!text) return;
-  view.dispatch(tr.replaceSelectionWith(schema.text(text)).scrollIntoView());
+  view.dispatch(
+    tr
+      .replaceSelectionWith(schema.text(text))
+      .setMeta(PREVENT_AUTOLINK_META, true)
+      .scrollIntoView(),
+  );
 }
 
 // Narrow allowlist for fenced-code language idents so an attacker-controlled
@@ -253,7 +338,12 @@ function tryBranchA(
       { language: lang },
       text ? view.state.schema.text(text) : null,
     );
-    view.dispatch(view.state.tr.replaceSelectionWith(codeNode).scrollIntoView());
+    view.dispatch(
+      view.state.tr
+        .replaceSelectionWith(codeNode)
+        .setMeta(PREVENT_AUTOLINK_META, true)
+        .scrollIntoView(),
+    );
     return true;
   } catch (err) {
     logConversionFail({
@@ -264,6 +354,7 @@ function tryBranchA(
       reason: (err as Error)?.message ?? 'unknown',
       errorClass: classifyError(err),
     });
+    notifyPasteDegraded('wysiwyg');
     return false;
   }
 }
@@ -272,7 +363,7 @@ function tryBranchMarkdown(
   view: EditorView,
   markdown: string,
   deps: PasteDispatcherDeps,
-  branchLabel: 'B' | 'E',
+  branchLabel: 'B' | 'E' | 'url',
   source: ClipboardSource,
 ): boolean {
   let json: JSONContent;
@@ -287,6 +378,7 @@ function tryBranchMarkdown(
       reason: (err as Error)?.message ?? 'unknown',
       errorClass: classifyError(err),
     });
+    notifyPasteDegraded('wysiwyg');
     return false;
   }
   return applyJsonSlice(view, json, source, branchLabel);
@@ -363,10 +455,12 @@ function applyJsonSlice(
   htmlBytes?: number,
 ): boolean {
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: schema.nodeFromJSON accepts loose JSONContent at runtime; the public type is narrower than what's actually valid
-    const node = view.state.schema.nodeFromJSON(json as any);
+    const node = view.state.schema.nodeFromJSON(json);
     view.dispatch(
-      view.state.tr.replaceSelection(node.slice(0, node.content.size)).scrollIntoView(),
+      view.state.tr
+        .replaceSelection(node.slice(0, node.content.size))
+        .setMeta(PREVENT_AUTOLINK_META, true)
+        .scrollIntoView(),
     );
     return true;
   } catch (err) {
@@ -379,6 +473,7 @@ function applyJsonSlice(
       errorClass: classifyError(err),
       ...(htmlBytes != null ? { htmlBytes } : {}),
     });
+    notifyPasteDegraded('wysiwyg');
     return false;
   }
 }

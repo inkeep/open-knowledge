@@ -53,6 +53,7 @@ import {
   createStructuralFreshnessChecker,
   type StructuralFreshnessChecker,
 } from '../bridge/structural-freshness.ts';
+import type { LinkStyle } from '../extensions/link-fidelity.ts';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
 import { createRegistry } from '../registry/index.ts';
 import type { PropDef } from '../registry/types.ts';
@@ -1538,7 +1539,7 @@ function buildPmToMdastHandlers(
           children: [{ type: 'text' as const, value: label }],
         } as unknown as MdastNodes;
       }
-      const style = mark.attrs.linkStyle;
+      const style: LinkStyle | undefined = mark.attrs.linkStyle;
       if (style === 'autolink') {
         return {
           type: 'link' as const,

@@ -74,7 +74,7 @@ function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
   };
   return {
     state: {
-      selection: { $from },
+      selection: { $from, empty: true },
       schema: {
         nodes: { codeBlock: codeBlockType },
         text: (s: string) => ({ textContent: s }),
@@ -89,6 +89,9 @@ function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
           return this;
         }),
         replaceSelection: mock(function (this: unknown, _slice: unknown) {
+          return this;
+        }),
+        setMeta: mock(function (this: unknown, _key: unknown, _value: unknown) {
           return this;
         }),
         scrollIntoView: mock(function (this: unknown) {
@@ -345,5 +348,36 @@ describe('WYSIWYG drop dispatcher — paste/drop parity on canonical inputs', ()
     });
     expect(drop(view, evt)).toBe(false);
     expect(md.parse).not.toHaveBeenCalled();
+  });
+
+  test('drop of a lone GFM URL routes through the markdown parse, same as paste', () => {
+    // Address-bar drags carry the URL as text/plain (often with
+    // text/uri-list alongside); the shared branch tree gives drop the same
+    // lone-URL conversion paste gets.
+    const md = fakeMdManager();
+    const drop = createHandleDrop({
+      // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+      mdManager: md as any,
+    });
+    const view = fakeView();
+    const evt = fakeDropEvent({ data: { 'text/plain': 'https://inkeep.com\n' } });
+    expect(drop(view, evt)).toBe(true);
+    expect(md.parse).toHaveBeenCalledWith('https://inkeep.com');
+  });
+
+  test('shift-held drop of a lone URL inserts verbatim (no linkify)', () => {
+    const md = fakeMdManager();
+    const drop = createHandleDrop({
+      // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+      mdManager: md as any,
+    });
+    const view = fakeView();
+    const evt = fakeDropEvent({
+      data: { 'text/plain': 'https://inkeep.com' },
+      shiftKey: true,
+    });
+    expect(drop(view, evt)).toBe(true);
+    expect(md.parse).not.toHaveBeenCalled();
+    expect(view.state.tr.replaceSelectionWith).toHaveBeenCalled();
   });
 });

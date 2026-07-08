@@ -86,16 +86,27 @@ export const SHORTCUT_CATEGORY_ORDER = Object.keys(SHORTCUT_CATEGORY_LABELS) as 
 
 const KEYBOARD_SHORTCUT_DEFINITIONS = [
   {
+    // Exact ⌘K only (no extra-modifier tolerance) — a deliberate narrowing
+    // that ships with the dual-role ⌘K: it keeps the add-link claim
+    // unambiguous and frees ⌘⇧K (which would otherwise shadow CodeMirror's
+    // delete-line in source mode). ⌘⇧K intentionally does NOT open the
+    // palette; a regression test pins that.
+    //
+    // Phase-ordering contract for the shared ⌘K chord: this palette listener
+    // is window BUBBLE phase; the add-link claim (LinkEditPopover) is window
+    // CAPTURE phase and stops propagation when it applies. Any future
+    // capture-phase ⌘K handler must slot into that ordering consciously —
+    // the registry itself has no phase concept.
     id: 'command-palette',
     category: 'general',
     title: msg`Command palette`,
-    description: msg`Search files, commands, projects, and AI handoff actions.`,
+    description: msg`Search files, commands, projects, and AI handoff actions. With text selected in the visual editor, this chord adds a link instead.`,
     scope: msg`Global`,
     bindings: [
       {
         mac: '⌘ K',
         windowsLinux: 'Ctrl K',
-        match: { key: 'k', mod: true, allowExtraModifiers: true },
+        match: { key: 'k', mod: true },
       },
     ],
   },
@@ -430,6 +441,25 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     description: msg`Toggle highlight formatting.`,
     scope: msg`Visual editor`,
     bindings: [{ mac: '⇧⌘ H', windowsLinux: 'Ctrl Shift H' }],
+  },
+  {
+    // Same chord as `command-palette` by design: a capture-phase window
+    // listener in the WYSIWYG bubble menu claims exact ⌘K first when a link
+    // affordance applies (focused editor + text selection, or caret inside a
+    // link); everywhere else the event falls through to the palette's
+    // window-bubble listener.
+    id: 'add-link',
+    category: 'wysiwyg',
+    title: msg`Add link`,
+    description: msg`Link the selected text, or edit the link under the caret.`,
+    scope: msg`Visual editor selection`,
+    bindings: [
+      {
+        mac: '⌘ K',
+        windowsLinux: 'Ctrl K',
+        match: { key: 'k', mod: true },
+      },
+    ],
   },
   {
     id: 'edit-with-ai',

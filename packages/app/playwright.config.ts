@@ -14,16 +14,19 @@ import { defineConfig } from '@playwright/test';
  */
 
 /**
- * Single-browser (Chromium) — all E2E tests use programmatic clipboard
+ * Single-browser (Chromium). Most E2E tests use programmatic clipboard
  * injection via `dispatchEvent(new ClipboardEvent(...))`, not real browser
- * clipboard APIs. Cross-browser clipboard differences (Safari user-activation
- * rules, Firefox async clipboard restrictions) are not exercised because the
- * tests bypass the native clipboard permission model entirely. Running 3×
+ * clipboard APIs, so cross-browser clipboard differences (Safari
+ * user-activation rules, Firefox async clipboard restrictions) aren't
+ * exercised. The one exception is the FR8 clipboard-denial case in
+ * link-authoring-apex.e2e.ts, which runs a fresh context with clipboard-read
+ * withheld to assert the real permission gate degrades silently — it needs no
+ * cross-browser matrix either (the denial path is host-agnostic). Running 3×
  * browsers adds ~10 minutes of CI time with zero additional coverage.
  *
- * If future tests exercise REAL browser clipboard (e.g., `page.keyboard.press
- * ('Meta+V')` with system clipboard content), add per-file project scoping
- * for those tests only — not a global 3× multiplier.
+ * If future tests exercise REAL browser clipboard reads/writes that DO vary by
+ * engine, add per-file project scoping for those tests only — not a global 3×
+ * multiplier.
  */
 const isCI = !!process.env.CI;
 

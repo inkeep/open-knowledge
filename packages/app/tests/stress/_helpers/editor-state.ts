@@ -133,6 +133,62 @@ export async function focusEditor(page: Page, timeoutMs = 5_000): Promise<void> 
 }
 
 /**
+ * Select the first occurrence of `text` in the active PM editor and wait
+ * until `editor.state.selection` actually covers it.
+ *
+ * Routed through TipTap's `setTextSelection` command on
+ * `window.__activeEditor` rather than synthesized mouse drags or
+ * platform-specific word-selection chords — deterministic under CI worker
+ * contention. The search walks text nodes and matches within a single one,
+ * so `text` must not span a mark/node boundary (fine for word-level
+ * selections; extend when a caller needs a cross-node range — the helper
+ * throws loudly rather than selecting a partial match).
+ *
+ * The trailing `waitForFunction` is the "selection took" signal callers
+ * need before dispatching selection-dependent events (paste, keyboard
+ * chords): `setTextSelection` updates PM state synchronously, but polling
+ * the state from the test context is what proves the evaluate round-trip
+ * completed and the range maps to the expected characters.
+ */
+export async function selectText(page: Page, text: string): Promise<void> {
+  await page.evaluate((target) => {
+    const editor = window.__activeEditor;
+    if (!editor) throw new Error('selectText: window.__activeEditor not set');
+    let from = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (from !== -1) return false;
+      const nodeText = node.isText ? node.text : undefined;
+      if (nodeText) {
+        const idx = nodeText.indexOf(target);
+        if (idx !== -1) {
+          from = pos + idx;
+          return false;
+        }
+      }
+      return true;
+    });
+    if (from === -1) {
+      throw new Error(`selectText: "${target}" not found within a single text node`);
+    }
+    editor
+      .chain()
+      .focus()
+      .setTextSelection({ from, to: from + target.length })
+      .run();
+  }, text);
+  await page.waitForFunction(
+    (target) => {
+      const editor = window.__activeEditor;
+      if (!editor) return false;
+      const { from, to } = editor.state.selection;
+      return to > from && editor.state.doc.textBetween(from, to) === target;
+    },
+    text,
+    { timeout: 5_000 },
+  );
+}
+
+/**
  * Wait until ProseMirror's `editor.state.selection` has an ancestor of the
  * given `nodeType` name — i.e. the cursor is INSIDE that node type per PM's
  * internal state, not merely per the DOM.

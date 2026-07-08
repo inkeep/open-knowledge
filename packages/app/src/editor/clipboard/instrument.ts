@@ -140,9 +140,11 @@ type ClipboardOp = 'copy' | 'cut' | 'paste' | 'drop';
  * Dispatcher branch the event was emitted from. `A`–`E` match the WYSIWYG
  * paste dispatcher and source paste dispatcher. Source's `B-wrapper` and
  * Branch B both collapse into CM6's text/plain default, but stay distinct
- * in telemetry. `shift` is the Cmd+Shift+V escape hatch; `codeblock` is the
- * cursor-inside-code short-circuit; `serialize` is the copy/cut path where
- * the concept of "paste branch" doesn't apply.
+ * in telemetry. `url` is the WYSIWYG lone-URL linkify step (paste/drop of
+ * a single URL token, cursor or over-selection); `shift` is the
+ * Cmd+Shift+V escape hatch; `codeblock` is the cursor-inside-code
+ * short-circuit; `serialize` is the copy/cut path where the concept of
+ * "paste branch" doesn't apply.
  */
 export type ClipboardBranch =
   | 'A'
@@ -151,6 +153,7 @@ export type ClipboardBranch =
   | 'C'
   | 'D'
   | 'E'
+  | 'url'
   | 'shift'
   | 'codeblock'
   | 'serialize';
@@ -159,7 +162,8 @@ export type ClipboardBranch =
  * Pipeline stage that produced a conversion failure. `htmlToMdast` is the
  * rehype walk; `mdastToMarkdown` is remark-stringify; `mdManagerParse` is
  * the markdown → PM conversion; `applyJsonSlice` is the PM dispatch;
- * `branchA` is the VS-Code-fenced-block path; `chunkedYTextInsert` is the
+ * `branchA` is the VS-Code-fenced-block path; `linkifySelection` is the
+ * lone-URL paste-over-selection mark-add; `chunkedYTextInsert` is the
  * partial-insert failure (also surfaces as the typed `ChunkedInsertError`).
  */
 type ClipboardStage =
@@ -168,6 +172,7 @@ type ClipboardStage =
   | 'mdManagerParse'
   | 'applyJsonSlice'
   | 'branchA'
+  | 'linkifySelection'
   | 'chunkedYTextInsert';
 
 /** Serialization path — `text` is text/plain, `html` is text/html. */

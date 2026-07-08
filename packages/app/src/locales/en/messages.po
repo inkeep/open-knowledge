@@ -682,6 +682,10 @@ msgstr "Add item"
 msgid "Add item to {keyName}"
 msgstr "Add item to {keyName}"
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Add link"
+msgstr "Add link"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords. This setting applies only to this computer."
 msgstr "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords. This setting applies only to this computer."
@@ -3867,6 +3871,10 @@ msgstr "Link copied."
 msgid "Link target"
 msgstr "Link target"
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Link the selected text, or edit the link under the caret."
+msgstr "Link the selected text, or edit the link under the caret."
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Link to a page or external URL."
 msgstr "Link to a page or external URL."
@@ -5959,8 +5967,8 @@ msgid "Search failed."
 msgstr "Search failed."
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Search files, commands, projects, and AI handoff actions."
-msgstr "Search files, commands, projects, and AI handoff actions."
+msgid "Search files, commands, projects, and AI handoff actions. With text selected in the visual editor, this chord adds a link instead."
+msgstr "Search files, commands, projects, and AI handoff actions. With text selected in the visual editor, this chord adds a link instead."
 
 #: src/components/CommandPalette.tsx
 msgid "Search files, folders, and commands for the current workspace."
@@ -7582,6 +7590,10 @@ msgstr "Visual editor list item"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Visual editor replace input focused"
 msgstr "Visual editor replace input focused"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Visual editor selection"
+msgstr "Visual editor selection"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Visual editor table"

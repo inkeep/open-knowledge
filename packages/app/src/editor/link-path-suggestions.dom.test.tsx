@@ -220,6 +220,36 @@ describe('LinkPathSuggestionInput', () => {
     expect(screen.getByRole('listbox', { name: 'Path suggestions' })).toBeDefined();
   });
 
+  test('after Escape dismisses the panel, keys reach the parent onKeyDown', () => {
+    // Suggestions still EXIST for the value after dismissal — only the panel is
+    // hidden. Keys must not be swallowed against the invisible panel: the next
+    // Escape has to reach the parent popover/dialog (which closes on it) and
+    // Enter has to reach the parent's apply handler.
+    const seen: string[] = [];
+    render(
+      <LinkPathSuggestionInput
+        aria-label="Link target"
+        value=""
+        pages={pages}
+        folderPaths={folderPaths}
+        onValueChange={() => {}}
+        onKeyDown={(event) => seen.push(event.key)}
+      />,
+    );
+
+    const input = screen.getByRole('combobox', { name: 'Link target' });
+    fireEvent.focus(input);
+    expect(screen.getByRole('listbox', { name: 'Path suggestions' })).toBeDefined();
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('listbox', { name: 'Path suggestions' })).toBeNull();
+    expect(seen).toEqual([]);
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(seen).toEqual(['Escape', 'Enter']);
+  });
+
   test('ArrowDown and ArrowUp update the active option', () => {
     render(<Harness initialValue="/guides" />);
 

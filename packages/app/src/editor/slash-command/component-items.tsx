@@ -23,7 +23,7 @@ import type { Editor } from '@tiptap/react';
 import { CopyPlus, ExternalLink, FileUp, Hash, Link2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { setPendingLinkEdit } from '../extensions/link-edit-autoopen';
-import { markIdentityKey } from '../extensions/mark-identity';
+import { findMarkIdAt } from '../extensions/mark-identity';
 import { uploadAndInsert } from '../image-upload/index.ts';
 import { getInteractionLayer } from '../interaction-layer-host';
 import { resolveIcon } from '../registry/icons.ts';
@@ -657,26 +657,6 @@ function openFilePickerAndUpload(editor: Editor): void {
 }
 
 /**
- * Resolve the stable mark id of a `link` mark covering `pos` from the
- * mark-identity plugin state. IDs are assigned synchronously during the
- * dispatch that inserts the mark, so this reads them off `editor.state`
- * immediately after the insert chain runs. Returns null when the plugin
- * isn't installed (non-app editors / tests) or no link mark covers `pos` —
- * callers degrade gracefully (the link is still inserted; only the
- * auto-open is skipped).
- */
-function findLinkMarkIdAt(editor: Editor, pos: number): string | null {
-  const state = markIdentityKey.getState(editor.state);
-  if (!state) return null;
-  for (const info of state.byId.values()) {
-    if (info.markType === 'link' && info.from <= pos && pos < info.to) {
-      return info.id;
-    }
-  }
-  return null;
-}
-
-/**
  * Slash-menu items for inline-only PM atoms. Block components flow
  * through the descriptor registry (`getComponentItems()`); inline atoms
  * like `tag` aren't in the registry — they map directly to PM nodes
@@ -744,7 +724,7 @@ export function getInlineComponentItems(): SlashCommandItem[] {
           })
           .run();
 
-        const markId = findLinkMarkIdAt(editor, insertPos);
+        const markId = findMarkIdAt(editor.state, insertPos, 'link');
         if (!markId) return;
         setPendingLinkEdit(markId);
         requestAnimationFrame(() => {
