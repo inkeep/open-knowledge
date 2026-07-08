@@ -28,7 +28,8 @@
  */
 
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { userEvent } from '@testing-library/user-event';
 import { useEffect, useRef, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
@@ -141,7 +142,13 @@ function ReloadHarness({
  * plausible names — the test asserts on the tabs surfaced, never on which alias
  * the fix calls.
  */
-function makeSurvivingMainBridge(preExisting: ReadonlyArray<{ ptyId: string }>) {
+function makeSurvivingMainBridge(
+  preExisting: ReadonlyArray<{
+    ptyId: string;
+    customLabel?: string | null;
+    ordinal?: number | null;
+  }>,
+) {
   let freshCounter = 0;
   const create = mock(async () => {
     freshCounter += 1;
@@ -152,6 +159,8 @@ function makeSurvivingMainBridge(preExisting: ReadonlyArray<{ ptyId: string }>) 
   // session's live PTY is observable.
   const input = mock((_id: string, _d: string) => {});
   const listLive = mock(async () => preExisting);
+  const setMeta = mock((_ptyId: string, _meta: unknown) => {});
+  const setOrder = mock((_ids: readonly string[]) => {});
   const bridge = {
     onMenuAction: () => () => {},
     editor: { notifyViewMenuStateChanged: () => {} },
@@ -164,9 +173,11 @@ function makeSurvivingMainBridge(preExisting: ReadonlyArray<{ ptyId: string }>) 
       getSessions: listLive,
       snapshotSessions: listLive,
       restoreSessions: listLive,
+      setMeta,
+      setOrder,
     },
   } as unknown as OkDesktopBridge;
-  return { bridge, create, input, listLive };
+  return { bridge, create, input, listLive, setMeta, setOrder };
 }
 
 function renderDock(bridge: OkDesktopBridge, visible: boolean) {
@@ -199,6 +210,53 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
     expect(document.querySelectorAll('[data-terminal-session][data-state="active"]')).toHaveLength(
       1,
     );
+  });
+
+  test("restores each survivor's custom name and the reordered tab order across reload", async () => {
+    // Main returns survivors already in the user's reordered sequence, each with
+    // the metadata it retained across the reload: a custom name on two, a bare
+    // sticky ordinal on the third.
+    const { bridge } = makeSurvivingMainBridge([
+      { ptyId: 'pty-3', customLabel: 'deploy', ordinal: 3 },
+      { ptyId: 'pty-1', customLabel: null, ordinal: 1 },
+      { ptyId: 'pty-2', customLabel: 'logs', ordinal: 2 },
+    ]);
+
+    renderDock(bridge, true);
+
+    await waitFor(() => expect(screen.getAllByTestId('terminal-session')).toHaveLength(3), {
+      timeout: 2000,
+    });
+
+    // Tabs come back in main's returned (reordered) order with the custom names
+    // restored; the un-named survivor falls back to its RESTORED sticky ordinal
+    // (Terminal 1), not a positional renumber to Terminal 2.
+    const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
+    const tabs = within(tablist).getAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['deploy', 'Terminal 1', 'logs']);
+  });
+
+  test('a rename pushes the new custom label to main (renderer->main persist path)', async () => {
+    const { bridge, setMeta } = makeSurvivingMainBridge([
+      { ptyId: 'pty-1', customLabel: null, ordinal: 1 },
+    ]);
+    const user = userEvent.setup();
+
+    renderDock(bridge, true);
+    await waitFor(() => expect(screen.getAllByTestId('terminal-session')).toHaveLength(1), {
+      timeout: 2000,
+    });
+
+    // Rename the tab: double-click -> inline input -> Enter. This is the push path
+    // that keeps the custom name alive across a future reload; it is optional-chained
+    // in production, so a mock omitting setMeta would leave it silently unverified.
+    await user.dblClick(screen.getByRole('tab', { name: 'Terminal 1' }));
+    const input = screen.getByRole('textbox', { name: /^Rename/ });
+    await user.clear(input);
+    await user.type(input, 'deploy');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(setMeta).toHaveBeenCalledWith('pty-1', { customLabel: 'deploy' }));
   });
 
   // A render that can flip `visible` so the "open the dock after a reload with no

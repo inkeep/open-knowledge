@@ -879,6 +879,11 @@ export type OkPtyCreateResult =
  */
 export interface OkPtyListEntry {
   readonly ptyId: string;
+  /** User-set custom tab name that survives a renderer reload; null when unset. */
+  readonly customLabel: string | null;
+  /** Sticky per-session tab number, preserved across a renderer reload; null
+   *  until the renderer has reported it for a just-created session. */
+  readonly ordinal: number | null;
 }
 
 /**
@@ -1841,6 +1846,17 @@ export interface OkDesktopBridge {
      * exited in the gap since `list`, so the caller spawns a fresh shell instead.
      */
     adopt(ptyId: string): Promise<OkPtyAdoptResult>;
+    /**
+     * Persist per-session tab metadata (custom name + sticky ordinal) in main so
+     * it survives a renderer reload — main outlives the reload, so a reloaded dock
+     * reads it back via `list`. Fire-and-forget; omit a field to leave it unchanged.
+     */
+    setMeta(ptyId: string, meta: { customLabel?: string | null; ordinal?: number }): void;
+    /**
+     * Persist the tab display order in main (ptyIds in visual order) so a reorder
+     * survives a renderer reload. Fire-and-forget.
+     */
+    setOrder(orderedPtyIds: readonly string[]): void;
     /**
      * Per-window dock visibility retained in main, read once on reload so the
      * dock re-expands when it was open before the reload (and stays hidden after

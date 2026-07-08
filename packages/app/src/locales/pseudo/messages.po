@@ -4237,6 +4237,13 @@ msgstr ""
 msgid "Moved \"{name}\" to {0} ({skipped} binary file(s) not copied)"
 msgstr ""
 
+#. placeholder {0}: moved.label
+#. placeholder {1}: moved.position
+#. placeholder {2}: moved.total
+#: src/components/TerminalSessionsHost.tsx
+msgid "Moved {0} to position {1} of {2}"
+msgstr ""
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr ""
@@ -5658,6 +5665,11 @@ msgstr ""
 msgid "Rename"
 msgstr ""
 
+#. placeholder {0}: session.label
+#: src/components/TerminalTabStrip.tsx
+msgid "Rename {0}"
+msgstr ""
+
 #: src/components/FrontmatterRow.tsx
 msgid "Rename {keyName}"
 msgstr ""
@@ -6862,7 +6874,7 @@ msgstr ""
 msgid "Terminal"
 msgstr ""
 
-#. placeholder {0}: index + 1
+#. placeholder {0}: session.ordinal
 #: src/components/TerminalSessionsHost.tsx
 msgid "Terminal {0}"
 msgstr ""

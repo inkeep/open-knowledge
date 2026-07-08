@@ -25,11 +25,20 @@ import { TerminalTabStrip } from './TerminalTabStrip';
  *  sessions opened from the tab strip carry none. `title` is the latest OSC 0/2
  *  title the running program set (null → the tab shows its positional default).
  *  `adoptPtyId` is the surviving ptyId after a renderer reload — the session
- *  adopts that live shell instead of spawning a fresh one; null for new tabs. */
+ *  adopts that live shell instead of spawning a fresh one; null for new tabs.
+ *  `customLabel` is a user-set tab name that pins over `title`; null until the
+ *  user renames the tab (an empty rename commit clears it back to null).
+ *  `ordinal` is an immutable per-session number assigned at creation from the
+ *  monotonic counter — the positional-fallback label ("Terminal N") uses it so a
+ *  reorder does not renumber untitled tabs (the number sticks to the session, not
+ *  the slot). Ordinals can have gaps (closing a tab leaves one) and reset to
+ *  positional on a renderer reload. */
 interface TerminalSessionDescriptor {
   readonly id: string;
   readonly launch: TerminalLaunchIntent | null;
   readonly title: string | null;
+  readonly customLabel: string | null;
+  readonly ordinal: number;
   readonly adoptPtyId: string | null;
 }
 
@@ -45,6 +54,19 @@ function focusTerminalSession(id: string) {
   document
     .querySelector<HTMLElement>(`[data-terminal-session="${id}"] .xterm-helper-textarea`)
     ?.focus();
+}
+
+/** True when keyboard focus currently sits inside the stable host div. */
+function focusInsideHost(hostEl: HTMLElement | null): boolean {
+  return hostEl?.contains(document.activeElement) ?? false;
+}
+
+/** Focus-gate shared by the terminal host's capture-phase keyboard chords (⌘1–9,
+ *  ⌘⇧←/→): a chord is in scope always in the window variant (the whole window IS
+ *  the terminal), and in the dock variant only while focus sits inside the host —
+ *  so the chords stay free everywhere else in the editor window. */
+function chordTargetsHost(hostEl: HTMLElement | null, variant: 'dock' | 'window'): boolean {
+  return variant === 'window' || focusInsideHost(hostEl);
 }
 
 interface TerminalSessionsHostProps {
@@ -160,7 +182,16 @@ export function TerminalSessionsHost({
   // set.
   const [sessions, setSessions] = useState<readonly TerminalSessionDescriptor[]>(() =>
     !canRehydrate && visible
-      ? [{ id: makeSessionId(1), launch, title: null, adoptPtyId: null }]
+      ? [
+          {
+            id: makeSessionId(1),
+            launch,
+            title: null,
+            customLabel: null,
+            ordinal: 1,
+            adoptPtyId: null,
+          },
+        ]
       : [],
   );
   const [activeSessionId, setActiveSessionId] = useState(() =>
@@ -195,8 +226,21 @@ export function TerminalSessionsHost({
   // or torn down).
   const ptyIdBySessionRef = useRef(new Map<string, string>());
   function setSessionPtyId(id: string, ptyId: string | null) {
-    if (ptyId === null) ptyIdBySessionRef.current.delete(id);
-    else ptyIdBySessionRef.current.set(id, ptyId);
+    if (ptyId === null) {
+      ptyIdBySessionRef.current.delete(id);
+      return;
+    }
+    ptyIdBySessionRef.current.set(id, ptyId);
+    // Seed main with this session's reload-survival metadata as soon as its PTY
+    // exists — the sticky ordinal (fixed at creation) plus any name set before the
+    // shell spawned. Main outlives a renderer reload, so `list` reads it back.
+    const session = sessionsRef.current.find((s) => s.id === id);
+    if (session != null) {
+      bridge.terminal?.setMeta?.(ptyId, {
+        ordinal: session.ordinal,
+        customLabel: session.customLabel,
+      });
+    }
   }
   // Monotonic nonce for tab-strip "New chat" launches. TerminalLaunchIntent
   // requires a nonce, but it is only load-bearing for the EditorPane→prop
@@ -209,7 +253,14 @@ export function TerminalSessionsHost({
     const id = makeSessionId(sessionCounterRef.current);
     setSessions((prev) => [
       ...prev,
-      { id, launch: launchForSession, title: null, adoptPtyId: null },
+      {
+        id,
+        launch: launchForSession,
+        title: null,
+        customLabel: null,
+        ordinal: sessionCounterRef.current,
+        adoptPtyId: null,
+      },
     ]);
     setActiveSessionId(id);
   }
@@ -273,6 +324,85 @@ export function TerminalSessionsHost({
       return prev.map((session) => (session.id === id ? { ...session, title: next } : session));
     });
   }
+
+  // Commit a manual tab rename. A trimmed-empty value clears the custom label
+  // (revert to OSC title / positional default). Same same-reference bailout as
+  // setSessionTitle so an unchanged value causes no re-render.
+  function setSessionCustomLabel(id: string, label: string) {
+    const next = label.trim() === '' ? null : label.trim();
+    setSessions((prev) => {
+      if (!prev.some((session) => session.id === id && session.customLabel !== next)) return prev;
+      return prev.map((session) =>
+        session.id === id ? { ...session, customLabel: next } : session,
+      );
+    });
+    // Persist the rename to main so it survives a renderer reload.
+    const ptyId = ptyIdBySessionRef.current.get(id);
+    if (ptyId != null) bridge.terminal?.setMeta?.(ptyId, { customLabel: next });
+  }
+
+  // Display label precedence, shared by the tab list and the reorder announcer:
+  // a manual name pins over the OSC title, which pins over the sticky ordinal.
+  function sessionLabel(session: TerminalSessionDescriptor): string {
+    return session.customLabel ?? session.title ?? t`Terminal ${session.ordinal}`;
+  }
+
+  // True while a pointer drag is lifted (reported by the strip); the ⌘⇧←/→ chord
+  // is suppressed then so the two reorder inputs never mutate order concurrently.
+  const dragActiveRef = useRef(false);
+  // sr-only polite live region for keyboard-reorder announcements. Imperative
+  // textContent + trailing debounce (React batching would swallow rapid updates —
+  // the app's announcer precedent); pointer drags keep dnd-kit's own announcements.
+  const announcerRef = useRef<HTMLSpanElement>(null);
+  const announceTimerRef = useRef<number | null>(null);
+
+  // Apply a reorder from a desired visual order of session ids — the single spine
+  // for both the pointer drag (strip) and the keyboard path. A length or unknown-id
+  // mismatch refuses the whole reorder (no partial mutation); an unchanged order
+  // keeps the same array reference (render bailout).
+  function reorderSessions(newOrderIds: readonly string[]) {
+    setSessions((prev) => {
+      if (newOrderIds.length !== prev.length) return prev;
+      const byId = new Map(prev.map((session) => [session.id, session]));
+      const next: TerminalSessionDescriptor[] = [];
+      for (const id of newOrderIds) {
+        const session = byId.get(id);
+        if (session == null) return prev;
+        next.push(session);
+      }
+      if (next.every((session, index) => session === prev[index])) return prev;
+      return next;
+    });
+    // Persist the new display order to main (ptyIds in visual order) so a drag /
+    // keyboard reorder survives a renderer reload. Sessions without a live PTY yet
+    // are skipped; main slots them after the listed block via its own fallback.
+    const orderedPtyIds = newOrderIds
+      .map((id) => ptyIdBySessionRef.current.get(id))
+      .filter((ptyId): ptyId is string => ptyId != null);
+    if (orderedPtyIds.length > 0) bridge.terminal?.setOrder?.(orderedPtyIds);
+  }
+
+  // Move the active tab one slot (keyboard reorder). Reads the post-commit mirror
+  // (same source as ⌘1–9), no-ops at the edges, and returns the moved tab's label
+  // + new 1-based position for the SR announcement (null = nothing moved).
+  function moveActiveSession(
+    direction: -1 | 1,
+  ): { label: string; position: number; total: number } | null {
+    const current = sessionsRef.current;
+    const from = current.findIndex((session) => session.id === activeSessionIdRef.current);
+    if (from < 0) return null;
+    const to = from + direction;
+    if (to < 0 || to >= current.length) return null;
+    const ids = current.map((session) => session.id);
+    const [movedId] = ids.splice(from, 1);
+    ids.splice(to, 0, movedId);
+    reorderSessions(ids);
+    return { label: sessionLabel(current[from]), position: to + 1, total: current.length };
+  }
+  // Latest-ref so the keyboard effect calls the current closure without
+  // re-subscribing (React Compiler forbids writing the ref during render).
+  const moveActiveSessionRef = useRef(moveActiveSession);
+
   // Latest-ref so deps-stable effects below call the current closure without
   // re-subscribing (React Compiler forbids writing the ref during render).
   const openSessionRef = useRef(openSession);
@@ -307,6 +437,7 @@ export function TerminalSessionsHost({
 
   useEffect(() => {
     openSessionRef.current = openSession;
+    moveActiveSessionRef.current = moveActiveSession;
     activeSessionIdRef.current = activeSessionId;
     sessionsRef.current = sessions;
     closeActiveRef.current = () => {
@@ -354,7 +485,11 @@ export function TerminalSessionsHost({
     rehydratedRef.current = true;
     let cancelled = false;
     void (async () => {
-      let survivors: readonly { ptyId: string }[] = [];
+      let survivors: readonly {
+        ptyId: string;
+        customLabel: string | null;
+        ordinal: number | null;
+      }[] = [];
       try {
         survivors = (await bridge.terminal.list()) ?? [];
       } catch (err) {
@@ -370,9 +505,16 @@ export function TerminalSessionsHost({
           id: makeSessionId(index + 1),
           launch: null,
           title: null,
+          // Restored from main so a rename + reorder survive a renderer reload;
+          // ordinal falls back to positional for a session main never received one
+          // for (created in the reload gap).
+          customLabel: entry.customLabel ?? null,
+          ordinal: entry.ordinal ?? index + 1,
           adoptPtyId: entry.ptyId,
         }));
-        sessionCounterRef.current = recovered.length;
+        // Continue numbering above the highest restored ordinal so a new tab can't
+        // collide with a survivor's sticky number.
+        sessionCounterRef.current = Math.max(recovered.length, ...recovered.map((r) => r.ordinal));
         setSessions(recovered);
         setActiveSessionId(recovered[0]?.id ?? '');
       }
@@ -439,8 +581,7 @@ export function TerminalSessionsHost({
     function onKeyDown(event: KeyboardEvent) {
       if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (!/^[1-9]$/.test(event.key)) return;
-      if (variant !== 'window' && (hostEl == null || !hostEl.contains(document.activeElement)))
-        return;
+      if (!chordTargetsHost(hostEl, variant)) return;
       const target = sessionsRef.current[Number(event.key) - 1];
       if (target == null) return;
       event.preventDefault();
@@ -451,6 +592,50 @@ export function TerminalSessionsHost({
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
   }, [hostEl, variant]);
+
+  // ⌘⇧← / ⌘⇧→ move the ACTIVE tab one slot. Same capture-phase + focus-gate shape
+  // as ⌘1–9 (so a focused xterm doesn't swallow it, and the chord stays free
+  // outside the terminal in the dock). Meta+Shift only — a focused xterm encodes
+  // ⌃/⌥-arrows into the PTY, but leaves meta-modified arrows to the app. Suppressed
+  // while the rename input is focused (event target is an <input> — xterm's focus
+  // sink is a <textarea>, so the chord still works while typing in the shell) and
+  // while a pointer drag is lifted. Keyboard reorders announce via the sr-only
+  // region; pointer drags keep dnd-kit's own announcements.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey) return;
+      const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+      if (direction === 0) return;
+      if (!chordTargetsHost(hostEl, variant)) return;
+      if (dragActiveRef.current) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === 'INPUT' || target?.isContentEditable) return;
+      const moved = moveActiveSessionRef.current(direction);
+      if (moved == null) return; // no-op at the edges
+      event.preventDefault();
+      event.stopPropagation();
+      queueMicrotask(() => focusTerminalSession(activeSessionIdRef.current));
+      // Announce via the sr-only region (stable refs only; trailing debounce so
+      // rapid repeats don't flood — React batching would swallow direct updates).
+      const message = t`Moved ${moved.label} to position ${moved.position} of ${moved.total}`;
+      if (announceTimerRef.current != null) window.clearTimeout(announceTimerRef.current);
+      announceTimerRef.current = window.setTimeout(() => {
+        announceTimerRef.current = null;
+        if (announcerRef.current != null) announcerRef.current.textContent = message;
+      }, 60);
+    }
+    window.addEventListener('keydown', onKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, { capture: true });
+      // Cancel any in-flight announce debounce: this effect re-runs on locale
+      // change and tears down on unmount, and a pending 60 ms timer would
+      // otherwise fire a stale-closure message against the old `t`/a dead node.
+      if (announceTimerRef.current != null) {
+        window.clearTimeout(announceTimerRef.current);
+        announceTimerRef.current = null;
+      }
+    };
+  }, [hostEl, variant, t]);
 
   // Reflect PTY liveness to main so the Terminal menu's "Kill Terminal" item
   // enables only while at least one session is live. A collapsed-but-alive
@@ -475,7 +660,7 @@ export function TerminalSessionsHost({
   // collapse, close-last) always sets `visible` false, so focus-return still fires.
   useLayoutEffect(() => {
     if (isShowing || visible) return;
-    if (hostEl == null || !hostEl.contains(document.activeElement)) return;
+    if (!focusInsideHost(hostEl)) return;
     onRequestEditorFocus();
   }, [isShowing, visible, hostEl, onRequestEditorFocus]);
 
@@ -487,11 +672,22 @@ export function TerminalSessionsHost({
     focusTerminalSession(activeSessionIdRef.current);
   }, [isShowing]);
 
-  const tabDescriptors = sessions.map((session, index) => ({
+  const tabDescriptors = sessions.map((session) => ({
     id: session.id,
-    // The program's OSC title when it set one, else the positional default.
-    label: session.title ?? t`Terminal ${index + 1}`,
+    // A user-set custom name pins over the program's OSC title, which pins over
+    // the sticky positional default. The default uses the session's immutable
+    // ordinal (not its render index) so a reorder never renumbers untitled tabs.
+    label: session.customLabel ?? session.title ?? t`Terminal ${session.ordinal}`,
   }));
+
+  // Panels render in a STABLE order (by immutable ordinal), deliberately
+  // decoupled from the tab order. A reorder must not move a panel's DOM node:
+  // moving an xterm container fires its ResizeObserver refit (SIGWINCH), which
+  // makes the running program (e.g. a Claude TUI) repaint and lose its screen —
+  // reordering tabs would otherwise reset the live shell. The tabs reorder; the
+  // panels stay put. Radix associates each panel with its trigger by `value`,
+  // not DOM order, so the active panel still shows regardless of position.
+  const panelSessions = [...sessions].sort((a, b) => a.ordinal - b.ordinal);
 
   const sessionViews =
     sessions.length > 0 ? (
@@ -507,6 +703,14 @@ export function TerminalSessionsHost({
         onNewChatPickCli={pickNewChatCli}
         onNewChatPickTerminal={pickNewChatTerminal}
         onClose={closeSession}
+        onRename={setSessionCustomLabel}
+        // Pointer-drag reorder: the strip computes the new visual order and the
+        // host applies it (keyboard reorder shares reorderSessions). onDragActive
+        // gates the ⌘⇧←/→ chord off while a drag is lifted.
+        onReorder={reorderSessions}
+        onDragActiveChange={(active) => {
+          dragActiveRef.current = active;
+        }}
         dockPosition={dockPosition}
         onToggleDock={onToggleDock}
         // Collapse hides the terminal but keeps every session alive (hide is not
@@ -517,10 +721,12 @@ export function TerminalSessionsHost({
         draggable={variant === 'window'}
         className="h-full"
       >
-        {sessions.map((session) => (
+        {panelSessions.map((session) => (
           // forceMount keeps every session mounted (active shown, inactive
           // CSS-hidden) so each retains its xterm scrollback and keeps consuming
-          // output — switching tabs is show/hide, never unmount.
+          // output — switching tabs is show/hide, never unmount. Iterating
+          // `panelSessions` (stable ordinal order), NOT `sessions`, so a tab
+          // reorder never moves a panel's DOM node (see panelSessions above).
           <TabsContent
             key={session.id}
             value={session.id}
@@ -560,6 +766,21 @@ export function TerminalSessionsHost({
 
   // Render the session subtree into the stable host div (which the relocate effect
   // appends to the active container). A constant portal target = no remount on a
-  // dock move.
-  return hostEl != null ? createPortal(sessionViews, hostEl) : null;
+  // dock move. The sr-only announcer rides alongside so keyboard reorders are
+  // announced (its textContent is set imperatively; see announceReorder).
+  return hostEl != null
+    ? createPortal(
+        <>
+          {sessionViews}
+          <span
+            ref={announcerRef}
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
+            data-testid="terminal-reorder-announcer"
+          />
+        </>,
+        hostEl,
+      )
+    : null;
 }

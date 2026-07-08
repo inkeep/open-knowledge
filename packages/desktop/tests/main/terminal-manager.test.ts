@@ -985,3 +985,69 @@ describe('clampPtyDimension', () => {
     expect(clampPtyDimension(null, DEFAULT_PTY_COLS)).toBe(DEFAULT_PTY_COLS);
   });
 });
+
+describe('createTerminalManager — reload-survival metadata (label + order)', () => {
+  test('listSessions returns creation order with null label/ordinal until set', () => {
+    const h = makeManager();
+    const wc = makeWebContents();
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
+    expect(h.mgr.listSessions(1)).toEqual([
+      { ptyId: 'pty-1', customLabel: null, ordinal: null },
+      { ptyId: 'pty-2', customLabel: null, ordinal: null },
+    ]);
+  });
+
+  test('setSessionMeta persists name + ordinal, setSessionOrder reorders, listSessions restores both', () => {
+    const h = makeManager();
+    const wc = makeWebContents();
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-1
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-2
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-3
+
+    h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-1', customLabel: 'alpha', ordinal: 1 });
+    h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-3', customLabel: 'gamma', ordinal: 3 });
+    // The user drags pty-3 to the front.
+    h.mgr.setSessionOrder({ windowId: 1, orderedPtyIds: ['pty-3', 'pty-1', 'pty-2'] });
+
+    // Restored in the reordered sequence with names + sticky ordinals intact; the
+    // untouched survivor keeps its null metadata (renderer falls back positionally).
+    expect(h.mgr.listSessions(1)).toEqual([
+      { ptyId: 'pty-3', customLabel: 'gamma', ordinal: 3 },
+      { ptyId: 'pty-1', customLabel: 'alpha', ordinal: 1 },
+      { ptyId: 'pty-2', customLabel: null, ordinal: null },
+    ]);
+  });
+
+  test('setSessionMeta is a partial update — one field never clobbers the other', () => {
+    const h = makeManager();
+    const wc = makeWebContents();
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-1
+    h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-1', ordinal: 5 });
+    h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-1', customLabel: 'renamed' });
+    expect(h.mgr.listSessions(1)).toEqual([{ ptyId: 'pty-1', customLabel: 'renamed', ordinal: 5 }]);
+    // An empty rename clears the label (null) but leaves the ordinal intact.
+    h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-1', customLabel: null });
+    expect(h.mgr.listSessions(1)).toEqual([{ ptyId: 'pty-1', customLabel: null, ordinal: 5 }]);
+  });
+
+  test('a session created after a reorder appends after the reordered block', () => {
+    const h = makeManager();
+    const wc = makeWebContents();
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-1
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-2
+    h.mgr.setSessionOrder({ windowId: 1, orderedPtyIds: ['pty-2', 'pty-1'] });
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-3
+    expect(h.mgr.listSessions(1).map((e) => e.ptyId)).toEqual(['pty-2', 'pty-1', 'pty-3']);
+  });
+
+  test('setSessionMeta / setSessionOrder on an unknown window or ptyId is a no-op', () => {
+    const h = makeManager();
+    const wc = makeWebContents();
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-1
+    h.mgr.setSessionMeta({ windowId: 999, ptyId: 'pty-1', customLabel: 'x' });
+    h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-UNKNOWN', customLabel: 'x' });
+    h.mgr.setSessionOrder({ windowId: 999, orderedPtyIds: ['pty-1'] });
+    expect(h.mgr.listSessions(1)).toEqual([{ ptyId: 'pty-1', customLabel: null, ordinal: null }]);
+  });
+});

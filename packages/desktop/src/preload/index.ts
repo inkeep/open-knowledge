@@ -668,6 +668,13 @@ const bridge: OkDesktopBridge = {
     },
     list: () => invoke('ok:pty:list'),
     adopt: (ptyId) => invoke('ok:pty:adopt', { ptyId }),
+    // Fire-and-forget reload-survival metadata (swallow a teardown-race rejection).
+    setMeta: (ptyId, meta) => {
+      invoke('ok:pty:set-meta', { ptyId, ...meta }).catch(() => {});
+    },
+    setOrder: (orderedPtyIds) => {
+      invoke('ok:pty:set-order', { orderedPtyIds: [...orderedPtyIds] }).catch(() => {});
+    },
     getDockState: () => invoke('ok:terminal:dock-state'),
     onData(cb) {
       const listener = (_event: IpcRendererEvent, msg: OkPtyData) => cb(msg);

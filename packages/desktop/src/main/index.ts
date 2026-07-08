@@ -2812,6 +2812,23 @@ function registerIpcHandlers() {
       webContents: win.webContents,
     });
   });
+  handle('ok:pty:set-meta', async (event, req) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win)
+      terminalManager.setSessionMeta({
+        windowId: win.id,
+        ptyId: req.ptyId,
+        customLabel: req.customLabel,
+        ordinal: req.ordinal,
+      });
+    return undefined;
+  });
+  handle('ok:pty:set-order', async (event, req) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win)
+      terminalManager.setSessionOrder({ windowId: win.id, orderedPtyIds: req.orderedPtyIds });
+    return undefined;
+  });
   handle('ok:terminal:claude-assist', async (event, req) => {
     let rewireError: string | undefined;
     if (req.action === 'rewire' && process.platform === 'darwin' && app.isPackaged) {

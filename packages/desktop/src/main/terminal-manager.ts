@@ -151,6 +151,16 @@ interface SessionState {
    * command contents.
    */
   commandRan: boolean;
+  /** User-set custom tab name (renderer-owned, pushed via set-meta). Retained so
+   *  `listSessions` restores it after a renderer reload. Null = no custom name. */
+  customLabel: string | null;
+  /** Sticky per-session tab number the renderer assigns and pushes via set-meta;
+   *  echoed back on reload so the tab keeps its number. Null until reported. */
+  ordinal: number | null;
+  /** Display position, ascending. Defaults to creation order; the renderer
+   *  overwrites it via set-order on a drag / keyboard reorder, and `listSessions`
+   *  sorts by it so a reload restores the user's arrangement. */
+  order: number;
 }
 
 interface PtyWindowHandle {
@@ -210,11 +220,27 @@ export interface TerminalManager {
   kill(req: TerminalAddressedRequest): void;
   drain(req: TerminalAddressedRequest & { bytes: number }): void;
   /**
-   * Live ptyIds for a window — the reload-rehydration inventory a reloaded
-   * renderer queries to rediscover its surviving shells. Insertion order =
-   * creation order = natural tab order. Empty for a window with no host.
+   * The reload-rehydration inventory a reloaded renderer queries to rediscover its
+   * surviving shells. Each entry carries the ptyId plus the custom name + sticky
+   * ordinal retained across the reload, returned in the persisted display order
+   * (creation order until the renderer pushes a reorder). Empty for a window with
+   * no host.
    */
   listSessions(windowId: number): OkPtyListEntry[];
+  /**
+   * Persist per-session tab metadata (custom name, sticky ordinal) so a renderer
+   * reload can restore it. A field left `undefined` is unchanged. Unknown
+   * window/ptyId is a no-op (the session may have exited).
+   */
+  setSessionMeta(
+    req: TerminalAddressedRequest & { customLabel?: string | null; ordinal?: number },
+  ): void;
+  /**
+   * Persist the tab display order (`orderedPtyIds` in visual order) so a reorder
+   * survives a renderer reload. Any live session not in the list sorts after the
+   * listed ones, keeping its prior relative order.
+   */
+  setSessionOrder(req: { windowId: number; orderedPtyIds: readonly string[] }): void;
   /**
    * Re-bind a surviving session to a reloaded renderer's fresh webContents and
    * clear the backpressure the dead page stranded (so a session paused under a
@@ -456,6 +482,12 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       // rendering. A soft cap is deferred until the concurrency-depth signal
       // below shows users actually approach that ceiling.
       // A new tab ADDS a session; the window's existing shells keep running.
+      // Default display order = end of the current set (creation order); the
+      // renderer overrides it via set-order on a reorder.
+      const nextOrder =
+        handle.sessions.size === 0
+          ? 0
+          : Math.max(...[...handle.sessions.values()].map((s) => s.order)) + 1;
       handle.sessions.set(ptyId, {
         outbound: '',
         replay: '',
@@ -463,6 +495,9 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         pendingBytes: 0,
         paused: false,
         commandRan: false,
+        customLabel: null,
+        ordinal: null,
+        order: nextOrder,
       });
       // Record the concurrency reached by this open (1 for a solo tab, N for the
       // Nth concurrent tab). Concurrency only rises on create, so the per-window
@@ -518,10 +553,43 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     listSessions(windowId): OkPtyListEntry[] {
       const handle = handles.get(windowId);
       if (!handle) return [];
-      // Map insertion order is creation order, so the inventory matches the
-      // dock's original left-to-right tab order. A session that exited has
-      // already been deleted by `onUtilityMessage`, so it never appears here.
-      return [...handle.sessions.keys()].map((ptyId) => ({ ptyId }));
+      // Sorted by the stored display order (creation order until the renderer
+      // pushes a reorder via set-order), so a reloaded dock restores the user's
+      // arrangement instead of snapping back to creation order. customLabel +
+      // ordinal ride along so the reloaded tabs keep their names + sticky numbers.
+      // An exited session was already deleted by `onUtilityMessage`, so it never
+      // appears here.
+      return [...handle.sessions.entries()]
+        .sort((a, b) => a[1].order - b[1].order)
+        .map(([ptyId, session]) => ({
+          ptyId,
+          customLabel: session.customLabel,
+          ordinal: session.ordinal,
+        }));
+    },
+
+    setSessionMeta(req): void {
+      const session = handles.get(req.windowId)?.sessions.get(req.ptyId);
+      if (!session) return;
+      if (req.customLabel !== undefined) session.customLabel = req.customLabel;
+      if (req.ordinal !== undefined) session.ordinal = req.ordinal;
+    },
+
+    setSessionOrder(req): void {
+      const handle = handles.get(req.windowId);
+      if (!handle) return;
+      let i = 0;
+      const listed = new Set(req.orderedPtyIds);
+      for (const ptyId of req.orderedPtyIds) {
+        const session = handle.sessions.get(ptyId);
+        if (session) session.order = i++;
+      }
+      // A live session not named in the reorder (e.g. one created in the gap)
+      // sorts after the listed block, keeping its prior relative order.
+      const rest = [...handle.sessions.entries()]
+        .filter(([ptyId]) => !listed.has(ptyId))
+        .sort((a, b) => a[1].order - b[1].order);
+      for (const [, session] of rest) session.order = i++;
     },
 
     adoptSession(req): OkPtyAdoptResult {

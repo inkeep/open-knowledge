@@ -30,7 +30,7 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 79 (ratchet cap 79). The 74→75 bump reconciled a merge collision:
+ * Count is 81 (ratchet cap 81). The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -41,7 +41,10 @@
  * discriminated fold per the worktree-dispatch precedent). The 78→79 bump added
  * its project-scoped sibling Settings → This project → AI tools
  * (`ok:project-integrations:dispatch`, same status+set fold, scoped to the
- * sender window's project). Full rationale in the ratchet test header.
+ * sender window's project). The 79→81 bump added terminal-tab reload-survival
+ * (`ok:pty:set-meta` + `ok:pty:set-order`) — two slots, following the `ok:pty:*`
+ * one-channel-per-operation design rather than a dispatch fold. Full rationale in
+ * the ratchet test header.
  */
 
 import type {
@@ -1409,6 +1412,23 @@ export interface RequestChannels {
   'ok:pty:adopt': {
     args: [req: { ptyId: string }];
     result: OkPtyAdoptResult;
+  };
+  /**
+   * Persist per-session tab metadata (custom name + sticky ordinal) in main so it
+   * survives a renderer reload (the PTY host outlives the page; `ok:pty:list`
+   * reads it back). Fire-and-forget; a field omitted is left unchanged.
+   */
+  'ok:pty:set-meta': {
+    args: [req: { ptyId: string; customLabel?: string | null; ordinal?: number }];
+    result: undefined;
+  };
+  /**
+   * Persist the tab display order in main (ptyIds in visual order) so a drag /
+   * keyboard reorder survives a renderer reload. Fire-and-forget.
+   */
+  'ok:pty:set-order': {
+    args: [req: { orderedPtyIds: string[] }];
+    result: undefined;
   };
   /**
    * Docked-terminal Claude Code readiness + re-arm. One discriminated

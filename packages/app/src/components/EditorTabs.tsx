@@ -851,7 +851,7 @@ export function EditorTabs() {
   const forceTabCloseVisible = showTabShortcutHints;
 
   function handleDragStart() {
-    setTabReorderBounds(measureTabReorderBounds(tabListRef.current));
+    setTabReorderBounds(measureTabReorderBounds(tabListRef.current, '[data-editor-tab-sortable]'));
   }
 
   function clearTabReorderBounds() {

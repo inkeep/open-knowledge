@@ -295,8 +295,24 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  *     `ok:project-integrations:*` namespace, single member. The typed-ipc
  *     migration remains the committed end state; scoped exception with the
  *     `ipc-channels.ts` header commitment updated in lock-step.
+ *
+ * Bumped from 79 to 81 for terminal-tab reload-survival (custom name + order
+ * persisted in main so a ⌘R renderer reload restores them, not just the live
+ * shells):
+ *
+ *   - `ok:pty:set-meta` — per-session tab metadata (custom name + sticky
+ *     ordinal), a partial fire-and-forget update keyed by ptyId.
+ *   - `ok:pty:set-order` — the window's tab display order (ptyIds in visual
+ *     order), fire-and-forget.
+ *     Two slots, not one: the `ok:pty:*` surface is "the smallest faithful PTY
+ *     protocol" — one channel per operation (create/input/resize/kill/drain/
+ *     list/adopt), NOT the dispatch-folding precedent — and these two payloads
+ *     differ in shape AND cardinality (per-session partial meta vs per-window
+ *     full ordering). Folding them into one discriminated channel would wear a
+ *     single channel over two distinct operations against a namespace that
+ *     deliberately keeps each PTY operation on its own channel.
  */
-const REQUEST_CHANNEL_CAP = 79;
+const REQUEST_CHANNEL_CAP = 81;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

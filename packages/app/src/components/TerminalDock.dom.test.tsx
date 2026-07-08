@@ -489,6 +489,193 @@ describe('TerminalDock multi-session', () => {
     expect(screen.getByRole('tab', { name: 'Terminal 1' })).toBeDefined();
   });
 
+  test('a manual rename pins the tab label over later OSC title updates', async () => {
+    const user = userEvent.setup();
+    renderDock(true);
+
+    // Rename the sole tab before any program title arrives.
+    await user.dblClick(screen.getByRole('tab', { name: 'Terminal 1' }));
+    const input = screen.getByRole('textbox', { name: 'Rename Terminal 1' });
+    await user.clear(input);
+    await user.type(input, 'my shell');
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('tab', { name: 'my shell' })).toBeDefined();
+
+    // The program now sets an OSC title (the waitFor's successful emit is that
+    // update). `title` changes underneath, but the custom label pins the visible
+    // name — the tab must NOT relabel to the OSC title.
+    await waitFor(() => expect(emitTitle('pty-1', 'claude — repo')).toBe(true));
+    expect(screen.getByRole('tab', { name: 'my shell' })).toBeDefined();
+    expect(screen.queryByRole('tab', { name: 'claude — repo' })).toBeNull();
+  });
+
+  test('clearing a custom label reverts the tab to the live OSC title', async () => {
+    const user = userEvent.setup();
+    renderDock(true);
+
+    // A program title is live (emitted once via the readiness probe).
+    await waitFor(() => expect(emitTitle('pty-1', 'claude — repo')).toBe(true));
+    expect(screen.getByRole('tab', { name: 'claude — repo' })).toBeDefined();
+
+    // Pin a custom label over it.
+    await user.dblClick(screen.getByRole('tab', { name: 'claude — repo' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Rename claude — repo' }));
+    await user.type(screen.getByRole('textbox', { name: 'Rename claude — repo' }), 'pinned');
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('tab', { name: 'pinned' })).toBeDefined();
+
+    // An empty rename commit clears the custom label; the OSC title (still
+    // tracked underneath) becomes the visible name again.
+    await user.dblClick(screen.getByRole('tab', { name: 'pinned' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Rename pinned' }));
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('tab', { name: 'claude — repo' })).toBeDefined();
+  });
+
+  function tabLabels(): (string | null)[] {
+    return within(screen.getByRole('tablist'))
+      .getAllByRole('tab')
+      .map((tab) => tab.textContent);
+  }
+  function dispatchChord(
+    key: string,
+    mods: { metaKey?: boolean; shiftKey?: boolean },
+  ): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', {
+      key,
+      metaKey: mods.metaKey ?? false,
+      shiftKey: mods.shiftKey ?? false,
+      cancelable: true,
+      bubbles: true,
+    });
+    act(() => {
+      window.dispatchEvent(event);
+    });
+    return event;
+  }
+
+  test('⌘⇧← moves the active tab one slot left and announces the move', async () => {
+    const user = userEvent.setup();
+    renderDock(true);
+    await addTerminalTab(user);
+    await addTerminalTab(user);
+    // Three tabs; Terminal 3 is active. Put the caret in its shell.
+    const panels = sessionPanels();
+    act(() => panels[2]?.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus());
+
+    const event = dispatchChord('ArrowLeft', { metaKey: true, shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    // Terminal 3 (its sticky number rides with the session) moves to the middle.
+    expect(tabLabels()).toEqual(['Terminal 1', 'Terminal 3', 'Terminal 2']);
+    await waitFor(() =>
+      expect(screen.getByTestId('terminal-reorder-announcer').textContent).toBe(
+        'Moved Terminal 3 to position 2 of 3',
+      ),
+    );
+  });
+
+  test('⌘⇧→ at the last slot is a no-op left for the shell', async () => {
+    const user = userEvent.setup();
+    renderDock(true);
+    await addTerminalTab(user);
+    // Two tabs; Terminal 2 active (rightmost). Focus its shell.
+    const panels = sessionPanels();
+    act(() => panels[1]?.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus());
+
+    const event = dispatchChord('ArrowRight', { metaKey: true, shiftKey: true });
+
+    // Not consumed (the shell may use it) and order unchanged.
+    expect(event.defaultPrevented).toBe(false);
+    expect(tabLabels()).toEqual(['Terminal 1', 'Terminal 2']);
+  });
+
+  test('sticky numbering: closing a tab does not renumber the survivors', async () => {
+    const user = userEvent.setup();
+    renderDock(true);
+    await addTerminalTab(user);
+    await addTerminalTab(user);
+    expect(tabLabels()).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3']);
+
+    await user.click(screen.getByRole('button', { name: 'Close Terminal 1' }));
+    // Survivors keep their numbers (not renumbered to 1/2).
+    expect(tabLabels()).toEqual(['Terminal 2', 'Terminal 3']);
+
+    // A fresh tab takes the next ordinal, not a reused low number.
+    await addTerminalTab(user);
+    expect(tabLabels()).toEqual(['Terminal 2', 'Terminal 3', 'Terminal 4']);
+  });
+
+  test('⌘N targets the visual position after a keyboard reorder', async () => {
+    const user = userEvent.setup();
+    renderDock(true);
+    await addTerminalTab(user);
+    // Two tabs; Terminal 2 active. Move it left → [Terminal 2, Terminal 1].
+    const panels = sessionPanels();
+    act(() => panels[1]?.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus());
+    dispatchChord('ArrowLeft', { metaKey: true, shiftKey: true });
+    expect(tabLabels()).toEqual(['Terminal 2', 'Terminal 1']);
+
+    // ⌘1 now activates the leftmost tab, which is Terminal 2.
+    act(() =>
+      document
+        .querySelector<HTMLElement>(
+          `[data-terminal-session="${activePanelId()}"] .xterm-helper-textarea`,
+        )
+        ?.focus(),
+    );
+    const jump = dispatchChord('1', { metaKey: true });
+    expect(jump.defaultPrevented).toBe(true);
+    expect(screen.getByRole('tab', { name: 'Terminal 2' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+  });
+
+  test('the reorder chord is left for native editing while a rename input is focused', async () => {
+    const user = userEvent.setup();
+    renderDock(true);
+    await addTerminalTab(user);
+    // Enter rename on Terminal 1; its input holds focus.
+    await user.dblClick(screen.getByRole('tab', { name: 'Terminal 1' }));
+    const input = screen.getByRole('textbox', { name: 'Rename Terminal 1' });
+
+    // The capture-phase handler sees an <input> target and stands down, so the
+    // chord is not consumed and no reorder happens.
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      metaKey: true,
+      shiftKey: true,
+      cancelable: true,
+      bubbles: true,
+    });
+    act(() => {
+      input.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.getByRole('textbox', { name: 'Rename Terminal 1' })).toBeDefined();
+  });
+
+  test('reordering tabs does not move the session panels (live shells stay put)', async () => {
+    const user = userEvent.setup();
+    renderDock(true);
+    await addTerminalTab(user);
+    await addTerminalTab(user);
+    // Panels render in stable ordinal order regardless of tab order.
+    const panelIds = () => sessionPanels().map((el) => el.getAttribute('data-terminal-session'));
+    const stableOrder = ['terminal-session-1', 'terminal-session-2', 'terminal-session-3'];
+    expect(panelIds()).toEqual(stableOrder);
+
+    // Reorder the active tab (Terminal 3) one slot left.
+    act(() => sessionPanels()[2]?.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus());
+    dispatchChord('ArrowLeft', { metaKey: true, shiftKey: true });
+
+    // Tabs reordered, but the panel DOM order is UNCHANGED — the xterm containers
+    // never move, so a reorder cannot refit/reset a running shell (SIGWINCH).
+    expect(tabLabels()).toEqual(['Terminal 1', 'Terminal 3', 'Terminal 2']);
+    expect(panelIds()).toEqual(stableOrder);
+  });
+
   test("closing a tab reaps only that session's PTY and leaves the others alive", async () => {
     const user = userEvent.setup();
     const view = renderDock(true);

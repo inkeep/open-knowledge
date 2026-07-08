@@ -286,17 +286,20 @@ describe('editor tab chrome helpers', () => {
   });
 
   test('measures reorder bounds from sortable tab nodes only', () => {
-    const bounds = measureTabReorderBounds(fakeRootForRects([rect(80, 40), rect(150, 60)]));
+    const bounds = measureTabReorderBounds(
+      fakeRootForRects([rect(80, 40), rect(150, 60)]),
+      '[data-editor-tab-sortable]',
+    );
 
     expect(bounds).toEqual({ left: 80, right: 210 });
   });
 
   test('measureTabReorderBounds returns null without a tab root', () => {
-    expect(measureTabReorderBounds(null)).toBeNull();
+    expect(measureTabReorderBounds(null, '[data-editor-tab-sortable]')).toBeNull();
   });
 
   test('measureTabReorderBounds returns null when no sortable tab nodes are present', () => {
-    expect(measureTabReorderBounds(fakeRootForRects([]))).toBeNull();
+    expect(measureTabReorderBounds(fakeRootForRects([]), '[data-editor-tab-sortable]')).toBeNull();
   });
 
   test('horizontal modifier clamps x to measured tab bounds and removes y movement', () => {

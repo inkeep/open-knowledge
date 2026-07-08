@@ -97,8 +97,14 @@ export function getSortableTabStyle({
   };
 }
 
-export function measureTabReorderBounds(root: HTMLElement | null): TabReorderBounds | null {
-  const tabNodes = root?.querySelectorAll<HTMLElement>('[data-editor-tab-sortable]') ?? [];
+export function measureTabReorderBounds(
+  root: HTMLElement | null,
+  // Surface-neutral: each consumer passes the attribute selector marking its own
+  // sortable tab nodes (editor tabs vs terminal tabs), so this geometry helper is
+  // not tied to one strip.
+  sortableSelector: string,
+): TabReorderBounds | null {
+  const tabNodes = root?.querySelectorAll<HTMLElement>(sortableSelector) ?? [];
   let left = Number.POSITIVE_INFINITY;
   let right = Number.NEGATIVE_INFINITY;
 

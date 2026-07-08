@@ -861,6 +861,11 @@ export type OkPtyCreateResult =
 /** Entry of `terminal.list`. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
 export interface OkPtyListEntry {
   readonly ptyId: string;
+  /** User-set custom tab name that survives a renderer reload; null when unset. */
+  readonly customLabel: string | null;
+  /** Sticky per-session tab number, preserved across a renderer reload; null
+   *  until the renderer has reported it for a just-created session. */
+  readonly ordinal: number | null;
 }
 
 /** Result of `terminal.adopt`. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
@@ -1556,6 +1561,17 @@ export interface OkDesktopBridge {
     list(): Promise<OkPtyListEntry[]>;
     /** Reload-rehydration adopt. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
     adopt(ptyId: string): Promise<OkPtyAdoptResult>;
+    /**
+     * Persist per-session tab metadata (custom name + sticky ordinal) in main so
+     * it survives a renderer reload — main outlives the reload, so a reloaded dock
+     * reads it back via `list`. Fire-and-forget; omit a field to leave it unchanged.
+     */
+    setMeta(ptyId: string, meta: { customLabel?: string | null; ordinal?: number }): void;
+    /**
+     * Persist the tab display order in main (ptyIds in visual order) so a reorder
+     * survives a renderer reload. Fire-and-forget.
+     */
+    setOrder(orderedPtyIds: readonly string[]): void;
     /** Per-window dock visibility. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
     getDockState(): Promise<{ visible: boolean }>;
     onData(cb: (msg: OkPtyData) => void): OkUnsubscribe;

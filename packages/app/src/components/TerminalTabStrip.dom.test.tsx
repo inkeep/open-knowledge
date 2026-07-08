@@ -16,6 +16,8 @@ function renderStrip(props?: {
   dockPosition?: 'bottom' | 'right';
   newChatSelected?: 'claude' | 'codex' | 'opencode' | 'cursor' | 'terminal';
   draggable?: boolean;
+  /** Omit the rename handler to assert the affordance is inert without it. */
+  renameDisabled?: boolean;
 }) {
   const onSelect = mock((_id: string) => {});
   const onTabActivate = mock((_id: string) => {});
@@ -23,9 +25,10 @@ function renderStrip(props?: {
   const onNewChatPickCli = mock((_cli: string) => {});
   const onNewChatPickTerminal = mock(() => {});
   const onClose = mock((_id: string) => {});
+  const onRename = mock((_id: string, _label: string) => {});
   const onToggleDock = mock(() => {});
   const onCollapse = mock(() => {});
-  render(
+  const view = render(
     // The app mounts a root TooltipProvider (main.tsx); the strip's control
     // tooltips need that context, so the isolated render supplies its own.
     // `draggable` mirrors the standalone terminal window's prop shape (same
@@ -41,6 +44,7 @@ function renderStrip(props?: {
         onNewChatPickCli={onNewChatPickCli}
         onNewChatPickTerminal={onNewChatPickTerminal}
         onClose={onClose}
+        onRename={props?.renameDisabled ? undefined : onRename}
         dockPosition={props?.draggable ? undefined : (props?.dockPosition ?? 'bottom')}
         onToggleDock={props?.draggable ? undefined : onToggleDock}
         onCollapse={props?.draggable ? undefined : onCollapse}
@@ -55,8 +59,10 @@ function renderStrip(props?: {
     onNewChatPickCli,
     onNewChatPickTerminal,
     onClose,
+    onRename,
     onToggleDock,
     onCollapse,
+    rerender: view.rerender,
   };
 }
 
@@ -274,5 +280,191 @@ describe('TerminalTabStrip', () => {
 
     expect(onNewChatLaunch).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledWith('s1');
+  });
+
+  // ---- Manual rename: double-click / F2 → inline input ----
+
+  test('double-clicking a tab opens an inline rename input, prefilled and focused', async () => {
+    const user = userEvent.setup();
+    renderStrip({ activeSessionId: 's2' });
+
+    await user.dblClick(screen.getByRole('tab', { name: 'Terminal 2' }));
+
+    const input = screen.getByRole('textbox', { name: 'Rename Terminal 2' });
+    expect(input).toBe(document.activeElement);
+    expect((input as HTMLInputElement).value).toBe('Terminal 2');
+    // The renaming tab's trigger is REPLACED by the input (never nested inside a
+    // role="tab" button); the other tabs keep their triggers.
+    expect(screen.queryByRole('tab', { name: 'Terminal 2' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Terminal 1' })).toBeDefined();
+    expect(input.closest('[role="tab"]')).toBeNull();
+  });
+
+  test('double-click that opens rename fires onTabActivate at most once (second click suppressed)', async () => {
+    const user = userEvent.setup();
+    const { onTabActivate } = renderStrip({ activeSessionId: 's1' });
+
+    await user.dblClick(screen.getByRole('tab', { name: 'Terminal 2' }));
+
+    // A double-click dispatches two click events (detail 1 then detail 2). The
+    // onClick guard suppresses the detail>=2 one; without it, the second
+    // activation focuses the terminal and blur-commits the rename input the same
+    // gesture just opened. Exactly one call (the initial detail=1 select) pins
+    // the guard — a regression that dropped or inverted it would read 2.
+    expect(onTabActivate).toHaveBeenCalledTimes(1);
+    expect(onTabActivate).toHaveBeenCalledWith('s2');
+    // The rename input is open and focused — the activation did not steal it.
+    expect(screen.getByRole('textbox', { name: 'Rename Terminal 2' })).toBe(document.activeElement);
+  });
+
+  test('F2 on a focused tab trigger opens the rename input (keyboard entry)', async () => {
+    const user = userEvent.setup();
+    renderStrip({ activeSessionId: 's1' });
+    const tab = screen.getByRole('tab', { name: 'Terminal 1' });
+    act(() => tab.focus());
+
+    await user.keyboard('{F2}');
+
+    expect(screen.getByRole('textbox', { name: 'Rename Terminal 1' })).toBe(document.activeElement);
+  });
+
+  test('Enter commits the trimmed new name via onRename and exits rename mode', async () => {
+    const user = userEvent.setup();
+    const { onRename } = renderStrip({ activeSessionId: 's2' });
+
+    await user.dblClick(screen.getByRole('tab', { name: 'Terminal 2' }));
+    const input = screen.getByRole('textbox', { name: 'Rename Terminal 2' });
+    await user.clear(input);
+    await user.type(input, '  build  ');
+    await user.keyboard('{Enter}');
+
+    expect(onRename).toHaveBeenCalledTimes(1);
+    expect(onRename).toHaveBeenCalledWith('s2', 'build');
+    // Strip is controlled — the visible label only changes when the parent
+    // re-renders; here we assert the input closed and the trigger returned.
+    expect(screen.queryByRole('textbox', { name: /Rename/ })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Terminal 2' })).toBeDefined();
+  });
+
+  test('blurring the rename input commits the value', async () => {
+    const user = userEvent.setup();
+    const { onRename } = renderStrip({ activeSessionId: 's2' });
+
+    await user.dblClick(screen.getByRole('tab', { name: 'Terminal 2' }));
+    const input = screen.getByRole('textbox', { name: 'Rename Terminal 2' });
+    await user.clear(input);
+    await user.type(input, 'logs');
+    act(() => (input as HTMLInputElement).blur());
+
+    expect(onRename).toHaveBeenCalledWith('s2', 'logs');
+  });
+
+  test('Escape cancels without committing and restores the tab trigger', async () => {
+    const user = userEvent.setup();
+    const { onRename } = renderStrip({ activeSessionId: 's2' });
+
+    await user.dblClick(screen.getByRole('tab', { name: 'Terminal 2' }));
+    const input = screen.getByRole('textbox', { name: 'Rename Terminal 2' });
+    await user.clear(input);
+    await user.type(input, 'discard-me');
+    await user.keyboard('{Escape}');
+
+    // Escape sets the cancel guard, then blurs — the ensuing blur must NOT commit.
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox', { name: /Rename/ })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Terminal 2' })).toBeDefined();
+  });
+
+  test('an empty commit clears the custom label (onRename with empty string)', async () => {
+    const user = userEvent.setup();
+    const { onRename } = renderStrip({
+      activeSessionId: 's2',
+      sessions: [{ id: 's2', label: 'my build' }],
+    });
+
+    await user.dblClick(screen.getByRole('tab', { name: 'my build' }));
+    const input = screen.getByRole('textbox', { name: 'Rename my build' });
+    await user.clear(input);
+    await user.keyboard('{Enter}');
+
+    expect(onRename).toHaveBeenCalledWith('s2', '');
+  });
+
+  test('a whitespace-only commit trims to empty and clears the custom label', async () => {
+    const user = userEvent.setup();
+    const { onRename } = renderStrip({
+      activeSessionId: 's2',
+      sessions: [{ id: 's2', label: 'my build' }],
+    });
+
+    await user.dblClick(screen.getByRole('tab', { name: 'my build' }));
+    const input = screen.getByRole('textbox', { name: 'Rename my build' });
+    // Whitespace-only input must trim to '' -> label-clear, not a real label of
+    // spaces. Exercises the trim->empty path end-to-end (a broken trim would
+    // silently promote whitespace to a custom label).
+    await user.clear(input);
+    await user.type(input, '   ');
+    await user.keyboard('{Enter}');
+
+    expect(onRename).toHaveBeenCalledWith('s2', '');
+  });
+
+  test('a tab that disappears mid-rename auto-cancels the input', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderStrip({ activeSessionId: 's3' });
+
+    await user.dblClick(screen.getByRole('tab', { name: 'Terminal 3' }));
+    expect(screen.getByRole('textbox', { name: 'Rename Terminal 3' })).toBeDefined();
+
+    // The session closes (PTY exit / ⌘W) — its descriptor leaves `sessions`.
+    rerender(
+      <TooltipProvider>
+        <TerminalTabStrip
+          sessions={[
+            { id: 's1', label: 'Terminal 1' },
+            { id: 's2', label: 'Terminal 2' },
+          ]}
+          activeSessionId="s1"
+          onSelect={() => {}}
+          newChatSelected="claude"
+          onNewChatLaunch={() => {}}
+          onNewChatPickCli={() => {}}
+          onNewChatPickTerminal={() => {}}
+          onClose={() => {}}
+          onRename={() => {}}
+          dockPosition="bottom"
+          onToggleDock={() => {}}
+          onCollapse={() => {}}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.queryByRole('textbox', { name: /Rename/ })).toBeNull();
+  });
+
+  test('without an onRename handler the rename affordance is inert', async () => {
+    const user = userEvent.setup();
+    renderStrip({ activeSessionId: 's2', renameDisabled: true });
+
+    await user.dblClick(screen.getByRole('tab', { name: 'Terminal 2' }));
+
+    expect(screen.queryByRole('textbox', { name: /Rename/ })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Terminal 2' })).toBeDefined();
+  });
+
+  // ---- Reorder wiring ----
+  // Pointer-drag geometry is covered by the chrome module's unit suite and the
+  // opt-in desktop smoke (jsdom cannot faithfully simulate the pointer sensor);
+  // here we pin that every tab is a sortable node and the tablist role survives
+  // the dnd-kit wrapping (no injected role="button" on the wrapper).
+
+  test('every tab is wrapped in a sortable node without disturbing the tablist', () => {
+    renderStrip();
+    expect(document.querySelectorAll('[data-terminal-tab-sortable]')).toHaveLength(3);
+    // The dnd-kit wrapper is not focusable and adds no role — the Radix tablist
+    // still sees exactly three tabs.
+    const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
+    expect(within(tablist).getAllByRole('tab')).toHaveLength(3);
+    expect(within(tablist).queryAllByRole('button', { name: /^Terminal/ })).toHaveLength(0);
   });
 });

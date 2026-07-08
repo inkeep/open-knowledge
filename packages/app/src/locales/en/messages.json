@@ -50,6 +50,7 @@
     "0LBDjY": ["\"", ["0"], "\" uninstalled — back to a draft"],
     "0NA4b3": ["Keep my version"],
     "0SBTff": ["Show terminal"],
+    "0TnCvC": ["Rename ", ["0"]],
     "0YEbfk": ["Connect to AI tools"],
     "0YUS3Q": ["Subfolder under current folder"],
     "0_J12R": [
@@ -537,6 +538,7 @@
     "CifUuG": ["Update available"],
     "Ck9XRt": ["Couldn't save the key — please try again."],
     "CmeH9S": ["Add property to ", ["keyName"]],
+    "CoHvYd": ["Moved ", ["0"], " to position ", ["1"], " of ", ["2"]],
     "CvsD6Y": ["via ", ["viaTags"]],
     "D-Oh1s": ["How to set up ", ["0"], " (opens in browser)"],
     "D12vtS": ["(detached)"],
