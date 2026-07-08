@@ -145,11 +145,6 @@ msgstr "{0, plural, one {File} other {Files}}"
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, one {Folder} other {Folders}}"
 
-#. placeholder {0}: group.worktrees.length
-#: src/components/RecentProjectsMenu.tsx
-msgid "{0, plural, one {worktree} other {worktrees}}"
-msgstr "{0, plural, one {worktree} other {worktrees}}"
-
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
 msgid "{0} templates available"
@@ -371,6 +366,10 @@ msgstr "{name} CLI"
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# node} other {# nodes}}"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
+msgstr "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
@@ -3463,10 +3462,6 @@ msgstr "Hide this file"
 msgid "Hide thumbnails"
 msgstr "Hide thumbnails"
 
-#: src/components/RecentProjectsMenu.tsx
-msgid "Hide worktrees"
-msgstr "Hide worktrees"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Highlight"
 msgstr "Highlight"
@@ -6327,10 +6322,6 @@ msgstr "Show terminal"
 #: src/editor/components/Pdf.tsx
 msgid "Show thumbnails"
 msgstr "Show thumbnails"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "Show worktrees"
-msgstr "Show worktrees"
 
 #: src/components/CommandPalette.tsx
 msgid "Showing results for \"{semanticResultsLabel}\""

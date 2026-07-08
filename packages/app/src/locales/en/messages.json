@@ -444,6 +444,7 @@
     "AE7BY3": ["The terminal session ended."],
     "AIn2Yv": [["displayName"], " CLI, ", ["hint"]],
     "AItsE5": ["Open it there"],
+    "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktrees"] }]],
     "ALhMYW": ["Terminal"],
     "AQ-Lfg": ["Couldn't load templates"],
     "AQGtjK": [
@@ -467,7 +468,6 @@
       "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
     ],
     "Aif3E7": ["Enable semantic search"],
-    "Aj1D9r": ["Hide worktrees"],
     "Am78jY": ["Drag ", ["keyName"], " to reorder"],
     "Aq-O0x": ["status"],
     "AqnqMJ": ["API key set"],
@@ -1210,7 +1210,6 @@
     "UYcGIW": ["Connecting — waiting for collab server"],
     "Ua78MH": ["no response"],
     "UaDyeb": ["Hide selection preview"],
-    "UaRsDu": ["Show worktrees"],
     "Uay5NL": [
       "This ",
       ["targetNoun"],
@@ -1793,7 +1792,6 @@
     "idD8Ev": ["Saved"],
     "ig5vUe": ["Failed to load file"],
     "iilQXA": ["Folder duplicated"],
-    "ij5sBu": [["0", "plural", { "one": ["worktree"], "other": ["worktrees"] }]],
     "ijLc3m": ["Bullet list"],
     "ipn17C": [
       "The <0>type</0> every document created from this template gets (e.g. <1>research-note</1>). Keeps new docs Open Knowledge Format–conformant."

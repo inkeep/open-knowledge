@@ -322,11 +322,19 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
               </InputGroup>
               <DropdownMenuSeparator />
               {/* Only the items list scrolls — the search field above and the
-                New / Switch / Open actions below stay pinned. Each group row's
-                worktree Popover flyout portals out of this wrapper, so the
-                scroll clip doesn't cut it off. overscroll-contain stops scroll
-                chaining to the page behind the dropdown at the list edges. */}
-              <div className="max-h-64 overflow-x-hidden overflow-y-auto overscroll-contain subtle-scrollbar scroll-fade-mask">
+                New / Switch / Open actions below stay pinned. overscroll-contain
+                stops scroll chaining to the page behind the dropdown at the list
+                edges. Radix anchors each group's worktree submenu to its trigger
+                row; if the row scrolls out of this viewport the submenu would
+                follow it off into empty space, so close the open flyout on
+                scroll — it re-opens anchored correctly on the next hover. */}
+              <div
+                className="max-h-64 overflow-x-hidden overflow-y-auto overscroll-contain subtle-scrollbar scroll-fade-mask"
+                data-testid="project-switcher-scroll"
+                onScroll={() => {
+                  if (flyoutPath !== null) setFlyoutPath(null);
+                }}
+              >
                 <RecentProjectsMenu
                   bridge={bridge}
                   recents={menuRecents}

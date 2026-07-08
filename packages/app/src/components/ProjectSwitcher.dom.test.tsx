@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { createContext, type ReactNode, use } from 'react';
 import { ProjectSwitcher } from './ProjectSwitcher';
 
 type MenuProps = {
@@ -19,6 +19,14 @@ let lastDropdownOpenChange: ((open: boolean) => void) | null = null;
 let keydownBubbleCount = 0;
 let createDialogProps: Array<{ open: boolean; bridge: unknown }> = [];
 
+// The worktree flyout in RecentProjectsMenu (rendered live here) is a real
+// DropdownMenuSub; model it via a shared { open, onOpenChange } context so the
+// flyout opens on trigger click/hover and closes on onOpenChange(false) — enough
+// to exercise ProjectSwitcher's hoisted flyout state + close-on-scroll wiring.
+const SubStateContext = createContext<{ open: boolean; onOpenChange: (o: boolean) => void }>({
+  open: false,
+  onOpenChange: () => {},
+});
 mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children, onOpenChange }: MenuProps) => {
     lastDropdownOpenChange = onOpenChange ?? null;
@@ -37,6 +45,50 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuLabel: ({ children, ...props }: ItemProps) => <div {...props}>{children}</div>,
   DropdownMenuSeparator: () => <hr />,
   DropdownMenuTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  DropdownMenuSub: ({ children, open, onOpenChange }: MenuProps) => (
+    <SubStateContext value={{ open: !!open, onOpenChange: onOpenChange ?? (() => {}) }}>
+      {children}
+    </SubStateContext>
+  ),
+  DropdownMenuSubTrigger: ({
+    children,
+    onClick,
+    onKeyDown,
+    ...props
+  }: ItemProps & {
+    onClick?: (e: React.MouseEvent) => void;
+    onKeyDown?: (e: React.KeyboardEvent) => void;
+  }) => {
+    const { onOpenChange } = use(SubStateContext);
+    // Model Radix composition: our handler runs first; the sub opens only if we
+    // did not preventDefault. The row's onClick / Enter+Space preventDefault to
+    // navigate to the project, so hover (and ArrowRight) is what opens the flyout.
+    return (
+      <div
+        role="menuitem"
+        tabIndex={-1}
+        onMouseEnter={() => onOpenChange(true)}
+        onClick={(e) => {
+          onClick?.(e);
+          if (!e.defaultPrevented) onOpenChange(true);
+        }}
+        onKeyDown={(e) => {
+          onKeyDown?.(e);
+          if (e.defaultPrevented) return;
+          if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') onOpenChange(true);
+          else if (e.key === 'ArrowLeft' || e.key === 'Escape') onOpenChange(false);
+        }}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  },
+  DropdownMenuSubContent: ({ children, sideOffset: _sideOffset, ...props }: ItemProps) => {
+    const { open } = use(SubStateContext);
+    if (!open) return null;
+    return <div {...props}>{children}</div>;
+  },
 }));
 
 mock.module('@/components/ui/input-group', () => ({
@@ -361,7 +413,7 @@ describe('ProjectSwitcher dropdown behavior', () => {
     await openMenu();
 
     // Open the current project's worktree flyout, type a non-matching name.
-    fireEvent.click(screen.getByTestId('project-switcher-toggle-/projects/current'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/projects/current'));
     const searchBox = (await screen.findByTestId(
       'project-switcher-flyout-search-/projects/current',
     )) as HTMLInputElement;
@@ -378,6 +430,45 @@ describe('ProjectSwitcher dropdown behavior', () => {
     });
     expect(dialog.getAttribute('data-initial-name')).toBe('shiny-feature');
     expect(newWorktreeProps.at(-1)?.initialBranchName).toBe('shiny-feature');
+  });
+
+  test('scrolling the recents list closes an open worktree flyout (submenu does not follow the row off-screen)', async () => {
+    // Same git-enriched current project with a worktree so its submenu renders.
+    const bridge = createBridge();
+    bridge.project.listRecent = mock(() =>
+      Promise.resolve([
+        {
+          name: 'current',
+          path: '/projects/current',
+          gitCommonDir: '/projects/current/.git',
+          mainRoot: '/projects/current',
+          isLinkedWorktree: false,
+          branch: 'main',
+          lastOpenedAt: '2026-07-01',
+        },
+        {
+          name: 'has-worktree',
+          path: '/projects/current/.ok/worktrees/has-worktree',
+          gitCommonDir: '/projects/current/.git',
+          mainRoot: '/projects/current',
+          isLinkedWorktree: true,
+          branch: 'has-worktree',
+          lastOpenedAt: '2026-07-01',
+        },
+      ]),
+    );
+    render(<ProjectSwitcher bridge={bridge as never} />);
+    await openMenu();
+
+    // Open the flyout, then scroll the recents viewport — the flyout closes so
+    // it can't trail its trigger row off-screen (Radix anchors it to the row).
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/projects/current'));
+    await screen.findByTestId('project-switcher-flyout-/projects/current');
+
+    fireEvent.scroll(screen.getByTestId('project-switcher-scroll'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('project-switcher-flyout-/projects/current')).toBeNull();
+    });
   });
 
   test('threads branches and the already-has-a-worktree set from the cached model to the dialog', async () => {

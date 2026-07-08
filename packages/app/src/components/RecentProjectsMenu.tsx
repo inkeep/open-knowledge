@@ -1,23 +1,28 @@
 /**
  * The recents + worktrees body of the ProjectSwitcher dropdown. Two modes:
  *   - No query: recents grouped by repo. A project with opened worktrees is a
- *     row with two click targets — the name/path opens the bare project (root
- *     git workspace), the right-side worktree-icon + count + chevron opens a
- *     side-flyout listing that project's worktrees + branches. A project with
- *     none is a plain row.
+ *     two-target submenu row: HOVERING it (or ArrowRight) opens a side-flyout
+ *     listing that project's worktrees + branches, while CLICKING it (or
+ *     Enter/Space) opens the bare project (root git workspace) directly — one
+ *     click, same as a flat row. A project with no opened worktrees is a plain
+ *     row that opens it directly.
  *   - Query: a flat list of matches across recent projects, their opened
  *     worktrees, and the CURRENT project's branches (from the cached store, so
  *     an un-opened branch is reachable by typing its name — create-on-demand).
  *
- * The per-project worktree list is a Radix `Popover` side-flyout, NOT an inline
- * disclosure and NOT a Radix `DropdownMenuSub`: the Electron renderer delivers
- * no real `pointerdown`, so Radix submenus never open on click OR hover there
- * (the same missing-pointer-event family as the v1 top-level menu). A Popover
- * opens on click, which works. Its open-state is HOISTED to ProjectSwitcher
- * (one "which row's flyout is open" value) so the flyout renders as a single
- * controlled overlay rather than one deeply-nested overlay per menu item — two
- * stacked non-modal Radix overlays otherwise fight focus-return / outside-click
- * dismiss. See ProjectSwitcher for the hoist + the menu-vs-flyout dismiss guard.
+ * The per-project worktree list is a Radix `DropdownMenuSub` (shadcn
+ * `DropdownMenuSub`/`SubTrigger`/`SubContent`) — a real submenu of the project
+ * dropdown, so mouse traversal gets Radix's safe-triangle hover and the flyout
+ * closes when the pointer leaves both the row and the flyout. An earlier
+ * revision used a Popover here on the theory that the Electron renderer's
+ * missing `pointerdown` broke Radix submenus; live testing showed submenus open
+ * on `pointermove`/`click` (only drag-region title-bar triggers are affected,
+ * and this trigger sits inside the portaled, non-drag menu). Its open-state is
+ * still HOISTED to ProjectSwitcher (one "which row's flyout is open" value) so
+ * only one is open at a time and the parent can force-close it on menu dismiss
+ * and on parent-menu scroll — Radix anchors the submenu to its trigger and would
+ * otherwise follow the row off-screen. See ProjectSwitcher for the hoist + the
+ * scroll-close.
  *
  * Opening a worktree reuses `project.open({ entryPoint: 'worktree' })`; creating
  * one for a branch that has no window yet goes through `worktree.create` first,
@@ -27,14 +32,18 @@
 
 import type { WorktreeSelectorEntry, WorktreeSelectorModel } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { Check, ChevronRight, GitBranch, Plus, Search } from 'lucide-react';
+import { Check, GitBranch, Plus, Search } from 'lucide-react';
 import type * as React from 'react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { DropdownMenuItem, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from '@/components/ui/dropdown-menu';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { OkDesktopBridge, RecentProjectEntry } from '@/lib/desktop-bridge-types';
 import { cn } from '@/lib/utils';
 import { refreshWorktrees } from '@/lib/worktree-store';
@@ -64,7 +73,7 @@ interface RecentProjectsMenuProps {
    * the parent can force-close it when the menu dismisses.
    */
   flyoutPath: string | null;
-  setFlyoutPath: (path: string | null) => void;
+  setFlyoutPath: React.Dispatch<React.SetStateAction<string | null>>;
   /**
    * Opens the New Worktree dialog pre-filled with `name` (the flyout's typed
    * query). Wired from the current project's flyout no-match "Create worktree …"
@@ -166,7 +175,14 @@ export function RecentProjectsMenu({
           currentPath={currentPath}
           worktreeModel={worktreeModel}
           flyoutOpen={flyoutPath === group.project.path}
-          setFlyoutOpen={(next) => setFlyoutPath(next ? group.project.path : null)}
+          // Native hover-out-close can fire a sibling's A-close and this row's
+          // B-open in the same tick; a functional update guards against a stale
+          // close clobbering a fresh open (only clear if THIS row is the open one).
+          setFlyoutOpen={(next) =>
+            setFlyoutPath((cur) =>
+              next ? group.project.path : cur === group.project.path ? null : cur,
+            )
+          }
           onPickProject={() => {
             if (group.project.path === currentPath) {
               closeMenu();
@@ -206,7 +222,18 @@ function GroupRow({
 }) {
   const projectIsCurrent = group.project.path === currentPath;
 
-  if (group.worktrees.length === 0) {
+  // Single source for BOTH the count chip and the flyout affordance: the same
+  // builder rows the flyout list is built from, so the chip and the list can't
+  // drift apart on which worktrees exist. We count opened, non-main worktrees —
+  // the main checkout is pinned in the flyout as "default" and isn't itself a
+  // switchable worktree — which matches the pre-migration `group.worktrees.length`
+  // semantic while sourcing it from the git model (an opened worktree the model
+  // knows about but Recents doesn't now surfaces the affordance). Hoisted here so
+  // the builder runs once per group.
+  const flyoutEntries = buildWorktreeFlyoutEntries(group, worktreeModel, currentPath);
+  const openedWorktreeCount = flyoutEntries.filter((e) => e.opened && !e.isMain).length;
+
+  if (openedWorktreeCount === 0) {
     return (
       <DropdownMenuItem
         onSelect={(e) => {
@@ -233,6 +260,8 @@ function GroupRow({
       currentPath={currentPath}
       containsCurrent={containsCurrent}
       worktreeModel={worktreeModel}
+      flyoutEntries={flyoutEntries}
+      openedWorktreeCount={openedWorktreeCount}
       flyoutOpen={flyoutOpen}
       setFlyoutOpen={setFlyoutOpen}
       onPickProject={onPickProject}
@@ -248,6 +277,8 @@ function FlyoutGroup({
   currentPath,
   containsCurrent,
   worktreeModel,
+  flyoutEntries,
+  openedWorktreeCount,
   flyoutOpen,
   setFlyoutOpen,
   onPickProject,
@@ -259,6 +290,10 @@ function FlyoutGroup({
   currentPath: string;
   containsCurrent: boolean;
   worktreeModel: WorktreeSelectorModel | null;
+  /** Builder rows, hoisted from GroupRow so the builder runs once per group. */
+  flyoutEntries: WorktreeFlyoutEntry[];
+  /** Opened, non-main worktree count from the same builder — drives the chip. */
+  openedWorktreeCount: number;
   flyoutOpen: boolean;
   setFlyoutOpen: (open: boolean) => void;
   onPickProject: () => void;
@@ -269,30 +304,32 @@ function FlyoutGroup({
   const { t } = useLingui();
   const projectIsCurrent = group.project.path === currentPath;
 
+  // Two-target row on a real submenu (restores the pre-migration ergonomics):
+  //   - HOVER anywhere on the row opens the worktree flyout (native Radix
+  //     safe-triangle + close-on-leave-both), and ArrowRight opens it by keyboard.
+  //   - CLICK / Enter / Space open the PROJECT (its root) directly — one click,
+  //     same as a flat row. Radix's SubTrigger opens the submenu on click and on
+  //     the SUB_OPEN_KEYS (Enter/Space/ArrowRight); it bails when our handler
+  //     already called preventDefault (onClick: `if (event.defaultPrevented) return`;
+  //     onKeyDown: composed with checkForDefaultPrevented), so preventing default
+  //     on click + Enter/Space suppresses the open and lets navigation win while
+  //     ArrowRight still falls through to open the flyout. guardStaleSelect
+  //     swallows the Electron menu-open click fall-through, as on the flat rows.
+  const openProjectFromRow = (nativeEvent: Event): void => {
+    if (guardStaleSelect(nativeEvent)) return;
+    onPickProject();
+  };
   return (
-    <Popover open={flyoutOpen} onOpenChange={setFlyoutOpen}>
-      <DropdownMenuItem
-        onSelect={(e) => {
-          if (guardStaleSelect(e)) return;
-          // Clicking the name/path opens the bare project (root git workspace);
-          // the expander (its own click target below) opens the worktree flyout.
-          onPickProject();
+    <DropdownMenuSub open={flyoutOpen} onOpenChange={setFlyoutOpen}>
+      <DropdownMenuSubTrigger
+        onClick={(e) => {
+          e.preventDefault();
+          openProjectFromRow(e.nativeEvent);
         }}
-        // Keyboard access to the flyout (the count-chip trigger is tabIndex=-1,
-        // out of the menu's roving focus). Standard submenu keys off the focused
-        // row: Right opens the flyout (focus moves into its search input via the
-        // Popover's open-autofocus), Left/Escape closes it. Only swallow
-        // Left/Escape while the flyout is OPEN so a closed-flyout Escape still
-        // bubbles to close the whole menu. This row only renders when the group
-        // has worktrees, so a flyout always exists here.
         onKeyDown={(e) => {
-          if (e.key === 'ArrowRight') {
+          if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            setFlyoutOpen(true);
-          } else if ((e.key === 'ArrowLeft' || e.key === 'Escape') && flyoutOpen) {
-            e.preventDefault();
-            e.stopPropagation();
-            setFlyoutOpen(false);
+            openProjectFromRow(e.nativeEvent);
           }
         }}
         className="flex w-full min-w-0 items-start gap-2"
@@ -317,77 +354,57 @@ function FlyoutGroup({
             className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
           />
         ) : null}
-        {/* Separate click target: worktree icon + count + chevron opens the
-          side-flyout. The PopoverTrigger IS this button. stopPropagation keeps
-          the row's open-project select from also firing. tabIndex=-1 keeps it
-          out of the menu's roving focus. */}
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            tabIndex={-1}
-            aria-label={flyoutOpen ? t`Hide worktrees` : t`Show worktrees`}
-            aria-expanded={flyoutOpen}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-            // Open the flyout on HOVER, not just click. Mouse-enter DOES fire on
-            // the Electron renderer (unlike pointerdown), so this works here. Only
-            // OPEN on hover — deliberately NO onMouseLeave close: leaving the chip
-            // to reach the portaled flyout must not dismiss it (that was the v1
-            // "closes when I move my mouse" bug). It closes by hovering another
-            // project's chip (single hoisted flyout switches), clicking the chip
-            // again, Escape, picking an entry, or the menu closing.
-            onMouseEnter={() => {
-              setFlyoutOpen(true);
-            }}
-            data-testid={`project-switcher-toggle-${group.project.path}`}
-            className="-my-1 -mr-1 h-auto shrink-0 gap-1 rounded-md px-1.5 py-1 text-muted-foreground hover:bg-accent-foreground/15 hover:text-foreground hover:ring-1 hover:ring-border hover:ring-inset"
-          >
-            {/* Worktree count + pluralized label ("3 worktrees" / "1 worktree").
-              The digit stays tabular-nums so the count column doesn't jitter.
-              No leading icon here — "worktrees" already says what this is. */}
-            <span className="text-xs">
-              <span className="tabular-nums">{group.worktrees.length}</span>{' '}
-              <Plural value={group.worktrees.length} one="worktree" other="worktrees" />
-            </span>
-            <ChevronRight aria-hidden="true" className="size-3.5" />
-          </Button>
-        </PopoverTrigger>
-      </DropdownMenuItem>
+        {/* Opened, non-main worktree count + pluralized label ("3 worktrees" /
+          "1 worktree"), counted off the same builder rows the flyout list is
+          built from (so the chip tracks the same worktree set the list shows;
+          the list additionally renders the pinned "default" + create-on-demand
+          branches, which the chip deliberately doesn't count). The digit stays
+          tabular-nums so the count column doesn't jitter; the disclosure chevron
+          is supplied by DropdownMenuSubTrigger. No leading icon — "worktrees"
+          already says what this is. */}
+        <span
+          className="mt-0.5 shrink-0 text-muted-foreground text-xs"
+          data-testid={`project-switcher-toggle-${group.project.path}`}
+        >
+          <span className="tabular-nums">{openedWorktreeCount}</span>{' '}
+          <Plural value={openedWorktreeCount} one="worktree" other="worktrees" />
+        </span>
+      </DropdownMenuSubTrigger>
       <WorktreeFlyout
         group={group}
-        currentPath={currentPath}
+        open={flyoutOpen}
         worktreeModel={worktreeModel}
+        entries={flyoutEntries}
         onPickFlyoutEntry={onPickFlyoutEntry}
         guardStaleSelect={guardStaleSelect}
         openNewWorktreeWith={openNewWorktreeWith}
       />
-    </Popover>
+    </DropdownMenuSub>
   );
 }
 
 /**
  * The side-flyout content for one project: a search box over that project's
- * worktrees + local branches, then the ordered list (main
- * pinned, opened worktrees by recency, create-on-demand branches last). Portals
- * out of the menu's scroll container so it isn't clipped.
+ * worktrees + local branches, then the ordered list (main pinned, opened
+ * worktrees by recency, create-on-demand branches last). Rendered as a
+ * DropdownMenuSubContent — a real submenu, so it isn't clipped by the parent
+ * menu's scroll container (Radix positions it fixed against the trigger).
  */
 function WorktreeFlyout({
   group,
-  currentPath,
+  open,
   worktreeModel,
+  entries,
   onPickFlyoutEntry,
   guardStaleSelect,
   openNewWorktreeWith,
 }: {
   group: RecentRepoGroup;
-  currentPath: string;
+  /** Hoisted open state — drives the focus-into-search effect on open. */
+  open: boolean;
   worktreeModel: WorktreeSelectorModel | null;
+  /** Builder rows, hoisted from GroupRow so the builder runs once per group. */
+  entries: WorktreeFlyoutEntry[];
   onPickFlyoutEntry: (entry: WorktreeFlyoutEntry) => void;
   guardStaleSelect: (event: Event) => boolean;
   openNewWorktreeWith: (name: string) => void;
@@ -397,13 +414,25 @@ function WorktreeFlyout({
   const searchRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // Manual roving focus over the entry rows. These rows are Radix
-  // DropdownMenuItems inside a PORTALED PopoverContent — NOT a real DropdownMenu
-  // roving-focus context — so Radix's built-in arrow-key roving does not reach
-  // them. We drive focus ourselves off the live DOM (`[role="menuitem"]` in the
-  // list container) rather than a parallel ref array, so it stays correct as the
-  // search filters the list. ArrowDown out of the search input enters the list;
-  // ArrowUp off the first row returns to the search input.
+  // Move focus onto the search input when the submenu opens so the list + the
+  // "Create worktree" option are keyboard-reachable. DropdownMenuSubContent
+  // hardcodes its own onOpenAutoFocus (a passed one is ignored), so drive focus
+  // from the open transition instead. The content — and this input — only mounts
+  // while open, so searchRef is live by the time this runs, and it lands after
+  // Radix's own focus so the input wins. `preventScroll` so focusing the input
+  // can't nudge the parent recents scroll container, whose onScroll close would
+  // otherwise self-dismiss the flyout the instant it opens.
+  useEffect(() => {
+    if (open) searchRef.current?.focus({ preventScroll: true });
+  }, [open]);
+
+  // Manual roving focus over the entry rows. `preventDefault` + `stopPropagation`
+  // on the keys we own keeps the enclosing DropdownMenuSubContent's native
+  // roving/typeahead from also acting on them; ArrowLeft / Escape are left to
+  // bubble so Radix closes the submenu. We drive focus off the live DOM
+  // (`[role="menuitem"]` in the list container) rather than a parallel ref array,
+  // so it stays correct as the search filters the list. ArrowDown out of the
+  // search input enters the list; ArrowUp off the first row returns to it.
   function focusableRows(): HTMLElement[] {
     const container = listRef.current;
     if (container === null) return [];
@@ -415,27 +444,29 @@ function WorktreeFlyout({
   }
   // Roving handler shared by every list row: Up/Down move between rows, Up off
   // the first row returns to the search input, Enter fires the row's action.
-  // Escape / ArrowLeft are intentionally NOT handled so the Popover's own
-  // Escape-to-close (and the group row's keys) keep working.
+  // Escape / ArrowLeft are intentionally NOT handled so DropdownMenuSubContent's
+  // native ArrowLeft/Escape (close the submenu, close the menu) keep working.
   function onRowKeyDown(e: React.KeyboardEvent, onEnter: () => void): void {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      e.stopPropagation();
       const rows = focusableRows();
       const i = rows.indexOf(e.currentTarget as HTMLElement);
       focusRowAt(Math.min(i + 1, rows.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      e.stopPropagation();
       const rows = focusableRows();
       const i = rows.indexOf(e.currentTarget as HTMLElement);
       if (i <= 0) searchRef.current?.focus();
       else focusRowAt(i - 1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      e.stopPropagation();
       onEnter();
     }
   }
 
-  const entries = buildWorktreeFlyoutEntries(group, worktreeModel, currentPath);
   const q = flyoutQuery.trim().toLowerCase();
   const visible =
     q === '' ? entries : entries.filter((e) => (e.branch ?? '').toLowerCase().includes(q));
@@ -450,34 +481,9 @@ function WorktreeFlyout({
   const canCreate = isCurrentProject && typedName.length > 0;
 
   return (
-    <PopoverContent
-      side="right"
-      align="start"
+    <DropdownMenuSubContent
       sideOffset={4}
       className="flex max-h-80 w-96 flex-col gap-1 overflow-hidden p-1"
-      // Two stacked non-modal Radix overlays (menu + this flyout) otherwise
-      // fight over outside-click dismiss: a click inside this portaled flyout
-      // reads as "outside the menu" and closes both. Stopping the pointerdown
-      // here keeps the flyout interactive without collapsing the menu behind it.
-      // (Live dismiss behavior is only verifiable on the Electron renderer.)
-      onPointerDownOutside={(e) => e.preventDefault()}
-      // The flyout lives inside a Radix DropdownMenuItem; the parent menu focuses
-      // whatever row the pointer moves over (menus focus-on-hover), pulling focus
-      // OUT of this flyout — which would dismiss it the instant the mouse leaves
-      // the trigger, making it impossible to mouse in. Preventing the focus-outside
-      // dismiss keeps it open; it still closes on trigger re-click, Escape, picking
-      // an entry, or the menu closing (hoisted flyout state).
-      onFocusOutside={(e) => e.preventDefault()}
-      // Keyboard access: when the flyout opens (via ArrowRight on the
-      // group row, or click), move focus INTO it — onto the search input — so the
-      // list + "Create worktree" option are keyboard-reachable. Preventing Radix's
-      // default auto-focus lets us pick the target deterministically. Focus lands
-      // INSIDE the flyout, so the onFocusOutside guard above never fires (it stays
-      // open); Escape from here is handled by the Popover (close + return focus).
-      onOpenAutoFocus={(e) => {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }}
       data-testid={`project-switcher-flyout-${group.project.path}`}
     >
       <InputGroup className="mb-1 h-8 shrink-0">
@@ -495,9 +501,10 @@ function WorktreeFlyout({
           onChange={(e) => setFlyoutQuery(e.target.value)}
           // ArrowDown steps from the search box into the entry list (focus the
           // first row); typing still filters. Intercept BEFORE stopPropagation —
-          // the stop keeps the parent menu's typeahead from stealing the keys,
-          // but would also swallow ArrowDown, so nav has to run first. Escape /
-          // ArrowLeft are left to the Popover / group row, unchanged.
+          // the stop keeps the enclosing submenu's typeahead/roving from stealing
+          // the keys, but would also swallow ArrowDown, so nav has to run first.
+          // Escape still closes (Radix's document-level dismiss ignores React
+          // stopPropagation); ArrowLeft stays a cursor move inside the input.
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') {
               e.preventDefault();
@@ -507,11 +514,6 @@ function WorktreeFlyout({
           }}
           data-testid={`project-switcher-flyout-search-${group.project.path}`}
         />
-        {/* Branch icon trails as the worktree-context cue (kept per design),
-          alongside the leading search magnifier. */}
-        <InputGroupAddon align="inline-end">
-          <GitBranch aria-hidden="true" />
-        </InputGroupAddon>
       </InputGroup>
       <div
         ref={listRef}
@@ -586,7 +588,7 @@ function WorktreeFlyout({
           })
         )}
       </div>
-    </PopoverContent>
+    </DropdownMenuSubContent>
   );
 }
 

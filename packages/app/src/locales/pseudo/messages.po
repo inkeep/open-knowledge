@@ -145,11 +145,6 @@ msgstr ""
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr ""
 
-#. placeholder {0}: group.worktrees.length
-#: src/components/RecentProjectsMenu.tsx
-msgid "{0, plural, one {worktree} other {worktrees}}"
-msgstr ""
-
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
 msgid "{0} templates available"
@@ -370,6 +365,10 @@ msgstr ""
 
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
+msgstr ""
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
@@ -3458,10 +3457,6 @@ msgstr ""
 msgid "Hide thumbnails"
 msgstr ""
 
-#: src/components/RecentProjectsMenu.tsx
-msgid "Hide worktrees"
-msgstr ""
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Highlight"
 msgstr ""
@@ -6321,10 +6316,6 @@ msgstr ""
 
 #: src/editor/components/Pdf.tsx
 msgid "Show thumbnails"
-msgstr ""
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "Show worktrees"
 msgstr ""
 
 #: src/components/CommandPalette.tsx

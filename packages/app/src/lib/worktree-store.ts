@@ -8,8 +8,18 @@
  * runs once and every consumer reads the same snapshot via `useSyncExternalStore`.
  * First subscription kicks off the fetch; the cached model is returned
  * synchronously thereafter, so rendering never blocks and repeat opens are
- * instant. `refresh()` re-fetches after a worktree is created (the topology
+ * instant. `refresh()` re-fetches after an in-app worktree create (the topology
  * changed). A failed fetch keeps the prior cache rather than clearing it.
+ *
+ * Out-of-band topology changes — a `git worktree add` in a terminal, or a
+ * create in ANOTHER OK window (a separate BrowserWindow, hence a separate
+ * module instance with its own cache) — never call `refresh()` here, so the
+ * cache would otherwise stay frozen for the window's lifetime (the "new worktree
+ * only shows after a restart" bug). `subscribeRevalidate` closes that gap: it
+ * re-fetches on window focus / tab-visible, the same reactive signal
+ * `PageListContext` / `FileTree` / `GraphView` use to recover from stale list
+ * data. There's no cheap push for git worktree topology, so focus/visibility is
+ * the proportionate invalidation trigger.
  *
  * Consumers render from the (possibly `null`) snapshot into a stable region, so
  * the async arrival fills that region without reflowing the primary list.
@@ -27,6 +37,16 @@ export interface WorktreeStore {
 interface WorktreeStoreDeps {
   /** Resolves the current window's worktree model, or `null` when unavailable. */
   fetchModel: () => Promise<WorktreeSelectorModel | null>;
+  /**
+   * Register an external revalidation trigger — invoked whenever a signal
+   * suggests the git worktree topology may have changed out-of-band (window
+   * regains focus, tab becomes visible). Each call re-fetches the model.
+   * Returns an unsubscribe. Wired to the subscriber lifecycle: attached when the
+   * first consumer subscribes, detached when the last unsubscribes, so it never
+   * fires — or leaks a listener — while nothing is mounted. Optional (omitted in
+   * SSR and in tests that don't exercise revalidation).
+   */
+  subscribeRevalidate?: (onRevalidate: () => void) => () => void;
 }
 
 export function createWorktreeStore(deps: WorktreeStoreDeps): WorktreeStore {
@@ -38,6 +58,10 @@ export function createWorktreeStore(deps: WorktreeStoreDeps): WorktreeStore {
   // dropped — otherwise a just-created worktree could miss the current window's
   // cache until remount.
   let reloadQueued = false;
+  // Live only while at least one consumer is subscribed — ref-counted off
+  // `listeners` so a focus event never re-fetches (or holds a DOM listener)
+  // while the store is unmounted.
+  let revalidateUnsub: (() => void) | null = null;
   const listeners = new Set<() => void>();
 
   function emit(): void {
@@ -77,8 +101,22 @@ export function createWorktreeStore(deps: WorktreeStoreDeps): WorktreeStore {
         bootstrapped = true;
         void load();
       }
+      // Attach the revalidation trigger on the first live subscriber. `load()`'s
+      // in-flight coalescing bounds a burst of focus events to at most one
+      // follow-up fetch, so no throttle is needed here.
+      if (deps.subscribeRevalidate && revalidateUnsub === null) {
+        revalidateUnsub = deps.subscribeRevalidate(() => {
+          void load();
+        });
+      }
       return () => {
         listeners.delete(listener);
+        // Detach when the last subscriber leaves so the DOM listener can't
+        // outlive the store's consumers.
+        if (listeners.size === 0 && revalidateUnsub !== null) {
+          revalidateUnsub();
+          revalidateUnsub = null;
+        }
       };
     },
     refresh() {
@@ -94,11 +132,35 @@ async function fetchWorktreeModel(): Promise<WorktreeSelectorModel | null> {
   return result.ok ? result.model : null;
 }
 
+/**
+ * Browser revalidation trigger: re-fetch when the window regains focus or the
+ * tab becomes visible — the moment a worktree created out-of-band (a terminal
+ * `git worktree add`, or another OK window) should surface without an app
+ * restart. Mirrors the focus/visibilitychange revalidation in `PageListContext`
+ * / `FileTree` / `GraphView`. The `visibilityState === 'visible'` gate drops the
+ * hide half of `visibilitychange` (only re-fetch on show), and `visibilitychange`
+ * is attached on `window` (it bubbles up from `document`) to match those callers.
+ */
+function subscribeBrowserRevalidate(onRevalidate: () => void): () => void {
+  const handleResume = (): void => {
+    if (document.visibilityState === 'visible') onRevalidate();
+  };
+  window.addEventListener('focus', handleResume);
+  window.addEventListener('visibilitychange', handleResume);
+  return () => {
+    window.removeEventListener('focus', handleResume);
+    window.removeEventListener('visibilitychange', handleResume);
+  };
+}
+
 const productionStore: WorktreeStore =
   typeof window === 'undefined'
     ? // SSR / non-browser: nothing to fetch. Consumers render their empty state.
       { getSnapshot: () => null, subscribe: () => () => {}, refresh: () => {} }
-    : createWorktreeStore({ fetchModel: fetchWorktreeModel });
+    : createWorktreeStore({
+        fetchModel: fetchWorktreeModel,
+        subscribeRevalidate: subscribeBrowserRevalidate,
+      });
 
 export const subscribeToWorktrees = productionStore.subscribe;
 export const getWorktreesSnapshot = productionStore.getSnapshot;

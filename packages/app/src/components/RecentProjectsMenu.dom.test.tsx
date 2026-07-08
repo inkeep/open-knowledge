@@ -1,16 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { WorktreeSelectorModel } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import {
-  cloneElement,
-  createContext,
-  isValidElement,
-  type ReactElement,
-  type ReactNode,
-  use,
-  useEffect,
-  useState,
-} from 'react';
+import { createContext, type ReactNode, use, useState } from 'react';
 import type { RecentProjectEntry } from '@/lib/desktop-bridge-types';
 import { RecentProjectsMenu } from './RecentProjectsMenu';
 
@@ -22,9 +13,21 @@ type ItemProps = {
 };
 
 // DropdownMenuItem is a div (role=menuitem), matching reality — the real one is
-// not a <button>, so the nested toggle Button composes cleanly. onSelect fires on
-// click; a nested Button that stopPropagations its click keeps onSelect from
-// firing (the two-target behavior).
+// not a <button>. onSelect fires on click; onKeyDown (from props) drives the
+// flyout list's manual roving focus.
+//
+// The worktree flyout is a real DropdownMenuSub, modeled here through a shared
+// { open, onOpenChange } context: SubTrigger opens on click / mouseenter /
+// ArrowRight and closes on ArrowLeft / Escape / mouseleave; SubContent renders
+// only while open and closes on mouseleave. Radix's safe-triangle + close-on-
+// leave-both geometry can't run in jsdom, so the mock models the onOpenChange
+// contract the component wires to (asserting the flyout closes when Radix
+// reports hover-out). Focus-into-search on open is the component's own effect,
+// not simulated here.
+const SubStateContext = createContext<{ open: boolean; onOpenChange: (o: boolean) => void }>({
+  open: false,
+  onOpenChange: () => {},
+});
 mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuItem: ({ children, onSelect, ...props }: ItemProps) => (
     <div
@@ -38,44 +41,7 @@ mock.module('@/components/ui/dropdown-menu', () => ({
     </div>
   ),
   DropdownMenuLabel: ({ children, ...props }: ItemProps) => <div {...props}>{children}</div>,
-}));
-mock.module('@/components/ui/button', () => ({
-  Button: ({
-    children,
-    onClick,
-    onMouseDown,
-    ...props
-  }: ItemProps & {
-    onClick?: (e: unknown) => void;
-    onMouseDown?: (e: unknown) => void;
-  }) => (
-    <button
-      type="button"
-      onClick={(e) => onClick?.(e)}
-      onMouseDown={(e) => onMouseDown?.(e)}
-      {...props}
-    >
-      {children}
-    </button>
-  ),
-}));
-
-// Popover: controlled by `open` (driven by the hoisted flyoutPath). Content
-// renders only when open, matching Radix (PopoverContent is absent from the DOM
-// while closed). The real Radix Popover portals + gates open on pointerdown
-// (which the Electron renderer lacks — the reason for choosing Popover over
-// DropdownMenuSub), neither of which jsdom drives, so the mock flattens it to a
-// context-carried { open, onOpenChange }. PopoverTrigger clones its asChild
-// child (the expander Button) to add an onClick that calls onOpenChange(!open)
-// — exactly what Radix's asChild Trigger does — so the click lands on the real
-// interactive Button and the Button's own onClick stopPropagation keeps the
-// row's onSelect from firing. That models the two-target row exactly.
-const PopoverStateContext = createContext<{ open: boolean; onOpenChange: (o: boolean) => void }>({
-  open: false,
-  onOpenChange: () => {},
-});
-mock.module('@/components/ui/popover', () => ({
-  Popover: ({
+  DropdownMenuSub: ({
     children,
     open,
     onOpenChange,
@@ -84,42 +50,60 @@ mock.module('@/components/ui/popover', () => ({
     open?: boolean;
     onOpenChange?: (o: boolean) => void;
   }) => (
-    <PopoverStateContext value={{ open: !!open, onOpenChange: onOpenChange ?? (() => {}) }}>
+    <SubStateContext value={{ open: !!open, onOpenChange: onOpenChange ?? (() => {}) }}>
       {children}
-    </PopoverStateContext>
+    </SubStateContext>
   ),
-  PopoverTrigger: ({ children }: { children?: ReactNode }) => {
-    const { open, onOpenChange } = use(PopoverStateContext);
-    if (!isValidElement(children)) return <>{children}</>;
-    const child = children as ReactElement<{ onClick?: (e: unknown) => void }>;
-    return cloneElement(child, {
-      onClick: (e: unknown) => {
-        child.props.onClick?.(e);
-        onOpenChange(!open);
-      },
-    });
-  },
-  PopoverContent: ({
+  DropdownMenuSubTrigger: ({
     children,
-    // Strip Radix-only positioning/dismiss props so React doesn't warn about
-    // unknown DOM attributes on the plain div the mock renders.
-    side: _side,
-    align: _align,
-    sideOffset: _sideOffset,
-    onPointerDownOutside: _onPointerDownOutside,
-    onFocusOutside: _onFocusOutside,
-    onOpenAutoFocus,
+    onClick,
+    onKeyDown,
     ...props
-  }: ItemProps & { onOpenAutoFocus?: (e: Event) => void }) => {
-    const { open } = use(PopoverStateContext);
-    // Radix fires onOpenAutoFocus when the content opens. Simulate it here (hook
-    // runs unconditionally, before the closed early-return) so the flyout's
-    // focus-into-search behavior is exercised in the mock.
-    useEffect(() => {
-      if (open) onOpenAutoFocus?.(new Event('focus'));
-    }, [open, onOpenAutoFocus]);
+  }: ItemProps & {
+    onClick?: (e: React.MouseEvent) => void;
+    onKeyDown?: (e: React.KeyboardEvent) => void;
+  }) => {
+    const { onOpenChange } = use(SubStateContext);
+    // Model Radix's SubTrigger composition: our handler runs first, and Radix
+    // opens the sub only if we did NOT preventDefault. The component's onClick /
+    // Enter+Space preventDefault (they navigate to the project instead), so those
+    // do NOT open the flyout; hover and ArrowRight still do.
+    return (
+      <div
+        role="menuitem"
+        tabIndex={-1}
+        onMouseEnter={() => onOpenChange(true)}
+        onMouseLeave={() => onOpenChange(false)}
+        onClick={(e) => {
+          onClick?.(e);
+          if (!e.defaultPrevented) onOpenChange(true);
+        }}
+        onKeyDown={(e) => {
+          onKeyDown?.(e);
+          if (e.defaultPrevented) return;
+          if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') onOpenChange(true);
+          else if (e.key === 'ArrowLeft' || e.key === 'Escape') onOpenChange(false);
+        }}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  },
+  DropdownMenuSubContent: ({
+    children,
+    sideOffset: _sideOffset,
+    ...props
+  }: ItemProps & { sideOffset?: number }) => {
+    const { open, onOpenChange } = use(SubStateContext);
     if (!open) return null;
-    return <div {...props}>{children}</div>;
+    // role="menu" mirrors the real DropdownMenuSubContent and satisfies the
+    // static-interactive-element lint on the hover-out handler.
+    return (
+      <div role="menu" onMouseLeave={() => onOpenChange(false)} {...props}>
+        {children}
+      </div>
+    );
   },
 }));
 
@@ -265,7 +249,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     expect(row.querySelector('svg')).toBeNull();
   });
 
-  test('the expander opens the worktree flyout (does not open the project)', async () => {
+  test('clicking a worktree-bearing row opens the PROJECT (root) directly, not the flyout', async () => {
     const { bridge } = renderMenu({
       recents: [
         main('/repo', '/repo/.git'),
@@ -278,23 +262,28 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     expect(groupRow.textContent).toContain('/repo');
     expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
 
-    // The expander row carries the pluralized worktree count ("1 worktree" at
-    // one; "N worktrees" otherwise) plus a trailing chevron only — no leading
-    // GitBranch icon, since "worktrees" already says what the chip is.
+    // The count chip carries the pluralized worktree count ("1 worktree" at one;
+    // "N worktrees" otherwise) with no icon of its own — the disclosure chevron
+    // is the DropdownMenuSubTrigger's built-in (not rendered by the mock).
     const toggle = screen.getByTestId('project-switcher-toggle-/repo');
-    expect(toggle.querySelectorAll('svg').length).toBe(1);
+    expect(toggle.querySelectorAll('svg').length).toBe(0);
     expect(toggle.textContent).toContain('1 worktree');
     expect(toggle.textContent).not.toContain('1 worktrees');
 
-    // Clicking the expander opens the flyout — and does NOT open the project.
-    fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
+    // Two-target row: a direct CLICK opens the bare project (root) in one click,
+    // and does NOT open the flyout (the click preventDefaults Radix's open).
+    fireEvent.click(screen.getByTestId('project-switcher-group-/repo'));
     await waitFor(() => {
-      expect(screen.getByTestId('project-switcher-flyout-/repo')).not.toBeNull();
+      expect(bridge.project.open).toHaveBeenCalledWith({
+        path: '/repo',
+        target: 'new-window',
+        entryPoint: 'recents',
+      });
     });
-    expect(bridge.project.open).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
   });
 
-  test('hovering the expander opens the flyout (hover-open, not click-only) without opening the project', async () => {
+  test('hovering the submenu row opens the flyout (hover-open, not click-only) without opening the project', async () => {
     const { bridge } = renderMenu({
       recents: [
         main('/repo', '/repo/.git'),
@@ -302,13 +291,34 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
       ],
     });
     expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
-    // Mouse-enter (which fires on the Electron renderer, unlike pointerdown)
-    // opens the flyout on hover.
-    fireEvent.mouseEnter(screen.getByTestId('project-switcher-toggle-/repo'));
+    // DropdownMenuSub opens the submenu on hover of its trigger row (Radix
+    // safe-triangle hover); the mock models that onOpenChange(true) wiring.
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
     await waitFor(() => {
       expect(screen.getByTestId('project-switcher-flyout-/repo')).not.toBeNull();
     });
     expect(bridge.project.open).not.toHaveBeenCalled();
+  });
+
+  test('the flyout closes when the pointer leaves both the row and the flyout (close-on-hover-out)', async () => {
+    renderMenu({
+      recents: [
+        main('/repo', '/repo/.git'),
+        worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
+      ],
+    });
+    // Hover the row → flyout opens.
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
+    const flyout = await screen.findByTestId('project-switcher-flyout-/repo');
+    // Leaving the flyout content (the pointer is now inside neither the trigger
+    // nor the content) → Radix reports onOpenChange(false) and the flyout closes.
+    // The safe-triangle / leave-BOTH geometry is Radix-native (verified live on
+    // the Electron POC); the mock exercises the onOpenChange(false) wiring that
+    // RecentProjectsMenu hooks up via the hoisted flyout state.
+    fireEvent.mouseLeave(flyout);
+    await waitFor(() => {
+      expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
+    });
   });
 
   test('keyboard: ArrowRight on the group row opens its flyout; ArrowLeft and Escape close it (a11y C7)', async () => {
@@ -354,6 +364,33 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     });
   });
 
+  test('keyboard: Enter (and Space) on the group row opens the PROJECT, not the flyout (two-target)', async () => {
+    const { bridge } = renderMenu({
+      recents: [
+        main('/repo', '/repo/.git'),
+        worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
+      ],
+    });
+    const row = screen.getByTestId('project-switcher-group-/repo');
+
+    // Enter opens the bare project (the SUB_OPEN key is preventDefaulted so Radix
+    // does not open the submenu instead) and leaves the flyout closed.
+    fireEvent.keyDown(row, { key: 'Enter' });
+    await waitFor(() => {
+      expect(bridge.project.open).toHaveBeenCalledWith({
+        path: '/repo',
+        target: 'new-window',
+        entryPoint: 'recents',
+      });
+    });
+    expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
+
+    // Space behaves identically.
+    fireEvent.keyDown(row, { key: ' ' });
+    await waitFor(() => expect(bridge.project.open).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
+  });
+
   test('the flyout lists the default (main) first, then the opened worktree; opening one opens its window', async () => {
     const { bridge } = renderMenu({
       recents: [
@@ -361,7 +398,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
       ],
     });
-    fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
 
     // main (default, pinned) is entry /repo; the dev worktree follows.
     const mainEntry = await screen.findByTestId('project-switcher-flyout-entry-/repo');
@@ -377,8 +414,9 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     expect(mainEntry.querySelector('svg')).toBeNull();
     expect(devEntry.querySelector('svg')).toBeNull();
     const flyoutSearch = screen.getByTestId('project-switcher-flyout-search-/repo');
-    // Search magnifier (leading) + branch icon (trailing) = two icons on the field.
-    expect(flyoutSearch.parentElement?.querySelectorAll('svg').length).toBe(2);
+    // Search magnifier (leading) is the only icon on the field — the trailing
+    // branch icon was removed as unnecessary.
+    expect(flyoutSearch.parentElement?.querySelectorAll('svg').length).toBe(1);
 
     fireEvent.click(devEntry);
     await waitFor(() => {
@@ -402,7 +440,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     expect(screen.getByTestId('project-switcher-toggle-/repo').textContent).toContain(
       '2 worktrees',
     );
-    fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
 
     const flyout = await screen.findByTestId('project-switcher-flyout-/repo');
     const ids = [...flyout.querySelectorAll('[data-testid^="project-switcher-flyout-entry-"]')].map(
@@ -414,6 +452,39 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
       'project-switcher-flyout-entry-/repo/.ok/worktrees/newer',
       'project-switcher-flyout-entry-/repo/.ok/worktrees/older',
     ]);
+  });
+
+  test('count chip + flyout affordance single-source from the builder: a model-known opened worktree not in Recents still counts', async () => {
+    // The current project's git model knows an opened worktree ("ghost") that
+    // Recents never listed. The count chip and the flyout gate both derive from
+    // buildWorktreeFlyoutEntries (which merges the model for the current
+    // project), so this worktree surfaces the submenu affordance and is counted
+    // — where the old Recents-only count would have shown a plain row with none.
+    renderMenu({
+      recents: [main('/repo', '/repo/.git')],
+      currentPath: '/repo',
+      worktreeModel: model([
+        { branch: 'main', worktreePath: '/repo', isCurrent: true, isMain: true, locked: false },
+        {
+          branch: 'ghost',
+          worktreePath: '/repo/.ok/worktrees/ghost',
+          isCurrent: false,
+          isMain: false,
+          locked: false,
+        },
+      ]),
+    });
+    // Submenu row (not a plain row), and the chip counts the one opened, non-main
+    // worktree — the pinned "default" (main) is not itself counted.
+    expect(screen.getByTestId('project-switcher-group-/repo')).not.toBeNull();
+    expect(screen.getByTestId('project-switcher-toggle-/repo').textContent).toContain('1 worktree');
+
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
+    await screen.findByTestId('project-switcher-flyout-/repo');
+    // The list shows the same worktree the count implies.
+    expect(
+      screen.getByTestId('project-switcher-flyout-entry-/repo/.ok/worktrees/ghost'),
+    ).not.toBeNull();
   });
 
   test('the flyout search filters that project’s worktrees + branches; a create-on-demand branch creates its worktree', async () => {
@@ -435,7 +506,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         { branch: 'feature-x', worktreePath: null, isCurrent: false, isMain: false, locked: false },
       ]),
     });
-    fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
     await screen.findByTestId('project-switcher-flyout-/repo');
 
     // The un-opened branch is present (create-on-demand) and flagged "create".
@@ -496,7 +567,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
       ]),
       openNewWorktreeWith,
     });
-    fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
     await screen.findByTestId('project-switcher-flyout-/repo');
 
     // A query matching no worktree/branch. The empty label stays, AND a clickable
@@ -535,7 +606,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         },
       ]),
     });
-    fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
     await screen.findByTestId('project-switcher-flyout-/repo');
     const searchBox = screen.getByTestId(
       'project-switcher-flyout-search-/repo',
@@ -568,7 +639,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         '/elsewhere',
       ),
     });
-    fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
     await screen.findByTestId('project-switcher-flyout-/repo');
     const searchBox = screen.getByTestId(
       'project-switcher-flyout-search-/repo',
@@ -602,7 +673,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         '/elsewhere',
       ),
     });
-    fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
     const flyout = await screen.findByTestId('project-switcher-flyout-/repo');
     // main + dev only; the other project's branch does not appear.
     expect(flyout.textContent).not.toContain('other-branch');
@@ -612,15 +683,22 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     ).not.toBeNull();
   });
 
-  test('clicking the project name opens the bare project (root), not the flyout', async () => {
+  test('the flyout’s pinned "default" entry also opens the project root (secondary path to the same action)', async () => {
+    // Row-click is the primary one-click open (covered above); the repo's
+    // default/main checkout is also the pinned first flyout entry, opening the
+    // same bare root with the `recents` entry point.
     const { bridge } = renderMenu({
       recents: [
         main('/repo', '/repo/.git'),
         worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
       ],
     });
-    // The name row opens the project directly (separate target from the expander).
-    fireEvent.click(screen.getByTestId('project-switcher-group-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
+    // Hover opened the flyout — it did NOT open the project directly.
+    const mainEntry = await screen.findByTestId('project-switcher-flyout-entry-/repo');
+    expect(bridge.project.open).not.toHaveBeenCalled();
+
+    fireEvent.click(mainEntry);
     await waitFor(() => {
       expect(bridge.project.open).toHaveBeenCalledWith({
         path: '/repo',
@@ -661,7 +739,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     // the worktree flyout.
     const groupRow = screen.getByTestId('project-switcher-group-/repo');
     expect(groupRow.textContent).toContain('/repo');
-    fireEvent.click(screen.getByTestId('project-switcher-toggle-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
     // Synthesized project has no pinned main entry (never opened); the dev
     // worktree is present.
     await screen.findByTestId('project-switcher-flyout-/repo');
