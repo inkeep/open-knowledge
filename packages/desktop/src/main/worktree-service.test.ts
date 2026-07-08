@@ -1,11 +1,23 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { execFile, execFileSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { addOkPathsToGitExclude, getOkArtifactPaths } from '@inkeep/open-knowledge';
+import { initContent } from '@inkeep/open-knowledge-server';
+import { discoverProject } from './folder-admission.ts';
 import { clearRecentGitCache } from './worktree-recents.ts';
 import { createWorktree, listWorktreeSelector } from './worktree-service.ts';
+import { seedWorktreeProjectSetup } from './worktree-setup-inherit.ts';
 
 const execFileAsync = promisify(execFile);
 const GIT_ENV = { ...process.env, LANG: 'C', LC_ALL: 'C', GIT_CONFIG_GLOBAL: '/dev/null' };
@@ -461,5 +473,138 @@ describe('worktree-service', () => {
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.reason).toBe('invalid-branch');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Inherited OK setup — the worktree opens `managed` (no consent dialog), with
+// full parity, for both shared and local-only roots. Real git throughout: the
+// classification is checked through the actual admission path (`discoverProject`
+// → `isProjectRoot`), not a mock.
+// ---------------------------------------------------------------------------
+
+/** True iff `path` is git-ignored inside `cwd` (check-ignore exits 0). */
+async function isIgnored(cwd: string, path: string): Promise<boolean> {
+  try {
+    await git(cwd, 'check-ignore', '-q', '--', path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A local-only OK repo: `.ok/config.yml` (+ editor MCP wiring) exists at the
+ * main root but is NEVER committed — it's excluded via the shared common-dir
+ * `.git/info/exclude`, exactly as `addOkPathsToGitExclude` does for a
+ * local-only project. Only README is committed, so a worktree checked out from
+ * `main` does NOT carry `.ok/config.yml`.
+ */
+async function makeLocalOnlyRepo(): Promise<Handle> {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'wt-svc-local-')));
+  const mainRepo = join(root, 'main');
+  mkdirSync(mainRepo);
+  await git(mainRepo, 'init', '--initial-branch=main', '.');
+  await git(mainRepo, 'config', 'user.email', 'test@example.com');
+  await git(mainRepo, 'config', 'user.name', 'Test');
+  writeFileSync(join(mainRepo, 'README.md'), '# main\n');
+  await git(mainRepo, 'add', '-A');
+  await git(mainRepo, 'commit', '-m', 'initial');
+  // Scaffold the OK project + a claude wiring at the root, then go local-only.
+  initContent(mainRepo, { contentDir: 'docs' });
+  mkdirSync(join(mainRepo, '.ok'), { recursive: true });
+  // A claude project MCP config carrying the OK sentinel (never committed).
+  writeFileSync(
+    join(mainRepo, '.mcp.json'),
+    JSON.stringify({
+      mcpServers: {
+        'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v1\nexec ok mcp'] },
+      },
+    }),
+  );
+  const excl = addOkPathsToGitExclude(mainRepo, getOkArtifactPaths(mainRepo));
+  if (excl.kind !== 'updated') throw new Error(`expected local-only exclude, got ${excl.kind}`);
+  return { root, mainRepo, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+}
+
+describe('worktree-service — inherited OK setup (no consent dialog)', () => {
+  let handle: Handle | null = null;
+  afterEach(() => {
+    handle?.cleanup();
+    handle = null;
+    clearRecentGitCache();
+  });
+
+  test('HARD GATE: seeding flips a local-only worktree from `fresh` (dialog) to `managed` (silent)', async () => {
+    handle = await makeLocalOnlyRepo();
+    const wtPath = join(handle.root, 'flip-wt');
+    // Manual `git worktree add` — un-seeded, so we can observe the classification
+    // BEFORE and AFTER seeding (createWorktree would auto-seed).
+    execFileSync('git', ['worktree', 'add', '-b', 'flip', wtPath, 'main'], {
+      cwd: handle.mainRepo,
+      env: GIT_ENV,
+    });
+    // Branch `main` never committed `.ok/`, so the worktree has no config.yml.
+    expect(existsSync(join(wtPath, '.ok', 'config.yml'))).toBe(false);
+
+    // BEFORE: the linked-worktree carveout classifies it `fresh` → consent dialog.
+    const before = await discoverProject(wtPath, { homeDir: handle.root, dirSizeProbe: null });
+    expect(before.kind).toBe('fresh');
+
+    seedWorktreeProjectSetup(wtPath, handle.mainRepo);
+
+    // AFTER: a real, parseable config.yml now marks the worktree a project root,
+    // so discovery classifies it `managed` — the consent dialog is suppressed.
+    expect(existsSync(join(wtPath, '.ok', 'config.yml'))).toBe(true);
+    const after = await discoverProject(wtPath, { homeDir: handle.root, dirSizeProbe: null });
+    expect(after.kind).toBe('managed');
+    if (after.kind !== 'managed') return;
+    expect(after.projectDir).toBe(wtPath);
+    expect(after.ancestorPromoted).toBe(false);
+  });
+
+  test('local-only root: the seeded config.yml (+ editor wiring) stays UNTRACKED in the worktree', async () => {
+    handle = await makeLocalOnlyRepo();
+    const wtPath = join(handle.root, 'local-wt');
+    execFileSync('git', ['worktree', 'add', '-b', 'local-branch', wtPath, 'main'], {
+      cwd: handle.mainRepo,
+      env: GIT_ENV,
+    });
+
+    seedWorktreeProjectSetup(wtPath, handle.mainRepo);
+
+    // Root wired claude → the worktree gets `.mcp.json`, adapted (byte-identical
+    // resilient chain) under the worktree path.
+    expect(existsSync(join(wtPath, '.mcp.json'))).toBe(true);
+    // content.dir was inherited from the root.
+    expect(readFileSync(join(wtPath, '.ok', 'config.yml'), 'utf-8')).toContain('dir: docs');
+
+    // The shared common-dir exclude covers the worktree's copies → ignored,
+    // hence UNTRACKED. The seed never stages anything.
+    expect(await isIgnored(wtPath, '.ok/config.yml')).toBe(true);
+    expect(await isIgnored(wtPath, '.mcp.json')).toBe(true);
+    const status = await git(wtPath, 'status', '--porcelain');
+    expect(status).not.toContain('.ok/config.yml');
+    expect(status).not.toContain('.mcp.json');
+  });
+
+  test('shared root (config committed): createWorktree opens managed and never clobbers the committed config', async () => {
+    // makeRepo commits `.ok/config.yml` as `version: 1\n` (shared posture).
+    handle = await makeRepo();
+    const res = await createWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'shared-wt',
+      createBranch: true,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    // Seed is writeIfMissing → the committed config is preserved byte-for-byte.
+    expect(readFileSync(join(res.path, '.ok', 'config.yml'), 'utf-8')).toBe('version: 1\n');
+
+    const disc = await discoverProject(res.path, { homeDir: handle.root, dirSizeProbe: null });
+    expect(disc.kind).toBe('managed');
+    if (disc.kind !== 'managed') return;
+    expect(disc.projectDir).toBe(res.path);
   });
 });

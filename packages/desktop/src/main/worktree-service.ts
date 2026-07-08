@@ -38,6 +38,7 @@ import {
 import { listGitWorktrees } from './list-git-worktrees.ts';
 import { seedWorktreeAutoSync } from './worktree-autosync-inherit.ts';
 import { clearRecentGitCache } from './worktree-recents.ts';
+import { seedWorktreeProjectSetup } from './worktree-setup-inherit.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -175,6 +176,16 @@ export async function createWorktree(args: CreateWorktreeArgs): Promise<Worktree
   } catch {
     // Seed is advisory; the worktree opens fine without it (falls back to the
     // normal onboarding prompt).
+  }
+  // Inherit the root project's OK setup (`.ok/` scaffold + editor/MCP wiring)
+  // so the worktree window opens `managed` — no "Setup OpenKnowledge in this
+  // folder?" consent dialog — with full parity. `seedWorktreeProjectSetup` is
+  // internally fail-soft; the try/catch is belt-and-braces so a seed error can
+  // never flip the (already-captured) successful create.
+  try {
+    seedWorktreeProjectSetup(worktreePath, mainRoot);
+  } catch {
+    // Advisory; the worktree opens fine without it (falls back to the prompt).
   }
   return { ok: true, path: worktreePath, created: true };
 }
