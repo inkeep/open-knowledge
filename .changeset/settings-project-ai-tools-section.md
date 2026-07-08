@@ -1,7 +1,0 @@
----
-"@inkeep/open-knowledge": minor
----
-
-Settings → This project gains an "AI tools" section — the project-scoped sibling of the "AI tools & CLI" section. It manages OpenKnowledge's project-local footprint for the project the window has open: the per-editor project MCP config files (`.mcp.json` for Claude Code, `.cursor/mcp.json` for Cursor, `.codex/config.toml` for Codex, and the OpenCode/Pi equivalents) and the project runtime skill (`.claude/skills/open-knowledge/`). Every row reflects its live installed state and a click installs or uninstalls that one component; removal follows the same guest discipline as install (only entries OpenKnowledge recognizably wrote are deleted). Because a written project config is not always a connected one, each installed row states its remaining step — Claude Code needs a one-time approval, Cursor must be enabled in its own settings, Codex auto-connects on a trusted project. Editors with no project surface (Claude Desktop) are omitted. Mutations resolve and serialize against the sender window's project in the desktop main process.
-
-This also fixes a related leak in the existing "AI tools & CLI" (user-global) section: project-only editors such as Pi have no user-global MCP config, so they surfaced there as a permanently-unmanageable row. The global section now lists only `scope: 'global'` editors; Pi is managed in the new project section instead.
