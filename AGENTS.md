@@ -1,14 +1,12 @@
 # OpenKnowledge Agent Guide
 
-This is the public mirror of OpenKnowledge. Keep changes compatible with the internal source path `public/open-knowledge/` in `inkeep/agents-private`.
+This is the public OpenKnowledge repository. Keep changes compatible with the published package and standalone clone experience.
 
 ## Start Here
 
 - Read [README.md](./README.md) for the project overview.
 - Read [CONTRIBUTING.md](./CONTRIBUTING.md) before changing public PR flow, dependencies, or exported docs.
 - Use Bun 1.3.13 or newer and Node.js 24 or newer.
-
-For maintainers working inside `inkeep/agents-private`, start OpenKnowledge agent sessions from `public/open-knowledge/` when possible. If launched at the monorepo root, first read `public/open-knowledge/AGENTS.md`, then run Bun/build/test commands with cwd set to `public/open-knowledge`.
 
 ## Commands
 
@@ -48,8 +46,8 @@ bun run dev
 
 ## Public Mirror Rules
 
-- This repo is generated from an allowlist. Do not rely on hidden internal folders being present.
-- Public PRs are mirrored into `inkeep/agents-private` for review and merge, then synced back here.
+- This repo is generated from an allowlist. Do not rely on hidden source-only folders being present.
+- Public PRs are reviewed by maintainers and accepted changes sync back here automatically. A PR may close rather than show as merged; that is expected for this mirror.
 - Top-level public docs such as `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` are overlay files. Keep them public-safe and standalone.
 - Do not add secrets, private customer context, internal-only specs, local paths, or generated debug artifacts.
 - Keep dependency updates paired with `bun.lock`. Run `bun run notices` when third-party notices may change.
