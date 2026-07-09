@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge-app",
-  "version": "0.28.1",
+  "version": "0.28.2",
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",

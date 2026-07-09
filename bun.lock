@@ -19,7 +19,7 @@
     },
     "docs": {
       "name": "@inkeep/open-knowledge-docs",
-      "version": "0.0.14",
+      "version": "0.0.15",
       "dependencies": {
         "@hookform/resolvers": "^5.4.0",
         "@inkeep/cxkit-react": "^0.5.117",
@@ -62,7 +62,7 @@
     },
     "packages/app": {
       "name": "@inkeep/open-knowledge-app",
-      "version": "0.28.1",
+      "version": "0.28.2",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -209,7 +209,7 @@
     },
     "packages/cli": {
       "name": "@inkeep/open-knowledge",
-      "version": "0.28.1",
+      "version": "0.28.2",
       "bin": {
         "open-knowledge": "dist/cli.mjs",
         "ok": "dist/cli.mjs",
@@ -253,7 +253,7 @@
     },
     "packages/core": {
       "name": "@inkeep/open-knowledge-core",
-      "version": "0.28.1",
+      "version": "0.28.2",
       "dependencies": {
         "@handlewithcare/remark-prosemirror": "0.1.5",
         "@opentelemetry/api": "^1.9.0",
@@ -329,7 +329,7 @@
     },
     "packages/desktop": {
       "name": "@inkeep/open-knowledge-desktop",
-      "version": "0.28.1",
+      "version": "0.28.2",
       "dependencies": {
         "@inkeep/open-knowledge": "workspace:*",
         "@inkeep/open-knowledge-core": "workspace:*",
@@ -374,7 +374,7 @@
     },
     "packages/server": {
       "name": "@inkeep/open-knowledge-server",
-      "version": "0.28.1",
+      "version": "0.28.2",
       "dependencies": {
         "@hocuspocus/server": "4.0.0-rc.1",
         "@inkeep/open-knowledge-core": "workspace:*",
