@@ -22,7 +22,12 @@ Edits made anywhere reflect everywhere; an open Settings pane refreshes live.
 
 ## Schema
 
-The **Scope** column says which file a setting belongs in: **project** → `.ok/config.yml` (shared in git), **user** → `~/.ok/global.yml` (personal, all projects), **project-local** → `.ok/local/config.yml` (this machine only, gitignored). A key set in a file more specific than its scope (a user-scope key in `.ok/config.yml`, for example) is ignored.
+The **Scope** column says which file a setting belongs in:
+- **project** → `.ok/config.yml` (shared in git)
+- **user** → `~/.ok/global.yml` (personal, all projects)
+- **project-local** → `.ok/local/config.yml` (this machine only, gitignored)
+
+A key set in a file more specific than its scope (a user-scope key in `.ok/config.yml`, for example) is ignored.
 
 | Field | Type | Default | Scope | Description |
 | --- | --- | --- | --- | --- |
