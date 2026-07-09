@@ -309,7 +309,7 @@ function prefixPatchPaths(patch, prefix, pathRewrites = {}) {
 }
 
 function internalPullRequestTitle(publicPr) {
-  return `Sync public PR #${publicPr.number}: ${publicPr.title}`;
+  return `Sync ${publicPr.base.repo.full_name} public PR #${publicPr.number}: ${publicPr.title}`;
 }
 
 function singleLineCommitSubject(value) {
@@ -322,7 +322,7 @@ function bridgeCommitSubject({ publicRepo, publicPr, hasConflicts }) {
   const title = singleLineCommitSubject(publicPr.title);
   const suffix = hasConflicts ? ` (${CONFLICT_COMMIT_MARKER})` : '';
   return [
-    `chore(sync): mirror ${publicRepo}#${publicPr.number}`,
+    `sync(oss): mirror ${publicRepo}#${publicPr.number}`,
     title ? `: ${title}` : '',
     suffix,
   ].join('');
@@ -432,21 +432,24 @@ function formatOriginalCommitMessages(commitMessages, publicRepo) {
 
   if (entries.length === 0) return '';
 
-  const formatted = entries.map((entry, index) => {
-    const [subject, ...bodyLines] = entry.message.split('\n');
-    const body =
-      bodyLines.length > 0 ? `\n\n${bodyLines.map((line) => `   ${line}`).join('\n')}` : '';
-    const author = entry.author ? `\n   Author: ${entry.author.name} <${entry.author.email}>` : '';
+  const formatted = entries.map((entry) => {
+    const lines = [];
     if (entry.sha && entry.shortSha && publicRepo) {
-      return `${index + 1}. [${entry.shortSha}](https://github.com/${publicRepo}/commit/${entry.sha}) ${subject}${author}${body}`;
+      lines.push(`[${entry.shortSha}](https://github.com/${publicRepo}/commit/${entry.sha})`);
+    } else if (entry.shortSha) {
+      lines.push(entry.shortSha);
+    } else {
+      lines.push('Commit');
     }
-    const prefix = entry.shortSha
-      ? `${index + 1}. ${entry.shortSha} ${subject}`
-      : `${index + 1}. ${subject}`;
-    return `${prefix}${author}${body}`;
+    if (entry.author) {
+      lines.push(`Author: ${entry.author.name} <${entry.author.email}>`);
+    }
+    lines.push('');
+    lines.push(entry.message);
+    return lines.join('\n');
   });
 
-  return ['Commits:', '', ...formatted].join('\n');
+  return ['Commits:', '', formatted.join('\n\n')].join('\n');
 }
 
 function buildCommitAttribution({ commitAuthors, commitMessages = [], publicRepo }) {
@@ -470,7 +473,7 @@ function buildInternalPrBody({ publicPr, branchName, mirrorPath }) {
     : '_No public PR body was provided._';
 
   const compose = (original) => `## Summary
-Mirror public PR [#${publicPr.number}](${publicPr.html_url}) from \`${publicPr.base.repo.full_name}\` into \`inkeep/agents-private\` for canonical review and merge.
+Mirror public PR [#${publicPr.number}](${publicPr.html_url}) from \`${publicPr.base.repo.full_name}\` into \`inkeep/agents-private\` for internal review and merge.
 
 ## Attribution
 - Original author: @${publicPr.user.login}
@@ -487,9 +490,10 @@ ${original}
 </details>
 
 ## Notes
-- This PR branch is auto-managed from the public repo PR.
-- Merge the monorepo PR, not the public PR.
-- After the internal PR merges, the public repo should be updated by the next non-dry-run mirror sync.
+- Do not edit this PR directly. This branch is fully managed by the public PR bridge and may be overwritten on the next sync.
+- Do not merge the public repo PR. Public mirror PRs cannot land changes directly.
+- To accept the contribution, merge this monorepo PR. The change will sync back to the public repo automatically, and the public PR will close automatically.
+- To make edits or updates to these changes, they should be made directly to the public PR. Contributor updates there will sync back into this monorepo PR.
 
 ${buildBridgeMetadata(publicPr, mirrorPath)}`;
 
