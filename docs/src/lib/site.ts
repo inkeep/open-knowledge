@@ -30,13 +30,13 @@ export const GITHUB_URL = 'https://github.com/inkeep/open-knowledge';
 export const DISCORD_URL = 'https://discord.com/invite/YujKpFN49';
 export const X_URL = `https://x.com/${TWITTER_HANDLE.slice(1)}`;
 export const SITE_DESCRIPTION =
-  'An agent-native knowledge platform where humans and AI co-create. Real-time CRDT editing, markdown-native, connected to any AI agent via MCP.';
+  'Beautiful, AI-native markdown editor for humans and agents. Build knowledge bases, LLM wikis, and agent 2nd brains.';
 
 /**
  * Primary marketing headline. Single source for the homepage hero and the
  * default OpenGraph card so the two never drift.
  */
-export const SITE_HEADLINE = 'Beautiful, AI-native markdown editor.';
+export const SITE_HEADLINE = 'Beautiful, AI-native markdown IDE and LLM wiki.';
 
 /**
  * Upper bound for `og:description` / meta descriptions. OG/SEO analysers flag

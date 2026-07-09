@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: SplashPageProps): Promise<Met
 
   if (view.kind !== 'ok') {
     const fallbackDescription = metaDescription(
-      'Open shared documents and folders with OpenKnowledge, the AI-native markdown editor.',
+      'Open shared documents and folders with OpenKnowledge, the AI-native markdown IDE and LLM wiki.',
     );
     return {
       title: { absolute: SITE_NAME },
