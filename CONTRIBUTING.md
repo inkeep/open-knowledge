@@ -58,7 +58,7 @@ First-time contributors are asked to sign our [Contributor License Agreement](./
 - Never include secrets, credentials, customer data, or local machine paths.
 - Enable **Allow edits from maintainers** so reviewers can push fixes to your branch.
 
-A maintainer will review your PR; if you don't hear back within a few business days, a friendly nudge on the thread is welcome. Accepted changes land on `main` with your contribution credited through co-author trailers (your PR may show as closed rather than merged).
+A maintainer will review your PR; if you don't hear back within a few business days, a friendly nudge on the thread is welcome. Accepted changes land on `main` with your authorship preserved (your PR may show as closed rather than merged).
 
 ## License
 
