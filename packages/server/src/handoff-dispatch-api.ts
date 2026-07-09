@@ -278,7 +278,7 @@ export async function handleHandoffDispatch(
   }
 
   const sleep = deps.sleep ?? defaultSleep;
-  const spawn = deps.spawnDetached ?? spawnDetachedReal;
+  const spawnDetached = deps.spawnDetached ?? spawnDetachedReal;
   const isSchemeRegistered = deps.isSchemeRegistered ?? createOsProbe(deps.platform);
 
   if (recipe.type === 'app-bundle') {
@@ -291,7 +291,7 @@ export async function handleHandoffDispatch(
         // Best-effort quit — if the app wasn't running, `to quit` no-ops cleanly.
         // Don't abort the recipe on quit failure; spawn handles a still-running
         // app gracefully (it activates instead of relaunching).
-        await spawn(
+        await spawnDetached(
           '/usr/bin/osascript',
           ['-e', `tell application "${recipe.appName}" to quit`],
           SPAWN_TIMEOUT_MS,
@@ -299,7 +299,11 @@ export async function handleHandoffDispatch(
         await sleep(QUIT_SETTLE_MS);
       }
 
-      const activate = await spawn('/usr/bin/open', ['-a', recipe.appName], SPAWN_TIMEOUT_MS);
+      const activate = await spawnDetached(
+        '/usr/bin/open',
+        ['-a', recipe.appName],
+        SPAWN_TIMEOUT_MS,
+      );
       if (!activate.ok) {
         emitSpawnFailure(res, target, activate.reason);
         return;
@@ -326,7 +330,7 @@ export async function handleHandoffDispatch(
     }
 
     const open = resolveUrlOpenInvocation(url, deps.platform);
-    const openUrl = await spawn(open.exec, open.args, SPAWN_TIMEOUT_MS);
+    const openUrl = await spawnDetached(open.exec, open.args, SPAWN_TIMEOUT_MS);
     if (!openUrl.ok) {
       emitSpawnFailure(res, target, openUrl.reason);
       return;
@@ -365,14 +369,14 @@ export async function handleHandoffDispatch(
     return;
   }
   const invocation = resolveCursorSpawnInvocation(cursorBin, workspacePath, deps.platform);
-  const spawnBinary = await spawn(invocation.exec, invocation.args, SPAWN_TIMEOUT_MS);
+  const spawnBinary = await spawnDetached(invocation.exec, invocation.args, SPAWN_TIMEOUT_MS);
   if (!spawnBinary.ok) {
     emitSpawnFailure(res, target, spawnBinary.reason);
     return;
   }
   await sleep(CURSOR_SETTLE_MS);
   const open = resolveUrlOpenInvocation(url, deps.platform);
-  const openUrl = await spawn(open.exec, open.args, SPAWN_TIMEOUT_MS);
+  const openUrl = await spawnDetached(open.exec, open.args, SPAWN_TIMEOUT_MS);
   if (!openUrl.ok) {
     emitSpawnFailure(res, target, openUrl.reason);
     return;

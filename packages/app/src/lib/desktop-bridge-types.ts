@@ -169,6 +169,14 @@ export interface OkDesktopConfig {
    */
   readonly initialDoc: string | null;
   /**
+   * `true` when this window was opened by a first-run create-new flow (blank
+   * OR starter-pack seed) — the `create-new` entry point. The onboarding-card
+   * visibility predicate (`evaluateFreshProject`) reads it — see there for why a
+   * seeded project needs this signal. `false` on every other entry point and on
+   * a re-queried live window. Lockstep with the desktop-side `OkDesktopConfig`.
+   */
+  readonly freshlyCreated: boolean;
+  /**
    * W3C `traceparent` of the Electron main process's `ok.app-startup` root
    * span, or `undefined` when OTel is disabled in main. The renderer extracts
    * it to parent its startup span to the desktop launch trace. Carried

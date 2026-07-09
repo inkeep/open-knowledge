@@ -184,6 +184,29 @@ The rule does NOT catch:
 
 Plugin: [`biome-plugins/no-inline-tolerance-class.grit`](no-inline-tolerance-class.grit). Fixture: [`biome-plugins/__fixtures__/no-inline-tolerance-class.fixture.tsx`](__fixtures__/no-inline-tolerance-class.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-inline-tolerance-class.test.ts`](../packages/app/tests/lint-plugins/no-inline-tolerance-class.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
 
+### `require-windowshide-on-spawn.grit`
+
+Windows console-flash prevention. Every hand-rolled `node:child_process` process-spawn (`spawn` / `spawnSync` / `execSync` / `execFile` / `execFileSync`, plus the repo aliases `nodeSpawn` and `execFileAsync`) must hide the Windows console it would otherwise pop — either by wrapping its options in `withHiddenWindowsConsole(...)` (from `@inkeep/open-knowledge-server`, the preferred form shared with the server package) or by an inline `windowsHide: true`.
+
+**Why.** On Windows, `windowsHide` defaults to `false`. When a console-LESS parent — the OK server auto-started by an MCP host with `stdio: 'ignore'`, or spawned detached — spawns a console-subsystem binary like `git.exe`, Windows creates a new console window that flashes on screen and vanishes, once per spawn. During an editing / agent-write session the per-edit `git` reads produce a steady stream of these. Hiding the console fixes it. The flag is a **no-op on both macOS and Linux** (neither allocates a console for child processes), so it is applied uniformly regardless of the command's target platform.
+
+`simple-git` already sets `windowsHide: true` internally, so git routed through it (shadow repo, share, conflicts) is out of scope by nature — this rule governs only the hand-rolled call sites that bypass it.
+
+**Scoped via `overrides[].plugins`** to `packages/{server,cli}/src/**/*.ts` (the packages that spawn processes at runtime on Windows), with `!**/*.test.ts` + `!**/*.test-helper.ts` excluded. `packages/desktop` is deliberately **out of scope** — the Electron app is macOS-only and never runs on Windows.
+
+**Opting out (macOS/Linux-only spawns).** For a spawn that only ever runs on macOS and/or Linux — `codesign`, `sw_vers`, an `open(1)` launch — hiding a console is meaningless. Either add the flag anyway (a harmless no-op that keeps the rule uniform) or suppress that one call with a reason:
+
+```ts
+// biome-ignore lint/plugin/require-windowshide-on-spawn: macOS-only (never spawned on Windows)
+const r = spawnSync('codesign', [...], { ... });
+```
+
+Reference opt-out in the tree: [`packages/cli/src/commands/diagnose-health-checks/macos-codesig.ts`](../packages/cli/src/commands/diagnose-health-checks/macos-codesig.ts). Same-named wrapper false positives (a local `const spawn = deps.spawnDetached ?? …`, or an injected `spawn` param) use the same suppression with a "not node:child_process" reason.
+
+The rule does NOT catch: bare `exec(...)` (the identifier is too commonly shadowed); member calls (`deps.spawn(...)` — a different AST, so the real impl behind the injection is the enforced site); a `windowsHide` / `withHiddenWindowsConsole` written inside a spawn's callback body (would spuriously satisfy the check — no realistic occurrence).
+
+Plugin: [`biome-plugins/require-windowshide-on-spawn.grit`](require-windowshide-on-spawn.grit). Fixture: [`biome-plugins/__fixtures__/require-windowshide-on-spawn.fixture.tsx`](__fixtures__/require-windowshide-on-spawn.fixture.tsx). Test: [`packages/server/src/lint-plugins/require-windowshide-on-spawn.test.ts`](../packages/server/src/lint-plugins/require-windowshide-on-spawn.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
+
 ## Suppression
 
 Inline `// biome-ignore` comments silence individual diagnostics. The most specific form names the rule and the reason:

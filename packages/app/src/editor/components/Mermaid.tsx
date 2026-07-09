@@ -37,8 +37,10 @@
  * Clicking any text in a rendered diagram — flowchart node label, edge
  * label, sequence-diagram message body, or sequence-diagram participant
  * — enters an in-place edit for just that piece of text. A plain
- * `<input>` is portalled to `document.body` (so ProseMirror never sees
- * it) and positioned over the clicked label; Enter commits, Escape
+ * `<input>` (a `<textarea>` when mermaid wrapped the label onto
+ * multiple lines, so the wrapped layout survives the swap) is portalled
+ * to `document.body` (so ProseMirror never sees it) and positioned over
+ * the clicked label; Enter commits, Escape
  * reverts, clicking away commits. On commit we splice the new value
  * back into the chart source and dispatch one `setNodeMarkup` with
  * `sourceDirty: true` (mirroring `Embed.tsx`'s resize-commit path).
@@ -60,7 +62,8 @@
  * shows the decoded form but the source has the encoded form and no
  * match will be found — click silently no-ops in that case (rare).
  *
- * Why a portalled `<input>` and not a `contentEditable` label: PM's
+ * Why a portalled `<input>`/`<textarea>` and not a `contentEditable`
+ * label: PM's
  * MutationObserver reacts to any DOM change inside its editor tree by
  * re-syncing to its own model, which surfaces as page jumps and focus
  * loss on the first keystroke. Mounting the input outside PM's DOM is
@@ -788,6 +791,31 @@ export function collectLinkedLabelTargets(
 }
 
 /**
+ * Count the rendered line boxes of an HTML (foreignObject) label.
+ * Mermaid soft-wraps long flowchart labels at its `wrappingWidth`, so a
+ * label can occupy several visual lines — the edit overlay needs the
+ * count to pick a wrap-capable surface and to restore the label's line
+ * rhythm (see `tryEnterEditWithTarget`). Fragments are grouped by top
+ * edge because one visual line can emit multiple client rects (nested
+ * spans). Returns 1 when the environment reports no layout (happy-dom
+ * returns no client rects), which lands on the single-line path.
+ */
+function countRenderedLabelLines(el: HTMLElement): number {
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const lineTops: number[] = [];
+    for (const rect of Array.from(range.getClientRects())) {
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      if (!lineTops.some((top) => Math.abs(top - rect.top) < 1)) lineTops.push(rect.top);
+    }
+    return Math.max(lineTops.length, 1);
+  } catch {
+    return 1;
+  }
+}
+
+/**
  * Pulse one label's glyph paint to the agent accent and back, twice, by
  * toggling INLINE `!important` fill/color. Why inline `!important` and not a CSS
  * class animation: mermaid injects a `<style>` into every rendered SVG whose
@@ -1136,8 +1164,24 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
       const nodeShapeStrokeWidthBefore: string | null =
         nodeShape?.getAttribute('stroke-width') ?? null;
 
-      const input = document.createElement('input');
-      input.type = 'text';
+      // A wrapped label needs a wrap-capable edit surface: an
+      // `<input type="text">` is single-line by construction, so a label
+      // mermaid wrapped onto N lines would visibly reflow onto one long
+      // line the moment editing starts. Only HTML (foreignObject) labels
+      // ever wrap — SVG `<text>` labels lay out per-tspan and always
+      // take the single-line path.
+      const labelLineCount =
+        labelP instanceof SVGGraphicsElement ? 1 : countRenderedLabelLines(labelP);
+      const multiline = labelLineCount > 1;
+      const input = multiline
+        ? document.createElement('textarea')
+        : document.createElement('input');
+      if (input instanceof HTMLInputElement) input.type = 'text';
+      // Keydown wiring goes through the `HTMLElement` view of the
+      // surface: on the input|textarea union TS resolves
+      // `addEventListener` to the bare `EventListener` overload and
+      // loses the KeyboardEvent mapping.
+      const inputEventHost: HTMLElement = input;
       input.value = currentLabel;
       input.setAttribute('data-mermaid-editing', 'true');
       input.setAttribute('spellcheck', 'true');
@@ -1183,6 +1227,20 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
         caretColor: inputColor,
         zIndex: '2147483647',
       });
+      if (multiline) {
+        // Reproduce the label's own wrapping context so the text keeps
+        // its exact line breaks while editable. Width stays pinned to
+        // the label rect in `positionInput` (widening it would move the
+        // wrap points); `overflow: hidden` because the box is sized to
+        // its content and must never show a scrollbar.
+        Object.assign(input.style, {
+          whiteSpace: labelStyles.whiteSpace,
+          overflowWrap: labelStyles.overflowWrap,
+          wordBreak: labelStyles.wordBreak,
+          resize: 'none',
+          overflow: 'hidden',
+        });
+      }
       // `background: transparent` in a plain Object.assign gets ignored
       // by Chrome's forced-color-scheme rendering path. `setProperty`
       // with `!important` beats the UA stylesheet, which is what we
@@ -1307,11 +1365,24 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
         // grow the typing surface.
         input.style.top = `${r.top}px`;
         input.style.width = `${r.width}px`;
-        input.style.minWidth = `${inputMinCh}ch`;
+        // The min-width typing headroom would move a wrapped label's
+        // wrap points (wider box = later breaks), so multiline keeps
+        // the label's exact width and grows downward instead.
+        input.style.minWidth = multiline ? '0' : `${inputMinCh}ch`;
         input.style.height = `${r.height}px`;
-        input.style.lineHeight = `${r.height}px`;
+        // One line centers its glyphs by making the line as tall as the
+        // box; a wrapped label needs its own line rhythm back, which
+        // `boxHeight / lineCount` reproduces without trusting
+        // `getComputedStyle().lineHeight` (it can be 'normal').
+        input.style.lineHeight = `${r.height / labelLineCount}px`;
         const scale = computeSvgRenderScale();
         input.style.fontSize = `${declaredFontSizePx * scale}px`;
+        // Typing past the original text adds wrapped lines; grow the
+        // box downward so they stay visible (the node box itself only
+        // re-lays-out on commit).
+        if (multiline && input.scrollHeight > Math.ceil(r.height)) {
+          input.style.height = `${input.scrollHeight}px`;
+        }
         // Read the effective width after `min-width` clamps so we can
         // offset the input left to keep its horizontal center matched
         // to the anchor's. `getBoundingClientRect` after the width
@@ -1337,15 +1408,19 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
       window.addEventListener('scroll', positionInput, true);
       window.addEventListener('resize', positionInput);
       input.addEventListener('input', syncLinkedPreview);
+      // Re-measure per keystroke so the multiline auto-grow above
+      // tracks the wrapped content.
+      input.addEventListener('input', positionInput);
 
       let done = false;
       function cleanup(): void {
         cancelAnimationFrame(focusRafHandle);
         window.removeEventListener('scroll', positionInput, true);
         window.removeEventListener('resize', positionInput);
-        input.removeEventListener('keydown', onKeyDown);
+        inputEventHost.removeEventListener('keydown', onKeyDown);
         input.removeEventListener('blur', onBlur);
         input.removeEventListener('input', syncLinkedPreview);
+        input.removeEventListener('input', positionInput);
         input.remove();
         // Restore the live-previewed occurrences to their original markup. On
         // Escape this reverts them; on commit the ensuing re-render replaces
@@ -1386,10 +1461,13 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
           discard();
           return;
         }
-        if (ev.key === 'Enter' && !ev.shiftKey) {
+        if (ev.key === 'Enter') {
           ev.preventDefault();
           ev.stopPropagation();
-          commit();
+          // Shift+Enter is swallowed rather than committed: on the
+          // textarea surface it would otherwise insert a raw newline,
+          // which the single-line label splice can't represent.
+          if (!ev.shiftKey) commit();
           return;
         }
         // Any other key: stop propagation so PM's editor-level
@@ -1400,7 +1478,7 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
       function onBlur(): void {
         commit();
       }
-      input.addEventListener('keydown', onKeyDown);
+      inputEventHost.addEventListener('keydown', onKeyDown);
       input.addEventListener('blur', onBlur);
       // Force-discard on cleanup path (SVG re-render / unmount mid-edit).
       editSessionRef.current = {

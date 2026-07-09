@@ -24,6 +24,7 @@ import {
   SingleFileNotFoundError,
   SingleFileNotMarkdownError,
   type SingleFileOpenPlan,
+  withHiddenWindowsConsole,
 } from '@inkeep/open-knowledge-server';
 import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
 import { createRealOpenDeps, runOpen } from './open.ts';
@@ -71,11 +72,15 @@ export function createRealSingleFileOpenDeps(
     prepare: prepareSingleFileOpen,
     detectBundlePath: () => detect().bundlePath ?? null,
     openTarget: (target) => {
-      const child = nodeSpawn('open', [target], {
-        detached: true,
-        stdio: 'ignore',
-        env: scrubElectronRunAsNode(process.env),
-      });
+      const child = nodeSpawn(
+        'open',
+        [target],
+        withHiddenWindowsConsole({
+          detached: true,
+          stdio: 'ignore' as const,
+          env: scrubElectronRunAsNode(process.env),
+        }),
+      );
       child.unref();
     },
     runProjectOpen: (docName, projectRoot) =>

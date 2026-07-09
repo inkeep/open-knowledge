@@ -4,6 +4,7 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync } f
 import { freemem, homedir, type as osType, platform, release, totalmem, uptime } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import type { BundleManifest, BundleRedaction } from '@inkeep/open-knowledge-core';
+import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { getCliLogger } from '../cli.ts';
 import { redactContent, SECRET_PATTERN_NAMES } from './bug-report-redact.ts';
@@ -45,7 +46,10 @@ function collectSysinfo(): Record<string, unknown> {
   };
 
   try {
-    const ver = execSync('sw_vers -productVersion 2>/dev/null', { encoding: 'utf8' }).trim();
+    const ver = execSync(
+      'sw_vers -productVersion 2>/dev/null',
+      withHiddenWindowsConsole({ encoding: 'utf8' }),
+    ).trim();
     info.macosVersion = ver;
   } catch {}
 
@@ -242,7 +246,11 @@ async function createBundle(opts: {
 
   if (!opts.noReveal && platform() === 'darwin') {
     try {
-      childSpawn('/usr/bin/open', ['-R', zipPath], { detached: true, stdio: 'ignore' }).unref();
+      childSpawn(
+        '/usr/bin/open',
+        ['-R', zipPath],
+        withHiddenWindowsConsole({ detached: true, stdio: 'ignore' as const }),
+      ).unref();
     } catch {}
   }
 

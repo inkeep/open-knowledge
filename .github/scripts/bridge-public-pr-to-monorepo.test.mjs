@@ -74,16 +74,19 @@ describe('buildCommitAttribution', () => {
       [
         'Commits:',
         '',
-        '1. [1234567](https://github.com/inkeep/open-knowledge/commit/1234567890abcdef) Add search',
-        '   Author: Sarah Inkeep <sarah@inkeep.com>',
+        '[1234567](https://github.com/inkeep/open-knowledge/commit/1234567890abcdef)',
+        'Author: Sarah Inkeep <sarah@inkeep.com>',
         '',
-        '   ',
-        '   Explain the indexing path.',
-        '2. [fedcba9](https://github.com/inkeep/open-knowledge/commit/fedcba9876543210) Fix empty query',
-        '   Author: Robert Inkeep <robert@inkeep.com>',
+        'Add search',
         '',
-        '   ',
-        '   Co-authored-by: A <a@example.com>',
+        'Explain the indexing path.',
+        '',
+        '[fedcba9](https://github.com/inkeep/open-knowledge/commit/fedcba9876543210)',
+        'Author: Robert Inkeep <robert@inkeep.com>',
+        '',
+        'Fix empty query',
+        '',
+        'Co-authored-by: A <a@example.com>',
       ].join('\n'),
     );
     expect(attribution.trailers).toEqual([
@@ -113,7 +116,7 @@ describe('bridgeCommitSubject', () => {
         publicPr: { number: 361, title: 'Preserve contributor commit messages' },
         hasConflicts: false,
       }),
-    ).toBe('chore(sync): mirror inkeep/open-knowledge#361: Preserve contributor commit messages');
+    ).toBe('sync(oss): mirror inkeep/open-knowledge#361: Preserve contributor commit messages');
   });
 
   test('normalizes multiline titles and preserves the conflict marker', () => {
@@ -124,7 +127,7 @@ describe('bridgeCommitSubject', () => {
         hasConflicts: true,
       }),
     ).toBe(
-      'chore(sync): mirror inkeep/open-knowledge#361: Fix bridge subject (with conflicts; needs manual resolution)',
+      'sync(oss): mirror inkeep/open-knowledge#361: Fix bridge subject (with conflicts; needs manual resolution)',
     );
   });
 });
@@ -506,13 +509,13 @@ describe('commitIndicatesConflicts (metadata-re-sync conflict-hold guard)', () =
   test('true for a conflict-marker mirror commit message', () => {
     expect(
       commitIndicatesConflicts(
-        'chore(sync): mirror inkeep/open-knowledge#310 (with conflicts; needs manual resolution)',
+        'sync(oss): mirror inkeep/open-knowledge#310 (with conflicts; needs manual resolution)',
       ),
     ).toBe(true);
   });
 
   test('false for a clean mirror commit message', () => {
-    expect(commitIndicatesConflicts('chore(sync): mirror inkeep/open-knowledge#310')).toBe(false);
+    expect(commitIndicatesConflicts('sync(oss): mirror inkeep/open-knowledge#310')).toBe(false);
   });
 
   test('false for absent / non-string input', () => {
@@ -534,8 +537,8 @@ describe('commitIndicatesConflicts (metadata-re-sync conflict-hold guard)', () =
 // observable draft/comment OUTCOME, not call counts.
 
 const CONFLICT_HEAD =
-  'chore(sync): mirror inkeep/open-knowledge#310 (with conflicts; needs manual resolution)';
-const CLEAN_HEAD = 'chore(sync): mirror inkeep/open-knowledge#310';
+  'sync(oss): mirror inkeep/open-knowledge#310 (with conflicts; needs manual resolution)';
+const CLEAN_HEAD = 'sync(oss): mirror inkeep/open-knowledge#310';
 
 // Drive the real syncPublicPr through a metadata-only ('edited') event with the
 // GitHub API faked. Returns the load-bearing observable mutations it made.

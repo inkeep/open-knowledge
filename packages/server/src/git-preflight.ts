@@ -204,6 +204,7 @@ function probeGit(command: string): ProbeResult {
     timeout: PROBE_TIMEOUT_MS,
     env: { ...process.env, LANG: 'C', LC_ALL: 'C' },
   });
+  // biome-ignore lint/plugin/require-windowshide-on-spawn: windowsHide is set on `opts` via withHiddenWindowsConsole above; the rule can't see through the by-reference options variable.
   const result = spawnSync(command, ['--version'], opts);
   if (result.error) {
     // `spawnSync` sets `signal` to `'SIGTERM'` on timeout.

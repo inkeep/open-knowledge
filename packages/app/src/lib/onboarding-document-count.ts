@@ -1,8 +1,9 @@
 /**
  * Shared content-entry count for the onboarding card. Both the visibility
- * predicate (is the project fresh — count 0?) and the file-completion signal
- * (did the first file land — count >= 1?) key off the same `/api/documents`
- * read, so the fetch + counting rule lives in one place.
+ * predicate (is this a fresh, single-project session?) and the file-completion
+ * signal (did the user author a file beyond the activation baseline — count
+ * greater than `fileBaseline`?) key off the same `/api/documents` read, so the
+ * fetch + counting rule lives in one place.
  */
 
 import { type DocumentListSuccess, DocumentListSuccessSchema } from '@inkeep/open-knowledge-core';

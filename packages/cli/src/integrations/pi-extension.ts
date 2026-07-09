@@ -159,6 +159,10 @@ class OkMcpClient {
       cwd,
       env,
       stdio: ["pipe", "pipe", "pipe"],
+      // Inline (not the withHiddenWindowsConsole helper): this spawn lives in the
+      // GENERATED Pi extension source, which must stay dependency-free (Pi loads
+      // it with jiti; no npm packages resolve). Hide the console on Windows anyway.
+      windowsHide: true,
     });
     this.child.stdout.setEncoding("utf8");
     this.child.stdout.on("data", (chunk: string) => this.onStdout(chunk));

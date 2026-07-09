@@ -35,6 +35,7 @@ import {
 // the barrel deliberately omits it to keep the main entry browser-safe
 // (see `packages/core/src/index.ts`).
 import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import { ALL_EDITOR_IDS, EDITOR_TARGETS } from '../commands/editors.ts';
 
 /**
@@ -387,10 +388,14 @@ export function probeTrackedOkPaths(
     const abs = resolve(projectRoot, p);
     if (!existsSync(abs)) continue;
     try {
-      execFileSync('git', ['ls-files', '--error-unmatch', '--', p], {
-        cwd: projectRoot,
-        stdio: ['ignore', 'ignore', 'ignore'],
-      });
+      execFileSync(
+        'git',
+        ['ls-files', '--error-unmatch', '--', p],
+        withHiddenWindowsConsole({
+          cwd: projectRoot,
+          stdio: ['ignore', 'ignore', 'ignore'],
+        }),
+      );
       tracked.push(p);
     } catch {
       // Non-zero exit — `--error-unmatch` failed because no index entry

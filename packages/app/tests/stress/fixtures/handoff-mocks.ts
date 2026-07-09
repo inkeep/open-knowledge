@@ -357,6 +357,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           e2eSmoke: false,
           singleFile: false,
           initialDoc: null,
+          freshlyCreated: false,
         },
         onProjectSwitched: () => () => {},
         onMenuAction: () => () => {},

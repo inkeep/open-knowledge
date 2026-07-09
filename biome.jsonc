@@ -105,6 +105,24 @@
       "plugins": ["./biome-plugins/class-proof-registration-discipline.grit"]
     },
     {
+      // Windows console-flash prevention: every hand-rolled `child_process`
+      // spawn in the runtime-spawning packages must hide the Windows console
+      // (via `withHiddenWindowsConsole(...)` or `windowsHide: true`), else a
+      // console-less parent (MCP-spawned/detached OK server) flashes a terminal
+      // window per spawn on Windows. Scoped to server + cli (the packages that
+      // spawn on Windows); `packages/desktop` is macOS-only and out of scope.
+      // Tests excluded. `simple-git` sets the flag internally, so git routed
+      // through it is out of scope by nature.
+      "includes": [
+        "packages/server/src/**/*.ts",
+        "packages/cli/src/**/*.ts",
+        "!**/*.test.ts",
+        "!**/*.test-helper.ts",
+        "biome-plugins/__fixtures__/require-windowshide-on-spawn.fixture.tsx"
+      ],
+      "plugins": ["./biome-plugins/require-windowshide-on-spawn.grit"]
+    },
+    {
       // One-shot `expect(await locator.count())` reads never retry and are
       // the canonical hidden-flake assertion shape (2026-06 e2e audit).
       // Scoped to the browser e2e suites (all three dirs the e2e-stop-rules

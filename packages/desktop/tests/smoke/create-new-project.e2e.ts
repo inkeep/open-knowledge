@@ -1,7 +1,13 @@
 /**
  * Create-new-project smoke harness — drives an Electron launch through the
- * Navigator → "Create new project" card → in-app CreateProjectDialog flow and
- * asserts the three end-to-end cascade UX states:
+ * Navigator → blank-create affordance → in-app CreateProjectDialog flow and
+ * asserts the three end-to-end cascade UX states.
+ *
+ * Every test seeds zero recents (`seedTmpHome`), so the Navigator opens on the
+ * first-run packs-forward view — the blank-create affordance there is
+ * `nav-first-run-blank`, NOT the returning-user `nav-create-new` card (which
+ * renders only once recents exist). Both fire the same `onCreate` → the same
+ * dialog. The cascade states asserted:
  *
  *   1. Free path (happy submit): no banner, Create enabled. After submit,
  *      .ok/config.yml lands at parent/<name> and the editor window opens
@@ -227,6 +233,29 @@ test.describe('Create-new-project smoke', () => {
     await expect
       .poll(() => existsSync(join(expectedTarget, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);
+
+    // The create-new open must surface `freshlyCreated: true` on the editor
+    // window's bridge config (main → `--ok-fresh-create=1` → preload → config).
+    // This is what lets the renderer's onboarding card stay visible for a
+    // first-run project — including a starter-pack seed, which opens through
+    // this same `create-new` entry point. Blank and seeded creates are
+    // indistinguishable at this seam, so asserting it here covers both.
+    //
+    // The editor window already exists (the countWindowsByMode poll above waited
+    // for it), so read it inline rather than re-polling via the 20s-default
+    // `findWindowByMode` helper — that second helper budget would push this
+    // test's cumulative inner-timeout over the calibration ceiling.
+    let editor: Page | undefined;
+    for (const page of app.windows()) {
+      const m = await page.evaluate(() => window.okDesktop?.config?.mode).catch(() => undefined);
+      if (m === 'editor') {
+        editor = page;
+        break;
+      }
+    }
+    if (!editor) throw new Error('editor window not found after create-new submit');
+    const freshlyCreated = await editor.evaluate(() => window.okDesktop?.config?.freshlyCreated);
+    expect(freshlyCreated).toBe(true);
   });
 
   test('blocks creation when chosen Location is inside an existing OK project', async ({

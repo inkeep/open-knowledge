@@ -14,12 +14,16 @@ import { type OnboardingCardStore, onboardingCardStore } from '@/lib/onboarding-
 import { fetchDocumentEntryCount } from '@/lib/onboarding-document-count';
 
 /**
- * Mark the "create your first file" step complete once the project has at least
- * one content entry. No-op if onboarding isn't active, the step is already done,
- * or the count read fails (the next document-change event retries). The
- * `initialized` gate mirrors the Ask-AI recorder so a file created by an
- * established user never writes onboarding state, regardless of call site. The
- * `store` parameter is a test seam.
+ * Mark the "create your first file" step complete once the project's entry count
+ * rises ABOVE the baseline captured at activation (`snapshot.fileBaseline`). For
+ * a blank project the baseline is 0, so any first file completes it (`> 0` ≡ the
+ * old `>= 1`); for a starter-pack project the baseline is the seeded template
+ * count, so the step completes only when the user authors a doc beyond the seed —
+ * a pack's templates never auto-complete a step the user hasn't performed. No-op
+ * if onboarding isn't active, the step is already done, or the count read fails
+ * (the next document-change event retries). The `initialized` gate mirrors the
+ * Ask-AI recorder so a file created by an established user never writes onboarding
+ * state, regardless of call site. The `store` parameter is a test seam.
  */
 export async function recordOnboardingFileStep(
   store: OnboardingCardStore = onboardingCardStore,
@@ -27,7 +31,7 @@ export async function recordOnboardingFileStep(
   const snapshot = store.getSnapshot();
   if (snapshot.steps.file || !snapshot.initialized) return;
   try {
-    if ((await fetchDocumentEntryCount()) >= 1) store.markStepComplete('file');
+    if ((await fetchDocumentEntryCount()) > snapshot.fileBaseline) store.markStepComplete('file');
   } catch (err) {
     // Transient/failed count read — leave the step incomplete; a later
     // documents-changed event re-runs this.

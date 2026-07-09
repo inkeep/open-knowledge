@@ -1266,9 +1266,9 @@
 }
 
 /* .ok-codeblock — zero permanent chrome (precedent #30). Single rounded
-   container, generous padding, no border. Hover/selection reveals the
-   floating chrome bar at top-right. Dark theme inverts the surface so the
-   block reads as a code surface in either color mode. */
+   container, generous padding, no border. Hover/selection reveals a chrome
+   bar floating above the block edge. Dark theme inverts the surface so
+   the block reads as a code surface in either color mode. */
 .ProseMirror .ok-codeblock {
   position: relative;
 }
@@ -1329,17 +1329,27 @@
   border-radius: 0 0 0.5rem 0.5rem;
 }
 
-/* Hover-revealed chrome bar — language picker + copy + delete. Mirrors
-   `.jsx-component-chrome` placement (top-right, opacity-toggled) so the
-   editing affordance is consistent across rich block types. */
+/* Hover-revealed chrome bar hosting the language picker, edit-source,
+   preview toggle, settings, Ask AI, copy, and delete affordances. Floats
+   above the block edge (opacity-toggled) so the surface stays clean and
+   the chrome does not overlap a preview iframe's content. */
 .ok-codeblock-chrome {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+  /* Float above the block edge (same visual pattern as the text-selection
+     bubble menu) rather than inside the top-right corner, where the chrome
+     was intrusive over an html preview iframe's content. Flush with the
+     block edge (no gap) so the wrapper's mouseleave doesn't fire while the
+     user's pointer travels from the block up into the chrome buttons. */
+  bottom: 100%;
+  right: 0;
   display: flex;
   align-items: center;
   gap: 0.125rem;
   padding: 0.1875rem;
+  /* Preserve the visual gap between block and chrome via padding-bottom on
+     the chrome itself, which stays inside the hover-tracked box. Must sit
+     AFTER the `padding` shorthand or biome flags a shorthand-override. */
+  padding-bottom: calc(0.1875rem + 0.375rem);
   border-radius: 0.375rem;
   background: var(--popover);
   border: 1px solid var(--border);
@@ -1355,6 +1365,16 @@
 .ProseMirror .ok-codeblock:focus-within > .ok-codeblock-chrome,
 .ProseMirror .ok-codeblock[data-cursor-inside="true"] > .ok-codeblock-chrome,
 .ProseMirror .ok-codeblock[data-selected="true"] > .ok-codeblock-chrome {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* HTML preview blocks: the iframe fills the block area with its own
+   pointer-events, so the native `:hover` selector never fires on the
+   wrapper. `CodeBlockView` mirrors hover state onto `data-hovered="true"`
+   via native mouseenter/mouseleave listeners so the chrome still reveals
+   on interaction. */
+.ProseMirror .ok-codeblock[data-hovered="true"] > .ok-codeblock-chrome {
   opacity: 1;
   pointer-events: auto;
 }
@@ -1383,6 +1403,21 @@
 .ok-codeblock-chrome-btn[data-state="open"] {
   background: var(--accent);
   color: var(--accent-foreground);
+}
+
+/* Persistent pressed indicator for toggle buttons: preview-shown
+   (`Eye`/`EyeOff`) and settings-carrying-title (`Settings2`) both emit
+   `data-active="true"` when their underlying state is on. Mirrors the
+   sibling `.jsx-chrome-btn[data-active="true"]` treatment so the two
+   chrome surfaces read the same to a user. */
+.ok-codeblock-chrome-btn[data-active="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.ok-codeblock-chrome-btn:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
 }
 
 .ok-codeblock-chrome-btn:disabled {
@@ -5040,6 +5075,14 @@ html.electron-mode [data-slot="sidebar-inner"] {
 .ProseMirror .ok-chunk-wrapper {
   content-visibility: auto;
   contain-intrinsic-size: 0 var(--ok-cv-h, 80px);
+}
+
+/* Code-block wrapper needs an unclipped paint area — the block's chrome
+   floats above the block edge (see `.ok-codeblock-chrome`). content-visibility
+   auto's paint containment would otherwise clip the chrome to the wrapper's box,
+   hiding it entirely. */
+.ProseMirror .ok-chunk-wrapper.node-codeBlock {
+  content-visibility: visible;
 }
 
 /* Neutralize Electron `-webkit-app-region: drag` regions while a Popper-based

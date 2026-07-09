@@ -1738,6 +1738,9 @@ async function openProject(
     didEnsureGit,
     consentVersion: 1,
     localOpCliArgs: resolveLocalOpCliArgs(),
+    // Nested-redirect implies an enclosing existing project (an established
+    // user), so it is deliberately excluded from the fresh-create signal.
+    freshlyCreated: entryPoint === 'create-new',
   });
   getLogger('project').info(
     {
@@ -3627,6 +3630,10 @@ function registerIpcHandlers() {
       // boot from the preload-injected bridge config). A live window queried via
       // get-info has already navigated, so there is nothing to re-seed → null.
       initialDoc: null,
+      // `freshlyCreated` is a cold-start-only onboarding signal (the card
+      // evaluates it once at first paint). A re-queried live window is past
+      // that point — parity with `initialDoc: null` above.
+      freshlyCreated: false,
     };
   });
 

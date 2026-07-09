@@ -81,6 +81,10 @@ export {
   isSystemDoc,
   SYSTEM_DOC_NAME,
 } from './cc1-broadcast.ts';
+export {
+  type HiddenWindowsConsoleOptions,
+  withHiddenWindowsConsole,
+} from './child-process-windows-hide.ts';
 export { getLocalDir, resolveContentDir, resolveLockDir } from './config/paths.ts';
 export { type Config, ConfigSchema } from './config/schema.ts';
 export { MCP_SERVER_NAME } from './constants.ts';

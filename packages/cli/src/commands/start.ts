@@ -175,6 +175,7 @@ export function spawnOkUi(opts: SpawnOkUiOptions): ChildProcess {
     const child = spawnFn(self.command, [...self.prefixArgs, ...(opts.args ?? ['ui'])], {
       detached: true,
       stdio: ['ignore', 'ignore', stderrFd],
+      windowsHide: true,
       cwd: opts.cwd,
       env: {
         ...childEnv,
@@ -297,6 +298,7 @@ export async function connectUiSibling(opts: ConnectUiSiblingOptions): Promise<v
   const child = spawnFn(self.command, [...self.prefixArgs, 'ui', '--port', String(opts.uiPort)], {
     cwd: opts.cwd,
     stdio: 'inherit',
+    windowsHide: true,
     env: {
       ...parentEnv,
       // Mirror spawnOkUi: under the packaged .app `self.command` is the

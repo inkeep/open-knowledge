@@ -196,8 +196,12 @@ export async function handleSpawnCursor(
   }
 
   const invocation = resolveCursorSpawnInvocation(exec, userPath, deps.platform);
-  const spawn = deps.spawnDetached ?? spawnDetachedReal;
-  const outcome = await spawn(invocation.exec, invocation.args, SPAWN_CURSOR_SPAWN_TIMEOUT_MS);
+  const spawnDetached = deps.spawnDetached ?? spawnDetachedReal;
+  const outcome = await spawnDetached(
+    invocation.exec,
+    invocation.args,
+    SPAWN_CURSOR_SPAWN_TIMEOUT_MS,
+  );
   if (outcome.ok) {
     successResponse(res, 200, SpawnCursorSuccessSchema, {}, { handler: HANDLER });
     return;

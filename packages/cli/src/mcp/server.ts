@@ -44,6 +44,7 @@ import {
   registerAllTools,
   resolveContentDir,
   sanitizeClientName,
+  withHiddenWindowsConsole,
 } from '@inkeep/open-knowledge-server';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -81,9 +82,13 @@ const execFileAsync = promisify(execFile);
  */
 export async function countWorktrees(dir: string): Promise<number> {
   try {
-    const { stdout } = await execFileAsync('git', ['-C', dir, 'worktree', 'list', '--porcelain'], {
-      timeout: 2000,
-    });
+    const { stdout } = await execFileAsync(
+      'git',
+      ['-C', dir, 'worktree', 'list', '--porcelain'],
+      withHiddenWindowsConsole({
+        timeout: 2000,
+      }),
+    );
     return stdout.split('\n').filter((line) => line.startsWith('worktree ')).length;
   } catch {
     return 0;
