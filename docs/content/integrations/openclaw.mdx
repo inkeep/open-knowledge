@@ -6,6 +6,8 @@ icon: custom/OpenClaw
 
 [OpenClaw](https://openclaw.ai) is an agent gateway: it runs agents that connect to MCP servers. Once OpenKnowledge is registered as one of them, every agent OpenClaw runs can read, search, and write your knowledge base through OK's tools — with full attribution, link-awareness, conflict-awareness, and a live browser preview. Inside an OK project, agents work markdown through those tools rather than native file access, so every edit stays attributed and previewable.
 
+**Auto-sync your meetings.** The gateway has a built-in scheduler and a webhook listener, so once OpenKnowledge is registered it can run tasks against your knowledge base unattended. The headline example is keeping meeting notes flowing in on their own. See [Ingest meetings](../workflows/meeting-ingestion.mdx) for the cron recipe and the recorder list. The webhook mechanics, for running an agent the moment a meeting event fires, are documented below.
+
 ## Install
 
 <McpInstall editor="OpenClaw">
@@ -98,6 +100,50 @@ If the `open-knowledge` server's tools aren't in the agent's tool list, run tool
 </Steps>
 
 That sequence exercises every layer — discovery, config, read, write, link graph, search, and preview — in one pass.
+
+## Trigger runs from external events
+
+Besides the cron poll (see [Ingest meetings](../workflows/meeting-ingestion.mdx)), the gateway can run an agent the moment something happens elsewhere. Enable the hooks listener in the gateway config:
+
+```json5
+{
+  hooks: {
+    enabled: true,
+    token: "shared-secret",
+    path: "/hooks",
+  },
+}
+```
+
+The `token` is a dedicated secret, separate from your gateway auth token. Every request must carry it as `Authorization: Bearer <token>` (recommended) or `x-openclaw-token: <token>`. Query-string tokens are rejected.
+
+| Endpoint | What it does |
+| --- | --- |
+| `POST /hooks/agent` | runs an isolated agent turn |
+| `POST /hooks/wake` | enqueues a system event into the main session |
+| `POST /hooks/<name>` | resolves through `hooks.mappings`, to reshape a vendor payload into a prompt |
+
+Ingest a meeting the moment its transcript is ready:
+
+```bash
+curl -X POST http://127.0.0.1:18789/hooks/agent \
+  -H 'Authorization: Bearer SECRET' \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"A meeting transcript is ready. Pull it from the recorder MCP and write it into the meetings/ folder of this project as meetings/<source>-<source_meeting_id>.","name":"OK meeting ingest"}'
+```
+
+Prep a doc the moment a meeting starts:
+
+```bash
+curl -X POST http://127.0.0.1:18789/hooks/agent \
+  -H 'Authorization: Bearer SECRET' \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"A meeting just started. Create its doc in the meetings/ folder from the prep template and link each attendee to their people/ dossier.","name":"OK meeting prep"}'
+```
+
+Which event you send matters more than the plumbing. [Ingest meetings](../workflows/meeting-ingestion.mdx) covers which recorder emits what, and why a transcript-ready event drives ingestion while `meeting.started` drives prep.
+
+One practical constraint: a vendor cannot POST to `127.0.0.1`. Keep hook endpoints behind loopback, a private network, or a trusted reverse proxy, which means a locally-run gateway needs a tunnel or a relay to receive vendor webhooks. That is why the cron poll is the default and webhooks are the upgrade. Restrict `hooks.allowedAgentIds` to limit which agents an external caller can target, and treat every inbound payload as untrusted.
 
 ## Preview
 

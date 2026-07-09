@@ -1,0 +1,87 @@
+---
+title: Ingest meetings
+icon: LuMic
+description: "Get meeting transcripts into your knowledge base as markdown, where they are searchable, linkable, and answerable. OpenKnowledge does not record meetings. You bring a recorder, OK holds the result."
+---
+
+OpenKnowledge does not capture audio. It is the knowledge layer: the moment a meeting lands as a markdown doc it is searchable, linkable, and answerable like everything else in your knowledge base. Capture is bring-your-own, so any recorder that speaks MCP can feed OK.
+
+Meetings live in a `meetings/` folder. Any project can have one. The [Entity vault](./entity-vault.mdx) pack sets one up already and feeds each meeting into per-person dossiers.
+
+There are two ways to get meetings in:
+
+- **On demand.** You ask, the agent writes. Works in any editor, no extra infrastructure.
+- **Automatically.** A scheduler or a webhook asks for you, so meetings appear on their own. Needs the [OpenClaw](../integrations/openclaw.mdx) gateway.
+
+Both write the same doc, into the same folder, using the same addressing rule below.
+
+## Address each meeting by its source id
+
+Give every ingested meeting two frontmatter keys, and name its doc after them:
+
+```yaml
+---
+title: Roadmap sync
+date: 2026-07-08
+attendees: []
+source: granola
+source_meeting_id: abc123
+---
+```
+
+The doc lives at `meetings/<source>-<source_meeting_id>`, so the example above is `meetings/granola-abc123`.
+
+That pair is the dedup key. Because the path is derived from the recorder's own stable id, re-syncing a meeting rewrites the same doc in place instead of creating a second copy. This is what makes an unattended sync safe to run every thirty minutes.
+
+Keep the transcript verbatim. Notes and summaries are yours to edit; the transcript is the record.
+
+## On demand
+
+1. Add your recorder's MCP server to your **editor's** config, next to `open-knowledge`. OK has no MCP client of its own, so this is editor config, not OK config.
+2. Ask your agent to write recent meetings into `meetings/`.
+
+The agent pulls the transcript, notes, attendees, and date from the recorder and writes one doc per meeting through OK's `write` tool. Indexing, backlinks, and the live preview all happen on write. Nothing new to install in OK.
+
+## Which recorders work
+
+The axis that matters most is bot versus no-bot. A bot recorder joins the call as a visible participant. Granola captures locally, so nothing joins.
+
+| Recorder | Capture | MCP | Webhook |
+| --- | --- | --- | --- |
+| Fireflies | bot | official, write-capable | `Transcription completed` (HMAC-signed) |
+| Circleback | bot | official | via Zapier |
+| tl;dv | bot | official (self-host) | yes |
+| Fathom | bot | official | via integrations |
+| Fellow | bot | official | via Zapier |
+| Granola | local, no bot | official, read-only | none native, bridges via Zapier |
+
+Otter, Avoma, Teams (MS Graph), and Google Meet expose an API but no official MCP yet, so they need more wiring. Verify a recorder's MCP endpoint is live before relying on it. A few of these are asserted on vendor launch pages rather than deep developer docs.
+
+## Automatically, on a schedule
+
+The [OpenClaw](../integrations/openclaw.mdx) gateway has a built-in scheduler. Register both MCP servers with it, `open-knowledge` via `ok init` and your recorder's MCP per the vendor's install guide, then create one cron job that wakes an agent to run the on-demand flow for you:
+
+```bash
+openclaw cron create "*/30 * * * *" \
+  "Pull meetings from the recorder MCP since the last run. Write each new one into the meetings/ folder of this project, addressed as meetings/<source>-<source_meeting_id> so re-runs update in place. Do not duplicate meetings already present." \
+  --name "OK meeting sync" \
+  --session isolated \
+  --no-deliver
+```
+
+Polling works for every recorder, including Granola, which has no native webhook. The gateway must be running for schedules to fire.
+
+## Automatically, on an event
+
+If you want lower latency than a poll, the gateway can run the same agent the moment something happens. The wiring (hooks config, endpoints, auth) lives in [trigger runs from external events](../integrations/openclaw.mdx#trigger-runs-from-external-events).
+
+Choosing which event to send matters more than the plumbing, because the two moments are different jobs:
+
+| Event | Fires when | Use it for |
+| --- | --- | --- |
+| `Transcription completed` (Fireflies), note added (Granola via Zapier) | the transcript is ready, a few minutes after the meeting ends | **Ingestion.** There is nothing to write before this. |
+| `meeting.started` (Zoom) | the moment the meeting begins | **Prep.** Create the doc and link attendees before anyone speaks. |
+
+Google Calendar push notifications only signal that the calendar changed and carry no event data, so they need a follow-up API call before they are useful here.
+
+One practical constraint: a vendor cannot POST to `127.0.0.1`. A locally-run gateway needs a tunnel or a relay to receive vendor webhooks, which is why the cron poll is the default and webhooks are the upgrade.

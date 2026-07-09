@@ -1162,7 +1162,7 @@ const ENTITY_VAULT_FOLDERS: readonly StarterFolder[] = [
     title: 'Meetings',
     uiSummary: 'Notes from your meetings.',
     description:
-      'Meeting notes. Filename `YYYY-MM-DD-<slug>.md`. Frontmatter carries `title`, `date`, `attendees:` (prefer person slugs/names that resolve to `people/` dossiers), and `type: meeting`. Body is raw notes with path-qualified links to the people, companies, and concepts mentioned. Agent: after a meeting note lands, extract entity mentions and append dated timeline bullets to each referenced dossier. Do NOT rewrite the meeting note; it is the verbatim record.',
+      'Meeting notes. Filename `YYYY-MM-DD-<slug>.md`. Frontmatter carries `title`, `date`, `attendees:` (prefer person slugs/names that resolve to `people/` dossiers), and `type: meeting`. A meeting ingested from a recorder also carries `source` and `source_meeting_id`; its doc path `meetings/<source>-<source_meeting_id>` derives from that pair, so re-syncing the same meeting updates it in place instead of creating a duplicate. Body is raw notes with path-qualified links to the people, companies, and concepts mentioned. Agent: after a meeting note lands, extract entity mentions and append dated timeline bullets to each referenced dossier. Do NOT rewrite the meeting note; it is the verbatim record.',
     tags: ['meeting', 'note'],
     starterTemplate: 'meeting',
   },
@@ -1249,6 +1249,8 @@ description: "Meeting notes: attendees, discussion, decisions, and action items.
 title: Meeting Title
 date: {{date}}
 attendees: []
+source:
+source_meeting_id:
 author: {{user}}
 tags: [meeting]
 ---
@@ -1256,6 +1258,10 @@ tags: [meeting]
 ## Notes
 
 (Raw notes from the meeting. Prefer path-qualified links such as \`[[people/jane-founder|Jane Founder]]\`, \`[[companies/jane-co|Jane Co]]\`, and \`[[concepts/agent-runtime-observability|agent-runtime observability]]\`.)
+
+## Transcript
+
+(Verbatim transcript, when the meeting was ingested from a recorder. Leave empty for notes you typed yourself. Never rewrite it.)
 
 ## Action items
 

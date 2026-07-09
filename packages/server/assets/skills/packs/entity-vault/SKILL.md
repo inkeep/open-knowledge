@@ -26,7 +26,7 @@ When a new fact arrives, route it: update **compiled truth** if it changes curre
 ## Folders
 
 - **`people/`**, **`companies/`**, **`concepts/`** — dossiers (compiled truth + timeline). Frontmatter `type: person|company|concept`.
-- **`meetings/`** — meeting notes (`YYYY-MM-DD-<slug>.md`); `attendees:` should match dossier filenames in `people/`. The verbatim record — do NOT rewrite it.
+- **`meetings/`** — meeting notes (`YYYY-MM-DD-<slug>.md`); `attendees:` should match dossier filenames in `people/`. The verbatim record — do NOT rewrite it. When a note is ingested from a meeting-recorder tool, add `source:` (e.g. `granola`, `fireflies`) and `source_meeting_id:` (the recorder's stable id) to its frontmatter — those two are the dedup key.
 - **`originals/`** — your own untransformed thinking; authoritative source material. Frontmatter `type: original`.
 - **`media/`** — bulk transcripts, voice notes, large attachments; often `.okignore`-d to keep the index light.
 
@@ -41,6 +41,7 @@ Two deltas from the platform default, both GBrain-specific:
 
 ## Agent behaviors
 
+- **Ingest from a meeting recorder.** If a meeting-recorder MCP (Granola, Fireflies, Circleback, tl;dv, Fathom, …) is registered alongside `open-knowledge`, pull recent meetings and write each into `meetings/`. Address each as `meetings/<source>-<source_meeting_id>` so re-syncing a meeting updates it in place instead of creating a duplicate. Normalize whatever the recorder returns (Granola's Me/Them streams, a bot's speaker turns) into notes plus the verbatim transcript; do NOT rewrite the transcript. This works the same on demand (you ask) or unattended (a scheduler asks) — the recorder is bring-your-own and interchangeable.
 - After a meeting note lands, extract entity mentions and append timeline bullets to each referenced dossier (cite the meeting by markdown link). Stub any mentioned entity not yet captured.
 - Treat `originals/` as authoritative (the user's own words, not inferences).
 - Surface entity-to-entity edges (person ↔ company, concept hubs) when both ends exist.

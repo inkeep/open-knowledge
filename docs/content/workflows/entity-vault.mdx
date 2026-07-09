@@ -124,6 +124,12 @@ Compatibility details:
 - Separate compiled truth from the timeline with a `--- timeline ---` sentinel line.
 - Keep timeline entries append-only and dated: `- **YYYY-MM-DD** | source | @author — event. Confidence: ...`.
 
+## Get meetings in from a recorder
+
+OpenKnowledge does not record meetings. Bring any recorder that speaks MCP, and each meeting lands in `meetings/` as markdown, ready for the loop below. Ask for them on demand, or have them sync automatically.
+
+See [Ingest meetings](./meeting-ingestion.mdx) for the recorder list, the `source` and `source_meeting_id` addressing rule, and the scheduled and event-driven options.
+
 ## Worked loop: meeting → dossiers → human correction
 
 1. Create `meetings/2026-05-12-jane-founder-coffee.md` from the meeting template.

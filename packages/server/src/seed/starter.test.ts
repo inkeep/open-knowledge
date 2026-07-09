@@ -431,6 +431,14 @@ describe('Entity vault pack — GBrain-compatible Markdown shape', () => {
       '[[concepts/agent-runtime-observability|agent-runtime observability]]',
     );
   });
+
+  test('the meeting template carries the recorder dedup key and a verbatim transcript section', () => {
+    // `meetings/<source>-<source_meeting_id>` is the doc path, so re-syncing a
+    // meeting rewrites it in place instead of creating a duplicate.
+    expect(ENTITY_VAULT_PACK.templates.meeting).toContain('source:');
+    expect(ENTITY_VAULT_PACK.templates.meeting).toContain('source_meeting_id:');
+    expect(ENTITY_VAULT_PACK.templates.meeting).toContain('## Transcript');
+  });
 });
 
 describe('Codebase wiki pack — nested wiki/ layout', () => {
