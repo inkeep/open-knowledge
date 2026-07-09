@@ -892,6 +892,10 @@ msgstr "Ask AI"
 msgid "Ask AI (from selection)"
 msgstr "Ask AI (from selection)"
 
+#: src/editor/extensions/CodeBlockView.tsx
+msgid "Ask AI about this code block"
+msgstr "Ask AI about this code block"
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
 msgid "Asset"

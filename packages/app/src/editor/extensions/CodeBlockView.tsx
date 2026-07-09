@@ -2,18 +2,31 @@
  * React NodeView for the visual-mode code block.
  *
  * Visual design — zero permanent chrome: the code body renders solo, with a
- * hover/selection-revealed overlay bar in the top-right carrying the
- * language picker, a copy-to-clipboard button, and a delete affordance.
- * Mirrors the JsxComponentView chrome pattern (precedent #30) so codeblocks
- * compose visually with other rich blocks.
+ * hover/selection-revealed chrome bar floating above the block edge that
+ * carries the language picker, edit-source, preview toggle, settings, Ask AI,
+ * copy, and delete affordances. Mirrors the JsxComponentView chrome pattern
+ * (precedent #30) so codeblocks compose visually with other rich blocks.
  */
 
+import { composeSelectionPrompt } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react';
-import { Check, ChevronDown, Copy, Eye, EyeOff, Pencil, Settings2, Trash2 } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  Eye,
+  EyeOff,
+  Pencil,
+  Settings2,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useId, useRef, useState } from 'react';
+import { emitOpenAskAiComposer } from '@/components/ask-ai-composer-events';
+import { requestActiveTerminalInput } from '@/components/handoff/terminal-input-events';
 import {
   Command,
   CommandEmpty,
@@ -24,7 +37,9 @@ import {
 } from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { cn } from '@/lib/utils';
+import { docNameToRelativePath } from '@/lib/workspace-paths';
 import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { CodePreviewEditModal } from '../components/CodePreviewEditModal';
 import { PreviewBlockedNotice } from '../components/PreviewBlockedNotice';
@@ -42,6 +57,7 @@ import {
   setMetaTitle,
   shouldShowPreview,
 } from './code-block-meta';
+import { getEditorDocName } from './doc-context';
 import {
   buildPreviewIframeHeader,
   buildPreviewThemeMessage,
@@ -153,6 +169,18 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
   // because "edit source" is a primary action when the preview is the
   // dominant on-screen surface (HTML preview hides the code by default).
   const [editOpen, setEditOpen] = useState(false);
+  // Ask AI on this code block. Chrome-hosted (not the bubble menu),
+  // because the block isn't a text selection — the whole fence is the
+  // context we want to hand to the agent. Hidden inside an embedded agent
+  // host, same as the text bubble menu's Ask AI button.
+  const isEmbedded = useIsEmbedded();
+  // Hovered state — the html preview iframe consumes 100% of the block's
+  // pointer events, so the CSS `:hover` selector never fires on the wrapper.
+  // Mirror mouseenter/mouseleave into a data attribute so the chrome-reveal
+  // rule (`.ok-codeblock[data-hovered="true"] > .ok-codeblock-chrome`) still
+  // works over the iframe. React's synthetic mouseenter/leave fire on the
+  // wrapper regardless of which descendant consumes pointer events.
+  const [hovered, setHovered] = useState(false);
   // React's `useId` gives each NodeView instance its own DOM ids so a doc
   // with multiple code blocks doesn't collide on `htmlFor` ↔ `id`
   // association (clicking one block's title label would otherwise focus a
@@ -332,6 +360,9 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
       data-selected={selected ? 'true' : undefined}
       data-preview={previewActive ? 'true' : undefined}
       data-code-visible={codeVisible ? 'true' : 'false'}
+      data-hovered={hovered ? 'true' : undefined}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {previewActive ? (
         // biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation required so resize-handle drags don't bubble into PM
@@ -592,6 +623,54 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
             </PopoverContent>
           </Popover>
         ) : null}
+
+        {isEmbedded ? null : (
+          <button
+            type="button"
+            className="ok-codeblock-chrome-btn"
+            aria-label={t`Ask AI about this code block`}
+            data-testid="ok-codeblock-ask-ai-btn"
+            onClick={() => {
+              // Ground the passage the same way the text-selection bubble
+              // menu's Ask AI does — doc named as an `@`-mention, block
+              // source inline (or a locus pointer when it is large). The
+              // fence markers are preserved so the agent can drop the
+              // edited version back in place without stripping/rewrapping.
+              const docName = getEditorDocName(editor);
+              const language = rawLanguage ?? '';
+              const infoString = rawMeta ? `${language} ${rawMeta}`.trim() : language;
+              const body = node.textContent;
+              // Fence must outlast the longest backtick run inside the body
+              // (CommonMark §4.5): a body containing ``` would close a
+              // 3-backtick wrapper early and the receiving agent would see
+              // truncated code + orphan closer text. Same guarantee
+              // `composeSelectionPrompt`'s own internal `fenceFor` gives its
+              // locus-pointer path.
+              const longestBacktickRun = (body.match(/`+/g) ?? []).reduce(
+                (m, r) => Math.max(m, r.length),
+                0,
+              );
+              const fence = '`'.repeat(Math.max(3, longestBacktickRun + 1));
+              const selectionMarkdown = `${fence}${infoString}\n${body}\n${fence}`;
+              requestAnimationFrame(() => {
+                if (docName === null || body.trim() === '') {
+                  emitOpenAskAiComposer();
+                  return;
+                }
+                requestActiveTerminalInput(
+                  composeSelectionPrompt({
+                    relativePath: docNameToRelativePath(docName),
+                    instruction: '',
+                    selectionMarkdown,
+                    target: 'claude-code',
+                  }),
+                );
+              });
+            }}
+          >
+            <Sparkles className="size-3.5" aria-hidden="true" />
+          </button>
+        )}
 
         <button
           type="button"

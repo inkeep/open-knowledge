@@ -15,6 +15,7 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import type { NodeViewProps } from '@tiptap/core';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { CodeBlockView } from './CodeBlockView';
+import { setEditorDocName } from './doc-context';
 
 function makeConfigValue(merged: Config | null): ConfigContextValue {
   return {
@@ -211,5 +212,115 @@ describe('CodeBlockView CSP-violation notice wiring', () => {
     expect(dismiss).toBeTruthy();
     fireEvent.click(dismiss as HTMLButtonElement);
     expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+});
+
+/**
+ * Pins the Ask AI click handler on the code-block chrome — specifically the
+ * hand-built triple-backtick fence around the block body. A body containing
+ * literal ``` sequences would close a 3-backtick wrapper early and the
+ * receiving agent would see truncated code + orphan closer text.
+ */
+describe('CodeBlockView Ask AI click handler', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  function makePropsWithBody(body: string, language = 'html', meta = 'preview'): NodeViewProps {
+    return {
+      editor: makeEditor(),
+      node: { attrs: { language, meta }, textContent: body },
+      getPos: () => 0,
+      selected: false,
+      updateAttributes: () => {},
+    } as unknown as NodeViewProps;
+  }
+
+  async function captureTerminalDispatch(
+    props: NodeViewProps,
+    docName: string,
+  ): Promise<string | null> {
+    setEditorDocName(props.editor, docName);
+    const received: string[] = [];
+    const handler = (e: Event) => {
+      received.push((e as CustomEvent<string>).detail);
+    };
+    window.addEventListener('open-knowledge:active-terminal-input', handler);
+    try {
+      const { container } = render(
+        <ConfigContext value={makeConfigValue(null)}>
+          <CodeBlockView {...props} />
+        </ConfigContext>,
+      );
+      const askBtn = container.querySelector(
+        '[data-testid="ok-codeblock-ask-ai-btn"]',
+      ) as HTMLButtonElement | null;
+      expect(askBtn).toBeTruthy();
+      fireEvent.click(askBtn as HTMLButtonElement);
+      // Click handler defers to rAF; give one paint tick for the dispatch.
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      });
+      return received[0] ?? null;
+    } finally {
+      window.removeEventListener('open-knowledge:active-terminal-input', handler);
+    }
+  }
+
+  // Read the run of backticks that opens the passage's inner fence, keyed off
+  // the info-string sentinel that follows it. `composeSelectionPrompt` wraps
+  // OUR selectionMarkdown inside its own OUTER fence (whose length is our
+  // fence + 1), so we can't just count leading backticks in the dispatch —
+  // we have to isolate the run immediately preceding the info string.
+  function readInnerFenceLength(prompt: string, infoSentinel: string): number {
+    const idx = prompt.indexOf(infoSentinel);
+    if (idx <= 0) return 0;
+    let n = 0;
+    for (let i = idx - 1; i >= 0 && prompt[i] === '`'; i--) n++;
+    return n;
+  }
+
+  test('body without triple-backticks wraps in a 3-backtick fence', async () => {
+    const dispatched = await captureTerminalDispatch(
+      makePropsWithBody('<div id="probe">hello</div>'),
+      'notes/example',
+    );
+    expect(dispatched).not.toBeNull();
+    const fenceLen = readInnerFenceLength(dispatched ?? '', 'html preview\n<div id=');
+    // A body without any backtick run → CommonMark minimum fence (3).
+    expect(fenceLen).toBe(3);
+    // The body's exact content survives inside the wrapper.
+    expect(dispatched).toContain('<div id="probe">hello</div>');
+  });
+
+  test('body containing ``` is wrapped in a fence long enough to outlast the inner run', async () => {
+    // Nested markdown: the fenced example inside the outer body includes a
+    // 3-backtick block. A hand-built 3-backtick wrapper would truncate here
+    // after the first inner closer and the receiving agent would see mangled
+    // markdown. The outer fence must be at least 4.
+    const body = 'Nested:\n```js\nconsole.log(1);\n```\ntrailing';
+    const dispatched = await captureTerminalDispatch(
+      makePropsWithBody(body, 'markdown', ''),
+      'notes/example',
+    );
+    expect(dispatched).not.toBeNull();
+    const fenceLen = readInnerFenceLength(dispatched ?? '', 'markdown\nNested:');
+    expect(fenceLen).toBe(4);
+    // The inner 3-backtick example must survive verbatim (no truncation).
+    expect(dispatched).toContain('```js\nconsole.log(1);\n```');
+    expect(dispatched).toContain('\ntrailing\n');
+  });
+
+  test('body containing a 4-backtick run bumps the outer fence to 5', async () => {
+    const body = 'longer:\n````\nunusual\n````';
+    const dispatched = await captureTerminalDispatch(
+      makePropsWithBody(body, 'markdown', ''),
+      'notes/example',
+    );
+    expect(dispatched).not.toBeNull();
+    const fenceLen = readInnerFenceLength(dispatched ?? '', 'markdown\nlonger:');
+    expect(fenceLen).toBe(5);
+    // The inner 4-backtick block survives verbatim (unusual, but round-trips).
+    expect(dispatched).toContain('````\nunusual\n````');
   });
 });
