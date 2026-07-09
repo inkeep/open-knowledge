@@ -30,7 +30,7 @@ import { execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { homedir as nodeHomedir } from 'node:os';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
-import { isProjectRoot } from '@inkeep/open-knowledge-server';
+import { isProjectRoot, withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 
 const ANCESTOR_WALK_DEPTH_LIMIT = 30;
 
@@ -74,11 +74,15 @@ function isDescendantOfHome(p: string, home: string): boolean {
 
 const defaultGitTopLevel = (cwd: string): string | null => {
   try {
-    const result = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
+    const result = execFileSync(
+      'git',
+      ['rev-parse', '--show-toplevel'],
+      withHiddenWindowsConsole({
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }),
+    );
     const trimmed = result.trim();
     return trimmed.length > 0 ? trimmed : null;
   } catch {

@@ -37,6 +37,7 @@ import {
   encodeSkillRoute,
   resolveLockDir,
   resolveUiInfo,
+  withHiddenWindowsConsole,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
@@ -115,11 +116,15 @@ export function createRealOpenDeps(
       }
     },
     openTarget: (target) => {
-      const child = nodeSpawn('open', [target], {
-        detached: true,
-        stdio: 'ignore',
-        env: scrubElectronRunAsNode(process.env),
-      });
+      const child = nodeSpawn(
+        'open',
+        [target],
+        withHiddenWindowsConsole({
+          detached: true,
+          stdio: 'ignore' as const,
+          env: scrubElectronRunAsNode(process.env),
+        }),
+      );
       child.unref();
     },
     log: (message) => process.stdout.write(`${message}\n`),

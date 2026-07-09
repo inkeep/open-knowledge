@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import pc from 'picocolors';
 import {
@@ -48,10 +49,14 @@ interface ProcessStat {
 }
 
 function sampleProcessStat(pid: number): ProcessStat | null {
-  const r = spawnSync('ps', ['-p', String(pid), '-o', '%cpu=,%mem=,rss=,vsz='], {
-    encoding: 'utf-8',
-    timeout: 2000,
-  });
+  const r = spawnSync(
+    'ps',
+    ['-p', String(pid), '-o', '%cpu=,%mem=,rss=,vsz='],
+    withHiddenWindowsConsole({
+      encoding: 'utf-8',
+      timeout: 2000,
+    }),
+  );
   if (r.error || !r.stdout?.trim()) return null;
   const [cpu, mem, rss, vsz] = r.stdout.trim().split(/\s+/);
   const cpuPercent = Number.parseFloat(cpu ?? '');
@@ -73,7 +78,11 @@ function sampleProcessStat(pid: number): ProcessStat | null {
 // ---------------------------------------------------------------------------
 
 function collectLsof(pid: number): string | null {
-  const r = spawnSync('lsof', ['-p', String(pid)], { encoding: 'utf-8', timeout: 5000 });
+  const r = spawnSync(
+    'lsof',
+    ['-p', String(pid)],
+    withHiddenWindowsConsole({ encoding: 'utf-8', timeout: 5000 }),
+  );
   return r.error || !r.stdout ? null : r.stdout;
 }
 
@@ -95,10 +104,14 @@ function localhostListenPorts(lsofOutput: string): number[] {
 // ---------------------------------------------------------------------------
 
 function getInspectorEndpoints(port: number): unknown[] | null {
-  const r = spawnSync('curl', ['-s', '--max-time', '2', `http://127.0.0.1:${port}/json/list`], {
-    encoding: 'utf-8',
-    timeout: 3000,
-  });
+  const r = spawnSync(
+    'curl',
+    ['-s', '--max-time', '2', `http://127.0.0.1:${port}/json/list`],
+    withHiddenWindowsConsole({
+      encoding: 'utf-8',
+      timeout: 3000,
+    }),
+  );
   if (r.error || !r.stdout?.trim()) return null;
   try {
     const parsed = JSON.parse(r.stdout);
@@ -152,7 +165,11 @@ async function runProfiler(
   const scriptPath = writeCdpScript(wsUrl, profileMs, profilePath);
 
   let succeeded = false;
-  const child = spawn(process.execPath, [scriptPath], { stdio: 'ignore' });
+  const child = spawn(
+    process.execPath,
+    [scriptPath],
+    withHiddenWindowsConsole({ stdio: 'ignore' as const }),
+  );
   const interval = setInterval(() => {
     const s = sampleProcessStat(pid);
     if (s) onStat(s);

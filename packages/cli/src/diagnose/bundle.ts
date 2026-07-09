@@ -33,6 +33,7 @@ import {
   DEFAULT_SPANS_MAX_BYTES,
   resolveConfigPath,
 } from '@inkeep/open-knowledge-core/server';
+import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import { parse as parseYaml } from 'yaml';
 import { ZipFile } from 'yazl';
 import { PACKAGE_VERSION } from '../constants.ts';
@@ -308,7 +309,7 @@ function defaultReadShadowHead(contentDir: string): string | null {
   const result = spawnSync(
     'git',
     ['-C', shadowDir, 'log', '--oneline', `-${SHADOW_GIT_LOG_LIMIT}`],
-    { encoding: 'utf-8', timeout: 2000 },
+    withHiddenWindowsConsole({ encoding: 'utf-8', timeout: 2000 }),
   );
   if (result.error || result.status !== 0) return null;
   return result.stdout ?? '';

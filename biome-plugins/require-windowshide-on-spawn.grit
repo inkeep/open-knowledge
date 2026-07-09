@@ -1,0 +1,77 @@
+// require-windowshide-on-spawn — Windows console-flash prevention.
+//
+// Every `node:child_process` process-spawn (`spawn`, `spawnSync`, `exec`,
+// `execSync`, `execFile`, `execFileSync`, plus the repo's `nodeSpawn` /
+// `execFileAsync` aliases) MUST hide the Windows console window it would
+// otherwise pop. Two accepted forms:
+//
+//   spawnSync('git', args, withHiddenWindowsConsole({ cwd, ... }))   // preferred
+//   spawnSync('git', args, { cwd, ..., windowsHide: true })          // inline
+//
+// Why: on Windows, `windowsHide` defaults to `false`. When a console-LESS
+// parent (the OK server auto-started by an MCP host with `stdio:'ignore'`, or
+// spawned detached) spawns a console-subsystem binary like `git.exe`, Windows
+// creates a new console window that flashes on screen and vanishes — once per
+// spawn. During an editing / agent-write session the per-write `git config`
+// attribution reads fire a burst of these, so the flashing is continuous and
+// user-visible. Hiding it fixes that. It is a harmless no-op on macOS AND
+// Linux (neither has the Windows console-allocation behavior), so it belongs
+// on EVERY spawn regardless of the command's target platform — uniform
+// application is what makes the rule enforceable. `withHiddenWindowsConsole`
+// lives in `packages/server/src/child-process-windows-hide.ts` and is
+// re-exported from `@inkeep/open-knowledge-server`.
+//
+// `simple-git` already sets `windowsHide: true` internally, so git routed
+// through it (shadow repo, share, conflicts) is unaffected — this rule is only
+// about the hand-rolled `child_process` call sites that bypass it.
+//
+// OPTING OUT — for a spawn that only ever runs on macOS and/or Linux (never
+// Windows), e.g. `codesign`, `sw_vers`, an `open(1)` launch, hiding a console
+// is meaningless. Add `windowsHide` anyway (harmless no-op, keeps the rule
+// uniform) OR suppress this one call with a reason:
+//
+//   // biome-ignore lint/plugin/require-windowshide-on-spawn: macOS-only (never spawned on Windows)
+//   const r = spawnSync('codesign', [...], { ... });
+//
+// Scoped via `overrides[].plugins` to `packages/{server,cli}/src/**` — the
+// packages that spawn processes at runtime on Windows. `packages/desktop` is
+// macOS-only (the Electron app never runs on Windows), so it is out of scope.
+//
+// The rule keys on the CALL-EXPRESSION CALLEE IDENTIFIER, so it can't tell a
+// real `node:child_process` import from a same-named wrapper. A few call sites
+// bind a local `const spawn = deps.spawnDetached ?? spawnDetachedReal` (already
+// windows-safe) or take an injected `spawn` param — those are false positives;
+// suppress with the biome-ignore line above and a "not node:child_process"
+// reason.
+//
+// Known gaps (documented honestly): bare `exec(...)` is NOT matched (the
+// identifier is too commonly shadowed); member calls (`deps.spawn(...)`) are
+// not matched (different AST — the real impl behind the injection is the
+// enforced site); injected spawn-wrapper aliases (`const spawnFn = opts.spawn ??
+// realSpawn; spawnFn(...)`) are NOT matched by callee name, so those call sites
+// are hidden by hand (`windowsHide: true` at the site) rather than enforced here
+// — adding `spawnFn` to the matcher would flag the by-reference options-var
+// wrappers (e.g. skill-install's `detached`) as false positives; a `windowsHide`
+// / `withHiddenWindowsConsole` written inside a spawn's callback body would
+// spuriously satisfy the check (no realistic case).
+//
+// See PRECEDENTS.md #42 (custom Biome enforcement is GritQL plugins).
+
+language js
+
+or {
+    `spawn($...)` as $call,
+    `spawnSync($...)` as $call,
+    `execSync($...)` as $call,
+    `execFile($...)` as $call,
+    `execFileSync($...)` as $call,
+    `nodeSpawn($...)` as $call,
+    `execFileAsync($...)` as $call
+} where {
+    not $call <: contains `windowsHide: $_`,
+    not $call <: contains `withHiddenWindowsConsole($...)`,
+    register_diagnostic(
+        span = $call,
+        message = "child_process spawn without a hidden Windows console — wrap the options in `withHiddenWindowsConsole(...)` (from @inkeep/open-knowledge-server) or add `windowsHide: true`. On Windows a console-less parent (MCP-spawned/detached OK server) flashes a terminal window on every spawn; the flag is a no-op on macOS/Linux, so add it unconditionally. macOS/Linux-only spawn, or a same-named wrapper (not node:child_process)? suppress with `// biome-ignore lint/plugin/require-windowshide-on-spawn: <reason>`. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#require-windowshide-on-spawngrit"
+    )
+}

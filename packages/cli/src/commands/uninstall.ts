@@ -17,7 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { findEnclosingProjectRoot } from '@inkeep/open-knowledge-server';
+import { findEnclosingProjectRoot, withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import checkbox from '@inquirer/checkbox';
 import { Command } from 'commander';
 import { desktopUserDataDir, readDesktopRecentProjects } from '../integrations/desktop-state.ts';
@@ -93,11 +93,15 @@ export function detectInstallMethods(
 
 function defaultNpmLs(args: string[]): string | null {
   try {
-    return execFileSync('npm', args, {
-      encoding: 'utf-8',
-      timeout: 5000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
+    return execFileSync(
+      'npm',
+      args,
+      withHiddenWindowsConsole({
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }),
+    );
   } catch {
     // npm absent, not a global install, or the probe timed out — treat as "not
     // installed via npm global".

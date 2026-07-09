@@ -57,6 +57,7 @@ describe('openBrowser', () => {
     execFileSpy.mockImplementation(((
       _cmd: string,
       _args: string[],
+      _opts: unknown,
       callback: (err: Error | null) => void,
     ) => {
       callback(new Error('ENOENT'));
