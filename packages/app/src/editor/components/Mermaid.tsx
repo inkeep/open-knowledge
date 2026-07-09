@@ -40,8 +40,11 @@
  * `<input>` (a `<textarea>` when mermaid wrapped the label onto
  * multiple lines, so the wrapped layout survives the swap) is portalled
  * to `document.body` (so ProseMirror never sees it) and positioned over
- * the clicked label; Enter commits, Escape
- * reverts, clicking away commits. On commit we splice the new value
+ * the clicked label, with the caret placed at the clicked character
+ * (caret at the text end when the click can't be mapped to one)
+ * instead of the whole label being selected, so it feels like
+ * clicking into plain text. Enter commits, Escape reverts, clicking
+ * away commits. On commit we splice the new value
  * back into the chart source and dispatch one `setNodeMarkup` with
  * `sourceDirty: true` (mirroring `Embed.tsx`'s resize-commit path).
  * Mermaid then re-renders the SVG from the updated source.
@@ -816,6 +819,84 @@ function countRenderedLabelLines(el: HTMLElement): number {
 }
 
 /**
+ * Absolute character offset within `root`'s text content at a click point,
+ * or `null` when the point can't be resolved to a character. Lets the inline
+ * label editor drop the caret where the user clicked instead of selecting the
+ * whole label. `caretPositionFromPoint` is the standard API; `caretRangeFromPoint`
+ * is the older WebKit/Chromium spelling — happy-dom ships neither, so the
+ * `typeof` guards keep unit tests on the end-of-text fallback (the tree walk
+ * below never runs there).
+ */
+function caretOffsetFromClick(root: HTMLElement, clientX: number, clientY: number): number | null {
+  const doc = root.ownerDocument;
+  let node: Node | null = null;
+  let offsetInNode = 0;
+  if (typeof doc.caretPositionFromPoint === 'function') {
+    const pos = doc.caretPositionFromPoint(clientX, clientY);
+    if (pos) {
+      node = pos.offsetNode;
+      offsetInNode = pos.offset;
+    }
+  } else {
+    // Fall back to `caretRangeFromPoint`, the legacy WebKit / older-Chromium
+    // point->offset API for engines that predate `caretPositionFromPoint`.
+    // Typed locally because the method can be absent at runtime.
+    const rangeFromPoint = (
+      doc as unknown as { caretRangeFromPoint?: (x: number, y: number) => Range | null }
+    ).caretRangeFromPoint;
+    if (typeof rangeFromPoint === 'function') {
+      const range = rangeFromPoint.call(doc, clientX, clientY);
+      if (range) {
+        node = range.startContainer;
+        offsetInNode = range.startOffset;
+      }
+    }
+  }
+  // Only a click that lands on a text node INSIDE the label has a meaningful
+  // character index; a hit on the shape rect, padding, or a sibling maps to no
+  // label character, so bail to the caller's end-of-text fallback. `!node`
+  // short-circuits first so happy-dom (no caret API => node stays null) never
+  // touches `Node.TEXT_NODE`.
+  if (!node || node.nodeType !== Node.TEXT_NODE || !root.contains(node)) return null;
+  // Sum the lengths of every text node before the hit node in document order,
+  // then add the in-node offset: a wrapped label (foreignObject `<p>`) or an
+  // SVG label split across `<tspan>`s spans several text nodes, so a
+  // single-node assumption would misplace the caret on every line after the
+  // first.
+  let absolute = 0;
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let current = walker.nextNode();
+  while (current) {
+    if (current === node) return absolute + offsetInNode;
+    absolute += (current.textContent ?? '').length;
+    current = walker.nextNode();
+  }
+  return null;
+}
+
+/**
+ * Map a click offset within the ORIGINAL label's text content onto an index in
+ * the edit overlay's `value`. Two hazards make a raw offset wrong: (a) the value
+ * is `.trim()`-ed, so it drops leading whitespace the DOM text still carries —
+ * shift left by that width; (b) a supplied `sourceLabel` can diverge from the
+ * visible glyphs (an `alt` condition renders bracketed `[cond]` but its source
+ * form is `cond`), which makes any click->source mapping unsound. In (b), or when
+ * no offset resolved, return the end of the text — never a whole-label selection.
+ */
+export function resolveLabelCaretTarget(
+  domText: string,
+  clickOffset: number | null,
+  sourceLabel: string | undefined,
+  valueLength: number,
+): number {
+  const sourceDiverges = sourceLabel != null && sourceLabel !== domText.trim();
+  if (clickOffset === null || sourceDiverges) return valueLength;
+  const leadingWhitespace = domText.length - domText.trimStart().length;
+  const mapped = clickOffset - leadingWhitespace;
+  return Math.max(0, Math.min(mapped, valueLength));
+}
+
+/**
  * Pulse one label's glyph paint to the agent accent and back, twice, by
  * toggling INLINE `!important` fill/color. Why inline `!important` and not a CSS
  * class animation: mermaid injects a `<style>` into every rendered SVG whose
@@ -1140,6 +1221,11 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
       // during typing; on commit we dispatch one `setNodeMarkup` and
       // mermaid re-renders the SVG normally.
       const labelP = (labelSpan.querySelector('p') ?? labelSpan) as HTMLElement;
+      // Capture where the click landed within the ORIGINAL label now, while it's
+      // still visible and in its rendered position: the overlay below hides it and
+      // mounts on top, so a later read would miss. Reconciling this into an
+      // `input.value` index (trim + sourceLabel) happens at focus time.
+      const clickCaretOffset = caretOffsetFromClick(labelP, event.clientX, event.clientY);
       const labelStyles = window.getComputedStyle(labelP);
       // Mermaid often paints the visible glyph color on an inner
       // `<tspan>` while the outer `<text>` carries a background-
@@ -1395,13 +1481,22 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
         input.style.left = `${inputLeft}px`;
       }
       positionInput();
-      // Focus + select-all after the next paint. Sync focus() sometimes
-      // loses to whatever else is settling from the click that started
-      // the edit; rAF hands us the frame after PM/JsxComponentView have
-      // finished reacting.
+      // Character-accurate for CSS-wrapped labels; for a label mermaid hard-wraps
+      // (`<br>` / split `<tspan>`s) the value loses the break, so the caret is
+      // right by character but may sit on a different visual line than the click.
+      const caretTarget = resolveLabelCaretTarget(
+        labelP.textContent ?? '',
+        clickCaretOffset,
+        target.sourceLabel,
+        input.value.length,
+      );
+      // Focus + place the caret at the clicked character after the next paint, so
+      // it feels like clicking into ordinary text. Sync focus() sometimes loses to
+      // whatever else is settling from the click that started the edit; rAF hands
+      // us the frame after PM/JsxComponentView have finished reacting.
       const focusRafHandle = requestAnimationFrame(() => {
         input.focus();
-        input.select();
+        input.setSelectionRange(caretTarget, caretTarget);
       });
 
       // Keep the overlay pinned if the page scrolls or the label moves.

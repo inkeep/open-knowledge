@@ -30,6 +30,7 @@ const {
   findSequenceMessageInSource,
   findSequenceNoteInSource,
   MermaidView,
+  resolveLabelCaretTarget,
   rewriteSequenceParticipant,
   spliceInsertBareIdLabel,
   spliceNewLabel,
@@ -551,5 +552,49 @@ describe('spliceInsertBareIdLabel encoding', () => {
     // Contains a syntactic `"` — needs quoting; the inner `"` becomes `#quot;`
     const out = spliceInsertBareIdLabel(src, hit, 'The "Shopper" role');
     expect(out).toContain('Shopper["The #quot;Shopper#quot; role"]');
+  });
+});
+
+describe('resolveLabelCaretTarget', () => {
+  test('maps a mid-string click to the same index when there is no leading whitespace', () => {
+    // domText === value; clicking char 3 keeps caret at 3.
+    expect(resolveLabelCaretTarget('Source view', 3, undefined, 'Source view'.length)).toBe(3);
+  });
+
+  test('shifts left by the leading whitespace the value dropped via trim()', () => {
+    // DOM text has two leading spaces the trimmed value does not: raw offset 6
+    // (before "o" in "  Hello") maps to value index 4.
+    const dom = '  Hello';
+    const value = dom.trim(); // "Hello"
+    expect(resolveLabelCaretTarget(dom, 6, undefined, value.length)).toBe(4);
+  });
+
+  test('clamps a click on trailing whitespace to the end of the value', () => {
+    const dom = 'Hi   ';
+    const value = dom.trim(); // "Hi"
+    // Raw offset 4 sits in the trailing run; clamp to value length 2.
+    expect(resolveLabelCaretTarget(dom, 4, undefined, value.length)).toBe(2);
+  });
+
+  test('clamps a negative mapped offset up to 0', () => {
+    // Click landed in leading whitespace (offset 1 < leadingWhitespace 3).
+    expect(resolveLabelCaretTarget('   abc', 1, undefined, 'abc'.length)).toBe(0);
+  });
+
+  test('falls back to end-of-text when no click offset resolved', () => {
+    expect(resolveLabelCaretTarget('Source view', null, undefined, 'Source view'.length)).toBe(
+      'Source view'.length,
+    );
+  });
+
+  test('falls back to end-of-text when sourceLabel diverges from the visible text', () => {
+    // The `alt` case: DOM shows bracketed "[cond]" but the source form is "cond".
+    // valueLength is the source form's length (4); a resolved DOM offset is unsound.
+    expect(resolveLabelCaretTarget('[cond]', 3, 'cond', 'cond'.length)).toBe('cond'.length);
+  });
+
+  test('still maps the click when sourceLabel matches the trimmed visible text', () => {
+    // sourceLabel supplied but equal to the visible text => mapping stays sound.
+    expect(resolveLabelCaretTarget('cond', 2, 'cond', 'cond'.length)).toBe(2);
   });
 });
