@@ -706,7 +706,7 @@ function ShareReceiveDialogInner({
               <button
                 type="button"
                 data-testid="share-receive-clone"
-                className="flex flex-col items-start gap-2 rounded-lg border-2 border-primary/40 bg-card p-4 text-left transition hover:border-primary hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-primary/40 disabled:hover:bg-card"
+                className="flex flex-col items-start gap-2 rounded-lg border border-primary/50 bg-primary/5 p-4 text-left transition hover:border-primary hover:bg-primary/10 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-primary/50 disabled:hover:bg-primary/5"
                 onClick={() => {
                   void handleCloneCtaClick();
                 }}
@@ -721,7 +721,7 @@ function ShareReceiveDialogInner({
               <button
                 type="button"
                 data-testid="share-receive-local"
-                className="flex flex-col items-start gap-2 rounded-lg border border-border bg-card p-4 text-left transition hover:border-foreground/50 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex flex-col items-start gap-2 rounded-lg border border-border bg-card p-4 text-left transition hover:border-foreground/50 hover:bg-accent focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 onClick={() => {
                   void handleLocalCtaClick();
                 }}
