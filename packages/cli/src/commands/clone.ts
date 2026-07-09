@@ -154,6 +154,7 @@ type CredentialHelperUnsafeGitOptions = SimpleGitOptions & {
     allowUnsafePager?: boolean;
     allowUnsafeSshCommand?: boolean;
     allowUnsafeAskPass?: boolean;
+    allowUnsafeEditor?: boolean;
   };
 };
 
@@ -162,12 +163,18 @@ type CredentialHelperUnsafeGitOptions = SimpleGitOptions & {
  * running git as the user with the user's own environment (`buildCloneEnv`
  * spreads `process.env`), so we opt into the env-based `unsafe` flags simple-git
  * gates by default: it refuses to run when PAGER / GIT_SSH_COMMAND / GIT_ASKPASS
- * are present in the env unless told they're trusted. That guard targets
- * untrusted config/args in server-side usage; here the env IS the user's own
- * interactive shell, so honoring it is correct — and lets their pager, SSH
- * config, and credential-prompt helper actually work (an attacker who can set
- * these env vars already owns the shell). `allowUnsafeCredentialHelper` is the
- * same posture for the `-c credential.helper` we inject. simple-git 3.36's
+ * / EDITOR / GIT_EDITOR are present in the env unless told they're trusted. That
+ * guard targets untrusted config/args in server-side usage; here the env IS the
+ * user's own interactive shell, so honoring it is correct — and lets their
+ * pager, SSH config, and credential-prompt helper actually work (an attacker who
+ * can set these env vars already owns the shell). `allowUnsafeCredentialHelper`
+ * is the same posture for the `-c credential.helper` we inject.
+ *
+ * `allowUnsafeEditor` is load-bearing for the common case: nearly every
+ * developer has EDITOR (and often GIT_EDITOR) exported, and the guard fires on
+ * the var's mere presence regardless of value — so without this flag, clone
+ * fails with `Use of "EDITOR" is not permitted…` for most users. A clone never
+ * launches an editor anyway, so honoring the env is safe. simple-git 3.36's
  * published typings don't expose these runtime flags, hence the local type.
  */
 export function buildCloneGitOptions(
@@ -182,6 +189,7 @@ export function buildCloneGitOptions(
       allowUnsafePager: true,
       allowUnsafeSshCommand: true,
       allowUnsafeAskPass: true,
+      allowUnsafeEditor: true,
     },
   };
 }

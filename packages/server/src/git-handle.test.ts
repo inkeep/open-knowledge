@@ -42,6 +42,13 @@ describe('buildGitEnv', () => {
     expect(buildGitEnv().GIT_TERMINAL_PROMPT).toBe('0');
   });
 
+  test('disables merge auto-edit so a sync merge commit never launches an editor', () => {
+    // sync-engine's `git merge origin/<branch>` can produce a merge commit; a
+    // launched editor with no TTY would hang the background sync. Pinning this
+    // off makes git use the default merge message unconditionally.
+    expect(buildGitEnv().GIT_MERGE_AUTOEDIT).toBe('no');
+  });
+
   test('preserves PATH so a bare-command credential helper resolves', () => {
     withEnvEntries({ PATH: '/custom/bin:/usr/bin' }, () => {
       expect(buildGitEnv().PATH).toBe('/custom/bin:/usr/bin');

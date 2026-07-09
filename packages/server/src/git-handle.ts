@@ -121,13 +121,28 @@ const GIT_AUTH_ENV_KEYS = [
  * classifier maps to the reconnect-required auth state. Both strings classify
  * as no-credential, but this avoids a misleading errno in logs and the UI.
  *
+ * `GIT_MERGE_AUTOEDIT=no` is set unconditionally for the same non-interactive
+ * reason: `sync-engine`'s `git merge origin/<branch>` is the one sync op that
+ * can produce a merge commit, and git may open an editor for its message. In a
+ * TTY-less spawn git usually skips that, but the outcome is version- and
+ * global-config-dependent (a user's `[merge] edit = true` can force it), and a
+ * launched editor with no TTY hangs the background sync. Pinning auto-edit off
+ * makes git use the default merge message and never launch an editor. Unlike
+ * setting GIT_EDITOR, this doesn't trip simple-git's env guard (the var isn't in
+ * its unsafe map), so it needs no `allowUnsafe*` opt-in.
+ *
  * `OK_GH_TOKEN`/`OK_GH_TOKEN_HOST` are added only when a {@link RelayGhToken} is
  * supplied. This is the deliberate, named channel that carries a server-resolved
  * gh token to the credential helper across the env replacement — see
  * {@link RelayGhToken}.
  */
 export function buildGitEnv(ghToken?: RelayGhToken): Record<string, string> {
-  const env: Record<string, string> = { LANG: 'C', LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0' };
+  const env: Record<string, string> = {
+    LANG: 'C',
+    LC_ALL: 'C',
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_MERGE_AUTOEDIT: 'no',
+  };
   const path = process.env.PATH ?? process.env.Path;
   if (path !== undefined) {
     env.PATH = path;

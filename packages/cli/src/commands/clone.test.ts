@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { Config } from '@inkeep/open-knowledge-server';
+import simpleGit, { type SimpleGitOptions } from 'simple-git';
 import type { TokenStore } from '../auth/token-store.ts';
 import { OK_DIR } from '../constants.ts';
 import {
@@ -174,10 +175,12 @@ describe('buildCloneEnv', () => {
 
 describe('buildCloneGitOptions', () => {
   // `ok clone` runs git as the user with the user's env; simple-git refuses to
-  // run with PAGER / GIT_SSH_COMMAND / GIT_ASKPASS present unless these flags
-  // opt in. Reverting any of them silently re-breaks clone for users who set
-  // those env vars (the reported `PAGER is not permitted` failure).
-  test('opts into the env-based unsafe flags so the user PAGER/SSH/askpass env is honored', () => {
+  // run with PAGER / GIT_SSH_COMMAND / GIT_ASKPASS / EDITOR / GIT_EDITOR present
+  // unless these flags opt in. Reverting any of them silently re-breaks clone
+  // for users who set those env vars — allowUnsafeEditor in particular, since
+  // nearly every developer exports EDITOR (the reported `Use of "EDITOR" is not
+  // permitted` failure; PAGER had the same failure mode).
+  test('opts into the env-based unsafe flags so the user PAGER/SSH/askpass/editor env is honored', () => {
     const o = buildCloneGitOptions('/work/dir', ['credential.helper=!gh auth git-credential']);
     expect(o.baseDir).toBe('/work/dir');
     expect(o.config).toEqual(['credential.helper=!gh auth git-credential']);
@@ -186,6 +189,7 @@ describe('buildCloneGitOptions', () => {
       allowUnsafePager: true,
       allowUnsafeSshCommand: true,
       allowUnsafeAskPass: true,
+      allowUnsafeEditor: true,
     });
   });
 
@@ -193,6 +197,43 @@ describe('buildCloneGitOptions', () => {
     const o = buildCloneGitOptions('/work/dir', []);
     expect(o.config).toEqual([]);
     expect(o.unsafe?.allowUnsafePager).toBe(true);
+  });
+});
+
+// Integration guard against the exact reported failure: drives a real
+// `git --version` through simple-git with EDITOR present in the spawn env.
+// This would have thrown before the fix and passes after — a stronger
+// regression guard than the static shape pin above (it also catches
+// simple-git renaming the flag on a version bump). EDITOR is injected via
+// `.env()` (never `process.env`), so it's deterministic on CI runners that
+// don't export EDITOR and safe under Bun's concurrent runner. The env is
+// minimal (PATH + EDITOR only) so the guard fires specifically on EDITOR,
+// not on an ambient PAGER.
+describe('buildCloneGitOptions — simple-git EDITOR env guard', () => {
+  const editorEnv: Record<string, string> = {
+    PATH: process.env.PATH ?? '',
+    EDITOR: 'vim',
+  };
+
+  // simple-git's `.raw()` returns a chainable thenable, not a plain Promise, so
+  // the `.resolves`/`.rejects` matchers reject it — await directly instead.
+  it('negative control: without allowUnsafeEditor the guard rejects when EDITOR is set', async () => {
+    const git = simpleGit({ baseDir: tmpdir() } as Partial<SimpleGitOptions>).env(editorEnv);
+    let err: unknown;
+    try {
+      await git.raw(['--version']);
+    } catch (e) {
+      err = e;
+    }
+    expect(String(err instanceof Error ? err.message : err)).toContain('allowUnsafeEditor');
+  });
+
+  it('buildCloneGitOptions honors EDITOR — git runs instead of tripping the guard', async () => {
+    const git = simpleGit(buildCloneGitOptions(tmpdir(), []) as Partial<SimpleGitOptions>).env(
+      editorEnv,
+    );
+    const out = await git.raw(['--version']);
+    expect(out).toContain('git version');
   });
 });
 
