@@ -363,6 +363,7 @@ export {
   type IpcChannelReason,
   type IpcChannelWithUrn,
   lookupUrnInRegistry,
+  OK_GATED_TOOL_NAMES,
   OK_PROJECT_SKILL_POINTER,
   OK_TERMINAL_SURFACE_PREAMBLE,
   shellSingleQuote,

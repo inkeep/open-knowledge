@@ -48,16 +48,16 @@ export type TerminalCli = 'claude' | 'codex' | 'cursor' | 'opencode' | 'pi';
 
 export interface TerminalCliInfo {
   /** PATH binary launched in the PTY. Interpolated (alongside any opted-in
-   *  {@link mcpPreApproveArg}) into the fixed `<bin> [<fixed-args>…] '<prompt>'`
-   *  shape — fixed registry values, never user input. */
+   *  {@link TerminalCliInfo.autoApproveArg}) into the fixed
+   *  `<bin> [<fixed-args>…] '<prompt>'` shape — fixed registry values, never
+   *  user input. */
   readonly bin: string;
-  /** Claude's MCP pre-approval fragment, inserted verbatim between `<bin>` and
-   *  the prompt ONLY when the caller passes `mcpPreApprove: true` (see
-   *  {@link buildCliLaunchArgString}) — i.e. after the launch site has verified the
-   *  project's `open-knowledge` `.mcp.json` entry is OK's own. An already-shell-
-   *  safe fragment (NOT re-quoted); registry-fixed, never user input. Claude-only;
-   *  omit for CLIs with no pre-approval. */
-  readonly mcpPreApproveArg?: string;
+  /** Fixed launch arg that auto-approves OK's OWN tools for this CLI, inserted
+   *  ONLY when the caller passes `autoApproveOkTools: true`. Codex-only today (a
+   *  `-c` per-server approval-mode override); already shell-safe, registry-fixed,
+   *  never user input. Claude's equivalent (an allow/deny list) is computed inline
+   *  by {@link buildClaudeSettingsArg}, not from the registry. */
+  readonly autoApproveArg?: string;
   /** User-facing brand name ("Claude" / "Codex" / "Cursor"). */
   readonly displayName: string;
   /** Install / setup docs, opened from the "not installed" terminal banner. */
@@ -75,29 +75,80 @@ export interface TerminalCliInfo {
 }
 
 /**
- * Claude Code launch arg that pre-approves OK's project-scoped `.mcp.json`
- * server (`mcpServers["open-knowledge"]`) so the docked-terminal launch skips
- * the one-time "New MCP server found in this project" trust prompt. Applied
- * ONLY when the caller opts in via `mcpPreApprove: true`, which the launch site
- * sets only after verifying the project's `open-knowledge` entry is OK's OWN
- * managed server (`isOwnManagedEntry`) — never blindly by name. That gate is
- * load-bearing: `.mcp.json` is committed and travels with shared/cloned
- * projects, so a foreign or tampered same-named entry must keep Claude's trust
- * prompt rather than be silently approved (RCE / tool-poisoning otherwise).
- * `--settings` takes a JSON string the CLI layers on top of the user's
- * settings, so passing it per-invocation writes nothing to the user's machine.
- * Built from {@link MCP_SERVER_NAME} so the pre-approval names exactly what OK's
- * editor wiring registers in `.mcp.json`.
- *
- * This pins an external Claude Code contract (`--settings` accepting inline JSON
- * + the `enabledMcpjsonServers` key). If a future `claude` drops the key the
- * trust prompt simply returns — safe degradation. The bare-launch path
- * (`mcpPreApprove` false/omitted) is the default and stays reachable, so if the
- * flag ever broke launches it could be disabled without restructuring.
+ * Claude allow-rules that let OK's OWN MCP tools + the `ok open` CLI verb run
+ * without a per-call approval prompt: `mcp__<server>` matches every tool of OK's
+ * MCP server; `Bash(ok open:*)` matches only the `ok open` verb. Registry-fixed,
+ * never user input.
  */
-const CLAUDE_MCP_PREAPPROVE_ARG = `--settings ${shellSingleQuote(
-  JSON.stringify({ enabledMcpjsonServers: [MCP_SERVER_NAME] }),
+const OK_AUTO_APPROVE_ALLOW_RULES: readonly string[] = [
+  `mcp__${MCP_SERVER_NAME}`,
+  'Bash(ok open:*)',
+];
+
+/**
+ * OK MCP tools kept GATED even when auto-approve is on: `deny` out-ranks `allow`
+ * in Claude's precedence (deny then ask then allow), so these keep prompting.
+ * The goal is a frictionless read/write loop, never a silent `delete` / `move`
+ * (KB-wide blast radius), `share_link` (data exfiltration), or `install` (writes
+ * executable skill scripts into the agent's own config dir — a persistence
+ * vector, unlike a version-recoverable doc write).
+ *
+ * The allow-rule is open-ended (`mcp__<server>` matches EVERY OK tool) while this
+ * deny-list is closed, so a new destructive tool would silently inherit
+ * auto-approval. `registry.test.ts` in the server package pins every registered
+ * tool name against this list plus its auto-approved complement — adding a tool
+ * fails that test until it is consciously classified. Keep the two in lockstep.
+ */
+export const OK_GATED_TOOL_NAMES: readonly string[] = ['delete', 'move', 'share_link', 'install'];
+
+const OK_AUTO_APPROVE_DENY_RULES: readonly string[] = OK_GATED_TOOL_NAMES.map(
+  (tool) => `mcp__${MCP_SERVER_NAME}__${tool}`,
+);
+
+/**
+ * Codex per-launch config override (via `-c`, so it writes nothing to the user's
+ * `~/.codex/config.toml`) that sets OK's MCP server tool-approval to `approve`
+ * ("auto-approve except potentially-unsafe actions", per codex's own permission
+ * vocabulary). Registry-fixed. LOAD-BEARING PRECONDITION: only add this when OK's
+ * server entry ALREADY exists in the user's codex config — a `-c` key under a
+ * non-existent server id creates a partial (command-less) entry that makes codex
+ * fail to load its config and breaks the launch. The launch site owns that gate.
+ */
+const CODEX_OK_AUTO_APPROVE_ARG = `-c ${shellSingleQuote(
+  `mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"`,
 )}`;
+
+/**
+ * Build Claude's inline `--settings` arg from two INDEPENDENT opt-ins that share
+ * one settings object. `mcpPreApprove` adds server trust (`enabledMcpjsonServers`)
+ * so the launch skips the one-time "New MCP server found" prompt — set by the
+ * launch site only after `isOwnManagedEntry` verifies the project's
+ * `open-knowledge` `.mcp.json` entry is OK's OWN (a committed, cloned `.mcp.json`
+ * could carry a foreign same-named server; RCE otherwise). `autoApproveOkTools`
+ * adds the OK-tool + `ok open` allow-list and the destructive-tool deny-list.
+ * `--settings` takes an inline JSON string the CLI layers on the user's settings,
+ * so nothing is written to disk. Returns '' when neither opt-in is set. Content is
+ * registry-fixed and single-quoted — never user input.
+ */
+function buildClaudeSettingsArg(opts: BuildCliLaunchOptions): string {
+  const settings: {
+    enabledMcpjsonServers?: string[];
+    permissions?: { allow: string[]; deny: string[] };
+  } = {};
+  if (opts.mcpPreApprove === true) {
+    settings.enabledMcpjsonServers = [MCP_SERVER_NAME];
+  }
+  if (opts.autoApproveOkTools === true) {
+    settings.permissions = {
+      allow: [...OK_AUTO_APPROVE_ALLOW_RULES],
+      deny: [...OK_AUTO_APPROVE_DENY_RULES],
+    };
+  }
+  if (settings.enabledMcpjsonServers === undefined && settings.permissions === undefined) {
+    return '';
+  }
+  return `--settings ${shellSingleQuote(JSON.stringify(settings))}`;
+}
 
 /**
  * Static registry for each launchable CLI. Cursor's agent CLI binary is
@@ -109,13 +160,13 @@ export const TERMINAL_CLIS = {
     displayName: 'Claude',
     docsUrl: 'https://docs.claude.com/en/docs/claude-code',
     handoffTarget: 'claude-code',
-    mcpPreApproveArg: CLAUDE_MCP_PREAPPROVE_ARG,
   },
   codex: {
     bin: 'codex',
     displayName: 'Codex',
     docsUrl: 'https://developers.openai.com/codex/cli',
     handoffTarget: 'codex',
+    autoApproveArg: CODEX_OK_AUTO_APPROVE_ARG,
   },
   cursor: {
     bin: 'cursor-agent',
@@ -162,22 +213,32 @@ export const TERMINAL_CLI_IDS = [
 
 export interface BuildCliLaunchOptions {
   /**
-   * Include Claude's MCP pre-approval flag ({@link TerminalCliInfo.mcpPreApproveArg}).
+   * Include Claude's MCP server-trust pre-approval (`enabledMcpjsonServers`).
    * Honored only for `claude`. Defaults to false — the SAFE default. The launch
    * site sets it true only after confirming the project's `open-knowledge`
    * `.mcp.json` entry is OK's own (desktop preflight `mcpPreApprovable` ←
    * `isOwnManagedEntry`); a bare launch lets Claude show its trust prompt.
    */
   readonly mcpPreApprove?: boolean;
+  /**
+   * Auto-approve OK's OWN tools so the KB read/write loop runs without a per-call
+   * prompt. Claude: an allow-list (OK tools + `ok open`) with a destructive-tool
+   * deny-list, via {@link buildClaudeSettingsArg}. Codex: the registry
+   * {@link TerminalCliInfo.autoApproveArg} `-c` override — the launch site MUST
+   * only pass true for codex once it has confirmed OK's server entry exists in the
+   * codex config (see that field's precondition). Other CLIs: no effect. Defaults
+   * to false.
+   */
+  readonly autoApproveOkTools?: boolean;
 }
 
 /**
- * Build the fixed `<bin> [<mcp-pre-approve>] '<prompt>'` launch shape WITHOUT a
- * trailing newline — the CLI's registry binary, then Claude's registry-fixed
- * {@link TerminalCliInfo.mcpPreApproveArg} inserted verbatim ONLY when
- * `opts.mcpPreApprove` is true, then the prompt POSIX-single-quoted via
- * {@link shellSingleQuote}. This is the canonical command string; the two
- * transports add what each needs:
+ * Build the fixed `<bin> [<fixed-args>…] '<prompt>'` launch shape WITHOUT a
+ * trailing newline — the CLI's registry binary, then the opted-in fixed args
+ * (Claude's inline `--settings` from {@link buildClaudeSettingsArg}; every other
+ * CLI's registry {@link TerminalCliInfo.autoApproveArg}), then the prompt
+ * POSIX-single-quoted via {@link shellSingleQuote}. This is the canonical command
+ * string; the two transports add what each needs:
  *   - typed into an interactive shell → {@link buildCliLaunchCommand} appends `\r`;
  *   - baked into the launch PTY's `$SHELL -l -i -c '<this>; exec …'` argv → used
  *     as-is (no `\r`: it's an argv element, not bytes fed to the line editor, so
@@ -198,17 +259,27 @@ export function buildCliLaunchArgString(
   opts: BuildCliLaunchOptions = {},
 ): string {
   const info: TerminalCliInfo = TERMINAL_CLIS[cli];
-  const preApprove =
-    opts.mcpPreApprove === true && info.mcpPreApproveArg ? `${info.mcpPreApproveArg} ` : '';
-  // Promptless: emit a bare `<bin>` (plus any opted-in pre-approval). `preApprove`
+  // Registry-fixed fixed args between `<bin>` and the prompt (never user input):
+  // Claude's inline `--settings` (server trust + OK auto-approve allow/deny),
+  // computed inline because two independent opt-ins share one settings object;
+  // every other CLI uses its registry `autoApproveArg` when `autoApproveOkTools`
+  // is on (codex's `-c` override today).
+  const fixedArgs =
+    cli === 'claude'
+      ? buildClaudeSettingsArg(opts)
+      : opts.autoApproveOkTools === true && info.autoApproveArg
+        ? info.autoApproveArg
+        : '';
+  const fixedPrefix = fixedArgs ? `${fixedArgs} ` : '';
+  // Promptless: emit a bare `<bin>` (plus any opted-in fixed args). `fixedPrefix`
   // carries its own trailing separator space, redundant with nothing after it.
   if (prompt == null || prompt.length === 0) {
-    return `${info.bin} ${preApprove}`.trimEnd();
+    return `${info.bin} ${fixedPrefix}`.trimEnd();
   }
   // CLIs whose positional arg isn't the prompt (e.g. OpenCode, whose positional
   // is the project dir) carry it via a flag instead.
   const promptFlag = info.promptFlag ? `${info.promptFlag} ` : '';
-  return `${info.bin} ${preApprove}${promptFlag}${shellSingleQuote(prompt)}`;
+  return `${info.bin} ${fixedPrefix}${promptFlag}${shellSingleQuote(prompt)}`;
 }
 
 /**

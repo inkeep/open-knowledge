@@ -841,6 +841,10 @@ msgstr ""
 msgid "Append-only log of what changed."
 msgstr ""
 
+#: src/components/settings/TerminalSection.tsx
+msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr ""
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
 msgstr ""
@@ -914,6 +918,10 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Authorize in browser"
+msgstr ""
+
+#: src/components/settings/TerminalSection.tsx
+msgid "Auto-approve settings not yet loaded — try again in a moment"
 msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
@@ -1416,6 +1424,10 @@ msgstr ""
 
 #: src/components/AuthModal.tsx
 msgid "Code expired — please try again"
+msgstr ""
+
+#: src/components/settings/TerminalSection.tsx
+msgid "Codex will still ask until you run \"ok init\" in a terminal for this project."
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
@@ -3052,6 +3064,10 @@ msgstr ""
 msgid "Failed to update property"
 msgstr ""
 
+#: src/components/settings/TerminalSection.tsx
+msgid "Failed to update the auto-approve setting — {detail}"
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Failed to update the project sync default — {detail}"
 msgstr ""
@@ -3867,6 +3883,10 @@ msgstr ""
 
 #: src/editor/components/Pdf.tsx
 msgid "Layout options"
+msgstr ""
+
+#: src/components/settings/TerminalSection.tsx
+msgid "Let agents use OpenKnowledge without asking"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -6903,9 +6923,12 @@ msgstr ""
 msgid "Terminal sessions"
 msgstr ""
 
-#: src/components/settings/TerminalSection.tsx
 #: src/components/TerminalGate.tsx
 msgid "Terminal settings not loaded yet — try again in a moment."
+msgstr ""
+
+#: src/components/settings/TerminalSection.tsx
+msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr ""
 
 #: src/components/PropertyWidgets.tsx

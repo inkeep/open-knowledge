@@ -17,6 +17,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import type {
   ClaudeReadiness,
   CliReadiness,
@@ -88,6 +90,9 @@ const WIRED_FOREIGN_PROJECT: ClaudeReadiness = {
   mcpPreApprovable: false,
 };
 const ON_PATH: CliReadiness = { onPath: 'present' };
+/** Codex on PATH AND OK's `open-knowledge` server already in the codex config —
+ *  the gate that lets the launch add the `-c` tool-auto-approve override. */
+const CODEX_OK_CONFIGURED: CliReadiness = { onPath: 'present', okServerConfigured: true };
 
 function makeBridge(preflight: ClaudeReadiness = WIRED, cliReadiness: CliReadiness = ON_PATH) {
   const dataSubs: Array<(m: OkPtyData) => void> = [];
@@ -147,13 +152,47 @@ function launchInputWrites(inputMock: ReturnType<typeof mock>): string[] {
 }
 
 /**
- * Claude's MCP pre-approval prefix (built from MCP_SERVER_NAME in core's
- * terminal-launch.ts): the in-app launch carries `--settings` ahead of the
- * prompt to pre-trust OK's project `.mcp.json` server — but ONLY when the
- * preflight reports `mcpPreApprovable` (the project entry is verified as OK's
- * own). Codex/Cursor never carry it, so this prefix is claude-only.
+ * Claude's inline `--settings` prefix (built from MCP_SERVER_NAME in core's
+ * terminal-launch.ts): a WIRED launch carries it ahead of the prompt — but ONLY
+ * when the preflight reports `mcpPreApprovable` (the project entry is verified as
+ * OK's own). It bundles server trust (`enabledMcpjsonServers`) AND — since the
+ * `agents.autoApproveOkTools` preference defaults on and most tests below render
+ * without a ConfigProvider — the OK-tool auto-approve allow-list plus the
+ * gated-tool deny-list. Both ride the same `mcpPreApprovable` gate, so a
+ * foreign/unverified entry bakes neither (the "bare" tests below). Codex/Cursor
+ * never carry it, so this prefix is claude-only.
  */
-const CLAUDE_PRE = `--settings '{"enabledMcpjsonServers":["open-knowledge"]}'`;
+const CLAUDE_PRE = `--settings '{"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"deny":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install"]}}'`;
+
+/** What a WIRED Claude launch bakes once the user turns the auto-approve toggle
+ *  OFF: server trust survives (it is a separate opt-in), the permissions block
+ *  does not. The contrast against {@link CLAUDE_PRE} is what makes the default-on
+ *  assertions above meaningful. */
+const CLAUDE_TRUST_ONLY = `--settings '{"enabledMcpjsonServers":["open-knowledge"]}'`;
+
+/**
+ * Render under a ConfigContext whose user scope has `agents.autoApproveOkTools`
+ * explicitly false — the OFF path of the feature's primary safety control. The
+ * panel reads the context nullably (`use(ConfigContext)`), so every other test in
+ * this file exercises the `?? true` default-on fallback instead.
+ */
+function renderWithAutoApproveOff(ui: ReactElement) {
+  const value = {
+    userConfig: { agents: { autoApproveOkTools: false } },
+    userBinding: null,
+    userSynced: true,
+    projectBinding: null,
+    projectConfig: null,
+    projectSynced: false,
+    projectLocalBinding: null,
+    projectLocalConfig: null,
+    projectLocalSynced: false,
+    okignoreBinding: null,
+    okignoreSynced: false,
+    merged: null,
+  } as unknown as ConfigContextValue;
+  return render(<ConfigContext.Provider value={value}>{ui}</ConfigContext.Provider>);
+}
 
 describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', () => {
   beforeEach(() => {
@@ -270,6 +309,51 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     expect(terminal.cliPreflight.mock.calls[0]?.[0]).toBe('codex');
     expect(bakedLaunch(terminal.create)).toBe("codex 'hi'");
     expect(launchInputWrites(terminal.input)).toEqual([]);
+  });
+
+  test("codex auto-approves OK tools (-c approve) when OK's server is configured in codex", async () => {
+    // No ConfigProvider in this harness → the user preference defaults on, so the
+    // launch bakes the per-server `-c` override once codex reports the OK entry.
+    const { bridge, terminal } = makeBridge(WIRED, CODEX_OK_CONFIGURED);
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(terminal.create)).toBe(
+      `codex -c 'mcp_servers.open-knowledge.default_tools_approval_mode="approve"' 'hi'`,
+    );
+  });
+
+  test('codex stays BARE (no -c) when OK is not configured in codex — the launch never breaks', async () => {
+    const { bridge, terminal } = makeBridge(WIRED, {
+      onPath: 'present',
+      okServerConfigured: false,
+    });
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(terminal.create)).toBe("codex 'hi'");
+    expect(bakedLaunch(terminal.create)).not.toContain('-c');
+  });
+
+  test('toggle OFF: a WIRED claude launch keeps server trust but bakes no permissions block', async () => {
+    const { bridge, terminal } = makeBridge(WIRED);
+    renderWithAutoApproveOff(
+      <TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(terminal.create)).toBe(`claude ${CLAUDE_TRUST_ONLY} 'hi'`);
+    expect(bakedLaunch(terminal.create)).not.toContain('permissions');
+  });
+
+  test("toggle OFF: codex stays BARE (no -c) even when OK's server is configured", async () => {
+    const { bridge, terminal } = makeBridge(WIRED, CODEX_OK_CONFIGURED);
+    renderWithAutoApproveOff(
+      <TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(terminal.create)).toBe("codex 'hi'");
   });
 
   test('cursor launch bakes the cursor-agent command (the agent CLI, not the editor)', async () => {

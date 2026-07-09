@@ -846,6 +846,10 @@ msgstr "API key set"
 msgid "Append-only log of what changed."
 msgstr "Append-only log of what changed."
 
+#: src/components/settings/TerminalSection.tsx
+msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
 msgstr "Apply link"
@@ -920,6 +924,10 @@ msgstr "Authoritative content; mirrored verbatim everywhere it's referenced."
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Authorize in browser"
 msgstr "Authorize in browser"
+
+#: src/components/settings/TerminalSection.tsx
+msgid "Auto-approve settings not yet loaded — try again in a moment"
+msgstr "Auto-approve settings not yet loaded — try again in a moment"
 
 #: src/components/FolderTimelineCard.tsx
 #: src/components/TimelinePanel.tsx
@@ -1422,6 +1430,10 @@ msgstr "Code copied to clipboard"
 #: src/components/AuthModal.tsx
 msgid "Code expired — please try again"
 msgstr "Code expired — please try again"
+
+#: src/components/settings/TerminalSection.tsx
+msgid "Codex will still ask until you run \"ok init\" in a terminal for this project."
+msgstr "Codex will still ask until you run \"ok init\" in a terminal for this project."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Collaborators see your in-progress edits as soon as they sync."
@@ -3057,6 +3069,10 @@ msgstr "Failed to update attachment location — {detail}"
 msgid "Failed to update property"
 msgstr "Failed to update property"
 
+#: src/components/settings/TerminalSection.tsx
+msgid "Failed to update the auto-approve setting — {detail}"
+msgstr "Failed to update the auto-approve setting — {detail}"
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Failed to update the project sync default — {detail}"
 msgstr "Failed to update the project sync default — {detail}"
@@ -3873,6 +3889,10 @@ msgstr "Layout"
 #: src/editor/components/Pdf.tsx
 msgid "Layout options"
 msgstr "Layout options"
+
+#: src/components/settings/TerminalSection.tsx
+msgid "Let agents use OpenKnowledge without asking"
+msgstr "Let agents use OpenKnowledge without asking"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Let Tab leave the source editor instead of indenting."
@@ -6908,10 +6928,13 @@ msgstr "Terminal failed to load"
 msgid "Terminal sessions"
 msgstr "Terminal sessions"
 
-#: src/components/settings/TerminalSection.tsx
 #: src/components/TerminalGate.tsx
 msgid "Terminal settings not loaded yet — try again in a moment."
 msgstr "Terminal settings not loaded yet — try again in a moment."
+
+#: src/components/settings/TerminalSection.tsx
+msgid "Terminal settings not yet loaded — try again in a moment"
+msgstr "Terminal settings not yet loaded — try again in a moment"
 
 #: src/components/PropertyWidgets.tsx
 msgid "Text"

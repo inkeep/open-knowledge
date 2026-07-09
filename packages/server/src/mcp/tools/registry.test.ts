@@ -19,10 +19,12 @@
  * This test guards both ends: the 17 retained tools are present; none of the
  * names in RETIRED_TOOL_NAMES are.
  */
+
 import { describe, expect, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { OK_GATED_TOOL_NAMES } from '@inkeep/open-knowledge-core';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { registerAllTools } from './index.ts';
 import type { ServerInstance } from './shared.ts';
@@ -149,5 +151,60 @@ describe('registerAllTools — 19-tool surface (SPEC.md §9.1 / AC8 + PRD-6935 i
   test('no duplicate registrations', () => {
     const names = captureRegistered();
     expect(names.length).toBe(new Set(names).size);
+  });
+});
+
+/**
+ * Guards the docked terminal's auto-approve policy (core `terminal-launch.ts`)
+ * against this registry. Claude's allow-rule is the open-ended `mcp__<server>`
+ * (every OK tool); safety is subtracted back by the CLOSED `OK_GATED_TOOL_NAMES`
+ * deny-list. Left uncoupled, a newly registered destructive tool would inherit
+ * auto-approval the moment it shipped.
+ *
+ * Every registered tool must therefore appear in exactly one of the two lists —
+ * adding a tool fails here until it is consciously classified as gated or
+ * auto-approved.
+ *
+ * On the auto-approved side: `write` / `edit` / `checkpoint` / `restore_version`
+ * / `resolve_conflict` all mutate KB content, but the shadow repo versions every
+ * write, so `history` + `restore_version` recover them. `exec` is a read-only
+ * allowlisted sandbox. `install` is NOT here — it projects executable skill
+ * scripts into the agent's own config dir, which no KB version history undoes.
+ */
+const OK_AUTO_APPROVED_TOOLS = [
+  'exec',
+  'search',
+  'history',
+  'links',
+  'skills',
+  'config',
+  'palette',
+  'preview_url',
+  'write',
+  'edit',
+  'checkpoint',
+  'restore_version',
+  'conflicts',
+  'resolve_conflict',
+  'workflow',
+] as const;
+
+describe('docked-terminal auto-approve classification', () => {
+  test('every registered tool is classified as gated or auto-approved', () => {
+    expect(new Set([...OK_AUTO_APPROVED_TOOLS, ...OK_GATED_TOOL_NAMES])).toEqual(
+      new Set(captureRegistered()),
+    );
+  });
+
+  test('no tool is both gated and auto-approved', () => {
+    const gated = new Set<string>(OK_GATED_TOOL_NAMES);
+    expect(OK_AUTO_APPROVED_TOOLS.filter((name) => gated.has(name))).toEqual([]);
+  });
+
+  test('the deny-list only names tools that actually exist', () => {
+    const registered = new Set(captureRegistered());
+    for (const gated of OK_GATED_TOOL_NAMES) {
+      expect(registered).toContain(gated);
+    }
   });
 });

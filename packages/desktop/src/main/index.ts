@@ -2868,6 +2868,17 @@ function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promis
 function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
   return resolveCliOnPath({
     probe: () => probeLoginShellOnPath(cliProbeArgs(TERMINAL_CLIS[cli].bin)),
+    // Codex-only: report whether OK's `open-knowledge` server is already in the
+    // user's codex config, so the launch site adds the `-c` tool-auto-approve
+    // override only when it won't break config load (a `-c` under an undefined
+    // server id makes codex fail to load its config). `classifyExistingMcpEntry`
+    // never throws; `resolveCliOnPath` guards it anyway.
+    ...(cli === 'codex'
+      ? {
+          okServerConfigured: () =>
+            classifyExistingMcpEntry(EDITOR_TARGETS.codex, '', osHomedir()).kind === 'present',
+        }
+      : {}),
   });
 }
 

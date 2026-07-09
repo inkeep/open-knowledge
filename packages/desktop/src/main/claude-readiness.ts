@@ -182,6 +182,12 @@ export interface ResolveCliOnPathDeps {
   /** Runs the login-shell PATH probe for the CLI's binary; resolves the exit
    *  code or `null` (probe failed → UNKNOWN). */
   probe(): Promise<number | null>;
+  /** Codex-only: whether OK's MCP server is already configured in the user's
+   *  codex config (gates the per-launch `-c` auto-approve override). Synchronous;
+   *  a throw here degrades to `false` (treated as not configured) rather than
+   *  failing the whole readiness probe. Omit for CLIs where it does not apply —
+   *  the result then carries no `okServerConfigured`. */
+  okServerConfigured?(): boolean;
 }
 
 /**
@@ -200,7 +206,18 @@ export async function resolveCliOnPath(deps: ResolveCliOnPathDeps): Promise<CliR
     );
     return null;
   });
-  return { onPath: interpretClaudeProbe(code) };
+  const onPath = interpretClaudeProbe(code);
+  if (deps.okServerConfigured === undefined) return { onPath };
+  let okServerConfigured = false;
+  try {
+    okServerConfigured = deps.okServerConfigured();
+  } catch (err) {
+    getLogger('cli-readiness').warn(
+      { err },
+      'okServerConfigured probe threw; treating the OK server as not configured',
+    );
+  }
+  return { onPath, okServerConfigured };
 }
 
 export interface ResolveCliInstalledMapDeps {

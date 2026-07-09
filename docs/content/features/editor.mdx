@@ -167,6 +167,12 @@ The menu is organized into two sections. **Terminal** (desktop app only) leads: 
 
 The empty-state create composer on a fresh project carries the same Desktop / Terminal split: its Desktop rows pick the default agent the **Create** button uses, while its Terminal rows (desktop only, disabled until the workspace resolves) launch any of the four CLIs with the brief you typed.
 
+When Claude or Codex launches from the docked terminal, OpenKnowledge auto-approves its own MCP tools, so the agent searches, reads, and edits the knowledge base without a per-call approval prompt. Claude additionally auto-approves the `ok open` command. OpenCode, Cursor, and Pi launch unchanged.
+
+Four tools stay gated: `delete` and `move` (knowledge-base-wide blast radius), `share_link` (publishes content), and `install` (writes executable skill scripts into the agent's own config directory). For Claude, everything outside OpenKnowledge still prompts too, including shell commands and non-OK file edits. The guarantee is best-effort per agent: Claude uses an explicit allow/deny list, while Codex uses its own **approve** mode (auto-approve except potentially-unsafe actions) and only gets it once its OpenKnowledge entry is already configured, so run `ok init` for Codex if it keeps asking.
+
+Turn it off in **Settings → Terminal → “Let agents use OpenKnowledge without asking”** ([`agents.autoApproveOkTools`](/docs/reference/configuration)). It applies to every project on this machine and defaults on.
+
 ## Command palette
 
 `Cmd+K` opens the command palette in both the desktop app and the browser. Type to jump to any file or folder, run create commands, open the graph or settings, or dispatch to an agent; recently opened entries surface first. In the desktop app it also switches projects and worktrees.

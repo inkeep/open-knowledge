@@ -31,6 +31,7 @@ export {
   buildClaudeLaunchCommand,
   buildCliLaunchArgString,
   buildCliLaunchCommand,
+  OK_GATED_TOOL_NAMES,
   shellSingleQuote,
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,

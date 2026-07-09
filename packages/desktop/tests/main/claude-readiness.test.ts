@@ -279,6 +279,26 @@ describe('resolveCliOnPath', () => {
       onPath: 'unknown',
     });
   });
+
+  test('folds okServerConfigured when the codex-only dep is supplied', async () => {
+    expect(
+      await resolveCliOnPath({ probe: () => Promise.resolve(0), okServerConfigured: () => true }),
+    ).toEqual({ onPath: 'present', okServerConfigured: true });
+    expect(
+      await resolveCliOnPath({ probe: () => Promise.resolve(0), okServerConfigured: () => false }),
+    ).toEqual({ onPath: 'present', okServerConfigured: false });
+  });
+
+  test('a throwing okServerConfigured dep degrades to false (never fails the probe)', async () => {
+    expect(
+      await resolveCliOnPath({
+        probe: () => Promise.resolve(0),
+        okServerConfigured: () => {
+          throw new Error('codex config read blew up');
+        },
+      }),
+    ).toEqual({ onPath: 'present', okServerConfigured: false });
+  });
 });
 
 describe('resolveCliInstalledMap', () => {

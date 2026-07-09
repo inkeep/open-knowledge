@@ -4,6 +4,7 @@ import {
   buildClaudeLaunchCommand,
   buildCliLaunchArgString,
   buildCliLaunchCommand,
+  OK_GATED_TOOL_NAMES,
   shellSingleQuote,
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
@@ -13,6 +14,8 @@ import {
 // `.mcp.json` server, mirrored here so the expectation breaks loudly if the
 // shape (or the canonical server name) ever changes.
 const CLAUDE_PREAPPROVE = `--settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"]}'`;
+const OK_ALLOW = `["mcp__${MCP_SERVER_NAME}","Bash(ok open:*)"]`;
+const OK_DENY = `["mcp__${MCP_SERVER_NAME}__delete","mcp__${MCP_SERVER_NAME}__move","mcp__${MCP_SERVER_NAME}__share_link","mcp__${MCP_SERVER_NAME}__install"]`;
 
 describe('TERMINAL_CLI_IDS', () => {
   it('lists the CLIs in auto-pick priority order (claude > codex > opencode > cursor > pi)', () => {
@@ -179,6 +182,26 @@ describe('buildCliLaunchArgString promptless (New chat)', () => {
     expect(arg.endsWith(' ')).toBe(false);
   });
 
+  it('still applies Claude OK auto-approve on a promptless launch, alone and merged with pre-approval', () => {
+    // The cross-product of the two independent branches: with no prompt to trail
+    // it, `trimEnd()` must strip the separator space WITHOUT eating the settings
+    // arg. A regression here would silently drop auto-approve from "New chat".
+    const autoOnly = buildCliLaunchArgString('claude', null, { autoApproveOkTools: true });
+    expect(autoOnly).toBe(
+      `claude --settings '{"permissions":{"allow":${OK_ALLOW},"deny":${OK_DENY}}}'`,
+    );
+    expect(autoOnly.endsWith(' ')).toBe(false);
+
+    const both = buildCliLaunchArgString('claude', null, {
+      mcpPreApprove: true,
+      autoApproveOkTools: true,
+    });
+    expect(both).toBe(
+      `claude --settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"deny":${OK_DENY}}}'`,
+    );
+    expect(both.endsWith(' ')).toBe(false);
+  });
+
   it('never adds --prompt or a positional to a promptless opencode launch, even opted in', () => {
     expect(buildCliLaunchArgString('opencode', '', { mcpPreApprove: true })).toBe('opencode');
   });
@@ -215,6 +238,58 @@ describe('claude MCP pre-approval', () => {
     // pre-approval would target a server name the registered entry never uses.
     expect(buildCliLaunchCommand('claude', 'hi', { mcpPreApprove: true })).toContain(
       `["${MCP_SERVER_NAME}"]`,
+    );
+  });
+});
+
+describe('OK auto-approve (autoApproveOkTools)', () => {
+  it('adds the OK allow-list + destructive deny-list to Claude --settings when on', () => {
+    expect(buildCliLaunchArgString('claude', 'hi', { autoApproveOkTools: true })).toBe(
+      `claude --settings '{"permissions":{"allow":${OK_ALLOW},"deny":${OK_DENY}}}' 'hi'`,
+    );
+  });
+
+  it('merges server-trust + auto-approve into one --settings object when both on', () => {
+    expect(
+      buildCliLaunchArgString('claude', 'hi', { mcpPreApprove: true, autoApproveOkTools: true }),
+    ).toBe(
+      `claude --settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"deny":${OK_DENY}}}' 'hi'`,
+    );
+  });
+
+  it('keeps every gated tool in the deny list (never silently auto-approved)', () => {
+    const arg = buildCliLaunchArgString('claude', 'hi', { autoApproveOkTools: true });
+    expect(OK_GATED_TOOL_NAMES).toEqual(['delete', 'move', 'share_link', 'install']);
+    for (const denied of OK_GATED_TOOL_NAMES) {
+      expect(arg).toContain(`"mcp__${MCP_SERVER_NAME}__${denied}"`);
+    }
+  });
+
+  it('adds the codex per-server `-c approve` override only when on', () => {
+    expect(buildCliLaunchArgString('codex', 'hi', { autoApproveOkTools: true })).toBe(
+      `codex -c 'mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"' 'hi'`,
+    );
+    expect(buildCliLaunchArgString('codex', 'hi')).toBe("codex 'hi'");
+  });
+
+  it('is claude/codex only — cursor/opencode/pi never get an auto-approve arg', () => {
+    expect(buildCliLaunchArgString('cursor', 'hi', { autoApproveOkTools: true })).toBe(
+      "cursor-agent 'hi'",
+    );
+    expect(buildCliLaunchArgString('opencode', 'hi', { autoApproveOkTools: true })).toBe(
+      "opencode --prompt 'hi'",
+    );
+    expect(buildCliLaunchArgString('pi', 'hi', { autoApproveOkTools: true })).toBe("pi 'hi'");
+  });
+
+  it('keeps the prompt the final escaped arg with auto-approve on (injection inert)', () => {
+    const arg = buildCliLaunchArgString('claude', "'; rm -rf / #", { autoApproveOkTools: true });
+    expect(arg.endsWith("''\\''; rm -rf / #'")).toBe(true);
+  });
+
+  it('emits a bare `<bin>` for a promptless auto-approve launch with the fixed args', () => {
+    expect(buildCliLaunchArgString('codex', null, { autoApproveOkTools: true })).toBe(
+      `codex -c 'mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"'`,
     );
   });
 });

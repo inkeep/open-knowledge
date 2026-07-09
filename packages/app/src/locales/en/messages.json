@@ -863,6 +863,7 @@
     "KkEAud": ["Create a file from the current document or folder context."],
     "KmydK6": ["Bold"],
     "KnoB--": ["Will be saved as <0>", ["sanitized"], "</0>."],
+    "Kr3VPS": ["Codex will still ask until you run \"ok init\" in a terminal for this project."],
     "KsAPaB": ["This branch is checked out in:"],
     "KszKI_": ["Skill level"],
     "KujtjC": ["Find"],
@@ -1674,6 +1675,7 @@
     "fcgvCA": ["Claude"],
     "fiMNLl": ["Sync settings not yet loaded — try again in a moment"],
     "fj5YiP": ["Downloads a fresh copy from GitHub."],
+    "fnlBN4": ["Auto-approve settings not yet loaded — try again in a moment"],
     "fo0VXg": ["Uninstall"],
     "fqSfXY": ["Replace"],
     "fuJZKk": ["Search branches"],
@@ -1761,6 +1763,7 @@
     "hYgDIe": ["Create"],
     "hZoBHK": ["Empty starting content"],
     "haHgQj": ["Copied relative path"],
+    "habOU_": ["Failed to update the auto-approve setting — ", ["detail"]],
     "he3ygx": ["Copy"],
     "hjO0Mq": ["Add tab"],
     "hmYd9H": [
@@ -1812,6 +1815,7 @@
     "ig5vUe": ["Failed to load file"],
     "iilQXA": ["Folder duplicated"],
     "ijLc3m": ["Bullet list"],
+    "ilodsp": ["Let agents use OpenKnowledge without asking"],
     "ipn17C": [
       "The <0>type</0> every document created from this template gets (e.g. <1>research-note</1>). Keeps new docs Open Knowledge Format–conformant."
     ],
@@ -2002,6 +2006,9 @@
     ],
     "nNYV3Y": ["and ", ["remaining"], " more"],
     "nP-KFo": ["New ", ["0"], " chat"],
+    "nP76lk": [
+      "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+    ],
     "nTwL53": ["Open a doc to share its URL."],
     "nUNZL4": ["Ask ", ["0"]],
     "nWv1ja": ["Manage hidden files in Settings → Ignore patterns."],
@@ -2328,6 +2335,7 @@
     "w4hMYl": [
       "Could not read branch state for this project. Close this dialog and open the share link again."
     ],
+    "w6sBjd": ["Terminal settings not yet loaded — try again in a moment"],
     "w7SsvI": ["That folder isn't an OpenKnowledge project yet. Initialize it and open?"],
     "w7nm4K": ["Indented blockquote for citations."],
     "wDgmsr": ["\"", ["0"], "\" install refreshed (", ["1"], ")"],

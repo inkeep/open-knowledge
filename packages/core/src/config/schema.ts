@@ -205,6 +205,32 @@ export const ConfigSchema = z.looseObject({
         .default(true),
     })
     .default({ wordWrap: true }),
+  // USER-scope: auto-approve OpenKnowledge's OWN MCP tools (and, on Claude, the
+  // `ok open` verb) for agents launched from the docked terminal, so the KB
+  // read/write loop runs without a per-call approval wall. Destructive/exfil OK
+  // tools stay gated (Claude deny-list); other shell + non-OK edits are
+  // untouched. A per-machine personal preference (user scope); default on.
+  //
+  // Deliberate namespace: every sibling here names a feature area, `agents` names
+  // the execution domain instead. Agent-facing policy is not the terminal's — the
+  // deep-link GUI handoff dispatches the same agents to the same tools and will
+  // reuse this leaf, so `terminal.*` would have been the wrong home the moment
+  // that lands. Keys under `agents.*` are the user's cross-surface agent policy;
+  // config paths are a user-facing `~/.ok/global.yml` contract and hard to rename.
+  agents: z
+    .looseObject({
+      autoApproveOkTools: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description:
+            "Auto-approve OpenKnowledge's own tools (and `ok open` on Claude) for agents launched from the built-in terminal. Destructive tools (delete/move/share/install) still prompt. Per-machine personal preference (user scope).",
+        })
+        .default(true),
+    })
+    .default({ autoApproveOkTools: true }),
   // `autoSync.enabled` is a per-machine, per-project preference: each
   // teammate decides independently whether their machine should auto-pull /
   // auto-push commits for *this* project. Project scope would bleed across

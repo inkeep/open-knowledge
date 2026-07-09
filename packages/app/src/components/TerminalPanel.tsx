@@ -12,7 +12,8 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import { useTheme } from 'next-themes';
-import { useEffect, useRef, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
+import { ConfigContext } from '@/lib/config-context';
 import type { ClaudeReadiness, OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { cn } from '@/lib/utils';
 import { ClaudeReadinessBanner } from './ClaudeReadinessBanner';
@@ -190,12 +191,21 @@ function TerminalSession({
   // the missing-CLI banner. Claude uses its own readiness banner instead.
   const [missingCli, setMissingCli] = useState<TerminalCli | null>(null);
 
+  // Auto-approve OK's own tools for the baked launch (user-scope preference,
+  // default on). Read the config context nullably (`use`, not `useConfigContext`)
+  // so a TerminalPanel mounted without a ConfigProvider degrades to the default
+  // rather than throwing. Held in a ref so a config change never re-runs the mount
+  // effect (which would respawn the PTY) — the launch reads it once.
+  const configCtx = use(ConfigContext);
+  const autoApproveOkToolsRef = useRef(configCtx?.userConfig?.agents?.autoApproveOkTools ?? true);
+
   // Keep the callbacks fresh without re-running the mount effect — a new
   // callback identity must NOT tear down and respawn the PTY.
   useEffect(() => {
     onExitRef.current = onExit;
     onTitleChangeRef.current = onTitleChange;
     onPtyIdRef.current = onPtyId;
+    autoApproveOkToolsRef.current = configCtx?.userConfig?.agents?.autoApproveOkTools ?? true;
   });
 
   useEffect(() => {
@@ -549,6 +559,11 @@ function TerminalSession({
             if (!cancelled) setReadiness(fresh);
             return buildCliLaunchArgString('claude', intent.prompt, {
               mcpPreApprove: fresh.mcpPreApprovable === true,
+              // Auto-approve OK's tools only when the project's `.mcp.json` entry is
+              // verified OK's own (same gate as server-trust): auto-approving an
+              // unverified/foreign same-named server's tools is the RCE risk
+              // `isOwnManagedEntry` exists to prevent.
+              autoApproveOkTools: autoApproveOkToolsRef.current && fresh.mcpPreApprovable === true,
             });
           }
           // Not confirmed present (not-found OR unknown) — suppress the bake and
@@ -581,7 +596,18 @@ function TerminalSession({
           if (cancelled) return undefined;
           res = await bridge.terminal.cliPreflight(intent.cli);
         }
-        if (res.onPath === 'present') return buildCliLaunchArgString(intent.cli, intent.prompt);
+        if (res.onPath === 'present') {
+          // Codex auto-approve rides three gates: the user preference, codex on
+          // PATH (this branch), AND OK's server already configured in codex —
+          // else the `-c` override would break codex's config load. Other CLIs
+          // (cursor/opencode/pi) never receive it.
+          return buildCliLaunchArgString(intent.cli, intent.prompt, {
+            autoApproveOkTools:
+              intent.cli === 'codex' &&
+              res.okServerConfigured === true &&
+              autoApproveOkToolsRef.current,
+          });
+        }
       } catch (err) {
         console.warn('[terminal] cliPreflight failed', { cli: intent.cli, err });
       }

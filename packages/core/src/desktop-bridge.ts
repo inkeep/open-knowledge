@@ -912,6 +912,25 @@ export interface ClaudeReadiness {
  *  contract + the app renderer copy (drift-tested). */
 export interface CliReadiness {
   readonly onPath: 'present' | 'not-found' | 'unknown';
+  /** Codex-only: whether OK's `open-knowledge` MCP server is already configured
+   *  in the user's codex config. Gates the per-launch `-c` tool-auto-approve
+   *  override — codex fails to load its config if `-c` targets a server that is
+   *  not defined, so the launch site adds the override only when this is true.
+   *  Absent for CLIs where it does not apply.
+   *
+   *  DELIBERATELY WEAKER THAN CLAUDE'S GATE, and not its security equivalent.
+   *  This is existence-by-name (any object under `mcp_servers.open-knowledge`),
+   *  whereas claude's `mcpPreApprovable` runs `isOwnManagedEntry` to verify the
+   *  entry is byte-exactly OK's own. The asymmetry is sound because the two read
+   *  different files: claude's is a PROJECT-scoped `.mcp.json` that travels in a
+   *  clone, so a same-named foreign entry is a real RCE vector; codex's target is
+   *  `scope: 'global'` (`~/.codex/config.toml`, resolved from `home`, never from
+   *  cwd), so anyone able to plant a foreign entry there can already register
+   *  arbitrary MCP servers and has won regardless. Tightening this to an exact
+   *  ownership match would also fail closed on a legitimate entry carrying any
+   *  extra codex key, silently disabling auto-approve for real users. This gate's
+   *  job is availability (don't break codex's config load), not authorization. */
+  readonly okServerConfigured?: boolean;
 }
 
 export interface OkDesktopBridge {
