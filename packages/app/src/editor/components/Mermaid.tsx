@@ -768,6 +768,26 @@ const FLASHABLE_LABEL_SELECTOR =
  * without a restart dance. Returns the count flashed.
  */
 /**
+ * Rendered label occurrences whose text matches `value`, minus `exclude` (and
+ * anything nested within an excluded element, either direction). Used by the
+ * live-typing preview to find the OTHER occurrences of the token being edited —
+ * e.g. the second actor box of the sequence participant under the inline input.
+ */
+export function collectLinkedLabelTargets(
+  container: HTMLElement,
+  value: string,
+  exclude: readonly Element[] = [],
+): Element[] {
+  const needle = value.trim();
+  if (!needle) return [];
+  return Array.from(container.querySelectorAll<Element>(FLASHABLE_LABEL_SELECTOR)).filter(
+    (el) =>
+      !exclude.some((ex) => ex === el || ex.contains(el) || el.contains(ex)) &&
+      (el.textContent ?? '').trim() === needle,
+  );
+}
+
+/**
  * Pulse one label's glyph paint to the agent accent and back, twice, by
  * toggling INLINE `!important` fill/color. Why inline `!important` and not a CSS
  * class animation: mermaid injects a `<style>` into every rendered SVG whose
@@ -1181,6 +1201,36 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
       const prevLabelVisibility = labelP.style.visibility;
       labelP.style.visibility = 'hidden';
 
+      // Live preview: mirror each keystroke into the OTHER rendered occurrences
+      // of the same token (e.g. a sequence participant's second actor box) so
+      // the whole diagram tracks the edit before commit. DOM-only — `Y.Text` is
+      // untouched until commit, so a concurrent editor sees nothing mid-type,
+      // and a remote edit that re-renders tears this down via the edit-session
+      // cleanup. Each target's `innerHTML` is captured so cleanup can restore it
+      // (Escape reverts; commit re-renders over it — mermaid re-lays-out box
+      // geometry, which stays fixed during the preview).
+      const visibleLabel = (labelSpan.textContent ?? '').trim();
+      const linkedPreview: Array<{ el: Element; html: string }> = containerRef.current
+        ? collectLinkedLabelTargets(containerRef.current, visibleLabel, [labelSpan, labelP]).map(
+            (el) => ({ el, html: el.innerHTML }),
+          )
+        : [];
+      function syncLinkedPreview(): void {
+        const next = input.value;
+        for (const { el } of linkedPreview) {
+          // Write into the innermost paint carrier so the occurrence keeps its
+          // glyph fill. Mermaid paints the visible color on an inner `<tspan>`
+          // (SVG text) or `<p>` (foreignObject label) while the outer element
+          // carries only a background-matching fill (see the input-color note
+          // above). Replacing the whole element's `textContent` drops that
+          // carrier, so the preview text falls back to the near-invisible
+          // background fill and reads as a faded "ghost". Targeting the carrier
+          // keeps it the same weight/color as the committed label.
+          const carrier = el.querySelector('tspan') ?? el.querySelector('p') ?? el;
+          carrier.textContent = next;
+        }
+      }
+
       document.body.appendChild(input);
       // Position the input *after* it's in the DOM so we can use its
       // own measured metrics — the browser hasn't laid it out until
@@ -1286,6 +1336,7 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
       // Keep the overlay pinned if the page scrolls or the label moves.
       window.addEventListener('scroll', positionInput, true);
       window.addEventListener('resize', positionInput);
+      input.addEventListener('input', syncLinkedPreview);
 
       let done = false;
       function cleanup(): void {
@@ -1294,7 +1345,12 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
         window.removeEventListener('resize', positionInput);
         input.removeEventListener('keydown', onKeyDown);
         input.removeEventListener('blur', onBlur);
+        input.removeEventListener('input', syncLinkedPreview);
         input.remove();
+        // Restore the live-previewed occurrences to their original markup. On
+        // Escape this reverts them; on commit the ensuing re-render replaces
+        // them with the new value (and PR-1's flash fires on the linked ones).
+        for (const { el, html } of linkedPreview) el.innerHTML = html;
         labelP.style.visibility = prevLabelVisibility;
         if (nodeShape) {
           if (nodeShapeStrokeBefore === null) {

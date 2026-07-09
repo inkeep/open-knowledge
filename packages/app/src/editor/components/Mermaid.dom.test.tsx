@@ -79,7 +79,7 @@ mock.module('@panzoom/panzoom', () => ({
   default: createPanzoom,
 }));
 
-const { MermaidView, flashLinkedLabels } = await import('./Mermaid');
+const { MermaidView, flashLinkedLabels, collectLinkedLabelTargets } = await import('./Mermaid');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
 
 function renderMermaidView(chart: string) {
@@ -337,5 +337,35 @@ describe('flashLinkedLabels', () => {
     const blank = document.createElement('div');
     blank.innerHTML = '<text class="actor"> </text><text class="actor"> </text>';
     expect(flashLinkedLabels(blank, '   ')).toBe(0);
+  });
+});
+
+describe('collectLinkedLabelTargets (live-preview matching)', () => {
+  test('returns the other occurrences of the token, excluding the edited one', () => {
+    const c = document.createElement('div');
+    c.innerHTML =
+      '<text class="actor" id="top">Alice</text>' +
+      '<text class="actor" id="bottom">Alice</text>' +
+      '<text class="messageText">Alice waves</text>'; // different text: not a match
+    const edited = c.querySelector('#top') as Element;
+    const targets = collectLinkedLabelTargets(c, 'Alice', [edited]);
+    expect(targets.length).toBe(1);
+    expect((targets[0] as Element).id).toBe('bottom');
+  });
+
+  test('excludes nested/ancestor elements of an excluded node (either direction)', () => {
+    const c = document.createElement('div');
+    // The edited node's own text nests a matching span; excluding the outer
+    // must also drop the inner (and vice versa) so we never preview onto the
+    // element being typed into.
+    c.innerHTML = '<span class="nodeLabel"><span class="nodeLabel">Foo</span></span>';
+    const outer = c.querySelector('.nodeLabel') as Element;
+    expect(collectLinkedLabelTargets(c, 'Foo', [outer])).toEqual([]);
+  });
+
+  test('empty needle matches nothing', () => {
+    const c = document.createElement('div');
+    c.innerHTML = '<text class="actor"> </text><text class="actor"> </text>';
+    expect(collectLinkedLabelTargets(c, '   ')).toEqual([]);
   });
 });
