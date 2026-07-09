@@ -57,8 +57,10 @@ import { Plugin, PluginKey } from 'prosemirror-state';
 // EditorToolbar is absolutely positioned at the top of the scroll container,
 // 3.5rem tall. Frozen headers must clear it. One of the four load-bearing
 // toolbar-height constants listed in components/EditorActivityPool.tsx —
-// move them together.
-const TOOLBAR_HEIGHT = 56;
+// move them together. Exported so selection-anchored floating menus can treat
+// the toolbar band as occluded (editor/bubble-menu/bubble-menu-clip.ts)
+// instead of keeping a fifth drifting copy of the value.
+export const TOOLBAR_HEIGHT = 56;
 
 // Subtle shadow to indicate the frozen row overlaps the table body.
 const FROZEN_SHADOW = '0 2px 4px rgba(0, 0, 0, 0.08)';
