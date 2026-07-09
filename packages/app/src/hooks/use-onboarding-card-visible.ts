@@ -6,8 +6,14 @@
  *   1. Host gate — only the Electron host exposes `window.okDesktop`; web / CLI
  *      builds render nothing because the predicate is never evaluated there.
  *   2. Fresh-project gate — the user has no other projects (`listRecent`
- *      filtered to other switchable projects is empty) AND this project is
- *      empty (entry count 0 at first sight).
+ *      filtered to other switchable projects is empty) AND either this window
+ *      was opened by a first-run create-new flow (`config.freshlyCreated`, true
+ *      for both blank and starter-pack-seeded projects) OR the project is empty
+ *      (entry count 0 at first sight). The create-new short-circuit exists
+ *      because a starter pack scaffolds content at create time, which would
+ *      otherwise fail the entry-count check; opening a pre-existing populated
+ *      folder is not create-new, so it stays suppressed — the deliberate
+ *      protection for an established single-project user opening their vault.
  *   3. Store-flag gate — a card that was dismissed or completed on this device
  *      never returns.
  *
@@ -31,22 +37,38 @@ import { type OnboardingCardStore, onboardingCardStore } from '@/lib/onboarding-
 import { fetchDocumentEntryCount } from '@/lib/onboarding-document-count';
 
 /**
- * Resolve whether this is a fresh, single-project desktop session: no other
- * switchable projects and zero content entries. Resolves `false` on any failure
- * to confirm that status — the card stays hidden rather than showing blind.
+ * Resolve whether this is a fresh, single-project desktop session and, if so,
+ * the file-step baseline to latch with. Returns the entry count at activation
+ * (the "create your first file" baseline) when the card should activate, or
+ * `null` when it should not — no other switchable projects, and either a
+ * first-run create-new open or a genuinely empty project. Returns `null` on any
+ * failure to confirm that status — the card stays hidden rather than showing
+ * blind.
  */
-export async function evaluateFreshProject(bridge: OkDesktopBridge): Promise<boolean> {
+export async function evaluateFreshProject(bridge: OkDesktopBridge): Promise<number | null> {
   try {
     const recents = await bridge.project.listRecent();
     const currentPath = bridge.config.projectPath;
     const hasOtherProject = recents.some((entry) => entry.path !== currentPath);
-    if (hasOtherProject) return false;
-    return (await fetchDocumentEntryCount()) === 0;
+    if (hasOtherProject) return null;
+    const entryCount = await fetchDocumentEntryCount();
+    // A first-run create-new open (blank OR starter-pack seed) is a genuinely
+    // new user regardless of content: a starter pack scaffolds files/folders at
+    // create time, so the `entryCount === 0` gate below would misclassify a
+    // seeded project as established and hide the card. `freshlyCreated` only
+    // rides the `create-new` entry point, so opening a pre-existing populated
+    // folder (pick-existing / recents) still falls through to the entry-count
+    // gate and stays suppressed — the deliberate protection for an established
+    // single-project user opening their existing vault. The count doubles as the
+    // file-step baseline so the seed's own templates don't auto-complete "create
+    // your first file".
+    if (bridge.config.freshlyCreated) return entryCount;
+    return entryCount === 0 ? 0 : null;
   } catch (err) {
     // listRecent (IPC) or /api/documents (network) failed — we cannot confirm
     // a new user, so suppress rather than ambush an established one.
     console.warn('[onboarding-card-visible] fresh-project probe failed; suppressing card', err);
-    return false;
+    return null;
   }
 }
 
@@ -74,8 +96,8 @@ export function useOnboardingCardVisible(
     const bridge = window.okDesktop;
     if (bridge == null) return;
     let cancelled = false;
-    void evaluateFreshProject(bridge).then((isFresh) => {
-      if (!cancelled && isFresh) store.activate();
+    void evaluateFreshProject(bridge).then((baseline) => {
+      if (!cancelled && baseline !== null) store.activate(baseline);
     });
     return () => {
       cancelled = true;

@@ -33,6 +33,14 @@ export interface OnboardingCardState {
     readonly file: boolean;
     readonly askedAi: boolean;
   };
+  /**
+   * Entry count observed when the card latched on (`activate`). The "create your
+   * first file" step completes only once the count rises ABOVE this baseline, so
+   * a starter-pack project's seeded templates (present at activation) don't
+   * auto-complete a step the user hasn't performed. Blank projects activate with
+   * baseline 0, so any first file still completes it (`> 0` ≡ the old `>= 1`).
+   */
+  readonly fileBaseline: number;
   readonly dismissed: boolean;
   readonly completed: boolean;
 }
@@ -40,6 +48,7 @@ export interface OnboardingCardState {
 export const DEFAULT_ONBOARDING_CARD_STATE: OnboardingCardState = {
   initialized: false,
   steps: { file: false, askedAi: false },
+  fileBaseline: 0,
   dismissed: false,
   completed: false,
 };
@@ -52,8 +61,13 @@ export interface OnboardingCardStorage {
 export interface OnboardingCardStore {
   getSnapshot(): OnboardingCardState;
   subscribe(listener: () => void): () => void;
-  /** Latch the card on for a fresh project. Idempotent — never regresses an already-initialized store. */
-  activate(): void;
+  /**
+   * Latch the card on for a fresh project, recording `fileBaseline` (the entry
+   * count at activation; the "create your first file" step completes only above
+   * it). Idempotent — never regresses an already-initialized store, so the first
+   * activation's baseline wins. Defaults to 0 (blank-project semantics).
+   */
+  activate(fileBaseline?: number): void;
   markStepComplete(step: OnboardingStep): void;
   dismiss(): void;
   markCompleted(): void;
@@ -80,6 +94,16 @@ function coerceState(parsed: unknown): OnboardingCardState {
   return {
     initialized: asFlag(obj.initialized),
     steps: { file: asFlag(steps.file), askedAi: asFlag(steps.askedAi) },
+    // Accept any non-negative finite number (0 is the canonical blank-project
+    // baseline); a negative / non-finite / non-number payload (corrupt or
+    // forward-incompat) degrades to 0 — the safe default (never blocks a
+    // legitimate first file).
+    fileBaseline:
+      typeof obj.fileBaseline === 'number' &&
+      Number.isFinite(obj.fileBaseline) &&
+      obj.fileBaseline >= 0
+        ? obj.fileBaseline
+        : 0,
     dismissed: asFlag(obj.dismissed),
     completed: asFlag(obj.completed),
   };
@@ -141,9 +165,9 @@ export function createOnboardingCardStore(storage?: OnboardingCardStorage): Onbo
       };
     },
 
-    activate(): void {
+    activate(fileBaseline = 0): void {
       if (state.initialized) return;
-      commit({ ...state, initialized: true });
+      commit({ ...state, initialized: true, fileBaseline });
     },
 
     markStepComplete(step): void {

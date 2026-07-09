@@ -205,6 +205,27 @@ describe('WindowManager', () => {
     expect(env.createWindowOpts[0]?.title).toBe('dragon-wiki — OpenKnowledge');
   });
 
+  test('createProjectWindow injects --ok-fresh-create=1 only when freshlyCreated is set', async () => {
+    // The renderer's onboarding card reads this flag (via preload → bridge
+    // config) to stay visible for a first-run create-new project even when a
+    // starter pack seeded it with content. Absent → omitted (coerces false).
+    const wmFresh = new WindowManager(env.deps);
+    const freshPromise = wmFresh.createProjectWindow({
+      projectPath: '/tmp/seeded',
+      freshlyCreated: true,
+    });
+    env.utilities[0]?.fire({ type: 'ready', port: 52010, apiOrigin: 'http://localhost:52010' });
+    await freshPromise;
+    expect(env.createWindowOpts[0]?.additionalArguments).toContain('--ok-fresh-create=1');
+
+    const env2 = buildEnv();
+    const wmPlain = new WindowManager(env2.deps);
+    const plainPromise = wmPlain.createProjectWindow({ projectPath: '/tmp/opened' });
+    env2.utilities[0]?.fire({ type: 'ready', port: 52011, apiOrigin: 'http://localhost:52011' });
+    await plainPromise;
+    expect(env2.createWindowOpts[0]?.additionalArguments).not.toContain('--ok-fresh-create=1');
+  });
+
   test('createProjectWindow forks utility, sends init, waits for ready, creates window', async () => {
     const wm = new WindowManager(env.deps);
     const promise = wm.createProjectWindow({ projectPath: '/tmp/test-project' });
@@ -691,6 +712,31 @@ describe('WindowManager', () => {
       expect(env.windows.length).toBe(1);
       // Title is set from projectName in the attach path too.
       expect(env.createWindowOpts[0]?.title).toBe('dragon — OpenKnowledge');
+    });
+
+    test('attach path injects --ok-fresh-create=1 when freshlyCreated is set (production path)', async () => {
+      // Attach mode — both the direct-attach and detached-spawn callers delegate
+      // here — is the PRODUCTION window path (packaged builds wire
+      // spawnDetachedServer). The onboarding-card flag MUST be injected here too,
+      // not only in the dev/test utility-fork branch, or the starter-pack fix
+      // silently fails for every packaged user.
+      enableAttachProbe();
+      const wm = new WindowManager(env.deps);
+      const ctx = await wm.createProjectWindow({
+        projectPath: '/tmp/dragon',
+        freshlyCreated: true,
+      });
+      // No utility forked → we genuinely took the attach path, not utility-fork.
+      expect(env.utilities.length).toBe(0);
+      expect(ctx.ownsServer).toBe(false);
+      expect(env.createWindowOpts[0]?.additionalArguments).toContain('--ok-fresh-create=1');
+    });
+
+    test('attach path omits --ok-fresh-create=1 when freshlyCreated is not set', async () => {
+      enableAttachProbe();
+      const wm = new WindowManager(env.deps);
+      await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      expect(env.createWindowOpts[0]?.additionalArguments).not.toContain('--ok-fresh-create=1');
     });
 
     function driftSends(w: ReturnType<typeof makeWindow>): unknown[] {

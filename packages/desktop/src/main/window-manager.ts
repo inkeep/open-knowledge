@@ -380,6 +380,14 @@ interface CreateProjectWindowOpts {
    * renderer confirms the server now matches the app.
    */
   pendingServerRestartedToast?: boolean;
+  /**
+   * `true` when this open is a first-run create-new flow (blank or starter-pack
+   * seed), derived by the caller from the `create-new` entry point. Forwarded to
+   * the renderer as `--ok-fresh-create=1`; the onboarding card keys off it (see
+   * `evaluateFreshProject` for why). Default false — a plain boolean keeps the
+   * manager decoupled from `EntryPoint` semantics.
+   */
+  freshlyCreated?: boolean;
 }
 
 /** Test-injectable side-effect surface (Electron + node:fs primitives). */
@@ -1380,6 +1388,7 @@ export class WindowManager {
           pendingTargetMissing: opts.pendingTargetMissing,
           pendingShareBranchSwitch: opts.pendingShareBranchSwitch,
           pendingServerRestartedToast: opts.pendingServerRestartedToast,
+          freshlyCreated: opts.freshlyCreated,
         });
       }
       // Reclaimed: the terminated server's (possibly stale) lock is cleared by
@@ -1490,6 +1499,7 @@ export class WindowManager {
         pendingTargetMissing: opts.pendingTargetMissing,
         pendingShareBranchSwitch: opts.pendingShareBranchSwitch,
         pendingServerRestartedToast: opts.pendingServerRestartedToast,
+        freshlyCreated: opts.freshlyCreated,
       });
     }
 
@@ -1649,6 +1659,9 @@ export class WindowManager {
       ...(this.deps.startup?.traceparent !== undefined
         ? [`--ok-startup-traceparent=${this.deps.startup.traceparent}`]
         : []),
+      // Appended only when set, so every other entry point omits it (preload
+      // coerces absent → false).
+      ...(opts.freshlyCreated ? ['--ok-fresh-create=1'] : []),
     ];
     const window = this.deps.createWindow({
       additionalArguments,
@@ -2237,6 +2250,13 @@ export class WindowManager {
     pendingTargetMissing?: boolean;
     pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload;
     pendingServerRestartedToast?: boolean;
+    /**
+     * First-run create-new signal, forwarded from `createProjectWindow`'s opts.
+     * Attach mode is the PRODUCTION path (detached-spawn + direct-attach both
+     * land here), so the onboarding card's `--ok-fresh-create=1` MUST be
+     * injected here too — the utility-fork branch is dev/test only.
+     */
+    freshlyCreated?: boolean;
   }): Promise<ProjectContext> {
     const {
       projectPath,
@@ -2249,6 +2269,7 @@ export class WindowManager {
       pendingTargetMissing,
       pendingShareBranchSwitch,
       pendingServerRestartedToast,
+      freshlyCreated,
     } = args;
     const port = lock.port;
     const apiOrigin = `http://localhost:${port}`;
@@ -2274,6 +2295,11 @@ export class WindowManager {
         ...(this.deps.startup?.traceparent !== undefined
           ? [`--ok-startup-traceparent=${this.deps.startup.traceparent}`]
           : []),
+        // Mirror the utility-fork branch's injection: attach mode is the
+        // production path, so a first-run create-new (blank or starter-pack
+        // seed) must surface `freshlyCreated` here too or the onboarding card
+        // never activates in packaged builds.
+        ...(freshlyCreated ? ['--ok-fresh-create=1'] : []),
       ],
       title: formatEditorTitle(projectName),
     });

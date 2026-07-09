@@ -216,6 +216,10 @@ function readConfigFromArgv(): OkDesktopConfig {
   // Ephemeral single-file windows carry the doc to seed into the hash before
   // first paint; normal project windows omit it (`null` → seed is a no-op).
   const initialDoc = parseArg('initial-doc') ?? null;
+  // Present only on a first-run create-new open (blank or starter-pack seed);
+  // every other entry point omits the flag and coerces to `false`. The
+  // onboarding card reads it to stay visible for a seeded project.
+  const freshlyCreated = parseArg('fresh-create') === '1';
   // Set only under the Electron smoke suite (main injects `--ok-e2e-smoke=1`):
   // tells the renderer to use xterm's DOM renderer instead of the WebGL canvas
   // so the DOM-based terminal smoke assertions can read output + deliver input.
@@ -233,6 +237,7 @@ function readConfigFromArgv(): OkDesktopConfig {
     e2eSmoke,
     singleFile,
     initialDoc,
+    freshlyCreated,
     ...(startupTraceparent !== undefined ? { startupTraceparent } : {}),
   });
 }

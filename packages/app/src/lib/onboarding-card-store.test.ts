@@ -29,6 +29,7 @@ describe('readPersistedState', () => {
     const stored = {
       initialized: true,
       steps: { file: true, askedAi: true },
+      fileBaseline: 3,
       dismissed: false,
       completed: true,
     };
@@ -36,16 +37,26 @@ describe('readPersistedState', () => {
     expect(readPersistedState(s)).toEqual(stored);
   });
 
-  test('missing fields default to false', () => {
+  test('missing fields default to false / baseline 0', () => {
     const s = memoryStorage({
       [ONBOARDING_CARD_STORAGE_KEY]: JSON.stringify({ steps: { file: true } }),
     });
     expect(readPersistedState(s)).toEqual({
       initialized: false,
       steps: { file: true, askedAi: false },
+      fileBaseline: 0,
       dismissed: false,
       completed: false,
     });
+  });
+
+  test('a non-numeric / negative fileBaseline coerces to 0', () => {
+    for (const bad of ['5', -2, Number.NaN, null, {}]) {
+      const s = memoryStorage({
+        [ONBOARDING_CARD_STORAGE_KEY]: JSON.stringify({ initialized: true, fileBaseline: bad }),
+      });
+      expect(readPersistedState(s).fileBaseline).toBe(0);
+    }
   });
 
   test('non-boolean field values are coerced to false', () => {
@@ -127,6 +138,23 @@ describe('createOnboardingCardStore — mutations', () => {
     expect(store.getSnapshot().initialized).toBe(false);
     store.activate();
     expect(store.getSnapshot().initialized).toBe(true);
+  });
+
+  test('activate records the file baseline (defaults to 0)', () => {
+    const store = createOnboardingCardStore(memoryStorage());
+    store.activate(4);
+    expect(store.getSnapshot().fileBaseline).toBe(4);
+
+    const blank = createOnboardingCardStore(memoryStorage());
+    blank.activate();
+    expect(blank.getSnapshot().fileBaseline).toBe(0);
+  });
+
+  test('activate is idempotent — the first baseline wins', () => {
+    const store = createOnboardingCardStore(memoryStorage());
+    store.activate(4);
+    store.activate(9);
+    expect(store.getSnapshot().fileBaseline).toBe(4);
   });
 
   test('dismiss sets the dismissed flag', () => {

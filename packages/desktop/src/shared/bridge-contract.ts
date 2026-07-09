@@ -149,6 +149,15 @@ export interface OkDesktopConfig {
    */
   readonly initialDoc: string | null;
   /**
+   * `true` when this window was opened by a first-run create-new flow (blank
+   * OR starter-pack seed) — the `create-new` entry point. The onboarding card's
+   * visibility predicate reads it (see `evaluateFreshProject` for why a seeded
+   * project needs this signal). `false` on every other entry point and on a
+   * re-queried live window (get-info). Lockstep with the app-side
+   * `OkDesktopConfig`.
+   */
+  readonly freshlyCreated: boolean;
+  /**
    * W3C `traceparent` of the Electron main process's `ok.app-startup` root
    * span, or `undefined` when OTel is disabled in main. Injected as
    * `--ok-startup-traceparent=` and read into the frozen config by preload; the
