@@ -9,11 +9,9 @@ icon: custom/Antigravity
 ## Install
 
 <McpInstall editor="Antigravity">
-  <p>
-    After <code>ok init</code> writes the config, restart Antigravity (or reload MCP servers from
-    the agent panel) so it picks up the entry. The IDE and the <code>agy</code> CLI share one
-    config file, so a single <code>ok init</code> wires up both.
-  </p>
+  After `ok init` writes the config, restart Antigravity (or reload MCP servers from the agent
+  panel) so it picks up the entry. The IDE and the `agy` CLI share one config file, so a single
+  `ok init` wires up both.
 </McpInstall>
 
 `ok init` writes the OpenKnowledge server into `~/.gemini/config/mcp_config.json` under `mcpServers`, using the same resilient launcher every other editor gets — it finds `ok` whether you installed the desktop app or the npm CLI, so there's no PATH to configure.

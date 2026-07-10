@@ -11,11 +11,9 @@ icon: custom/OpenClaw
 ## Install
 
 <McpInstall editor="OpenClaw">
-  <p>
-    After <code>ok init</code> writes the config, restart the OpenClaw gateway so running agents
-    pick up the entry — <code>openclaw mcp reload</code> refreshes the current CLI process only.
-    <code>ok start</code> isn't needed here, since OpenClaw manages its own server lifecycle.
-  </p>
+  After `ok init` writes the config, restart the OpenClaw gateway so running agents pick up the
+  entry — `openclaw mcp reload` refreshes the current CLI process only. `ok start` isn't needed
+  here, since OpenClaw manages its own server lifecycle.
 </McpInstall>
 
 `ok init` writes the OpenKnowledge server into `~/.openclaw/openclaw.json` under `mcp.servers`, using the same resilient launcher every other editor gets — it finds `ok` whether you installed the desktop app or the npm CLI, so there's no PATH to configure.
@@ -57,47 +55,19 @@ cd /path/to/your/knowledge-base && ok init
 
 ## Smoke test
 
-Point an OpenClaw agent at a fresh knowledge base and have it run:
+Point an OpenClaw agent at a fresh knowledge base and have it do the following steps:
 
-<Steps>
+```text
+Smoke-test the current OpenKnowledge project, one step at a time:
 
-<Step>
-### Discover the tools
-
-If the `open-knowledge` server's tools aren't in the agent's tool list, run tool discovery first — absence from the initial list means "not discovered yet," not "not registered."
-</Step>
-
-<Step>
-### Read config, list the root
-
-`config` (resolved OK config) and `exec("ls -A")` confirm the agent is pointed at the right project.
-</Step>
-
-<Step>
-### Write a folder, a README, and a linked note
-
-`write` a `notes` folder, a `README`, and a note that links to a second doc you'll create. A forward link to a not-yet-created target comes back as a broken-link warning — expected when you're about to create it.
-</Step>
-
-<Step>
-### Read them back
-
-`exec("cat …")` on both docs returns content plus frontmatter, backlinks, and history that plain `cat` can't.
-</Step>
-
-<Step>
-### Audit links, then search
-
-`links({ kind: "dead" })` should return `[]` once every target exists; `search({ query })` should find the new docs.
-</Step>
-
-<Step>
-### Get the preview URL
-
-`preview_url` returns the full browser URL for the doc (see [Preview](#preview)).
-</Step>
-
-</Steps>
+1. Discover your tools — if the open-knowledge tools aren't listed yet, run tool discovery.
+2. Read the resolved config and list the project root, to confirm you're pointed at the right project.
+3. Write a notes folder, a README, and a note linking to a second doc you'll create next (its broken-link warning is expected).
+4. Create that second doc, so the link resolves.
+5. Read both docs back — you should get content plus frontmatter, backlinks, and history.
+6. Audit dead links (it should be empty now), then search for the two new docs.
+7. Return the preview URL for one of the docs.
+```
 
 That sequence exercises every layer — discovery, config, read, write, link graph, search, and preview — in one pass.
 
