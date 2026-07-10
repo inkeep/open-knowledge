@@ -7,7 +7,7 @@
  * (a `HandoffTarget` id, e.g. `claude-code`) is intentionally ignored here —
  * `parseStickyCliId` returns `null` for it and resolution falls through to the
  * installed-priority auto-pick. Priority order is `TERMINAL_CLI_IDS` itself
- * (claude > codex > opencode > cursor); reusing it keeps the auto-pick order in
+ * (claude > codex > opencode > cursor > pi); reusing it keeps the auto-pick order in
  * lockstep with the visible launch-row order rather than duplicating a list.
  */
 

@@ -258,6 +258,8 @@ Disable all three with `OK_RECLAIM_DISABLE=1`.
 
 To review the footprint after the fact, `ok diagnose` reports what's on disk (and the desktop `path-install.json` records exactly which shell/`PATH` changes were made). To reverse it, `ok deinit` removes OpenKnowledge from one project and `ok uninstall` removes it from the whole machine — both keep your markdown content (and your authored `~/.ok/skills`) unless you pass `--purge-content`, and both take `--dry-run` to preview. See the [CLI reference](/docs/reference/cli) for the full semantics.
 
+In the desktop app you don't need the CLI for finer control. **Settings → AI tools & CLI** (under User) lists every global component OpenKnowledge manages — each editor's `open-knowledge` MCP entry, the `ok` PATH command, and the user-global skills — with a checkbox reflecting its live installed state; toggling a row installs or removes just that one component. **Settings → This project → AI tools** does the same for the open project's local footprint — its project-scoped MCP configs and the project skill. Removal keeps the same guest discipline as install: only entries OpenKnowledge recognizably wrote are removed, and anything you customized is left intact.
+
 ## What leaves your machine
 
 By default, **nothing.** Everything above is written to your own disk. The only ways data leaves your machine are these — all opt-in or on-demand, except two automatic desktop-app actions (the update check, and a one-time share-link check on first launch):

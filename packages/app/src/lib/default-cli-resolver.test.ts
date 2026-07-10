@@ -6,7 +6,7 @@
  * Resolution contract:
  *   1. sticky parses to a CLI (via parseStickyCliId) → it, unconditionally
  *      (an explicit pick is honored even when the CLI is KNOWN-absent);
- *   2. else the first KNOWN-installed CLI by priority (claude > codex > opencode > cursor);
+ *   2. else the first KNOWN-installed CLI by priority (claude > codex > opencode > cursor > pi);
  *   3. else 'claude'.
  */
 
@@ -69,9 +69,10 @@ describe('resolveDefaultCli', () => {
       expect(resolveDefaultCli(null, installedMap(['codex', 'opencode', 'cursor']))).toBe('codex');
     });
 
-    test('respects the full priority order claude > codex > opencode > cursor', () => {
+    test('respects the full priority order claude > codex > opencode > cursor > pi', () => {
       expect(resolveDefaultCli(null, installedMap(['opencode', 'cursor']))).toBe('opencode');
-      expect(resolveDefaultCli(null, installedMap(['cursor']))).toBe('cursor');
+      expect(resolveDefaultCli(null, installedMap(['cursor', 'pi']))).toBe('cursor');
+      expect(resolveDefaultCli(null, installedMap(['pi']))).toBe('pi');
       expect(resolveDefaultCli(null, installedMap(['claude', 'codex', 'opencode', 'cursor']))).toBe(
         'claude',
       );
@@ -85,7 +86,13 @@ describe('resolveDefaultCli', () => {
 
     test('all-false install map → claude', () => {
       expect(
-        resolveDefaultCli(null, { claude: false, codex: false, opencode: false, cursor: false }),
+        resolveDefaultCli(null, {
+          claude: false,
+          codex: false,
+          opencode: false,
+          cursor: false,
+          pi: false,
+        }),
       ).toBe('claude');
     });
 
