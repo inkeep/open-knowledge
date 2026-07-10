@@ -58,6 +58,21 @@ interface SeedOpts {
   claudeJson?: Record<string, unknown> | null;
   /** Put a fake executable `claude` on PATH (so the readiness probe resolves it). */
   fakeClaudeOnPath?: boolean;
+  /** Like `fakeClaudeOnPath`, but the fake is a TUI stand-in that stays open
+   *  reading stdin (`exec cat`), so bytes staged into the launched CLI's PTY are
+   *  observable in xterm instead of landing in a post-exit shell. */
+  fakeClaudeTui?: boolean;
+  /** Skip the state.json last-project restore. A cold start then opens the
+   *  window from the argv deep-link alone, routed to its `doc=` — the restore
+   *  window otherwise wins the race and lands on the empty state with the
+   *  deep-link's doc dropped. Needed by tests that drive the DOC EDITOR. */
+  skipRestoreState?: boolean;
+  /** Pin the login-shell PATH to the bare system dirs via the test HOME's rc
+   *  files. `launchApp({ restrictPath })` alone is NOT enough for a
+   *  "claude absent" premise: /etc/zprofile's `path_helper` re-adds
+   *  /etc/paths.d dirs (incl. /opt/homebrew/bin, where a real `claude` cask
+   *  may live) ahead of the restricted env PATH. */
+  pinRestrictedPath?: boolean;
 }
 
 interface Seed {
@@ -91,30 +106,53 @@ function seed(prefix: string, opts: SeedOpts = {}): Seed {
   }
 
   let pathPrefix: string | null = null;
-  if (opts.fakeClaudeOnPath) {
+  if (opts.fakeClaudeOnPath || opts.fakeClaudeTui) {
     const binDir = join(tmpHome, 'fakebin');
     mkdirSync(binDir, { recursive: true });
     const claudeBin = join(binDir, 'claude');
-    writeFileSync(claudeBin, '#!/bin/sh\necho "claude 0.0.0-fake"\n');
+    // The TUI variant still answers `--version` and exits (keeps any probe that
+    // executes the binary from hanging on `cat`).
+    writeFileSync(
+      claudeBin,
+      opts.fakeClaudeTui
+        ? '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "claude 0.0.0-fake"; exit 0; fi\necho FAKE_CLAUDE_TUI_READY\nexec cat\n'
+        : '#!/bin/sh\necho "claude 0.0.0-fake"\n',
+    );
     chmodSync(claudeBin, 0o755);
     pathPrefix = binDir;
+    // The PTY runs `$SHELL -l -i`, whose /etc/zprofile `path_helper` REORDERS
+    // PATH: /etc/paths + /etc/paths.d dirs (incl. /opt/homebrew/bin, where a
+    // real `claude` cask may live) jump AHEAD of the env's fakebin prefix.
+    // Re-prepend fakebin from the test HOME's own rc files — they source after
+    // path_helper, so the fake wins deterministically in probe and PTY alike.
+    const prepend = `export PATH="${binDir}:$PATH"\n`;
+    writeFileSync(join(tmpHome, '.zprofile'), prepend);
+    writeFileSync(join(tmpHome, '.zshrc'), prepend);
+  } else if (opts.pinRestrictedPath) {
+    // No fakebin: pin the bare system PATH after path_helper so a host-machine
+    // claude (e.g. the /opt/homebrew/bin cask) cannot leak into the probe.
+    const pin = 'export PATH="/usr/bin:/bin:/usr/sbin:/sbin"\n';
+    writeFileSync(join(tmpHome, '.zprofile'), pin);
+    writeFileSync(join(tmpHome, '.zshrc'), pin);
   }
 
   const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
   mkdirSync(userDataDir, { recursive: true });
-  writeFileSync(
-    join(userDataDir, 'state.json'),
-    JSON.stringify({
-      recentProjects: [
-        { path: projectDir, name: 'Terminal Smoke', lastOpenedAt: new Date().toISOString() },
-      ],
-      lastOpenedProject: projectDir,
-      versionPendingInstall: null,
-      lastSeenVersion: null,
-      lastSuccessfulCheckAt: null,
-      stuckHintShown: false,
-    }),
-  );
+  if (!opts.skipRestoreState) {
+    writeFileSync(
+      join(userDataDir, 'state.json'),
+      JSON.stringify({
+        recentProjects: [
+          { path: projectDir, name: 'Terminal Smoke', lastOpenedAt: new Date().toISOString() },
+        ],
+        lastOpenedProject: projectDir,
+        versionPendingInstall: null,
+        lastSeenVersion: null,
+        lastSuccessfulCheckAt: null,
+        stuckHintShown: false,
+      }),
+    );
+  }
 
   return { tmpHome, userDataDir, projectDir, realProjectDir: projectDir, pathPrefix };
 }
@@ -701,8 +739,9 @@ test.describe('Docked terminal — live Electron', () => {
 
   // Claude not on PATH surfaces the actionable not-found banner.
   test('QA-017 claude-not-found shows Get-Claude-Code banner', async ({ captureStderrFor }) => {
-    // No fake claude, restricted PATH → probe resolves not-found.
-    const s = seed('claude-missing', { consent: true });
+    // No fake claude, restricted PATH pinned past path_helper → probe resolves
+    // not-found even when the host machine has a real claude cask.
+    const s = seed('claude-missing', { consent: true, pinRestrictedPath: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -792,5 +831,83 @@ test.describe('Docked terminal — live Electron', () => {
     await expect
       .poll(() => readTerminalText(page), { timeout: 15_000 })
       .toContain('marker=[OKRELOAD_SURVIVED_351]');
+  });
+
+  // ⌘J/⇧⌘J selection-send at the live-Electron rung: a REAL editor
+  // selection is staged into a REAL CLI PTY — the composed flow the dom tests
+  // pin only in slices (EditorPane decides against a mocked host; the host
+  // stages against a mocked TerminalGate; here every layer between the keydown
+  // and the PTY bytes is real). The fake `claude` is a TUI stand-in (`exec cat`)
+  // that holds the PTY open reading stdin, so the staged bytes stay observable
+  // in xterm. Residual only a live-claude run can pin: the real TUI treating
+  // the trailing soft newlines as caret-move, not submit.
+  test('⇧⌘J stages the editor selection into a new CLI tab; ⌘J (menu route) reuses it', async ({
+    captureStderrFor,
+  }) => {
+    // Two-phase scenario (stage into a NEW CLI tab, then reuse the running one
+    // via the menu route) walks doc-load + launch + two staged writes, so its
+    // cumulative inner timeouts (~170s) exceed the suite's 150s CI outer budget
+    // — opt into a per-test budget per the calibration invariant's mechanism.
+    test.setTimeout(200_000);
+    // skipRestoreState: with a state.json restore the cold-start window wins and
+    // lands on the empty state, dropping the deep-link's `doc=` (and its collab
+    // connection never recovers for a later hash-route). A restore-free cold
+    // start opens the window from the deep link, routed to the doc.
+    const s = seed('stage', { consent: true, fakeClaudeTui: true, skipRestoreState: true });
+    track(s.tmpHome, s.projectDir);
+    const app = await launchApp(s, { restrictPath: true });
+    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+
+    // Select the seeded doc's body in the real editor (ProseMirror select-all).
+    // The selection-context registry publishes on a 120ms debounce
+    // (SELECTION_STATS_DEBOUNCE_MS) — wait it out before firing the chord, or
+    // the send reads an empty snapshot and degrades to a plain new-chat launch.
+    // NOT `.ProseMirror.first()` — the Ask-AI composer is its own (empty)
+    // ProseMirror; the doc editor is the non-composer one (sibling-smoke idiom).
+    const editor = page.locator('.ProseMirror[contenteditable="true"]:not(.composer-prosemirror)');
+    // The editor mounts before the CRDT doc body arrives — select-all on the
+    // empty doc publishes an empty snapshot, so wait for the seeded text first.
+    await expect(editor).toContainText('Seed document', { timeout: 30_000 });
+    await editor.click();
+    await page.keyboard.press('Meta+a');
+    await expect
+      .poll(() => page.evaluate(() => String(window.getSelection() ?? '')))
+      .toContain('Seed document');
+    await page.waitForTimeout(500);
+
+    // ⇧⌘J: the renderer-owned chord (capture-phase window keydown — no menu item
+    // claims it) opens a NEW CLI tab with the grounded passage staged into its
+    // input once the PTY is live.
+    await page.keyboard.press('Meta+Shift+j');
+    await expect(terminalSection(page)).toBeVisible({ timeout: 15_000 });
+    await waitForStatus(page, 'running', 25_000);
+    // The staged bytes reached the CLI's PTY: the composed prompt names the doc
+    // and carries the selected passage verbatim (short selections inline).
+    await expect.poll(() => readTerminalText(page), { timeout: 20_000 }).toContain('start.md');
+    await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toContain('Seed document');
+    const terminalTabs = () => terminalSection(page).getByRole('tab');
+    const tabsAfterLaunch = await terminalTabs().count();
+
+    // Grow the doc with a distinguishing marker and re-select, then take the ⌘J
+    // route via its View-menu accelerator item (the real menu→IPC→renderer
+    // chain; the raw OS key capture itself is not synthesizable from Playwright,
+    // same class as the deep-link Apple-Event limitation). With a selection and
+    // the active tab a running CLI, the passage is written INTO that CLI —
+    // the dock must not toggle away and no second tab may open.
+    await editor.click();
+    await page.keyboard.press('Meta+a');
+    await page.keyboard.type('Reuse marker OKSTAGE_REUSE_742 body');
+    await page.keyboard.press('Meta+a');
+    await expect
+      .poll(() => page.evaluate(() => String(window.getSelection() ?? '')))
+      .toContain('OKSTAGE_REUSE_742');
+    await page.waitForTimeout(500);
+    await clickViewTerminalItem(app);
+    await expect
+      .poll(() => readTerminalText(page), { timeout: 15_000 })
+      .toContain('OKSTAGE_REUSE_742');
+    await expect(terminalSection(page)).toBeVisible();
+    expect(await terminalTabs().count()).toBe(tabsAfterLaunch);
   });
 });

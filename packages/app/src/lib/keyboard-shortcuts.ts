@@ -177,7 +177,7 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     id: 'toggle-terminal-panel',
     category: 'general',
     title: msg`Show or hide terminal`,
-    description: msg`Toggle the bottom terminal panel.`,
+    description: msg`Toggle the bottom terminal panel. With text selected, stage it in the terminal's AI input instead.`,
     scope: msg`OK Desktop`,
     bindings: [
       {
@@ -198,6 +198,23 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
         mac: '⌘ L',
         windowsLinux: 'Ctrl L',
         match: { key: 'l', mod: true },
+      },
+    ],
+  },
+  {
+    // Sibling of ⌘J: opens an additional terminal tab. With text selected, that
+    // selection is staged into the new tab. The shift matcher keeps this clear
+    // of the ⌘J toggle, whose matcher rejects shift.
+    id: 'new-terminal-tab',
+    category: 'general',
+    title: msg`New terminal tab`,
+    description: msg`Open an additional terminal tab. With text selected, stage it in the new tab's AI input.`,
+    scope: msg`OK Desktop`,
+    bindings: [
+      {
+        mac: '⇧⌘ J',
+        windowsLinux: 'Ctrl Shift J',
+        match: { key: 'j', mod: true, shiftKey: true },
       },
     ],
   },
@@ -813,8 +830,14 @@ export type KeyboardShortcutId = (typeof KEYBOARD_SHORTCUT_DEFINITIONS)[number][
 export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcutDefinition[] =
   KEYBOARD_SHORTCUT_DEFINITIONS;
 
+// Map lookup, not Array.find: `matchesKeyboardShortcut` callers include
+// capture-phase window keydown listeners that run on every keypress.
+const SHORTCUTS_BY_ID = new Map<KeyboardShortcutId, KeyboardShortcutDefinition>(
+  KEYBOARD_SHORTCUT_DEFINITIONS.map((item) => [item.id, item]),
+);
+
 function getShortcut(id: KeyboardShortcutId): KeyboardShortcutDefinition {
-  const shortcut = KEYBOARD_SHORTCUTS.find((item) => item.id === id);
+  const shortcut = SHORTCUTS_BY_ID.get(id);
   if (!shortcut) throw new Error(`Unknown keyboard shortcut: ${id}`);
   return shortcut;
 }

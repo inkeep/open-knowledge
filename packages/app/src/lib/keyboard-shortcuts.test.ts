@@ -257,6 +257,54 @@ describe('keyboard shortcut registry', () => {
     ).toBe(false);
   });
 
+  test('formats the new-terminal-tab shortcut as Shift+Cmd/Ctrl + J', () => {
+    expect(formatShortcut('new-terminal-tab', 'mac')).toBe('⇧⌘ J');
+    expect(formatShortcut('new-terminal-tab', 'windowsLinux')).toBe('Ctrl Shift J');
+  });
+
+  test('matches new-terminal-tab on Shift+Cmd+J / Ctrl+Shift+J and stays clear of the ⌘J toggle', () => {
+    // The chord fires with shift held, on each platform's mod key.
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'j' },
+        'new-terminal-tab',
+        'mac',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: 'j' },
+        'new-terminal-tab',
+        'windowsLinux',
+      ),
+    ).toBe(true);
+    // Without shift it is NOT the launch chord (that is the ⌘J toggle).
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'j' },
+        'new-terminal-tab',
+        'mac',
+      ),
+    ).toBe(false);
+    // Wrong platform modifier: Ctrl+Shift+J on macOS must NOT match (mod is exact).
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: 'j' },
+        'new-terminal-tab',
+        'mac',
+      ),
+    ).toBe(false);
+    // The reverse direction of mutual exclusion: Shift+⌘J does not trip the
+    // toggle (plain-⌘J-vs-launch is the "Without shift" case above).
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'j' },
+        'toggle-terminal-panel',
+        'mac',
+      ),
+    ).toBe(false);
+  });
+
   test('matches tab shortcuts with strict modifiers', () => {
     expect(
       matchesKeyboardShortcut(

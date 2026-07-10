@@ -133,7 +133,7 @@ function makeBridge(preflight: ClaudeReadiness = WIRED, cliReadiness: CliReadine
   };
 }
 
-const { TerminalPanel } = await import('./TerminalPanel');
+const { TerminalPanel, STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
 
 /** The `launchCommand` baked into the (single) `create` call, or undefined when
  *  none was passed (plain shell). The launch's only sanctioned transport. */
@@ -218,6 +218,46 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     expect(bakedLaunch(terminal.create)).not.toContain('\r');
     // The launch is never typed into the live shell (the history-pollution fix).
     expect(launchInputWrites(terminal.input)).toEqual([]);
+  });
+
+  test('a launch carrying stagePaste writes it into the CLI input after the TUI settles — no submit', async () => {
+    const { bridge, terminal } = makeBridge(WIRED);
+    const staged = 'work on @notes.md — the selected passage\n\n';
+    render(
+      <TerminalPanel
+        bridge={bridge}
+        launch={{ prompt: null, cli: 'claude', nonce: 1, stagePaste: staged }}
+      />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    // Promptless bake: bare `claude` (+ pre-approval), nothing auto-runs.
+    expect(bakedLaunch(terminal.create)).toBe(`claude ${CLAUDE_PRE}`);
+    // The staged passage lands via `input` after the settle beat — soft trailing
+    // newlines intact, no `\r` anywhere (nothing submitted).
+    await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', staged), {
+      timeout: 2_000,
+    });
+    expect(terminal.input.mock.calls.every((c) => !(c[1] as string).includes('\r'))).toBe(true);
+  });
+
+  test('stagePaste is DROPPED when the bake was suppressed — staged text in the bare-shell fallback would execute', async () => {
+    const { bridge, terminal } = makeBridge({ claude: 'not-found', mcp: 'needs-rewire' });
+    render(
+      <TerminalPanel
+        bridge={bridge}
+        launch={{ prompt: null, cli: 'claude', nonce: 1, stagePaste: 'echo pwned\n\n' }}
+      />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    // No bake — this PTY is a plain shell (the readiness banner explains why).
+    expect(bakedLaunch(terminal.create)).toBeUndefined();
+    // Wait past the settle window (derived from the production constant so this
+    // can't rot into a vacuous pass if the window grows): nothing may be typed
+    // into the bare shell, where each staged `\n` would execute as a command.
+    await new Promise((resolve) => setTimeout(resolve, STAGE_PASTE_SETTLE_MS + 200));
+    expect(terminal.input).not.toHaveBeenCalled();
   });
 
   test('spawns a plain shell (no launchCommand) when claude is not found, and surfaces the banner', async () => {

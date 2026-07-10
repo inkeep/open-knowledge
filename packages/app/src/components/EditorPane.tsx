@@ -1,8 +1,9 @@
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { TagDialog } from '@/editor/components/TagDialog';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { RAW_MDX_NAV_EVENT, type RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
+import { getSelectionContext } from '@/editor/selection-context';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { type EditorModeValue, useEditorMode } from '@/editor/use-editor-mode';
 import { useGitSyncStatus } from '@/hooks/use-git-sync-status';
@@ -26,6 +27,8 @@ import { shouldShowAutoSyncOnboarding } from './auto-sync-onboarding-gate';
 import { type PanelTab, TABS } from './DocPanel';
 import { EditorArea, type TerminalPlacement } from './EditorArea';
 import { EditorHeader } from './EditorHeader';
+import { composeTerminalSelectionPaste } from './handoff/compose-terminal-selection';
+import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
 import { TerminalSessionsHost } from './TerminalSessionsHost';
 
@@ -41,6 +44,13 @@ export interface TerminalLaunchIntent {
   readonly prompt: string | null;
   readonly cli: TerminalCli;
   readonly nonce: number;
+  /** Text to write into the launched CLI's input once it is up — NOT submitted.
+   *  Used by the ⌘J/⇧⌘J selection-send so the passage is staged for the user to
+   *  add to and send themselves. `prompt` stays null so nothing auto-runs.
+   *  Consumed by TerminalPanel, gated on the CLI bake actually happening: a
+   *  preflight-suppressed launch (bare-shell fallback) drops it, because staged
+   *  text in a raw shell would execute line by line. */
+  readonly stagePaste?: string;
 }
 
 export type EditorMode = EditorModeValue;
@@ -132,12 +142,20 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // one, reveal the dock, and thread a promptless one-shot intent through the
   // same nonce-dedup + hide-clear path as "Open in terminal". Distinct from the
   // prompt-composing `subscribeToTerminalLaunchRequests` path below — New chat
-  // needs no doc scope.
-  function launchNewChat(cli?: TerminalCli) {
+  // needs no doc scope. `stagePaste` (the ⌘J/⇧⌘J selection-send) rides the
+  // intent so the session panel writes it into the freshly-launched CLI's input
+  // once its TUI settles — never submitted, and `prompt` stays null so nothing
+  // auto-runs (see the TerminalLaunchIntent JSDoc for the bake gate).
+  function launchNewChat(cli?: TerminalCli, stagePaste?: string) {
     const resolvedCli = cli ?? resolveDefaultCli(loadStickyAgent(), installedClis);
     setTerminalVisible(true);
     launchNonceRef.current += 1;
-    setTerminalLaunch({ prompt: null, cli: resolvedCli, nonce: launchNonceRef.current });
+    setTerminalLaunch({
+      prompt: null,
+      cli: resolvedCli,
+      nonce: launchNonceRef.current,
+      stagePaste,
+    });
   }
 
   // Reveal the docked terminal and, if no session exists yet, seed a first one.
@@ -185,14 +203,58 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     return () => window.removeEventListener(RAW_MDX_NAV_EVENT, onRawMdxNav);
   }, [activeDocName]);
 
+  // Whether the ACTIVE terminal tab is a running AI CLI (reported up by the host).
+  // The ⌘J selection-send reads this to inject-into-running-CLI vs launch-new-CLI.
+  const activeSessionIsCliRef = useRef(false);
+
+  // ⌘J / ⇧⌘J with an editor selection STAGE that selection into an AI CLI's input
+  // in the terminal instead of toggling — never submitted, so the user can add
+  // context and send it themselves. Reads the debounced selection snapshot for the
+  // active doc + current mode (the same registry BottomComposer reads — no editor
+  // instance needed, so it works even from the OS-captured ⌘J menu accelerator)
+  // and composes the same grounded prompt the Ask-AI selection button sends.
+  //   - ⌘J into a tab that is ALREADY running a CLI → write the passage straight
+  //     into its input (no screen wipe) via the reuse channel, and focus it.
+  //   - otherwise (⇧⌘J, or ⌘J into a bare shell / closed terminal) → launch a NEW
+  //     promptless CLI tab and stage the passage into its input once it is up.
+  //     (Baking the prompt as a CLI arg would auto-run it; a raw write into a bare
+  //     shell would mangle a multi-line prompt — staging into a live CLI avoids
+  //     both.)
+  // Returns true when a selection was staged (caller skips the toggle / new-tab
+  // fallback). No-ops on the web host (no terminal).
+  function sendSelectionToTerminal(newTab: boolean): boolean {
+    if (!terminalAvailable || activeDocName == null) return false;
+    const snapshot = getSelectionContext(activeDocName, editorMode);
+    const selectionMarkdown = snapshot?.markdown ?? '';
+    if (selectionMarkdown.trim() === '') return false;
+    // Trailing soft newlines (\n, not \r — no submit) drop the CLI input caret
+    // onto a blank line below the staged passage.
+    const staged = `${composeTerminalSelectionPaste(activeDocName, selectionMarkdown)}\n\n`;
+    if (!newTab && activeSessionIsCliRef.current) {
+      setTerminalVisible(true);
+      requestActiveTerminalInput(staged);
+    } else {
+      launchNewChat(undefined, staged);
+    }
+    return true;
+  }
+  // Effect Events so the once-bound key/menu listeners below read the current
+  // closures (fresh activeDocName / editorMode / installedClis) without
+  // re-subscribing.
+  const sendSelectionToTerminalEvent = useEffectEvent(sendSelectionToTerminal);
+  const launchNewChatEvent = useEffectEvent(() => launchNewChat());
+
   // Bottom-terminal toggle, dual-wired like the DocPanel: on desktop the
   // View → Terminal item's ⌘J/Ctrl+J accelerator is OS-captured and dispatches
   // `toggle-terminal`; the web host has no menu, so a window keydown stands in.
+  // With a selection, ⌘J sends it to the terminal (reusing the active tab)
+  // instead of toggling.
   useEffect(() => {
     const bridge = window.okDesktop;
     if (bridge == null) return;
     return bridge.onMenuAction((action) => {
       if (action === 'toggle-terminal') {
+        if (sendSelectionToTerminalEvent(false)) return;
         setTerminalVisible((visible) => !visible);
       } else if (action === 'new-terminal') {
         // Terminal menu "New Terminal": reveal the dock (it never hides, unlike
@@ -208,6 +270,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     function handleKeyDown(event: KeyboardEvent) {
       if (matchesKeyboardShortcut(event, 'toggle-terminal-panel')) {
         event.preventDefault();
+        if (sendSelectionToTerminalEvent(false)) return;
         setTerminalVisible((visible) => !visible);
       }
     }
@@ -215,6 +278,22 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, []);
+
+  // ⇧⌘J / Ctrl+Shift+J: open an ADDITIONAL terminal tab. With a selection, send it
+  // to a NEW CLI tab (always new, never reusing the active one); otherwise open a
+  // new chat with the preferred CLI (the "+ New chat" default). Renderer-owned on
+  // both hosts (no menu item claims ⇧⌘J), capture-phase so a focused xterm can't
+  // swallow it. No-ops on the web host (no terminal surface).
+  useEffect(() => {
+    if (!terminalAvailable) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!matchesKeyboardShortcut(event, 'new-terminal-tab')) return;
+      event.preventDefault();
+      if (!sendSelectionToTerminalEvent(true)) launchNewChatEvent();
+    }
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, [terminalAvailable]);
 
   // "Open in terminal" launch — a handoff-menu click fires a window event with
   // the composed prompt. Open the dock (the terminal is allowed by default; the
@@ -376,6 +455,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
           dockPosition={terminalDock}
           onToggleDock={toggleTerminalDock}
           onHasSessionsChange={setHasSessions}
+          onActiveSessionCliChange={(isCli) => {
+            activeSessionIsCliRef.current = isCli;
+          }}
         />
       ) : null}
       <AuthModal

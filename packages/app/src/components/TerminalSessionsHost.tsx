@@ -119,6 +119,13 @@ interface TerminalSessionsHostProps {
    *  button reads this to decide between spawning a first chat and merely
    *  revealing the existing dock. */
   readonly onHasSessionsChange?: (hasSessions: boolean) => void;
+  /** Reports whether the ACTIVE tab is an AI-CLI session (was launched with a
+   *  `cli`, e.g. a "New chat" / "Open with AI" tab) rather than a bare shell.
+   *  The ⌘J selection-send reads this to decide inject-into-running-CLI vs
+   *  launch-a-new-CLI (a raw prompt typed into a bare shell mangles). Proxy: the
+   *  session's launch descriptor — a bare shell the user manually `claude`'d into
+   *  reads as non-CLI, which is fine (it just starts a fresh CLI tab). */
+  readonly onActiveSessionCliChange?: (isCli: boolean) => void;
 }
 
 /**
@@ -142,6 +149,7 @@ export function TerminalSessionsHost({
   dockPosition,
   onToggleDock,
   onHasSessionsChange,
+  onActiveSessionCliChange,
 }: TerminalSessionsHostProps) {
   const { t } = useLingui();
 
@@ -647,6 +655,14 @@ export function TerminalSessionsHost({
   useEffect(() => {
     onHasSessionsChange?.(sessions.length > 0);
   }, [onHasSessionsChange, sessions.length]);
+
+  // Report whether the active tab is a CLI session (see the prop doc). Derived in
+  // render so the effect fires only on actual transitions, not on every session-
+  // list mutation. EditorPane's ⌘J read decides inject-vs-launch off this.
+  const activeSessionIsCli = sessions.find((s) => s.id === activeSessionId)?.launch?.cli != null;
+  useEffect(() => {
+    onActiveSessionCliChange?.(activeSessionIsCli);
+  }, [onActiveSessionCliChange, activeSessionIsCli]);
 
   // Return focus out of the hidden terminal so a keyboard user is never stranded.
   // Only acts when focus is actually inside the terminal.

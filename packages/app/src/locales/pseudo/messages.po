@@ -4446,6 +4446,10 @@ msgstr ""
 msgid "New terminal"
 msgstr ""
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "New terminal tab"
+msgstr ""
+
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ProjectSwitcher.tsx
 msgid "New worktree"
@@ -4855,6 +4859,10 @@ msgstr ""
 
 #: src/presence/PresenceBar.tsx
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Open an additional terminal tab. With text selected, stage it in the new tab's AI input."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -7317,7 +7325,7 @@ msgid "Toggle strikethrough formatting."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom terminal panel."
+msgid "Toggle the bottom terminal panel. With text selected, stage it in the terminal's AI input instead."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts

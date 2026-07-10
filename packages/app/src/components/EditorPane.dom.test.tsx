@@ -2,7 +2,52 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { isMacOS } from '@tiptap/core';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
+import { publishSelectionContext } from '@/editor/selection-context';
+import type { EditorSurface } from '@/editor/selection-stats';
+import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
+
+// The doc the mocked DocumentContext reports (see the useDocumentContext mock).
+const TEST_DOC = 'docs/notes';
+
+// Controls what the mocked TerminalSessionsHost reports via
+// `onActiveSessionCliChange` — i.e. whether the active terminal tab is a running
+// AI CLI (drives EditorPane's ⌘J inject-vs-launch decision).
+let mockActiveIsCli = false;
+
+// Seed / clear the shared selection snapshot registry EditorPane reads for the
+// ⌘J / ⇧⌘J selection-paste path. Seed both body surfaces so the test is
+// independent of the default editor mode.
+function seedSelection(markdown: string): void {
+  for (const surface of ['wysiwyg', 'source'] as EditorSurface[]) {
+    publishSelectionContext(TEST_DOC, surface, {
+      surface,
+      docName: TEST_DOC,
+      markdown,
+      charLen: markdown.length,
+      lineCount: 1,
+    });
+  }
+}
+function clearSelection(): void {
+  publishSelectionContext(TEST_DOC, 'wysiwyg', null);
+  publishSelectionContext(TEST_DOC, 'source', null);
+}
+
+// Collect the raw-inject requests EditorPane dispatches to a running CLI (the
+// host that consumes them is mocked here).
+function captureActiveTerminalInput(): { texts: string[]; stop: () => void } {
+  const texts: string[] = [];
+  const stop = subscribeToActiveTerminalInput((text) => texts.push(text));
+  return { texts, stop };
+}
+
+function shiftJKeydownInit(): KeyboardEventInit {
+  const init: KeyboardEventInit = { key: 'j', shiftKey: true, cancelable: true, bubbles: true };
+  if (isMacOS()) init.metaKey = true;
+  else init.ctrlKey = true;
+  return init;
+}
 
 mock.module('@lingui/react/macro', () => ({
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -63,16 +108,26 @@ mock.module('./TerminalSessionsHost', () => ({
   TerminalSessionsHost: ({
     visible,
     launch,
+    onActiveSessionCliChange,
   }: {
     visible?: boolean;
-    launch?: { nonce: number } | null;
-  }) => (
-    <div
-      data-testid="terminal-dock"
-      data-visible={String(visible)}
-      data-launch-nonce={launch ? String(launch.nonce) : 'none'}
-    />
-  ),
+    launch?: { nonce: number; stagePaste?: string } | null;
+    onActiveSessionCliChange?: (isCli: boolean) => void;
+  }) => {
+    // Report the test-controlled CLI-active state up, as the real host does from
+    // its active session's launch descriptor.
+    useEffect(() => {
+      onActiveSessionCliChange?.(mockActiveIsCli);
+    }, [onActiveSessionCliChange]);
+    return (
+      <div
+        data-testid="terminal-dock"
+        data-visible={String(visible)}
+        data-launch-nonce={launch ? String(launch.nonce) : 'none'}
+        data-launch-stage={launch?.stagePaste ?? 'none'}
+      />
+    );
+  },
 }));
 
 const terminalOpenedCalls: true[] = [];
@@ -283,6 +338,8 @@ describe('EditorPane terminal dock wiring', () => {
     cleanup();
     delete (window as { okDesktop?: unknown }).okDesktop;
     terminalOpenedCalls.length = 0;
+    clearSelection();
+    mockActiveIsCli = false;
   });
 
   test('web host renders the editor chrome without a terminal dock', async () => {
@@ -488,5 +545,120 @@ describe('EditorPane terminal dock wiring', () => {
     window.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(false);
+  });
+
+  test('desktop: ⇧⌘J with no selection opens a new chat (launch intent, no staged text)', async () => {
+    (window as { okDesktop?: unknown }).okDesktop = makeOkDesktopStub().stub;
+    await renderEditorPane();
+    const input = captureActiveTerminalInput();
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', shiftJKeydownInit()));
+    });
+    input.stop();
+
+    // launchNewChat: the dock reveals + a promptless launch intent, nothing staged.
+    const dock = screen.getByTestId('terminal-dock');
+    expect(dock.getAttribute('data-visible')).toBe('true');
+    expect(dock.getAttribute('data-launch-nonce')).toBe('1');
+    expect(dock.getAttribute('data-launch-stage')).toBe('none');
+    expect(input.texts).toEqual([]);
+  });
+
+  test('desktop: ⇧⌘J with a selection launches a NEW CLI tab with the passage STAGED (not sent)', async () => {
+    (window as { okDesktop?: unknown }).okDesktop = makeOkDesktopStub().stub;
+    await renderEditorPane();
+    seedSelection('some highlighted text');
+    const input = captureActiveTerminalInput();
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', shiftJKeydownInit()));
+    });
+    input.stop();
+
+    // A launch intent that STAGES the passage (no raw inject, nothing auto-run).
+    const dock = screen.getByTestId('terminal-dock');
+    expect(dock.getAttribute('data-visible')).toBe('true');
+    expect(dock.getAttribute('data-launch-nonce')).toBe('1');
+    expect(dock.getAttribute('data-launch-stage')).toContain('some highlighted text');
+    // Trailing soft newlines land the CLI caret on a blank line below the passage.
+    expect(dock.getAttribute('data-launch-stage')?.endsWith('\n\n')).toBe(true);
+    expect(input.texts).toEqual([]);
+  });
+
+  test('desktop: ⇧⌘J claims the event (preventDefault)', async () => {
+    (window as { okDesktop?: unknown }).okDesktop = makeOkDesktopStub().stub;
+    await renderEditorPane();
+    const event = new KeyboardEvent('keydown', shiftJKeydownInit());
+    act(() => {
+      window.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  test('web host: ⇧⌘J is a no-op (no terminal to open)', async () => {
+    await renderEditorPane();
+    const event = new KeyboardEvent('keydown', shiftJKeydownInit());
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.queryByTestId('terminal-dock')).toBeNull();
+  });
+
+  test('desktop: ⌘J with a selection injects into the ACTIVE running CLI (no toggle, no launch)', async () => {
+    mockActiveIsCli = true;
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+    seedSelection('run the build');
+    const input = captureActiveTerminalInput();
+
+    // ⌘J arrives via the OS-captured menu accelerator → the toggle-terminal action.
+    act(() => desk.dispatchMenuAction('toggle-terminal'));
+    input.stop();
+
+    // Active tab is a running CLI → write the passage into it (reuse), reveal, no
+    // launch intent.
+    const dock = screen.getByTestId('terminal-dock');
+    expect(input.texts).toHaveLength(1);
+    expect(input.texts[0]).toContain('run the build');
+    // Trailing soft newlines land the CLI caret on a blank line below the passage.
+    expect(input.texts[0]?.endsWith('\n\n')).toBe(true);
+    expect(dock.getAttribute('data-launch-nonce')).toBe('none');
+    expect(dock.getAttribute('data-visible')).toBe('true');
+  });
+
+  test('desktop: ⌘J with a selection but a bare-shell active tab STAGES into a new CLI instead', async () => {
+    mockActiveIsCli = false;
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+    seedSelection('run the build');
+    const input = captureActiveTerminalInput();
+
+    act(() => desk.dispatchMenuAction('toggle-terminal'));
+    input.stop();
+
+    // No running CLI in the active tab → launch a new CLI and STAGE the passage
+    // into it, rather than typing a multi-line prompt into a bare shell.
+    const dock = screen.getByTestId('terminal-dock');
+    expect(input.texts).toEqual([]);
+    expect(dock.getAttribute('data-launch-nonce')).toBe('1');
+    expect(dock.getAttribute('data-launch-stage')).toContain('run the build');
+    expect(dock.getAttribute('data-launch-stage')?.endsWith('\n\n')).toBe(true);
+  });
+
+  test('desktop: ⌘J with no selection still toggles and stages nothing', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+    const input = captureActiveTerminalInput();
+
+    act(() => desk.dispatchMenuAction('toggle-terminal'));
+    input.stop();
+
+    const dock = screen.getByTestId('terminal-dock');
+    expect(dock.getAttribute('data-visible')).toBe('true');
+    expect(dock.getAttribute('data-launch-nonce')).toBe('none');
+    expect(input.texts).toEqual([]);
   });
 });

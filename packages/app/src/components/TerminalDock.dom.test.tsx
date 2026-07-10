@@ -16,6 +16,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect, useRef, useState } from 'react';
@@ -151,6 +152,8 @@ mock.module('@/lib/terminal-height-store', () => ({
 
 const { TerminalDock } = await import('./TerminalDock');
 const { TerminalSessionsHost } = await import('./TerminalSessionsHost');
+// After the mock.module block (a static import would load the real xterm).
+const { STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
 
 function makeBridge() {
   const menuHandlers: Array<(action: string) => void> = [];
@@ -200,8 +203,25 @@ function makeBridge() {
 // invariant EditorArea enforces). Session behavior is bottom-dock only —
 // right-dock placement is covered by EditorArea + the live-Electron smoke; the
 // `dock` knob here exercises only the shell's handle gating across positions.
-// biome-ignore lint/suspicious/noExplicitAny: test harness props
-function DockHarness({ v, l, onVisibleChange, bridge, onReveal, dock = 'bottom' }: any) {
+// Structural mirror of TerminalLaunchIntent (EditorPane) so tests can express
+// promptless / staged launches without casts.
+type TestLaunch = {
+  prompt: string | null;
+  nonce: number;
+  cli?: TerminalCli;
+  stagePaste?: string;
+};
+
+function DockHarness({
+  v,
+  l,
+  onVisibleChange,
+  bridge,
+  onReveal,
+  dock = 'bottom',
+  onActiveSessionCliChange,
+  // biome-ignore lint/suspicious/noExplicitAny: test harness props
+}: any) {
   const [bottomContainer, setBottomContainer] = useState<HTMLDivElement | null>(null);
   const [editorRegionEl, setEditorRegionEl] = useState<HTMLDivElement | null>(null);
   return (
@@ -226,6 +246,7 @@ function DockHarness({ v, l, onVisibleChange, bridge, onReveal, dock = 'bottom' 
         onRequestEditorFocus={() => editorRegionEl?.focus()}
         dockPosition={dock}
         onToggleDock={() => {}}
+        onActiveSessionCliChange={onActiveSessionCliChange}
       />
     </TooltipProvider>
   );
@@ -233,16 +254,13 @@ function DockHarness({ v, l, onVisibleChange, bridge, onReveal, dock = 'bottom' 
 
 function renderDock(
   visible: boolean,
-  launch?: { prompt: string; nonce: number; cli?: string } | null,
+  launch?: TestLaunch | null,
   onReveal?: () => void,
+  onActiveSessionCliChange?: (isCli: boolean) => void,
 ) {
   const onVisibleChange = mock((_v: boolean) => {});
   const { bridge, create, kill, input, viewMenuPushes, dispatchMenuAction } = makeBridge();
-  const ui = (
-    v: boolean,
-    l?: { prompt: string; nonce: number; cli?: string } | null,
-    dock?: TerminalDockPosition,
-  ) => (
+  const ui = (v: boolean, l?: TestLaunch | null, dock?: TerminalDockPosition) => (
     <DockHarness
       v={v}
       l={l ?? null}
@@ -250,6 +268,7 @@ function renderDock(
       bridge={bridge}
       onReveal={onReveal}
       dock={dock ?? 'bottom'}
+      onActiveSessionCliChange={onActiveSessionCliChange}
     />
   );
   const utils = render(ui(visible, launch));
@@ -261,11 +280,8 @@ function renderDock(
     input,
     viewMenuPushes,
     dispatchMenuAction,
-    rerender: (
-      v: boolean,
-      l?: { prompt: string; nonce: number; cli?: string } | null,
-      dock?: TerminalDockPosition,
-    ) => utils.rerender(ui(v, l, dock)),
+    rerender: (v: boolean, l?: TestLaunch | null, dock?: TerminalDockPosition) =>
+      utils.rerender(ui(v, l, dock)),
   };
 }
 
@@ -848,6 +864,69 @@ describe('TerminalDock multi-session', () => {
     await waitFor(() => expect(view.input).toHaveBeenCalledWith('pty-1', 'explain this'));
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
     expect(activePanelId()).toBe(runningId);
+  });
+
+  test('reports whether the active tab is a CLI session (drives ⌘J inject-vs-launch)', () => {
+    // Seeded from a CLI launch → active tab is a CLI session.
+    const cliReports: boolean[] = [];
+    const { unmount } = renderDock(
+      true,
+      { prompt: 'work', cli: 'claude', nonce: 1 },
+      undefined,
+      (isCli) => cliReports.push(isCli),
+    );
+    expect(cliReports.at(-1)).toBe(true);
+    unmount();
+    cliReports.length = 0;
+
+    // A bare-shell seed (no launch) → active tab is NOT a CLI session.
+    renderDock(true, null, undefined, (isCli) => cliReports.push(isCli));
+    expect(cliReports.at(-1)).toBe(false);
+  });
+
+  test('CLI-active report tracks tab SWITCHES (CLI tab ↔ bare-shell tab)', async () => {
+    // The transition is the load-bearing case: a stale `true` after switching
+    // to a bare-shell tab would route the next ⌘J selection-send through the
+    // raw-inject path into that bare shell — the mangling the inject-vs-launch
+    // decision exists to avoid.
+    const user = userEvent.setup();
+    const cliReports: boolean[] = [];
+    renderDock(true, { prompt: 'work', cli: 'claude', nonce: 1 }, undefined, (isCli) =>
+      cliReports.push(isCli),
+    );
+    expect(cliReports.at(-1)).toBe(true);
+
+    // Add a bare-shell tab (becomes active) → report flips false.
+    await addTerminalTab(user);
+    expect(cliReports.at(-1)).toBe(false);
+
+    // Switch back to the CLI tab → report flips true again.
+    await user.click(screen.getByRole('tab', { name: 'Terminal 1' }));
+    expect(cliReports.at(-1)).toBe(true);
+  });
+
+  test('a stagePaste launch opens its own tab; the HOST never types the passage (staging is TerminalPanel-owned, bake-gated)', async () => {
+    const view = renderDock(false);
+    // Open a promptless CLI session carrying a staged selection (the ⌘J/⇧⌘J
+    // launch-with-selection path). prompt:null so nothing is baked/auto-run.
+    act(() =>
+      view.rerender(true, {
+        prompt: null,
+        cli: 'claude',
+        nonce: 1,
+        stagePaste: 'work on @notes.md — the selected passage',
+      }),
+    );
+
+    // The intent routes to a session tab; the staged write itself happens inside
+    // TerminalPanel AFTER its CLI bake succeeds (TerminalPanel.launch.dom.test),
+    // never from the host — a host-side write couldn't know whether the bake was
+    // suppressed into a bare shell, where staged `\n`s would execute.
+    expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
+    // Waited past the panel's settle window (derived from the production
+    // constant so a grown window can't turn this into a vacuous pass).
+    await new Promise((resolve) => setTimeout(resolve, STAGE_PASTE_SETTLE_MS + 200));
+    expect(view.input).not.toHaveBeenCalled();
   });
 
   test('a launch before the seed terminal PTY is live also opens its own tab', () => {

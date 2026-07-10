@@ -37,6 +37,13 @@ import { nextWheelReports, sgrWheelReport, wheelReportPosition } from './termina
  */
 const PTY_RESIZE_THROTTLE_MS = 100;
 
+/** Settle beat between a staged-selection launch's PTY going live and the
+ *  `stagePaste` write — long enough for the CLI TUI's stdin reader to attach (a
+ *  write at raw PTY-live can race it). Exported so the dom tests derive their
+ *  waited-past-the-window negative assertions from the same value instead of a
+ *  hardcoded sibling that silently rots when this changes. */
+export const STAGE_PASTE_SETTLE_MS = 500;
+
 interface TerminalPanelProps {
   /** Desktop bridge — the panel is rendered only on the Electron host, where
    *  `window.okDesktop` is present. */
@@ -615,6 +622,8 @@ function TerminalSession({
       return undefined;
     };
 
+    let stagePasteTimer: ReturnType<typeof setTimeout> | undefined;
+
     void (async () => {
       // Reload rehydration: a tab restored from a surviving session carries its
       // ptyId. Adopt it (reconnect the live shell) rather than spawning a fresh
@@ -700,10 +709,38 @@ function TerminalSession({
       }
 
       attachSession(result.ptyId);
+
+      // Stage the ⌘J/⇧⌘J selection into the freshly-launched CLI's input — once,
+      // and NOT submitted. Gated on the bake actually happening: when the
+      // preflight suppressed `launchCommand`, this PTY is a BARE shell where
+      // every staged `\n` would EXECUTE as a command — the exact mangling the
+      // staging design exists to avoid — so the passage is dropped and the
+      // missing-CLI / readiness banner explains why nothing arrived. The short
+      // beat lets the TUI's stdin reader attach (a write at raw PTY-live can
+      // race it); unmount cancels the timer.
+      const staged = launch?.stagePaste;
+      if (launch != null && launch.prompt != null && staged != null) {
+        // `prompt` and `stagePaste` are mutually exclusive by the intent's
+        // contract (the type doesn't forbid it — single producer today). A
+        // future producer setting both would double-dispatch: the prompt
+        // auto-runs at spawn AND the paste lands in the input. The baked
+        // prompt wins; surface the contract violation instead of silently
+        // double-writing.
+        console.warn(
+          '[terminal] TerminalLaunchIntent carried both prompt and stagePaste; dropping stagePaste',
+        );
+      } else if (launchCommand !== undefined && staged != null && staged !== '') {
+        stagePasteTimer = setTimeout(() => {
+          if (cancelled || ptyIdRef.current === null) return;
+          bridge.terminal.input(ptyIdRef.current, staged);
+          term.focus();
+        }, STAGE_PASTE_SETTLE_MS);
+      }
     })();
 
     return () => {
       cancelled = true;
+      if (stagePasteTimer !== undefined) clearTimeout(stagePasteTimer);
       ptyIdRef.current = null;
       // This session no longer has a live PTY — clear it from the host's reuse
       // map so an "Ask AI" launch never writes into a torn-down shell.

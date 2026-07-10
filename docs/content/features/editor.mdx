@@ -81,7 +81,7 @@ Select text in the WYSIWYG editor and the selection bubble menu shows an **Ask A
 
 The desktop app has a built-in terminal: real login shells, docked in the editor window. Toggle it with `Cmd+J`, **View ▸ Show / Hide Terminal**, or the edge **Show terminal** tab that sits where you last closed it. It opens as a right-side column by default; buttons in its tab strip move it between the right column and the bottom dock or collapse it (sessions keep running), and the dock position is remembered.
 
-The terminal is also the editor's AI-chat surface: the **Show terminal** tab starts your default CLI when no session is open, and the tab strip's **New chat** split button opens another CLI tab — its dropdown switches CLI (the pick sticks, shared with the Ask AI composer) or opens a plain shell tab. **Terminal ▸ New Terminal Window** (see [Terminal menu](#terminal-menu)) opens a dedicated window with the same multi-session tabs, `Cmd+<number>` tab switching, and shells starting at the project root.
+The terminal is also the editor's AI-chat surface: the **Show terminal** tab starts your default CLI when no session is open, and the tab strip's **New chat** split button opens another CLI tab — its dropdown switches CLI (the pick sticks, shared with the Ask AI composer) or opens a plain shell tab. With text selected in the editor, `Cmd+J` stages the passage into the active CLI's input (or opens a new CLI tab when none is running) instead of toggling, and `Cmd+Shift+J` always stages it into a new CLI tab — the passage sits in the input for you to add to, and nothing is submitted until you press Enter. **Terminal ▸ New Terminal Window** (see [Terminal menu](#terminal-menu)) opens a dedicated window with the same multi-session tabs, `Cmd+<number>` tab switching, and shells starting at the project root.
 
 The shells run at full user privilege. To turn the terminal off for a project on this machine, use **Settings ▸ Terminal** or set `terminal.enabled: false` in `.ok/local/config.yml` (see the [configuration reference](/docs/reference/configuration)); the setting is project-local, never shared via git or sync, and not agent-settable — only a human can flip it.
 
@@ -203,7 +203,8 @@ Keyboard shortcuts (use `Ctrl` on Windows / Linux in place of `Cmd`, unless the 
 | `Cmd+K` | Command palette — or, with text selected in the visual editor, add a link (cursor inside a link edits it). |
 | `Cmd+Option+S` | Show / Hide the file sidebar (left). Matches Apple's standard sidebar accelerator. |
 | `Cmd+Option+B` | Show / Hide the document panel (right). Matches VS Code's Secondary Side Bar accelerator. |
-| `Cmd+J` | Show / Hide the docked terminal (desktop app). |
+| `Cmd+J` | Show / Hide the docked terminal (desktop app). With text selected, stages the passage into the AI CLI's input instead — nothing runs until you press Enter. |
+| `Cmd+Shift+J` | Open an additional terminal tab (desktop app). With text selected, stages the passage into the new tab's AI CLI input. |
 | `Cmd+K` | Open the [command palette](#command-palette). |
 | `Cmd+L` | Open and focus the [Ask AI](#ask-ai) composer (desktop app). |
 | `Cmd+F` | Find in the visual editor. |
@@ -250,7 +251,7 @@ Before the existing Zoom and Toggle Fullscreen items, the View menu gets:
 | --- | --- | --- |
 | **Show / Hide Sidebar** | `Cmd+Option+S` | Toggles the file sidebar (left). Label flips between Show and Hide based on current state, matching Finder. |
 | **Show / Hide Document Panel** | `Cmd+Option+B` | Toggles the document panel (right). |
-| **Show / Hide Terminal** | `Cmd+J` | Toggles the docked terminal. |
+| **Show / Hide Terminal** | `Cmd+J` | Toggles the docked terminal. With editor text selected, stages the selection into the AI CLI's input instead of toggling. |
 | **Show Hidden Files** | `Cmd+Shift+.` | `appearance.sidebar.showHiddenFiles`; same toggle as the sidebar's right-click menu. |
 | **Expand All** | (none) | Expands every folder in the tree. Hidden when nothing is collapsed. |
 | **Collapse All** | (none) | Collapses every folder in the tree. Hidden when nothing is expanded. |

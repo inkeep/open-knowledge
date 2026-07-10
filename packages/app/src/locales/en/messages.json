@@ -1656,7 +1656,6 @@
     "f8jU-L": [["0"], "/", ["1"], " — ", ["2"]],
     "f9lQNJ": ["Adds a managed block to"],
     "fBHvBn": ["There's no project folder for this window, so a terminal can't start here."],
-    "fBaTkM": ["Toggle the bottom terminal panel."],
     "fG0X0e": ["Install ", ["brand"], " →"],
     "fIgqfQ": ["Reinstalling"],
     "fJgQHX": ["Failed to create file"],
@@ -1858,6 +1857,7 @@
       ["trimmedSlug"],
       "</0> already exists here. Saving creates a local copy that overrides it for this folder."
     ],
+    "k0vc0N": ["New terminal tab"],
     "k4CuuV": [
       "Ready-made folders and templates to get you started quickly. Select a pack to preview what gets created, then add it to your project."
     ],
@@ -2060,6 +2060,9 @@
     ],
     "oBXkm2": ["Delete code block"],
     "oCHfGC": ["Level"],
+    "oCNLN8": [
+      "Toggle the bottom terminal panel. With text selected, stage it in the terminal's AI input instead."
+    ],
     "oCZkaG": ["Copy path"],
     "oJl7eO": ["Unknown component: ", ["componentName"], " — source editable below"],
     "oKBnk5": ["More requests were blocked."],
@@ -2216,6 +2219,9 @@
     "saYiIO": ["Path cannot contain null bytes"],
     "seeS6l": ["Setup OpenKnowledge in this folder?"],
     "shNd9t": ["Slash command menu"],
+    "si3L24": [
+      "Open an additional terminal tab. With text selected, stage it in the new tab's AI input."
+    ],
     "skf5Ix": ["Indent or outdent source editor lines."],
     "snrVQ7": ["probe failed"],
     "ssuwjF": ["Branch"],

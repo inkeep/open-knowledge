@@ -26,19 +26,18 @@
  * share exactly one open+focus implementation rather than duplicating it.
  */
 
-import { composeSelectionPrompt } from '@inkeep/open-knowledge-core';
 import { Trans } from '@lingui/react/macro';
 import { isMacOS } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
 import { Sparkles } from 'lucide-react';
 import { type ReactNode, useEffect } from 'react';
 import { emitOpenAskAiComposer } from '@/components/ask-ai-composer-events';
+import { composeTerminalSelectionPaste } from '@/components/handoff/compose-terminal-selection';
 import { requestActiveTerminalInput } from '@/components/handoff/terminal-input-events';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
-import { docNameToRelativePath } from '@/lib/workspace-paths';
 import { serializeWysiwygSelection } from '../edit-with-ai-selection';
 import { getEditorDocName } from '../extensions/doc-context';
 
@@ -106,11 +105,10 @@ function EditWithAiBubbleMenu({
         data-testid="edit-with-ai-bubble-button"
         className="gap-1 px-2 text-sm font-medium text-accent-foreground/80"
         // With a terminal open, send the selected passage into the active shell
-        // (the host decides reuse vs. composer-fallback) as a GROUNDED prompt:
-        // the doc named as an `@`-mention plus the passage, via the same
-        // `composeSelectionPrompt` the bottom composer uses — never raw text a
-        // running agent can't place. Caret-only / empty selection (or no active
-        // doc to ground against) has nothing to send, so open the composer.
+        // (the host decides reuse vs. composer-fallback) as a GROUNDED prompt
+        // (see `composeTerminalSelectionPaste`). Caret-only / empty selection
+        // (or no active doc to ground against) has nothing to send, so open the
+        // composer.
         //
         // Deferred a frame: the composer-fallback focus (and a terminal focus)
         // fires synchronously inside this click, before ProseMirror's own focus
@@ -118,14 +116,6 @@ function EditWithAiBubbleMenu({
         // the doc and leave the composer unfocused. Reading the selection first
         // keeps the passage from the click moment even though the write runs
         // later. Mirrors LinkEditPopover's rAF focus.
-        //
-        // NOTE: there's no URL to budget in a terminal paste, so `target`
-        // only tunes composeSelectionPrompt's inline-vs-locus threshold — and
-        // only Cursor double-encodes, so every non-Cursor target (claude-code
-        // among them) shares the same widest threshold: inline unless huge. Any
-        // target is correct here; it does NOT assume the running CLI. Derive it
-        // from the live terminal CLI only if that threshold ever matters (e.g.
-        // composeSelectionPrompt gains per-target content).
         onClick={() => {
           const docName = getEditorDocName(editor);
           const selectionMarkdown = serializeWysiwygSelection(editor);
@@ -134,14 +124,7 @@ function EditWithAiBubbleMenu({
               emitOpenAskAiComposer();
               return;
             }
-            requestActiveTerminalInput(
-              composeSelectionPrompt({
-                relativePath: docNameToRelativePath(docName),
-                instruction: '',
-                selectionMarkdown,
-                target: 'claude-code',
-              }),
-            );
+            requestActiveTerminalInput(composeTerminalSelectionPaste(docName, selectionMarkdown));
           });
         }}
       >
