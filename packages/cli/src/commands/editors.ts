@@ -5,6 +5,7 @@
  * configuration. This module encodes those differences declaratively so that
  * `init.ts` can loop over targets without per-editor branching.
  */
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, posix, resolve, sep, win32 } from 'node:path';
 import {
@@ -639,6 +640,41 @@ export function resolveAntigravityConfigPath(options: AppSupportOptions = {}): s
   return pathApiForPlatform(platformName).join(home, '.gemini', 'config', 'mcp_config.json');
 }
 
+/**
+ * Candidate `mcp.json` locations for LM Studio, ordered so the first element is
+ * the platform default when none exist yet. LM Studio's own docs say
+ * `~/.lmstudio/mcp.json`, but on macOS the file actually lives at
+ * `~/.cache/lm-studio/mcp.json` — a documented-vs-real mismatch that is still
+ * open upstream (lmstudio-ai/lmstudio-bug-tracker#1371, seen through v0.3.33).
+ * So we probe both rather than trust either, and default macOS to the observed
+ * cache path (writing the documented path there would be a silent no-op LM
+ * Studio never reads).
+ */
+function lmStudioConfigCandidates(home: string, platformName: NodeJS.Platform): string[] {
+  const pathApi = pathApiForPlatform(platformName);
+  const dotDir = pathApi.join(home, '.lmstudio', 'mcp.json');
+  const cacheDir = pathApi.join(home, '.cache', 'lm-studio', 'mcp.json');
+  return platformName === 'darwin' ? [cacheDir, dotDir] : [dotDir, cacheDir];
+}
+
+/**
+ * Resolve LM Studio's user-global `mcp.json`. LM Studio is an MCP *host* that
+ * follows Cursor's `mcp.json` notation, so OK's entry shape is identical to
+ * Cursor's — only the (unstable, see {@link lmStudioConfigCandidates}) location
+ * differs. Prefers an existing `mcp.json`, then an existing candidate dir, then
+ * the platform default, so we write where LM Studio will actually read.
+ */
+export function resolveLmStudioConfigPath(options: AppSupportOptions = {}): string {
+  const platformName = options.platformName ?? process.platform;
+  const home = options.home ?? homedir();
+  const candidates = lmStudioConfigCandidates(home, platformName);
+  const existingFile = candidates.find((candidate) => existsSync(candidate));
+  if (existingFile) return existingFile;
+  const existingDir = candidates.find((candidate) => existsSync(dirname(candidate)));
+  if (existingDir) return existingDir;
+  return candidates[0];
+}
+
 export interface EditorMcpTarget {
   id: EditorId;
   /** Human-friendly name for CLI output. */
@@ -848,6 +884,26 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> = {
     // home exists — writing it for a tool that isn't installed is pointless
     // (nothing reads it). Gated on detection even under the consent flow's
     // skipAvailabilityCheck, exactly like OpenClaw.
+    offerOnlyWhenDetected: true,
+  },
+  'lm-studio': {
+    id: 'lm-studio',
+    label: EDITOR_LABELS['lm-studio'],
+    configPath: (_cwd, home) => resolveLmStudioConfigPath({ home }),
+    format: 'json',
+    // LM Studio follows Cursor's `mcp.json` notation (a top-level `mcpServers`
+    // map of stdio `{command,args}` entries), so a resolved OK server is
+    // byte-identical to Cursor's — same resilient launcher, only the config
+    // location differs. Global-only: LM Studio has no project-local MCP config,
+    // like Claude Desktop, so no project skill/config paths.
+    topLevelKey: 'mcpServers',
+    serverName: () => MCP_SERVER_NAME,
+    buildEntry: (_cwd, options) => buildManagedServerEntry(options),
+    scope: 'global',
+    detectPath: (_cwd, home) => dirname(resolveLmStudioConfigPath({ home })),
+    // Never write LM Studio's `mcp.json` unless it's actually installed —
+    // gated on detection even under the consent flow's skipAvailabilityCheck,
+    // like OpenClaw. Writing a config for an absent app is a pointless no-op.
     offerOnlyWhenDetected: true,
   },
 };

@@ -14,7 +14,8 @@ export type EditorId =
   | 'opencode'
   | 'openclaw'
   | 'pi'
-  | 'antigravity';
+  | 'antigravity'
+  | 'lm-studio';
 
 export const ALL_EDITOR_IDS = [
   'claude',
@@ -25,6 +26,7 @@ export const ALL_EDITOR_IDS = [
   'openclaw',
   'pi',
   'antigravity',
+  'lm-studio',
 ] as const satisfies readonly EditorId[];
 
 /**
@@ -42,6 +44,7 @@ export const EDITOR_LABELS = {
   openclaw: 'OpenClaw',
   pi: 'Pi',
   antigravity: 'Antigravity',
+  'lm-studio': 'LM Studio',
 } as const satisfies Record<EditorId, string>;
 
 /**
@@ -103,6 +106,9 @@ export const EDITOR_PROJECT_SKILL_ROOT = {
   // Like OpenClaw, its integration is the user-global MCP config; OK ships no
   // per-project skill for it.
   antigravity: null,
+  // LM Studio is an MCP host (its chat connects to MCP servers) with no Agent
+  // Skills surface at all — OK's only integration is the user-global MCP config.
+  'lm-studio': null,
 } as const satisfies Record<EditorId, string | null>;
 
 /** Editor ids that have a project skill surface (valid install-projection targets). */
@@ -151,6 +157,7 @@ export const EDITOR_SETUP_DOC_SLUG = {
   openclaw: 'openclaw',
   pi: 'pi',
   antigravity: 'antigravity',
+  'lm-studio': 'lm-studio',
 } as const satisfies Record<EditorId, string>;
 
 /**
@@ -183,4 +190,8 @@ export const EDITOR_PROJECT_CONFIG_PATH = {
   // is never detected as "project-configured"; like Claude Desktop / OpenClaw,
   // OK writes only the user-global config.
   antigravity: null,
+  // LM Studio's MCP config is a single user-global `mcp.json` (it follows
+  // Cursor's notation but has no project-local variant), so it is never
+  // detected as "project-configured".
+  'lm-studio': null,
 } as const satisfies Record<EditorId, string | null>;

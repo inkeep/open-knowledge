@@ -1,5 +1,14 @@
 {
   "title": "Integrations",
   "icon": "LuPlug",
-  "pages": ["claude-code", "cursor", "codex", "opencode", "pi", "openclaw", "antigravity"]
+  "pages": [
+    "claude-code",
+    "cursor",
+    "codex",
+    "opencode",
+    "pi",
+    "openclaw",
+    "antigravity",
+    "lm-studio"
+  ]
 }

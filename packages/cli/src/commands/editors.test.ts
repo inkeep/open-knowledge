@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   buildManagedServerEntry,
   CHAIN_V1,
@@ -16,6 +19,7 @@ import {
   resolveCodexConfigPath,
   resolveCursorConfigPath,
   resolveEditorTargets,
+  resolveLmStudioConfigPath,
   resolveOpenClawConfigPath,
   resolveOpenCodeConfigPath,
   resolvePiAgentDirPath,
@@ -229,6 +233,55 @@ describe('resolvePiAgentDirPath', () => {
         env: { PI_CODING_AGENT_DIR: '/tmp/custom-pi-home' },
       }),
     ).toBe('/tmp/custom-pi-home');
+  });
+});
+
+describe('resolveLmStudioConfigPath', () => {
+  it('defaults macOS to the observed cache path when no config exists yet', () => {
+    // The documented `~/.lmstudio/mcp.json` is a silent no-op on macOS (LM
+    // Studio reads `~/.cache/lm-studio/mcp.json`; bug-tracker#1371), so a fresh
+    // install resolves to the cache path we know it actually reads.
+    expect(resolveLmStudioConfigPath({ home: '/Users/alice', platformName: 'darwin' })).toBe(
+      '/Users/alice/.cache/lm-studio/mcp.json',
+    );
+  });
+
+  it('defaults Linux and Windows to the documented ~/.lmstudio path', () => {
+    expect(resolveLmStudioConfigPath({ home: '/home/alice', platformName: 'linux' })).toBe(
+      '/home/alice/.lmstudio/mcp.json',
+    );
+    expect(resolveLmStudioConfigPath({ home: 'C:\\Users\\alice', platformName: 'win32' })).toBe(
+      'C:\\Users\\alice\\.lmstudio\\mcp.json',
+    );
+  });
+
+  it('prefers an existing candidate dir over the platform default', () => {
+    const home = mkdtempSync(join(tmpdir(), 'lmstudio-home-'));
+    try {
+      // Only the documented dir exists; macOS would otherwise default to cache.
+      mkdirSync(join(home, '.lmstudio'), { recursive: true });
+      expect(resolveLmStudioConfigPath({ home, platformName: 'darwin' })).toBe(
+        join(home, '.lmstudio', 'mcp.json'),
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('prefers an existing mcp.json over any candidate dir', () => {
+    const home = mkdtempSync(join(tmpdir(), 'lmstudio-home-'));
+    try {
+      // Cache dir exists (macOS default location) but holds no file; the real
+      // mcp.json lives in the documented dir and must win.
+      mkdirSync(join(home, '.cache', 'lm-studio'), { recursive: true });
+      mkdirSync(join(home, '.lmstudio'), { recursive: true });
+      writeFileSync(join(home, '.lmstudio', 'mcp.json'), '{}');
+      expect(resolveLmStudioConfigPath({ home, platformName: 'darwin' })).toBe(
+        join(home, '.lmstudio', 'mcp.json'),
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 

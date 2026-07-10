@@ -18,6 +18,7 @@
  */
 
 import {
+  type FrontmatterValue,
   FrontmatterValueSchema,
   MANAGED_ARTIFACT_SCOPES,
   SKILL_NAME_REGEX,
@@ -38,11 +39,53 @@ import { SUPPORTED_DOC_EXTENSIONS } from '../../doc-extensions.ts';
  * is rejected; to delete a single nested leaf, send the full subtree without
  * that leaf, or null out the whole top-level key to drop the subtree.
  */
+/** The real per-value contract: a recursive frontmatter value, or top-level `null` (RFC 7396 delete). */
 const FrontmatterPatchValue = z.union([FrontmatterValueSchema, z.null()]);
+
+/**
+ * Flat, ref-free ADVERTISED shape for the frontmatter value. Superset of what
+ * {@link FrontmatterPatchValue} admits at the top level (array/object leaves are
+ * open), so the `.superRefine` below narrows it to the exact recursive contract
+ * without the base union ever pre-rejecting a valid value.
+ *
+ * Why not just advertise the recursive schema: a self-referential Zod schema
+ * serializes to `$ref: "#/definitions/__schema0"` in the tool's JSON Schema.
+ * Constrained-decoding MCP hosts (LM Studio) and some function-calling APIs
+ * (Gemini) can't resolve a `$ref` inside a tool schema and reject the whole
+ * tool. This flat union carries no `$ref`, and refinements don't appear in JSON
+ * Schema — so the wire schema stays portable while runtime validation is
+ * unchanged for every client and every write path (write-with-inline-content
+ * and folder frontmatter have no downstream value gate, so this IS the gate).
+ */
+// The runtime union is the real schema the SDK serializes (flat, ref-free) and
+// the `.superRefine` validates against the recursive contract — so pinning the
+// INFERRED output type to the recursive `FrontmatterValue | null` is sound and
+// keeps every consuming handler typed against the canonical frontmatter value.
+const FrontmatterAdvertisedValue = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(z.unknown()),
+  z.record(z.string(), z.unknown()),
+  z.null(),
+]) as unknown as z.ZodType<FrontmatterValue | null>;
 
 /** A frontmatter merge-patch map with an instructive description + example. */
 export const FrontmatterArg = z
-  .record(z.string(), FrontmatterPatchValue)
+  .record(z.string(), FrontmatterAdvertisedValue)
+  .superRefine((patch, ctx) => {
+    for (const [key, value] of Object.entries(patch)) {
+      if (!FrontmatterPatchValue.safeParse(value).success) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message:
+            'invalid frontmatter value — allowed: a scalar (string | number | boolean), a scalar array, ' +
+            'a nested object, or an array of objects; a top-level key may be null to delete it, but nested null is not allowed',
+        });
+      }
+    }
+  })
   .describe(
     'Metadata as a key→value map. Values may be a scalar (string | number | boolean), a scalar array, ' +
       'a nested object, or an array of objects. Merge-patch: include a top-level key to set it, set a ' +

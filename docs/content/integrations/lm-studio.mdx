@@ -1,0 +1,45 @@
+---
+title: LM Studio
+description: Use OpenKnowledge with local models in LM Studio over MCP.
+icon: LuCpu
+---
+
+[LM Studio](https://lmstudio.ai) is a desktop app for running open models locally. It's an [MCP](https://modelcontextprotocol.io) **host** — its chat connects to MCP servers — so once OpenKnowledge is registered, a locally-hosted model can read, search, and write your knowledge base through OK's tools, with full attribution, link-awareness, conflict-awareness, and a live browser preview. Nothing leaves your machine: both the model and the knowledge base run locally.
+
+## Install
+
+<McpInstall editor="LM Studio" />
+
+After `ok init` writes the config, open LM Studio's **Program** tab and enable the `open-knowledge` server (LM Studio spawns a process per MCP server on save). The model you chat with must support tool use — see [Pick a tool-capable model](#pick-a-tool-capable-model).
+
+`ok init` writes the OpenKnowledge server into LM Studio's `mcp.json`, using the same resilient launcher every other editor gets — it finds `ok` whether you installed the desktop app or the npm CLI, so there's no PATH to configure. LM Studio follows Cursor's `mcp.json` notation, so the entry lands under a top-level `mcpServers` map.
+
+<Callout type="info">
+  **The config is user-global — one registration serves every project.** LM Studio has no
+  project-local MCP config, so OpenKnowledge registers once and each OK tool call takes a `cwd`
+  argument to target a specific knowledge base (pass it once and it sticks for that session).
+</Callout>
+
+## Pick a tool-capable model
+
+MCP tools only work when the chat model can call functions, and small local models vary a lot in how reliably they do. For the best results, load a model with strong tool-use / function-calling support and enough context to hold OK's tool descriptions. If the model answers in prose instead of calling `exec` / `search` / `write`, it either doesn't support tools or the server isn't enabled — check both before assuming OpenKnowledge is misconfigured.
+
+## Verify
+
+Load a tool-capable model, open a knowledge base, and ask:
+
+<VerifyExec subject="LM Studio" />
+
+If the model doesn't call the tool, confirm the `open-knowledge` server is toggled on in the **Program** tab and that the loaded model supports tool use.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `ok init` showed LM Studio as `config root missing; skipped` | LM Studio's config dir doesn't exist yet, so it wasn't detected | Launch LM Studio once (it creates its config dir), then re-run `ok init` |
+| `ok init` reported the config was `left unchanged` | OpenKnowledge declined to edit `mcp.json` for the reason shown in parentheses | Fix what the reason names (invalid JSON, a duplicated server block, an oversize config), then re-run `ok init` |
+| Model answers in prose, never calls a tool | the loaded model doesn't support tool use, or the server is disabled | Load a tool-capable model and enable `open-knowledge` in the **Program** tab |
+| MCP call fails with `... exceeds the available context size ...` (400) | OpenKnowledge's MCP tools + skill are larger than a small local model's context window (e.g. 8K tokens), so the request can't fit | Load the model with the largest context window it supports (or pick a bigger model). If that still isn't enough, [open an issue](https://github.com/inkeep/open-knowledge/issues) or reach out — trimming the tool surface for small local models is on our radar. |
+| `write` / `edit` -> "Hocuspocus server is not running" | OK server not started | Run `ok start` (or leave the desktop app running) and retry |
+
+New to OpenKnowledge itself? Start with the [quickstart](/docs/get-started/quickstart) for `ok init` and `ok start`.

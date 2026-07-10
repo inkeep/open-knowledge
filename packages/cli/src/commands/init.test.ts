@@ -26,6 +26,7 @@ import {
   resolveClaudeDesktopConfigPath,
   resolveCodexConfigPath,
   resolveCursorConfigPath,
+  resolveLmStudioConfigPath,
   resolveOpenCodeConfigPath,
 } from './editors.ts';
 
@@ -158,6 +159,7 @@ describe('runInit', () => {
   const cursorConfigPath = () => resolveCursorConfigPath({ home: fakeHome });
   const codexConfigPath = () => resolveCodexConfigPath({ home: fakeHome, env: {} });
   const opencodeConfigPath = () => resolveOpenCodeConfigPath({ home: fakeHome, env: {} });
+  const lmStudioConfigPath = () => resolveLmStudioConfigPath({ home: fakeHome });
   const devRepoRoot = () => join(testDir, 'local-open-knowledge');
   // `--dev-mcp` resolves the worktree's `dist/cli.mjs` from `process.argv[1]`.
   // Tests stub argv[1] via `enableDevMcp()` so resolution lands at a
@@ -805,6 +807,8 @@ describe('runInit', () => {
       // Antigravity is `offerOnlyWhenDetected`, so its user-global write is
       // gated on the `~/.gemini` home existing even under the consent flow.
       mkdirSync(join(fakeHome, '.gemini'), { recursive: true });
+      // LM Studio is likewise `offerOnlyWhenDetected` — create its config dir.
+      mkdirSync(dirname(lmStudioConfigPath()), { recursive: true });
 
       const result = await runInitForTest({ editors: [...ALL_EDITOR_IDS] });
 
@@ -822,6 +826,7 @@ describe('runInit', () => {
       expect(existsSync(cursorConfigPath())).toBe(true);
       expect(existsSync(codexConfigPath())).toBe(true);
       expect(existsSync(opencodeConfigPath())).toBe(true);
+      expect(existsSync(lmStudioConfigPath())).toBe(true);
       // OpenClaw nests under `mcp.servers` — verify the entry landed there.
       const openclawConfig = JSON.parse(
         readFileSync(join(fakeHome, '.openclaw', 'openclaw.json'), 'utf-8'),
@@ -2334,6 +2339,7 @@ describe('detectInstalledEditors', () => {
   const cursorConfigPath = () => resolveCursorConfigPath({ home: fakeHome });
   const codexConfigPath = () => resolveCodexConfigPath({ home: fakeHome, env: {} });
   const opencodeConfigPath = () => resolveOpenCodeConfigPath({ home: fakeHome, env: {} });
+  const lmStudioConfigPath = () => resolveLmStudioConfigPath({ home: fakeHome });
 
   beforeEach(() => {
     testDir = resolve(
@@ -2427,6 +2433,7 @@ describe('detectInstalledEditors', () => {
     mkdirSync(join(fakeHome, '.openclaw'), { recursive: true });
     mkdirSync(join(fakeHome, '.pi', 'agent'), { recursive: true });
     mkdirSync(join(fakeHome, '.gemini'), { recursive: true });
+    mkdirSync(dirname(lmStudioConfigPath()), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
     expect(detected).toEqual(expect.arrayContaining([...ALL_EDITOR_IDS]));
     expect(detected).toHaveLength(ALL_EDITOR_IDS.length);
