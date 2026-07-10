@@ -18,8 +18,19 @@ import { SITE_HEADLINE } from './site';
 
 export const OG_SIZE = { width: 1200, height: 630 } as const;
 export const OG_CONTENT_TYPE = 'image/png';
-export const OG_CACHE_HEADERS = {
+/**
+ * Response headers for every OG-image route (home, per-docs-page, share).
+ *
+ * `X-Robots-Tag: noindex` keeps these card images out of search indexes
+ * WITHOUT a robots.txt `Disallow`. A `Disallow` blocks Twitterbot (which
+ * honors robots.txt) from fetching the card, so the image silently fails to
+ * render in X/Twitter link previews while still loading on scrapers that
+ * ignore robots.txt (Facebook, Slack). `noindex` at the response layer lets
+ * every crawler fetch the image but tells indexers not to list it.
+ */
+export const OG_RESPONSE_HEADERS = {
   'Cache-Control': 'public, max-age=31536000, immutable',
+  'X-Robots-Tag': 'noindex',
 } as const;
 
 const BG = '#fbf9f4';

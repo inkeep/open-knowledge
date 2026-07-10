@@ -4,8 +4,8 @@ import {
   dmSansFontsArg,
   type FontPair,
   loadDmSans,
-  OG_CACHE_HEADERS,
   OG_CONTENT_TYPE,
+  OG_RESPONSE_HEADERS,
   OG_SIZE,
   ShareCard,
 } from '@/lib/og-card';
@@ -56,6 +56,6 @@ export function renderShareOgImage(view: SplashView, fonts: FontPair | null): Im
   return new ImageResponse(body, {
     ...OG_SIZE,
     fonts: dmSansFontsArg(fonts),
-    headers: OG_CACHE_HEADERS,
+    headers: OG_RESPONSE_HEADERS,
   });
 }

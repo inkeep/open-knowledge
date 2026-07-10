@@ -3,8 +3,8 @@ import {
   BrandCard,
   dmSansFontsArg,
   loadDmSans,
-  OG_CACHE_HEADERS,
   OG_CONTENT_TYPE,
+  OG_RESPONSE_HEADERS,
   OG_SIZE,
 } from '@/lib/og-card';
 import { SITE_HEADLINE, SITE_NAME } from '@/lib/site';
@@ -19,6 +19,6 @@ export default async function OgImage() {
   return new ImageResponse(<BrandCard />, {
     ...OG_SIZE,
     fonts: dmSansFontsArg(fonts),
-    headers: OG_CACHE_HEADERS,
+    headers: OG_RESPONSE_HEADERS,
   });
 }

@@ -4,8 +4,8 @@ import {
   DocPageCard,
   dmSansFontsArg,
   loadDmSans,
-  OG_CACHE_HEADERS,
   OG_CONTENT_TYPE,
+  OG_RESPONSE_HEADERS,
   OG_SIZE,
 } from '@/lib/og-card';
 import { source } from '@/lib/source';
@@ -36,7 +36,7 @@ export async function GET(_request: Request, props: RouteProps) {
     {
       ...OG_SIZE,
       fonts: dmSansFontsArg(fonts),
-      headers: { ...OG_CACHE_HEADERS, 'Content-Type': OG_CONTENT_TYPE },
+      headers: { ...OG_RESPONSE_HEADERS, 'Content-Type': OG_CONTENT_TYPE },
     },
   );
 }
