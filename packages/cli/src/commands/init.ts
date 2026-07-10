@@ -54,6 +54,7 @@ import {
   parseTree as parseJsoncTree,
 } from 'jsonc-parser';
 import { stringify as stringifyToml } from 'smol-toml';
+import { isCollection, parseDocument, stringify as stringifyYaml } from 'yaml';
 import { CONFIG_FILENAME, OK_DIR } from '../constants.ts';
 import { formatPreviewBlock, type PreviewResult } from '../content/preview.ts';
 import { buildPiExtensionSource, makePiManagedFileEntry } from '../integrations/pi-extension.ts';
@@ -170,6 +171,18 @@ function writeJsonConfig(path: string, config: Record<string, unknown>): void {
  */
 function writeTomlConfig(path: string, config: Record<string, unknown>): void {
   const serialized = stringifyToml(config);
+  atomicWriteFileSync(path, serialized.endsWith('\n') ? serialized : `${serialized}\n`);
+}
+
+/**
+ * Write the config to disk as YAML with a trailing newline. Same
+ * atomic-write + caller-owns-mkdir contract as `writeJsonConfig`. Only the
+ * absent/blank case reaches this — a present Hermes `config.yaml` is edited
+ * surgically via the `yaml` document model so the user's model + tool config
+ * and comments in the same file survive.
+ */
+function writeYamlConfig(path: string, config: Record<string, unknown>): void {
+  const serialized = stringifyYaml(config);
   atomicWriteFileSync(path, serialized.endsWith('\n') ? serialized : `${serialized}\n`);
 }
 
@@ -429,6 +442,103 @@ function upsertTomlMcpConfig(
     atomicWriteFileSync(configPath, newText, { mode: existingFileMode(configPath) });
   }
   return { kind: result.existed ? 'overwritten' : 'written' };
+}
+
+// ---------------------------------------------------------------------------
+// Format-preserving YAML upsert — touch only OK's own entry
+// ---------------------------------------------------------------------------
+
+type YamlUpsertOutcome =
+  | { kind: 'written' | 'overwritten' }
+  | { kind: 'declined'; reason: McpDeclineReason };
+
+/**
+ * Add or update only OK's own `mcp_servers.<serverName>` entry in a Hermes
+ * `config.yaml`, leaving the user's model + tool-filter config and sibling MCP
+ * servers in place — by editing a `yaml` Document rather than re-serializing
+ * from a plain object. Comments, keys, values, key order, and block-style
+ * formatting are preserved, along with the file's byte-level encoding (a leading
+ * BOM, CRLF endings, trailing-newline state).
+ *
+ * The one fidelity caveat: `yaml`'s AST round-trip may normalize whitespace
+ * INSIDE a flow collection (`["a","b"]` → `[ "a", "b" ]`) — cosmetic, never a
+ * value or comment change. This is the same AST-level fidelity OK already
+ * accepts for editing its OWN `config.yml` (`config/yaml-patch.ts`), so there is
+ * no byte-perfect JS alternative worth a second engine here.
+ *
+ * Unlike the TOML path there is no lossy JS fallback to guard against: the pure
+ * `yaml` package is itself comment-preserving, so every present, parseable
+ * config is safely surgically edited. A parse error (including a duplicate
+ * `mcp_servers` key, which `yaml` reports as a structural error rather than
+ * throwing) DECLINES — the file is left byte-unchanged. Absent/blank files have
+ * nothing to preserve and are created fresh.
+ */
+function upsertYamlMcpConfig(
+  configPath: string,
+  topLevelKey: string,
+  serverName: string,
+  entry: Record<string, unknown>,
+): YamlUpsertOutcome {
+  let raw = '';
+  if (existsSync(configPath)) {
+    try {
+      raw = readFileSync(configPath, 'utf-8');
+    } catch (err) {
+      // Same read-failure-vs-malformed conflation as the JSON/TOML paths; trace
+      // under OK_DEBUG_NATIVE so an EACCES/EROFS on the config isn't invisible.
+      debugNativeLoadFailure('yaml config read failed', err);
+      return { kind: 'declined', reason: 'unparseable' };
+    }
+  }
+  if (raw.trim() === '') {
+    writeYamlConfig(configPath, { [topLevelKey]: { [serverName]: entry } });
+    return { kind: 'written' };
+  }
+  // Gate on raw size before parse + edit so a pathologically large file costs
+  // only a read, not a full document build, on every launch.
+  if (Buffer.byteLength(raw, 'utf-8') > JSON_CONFIG_MAX_BYTES) {
+    return { kind: 'declined', reason: 'oversize' };
+  }
+
+  const hasBom = raw.charCodeAt(0) === 0xfeff;
+  const body = hasBom ? raw.slice(1) : raw;
+  const doc = parseDocument(body);
+  // `yaml` collects structural errors (bad indent, duplicate keys) rather than
+  // throwing; a config we can't cleanly parse is left untouched.
+  if (doc.errors.length > 0) return { kind: 'declined', reason: 'unparseable' };
+
+  const path = [topLevelKey, serverName];
+  const entryExists = doc.hasIn(path);
+  // `setIn` auto-creates a missing `mcp_servers` map, but throws if it already
+  // exists as a non-collection — an empty `mcp_servers:` parses as Scalar(null).
+  // Drop that stray scalar first so the entry can nest under a fresh map.
+  if (doc.hasIn([topLevelKey]) && !isCollection(doc.getIn([topLevelKey], true))) {
+    doc.deleteIn([topLevelKey]);
+  }
+  // Wrap the plain entry into YAML nodes explicitly so `command`/`args`/`env`
+  // serialize as a proper map/seq (the multi-line chain becomes a block scalar).
+  doc.setIn(path, doc.createNode(entry));
+
+  // `yaml` emits LF, always ends with a trailing newline, and drops a leading
+  // BOM; restore the source file's encoding so the only byte-level change is
+  // OK's own entry (mirrors the TOML path's toml_edit normalization fix-up).
+  let text = doc.toString();
+  const crlfDominant = isCrlfDominant(body);
+  const wantTrailingNewline = body.endsWith('\n');
+  if (wantTrailingNewline) {
+    if (!text.endsWith('\n')) text = `${text}\n`;
+  } else {
+    text = text.replace(/\n+$/, '');
+  }
+  if (crlfDominant) {
+    text = text.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+  }
+  const newText = `${hasBom ? '\uFEFF' : ''}${text}`;
+
+  if (newText !== raw) {
+    atomicWriteFileSync(configPath, newText, { mode: existingFileMode(configPath) });
+  }
+  return { kind: entryExists ? 'overwritten' : 'written' };
 }
 
 // ---------------------------------------------------------------------------
@@ -1257,9 +1367,10 @@ export function writeEditorMcpConfig(
         // target's directory may differ from the symlink's, so ensure it exists.
         const writePath = resolveHarnessWritePaths(configPath).writePath;
         mkdirSync(dirname(writePath), { recursive: true });
-        // Both formats edit only OK's own entry: TOML through the native
+        // Every format edits only OK's own entry: TOML through the native
         // format-preserving addon (declining on the JS fallback rather than a
-        // lossy whole-file rewrite), JSON through the surgical jsonc editor.
+        // lossy whole-file rewrite), YAML through the `yaml` document model
+        // (Hermes), JSON through the surgical jsonc editor.
         if (target.format === 'toml') {
           const tomlOutcome = upsertTomlMcpConfig(
             getTomlConfigEngine(),
@@ -1270,6 +1381,17 @@ export function writeEditorMcpConfig(
           );
           captured.action = tomlOutcome.kind;
           if (tomlOutcome.kind === 'declined') captured.declineReason = tomlOutcome.reason;
+          return;
+        }
+        if (target.format === 'yaml') {
+          const yamlOutcome = upsertYamlMcpConfig(
+            writePath,
+            target.topLevelKey,
+            serverName,
+            targetEntry,
+          );
+          captured.action = yamlOutcome.kind;
+          if (yamlOutcome.kind === 'declined') captured.declineReason = yamlOutcome.reason;
           return;
         }
         const outcome = upsertJsonMcpConfig(
@@ -1675,6 +1797,17 @@ export function classifyExistingMcpEntry(
     } catch {
       return { kind: 'decline', reason: 'unparseable' };
     }
+    return classifyContainer(config, target.topLevelKey, serverName, target.serverMapSubKey);
+  }
+
+  // YAML (Hermes) parses through the same `yaml` document model the upsert
+  // uses — structural errors (including a duplicate `mcp_servers` key) surface
+  // as a decline rather than an arbitrary edit target, and a leading BOM is
+  // stripped so it doesn't derail the parse.
+  if (target.format === 'yaml') {
+    const doc = parseDocument(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
+    if (doc.errors.length > 0) return { kind: 'decline', reason: 'unparseable' };
+    const config = (doc.toJS() ?? {}) as Record<string, unknown>;
     return classifyContainer(config, target.topLevelKey, serverName, target.serverMapSubKey);
   }
 

@@ -15,7 +15,8 @@ export type EditorId =
   | 'openclaw'
   | 'pi'
   | 'antigravity'
-  | 'lm-studio';
+  | 'lm-studio'
+  | 'hermes';
 
 export const ALL_EDITOR_IDS = [
   'claude',
@@ -27,6 +28,7 @@ export const ALL_EDITOR_IDS = [
   'pi',
   'antigravity',
   'lm-studio',
+  'hermes',
 ] as const satisfies readonly EditorId[];
 
 /**
@@ -45,6 +47,7 @@ export const EDITOR_LABELS = {
   pi: 'Pi',
   antigravity: 'Antigravity',
   'lm-studio': 'LM Studio',
+  hermes: 'Hermes',
 } as const satisfies Record<EditorId, string>;
 
 /**
@@ -109,6 +112,10 @@ export const EDITOR_PROJECT_SKILL_ROOT = {
   // LM Studio is an MCP host (its chat connects to MCP servers) with no Agent
   // Skills surface at all — OK's only integration is the user-global MCP config.
   'lm-studio': null,
+  // Hermes Agent (Nous Research) is a user-global terminal agent: its whole
+  // config lives at `~/.hermes/config.yaml` with no project-scoped skill dir OK
+  // writes — same null-project-skill posture as OpenClaw / Claude Desktop.
+  hermes: null,
 } as const satisfies Record<EditorId, string | null>;
 
 /** Editor ids that have a project skill surface (valid install-projection targets). */
@@ -158,6 +165,7 @@ export const EDITOR_SETUP_DOC_SLUG = {
   pi: 'pi',
   antigravity: 'antigravity',
   'lm-studio': 'lm-studio',
+  hermes: 'hermes',
 } as const satisfies Record<EditorId, string>;
 
 /**
@@ -194,4 +202,8 @@ export const EDITOR_PROJECT_CONFIG_PATH = {
   // Cursor's notation but has no project-local variant), so it is never
   // detected as "project-configured".
   'lm-studio': null,
+  // Hermes' MCP config is user-global (`~/.hermes/config.yaml`, servers under
+  // `mcp_servers`); no project-local variant, so it is never detected as
+  // "project-configured" — same as OpenClaw.
+  hermes: null,
 } as const satisfies Record<EditorId, string | null>;

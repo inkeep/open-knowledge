@@ -36,14 +36,17 @@ export const SKILL_TARGETS_SCHEMA_VERSION = 1;
  * single source `PROJECT_SKILL_EDITOR_IDS` (derived from `EDITOR_PROJECT_SKILL_ROOT`)
  * so the two can't drift. z.enum needs a literal tuple, which the derived array's
  * `.filter` widens to `EditorId`, so the cast restates the narrow literal shape:
- * `Exclude<EditorId, 'claude-desktop' | 'openclaw' | 'antigravity'>` is exactly
- * the set of editors WITH a project skill surface (`claude` / `cursor` /
- * `codex` / `opencode` / `pi`). claude-desktop, openclaw, and antigravity have
- * a null project skill root (user-global skills only), so they are excluded.
- * schema.test.ts asserts the cast stays value-equal to the derived list as a
- * backstop.
+ * `Exclude<EditorId, 'claude-desktop' | 'openclaw' | 'antigravity' | 'hermes'>`
+ * is exactly the set of editors WITH a project skill surface (`claude` /
+ * `cursor` / `codex` / `opencode` / `pi`). claude-desktop, openclaw,
+ * antigravity, and hermes have a null project skill root (user-global skills
+ * only), so they are excluded. schema.test.ts asserts the cast stays
+ * value-equal to the derived list as a backstop.
  */
-type ProjectSkillEditorId = Exclude<EditorId, 'claude-desktop' | 'openclaw' | 'antigravity'>;
+type ProjectSkillEditorId = Exclude<
+  EditorId,
+  'claude-desktop' | 'openclaw' | 'antigravity' | 'lm-studio' | 'hermes'
+>;
 export const SkillTargetEditorSchema = z.enum(
   // Double cast (through `unknown`): the derived array is typed `EditorId[]`,
   // which TS won't directly narrow to the literal tuple z.enum needs. Runtime

@@ -88,7 +88,7 @@ When you initialize or open a project, the app scaffolds the same project files 
 | `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.opencode/skills/`, `.pi/skills/` | Project-local "rich" OpenKnowledge skill (`SKILL.md`) for the same five editors | In-project, committed |
 | `.ok/skill-targets.json` | Committed list of which editors receive skills, written when you customize the targets | In-project, committed |
 | `.claude/launch.json` | Configures Claude Code's preview pane to open the editor (on a local UI port, `39848`) | In-project, committed |
-| `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, `~/.openclaw/openclaw.json`, `~/.gemini/config/mcp_config.json` | User-level `open-knowledge` MCP registration, one per detected editor, so it's available in every project (`~/.openclaw/openclaw.json` only when `~/.openclaw/` exists; `~/.gemini/config/mcp_config.json` is Antigravity's shared IDE + `agy` config, only when `~/.gemini/` exists) | Outside-project (editor config) |
+| `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, `~/.openclaw/openclaw.json`, `~/.gemini/config/mcp_config.json`, `~/.lmstudio/mcp.json`, `~/.hermes/config.yaml` | User-level `open-knowledge` MCP registration, one per detected editor, so it's available in every project (`~/.openclaw/openclaw.json` only when `~/.openclaw/` exists; `~/.gemini/config/mcp_config.json` is Antigravity's shared IDE + `agy` config, only when `~/.gemini/` exists; `~/.lmstudio/mcp.json` and `~/.hermes/config.yaml` only when those apps are installed) | Outside-project (editor config) |
 
 ### While a project is open
 
@@ -178,6 +178,8 @@ With `--scope user` or `both` (the default), `ok init` also registers the `open-
 | `~/.config/opencode/opencode.json` | OpenCode | Outside-project (editor config) |
 | `~/.openclaw/openclaw.json` | OpenClaw (only when `~/.openclaw/` exists) | Outside-project (editor config) |
 | `~/.gemini/config/mcp_config.json` | Antigravity (only when `~/.gemini/` exists) — shared by the IDE and the `agy` CLI | Outside-project (editor config) |
+| `~/.lmstudio/mcp.json` | LM Studio (only when installed; also checks `~/.cache/lm-studio/mcp.json`) | Outside-project (editor config) |
+| `~/.hermes/config.yaml` | Hermes (only when `~/.hermes/` exists) | Outside-project (editor config) |
 
 Pi is the exception: it has no user-level MCP config (it has no MCP support at all), so its integration is only ever the project-scoped bridge extension above.
 

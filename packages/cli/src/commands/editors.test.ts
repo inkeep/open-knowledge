@@ -19,6 +19,7 @@ import {
   resolveCodexConfigPath,
   resolveCursorConfigPath,
   resolveEditorTargets,
+  resolveHermesConfigPath,
   resolveLmStudioConfigPath,
   resolveOpenClawConfigPath,
   resolveOpenCodeConfigPath,
@@ -214,6 +215,17 @@ describe('resolveAntigravityConfigPath', () => {
     );
     expect(resolveAntigravityConfigPath({ home: 'C:\\Users\\alice', platformName: 'win32' })).toBe(
       'C:\\Users\\alice\\.gemini\\config\\mcp_config.json',
+    );
+  });
+});
+
+describe('resolveHermesConfigPath', () => {
+  it('builds the global Hermes config path (home-relative on every platform)', () => {
+    expect(resolveHermesConfigPath({ home: '/Users/alice', platformName: 'darwin' })).toBe(
+      '/Users/alice/.hermes/config.yaml',
+    );
+    expect(resolveHermesConfigPath({ home: '/home/alice', platformName: 'linux' })).toBe(
+      '/home/alice/.hermes/config.yaml',
     );
   });
 });

@@ -401,7 +401,7 @@ describe('M1 smoke', () => {
         typeName: 'EditorId',
         canonicalPath: editorsConstantPath,
         canonicalRe: /type\s+EditorId\s*=([^;]+);/,
-        expectedLiteralCount: 9,
+        expectedLiteralCount: 10,
         inlineRe:
           /'claude'\s*\|\s*'claude-desktop'\s*\|\s*'cursor'\s*\|\s*'codex'\s*\|\s*'opencode'\s*\|\s*'openclaw'/,
         mirrors: [

@@ -4,6 +4,7 @@ import { ClaudeIcon } from './claude';
 import { CodexIcon } from './codex';
 import { CursorIcon } from './cursor';
 import { GitHubIcon } from './github';
+import { HermesIcon } from './hermes';
 import { McpIcon } from './mcp';
 import { ObsidianIcon } from './obsidian';
 import { OpenClawIcon } from './openclaw';
@@ -22,6 +23,7 @@ export const brandIcons = {
   OpenClaw: OpenClawIcon,
   Pi: PiIcon,
   Antigravity: AntigravityIcon,
+  Hermes: HermesIcon,
   GitHub: GitHubIcon,
   Obsidian: ObsidianIcon,
   MCP: McpIcon,

@@ -611,6 +611,20 @@ export function resolveOpenClawConfigPath(options: AppSupportOptions = {}): stri
 }
 
 /**
+ * Hermes Agent (Nous Research) keeps its WHOLE config — models, tool filters,
+ * MCP servers — at a user-global `~/.hermes/config.yaml` on every platform, with
+ * servers nested under the top-level `mcp_servers` key. It is YAML, so OK edits
+ * it through the format-preserving `yaml` document writer (the JSON/TOML surgical
+ * siblings don't apply), touching only its own entry so the user's model + tool
+ * config and comments in that same file are byte-preserved.
+ */
+export function resolveHermesConfigPath(options: AppSupportOptions = {}): string {
+  const platformName = options.platformName ?? process.platform;
+  const home = options.home ?? homedir();
+  return pathApiForPlatform(platformName).join(home, '.hermes', 'config.yaml');
+}
+
+/**
  * Pi's coding-agent home dir — `~/.pi/agent/` (settings, global extensions,
  * skills, sessions), overridable via `PI_CODING_AGENT_DIR` like Codex's
  * `CODEX_HOME`. Detection-only for OK: Pi has no user-global MCP config
@@ -688,14 +702,15 @@ export interface EditorMcpTarget {
    */
   configPath: (cwd: string, home?: string) => string;
   /**
-   * On-disk config format for this editor. `'json'` / `'toml'` entries go
-   * through the surgical entry upsert; `'file'` means OK owns the WHOLE file
-   * (Pi's bridge extension) — the write path drops
+   * On-disk config format for this editor. `'json'` / `'toml'` / `'yaml'`
+   * entries go through the surgical entry upsert (each preserving the host
+   * config's comments + formatting via its own document model); `'file'` means
+   * OK owns the WHOLE file (Pi's bridge extension) — the write path drops
    * `buildPiExtensionSource(...)` verbatim and classify/removal treat the raw
    * text (via the synthetic `PI_MANAGED_FILE_ENTRY_COMMAND` entry) instead of
    * parsing a server map. `topLevelKey` is inert for `'file'` targets.
    */
-  format: 'json' | 'toml' | 'file';
+  format: 'json' | 'toml' | 'yaml' | 'file';
   /** Top-level key that holds the server map. */
   topLevelKey: 'mcpServers' | 'servers' | 'mcp_servers' | 'mcp';
   /**
@@ -904,6 +919,28 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> = {
     // Never write LM Studio's `mcp.json` unless it's actually installed —
     // gated on detection even under the consent flow's skipAvailabilityCheck,
     // like OpenClaw. Writing a config for an absent app is a pointless no-op.
+    offerOnlyWhenDetected: true,
+  },
+  hermes: {
+    id: 'hermes',
+    label: EDITOR_LABELS.hermes,
+    configPath: (_cwd, home) => resolveHermesConfigPath({ home }),
+    // YAML config: OK edits only its own `mcp_servers.open-knowledge` entry via
+    // the format-preserving `yaml` document writer, so the user's model +
+    // tool-filter config and comments in the same file are untouched.
+    format: 'yaml',
+    topLevelKey: 'mcp_servers',
+    serverName: () => MCP_SERVER_NAME,
+    // The resilient stdio chain (`command`/`args`) drops into Hermes' stdio
+    // server shape unchanged — only the YAML envelope differs from the other
+    // hosts, exactly like OpenClaw reuses this builder under a different key.
+    buildEntry: (_cwd, options) => buildManagedServerEntry(options),
+    scope: 'global',
+    detectPath: (_cwd, home) => join(home ?? homedir(), '.hermes'),
+    // Never write `~/.hermes/config.yaml` unless Hermes is actually installed —
+    // gated on detection even under the consent-flow skipAvailabilityCheck, like
+    // OpenClaw. A niche global agent most users don't run; an orphan config that
+    // nothing reads helps no one.
     offerOnlyWhenDetected: true,
   },
 };

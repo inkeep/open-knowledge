@@ -1,0 +1,66 @@
+---
+title: Hermes
+description: Use OpenKnowledge with Hermes Agent over MCP.
+icon: custom/Hermes
+---
+
+[Hermes Agent](https://hermes-agent.nousresearch.com) (Nous Research) is a terminal coding agent that connects to MCP servers. Once OpenKnowledge is registered as one, Hermes can read, search, and write your knowledge base through OK's tools — with full attribution, link-awareness, conflict-awareness, and a live browser preview. Inside an OK project, work markdown through those tools rather than native file access, so every edit stays attributed and previewable.
+
+## Install
+
+<McpInstall editor="Hermes">
+
+After `ok init` writes the config, restart Hermes (or run `/reload-mcp` in-session) so it picks up the entry. Hermes auto-discovers MCP tools at startup and updates its tool list at runtime.
+
+</McpInstall>
+
+`ok init` writes the OpenKnowledge server into `~/.hermes/config.yaml` under `mcp_servers`, using the same resilient launcher every other editor gets — it finds `ok` whether you installed the desktop app or the npm CLI, so there's no PATH to configure. Hermes keeps its whole config (models, tool filters, other MCP servers) in that one YAML file, so OK edits only its own `open-knowledge` entry and leaves the rest — your comments included — in place.
+
+<Callout type="info">
+  Hermes is detected by the presence of `~/.hermes/`. If `ok init` shows Hermes as `config root
+  missing; skipped`, launch Hermes once so it creates its home directory, then re-run `ok init`.
+</Callout>
+
+## Initialize a knowledge base
+
+`ok init` turns a folder into a knowledge base (and, on the same run, registers the MCP server above):
+
+```bash
+cd /path/to/your/knowledge-base && ok init
+```
+
+<Callout type="warn">
+  **`ok init` resolves upward into an existing project.** Run inside a subdirectory of an existing
+  OK project, `ok init` finds the *parent* project and refreshes that one — it does not create a
+  nested project, and it writes no markdown in the subdirectory. To create a genuinely separate
+  knowledge base, run `ok init` in a folder that sits **outside any existing `.ok` project tree**.
+</Callout>
+
+## Verify
+
+Start Hermes in the project and ask it to exercise the server:
+
+<VerifyExec subject="Hermes" />
+
+If the agent doesn't see the tool, restart Hermes (or run `/reload-mcp`) — some runtimes lazy-load MCP tools and only surface them after discovery, so absence from the initial list means "not discovered yet," not "not registered."
+
+## Agent contract
+
+The **OpenKnowledge skill** — the authoritative agent contract for tool use, grounding, and linking — is project-scoped, written for Claude, Cursor, Codex, and OpenCode; Hermes has no project skill directory to receive it. So for Hermes agents, the contract is these two reminders:
+
+- **Markdown is MCP-owned.** Inside an OK project, read and write `.md` / `.mdx` through OK's tools (`exec`, `search`, `write`, `edit`, `links`), not native shell or file tools — native access loses attribution and skips the frontmatter, backlinks, and history OK returns.
+- **Discover before concluding the MCP is missing.** Not seeing `exec` in the initial tool list isn't the escape hatch; restart Hermes or run `/reload-mcp` first.
+
+For the complete tool surface, see the [MCP reference](/docs/reference/mcp).
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `ok init` showed Hermes as `config root missing; skipped` | `~/.hermes/` doesn't exist yet, so Hermes wasn't detected | Launch Hermes once (it creates its home directory), then re-run `ok init` |
+| `ok init` reported the config was `left unchanged` | OpenKnowledge declined to edit `~/.hermes/config.yaml` for the reason shown in parentheses | Fix what the reason names (invalid YAML, a duplicated `mcp_servers` key, an oversize config), then re-run `ok init` |
+| Agent doesn't see the `open-knowledge` tools | MCP tools lazy-loaded, or Hermes' process predates the entry | Restart Hermes or run `/reload-mcp` |
+| `write` / `edit` -> "Hocuspocus server is not running" | OK server not started | Run `ok start` (or leave the desktop app running) and retry |
+| Preview "doesn't open" | used the route-only `/#/…` path in a browser | Call `preview_url` for the full URL |
+
+New to OpenKnowledge itself? Start with the [quickstart](/docs/get-started/quickstart) for `ok init` and `ok start`.

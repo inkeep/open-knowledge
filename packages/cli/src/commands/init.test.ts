@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { readBundleDecision } from '@inkeep/open-knowledge-server';
+import { parse as parseYaml } from 'yaml';
 import { loadConfig } from '../config/loader.ts';
 import { OK_DIR } from '../constants.ts';
 import { previewContent } from '../content/preview.ts';
@@ -809,6 +810,8 @@ describe('runInit', () => {
       mkdirSync(join(fakeHome, '.gemini'), { recursive: true });
       // LM Studio is likewise `offerOnlyWhenDetected` — create its config dir.
       mkdirSync(dirname(lmStudioConfigPath()), { recursive: true });
+      // Hermes is likewise `offerOnlyWhenDetected` — gated on `~/.hermes`.
+      mkdirSync(join(fakeHome, '.hermes'), { recursive: true });
 
       const result = await runInitForTest({ editors: [...ALL_EDITOR_IDS] });
 
@@ -838,6 +841,11 @@ describe('runInit', () => {
         readFileSync(join(fakeHome, '.gemini', 'config', 'mcp_config.json'), 'utf-8'),
       );
       expect(antigravityConfig.mcpServers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
+      // Hermes is YAML under `mcp_servers` — verify the entry landed there.
+      const hermesConfig = parseYaml(
+        readFileSync(join(fakeHome, '.hermes', 'config.yaml'), 'utf-8'),
+      );
+      expect(hermesConfig.mcp_servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
     });
 
     it('overwrites across all targeted editors', async () => {
@@ -2434,6 +2442,7 @@ describe('detectInstalledEditors', () => {
     mkdirSync(join(fakeHome, '.pi', 'agent'), { recursive: true });
     mkdirSync(join(fakeHome, '.gemini'), { recursive: true });
     mkdirSync(dirname(lmStudioConfigPath()), { recursive: true });
+    mkdirSync(join(fakeHome, '.hermes'), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
     expect(detected).toEqual(expect.arrayContaining([...ALL_EDITOR_IDS]));
     expect(detected).toHaveLength(ALL_EDITOR_IDS.length);
