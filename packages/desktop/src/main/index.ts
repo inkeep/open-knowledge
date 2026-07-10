@@ -36,6 +36,7 @@ import {
   openSync,
   readFileSync,
   realpathSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
@@ -275,6 +276,7 @@ import { removeGitFolder } from './remove-git-folder.ts';
 import { attachRendererConsoleCapture } from './renderer-console-capture.ts';
 import { resolveDetachedSpawnArgs } from './resolve-detached-spawn-args.ts';
 import { resolveShareTarget as resolveShareTargetMain } from './resolve-share-target.ts';
+import { handleRevealExternal } from './reveal-external.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
 import { handleShellOpenExternal } from './shell-allowlist.ts';
 import { createShowGateRegistry, type ShowGateRegistry } from './show-gate.ts';
@@ -3478,6 +3480,43 @@ function registerIpcHandlers() {
       console.warn('[main] show-item-in-folder refused', { reason: result.reason });
     }
     return undefined;
+  });
+
+  handle('ok:shell:reveal-external', async (event, absPath) => {
+    // Out-of-project reveal for terminal clickable-links. Uncontained by design;
+    // the confirmation dialog is the trust boundary (see reveal-external.ts).
+    const callerWin = BrowserWindow.fromWebContents(event.sender);
+    const result = await handleRevealExternal(absPath, {
+      // statSync (not existsSync) so a permission error (EACCES/EPERM on a system
+      // path) surfaces as `unreadable` rather than being flattened to `missing`.
+      probe: (p) => {
+        try {
+          statSync(p);
+          return 'exists';
+        } catch (err) {
+          return (err as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'unreadable';
+        }
+      },
+      confirmReveal: async (p) => {
+        const opts: MessageBoxOptions = {
+          type: 'question',
+          buttons: ['Reveal in Finder', 'Cancel'],
+          defaultId: 0,
+          cancelId: 1,
+          message: `"${basename(p)}" is outside your project`,
+          detail: `${p}\n\nReveal it in Finder?`,
+        };
+        const { response } = callerWin
+          ? await dialog.showMessageBox(callerWin, opts)
+          : await dialog.showMessageBox(opts);
+        return response === 0;
+      },
+      showItemInFolder: (p) => shell.showItemInFolder(p),
+    });
+    if (!result.ok) {
+      console.warn('[main] reveal-external refused', { reason: result.reason });
+    }
+    return result;
   });
 
   handle('ok:shell:trash-item', async (event, absPath) => {

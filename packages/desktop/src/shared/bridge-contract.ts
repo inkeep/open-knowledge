@@ -1215,6 +1215,24 @@ export interface OkDesktopBridge {
     ): Promise<{ ok: true } | { ok: false; reason: 'path-escape' | 'not-found' | 'resolve-error' }>;
 
     /**
+     * Reveal an ABSOLUTE path that lives OUTSIDE the caller window's project —
+     * the terminal's "this file is outside your project" clickable-link flow.
+     * Unlike `revealAsset`, this is deliberately NOT containment-gated (that is
+     * the feature); instead main stats the path and, if it exists, pops a native
+     * confirmation dialog naming it, calling `shell.showItemInFolder` only on
+     * confirm. The dialog is the trust boundary: a compromised renderer can at
+     * most surface a dialog the user must dismiss, never silently steer the file
+     * manager. `not-found` when the path is missing (no dialog shown),
+     * `invalid-path` for a non-absolute / malformed input.
+     */
+    revealExternal(
+      absPath: string,
+    ): Promise<
+      | { ok: true; outcome: 'revealed' | 'dismissed' }
+      | { ok: false; reason: 'not-found' | 'invalid-path' | 'error' }
+    >;
+
+    /**
      * Display the native right-click context menu for an on-disk reference
      * (`asset`, `wiki-link`, or `image`). Built from `Menu.buildFromTemplate`
      * in main — the gesture-attested pattern: main observes the click

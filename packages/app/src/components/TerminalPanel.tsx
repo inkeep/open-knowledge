@@ -16,12 +16,16 @@ import { use, useEffect, useRef, useState } from 'react';
 import { ConfigContext } from '@/lib/config-context';
 import type { ClaudeReadiness, OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { cn } from '@/lib/utils';
+import { getPageListCache } from '../editor/page-list-cache';
+import { filePathToDocName, hashFromDocName, hashFromFolderPath } from '../lib/doc-hash';
 import { ClaudeReadinessBanner } from './ClaudeReadinessBanner';
 import type { TerminalLaunchIntent } from './EditorPane';
 import { filesFromExternalDrop, isExternalFileDrag } from './file-tree-adapter';
 import { TerminalCliMissingBanner } from './TerminalCliMissingBanner';
 import { type TerminalExitInfo, TerminalExitNotice } from './TerminalExitNotice';
 import { TerminalRefusalNotice } from './TerminalRefusalNotice';
+import { createTerminalFileLinkProvider } from './terminal-link-provider';
+import { createRecentOpenGuard, type TerminalLinkTarget } from './terminal-links';
 import { createSameFrameRepaint } from './terminal-render-flush';
 import { createResizeThrottle } from './terminal-resize-throttle';
 import { xtermThemeForMode } from './terminal-theme';
@@ -224,6 +228,7 @@ function TerminalSession({
     let unsubData: (() => void) | undefined;
     let unsubExit: (() => void) | undefined;
     let titleDisposable: { dispose(): void } | undefined;
+    let linkProviderDisposable: { dispose(): void } | undefined;
     let observer: ResizeObserver | undefined;
     let canvasPixelObserver: ResizeObserver | undefined;
     let ptyResizeThrottle: ReturnType<typeof createResizeThrottle> | undefined;
@@ -237,6 +242,21 @@ function TerminalSession({
     // on — its assertions read the .xterm-accessibility tree.
     const screenReaderModeAtMount =
       bridge.config.e2eSmoke === true || (bridge.accessibility?.isScreenReaderActive() ?? true);
+    const recentOpen = createRecentOpenGuard();
+    const openUrl = (uri: string) => {
+      // Defer while a full-screen TUI owns the mouse: the click is delivered to
+      // the app as a mouse report, so the terminal must not also open the link.
+      // The `claude` TUI additionally opens URLs itself, which is the concrete
+      // double-open this prevents. (Tradeoff: a URL printed inside a mouse-mode
+      // TUI that does NOT open links itself — e.g. `less -R` — isn't
+      // terminal-clickable; that matches how terminals gate clicks on mouse
+      // apps.) `undefined` (pre-mount) also defers — fail closed.
+      if (termRef.current?.modes.mouseTrackingMode !== 'none') return;
+      // Collapse the OSC 8 `linkHandler` + `WebLinksAddon` pair for the same URL
+      // (see createRecentOpenGuard).
+      if (recentOpen(uri, Date.now())) return;
+      void bridge.shell.openExternal(uri);
+    };
     const term = new Terminal({
       screenReaderMode: screenReaderModeAtMount,
       minimumContrastRatio: 4.5,
@@ -258,6 +278,13 @@ function TerminalSession({
       // tuned toward native terminals like Ghostty. Mouse-mode TUIs use the
       // separate accumulator below, scaled by its own `sensitivity`.
       scrollSensitivity: 3,
+      // OSC 8 explicit hyperlinks (`ls --hyperlink`, agent tooling). xterm core
+      // renders them; route activation to the OS browser. `allowNonHttpProtocols`
+      // stays off (default), so only http(s) URIs reach here — nothing untrusted
+      // is handed to `openExternal` beyond what its scheme allowlist permits.
+      linkHandler: {
+        activate: (_event, uri) => openUrl(uri),
+      },
       theme: xtermThemeForMode(initialResolvedThemeRef.current),
     });
     termRef.current = term;
@@ -265,9 +292,97 @@ function TerminalSession({
     term.loadAddon(fit);
     term.loadAddon(new Unicode11Addon());
     term.unicode.activeVersion = '11';
-    term.loadAddon(new WebLinksAddon());
+    // Implicit http(s) URL detection. Route clicks explicitly to the OS browser
+    // (scheme-allowlisted in main) instead of relying on xterm's default
+    // window.open → asset-safety-net bounce.
+    term.loadAddon(new WebLinksAddon((_event, uri) => openUrl(uri)));
 
     term.open(container);
+
+    // Clickable file paths: a custom provider detects POSIX path tokens in
+    // hovered rows, validates them against the project (page-list cache →
+    // checkTargetExists), and routes clicks — OK docs open in the editor, other
+    // files OS-delegate. Disposed on teardown alongside the terminal.
+    const activateFileLink = (target: TerminalLinkTarget) => {
+      // NOTE: unlike `openUrl`, file-path links are NOT gated on mouse tracking.
+      // A TUI like the `claude` TUI opens URLs itself (hence the URL deferral to
+      // avoid a double-open) but does NOT open file paths, so the terminal must
+      // still handle a file-path click even while that TUI owns the mouse.
+      switch (target.kind) {
+        case 'doc':
+          window.location.hash = hashFromDocName(filePathToDocName(target.relPath));
+          return;
+        case 'folder':
+          window.location.hash = hashFromFolderPath(target.relPath);
+          return;
+        case 'external':
+          // A path outside the project — main pops a "reveal in Finder?" dialog
+          // (the confirmation is the security gate for touching an out-of-project
+          // location) and reveals on confirm.
+          void bridge.shell
+            .revealExternal(target.absPath)
+            .catch((err) => console.warn('[terminal] revealExternal failed:', err));
+          return;
+        case 'asset':
+          void bridge.shell
+            .openAsset(target.relPath)
+            .then((result) => {
+              if (result.ok) return;
+              // `extension-blocked` means the file exists but OK refuses to hand a
+              // scripted/executable type to the OS opener — reveal it instead so
+              // the click isn't a silent no-op (mirrors dispatchAssetClick).
+              if (result.reason === 'extension-blocked') {
+                void bridge.shell
+                  .revealAsset(target.relPath)
+                  .catch((err) => console.warn('[terminal] revealAsset failed:', err));
+                return;
+              }
+              console.warn('[terminal] openAsset refused:', result.reason);
+            })
+            .catch((err) => console.warn('[terminal] openAsset failed:', err));
+          return;
+        default: {
+          // Exhaustiveness: a new TerminalLinkKind must add a case above.
+          const _never: never = target;
+          return _never;
+        }
+      }
+    };
+    linkProviderDisposable = term.registerLinkProvider(
+      createTerminalFileLinkProvider({
+        projectPath: bridge.config.projectPath,
+        readLogicalLine: (bufferLineNumber) => {
+          const buf = term.buffer.active;
+          const idx = bufferLineNumber - 1;
+          if (!buf.getLine(idx)) return undefined;
+          // Stitch the wrapped logical line: a row longer than `term.cols` is
+          // stored across multiple buffer rows, continuations flagged
+          // `isWrapped`. Walk back to the logical start, forward to the end, and
+          // join each row at full width (`translateToString(false)` pads to
+          // `cols`) so the joined offsets map cleanly back to buffer cells. A
+          // single row that reads just the hovered line would split a long path
+          // (an absolute path in a narrow docked terminal) into non-resolving
+          // fragments — the bug this fixes.
+          let start = idx;
+          while (start > 0 && buf.getLine(start)?.isWrapped) start--;
+          let end = idx;
+          while (buf.getLine(end + 1)?.isWrapped) end++;
+          let text = '';
+          for (let row = start; row <= end; row++) {
+            text += buf.getLine(row)?.translateToString(false) ?? '';
+          }
+          return { text, startLine: start + 1, cols: term.cols };
+        },
+        getSnapshot: getPageListCache,
+        checkTargetExists: (kind, path) =>
+          bridge.project.checkTargetExists({
+            projectPath: bridge.config.projectPath,
+            kind,
+            path,
+          }),
+        onActivate: activateFileLink,
+      }),
+    );
 
     // Under the Electron smoke suite (main injects `--ok-e2e-smoke=1`, surfaced
     // as `config.e2eSmoke`), skip the WebGL canvas renderer and use xterm's DOM
@@ -752,6 +867,7 @@ function TerminalSession({
       unsubData?.();
       unsubExit?.();
       titleDisposable?.dispose();
+      linkProviderDisposable?.dispose();
       term.dispose();
       if (ptyId)
         void bridge.terminal

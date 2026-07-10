@@ -315,6 +315,10 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         },
         openAsset: async (): Promise<{ ok: true }> => ({ ok: true }),
         revealAsset: async (): Promise<{ ok: true }> => ({ ok: true }),
+        revealExternal: async (): Promise<{ ok: true; outcome: 'revealed' }> => ({
+          ok: true,
+          outcome: 'revealed',
+        }),
         showAssetMenu: async (): Promise<void> => {},
         showItemInFolder: async (): Promise<void> => {},
         // No-op stub — sidebar Delete flow isn't exercised by the handoff

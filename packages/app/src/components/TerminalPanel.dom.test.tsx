@@ -27,7 +27,14 @@ class MockFitAddon {
   }
 }
 class MockWebglAddon {}
-class MockWebLinksAddon {}
+// Captures the click handler the panel passes to WebLinksAddon so the test can
+// assert URL activation routes through the bridge.
+let lastWebLinksHandler: ((event: MouseEvent, uri: string) => void) | null = null;
+class MockWebLinksAddon {
+  constructor(handler?: (event: MouseEvent, uri: string) => void) {
+    lastWebLinksHandler = handler ?? null;
+  }
+}
 class MockUnicode11Addon {}
 
 class MockTerminal {
@@ -61,6 +68,38 @@ class MockTerminal {
   // DOM) → the handler's viewport-center fallback; the pointer-mapping test
   // assigns a real element.
   element: HTMLElement | undefined = undefined;
+  // Text the mocked buffer returns for any row — tests set it, then drive the
+  // captured link provider to exercise file-path detection + click routing.
+  lineText = '';
+  // Optional wrapped-line fixture: each entry is one buffer row; rows after the
+  // first carry `isWrapped` so the provider stitches them into one logical line.
+  lineRows: string[] | null = null;
+  get buffer() {
+    return {
+      active: {
+        getLine: (index: number) => {
+          if (this.lineRows) {
+            const t = this.lineRows[index];
+            if (t === undefined) return undefined;
+            return { translateToString: (_trim?: boolean) => t, isWrapped: index > 0 };
+          }
+          return { translateToString: (_trim?: boolean) => this.lineText, isWrapped: false };
+        },
+      },
+    };
+  }
+  linkProvider: {
+    provideLinks(line: number, cb: (links: unknown[] | undefined) => void): void;
+  } | null = null;
+  linkProviderDispose = mock(() => {});
+  registerLinkProvider = mock(
+    (provider: {
+      provideLinks(line: number, cb: (links: unknown[] | undefined) => void): void;
+    }) => {
+      this.linkProvider = provider;
+      return { dispose: this.linkProviderDispose };
+    },
+  );
   onDataCb: ((d: string) => void) | null = null;
   keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
   wheelHandler: ((e: WheelEvent) => boolean) | null = null;
@@ -173,6 +212,20 @@ function makeBridge(
   const unsubData = mock(() => {});
   const unsubExit = mock(() => {});
   const openExternal = mock(async (_url: string) => {});
+  const openAsset = mock(
+    async (_relPath: string): Promise<{ ok: true } | { ok: false; reason: string }> => ({
+      ok: true,
+    }),
+  );
+  const revealAsset = mock(async (_relPath: string) => ({ ok: true }) as { ok: true });
+  const revealExternal = mock(
+    async (_absPath: string) =>
+      ({ ok: true, outcome: 'revealed' }) as { ok: true; outcome: 'revealed' },
+  );
+  const checkTargetExists = mock(
+    async (_req: { projectPath: string; kind: 'doc' | 'folder'; path: string }) =>
+      'exists' as const,
+  );
   const rewireClaudeMcp = mock(async () => preflight);
   const terminal = {
     create: mock(async () => createResult),
@@ -196,14 +249,19 @@ function makeBridge(
   return {
     bridge: {
       terminal,
-      shell: { openExternal },
-      config: { e2eSmoke: false },
+      shell: { openExternal, openAsset, revealAsset, revealExternal },
+      project: { checkTargetExists },
+      config: { e2eSmoke: false, projectPath: '/Users/me/project' },
       // Stand in for Electron `webUtils.getPathForFile`: a dropped File resolves
       // to a deterministic on-disk path so the drop→input wiring is assertable.
       getPathForFile: (file: File) => `/dropped/${file.name}`,
     } as unknown as OkDesktopBridge,
     terminal,
     openExternal,
+    openAsset,
+    revealAsset,
+    revealExternal,
+    checkTargetExists,
     rewireClaudeMcp,
     unsubData,
     unsubExit,
@@ -1250,5 +1308,194 @@ describe('TerminalPanel', () => {
     // The sibling's PTY was never reaped and it shows no exit state.
     expect(kill).not.toHaveBeenCalledWith('pty-2');
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
+  describe('clickable links', () => {
+    // Drive the captured file-link provider for a buffer row (1-based; defaults
+    // to the first) and resolve with the links it emits (async — snapshot
+    // fast-path or probe). Pass a continuation row to exercise the backward walk.
+    function provide(
+      term: MockTerminal,
+      bufferLine = 1,
+    ): Promise<Array<{ activate: (e: MouseEvent, t: string) => void; text: string }>> {
+      return new Promise((resolve) => {
+        term.linkProvider?.provideLinks(bufferLine, (links) =>
+          resolve(
+            (links ?? []) as Array<{ activate: (e: MouseEvent, t: string) => void; text: string }>,
+          ),
+        );
+      });
+    }
+
+    test('routes URL clicks (WebLinksAddon + OSC 8) through the bridge', async () => {
+      const { bridge, openExternal } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm).not.toBeNull());
+
+      // WebLinksAddon received an explicit handler (not the default window.open
+      // bounce); it opens the URL via the scheme-allowlisted bridge call.
+      expect(lastWebLinksHandler).not.toBeNull();
+      lastWebLinksHandler?.({} as MouseEvent, 'https://example.com');
+      expect(openExternal).toHaveBeenCalledWith('https://example.com');
+
+      // OSC 8 explicit hyperlinks route the same way via Terminal.linkHandler.
+      const linkHandler = lastTerm?.options.linkHandler as
+        | { activate: (e: MouseEvent, uri: string) => void }
+        | undefined;
+      linkHandler?.activate({} as MouseEvent, 'https://osc8.example');
+      expect(openExternal).toHaveBeenCalledWith('https://osc8.example');
+    });
+
+    test('registers a file-path link provider once the panel mounts', async () => {
+      const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+    });
+
+    test('clicking a markdown path navigates the editor to the doc', async () => {
+      const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      term.lineText = 'edited notes/a.md';
+
+      const [link] = await provide(term);
+      expect(link?.text).toBe('notes/a.md');
+      window.location.hash = '';
+      link?.activate({} as MouseEvent, link.text);
+      expect(window.location.hash).toBe('#/notes/a');
+    });
+
+    test('stitches a path wrapped across buffer rows and navigates it', async () => {
+      const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      term.cols = 19;
+      // The path straddles the wrap: row 0 ends mid-path, row 1 (isWrapped)
+      // finishes it. A single-row read would see only `docs/guide/very` and miss.
+      term.lineRows = ['see docs/guide/very', '-long.md'];
+
+      const [link] = await provide(term);
+      expect(link?.text).toBe('docs/guide/very-long.md');
+      window.location.hash = '';
+      link?.activate({} as MouseEvent, link.text);
+      expect(window.location.hash).toBe('#/docs/guide/very-long');
+    });
+
+    test('reconstructs a wrapped path when its continuation row is hovered (backward walk)', async () => {
+      const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      term.cols = 19;
+      term.lineRows = ['see docs/guide/very', '-long.md'];
+      // Hover the CONTINUATION row (row 2): readLogicalLine must walk BACK to the
+      // logical start to rebuild the full path, not just read the hovered tail.
+      const [link] = await provide(term, 2);
+      expect(link?.text).toBe('docs/guide/very-long.md');
+      window.location.hash = '';
+      link?.activate({} as MouseEvent, link.text);
+      expect(window.location.hash).toBe('#/docs/guide/very-long');
+    });
+
+    test('clicking a trailing-slash folder navigates the editor to that folder', async () => {
+      const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      // A trailing slash classifies the path as a folder (not a doc/asset).
+      term.lineText = 'cd packages/app/';
+
+      const [link] = await provide(term);
+      expect(link?.text).toBe('packages/app');
+      window.location.hash = '';
+      link?.activate({} as MouseEvent, link.text);
+      expect(window.location.hash).toBe('#/packages/app/');
+    });
+
+    test('a non-blocked openAsset failure surfaces silently — no reveal fallback', async () => {
+      const { bridge, openAsset, revealAsset } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      term.lineText = 'wrote data/x.csv';
+
+      const [link] = await provide(term);
+      // Only `extension-blocked` escalates to reveal-in-Finder; a plain miss
+      // (e.g. the file vanished between probe and click) fails silently.
+      openAsset.mockResolvedValueOnce({ ok: false, reason: 'not-found' });
+      link?.activate({} as MouseEvent, link.text);
+      await waitFor(() => expect(openAsset).toHaveBeenCalledWith('data/x.csv'));
+      expect(revealAsset).not.toHaveBeenCalled();
+    });
+
+    test('disposes the file-link provider on unmount', async () => {
+      const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      const { unmount } = render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      unmount();
+      expect(term.linkProviderDispose).toHaveBeenCalledTimes(1);
+    });
+
+    test('clicking a non-doc path OS-delegates via openAsset, revealing on block', async () => {
+      const { bridge, openAsset, revealAsset } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      term.lineText = 'wrote data/x.csv';
+
+      const [link] = await provide(term);
+      expect(link?.text).toBe('data/x.csv');
+      link?.activate({} as MouseEvent, link.text);
+      await waitFor(() => expect(openAsset).toHaveBeenCalledWith('data/x.csv'));
+
+      // An executable-blocked type falls back to reveal-in-Finder.
+      openAsset.mockResolvedValueOnce({ ok: false, reason: 'extension-blocked' });
+      link?.activate({} as MouseEvent, link.text);
+      await waitFor(() => expect(revealAsset).toHaveBeenCalledWith('data/x.csv'));
+    });
+
+    test('clicking an out-of-project absolute path routes the reveal-external dialog', async () => {
+      const { bridge, revealExternal } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      // Bridge projectPath is /Users/me/project, so this absolute path is external.
+      term.lineText = 'built /tmp/out/report.pdf';
+      const [link] = await provide(term);
+      expect(link?.text).toBe('/tmp/out/report.pdf');
+      link?.activate({} as MouseEvent, link.text);
+      await waitFor(() => expect(revealExternal).toHaveBeenCalledWith('/tmp/out/report.pdf'));
+    });
+
+    test('defers URL clicks to a mouse-tracking TUI (no double-open with claude)', async () => {
+      const { bridge, openExternal } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm).not.toBeNull());
+      // A full-screen TUI enabled mouse tracking — it owns the click and opens
+      // the link itself, so the terminal must not also open it.
+      (lastTerm as MockTerminal).modes.mouseTrackingMode = 'any';
+      lastWebLinksHandler?.({} as MouseEvent, 'https://example.com');
+      const osc8 = lastTerm?.options.linkHandler as {
+        activate: (e: MouseEvent, u: string) => void;
+      };
+      osc8.activate({} as MouseEvent, 'https://example.com');
+      expect(openExternal).not.toHaveBeenCalled();
+    });
+
+    test('still opens FILE clicks inside a mouse-tracking TUI (only URLs defer)', async () => {
+      const { bridge, openAsset } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      term.lineText = 'wrote data/x.csv';
+      const [link] = await provide(term);
+      // A TUI owns the mouse, but it doesn't open file paths — the terminal must.
+      term.modes.mouseTrackingMode = 'any';
+      link?.activate({} as MouseEvent, link.text);
+      await waitFor(() => expect(openAsset).toHaveBeenCalledWith('data/x.csv'));
+    });
   });
 });

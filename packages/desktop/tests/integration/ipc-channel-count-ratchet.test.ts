@@ -311,8 +311,17 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  *     full ordering). Folding them into one discriminated channel would wear a
  *     single channel over two distinct operations against a namespace that
  *     deliberately keeps each PTY operation on its own channel.
+ *
+ * Bumped from 81 to 82 for the terminal clickable-links out-of-project reveal
+ * (`ok:shell:reveal-external`): when a terminal link points at an existing file
+ * OUTSIDE the window's project, main pops a "reveal in Finder?" confirmation and
+ * reveals on confirm. It is a distinct trust boundary from `ok:shell:reveal-asset`
+ * — deliberately UNCONTAINED (the whole feature) but dialog-gated — so folding it
+ * onto the containment-checked asset reveal would wear one channel over two
+ * opposite security contracts. Single member; the typed-ipc migration remains the
+ * committed end state, with the `ipc-channels.ts` header updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 81;
+const REQUEST_CHANNEL_CAP = 82;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

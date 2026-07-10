@@ -940,6 +940,19 @@ export interface OkDesktopBridge {
     ): Promise<{ ok: true } | { ok: false; reason: 'path-escape' | 'not-found' | 'resolve-error' }>;
 
     /**
+     * Reveal an ABSOLUTE path outside the project (the terminal's out-of-project
+     * clickable-link flow). Main pops a "reveal in Finder?" confirmation naming
+     * the path and reveals on confirm. See canonical JSDoc in
+     * `packages/desktop/src/shared/bridge-contract.ts`.
+     */
+    revealExternal(
+      absPath: string,
+    ): Promise<
+      | { ok: true; outcome: 'revealed' | 'dismissed' }
+      | { ok: false; reason: 'not-found' | 'invalid-path' | 'error' }
+    >;
+
+    /**
      * Display the native right-click context menu for an on-disk reference.
      * See canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
      * Asset-click-dispatcher surface.

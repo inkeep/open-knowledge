@@ -60,6 +60,13 @@ class MockTerminal {
   // Production attaches a wheel handler at mount; these launch tests never fire
   // wheel events, so the no-op presence is all that's needed to avoid throwing.
   attachCustomWheelEventHandler = mock(() => {});
+  // The panel registers a file-path link provider at mount; these launch tests
+  // never hover a link, so a disposable-returning stub (plus an empty buffer for
+  // the provider's readLine) is all that's needed to avoid throwing on mount.
+  registerLinkProvider = mock(() => ({ dispose() {} }));
+  get buffer() {
+    return { active: { getLine: () => ({ translateToString: () => '' }) } };
+  }
   constructor(options: Record<string, unknown>) {
     this.options = options;
   }

@@ -248,6 +248,7 @@ describe('M1 smoke', () => {
       'shell.recordHandoff', // Open in Agent telemetry
       'shell.openAsset', // asset-click dispatcher
       'shell.revealAsset', // asset-click dispatcher
+      'shell.revealExternal', // terminal out-of-project reveal
       'shell.showAssetMenu', // right-click context menu
       'shell.showItemInFolder', // file-tree reveal-in-finder
       'shell.trashItem', // sidebar Trash flow

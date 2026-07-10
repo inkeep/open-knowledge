@@ -30,7 +30,7 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 81 (ratchet cap 81). The 74→75 bump reconciled a merge collision:
+ * Count is 82 (ratchet cap 82). The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -43,7 +43,10 @@
  * (`ok:project-integrations:dispatch`, same status+set fold, scoped to the
  * sender window's project). The 79→81 bump added terminal-tab reload-survival
  * (`ok:pty:set-meta` + `ok:pty:set-order`) — two slots, following the `ok:pty:*`
- * one-channel-per-operation design rather than a dispatch fold. Full rationale in
+ * one-channel-per-operation design rather than a dispatch fold. The 81→82 bump
+ * added the terminal clickable-links out-of-project reveal
+ * (`ok:shell:reveal-external`): a distinct trust boundary from `reveal-asset`
+ * (uncontained + dialog-gated), so it could not fold onto it. Full rationale in
  * the ratchet test header.
  */
 
@@ -705,6 +708,23 @@ export interface RequestChannels {
   'ok:shell:reveal-asset': {
     args: [relPath: string];
     result: { ok: true } | { ok: false; reason: 'path-escape' | 'not-found' | 'resolve-error' };
+  };
+  /**
+   * Reveal an on-disk ABSOLUTE path that lives OUTSIDE the caller window's
+   * project — the terminal's clickable-links "this file is outside your
+   * project" flow. Deliberately NOT containment-gated like `reveal-asset`
+   * (that is the point): instead main pops a native confirmation dialog naming
+   * the path, and only calls `shell.showItemInFolder` if the user confirms. The
+   * dialog is the security control — a compromised renderer can at most pop a
+   * dialog the user must dismiss, never silently steer the file manager. Main
+   * stats the path first: a missing path shows no dialog (`not-found`). Absolute
+   * paths only; relatives are rejected (`invalid-path`).
+   */
+  'ok:shell:reveal-external': {
+    args: [absPath: string];
+    result:
+      | { ok: true; outcome: 'revealed' | 'dismissed' }
+      | { ok: false; reason: 'not-found' | 'invalid-path' | 'error' };
   };
   /**
    * Pop the native right-click context menu for an on-disk reference

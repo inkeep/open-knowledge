@@ -406,6 +406,7 @@ const bridge: OkDesktopBridge = {
     recordHandoff: (line) => invoke('ok:shell:record-handoff', line),
     openAsset: (relPath: string) => invoke('ok:shell:open-asset', relPath),
     revealAsset: (relPath: string) => invoke('ok:shell:reveal-asset', relPath),
+    revealExternal: (absPath: string) => invoke('ok:shell:reveal-external', absPath),
     showAssetMenu: (params) => invoke('ok:shell:show-asset-menu', params),
     showItemInFolder: (path: string) => invoke('ok:shell:show-item-in-folder', path),
     trashItem: (absPath: string) => invoke('ok:shell:trash-item', absPath),
