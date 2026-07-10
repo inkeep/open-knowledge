@@ -197,15 +197,17 @@ export const TERMINAL_CLIS = {
     handoffTarget: 'pi',
   },
   antigravity: {
-    // Antigravity's CLI binary is `agy`; its positional argument IS the
-    // starting prompt (`agy '<prompt>'` opens the interactive session with it),
-    // the same shape as claude/codex/cursor/pi — no promptFlag. (`agy -p` is
-    // the non-interactive one-shot; the default interactive command keeps the
-    // session open, matching the other CLIs.)
+    // Antigravity's CLI binary is `agy`. Unlike claude/codex/cursor/pi it has NO
+    // positional prompt argument, so the starting prompt rides on
+    // `--prompt-interactive` (`-i`): `agy --prompt-interactive '<prompt>'` runs
+    // the initial prompt AND keeps the interactive session open. A bare positional
+    // (`agy '<prompt>'`) is silently dropped — the empty-session bug. (`agy -p` /
+    // `--print` is the non-interactive one-shot that prints and exits.)
     bin: 'agy',
     displayName: 'Antigravity',
     docsUrl: 'https://antigravity.google/docs/cli-getting-started',
     handoffTarget: 'antigravity',
+    promptFlag: '--prompt-interactive',
   },
 } as const satisfies Record<TerminalCli, TerminalCliInfo>;
 

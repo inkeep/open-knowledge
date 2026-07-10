@@ -126,8 +126,9 @@ describe('buildCliLaunchCommand', () => {
     expect(buildCliLaunchCommand('opencode', 'hi')).toBe("opencode --prompt 'hi'\r");
     // Pi's positional IS the prompt — same shape as claude/codex/cursor.
     expect(buildCliLaunchCommand('pi', 'hi')).toBe("pi 'hi'\r");
-    // Antigravity's CLI binary is `agy`; its positional IS the prompt too.
-    expect(buildCliLaunchCommand('antigravity', 'hi')).toBe("agy 'hi'\r");
+    // Antigravity's CLI binary is `agy`; it has no positional prompt, so the
+    // prompt rides on --prompt-interactive (keeps the session interactive).
+    expect(buildCliLaunchCommand('antigravity', 'hi')).toBe("agy --prompt-interactive 'hi'\r");
   });
 
   it('escapes the prompt identically for every CLI regardless of fixed args', () => {
@@ -164,7 +165,7 @@ describe('buildCliLaunchArgString', () => {
     expect(buildCliLaunchArgString('cursor', 'hi')).toBe("cursor-agent 'hi'");
     expect(buildCliLaunchArgString('opencode', 'hi')).toBe("opencode --prompt 'hi'");
     expect(buildCliLaunchArgString('pi', 'hi')).toBe("pi 'hi'");
-    expect(buildCliLaunchArgString('antigravity', 'hi')).toBe("agy 'hi'");
+    expect(buildCliLaunchArgString('antigravity', 'hi')).toBe("agy --prompt-interactive 'hi'");
   });
 
   it('keeps an injection payload inert and contained in the prompt arg', () => {
