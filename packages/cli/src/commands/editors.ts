@@ -624,6 +624,21 @@ export function resolvePiAgentDirPath(options: AppSupportOptions = {}): string {
   return env.PI_CODING_AGENT_DIR ?? pathApiForPlatform(platformName).join(home, '.pi', 'agent');
 }
 
+/**
+ * Antigravity (Google's agentic IDE + the `agy` CLI, successor to the retired
+ * Gemini CLI) reads MCP servers from a SINGLE user-global file shared across
+ * the IDE, the app, and `agy`: `~/.gemini/config/mcp_config.json`. There is no
+ * project-scoped MCP config — per-project you can only filter which global
+ * servers are allowed — so OK writes only this user-global file, the same
+ * posture as Claude Desktop / OpenClaw. The `.gemini` home is inherited from
+ * the Gemini CLI lineage (NOT `~/.antigravity`).
+ */
+export function resolveAntigravityConfigPath(options: AppSupportOptions = {}): string {
+  const platformName = options.platformName ?? process.platform;
+  const home = options.home ?? homedir();
+  return pathApiForPlatform(platformName).join(home, '.gemini', 'config', 'mcp_config.json');
+}
+
 export interface EditorMcpTarget {
   id: EditorId;
   /** Human-friendly name for CLI output. */
@@ -813,6 +828,27 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> = {
     // like its extensions. Second source for core's
     // `EDITOR_PROJECT_SKILL_ROOT.pi` and must match it.
     projectSkillPath: (cwd) => join(cwd, '.pi', 'skills', 'open-knowledge', 'SKILL.md'),
+  },
+  antigravity: {
+    id: 'antigravity',
+    label: EDITOR_LABELS.antigravity,
+    configPath: (_cwd, home) => resolveAntigravityConfigPath({ home }),
+    format: 'json',
+    // Antigravity uses the standard `mcpServers` map with chain-shape
+    // `{command, args}` entries — the same resilient launcher every other JSON
+    // editor gets (`buildManagedServerEntry`), so a resolved OK server is
+    // byte-identical; only the file location (`~/.gemini/config/mcp_config.json`)
+    // differs. No project-scoped config: `scope: 'global'`, no projectConfigPath.
+    topLevelKey: 'mcpServers',
+    serverName: () => MCP_SERVER_NAME,
+    buildEntry: (_cwd, options) => buildManagedServerEntry(options),
+    scope: 'global',
+    detectPath: (_cwd, home) => join(home ?? homedir(), '.gemini'),
+    // Never write `~/.gemini/config/mcp_config.json` unless the Gemini/Antigravity
+    // home exists — writing it for a tool that isn't installed is pointless
+    // (nothing reads it). Gated on detection even under the consent flow's
+    // skipAvailabilityCheck, exactly like OpenClaw.
+    offerOnlyWhenDetected: true,
   },
 };
 

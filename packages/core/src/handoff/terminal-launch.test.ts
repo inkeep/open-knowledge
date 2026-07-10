@@ -18,10 +18,17 @@ const OK_ALLOW = `["mcp__${MCP_SERVER_NAME}","Bash(ok open:*)"]`;
 const OK_DENY = `["mcp__${MCP_SERVER_NAME}__delete","mcp__${MCP_SERVER_NAME}__move","mcp__${MCP_SERVER_NAME}__share_link","mcp__${MCP_SERVER_NAME}__install"]`;
 
 describe('TERMINAL_CLI_IDS', () => {
-  it('lists the CLIs in auto-pick priority order (claude > codex > opencode > cursor > pi)', () => {
+  it('lists the CLIs in auto-pick priority order (claude > codex > opencode > cursor > pi > antigravity)', () => {
     // The single constant drives both the visible launch-row order and the
     // default-CLI auto-pick, so display and defaulting can never disagree.
-    expect([...TERMINAL_CLI_IDS]).toEqual(['claude', 'codex', 'opencode', 'cursor', 'pi']);
+    expect([...TERMINAL_CLI_IDS]).toEqual([
+      'claude',
+      'codex',
+      'opencode',
+      'cursor',
+      'pi',
+      'antigravity',
+    ]);
   });
 });
 
@@ -119,6 +126,8 @@ describe('buildCliLaunchCommand', () => {
     expect(buildCliLaunchCommand('opencode', 'hi')).toBe("opencode --prompt 'hi'\r");
     // Pi's positional IS the prompt — same shape as claude/codex/cursor.
     expect(buildCliLaunchCommand('pi', 'hi')).toBe("pi 'hi'\r");
+    // Antigravity's CLI binary is `agy`; its positional IS the prompt too.
+    expect(buildCliLaunchCommand('antigravity', 'hi')).toBe("agy 'hi'\r");
   });
 
   it('escapes the prompt identically for every CLI regardless of fixed args', () => {
@@ -154,6 +163,8 @@ describe('buildCliLaunchArgString', () => {
     expect(buildCliLaunchArgString('codex', 'hi')).toBe("codex 'hi'");
     expect(buildCliLaunchArgString('cursor', 'hi')).toBe("cursor-agent 'hi'");
     expect(buildCliLaunchArgString('opencode', 'hi')).toBe("opencode --prompt 'hi'");
+    expect(buildCliLaunchArgString('pi', 'hi')).toBe("pi 'hi'");
+    expect(buildCliLaunchArgString('antigravity', 'hi')).toBe("agy 'hi'");
   });
 
   it('keeps an injection payload inert and contained in the prompt arg', () => {

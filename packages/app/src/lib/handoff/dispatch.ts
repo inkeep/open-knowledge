@@ -133,6 +133,13 @@ export async function dispatchHandoff(
         reason: 'invalid-payload',
         detail: 'pi is terminal-only; launch via requestTerminalLaunch',
       };
+    case 'antigravity':
+      // Terminal-only target (`agy` CLI), same carve-out as opencode/pi above.
+      return {
+        ok: false,
+        reason: 'invalid-payload',
+        detail: 'antigravity is terminal-only; launch via requestTerminalLaunch',
+      };
     default: {
       const _exhaustive: never = payload.target;
       return {

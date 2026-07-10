@@ -44,7 +44,7 @@ export function shellSingleQuote(s: string): string {
  * one-shot variants: `codex exec` and `cursor-agent -p` both run-and-exit, so
  * the session wouldn't stay open for the user to continue in).
  */
-export type TerminalCli = 'claude' | 'codex' | 'cursor' | 'opencode' | 'pi';
+export type TerminalCli = 'claude' | 'codex' | 'cursor' | 'opencode' | 'pi' | 'antigravity';
 
 export interface TerminalCliInfo {
   /** PATH binary launched in the PTY. Interpolated (alongside any opted-in
@@ -196,6 +196,17 @@ export const TERMINAL_CLIS = {
     docsUrl: 'https://pi.dev',
     handoffTarget: 'pi',
   },
+  antigravity: {
+    // Antigravity's CLI binary is `agy`; its positional argument IS the
+    // starting prompt (`agy '<prompt>'` opens the interactive session with it),
+    // the same shape as claude/codex/cursor/pi — no promptFlag. (`agy -p` is
+    // the non-interactive one-shot; the default interactive command keeps the
+    // session open, matching the other CLIs.)
+    bin: 'agy',
+    displayName: 'Antigravity',
+    docsUrl: 'https://antigravity.google/docs/cli-getting-started',
+    handoffTarget: 'antigravity',
+  },
 } as const satisfies Record<TerminalCli, TerminalCliInfo>;
 
 /**
@@ -209,6 +220,7 @@ export const TERMINAL_CLI_IDS = [
   'opencode',
   'cursor',
   'pi',
+  'antigravity',
 ] as const satisfies readonly TerminalCli[];
 
 export interface BuildCliLaunchOptions {

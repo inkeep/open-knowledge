@@ -72,6 +72,15 @@ export const KNOWN_TARGETS = [
     installUrl: 'https://pi.dev',
     tagline: 'Minimal open-source terminal coding agent, extensible in TypeScript.',
   },
+  {
+    // Terminal-only target, same carve-out as `opencode`/`pi` above. Reached
+    // via the `agy` CLI launch row; the IDE/app are not deep-link targets.
+    id: 'antigravity',
+    displayName: 'Antigravity',
+    schemes: [],
+    installUrl: 'https://antigravity.google',
+    tagline: "Google's agentic IDE + `agy` terminal agent.",
+  },
 ] as const satisfies ReadonlyArray<TargetData>;
 
 // UI-visibility allow-list. `claude-cowork` is intentionally absent: dispatch
@@ -81,7 +90,12 @@ export const KNOWN_TARGETS = [
 // group, and the empty-state "Create with <agent>" composer.
 export const VISIBLE_TARGETS: ReadonlyArray<TargetData> = KNOWN_TARGETS.filter(
   // `claude-cowork`: dispatch-by-ID only, no render surface.
-  // `opencode` / `pi`: terminal-only — surfaced via the terminal-CLI rows, not
-  // the GUI deep-link target list, so they must not appear as dispatchable rows.
-  (target) => target.id !== 'claude-cowork' && target.id !== 'opencode' && target.id !== 'pi',
+  // `opencode` / `pi` / `antigravity`: terminal-only — surfaced via the
+  // terminal-CLI rows, not the GUI deep-link target list, so they must not
+  // appear as dispatchable rows.
+  (target) =>
+    target.id !== 'claude-cowork' &&
+    target.id !== 'opencode' &&
+    target.id !== 'pi' &&
+    target.id !== 'antigravity',
 );

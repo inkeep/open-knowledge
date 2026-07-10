@@ -1,4 +1,5 @@
 import type { ComponentType, SVGProps } from 'react';
+import { AntigravityIcon } from './antigravity';
 import { ClaudeIcon } from './claude';
 import { CodexIcon } from './codex';
 import { CursorIcon } from './cursor';
@@ -20,6 +21,7 @@ export const brandIcons = {
   OpenCode: OpenCodeIcon,
   OpenClaw: OpenClawIcon,
   Pi: PiIcon,
+  Antigravity: AntigravityIcon,
   GitHub: GitHubIcon,
   Obsidian: ObsidianIcon,
   MCP: McpIcon,

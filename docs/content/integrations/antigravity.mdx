@@ -1,0 +1,80 @@
+---
+title: Antigravity
+description: Use OpenKnowledge with Google Antigravity — the agentic IDE and the agy terminal agent — over MCP.
+icon: custom/Antigravity
+---
+
+[Antigravity](https://antigravity.google) is Google's agentic development platform: an IDE and the `agy` terminal agent (the successor to the Gemini CLI). Both connect to MCP servers. Once OpenKnowledge is registered as one, Antigravity can read, search, and write your knowledge base through OK's tools — with full attribution, link-awareness, conflict-awareness, and a live browser preview. Inside an OK project, work markdown through those tools rather than native file access, so every edit stays attributed and previewable.
+
+## Install
+
+<McpInstall editor="Antigravity">
+  <p>
+    After <code>ok init</code> writes the config, restart Antigravity (or reload MCP servers from
+    the agent panel) so it picks up the entry. The IDE and the <code>agy</code> CLI share one
+    config file, so a single <code>ok init</code> wires up both.
+  </p>
+</McpInstall>
+
+`ok init` writes the OpenKnowledge server into `~/.gemini/config/mcp_config.json` under `mcpServers`, using the same resilient launcher every other editor gets — it finds `ok` whether you installed the desktop app or the npm CLI, so there's no PATH to configure.
+
+<Callout type="info">
+  Antigravity has **one shared, user-global MCP config** — `~/.gemini/config/mcp_config.json`, read by the IDE, the app, and `agy` alike (the `.gemini` directory is inherited from the Gemini CLI lineage, not `~/.antigravity`). There is no per-project MCP config; per project you can only choose which globally-registered servers an agent may use. So OpenKnowledge registers once, globally, the same way it does for Claude Desktop. Each OK tool call takes a `cwd` argument to target a specific knowledge base, so one registration serves every project you open.
+</Callout>
+
+## Verify
+
+Open a project with Antigravity — the IDE or an `agy` session in the project directory — and ask:
+
+<VerifyExec subject="Antigravity" />
+
+If the agent doesn't see the tool, reload the MCP servers (the agent panel's **Manage MCP Servers** view, or restart `agy`) and check that OpenKnowledge is listed and enabled. The first tool call can take a moment on a fresh machine — the launcher may be installing the OpenKnowledge CLI via `npx`.
+
+## Use the `agy` CLI
+
+`agy` is Antigravity's terminal agent. Start it in a knowledge base and pass an opening prompt as the positional argument:
+
+```bash
+cd /path/to/your/knowledge-base
+agy "Summarize the open questions across this project's specs."
+```
+
+The session stays open for follow-ups. From the **OpenKnowledge desktop app**, the "Open in Antigravity" action launches `agy` in the docked terminal, pre-filled with a prompt scoped to the doc, folder, or project you're on. The row appears only when `agy` is detected on your `PATH` (the installer drops it at `~/.local/bin/agy`).
+
+## Initialize a knowledge base
+
+`ok init` turns a folder into a knowledge base (and, on the same run, registers the MCP server above):
+
+```bash
+cd /path/to/your/knowledge-base && ok init
+```
+
+<Callout type="warn">
+  **`ok init` resolves upward into an existing project.** Run inside a subdirectory of an existing OK project, `ok init` finds the *parent* project and refreshes that one — it does not create a nested project, and it writes no markdown in the subdirectory. To create a genuinely separate knowledge base, run `ok init` in a folder that sits **outside any existing `.ok` project tree**.
+</Callout>
+
+## Preview
+
+Write and edit responses include a route-only preview path like `/#/notes/mcp-round-trip` — a route id, **not** a full URL. Call `preview_url` for the openable browser address, and don't screenshot the preview to confirm an edit (the tool response is the confirmation). See [MCP reference → Preview links](/docs/reference/mcp#preview-links) for the full semantics.
+
+## Agent contract
+
+The **OpenKnowledge skill** — the authoritative agent contract for tool use, grounding, and linking — is project-scoped, written for Claude, Cursor, Codex, and OpenCode. Antigravity reads skills only from its user-global `~/.gemini/skills` hub, with no project skill directory to receive it, so for Antigravity the contract is these two reminders:
+
+- **Markdown is MCP-owned.** Inside an OK project, read and write `.md` / `.mdx` through OK's tools (`exec`, `search`, `write`, `edit`, `links`), not native shell or file tools — native access loses attribution and skips the frontmatter, backlinks, and history OK returns.
+- **Discover before concluding the MCP is missing.** Not seeing `exec` in the initial tool list isn't the escape hatch; reload the MCP servers first.
+
+For the complete tool surface, see the [MCP reference](/docs/reference/mcp).
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `ok init` showed Antigravity as `config root missing; skipped` | `~/.gemini/` doesn't exist yet, so Antigravity wasn't detected | Launch Antigravity or run `agy` once (it creates the directory), then re-run `ok init` |
+| `ok init` reported the config was `left unchanged` | OpenKnowledge declined to edit `~/.gemini/config/mcp_config.json` for the reason shown in parentheses | Fix what the reason names (invalid JSON, a duplicated server block), then re-run `ok init` |
+| Antigravity doesn't see the `open-knowledge` tools | MCP servers not reloaded, or the agent's process predates the entry | Reload MCP servers (or restart `agy`), and confirm the server is enabled |
+| "Open in Antigravity" row is missing in the desktop app | `agy` isn't on `PATH` | Install the Antigravity CLI (`~/.local/bin/agy`) and ensure that directory is on your `PATH` |
+| `write` / `edit` -> "Hocuspocus server is not running" | OK server not started | Run `ok start` (or leave the desktop app running) and retry |
+| Preview "doesn't open" | used the route-only `/#/…` path in a browser | Call `preview_url` for the full URL |
+
+New to OpenKnowledge itself? Start with the [quickstart](/docs/get-started/quickstart) for `ok init` and `ok start`.

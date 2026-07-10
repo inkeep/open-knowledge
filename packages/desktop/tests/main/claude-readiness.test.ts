@@ -310,6 +310,7 @@ describe('resolveCliInstalledMap', () => {
       opencode: null,
       cursor: 0,
       pi: 127,
+      antigravity: 0,
     };
     expect(await resolveCliInstalledMap({ probe: (cli) => Promise.resolve(codes[cli]) })).toEqual({
       claude: true,
@@ -317,6 +318,7 @@ describe('resolveCliInstalledMap', () => {
       opencode: false,
       cursor: true,
       pi: false,
+      antigravity: true,
     });
   });
 
@@ -324,7 +326,14 @@ describe('resolveCliInstalledMap', () => {
     const map = await resolveCliInstalledMap({
       probe: (cli) => (cli === 'codex' ? Promise.reject(new Error('boom')) : Promise.resolve(0)),
     });
-    expect(map).toEqual({ claude: true, codex: false, opencode: true, cursor: true, pi: true });
+    expect(map).toEqual({
+      claude: true,
+      codex: false,
+      opencode: true,
+      cursor: true,
+      pi: true,
+      antigravity: true,
+    });
   });
 
   test('returns exactly one entry per CLI in TERMINAL_CLI_IDS', async () => {

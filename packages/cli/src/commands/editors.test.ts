@@ -9,6 +9,7 @@ import {
   type EditorId,
   isEntryUpToDate,
   isOwnManagedEntry,
+  resolveAntigravityConfigPath,
   resolveAppSupportPath,
   resolveClaudeCodeConfigPath,
   resolveClaudeDesktopConfigPath,
@@ -199,6 +200,20 @@ describe('resolveOpenClawConfigPath', () => {
   });
 });
 
+describe('resolveAntigravityConfigPath', () => {
+  it('builds the shared ~/.gemini/config MCP path (home-relative on every platform)', () => {
+    expect(resolveAntigravityConfigPath({ home: '/Users/alice', platformName: 'darwin' })).toBe(
+      '/Users/alice/.gemini/config/mcp_config.json',
+    );
+    expect(resolveAntigravityConfigPath({ home: '/home/alice', platformName: 'linux' })).toBe(
+      '/home/alice/.gemini/config/mcp_config.json',
+    );
+    expect(resolveAntigravityConfigPath({ home: 'C:\\Users\\alice', platformName: 'win32' })).toBe(
+      'C:\\Users\\alice\\.gemini\\config\\mcp_config.json',
+    );
+  });
+});
+
 describe('resolvePiAgentDirPath', () => {
   it('builds the default Pi agent dir under home', () => {
     expect(resolvePiAgentDirPath({ home: '/Users/alice', platformName: 'darwin', env: {} })).toBe(
@@ -244,6 +259,25 @@ describe('EDITOR_TARGETS.openclaw', () => {
     expect(t.format).toBe('json');
     expect(t.scope).toBe('global');
     expect(t.configPath('', '/Users/alice')).toBe('/Users/alice/.openclaw/openclaw.json');
+    expect(t.buildEntry('', { mode: 'published' })).toEqual({
+      command: '/bin/sh',
+      args: ['-l', '-c', CHAIN_V1],
+    });
+  });
+});
+
+describe('EDITOR_TARGETS.antigravity', () => {
+  it('writes the managed launcher to the shared ~/.gemini/config MCP file, detection-gated', () => {
+    const t = EDITOR_TARGETS.antigravity;
+    // Plain `mcpServers` JSON like Claude/Cursor, but user-global only (shared
+    // by the IDE and the agy CLI) and gated on the ~/.gemini home existing.
+    expect(t.format).toBe('json');
+    expect(t.topLevelKey).toBe('mcpServers');
+    expect(t.scope).toBe('global');
+    expect(t.offerOnlyWhenDetected).toBe(true);
+    expect(t.projectConfigPath).toBeUndefined();
+    expect(t.configPath('', '/Users/alice')).toBe('/Users/alice/.gemini/config/mcp_config.json');
+    expect(t.detectPath?.('', '/Users/alice')).toBe('/Users/alice/.gemini');
     expect(t.buildEntry('', { mode: 'published' })).toEqual({
       command: '/bin/sh',
       args: ['-l', '-c', CHAIN_V1],
@@ -353,8 +387,16 @@ describe('buildManagedServerEntry', () => {
     // surface. EDITOR_TARGETS[id].buildEntry is the canonical caller path
     // for both user-scope (`writeUserMcpConfigs`) and project-scope writes.
     // opencode is excluded — it uses buildOpenCodeEntry's array-command shape.
-    // openclaw belongs here: it reuses buildManagedServerEntry like the rest.
-    const editors: EditorId[] = ['claude', 'claude-desktop', 'cursor', 'codex', 'openclaw'];
+    // openclaw + antigravity belong here: they reuse buildManagedServerEntry
+    // like the rest (only their config envelope / location differs).
+    const editors: EditorId[] = [
+      'claude',
+      'claude-desktop',
+      'cursor',
+      'codex',
+      'openclaw',
+      'antigravity',
+    ];
     const baseline = buildManagedServerEntry({ mode: 'published' });
     for (const id of editors) {
       const target = resolveEditorTargets([id])[0];
@@ -650,8 +692,16 @@ describe('buildManagedServerEntry (win32)', () => {
   });
 
   it('every editor target produces the byte-identical Windows entry', () => {
-    // openclaw belongs here: it reuses buildManagedServerEntry like the rest.
-    const editors: EditorId[] = ['claude', 'claude-desktop', 'cursor', 'codex', 'openclaw'];
+    // openclaw + antigravity belong here: they reuse buildManagedServerEntry
+    // like the rest (only their config envelope / location differs).
+    const editors: EditorId[] = [
+      'claude',
+      'claude-desktop',
+      'cursor',
+      'codex',
+      'openclaw',
+      'antigravity',
+    ];
     for (const id of editors) {
       const target = resolveEditorTargets([id])[0];
       const built = target.buildEntry('', { mode: 'published', platformName: 'win32' });

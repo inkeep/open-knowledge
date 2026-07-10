@@ -13,7 +13,8 @@ export type EditorId =
   | 'codex'
   | 'opencode'
   | 'openclaw'
-  | 'pi';
+  | 'pi'
+  | 'antigravity';
 
 export const ALL_EDITOR_IDS = [
   'claude',
@@ -23,6 +24,7 @@ export const ALL_EDITOR_IDS = [
   'opencode',
   'openclaw',
   'pi',
+  'antigravity',
 ] as const satisfies readonly EditorId[];
 
 /**
@@ -39,6 +41,7 @@ export const EDITOR_LABELS = {
   opencode: 'OpenCode',
   openclaw: 'OpenClaw',
   pi: 'Pi',
+  antigravity: 'Antigravity',
 } as const satisfies Record<EditorId, string>;
 
 /**
@@ -95,6 +98,11 @@ export const EDITOR_PROJECT_SKILL_ROOT = {
   // skill dirs are trust-gated in Pi: they load only after the user trusts
   // the folder.
   pi: '.pi/skills',
+  // Antigravity (IDE + `agy` CLI) reads skills only from the user-global
+  // `~/.gemini/skills` hub — there is no project-scoped skill dir OK writes.
+  // Like OpenClaw, its integration is the user-global MCP config; OK ships no
+  // per-project skill for it.
+  antigravity: null,
 } as const satisfies Record<EditorId, string | null>;
 
 /** Editor ids that have a project skill surface (valid install-projection targets). */
@@ -142,6 +150,7 @@ export const EDITOR_SETUP_DOC_SLUG = {
   opencode: 'opencode',
   openclaw: 'openclaw',
   pi: 'pi',
+  antigravity: 'antigravity',
 } as const satisfies Record<EditorId, string>;
 
 /**
@@ -168,4 +177,10 @@ export const EDITOR_PROJECT_CONFIG_PATH = {
   // (sharing-mode exclude, deinit, reclaim) must target, so it is the
   // project-config path. OK never reads or writes `.pi/settings.json`.
   pi: '.pi/extensions/open-knowledge.ts',
+  // Antigravity has NO project-scoped MCP config — the IDE, app, and `agy` CLI
+  // all share one user-global file at `~/.gemini/config/mcp_config.json`
+  // (per-project you can only filter which global servers are allowed). So it
+  // is never detected as "project-configured"; like Claude Desktop / OpenClaw,
+  // OK writes only the user-global config.
+  antigravity: null,
 } as const satisfies Record<EditorId, string | null>;

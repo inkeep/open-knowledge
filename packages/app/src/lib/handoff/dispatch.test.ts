@@ -178,6 +178,7 @@ describe('dispatchHandoff — runtime exhaustiveness guard', () => {
   test.each([
     'opencode',
     'pi',
+    'antigravity',
   ] as const)('terminal-only target %s is refused by the deep-link dispatcher (defensive)', async (target) => {
     // No production caller routes terminal-only targets here (excluded from
     // VISIBLE_TARGETS); the case exists so a programmatic dispatch fails

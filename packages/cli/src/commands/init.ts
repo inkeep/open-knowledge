@@ -1145,10 +1145,11 @@ export function writeEditorMcpConfig(
   // (configPathOverride set) — the project directory always exists by
   // definition.
   //
-  // `offerOnlyWhenDetected` editors (OpenClaw) are the exception: their config
-  // root must exist even under the consent bypass, so we never create a config
-  // for a global tool that isn't installed. Project-scope writes stay exempt —
-  // OpenClaw has no project config, so `configPathOverride` never applies to it.
+  // `offerOnlyWhenDetected` editors (OpenClaw, Antigravity) are the exception:
+  // their config root must exist even under the consent bypass, so we never
+  // create a config for a global tool that isn't installed. Project-scope writes
+  // stay exempt — neither has a project config, so `configPathOverride` never
+  // applies to them.
   const enforceAvailability =
     !installOptions.skipAvailabilityCheck || target.offerOnlyWhenDetected === true;
   if (!configPathOverride && enforceAvailability && !isEditorTargetAvailable(target, cwd, home)) {

@@ -34,6 +34,7 @@ import { t } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react/macro';
 import { useTheme } from 'next-themes';
 import type { CSSProperties, ReactNode, SVGProps } from 'react';
+import { AntigravityIcon } from '@/components/icons/antigravity';
 import { ClaudeIcon } from '@/components/icons/claude';
 import { CodexBrandIcon } from '@/components/icons/codex';
 import { CursorIcon } from '@/components/icons/cursor';
@@ -69,9 +70,10 @@ const TARGET_ICON_KEY: Record<TargetData['id'], string> = {
   codex: 'openai',
   cursor: 'cursor',
   // No `AGENT_ICON_COLORS` entry → renders monochrome (inherits the row's text
-  // color), which suits OpenCode's and Pi's monochrome brand marks.
+  // color), which suits OpenCode's, Pi's, and Antigravity's monochrome brand marks.
   opencode: 'opencode',
   pi: 'pi',
+  antigravity: 'antigravity',
 };
 
 export function TargetIcon({
@@ -105,6 +107,8 @@ export function TargetIcon({
   if (id === 'opencode')
     return <OpenCodeIcon style={mergedStyle} className={mergedClass} {...props} />;
   if (id === 'pi') return <PiIcon style={mergedStyle} className={mergedClass} {...props} />;
+  if (id === 'antigravity')
+    return <AntigravityIcon style={mergedStyle} className={mergedClass} {...props} />;
   return null;
 }
 

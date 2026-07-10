@@ -802,6 +802,9 @@ describe('runInit', () => {
       mkdirSync(dirname(opencodeConfigPath()), { recursive: true });
       mkdirSync(join(fakeHome, '.openclaw'), { recursive: true });
       mkdirSync(join(fakeHome, '.pi', 'agent'), { recursive: true });
+      // Antigravity is `offerOnlyWhenDetected`, so its user-global write is
+      // gated on the `~/.gemini` home existing even under the consent flow.
+      mkdirSync(join(fakeHome, '.gemini'), { recursive: true });
 
       const result = await runInitForTest({ editors: [...ALL_EDITOR_IDS] });
 
@@ -824,6 +827,12 @@ describe('runInit', () => {
         readFileSync(join(fakeHome, '.openclaw', 'openclaw.json'), 'utf-8'),
       );
       expect(openclawConfig.mcp.servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
+      // Antigravity writes the standard `mcpServers` map at
+      // `~/.gemini/config/mcp_config.json`.
+      const antigravityConfig = JSON.parse(
+        readFileSync(join(fakeHome, '.gemini', 'config', 'mcp_config.json'), 'utf-8'),
+      );
+      expect(antigravityConfig.mcpServers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
     });
 
     it('overwrites across all targeted editors', async () => {
@@ -2379,6 +2388,19 @@ describe('detectInstalledEditors', () => {
     expect(detected).not.toContain('cursor');
   });
 
+  it('detects Antigravity when ~/.gemini exists', async () => {
+    mkdirSync(join(fakeHome, '.gemini'), { recursive: true });
+    const detected = detectInstalledEditors(testDir, fakeHome);
+    expect(detected).toContain('antigravity');
+  });
+
+  it('does NOT detect Antigravity when ~/.gemini is absent', async () => {
+    // `offerOnlyWhenDetected` makes this gate load-bearing: an over-broad
+    // detectPath (e.g. ~/.config) would silently write the config for anyone.
+    const detected = detectInstalledEditors(testDir, fakeHome);
+    expect(detected).not.toContain('antigravity');
+  });
+
   it('detects Codex when ~/.codex/ exists', async () => {
     mkdirSync(dirname(codexConfigPath()), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
@@ -2404,6 +2426,7 @@ describe('detectInstalledEditors', () => {
     mkdirSync(dirname(opencodeConfigPath()), { recursive: true });
     mkdirSync(join(fakeHome, '.openclaw'), { recursive: true });
     mkdirSync(join(fakeHome, '.pi', 'agent'), { recursive: true });
+    mkdirSync(join(fakeHome, '.gemini'), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
     expect(detected).toEqual(expect.arrayContaining([...ALL_EDITOR_IDS]));
     expect(detected).toHaveLength(ALL_EDITOR_IDS.length);

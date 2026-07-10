@@ -591,6 +591,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             opencode: true,
             cursor: true,
             pi: true,
+            antigravity: true,
           }),
           rewireClaudeMcp: async () => ({ claude: 'present' as const, mcp: 'wired' as const }),
         },
