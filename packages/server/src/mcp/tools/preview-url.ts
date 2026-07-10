@@ -96,8 +96,7 @@ export function encodeSkillRoute(scope: string, name: string): string {
  *     hint fires at most once per session in the fresh-start case.
  *   - `start-ui` — `previewUrl` is null; no UI is running anywhere for this
  *     project. Agent advises the user to start one (`ok ui`
- *     from a terminal, `preview_start("open-knowledge-ui")` in Claude
- *     Code Desktop, or just open the project in OK Electron).
+ *     from a terminal, `ok start`, or open the project in OK Electron).
  *
  * Both pin the same `previewUrl` field so a single agent-side branch can
  * read either: if non-null → open; if null → tell user to start a UI.
@@ -126,9 +125,9 @@ type PreviewAttachWarning =
     };
 
 const START_UI_MESSAGE =
-  'No UI is running for this project. Start one to see the preview: `ok ui` (terminal), `preview_start("open-knowledge-ui")` (Claude Code Desktop), or open the project in OK Electron.';
+  'No UI is running for this project. Start one to see the preview: `ok ui` (terminal), `ok start`, or open the project in OK Electron.';
 const ATTACH_PREVIEW_ONCE_MESSAGE =
-  "No browser is attached to the preview. Open it in your host's surface: `preview_start` (Claude Code Desktop pane), or `preview_url` then navigate your in-app browser to the url (Cursor's `Navigate` / Codex desktop `@Browser`); on the Claude Code CLI, `ok open <doc>`.";
+  "No browser is attached to the preview. Open it in your host's surface: `preview_url`, then drive your in-app browser (Claude Code Desktop: `preview_start({url})` to open the pane, then `navigate({url})` to move; Cursor: `Navigate`; Codex desktop: `@Browser`); on a stdio CLI with no browser, `ok open <doc>`.";
 
 /**
  * Build the per-response warning emitted when the server reports zero

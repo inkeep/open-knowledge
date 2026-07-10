@@ -131,9 +131,7 @@ export type PrincipalSuccess = z.infer<typeof PrincipalSuccessSchema>;
  * collab server is bound / the Host header is absent (the client then falls
  * back to a same-origin WS URL). `previewUrl` is always `null` on the wire
  * (the route-only preview URL is computed client-side). `port` is the bound
- * server port (0 when unknown). `paneTarget` is the armed deep-link route
- * fragment (`#/<doc>` / `#/<folder>/`), TTL-bounded server-side, or `null`
- * when unarmed/expired.
+ * server port (0 when unknown).
  *
  * `.loose()` preserves unknown fields for forward-compat, matching the other
  * bare-object success schemas in this file (no `ok: true` discriminator).
@@ -143,7 +141,6 @@ export const ApiConfigSuccessSchema = z
     collabUrl: z.string().nullable(),
     previewUrl: z.string().nullable(),
     port: z.number(),
-    paneTarget: z.string().nullable(),
     /**
      * `true` when this server is a no-project ephemeral single-file session
      * (`ok <file>`). The React shell reads it to drop the project chrome

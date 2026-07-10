@@ -2,17 +2,11 @@
  * `open-knowledge ui` — serves the React editor UI as a sibling to `ok start`.
  *
  * Default port `DEFAULT_UI_PORT` (39847 — quirky, IANA-unassigned, unlikely to
- * collide with other dev servers); `PORT` env (set by Claude via
- * `launch.json` + `autoPort:true`) and `--port` flag override. When the
+ * collide with other dev servers); `PORT` env and `--port` flag override. When the
  * default port is busy, the bind layer falls back to kernel-allocation
  * (port 0) so multi-project concurrency stays mechanical rather than
  * aspirational — guarding against silent cross-project collisions.
  * The user-facing URL is always sourced from `ui.lock.port`.
- *
- * Claude's `launch.json` uses a distinct port `LAUNCH_JSON_PORT`
- * (39848) — see that constant's docstring for why the two must differ
- * (the lock-collision proxy bridges them; the same-port "already-running"
- * exit-0 path empirically fails Claude's preview pane).
  *
  * Acquires `<lockDir>/ui.lock` so MCP tools can advertise preview URLs
  * pointing at this process.
@@ -71,26 +65,6 @@ export const DEFAULT_UI_SAFETY_NET_MS = 12 * 60 * 60 * 1000;
  * URL still works" rather than a hard failure.
  */
 export const DEFAULT_UI_PORT = 39847;
-
-/**
- * Port written into `.claude/launch.json`'s `port` field — what Claude
- * Code's preview pane uses as its probe / spawn target. **Must differ
- * from `DEFAULT_UI_PORT`** so the lock-collision handler enters proxy
- * mode (`requestedPort ≠ lockPort` → bind + forward) rather than the
- * "already-running" exit-0 path. The exit-0 path empirically fails
- * Claude's preview pane (the subprocess exits before the pane can
- * attach), so the design relies on the proxy bridge:
- *
- *   `ok start` → spawns `ok ui` → binds 39847 → writes `ui.lock`
- *   Claude preview → spawns `ok ui` with `PORT=39848`
- *     → new `ok ui` sees lock collision, `requestedPort(39848) ≠ lockPort(39847)`
- *     → proxy mode: binds 39848, forwards to 39847
- *   Preview pane → `http://localhost:39848` → proxy → real UI
- *
- * Picked adjacent to `DEFAULT_UI_PORT` (39848 vs 39847) so the pairing
- * is mnemonic; both are quirky/IANA-unassigned.
- */
-export const LAUNCH_JSON_PORT = 39848;
 
 export interface UiServerHandle {
   /**
@@ -187,10 +161,8 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
   const { resolve } = await import('node:path');
   const {
     acquireUiLock,
-    clearArmedPaneTarget,
     createAssetServeMiddleware,
     createContentFilter,
-    readArmedPaneTarget,
     readServerLock,
     releaseUiLock,
     updateUiLockPort,
@@ -284,34 +256,6 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
   const requestHandler = (req: import('node:http').IncomingMessage, res: ServerResponse) => {
     const url = req.url?.split('?')[0];
 
-    // Claude-pane deep-link redirect (Claude Code Desktop flow only).
-    // `preview_start` opens the pane at the UI root with no way to pass a target
-    // doc, so the agent arms one via `preview_url({ armPaneTarget })`, which
-    // writes a TTL-bounded hash route here. On the base-open we 302 straight to
-    // that route so the pane lands ON the doc instead of rendering root and then
-    // client-navigating. Inert for every other host: nothing else arms a target,
-    // so `readArmedPaneTarget` returns null and we fall through to serve root.
-    //
-    // The target is a hash fragment (`#/doc`) the server never sees on the
-    // follow-up request, so a naive 302 would loop (GET / → 302 → GET / → 302 …).
-    // Consuming the target as we emit the redirect breaks the loop — the second
-    // GET / finds nothing armed and serves the SPA — and also stops an in-TTL
-    // reload of a deep link from being yanked back to the armed doc.
-    // `PaneTargetLanding` in the app remains a client-side backstop.
-    if (req.method === 'GET' && (url === '/' || url === '')) {
-      const armed = readArmedPaneTarget(lockDir);
-      // CRLF guard: never let a stray newline in the route split the response
-      // into injected headers (the route is built from a doc/folder name).
-      if (armed && !/[\r\n]/.test(armed)) {
-        clearArmedPaneTarget(lockDir);
-        res.statusCode = 302;
-        res.setHeader('Location', `/${armed}`);
-        res.setHeader('Cache-Control', 'no-store');
-        res.end();
-        return;
-      }
-    }
-
     // Bare `/` and the empty path: rewrite to `/index.html` so sirv serves
     // the SPA shell. The static handler is configured with `extensions: []`
     // (a security choice — without it, `/foo` would transparently serve
@@ -337,19 +281,6 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
       if (rejectIfNotLoopbackApi(req, res)) return;
     }
 
-    // DELETE /api/config — one-shot consume of the armed pane target. The app
-    // calls this AFTER it has applied the target on a base-open, so a reload
-    // within the TTL doesn't re-navigate. Consume-on-apply (not on read) keeps
-    // the GET non-destructive — other /api/config readers (the collab-URL hook)
-    // must not race-consume the target before the lander applies it.
-    if (url === '/api/config' && req.method === 'DELETE') {
-      clearArmedPaneTarget(lockDir);
-      res.setHeader('Cache-Control', 'no-store');
-      res.statusCode = 204;
-      res.end();
-      return;
-    }
-
     // GET /api/config — zero-ceremony bootstrap for the React app. Reads the
     // collab server.lock on demand so a later `ok start` shows up without
     // requiring a UI restart.
@@ -369,10 +300,7 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
       // `?? <localhost>` fallback is defense-in-depth only.
       const sameOriginHost = req.headers.host ?? `localhost:${resolvedPort}`;
       const collabUrl = lock && lock.port > 0 ? `ws://${sameOriginHost}/collab` : null;
-      // Armed pane-target override (route fragment, TTL-bounded). The app reads
-      // this on a base-open to deep-link the Claude pane; null when unarmed/stale.
-      const paneTarget = readArmedPaneTarget(lockDir);
-      const body = JSON.stringify({ collabUrl, previewUrl: null, port: resolvedPort, paneTarget });
+      const body = JSON.stringify({ collabUrl, previewUrl: null, port: resolvedPort });
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Cache-Control', 'no-store');
       // `nosniff` — defense in depth against a misconfigured intermediate or
@@ -768,10 +696,8 @@ function resolveRequestedPort(
   // port 0 (kernel-allocated) when the default is busy, preserving the
   // multi-project bind guarantee against silent cross-family collisions.
   // MCP preview URLs dereference `ui.lock.port` so no client contract
-  // breaks. Claude's `launch.json` uses a DIFFERENT port
-  // (`LAUNCH_JSON_PORT` = 39848) as its probe target; the lock-collision
-  // proxy in this same file bridges that port to whatever port the real
-  // `ok ui` is bound on.
+  // breaks; the lock-collision proxy in this same file bridges a second
+  // `ok ui` bound on a different port to whatever port the real UI holds.
   return { port: DEFAULT_UI_PORT, fallbackToKernel: true };
 }
 
@@ -1017,8 +943,7 @@ export { resolveRequestedPort };
 /**
  * "Non-interactive" gate for the `already-running` collision path. When the
  * caller has no TTY (e.g. spawned by a parent process) OR is invoked with a
- * `PORT` env (Claude Code Desktop's `.claude/launch.json` template sets
- * `PORT=39848` + `autoPort:true`), `process.exit(0)` is wrong — the preview
+ * `PORT` env, `process.exit(0)` is wrong — the preview
  * pane treats subprocess exit as "preview crashed" and tears down. Instead,
  * the action handler stays attached as a keepalive until SIGTERM.
  *

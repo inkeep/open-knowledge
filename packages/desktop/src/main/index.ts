@@ -230,7 +230,6 @@ import {
 } from './ipc-handlers.ts';
 import { logIpcError } from './ipc-log.ts';
 import { createDesktopKeepaliveFactory, toKeepaliveLogger } from './keepalive.ts';
-import { checkAndRepairLaunchJsonOnProjectOpen } from './launch-json-wiring.ts';
 import {
   checkAndRepairMcpWiringOnStartup,
   type McpStartupRepairResult,
@@ -1433,18 +1432,6 @@ async function openProject(
 
   const warningsCount = validation.warnings.length;
   const resolvedProjectDir = discovery.projectDir;
-  void checkAndRepairLaunchJsonOnProjectOpen({
-    projectDir: resolvedProjectDir,
-    executablePath: app.getPath('exe'),
-    isPackaged: app.isPackaged,
-    platform: process.platform,
-    forceEnv: process.env.OK_M6B_FORCE ?? null,
-    reclaimDisableEnv: process.env.OK_RECLAIM_DISABLE ?? null,
-  }).catch((err) => {
-    console.warn('[main] launch.json reclaim failed', {
-      err: err instanceof Error ? err.message : String(err),
-    });
-  });
   void checkAndRepairProjectMcpOnProjectOpen({
     projectDir: resolvedProjectDir,
     executablePath: app.getPath('exe'),

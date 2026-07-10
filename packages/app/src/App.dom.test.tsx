@@ -29,7 +29,6 @@ let fetchApiConfigMock = mock(() =>
       collabUrl: null,
       previewUrl: null,
       port: 0,
-      paneTarget: null,
       singleFile: false,
     },
   }),
@@ -261,7 +260,6 @@ describe('App runtime wiring', () => {
           collabUrl: null,
           previewUrl: null,
           port: 0,
-          paneTarget: null,
           singleFile: false,
         },
       }),
@@ -363,74 +361,6 @@ describe('App runtime wiring', () => {
       });
     });
     expect(resolveNavigationTargetMock).not.toHaveBeenCalled();
-  });
-
-  test('base-open pane target applies a well-formed config route once and consumes it', async () => {
-    fetchApiConfigMock = mock(() =>
-      Promise.resolve({
-        status: 'ok' as const,
-        config: {
-          collabUrl: null,
-          previewUrl: null,
-          port: 0,
-          paneTarget: '#/docs/pane-target',
-          singleFile: false,
-        },
-      }),
-    );
-
-    renderApp();
-
-    await waitFor(() => {
-      expect(window.location.hash).toBe('#/docs/pane-target');
-    });
-    expect(fetchApiConfigMock).toHaveBeenCalledTimes(1);
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/config', { method: 'DELETE' });
-  });
-
-  test('base-open pane target ignores malformed and direct-navigation routes', async () => {
-    fetchApiConfigMock = mock(() =>
-      Promise.resolve({
-        status: 'ok' as const,
-        config: {
-          collabUrl: null,
-          previewUrl: null,
-          port: 0,
-          paneTarget: 'https://example.invalid/docs/readme',
-          singleFile: false,
-        },
-      }),
-    );
-
-    renderApp();
-
-    await waitFor(() => {
-      expect(fetchApiConfigMock).toHaveBeenCalledTimes(1);
-    });
-    expect(window.location.hash).toBe('');
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-
-    cleanup();
-    fetchApiConfigMock = mock(() =>
-      Promise.resolve({
-        status: 'ok' as const,
-        config: {
-          collabUrl: null,
-          previewUrl: null,
-          port: 0,
-          paneTarget: '#/docs/pane-target',
-          singleFile: false,
-        },
-      }),
-    );
-    setHash('#/docs/already-open');
-
-    renderApp();
-
-    await waitFor(() => {
-      expect(fetchApiConfigMock).not.toHaveBeenCalled();
-    });
-    expect(window.location.hash).toBe('#/docs/already-open');
   });
 
   test('active doc and folder targets are pushed to the desktop bridge', async () => {

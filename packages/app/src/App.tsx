@@ -31,7 +31,6 @@ import {
 } from '@/editor/DocumentContext';
 import { parseEditorTabId } from '@/editor/editor-tabs';
 import { useReconcileSkillTabs } from '@/hooks/use-reconcile-skill-tabs';
-import { fetchApiConfig } from '@/lib/api-config';
 import { ConfigProvider } from '@/lib/config-provider';
 import {
   assetPathFromHash,
@@ -245,52 +244,6 @@ function NavigationHandler() {
     pagesByBasename,
   ]);
 
-  return null;
-}
-
-/**
- * One-shot base-open deep-link: when the UI opens at its base (no doc / asset /
- * dialog in the hash — e.g. the Claude pane's `preview_start`), apply an armed
- * pane target from `/api/config` so the pane lands on the agent's intended
- * doc/folder instead of an empty splash. Fires once at mount; navigates only if
- * the page is still at base when the fetch resolves (so it never overrides a
- * deep link the user opened directly or navigated to meanwhile). When no target
- * is armed (or it expired), it does nothing and the normal root view shows.
- */
-function PaneTargetLanding() {
-  // No `didRun` ref: a ref set synchronously persists across React Strict
-  // Mode's dev double-invoke, which would make the first run's cleanup cancel
-  // the fetch and the second run early-return — so the effect would silently do
-  // nothing in dev. The `cancelled` flag + the `atBase` re-check already make
-  // re-running safe and idempotent (it only navigates from a base hash).
-  useEffect(() => {
-    const atBase = (hash: string) =>
-      !isAuxiliaryDialogHash(hash) &&
-      !assetPathFromHash(hash) &&
-      !docNameFromHash(hash) &&
-      (hash === '' || hash === '#' || hash === '#/');
-    if (!atBase(window.location.hash)) return;
-    const controller = new AbortController();
-    void fetchApiConfig(controller.signal)
-      .then((result) => {
-        if (controller.signal.aborted || result.status !== 'ok') return;
-        const target = result.config.paneTarget;
-        // Only apply a well-formed in-app route fragment, and only if we're still
-        // at base (the user hasn't navigated during the fetch).
-        if (!target?.startsWith('#/')) return;
-        if (!atBase(window.location.hash)) return;
-        window.location.hash = target;
-        // Consume the one-shot target so a reload within its TTL doesn't yank
-        // back here. Fire-and-forget — re-navigation is the only cost if it
-        // fails, and the server-side TTL caps that anyway.
-        void fetch('/api/config', { method: 'DELETE' }).catch(() => {});
-      })
-      // fetchApiConfig rethrows AbortError on unmount — expected, swallow it.
-      .catch(() => {});
-    // Aborting on unmount cancels the inflight request, not just its handler —
-    // symmetric with the rest of the app's /api/config consumers.
-    return () => controller.abort();
-  }, []);
   return null;
 }
 
@@ -533,7 +486,6 @@ function AppBody() {
       <PageListProvider>
         <SystemDocSubscriber />
         <NavigationHandler />
-        <PaneTargetLanding />
         <ActiveTargetBridgePush />
         <NewItemShortcutHandler />
         {/* Settings is unavailable in single-file mode (config editing is

@@ -321,7 +321,6 @@ import {
   type FrontmatterMetadata,
   parseFrontmatterMetadata,
 } from './page-identity.ts';
-import { clearArmedPaneTarget, readArmedPaneTarget } from './pane-target.ts';
 import type { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import { readServerLock } from './server-lock.ts';
 import {
@@ -17200,49 +17199,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // `/api/config` — collab-bootstrap payload for the React shell. In the
   // desktop / worktree-as-project-server topology this collab server is what
   // serves the SPA, so the shell fetches `/api/config` here rather than from a
-  // separate `ok ui` front. The JSON shape matches `ok ui` (api-config.ts +
-  // PaneTargetLanding consume them identically): GET returns
-  // `{collabUrl, previewUrl, port, paneTarget}`; DELETE one-shot-consumes the
-  // armed pane target (consume-on-apply, so a reload within the TTL doesn't
-  // re-navigate). `paneTargetLockDir` is the project's `.ok/local/` — the same
-  // anchor the server lock uses; null when projectDir is unconfigured (some
-  // test harnesses), which degrades pane-target deep-link to presence-driven
-  // while leaving collabUrl bootstrap intact.
-  //
-  // GET stays open like the other read-only bootstrap endpoints
+  // separate `ok ui` front. The JSON shape matches `ok ui` (api-config.ts
+  // consumes it identically): GET returns `{collabUrl, previewUrl, port}`. GET
+  // stays open like the other read-only bootstrap endpoints
   // (document/pages/backlinks) — it carries no PII and only reflects the
-  // client's own Host back to itself. DELETE mutates filesystem state
-  // (unlinks `pane-target.json`), so it is NOT registered in `MUTATING_ROUTES`
-  // (that set is URL-keyed and would gate GET too); instead it carries its own
-  // inline loopback + Host-header gate below, matching the file's convention
-  // that state-mutating paths pass the DNS-rebinding defense.
-  const paneTargetLockDir = projectDir ? getLocalDir(projectDir) : null;
+  // client's own Host back to itself. `lockDir` is the project's
+  // `.ok/local/` (the server-lock anchor); null when projectDir is unconfigured
+  // (some test harnesses), leaving collabUrl bootstrap intact.
+  const lockDir = projectDir ? getLocalDir(projectDir) : null;
   async function handleApiConfig(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === 'DELETE') {
-      // DNS-rebinding defense for the only mutating verb on this route. Mirror
-      // the `onRequest` MUTATING_ROUTES gate: a present-but-non-loopback TCP
-      // peer or a Host header naming a non-loopback origin is refused. A
-      // missing socket is test-context (mocked IncomingMessage) and skips the
-      // peer check, same as the shared gate.
-      const peerAddress = req.socket?.remoteAddress;
-      if (peerAddress !== undefined && !isLoopbackAddress(peerAddress)) {
-        errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-          handler: 'api-config',
-        });
-        return;
-      }
-      if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
-        errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-          handler: 'api-config',
-        });
-        return;
-      }
-      if (paneTargetLockDir) clearArmedPaneTarget(paneTargetLockDir);
-      res.setHeader('Cache-Control', 'no-store');
-      res.statusCode = 204;
-      res.end();
-      return;
-    }
     if (req.method === 'GET' || req.method === 'HEAD') {
       try {
         // Same-origin collab WS: the shell loaded from this server, so
@@ -17258,11 +17223,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // Host, so the null path is a malformed-request floor, not a normal case.
         const host = req.headers.host;
         const collabUrl = host ? `ws://${host}/collab` : null;
-        const port = paneTargetLockDir ? (readServerLock(paneTargetLockDir)?.port ?? 0) : 0;
-        const paneTarget = paneTargetLockDir ? readArmedPaneTarget(paneTargetLockDir) : null;
+        const port = lockDir ? (readServerLock(lockDir)?.port ?? 0) : 0;
         // `singleFile` tells the React shell to drop project chrome for an
         // ephemeral single-file session (`ok <file>`).
-        const payload = { collabUrl, previewUrl: null, port, paneTarget, singleFile: ephemeral };
+        const payload = { collabUrl, previewUrl: null, port, singleFile: ephemeral };
         // HEAD carries the same headers but no body; `successResponse` always
         // writes a body, so the no-body verb stays a manual emit.
         if (req.method === 'HEAD') {
@@ -17287,7 +17251,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     }
     errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
       handler: 'api-config',
-      extraHeaders: { Allow: 'GET, HEAD, DELETE' },
+      extraHeaders: { Allow: 'GET, HEAD' },
     });
   }
 

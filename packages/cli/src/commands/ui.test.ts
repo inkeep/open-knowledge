@@ -18,10 +18,8 @@ import { resolve } from 'node:path';
 import { ProblemDetailsSchema, type Scheduler } from '@inkeep/open-knowledge-core';
 import {
   acquireServerLock,
-  armPaneTarget,
   ConfigSchema,
   getLocalDir,
-  readArmedPaneTarget,
   readUiLock,
   type UiLockMetadata,
   updateServerLockPort,
@@ -364,45 +362,9 @@ describe('startUiServer', () => {
     expect(parsed.collabUrl).toBeNull();
     expect(parsed.previewUrl).toBeNull();
     expect(parsed.port).toBe(handle.port);
-    // No target armed → paneTarget rides the body as null (shape parity).
-    expect(parsed.paneTarget).toBeNull();
   });
 
-  test('/api/config returns an armed paneTarget; DELETE consumes it', async () => {
-    armPaneTarget(lockDir, '#/specs/foo/SPEC');
-    handle = await startUiServer({ config: config(), cwd: tmpDir, port: 0, host: '127.0.0.1' });
-    const first = JSON.parse((await get(handle.port, '/api/config')).body);
-    expect(first.paneTarget).toBe('#/specs/foo/SPEC');
-
-    // DELETE clears the armed target (one-shot consume on apply).
-    const del = await fetch(`http://127.0.0.1:${handle.port}/api/config`, { method: 'DELETE' });
-    expect(del.status).toBe(204);
-    expect(readArmedPaneTarget(lockDir)).toBeNull();
-
-    const second = JSON.parse((await get(handle.port, '/api/config')).body);
-    expect(second.paneTarget).toBeNull();
-  });
-
-  test('base-open GET / 302-redirects to an armed pane target and consumes it', async () => {
-    armPaneTarget(lockDir, '#/specs/foo/SPEC');
-    handle = await startUiServer({ config: config(), cwd: tmpDir, port: 0, host: '127.0.0.1' });
-
-    // First base-open: redirect straight to the armed doc route (manual so we
-    // can inspect the 302 instead of following it).
-    const res = await fetch(`http://127.0.0.1:${handle.port}/`, { redirect: 'manual' });
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/#/specs/foo/SPEC');
-    expect(res.headers.get('cache-control')).toBe('no-store');
-
-    // Consumed on emit — the target is gone, so the follow-up GET / (which the
-    // browser sends with the fragment stripped) does NOT redirect again. This is
-    // what breaks the fragment-redirect loop.
-    expect(readArmedPaneTarget(lockDir)).toBeNull();
-    const follow = await fetch(`http://127.0.0.1:${handle.port}/`, { redirect: 'manual' });
-    expect(follow.status).not.toBe(302);
-  });
-
-  test('base-open GET / does not redirect when no pane target is armed', async () => {
+  test('base-open GET / serves the SPA shell at root', async () => {
     const dist = seedDist(tmpDir, 'noredir');
     handle = await startUiServer({
       config: config(),

@@ -169,8 +169,9 @@ describe('seedWorktreeProjectSetup', () => {
     expect(existsSync(wtMcp)).toBe(true);
     expect(readFileSync(wtMcp, 'utf-8')).toContain('# ok-mcp');
     expect(existsSync(wtCursor)).toBe(true);
-    // Claude also gets its launcher entry (path-independent chain).
-    expect(existsSync(join(wt, '.claude', 'launch.json'))).toBe(true);
+    // OK no longer scaffolds .claude/launch.json (Claude Desktop's Browser
+    // pane opens the preview URL directly).
+    expect(existsSync(join(wt, '.claude', 'launch.json'))).toBe(false);
     // Codex was NOT wired at the root → not written to the worktree.
     expect(existsSync(join(wt, '.codex', 'config.toml'))).toBe(false);
   });

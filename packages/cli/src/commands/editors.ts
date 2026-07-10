@@ -348,7 +348,7 @@ export function isEntryUpToDate(entry: unknown): boolean {
   return false;
 }
 
-export function resolveDevCliDistPath(entryPath: string = process.argv[1]): string {
+function resolveDevCliDistPath(entryPath: string = process.argv[1]): string {
   if (!entryPath) {
     throw new Error(
       'Cannot infer the local CLI entry for --dev-mcp because process.argv[1] is empty.',

@@ -15,10 +15,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AutoStartDisabledError } from '../../autostart.ts';
-import { resolveLockDir } from '../../config/paths.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import type { OffCwdResolverDeps } from '../../off-cwd-resolver.ts';
-import { readArmedPaneTarget } from '../../pane-target.ts';
 import { register } from './get-preview-url.ts';
 import { bindTestServerLock, bindTestUiLock } from './preview-url-test-helpers.ts';
 import type { ServerInstance } from './shared.ts';
@@ -39,7 +37,6 @@ type ToolHandler = (args: {
   folder?: string;
   skill?: { name: string; scope?: 'project' | 'global' };
   file?: string;
-  armPaneTarget?: boolean;
   cwd?: string;
 }) => Promise<ToolResult>;
 
@@ -103,39 +100,6 @@ describe('preview_url tool — UI running', () => {
     const handler = captureRegistration(cwd);
     const result = await handler({ folder: '/My Notes/sub/' });
     expect(result.structuredContent?.url).toBe(`${uiBase}/#/My%20Notes/sub/`);
-  });
-
-  test('armPaneTarget writes the doc route as a readable armed target', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    bindTestUiLock(cwd);
-    const handler = captureRegistration(cwd);
-    await handler({ document: 'specs/foo/SPEC', armPaneTarget: true });
-    expect(readArmedPaneTarget(resolveLockDir(cwd))).toBe('#/specs/foo/SPEC');
-  });
-
-  test('without armPaneTarget: arms nothing (read-only)', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    bindTestUiLock(cwd);
-    const handler = captureRegistration(cwd);
-    await handler({ document: 'specs/foo/SPEC' });
-    expect(readArmedPaneTarget(resolveLockDir(cwd))).toBeNull();
-  });
-
-  test('armPaneTarget with no docName/folder: arms nothing + surfaces a note', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    bindTestUiLock(cwd);
-    const handler = captureRegistration(cwd);
-    const result = await handler({ armPaneTarget: true });
-    expect(readArmedPaneTarget(resolveLockDir(cwd))).toBeNull();
-    expect(result.content[0]?.text).toContain('nothing was armed');
-  });
-
-  test('armPaneTarget with a folder arms the folder route', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    bindTestUiLock(cwd);
-    const handler = captureRegistration(cwd);
-    await handler({ folder: 'specs/foo', armPaneTarget: true });
-    expect(readArmedPaneTarget(resolveLockDir(cwd))).toBe('#/specs/foo/');
   });
 
   describe('isDesktopTerminal steer (OK Desktop built-in terminal)', () => {
@@ -244,8 +208,6 @@ describe('preview_url tool — UI running', () => {
     const result = await handler({ document: 'specs/foo/SPEC', folder: 'specs/foo' });
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain('mutually exclusive');
-    // Nothing armed even if both + arm were passed.
-    expect(readArmedPaneTarget(resolveLockDir(cwd))).toBeNull();
   });
 
   test('without docName: returns the UI root URL', async () => {
@@ -286,14 +248,6 @@ describe('preview_url tool — skill target', () => {
     expect(result.structuredContent?.url).toBe(`${uiBase}/#/__skill__/global/run%20tests`);
   });
 
-  test('armPaneTarget with a skill arms the skill route', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    bindTestUiLock(cwd);
-    const handler = captureRegistration(cwd);
-    await handler({ skill: { name: 'trip-log' }, armPaneTarget: true });
-    expect(readArmedPaneTarget(resolveLockDir(cwd))).toBe('#/__skill__/project/trip-log');
-  });
-
   test('skill + document together is rejected (mutually exclusive)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
     bindTestUiLock(cwd);
@@ -301,7 +255,6 @@ describe('preview_url tool — skill target', () => {
     const result = await handler({ skill: { name: 'trip-log' }, document: 'specs/foo/SPEC' });
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain('mutually exclusive');
-    expect(readArmedPaneTarget(resolveLockDir(cwd))).toBeNull();
   });
 });
 
@@ -434,16 +387,15 @@ describe('preview_url tool — backend demand-ensure', () => {
     expect(result.content[0]?.text).not.toContain('`ok start`');
   });
 
-  test('ensure failure does not lose a requested pane-target arm', async () => {
+  test('spawn failure during demand-ensure surfaces isError', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
     const handler = captureRegistration(cwd, BASE_CONFIG, {
       serverUrl: async () => {
         throw new Error('spawn failed: ENOENT');
       },
     });
-    const result = await handler({ document: 'specs/foo/SPEC', armPaneTarget: true });
+    const result = await handler({ document: 'specs/foo/SPEC' });
     expect(result.isError).toBe(true);
-    expect(readArmedPaneTarget(resolveLockDir(cwd))).toBe('#/specs/foo/SPEC');
   });
 });
 

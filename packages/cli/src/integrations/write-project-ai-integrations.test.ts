@@ -1,13 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { ALL_EDITOR_IDS } from '../commands/editors.ts';
@@ -78,7 +70,6 @@ describe('writeProjectAiIntegrations — installs MCP config AND the project ski
     const result = writeProjectAiIntegrations(projectDir, []);
 
     expect(result.integrations).toEqual([]);
-    expect(result.claudeLaunchJson).toBeUndefined();
   });
 
   test('never throws — a hostile target surfaces as action "failed", not an exception', () => {
@@ -100,25 +91,5 @@ describe('writeProjectAiIntegrations — installs MCP config AND the project ski
       (o) => o.editorId !== 'claude' || o.action === 'written',
     );
     expect(claudeWritten).toBe(true);
-  });
-});
-
-describe('writeProjectAiIntegrations — Claude launch.json', () => {
-  test('selecting "claude" scaffolds .claude/launch.json', () => {
-    const result = writeProjectAiIntegrations(projectDir, ['claude']);
-
-    expect(result.claudeLaunchJson?.action).toBe('created');
-    expect(result.claudeLaunchJson?.configPath).toBe(join(projectDir, '.claude', 'launch.json'));
-    expect(existsSync(join(projectDir, '.claude', 'launch.json'))).toBe(true);
-
-    const launch = JSON.parse(readFileSync(join(projectDir, '.claude', 'launch.json'), 'utf-8'));
-    expect(launch.configurations[0].name).toBe('open-knowledge-ui');
-  });
-
-  test('NOT selecting "claude" leaves launch.json absent and claudeLaunchJson undefined', () => {
-    const result = writeProjectAiIntegrations(projectDir, ['cursor', 'codex']);
-
-    expect(result.claudeLaunchJson).toBeUndefined();
-    expect(existsSync(join(projectDir, '.claude', 'launch.json'))).toBe(false);
   });
 });

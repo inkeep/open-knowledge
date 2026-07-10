@@ -193,8 +193,7 @@ const EXEMPT_HANDLERS = new Set([
   // GET /api/server-info — identity-free readonly endpoint surfacing the
   // per-process serverInstanceId for CRDT restart-recovery defense.
   'handleServerInfo',
-  // `/api/config` — collab-bootstrap payload. GET reads server-lock + armed
-  // pane-target; DELETE clears the local pane-target TTL file. No Y.Doc
+  // `/api/config` — collab-bootstrap payload. GET reads server-lock. No Y.Doc
   // mutation and no agent content, so identity threading is exempt — same
   // rationale as `handleServerInfo`.
   'handleApiConfig',

@@ -68,7 +68,6 @@ describe('SingleFileModeProvider — browser /api/config channel', () => {
           collabUrl: null,
           previewUrl: null,
           port: 0,
-          paneTarget: null,
           singleFile: true,
         }),
         {
@@ -94,7 +93,6 @@ describe('SingleFileModeProvider — browser /api/config channel', () => {
           collabUrl: null,
           previewUrl: null,
           port: 0,
-          paneTarget: null,
           singleFile: false,
         }),
         {

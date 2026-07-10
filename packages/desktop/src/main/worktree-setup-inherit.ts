@@ -35,7 +35,7 @@
  *   2. `writeProjectAiIntegrations(worktree, editors)` — the SAME writer the
  *      consent / create-new flows use. `editors` is the set the ROOT has wired,
  *      detected from each editor's project MCP config carrying the OK sentinel.
- *      The published MCP entries and `.claude/launch.json` recipe are the
+ *      The published MCP entries are the
  *      resilient `/bin/sh` chain — project-path-INDEPENDENT (they resolve the
  *      runtime at spawn time and derive the project from cwd), so writing them
  *      under the worktree path IS the path adaptation.

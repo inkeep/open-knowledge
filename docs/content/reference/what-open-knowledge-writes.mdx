@@ -87,7 +87,6 @@ When you initialize or open a project, the app scaffolds the same project files 
 | `.pi/extensions/open-knowledge.ts` | Managed bridge extension connecting [Pi](/docs/integrations/pi) (which has no MCP support) to the project | In-project, committed |
 | `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.opencode/skills/`, `.pi/skills/` | Project-local "rich" OpenKnowledge skill (`SKILL.md`) for the same five editors | In-project, committed |
 | `.ok/skill-targets.json` | Committed list of which editors receive skills, written when you customize the targets | In-project, committed |
-| `.claude/launch.json` | Configures Claude Code's preview pane to open the editor (on a local UI port, `39848`) | In-project, committed |
 | `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, `~/.openclaw/openclaw.json`, `~/.gemini/config/mcp_config.json`, `~/.lmstudio/mcp.json`, `~/.hermes/config.yaml` | User-level `open-knowledge` MCP registration, one per detected editor, so it's available in every project (`~/.openclaw/openclaw.json` only when `~/.openclaw/` exists; `~/.gemini/config/mcp_config.json` is Antigravity's shared IDE + `agy` config, only when `~/.gemini/` exists; `~/.lmstudio/mcp.json` and `~/.hermes/config.yaml` only when those apps are installed) | Outside-project (editor config) |
 
 ### While a project is open
@@ -109,7 +108,7 @@ The app runs a collaboration server for the open project. It writes runtime stat
 
 Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](/docs/reference/configuration).
 
-On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above), `.claude/launch.json`, and the OpenKnowledge skill bundles (`open-knowledge-discovery` and `open-knowledge-write-skill`, in `~/.agents/skills/` and each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) to the current canonical form — a no-op when nothing has drifted. It **never adds** an MCP entry to an editor that doesn't already have one; and when you turn on skill management for a project, it also adopts your existing editor skills into `.ok/skills/`. Same `OK_RECLAIM_DISABLE=1` opt-out.
+On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) and the OpenKnowledge skill bundles (`open-knowledge-discovery` and `open-knowledge-write-skill`, in `~/.agents/skills/` and each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) to the current canonical form — a no-op when nothing has drifted. It also removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one; and when you turn on skill management for a project, it also adopts your existing editor skills into `.ok/skills/`. Same `OK_RECLAIM_DISABLE=1` opt-out.
 
 ### Home directory and credentials (`~/.ok/`)
 
@@ -165,7 +164,6 @@ The `postinstall` step is **non-fatal** (install always succeeds even if it fail
 | `.pi/extensions/open-knowledge.ts` | Managed bridge extension connecting [Pi](/docs/integrations/pi) (which has no MCP support) to the project | In-project, committed |
 | `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.opencode/skills/`, `.pi/skills/` | Project-local "rich" OpenKnowledge skill (`SKILL.md`) for the same five editors | In-project, committed |
 | `.ok/skill-targets.json` | Committed list of which editors receive skills, written when you customize the targets | In-project, committed |
-| `.claude/launch.json` | Configures Claude Code's preview pane to open the editor (on a local UI port, `39848`) | In-project, committed |
 
 With `--scope user` or `both` (the default), `ok init` also registers the `open-knowledge` MCP server in each detected editor's **user-level** config, so it's available in every project:
 
@@ -217,8 +215,8 @@ On each boot, `ok start` also runs **repair sweeps**: it re-checks a few things 
 | What it re-checks | Where | Scope |
 | --- | --- | --- |
 | Existing `open-knowledge` MCP entries | The same editor configs `ok init` writes — **both** user-level (`~/.claude.json`, `~/.cursor/mcp.json`, …) and project-level | Outside-project (editor config) **and** in-project |
-| `.claude/launch.json` | Your project | In-project, committed |
 | OpenKnowledge skill bundles (`open-knowledge-discovery`, `open-knowledge-write-skill`) | Project (`.claude/skills/…`) and user-global — `~/.agents/skills/` plus each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/` | In-project **and** outside-project (home dir) |
+| Stale `open-knowledge-ui` entry in `.claude/launch.json` | Project | Removed if present — OK no longer writes launch.json |
 
 Disable all three with `OK_RECLAIM_DISABLE=1`.
 

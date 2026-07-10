@@ -13,7 +13,6 @@ describe('computeDevApiConfigResponse', () => {
       collabUrl: 'ws://localhost:5173/collab',
       previewUrl: null,
       port: 5173,
-      paneTarget: null,
       singleFile: false,
     });
   });

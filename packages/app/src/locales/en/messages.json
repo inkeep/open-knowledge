@@ -69,9 +69,6 @@
     ],
     "0jD-Gn": ["A team knowledge base, a personal wiki, project docs..."],
     "0kTAXe": ["Open source: ", ["mirrorSrc"]],
-    "0njBIq": [
-      "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills, and <2>.claude/launch.json</2>.<3/><4>Shared</4> commits them to git, so anyone who clones the repo gets the same setup. <5/><6>Local only</6> keeps them out of git (via <7>.git/info/exclude</7>)."
-    ],
     "0rwwOn": ["By tag"],
     "0s8-e8": [
       "Select, enter, or leave block components and fallback source blocks from keyboard boundaries."
@@ -1175,6 +1172,7 @@
       "\" could not be cleared in time. Reload to retry."
     ],
     "ScwcF2": ["A project already exists at this location. Pick a different parent folder."],
+    "SfxQX8": ["Writes a project-MCP config for each selected tool."],
     "SgKLfA": ["Not connected to GitHub."],
     "Sh3Qkg": ["No matching branches."],
     "SiUUCS": ["Next match"],
@@ -1637,9 +1635,6 @@
     "ePK91l": ["Edit"],
     "eQkgKV": ["Installed"],
     "eQxm13": ["Failed to update attachment location — ", ["detail"]],
-    "eSu2Xn": [
-      "Writes a project-MCP config for each selected tool; Claude also gets <0>.claude/launch.json</0>."
-    ],
     "eTL5y9": ["Show selection preview"],
     "eTsJYJ": ["description"],
     "eVPynQ": ["Open <0><1>", ["verificationUri"], "</1><2/></0> and enter this code:"],
@@ -1824,6 +1819,9 @@
     "ircigK": ["Blank project"],
     "irrm_E": ["Remove selection"],
     "isRobC": ["New"],
+    "itxlnr": [
+      "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Local only</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+    ],
     "iuTKci": ["No edits yet."],
     "iycx_A": ["Pushing"],
     "j9Vqvc": ["inherited"],

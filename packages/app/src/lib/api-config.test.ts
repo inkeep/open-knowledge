@@ -36,7 +36,6 @@ describe('fetchApiConfig', () => {
         collabUrl: 'ws://localhost:52000/collab',
         previewUrl: 'http://localhost:3000/',
         port: 3000,
-        paneTarget: null,
         singleFile: false,
       },
     });
@@ -52,7 +51,7 @@ describe('fetchApiConfig', () => {
     const result = await fetchApiConfig();
     expect(result).toEqual({
       status: 'ok',
-      config: { collabUrl: null, previewUrl: null, port: 0, paneTarget: null, singleFile: false },
+      config: { collabUrl: null, previewUrl: null, port: 0, singleFile: false },
     });
   });
 
@@ -67,33 +66,7 @@ describe('fetchApiConfig', () => {
     const result = await fetchApiConfig();
     expect(result).toEqual({
       status: 'ok',
-      config: { collabUrl: null, previewUrl: null, port: 0, paneTarget: null, singleFile: true },
-    });
-  });
-
-  it('parses an armed paneTarget route fragment', async () => {
-    stubFetch(
-      async () =>
-        new Response(
-          JSON.stringify({
-            collabUrl: null,
-            previewUrl: null,
-            port: 0,
-            paneTarget: '#/specs/foo/',
-          }),
-          { status: 200 },
-        ),
-    );
-    const result = await fetchApiConfig();
-    expect(result).toEqual({
-      status: 'ok',
-      config: {
-        collabUrl: null,
-        previewUrl: null,
-        port: 0,
-        paneTarget: '#/specs/foo/',
-        singleFile: false,
-      },
+      config: { collabUrl: null, previewUrl: null, port: 0, singleFile: true },
     });
   });
 
@@ -139,7 +112,7 @@ describe('fetchApiConfig', () => {
     const result = await fetchApiConfig();
     expect(result).toEqual({
       status: 'ok',
-      config: { collabUrl: null, previewUrl: null, port: 0, paneTarget: null, singleFile: false },
+      config: { collabUrl: null, previewUrl: null, port: 0, singleFile: false },
     });
   });
 

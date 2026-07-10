@@ -305,12 +305,6 @@ export {
   MissingOkConfigError,
   type MissingOkConfigKind,
 } from './missing-ok-config-error.ts';
-export {
-  armPaneTarget,
-  clearArmedPaneTarget,
-  PANE_TARGET_TTL_MS,
-  readArmedPaneTarget,
-} from './pane-target.ts';
 // perf-measurement.ts's HTTP route (installPerfMeasurementHttpRoute) is
 // DEV-only test instrumentation for the cap-graduation sweep harness, gated
 // behind NODE_ENV + OK_PERF_SERVER_MEMORY_ENABLED. It is intentionally NOT

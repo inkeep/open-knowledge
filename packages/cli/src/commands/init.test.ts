@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   lstatSync,
@@ -51,9 +51,6 @@ import {
   formatInitResult,
   formatSharingOutcome,
   initCommand,
-  LAUNCH_UI_CHAIN_SENTINEL,
-  LAUNCH_UI_CHAIN_V1,
-  LAUNCH_UI_WIN_CHAIN_SENTINEL,
   MANAGED_FILE_BUILDERS,
   readExistingMcpEntry,
   resolveInitSkillEnablement,
@@ -61,11 +58,9 @@ import {
   resolveRequestedContentDir,
   resolveSharingMode,
   runInit,
-  scaffoldLaunchJson,
   writeEditorMcpConfig,
   writeUserMcpConfigs,
 } from './init.ts';
-import { LAUNCH_JSON_PORT } from './ui.ts';
 
 // The native TOML addon is absent when its napi `.node` wasn't built (a turbo cache
 // miss, or local dev without a build) — the engine then falls back to smol-toml. A
@@ -75,75 +70,6 @@ import { LAUNCH_JSON_PORT } from './ui.ts';
 // host doesn't red them. The fallback dispositions are covered separately by the
 // forced `() => null` engine tests.
 const NATIVE_TOML_AVAILABLE = createTomlConfigEngine().backend === 'native';
-
-describe('LAUNCH_UI_CHAIN_V1 (published launch.json recipe shell chain)', () => {
-  it('is syntactically valid POSIX sh (sh -n)', () => {
-    // The recipe runs on every user machine after `ok init` / desktop reclaim,
-    // so a shell syntax error would silently break the preview everywhere.
-    // `sh -n` parses without executing — hermetic, ~ms.
-    const result = spawnSync('sh', ['-n', '-c', LAUNCH_UI_CHAIN_V1], { encoding: 'utf-8' });
-    expect(result.status).toBe(0);
-    expect(result.stderr).toBe('');
-  });
-
-  // The argv-forwarding tests below EXECUTE the chain via `/bin/sh -l -c`. The
-  // recipe is macOS-only (it resolves an `OpenKnowledge.app` bundle), and the
-  // execution semantics depend on the macOS `/bin/sh` (bash). On a Linux CI
-  // runner `/bin/sh` is dash and the bundle-probe path differs, so the chain
-  // falls through to its `npx @latest` network branch and the assertion is
-  // meaningless. Gate execution on darwin (dev macs + macOS CI lanes); the
-  // platform-agnostic `sh -n` syntax check above still runs everywhere.
-  const itDarwin = it.skipIf(process.platform !== 'darwin');
-
-  // Stub the user-bundle resolution target ($HOME/Applications/.../ok.sh) with a
-  // script that echoes its argv, so the chain's FIRST exec branch fires and we
-  // can observe exactly what it forwards. Returns the stubbed HOME.
-  function withStubbedBundle(): { home: string; cleanup: () => void } {
-    const home = join(tmpdir(), `ok-ui-chain-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const binDir = join(
-      home,
-      'Applications',
-      'OpenKnowledge.app',
-      'Contents',
-      'Resources',
-      'cli',
-      'bin',
-    );
-    mkdirSync(binDir, { recursive: true });
-    const stub = join(binDir, 'ok.sh');
-    writeFileSync(stub, '#!/bin/sh\necho "STUB:$*"\n');
-    spawnSync('chmod', ['+x', stub]);
-    return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) };
-  }
-
-  itDarwin('forwards the pane PORT as `start --ui-port <PORT>`', () => {
-    const { home, cleanup } = withStubbedBundle();
-    try {
-      const out = spawnSync('sh', ['-l', '-c', LAUNCH_UI_CHAIN_V1], {
-        encoding: 'utf-8',
-        env: { ...process.env, HOME: home, PORT: '40123' },
-      });
-      expect(out.stdout.trim()).toBe('STUB:start --ui-port 40123');
-    } finally {
-      cleanup();
-    }
-  });
-
-  itDarwin(
-    'defaults --ui-port to LAUNCH_JSON_PORT when PORT is unset (main stays connect-armed)',
-    () => {
-      const { home, cleanup } = withStubbedBundle();
-      try {
-        const env = { ...process.env, HOME: home };
-        delete (env as { PORT?: string }).PORT;
-        const out = spawnSync('sh', ['-l', '-c', LAUNCH_UI_CHAIN_V1], { encoding: 'utf-8', env });
-        expect(out.stdout.trim()).toBe(`STUB:start --ui-port ${LAUNCH_JSON_PORT}`);
-      } finally {
-        cleanup();
-      }
-    },
-  );
-});
 
 describe('runInit', () => {
   let testDir: string;
@@ -177,34 +103,6 @@ describe('runInit', () => {
       OK_LOG_FILE: '/tmp/ok-mcp.log',
     },
   });
-  // The recipe is now a `# ok-ui-v1` `/bin/sh` chain running `ok start` (not
-  // bare `ok ui`) so the opened folder gets its own collab server. Assert the
-  // chain shape rather than a brittle byte-for-byte string. Dev mode pins the
-  // chain's `exec` to the local CLI dist (`dist/cli.mjs`).
-  const assertChainEntry = (
-    entry: {
-      name: string;
-      runtimeExecutable: string;
-      runtimeArgs: string[];
-      port: number;
-      autoPort: boolean;
-    },
-    opts: { devDist?: string } = {},
-  ) => {
-    expect(entry.name).toBe('open-knowledge-ui');
-    expect(entry.runtimeExecutable).toBe('/bin/sh');
-    expect(entry.runtimeArgs.slice(0, 2)).toEqual(['-l', '-c']);
-    const chain = entry.runtimeArgs[2];
-    expect(chain).toContain(LAUNCH_UI_CHAIN_SENTINEL);
-    expect(chain).toContain('start');
-    expect(chain).toContain('--ui-port');
-    if (opts.devDist !== undefined) {
-      expect(chain).toContain(`exec node "${opts.devDist}" start`);
-    }
-    expect(entry.port).toBe(LAUNCH_JSON_PORT);
-    expect(entry.autoPort).toBe(true);
-  };
-  const devDistPath = () => join(devRepoRoot(), 'packages', 'cli', 'dist', 'cli.mjs');
   /**
    * Stubbed installUserSkill used by every test unless overridden. Prevents
    * the real `npx skills` subprocess from firing in the test suite, keeping
@@ -941,220 +839,11 @@ describe('runInit', () => {
       expect(output).toContain('.mcp.json');
       expect(output).toContain('.cursor/mcp.json');
     });
-
-    it('renders launch.json beside the Claude MCP entry, not in the legacy warning block', async () => {
-      mkdirSync(dirname(cursorConfigPath()), { recursive: true });
-      mkdirSync(join(testDir, '.cursor'), { recursive: true });
-      writeFileSync(join(testDir, '.mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2));
-      writeFileSync(
-        join(testDir, '.cursor', 'mcp.json'),
-        JSON.stringify({ mcpServers: {} }, null, 2),
-      );
-
-      const result = await runInitForTest({ editors: ['claude', 'cursor'] });
-      const output = formatInitResult(result, testDir);
-
-      const claudeIndex = output.indexOf('Claude');
-      const launchJsonIndex = output.indexOf('launch.json');
-      const legacyIndex = output.indexOf('Project MCP configs found:');
-
-      expect(output).toContain('app preview server');
-      expect(claudeIndex).toBeGreaterThanOrEqual(0);
-      expect(launchJsonIndex).toBeGreaterThan(claudeIndex);
-      expect(legacyIndex).toBeGreaterThan(launchJsonIndex);
-    });
   });
 
   // -----------------------------------------------------------------------
   // Claude launch.json scaffolding
   // -----------------------------------------------------------------------
-
-  describe('launch.json scaffolding', () => {
-    it('writes a fresh .claude/launch.json pointing at open-knowledge ui', async () => {
-      const result = await runInitForTest();
-
-      expect(result.launchJson).toBeDefined();
-      expect(result.launchJson?.action).toBe('created');
-
-      const configPath = join(testDir, '.claude', 'launch.json');
-      expect(existsSync(configPath)).toBe(true);
-      const parsed = JSON.parse(readFileSync(configPath, 'utf-8'));
-
-      expect(parsed.configurations).toHaveLength(1);
-      assertChainEntry(parsed.configurations[0]);
-    });
-
-    it('overwrites a stale open-knowledge-ui entry by default', async () => {
-      const configPath = join(testDir, '.claude', 'launch.json');
-      mkdirSync(join(testDir, '.claude'), { recursive: true });
-      writeFileSync(
-        configPath,
-        JSON.stringify(
-          {
-            version: '0.0.1',
-            configurations: [
-              {
-                name: 'open-knowledge-ui',
-                runtimeExecutable: 'npx',
-                runtimeArgs: ['open-knowledge', 'start'],
-                port: 3000,
-              },
-            ],
-          },
-          null,
-          2,
-        ),
-      );
-
-      const result = await runInitForTest();
-      expect(result.launchJson?.action).toBe('merged');
-
-      const parsed = JSON.parse(readFileSync(configPath, 'utf-8'));
-      assertChainEntry(parsed.configurations[0]);
-    });
-
-    it('writes a local dev launch target when --dev-mcp is enabled', async () => {
-      enableDevMcp();
-      const result = await runInitForTest({ devMcp: true });
-
-      expect(result.launchJson?.action).toBe('created');
-
-      const parsed = JSON.parse(readFileSync(join(testDir, '.claude', 'launch.json'), 'utf-8'));
-      expect(parsed.configurations).toHaveLength(1);
-      assertChainEntry(parsed.configurations[0], { devDist: devDistPath() });
-    });
-
-    it('rewrites an up-to-date open-knowledge-ui entry', async () => {
-      const configPath = join(testDir, '.claude', 'launch.json');
-      mkdirSync(join(testDir, '.claude'), { recursive: true });
-      writeFileSync(
-        configPath,
-        JSON.stringify(
-          {
-            version: '0.0.1',
-            configurations: [
-              {
-                name: 'open-knowledge-ui',
-                runtimeExecutable: 'npx',
-                runtimeArgs: ['@inkeep/open-knowledge', 'ui'],
-                port: LAUNCH_JSON_PORT,
-                autoPort: true,
-              },
-            ],
-          },
-          null,
-          2,
-        ),
-      );
-
-      const result = await runInitForTest();
-      expect(result.launchJson?.action).toBe('merged');
-    });
-
-    it('overwrites the published launch target in dev mode', async () => {
-      const configPath = join(testDir, '.claude', 'launch.json');
-      mkdirSync(join(testDir, '.claude'), { recursive: true });
-      writeFileSync(
-        configPath,
-        JSON.stringify(
-          {
-            version: '0.0.1',
-            configurations: [
-              {
-                name: 'open-knowledge-ui',
-                runtimeExecutable: 'npx',
-                runtimeArgs: ['@inkeep/open-knowledge', 'ui'],
-                port: LAUNCH_JSON_PORT,
-                autoPort: true,
-              },
-            ],
-          },
-          null,
-          2,
-        ),
-      );
-
-      enableDevMcp();
-      const result = await runInitForTest({ devMcp: true });
-      expect(result.launchJson?.action).toBe('merged');
-
-      const parsed = JSON.parse(readFileSync(configPath, 'utf-8'));
-      assertChainEntry(parsed.configurations[0], { devDist: devDistPath() });
-    });
-
-    it('merges the new entry into an existing launch.json with other configurations', async () => {
-      const configPath = join(testDir, '.claude', 'launch.json');
-      mkdirSync(join(testDir, '.claude'), { recursive: true });
-      writeFileSync(
-        configPath,
-        JSON.stringify(
-          {
-            version: '0.0.1',
-            configurations: [
-              {
-                name: 'some-other-server',
-                runtimeExecutable: 'node',
-                runtimeArgs: ['./server.js'],
-              },
-            ],
-          },
-          null,
-          2,
-        ),
-      );
-
-      const result = await runInitForTest();
-      expect(result.launchJson?.action).toBe('created');
-
-      const parsed = JSON.parse(readFileSync(configPath, 'utf-8'));
-      expect(parsed.configurations).toHaveLength(2);
-      const ok = parsed.configurations.find(
-        (c: { name: string }) => c.name === 'open-knowledge-ui',
-      );
-      assertChainEntry(ok);
-      expect(ok.port).toBe(LAUNCH_JSON_PORT);
-      expect(ok.autoPort).toBe(true);
-    });
-
-    it('does NOT scaffold launch.json when Claude is not among selected editors', async () => {
-      const result = await runInitForTest({ editors: ['cursor'] });
-      expect(result.launchJson).toBeUndefined();
-      expect(existsSync(join(testDir, '.claude', 'launch.json'))).toBe(false);
-    });
-
-    it('emits the powershell `# ok-ui-win-v1` chain on Windows', () => {
-      // Windows has no `/bin/sh`, so the preview pane cannot launch the posix
-      // chain. `platformName` is injected (rather than spoofing the ambient
-      // `process.platform`) since a machine always writes its own platform's
-      // shape; the option exists purely to pin either shape under test.
-      const result = scaffoldLaunchJson(testDir, { platformName: 'win32' });
-      expect(result.action).toBe('created');
-
-      const parsed = JSON.parse(readFileSync(join(testDir, '.claude', 'launch.json'), 'utf-8'));
-      expect(parsed.configurations).toHaveLength(1);
-      const entry = parsed.configurations[0];
-      expect(entry.name).toBe('open-knowledge-ui');
-      expect(entry.runtimeExecutable).toBe('powershell');
-      expect(entry.runtimeArgs.slice(0, 3)).toEqual(['-NoProfile', '-NonInteractive', '-Command']);
-      const chain = entry.runtimeArgs[3];
-      expect(chain).toContain(LAUNCH_UI_WIN_CHAIN_SENTINEL);
-      expect(chain).toContain('start --ui-port');
-      expect(chain).not.toContain('/bin/sh');
-      // The body must carry zero double-quote characters: it travels as one
-      // argv element through the host's Windows argument-quoting layer, and any
-      // `"` would be mangled there.
-      expect(chain).not.toContain('"');
-      expect(entry.port).toBe(LAUNCH_JSON_PORT);
-      expect(entry.autoPort).toBe(true);
-    });
-
-    it('emits the posix `/bin/sh` chain when the platform is macOS', () => {
-      const result = scaffoldLaunchJson(testDir, { platformName: 'darwin' });
-      expect(result.action).toBe('created');
-      const parsed = JSON.parse(readFileSync(join(testDir, '.claude', 'launch.json'), 'utf-8'));
-      assertChainEntry(parsed.configurations[0]);
-    });
-  });
 
   // -----------------------------------------------------------------------
   // Zero project-root file writes

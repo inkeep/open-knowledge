@@ -12,14 +12,7 @@
  * Missing editor config roots are skipped so init does not create new user-home
  * directories for tools that are not installed.
  */
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { inspect } from 'node:util';
@@ -89,11 +82,9 @@ import {
   type EditorId,
   type EditorMcpTarget,
   type McpInstallOptions,
-  resolveDevCliDistPath,
   resolveEditorTargets,
 } from './editors.ts';
 import { existingFileMode, isCrlfDominant } from './jsonc-surgical.ts';
-import { LAUNCH_JSON_PORT } from './ui.ts';
 
 // ---------------------------------------------------------------------------
 // Config I/O — generic across all editors
@@ -612,7 +603,7 @@ async function promptSharingMode(
 ): Promise<'shared' | 'local-only'> {
   return select<'shared' | 'local-only'>({
     message:
-      'How do you want to handle OpenKnowledge config files (.ok/, .mcp.json, project skills, launch.json)?',
+      'How do you want to handle OpenKnowledge config files (.ok/, .mcp.json, project skills)?',
     default: defaultMode,
     choices: [
       {
@@ -849,8 +840,6 @@ interface InitCommandResult {
   skillInstall?: InstallUserSkillResult | 'declined';
   /** Content preview result (undefined if preview failed or was not run). */
   preview?: PreviewResult;
-  /** Claude launch.json result (undefined when Claude is not a selected editor). */
-  launchJson?: LaunchJsonResult;
   /** `true` if `ensureProjectGit` ran `git init` during this invocation. */
   didGitInit: boolean;
   /** `true` if a project-root `.gitignore` was seeded during this invocation.
@@ -936,271 +925,14 @@ export type SharingOutcome =
     };
 
 // ---------------------------------------------------------------------------
-// Claude launch.json scaffolding
+// Claude launch.json — OK no longer scaffolds one. Claude Code Desktop's
+// in-app Browser pane opens the preview URL directly (`preview_start({url})`
+// + `navigate({url})`), and `preview_url` autostarts the OK UI. The config
+// name survives only so `ok deinit` and the `ok start` repair sweep can
+// remove any pre-existing entry from a shared `.claude/launch.json`.
 // ---------------------------------------------------------------------------
 
-const LAUNCH_JSON_VERSION = '0.0.1';
 export const LAUNCH_CONFIG_NAME = 'open-knowledge-ui';
-
-/**
- * Canonical published-mode `runtimeArgs` for the `open-knowledge-ui` launch
- * config. Pinned to `@latest` so Claude Code Desktop's preview-pane spawn
- * can't be silently downgraded by npm's engine-aware sort in
- * `npm-pick-manifest`; `-y` suppresses the install-confirm prompt under the
- * non-TTY preview spawn. Single source of truth — `scaffoldLaunchJson`
- * writes this shape and `repair-launch-json.ts` classifies against it.
- */
-export const LAUNCH_JSON_CANONICAL_ARGS: readonly string[] = [
-  '-y',
-  '@inkeep/open-knowledge@latest',
-  'ui',
-];
-
-/**
- * Version sentinel for the published-mode launch.json recipe. The first line
- * of the chain doubles as a shell comment and the stamp `classifyLaunchJsonEntry`
- * matches on. Bump the suffix (`v2`, …) on any structurally-different chain so
- * the repair sweep recognizes stale text and rewrites it forward.
- */
-export const LAUNCH_UI_CHAIN_SENTINEL = '# ok-ui-v1';
-
-/**
- * Published-mode `.claude/launch.json` recipe — the preview pane spawns this
- * to bring the worktree's editor up. Mirrors the proven `# ok-mcp-v1` chain
- * (editors.ts) — resolves the Desktop bundle first (user → system Applications),
- * then npx, then version-manager `npx` paths — but runs **`ok start`**, not
- * bare `ok ui`, so the folder gets its OWN collab server (the worktree fix).
- * `ok start` connects-instead-of-erroring on a live lock (`--ui-port` path), so
- * one committed recipe is safe on both the main checkout and a fresh worktree.
- *
- * Port handling: the pane passes its watched port via `PORT` env. We capture it
- * as `UIPORT`, defaulting to the launch.json `port` (`LAUNCH_JSON_PORT`) when
- * `PORT` is somehow absent — the pane probes that same port, so the default
- * matches what it watches. `unset PORT` so the collab server kernel-allocates
- * instead of fighting its UI sibling for the env port (`ok start` also drops
- * env-`PORT` for the collab when `--ui-port` is set, belt-and-braces). We ALWAYS
- * pass `--ui-port` — that is what arms `ok start`'s connect-instead-of-exit-1
- * fallback, so a missing `PORT` can never leave the main checkout running a bare
- * `ok start` that exits 1 and breaks the preview pane. Ports are numeric;
- * `"$UIPORT"` is quoted for safety.
- *
- * Portable + public-safe: no machine-specific absolute path is baked in; the
- * bundle is resolved at spawn time. Same chain ships in the git-committed
- * scaffold and the per-open desktop reclaim (which force-writes this shape).
- */
-export const LAUNCH_UI_CHAIN_V1 = `${LAUNCH_UI_CHAIN_SENTINEL}
-UIPORT="\${PORT:-${LAUNCH_JSON_PORT}}"
-unset PORT
-USER_BUNDLE="$HOME/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"
-[ -f "$USER_BUNDLE" ] && [ -x "$USER_BUNDLE" ] && exec "$USER_BUNDLE" start --ui-port "$UIPORT"
-BUNDLE="/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"
-[ -f "$BUNDLE" ] && [ -x "$BUNDLE" ] && exec "$BUNDLE" start --ui-port "$UIPORT"
-command -v npx >/dev/null 2>&1 && exec npx -y @inkeep/open-knowledge@latest start --ui-port "$UIPORT"
-for d in "$HOME/.nvm/versions/node"/*/bin "$HOME/.fnm/node-versions"/*/installation/bin "$HOME/.asdf/installs/nodejs"/*/bin /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin" "$HOME/.volta/bin"; do
-  [ -f "$d/npx" ] && [ -x "$d/npx" ] && exec "$d/npx" -y @inkeep/open-knowledge@latest start --ui-port "$UIPORT"
-done
-echo "OpenKnowledge: install OK Desktop or Node.js 24+, then restart your editor" >&2
-exit 127`;
-
-/**
- * Version sentinel for the Windows published-mode launch.json recipe — the
- * PowerShell sibling of `LAUNCH_UI_CHAIN_SENTINEL`. First line of the chain,
- * doubling as a PowerShell comment. Bump the suffix (`win-v2`, …) on any
- * structurally-different chain so the repair sweep rewrites stale text forward.
- */
-export const LAUNCH_UI_WIN_CHAIN_SENTINEL = '# ok-ui-win-v1';
-
-/**
- * Windows published-mode `.claude/launch.json` recipe — the PowerShell member
- * of the two-shape canonical set (Unix sibling: `LAUNCH_UI_CHAIN_V1`). Claude
- * Code Desktop's preview pane spawns this to bring the folder's editor up on
- * Windows, where `/bin/sh` does not exist. Mirrors the proven `# ok-mcp-win-v1`
- * chain (`CHAIN_WIN_V1` in editors.ts) — resolves the npm-global `ok.cmd` shim
- * first, then `npx.cmd` from PATH, then explicit version-manager/installer
- * dirs — but runs `ok start --ui-port`, not `ok mcp`, so the opened folder
- * gets its OWN collab server (the worktree fix). No OK Desktop bundle branches:
- * OK Desktop does not ship on Windows, so `npm i -g @inkeep/open-knowledge` is
- * the primary install persona, and the pinned global shim outranks `npx
- * @latest` so the launched UI resolves to the SAME installed version as the
- * user's hand-run `ok`.
- *
- * Port handling mirrors the Unix chain: capture the pane's watched `PORT` env
- * into `$UIPORT`, defaulting to `LAUNCH_JSON_PORT` (the same port the pane
- * probes) when `PORT` is absent, then clear `PORT` so the auto-spawned collab
- * server kernel-allocates instead of fighting its UI sibling for the env port.
- * `--ui-port` is always passed — that arms `ok start`'s
- * connect-instead-of-exit-1 fallback so one committed recipe is safe on both
- * the main checkout and a fresh worktree.
- *
- * Each PowerShell detail is load-bearing exactly as documented on `CHAIN_WIN_V1`:
- * `powershell` (5.1, preinstalled everywhere) not `cmd`/`pwsh`; `-NoProfile
- * -NonInteractive` for a deterministic, fail-loud spawn; zero double-quote
- * characters in the body (single-quoted literals + `Join-Path` only) so the
- * script survives the host's argument-quoting layer as one argv element;
- * `.cmd` shims only (a `.ps1` re-enters execution policy); `exit
- * $LASTEXITCODE` after each invocation (PowerShell has no `exec`); null-guarded
- * env probes (`Join-Path` on an unset var throws); and the PATHEXT guard on
- * line 2 — Electron hosts spawn with a PATHEXT that omits `.CMD`, which makes
- * `& <path>\ok.cmd` a SILENT no-op, so the guard prepends the standard
- * executable extensions.
- */
-export const LAUNCH_UI_WIN_CHAIN_V1 = `${LAUNCH_UI_WIN_CHAIN_SENTINEL}
-if ($env:PATHEXT -notmatch 'CMD') { $env:PATHEXT = '.COM;.EXE;.BAT;.CMD;' + $env:PATHEXT }
-$UIPORT = if ($env:PORT) { $env:PORT } else { '${LAUNCH_JSON_PORT}' }
-Remove-Item Env:PORT -ErrorAction SilentlyContinue
-if ($env:APPDATA) {
-  $shim = Join-Path $env:APPDATA 'npm\\ok.cmd'
-  if (Test-Path -LiteralPath $shim -PathType Leaf) { & $shim start --ui-port $UIPORT; exit $LASTEXITCODE }
-}
-$ok = Get-Command ok.cmd -CommandType Application -ErrorAction SilentlyContinue
-if ($ok) { & $ok.Source start --ui-port $UIPORT; exit $LASTEXITCODE }
-$npx = Get-Command npx.cmd -CommandType Application -ErrorAction SilentlyContinue
-if ($npx) { & $npx.Source -y '@inkeep/open-knowledge@latest' start --ui-port $UIPORT; exit $LASTEXITCODE }
-$dirs = @()
-if ($env:ProgramFiles) { $dirs += Join-Path $env:ProgramFiles 'nodejs' }
-if ($env:NVM_SYMLINK) { $dirs += $env:NVM_SYMLINK }
-if ($env:LOCALAPPDATA) {
-  $dirs += Join-Path $env:LOCALAPPDATA 'fnm\\aliases\\default'
-  $dirs += Join-Path $env:LOCALAPPDATA 'Volta\\bin'
-  $dirs += Join-Path $env:LOCALAPPDATA 'pnpm'
-}
-if ($env:USERPROFILE) { $dirs += Join-Path $env:USERPROFILE 'scoop\\shims' }
-foreach ($d in $dirs) {
-  $probe = Join-Path $d 'npx.cmd'
-  if (Test-Path -LiteralPath $probe -PathType Leaf) { & $probe -y '@inkeep/open-knowledge@latest' start --ui-port $UIPORT; exit $LASTEXITCODE }
-}
-[Console]::Error.WriteLine('OpenKnowledge: install Node.js 24+ (npm i -g @inkeep/open-knowledge), then restart your editor')
-exit 127`;
-
-type LaunchJsonAction = 'created' | 'merged' | 'failed';
-
-export interface LaunchJsonResult {
-  action: LaunchJsonAction;
-  configPath: string;
-  error?: string;
-}
-
-/**
- * Scaffold or merge a `.claude/launch.json` entry so that Claude's
- * built-in preview browser can start the OpenKnowledge dev server via
- * `preview_start("open-knowledge-ui")`.
- *
- * `runtimeArgs` launches `open-knowledge ui` (not `open-knowledge start`) —
- * the UI sibling-process is what the preview pane renders; collab runs in a
- * separate `open-knowledge start` process auto-spawned by `ok ui` via the
- * MCP stdio path.
- *
- * - File missing        → create with the OK entry
- * - File exists, no OK  → merge the entry into configurations
- * - File exists, has OK → replace with current defaults
- */
-export function scaffoldLaunchJson(
-  cwd: string,
-  installOptions: McpInstallOptions = {},
-): LaunchJsonResult {
-  const configPath = join(cwd, '.claude', 'launch.json');
-  // `port` deliberately differs from `DEFAULT_UI_PORT` so Claude's spawn of the
-  // UI sibling (with `PORT=LAUNCH_JSON_PORT` env) goes through the lock-collision
-  // proxy branch rather than the same-port "already-running" exit-0 branch (which
-  // empirically fails Claude's preview pane). `autoPort: true` is the additional
-  // fallback when `LAUNCH_JSON_PORT` itself is occupied — Claude picks a free
-  // port, passes via `PORT`, still routes through the proxy branch. Full pairing
-  // rationale on `LAUNCH_JSON_PORT` in `ui.ts`.
-  //
-  // The recipe runs `ok start` (not bare `ok ui`) so the opened folder —
-  // crucially, a worktree — gets its OWN collab server, not just a UI. `ok
-  // start` connects-instead-of-erroring on a live lock (the `--ui-port` path),
-  // so the same committed recipe is correct on both the main checkout and a
-  // fresh worktree. The published recipe uses the local platform's interpreter:
-  // a `/bin/sh` chain (`# ok-ui-v1`) on macOS/Linux, a `powershell` chain
-  // (`# ok-ui-win-v1`) on Windows, since `/bin/sh` does not exist there and the
-  // preview pane could not otherwise launch the UI. Dev mode stays `/bin/sh`
-  // (monorepo development is Unix-only) and pins the chain's exec to the local
-  // CLI dist. Every shape carries its platform's sentinel so the repair sweep
-  // recognizes them.
-  //
-  // `resolveDevCliDistPath()` is resolved LAZILY (dev branch only) — it throws
-  // when the repo root can't be inferred, which is the normal case for the
-  // published recipe + the desktop reclaim, so it must never run in that path.
-  const buildDevChain = () => `${LAUNCH_UI_CHAIN_SENTINEL}
-UIPORT="\${PORT:-${LAUNCH_JSON_PORT}}"
-unset PORT
-exec node "${resolveDevCliDistPath()}" start --ui-port "$UIPORT"`;
-  // Writers never set `platformName`; a machine always emits its own platform's
-  // shape. Tests inject it to pin either shape on any host.
-  const platformName = installOptions.platformName ?? process.platform;
-  const entry: {
-    name: string;
-    runtimeExecutable: string;
-    runtimeArgs: string[];
-    port: number;
-    autoPort: true;
-  } =
-    installOptions.mode === 'dev'
-      ? {
-          name: LAUNCH_CONFIG_NAME,
-          runtimeExecutable: '/bin/sh',
-          runtimeArgs: ['-l', '-c', buildDevChain()],
-          port: LAUNCH_JSON_PORT,
-          autoPort: true,
-        }
-      : platformName === 'win32'
-        ? {
-            name: LAUNCH_CONFIG_NAME,
-            runtimeExecutable: 'powershell',
-            runtimeArgs: ['-NoProfile', '-NonInteractive', '-Command', LAUNCH_UI_WIN_CHAIN_V1],
-            port: LAUNCH_JSON_PORT,
-            autoPort: true,
-          }
-        : {
-            name: LAUNCH_CONFIG_NAME,
-            runtimeExecutable: '/bin/sh',
-            runtimeArgs: ['-l', '-c', LAUNCH_UI_CHAIN_V1],
-            port: LAUNCH_JSON_PORT,
-            autoPort: true,
-          };
-
-  try {
-    assertProjectPathSafe(configPath, cwd);
-    if (!existsSync(configPath)) {
-      mkdirSync(dirname(configPath), { recursive: true });
-      const content = { version: LAUNCH_JSON_VERSION, configurations: [entry] };
-      writeFileSync(configPath, `${JSON.stringify(content, null, 2)}\n`, 'utf-8');
-      return { action: 'created', configPath };
-    }
-
-    const raw = readFileSync(configPath, 'utf-8').trim();
-    const parsed = raw ? JSON.parse(raw) : {};
-    if (!isObject(parsed)) {
-      return { action: 'failed', configPath, error: 'launch.json root is not an object' };
-    }
-
-    const configs: unknown[] = Array.isArray(parsed.configurations) ? parsed.configurations : [];
-    const existingIdx = configs.findIndex(
-      (c) => isObject(c) && (c as Record<string, unknown>).name === LAUNCH_CONFIG_NAME,
-    );
-
-    if (existingIdx >= 0) {
-      configs[existingIdx] = entry;
-    } else {
-      configs.push(entry);
-    }
-
-    const updated = {
-      ...parsed,
-      version: parsed.version ?? LAUNCH_JSON_VERSION,
-      configurations: configs,
-    };
-    writeFileSync(configPath, `${JSON.stringify(updated, null, 2)}\n`, 'utf-8');
-    return { action: existingIdx >= 0 ? 'merged' : 'created', configPath };
-  } catch (err) {
-    return {
-      action: 'failed',
-      configPath,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Per-editor write logic
@@ -1595,7 +1327,6 @@ export interface UserMcpConfigsOptions {
  *   - `ensureProjectGit` — would `git init` wherever `cwd` is (packaged Electron
  *     apps have `process.cwd() === '/'` by default)
  *   - `initContent` — scaffolds `.ok/` in a project
- *   - `scaffoldLaunchJson` — writes `.claude/launch.json`
  *   - `upsertRootInstructions` — mutates `AGENTS.md` / `CLAUDE.md`
  *   - `collectLegacyProjectConfig` — scans for `.mcp.json` / `.cursor/mcp.json`
  *
@@ -2036,15 +1767,6 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
         // Suppress paths we just wrote during project-scope install.
         .filter((result) => !writtenProjectPaths.has(result.path));
 
-  // 3. Scaffold .claude/launch.json when Claude is a selected editor.
-  // hasClaude checks availableTargets (existence of ~/.claude/), not the full
-  // targets list, so scope=project writes .mcp.json but skips launch.json when
-  // ~/.claude/ is absent (e.g. CI). This is intentional: launch.json targets a
-  // running editor instance, not a committed project artifact.
-  const hasClaude = availableTargets.some((target) => target.id === 'claude');
-  const launchJson =
-    hasClaude && !skipMcp ? scaffoldLaunchJson(projectRoot, installOptions) : undefined;
-
   // `ok init` does not write to root AGENTS.md / CLAUDE.md. Behavioral
   // guidance ships via (1) per-tool MCP tool descriptions and (2) the
   // user-global Agent Skill installed via `installUserSkill` from
@@ -2126,7 +1848,6 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
     editors: editorResults,
     projectSkills: projectSkillResults,
     legacyProjectConfigs,
-    launchJson,
     skillInstall,
     didGitInit: gitResult.didInit,
     rootGitignoreCreated,
@@ -2278,20 +1999,6 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
     result.editors.length > 0 && result.editors.every((e) => e.action === 'skipped-flag');
   const allSkippedMissing =
     result.editors.length > 0 && result.editors.every((e) => e.action === 'skipped-missing');
-  const formatLaunchJsonSummary = (launchJson: LaunchJsonResult): string => {
-    const displayPath = launchJson.configPath.startsWith(cwd)
-      ? relative(cwd, launchJson.configPath)
-      : launchJson.configPath;
-    switch (launchJson.action) {
-      case 'created':
-        return `    app preview server   ${displayPath}  configured for Claude Code Desktop embedded browser`;
-      case 'merged':
-        return `    app preview server   ${displayPath}  updated for Claude Code Desktop embedded browser`;
-      case 'failed':
-        return `    app preview server   ${displayPath}  FAILED: ${launchJson.error}`;
-    }
-  };
-
   // Auto-git-init disclosure — surfaced when ensureProjectGit ran
   // `git init` during this invocation. Silent when the project already had
   // `.git/`.
@@ -2393,9 +2100,6 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
           const _exhaustive: never = editor.action;
           void _exhaustive;
         }
-      }
-      if (editor.editorId === 'claude' && result.launchJson) {
-        lines.push(formatLaunchJsonSummary(result.launchJson));
       }
     }
     if (result.projectScopeUnsupportedLabels && result.projectScopeUnsupportedLabels.length > 0) {

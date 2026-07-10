@@ -391,10 +391,7 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
                     <Trans>Connect to AI tools</Trans>
                   </legend>
                   <p className="text-1sm text-muted-foreground">
-                    <Trans>
-                      Writes a project-MCP config for each selected tool; Claude also gets{' '}
-                      <code>.claude/launch.json</code>.
-                    </Trans>
+                    <Trans>Writes a project-MCP config for each selected tool.</Trans>
                   </p>
                   {payload.editorOptions.map((editor) => {
                     const checkboxId = `consent-editor-${editor.id}-cb`;

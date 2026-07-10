@@ -24,12 +24,9 @@ interface DevApiConfigResponse {
  * Returns `null` for methods other than GET/HEAD — callers should fall
  * through so the catch-all returns a 404 JSON.
  *
- * Body shape: `{ collabUrl, previewUrl, port, paneTarget }` — matches `ok ui`.
+ * Body shape: `{ collabUrl, previewUrl, port }` — matches `ok ui`.
  * `collabUrl` is null when `port <= 0` (server not yet bound); callers
  * should not invoke this before the dev server has emitted 'listening'.
- * `paneTarget` is always null in dev — the armed-pane-target store is an
- * `ok ui` concern (the Claude pane opens against `ok ui`, not `bun run dev`),
- * but the field rides the dev response too so the dev/prod shape stays identical.
  */
 export function computeDevApiConfigResponse(
   method: string | undefined,
@@ -40,7 +37,7 @@ export function computeDevApiConfigResponse(
   const collabUrl = port > 0 ? `ws://localhost:${port}/collab` : null;
   return {
     status: 200,
-    body: JSON.stringify({ collabUrl, previewUrl: null, port, paneTarget: null, singleFile }),
+    body: JSON.stringify({ collabUrl, previewUrl: null, port, singleFile }),
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',

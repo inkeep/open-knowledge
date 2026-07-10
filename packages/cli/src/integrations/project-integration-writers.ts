@@ -11,8 +11,8 @@
  * NOT run this orchestrator.
  *
  * Abstraction boundary: per-editor project-local integrations ONLY. The
- * `.ok/` scaffold, the user-global skill (`installUserSkill`), `launch.json`,
- * and git remain `ok init`'s own composition AROUND this orchestrator.
+ * `.ok/` scaffold, the user-global skill (`installUserSkill`), and git
+ * remain `ok init`'s own composition AROUND this orchestrator.
  *
  * Adding a new project-local concern = appending one writer to the default
  * set; no caller changes.

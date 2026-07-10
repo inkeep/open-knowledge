@@ -92,7 +92,7 @@ When asked to open or preview such a file, **decide by the viewing surface you
 actually have** — check the tool, not the host name. Only open a browser when
 you genuinely have one; never pop a browser tab on a host that has none.
 
-- **You have an in-app / built-in browser** (Cursor, Codex, and similar) — this
+- **You have an in-app / built-in browser** (Claude Code Desktop's Browser pane, Cursor, Codex, and similar) — this
   is the default: call the **`preview_url` MCP tool** with `file` set to the
   absolute path (it finds, or boots on demand, the session and returns a full
   `url`), then **immediately open that `url` in your in-app browser**. "Open it"
@@ -101,12 +101,7 @@ you genuinely have one; never pop a browser tab on a host that has none.
   (`ok open` prefers the Desktop app). Get the URL from `preview_url` only —
   never hunt for it via `ok ps` / `ok status` / `ok ui` / `ok start` or a guessed
   port.
-- **You have a Claude Code Desktop preview *pane* but no general browser** — the
-  pane is project-only: it shows in-project docs via `preview_start`, but it
-  **cannot host a file from outside the project**. For such a file run
-  `ok open /abs/path/to/file.md` (the Desktop app) instead; don't try to force
-  the file into the pane.
-- **No in-app browser and no pane** (a pure-stdio CLI) — run
+- **No in-app browser** (a pure-stdio CLI) — run
   `ok open /abs/path/to/file.md`: it opens the Desktop app when installed, else a
   browser, and boots the session itself. Don't force a browser tab the user
   didn't ask for; `ok open` is the right default here. If `ok` isn't on PATH,

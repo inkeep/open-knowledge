@@ -11,9 +11,10 @@
  *
  * Use it for hosts that open the URL themselves: an agent with an in-app
  * browser navigates that browser to the returned `url`; a stdio host with no
- * browser tool can `open <url>` as a last resort. Hosts with a preview pane
- * (Claude Code Desktop) use `preview_start("open-knowledge-ui")` instead; the
- * Claude Code CLI uses `ok open <doc>` to open in the OK Desktop app.
+ * browser tool can `open <url>` as a last resort. Claude Code Desktop opens
+ * its in-app Browser pane with `preview_start({url})`, then `navigate({url})`
+ * to move; the Claude Code CLI uses `ok open <doc>` to open in the OK Desktop
+ * app.
  *
  * Opening a preview counts as demand for a backend: when the registration
  * threads `serverUrl` (the global stdio MCP does), the handler runs the same
@@ -23,15 +24,11 @@
  * Registrations without server authority (no `serverUrl` in deps) answer
  * from disk alone, as before.
  *
- * Read-mostly EXCEPT when `armPaneTarget: true` — that flag writes a
- * TTL-bounded pane-target file under `.ok/local/` (hence
- * `readOnlyHint: false`) — and except for the demand-spawn above. Idempotent:
- * re-arming the same target is a no-op-equivalent overwrite, and repeated
- * calls converge on the same running backend.
+ * Read-only EXCEPT for the demand-spawn above (`readOnlyHint: false`).
+ * Idempotent: repeated calls converge on the same running backend.
  *
- * Input: `{ document?, folder?, armPaneTarget?, cwd? }` — `document` XOR `folder`
- *        selects the deep-link route (else the UI root); `armPaneTarget` arms it
- *        for a later Claude-pane base-open.
+ * Input: `{ document?, folder?, cwd? }` — `document` XOR `folder`
+ *        selects the deep-link route (else the UI root).
  * Output: `structuredContent: { url, baseUrl, running, autoOpen }` + a text body.
  */
 
@@ -46,7 +43,6 @@ import {
   type OffCwdResolverDeps,
   resolveOffCwdTarget,
 } from '../../off-cwd-resolver.ts';
-import { armPaneTarget } from '../../pane-target.ts';
 import { isProcessAlive } from '../../process-alive.ts';
 import { readServerLock } from '../../server-lock.ts';
 import {
@@ -71,7 +67,7 @@ const DESCRIPTION = [
   '',
   'Per-response `previewUrl` fields on read/write tools are ROUTE-ONLY (`/#/<doc>`, no host:port) — they identify which doc to preview, not a URL to open by itself. Call this tool to get the full, openable URL.',
   '',
-  'This is THE way to open a doc OR a loose file in a browser, and the only way to force a browser when the OK Desktop app is installed (the `ok open` CLI prefers Desktop). Use it when YOUR host opens the URL itself: navigate your in-app / embedded browser to the returned `url`, or — only on a stdio host with no browser tool — `open` it in the system browser. Do not hunt for the URL via `ok ps`/`ok status` or by guessing a port — this tool returns it. Hosts with a preview pane (Claude Code Desktop) call `preview_start("open-knowledge-ui")` instead; a pure stdio CLI with no browser uses `ok open <doc>` to open in the OK Desktop app.',
+  'This is THE way to open a doc OR a loose file in a browser, and the only way to force a browser when the OK Desktop app is installed (the `ok open` CLI prefers Desktop). Use it when YOUR host opens the URL itself: navigate your in-app / embedded browser to the returned `url`, or — only on a stdio host with no browser tool — `open` it in the system browser. Do not hunt for the URL via `ok ps`/`ok status` or by guessing a port — this tool returns it. Claude Code Desktop opens its in-app Browser pane with `preview_start({url})` then `navigate({url})` to move; a pure stdio CLI with no browser uses `ok open <doc>` to open in the OK Desktop app.',
   '',
   'Returns `{ url: null, baseUrl: null, running: false, autoOpen }` + a recovery hint only when no UI could be reached (auto-start disabled via `OK_MCP_AUTOSTART=0`, no spawn authority in this registration, or the UI did not bind in time) — the hint names the right command for the actual state.',
   '',
@@ -82,7 +78,6 @@ const DESCRIPTION = [
   '- `folder` (optional) — Folder path in the current project (e.g. `specs/foo`); returns the `…/#/<folder>/` route. Mutually exclusive with `document`.',
   '- `skill` (optional) — A skill to open in the editor: `{ name, scope? }` (scope `project` default). Returns the `…/#/__skill__/<scope>/<name>` route. Mutually exclusive with `document`/`folder`/`file`.',
   '- `file` (optional) — Absolute path to a single markdown file, including one outside any project. Resolves to the running single-file / worktree session serving it. Mutually exclusive with `document`/`folder`/`skill`; `cwd` is ignored when set.',
-  '- `armPaneTarget` (optional) — When true with a `document`/`folder`/`skill`, writes a small TTL-bounded (~30s) state file under `.ok/local/` so a later Claude-pane base-open lands on that target. Independent of server state; omit it and the call writes nothing.',
   '- `cwd` (optional) — Project root (see `cwd` description below).',
 ].join('\n');
 
@@ -171,12 +166,6 @@ const InputSchema = {
     .describe(
       'Absolute path to a single markdown file to open, including one OUTSIDE any Open Knowledge project. Resolves to the running single-file (or worktree) session whose content directory contains it and returns that session’s `url`. Mutually exclusive with `document` / `folder` / `skill`. When `file` is set, `cwd` is ignored.',
     ),
-  armPaneTarget: z
-    .boolean()
-    .optional()
-    .describe(
-      'When true with a `document` or `folder`, arm that target so a subsequent Claude-pane base-open (`preview_start`) lands there instead of the presence-driven default. TTL-bounded (~30s) so a stale arm cannot hijack a later open.',
-    ),
   cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
 } as const;
 
@@ -216,9 +205,9 @@ const OutputSchema = outputSchemaWithText({
  * together; `ok ui` alone in that state produces a backend-less UI shell.
  */
 const NO_UI_SERVER_RUNNING_MESSAGE =
-  'The OK server is running but no UI has bound for this project yet. Retry in a few seconds, or start one: `ok ui` (terminal), `preview_start("open-knowledge-ui")` (Claude Code Desktop), or open the project in OK Electron.';
+  'The OK server is running but no UI has bound for this project yet. Retry in a few seconds, or start one: `ok ui` (terminal) or open the project in OK Electron.';
 const NO_SERVER_MESSAGE =
-  'No OpenKnowledge server is running for this project. Start it with `ok start` (also starts the preview UI), use `preview_start("open-knowledge-ui")` (Claude Code Desktop), or open the project in OK Electron.';
+  'No OpenKnowledge server is running for this project. Start it with `ok start` (also starts the preview UI), or open the project in OK Electron.';
 const AUTOSTART_DISABLED_NOTE = ' Auto-start is disabled (OK_MCP_AUTOSTART=0).';
 /**
  * Resolve `appearance.preview.autoOpen` for the out-of-project `file` branch.
@@ -286,8 +275,7 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       inputSchema: InputSchema,
       outputSchema: OutputSchema,
       annotations: {
-        // NOT read-only: `armPaneTarget: true` writes a pane-target file under
-        // `.ok/local/`, and the demand-ensure path can spawn `ok start`.
+        // NOT read-only: the demand-ensure path can spawn `ok start`.
         readOnlyHint: false,
         idempotentHint: true,
       },
@@ -297,7 +285,6 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       folder?: string;
       skill?: { name: string; scope?: 'project' | 'global' };
       file?: string;
-      armPaneTarget?: boolean;
       cwd?: string;
     }) => {
       // `document` / `folder` / `skill` / `file` are documented mutually
@@ -410,30 +397,6 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
           ? `You're in the OK Desktop terminal — run \`${okOpenCommand}\` to focus this in the OK Desktop window. Don't navigate the URL below or open a browser; it's for reference only.\n\n`
           : '';
 
-      // Arm an explicit pane target so a subsequent Claude-pane base-open lands
-      // here (TTL-bounded). Independent of whether a UI is currently running —
-      // armed BEFORE the backend-ensure below so a pane open that races the
-      // spawn still lands on the requested target. Best-effort: arming writes
-      // to `.ok/local/`, which can fail (read-only mount, EACCES, ENOSPC); the
-      // resolved URL below is valid regardless, so a failed arm must not sink
-      // the whole tool call.
-      if (args.armPaneTarget && routeFragment) {
-        try {
-          armPaneTarget(lockDir, routeFragment);
-        } catch {
-          // Swallow: arming is best-effort and the URL below is valid regardless.
-          // When OTel is enabled the failure shows up as the fs.* span armPaneTarget
-          // emits; with OTel off (the default) it is intentionally silent.
-        }
-      }
-
-      // Arming with no resolvable target is a silent no-op an agent tends to
-      // retry blindly — call it out in the text body so the mistake is visible.
-      const armNote =
-        args.armPaneTarget && !routeFragment
-          ? ' (note: armPaneTarget was set but no document/folder/skill was given, so nothing was armed)'
-          : '';
-
       // Demand-ensure: when this registration has server authority, run the
       // same backend-ensure the server-backed tools use. A live `server.lock`
       // resolves immediately (lock read, no HTTP); otherwise the resolver
@@ -485,7 +448,7 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
         const hint = isServerLive(lockDir)
           ? NO_UI_SERVER_RUNNING_MESSAGE
           : `${NO_SERVER_MESSAGE}${autoStartDisabled ? AUTOSTART_DISABLED_NOTE : ''}`;
-        return textPlusStructured(`${desktopTerminalSteer}${hint}${armNote}`, {
+        return textPlusStructured(`${desktopTerminalSteer}${hint}`, {
           url: null,
           baseUrl: null,
           running: false,
@@ -497,7 +460,7 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       // baseUrl is non-null here (the lock is bound) — compose base + route.
       const url = routeFragment ? `${baseUrl}/${routeFragment}` : baseUrl;
 
-      return textPlusStructured(`${desktopTerminalSteer}Preview URL: ${url}${armNote}`, {
+      return textPlusStructured(`${desktopTerminalSteer}Preview URL: ${url}`, {
         url,
         baseUrl,
         running: true,

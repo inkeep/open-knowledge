@@ -26,13 +26,6 @@ interface ApiConfig {
   previewUrl: string | null;
   port: number;
   /**
-   * Armed pane-target route fragment (`#/<doc>` or `#/<folder>/`), TTL-bounded
-   * server-side. Present only when an agent armed an explicit deep-link target
-   * via `preview_url({ armPaneTarget: true })`; the app applies it once on a
-   * base-open. `null` when unarmed or expired.
-   */
-  paneTarget: string | null;
-  /**
    * `true` when served by a no-project ephemeral single-file server (`ok <file>`).
    * The browser fallback reads this to drop project chrome (the desktop reads the
    * same signal from the bridge config — it loads from `file://`, off-origin from
@@ -79,7 +72,6 @@ export async function fetchApiConfig(signal?: AbortSignal): Promise<FetchApiConf
       collabUrl: typeof obj.collabUrl === 'string' ? obj.collabUrl : null,
       previewUrl: typeof obj.previewUrl === 'string' ? obj.previewUrl : null,
       port: typeof obj.port === 'number' ? obj.port : 0,
-      paneTarget: typeof obj.paneTarget === 'string' ? obj.paneTarget : null,
       singleFile: obj.singleFile === true,
     },
   };

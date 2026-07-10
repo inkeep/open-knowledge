@@ -112,9 +112,8 @@ const EXEMPT_HANDLERS = new Set([
   // conflict gate does not apply.
   'handleClientLogs',
   'handleWorkspace',
-  // `/api/config` — collab-bootstrap payload. GET reads server-lock + armed
-  // pane-target; DELETE clears the local pane-target TTL file. Neither targets
-  // a Y.Doc, so the per-doc conflict gate does not apply.
+  // `/api/config` — collab-bootstrap payload. GET reads server-lock. Does not
+  // target a Y.Doc, so the per-doc conflict gate does not apply.
   'handleApiConfig',
   'handleRescueList',
   'handleSyncStatus',

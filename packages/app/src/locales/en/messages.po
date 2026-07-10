@@ -6286,8 +6286,8 @@ msgid "Setup"
 msgstr "Setup"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills, and <2>.claude/launch.json</2>.<3/><4>Shared</4> commits them to git, so anyone who clones the repo gets the same setup. <5/><6>Local only</6> keeps them out of git (via <7>.git/info/exclude</7>)."
-msgstr "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills, and <2>.claude/launch.json</2>.<3/><4>Shared</4> commits them to git, so anyone who clones the repo gets the same setup. <5/><6>Local only</6> keeps them out of git (via <7>.git/info/exclude</7>)."
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Local only</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Local only</5> keeps them out of git (via <6>.git/info/exclude</6>)."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -7870,8 +7870,8 @@ msgid "Wrap long lines in the markdown source editor."
 msgstr "Wrap long lines in the markdown source editor."
 
 #: src/components/ConsentDialogBody.tsx
-msgid "Writes a project-MCP config for each selected tool; Claude also gets <0>.claude/launch.json</0>."
-msgstr "Writes a project-MCP config for each selected tool; Claude also gets <0>.claude/launch.json</0>."
+msgid "Writes a project-MCP config for each selected tool."
+msgstr "Writes a project-MCP config for each selected tool."
 
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"

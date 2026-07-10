@@ -265,9 +265,9 @@ interface ConnectUiSiblingOptions {
  * Connect fallback. When `ok start --ui-port P` finds the collab
  * server.lock already held by a live process — the main checkout (server
  * always running), or a lost TOCTOU race against a concurrent start — we must
- * NOT exit 1, because the same committed `launch.json` recipe rides into both
- * the main checkout and every worktree, and a non-zero exit reads to the
- * preview pane as "preview crashed." Instead we "connect": run `ok ui --port P`
+ * NOT exit 1, because `ok start --ui-port P` is run identically in the main
+ * checkout and every worktree, and a non-zero exit would break a caller that
+ * expects connect-on-collision. Instead we "connect": run `ok ui --port P`
  * in this folder, exactly reproducing what the prior bare-`ok ui` recipe did.
  *
  * On main that `ok ui --port P` hits the existing UI's `ui.lock` and enters
@@ -866,10 +866,9 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
       log.warn({ err }, '[start] mcp-config repair sweep failed; continuing');
     }
 
-    // Sibling sweep for `.claude/launch.json` — same silent-downgrade class
-    // as the MCP sweep above. The bare-npx form pre-dating the `@latest`
-    // pin would otherwise route Claude Code Desktop's preview-pane spawn
-    // through npm's engine-aware sort and silently land on a stale release.
+    // Sibling sweep for `.claude/launch.json` — OK no longer scaffolds one,
+    // so this removes any stale `open-knowledge-ui` entry a prior OK version
+    // left behind (co-located user configs are preserved).
     try {
       const repair =
         opts.repairLaunchJsonFn ?? (await import('./repair-launch-json.ts')).repairLaunchJson;
