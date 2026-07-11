@@ -504,7 +504,7 @@ msgid "A folder named <0>{sanitized}</0> already has files here. Pick a differen
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
-msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and your provider settings."
+msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and the embeddings endpoint setting."
 msgstr ""
 
 #: src/components/SeedDialog.tsx
@@ -1284,6 +1284,10 @@ msgstr ""
 
 #: src/components/PageHeaderWidgets.tsx
 msgid "Clear {keyName}"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Clear the field to reset back to the default OpenAI endpoint."
 msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
@@ -2702,6 +2706,10 @@ msgid "Embed an image with optional alt text."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
+msgid "Embeddings API endpoint"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
 msgstr ""
 
@@ -3066,6 +3074,10 @@ msgstr ""
 
 #: src/components/settings/TerminalSection.tsx
 msgid "Failed to update the auto-approve setting — {detail}"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to update the embeddings endpoint — {detail}"
 msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
@@ -7645,6 +7657,10 @@ msgstr ""
 msgid "Use lowercase letters, digits, and hyphens only."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
+msgstr ""
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
 msgstr ""
@@ -7948,6 +7964,10 @@ msgstr ""
 msgid "Your copy of branch <0>{shareBranch}</0> has changes that aren't on GitHub. The {targetNoun} will appear once the branch syncs."
 msgstr ""
 
+#: src/components/settings/EmbeddingsKeySection.tsx
+msgid "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -7967,10 +7987,6 @@ msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy of branch <0>{branch}</0> is behind. Pull the latest changes, then open the link again."
-msgstr ""
-
-#: src/components/settings/EmbeddingsKeySection.tsx
-msgid "Your OpenAI API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search."
 msgstr ""
 
 #: src/components/CloneDialog.tsx

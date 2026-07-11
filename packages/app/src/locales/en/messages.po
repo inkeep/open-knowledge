@@ -509,8 +509,8 @@ msgid "A folder named <0>{sanitized}</0> already has files here. Pick a differen
 msgstr "A folder named <0>{sanitized}</0> already has files here. Pick a different name."
 
 #: src/components/settings/SearchSection.tsx
-msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and your provider settings."
-msgstr "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and your provider settings."
+msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and the embeddings endpoint setting."
+msgstr "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and the embeddings endpoint setting."
 
 #: src/components/SeedDialog.tsx
 msgid "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
@@ -1290,6 +1290,10 @@ msgstr "Clear"
 #: src/components/PageHeaderWidgets.tsx
 msgid "Clear {keyName}"
 msgstr "Clear {keyName}"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Clear the field to reset back to the default OpenAI endpoint."
+msgstr "Clear the field to reset back to the default OpenAI endpoint."
 
 #: src/components/FolderTimelineCard.tsx
 msgid "cleared folder properties"
@@ -2707,6 +2711,10 @@ msgid "Embed an image with optional alt text."
 msgstr "Embed an image with optional alt text."
 
 #: src/components/settings/SearchSection.tsx
+msgid "Embeddings API endpoint"
+msgstr "Embeddings API endpoint"
+
+#: src/components/settings/SearchSection.tsx
 msgid "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
 msgstr "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
 
@@ -3072,6 +3080,10 @@ msgstr "Failed to update property"
 #: src/components/settings/TerminalSection.tsx
 msgid "Failed to update the auto-approve setting — {detail}"
 msgstr "Failed to update the auto-approve setting — {detail}"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to update the embeddings endpoint — {detail}"
+msgstr "Failed to update the embeddings endpoint — {detail}"
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Failed to update the project sync default — {detail}"
@@ -7650,6 +7662,10 @@ msgstr "Use lowercase letters, digits, and <0>-</0> only."
 msgid "Use lowercase letters, digits, and hyphens only."
 msgstr "Use lowercase letters, digits, and hyphens only."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
+msgstr "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
 msgstr "User"
@@ -7953,6 +7969,10 @@ msgstr "You're subscribed!"
 msgid "Your copy of branch <0>{shareBranch}</0> has changes that aren't on GitHub. The {targetNoun} will appear once the branch syncs."
 msgstr "Your copy of branch <0>{shareBranch}</0> has changes that aren't on GitHub. The {targetNoun} will appear once the branch syncs."
 
+#: src/components/settings/EmbeddingsKeySection.tsx
+msgid "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
+msgstr "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -7973,10 +7993,6 @@ msgstr "Your local copy is behind. Pull the latest changes, then open the link a
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy of branch <0>{branch}</0> is behind. Pull the latest changes, then open the link again."
 msgstr "Your local copy of branch <0>{branch}</0> is behind. Pull the latest changes, then open the link again."
-
-#: src/components/settings/EmbeddingsKeySection.tsx
-msgid "Your OpenAI API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search."
-msgstr "Your OpenAI API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search."
 
 #: src/components/CloneDialog.tsx
 msgid "Your repositories"

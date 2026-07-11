@@ -40,7 +40,7 @@ async function readKey(): Promise<string> {
     for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
     return Buffer.concat(chunks).toString('utf-8').trim();
   }
-  return (await password({ message: 'Enter OpenAI embeddings API key:' })).trim();
+  return (await password({ message: 'Enter embeddings provider API key:' })).trim();
 }
 
 // Read `search.semantic.*` through the SAME project-local-only resolver the
@@ -85,7 +85,7 @@ async function fetchLiveCoverage(
 
 function setKeyCommand(): Command {
   return new Command('set-key')
-    .description('Store your OpenAI embeddings API key in ~/.ok/secrets.yml')
+    .description('Store your embeddings provider API key in ~/.ok/secrets.yml')
     .action(async () => {
       const key = await readKey();
       if (!key) {
@@ -96,9 +96,9 @@ function setKeyCommand(): Command {
       await createEmbeddingsSecretStore().set(key);
       // Never echo the key.
       process.stderr.write(
-        '✓ OpenAI embeddings API key stored in ~/.ok/secrets.yml (0600, this machine only).\n' +
+        '✓ Embeddings provider API key stored in ~/.ok/secrets.yml (0600, this machine only).\n' +
           'Now enable it per project — the easiest path is OK Desktop → Settings → This\n' +
-          'project → Search (a toggle with an egress-confirmation prompt), or run\n' +
+          'project → Search (toggle + endpoint settings), or run\n' +
           '`ok embeddings enable` in the project folder.\n',
       );
     });
@@ -106,14 +106,14 @@ function setKeyCommand(): Command {
 
 function clearKeyCommand(): Command {
   return new Command('clear-key')
-    .description('Remove your stored OpenAI embeddings API key')
+    .description('Remove your stored embeddings provider API key')
     .action(async () => {
       const { touched } = await clearEmbeddingsKeyFromAllBackends();
       if (touched.length === 0) {
-        process.stderr.write('No stored OpenAI embeddings key found.\n');
+        process.stderr.write('No stored embeddings provider key found.\n');
         return;
       }
-      process.stderr.write(`✓ OpenAI embeddings API key cleared (${touched.join(', ')}).\n`);
+      process.stderr.write(`✓ Embeddings provider API key cleared (${touched.join(', ')}).\n`);
     });
 }
 

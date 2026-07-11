@@ -69,13 +69,13 @@ export function EmbeddingsKeySection({ transport }: { transport?: EmbeddingsKeyT
         </h3>
         <p className="text-sm text-muted-foreground">
           <Trans>
-            Your OpenAI API key, used only to create embeddings of your content for semantic search.
-            Stored once for this machine in{' '}
+            Your embeddings provider API key, used only to create embeddings of your content for
+            semantic search. Stored once for this machine in{' '}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
               ~/.ok/secrets.yml
             </code>{' '}
             (readable only by your user account) and shared across all projects. Turn the feature on
-            per project in This project → Search.
+            per project in This project → Search, where you can also override the endpoint.
           </Trans>
         </p>
       </div>
