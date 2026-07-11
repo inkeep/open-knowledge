@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the suggestion! If this is an open-ended idea worth discussing, [Discord](https://discord.com/invite/YujKpFN49) is often a better starting place.
+        Thanks for the suggestion! If this is an open-ended idea worth discussing, [Discord](https://discord.gg/VRKk2EaGHN) is often a better starting place.
   - type: textarea
     id: problem
     attributes:

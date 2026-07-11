@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for taking the time to file a bug. Please fill in the fields below so we can reproduce it quickly.
 
-        For setup help or "how do I…" questions, please use [Discord](https://discord.com/invite/YujKpFN49) or the [docs](https://openknowledge.ai) instead — those get faster answers than an issue.
+        For setup help or "how do I…" questions, please use [Discord](https://discord.gg/VRKk2EaGHN) or the [docs](https://openknowledge.ai) instead — those get faster answers than an issue.
   - type: checkboxes
     id: preflight
     attributes:

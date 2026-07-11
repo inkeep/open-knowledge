@@ -115,7 +115,7 @@ describe('HelpPopover runtime behavior', () => {
     expect(links.map(linkShape)).toEqual([
       {
         label: 'Discord',
-        href: 'https://discord.com/invite/YujKpFN49',
+        href: 'https://discord.gg/VRKk2EaGHN',
         target: '_blank',
         rel: 'noopener noreferrer',
         hasIcon: true,

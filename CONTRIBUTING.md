@@ -3,7 +3,7 @@
 Thanks for contributing! Bug reports, feature requests, and pull requests are all welcome.
 
 - **Found a bug or have an idea?** [Open an issue](https://github.com/inkeep/open-knowledge/issues/new/choose).
-- **Question or setup help?** Ask in [Discord](https://discord.com/invite/YujKpFN49).
+- **Question or setup help?** Ask in [Discord](https://discord.gg/VRKk2EaGHN).
 - **Ready to code?** Open a pull request against this repository.
 
 ## Development setup

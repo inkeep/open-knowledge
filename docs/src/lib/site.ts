@@ -27,7 +27,7 @@ export const TWITTER_HANDLE = '@OpenKnowledge';
  * `download-links.ts`.
  */
 export const GITHUB_URL = 'https://github.com/inkeep/open-knowledge';
-export const DISCORD_URL = 'https://discord.com/invite/YujKpFN49';
+export const DISCORD_URL = 'https://discord.gg/VRKk2EaGHN';
 export const X_URL = `https://x.com/${TWITTER_HANDLE.slice(1)}`;
 export const SITE_DESCRIPTION =
   'Beautiful, AI-native markdown editor for humans and agents. Build knowledge bases, LLM wikis, and agent 2nd brains.';

@@ -81,7 +81,7 @@ describe('SubscribeCard (combined release-notes + subscribe)', () => {
     const hrefs = Array.from(document.querySelectorAll('a')).map((a) => a.getAttribute('href'));
     expect(hrefs).toContain('https://x.com/OpenKnowledge');
     expect(hrefs).toContain('https://github.com/inkeep/open-knowledge');
-    expect(hrefs).toContain('https://discord.com/invite/YujKpFN49');
+    expect(hrefs).toContain('https://discord.gg/VRKk2EaGHN');
   });
 
   test('clicking Release notes opens the release notes', async () => {

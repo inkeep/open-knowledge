@@ -19,7 +19,7 @@
   <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
   <a href="https://x.com/OpenKnowledge">𝕏</a>
   <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-  <a href="https://discord.com/invite/YujKpFN49">Discord</a>
+  <a href="https://discord.gg/VRKk2EaGHN">Discord</a>
 </div>
 
 <br/>
@@ -79,7 +79,7 @@ OpenKnowledge is licensed under the [GNU General Public License v3.0 or later](.
 
 ## Support
 
-Feel free to <a href="https://github.com/inkeep/open-knowledge/issues/new/choose">file an issue</a> or ask questions on the <a href="https://discord.com/invite/YujKpFN49">Discord</a> community.
+Feel free to <a href="https://github.com/inkeep/open-knowledge/issues/new/choose">file an issue</a> or ask questions on the <a href="https://discord.gg/VRKk2EaGHN">Discord</a> community.
 
 <p>
   ⭐️ If you'd like to support this project, consider starring the repo ⭐️
