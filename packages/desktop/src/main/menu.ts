@@ -210,15 +210,25 @@ export interface MenuDeps {
   onCopyFullPath?(): void;
   onCopyRelativePath?(): void;
   /**
-   * View menu visibility-toggle state. When undefined, the View-menu
-   * Show … check items render unchecked. These mirror the sidebar checkbox
-   * state — main reads the latest snapshot pushed from the renderer (via
-   * the active-target push or a sibling notification) so both surfaces
-   * (sidebar context menu, View menu) stay in sync.
+   * View menu visibility-toggle state. When undefined, each View-menu
+   * Show … check item renders at its config-schema default. These mirror
+   * the sidebar checkbox state — main reads the latest snapshot pushed
+   * from the renderer (via the active-target push or a sibling
+   * notification) so all surfaces (tree-options popover, sidebar context
+   * menu, View menu) stay in sync.
    */
   showHiddenFilesChecked?: boolean;
   /** View → Show hidden files click handler — flips the projectLocalBinding flag. */
   onToggleShowHiddenFiles?(): void;
+  showOkFoldersChecked?: boolean;
+  /** View → Show .ok folders click handler — flips the projectLocalBinding flag. */
+  onToggleShowOkFolders?(): void;
+  showOnlyMarkdownFilesChecked?: boolean;
+  /** View → Show only markdown files click handler — flips the projectLocalBinding flag. */
+  onToggleShowOnlyMarkdownFiles?(): void;
+  showSkillsSectionChecked?: boolean;
+  /** View → Show skills section click handler — flips the projectLocalBinding flag. */
+  onToggleShowSkillsSection?(): void;
   /**
    * Sidebar visibility — drives the View → Show/Hide sidebar item's label
    * (Apple HIG convention: single row whose label toggles based on current
@@ -629,11 +639,14 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           click: () => deps.onToggleTerminal?.(),
         },
         { type: 'separator' },
-        // File-display visibility toggle. Checkbox state mirrors the sidebar's
-        // empty-space + folder menu items. Toggling here flips the
-        // projectLocalBinding flag via the renderer's menu-action handler;
-        // the resulting CRDT write propagates back through merged config so
-        // both surfaces (sidebar + View menu) stay in sync.
+        // Sidebar visibility toggles. Checkbox state mirrors the sidebar's
+        // tree-options popover + empty-space context menu, in the same order.
+        // Toggling any of them flips the projectLocalBinding flag via the
+        // renderer's menu-action handler; the resulting CRDT write propagates
+        // back through merged config so every surface stays in sync. The
+        // unwired `checked` fallbacks match the renderer's resolved config
+        // defaults (hidden files + .ok folders + only-markdown off, skills
+        // section on).
         {
           label: MENU_LABELS.showHiddenFiles,
           accelerator: 'CmdOrCtrl+Shift+.',
@@ -641,6 +654,27 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           checked: deps.showHiddenFilesChecked ?? false,
           enabled: deps.onToggleShowHiddenFiles !== undefined,
           click: () => deps.onToggleShowHiddenFiles?.(),
+        },
+        {
+          label: MENU_LABELS.showOkFolders,
+          type: 'checkbox',
+          checked: deps.showOkFoldersChecked ?? false,
+          enabled: deps.onToggleShowOkFolders !== undefined,
+          click: () => deps.onToggleShowOkFolders?.(),
+        },
+        {
+          label: MENU_LABELS.showOnlyMarkdownFiles,
+          type: 'checkbox',
+          checked: deps.showOnlyMarkdownFilesChecked ?? false,
+          enabled: deps.onToggleShowOnlyMarkdownFiles !== undefined,
+          click: () => deps.onToggleShowOnlyMarkdownFiles?.(),
+        },
+        {
+          label: MENU_LABELS.showSkillsSection,
+          type: 'checkbox',
+          checked: deps.showSkillsSectionChecked ?? true,
+          enabled: deps.onToggleShowSkillsSection !== undefined,
+          click: () => deps.onToggleShowSkillsSection?.(),
         },
         { type: 'separator' },
         // Tree-scoped Expand/Collapse all. Smart-hide via `visible: false`

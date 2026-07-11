@@ -1,6 +1,6 @@
 /**
- * Pure state-store helpers for app-level persistence (recent projects, last-
- * opened, window bounds). The main entry persists this to
+ * Pure state-store helpers for app-level persistence (recent projects,
+ * last-opened, spell-check preference). The main entry persists this to
  * `app.getPath('userData')/state.json`; tests exercise the pure helpers
  * directly without an Electron process.
  *

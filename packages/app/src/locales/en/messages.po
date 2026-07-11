@@ -25,6 +25,10 @@ msgstr " Your selection could not be restored."
 msgid " Your selection has been restored."
 msgstr " Your selection has been restored."
 
+#: src/components/FileSidebar.tsx
+msgid ".ok folders"
+msgstr ".ok folders"
+
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(result.hosts)
 #: src/components/skill-actions.tsx
@@ -793,6 +797,10 @@ msgstr "AI tools & CLI"
 #: src/components/FolderOverview.tsx
 msgid "All files"
 msgstr "All files"
+
+#: src/components/FileTreeFilteredToZeroNotice.tsx
+msgid "All files are hidden by view filters."
+msgstr "All files are hidden by view filters."
 
 #: src/components/DiffView.tsx
 msgid "All hunks resolved"
@@ -1874,7 +1882,8 @@ msgid "Could not turn off the terminal: {0}"
 msgstr "Could not turn off the terminal: {0}"
 
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTreeFilteredToZeroNotice.tsx
+#: src/components/NotInSidebarIndicator.tsx
 msgid "Could not update sidebar settings"
 msgstr "Could not update sidebar settings"
 
@@ -3457,6 +3466,11 @@ msgstr "Helps your coding agent recognize OpenKnowledge projects and route reads
 msgid "Hidden “{basename}”"
 msgstr "Hidden “{basename}”"
 
+#: src/components/FileSidebar.tsx
+#: src/components/NotInSidebarIndicator.tsx
+msgid "Hidden files"
+msgstr "Hidden files"
+
 #: src/components/FileTree.tsx
 msgid "Hidden folder “{basename}”"
 msgstr "Hidden folder “{basename}”"
@@ -4735,6 +4749,10 @@ msgstr "Not connected"
 msgid "Not connected to GitHub."
 msgstr "Not connected to GitHub."
 
+#: src/components/NotInSidebarIndicator.tsx
+msgid "Not in sidebar"
+msgstr "Not in sidebar"
+
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Not installed"
@@ -4823,6 +4841,11 @@ msgstr "One pattern per line — appended to <0>.okignore</0>."
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Only collaborators"
 msgstr "Only collaborators"
+
+#: src/components/FileSidebar.tsx
+#: src/components/NotInSidebarIndicator.tsx
+msgid "Only markdown files"
+msgstr "Only markdown files"
 
 #: src/editor/components/TagDialog.tsx
 msgid "Only the current document uses <0>#{tag}</0>."
@@ -5842,6 +5865,10 @@ msgstr "Reset to default"
 msgid "Reset view"
 msgstr "Reset view"
 
+#: src/components/FileTreeFilteredToZeroNotice.tsx
+msgid "Reset view filters"
+msgstr "Reset view filters"
+
 #: src/editor/components/ResizeHandles.tsx
 msgid "Resize {handleKey}"
 msgstr "Resize {handleKey}"
@@ -6353,6 +6380,14 @@ msgstr "Shared via git with everyone working on this project."
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
 msgstr "Sharing a doc needs a GitHub repository. Create one for this project."
 
+#: src/components/FileSidebar.tsx
+msgid "Show"
+msgstr "Show"
+
+#: src/components/FileSidebar.tsx
+msgid "Show .ok folders"
+msgstr "Show .ok folders"
+
 #. placeholder {0}: hiddenPacks.length
 #: src/components/PackCardGrid.tsx
 msgid "Show {0} more"
@@ -6392,7 +6427,7 @@ msgid "Show Files ({sidebarShortcutLabel})"
 msgstr "Show Files ({sidebarShortcutLabel})"
 
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
+#: src/components/NotInSidebarIndicator.tsx
 msgid "Show hidden files"
 msgstr "Show hidden files"
 
@@ -6403,6 +6438,10 @@ msgstr "Show HTML preview"
 #: src/components/PackCardGrid.tsx
 msgid "Show less"
 msgstr "Show less"
+
+#: src/components/FileSidebar.tsx
+msgid "Show only markdown files"
+msgstr "Show only markdown files"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide document panel"
@@ -6431,6 +6470,10 @@ msgstr "Show replace"
 #: src/components/BottomComposer.tsx
 msgid "Show selection preview"
 msgstr "Show selection preview"
+
+#: src/components/FileSidebar.tsx
+msgid "Show skills section"
+msgstr "Show skills section"
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"
@@ -6505,6 +6548,7 @@ msgstr "Skill level"
 msgid "Skill renamed"
 msgstr "Skill renamed"
 
+#: src/components/FileSidebar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/SkillsSidebarSection.tsx
@@ -7379,6 +7423,10 @@ msgstr "Try a prompt"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Try again"
 msgstr "Try again"
+
+#: src/components/NotInSidebarIndicator.tsx
+msgid "Turn off Only markdown files"
+msgstr "Turn off Only markdown files"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Turn on"

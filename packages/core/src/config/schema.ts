@@ -128,13 +128,13 @@ export const ConfigSchema = z.looseObject({
   // pattern and not what users expect from the chrome toggle.
   // SchemaStore validation flags it in project YAML; chrome toggle
   // always writes via `userBinding.patch()`.
-  // `appearance.sidebar.showHiddenFiles` is a per-machine, per-project
-  // visibility toggle. Project scope would
-  // bleed one teammate's "show hidden files" choice across collaborators via
-  // git; user scope would force a single global setting for every OK
-  // project. `project-local` (gitignored `<projectDir>/.ok/local/config.yml`)
-  // is the only correct home — each teammate chooses independently for
-  // their machine.
+  // The `appearance.sidebar.*` leaves are per-machine, per-project view
+  // toggles (hidden files, only-markdown filter, Skills section, .ok
+  // reveal). Project scope would bleed one teammate's view choice across
+  // collaborators via git; user scope would force a single global setting
+  // for every OK project. `project-local` (gitignored
+  // `<projectDir>/.ok/local/config.yml`) is the only correct home — each
+  // teammate chooses independently for their machine.
   //
   // `appearance.preview.autoOpen` is USER-scope: whether the agent
   // auto-opens or refreshes the OK preview UI on edits is a personal
@@ -182,6 +182,36 @@ export const ConfigSchema = z.looseObject({
               defaultScope: 'project-local',
               description:
                 'Show dot-prefixed entries (e.g. .ok/, .okignore) in the file tree. Per-machine (project-local) — not shared with collaborators.',
+            })
+            .default(false),
+          showOnlyMarkdownFiles: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              defaultScope: 'project-local',
+              description:
+                'Show only markdown documents (.md/.mdx) and folders in the file tree, hiding other file types from view. View-only: hidden files stay on disk and remain reachable via links and search. Per-machine (project-local) — not shared with collaborators.',
+            })
+            .default(false),
+          showSkillsSection: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              defaultScope: 'project-local',
+              description:
+                'Show the Skills section in the sidebar. Skill documents remain reachable via links and search while the section is hidden. Per-machine (project-local) — not shared with collaborators.',
+            })
+            .default(true),
+          showOkFolders: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              defaultScope: 'project-local',
+              description:
+                'Show .ok folders (skills, templates, and other OpenKnowledge-managed state) in the file tree as read-only entries. .ok/worktrees and .ok/local never appear. Per-machine (project-local) — not shared with collaborators.',
             })
             .default(false),
         })

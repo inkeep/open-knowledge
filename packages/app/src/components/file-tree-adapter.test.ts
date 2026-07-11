@@ -95,6 +95,30 @@ describe('file-tree-adapter', () => {
     ).toEqual(['docs/']);
   });
 
+  test('includeOkFolders admits .ok folder paths for the revealed tree', () => {
+    // With the Show .ok folders axis on, `.ok` rows render — so their folder
+    // paths must collect like any other folder (expansion preservation across
+    // model resets filters through this set; a missing `.ok/` entry would
+    // collapse the revealed folder on every refresh cycle).
+    const entries = [
+      doc('docs/guide'),
+      doc('.ok/skills/my-skill/SKILL'),
+      { kind: 'folder' as const, path: '.ok/skills/my-skill', size: 0, modified: '' },
+      doc('notes/.ok/templates/daily'),
+    ];
+    expect(collectTreeFolderPathsFromDocuments(entries, { includeOkFolders: true })).toEqual([
+      '.ok/',
+      '.ok/skills/',
+      '.ok/skills/my-skill/',
+      'docs/',
+      'notes/',
+      'notes/.ok/',
+      'notes/.ok/templates/',
+    ]);
+    // The option defaults off — zero-argument callers keep the exclusion.
+    expect(collectTreeFolderPathsFromDocuments(entries)).toEqual(['docs/']);
+  });
+
   test('computes active ancestor paths using Trees directory slash convention', () => {
     expect(computeTreeAncestorPaths('README.md')).toEqual([]);
     expect(computeTreeAncestorPaths('docs/guide.md')).toEqual(['docs/']);

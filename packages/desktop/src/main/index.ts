@@ -337,7 +337,11 @@ import {
 } from './url-scheme.ts';
 import { migrateLegacyUserDataDir } from './userdata-migration.ts';
 import { buildUtilityForkEnv } from './utility-fork-env.ts';
-import { mergeViewMenuState } from './view-menu-state.ts';
+import {
+  buildViewMenuStateDeps,
+  createDefaultEditorViewMenuState,
+  mergeViewMenuState,
+} from './view-menu-state.ts';
 import {
   type BrowserWindowLike,
   setWindowInstanceLabel,
@@ -814,29 +818,10 @@ let editorActiveTarget: EditorActiveTargetSnapshot = { kind: null };
  * `ok:editor:view-menu-state-changed`. Drives the View menu's checkbox
  * reflection for the visibility toggles and the smart-hide on Expand All /
  * Collapse All. Module-scope rather than per-window for the same reason
- * `editorActiveTarget` is — the menu is a singleton. Defaults match the
- * renderer's resolved defaults so the View menu reflects the right state
- * before the first renderer push lands: Show hidden files off, and both
- * Expand/Collapse rendered (no smart-hide) so the items are reachable.
+ * `editorActiveTarget` is — the menu is a singleton. Pre-push defaults
+ * (and their rationale) live with `createDefaultEditorViewMenuState`.
  */
-let editorViewMenuState: EditorViewMenuStateSnapshot = {
-  showHiddenFiles: false,
-  canExpandAll: true,
-  canCollapseAll: true,
-  // Initial menu-label assumption before the first renderer push lands.
-  // FileSidebar / EditorArea push the actual resolved state on mount (the
-  // renderer computes it synchronously from the partition resolver), but
-  // until then the View-menu items default to "Hide …" — matching the
-  // common wide-window startup where both sidebars resolve to expanded.
-  sidebarVisible: true,
-  docPanelVisible: true,
-  // Terminal starts hidden — the View menu reads "Show Terminal" until the
-  // renderer pushes its first terminal-visibility snapshot.
-  terminalVisible: false,
-  // No session is mounted until the user first opens the dock, so the Terminal
-  // menu's "Kill Terminal" item stays disabled until the renderer reports live.
-  terminalLive: false,
-};
+let editorViewMenuState: EditorViewMenuStateSnapshot = createDefaultEditorViewMenuState();
 
 /**
  * electron-vite dev-server URL. Set by `electron-vite dev` at launch time.
@@ -2152,27 +2137,13 @@ async function runApplicationMenuRefresh(): Promise<void> {
     onCopyFullPath: () => sendMenuActionToFocused('copy-full-path'),
     onCopyRelativePath: () => sendMenuActionToFocused('copy-relative-path'),
     // View menu items reflect the latest renderer-pushed snapshot via
-    // `ok:editor:view-menu-state-changed`. Defaults at the snapshot
-    // declaration site keep the menu reachable before the first push lands.
-    // Toggling still fires `ok:menu-action` which the renderer routes
-    // through `projectLocalBinding.patch(...)`; the resulting CRDT
-    // mutation triggers a sibling push back so the checkmark snaps.
-    showHiddenFilesChecked: editorViewMenuState.showHiddenFiles,
-    canExpandAll: editorViewMenuState.canExpandAll,
-    canCollapseAll: editorViewMenuState.canCollapseAll,
-    sidebarVisible: editorViewMenuState.sidebarVisible,
-    docPanelVisible: editorViewMenuState.docPanelVisible,
-    terminalVisible: editorViewMenuState.terminalVisible,
-    terminalLive: editorViewMenuState.terminalLive,
-    onToggleShowHiddenFiles: () => sendMenuActionToFocused('toggle-show-hidden-files'),
-    onToggleSidebar: () => sendMenuActionToFocused('toggle-sidebar'),
-    onToggleDocPanel: () => sendMenuActionToFocused('toggle-doc-panel'),
-    onToggleTerminal: () => sendMenuActionToFocused('toggle-terminal'),
-    onNewTerminal: () => sendMenuActionToFocused('new-terminal'),
-    onKillTerminal: () => sendMenuActionToFocused('kill-terminal'),
+    // `ok:editor:view-menu-state-changed`; `buildViewMenuStateDeps` owns the
+    // field/action mapping. Toggling fires `ok:menu-action` which the
+    // renderer routes through `projectLocalBinding.patch(...)`; the
+    // resulting CRDT mutation triggers a sibling push back so the checkmark
+    // snaps.
+    ...buildViewMenuStateDeps(editorViewMenuState, sendMenuActionToFocused),
     onNewTerminalWindow: () => openTerminalWindow(),
-    onExpandAll: () => sendMenuActionToFocused('expand-all-tree'),
-    onCollapseAll: () => sendMenuActionToFocused('collapse-all-tree'),
     // Edit -> "Check Spelling While Typing": the checkbox reflects the
     // persisted app-wide flag; the click flips it through the shared toggle
     // (session + persist + menu rebuild) so this and the in-editor

@@ -16,16 +16,26 @@ mock.module('./EditorBreadcrumb', () => ({
   ),
 }));
 
+// The breadcrumb cell's NotInSidebarIndicator reads merged config through the
+// context hook, which throws without a provider — stub the app-default view
+// (no toggles set, binding absent) so the toolbar mounts standalone.
+mock.module('@/lib/config-provider', () => ({
+  useConfigContext: () => ({
+    merged: null,
+    projectLocalBinding: null,
+  }),
+}));
+
 describe('EditorToolbar runtime layout', () => {
   afterEach(() => cleanup());
 
-  async function renderToolbar() {
+  async function renderToolbar(activeDocName = 'docs/Page.md') {
     const { EditorToolbar } = await import('./EditorToolbar');
 
     render(
       <TooltipProvider>
         <EditorToolbar
-          activeDocName="docs/Page.md"
+          activeDocName={activeDocName}
           isSourceMode={false}
           sourceDisabled={false}
           onModeChange={() => {}}
@@ -65,5 +75,22 @@ describe('EditorToolbar runtime layout', () => {
     const sourceButton = screen.getByRole('radio', { name: 'Markdown source' });
     const middleCell = sourceButton.closest('.pointer-events-auto.flex.justify-center');
     expect(middleCell).toBeTruthy();
+  });
+
+  test('a tree-hidden doc gets the not-in-sidebar indicator beside the breadcrumb', async () => {
+    await renderToolbar('.scratch/hidden-note');
+
+    const indicator = screen.getByTestId('not-in-sidebar-indicator');
+    // Same interactive cell as the breadcrumb — the toolbar grid is
+    // pointer-events-none, so anything outside an auto cell is unclickable.
+    const breadcrumbCell = screen.getByTestId('editor-breadcrumb-probe').parentElement;
+    expect(breadcrumbCell?.contains(indicator)).toBe(true);
+    expectVisualClassTokens(breadcrumbCell?.className, ['pointer-events-auto']);
+  });
+
+  test('a doc with a visible tree row renders no indicator', async () => {
+    await renderToolbar();
+
+    expect(screen.queryByTestId('not-in-sidebar-indicator')).toBeNull();
   });
 });

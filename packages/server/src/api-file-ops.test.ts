@@ -851,7 +851,7 @@ describe('file operation API routes', () => {
     {
       const parsed = JSON.parse(result.body) as Record<string, unknown>;
       expect(parsed.type).toBe('urn:ok:error:reserved-doc-name');
-      expect(parsed.title).toContain('.ok is a reserved directory');
+      expect(parsed.title).toContain('.ok and .git are reserved directories');
     }
   });
 
@@ -875,7 +875,7 @@ describe('file operation API routes', () => {
     {
       const parsed = JSON.parse(result.body) as Record<string, unknown>;
       expect(parsed.type).toBe('urn:ok:error:reserved-doc-name');
-      expect(parsed.title).toContain('.ok is a reserved directory');
+      expect(parsed.title).toContain('.ok and .git are reserved directories');
     }
   });
 
@@ -2827,7 +2827,7 @@ describe('file operation API routes', () => {
     expect(existsSync(join(dir, '.ok/local/cache'))).toBe(false);
     expect(JSON.parse(result.body)).toMatchObject({
       type: 'urn:ok:error:reserved-doc-name',
-      title: "'.ok' is a reserved directory.",
+      title: '.ok and .git are reserved directories.',
       status: 400,
     });
   });

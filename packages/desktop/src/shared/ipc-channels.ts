@@ -620,6 +620,9 @@ export type EditorActiveTargetSnapshot =
  */
 export interface EditorViewMenuStateSnapshot {
   readonly showHiddenFiles: boolean;
+  readonly showOkFolders: boolean;
+  readonly showOnlyMarkdownFiles: boolean;
+  readonly showSkillsSection: boolean;
   readonly canExpandAll: boolean;
   readonly canCollapseAll: boolean;
   readonly sidebarVisible: boolean;

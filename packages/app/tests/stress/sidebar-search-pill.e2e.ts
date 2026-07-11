@@ -29,8 +29,9 @@
  *     suppressed by the pill overrides
  *   - the pill follows the sidebar offcanvas during collapse
  *   - web-mode 'Files' label still renders alongside the pill
- *   - empty-workspace path (hasFolders === false → Tree view options
- *     dropdown hidden) renders the pill alongside the 3-button toolbar
+ *   - empty-workspace path (hasFolders === false) renders the pill
+ *     alongside the 4-button toolbar — the Tree view options trigger is
+ *     state-independent (its Show group always has content)
  *   - the multi-scope search backend still yields results when the pill
  *     opens the palette (no regression in palette functionality)
  *   - the locked `data-telemetry-event="ok.sidebar.search_pill.click"`
@@ -843,7 +844,7 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
       .toBe('expanded');
   });
 
-  test('empty workspace — pill renders alongside the 3-button toolbar (Tree view options hidden by hasFolders gate)', async ({
+  test('empty workspace — pill renders alongside the 4-button toolbar (Tree view options trigger is state-independent)', async ({
     page,
     api,
     workerServer,
@@ -878,7 +879,7 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
       await page.setViewportSize(DESKTOP_VIEWPORT);
       await page.goto('/');
 
-      // Three core toolbar buttons present. ASCII-only substring match for
+      // Four core toolbar buttons present. ASCII-only substring match for
       // `New from template` — see the comment in the "legacy Search
       // ToolbarButton is gone from SidebarHeader" test above for the
       // cross-platform accessible-name rationale.
@@ -890,17 +891,12 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
       ).toBeVisible();
       await expect(sidebarHeader(page).getByRole('button', { name: 'New folder' })).toBeVisible();
 
-      // Tree view options trigger is HIDDEN (hasFolders gate evaluates to
-      // false because the content directory has no folders). Poll because
-      // the file watcher + folder-state subscription propagation may take a
-      // moment to reflect the rm.
-      await expect
-        .poll(
-          async () =>
-            await sidebarHeader(page).getByRole('button', { name: 'Tree view options' }).count(),
-          { timeout: 10_000 },
-        )
-        .toBe(0);
+      // Tree view options trigger stays VISIBLE with zero folders — its Show
+      // group is folder-state-independent, so the trigger no longer smart-
+      // hides with the Expand/Collapse-all commands.
+      await expect(
+        sidebarHeader(page).getByRole('button', { name: 'Tree view options' }),
+      ).toBeVisible();
 
       // Pill renders normally.
       await expect(pill(page)).toBeVisible();

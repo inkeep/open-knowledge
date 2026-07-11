@@ -18,10 +18,28 @@
  */
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
   expectVisualClassTokens,
   expectVisualClassTokensAbsent,
 } from '@/test-utils/visual-contract';
+
+mock.module('@lingui/react/macro', () => ({
+  Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useLingui: () => ({ t: renderLinguiTemplate }),
+}));
+
+// The asset view hosts the NotInSidebarIndicator, whose config hook throws
+// without a provider — stub the app-default view. `mergedConfig` is a knob so
+// the indicator tests below can flip the only-markdown axis.
+let mergedConfig: { appearance?: { sidebar?: { showOnlyMarkdownFiles?: boolean } } } | null = null;
+mock.module('@/lib/config-provider', () => ({
+  useConfigContext: () => ({
+    merged: mergedConfig,
+    projectLocalBinding: null,
+  }),
+}));
 
 // `<Pdf>` lazy-loads pdfjs-dist via `await import()` inside an effect and
 // uses `ResizeObserver` synchronously during render to compute fit-width /
@@ -164,5 +182,34 @@ describe('AssetPreview — image loading-state placeholder (PRD-6638)', () => {
     expect(screen.queryByTestId('image-loading-skeleton')).not.toBeNull();
     const slot = screen.queryByTestId('image-slot') as HTMLElement | null;
     expectVisualClassTokens(slot?.className, ['aspect-[16/9]']);
+  });
+});
+
+describe('AssetPreview — not-in-sidebar indicator', () => {
+  beforeEach(() => {
+    mergedConfig = null;
+  });
+
+  afterEach(() => cleanup());
+
+  test('a visible asset renders no indicator', () => {
+    render(<AssetPreview assetPath="assets/data.csv" mediaKind={null} />);
+    expect(screen.queryByTestId('not-in-sidebar-indicator')).toBeNull();
+  });
+
+  test('a dot-path asset names the hidden-files toggle above the preview', () => {
+    render(<AssetPreview assetPath=".scratch/data.csv" mediaKind={null} />);
+    expect(screen.queryByTestId('not-in-sidebar-indicator')).not.toBeNull();
+    expect(screen.queryByTestId('not-in-sidebar-flip-hidden-files')).not.toBeNull();
+    expect(screen.queryByTestId('not-in-sidebar-flip-only-markdown')).toBeNull();
+  });
+
+  test('only-markdown mode names its toggle for a visible non-markdown asset', () => {
+    mergedConfig = { appearance: { sidebar: { showOnlyMarkdownFiles: true } } };
+    render(<AssetPreview assetPath="assets/data.csv" mediaKind={null} />);
+    expect(screen.queryByTestId('not-in-sidebar-flip-only-markdown')).not.toBeNull();
+    expect(screen.queryByTestId('not-in-sidebar-flip-hidden-files')).toBeNull();
+    // The preview body itself stays fully functional below the indicator.
+    expect(screen.queryByTestId('asset-preview-open-as-text')).not.toBeNull();
   });
 });

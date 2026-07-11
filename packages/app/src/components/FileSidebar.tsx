@@ -17,7 +17,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { ConflictsSection } from '@/components/ConflictsSection';
 import { FileTree, type FileTreeHandle } from '@/components/FileTree';
-import { defaultInitialDir } from '@/components/file-tree-utils';
+import { defaultInitialDir, hasOkPathSegment } from '@/components/file-tree-utils';
 import { OpenInAgentEmptySpaceSubmenu } from '@/components/handoff/OpenInAgentEmptySpaceSubmenu';
 import {
   buildProjectScopedHandoffInput,
@@ -45,8 +45,12 @@ import {
 } from '@/components/ui/context-menu';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -194,10 +198,15 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // showing the open doc. Every `initialCreateDir` consumer is creation-scoped
   // (toolbar, template cascade, File-menu new-*), so overriding here covers all
   // of them; active-item actions (Duplicate / Rename / …) read `activeTarget`.
-  const baseCreateDir =
+  const activeCreateDir =
     activeTarget?.kind === 'folder' || activeTarget?.kind === 'folder-index'
       ? activeTarget.folderPath
       : defaultInitialDir(activeDocName);
+  // Revealed `.ok` rows are read-only OK-managed state — never a create
+  // target. Fall back to the workspace root (the same dir an empty-space
+  // deselect resolves to); the server's reserved-path rejection stays the
+  // authoritative backstop.
+  const baseCreateDir = hasOkPathSegment(activeCreateDir) ? '' : activeCreateDir;
   const [treeCreationCleared, setTreeCreationCleared] = useState(false);
   const initialCreateDir = treeCreationCleared ? '' : baseCreateDir;
 
@@ -227,9 +236,10 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // start time when both sides read the same expression.
   const shouldFadeChrome = isElectronHost && isCollapsed;
 
-  // Reactive subscription to FileTree's folder state. Drives the
-  // smart-hide of the Tree view options dropdown:
-  //   - dropdown trigger hidden when there are no folders
+  // Reactive subscription to FileTree's folder state. Drives the smart-hide
+  // of the Expand/Collapse-all commands across the tree-options popover, the
+  // empty-space menu, and the native View menu:
+  //   - both hidden when there are no folders (each would be a no-op)
   //   - "Expand all" hidden when every folder is already expanded
   //   - "Collapse all" hidden when every folder is already collapsed
   //
@@ -242,8 +252,8 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // return` — same race shape: effect runs once on mount with empty deps, the
   // handle is non-null in commit phase, but the effect's closure captured the
   // ref read AT EFFECT TIME and bailed; no re-subscribe ever happens. Visible
-  // symptom both times: dropdown trigger hidden on cold launch even when
-  // folders existed.
+  // symptom both times (under the trigger's then-standing hasFolders gate):
+  // dropdown trigger hidden on cold launch even when folders existed.
   //
   // The fix below uses `useState` + a ref-callback (`setTree`). React invokes
   // the ref-callback synchronously during commit when the child's
@@ -315,8 +325,9 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
 
   // Empty-space menu wiring. Workspace drives the disabled-with-hint state
   // for the act-on-project items; install states + dispatch drive the Send
-  // to AI submenu; project-local binding drives the Show . / Show all check
-  // states. The bridge is required for the Electron-only items (Reveal in
+  // to AI submenu; the project-local binding drives the visibility
+  // checkboxes (checked from the merged config; null binding disables). The
+  // bridge is required for the Electron-only items (Reveal in
   // Finder) — those rows return null in web mode via the
   // `if (!bridge) return null` cross-cutting pattern. Copy full path is
   // visible in both modes (`navigator.clipboard.writeText` is Baseline
@@ -338,14 +349,17 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   const emptySpaceHandoffInput = buildProjectScopedHandoffInput({ workspace });
   const { projectLocalBinding, merged } = useConfigContext();
   const showHiddenFiles = merged?.appearance?.sidebar?.showHiddenFiles ?? false;
-  // Smart-hide gates for the Expand/Collapse-all tree-state items — tree-
-  // scoped. Mirrors the toolbar dropdown's behavior: hide when the action
-  // would be a no-op (no folders at all; every folder already in the target
-  // state). The empty-space menu does NOT carry a separator before the
-  // section when both items hide.
-  const showEmptySpaceExpandAll = hasFolders && !allExpanded;
-  const showEmptySpaceCollapseAll = hasFolders && !noneExpanded;
-  const showEmptySpaceTreeStateSection = showEmptySpaceExpandAll || showEmptySpaceCollapseAll;
+  const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
+  const showOnlyMarkdownFiles = merged?.appearance?.sidebar?.showOnlyMarkdownFiles ?? false;
+  const showSkillsSection = merged?.appearance?.sidebar?.showSkillsSection ?? true;
+  // Smart-hide gates for the Expand/Collapse-all tree-state items, shared by
+  // the toolbar popover, the empty-space menu, and the native View menu (via
+  // the IPC push below): hide when the action would be a no-op (no folders at
+  // all; every folder already in the target state). Neither in-renderer menu
+  // carries a separator around the section when both items hide.
+  const showExpandAll = hasFolders && !allExpanded;
+  const showCollapseAll = hasFolders && !noneExpanded;
+  const showTreeStateSection = showExpandAll || showCollapseAll;
 
   // Sidebar-wide context-menu surface. Right-click anywhere inside the
   // sidebar except interactive controls (toolbar buttons, search-pill button,
@@ -412,13 +426,19 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
       },
     );
   };
-  const handleEmptySpaceShowHiddenFilesToggle = (checked: boolean) => {
+  // Single write path for the sidebar visibility checkboxes (toolbar popover,
+  // empty-space menu, native View menu action): every toggle patches the same
+  // project-local config shape and surfaces rejections with the same toast.
+  const patchSidebarVisibility = (sidebar: {
+    showHiddenFiles?: boolean;
+    showOkFolders?: boolean;
+    showOnlyMarkdownFiles?: boolean;
+    showSkillsSection?: boolean;
+  }) => {
     if (projectLocalBinding === null) return;
-    const result = projectLocalBinding.patch({
-      appearance: { sidebar: { showHiddenFiles: checked } },
-    });
+    const result = projectLocalBinding.patch({ appearance: { sidebar } });
     if (!result.ok) {
-      console.warn('[FileSidebar] showHiddenFiles toggle rejected:', humanFormat(result.error));
+      console.warn('[FileSidebar] sidebar visibility toggle rejected:', humanFormat(result.error));
       toast.error(t`Could not update sidebar settings`, {
         description: humanFormat(result.error),
       });
@@ -438,18 +458,30 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // changes (CRDT-pushed) AND tree-state transitions (Pierre model emits
   // via the tree.subscribe path that already updates `folderState`). The
   // bridge gate keeps web mode a no-op. `canExpandAll` / `canCollapseAll`
-  // mirror the empty-space menu's `showEmptySpace*` gates exactly — both
-  // surfaces should agree on what counts as a no-op action.
+  // are the same shared smart-hide gates the in-renderer menus render from,
+  // so every surface agrees on what counts as a no-op action.
   // `sidebarVisible` flips the View → Show/Hide Sidebar label main-side.
   useEffect(() => {
     if (!bridge) return;
     bridge.editor.notifyViewMenuStateChanged({
       showHiddenFiles,
-      canExpandAll: showEmptySpaceExpandAll,
-      canCollapseAll: showEmptySpaceCollapseAll,
+      showOkFolders,
+      showOnlyMarkdownFiles,
+      showSkillsSection,
+      canExpandAll: showExpandAll,
+      canCollapseAll: showCollapseAll,
       sidebarVisible: sidebarState === 'expanded',
     });
-  }, [bridge, showHiddenFiles, showEmptySpaceExpandAll, showEmptySpaceCollapseAll, sidebarState]);
+  }, [
+    bridge,
+    showHiddenFiles,
+    showOkFolders,
+    showOnlyMarkdownFiles,
+    showSkillsSection,
+    showExpandAll,
+    showCollapseAll,
+    sidebarState,
+  ]);
 
   // macOS menu-action subscriber. Main fires `ok:menu-action` for every
   // user click on a state-aware File menu item or a View menu toggle /
@@ -481,9 +513,17 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // whenever any input the routing depends on changes, so the handler
   // closure always sees the latest `activeTarget`, `workspace`, etc.
   // without stale-closure bugs.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: patchSidebarVisibility is behaviorally stable — it reads only projectLocalBinding + t, both already deps; listing the helper itself would re-create the subscription every render (sibling pattern: CommandPalette's refreshSemanticStatus).
   useEffect(() => {
     if (!bridge) return;
     return bridge.onMenuAction((action) => {
+      // Revealed `.ok` targets are read-only: the mutating picks below
+      // (rename / duplicate / move-to-trash) quietly no-op on them, mirroring
+      // the row menu's suppressed affordances. The server's reserved-path
+      // rejection stays the authoritative backstop; read-only routes (reveal,
+      // copy path, send-to-ai) keep working.
+      const isOkManagedTarget =
+        activeTarget !== null && hasOkPathSegment(resolveActiveTargetRelativePath(activeTarget));
       switch (action) {
         case 'new-doc': {
           if (!workspace || !tree) return;
@@ -501,12 +541,12 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
           return;
         }
         case 'rename': {
-          if (!activeTarget) return;
+          if (!activeTarget || isOkManagedTarget) return;
           emitFileTreeMenuActionRename(activeTarget);
           return;
         }
         case 'duplicate': {
-          if (!activeTarget) return;
+          if (!activeTarget || isOkManagedTarget) return;
           emitFileTreeMenuActionDuplicate(activeTarget);
           return;
         }
@@ -514,7 +554,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
           // FileTree owns the 2-step delete spine; surface the
           // request via the documents-events bus the row context menu also
           // feeds. Same payload shape as the sidebar's right-click Delete.
-          if (!activeTarget) return;
+          if (!activeTarget || isOkManagedTarget) return;
           emitFileTreeMenuActionDelete(activeTarget);
           return;
         }
@@ -590,20 +630,20 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
             });
           return;
         }
+        case 'toggle-show-ok-folders': {
+          patchSidebarVisibility({ showOkFolders: !showOkFolders });
+          return;
+        }
         case 'toggle-show-hidden-files': {
-          if (projectLocalBinding === null) return;
-          const result = projectLocalBinding.patch({
-            appearance: { sidebar: { showHiddenFiles: !showHiddenFiles } },
-          });
-          if (!result.ok) {
-            console.warn(
-              '[FileSidebar] toggle-show-hidden-files rejected:',
-              humanFormat(result.error),
-            );
-            toast.error(t`Could not update sidebar settings`, {
-              description: humanFormat(result.error),
-            });
-          }
+          patchSidebarVisibility({ showHiddenFiles: !showHiddenFiles });
+          return;
+        }
+        case 'toggle-show-only-markdown-files': {
+          patchSidebarVisibility({ showOnlyMarkdownFiles: !showOnlyMarkdownFiles });
+          return;
+        }
+        case 'toggle-show-skills-section': {
+          patchSidebarVisibility({ showSkillsSection: !showSkillsSection });
           return;
         }
         case 'expand-all-tree': {
@@ -643,6 +683,9 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
     initialCreateDir,
     projectLocalBinding,
     showHiddenFiles,
+    showOkFolders,
+    showOnlyMarkdownFiles,
+    showSkillsSection,
     handoffInstallStates,
     dispatchHandoff,
     toggleSidebar,
@@ -789,7 +832,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                 )}
               >
                 {/*
-                 * Expand/Collapse-All uses DropdownMenu (click-to-open). The
+                 * Tree view options uses DropdownMenu (click-to-open). The
                  * earlier hover-to-open HoverCard shape was unreachable from
                  * keyboard and touch: Radix HoverCard's content root forcibly
                  * sets `tabindex="-1"` on every tabbable descendant
@@ -799,32 +842,84 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                  * focus between items, and is the shadcn-standard pattern
                  * for toolbar menus.
                  *
-                 * Smart-hide: trigger only renders when the tree has folders
-                 * (no folders → both menu items would be no-ops, so the entire
-                 * trigger is wasted screen real estate). Individual items hide
-                 * when their action would no-op: "Expand all" hides when every
-                 * folder is already expanded; "Collapse all" hides when none
-                 * are expanded. Mixed states show both items.
+                 * The trigger is always visible: the Show group is state-
+                 * independent, so the menu always has content. The Expand/
+                 * Collapse-all commands smart-hide individually when their
+                 * action would no-op (no folders; every folder already
+                 * expanded / collapsed), taking their separator with them.
                  */}
-                {hasFolders ? (
-                  <DropdownMenu>
-                    <ToolbarDropdownTrigger icon={ListCollapse} label={t`Tree view options`} />
-                    <DropdownMenuContent align="end" className="min-w-52">
-                      {!allExpanded ? (
-                        <DropdownMenuItem onSelect={() => tree?.expandAll()}>
-                          <UnfoldVertical aria-hidden="true" />
-                          <Trans>Expand all</Trans>
-                        </DropdownMenuItem>
-                      ) : null}
-                      {!noneExpanded ? (
-                        <DropdownMenuItem onSelect={() => tree?.collapseAll()}>
-                          <FoldVertical aria-hidden="true" />
-                          <Trans>Collapse all</Trans>
-                        </DropdownMenuItem>
-                      ) : null}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
+                <DropdownMenu>
+                  <ToolbarDropdownTrigger icon={ListCollapse} label={t`Tree view options`} />
+                  <DropdownMenuContent
+                    align="end"
+                    className="min-w-52"
+                    data-testid="tree-options-menu"
+                  >
+                    {showExpandAll ? (
+                      <DropdownMenuItem onSelect={() => tree?.expandAll()}>
+                        <UnfoldVertical aria-hidden="true" />
+                        <Trans>Expand all</Trans>
+                      </DropdownMenuItem>
+                    ) : null}
+                    {showCollapseAll ? (
+                      <DropdownMenuItem onSelect={() => tree?.collapseAll()}>
+                        <FoldVertical aria-hidden="true" />
+                        <Trans>Collapse all</Trans>
+                      </DropdownMenuItem>
+                    ) : null}
+                    {showTreeStateSection ? <DropdownMenuSeparator /> : null}
+                    {/* Labeled `role="group"` so assistive tech announces the
+                          section; the visual DropdownMenuLabel alone is skipped
+                          by arrow-key menu navigation. Items read group-relative
+                          ("Hidden files") because the label carries the "Show";
+                          the unsectioned menu surfaces use the full-form labels. */}
+                    <DropdownMenuGroup aria-label={t`Show`}>
+                      <DropdownMenuLabel>
+                        <Trans>Show</Trans>
+                      </DropdownMenuLabel>
+                      <DropdownMenuCheckboxItem
+                        checked={showHiddenFiles}
+                        onCheckedChange={(checked) =>
+                          patchSidebarVisibility({ showHiddenFiles: checked })
+                        }
+                        disabled={projectLocalBinding === null}
+                        data-testid="tree-options-show-hidden-files"
+                      >
+                        <Trans>Hidden files</Trans>
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={showOkFolders}
+                        onCheckedChange={(checked) =>
+                          patchSidebarVisibility({ showOkFolders: checked })
+                        }
+                        disabled={projectLocalBinding === null}
+                        data-testid="tree-options-show-ok-folders"
+                      >
+                        <Trans>.ok folders</Trans>
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={showOnlyMarkdownFiles}
+                        onCheckedChange={(checked) =>
+                          patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
+                        }
+                        disabled={projectLocalBinding === null}
+                        data-testid="tree-options-show-only-markdown-files"
+                      >
+                        <Trans>Only markdown files</Trans>
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={showSkillsSection}
+                        onCheckedChange={(checked) =>
+                          patchSidebarVisibility({ showSkillsSection: checked })
+                        }
+                        disabled={projectLocalBinding === null}
+                        data-testid="tree-options-show-skills"
+                      >
+                        <Trans>Skills</Trans>
+                      </DropdownMenuCheckboxItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <ToolbarButton
                   icon={SquarePen}
                   label={t`New file`}
@@ -978,7 +1073,10 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                   </CollapsibleContent>
                 </SidebarGroup>
               </Collapsible>
-              <SkillsSidebarSection />
+              {/* View-preference gate on the section render only: with the
+                  section hidden, skill docs stay reachable (links, search,
+                  direct routes) and open with full editor chrome. */}
+              {showSkillsSection ? <SkillsSidebarSection /> : null}
               {/* Deselect-to-root hit target. With the tree sized flush to its
                   rows there's no empty space inside it to click, so the leftover
                   sidebar space below the sections takes over: clicking it clears
@@ -1034,7 +1132,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
         </ContextMenuTrigger>
         <ContextMenuContent className="min-w-52">
           {/*
-           * Empty-space menu — 11 items, 4 sections.
+           * Empty-space menu — 4 sections.
            *
            * Section 1: Creation (always visible). New file / from
            * template / folder dispatch the project-root creation flow
@@ -1046,10 +1144,13 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
            * is cross-host (filtered via useInstalledAgents); Copy full path
            * is cross-host.
            *
-           * Section 3: Toggle. Two ContextMenuCheckboxItems mirror the View
-           * menu. Read state from the merged config; write through the
-           * project-local CRDT binding so the View menu and any other surface
-           * stay in sync via the existing subscribe path.
+           * Section 3: Visibility toggles. The same checkboxes as the
+           * toolbar popover's Show group, in the same order, but with
+           * full-form labels ("Show hidden files") because this flat menu has
+           * no group label to carry the "Show". Read state from the merged
+           * config; write through the project-local CRDT binding so the
+           * popover, the View menu, and any other surface stay in sync via
+           * the existing subscribe path.
            *
            * Section 4: Tree state. Expand/Collapse all tree-scoped with
            * smart-hide — both items hide when there are no folders, and each
@@ -1140,14 +1241,40 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
           <ContextMenuSeparator />
           <ContextMenuCheckboxItem
             checked={showHiddenFiles}
-            onCheckedChange={handleEmptySpaceShowHiddenFilesToggle}
+            onCheckedChange={(checked) => patchSidebarVisibility({ showHiddenFiles: checked })}
             disabled={projectLocalBinding === null}
             data-testid="empty-space-menu-show-hidden-files"
           >
             <Trans>Show hidden files</Trans>
           </ContextMenuCheckboxItem>
-          {showEmptySpaceTreeStateSection ? <ContextMenuSeparator /> : null}
-          {showEmptySpaceExpandAll ? (
+          <ContextMenuCheckboxItem
+            checked={showOkFolders}
+            onCheckedChange={(checked) => patchSidebarVisibility({ showOkFolders: checked })}
+            disabled={projectLocalBinding === null}
+            data-testid="empty-space-menu-show-ok-folders"
+          >
+            <Trans>Show .ok folders</Trans>
+          </ContextMenuCheckboxItem>
+          <ContextMenuCheckboxItem
+            checked={showOnlyMarkdownFiles}
+            onCheckedChange={(checked) =>
+              patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
+            }
+            disabled={projectLocalBinding === null}
+            data-testid="empty-space-menu-show-only-markdown-files"
+          >
+            <Trans>Show only markdown files</Trans>
+          </ContextMenuCheckboxItem>
+          <ContextMenuCheckboxItem
+            checked={showSkillsSection}
+            onCheckedChange={(checked) => patchSidebarVisibility({ showSkillsSection: checked })}
+            disabled={projectLocalBinding === null}
+            data-testid="empty-space-menu-show-skills-section"
+          >
+            <Trans>Show skills section</Trans>
+          </ContextMenuCheckboxItem>
+          {showTreeStateSection ? <ContextMenuSeparator /> : null}
+          {showExpandAll ? (
             <ContextMenuItem
               onSelect={handleEmptySpaceExpandAll}
               data-testid="empty-space-menu-expand-all"
@@ -1156,7 +1283,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
               <Trans>Expand all</Trans>
             </ContextMenuItem>
           ) : null}
-          {showEmptySpaceCollapseAll ? (
+          {showCollapseAll ? (
             <ContextMenuItem
               onSelect={handleEmptySpaceCollapseAll}
               data-testid="empty-space-menu-collapse-all"

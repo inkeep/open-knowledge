@@ -10,6 +10,7 @@ import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name
 import { cn } from '@/lib/utils';
 import { EditorBreadcrumb } from './EditorBreadcrumb';
 import { EditorModeToggle } from './EditorModeToggle';
+import { NotInSidebarIndicator } from './NotInSidebarIndicator';
 
 // Lazy-loaded: skill install/history chrome (+ the shared useSkillActions
 // dialogs) only mounts when the active doc is a skill, so it stays out of the
@@ -80,11 +81,20 @@ export function EditorToolbar({
           so the breadcrumb's per-segment `title` tooltips actually surface.
           Future siblings dropped into this cell must follow the same rule.
         */}
-          <div className="pointer-events-auto flex min-w-0 items-center">
+          <div className="pointer-events-auto flex min-w-0 items-center gap-2">
             {/* Skills show their identity (name/scope) in the panel, so the
                 `.ok/skills/<name>` path breadcrumb is noise — suppress it for
                 both scopes to match the global-skill editor. */}
             {activeSkill ? null : <EditorBreadcrumb docName={activeDocName} />}
+            {/* Self-gating: renders only when a visibility toggle hides this
+                doc's tree row, and never for skills/templates (their names
+                attribute no axis). */}
+            {activeDocName === null ? null : (
+              <NotInSidebarIndicator
+                entry={{ kind: 'document', docName: activeDocName }}
+                className="shrink-0"
+              />
+            )}
           </div>
           <div className="pointer-events-auto flex justify-center">
             <EditorModeToggle

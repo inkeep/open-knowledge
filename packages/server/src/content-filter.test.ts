@@ -802,6 +802,99 @@ describe('ContentFilter', () => {
     });
   });
 
+  describe('showOk lifts the .ok floor for the tree-listing walk only', () => {
+    // `?showAll=true&showOk=true` — the documents-endpoint walk passes both
+    // opts together. showOk admits `.ok`-segment paths through the always-skip
+    // floor in `isExcluded` / `isDirExcluded` only; `.ok/worktrees` and
+    // `.ok/local` stay pruned at every depth, every other floor member and
+    // every other floor rule is untouched, and `isPathIgnored` (the asset-serve
+    // gate) keeps the absolute floor.
+    const REVEAL = { bypassFilters: true, showOk: true } as const;
+
+    function assertShowOkReveal(filter: ContentFilter) {
+      // `.ok` and its content-bearing children become descendable, at the
+      // root and nested per-folder.
+      expect(filter.isDirExcluded('.ok', REVEAL)).toBe(false);
+      expect(filter.isDirExcluded('.ok/templates', REVEAL)).toBe(false);
+      expect(filter.isDirExcluded('.ok/skills', REVEAL)).toBe(false);
+      expect(filter.isDirExcluded('.ok/skills/demo', REVEAL)).toBe(false);
+      expect(filter.isDirExcluded('meetings/.ok', REVEAL)).toBe(false);
+      expect(filter.isDirExcluded('meetings/.ok/templates', REVEAL)).toBe(false);
+
+      // `.ok/worktrees` (repo-scale git checkouts) and `.ok/local`
+      // (per-machine runtime state) stay floored at every depth.
+      expect(filter.isDirExcluded('.ok/worktrees', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.ok/worktrees/checkout', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.ok/local', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.ok/local/cache', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('meetings/.ok/worktrees', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('meetings/.ok/local', REVEAL)).toBe(true);
+
+      // Case-insensitively, like the secret floor: on the default
+      // case-insensitive macOS filesystem a `.ok/Local` created by an
+      // external tool IS `.ok/local` — the walk sees the on-disk casing, so
+      // a case-sensitive lookahead would reveal the runtime state.
+      expect(filter.isDirExcluded('.ok/Worktrees', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.ok/Local', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.ok/LOCAL/cache', REVEAL)).toBe(true);
+      expect(filter.isExcluded('.ok/Local/server.lock', REVEAL)).toBe(true);
+      expect(filter.isExcluded('meetings/.ok/WORKTREES/checkout/README.md', REVEAL)).toBe(true);
+
+      // Files under revealed `.ok` admit; under the excluded children they
+      // stay hidden.
+      expect(filter.isExcluded('.ok/config.yml', REVEAL)).toBe(false);
+      expect(filter.isExcluded('.ok/.gitignore', REVEAL)).toBe(false);
+      expect(filter.isExcluded('.ok/templates/daily.md', REVEAL)).toBe(false);
+      expect(filter.isExcluded('.ok/skills/demo/SKILL.md', REVEAL)).toBe(false);
+      expect(filter.isExcluded('meetings/.ok/frontmatter.yml', REVEAL)).toBe(false);
+      expect(filter.isExcluded('.ok/local/server.lock', REVEAL)).toBe(true);
+      expect(filter.isExcluded('.ok/worktrees/checkout/README.md', REVEAL)).toBe(true);
+
+      // Every other always-skip member is untouched by showOk — including
+      // when nested inside a revealed `.ok` subtree.
+      expect(filter.isDirExcluded('.git', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('node_modules', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.open-knowledge', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.openknowledge', REVEAL)).toBe(true);
+      expect(filter.isExcluded('.git/objects/x.md', REVEAL)).toBe(true);
+      expect(filter.isExcluded('node_modules/pkg/README.md', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.ok/templates/node_modules', REVEAL)).toBe(true);
+      expect(filter.isExcluded('.ok/templates/node_modules/pkg/x.md', REVEAL)).toBe(true);
+
+      // Junk + secret floors still run inside revealed `.ok`.
+      expect(filter.isExcluded('.ok/.DS_Store', REVEAL)).toBe(true);
+      expect(filter.isExcluded('.ok/templates/server.pem', REVEAL)).toBe(true);
+      expect(filter.isExcluded('.ok/skills/demo/id_rsa', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.ok/skills/demo/.ssh', REVEAL)).toBe(true);
+
+      // Reserved synthetic doc names stay hidden under every flag combination.
+      expect(filter.isExcluded('__system__.md', REVEAL)).toBe(true);
+      expect(filter.isExcluded('__config__/project.md', REVEAL)).toBe(true);
+      expect(filter.isExcluded('__local__/project.md', REVEAL)).toBe(true);
+
+      // `isPathIgnored` keeps the absolute floor — showOk widens the listing
+      // walk only, never asset serving.
+      expect(filter.isPathIgnored('.ok/config.yml', REVEAL)).toBe(true);
+      expect(filter.isPathIgnored('.ok/templates/daily.md', REVEAL)).toBe(true);
+
+      // showOk lifts only the always-skip floor: without bypassFilters the
+      // configurable BUILTIN_SKIP_DIRS rule still hides non-skill `.ok`
+      // content, so a stray showOk on a normal-mode caller reveals nothing.
+      expect(filter.isDirExcluded('.ok/templates', { showOk: true })).toBe(true);
+      expect(filter.isExcluded('.ok/config.yml', { showOk: true })).toBe(true);
+    }
+
+    test('sync factory (createContentFilter)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertShowOkReveal(filter);
+    });
+
+    test('async factory (createContentFilterAsync) mirrors the reveal', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertShowOkReveal(filter);
+    });
+  });
+
   describe('reserved system doc names', () => {
     test('excludes __system__.md', () => {
       const filter = createContentFilter({ projectDir, contentDir: projectDir });

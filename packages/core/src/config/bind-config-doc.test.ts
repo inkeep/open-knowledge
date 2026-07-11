@@ -124,6 +124,31 @@ describe('bindConfigDoc — patch()', () => {
     binding.dispose();
   });
 
+  test('writes the sidebar view toggles via a project-local binding + returns effective config', () => {
+    const binding = bindConfigDoc(provider, 'project-local');
+    const result = binding.patch({
+      appearance: {
+        sidebar: {
+          showOnlyMarkdownFiles: true,
+          showSkillsSection: false,
+          showOkFolders: true,
+        },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.appliedPaths).toEqual([
+      'appearance.sidebar.showOnlyMarkdownFiles',
+      'appearance.sidebar.showSkillsSection',
+      'appearance.sidebar.showOkFolders',
+    ]);
+    expect(result.effective.appearance?.sidebar?.showOnlyMarkdownFiles).toBe(true);
+    expect(result.effective.appearance?.sidebar?.showSkillsSection).toBe(false);
+    expect(result.effective.appearance?.sidebar?.showOkFolders).toBe(true);
+    binding.dispose();
+  });
+
   test('updates existing field + preserves comments via yaml@2 Document', () => {
     const initial = '# Project config\ncontent:\n  dir: old # original\n';
     doc.getText('source').insert(0, initial);

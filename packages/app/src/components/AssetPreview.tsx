@@ -2,6 +2,7 @@ import { type InlineAssetMediaKind, toDesktopAssetHref } from '@inkeep/open-know
 import { Trans } from '@lingui/react/macro';
 import { useState } from 'react';
 import { MermaidFileViewer } from '@/components/MermaidFileViewer';
+import { NotInSidebarIndicator } from '@/components/NotInSidebarIndicator';
 import { TextViewer } from '@/components/TextViewer';
 import { Button } from '@/components/ui/button';
 import { LoadingImage } from '@/components/ui/loading-image';
@@ -36,12 +37,30 @@ function assetTextUrl(assetPath: string): string {
 }
 
 export function AssetPreview({ assetPath, mediaKind }: AssetPreviewProps) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Self-gating chrome above whichever preview body renders: names the
+          visibility toggle(s) hiding this file's tree row. Lives here rather
+          than per-branch so every asset surface (pdf / text / fallback)
+          carries the same contract. */}
+      <NotInSidebarIndicator
+        entry={{ kind: 'asset', path: assetPath }}
+        className="shrink-0 border-b bg-background px-3 py-1.5"
+      />
+      <div className="min-h-0 flex-1">
+        <AssetPreviewBody assetPath={assetPath} mediaKind={mediaKind} />
+      </div>
+    </div>
+  );
+}
+
+function AssetPreviewBody({ assetPath, mediaKind }: AssetPreviewProps) {
   // Local override toggle: when the user clicks "View as text" from
   // the fallback pane, mount the `TextViewer` for the
   // same asset path without re-navigating. Reset is handled at the
   // call site — `EditorArea` passes `key={activeTarget.assetPath}`, so
-  // navigating to a different asset remounts this component and
-  // re-initializes `forceText` to `false`. A child `key` (e.g. the
+  // navigating to a different asset remounts this component (body included)
+  // and re-initializes `forceText` to `false`. A child `key` (e.g. the
   // `key={assetPath}` on `<TextViewer>` below) does NOT reset parent
   // state — that would silently bleed `forceText=true` from a previous
   // file onto an image / video / pdf, garbling them through CodeMirror.

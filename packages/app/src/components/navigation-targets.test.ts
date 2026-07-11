@@ -5,6 +5,7 @@ import {
   docNameForNavigationTarget,
   downgradeFolderIndexForHashNav,
   largeFileNavigationTarget,
+  okContentNavigationTarget,
   resolveNavigationTarget,
   withLargeFileOpenGuard,
 } from './navigation-targets';
@@ -340,6 +341,138 @@ describe('resolveNavigationTarget', () => {
     expect(resolved).toEqual({
       kind: 'missing',
       target: 'analysis',
+    });
+  });
+});
+
+describe('okContentNavigationTarget (read-only .ok routing)', () => {
+  const pages = new Set(['notes/real', '.ok/skills/writer/SKILL']);
+
+  test('targets without a .ok path segment are not governed', () => {
+    expect(okContentNavigationTarget('notes/real', { pages })).toBeNull();
+    expect(okContentNavigationTarget('brand-new/idea', { pages })).toBeNull();
+    // A plain `ok` segment is a user folder, not the managed directory.
+    expect(okContentNavigationTarget('docs/ok/guide', { pages })).toBeNull();
+  });
+
+  test('template file paths rewrite to the managed-artifact template editor', () => {
+    expect(okContentNavigationTarget('.ok/templates/meeting', { pages })).toEqual({
+      kind: 'doc',
+      target: '__template__/meeting',
+      docName: '__template__/meeting',
+    });
+    expect(okContentNavigationTarget('team/.ok/templates/spec', { pages })).toEqual({
+      kind: 'doc',
+      target: '__template__/team/spec',
+      docName: '__template__/team/spec',
+    });
+  });
+
+  test('page-list members stay normal content docs (skills carve-out)', () => {
+    expect(okContentNavigationTarget('.ok/skills/writer/SKILL', { pages })).toBeNull();
+  });
+
+  test('doc-shaped .ok targets resolve to the read-only text viewer on their .md path', () => {
+    expect(okContentNavigationTarget('.ok/raw-probe', { pages })).toEqual({
+      kind: 'asset',
+      target: '.ok/raw-probe.md',
+      assetPath: '.ok/raw-probe.md',
+      mediaKind: 'text',
+    });
+    expect(okContentNavigationTarget('notes/.ok/frontmatter', { pages })).toEqual({
+      kind: 'asset',
+      target: 'notes/.ok/frontmatter.md',
+      assetPath: 'notes/.ok/frontmatter.md',
+      mediaKind: 'text',
+    });
+  });
+
+  test('a known on-disk extension overrides the .md default', () => {
+    expect(okContentNavigationTarget('.ok/templates/a/b', { pages, docExt: '.mdx' })).toEqual({
+      kind: 'asset',
+      target: '.ok/templates/a/b.mdx',
+      assetPath: '.ok/templates/a/b.mdx',
+      mediaKind: 'text',
+    });
+  });
+
+  test('nested template paths are not template files — they land on the viewer', () => {
+    // The template rewrite only matches single-segment leaves; a nested path
+    // must not fall through to an editable resolution.
+    expect(okContentNavigationTarget('.ok/templates/a/b', { pages })).toMatchObject({
+      kind: 'asset',
+      assetPath: '.ok/templates/a/b.md',
+    });
+  });
+
+  test('extension-carrying .ok leaves resolve as their own asset path', () => {
+    expect(okContentNavigationTarget('.ok/config.yml', { pages })).toEqual({
+      kind: 'asset',
+      target: '.ok/config.yml',
+      assetPath: '.ok/config.yml',
+      mediaKind: 'text',
+    });
+    expect(okContentNavigationTarget('.ok/assets/logo.png', { pages })).toMatchObject({
+      kind: 'asset',
+      assetPath: '.ok/assets/logo.png',
+      mediaKind: 'image',
+    });
+  });
+
+  test('worktrees and local paths land read-only even though listings exclude them', () => {
+    for (const target of ['.ok/worktrees/checkout/README', '.ok/local/config.yml']) {
+      expect(okContentNavigationTarget(target, { pages })?.kind).toBe('asset');
+    }
+  });
+});
+
+describe('resolveNavigationTarget .ok guard', () => {
+  const options = { pages: new Set(['notes/real', '.ok/skills/writer/SKILL']) };
+
+  test('.ok targets never resolve to missing — the viewer replaces create-mode', () => {
+    // Existing file and nonexistent name are unknowable at resolve time; both
+    // shapes must land on the read-only viewer (its error pane is the
+    // non-create missing surface), never on the create-mode editor.
+    expect(resolveNavigationTarget('.ok/raw-probe', options)).toEqual({
+      kind: 'asset',
+      target: '.ok/raw-probe.md',
+      assetPath: '.ok/raw-probe.md',
+      mediaKind: 'text',
+    });
+    expect(resolveNavigationTarget('notes/.ok/frontmatter', options)).toMatchObject({
+      kind: 'asset',
+      assetPath: 'notes/.ok/frontmatter.md',
+    });
+    expect(resolveNavigationTarget('.ok/worktrees/checkout/README', options)).toMatchObject({
+      kind: 'asset',
+    });
+  });
+
+  test('sanctioned .ok resolutions are unchanged: skills stay docs, templates rewrite', () => {
+    expect(resolveNavigationTarget('.ok/skills/writer/SKILL', options)).toEqual({
+      kind: 'doc',
+      target: '.ok/skills/writer/SKILL',
+      docName: '.ok/skills/writer/SKILL',
+    });
+    expect(resolveNavigationTarget('.ok/templates/meeting', options)).toEqual({
+      kind: 'doc',
+      target: '__template__/meeting',
+      docName: '__template__/meeting',
+    });
+  });
+
+  test('.ok folder targets keep resolving to the folder overview', () => {
+    expect(resolveNavigationTarget('.ok', options)).toEqual({
+      kind: 'folder',
+      target: '.ok',
+      folderPath: '.ok',
+    });
+  });
+
+  test('non-.ok misses keep the create-mode missing resolution', () => {
+    expect(resolveNavigationTarget('brand-new/idea', options)).toEqual({
+      kind: 'missing',
+      target: 'brand-new/idea',
     });
   });
 });

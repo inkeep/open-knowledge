@@ -35,6 +35,11 @@ describe('REMOVED_KEYS registry', () => {
     const dotted = REMOVED_KEYS.map((k) => k.path.join('.'));
     expect(new Set(dotted).size).toBe(dotted.length);
   });
+
+  test('showAllFiles redirect names the only-markdown view preference as its successor', () => {
+    const entry = REMOVED_KEYS.find((k) => k.path.join('.') === 'appearance.sidebar.showAllFiles');
+    expect(entry?.redirect).toContain('appearance.sidebar.showOnlyMarkdownFiles');
+  });
 });
 
 describe('detectRemovedKeys', () => {

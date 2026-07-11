@@ -33,6 +33,9 @@ export const MENU_LABELS = {
   fullPath: 'Full path',
   relativePath: 'Relative path',
   showHiddenFiles: 'Show hidden files',
+  showOkFolders: 'Show .ok folders',
+  showOnlyMarkdownFiles: 'Show only markdown files',
+  showSkillsSection: 'Show skills section',
   expandAll: 'Expand all',
   collapseAll: 'Collapse all',
 } as const;

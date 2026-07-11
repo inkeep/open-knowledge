@@ -129,8 +129,30 @@ mock.module('@/components/ui/context-menu', () => ({
 
 mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: PassThrough,
+  DropdownMenuCheckboxItem: ({
+    checked,
+    children,
+    onCheckedChange: _onCheckedChange,
+    ...props
+  }: {
+    checked?: boolean;
+    children?: ReactNode;
+    onCheckedChange?: (checked: boolean) => void;
+    [key: string]: unknown;
+  }) => (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked ? 'true' : 'false'}
+      {...props}
+    >
+      {children}
+    </button>
+  ),
   DropdownMenuContent: ElementPassThrough,
+  DropdownMenuGroup: ElementPassThrough,
   DropdownMenuItem: Button,
+  DropdownMenuLabel: ElementPassThrough,
   DropdownMenuSeparator: () => null,
   DropdownMenuTrigger: PassThrough,
 }));

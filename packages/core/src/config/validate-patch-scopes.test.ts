@@ -28,6 +28,34 @@ describe('validatePatchScopes', () => {
     expect(violation?.actualScope).toBe('user');
   });
 
+  test('returns null for the sidebar view toggles written by a project-local writer', () => {
+    expect(
+      validatePatchScopes(
+        {
+          appearance: {
+            sidebar: {
+              showOnlyMarkdownFiles: true,
+              showSkillsSection: false,
+              showOkFolders: true,
+            },
+          },
+        },
+        'project-local',
+      ),
+    ).toBeNull();
+  });
+
+  test('returns SCOPE_VIOLATION for a sidebar view toggle written by a project writer', () => {
+    const violation = validatePatchScopes(
+      { appearance: { sidebar: { showOnlyMarkdownFiles: true } } },
+      'project',
+    );
+    expect(violation?.code).toBe('SCOPE_VIOLATION');
+    expect(violation?.path).toEqual(['appearance', 'sidebar', 'showOnlyMarkdownFiles']);
+    expect(violation?.expectedScope).toBe('project-local');
+    expect(violation?.actualScope).toBe('project');
+  });
+
   test('returns null for autoSync.default (project) written by a project writer', () => {
     // The committed sibling of autoSync.enabled: true/false/null are all valid
     // project-scope writes (null clears the committed default → "ask").

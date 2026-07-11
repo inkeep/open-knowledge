@@ -37,7 +37,8 @@ const SHOW_ALL_DEPTH1_URL = '/api/documents?showAll=true&dir=&depth=1';
 
 // --- mutable per-test state ---
 // The sidebar always issues the lazy depth-1 disk-walk listing; these tests
-// exercise that default path. Config only carries `showHiddenFiles` now.
+// exercise that default path. Config carries the sidebar visibility toggles
+// (`showHiddenFiles`, `showOnlyMarkdownFiles`).
 let mergedConfig: unknown = { appearance: { sidebar: {} } };
 // Factory for the depth-1 response so the NDJSON test can stream instead of
 // returning buffered JSON.
@@ -70,6 +71,9 @@ function docEntry(docName: string) {
   };
 }
 
+// Non-markdown leaf as the showAll disk walk ships it: every non-md file is
+// `kind:'asset'` with an empty `referencedBy` (the walk never computes real
+// references).
 function assetEntry(path: string) {
   return {
     kind: 'asset',
@@ -227,7 +231,7 @@ mock.module('@/editor/DocumentContext', () => ({
   }),
 }));
 mock.module('@/components/PageListContext', () => ({
-  usePageList: () => ({ addPage: mock(() => {}) }),
+  usePageList: () => ({ addPage: mock(() => {}), pages: new Set<string>() }),
 }));
 mock.module('./ui/sidebar', () => ({
   useSidebar: () => ({ notifySidebarFileSelected: mock(() => {}) }),
@@ -398,11 +402,11 @@ describe('FileTree showAll lazy root seed', () => {
   });
 
   test('Show hidden files alone gates dot-segment entries in the disk-walk listing', async () => {
-    // bypassClientDotDrop is now keyed solely on showHiddenFiles (the Show all
-    // files toggle is gone), so this toggle alone decides whether dot-segment
-    // entries the disk walk ships are shown. OFF: a root-level dotfile is
-    // dropped client-side while its non-dot sibling stays; flipping ON
-    // re-fetches and reveals it.
+    // The client dot-segment drop is keyed solely on showHiddenFiles (the
+    // Show all files toggle is gone), so this toggle alone decides whether
+    // dot-segment entries the disk walk ships are shown. OFF: a root-level
+    // dotfile is dropped client-side while its non-dot sibling stays;
+    // flipping ON re-fetches and reveals it.
     mergedConfig = { appearance: { sidebar: { showHiddenFiles: false } } };
     showAllResponseFactory = () =>
       jsonResponse({
@@ -1243,5 +1247,419 @@ describe('FileTree relaunch-aware reconnect (desktop auto-update)', () => {
     );
     expect(screen.queryByText('Could not reach server')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('FileTree only-markdown visibility', () => {
+  let consoleWarnSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    mergedConfig = { appearance: { sidebar: {} } };
+    showAllResponseFactory = () => jsonResponse({ documents: [] });
+    responseByUrl = new Map();
+    fetchUrls.length = 0;
+    model.items.clear();
+    model.listeners.clear();
+    model.focusedPath = null;
+    model.selectedPaths = [];
+    globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
+    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    cleanup();
+    consoleWarnSpy.mockRestore();
+  });
+
+  test('non-markdown leaves render with the toggle off — the default stays byte-identical', async () => {
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [docEntry('README'), assetEntry('data.csv'), folderEntry('team', true)],
+        truncated: false,
+      });
+    render(<FileTree />);
+
+    await waitFor(() => expect(model.items.has('data.csv')).toBe(true));
+    expect(model.items.has('README.md')).toBe(true);
+    expect(model.items.has('team/')).toBe(true);
+  });
+
+  test('only-markdown ON hides non-markdown leaves; documents and folders (even markdown-empty ones) stay', async () => {
+    mergedConfig = { appearance: { sidebar: { showOnlyMarkdownFiles: true } } };
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [
+          docEntry('README'),
+          assetEntry('data.csv'),
+          folderEntry('team', true),
+          folderEntry('assets-only', true),
+        ],
+        truncated: false,
+      });
+    render(<FileTree />);
+
+    await waitFor(() => expect(model.items.has('README.md')).toBe(true));
+    // Folders are exempt from the filter — a folder with no markdown anywhere
+    // still renders (it expands to empty rather than disappearing).
+    expect(model.items.has('team/')).toBe(true);
+    expect(model.items.has('assets-only/')).toBe(true);
+    expect(model.items.has('data.csv')).toBe(false);
+  });
+
+  test('flipping only-markdown refetches through the scheduler and preserves folder expansion', async () => {
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [docEntry('README'), assetEntry('data.csv'), folderEntry('team', true)],
+        truncated: false,
+      });
+    responseByUrl.set(lazyDirUrl('team'), () =>
+      jsonResponse({
+        documents: [docEntry('team/notes'), assetEntry('team/data.json')],
+        truncated: false,
+      }),
+    );
+    const view = render(<FileTree />);
+    await waitFor(() => expect(model.items.has('data.csv')).toBe(true));
+    model.getItem('team/')?.expand();
+    await waitFor(() => expect(model.items.has('team/data.json')).toBe(true));
+    const rootFetchesBefore = fetchUrls.filter((url) => url === SHOW_ALL_DEPTH1_URL).length;
+
+    mergedConfig = { appearance: { sidebar: { showOnlyMarkdownFiles: true } } };
+    view.rerender(<FileTree />);
+
+    // The flip re-fetches (root splice + expanded-folder revalidation) and the
+    // re-applied filter drops every non-markdown leaf, including ones in the
+    // already-loaded child level.
+    await waitFor(() => expect(model.items.has('data.csv')).toBe(false));
+    await waitFor(() => expect(model.items.has('team/data.json')).toBe(false));
+    expect(model.items.has('README.md')).toBe(true);
+    expect(model.items.has('team/notes.md')).toBe(true);
+    // Expansion state carries across the flip — no reset-to-collapsed.
+    expect(model.getItem('team/')?.isExpanded()).toBe(true);
+    expect(fetchUrls.filter((url) => url === SHOW_ALL_DEPTH1_URL)).toHaveLength(
+      rootFetchesBefore + 1,
+    );
+
+    // Flipping back off restores the default rendering — the toggle is pure
+    // view state, nothing was lost.
+    mergedConfig = { appearance: { sidebar: { showOnlyMarkdownFiles: false } } };
+    view.rerender(<FileTree />);
+    await waitFor(() => expect(model.items.has('data.csv')).toBe(true));
+    await waitFor(() => expect(model.items.has('team/data.json')).toBe(true));
+    expect(model.getItem('team/')?.isExpanded()).toBe(true);
+  });
+
+  test('only-markdown filters the streamed NDJSON seed — batches and the completion splice alike', async () => {
+    mergedConfig = { appearance: { sidebar: { showOnlyMarkdownFiles: true } } };
+    const lines = [
+      JSON.stringify(assetEntry('data.csv')),
+      JSON.stringify(docEntry('README')),
+      JSON.stringify(folderEntry('team', true)),
+      JSON.stringify({ type: 'complete', truncated: false, count: 3 }),
+    ].join('\n');
+    showAllResponseFactory = () =>
+      new Response(`${lines}\n`, {
+        status: 200,
+        headers: { 'content-type': 'application/x-ndjson' },
+      });
+    render(<FileTree />);
+
+    await waitFor(() => expect([...model.items.keys()].sort()).toEqual(['README.md', 'team/']));
+  });
+
+  test('only-markdown filters lazy folder children; a markdown-empty folder expands to empty and stays open', async () => {
+    mergedConfig = { appearance: { sidebar: { showOnlyMarkdownFiles: true } } };
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [folderEntry('team', true), folderEntry('assets-only', true)],
+        truncated: false,
+      });
+    responseByUrl.set(lazyDirUrl('team'), () =>
+      jsonResponse({
+        documents: [docEntry('team/notes'), assetEntry('team/data.json')],
+        truncated: false,
+      }),
+    );
+    responseByUrl.set(lazyDirUrl('assets-only'), () =>
+      jsonResponse({ documents: [assetEntry('assets-only/pic.png')], truncated: false }),
+    );
+    render(<FileTree />);
+    await waitFor(() => expect(model.items.size).toBe(2));
+
+    model.getItem('team/')?.expand();
+    await waitFor(() => expect(model.items.has('team/notes.md')).toBe(true));
+    expect(model.items.has('team/data.json')).toBe(false);
+
+    model.getItem('assets-only/')?.expand();
+    await waitFor(() => expect(fetchUrls).toContain(lazyDirUrl('assets-only')));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The level was fetched and filtered to zero: the folder renders no
+    // children but keeps its expanded state — it is not dropped or collapsed.
+    expect(model.items.has('assets-only/pic.png')).toBe(false);
+    expect(model.getItem('assets-only/')?.isExpanded()).toBe(true);
+  });
+
+  test('hidden-files and only-markdown compose per axis: a dot-path doc needs H on and passes M', async () => {
+    mergedConfig = {
+      appearance: { sidebar: { showHiddenFiles: false, showOnlyMarkdownFiles: true } },
+    };
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [docEntry('.hidden-note'), assetEntry('.hidden-data.csv'), docEntry('README')],
+        truncated: false,
+      });
+    const view = render(<FileTree />);
+
+    // Hidden files off: both dot-path entries drop regardless of kind.
+    await waitFor(() => expect(model.items.has('README.md')).toBe(true));
+    expect(model.items.has('.hidden-note.md')).toBe(false);
+    expect(model.items.has('.hidden-data.csv')).toBe(false);
+
+    mergedConfig = {
+      appearance: { sidebar: { showHiddenFiles: true, showOnlyMarkdownFiles: true } },
+    };
+    view.rerender(<FileTree />);
+
+    // Both on: the dot-path markdown doc passes both axes; the dot-path csv
+    // clears the hidden axis but still fails only-markdown (AND composition).
+    await waitFor(() => expect(model.items.has('.hidden-note.md')).toBe(true));
+    expect(model.items.has('README.md')).toBe(true);
+    expect(model.items.has('.hidden-data.csv')).toBe(false);
+  });
+});
+
+describe('FileTree filtered-to-zero empty state', () => {
+  let consoleWarnSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    mergedConfig = { appearance: { sidebar: {} } };
+    showAllResponseFactory = () => jsonResponse({ documents: [] });
+    responseByUrl = new Map();
+    fetchUrls.length = 0;
+    model.items.clear();
+    model.listeners.clear();
+    model.focusedPath = null;
+    model.selectedPaths = [];
+    globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
+    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    cleanup();
+    consoleWarnSpy.mockRestore();
+  });
+
+  test('only-markdown hiding every row of a non-empty project shows the reset explainer', async () => {
+    mergedConfig = { appearance: { sidebar: { showOnlyMarkdownFiles: true } } };
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [assetEntry('data.csv'), assetEntry('logo.png')],
+        truncated: false,
+      });
+    render(<FileTree />);
+
+    await waitFor(() => expect(screen.queryByTestId('file-tree-filtered-to-zero')).toBeTruthy());
+    expect(screen.queryByTestId('reset-view-filters')).toBeTruthy();
+    expect(screen.queryByText('No files yet.')).toBeNull();
+  });
+
+  test('a truly empty project keeps the existing empty state even while only-markdown is on', async () => {
+    mergedConfig = { appearance: { sidebar: { showOnlyMarkdownFiles: true } } };
+    showAllResponseFactory = () => jsonResponse({ documents: [], truncated: false });
+    render(<FileTree />);
+
+    await waitFor(() => expect(screen.queryByText('No files yet.')).toBeTruthy());
+    expect(screen.queryByTestId('file-tree-filtered-to-zero')).toBeNull();
+  });
+
+  test('a dot-only project at defaults keeps the pre-feature empty state', async () => {
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [folderEntry('.scratch', true), docEntry('.draft')],
+        truncated: false,
+      });
+    render(<FileTree />);
+
+    await waitFor(() => expect(screen.queryByText('No files yet.')).toBeTruthy());
+    expect(screen.queryByTestId('file-tree-filtered-to-zero')).toBeNull();
+  });
+
+  test('the streamed NDJSON listing classifies filtered-to-zero at completion', async () => {
+    mergedConfig = { appearance: { sidebar: { showOnlyMarkdownFiles: true } } };
+    const lines = [
+      JSON.stringify(assetEntry('data.csv')),
+      JSON.stringify(assetEntry('logo.png')),
+      JSON.stringify({ type: 'complete', truncated: false, count: 2 }),
+    ].join('\n');
+    showAllResponseFactory = () =>
+      new Response(`${lines}\n`, {
+        status: 200,
+        headers: { 'content-type': 'application/x-ndjson' },
+      });
+    render(<FileTree />);
+
+    await waitFor(() => expect(screen.queryByTestId('file-tree-filtered-to-zero')).toBeTruthy());
+    expect(screen.queryByText('No files yet.')).toBeNull();
+  });
+});
+
+describe('FileTree show-ok-folders visibility', () => {
+  let consoleWarnSpy: ReturnType<typeof spyOn>;
+
+  const SHOW_OK_DEPTH1_URL = '/api/documents?showAll=true&showOk=true&dir=&depth=1';
+  const lazyOkDirUrl = (dir: string) =>
+    `/api/documents?showAll=true&showOk=true&dir=${encodeURIComponent(dir)}&depth=1`;
+
+  beforeEach(() => {
+    mergedConfig = { appearance: { sidebar: {} } };
+    showAllResponseFactory = () => jsonResponse({ documents: [] });
+    responseByUrl = new Map();
+    fetchUrls.length = 0;
+    model.items.clear();
+    model.listeners.clear();
+    model.focusedPath = null;
+    model.selectedPaths = [];
+    globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
+    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    cleanup();
+    consoleWarnSpy.mockRestore();
+  });
+
+  test('show-ok ON requests the listing with showOk=true and renders .ok rows', async () => {
+    mergedConfig = { appearance: { sidebar: { showOkFolders: true } } };
+    responseByUrl.set(SHOW_OK_DEPTH1_URL, () =>
+      jsonResponse({
+        documents: [docEntry('README'), folderEntry('.ok', true)],
+        truncated: false,
+      }),
+    );
+    render(<FileTree />);
+
+    await waitFor(() => expect(model.items.has('.ok/')).toBe(true));
+    expect(model.items.has('README.md')).toBe(true);
+    // The reveal is request-scoped: the plain showAll listing is never issued
+    // while the axis is on.
+    expect(fetchUrls).toContain(SHOW_OK_DEPTH1_URL);
+    expect(fetchUrls).not.toContain(SHOW_ALL_DEPTH1_URL);
+  });
+
+  test('the default listing never passes showOk — off stays byte-identical to today', async () => {
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [docEntry('README'), folderEntry('team', true)],
+        truncated: false,
+      });
+    render(<FileTree />);
+
+    await waitFor(() => expect(model.items.has('README.md')).toBe(true));
+    expect(fetchUrls.some((url) => url.includes('showOk'))).toBe(false);
+  });
+
+  test('hidden-files on does not reveal .ok rows and does not request showOk', async () => {
+    mergedConfig = { appearance: { sidebar: { showHiddenFiles: true } } };
+    // The default listing already ships the bare `.ok` folder row (skills
+    // carve-out); with only the H axis on the client must keep dropping it.
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [docEntry('README'), folderEntry('.scratch', true), folderEntry('.ok', true)],
+        truncated: false,
+      });
+    render(<FileTree />);
+
+    await waitFor(() => expect(model.items.has('.scratch/')).toBe(true));
+    expect(model.items.has('.ok/')).toBe(false);
+    expect(fetchUrls.some((url) => url.includes('showOk'))).toBe(false);
+  });
+
+  test('expanding a revealed .ok folder lazy-fetches its children with showOk=true', async () => {
+    mergedConfig = { appearance: { sidebar: { showOkFolders: true } } };
+    responseByUrl.set(SHOW_OK_DEPTH1_URL, () =>
+      jsonResponse({
+        documents: [docEntry('README'), folderEntry('.ok', true)],
+        truncated: false,
+      }),
+    );
+    responseByUrl.set(lazyOkDirUrl('.ok'), () =>
+      jsonResponse({
+        documents: [folderEntry('.ok/templates', true), assetEntry('.ok/config.yml')],
+        truncated: false,
+      }),
+    );
+    render(<FileTree />);
+    await waitFor(() => expect(model.items.has('.ok/')).toBe(true));
+
+    model.getItem('.ok/')?.expand();
+
+    await waitFor(() => expect(model.items.has('.ok/templates/')).toBe(true));
+    expect(model.items.has('.ok/config.yml')).toBe(true);
+    expect(fetchUrls).toContain(lazyOkDirUrl('.ok'));
+  });
+
+  test('flipping show-ok refetches through the scheduler and preserves expansion state', async () => {
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [docEntry('README'), folderEntry('team', true)],
+        truncated: false,
+      });
+    responseByUrl.set(lazyDirUrl('team'), () =>
+      jsonResponse({ documents: [docEntry('team/notes')], truncated: false }),
+    );
+    responseByUrl.set(SHOW_OK_DEPTH1_URL, () =>
+      jsonResponse({
+        documents: [docEntry('README'), folderEntry('team', true), folderEntry('.ok', true)],
+        truncated: false,
+      }),
+    );
+    responseByUrl.set(lazyOkDirUrl('team'), () =>
+      jsonResponse({ documents: [docEntry('team/notes')], truncated: false }),
+    );
+    const view = render(<FileTree />);
+    await waitFor(() => expect(model.items.has('team/')).toBe(true));
+    model.getItem('team/')?.expand();
+    await waitFor(() => expect(model.items.has('team/notes.md')).toBe(true));
+
+    mergedConfig = { appearance: { sidebar: { showOkFolders: true } } };
+    view.rerender(<FileTree />);
+
+    await waitFor(() => expect(model.items.has('.ok/')).toBe(true));
+    // Expansion state carries across the flip — no reset-to-collapsed.
+    expect(model.getItem('team/')?.isExpanded()).toBe(true);
+
+    // Flipping back off refetches the plain listing; the root splice prunes
+    // the `.ok` row and the default view is restored.
+    mergedConfig = { appearance: { sidebar: { showOkFolders: false } } };
+    view.rerender(<FileTree />);
+    await waitFor(() => expect(model.items.has('.ok/')).toBe(false));
+    expect(model.items.has('README.md')).toBe(true);
+    expect(model.getItem('team/')?.isExpanded()).toBe(true);
+  });
+
+  test('an expanded .ok folder stays expanded across a refresh cycle', async () => {
+    mergedConfig = { appearance: { sidebar: { showOkFolders: true } } };
+    responseByUrl.set(SHOW_OK_DEPTH1_URL, () =>
+      jsonResponse({
+        documents: [docEntry('README'), folderEntry('.ok', true)],
+        truncated: false,
+      }),
+    );
+    responseByUrl.set(lazyOkDirUrl('.ok'), () =>
+      jsonResponse({ documents: [folderEntry('.ok/templates', true)], truncated: false }),
+    );
+    render(<FileTree />);
+    await waitFor(() => expect(model.items.has('.ok/')).toBe(true));
+    model.getItem('.ok/')?.expand();
+    await waitFor(() => expect(model.items.has('.ok/templates/')).toBe(true));
+
+    // External change signal → root revalidation → model reset. The expanded
+    // `.ok/` folder must survive the reset's expansion-preservation pass.
+    emitDocumentsChanged();
+    await waitFor(() =>
+      expect(fetchUrls.filter((url) => url === SHOW_OK_DEPTH1_URL).length).toBeGreaterThan(1),
+    );
+    await waitFor(() => expect(model.getItem('.ok/')?.isExpanded()).toBe(true));
+    expect(model.items.has('.ok/templates/')).toBe(true);
   });
 });

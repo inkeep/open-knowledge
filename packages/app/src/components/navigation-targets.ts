@@ -5,6 +5,7 @@ import {
   isManagedArtifactDocName,
   isMermaidDocFile,
   managedArtifactDocNameFromContentTarget,
+  mediaKindForSidebarAssetExtension,
   parseGlobalSkillBundleDoc,
   parseManagedArtifactName,
   projectSkillContentDocName,
@@ -12,7 +13,7 @@ import {
   toWikiLinkSlug,
 } from '@inkeep/open-knowledge-core';
 import { normalizeDocNameInput } from '@/lib/doc-paths';
-import { computeAncestors } from './file-tree-utils';
+import { computeAncestors, hasOkPathSegment } from './file-tree-utils';
 
 export type ResolvedNavigationTarget =
   | {
@@ -132,6 +133,66 @@ function basenameResolve(
   const slug = toWikiLinkSlug(normalizedTarget);
   if (!slug) return undefined;
   return pagesByBasename.get(slug);
+}
+
+/**
+ * The on-disk file a doc-shaped `.ok` target addresses. A leaf that already
+ * carries an extension (`config.yml`) is the file itself; an extension-less
+ * leaf maps to its markdown file — the same `.md` the create-mode editor
+ * would have lazily written, so the viewer shows exactly the bytes the old
+ * write path would have touched. A leading dot alone (`.env`) is not an
+ * extension.
+ */
+function okReadOnlyAssetPath(docName: string, docExt?: string): string {
+  if (docExt) return `${docName}${docExt}`;
+  const leaf = docName.split('/').pop() ?? '';
+  return leaf.lastIndexOf('.') > 0 ? docName : `${docName}.md`;
+}
+
+/**
+ * Read-only routing for content targets under a `.ok` path segment — the
+ * doc-open guard that keeps OK-managed state out of editable and create-mode
+ * editors. Raw `.ok/**` docNames are loadable as editable CRDT docs by
+ * construction (persistence has no content-filter gate), so every doc-shaped
+ * resolution of a `.ok` target must land on a sanctioned surface:
+ *
+ * - Template FILE paths (`[<folder>/].ok/templates/<name>`, single-segment
+ *   leaf) rewrite to their managed-artifact doc — the validating template
+ *   editor. Same rule the wiki-link resolver already applies.
+ * - Page-list members (the `.ok/skills/**` carve-out) return null: they are
+ *   sanctioned content docs and keep the normal doc flow (the skill editor
+ *   chrome keys off the docName).
+ * - Everything else resolves to the read-only text viewer on the file's
+ *   on-disk path; for a nonexistent file the viewer's error pane is the
+ *   non-create "missing" surface.
+ *
+ * Returns null for targets outside `.ok`. Pure docName-shape rule plus
+ * page-list membership — consumes NO visibility state, so navigation stays
+ * visibility-blind.
+ */
+export function okContentNavigationTarget(
+  docName: string,
+  options: { pages: ReadonlySet<string>; docExt?: string },
+): ResolvedNavigationTarget | null {
+  if (!hasOkPathSegment(docName)) return null;
+  const artifactDocName = managedArtifactDocNameFromContentTarget(docName);
+  if (artifactDocName) {
+    return { kind: 'doc', target: artifactDocName, docName: artifactDocName };
+  }
+  if (options.pages.has(docName)) return null;
+  const assetPath = okReadOnlyAssetPath(docName, options.docExt);
+  // Serve asymmetry behind this target: text-shaped `.ok` files render fully
+  // (the text viewer fetches `/api/asset-text`, which has no content-filter
+  // gate), but binary/media kinds (image, pdf, video) fetch `/api/asset`,
+  // whose `isPathIgnored` gate keeps the `.ok` floor — their preview 404s by
+  // design. The `.ok` reveal is enumeration-only and never widens asset
+  // serving.
+  return {
+    kind: 'asset',
+    target: assetPath,
+    assetPath,
+    mediaKind: mediaKindForSidebarAssetExtension(assetPath.slice(assetPath.lastIndexOf('.') + 1)),
+  };
 }
 
 export function resolveNavigationTarget(
@@ -276,10 +337,14 @@ export function resolveNavigationTarget(
     };
   }
 
-  return {
-    kind: 'missing',
-    target: extensionlessTarget || normalizedTarget,
-  };
+  // A missing `.ok` target must not fall through to the create-mode editor —
+  // route it to the read-only viewer instead (see okContentNavigationTarget).
+  return (
+    okContentNavigationTarget(normalizedTarget, options) ?? {
+      kind: 'missing',
+      target: extensionlessTarget || normalizedTarget,
+    }
+  );
 }
 
 /**

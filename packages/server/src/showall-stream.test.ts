@@ -529,3 +529,93 @@ describe('streamShowAllEntries — symlinked directories', () => {
     expect(truncated).toBe(false);
   });
 });
+
+describe('streamShowAllEntries — showOk reveal', () => {
+  // Root `.ok` (config, templates, skills, worktrees, local), a nested
+  // per-folder `.ok`, and a floor dir that must stay pruned under every flag.
+  function makeOkFixture(): string {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-showok-')));
+    writeFileSync(join(dir, 'note.md'), '# note\n');
+    mkdirSync(join(dir, '.ok', 'templates'), { recursive: true });
+    writeFileSync(join(dir, '.ok', 'config.yml'), 'content:\n  dir: .\n');
+    writeFileSync(join(dir, '.ok', 'templates', 'daily.md'), '# Daily\n');
+    mkdirSync(join(dir, '.ok', 'skills', 'demo'), { recursive: true });
+    writeFileSync(join(dir, '.ok', 'skills', 'demo', 'SKILL.md'), '# Demo skill\n');
+    mkdirSync(join(dir, '.ok', 'worktrees', 'checkout'), { recursive: true });
+    writeFileSync(join(dir, '.ok', 'worktrees', 'checkout', 'README.md'), '# checkout\n');
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    writeFileSync(join(dir, '.ok', 'local', 'server.lock'), '{}\n');
+    mkdirSync(join(dir, 'notes', '.ok'), { recursive: true });
+    writeFileSync(join(dir, 'notes', 'page.md'), '# page\n');
+    writeFileSync(join(dir, 'notes', '.ok', 'frontmatter.yml'), 'title: Notes\n');
+    mkdirSync(join(dir, 'node_modules', 'pkg'), { recursive: true });
+    writeFileSync(join(dir, 'node_modules', 'pkg', 'x.md'), '# x\n');
+    return dir;
+  }
+
+  test('showOk surfaces .ok rows in place, excluding worktrees and local at every depth', async () => {
+    const dir = makeOkFixture();
+    const { entries, truncated } = await drain(
+      streamShowAllEntries({ ...streamOptsFor(dir, 50_000), showOk: true }),
+    );
+    expect(truncated).toBe(false);
+
+    const paths = entries.map(entryPath);
+    expect(paths).toContain('note');
+    expect(paths).toContain('.ok');
+    expect(paths).toContain('.ok/config.yml');
+    expect(paths).toContain('.ok/templates');
+    expect(paths).toContain('.ok/templates/daily');
+    expect(paths).toContain('.ok/skills/demo/SKILL');
+    expect(paths).toContain('notes/.ok');
+    expect(paths).toContain('notes/.ok/frontmatter.yml');
+    expect(paths.some((p) => p.startsWith('.ok/worktrees'))).toBe(false);
+    expect(paths.some((p) => p.startsWith('.ok/local'))).toBe(false);
+    expect(paths.some((p) => p.startsWith('node_modules'))).toBe(false);
+
+    // Markdown under `.ok` classifies as document, non-markdown as asset —
+    // the same kind dispatch the rest of the walk uses.
+    const daily = entries.find((e) => e.kind === 'document' && e.docName === '.ok/templates/daily');
+    expect(daily).toBeDefined();
+    const config = entries.find((e) => e.kind === 'asset' && e.path === '.ok/config.yml');
+    expect(config).toBeDefined();
+  });
+
+  test('without showOk the same fixture yields no .ok rows (default unchanged)', async () => {
+    const dir = makeOkFixture();
+    const { entries } = await drain(streamShowAllEntries(streamOptsFor(dir, 50_000)));
+    const paths = entries.map(entryPath);
+    expect(paths.some((p) => p === '.ok' || p.includes('.ok/') || p.endsWith('/.ok'))).toBe(false);
+    expect(paths).toContain('note');
+    expect(paths).toContain('notes/page');
+  });
+
+  test('maxDepth=1 with showOk yields the .ok folder and its probe sees admitted children', async () => {
+    const dir = makeOkFixture();
+    const { entries } = await drain(
+      streamShowAllEntries({ ...streamOptsFor(dir, 50_000), showOk: true, maxDepth: 1 }),
+    );
+    expect(entries.map(entryPath).toSorted()).toEqual(['.ok', 'note', 'notes']);
+    const okFolder = entries.find((e) => e.kind === 'folder' && e.path === '.ok');
+    expect(okFolder?.kind === 'folder' && okFolder.hasChildren).toBe(true);
+  });
+
+  test('dirFilter=.ok with showOk lists the .ok children lazily, minus the excluded pair', async () => {
+    const dir = makeOkFixture();
+    const { entries } = await drain(
+      streamShowAllEntries({
+        ...streamOptsFor(dir, 50_000),
+        showOk: true,
+        dirFilter: '.ok',
+        maxDepth: 1,
+      }),
+    );
+    expect(entries.map(entryPath).toSorted()).toEqual([
+      '.ok/config.yml',
+      '.ok/skills',
+      '.ok/templates',
+    ]);
+    const templates = entries.find((e) => e.kind === 'folder' && e.path === '.ok/templates');
+    expect(templates?.kind === 'folder' && templates.hasChildren).toBe(true);
+  });
+});

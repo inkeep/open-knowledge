@@ -1370,6 +1370,13 @@ export interface StreamShowAllOpts {
    * the subtree.
    */
   maxDepth?: number;
+  /**
+   * Admit `.ok` entries — minus `.ok/worktrees` and `.ok/local` — through the
+   * content filter's always-skip floor (see `ContentFilterReadOpts.showOk`).
+   * Backs `?showOk=true`; threaded into every filter consultation the walk
+   * and its `hasChildren` probe make.
+   */
+  showOk?: boolean;
 }
 
 export interface WalkShowAllOpts extends StreamShowAllOpts {
@@ -1396,8 +1403,10 @@ export interface WalkShowAllOpts extends StreamShowAllOpts {
  * `build/`, `coverage/`, …) surface. The `ALWAYS_SKIP_DIRS` floor still prunes
  * `.git/` / `node_modules/` / `.ok/` even under bypass (those trees are
  * unbounded and never hold user markdown — pruning them is the Show All Files
- * OOM guard), and the un-bypassable STOP-rule gate keeps synthetic
- * `__system__` / `__config__` / `__user__` / `__local__` docs hidden.
+ * OOM guard); `showOk` re-admits `.ok` minus `worktrees`/`local`, the two
+ * children that can be repo-scale. The un-bypassable STOP-rule gate keeps
+ * synthetic `__system__` / `__config__` / `__user__` / `__local__` docs
+ * hidden.
  *
  * Yields the union DocumentListEntry shape:
  *   - dirs → kind: 'folder' (with `path`)
@@ -1414,8 +1423,12 @@ export interface WalkShowAllOpts extends StreamShowAllOpts {
 export async function* streamShowAllEntries(
   opts: StreamShowAllOpts,
 ): AsyncGenerator<DocumentListEntry, { truncated: boolean }, void> {
-  const { contentDir, contentFilter, dirFilter, maxEntries, signal } = opts;
+  const { contentDir, contentFilter, dirFilter, maxEntries, signal, showOk } = opts;
   const maxDepth = opts.maxDepth ?? Number.POSITIVE_INFINITY;
+  // One opts object for every filter consultation: the dir gates, the
+  // `hasChildren` probe, and the file backstop must agree on admission, or a
+  // revealed folder probes childless / yields rows its own dir gate pruned.
+  const filterOpts = { bypassFilters: true, showOk } as const;
   showAllWalkInvocations += 1;
   // Running count of yielded entries — the streaming analogue of the buffered
   // `documents.length` cap probe. Shared across the whole traversal so the
@@ -1531,7 +1544,7 @@ export async function* streamShowAllEntries(
     for (const entry of entries) {
       const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        if (contentFilter.isDirExcluded(relPath, { bypassFilters: true })) continue;
+        if (contentFilter.isDirExcluded(relPath, filterOpts)) continue;
         // Symlink-escape parity with the main walk: a child that is a symlink to
         // a directory outside contentDir must not count as an admitted child
         // (the walk refuses to descend into it), so the probe must refuse it too.
@@ -1551,7 +1564,7 @@ export async function* streamShowAllEntries(
         }
         return true;
       }
-      if (entry.isFile() && !contentFilter.isExcluded(relPath, { bypassFilters: true })) {
+      if (entry.isFile() && !contentFilter.isExcluded(relPath, filterOpts)) {
         return true;
       }
     }
@@ -1620,7 +1633,8 @@ export async function* streamShowAllEntries(
           // bypassFilters:true admits gitignored + content-bearing skip-dirs
           // (dist/, build/), but the ALWAYS_SKIP_DIRS floor still prunes
           // .git/, node_modules/, .ok/ here — the Show All Files OOM guard.
-          if (contentFilter.isDirExcluded(relPath, { bypassFilters: true })) continue;
+          // showOk re-admits .ok minus worktrees/local for the tree reveal.
+          if (contentFilter.isDirExcluded(relPath, filterOpts)) continue;
 
           // Symlink-escape guard. `Dirent.isDirectory()` returns true for a
           // symlink pointing at a directory; without canonical-path containment,
@@ -1724,7 +1738,7 @@ export async function* streamShowAllEntries(
           }
           const targetRel = toPosix(relative(contentDir, canonical));
           if (canonStat.isDirectory()) {
-            if (contentFilter.isDirExcluded(relPath, { bypassFilters: true })) continue;
+            if (contentFilter.isDirExcluded(relPath, filterOpts)) continue;
             if (!passesDirFilter(relPath)) continue;
             emitted += 1;
             yield {
@@ -1741,7 +1755,7 @@ export async function* streamShowAllEntries(
             continue;
           }
           if (!canonStat.isFile()) continue;
-          if (contentFilter.isExcluded(relPath, { bypassFilters: true })) continue;
+          if (contentFilter.isExcluded(relPath, filterOpts)) continue;
           if (!passesDirFilter(relPath)) continue;
           emitted += 1;
           if (isSupportedDocFile(entry.name)) {
@@ -1777,11 +1791,10 @@ export async function* streamShowAllEntries(
         }
 
         if (!entry.isFile()) continue;
-        // `isExcluded(rel, {bypassFilters:true})` admits every file except the
-        // unbypassable STOP-rule docs and the ALWAYS_SKIP_DIRS floor. Floor files
-        // can't actually reach here — the dir gate above already skipped
-        // .git/node_modules/.ok — so this is just the file-level backstop.
-        if (contentFilter.isExcluded(relPath, { bypassFilters: true })) continue;
+        // The file-level backstop mirrors the dir gate's admission (shared
+        // filterOpts): floor files can't actually reach here — the dir gate
+        // above already skipped .git/node_modules/(non-revealed) .ok.
+        if (contentFilter.isExcluded(relPath, filterOpts)) continue;
         if (!passesDirFilter(relPath)) continue;
 
         let fileStat: import('node:fs').Stats | null = null;
@@ -1917,8 +1930,19 @@ function isValidRelativeContentPath(path: string): boolean {
   return path.split('/').every((segment) => segment && segment !== '.' && segment !== '..');
 }
 
+/**
+ * True when any `/`-separated segment of `path` is `.ok` or `.git`, at any
+ * depth — nested `<folder>/.ok/` is a first-class OK shape (folder metadata +
+ * templates), so a top-level-only check is not a boundary. Segments compare
+ * case-insensitively: on the default case-insensitive macOS filesystem an
+ * externally-addressed `.OK/x` IS `.ok/x`. Same segment walk as
+ * `pathHasAlwaysSkipSegment` in content-filter.ts.
+ */
 function isReservedProjectStatePath(path: string): boolean {
-  return path === '.ok' || path.startsWith('.ok/') || path === '.git' || path.startsWith('.git/');
+  return path.split('/').some((segment) => {
+    const normalized = segment.toLowerCase();
+    return normalized === OK_DIR || normalized === '.git';
+  });
 }
 
 function isReservedSyntheticFolderPath(path: string): boolean {
@@ -5818,6 +5842,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
         const dir = url.searchParams.get('dir');
         const showAll = url.searchParams.get('showAll') === 'true';
+        // Tree-listing reveal: admit `.ok` rows (minus worktrees/local) into
+        // the showAll walk. Inert without showAll — the watcher indexes
+        // backing the non-showAll path never hold non-skill `.ok` entries.
+        const showOk = url.searchParams.get('showOk') === 'true';
         // Lazy per-directory contract: `?depth=1` yields only the
         // scoped dir's immediate children (each folder stamped `hasChildren`),
         // so the sidebar fetches one level on expand instead of the whole tree.
@@ -5896,6 +5924,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               dirFilter: dir,
               maxEntries,
               maxDepth: showAllMaxDepth,
+              showOk,
               signal: controller.signal,
             });
             let count = 0;
@@ -5952,9 +5981,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         if (showAll && contentFilter) {
           // Single-flight: coalesce concurrent identical walks into one. Key by
           // the already-traversal-validated `dir` (the exact `dirFilter` the
-          // walk consumes), so requests producing the same traversal share one
-          // walk and one sorted result; distinct dirs run independently.
-          const key = `showAll:${showAllMaxDepth === 1 ? 'd1:' : ''}${dir ?? ''}`;
+          // walk consumes) plus the depth and showOk markers, so only requests
+          // producing the same traversal share one walk and one sorted result.
+          // Coalescing across showOk modes would hand one caller the other
+          // mode's listing (`.ok` rows leaking to a plain caller, or silently
+          // missing for a reveal caller).
+          const key = `showAll:${showAllMaxDepth === 1 ? 'd1:' : ''}${showOk ? 'ok:' : ''}${dir ?? ''}`;
           let entry = showAllInflight.get(key);
           if (!entry) {
             const controller = new AbortController();
@@ -5973,6 +6005,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 documents,
                 maxEntries,
                 maxDepth: showAllMaxDepth,
+                showOk,
                 signal: controller.signal,
               });
               documents.sort((a, b) => {
@@ -9164,17 +9197,17 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        // Reject managed-artifact + `.ok/`-rooted targets. Now that
+        // Reject managed-artifact + reserved-directory targets. Now that
         // `.ok/skills/**` is indexed/served content, a raw create-page into
         // `.ok/skills/<name>/SKILL.md` would write directly with ZERO skill-schema
         // validation (no name/description checks, no XML-tag ban) and surface as a
         // malformed phantom skill. Skills/templates must go through their own
         // validating write/install spines; every other `.ok/` child is excluded
-        // from the content scope anyway. The first segment test catches the raw
-        // filesystem path; `isManagedArtifactDocName` catches the synthetic
-        // `__skill__/` / `__template__/` doc-name forms.
-        const firstSegment = filePath.split('/')[0];
-        if (firstSegment === OK_DIR || isManagedArtifactDocName(candidateDocName)) {
+        // from the content scope anyway. The reserved-path test catches raw
+        // filesystem paths with a `.ok`/`.git` segment at any depth;
+        // `isManagedArtifactDocName` catches the synthetic `__skill__/` /
+        // `__template__/` doc-name forms.
+        if (isReservedProjectStatePath(filePath) || isManagedArtifactDocName(candidateDocName)) {
           errorResponse(
             res,
             400,
@@ -9183,7 +9216,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             {
               handler: 'create-page',
               detail:
-                'Cannot create a page under .ok/ — skills and templates are authored through their own validating flows.',
+                'Cannot create a page inside .ok or .git — skills and templates are authored through their own validating flows.',
             },
           );
           return;
@@ -9366,12 +9399,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        if (folderPath === '.ok' || folderPath.startsWith('.ok/')) {
+        if (isReservedProjectStatePath(folderPath)) {
           errorResponse(
             res,
             400,
             'urn:ok:error:reserved-doc-name',
-            "'.ok' is a reserved directory.",
+            '.ok and .git are reserved directories.',
             { handler: 'create-folder' },
           );
           return;
@@ -9442,8 +9475,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
         if (
-          requestedPath === '.ok' ||
-          requestedPath.startsWith('.ok/') ||
+          isReservedProjectStatePath(requestedPath) ||
           (kind === 'file' && (isSystemDoc(requestedDocName) || isConfigDoc(requestedDocName))) ||
           (kind === 'folder' && isReservedSyntheticFolderPath(requestedPath))
         ) {
@@ -9853,23 +9885,20 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        // Reject paths whose first segment is `.ok` — that directory holds OK
-        // config (`config.yml`, `frontmatter.yml`, `templates/`) plus the
-        // per-machine `local/` runtime subtree (server.lock, principal.json,
-        // cache, etc.). Symmetric with the `__system__` carve-out. The
-        // `AGENTS.md` file inside `.ok/` is a tracked content file by design,
-        // but a rename TO or FROM this directory would clobber OK bookkeeping.
-        if (
-          fromPath === '.ok' ||
-          fromPath.startsWith('.ok/') ||
-          toPath === '.ok' ||
-          toPath.startsWith('.ok/')
-        ) {
+        // Reject paths with a `.ok` or `.git` segment at any depth — root
+        // `.ok/` holds OK config (`config.yml`, `frontmatter.yml`,
+        // `templates/`) plus the per-machine `local/` runtime subtree
+        // (server.lock, principal.json, cache, etc.), and nested
+        // `<folder>/.ok/` holds folder metadata + templates. Symmetric with
+        // the `__system__` carve-out. The `AGENTS.md` file inside `.ok/` is a
+        // tracked content file by design, but a rename TO or FROM these
+        // directories would clobber OK bookkeeping.
+        if (isReservedProjectStatePath(fromPath) || isReservedProjectStatePath(toPath)) {
           errorResponse(
             res,
             400,
             'urn:ok:error:reserved-doc-name',
-            '.ok is a reserved directory.',
+            '.ok and .git are reserved directories.',
             {
               handler: 'rename-path',
             },
@@ -10198,7 +10227,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         if (operationKind === 'file') {
           probeAndRegisterSourceFileExtension(contentDir, operationPath);
         }
-        if (operationKind === 'asset' && isReservedProjectStatePath(operationPath)) {
+        if (isReservedProjectStatePath(operationPath)) {
           errorResponse(
             res,
             400,
@@ -10410,12 +10439,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             // loop fires.
             const isReservedFolder =
               operationKind === 'folder' && isReservedSyntheticFolderPath(path);
-            const isReservedAsset = operationKind === 'asset' && isReservedProjectStatePath(path);
             if (
               (operationKind === 'file' &&
                 (isSystemDoc(operationDocName) || isConfigDoc(operationDocName))) ||
               isReservedFolder ||
-              isReservedAsset
+              isReservedProjectStatePath(path)
             ) {
               errorResponse(
                 res,

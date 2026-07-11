@@ -49,4 +49,20 @@ describe('countVisibleEntries', () => {
   test('excludes entries that ship without a docName or path', () => {
     expect(countVisibleEntries([doc(''), folder('')])).toBe(0);
   });
+
+  test('sidebar view toggles cannot alter the count — the counter has no axis input', () => {
+    // Entries a view toggle could reveal (dot-path via show-hidden, .ok via
+    // show-ok) or drop (non-markdown via only-markdown) must not move the
+    // onboarding gate: the count always uses default visibility.
+    expect(
+      countVisibleEntries([
+        doc('welcome'),
+        folder('guides'),
+        doc('.scratch/wip'),
+        doc('.ok/skills/research/SKILL'),
+        asset('logo.png'),
+        file('data.csv'),
+      ]),
+    ).toBe(2);
+  });
 });

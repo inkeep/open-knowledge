@@ -22,6 +22,12 @@ function selectOnlyTreeItem(
   }
 }
 
+function deselectAllTreeItems(model: PierreFileTreeModel): void {
+  for (const selectedPath of model.getSelectedPaths()) {
+    model.getItem(selectedPath)?.deselect();
+  }
+}
+
 export function useSelectionMirror(
   model: PierreFileTreeModel,
   activeTreePath: string | null,
@@ -50,9 +56,7 @@ export function useSelectionMirror(
     };
     suppressSelectionRef.current = true;
     if (!activeTreePath) {
-      for (const selectedPath of model.getSelectedPaths()) {
-        model.getItem(selectedPath)?.deselect();
-      }
+      deselectAllTreeItems(model);
       releaseSelectionSuppression();
       return;
     }
@@ -67,6 +71,13 @@ export function useSelectionMirror(
     }
     const item = model.getItem(activeTreePath);
     if (!item) {
+      // The active doc has no visible row (filtered out, or not fetched yet).
+      // Keep the tree quiet: clear any stale selection left on the previously
+      // active row instead of letting its highlight linger next to an editor
+      // showing a different doc. Focus cannot be cleared the same way — Pierre
+      // has no unfocus API — so the stale focused path is neutralized by the
+      // active-row guard in `revealActiveRow` rather than here.
+      deselectAllTreeItems(model);
       releaseSelectionSuppression();
       return;
     }

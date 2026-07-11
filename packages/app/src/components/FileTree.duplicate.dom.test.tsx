@@ -239,6 +239,10 @@ function duplicateCalls() {
   return fetchCalls.filter((call) => call.url === '/api/duplicate-path');
 }
 
+function deletePathCalls() {
+  return fetchCalls.filter((call) => call.url === '/api/delete-path');
+}
+
 function expectMenuOrder(labels: readonly RegExp[]) {
   const items = Array.from(
     document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemcheckbox"]'),
@@ -265,6 +269,9 @@ function makeFetchMock() {
         pathSeparator: '/',
         symlinkResolved: true,
       });
+    }
+    if (url === '/api/delete-path') {
+      return jsonResponse({ deletedDocNames: [] });
     }
     if (url === '/api/duplicate-path') {
       if (duplicateGate) await duplicateGate;
@@ -442,7 +449,9 @@ mock.module('@pierre/trees/react', () => ({
 }));
 
 const { FileTree } = await import('./FileTree');
-const { emitFileTreeMenuActionDuplicate } = await import('@/lib/file-tree-menu-action-events');
+const { emitFileTreeMenuActionDelete, emitFileTreeMenuActionDuplicate } = await import(
+  '@/lib/file-tree-menu-action-events'
+);
 
 function renderFileTree() {
   return render(<FileTree />);
@@ -593,15 +602,11 @@ describe('FileTree duplicate action runtime behavior', () => {
     expect(closeMenuMock).toHaveBeenCalled();
   });
 
-  test('folder context menu exposes runtime order, subtree actions, visibility toggle, and folder hide', async () => {
+  test('folder context menu exposes runtime order, subtree actions, and folder hide', async () => {
     menuItem = { kind: 'directory', path: 'notes/' };
     okignoreBindingMock = {
       current: () => '',
       patch: mock(() => ({ ok: true })),
-    };
-    projectLocalBindingMock = { patch: mock(() => ({ ok: true })) };
-    mergedConfigMock = {
-      appearance: { sidebar: { showHiddenFiles: true } },
     };
     const user = userEvent.setup();
     renderFileTree();
@@ -613,7 +618,6 @@ describe('FileTree duplicate action runtime behavior', () => {
       /New folder/,
       /Open with AI/,
       /Copy path/,
-      /Show hidden files/,
       /Expand all/,
       /Duplicate/,
       /Rename/,
@@ -621,13 +625,10 @@ describe('FileTree duplicate action runtime behavior', () => {
       /Delete/,
     ]);
 
-    const showHidden = screen.getByTestId('file-tree-menu-show-hidden-files');
-    expect(showHidden.getAttribute('aria-checked')).toBe('true');
-
-    await user.click(showHidden);
-    expect(projectLocalBindingMock.patch).toHaveBeenCalledWith({
-      appearance: { sidebar: { showHiddenFiles: false } },
-    });
+    // Global visibility toggles live on the sidebar surfaces (toolbar
+    // popover, empty-space menu, native View menu) — the per-row menu
+    // carries none.
+    expect(screen.queryByTestId('file-tree-menu-show-hidden-files')).toBeNull();
 
     await user.click(screen.getByRole('menuitem', { name: /expand all/i }));
     expect(model.getItem('notes/')?.isExpanded()).toBe(true);
@@ -653,6 +654,49 @@ describe('FileTree duplicate action runtime behavior', () => {
     expect(screen.getByRole('menuitem', { name: /^delete/i })).toBeTruthy();
     expect(screen.queryByTestId('file-tree-menu-show-hidden-files')).toBeNull();
     expect(screen.getByRole('menuitem', { name: /copy path/i })).toBeTruthy();
+  });
+
+  test('.ok file row menu keeps read-only actions and drops every mutate action', async () => {
+    menuItem = { kind: 'file', path: '.ok/templates/greeting.md' };
+    okignoreBindingMock = {
+      current: () => '',
+      patch: mock(() => ({ ok: true })),
+    };
+    renderFileTree();
+
+    await waitFor(() => {
+      expect(screen.getByRole('menuitem', { name: /copy path/i })).toBeTruthy();
+    });
+    // Read-only posture: OK-managed rows expose no rename/delete/duplicate/
+    // hide — the canonical editors own template/skill mutation, and raw `.ok`
+    // state is inspect-only.
+    expect(screen.queryByRole('menuitem', { name: /duplicate/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /rename/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /^delete/i })).toBeNull();
+    expect(screen.queryByTestId('file-tree-menu-hide')).toBeNull();
+  });
+
+  test('.ok folder row menu drops create and mutate sections, keeps path/tree actions', async () => {
+    menuItem = { kind: 'directory', path: '.ok/' };
+    okignoreBindingMock = {
+      current: () => '',
+      patch: mock(() => ({ ok: true })),
+    };
+    renderFileTree();
+
+    await waitFor(() => {
+      expect(screen.getByRole('menuitem', { name: /copy path/i })).toBeTruthy();
+    });
+    // Creating inside `.ok` is server-refused — offering New file/folder here
+    // would be a broken affordance, so the create section hides with the
+    // mutate section.
+    expect(screen.queryByRole('menuitem', { name: /new file/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /new folder/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /new from template/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /duplicate/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /rename/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /^delete/i })).toBeNull();
+    expect(screen.queryByTestId('file-tree-menu-hide')).toBeNull();
   });
 
   test('duplicate response is schema-validated before UI reconciliation', async () => {
@@ -896,6 +940,45 @@ describe('FileTree duplicate action runtime behavior', () => {
     expect(duplicateCalls()).toHaveLength(0);
   });
 
+  test('Cmd/Ctrl+D ignores revealed .ok rows', async () => {
+    renderFileTree();
+    await screen.findByRole('menuitem', { name: /duplicate/i });
+    fetchCalls = [];
+
+    model.focusedPath = '.ok/templates/greeting.md';
+    model.selectedPaths = ['.ok/templates/greeting.md'];
+    screen.getByTestId('tree-focus-target').focus();
+    fireEvent.keyDown(document, { key: 'd', ctrlKey: true });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(duplicateCalls()).toHaveLength(0);
+  });
+
+  test('Cmd/Ctrl+C on a revealed .ok row keeps native copy and enqueues no paste target', async () => {
+    renderFileTree();
+    await screen.findByRole('menuitem', { name: /duplicate/i });
+    fetchCalls = [];
+
+    model.focusedPath = 'notes/.ok/';
+    model.selectedPaths = ['notes/.ok/'];
+    screen.getByTestId('tree-focus-target').focus();
+    const copyEvent = new KeyboardEvent('keydown', {
+      key: 'c',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(copyEvent);
+
+    model.focusedPath = null;
+    model.selectedPaths = ['notes/source.mdx'];
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(copyEvent.defaultPrevented).toBe(false);
+    expect(duplicateCalls()).toHaveLength(0);
+  });
+
   test('Cmd+Backspace opens delete confirmation for the selected tree item', async () => {
     renderFileTree();
     await screen.findByRole('menuitem', { name: /duplicate/i });
@@ -952,6 +1035,34 @@ describe('FileTree duplicate action runtime behavior', () => {
         description: 'notes/source copy',
       }),
     );
+  });
+
+  test('Delete on a revealed .ok row opens no delete confirmation', async () => {
+    renderFileTree();
+    await screen.findByRole('menuitem', { name: /duplicate/i });
+
+    model.focusedPath = '.ok/';
+    model.selectedPaths = [];
+    screen.getByTestId('tree-focus-target').focus();
+    fireEvent.keyDown(document, { key: 'Delete' });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByTestId('delete-confirmation-dialog')).toBeNull();
+    expect(deleteConfirmationProps).toBeNull();
+  });
+
+  test('Delete on a mixed selection confirms only the non-.ok targets', async () => {
+    renderFileTree();
+    await screen.findByRole('menuitem', { name: /duplicate/i });
+
+    model.focusedPath = null;
+    model.selectedPaths = ['notes/source.mdx', 'notes/.ok/'];
+    screen.getByTestId('tree-focus-target').focus();
+    fireEvent.keyDown(document, { key: 'Delete' });
+
+    await screen.findByTestId('delete-confirmation-dialog');
+    expect(deleteConfirmationProps?.itemName).toBe('source.mdx');
+    expect(deleteConfirmationProps?.customTitle).toBeUndefined();
   });
 
   test('Delete opens one confirmation for multi-selected targets with nested paths deduped', async () => {
@@ -1026,5 +1137,38 @@ describe('FileTree duplicate action runtime behavior', () => {
         kind: 'asset',
       }),
     );
+  });
+
+  test('delete event bus drops .ok targets before any delete side effect', async () => {
+    renderFileTree();
+    await screen.findByRole('menuitem', { name: /duplicate/i });
+    fetchCalls = [];
+
+    act(() => {
+      emitFileTreeMenuActionDelete({
+        kind: 'folder',
+        target: '.ok',
+        folderPath: '.ok',
+      } satisfies ResolvedNavigationTarget);
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(deletePathCalls()).toHaveLength(0);
+
+    // Same spine stays live for deletable targets — proves the drop above is
+    // the .ok gate, not a dead subscription.
+    act(() => {
+      emitFileTreeMenuActionDelete({
+        kind: 'folder',
+        target: 'notes',
+        folderPath: 'notes',
+      } satisfies ResolvedNavigationTarget);
+    });
+
+    await waitFor(() => expect(deletePathCalls()).toHaveLength(1));
+    expect(JSON.parse(String(deletePathCalls()[0]?.init?.body))).toEqual({
+      kind: 'folder',
+      path: 'notes',
+    });
   });
 });

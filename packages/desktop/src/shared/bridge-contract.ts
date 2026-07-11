@@ -200,11 +200,14 @@ export type OkMenuAction =
   | 'copy-full-path'
   | 'copy-relative-path'
   // View menu items. Sidebar visibility toggles
-  // (mirror the sidebar's empty-space + folder menu state) + tree-scoped
-  // Expand/Collapse All (sibling of subtree-scoped versions on folder
-  // rows). Renderer handler reads merged config / Pierre tree state to
-  // dispatch the appropriate primitive when the menu item is clicked.
+  // (mirror the sidebar's tree-options popover + empty-space menu state) +
+  // tree-scoped Expand/Collapse All (sibling of subtree-scoped versions on
+  // folder rows). Renderer handler reads merged config / Pierre tree state
+  // to dispatch the appropriate primitive when the menu item is clicked.
   | 'toggle-show-hidden-files'
+  | 'toggle-show-ok-folders'
+  | 'toggle-show-only-markdown-files'
+  | 'toggle-show-skills-section'
   | 'expand-all-tree'
   | 'collapse-all-tree'
   | 'toggle-doc-panel'
@@ -809,6 +812,9 @@ export type OkEditorActiveTargetSnapshot =
  */
 export interface OkEditorViewMenuStateSnapshot {
   readonly showHiddenFiles: boolean;
+  readonly showOkFolders: boolean;
+  readonly showOnlyMarkdownFiles: boolean;
+  readonly showSkillsSection: boolean;
   readonly canExpandAll: boolean;
   readonly canCollapseAll: boolean;
   readonly sidebarVisible: boolean;

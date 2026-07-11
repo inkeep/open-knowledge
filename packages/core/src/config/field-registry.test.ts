@@ -201,7 +201,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     // `<projectDir>/.ok/local/config.yml` is gitignored and never mirrored
     // to the public repo. `autoSync.enabled` controls per-machine sync;
     // the `appearance.sidebar.*` toggles are per-machine view preferences
-    // for hidden / ignored files in the file tree; `search.semantic.*` is the
+    // for what the file tree and sidebar show; `search.semantic.*` is the
     // per-machine opt-in for embeddings search — enabling it sends content to
     // a third-party provider (egress) and needs a local API key, so the choice
     // (and its non-secret provider knobs) is inherently per-machine.
@@ -215,6 +215,9 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .sort();
     expect(projectLocalStrict).toEqual([
       'appearance.sidebar.showHiddenFiles',
+      'appearance.sidebar.showOkFolders',
+      'appearance.sidebar.showOnlyMarkdownFiles',
+      'appearance.sidebar.showSkillsSection',
       'autoSync.enabled',
       'search.semantic.baseUrl',
       'search.semantic.dimensions',
@@ -223,5 +226,20 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'search.semantic.similarityFloor',
       'terminal.enabled',
     ]);
+  });
+
+  test('showOnlyMarkdownFiles description documents the .md/.mdx extension contract', () => {
+    // "Markdown" canonically includes .mdx here; the registered description
+    // is the single documented home for that contract (it is the source
+    // injected into the published JSON schema).
+    const leaves: { path: string[]; schema: unknown }[] = [];
+    walkLeaves(ConfigSchema, [], leaves);
+    const leaf = leaves.find(
+      (l) => l.path.join('.') === 'appearance.sidebar.showOnlyMarkdownFiles',
+    );
+    expect(leaf).toBeDefined();
+    const description = getFieldMeta(leaf?.schema)?.description ?? '';
+    expect(description).toContain('.md');
+    expect(description).toContain('.mdx');
   });
 });

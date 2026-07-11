@@ -1,6 +1,4 @@
 import {
-  type Config,
-  type ConfigBinding,
   CreateFolderSuccessSchema,
   CreatePageSuccessSchema,
   DeletePathSuccessSchema,
@@ -8,7 +6,6 @@ import {
   DuplicatePathSuccessSchema,
   type HandoffOutcome,
   type HandoffTarget,
-  humanFormat,
   type InstallState,
   isDocumentOverOpenByteLimit,
   type OkignoreBinding,
@@ -62,6 +59,7 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
+import { FileTreeFilteredToZeroNotice } from '@/components/FileTreeFilteredToZeroNotice';
 import {
   MARKDOWN_FILE_ICON_PATH_D,
   MARKDOWN_FILE_ICON_VIEWBOX,
@@ -133,10 +131,12 @@ import {
 } from '@/components/file-tree-selection';
 import { selectTrashConfirmCopy, trashTargetDisplayName } from '@/components/file-tree-trash-copy';
 import {
+  classifyEmptyTree,
   type DocumentEntry,
   type FileEntry,
   type FolderEntry,
   filterVisibleEntries,
+  hasOkPathSegment,
   isAssetEntry,
   isDocumentEntry,
   isFolderEntry,
@@ -145,6 +145,7 @@ import {
 import { NewItemDialog } from '@/components/NewItemDialog';
 import {
   largeFileNavigationTarget,
+  okContentNavigationTarget,
   type ResolvedNavigationTarget,
 } from '@/components/navigation-targets';
 import { usePageList } from '@/components/PageListContext';
@@ -164,7 +165,6 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -566,13 +566,6 @@ interface FileTreeMenuProps {
   };
   model: PierreFileTreeModel;
   okignoreBinding: OkignoreBinding | null;
-  /** Project-local config binding for the `Show hidden files` folder-menu
-   *  toggle. Patched directly here (mirrors the okignore Hide flow); `null`
-   *  during cold-start disables the toggle item. */
-  projectLocalBinding: ConfigBinding | null;
-  /** Layered config view, source for the toggle check-state
-   *  (`appearance.sidebar.showHiddenFiles`). */
-  mergedConfig: Config | null;
   onStartCreating: (kind: 'file' | 'folder', parentDir: string) => void;
   /** Inline create-from-template for the given parent dir + template name —
    *  same inline-rename fast path as `onStartCreating`, seeded from a template.
@@ -632,7 +625,12 @@ function selectedTreePathsToDeleteTargets(
   selectedTreePaths: readonly string[],
   documents: readonly FileEntry[],
 ): FileTreeTarget[] {
-  const uniqueDeletablePaths = [...new Set(selectedTreePaths)];
+  // Revealed `.ok` rows are read-only OK-managed state — they never become
+  // delete targets, even when swept into a multi-selection beside deletable
+  // rows (this also keeps the confirm dialog's item count honest).
+  const uniqueDeletablePaths = [...new Set(selectedTreePaths)].filter(
+    (treePath) => !hasOkPathSegment(treePath),
+  );
   const selectedFolderPaths = uniqueDeletablePaths.filter((treePath) => treePath.endsWith('/'));
   return uniqueDeletablePaths
     .filter(
@@ -661,7 +659,11 @@ function resolveDuplicableKeyboardTarget(
   assetTreePaths: ReadonlySet<string>,
 ): FileTreeTarget | null {
   const selectedPath = focusedOrFirstSelectedTreePath(model);
-  if (!selectedPath || assetTreePaths.has(selectedPath)) return null;
+  // Revealed `.ok` rows are read-only OK-managed state — no keyboard
+  // copy/paste/duplicate, matching their menu's suppressed affordances.
+  if (!selectedPath || assetTreePaths.has(selectedPath) || hasOkPathSegment(selectedPath)) {
+    return null;
+  }
   return treePathToTarget(selectedPath, documents);
 }
 
@@ -750,8 +752,6 @@ function FileTreeMenu({
   handoff,
   model,
   okignoreBinding,
-  projectLocalBinding,
-  mergedConfig,
   onStartCreating,
   onCreateFromTemplate,
   onDuplicate,
@@ -765,11 +765,14 @@ function FileTreeMenu({
   const { t } = useLingui();
   const target = treeItemToTarget(item, documents);
   const isFolder = item.kind === 'directory';
+  // Revealed `.ok` rows are inspect-only: no create/rename/delete/duplicate/
+  // hide affordances (creates into `.ok` are server-refused; mutation of
+  // OK-managed state belongs to its canonical editors). Path/tree actions
+  // (Reveal, Copy path, Expand/Collapse) stay.
+  const isOkRow = hasOkPathSegment(item.path);
   const okignoreTarget = target.kind === 'asset' ? null : target;
   const canHide = okignoreTarget !== null && okignoreBinding !== null;
   const hideLabel = isFolder ? t`Hide folder` : t`Hide this file`;
-  const showHiddenFiles = mergedConfig?.appearance?.sidebar?.showHiddenFiles ?? false;
-  const canToggleVisibility = projectLocalBinding !== null;
   // Drives the smart-hide of the folder menu's "New from template" submenu.
   // Only folder rows can fetch (null → idle, no request) and the menu mounts
   // on-demand per right-click, so this fetch fires once when the menu opens —
@@ -858,26 +861,6 @@ function FileTreeMenu({
     </DropdownMenuItem>
   ) : null;
 
-  // Project-local visibility toggle for the folder menu's filter section.
-  // Mirrors the empty-space surface's binding patch (FileSidebar). The filter
-  // EFFECT (client dot-segment bypass) is a separate seam; this only flips the
-  // persisted config the filter pipeline reads.
-  //
-  // Validation failures (e.g. doc YAML parse-error in the project-local
-  // config) reject the patch; without surfacing the rejection the checkbox
-  // appears to toggle but silently reverts at the next CRDT push.
-  const handleShowHiddenFilesToggle = (checked: boolean) => {
-    if (projectLocalBinding === null) return;
-    const result = projectLocalBinding.patch({
-      appearance: { sidebar: { showHiddenFiles: checked } },
-    });
-    if (!result.ok) {
-      console.warn('[FileTree] showHiddenFiles toggle rejected:', humanFormat(result.error));
-      toast.error(t`Could not update sidebar settings`, {
-        description: humanFormat(result.error),
-      });
-    }
-  };
   // Smart-hide for the subtree Expand/Collapse-All items — counts folders
   // under the right-clicked folder (root + descendants) using the same
   // `folderPath === root || folderPath.startsWith(root)` predicate that
@@ -924,45 +907,52 @@ function FileTreeMenu({
       >
         {isFolder ? (
           <>
-            <DropdownMenuItem
-              disabled={anyActionBusy}
-              onSelect={() => {
-                closeForInlineSurface();
-                onStartCreating('file', treeDirectoryPathToFolderPath(item.path));
-              }}
-            >
-              <SquarePen aria-hidden="true" />
-              <Trans>New file</Trans>
-            </DropdownMenuItem>
-            {folderHasTemplates ? (
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger disabled={anyActionBusy}>
-                  <FilePlus aria-hidden="true" />
-                  <Trans>New from template</Trans>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <TemplateMenuRows
-                    parentDir={treeDirectoryPathToFolderPath(item.path)}
-                    onSelectTemplate={(templateName) => {
-                      closeForInlineSurface();
-                      onCreateFromTemplate(treeDirectoryPathToFolderPath(item.path), templateName);
-                    }}
-                    ItemComponent={DropdownMenuItem}
-                  />
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
+            {!isOkRow ? (
+              <>
+                <DropdownMenuItem
+                  disabled={anyActionBusy}
+                  onSelect={() => {
+                    closeForInlineSurface();
+                    onStartCreating('file', treeDirectoryPathToFolderPath(item.path));
+                  }}
+                >
+                  <SquarePen aria-hidden="true" />
+                  <Trans>New file</Trans>
+                </DropdownMenuItem>
+                {folderHasTemplates ? (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger disabled={anyActionBusy}>
+                      <FilePlus aria-hidden="true" />
+                      <Trans>New from template</Trans>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      <TemplateMenuRows
+                        parentDir={treeDirectoryPathToFolderPath(item.path)}
+                        onSelectTemplate={(templateName) => {
+                          closeForInlineSurface();
+                          onCreateFromTemplate(
+                            treeDirectoryPathToFolderPath(item.path),
+                            templateName,
+                          );
+                        }}
+                        ItemComponent={DropdownMenuItem}
+                      />
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                ) : null}
+                <DropdownMenuItem
+                  disabled={anyActionBusy}
+                  onSelect={() => {
+                    closeForInlineSurface();
+                    onStartCreating('folder', treeDirectoryPathToFolderPath(item.path));
+                  }}
+                >
+                  <FolderPlus aria-hidden="true" />
+                  <Trans>New folder</Trans>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
             ) : null}
-            <DropdownMenuItem
-              disabled={anyActionBusy}
-              onSelect={() => {
-                closeForInlineSurface();
-                onStartCreating('folder', treeDirectoryPathToFolderPath(item.path));
-              }}
-            >
-              <FolderPlus aria-hidden="true" />
-              <Trans>New folder</Trans>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <RevealInFileManagerMenuItem item={item} workspace={workspace} onClose={close} />
             <OpenInAgentContextSubmenu
               input={handoffInput}
@@ -1002,17 +992,6 @@ function FileTreeMenu({
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuSeparator />
-            {/* Flips the persisted `showHiddenFiles` config; the client-side
-                dot-segment filter reads it from a separate seam. */}
-            <DropdownMenuCheckboxItem
-              checked={showHiddenFiles}
-              onCheckedChange={handleShowHiddenFilesToggle}
-              disabled={!canToggleVisibility}
-              data-testid="file-tree-menu-show-hidden-files"
-            >
-              <Trans>Show hidden files</Trans>
-            </DropdownMenuCheckboxItem>
             {/* Subtree-scoped Expand/Collapse, smart-hidden. The divider only
                 renders when the section is non-empty so a fully-expanded or
                 fully-collapsed subtree collapses to a single divider before
@@ -1040,67 +1019,72 @@ function FileTreeMenu({
                 <Trans>Collapse all</Trans>
               </DropdownMenuItem>
             ) : null}
-            {/* Destructive section. Rename sits with Hide/Delete here (not at
-                the top with creation) so the menu's read order is
-                create → act → filter → tree → mutate-or-remove. */}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              disabled={anyActionBusy}
-              onSelect={() => {
-                if (target.kind === 'asset') return;
-                close();
-                onDuplicate(target);
-              }}
-            >
-              <CopyPlus aria-hidden="true" />
-              <Trans>Duplicate</Trans>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={anyActionBusy}
-              onSelect={() => {
-                closeForInlineSurface();
-                model.startRenaming(item.path);
-              }}
-            >
-              <Pencil aria-hidden="true" />
-              <Trans>Rename</Trans>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              data-testid="file-tree-menu-hide"
-              disabled={!canHide}
-              onSelect={() => {
-                if (!okignoreBinding || !okignoreTarget) return;
-                close();
-                const pattern = buildOkignorePatternFromTarget(okignoreTarget);
-                const current = okignoreBinding.current();
-                const doc = parseOkignoreDoc(current);
-                // appendPattern returns the same doc reference for whitespace-only
-                // input AND for duplicates; skip the patch on both no-ops so we
-                // don't churn the Y.Text with identical bytes.
-                const updated = appendPattern(doc, pattern);
-                if (updated === doc) return;
-                okignoreBinding.patch(serializeOkignoreDoc(updated));
-                const basename = okignoreTarget.path.split('/').pop() || okignoreTarget.path;
-                toast.success(t`Hidden folder “${basename}”`, {
-                  description: t`Manage hidden files in Settings → Ignore patterns.`,
-                  duration: 5000,
-                });
-              }}
-            >
-              <EyeOff aria-hidden="true" />
-              {hideLabel}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              variant="destructive"
-              disabled={anyActionBusy}
-              onSelect={() => {
-                close();
-                onDelete(deleteTargets);
-              }}
-            >
-              <Trash2 aria-hidden="true" />
-              {deleteLabel}
-            </DropdownMenuItem>
+            {/* Destructive section (hidden for inspect-only .ok rows). Rename
+                sits with Hide/Delete here (not at the top with creation) so
+                the menu's read order is create → act → tree →
+                mutate-or-remove. */}
+            {!isOkRow ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={anyActionBusy}
+                  onSelect={() => {
+                    if (target.kind === 'asset') return;
+                    close();
+                    onDuplicate(target);
+                  }}
+                >
+                  <CopyPlus aria-hidden="true" />
+                  <Trans>Duplicate</Trans>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={anyActionBusy}
+                  onSelect={() => {
+                    closeForInlineSurface();
+                    model.startRenaming(item.path);
+                  }}
+                >
+                  <Pencil aria-hidden="true" />
+                  <Trans>Rename</Trans>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="file-tree-menu-hide"
+                  disabled={!canHide}
+                  onSelect={() => {
+                    if (!okignoreBinding || !okignoreTarget) return;
+                    close();
+                    const pattern = buildOkignorePatternFromTarget(okignoreTarget);
+                    const current = okignoreBinding.current();
+                    const doc = parseOkignoreDoc(current);
+                    // appendPattern returns the same doc reference for whitespace-only
+                    // input AND for duplicates; skip the patch on both no-ops so we
+                    // don't churn the Y.Text with identical bytes.
+                    const updated = appendPattern(doc, pattern);
+                    if (updated === doc) return;
+                    okignoreBinding.patch(serializeOkignoreDoc(updated));
+                    const basename = okignoreTarget.path.split('/').pop() || okignoreTarget.path;
+                    toast.success(t`Hidden folder “${basename}”`, {
+                      description: t`Manage hidden files in Settings → Ignore patterns.`,
+                      duration: 5000,
+                    });
+                  }}
+                >
+                  <EyeOff aria-hidden="true" />
+                  {hideLabel}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={anyActionBusy}
+                  onSelect={() => {
+                    close();
+                    onDelete(deleteTargets);
+                  }}
+                >
+                  <Trash2 aria-hidden="true" />
+                  {deleteLabel}
+                </DropdownMenuItem>
+              </>
+            ) : null}
           </>
         ) : (
           <>
@@ -1145,67 +1129,72 @@ function FileTreeMenu({
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuSeparator />
-            {!isAsset ? (
-              <DropdownMenuItem
-                disabled={anyActionBusy}
-                onSelect={() => {
-                  close();
-                  onDuplicate(target);
-                }}
-              >
-                <CopyPlus aria-hidden="true" />
-                <Trans>Duplicate</Trans>
-              </DropdownMenuItem>
+            {/* Mutate section (hidden for inspect-only .ok rows). */}
+            {!isOkRow ? (
+              <>
+                <DropdownMenuSeparator />
+                {!isAsset ? (
+                  <DropdownMenuItem
+                    disabled={anyActionBusy}
+                    onSelect={() => {
+                      close();
+                      onDuplicate(target);
+                    }}
+                  >
+                    <CopyPlus aria-hidden="true" />
+                    <Trans>Duplicate</Trans>
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem
+                  disabled={anyActionBusy}
+                  onSelect={() => {
+                    closeForInlineSurface();
+                    model.startRenaming(item.path);
+                  }}
+                >
+                  <Pencil aria-hidden="true" />
+                  <Trans>Rename</Trans>
+                </DropdownMenuItem>
+                {okignoreTarget ? (
+                  <DropdownMenuItem
+                    data-testid="file-tree-menu-hide"
+                    disabled={!canHide}
+                    onSelect={() => {
+                      if (!okignoreBinding) return;
+                      close();
+                      const pattern = buildOkignorePatternFromTarget(okignoreTarget);
+                      const current = okignoreBinding.current();
+                      const doc = parseOkignoreDoc(current);
+                      // appendPattern returns the same doc reference for whitespace-only
+                      // input AND for duplicates; skip the patch on both no-ops so we
+                      // don't churn the Y.Text with identical bytes.
+                      const updated = appendPattern(doc, pattern);
+                      if (updated === doc) return;
+                      okignoreBinding.patch(serializeOkignoreDoc(updated));
+                      const basename = okignoreTarget.path.split('/').pop() || okignoreTarget.path;
+                      toast.success(t`Hidden “${basename}”`, {
+                        description: t`Manage hidden files in Settings → Ignore patterns.`,
+                        duration: 5000,
+                      });
+                    }}
+                  >
+                    <EyeOff aria-hidden="true" />
+                    {hideLabel}
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={anyActionBusy}
+                  onSelect={() => {
+                    close();
+                    onDelete(deleteTargets);
+                  }}
+                >
+                  <Trash2 aria-hidden="true" />
+                  {deleteLabel}
+                </DropdownMenuItem>
+              </>
             ) : null}
-            <DropdownMenuItem
-              disabled={anyActionBusy}
-              onSelect={() => {
-                closeForInlineSurface();
-                model.startRenaming(item.path);
-              }}
-            >
-              <Pencil aria-hidden="true" />
-              <Trans>Rename</Trans>
-            </DropdownMenuItem>
-            {okignoreTarget ? (
-              <DropdownMenuItem
-                data-testid="file-tree-menu-hide"
-                disabled={!canHide}
-                onSelect={() => {
-                  if (!okignoreBinding) return;
-                  close();
-                  const pattern = buildOkignorePatternFromTarget(okignoreTarget);
-                  const current = okignoreBinding.current();
-                  const doc = parseOkignoreDoc(current);
-                  // appendPattern returns the same doc reference for whitespace-only
-                  // input AND for duplicates; skip the patch on both no-ops so we
-                  // don't churn the Y.Text with identical bytes.
-                  const updated = appendPattern(doc, pattern);
-                  if (updated === doc) return;
-                  okignoreBinding.patch(serializeOkignoreDoc(updated));
-                  const basename = okignoreTarget.path.split('/').pop() || okignoreTarget.path;
-                  toast.success(t`Hidden “${basename}”`, {
-                    description: t`Manage hidden files in Settings → Ignore patterns.`,
-                    duration: 5000,
-                  });
-                }}
-              >
-                <EyeOff aria-hidden="true" />
-                {hideLabel}
-              </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuItem
-              variant="destructive"
-              disabled={anyActionBusy}
-              onSelect={() => {
-                close();
-                onDelete(deleteTargets);
-              }}
-            >
-              <Trash2 aria-hidden="true" />
-              {deleteLabel}
-            </DropdownMenuItem>
           </>
         )}
       </DropdownMenuContent>
@@ -1229,10 +1218,9 @@ export interface FileTreeHandle {
    * Snapshot of the tree's folder state, cheap to call on every render.
    * Reads `folderTreePathsRef.current` for `folderCount` and iterates
    * `model.getItem(path)?.isExpanded()` for `expandedCount`. FileSidebar
-   * uses this via `useSyncExternalStore` to drive the conditional render
-   * of the Tree view options dropdown — hiding the trigger when there
-   * are no folders, and individual Expand/Collapse-All items when their
-   * action would be a no-op.
+   * subscribes (`subscribe` + this getter) to smart-hide the Expand/
+   * Collapse-all commands across its menu surfaces when their action
+   * would be a no-op.
    */
   getFolderState(): { folderCount: number; expandedCount: number };
   /**
@@ -1265,6 +1253,16 @@ type ShowAllDepth1ListingResult =
   | { kind: 'network-error'; cause: unknown };
 
 /**
+ * The depth-1 disk-walk listing URL. `showOk` is the request-scoped reveal
+ * of `.ok` rows (Show .ok folders axis) — the server admits `.ok` entries on
+ * this walk only, so the flag rides the listing URL rather than any global
+ * mode.
+ */
+function showAllDepth1Url(dir: string, showOk: boolean): string {
+  return `/api/documents?showAll=true${showOk ? '&showOk=true' : ''}&dir=${encodeURIComponent(dir)}&depth=1`;
+}
+
+/**
  * One level of the Show All listing for `dir` (`''` = content root), via the
  * same NDJSON-or-buffered branching as the root refresh. Failures come back
  * as values so the component-side caller stays a straight-line function —
@@ -1273,12 +1271,13 @@ type ShowAllDepth1ListingResult =
  */
 async function fetchShowAllDepth1Listing(
   dir: string,
+  showOk: boolean,
   signal: AbortSignal,
   fallbackErrorTitle: string,
   schemaMismatchTitle: string,
 ): Promise<ShowAllDepth1ListingResult> {
   try {
-    const res = await fetch(`/api/documents?showAll=true&dir=${encodeURIComponent(dir)}&depth=1`, {
+    const res = await fetch(showAllDepth1Url(dir, showOk), {
       signal,
       headers: SHOW_ALL_NDJSON_ACCEPT,
     });
@@ -1342,7 +1341,7 @@ export function FileTree({
   } = useDocumentContext();
   const { notifySidebarFileSelected } = useSidebar();
   const { resolvedTheme } = useTheme();
-  const { addPage, pageMeta } = usePageList();
+  const { addPage, pageMeta, pages } = usePageList();
   function navigationTargetForDocument(
     docName: string,
     size: number | null | undefined,
@@ -1391,6 +1390,11 @@ export function FileTree({
   // Count of entries the server returned when the showAll walk hit its entry
   // cap (so the list is a partial prefix); null when the list is complete.
   const [truncatedShownCount, setTruncatedShownCount] = useState<number | null>(null);
+  // Pre-filter size of the most recent depth-1 root listing, captured where
+  // the listing lands. The filtered `documents` state can't distinguish an
+  // empty project from filters hiding everything (raw listings aren't
+  // retained), so the empty slot's classifier reads this signal instead.
+  const [unfilteredRootEntryCount, setUnfilteredRootEntryCount] = useState(0);
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<FileTreeDeleteRequest | null>(null);
   /**
@@ -1460,6 +1464,25 @@ export function FileTree({
     const docEntry = entries.find(
       (item): item is DocumentEntry => isDocumentEntry(item) && item.docName === action.path,
     );
+    // Revealed `.ok` document rows never open the raw editable editor: the
+    // shared routing sends template files to the template editor, keeps
+    // indexed skill docs on the normal doc flow (null), and lands everything
+    // else on the read-only text viewer — same rule the hash resolver's
+    // doc-open guard applies.
+    const okTarget = okContentNavigationTarget(action.path, {
+      pages,
+      docExt: docEntry?.docExt,
+    });
+    if (okTarget?.kind === 'asset') {
+      openTarget(okTarget, { tabBehavior: 'replace-active' });
+      replaceHashWithoutNavigation(hashFromAssetPath(okTarget.assetPath));
+      notifySidebarFileSelected();
+      return;
+    }
+    if (okTarget?.kind === 'doc') {
+      navigateToWithPulse(okTarget.docName);
+      return;
+    }
     navigateToWithPulse(action.path, docEntry?.size, {
       registerPage: hasSupportedDocumentExtension(action.path),
     });
@@ -1532,12 +1555,20 @@ export function FileTree({
   const prevExpandedFolderTreePathsRef = useRef<ReadonlySet<string>>(new Set());
   const detectLazyFolderExpansionsRef = useRef<() => void>(() => {});
   const revalidateExpandedLazyDirsRef = useRef<() => void>(() => {});
-  // The async fetch closure in the docs refresh effect is created once at
-  // mount; reading `showHiddenFiles` directly would capture the mount-time
-  // value. The ref lets the closure read the latest toggle state when the
-  // response actually lands. Initialized to `false` (matches the cold-start
-  // default before config loads); synced in the bulk useLayoutEffect below.
+  // The async fetch closures in the docs refresh effect are created once at
+  // mount; reading the visibility toggles directly would capture their
+  // mount-time values. The refs let a closure read the latest toggle state
+  // when the response actually lands. Initialized to `false` (matches the
+  // cold-start defaults before config loads); synced in the bulk
+  // useLayoutEffect below.
   const showHiddenFilesRef = useRef<boolean>(false);
+  const showOnlyMarkdownFilesRef = useRef<boolean>(false);
+  const showOkFoldersRef = useRef<boolean>(false);
+  const treeVisibilityFromRefs = () => ({
+    showHiddenFiles: showHiddenFilesRef.current,
+    showOnlyMarkdownFiles: showOnlyMarkdownFilesRef.current,
+    showOkFolders: showOkFoldersRef.current,
+  });
   // Hoists the docs scheduler's `request()` out of its effect closure so
   // the showHiddenFiles-flip effect can re-fetch without re-mounting the
   // listener / scheduler. Set to a callable in the docs effect; cleared on
@@ -1599,7 +1630,7 @@ export function FileTree({
   // aborting → a successful fetch self-heals the panel without waiting for the
   // next focus / CC1 refresh. Skips the initial render.
   const isFirstRelaunchEffectRunRef = useRef(true);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: relaunchInFlight is a transition trigger, not a read — the body calls the hoisted scheduler ref only. Sibling pattern at the showHiddenFiles flip effect below.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: relaunchInFlight is a transition trigger, not a read — the body calls the hoisted scheduler ref only. Sibling pattern at the visibility-toggle flip effect below.
   useEffect(() => {
     if (isFirstRelaunchEffectRunRef.current) {
       isFirstRelaunchEffectRunRef.current = false;
@@ -1744,8 +1775,10 @@ export function FileTree({
     isElectronHost: typeof window !== 'undefined' && window.okDesktop != null,
     dispatch: dispatchHandoff,
   };
-  const { okignoreBinding, projectLocalBinding, merged } = useConfigContext();
+  const { okignoreBinding, merged } = useConfigContext();
   const showHiddenFiles = merged?.appearance?.sidebar?.showHiddenFiles ?? false;
+  const showOnlyMarkdownFiles = merged?.appearance?.sidebar?.showOnlyMarkdownFiles ?? false;
+  const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
 
   const isAvailable = () => busyPathRef.current === null;
 
@@ -1837,7 +1870,9 @@ export function FileTree({
   const treePaths = documentsToTreePaths(documents);
   const treePathsSignature = treePathSignature(treePaths);
   const treePathsRef = useRef(treePaths);
-  const folderTreePaths = collectTreeFolderPathsFromDocuments(documents);
+  const folderTreePaths = collectTreeFolderPathsFromDocuments(documents, {
+    includeOkFolders: showOkFolders,
+  });
   const folderTreePathsRef = useRef(folderTreePaths);
 
   // Keep parents visible without forcing the selected folder itself open.
@@ -1859,7 +1894,9 @@ export function FileTree({
 
   const expandedPathsForReset = (nextDocuments?: readonly FileEntry[]) => {
     const nextFolderPaths = new Set(
-      collectTreeFolderPathsFromDocuments(nextDocuments ?? documentsRef.current),
+      collectTreeFolderPathsFromDocuments(nextDocuments ?? documentsRef.current, {
+        includeOkFolders: showOkFoldersRef.current,
+      }),
     );
     const expanded = collectExpandedFolderTreePaths();
     for (const ancestor of activeAncestorTreePathsRef.current) {
@@ -1886,6 +1923,7 @@ export function FileTree({
     lazyChildFetchControllersRef.current.set(folderTreePath, controller);
     const result = await fetchShowAllDepth1Listing(
       treeDirectoryPathToFolderPath(folderTreePath),
+      showOkFoldersRef.current,
       controller.signal,
       t`Failed to load documents`,
       t`Documents response did not match expected shape.`,
@@ -1912,8 +1950,7 @@ export function FileTree({
       reportServerReachableError(result.title);
       return;
     }
-    const bypassClientDotDrop = showHiddenFilesRef.current;
-    const children = filterVisibleEntries(result.entries, bypassClientDotDrop);
+    const children = filterVisibleEntries(result.entries, treeVisibilityFromRefs());
     lazyLoadedDirTreePathsRef.current.add(folderTreePath);
     // Functional update: concurrent child fetches resolve in the same
     // microtask batch, and `documentsRef` only syncs on commit — reading it
@@ -2273,7 +2310,7 @@ export function FileTree({
         // each folder stamped `hasChildren` so it can offer expansion without
         // the server walking its subtree. The full recursive walk (no `depth`)
         // remains served for non-sidebar callers.
-        const res = await fetch('/api/documents?showAll=true&dir=&depth=1', {
+        const res = await fetch(showAllDepth1Url('', showOkFoldersRef.current), {
           signal: controller.signal,
           // Opt into the NDJSON stream so the server walks disk without
           // buffering the whole listing; the buffered JSON path stays the
@@ -2288,12 +2325,15 @@ export function FileTree({
           // batch — NOT a root splice, which prunes folders not yet streamed.
           // The authoritative prune + optimistic-merge reconcile is the single
           // splice once the stream completes, matching the buffered branch.
-          const bypassClientDotDrop = showHiddenFilesRef.current;
+          // One snapshot for the whole stream so batches and the completion
+          // splice filter identically; a mid-stream toggle flip refetches
+          // (flip effect below) rather than half-filtering this run.
+          const visibility = treeVisibilityFromRefs();
           let paintedFirstBatch = false;
           const { entries, truncated } = await consumeShowAllStream(res, {
             onBatch: (batch) => {
               if (!active || controller.signal.aborted) return;
-              const batchEntries = filterVisibleEntries(toFileEntries(batch), bypassClientDotDrop);
+              const batchEntries = filterVisibleEntries(toFileEntries(batch), visibility);
               // Only act on a batch that yields a VISIBLE row. The server walk
               // emits hidden entries (dot-dirs/files) in arbitrary readdir order;
               // the client filters them. Clearing `loading` on an all-hidden
@@ -2311,7 +2351,8 @@ export function FileTree({
             },
           });
           if (!active) return;
-          const serverEntries = filterVisibleEntries(toFileEntries(entries), bypassClientDotDrop);
+          const rootEntries = toFileEntries(entries);
+          const serverEntries = filterVisibleEntries(rootEntries, visibility);
           // The depth-1 root level replaces in place rather than replacing the
           // whole document set: children already loaded for folders the server
           // still returns keep rendering (no flash-empty on every CC1 push),
@@ -2325,6 +2366,7 @@ export function FileTree({
           setError(null);
           noteConnectivityRecovered();
           setTruncatedShownCount(truncated ? entries.length : null);
+          setUnfilteredRootEntryCount(rootEntries.length);
           revalidateExpandedLazyDirsRef.current();
         } else {
           const parsed = await parseServerResponse(res, t`Failed to load documents`);
@@ -2339,13 +2381,10 @@ export function FileTree({
               setTruncatedShownCount(null);
             } else {
               // Non-streaming fallback for the same depth-1 listing. The disk
-              // walk ships dot-segment paths; the client-side dot-drop hides
-              // them unless Show hidden files is on.
-              const bypassClientDotDrop = showHiddenFilesRef.current;
-              const serverEntries = filterVisibleEntries(
-                toFileEntries(success.data.documents),
-                bypassClientDotDrop,
-              );
+              // walk ships everything the server admits; the client-side
+              // visibility filter applies the sidebar toggles.
+              const rootEntries = toFileEntries(success.data.documents);
+              const serverEntries = filterVisibleEntries(rootEntries, treeVisibilityFromRefs());
               // Same in-place root splice + expanded-dir revalidation as the
               // NDJSON branch above — the buffered JSON shape is the
               // non-streaming fallback for the identical depth-1 listing.
@@ -2357,6 +2396,7 @@ export function FileTree({
               setTruncatedShownCount(
                 success.data.truncated === true ? success.data.documents.length : null,
               );
+              setUnfilteredRootEntryCount(rootEntries.length);
               revalidateExpandedLazyDirsRef.current();
             }
           }
@@ -2420,20 +2460,22 @@ export function FileTree({
     };
   }, [t]);
 
-  // Re-fetch + re-filter when the user flips Show hidden files. The server response
-  // doesn't depend on the toggle (server filters are unaffected), but the
-  // client-side filter does — refreshing keeps the request/response shape
-  // unchanged and reuses the scheduler's in-flight coalescing. Skips on first
-  // render to avoid double-fetching on mount.
-  const isFirstShowHiddenFilesEffectRunRef = useRef(true);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: showHiddenFiles is a flip-detection trigger, not a read — the effect body reads refs only. Sibling pattern at the treePathsSignature reset effect above.
+  // Re-fetch + re-filter when the user flips a sidebar visibility toggle.
+  // Hidden files and only-markdown are pure client-side filters (the server
+  // response doesn't depend on them); Show .ok folders parameterizes the
+  // request itself (the listing URL carries `showOk`). Either way the flip
+  // reuses the scheduler's in-flight coalescing, and the fetch closures read
+  // the flipped values through the refs. Skips on first render to avoid
+  // double-fetching on mount.
+  const isFirstVisibilityFlipEffectRunRef = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the visibility toggles are flip-detection triggers, not reads — the effect body reads refs only. Sibling pattern at the treePathsSignature reset effect above.
   useEffect(() => {
-    if (isFirstShowHiddenFilesEffectRunRef.current) {
-      isFirstShowHiddenFilesEffectRunRef.current = false;
+    if (isFirstVisibilityFlipEffectRunRef.current) {
+      isFirstVisibilityFlipEffectRunRef.current = false;
       return;
     }
     refreshDocsScheduleRef.current?.();
-  }, [showHiddenFiles]);
+  }, [showHiddenFiles, showOnlyMarkdownFiles, showOkFolders]);
 
   useEffect(() => {
     let active = true;
@@ -2571,7 +2613,7 @@ export function FileTree({
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeAncestorTreePathsSignature + treePathsSignature are re-run triggers — the row's visible index shifts when ancestors expand or the tree repopulates.
   useEffect(() => {
     if (loading || !activeTreePath) return;
-    revealActiveRow(model);
+    revealActiveRow(model, activeTreePath);
   }, [activeTreePath, activeAncestorTreePathsSignature, treePathsSignature, loading, model]);
 
   useEffect(() => {
@@ -3278,6 +3320,8 @@ export function FileTree({
     assetTreePathsRef.current = assetTreePaths;
     busyPathRef.current = busyPath;
     showHiddenFilesRef.current = showHiddenFiles;
+    showOnlyMarkdownFilesRef.current = showOnlyMarkdownFiles;
+    showOkFoldersRef.current = showOkFolders;
     treePathsRef.current = treePaths;
     folderTreePathsRef.current = folderTreePaths;
     activeAncestorTreePathsRef.current = activeAncestorTreePaths;
@@ -3848,9 +3892,13 @@ export function FileTree({
   }
 
   async function handleDeleteTargets(targets: FileTreeTarget[]) {
-    const deleteTargets = targets.map((target) =>
-      canonicalizeAssetTargetForDelete(target, documentsRef.current),
-    );
+    // Last chokepoint before side effects: on Electron, `shell.trashItem`
+    // moves files to the OS Trash BEFORE the server's reserved-path guard can
+    // refuse, so read-only `.ok` targets are dropped here regardless of which
+    // entry surface produced them.
+    const deleteTargets = targets
+      .filter((target) => !hasOkPathSegment(target.path))
+      .map((target) => canonicalizeAssetTargetForDelete(target, documentsRef.current));
     const firstTarget = deleteTargets[0];
     if (!firstTarget) return;
 
@@ -4308,6 +4356,15 @@ export function FileTree({
         </div>
       );
     }
+    if (
+      classifyEmptyTree({
+        visibility: { showHiddenFiles, showOnlyMarkdownFiles },
+        unfilteredRootEntryCount,
+        knownPageCount: pages.size,
+      }) === 'filtered-to-zero'
+    ) {
+      return <FileTreeFilteredToZeroNotice />;
+    }
     return (
       <section
         aria-label={t`File drop zone`}
@@ -4384,8 +4441,6 @@ export function FileTree({
               handoff={handoff}
               model={model}
               okignoreBinding={okignoreBinding}
-              projectLocalBinding={projectLocalBinding}
-              mergedConfig={merged}
               onStartCreating={startCreating}
               onCreateFromTemplate={(parentDir, templateName) =>
                 startCreating('file', parentDir, { template: templateName })

@@ -78,6 +78,7 @@
     "0wswKc": ["Horizontal rule that divides sections."],
     "0xnmlQ": ["Repository name"],
     "0yL--g": ["Review conflicts"],
+    "10g8I_": ["Turn off Only markdown files"],
     "12F9WL": ["(no id)"],
     "16D5Zj": ["Are you sure you want to delete ", ["itemName"], "? This action cannot be undone."],
     "1AumWo": ["Push failed — check the server logs for details."],
@@ -221,6 +222,7 @@
     ],
     "4zGlN_": ["Paste image URL or click upload"],
     "5-FeN2": ["Share URL"],
+    "5-o4kO": ["Only markdown files"],
     "54Y6Fg": ["Could not load templates. Try again later."],
     "56WWtu": ["Couldn't load starter packs: ", ["error"]],
     "56xUL1": ["Property name"],
@@ -285,6 +287,7 @@
     "6Aih4U": ["Offline"],
     "6EKG_c": ["What agents match on to decide when to use the skill."],
     "6HCOwA": ["Failed to open."],
+    "6KCH4m": ["Hidden files"],
     "6LbUG7": ["The repository is private and your GitHub account doesn't have access to it."],
     "6MnZEC": ["Terminal failed to load"],
     "6O626z": ["No headings match \"", ["trimmedAnchorQuery"], "\""],
@@ -391,6 +394,7 @@
     "8uAWix": [
       "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
     ],
+    "8vETh9": ["Show"],
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "96G6Re": ["New folder"],
     "96w9hU": ["Something went wrong opening this file (HTTP ", ["status"], ")."],
@@ -601,6 +605,7 @@
     "EEYbdt": ["Publish"],
     "EHu0x2": ["Syncing"],
     "EJuO7B": ["Connect a GitHub account to browse and sync your repositories."],
+    "ELYtNJ": [".ok folders"],
     "EL_YRd": ["Mirror of <0>api-spec</0>"],
     "EOjU5V": ["Inline Math Properties"],
     "ETyvvg": ["No language match."],
@@ -700,6 +705,7 @@
       "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime."
     ],
     "GGsM4y": ["Selected in graph"],
+    "GHsJb8": ["Show .ok folders"],
     "GJH-AT": [
       ["docName"],
       " is ",
@@ -963,6 +969,7 @@
       "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
     ],
     "NEzPEh": ["Create a new branch, or check out an existing one, in its own window."],
+    "NF_Wcg": ["Show skills section"],
     "NIWAux": ["No docs registered under #", ["tagDocsName"], "."],
     "NJyQi_": ["Branch ", ["shareBranch"], " no longer exists on the remote."],
     "NKkZXl": ["Initialize and open"],
@@ -1283,6 +1290,7 @@
     ],
     "W8vpBM": ["starter pack"],
     "W9_Bub": ["Local changes overlap with incoming sync"],
+    "WHPvOb": ["All files are hidden by view filters."],
     "WL6puM": ["Path resolves outside project"],
     "WMIKXK": [
       "Are you sure you want to delete ",
@@ -1307,6 +1315,7 @@
     "Wgmlsw": ["Fetching"],
     "Wh0im4": ["editing [[", ["realCurrentDoc"], "]]"],
     "WhOsNE": ["Strikethrough"],
+    "WkTLN7": ["Show only markdown files"],
     "WmPbvm": ["Get product updates in your inbox."],
     "Wq6Wcm": ["Please enter a valid email address."],
     "WqLq6M": ["Open with AI ", ["displayName"]],
@@ -1821,8 +1830,10 @@
     "iuTKci": ["No edits yet."],
     "iycx_A": ["Pushing"],
     "j9Vqvc": ["inherited"],
+    "j9tqwO": ["Not in sidebar"],
     "jAMpHn": ["What is a starter pack?"],
     "jBVUXo": ["Couldn't open the terminal — please try again."],
+    "jC8LSZ": ["Reset view filters"],
     "jEZ6Lf": ["provisional"],
     "jEdF24": ["Missing page: ", ["linkTitle"], ". Click to create."],
     "jKd3AP": ["Could not enable the terminal: ", ["0"]],

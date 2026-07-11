@@ -93,6 +93,13 @@ function Harness({ initialPath, model }: { initialPath: string | null; model: St
       <button type="button" data-testid="set-null" onClick={() => setActiveTreePath(null)}>
         none
       </button>
+      <button
+        type="button"
+        data-testid="set-absent"
+        onClick={() => setActiveTreePath('.hidden/absent.md')}
+      >
+        absent
+      </button>
       <span data-testid="selected">{model.getSelectedPaths().join(',')}</span>
     </>
   );
@@ -138,6 +145,91 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
     const user = userEvent.setup();
     await user.click(screen.getByTestId('set-null'));
 
+    expect(model.getSelectedPaths()).toEqual([]);
+  });
+
+  test('navigating to a doc with no visible tree row deselects the previous row', async () => {
+    // Quiet-tree contract: when the active doc's row is absent from the model
+    // (filtered out, or not fetched yet), the previously active row must not
+    // keep a stale highlight while the editor shows a different doc.
+    const model = makeStubModel(['A.md', 'B.md', 'C.md']);
+    render(<Harness initialPath="A.md" model={model} />);
+
+    expect(model.getSelectedPaths()).toEqual(['A.md']);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('set-absent'));
+
+    expect(model.getSelectedPaths()).toEqual([]);
+  });
+
+  test('absent active row still expands visible ancestors while clearing stale selection', () => {
+    // A partially-hidden path: `parent/` has a visible row, the active child
+    // does not. The mirror must expand the visible ancestor (ancestor
+    // priority) AND clear the stale selection left on another row — the
+    // quiet-tree deselect must not short-circuit the expansion loop.
+    let parentExpanded = false;
+    let parentExpandCallCount = 0;
+    let otherSelected = true;
+    const items = new Map<string, StubItem>([
+      [
+        'parent/',
+        {
+          getPath: () => 'parent/',
+          isSelected: () => false,
+          select: () => {},
+          deselect: () => {},
+          isExpanded: () => parentExpanded,
+          expand: () => {
+            parentExpanded = true;
+            parentExpandCallCount += 1;
+          },
+          focus: () => {},
+          isDirectory: () => true,
+          getFocusCount: () => 0,
+        },
+      ],
+      [
+        'other.md',
+        {
+          getPath: () => 'other.md',
+          isSelected: () => otherSelected,
+          select: () => {
+            otherSelected = true;
+          },
+          deselect: () => {
+            otherSelected = false;
+          },
+          isExpanded: () => false,
+          expand: () => {},
+          focus: () => {},
+          isDirectory: () => false,
+          getFocusCount: () => 0,
+        },
+      ],
+    ]);
+    const model: StubModel = {
+      getItem: (path: string) => items.get(path) ?? null,
+      getSelectedPaths: () =>
+        Array.from(items.entries())
+          .filter(([, it]) => it.isSelected())
+          .map(([p]) => p),
+    };
+    function PartiallyHiddenHarness() {
+      const suppressSelectionRef = useRef(false);
+      useSelectionMirror(
+        // biome-ignore lint/suspicious/noExplicitAny: Tier-3 stub for the test budget; production callers always pass real Pierre models.
+        model as any,
+        'parent/.hidden-child.md',
+        'parent/',
+        suppressSelectionRef,
+      );
+      return null;
+    }
+    render(<PartiallyHiddenHarness />);
+
+    expect(parentExpandCallCount).toBe(1);
+    expect(parentExpanded).toBe(true);
     expect(model.getSelectedPaths()).toEqual([]);
   });
 

@@ -24,7 +24,7 @@ import { readdir, readFile as readFileAsync } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { LINKABLE_ASSET_EXTENSIONS, SKILL_CONTENT_ROOT } from '@inkeep/open-knowledge-core';
+import { LINKABLE_ASSET_EXTENSIONS, OK_DIR, SKILL_CONTENT_ROOT } from '@inkeep/open-knowledge-core';
 import ignore, { type Ignore } from 'ignore';
 import { isReservedForUserTree } from './cc1-broadcast.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
@@ -140,13 +140,39 @@ const ALWAYS_SKIP_DIRS = new Set<string>([
 ]);
 
 /**
+ * `.ok` children that stay on the always-skip floor even under `showOk`:
+ * `worktrees/` can hold full repo-scale git checkouts (the same unbounded-
+ * traversal hazard the floor exists to prevent) and `local/` is per-machine
+ * runtime state — locks, caches, error logs carrying hostnames and absolute
+ * paths.
+ */
+const OK_ALWAYS_SKIP_CHILDREN = new Set(['worktrees', 'local']);
+
+/**
  * True when any segment of `relativePath` is an always-skip directory. Called
  * before the `bypassFilters` early-return in every exclusion predicate so the
  * floor holds regardless of caller (including the `?showAll=true` disk walk).
+ * `showOk` admits `.ok` segments — unless the next segment is an
+ * `OK_ALWAYS_SKIP_CHILDREN` member — so the tree-listing walk can reveal
+ * `.ok` content on request; every other floor member is unconditional.
+ * The child lookahead matches case-insensitively for the same reason as
+ * `isSecretBearingFile`: on the default case-insensitive macOS filesystem
+ * an externally-created `.ok/Local` IS `.ok/local`, and the walk sees the
+ * on-disk casing.
  */
-function pathHasAlwaysSkipSegment(relativePath: string): boolean {
-  for (const segment of relativePath.split('/')) {
-    if (ALWAYS_SKIP_DIRS.has(segment)) return true;
+function pathHasAlwaysSkipSegment(relativePath: string, showOk?: boolean): boolean {
+  const segments = relativePath.split('/');
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (!ALWAYS_SKIP_DIRS.has(segment)) continue;
+    if (
+      showOk &&
+      segment === OK_DIR &&
+      !OK_ALWAYS_SKIP_CHILDREN.has((segments[i + 1] ?? '').toLowerCase())
+    ) {
+      continue;
+    }
+    return true;
   }
   return false;
 }
@@ -566,6 +592,17 @@ export type RebuildResult =
  */
 interface ContentFilterReadOpts {
   bypassFilters?: boolean;
+  /**
+   * Admit `.ok`-segment paths through the always-skip floor — `isExcluded` /
+   * `isDirExcluded` only; `isPathIgnored` (the asset-serve gate) keeps the
+   * absolute floor so serving never widens. `.ok/worktrees` and `.ok/local`
+   * stay pruned at every depth (see `OK_ALWAYS_SKIP_CHILDREN`). Lifts only
+   * the floor: without `bypassFilters` the configurable `BUILTIN_SKIP_DIRS`
+   * rule still hides non-skill `.ok` content. Per-request use only — backs
+   * the `?showOk=true` tree-listing flag on `GET /api/documents`; no other
+   * caller may pass it.
+   */
+  showOk?: boolean;
 }
 
 export interface ContentFilter {
@@ -847,7 +884,9 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // excluded even under bypass. Defense-in-depth: the showAll walk gates
       // directories via `isDirExcluded`, but any caller enumerating files
       // directly must not admit `.git/` / `node_modules/` / `.ok/` content.
-      if (pathHasAlwaysSkipSegment(relativePath)) return true;
+      // `showOk` re-admits `.ok` minus `worktrees`/`local` for the
+      // tree-listing reveal.
+      if (pathHasAlwaysSkipSegment(relativePath, opts?.showOk)) return true;
 
       // (0c') Junk-file floor — `.DS_Store` / `.localized` stay excluded even
       // under bypass, so Show All Files never surfaces OS Finder metadata.
@@ -908,8 +947,11 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // or `.ok/`: on a repo-root content dir those trees (a multi-GB `.git`,
       // thousands of `node_modules`) make the recursive walk unbounded and
       // exhaust the heap. This single prune is the load-bearing OOM fix —
-      // traversal, not file admission, is what blows up.
-      if (pathHasAlwaysSkipSegment(relativePath)) return true;
+      // traversal, not file admission, is what blows up. `showOk` re-admits
+      // `.ok` for the tree-listing reveal while `worktrees`/`local` — the two
+      // children that can be repo-scale — stay pruned, keeping the guard
+      // honest.
+      if (pathHasAlwaysSkipSegment(relativePath, opts?.showOk)) return true;
       // Single-file scope — descend only the chain of directories leading to
       // the one admitted doc; prune everything else so the watcher seed +
       // index walks never enumerate siblings. Before the bypass branch so the
@@ -1446,8 +1488,9 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         const skillExt = extname(relativePath).slice(1).toLowerCase();
         return !LINKABLE_ASSET_EXTENSIONS.has(skillExt);
       }
-      // Always-skip floor — survives bypass (see sync variant for rationale).
-      if (pathHasAlwaysSkipSegment(relativePath)) return true;
+      // Always-skip floor — survives bypass; `showOk` re-admits `.ok` minus
+      // `worktrees`/`local` (see sync variant for rationale).
+      if (pathHasAlwaysSkipSegment(relativePath, opts?.showOk)) return true;
       // Junk-file floor — `.DS_Store` / `.localized` survive bypass too.
       if (isAlwaysSkipFile(relativePath)) return true;
       // Single-file scope — admit ONLY the one target doc (see sync variant).
@@ -1474,8 +1517,9 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       // bypass the always-skip floor below keeps `.ok` pruned.
       if (!opts?.bypassFilters && isSkillContentAncestorDir(relativePath)) return false;
       // Always-skip floor — survives bypass; load-bearing OOM fix for the
-      // `?showAll=true` walk (see sync variant for rationale).
-      if (pathHasAlwaysSkipSegment(relativePath)) return true;
+      // `?showAll=true` walk. `showOk` re-admits `.ok` minus
+      // `worktrees`/`local` (see sync variant for rationale).
+      if (pathHasAlwaysSkipSegment(relativePath, opts?.showOk)) return true;
       // Single-file scope — prune every dir that isn't an ancestor of the one
       // admitted doc (see sync variant).
       if (singleDocRelPath !== undefined) {

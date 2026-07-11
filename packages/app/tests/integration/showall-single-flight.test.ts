@@ -56,6 +56,10 @@ beforeAll(async () => {
     mkdirSync(join(contentDir, sub));
     writeFileSync(join(contentDir, sub, 'note.md'), `# ${sub}\n`);
   }
+  // Non-skill `.ok` content for the showOk key-isolation test below. Default
+  // showAll walks never admit `.ok`, so the sibling tests are unaffected.
+  mkdirSync(join(contentDir, '.ok', 'templates'), { recursive: true });
+  writeFileSync(join(contentDir, '.ok', 'templates', 'daily.md'), '# Daily\n');
   server = await createTestServer({ contentDir, keepContentDir: false });
 }, 60_000);
 
@@ -134,6 +138,32 @@ describe('single-flight dedupe (AC1, AC2)', () => {
       if (prev === undefined) delete process.env.OK_SHOWALL_MAX_ENTRIES;
       else process.env.OK_SHOWALL_MAX_ENTRIES = prev;
     }
+  }, 30_000);
+});
+
+describe('showOk single-flight isolation', () => {
+  test('concurrent showAll and showAll+showOk requests never coalesce', async () => {
+    // The in-flight key must incorporate the showOk flag: coalescing across
+    // modes would hand one caller the other mode's listing — either a plain
+    // caller receiving `.ok` rows or a reveal caller silently missing them.
+    __resetShowAllWalkStatsForTesting();
+    const [plainRes, revealRes] = await Promise.all([
+      fetch(showAllUrl()),
+      fetch(`${showAllUrl()}&showOk=true`),
+    ]);
+    expect(plainRes.ok).toBe(true);
+    expect(revealRes.ok).toBe(true);
+    const plain = DocumentListSuccessSchema.parse(await plainRes.json());
+    const reveal = DocumentListSuccessSchema.parse(await revealRes.json());
+
+    // Distinct cache keys → two independent walks...
+    expect(__getShowAllWalkStatsForTesting().invocations).toBe(2);
+
+    // ...and each caller received its own mode's listing.
+    const pathOf = (e: { kind: string; docName?: string; path?: string }) =>
+      e.kind === 'folder' ? (e.path ?? '') : (e.docName ?? e.path ?? '');
+    expect(plain.documents.map(pathOf).some((p) => p.split('/').includes('.ok'))).toBe(false);
+    expect(reveal.documents.map(pathOf)).toContain('.ok/templates/daily');
   }, 30_000);
 });
 

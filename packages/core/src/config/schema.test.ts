@@ -108,6 +108,37 @@ describe('content.attachmentFolderPath', () => {
   });
 });
 
+describe('appearance.sidebar view toggles', () => {
+  test('sidebar defaults: hidden files off, only-markdown off, Skills section on, .ok folders off', () => {
+    const sidebar = ConfigSchema.parse({ appearance: { sidebar: {} } }).appearance.sidebar;
+    expect(sidebar).toEqual({
+      showHiddenFiles: false,
+      showOnlyMarkdownFiles: false,
+      showSkillsSection: true,
+      showOkFolders: false,
+    });
+  });
+
+  test('explicit values override every toggle default', () => {
+    const sidebar = ConfigSchema.parse({
+      appearance: {
+        sidebar: {
+          showHiddenFiles: true,
+          showOnlyMarkdownFiles: true,
+          showSkillsSection: false,
+          showOkFolders: true,
+        },
+      },
+    }).appearance.sidebar;
+    expect(sidebar).toEqual({
+      showHiddenFiles: true,
+      showOnlyMarkdownFiles: true,
+      showSkillsSection: false,
+      showOkFolders: true,
+    });
+  });
+});
+
 describe('legacy upload.* keys remain non-authoritative', () => {
   test('upload.* keys pass through looseObject without schema error', () => {
     const result = ConfigSchema.safeParse({

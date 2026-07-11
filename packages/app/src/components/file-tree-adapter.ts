@@ -103,7 +103,10 @@ export function documentsTreePathSignature(documents: readonly FileEntry[]): str
   return treePathSignature(documentsToTreePaths(documents));
 }
 
-export function collectTreeFolderPathsFromDocuments(documents: readonly FileEntry[]): string[] {
+export function collectTreeFolderPathsFromDocuments(
+  documents: readonly FileEntry[],
+  options: { includeOkFolders?: boolean } = {},
+): string[] {
   const folderPaths = new Set<string>();
   for (const entry of documents) {
     const path = isFolderEntry(entry)
@@ -114,11 +117,13 @@ export function collectTreeFolderPathsFromDocuments(documents: readonly FileEntr
     const segments = path.split('/').filter(Boolean);
     // `.ok/` is an internal directory. Skills-as-content makes
     // `.ok/skills/<name>/SKILL` real content docs and `.ok` itself
-    // index-descendable, so they now reach the document list — but `.ok` is
-    // never a user-visible tree folder (skills live in the Skills section).
-    // Excluding it keeps the folder count (and the hasFolders-gated "Tree view
-    // options" toolbar) about VISIBLE folders only.
-    if (segments.includes('.ok')) continue;
+    // index-descendable, so they now reach the document list — but by default
+    // `.ok` is never a user-visible tree folder (skills live in the Skills
+    // section), and excluding it keeps the folder set (expand/collapse-all
+    // iteration, expansion preservation across model resets) about VISIBLE
+    // folders only. When the Show .ok folders axis reveals `.ok` rows, the
+    // caller opts their folder paths in so they behave like any other folder.
+    if (!options.includeOkFolders && segments.includes('.ok')) continue;
     if (isFolderEntry(entry)) {
       const folderPath = folderPathToTreeDirectoryPath(entry.path);
       if (folderPath) folderPaths.add(folderPath);

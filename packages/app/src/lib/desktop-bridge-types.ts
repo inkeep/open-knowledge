@@ -213,6 +213,9 @@ type OkMenuAction =
   | 'copy-relative-path'
   // View menu items — visibility toggles + tree-scoped expand/collapse.
   | 'toggle-show-hidden-files'
+  | 'toggle-show-ok-folders'
+  | 'toggle-show-only-markdown-files'
+  | 'toggle-show-skills-section'
   | 'expand-all-tree'
   | 'collapse-all-tree'
   | 'toggle-doc-panel'
@@ -697,6 +700,9 @@ type OkEditorActiveTargetSnapshot =
  */
 interface OkEditorViewMenuStateSnapshot {
   readonly showHiddenFiles: boolean;
+  readonly showOkFolders: boolean;
+  readonly showOnlyMarkdownFiles: boolean;
+  readonly showSkillsSection: boolean;
   readonly canExpandAll: boolean;
   readonly canCollapseAll: boolean;
   readonly sidebarVisible: boolean;

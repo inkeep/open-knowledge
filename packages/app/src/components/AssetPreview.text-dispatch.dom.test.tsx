@@ -33,6 +33,16 @@ mock.module('@/editor/asset-dispatch', () => ({
   dispatchAssetClick: dispatchAssetClickStub,
 }));
 
+// The asset view hosts the NotInSidebarIndicator, whose config hook throws
+// without a provider — stub the app-default view (all fixtures here use
+// visible paths, so the indicator stays unmounted).
+mock.module('@/lib/config-provider', () => ({
+  useConfigContext: () => ({
+    merged: null,
+    projectLocalBinding: null,
+  }),
+}));
+
 const { AssetPreview } = await import('./AssetPreview.tsx');
 
 describe('AssetPreview — text-viewer dispatch', () => {

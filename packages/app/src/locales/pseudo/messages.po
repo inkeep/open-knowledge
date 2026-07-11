@@ -25,6 +25,10 @@ msgstr ""
 msgid " Your selection has been restored."
 msgstr ""
 
+#: src/components/FileSidebar.tsx
+msgid ".ok folders"
+msgstr ""
+
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(result.hosts)
 #: src/components/skill-actions.tsx
@@ -787,6 +791,10 @@ msgstr ""
 
 #: src/components/FolderOverview.tsx
 msgid "All files"
+msgstr ""
+
+#: src/components/FileTreeFilteredToZeroNotice.tsx
+msgid "All files are hidden by view filters."
 msgstr ""
 
 #: src/components/DiffView.tsx
@@ -1869,7 +1877,8 @@ msgid "Could not turn off the terminal: {0}"
 msgstr ""
 
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTreeFilteredToZeroNotice.tsx
+#: src/components/NotInSidebarIndicator.tsx
 msgid "Could not update sidebar settings"
 msgstr ""
 
@@ -3452,6 +3461,11 @@ msgstr ""
 msgid "Hidden “{basename}”"
 msgstr ""
 
+#: src/components/FileSidebar.tsx
+#: src/components/NotInSidebarIndicator.tsx
+msgid "Hidden files"
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "Hidden folder “{basename}”"
 msgstr ""
@@ -4730,6 +4744,10 @@ msgstr ""
 msgid "Not connected to GitHub."
 msgstr ""
 
+#: src/components/NotInSidebarIndicator.tsx
+msgid "Not in sidebar"
+msgstr ""
+
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Not installed"
@@ -4817,6 +4835,11 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Only collaborators"
+msgstr ""
+
+#: src/components/FileSidebar.tsx
+#: src/components/NotInSidebarIndicator.tsx
+msgid "Only markdown files"
 msgstr ""
 
 #: src/editor/components/TagDialog.tsx
@@ -5837,6 +5860,10 @@ msgstr ""
 msgid "Reset view"
 msgstr ""
 
+#: src/components/FileTreeFilteredToZeroNotice.tsx
+msgid "Reset view filters"
+msgstr ""
+
 #: src/editor/components/ResizeHandles.tsx
 msgid "Resize {handleKey}"
 msgstr ""
@@ -6348,6 +6375,14 @@ msgstr ""
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
 msgstr ""
 
+#: src/components/FileSidebar.tsx
+msgid "Show"
+msgstr ""
+
+#: src/components/FileSidebar.tsx
+msgid "Show .ok folders"
+msgstr ""
+
 #. placeholder {0}: hiddenPacks.length
 #: src/components/PackCardGrid.tsx
 msgid "Show {0} more"
@@ -6387,7 +6422,7 @@ msgid "Show Files ({sidebarShortcutLabel})"
 msgstr ""
 
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
+#: src/components/NotInSidebarIndicator.tsx
 msgid "Show hidden files"
 msgstr ""
 
@@ -6397,6 +6432,10 @@ msgstr ""
 
 #: src/components/PackCardGrid.tsx
 msgid "Show less"
+msgstr ""
+
+#: src/components/FileSidebar.tsx
+msgid "Show only markdown files"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -6425,6 +6464,10 @@ msgstr ""
 
 #: src/components/BottomComposer.tsx
 msgid "Show selection preview"
+msgstr ""
+
+#: src/components/FileSidebar.tsx
+msgid "Show skills section"
 msgstr ""
 
 #: src/components/MermaidFileViewer.tsx
@@ -6500,6 +6543,7 @@ msgstr ""
 msgid "Skill renamed"
 msgstr ""
 
+#: src/components/FileSidebar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/SkillsSidebarSection.tsx
@@ -7373,6 +7417,10 @@ msgstr ""
 #: src/components/settings/AccountSection.tsx
 #: src/components/ShareReceiveDialog.tsx
 msgid "Try again"
+msgstr ""
+
+#: src/components/NotInSidebarIndicator.tsx
+msgid "Turn off Only markdown files"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx

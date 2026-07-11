@@ -1,9 +1,16 @@
 import { describe, expect, test } from 'bun:test';
-import { mergeViewMenuState } from './view-menu-state';
+import {
+  buildViewMenuStateDeps,
+  createDefaultEditorViewMenuState,
+  mergeViewMenuState,
+} from './view-menu-state';
 
 describe('mergeViewMenuState — multi-publisher non-clobbering contract', () => {
   const initial = {
     showHiddenFiles: false,
+    showOkFolders: false,
+    showOnlyMarkdownFiles: false,
+    showSkillsSection: true,
     canExpandAll: true,
     canCollapseAll: true,
     sidebarVisible: true,
@@ -24,10 +31,35 @@ describe('mergeViewMenuState — multi-publisher non-clobbering contract', () =>
 
     expect(afterEditorArea).toEqual({
       showHiddenFiles: true,
+      showOkFolders: false,
+      showOnlyMarkdownFiles: false,
+      showSkillsSection: true,
       canExpandAll: false,
       canCollapseAll: false,
       sidebarVisible: false,
       docPanelVisible: false,
+    });
+  });
+
+  test('FileSidebar visibility push (all four toggles) preserves the terminal + doc-panel fields', () => {
+    const base = createDefaultEditorViewMenuState();
+    const afterTerminal = mergeViewMenuState(base, { terminalVisible: true, terminalLive: true });
+
+    const afterVisibilityPush = mergeViewMenuState(afterTerminal, {
+      showHiddenFiles: true,
+      showOkFolders: true,
+      showOnlyMarkdownFiles: true,
+      showSkillsSection: false,
+    });
+
+    expect(afterVisibilityPush).toEqual({
+      ...base,
+      terminalVisible: true,
+      terminalLive: true,
+      showHiddenFiles: true,
+      showOkFolders: true,
+      showOnlyMarkdownFiles: true,
+      showSkillsSection: false,
     });
   });
 
@@ -80,5 +112,88 @@ describe('mergeViewMenuState — multi-publisher non-clobbering contract', () =>
     const afterToggleHide = mergeViewMenuState(afterTerminalDock, { terminalVisible: false });
     expect(afterToggleHide.terminalLive).toBe(true);
     expect(afterToggleHide.terminalVisible).toBe(false);
+  });
+});
+
+describe('createDefaultEditorViewMenuState — pre-first-push menu state', () => {
+  test("matches the renderer's resolved config defaults exactly", () => {
+    // toEqual on the full object: adding a snapshot field without deciding
+    // its pre-push default must fail here, not silently read undefined.
+    expect(createDefaultEditorViewMenuState()).toEqual({
+      showHiddenFiles: false,
+      showOkFolders: false,
+      showOnlyMarkdownFiles: false,
+      showSkillsSection: true,
+      canExpandAll: true,
+      canCollapseAll: true,
+      sidebarVisible: true,
+      docPanelVisible: true,
+      terminalVisible: false,
+      terminalLive: false,
+    });
+  });
+});
+
+describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
+  // Every field deliberately differs from the pre-push default so an
+  // accidental default-instead-of-snapshot read fails the mapping assertions.
+  const snapshot = {
+    showHiddenFiles: true,
+    showOkFolders: true,
+    showOnlyMarkdownFiles: true,
+    showSkillsSection: false,
+    canExpandAll: false,
+    canCollapseAll: false,
+    sidebarVisible: false,
+    docPanelVisible: false,
+    terminalVisible: true,
+    terminalLive: true,
+  } as const;
+
+  test('maps every snapshot field onto its menu dep', () => {
+    const deps = buildViewMenuStateDeps(snapshot, () => {});
+    expect(deps.showHiddenFilesChecked).toBe(true);
+    expect(deps.showOkFoldersChecked).toBe(true);
+    expect(deps.showOnlyMarkdownFilesChecked).toBe(true);
+    expect(deps.showSkillsSectionChecked).toBe(false);
+    expect(deps.canExpandAll).toBe(false);
+    expect(deps.canCollapseAll).toBe(false);
+    expect(deps.sidebarVisible).toBe(false);
+    expect(deps.docPanelVisible).toBe(false);
+    expect(deps.terminalVisible).toBe(true);
+    expect(deps.terminalLive).toBe(true);
+  });
+
+  test('each toggle / tree / terminal handler dispatches its menu-action ID', () => {
+    const dispatched: string[] = [];
+    const deps = buildViewMenuStateDeps(createDefaultEditorViewMenuState(), (action) => {
+      dispatched.push(action);
+    });
+
+    deps.onToggleShowHiddenFiles?.();
+    deps.onToggleShowOkFolders?.();
+    deps.onToggleShowOnlyMarkdownFiles?.();
+    deps.onToggleShowSkillsSection?.();
+    deps.onToggleSidebar?.();
+    deps.onToggleDocPanel?.();
+    deps.onToggleTerminal?.();
+    deps.onNewTerminal?.();
+    deps.onKillTerminal?.();
+    deps.onExpandAll?.();
+    deps.onCollapseAll?.();
+
+    expect(dispatched).toEqual([
+      'toggle-show-hidden-files',
+      'toggle-show-ok-folders',
+      'toggle-show-only-markdown-files',
+      'toggle-show-skills-section',
+      'toggle-sidebar',
+      'toggle-doc-panel',
+      'toggle-terminal',
+      'new-terminal',
+      'kill-terminal',
+      'expand-all-tree',
+      'collapse-all-tree',
+    ]);
   });
 });

@@ -146,14 +146,14 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
     ].join(' '),
   },
   {
-    // The "Show all files" sidebar toggle was removed; the tree now always
-    // lists every file on disk. Top-level config is loose, so a residual
+    // The "Show all files" sidebar toggle was removed; the tree lists every
+    // file on disk by default. Top-level config is loose, so a residual
     // `appearance.sidebar.showAllFiles: false` would otherwise be a silent
     // no-op for users who had scoped their tree to indexed/linked content.
     path: ['appearance', 'sidebar', 'showAllFiles'],
     redirect: [
       'appearance.sidebar.showAllFiles has been removed.',
-      'The sidebar now always lists every file on disk; dot-prefixed entries are still gated by appearance.sidebar.showHiddenFiles. There is no longer a way to scope the tree to indexed/linked content.',
+      'The sidebar lists every file on disk by default; dot-prefixed entries are gated by appearance.sidebar.showHiddenFiles, and appearance.sidebar.showOnlyMarkdownFiles scopes the tree down to markdown documents as a per-machine view preference.',
       MIGRATE_HINT,
     ].join(' '),
   },
