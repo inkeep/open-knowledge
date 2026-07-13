@@ -601,10 +601,14 @@ export type AutoConsolidationTrigger = 'dead-chain' | 'session-close' | 'boot' |
 
 export type ParsedCheckpoint =
   | {
+      // `which` distinguishes the post-condition verdict class ('substring' /
+      // 'order' losses vs 'growth' gains) within the one merge checkpoint
+      // kind. Optional: checkpoints written before the field existed parse
+      // without it.
       kind: 'bridge-merge-loss';
       docName: string | null;
       size: number | null;
-      metadata: { lostSubstrings: string[] };
+      metadata: { lostSubstrings: string[]; which?: string };
     }
   | {
       // Observer A's producer guard detected serialize output that fails
@@ -618,6 +622,19 @@ export type ParsedCheckpoint =
       docName: string | null;
       size: number | null;
       metadata: { construct: string };
+    }
+  | {
+      // Observer A's duplication gate detected a CRDT double-materialization of
+      // a bridge-derived span (a substantive body line present in the fragment
+      // more times than Y.Text justified, provenance-confirmed as a
+      // server-vs-client race) and re-derived the fragment from Y.Text before
+      // it could persist. `contents` is the pre-recovery doubled fragment
+      // serialization — the anchor if the re-derive was wrong.
+      // `duplicatedLineCount` is a content-free count, never raw content.
+      kind: 'observer-a-duplication';
+      docName: string | null;
+      size: number | null;
+      metadata: { duplicatedLineCount: number };
     }
   | {
       kind: 'external-change-rescue';
@@ -689,6 +706,18 @@ export function parseCheckpoint(body: string): ParsedCheckpoint | null {
           docName,
           size,
           metadata: { construct: m.construct },
+        };
+      }
+      return null;
+    }
+    if (kind === 'observer-a-duplication') {
+      const m = metadata as { duplicatedLineCount?: unknown };
+      if (typeof m.duplicatedLineCount === 'number' && Number.isFinite(m.duplicatedLineCount)) {
+        return {
+          kind: 'observer-a-duplication',
+          docName,
+          size,
+          metadata: { duplicatedLineCount: m.duplicatedLineCount },
         };
       }
       return null;

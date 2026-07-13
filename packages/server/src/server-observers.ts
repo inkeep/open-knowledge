@@ -34,9 +34,11 @@ import {
   BridgeInvariantViolationError,
   BridgeMergeContentLossError,
   comparePmStructural,
+  DUPLICATION_GATE_MIN_LINE_LENGTH,
   isParseEquivalentBridge,
   mergeThreeWay,
   normalizeBridge,
+  overMultipliedBodyLines,
   prependFrontmatter,
   projectMergeBoundarySpace,
   reattachLeadingDocBoundary,
@@ -45,7 +47,9 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type { Schema } from '@tiptap/pm/model';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
-import type * as Y from 'yjs';
+// Value import (not `import type`): `carrierKind` uses `instanceof Y.XmlElement`
+// to read a top-level child's node shape for the duplication gate.
+import * as Y from 'yjs';
 import { attachQuiescenceTracker } from './bridge-quiescence.ts';
 import {
   assertBridgeInvariant,
@@ -59,10 +63,13 @@ import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { computeMapDrivenBodySplice } from './map-driven-splice.ts';
 import {
   incrementBridgeMergeCheckpointCreated,
+  incrementBridgeMergeContentGrowth,
   incrementBridgeMergeContentLoss,
   incrementBridgeSplitBrainRederives,
   incrementMapDrivenSpliceApplied,
   incrementMapDrivenSpliceFallback,
+  incrementObserverADuplicationCheckpointCreated,
+  incrementObserverADuplicationRederives,
   incrementObserverAPathBFires,
   incrementObserverAResidualMergeRuns,
   incrementProducerGuardCheckpointCreated,
@@ -441,6 +448,138 @@ function settlesSplitBrain(settledText: string, md: string, normMdPre?: string):
   return settledText !== md && normalizeBridge(settledText) !== (normMdPre ?? normalizeBridge(md));
 }
 
+/** Node-shape discriminant for a top-level fragment child. */
+function carrierKind(child: Y.XmlElement | Y.XmlText | Y.XmlHook): string {
+  if (child instanceof Y.XmlElement) return child.nodeName;
+  if (child instanceof Y.XmlText) return '#text';
+  return '#hook';
+}
+
+/**
+ * Minting provenance of a fragment child. Y.js stores clientID+clock per
+ * struct but NOT the transaction origin on the materialized item, so the
+ * `_item` internal is the only recoverable provenance (y-tiptap /
+ * y-prosemirror depend on the same internal). Isolated here so a Y.js
+ * upgrade that changes the struct shape has exactly one site to re-verify;
+ * `undefined` (unintegrated child or shape change) means "cannot attribute"
+ * and callers must fail safe toward no destructive recovery.
+ */
+function mintingClientId(child: Y.XmlElement | Y.XmlText | Y.XmlHook): number | undefined {
+  return (child as { _item?: { id?: { client: number } } | null })._item?.id?.client;
+}
+
+const collapseSpaces = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
+/**
+ * Shared final reduction for carrier attribution: both bare-text forms drop
+ * the inline-marker character set entirely. The markdown side cannot tell a
+ * syntax marker from a literal char without parsing (`snake_case` vs
+ * `_emphasis_`), and the XML side keeps literals — the only way the two
+ * reductions agree on every input is to delete the marker chars from BOTH.
+ * Attribution only needs a stable common form, not lossless text.
+ */
+const stripInlineMarkerChars = (s: string): string => s.replace(/[*_~`]+/g, '');
+
+/**
+ * Fragment-child XML serialization reduced to bare text: tags dropped, basic
+ * entities unescaped, inline-marker chars dropped (shared reduction).
+ * Carrier attribution compares markdown-derived lines against fragment
+ * children, and the two serializations spell inline formatting differently
+ * (`**bold**` vs `<strong>bold</strong>`), so both sides reduce to the same
+ * plain-text form before the substring test.
+ */
+function xmlBareText(s: string): string {
+  return collapseSpaces(
+    stripInlineMarkerChars(
+      s
+        .replace(/<[^>]*>/g, '')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&'),
+    ),
+  );
+}
+
+/** Markdown body line reduced to bare text: link/image syntax keeps its label, escapes unwrap, inline-marker chars drop (shared reduction). */
+function markdownBareText(line: string): string {
+  return collapseSpaces(
+    stripInlineMarkerChars(
+      line.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\\([\\`*_{}[\]()#+\-.!><])/g, '$1'),
+    ),
+  );
+}
+
+/**
+ * Provenance confirm for the Observer A duplication gate — the discriminator
+ * between a server-vs-client CRDT race (recover) and a legitimate client
+ * duplication such as a WYSIWYG paste of existing content (leave for
+ * forward-propagation; recovery re-derives from Y.Text and would silently drop
+ * the paste).
+ *
+ * Given the substantive body lines the growth pre-filter found over-multiplied
+ * in the fragment relative to Y.Text, walk the top-level fragment children and
+ * confirm the race by TWO joint signatures on the carriers of an over-multiplied
+ * line:
+ *
+ *   1. Provenance split — the carriers span BOTH the server's own `doc.clientID`
+ *      (Observer B's re-derivation under `OBSERVER_SYNC_ORIGIN`) AND at least
+ *      one foreign clientID (a client insert). A duplicate can only form when
+ *      Observer B's re-derive of a span races a client insert of the same
+ *      content, so a genuine race always carries this split.
+ *   2. Shape disagreement — the server carrier and the foreign carrier have
+ *      DIFFERENT node types. This is the load-bearing discriminator: the race is
+ *      a stale-view parse disagreement (the server sees the closed span as a
+ *      valid `jsxComponent`, the stale client sees it as a `rawMdxFallback`),
+ *      and item-preservation (bridge invariant: matching items are never
+ *      replaced) means a SAME-shape duplication would have deduped rather than
+ *      survived — so a surviving duplication with agreeing shapes is an
+ *      intentional client duplication (a paste), never this race. Anchoring on
+ *      shape (not `child.toString()` byte-equality — the carriers are
+ *      content-equivalent but never byte-equal) keeps the gate from dropping a
+ *      user's paste of a server-derived paragraph or component block.
+ *
+ * Provenance is read via `mintingClientId` (the `_item.id.client` internal —
+ * see that helper for the upgrade-fragility note). A child that cannot be
+ * attributed is skipped and the gate fails safe toward "not a race" — no
+ * destructive recovery on an unresolvable provenance.
+ */
+export function findRaceDuplicatedSpans(
+  xmlFragment: Y.XmlFragment,
+  serverClientId: number,
+  overMultipliedLines: readonly string[],
+): boolean {
+  if (overMultipliedLines.length === 0) return false;
+  const children = xmlFragment.toArray();
+  const childBareTexts = children.map((child) => xmlBareText(child.toString()));
+  for (const line of overMultipliedLines) {
+    // Both sides reduced to bare text so inline formatting (bold, code,
+    // links) cannot hide a carrier. Stripping can shorten a line below the
+    // substantive threshold ("**Go!**" -> "Go!"); such lines no longer
+    // identify a span reliably, so they are skipped (fail-safe: no
+    // destructive recovery on a weak anchor).
+    const bareLine = markdownBareText(line);
+    if (bareLine.length < DUPLICATION_GATE_MIN_LINE_LENGTH) continue;
+    const serverKinds = new Set<string>();
+    const foreignKinds = new Set<string>();
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      if (child === undefined || !childBareTexts[i]?.includes(bareLine)) continue;
+      const client = mintingClientId(child);
+      if (client === undefined) continue;
+      if (client === serverClientId) serverKinds.add(carrierKind(child));
+      else foreignKinds.add(carrierKind(child));
+    }
+    // Race iff a server carrier and a foreign carrier DISAGREE on node shape.
+    for (const s of serverKinds) {
+      for (const f of foreignKinds) {
+        if (s !== f) return true;
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Set up server-side bidirectional observers between Y.XmlFragment and Y.Text.
  *
@@ -491,7 +630,17 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         timestamp: new Date().toISOString(),
       }),
     );
-    incrementBridgeMergeContentLoss();
+    // Loss and growth verdicts share this handler (same error, same single
+    // catch site) but chart on separate counters: growth is a content-GAIN
+    // event and hiding it under the loss rate would mask which failure class
+    // is moving. The recovery below (apply as-computed) is deliberately the
+    // same for both: at the merge boundary there is no provenance, so a
+    // doubled line may be two writers legitimately adding the same content —
+    // discarding the merge would drop one side's edit. Preserve-everything +
+    // alarm is the recovery; the provenance-confirmed duplication gate
+    // earlier in the drain owns destructive recovery for the race case.
+    if (err.info.which === 'growth') incrementBridgeMergeContentGrowth();
+    else incrementBridgeMergeContentLoss();
 
     const shadow = opts.shadow?.();
     if (!shadow || !opts.docName) return;
@@ -504,7 +653,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         contents: preMergeBaseline,
         label: `Before concurrent merge @ ${new Date().toISOString()}`,
         branch,
-        metadata: { lostSubstrings: err.info.lostSubstrings },
+        metadata: { lostSubstrings: err.info.lostSubstrings, which: err.info.which },
       })
         .then((sha) => {
           incrementBridgeMergeCheckpointCreated();
@@ -565,6 +714,53 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     } catch (telErr) {
       console.warn('[Server Observer A] Split-brain telemetry failed:', telErr);
     }
+  };
+
+  /**
+   * Silent recovery-anchor checkpoint for a duplication-gate recovery. Mirrors
+   * the producer-guard checkpoint shape: fire-and-forget, bounded-cardinality
+   * metadata (a count, never content). `contents` is the pre-recovery doubled
+   * fragment serialization, so the discarded doubled state stays on the
+   * timeline if the re-derive were ever wrong.
+   */
+  const saveDuplicationCheckpoint = (contents: string, duplicatedLineCount: number): void => {
+    const shadow = opts.shadow?.();
+    if (!shadow || !opts.docName) return;
+    const branch = opts.getBranch?.() ?? 'main';
+    const contentRoot = opts.contentRoot ?? '';
+    const docName = opts.docName;
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadow, contentRoot, {
+        kind: 'observer-a-duplication',
+        docName,
+        contents,
+        label: `Before duplication re-derive @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { duplicatedLineCount },
+      })
+        .then((sha) => {
+          incrementObserverADuplicationCheckpointCreated();
+          console.warn(
+            JSON.stringify({
+              event: 'observer-a-duplication-checkpoint-created',
+              docName,
+              sha,
+              kind: 'observer-a-duplication',
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        })
+        .catch((checkpointErr: unknown) => {
+          const e =
+            checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
+          console.warn('[Server Observer A] Duplication checkpoint write failed:', {
+            docName,
+            name: e.name,
+            message: e.message,
+            stack: e.stack?.split('\n').slice(0, 4).join('\n'),
+          });
+        });
+    });
   };
 
   // ─── Observer A: XmlFragment → Y.Text ─────────────────────
@@ -980,6 +1176,50 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       if (freshnessSafe) runProducerGuard(json as PmStructuralNode, body);
       const frontmatter = readCurrentFm();
       const md = prependFrontmatter(frontmatter, body);
+      const currentText = ytext.toString();
+
+      // Duplication gate (precedent #38, Y.Text-is-truth). A CRDT
+      // double-materialization of a bridge-derived span (two writers
+      // structurally replacing the same span, both inserts surviving the Y.js
+      // merge) leaves the fragment serialization carrying a substantive body
+      // line more times than the live Y.Text justifies; without this gate
+      // Observer A serializes and persists the doubled bytes as authoritative
+      // truth. The cheap growth pre-filter runs on every drain whose fragment
+      // moved; only when it fires do we pay the O(children) provenance walk
+      // that separates a server-vs-client race (recover) from a legitimate
+      // same-client duplication such as a WYSIWYG paste-twice (leave for the
+      // router to forward-propagate — recovery would drop the user's paste).
+      //
+      // On a confirmed race, move BOTH witnesses to the doubled `md` (the
+      // diverged-attach witness shape) and enqueue a same-drain Observer B:
+      // B's early-exit comparand no longer matches the clean Y.Text, so it
+      // rebuilds the single-copy fragment from `parse(Y.Text)` and the doubled
+      // `md` is never written to Y.Text. This runs BEFORE Gate 1 so it
+      // pre-empts every write path uniformly (the field splice drains have
+      // `md !== lastSyncedCanonicalMd`, so Gate 1 would not short-circuit them
+      // anyway), and independently of the producer guard's freshness gate
+      // (skipped on non-fresh drains) so it covers the drains the loss guard
+      // never sees. STOP: this detects structurally and routes to re-derive —
+      // it raises and catches no `BridgeMergeContentLossError`; its
+      // observability is the `duplication-guard` split-brain site + the
+      // dedicated counter + the `observer-a-duplication` checkpoint.
+      const overMultiplied = overMultipliedBodyLines(
+        md,
+        currentText,
+        DUPLICATION_GATE_MIN_LINE_LENGTH,
+      );
+      if (
+        overMultiplied.length > 0 &&
+        findRaceDuplicatedSpans(xmlFragment, doc.clientID, overMultiplied)
+      ) {
+        recordDivergedAttachBaselines(md);
+        textDirty = true;
+        recordSplitBrainRederive('duplication-guard');
+        incrementObserverADuplicationRederives();
+        saveDuplicationCheckpoint(md, overMultiplied.length);
+        setActiveSpanAttributes({ 'observer.a.path': 'gated-duplication-rederive' });
+        return;
+      }
 
       // Gate 1 (fragment-unchanged): the fragment's canonical serialization is
       // identical to the recorded canonical witness. Two concerns split here.
@@ -1050,7 +1290,9 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         return;
       }
 
-      const currentText = ytext.toString();
+      // `currentText` was read once above the duplication gate; Y.Text is not
+      // mutated between there and here (the gates above only read it), so the
+      // snapshot is still current.
 
       // Already-in-sync gate: if Y.Text already matches XmlFragment (after
       // bridge normalization), just update baselines — the gate certifies a

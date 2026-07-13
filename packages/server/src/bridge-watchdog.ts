@@ -142,17 +142,23 @@ const lastToleranceEmitMs = new Map<string, number>();
 const lastPathBEmitMs = new Map<string, number>();
 
 /** Observer A settlement-check site that detected a drain settling
- *  split-brain. Three production sites in `server-observers.ts`: the
+ *  split-brain. Four production sites in `server-observers.ts`: the
  *  identity gate (fragment changed but its serialization didn't move),
- *  the post-merge baseline check (after a Path A/B Y.Text write), and
- *  the error-recovery catch (sync work threw before the settlement check,
- *  so the baseline reset must not witness a divergent Y.Text). */
-export type BridgeSplitBrainSite = 'identity-gate' | 'post-merge' | 'error-recovery';
+ *  the post-merge baseline check (after a Path A/B Y.Text write), the
+ *  error-recovery catch (sync work threw before the settlement check, so the
+ *  baseline reset must not witness a divergent Y.Text), and the duplication
+ *  guard (a provenance-confirmed CRDT double-materialization of a
+ *  bridge-derived span, re-derived from clean Y.Text before it can persist). */
+export type BridgeSplitBrainSite =
+  | 'identity-gate'
+  | 'post-merge'
+  | 'error-recovery'
+  | 'duplication-guard';
 
 /** Map<rateKey, last-emit-Unix-ms> for the bridge-split-brain-rederive
  *  event. rateKey = `${site}::${docName ?? '__nodoc__'}` — per-(site, doc)
- *  so a chatty doc can't suppress signal from quieter docs and the three
- *  detection sites surface independently. Bounded: 3 sites × docs, with
+ *  so a chatty doc can't suppress signal from quieter docs and the four
+ *  detection sites surface independently. Bounded: 4 sites × docs, with
  *  the same lazy prune as `lastEmitMs`.
  *
  *  WARN: same module-level state caveat as `lastEmitMs` above. */

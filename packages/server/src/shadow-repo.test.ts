@@ -1092,6 +1092,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     }
 
     const result = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
       maxBridgeMergeLoss: 3,
       maxProducerGuardLoss: 50,
       maxExternalChangeRescue: 50,
@@ -1138,6 +1139,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     });
 
     const result = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
       maxBridgeMergeLoss: 50,
       maxProducerGuardLoss: 3,
       maxExternalChangeRescue: 50,
@@ -1175,6 +1177,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
     const result = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
       maxBridgeMergeLoss: 50,
       maxProducerGuardLoss: 50,
       maxExternalChangeRescue: 50,
@@ -1220,6 +1223,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     });
 
     const result = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
       maxBridgeMergeLoss: 0, // forces deletion of the typed checkpoint
       maxProducerGuardLoss: 0,
       maxExternalChangeRescue: 0,
@@ -1297,6 +1301,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     }
 
     const result = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
       maxBridgeMergeLoss: 50,
       maxProducerGuardLoss: 50,
       maxExternalChangeRescue: 50,
@@ -1329,6 +1334,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     // refs must survive purely on the count cap (2), never the TTL — otherwise
     // a dormant repo could lose the anchor the chained history hangs from.
     const result = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
       maxBridgeMergeLoss: 50,
       maxProducerGuardLoss: 50,
       maxExternalChangeRescue: 50,

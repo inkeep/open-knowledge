@@ -56,6 +56,8 @@ export interface ReconciliationMetrics {
    *  content-preservation post-condition violations. Calibration signal
    *  for the parallel single-CRDT-collapse exploration. */
   bridgeMergeContentLoss: number;
+  /** Path B growth verdicts (`which: 'growth'`) — content GAIN events, counted apart from loss so the two failure classes chart independently. */
+  bridgeMergeContentGrowth: number;
   /** Bridge-correctness — count of successful silent rescue
    *  checkpoints written via saveInMemoryCheckpoint. Bounds the rate a user
    *  might see in TimelinePanel; if high, coalescing becomes worth adding. */
@@ -232,6 +234,17 @@ export interface ReconciliationMetrics {
    *  need when triaging editor latency, which the divergence-scoped Path B
    *  counters deliberately exclude. */
   observerAResidualMergeRuns: number;
+  /** Count of Observer A duplication-gate recoveries — a substantive body
+   *  line materialized more times in the fragment than clean Y.Text justified,
+   *  provenance-confirmed as a server-vs-client CRDT double-materialization
+   *  (one copy minted by Observer B under the server's own clientID, another
+   *  by a foreign client), and re-derived from Y.Text before it could persist
+   *  (precedent #38, Y.Text-is-truth). Counter only, incremented once per
+   *  confirmed recovery; the rate-limited `bridge-split-brain-rederive`
+   *  console event under site `duplication-guard` carries the per-doc signal. */
+  observerADuplicationRederives: number;
+  /** Successful duplication-recovery checkpoint writes — the forensic anchor for a destructive re-derive; divergence from `observerADuplicationRederives` means anchors are being lost. */
+  observerADuplicationCheckpointCreated: number;
   /** Y.Text-is-truth contract (precedent #38) — count of Observer A
    *  settlement checks that detected a drain settling split-brain (Y.Text
    *  vs serialize(fragment) divergence beyond `normalizeBridge` tolerance)
@@ -402,6 +415,7 @@ const counters: ReconciliationMetrics = {
   serverObserverErrorsB: 0,
   persistenceDiskWrites: 0,
   bridgeMergeContentLoss: 0,
+  bridgeMergeContentGrowth: 0,
   bridgeMergeCheckpointCreated: 0,
   producerGuardFires: 0,
   producerGuardFiresSuppressed: 0,
@@ -426,6 +440,8 @@ const counters: ReconciliationMetrics = {
   mapDrivenSpliceApplied: 0,
   mapDrivenSpliceFallback: {},
   observerAResidualMergeRuns: 0,
+  observerADuplicationRederives: 0,
+  observerADuplicationCheckpointCreated: 0,
   bridgeSplitBrainRederives: 0,
   bridgeSplitBrainRederivesSuppressed: 0,
   persistenceReconciliationFailures: 0,
@@ -514,6 +530,10 @@ export function incrementBridgeMergeContentLoss(): void {
   counters.bridgeMergeContentLoss++;
 }
 
+export function incrementBridgeMergeContentGrowth(): void {
+  counters.bridgeMergeContentGrowth++;
+}
+
 export function incrementAgentWriteCalls(): void {
   counters.agentWriteCalls++;
 }
@@ -600,6 +620,14 @@ export function incrementMapDrivenSpliceFallback(reason: MapDrivenSpliceFallback
 
 export function incrementObserverAResidualMergeRuns(): void {
   counters.observerAResidualMergeRuns++;
+}
+
+export function incrementObserverADuplicationRederives(): void {
+  counters.observerADuplicationRederives++;
+}
+
+export function incrementObserverADuplicationCheckpointCreated(): void {
+  counters.observerADuplicationCheckpointCreated++;
 }
 
 export function incrementBridgeSplitBrainRederives(): void {
@@ -769,6 +797,7 @@ export function resetMetrics(): void {
   counters.serverObserverErrorsB = 0;
   counters.persistenceDiskWrites = 0;
   counters.bridgeMergeContentLoss = 0;
+  counters.bridgeMergeContentGrowth = 0;
   counters.bridgeMergeCheckpointCreated = 0;
   counters.producerGuardFires = 0;
   counters.producerGuardFiresSuppressed = 0;
@@ -793,6 +822,8 @@ export function resetMetrics(): void {
   counters.mapDrivenSpliceApplied = 0;
   counters.mapDrivenSpliceFallback = {};
   counters.observerAResidualMergeRuns = 0;
+  counters.observerADuplicationRederives = 0;
+  counters.observerADuplicationCheckpointCreated = 0;
   counters.bridgeSplitBrainRederives = 0;
   counters.bridgeSplitBrainRederivesSuppressed = 0;
   counters.persistenceReconciliationFailures = 0;

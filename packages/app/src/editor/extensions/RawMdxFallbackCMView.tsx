@@ -32,6 +32,7 @@ import { getEditorView } from '../utils/get-editor-view';
 import { getYDoc } from '../utils/get-ydoc';
 import { getSharedMarkdownManager } from '../utils/md-singleton';
 import { classifySeverity, SEVERITY_STYLES } from '../utils/severity';
+import { autonomousFragmentEditAllowed } from './autonomous-fragment-edit.ts';
 import { createNestedCMExtensions, darkTheme, lightTheme } from './nested-cm-extensions';
 
 /**
@@ -454,6 +455,11 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
           if (!pmView) return;
           const currentNode = pmView.state.doc.nodeAt(pos);
           if (!currentNode || currentNode.type.name !== 'rawMdxFallback') return;
+          // No autonomous structural fragment rewrite from a source-mode-hidden
+          // editor — it races Observer B's re-derive (shared with the
+          // auto-convert). The live nodeAt type-check above is the per-site
+          // stale-position defense the auto-convert lacks; this is additional.
+          if (!autonomousFragmentEditAllowed(editor)) return;
 
           const source = update.view.state.doc.toString();
           const replacement = tryParseUpgrade(source, pmView.state.schema);

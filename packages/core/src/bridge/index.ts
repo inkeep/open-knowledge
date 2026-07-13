@@ -50,6 +50,7 @@ export {
   readFmMap,
   readFmRegionWithError,
 } from './frontmatter-region.ts';
+export { DUPLICATION_GATE_MIN_LINE_LENGTH, overMultipliedBodyLines } from './growth-detect.ts';
 export { fnv1aDigest } from './hash-util.ts';
 export {
   assertContentPreservation,

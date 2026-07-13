@@ -104,16 +104,16 @@ test.beforeEach(async ({ page, api }) => {
   );
 });
 
-// KNOWN PRE-EXISTING CORRUPTION (quarantined tripwire): B1 below detects a
-// real source-typing race in the authoritative Y.Text that PRE-DATES this
-// suite (reproduced on pure origin/main under full-suite contention — see
-// the forensic note atop qa-canary-authoring-both-modes.e2e.ts; the full
-// evidence lives in the quarantining commit's message and its PR
-// discussion). It is `test.fixme` so the pre-existing bug does not lottery
-// every PR's e2e lane; the follow-up fix must un-fixme it.
+// B1 detects the source-typing double-materialization race in the
+// authoritative Y.Text: a source-mode-hidden WYSIWYG editor issuing an
+// autonomous structural fragment replace while server Observer B re-derives the
+// same span per keystroke, both inserts surviving the CRDT merge. The client
+// trigger is now gated (no autonomous structural write from a hidden editor)
+// and the server refuses to persist a provenance-confirmed doubled span, so the
+// burst lands contiguous. Contention-dependent, so validate under load.
 test.describe('QA canary — live per-keystroke typing on <Steps> (browser, source mode)', () => {
   // B1 — live burst inside a Step body: caret stays put (burst contiguous), no re-indent.
-  test.fixme('typing a burst into a Step body lands contiguous, no re-indent, no growth', async ({
+  test('typing a burst into a Step body lands contiguous, no re-indent, no growth', async ({
     page,
   }) => {
     await sourceToggle(page).click();

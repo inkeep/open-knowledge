@@ -725,6 +725,11 @@ export async function safetyCheckpoint(
  *   content) at the serialize boundary. `contents` is the pre-loss source (the
  *   last-good Y.Text); `construct` is a bounded, content-free locator of the
  *   danger-space node types present.
+ * - `observer-a-duplication` — Observer A's duplication gate found a
+ *   provenance-confirmed CRDT double-materialization of a bridge-derived span
+ *   and re-derived the fragment from Y.Text before it could persist.
+ *   `contents` is the pre-recovery doubled fragment serialization (the anchor
+ *   if the re-derive was wrong); `duplicatedLineCount` is a content-free count.
  * - `external-change-rescue` — an external disk write (reconcile-delete or
  *   branch-switch path) would otherwise have discarded dirty Y.Doc content.
  *   `contents` is the rescued in-memory markdown; `incomingDiskSha` names
@@ -737,7 +742,7 @@ export type InMemoryCheckpointParams =
       contents: string;
       label: string;
       branch?: string;
-      metadata: { lostSubstrings: string[] };
+      metadata: { lostSubstrings: string[]; which?: string };
     }
   | {
       kind: 'producer-guard-loss';
@@ -746,6 +751,14 @@ export type InMemoryCheckpointParams =
       label: string;
       branch?: string;
       metadata: { construct: string };
+    }
+  | {
+      kind: 'observer-a-duplication';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { duplicatedLineCount: number };
     }
   | {
       kind: 'external-change-rescue';
@@ -809,6 +822,14 @@ export async function saveInMemoryCheckpoint(
     case 'producer-guard-loss':
       parsed = {
         kind: 'producer-guard-loss',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'observer-a-duplication':
+      parsed = {
+        kind: 'observer-a-duplication',
         docName: params.docName,
         size,
         metadata: params.metadata,
@@ -995,6 +1016,13 @@ export interface CheckpointRetentionPolicy {
    */
   maxProducerGuardLoss: number;
   /**
+   * Maximum `observer-a-duplication` checkpoints to keep per branch. Written
+   * when Observer A's duplication gate recovers a provenance-confirmed CRDT
+   * double-materialization. Its own budget so a stuck race cannot evict
+   * merge-drop or serializer-corruption recovery anchors. Default 50.
+   */
+  maxObserverADuplication: number;
+  /**
    * Maximum `external-change-rescue` checkpoints to keep per branch. These
    * are written on reconcile-delete / branch-switch disk-overrode-memory
    * paths. Default 50.
@@ -1024,6 +1052,7 @@ export interface CheckpointRetentionPolicy {
 export const DEFAULT_CHECKPOINT_RETENTION: CheckpointRetentionPolicy = {
   maxBridgeMergeLoss: 50,
   maxProducerGuardLoss: 50,
+  maxObserverADuplication: 50,
   maxExternalChangeRescue: 50,
   maxAutoConsolidation: 2,
   ttlMs: 30 * 24 * 60 * 60 * 1000,
@@ -1033,6 +1062,7 @@ export interface CheckpointGcResult {
   scanned: number;
   deletedBridgeMergeLoss: number;
   deletedProducerGuardLoss: number;
+  deletedObserverADuplication: number;
   deletedExternalChangeRescue: number;
   deletedAutoConsolidation: number;
   retained: number;
@@ -1057,6 +1087,7 @@ export async function gcCheckpointRefs(
     scanned: 0,
     deletedBridgeMergeLoss: 0,
     deletedProducerGuardLoss: 0,
+    deletedObserverADuplication: 0,
     deletedExternalChangeRescue: 0,
     deletedAutoConsolidation: 0,
     retained: 0,
@@ -1111,6 +1142,7 @@ export async function gcCheckpointRefs(
   type TypedKind =
     | 'bridge-merge-loss'
     | 'producer-guard-loss'
+    | 'observer-a-duplication'
     | 'external-change-rescue'
     | 'auto-consolidation';
   interface Entry {
@@ -1137,6 +1169,7 @@ export async function gcCheckpointRefs(
   const byKind: Record<TypedKind, Entry[]> = {
     'bridge-merge-loss': [],
     'producer-guard-loss': [],
+    'observer-a-duplication': [],
     'external-change-rescue': [],
     'auto-consolidation': [],
   };
@@ -1157,6 +1190,7 @@ export async function gcCheckpointRefs(
     counter:
       | 'deletedBridgeMergeLoss'
       | 'deletedProducerGuardLoss'
+      | 'deletedObserverADuplication'
       | 'deletedExternalChangeRescue'
       | 'deletedAutoConsolidation',
     // auto-consolidation is count-only: TTL must never be able to reap every
@@ -1186,6 +1220,11 @@ export async function gcCheckpointRefs(
     byKind['producer-guard-loss'],
     policy.maxProducerGuardLoss,
     'deletedProducerGuardLoss',
+  );
+  planDeletions(
+    byKind['observer-a-duplication'],
+    policy.maxObserverADuplication,
+    'deletedObserverADuplication',
   );
   planDeletions(
     byKind['external-change-rescue'],

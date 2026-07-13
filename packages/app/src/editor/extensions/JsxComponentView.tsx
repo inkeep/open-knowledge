@@ -84,6 +84,7 @@ import { ALIGNABLE_DESCRIPTOR_NAMES } from '../utils/alignable-descriptors.ts';
 import { formatContainerAriaLabel } from '../utils/editor-strings.ts';
 import { reconstructSource } from '../utils/reconstruct-source.ts';
 import { sanitizeComponentProps } from '../utils/sanitize-url.ts';
+import { autonomousFragmentEditAllowed } from './autonomous-fragment-edit.ts';
 
 // ── Error Boundary ──────────────────────────────────────────────────────
 //
@@ -522,6 +523,17 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
 
     const dispatchOnce = () => {
       if (cancelled) return;
+      // In source mode this WYSIWYG editor is hidden; an autonomous structural
+      // replace here races Observer B's per-keystroke re-derive and doubles the
+      // span. Skip WITHOUT flipping convertedRef or scheduling a retry.
+      // Re-conversion after a flip back to WYSIWYG rides on the next NodeView
+      // re-render (typically Observer B's re-derive of the span or any
+      // transaction touching it) — the mode flip itself does not remount the
+      // hidden editor or re-run this effect, so a fully quiescent doc can sit
+      // on the placeholder until the next transaction. Accepted trade-off:
+      // the placeholder is inert and any edit re-triggers conversion, while
+      // dispatching from the hidden editor corrupts the authoritative bytes.
+      if (!autonomousFragmentEditAllowed(editor)) return;
       try {
         editor.view.dispatch(editor.state.tr.replaceWith(p, p + node.nodeSize, fallbackNode));
         convertedRef.current = true;

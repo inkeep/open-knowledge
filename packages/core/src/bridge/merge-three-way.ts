@@ -1,5 +1,6 @@
 import DiffMatchPatch from 'diff-match-patch';
 import { diff3Merge } from 'node-diff3';
+import { substantiveLineCounts } from './growth-detect.ts';
 import { fnv1aDigest } from './hash-util.ts';
 
 const dmp = new DiffMatchPatch();
@@ -40,7 +41,7 @@ function mergeThreeWayImpl(baseline: string, userText: string, agentText: string
 
 export type BridgeMergeContentLossSide = 'user' | 'agent';
 
-export type BridgeMergeContentLossWhich = 'substring' | 'order';
+export type BridgeMergeContentLossWhich = 'substring' | 'order' | 'growth';
 
 export interface BridgeMergeContentLossInfo {
   baseline: string;
@@ -201,6 +202,29 @@ export function assertContentPreservation(
       which: 'order',
       side: 'agent',
     });
+  }
+
+  const baselineCounts = substantiveLineCounts(baseline);
+  const userCounts = substantiveLineCounts(userText);
+  const agentCounts = substantiveLineCounts(agentText);
+  for (const [line, count] of substantiveLineCounts(result)) {
+    if (count < 2) continue;
+    const maxInput = Math.max(
+      baselineCounts.get(line) ?? 0,
+      userCounts.get(line) ?? 0,
+      agentCounts.get(line) ?? 0,
+    );
+    if (count > maxInput) {
+      throw new BridgeMergeContentLossError({
+        baseline,
+        userText,
+        agentText,
+        result,
+        lostSubstrings: [line],
+        which: 'growth',
+        side: 'user',
+      });
+    }
   }
 }
 

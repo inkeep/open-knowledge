@@ -55,24 +55,20 @@ test.beforeEach(async ({ page, api }) => {
   await page.waitForSelector('.ProseMirror');
 });
 
-// KNOWN PRE-EXISTING CORRUPTION (quarantined tripwires): three of these
-// canaries detect a real source-typing duplication/re-indent race in the
-// authoritative Y.Text that PRE-DATES this suite — a 2026-07 forensic bisect
-// reproduced the same failures at ~30-50% per fully-contended run on pure
-// origin/main with these canary files copied in (8 canary failures across 3
-// runs), on this branch with `deriveStructuralFreshness` verifiably OFF in
-// the built dist, and on this branch as-shipped. Only full-suite CPU
-// contention trips it; single-file runs pass. The corruption is real
-// (duplicated bytes read from `provider.document.getText('source')`, never
-// the DOM). The affected tests are `test.fixme` so a pre-existing production
-// bug does not lottery every PR's e2e lane; they are the ORACLE for the
-// follow-up fix and must be un-fixme'd by it. The full forensic evidence
-// (run matrix, mechanism map, reproduction procedure) lives in the
-// quarantining commit's message and its PR discussion.
+// These canaries are the field oracle for the source-typing
+// duplication/re-indent race in the authoritative Y.Text: a source-mode-hidden
+// WYSIWYG editor issuing an autonomous structural fragment replace of a
+// <Steps>/<Step> span while server Observer B re-derives that span per
+// keystroke, both inserts surviving the CRDT merge (duplicated bytes read from
+// `provider.document.getText('source')`, never the DOM). The fix is symmetric:
+// the client no longer mints the autonomous structural write from a hidden
+// editor, and the server refuses to persist a provenance-confirmed doubled
+// span. The race only surfaces under CPU contention (client apply-lag vs typing
+// cadence), so validate these under load, not single-file.
 test.describe('QA canary — authoring <Steps> across both modes', () => {
   // T1 — SOURCE: author the whole nested <Steps> from EMPTY, char-by-char, through
   // the unclosed-container transient, landing valid. Surrounding heading preserved.
-  test.fixme('source: author nested <Steps> from empty; no whole-doc collapse, recovers to valid', async ({
+  test('source: author nested <Steps> from empty; no whole-doc collapse, recovers to valid', async ({
     page,
     api,
   }) => {
@@ -115,7 +111,7 @@ test.describe('QA canary — authoring <Steps> across both modes', () => {
   // T2 — WYSIWYG ProseMirror + JITTER PROBE: with a valid <Steps> + surrounding
   // prose, type a burst into a sibling paragraph; the Steps render must NOT flash
   // (fallback/CM count stable across the burst).
-  test.fixme('wysiwyg: typing in prose adjacent to <Steps> does not flash the Steps render (jitter)', async ({
+  test('wysiwyg: typing in prose adjacent to <Steps> does not flash the Steps render (jitter)', async ({
     page,
     api,
   }) => {
@@ -198,7 +194,7 @@ test.describe('QA canary — authoring <Steps> across both modes', () => {
 
   // T4 — MODE-FLIP mid-build: type a partial (unclosed) <Steps> in source, flip to
   // WYSIWYG while broken, flip back, finish. No collapse, no corruption, recovers.
-  test.fixme('mode-flip mid-build: unclosed <Steps> survives a WYSIWYG round-trip and recovers', async ({
+  test('mode-flip mid-build: unclosed <Steps> survives a WYSIWYG round-trip and recovers', async ({
     page,
     api,
   }) => {
