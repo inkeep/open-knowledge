@@ -1053,6 +1053,7 @@ function SyncSection() {
         open={authModalOpen}
         onOpenChange={setAuthModalOpen}
         onSuccess={() => setAuthModalOpen(false)}
+        host={status?.remote?.host}
       />
     </section>
   );

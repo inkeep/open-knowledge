@@ -100,6 +100,7 @@ function renderModal(props: {
   identityPrompt?: boolean;
   queryTransport: AuthQueryTransport;
   transport?: AuthTransport;
+  host?: string;
 }) {
   return render(
     <AuthModal
@@ -108,6 +109,7 @@ function renderModal(props: {
       identityPrompt={props.identityPrompt}
       transport={props.transport ?? noopAuthTransport}
       queryTransport={props.queryTransport}
+      host={props.host}
     />,
   );
 }
@@ -131,6 +133,50 @@ describe('AuthModal identityPrompt (set-identity) path', () => {
     expect(screen.getByText('Connected as @octocat')).toBeDefined();
     // The device-flow copy must NOT be on screen — no re-auth was required.
     expect(screen.queryByText('Starting sign-in flow')).toBeNull();
+  });
+
+  test('identity probe queries the requested GitHub Enterprise host', async () => {
+    const hosts: Array<string | undefined> = [];
+    const queryTransport: AuthQueryTransport = {
+      status: async (request) => {
+        hosts.push(request?.host);
+        return { authenticated: false, host: request?.host ?? 'github.com' };
+      },
+      repos: async () => ({ ok: true, host: 'github.com', repos: [] }),
+      signout: async () => ({ ok: true }),
+    };
+
+    renderModal({
+      identityPrompt: true,
+      queryTransport,
+      host: 'github.enterprise.example',
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(hosts).toEqual(['github.enterprise.example']);
+  });
+
+  test('device flow starts against the requested GitHub Enterprise host', async () => {
+    const starts: Array<string | undefined> = [];
+    const transport: AuthTransport = {
+      start: (request) => {
+        starts.push(request?.host);
+        return noopAuthTransport.start();
+      },
+    };
+
+    renderModal({
+      queryTransport: makeQueryTransport(NOT_CONNECTED),
+      transport,
+      host: 'github.enterprise.example',
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(starts).toEqual(['github.enterprise.example']);
   });
 
   test('unauthenticated user falls back to the device flow', async () => {

@@ -1326,7 +1326,7 @@ export interface RequestChannels {
    * flow per channel; concurrent starts return `error: 'busy'`.
    */
   'ok:local-op:auth:start': {
-    args: [];
+    args: [request?: { host?: string }];
     result: { ok: true; streamId: string } | { ok: false; error: string };
   };
   'ok:local-op:auth:cancel': { args: [streamId: string]; result: undefined };

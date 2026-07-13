@@ -4220,8 +4220,8 @@ function registerIpcHandlers() {
     resolveCliArgs: resolveLocalOpCliArgs,
     state: createLocalOpState(),
   };
-  handle('ok:local-op:auth:start', async (event) => {
-    const result = handleAuthStart(localOpDeps, event.sender);
+  handle('ok:local-op:auth:start', async (event, request) => {
+    const result = handleAuthStart(localOpDeps, event.sender, request);
     if (!result.ok) {
       logIpcError({
         event: 'ipc.error',

@@ -35,11 +35,11 @@ export async function resolveAuth(
   host: string,
   tokenStore: TokenStore,
   options: ResolveAuthOptions = {},
-  _detectGhFn: () => ReturnType<typeof detectGh> = detectGh,
+  _detectGhFn: (host?: string) => ReturnType<typeof detectGh> = detectGh,
 ): Promise<ResolvedAuth> {
   // Tier A: gh CLI
   if (!options.skipGhDetect) {
-    const gh = _detectGhFn();
+    const gh = _detectGhFn(host);
     if (gh.available) {
       return {
         tier: 'A',

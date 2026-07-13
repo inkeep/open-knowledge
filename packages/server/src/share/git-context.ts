@@ -23,7 +23,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 
 /** Outcome of `readOriginGitHubRepo`. */
 export type OriginResult =
-  | { kind: 'ok'; owner: string; repo: string }
+  | { kind: 'ok'; host: string; owner: string; repo: string }
   | { kind: 'no-remote' }
   | { kind: 'non-github' };
 
@@ -157,36 +157,63 @@ export function extractOriginUrl(configContents: string): string | null {
 }
 
 /**
- * Match a github.com origin URL and return `{owner, repo}`. Returns null for
- * non-github hosts (gitlab, internal forges) and unparseable strings.
+ * Match a GitHub origin URL and return `{host, owner, repo}`. Supports public
+ * github.com plus common GitHub Enterprise hostnames such as
+ * `github.company.example`. Returns null for non-GitHub hosts (gitlab,
+ * bitbucket, internal non-GitHub forges) and unparseable strings.
  *
  * Scope is intentionally narrow: only the forms used in production GitHub
  * clones. The full URL grammar lives in `parseGitUrl` in `packages/cli/`;
  * widening this regex to cover GHES wildcard forms would re-create that
  * surface and risk drifting from the cli's source of truth.
  */
-function parseGitHubOriginUrl(originUrl: string): { owner: string; repo: string } | null {
+function parseGitHubOriginUrl(
+  originUrl: string,
+): { host: string; owner: string; repo: string } | null {
   const raw = originUrl.trim();
   if (!raw) return null;
 
-  // https://github.com/<owner>/<repo>(.git)?
-  let m = /^https?:\/\/(?:www\.)?github\.com\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
-  if (m) return { owner: m[1], repo: m[2] };
+  // https://<github-host>/<owner>/<repo>(.git)?
+  let m = /^https?:\/\/([^/@]+)\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
+  if (m) return parseGitHubHostRepo(m[1], m[2], m[3]);
 
-  // ssh://[user@]github.com[:port]/<owner>/<repo>(.git)?
-  m = /^ssh:\/\/(?:[\w.-]+@)?github\.com(?::\d+)?\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(
+  // ssh://[user@]<github-host>[:port]/<owner>/<repo>(.git)?
+  m = /^ssh:\/\/(?:[\w.-]+@)?([^/:]+)(?::\d+)?\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(
     raw,
   );
-  if (m) return { owner: m[1], repo: m[2] };
+  if (m) return parseGitHubHostRepo(m[1], m[2], m[3]);
 
-  // git@github.com:<owner>/<repo>(.git)?
-  m = /^[\w.-]+@github\.com:([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?$/.exec(raw);
-  if (m) return { owner: m[1], repo: m[2] };
+  // git@<github-host>:<owner>/<repo>(.git)?
+  m = /^[\w.-]+@([^:/]+):([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?$/.exec(raw);
+  if (m) return parseGitHubHostRepo(m[1], m[2], m[3]);
 
-  // git://github.com/<owner>/<repo>(.git)?
-  m = /^git:\/\/github\.com\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
-  if (m) return { owner: m[1], repo: m[2] };
+  // git://<github-host>/<owner>/<repo>(.git)?
+  m = /^git:\/\/([^/@]+)\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
+  if (m) return parseGitHubHostRepo(m[1], m[2], m[3]);
 
+  return null;
+}
+
+function parseGitHubHostRepo(
+  rawHost: string,
+  owner: string,
+  repo: string,
+): { host: string; owner: string; repo: string } | null {
+  const host = normalizeGitHubHost(rawHost);
+  if (!host) return null;
+  return { host, owner, repo };
+}
+
+function normalizeGitHubHost(rawHost: string): string | null {
+  const host = rawHost
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, '');
+  if (host === 'github.com') return host;
+  // Common GHES naming: github.company.tld / github.enterprise-host.
+  // Avoid treating gitlab.com, bitbucket.org, or arbitrary internal forges
+  // as GitHub remotes just because their URL grammar looks similar.
+  if (host.startsWith('github.')) return host;
   return null;
 }
 
@@ -200,7 +227,7 @@ function parseGitHubOriginUrl(originUrl: string): { owner: string; repo: string 
  */
 function readParsedOrigin(
   projectDir: string,
-): { originUrl: string; github: { owner: string; repo: string } | null } | null {
+): { originUrl: string; github: { host: string; owner: string; repo: string } | null } | null {
   const gitDir = resolveGitDir(projectDir);
   if (!gitDir) return null;
   // Origin config lives in the common dir, which differs from `gitDir` for a
@@ -227,7 +254,14 @@ function readParsedOrigin(
 export function readOriginGitHubRepo(projectDir: string): OriginResult {
   const parsed = readParsedOrigin(projectDir);
   if (!parsed) return { kind: 'no-remote' };
-  if (parsed.github) return { kind: 'ok', owner: parsed.github.owner, repo: parsed.github.repo };
+  if (parsed.github) {
+    return {
+      kind: 'ok',
+      host: parsed.github.host,
+      owner: parsed.github.owner,
+      repo: parsed.github.repo,
+    };
+  }
   // Origin URL present but not parseable as github.com — surface as
   // `non-github` so the caller renders the matching toast.
   return { kind: 'non-github' };
@@ -235,12 +269,13 @@ export function readOriginGitHubRepo(projectDir: string): OriginResult {
 
 /**
  * UI-facing summary of the origin remote for the sync-status payload.
- * `webUrl` is non-null only for github.com origins (the Sync UI renders it as
- * a link); other forges yield a readable `label` with no link.
+ * `webUrl` is non-null only for recognized GitHub origins (the Sync UI renders
+ * it as a link); other forges yield a readable `label` with no link.
  */
 export interface SyncRemoteInfo {
   label: string;
   webUrl: string | null;
+  host?: string;
 }
 
 /**
@@ -254,7 +289,8 @@ export function readSyncRemoteInfo(projectDir: string): SyncRemoteInfo | null {
   if (parsed.github) {
     return {
       label: `${parsed.github.owner}/${parsed.github.repo}`,
-      webUrl: `https://github.com/${parsed.github.owner}/${parsed.github.repo}`,
+      webUrl: `https://${parsed.github.host}/${parsed.github.owner}/${parsed.github.repo}`,
+      host: parsed.github.host,
     };
   }
   // Non-github origin: show a readable host/path label, never linkified.

@@ -113,6 +113,7 @@ describe('readOriginGitHubRepo', () => {
     seedRepo(dir, { config: CANONICAL_CONFIG_HTTPS });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -124,6 +125,7 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -135,6 +137,7 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -146,6 +149,33 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+    });
+  });
+
+  test('parses HTTPS GitHub Enterprise origin URL', () => {
+    seedRepo(dir, {
+      config:
+        '[remote "origin"]\n\turl = https://github.enterprise.example/inkeep/open-knowledge.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'github.enterprise.example',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+    });
+  });
+
+  test('parses SSH SCP-style GitHub Enterprise origin URL', () => {
+    seedRepo(dir, {
+      config:
+        '[remote "origin"]\n\turl = git@github.enterprise.example:inkeep/open-knowledge.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'github.enterprise.example',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -196,6 +226,7 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -208,6 +239,7 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -291,6 +323,7 @@ describe('readSyncRemoteInfo', () => {
     expect(readSyncRemoteInfo(dir)).toEqual({
       label: 'inkeep/open-knowledge',
       webUrl: 'https://github.com/inkeep/open-knowledge',
+      host: 'github.com',
     });
   });
 
@@ -301,6 +334,19 @@ describe('readSyncRemoteInfo', () => {
     expect(readSyncRemoteInfo(dir)).toEqual({
       label: 'inkeep/open-knowledge',
       webUrl: 'https://github.com/inkeep/open-knowledge',
+      host: 'github.com',
+    });
+  });
+
+  test('GitHub Enterprise origin yields an enterprise-host webUrl', () => {
+    seedRepo(dir, {
+      config:
+        '[remote "origin"]\n\turl = https://github.enterprise.example/inkeep/open-knowledge.git\n',
+    });
+    expect(readSyncRemoteInfo(dir)).toEqual({
+      label: 'inkeep/open-knowledge',
+      webUrl: 'https://github.enterprise.example/inkeep/open-knowledge',
+      host: 'github.enterprise.example',
     });
   });
 
@@ -374,6 +420,7 @@ describe('linked-worktree common-dir resolution', () => {
   test('reads origin config via commondir (regression: worktree reported no-remote)', () => {
     expect(readOriginGitHubRepo(project)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -383,6 +430,7 @@ describe('linked-worktree common-dir resolution', () => {
     expect(readSyncRemoteInfo(project)).toEqual({
       label: 'inkeep/open-knowledge',
       webUrl: 'https://github.com/inkeep/open-knowledge',
+      host: 'github.com',
     });
   });
 

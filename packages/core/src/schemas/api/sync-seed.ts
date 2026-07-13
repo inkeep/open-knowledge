@@ -48,6 +48,8 @@ export const SyncRemoteSchema = z
     label: z.string().min(1),
     /** Browsable https URL, or null when not a recognized GitHub remote. */
     webUrl: z.url().nullable(),
+    /** GitHub host for recognized GitHub/GHES remotes. */
+    host: z.string().min(1).optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type SyncRemoteWire = z.infer<typeof SyncRemoteSchema>;

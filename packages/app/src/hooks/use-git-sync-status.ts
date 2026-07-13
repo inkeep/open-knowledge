@@ -54,7 +54,7 @@ export interface GitSyncStatus {
    * recognized GitHub origins (rendered as a link); non-GitHub remotes carry
    * a readable `label` with `webUrl: null`. Null/absent when no remote exists.
    */
-  remote?: { label: string; webUrl: string | null } | null;
+  remote?: { label: string; webUrl: string | null; host?: string } | null;
   /**
    * Per-direction error surfaces. `push*` = sending commits out; `pull*` =
    * bringing remote changes in (fetch + merge). Tracked separately so a

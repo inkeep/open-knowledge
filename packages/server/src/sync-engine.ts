@@ -59,13 +59,7 @@ const log = getLogger('sync-engine');
  */
 const SHA_HEX_40 = /^[0-9a-f]{40}$/i;
 
-/**
- * Host the relayed gh token authenticates. The origin parser (`git-context.ts`)
- * is GitHub-only — a GHES or non-github remote classifies as `non-github` and
- * never reaches the credential paths — so the sync engine only ever
- * authenticates against github.com.
- */
-const SYNC_GH_TOKEN_HOST = 'github.com';
+const DEFAULT_GH_TOKEN_HOST = 'github.com';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -393,7 +387,8 @@ export class SyncEngine {
 
   /**
    * Single construction point for every git handle the engine spawns. Threads
-   * the credential args plus the cached gh token (host-scoped to github.com) so
+   * the credential args plus the cached gh token (host-scoped to the parsed
+   * GitHub origin host) so
    * fetch/push authenticate via gh when available. Local-only handles (e.g.
    * `remote -v`, `merge --abort`) carry the token harmlessly — the cache keeps
    * resolution to at most one `gh` spawn per minute regardless of handle count.
@@ -402,8 +397,13 @@ export class SyncEngine {
     return createGitInstance(this.projectDir, {
       credentialArgs: this.credentialArgs,
       gitIndexFile,
-      ghToken: this.ghTokenSource.get(SYNC_GH_TOKEN_HOST) ?? undefined,
+      ghToken: this.ghTokenSource.get(this.syncGhTokenHost()) ?? undefined,
     });
+  }
+
+  private syncGhTokenHost(): string {
+    const origin = readOriginGitHubRepo(this.projectDir);
+    return origin.kind === 'ok' ? origin.host : DEFAULT_GH_TOKEN_HOST;
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
@@ -833,7 +833,7 @@ export class SyncEngine {
 
     const origin = readOriginGitHubRepo(this.projectDir);
     if (origin.kind !== 'ok') {
-      // Non-github origin (gitlab, self-hosted, ssh-only without a parseable
+      // Non-github origin (gitlab, bitbucket, ssh-only without a parseable
       // form) or no remote URL configured — the GitHub-only probe cannot
       // run. Emit `{ checkStatus: 'unknown' }` so the UI sees `pushPermission`
       // populated (not undefined) and the AutoSync onboarding gate's
@@ -862,7 +862,7 @@ export class SyncEngine {
     log.info(
       {
         caller,
-        host: 'github.com',
+        host: origin.host,
         hasDetectGh: this.detectGh !== undefined,
         hasTokenStore: this.tokenStore !== undefined && this.tokenStore !== null,
       },
@@ -873,7 +873,7 @@ export class SyncEngine {
       outcome = await this.checkPushPermissionFn({
         owner: origin.owner,
         repo: origin.repo,
-        host: 'github.com',
+        host: origin.host,
         detectGh: this.detectGh,
         tokenStore: this.tokenStore,
       });

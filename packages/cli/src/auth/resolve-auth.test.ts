@@ -38,6 +38,17 @@ describe('resolveAuth', () => {
     expect(result.credentialArgs).toEqual(['-c', 'credential.helper=!gh auth git-credential']);
   });
 
+  test('Tier A detects gh auth for the requested host', async () => {
+    const store = makeStore(tmpDir);
+    const hosts: Array<string | undefined> = [];
+    const result = await resolveAuth('github.enterprise.example', store, {}, (host?: string) => {
+      hosts.push(host);
+      return { available: true, token: 'ghs_enterprise_token' };
+    });
+    expect(result.tier).toBe('A');
+    expect(hosts).toEqual(['github.enterprise.example']);
+  });
+
   test('Tier A takes priority over stored token', async () => {
     const store = makeStore(tmpDir);
     await store.set('github.com', 'alice', 'gho_abc');

@@ -1763,7 +1763,7 @@ export interface OkDesktopBridge {
        * events; iteration ends after a terminal `complete` / `error`. Call
        * `cancel()` to abort early.
        */
-      start(): OkLocalOpStream<OkLocalOpAuthEvent>;
+      start(request?: { host?: string }): OkLocalOpStream<OkLocalOpAuthEvent>;
     };
     clone: {
       /**

@@ -1289,7 +1289,7 @@ export interface OkDesktopBridge {
    */
   localOp: {
     auth: {
-      start(): OkLocalOpStream<OkLocalOpAuthEvent>;
+      start(request?: { host?: string }): OkLocalOpStream<OkLocalOpAuthEvent>;
     };
     clone: {
       start(request: {

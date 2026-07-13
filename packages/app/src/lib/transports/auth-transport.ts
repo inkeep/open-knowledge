@@ -36,7 +36,7 @@ interface AuthTransportHandle {
 
 export interface AuthTransport {
   /** Start a new device-flow login. */
-  start(): AuthTransportHandle;
+  start(request?: { host?: string }): AuthTransportHandle;
 }
 
 /**
@@ -46,14 +46,17 @@ export interface AuthTransport {
  */
 export function httpAuthTransport(): AuthTransport {
   return {
-    start(): AuthTransportHandle {
+    start(request?: { host?: string }): AuthTransportHandle {
       return createBufferedAsyncStream<AuthEvent>((push, signal) => {
         void (async () => {
           try {
             const res = await fetch('/api/local-op/auth/login', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ json: true }),
+              body: JSON.stringify({
+                json: true,
+                ...(request?.host ? { host: request.host } : {}),
+              }),
               signal,
             });
             if (!res.ok) {
@@ -140,8 +143,8 @@ export function httpAuthTransport(): AuthTransport {
  */
 export function ipcAuthTransport(bridge: OkDesktopBridge): AuthTransport {
   return {
-    start(): AuthTransportHandle {
-      return bridge.localOp.auth.start();
+    start(request?: { host?: string }): AuthTransportHandle {
+      return bridge.localOp.auth.start(request);
     },
   };
 }

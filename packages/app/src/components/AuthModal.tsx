@@ -82,6 +82,8 @@ interface AuthModalProps {
    * path (POST /api/local-op/auth/status). Injectable for tests.
    */
   queryTransport?: AuthQueryTransport;
+  /** GitHub/GHES host for project-scoped auth flows. Defaults to github.com. */
+  host?: string;
 }
 
 // ── Device Flow panel ─────────────────────────────────────────────────────────
@@ -89,11 +91,12 @@ interface AuthModalProps {
 interface DeviceFlowPanelProps {
   onSuccess: (result: AuthSuccessResult) => void;
   transport: AuthTransport;
+  host?: string;
 }
 
 const DEVICE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
-function DeviceFlowPanel({ onSuccess, transport }: DeviceFlowPanelProps) {
+function DeviceFlowPanel({ onSuccess, transport, host }: DeviceFlowPanelProps) {
   const { t } = useLingui();
   const [userCode, setUserCode] = useState<string | null>(null);
   const [verificationUri, setVerificationUri] = useState('https://github.com/login/device');
@@ -106,7 +109,7 @@ function DeviceFlowPanel({ onSuccess, transport }: DeviceFlowPanelProps) {
   async function startDeviceFlow() {
     setError(null);
     try {
-      const handle = transport.start();
+      const handle = transport.start(host ? { host } : undefined);
       cancelRef.current = handle.cancel;
       // Manual iterator drive — React Compiler (BuildHIR) does not yet
       // support `for await ... of` lowering, so we walk the iterator with
@@ -323,6 +326,7 @@ export function AuthModal({
   reauth,
   transport,
   queryTransport,
+  host,
 }: AuthModalProps) {
   const { t } = useLingui();
   // Default to the HTTP path so existing editor / web callers don't need
@@ -372,7 +376,7 @@ export function AuthModal({
     };
     const timer = setTimeout(() => settle('auth'), IDENTITY_PROBE_TIMEOUT_MS);
     void resolvedQueryTransport
-      .status()
+      .status(host ? { host } : undefined)
       .then((status) => {
         if (settled) return;
         if (status.authenticated) {
@@ -482,7 +486,11 @@ export function AuthModal({
         {step === 'auth' && (
           <>
             <DialogBody>
-              <DeviceFlowPanel onSuccess={handleAuthSuccess} transport={resolvedTransport} />
+              <DeviceFlowPanel
+                onSuccess={handleAuthSuccess}
+                transport={resolvedTransport}
+                host={host}
+              />
             </DialogBody>
 
             <DialogFooter>

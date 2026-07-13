@@ -104,6 +104,7 @@ export interface LocalOpDeps {
 export function handleAuthStart(
   deps: LocalOpDeps,
   sender: SendableWebContents,
+  request?: { host?: string },
 ): { ok: true; streamId: string } | { ok: false; error: string } {
   const streamId = randomUUID();
   // Renderer-side cleanup IPC is best-effort; on a missed `:cancel` the slot
@@ -128,6 +129,7 @@ export function handleAuthStart(
   }
   const controller = runDeviceFlowSubprocess({
     cliArgs: deps.resolveCliArgs(),
+    host: request?.host,
     onEvent: (event) => {
       // The wrapper guards against sending to a destroyed webContents —
       // window-close mid-flow would otherwise crash the main process.
