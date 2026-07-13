@@ -19,6 +19,13 @@
  */
 
 import { findParentNode, InputRule, mergeAttributes, Node, wrappingInputRule } from '@tiptap/core';
+import {
+  chainCommands,
+  joinTextblockBackward,
+  joinTextblockForward,
+  joinBackward as pmJoinBackward,
+  joinForward as pmJoinForward,
+} from '@tiptap/pm/commands';
 import type { NodeType, Node as PmNode } from '@tiptap/pm/model';
 import { liftListItem as pmLiftListItem, wrapInList as pmWrapInList } from '@tiptap/pm/schema-list';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
@@ -315,8 +322,18 @@ export const ListNode = Node.create({
 // default priority (100) matches stock TipTap and lets our splitListItem
 // run first; a previous `priority: 60` here regressed Enter on every list
 // type.
+//
+// priority: 101 — one above default so this extension's Backspace/Delete
+// (joinTextblockBackward/Forward, see addKeyboardShortcuts) run before
+// StarterKit's ListKeymap sub-extension (also default 100, registered later
+// in sharedExtensions but stable-sorted ahead of same-priority extensions
+// added earlier). ListKeymap's joinItemBackward/liftListItem branches target
+// the fragmented BulletList/TaskItem schema; against this unified listItem
+// schema they can lift a same-depth sibling clean out of the list (issue
+// #609 orphan rows) before this extension's handler ever runs.
 export const ListItemNode = Node.create({
   name: 'listItem',
+  priority: 101,
   content: 'paragraph block*',
   defining: true,
 
@@ -458,6 +475,38 @@ export const ListItemNode = Node.create({
   addKeyboardShortcuts() {
     return {
       Enter: () => this.editor.commands.splitListItem(this.name),
+      // Backspace/Delete at a listItem boundary — bypass the upstream
+      // ListKeymap extension's joinItemBackward/joinItemForward and
+      // has-sublist/depth-mismatch branches (@tiptap/extension-list, wired
+      // via StarterKit's `listKeymap` option in shared.ts). Those branches
+      // assume the fragmented BulletList/OrderedList/TaskList/TaskItem
+      // schema; against this unified single-`listItem` schema they can
+      // `liftListItem` a same-depth sibling clean out of the list entirely
+      // (previous item has a nested sublist → the merged-in item becomes a
+      // bare paragraph with no bullet) or re-nest a merged item at the wrong
+      // depth with its `checked` attr dropped (Delete across a depth
+      // change) — both read by users as "orphan" list rows (issue #609).
+      //
+      // `joinTextblockBackward`/`joinTextblockForward` (prosemirror-commands)
+      // are the general-purpose fix: at a boundary between two container
+      // nodes (listItem/listItem, or listItem/nested-list), they descend via
+      // lastChild/firstChild to the actual textblocks and merge only those —
+      // never re-parenting or dropping the surviving item's attrs. Only
+      // engage them when the cursor is inside a listItem so plain-document
+      // Backspace/Delete (paragraphs, headings, etc.) keeps the stock
+      // joinBackward/joinForward behavior. Falling back to joinBackward/
+      // joinForward keeps the existing lift-out-of-list behavior for the
+      // first/last item in a list (no adjacent item to join into).
+      Backspace: () => {
+        if (!isCursorInsideListItem(this.editor.state)) return false;
+        const { state, view } = this.editor;
+        return chainCommands(joinTextblockBackward, pmJoinBackward)(state, view.dispatch, view);
+      },
+      Delete: () => {
+        if (!isCursorInsideListItem(this.editor.state)) return false;
+        const { state, view } = this.editor;
+        return chainCommands(joinTextblockForward, pmJoinForward)(state, view.dispatch, view);
+      },
       Tab: () => {
         // Only handle Tab when the cursor is inside a listItem — otherwise
         // pass through so other extensions (e.g., table) can handle it.
@@ -481,6 +530,15 @@ export const ListItemNode = Node.create({
     };
   },
 });
+
+/** True when the selection's anchor sits inside a `listItem` ancestor. */
+function isCursorInsideListItem(state: EditorState): boolean {
+  const { $from } = state.selection;
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type.name === 'listItem') return true;
+  }
+  return false;
+}
 
 /**
  * Combined export for registration in shared.ts.
