@@ -220,7 +220,17 @@ test('an activated .ok folder row never becomes a mutation target — create fal
   // host, and a click alone doesn't guarantee it — focus the row explicitly
   // (same pattern as file-tree-create's select-all helper). Escape cancels
   // without deleting.
+  // The tree is virtualized with sticky ancestor headers: a folder row
+  // scrolled past the viewport top leaves the DOM entirely (its sticky
+  // stand-in renders as a button, not a treeitem), so re-locating a
+  // top-sorted folder row after interactions that scrolled the tree (the
+  // created-doc reveal above) requires parking the scroll back at the top
+  // first — same idiom as the post-toggle reveal earlier in this test.
+  await treeScroller(page).evaluate((el) => {
+    el.scrollTop = 0;
+  });
   const controlRow = folderRow(page, controlFolder);
+  await controlRow.waitFor({ state: 'visible', timeout: 15_000 });
   await controlRow.click();
   await controlRow.focus();
   await expect(controlRow).toBeFocused();
@@ -231,7 +241,13 @@ test('an activated .ok folder row never becomes a mutation target — create fal
 
   // The same key on the selected-and-focused `.ok` row: no dialog opens, and
   // the folder (with its probe file) stays on disk.
+  // Park the scroll again before re-locating `.ok` (top-sorted; the control
+  // row interactions above may have scrolled it out of the virtualized DOM).
+  await treeScroller(page).evaluate((el) => {
+    el.scrollTop = 0;
+  });
   const okRow = folderRow(page, '.ok');
+  await okRow.waitFor({ state: 'visible', timeout: 15_000 });
   await okRow.click();
   await okRow.focus();
   await expect(okRow).toBeFocused();

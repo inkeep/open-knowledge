@@ -1065,8 +1065,14 @@ function updateFolderIndexFromRawEvents(
   contentDir: string,
   contentFilter: ContentFilter | undefined,
   folderIndex: Map<string, FolderIndexEntry>,
-): FolderDiskEvent[] {
+): { events: FolderDiskEvent[]; untrackedFiles: string[] } {
   const events: FolderDiskEvent[] = [];
+  // Absolute paths of regular files discovered inside freshly-created folders
+  // during the rescan below — candidates whose own create events were dropped
+  // by the same inotify registration race (see the rescan comment). The
+  // caller re-injects them as synthetic raw creates after deduping against
+  // the batch and the known-file state.
+  const untrackedFiles: string[] = [];
 
   for (const raw of rawEvents) {
     const relativePath = contentRelativePath(contentDir, raw.path);
@@ -1119,12 +1125,24 @@ function updateFolderIndexFromRawEvents(
       // can call inotify_add_watch on each new directory, so kernel events
       // for the inner levels are emitted into watches that don't exist yet
       // and are dropped. Without this rescan, /api/documents silently misses
-      // `a/b` and `a/b/c` until a server restart.
-      scanForUntrackedSubfolders(canonicalPath, contentDir, contentFilter, folderIndex, events);
+      // `a/b` and `a/b/c` until a server restart. Files inside the new
+      // levels lose their create events to the same race (`mkdir d && cp
+      // x.md d/` — the file write lands before the subwatch registers), so
+      // the rescan collects untracked regular files too; the caller
+      // re-injects them as synthetic creates so the file index, CRDT load,
+      // and CC1 push all fire exactly as if the kernel event had arrived.
+      scanForUntrackedSubfolders(
+        canonicalPath,
+        contentDir,
+        contentFilter,
+        folderIndex,
+        events,
+        untrackedFiles,
+      );
     }
   }
 
-  return events;
+  return { events, untrackedFiles };
 }
 
 function scanForUntrackedSubfolders(
@@ -1133,6 +1151,7 @@ function scanForUntrackedSubfolders(
   contentFilter: ContentFilter | undefined,
   folderIndex: Map<string, FolderIndexEntry>,
   events: FolderDiskEvent[],
+  untrackedFiles: string[],
 ): void {
   // BFS so consumers see parent-before-child folder-create order, matching
   // the natural creation order of `mkdir -p`.
@@ -1153,6 +1172,15 @@ function scanForUntrackedSubfolders(
     }
 
     for (const entry of entries) {
+      // Regular files inside a freshly-created directory are victims of the
+      // same dropped-event race as its subdirectories — collect them for the
+      // caller's synthetic-create re-injection. Symlinked files are skipped
+      // like symlinked dirs below: their own raw event carries the
+      // escape-check + alias resolution this scan doesn't replicate.
+      if (entry.isFile()) {
+        untrackedFiles.push(join(dir, entry.name));
+        continue;
+      }
       // Dirent.isDirectory() returns false for symbolic links to directories;
       // symlinks are handled explicitly when their own raw event arrives.
       // Skipping them here keeps the rescan cycle-free without a visited set.
@@ -1215,8 +1243,48 @@ export async function handleRawEvents(
     return false;
   });
 
-  const mdEvents = safeEvents.filter((e) => isSupportedDocFile(e.path));
-  const assetEvents = safeEvents.filter((e) =>
+  const { events: folderEvents, untrackedFiles } = updateFolderIndexFromRawEvents(
+    safeEvents,
+    contentDir,
+    contentFilter,
+    folderIndex,
+  );
+
+  // Re-inject files the new-folder rescan found whose own create events were
+  // dropped by the inotify subwatch-registration race (`mkdir d && cp x.md d/`
+  // on Linux under load). Synthetic creates run the identical downstream
+  // pipeline — classification, self-write check, index update, onDiskEvent —
+  // so a rescued file is indistinguishable from one whose kernel event
+  // arrived. Dedupe against the batch (macOS FSEvents usually coalesces the
+  // mkdir+write into one batch, so both events are present) and against
+  // already-known files (md via lastKnownHash, others via indexed canonical
+  // paths); apply the same symlink-escape gate as the batch events.
+  let rescuedCreates: RawFileEvent[] = [];
+  if (untrackedFiles.length > 0) {
+    const batchPaths = new Set(safeEvents.map((e) => e.path));
+    const knownCanonicalPaths = new Set<string>();
+    for (const entry of fileIndex.values()) knownCanonicalPaths.add(entry.canonicalPath);
+    rescuedCreates = untrackedFiles
+      .filter(
+        (path) =>
+          !batchPaths.has(path) && !lastKnownHash.has(path) && !knownCanonicalPaths.has(path),
+      )
+      .filter((path) => !eventEscapesContentDir(path, contentDir))
+      .map((path) => ({ type: 'create' as const, path }));
+    if (rescuedCreates.length > 0) {
+      getLogger('file-watcher').debug(
+        {
+          count: rescuedCreates.length,
+          paths: rescuedCreates.map((e) => toPosix(relative(contentDir, e.path))),
+        },
+        '[file-watcher] re-injecting rescued file creates from new-folder rescan',
+      );
+    }
+  }
+  const fileEvents = rescuedCreates.length > 0 ? safeEvents.concat(rescuedCreates) : safeEvents;
+
+  const mdEvents = fileEvents.filter((e) => isSupportedDocFile(e.path));
+  const assetEvents = fileEvents.filter((e) =>
     isSupportedAssetFile(e.path, LINKABLE_ASSET_EXTENSIONS),
   );
   // ANY non-markdown file (every extension, not just LINKABLE_ASSET_EXTENSIONS).
@@ -1224,13 +1292,7 @@ export async function handleRawEvents(
   // maintain the in-memory fileIndex as `kind:'file'` for search /
   // `/api/documents`. A `.png` create fires both events independently —
   // different state, different consumers.
-  const nonMdRawEvents = safeEvents.filter((e) => !isSupportedDocFile(e.path));
-  const folderEvents = updateFolderIndexFromRawEvents(
-    safeEvents,
-    contentDir,
-    contentFilter,
-    folderIndex,
-  );
+  const nonMdRawEvents = fileEvents.filter((e) => !isSupportedDocFile(e.path));
   if (
     mdEvents.length === 0 &&
     assetEvents.length === 0 &&

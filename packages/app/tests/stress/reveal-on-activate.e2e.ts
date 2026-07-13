@@ -51,6 +51,19 @@ const folderRow = (page: Page) =>
   sidebar(page).getByRole('treeitem', { name: 'sidebar-folder', exact: true });
 const selectedRow = (page: Page) => sidebar(page).locator('[aria-selected="true"]');
 
+/**
+ * Navigate and gate on the tree having rendered at all (same condition as
+ * file-tree-create's gotoRootAndAwaitSidebar) before callers wait on specific
+ * rows: the first refreshDocs that flips the sidebar out of loading can exceed
+ * the per-row budgets under 4-worker CI contention, and the per-row waits are
+ * meant to measure incremental reveal behavior, not the cold first render.
+ */
+async function gotoAndAwaitTree(page: Page, path: string): Promise<void> {
+  await page.goto(path);
+  await page.waitForLoadState('domcontentloaded');
+  await expect(sidebar(page).getByRole('treeitem').first()).toBeVisible({ timeout: 30_000 });
+}
+
 async function expandFolder(page: Page) {
   await folderRow(page).focus();
   await folderRow(page).press('ArrowRight');
@@ -62,7 +75,7 @@ async function collapseFolder(page: Page) {
 }
 
 test('direct URL load reveals nested doc on first paint', async ({ page }) => {
-  await page.goto(`/#/sidebar-folder/nested-doc`);
+  await gotoAndAwaitTree(page, `/#/sidebar-folder/nested-doc`);
   await fileRow(page, 'nested-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
 
   await expect(folderRow(page)).toHaveAttribute('aria-expanded', 'true');
@@ -72,7 +85,7 @@ test('direct URL load reveals nested doc on first paint', async ({ page }) => {
 });
 
 test('hash navigation reveals nested doc (simulates graph/wikilink click)', async ({ page }) => {
-  await page.goto('/');
+  await gotoAndAwaitTree(page, '/');
   await fileRow(page, 'test-doc.md').click({ timeout: 10_000 });
 
   await expect(folderRow(page)).toHaveAttribute('aria-expanded', 'false');
@@ -97,7 +110,7 @@ test('active-doc ancestor stays expanded despite chevron clicks (Model A ancesto
   // derivation (`ancestors ∪ (userExpanded \ userCollapsed)`) re-adds the
   // ancestor. This matches VS Code / Finder: active file's context is
   // always visible.
-  await page.goto(`/#/sidebar-folder/nested-doc`);
+  await gotoAndAwaitTree(page, `/#/sidebar-folder/nested-doc`);
   await fileRow(page, 'nested-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
 
   await expect(folderRow(page)).toHaveAttribute('aria-expanded', 'true');
@@ -134,7 +147,7 @@ test('activation auto-expands prior-collapsed non-ancestor folder (D1)', async (
   // non-ancestor folders. This test verifies: user collapses folder while
   // it's NOT an active-doc ancestor, then navigates INTO the folder —
   // activation wins, folder expands automatically.
-  await page.goto(`/#/test-doc`);
+  await gotoAndAwaitTree(page, `/#/test-doc`);
   await fileRow(page, 'test-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
 
   // While test-doc is active (sidebar-folder is NOT an ancestor), expand
@@ -156,7 +169,7 @@ test('activation auto-expands prior-collapsed non-ancestor folder (D1)', async (
 });
 
 test('user-expanded non-ancestor folder persists across navigation (D4)', async ({ page }) => {
-  await page.goto(`/#/test-doc`);
+  await gotoAndAwaitTree(page, `/#/test-doc`);
   await fileRow(page, 'test-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
 
   await expect(folderRow(page)).toHaveAttribute('aria-expanded', 'false');
@@ -176,7 +189,7 @@ test('user-expanded non-ancestor folder persists across navigation (D4)', async 
 });
 
 test('exactly one selected row, matching activeDocName (D9)', async ({ page }) => {
-  await page.goto(`/#/sidebar-folder/nested-doc`);
+  await gotoAndAwaitTree(page, `/#/sidebar-folder/nested-doc`);
   await fileRow(page, 'nested-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
 
   await expect(selectedRow(page)).toHaveCount(1);
@@ -192,7 +205,7 @@ test('exactly one selected row, matching activeDocName (D9)', async ({ page }) =
 });
 
 test('activation does not steal focus from the editor', async ({ page }) => {
-  await page.goto(`/#/test-doc`);
+  await gotoAndAwaitTree(page, `/#/test-doc`);
   await fileRow(page, 'test-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
   await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)', { timeout: 15_000 });
 
@@ -217,7 +230,7 @@ test('activation does not steal focus from the editor', async ({ page }) => {
 test('hovering a sidebar row surfaces its full relative path as a title (VS Code parity)', async ({
   page,
 }) => {
-  await page.goto(`/#/sidebar-folder/nested-doc`);
+  await gotoAndAwaitTree(page, `/#/sidebar-folder/nested-doc`);
   await fileRow(page, 'nested-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
   await expect(folderRow(page)).toHaveAttribute('aria-expanded', 'true');
 
@@ -248,7 +261,7 @@ test('sidebar full-path title is eager (no hover needed) and reaches the floatin
   // hovered row's path must also be mirrored onto the
   // `[data-type=context-menu-anchor]` overlay. Both of these failed under the
   // original lazy implementation.
-  await page.goto(`/#/sidebar-folder/nested-doc`);
+  await gotoAndAwaitTree(page, `/#/sidebar-folder/nested-doc`);
   await fileRow(page, 'nested-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
   await expect(folderRow(page)).toHaveAttribute('aria-expanded', 'true');
 

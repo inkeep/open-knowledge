@@ -1264,6 +1264,193 @@ describe('file-watcher ContentFilter refcount hooks', () => {
     );
     expect(nestedCreates).toHaveLength(1);
   });
+
+  test('dropped file-create rescue: folder event alone surfaces a markdown file already inside', async () => {
+    // Same inotify registration race as the mkdir -p test, file flavor:
+    // `mkdir d && cp note.md d/` writes the file before the recursive
+    // subwatch registers, so the kernel only delivers the directory event.
+    // The rescan must re-inject the file as a synthetic create — otherwise
+    // /api/pages and the CRDT layer miss it until a manual rescan.
+    const fileIndex = new Map();
+    const folderIndex = new Map();
+    const collected: DiskEvent[] = [];
+    const scratchDir = resolve(contentDir, '.scratch-notes');
+    mkdirSync(scratchDir, { recursive: true });
+    writeFileSync(resolve(scratchDir, 'hidden-note.md'), '# Hidden note\n', 'utf-8');
+
+    await handleRawEvents(
+      [{ type: 'create', path: scratchDir }],
+      contentDir,
+      undefined,
+      fileIndex,
+      folderIndex,
+      async (e) => {
+        collected.push(e);
+      },
+    );
+
+    expect(folderIndex.has('.scratch-notes')).toBe(true);
+    expect(fileIndex.has('.scratch-notes/hidden-note')).toBe(true);
+    expect(collected).toContainEqual(
+      expect.objectContaining({
+        kind: 'create',
+        docName: '.scratch-notes/hidden-note',
+        content: '# Hidden note\n',
+      }),
+    );
+  });
+
+  test('dropped file-create rescue reaches files in rescued subfolders and non-markdown files', async () => {
+    const fileIndex = new Map();
+    const folderIndex = new Map();
+    const collected: DiskEvent[] = [];
+    const outerDir = resolve(contentDir, 'outer');
+    const innerDir = resolve(outerDir, 'inner');
+    mkdirSync(innerDir, { recursive: true });
+    writeFileSync(resolve(innerDir, 'deep-note.md'), '# Deep\n', 'utf-8');
+    writeFileSync(resolve(outerDir, 'data.json'), '{}', 'utf-8');
+
+    await handleRawEvents(
+      [{ type: 'create', path: outerDir }],
+      contentDir,
+      undefined,
+      fileIndex,
+      folderIndex,
+      async (e) => {
+        collected.push(e);
+      },
+    );
+
+    expect(fileIndex.has('outer/inner/deep-note')).toBe(true);
+    expect(collected).toContainEqual(
+      expect.objectContaining({ kind: 'create', docName: 'outer/inner/deep-note' }),
+    );
+    expect(fileIndex.get('outer/data.json')?.kind).toBe('file');
+    expect(collected).toContainEqual(
+      expect.objectContaining({ kind: 'file-create', relativePath: 'outer/data.json' }),
+    );
+  });
+
+  test('file rescue does not double-emit when the file event arrived in the same batch', async () => {
+    // macOS FSEvents coalesces mkdir+write into one batch, so both raw events
+    // are usually present — the rescue must dedupe against the batch.
+    const fileIndex = new Map();
+    const folderIndex = new Map();
+    const collected: DiskEvent[] = [];
+    const notesDir = resolve(contentDir, 'batch-notes');
+    const notePath = resolve(notesDir, 'note.md');
+    mkdirSync(notesDir, { recursive: true });
+    writeFileSync(notePath, '# Note\n', 'utf-8');
+
+    await handleRawEvents(
+      [
+        { type: 'create', path: notesDir },
+        { type: 'create', path: notePath },
+      ],
+      contentDir,
+      undefined,
+      fileIndex,
+      folderIndex,
+      async (e) => {
+        collected.push(e);
+      },
+    );
+
+    const creates = collected.filter(
+      (e) => e.kind === 'create' && e.docName === 'batch-notes/note',
+    );
+    expect(creates).toHaveLength(1);
+  });
+
+  test('file rescue respects self-write tracking: rescued own write is indexed but not dispatched', async () => {
+    const fileIndex = new Map();
+    const folderIndex = new Map();
+    const collected: DiskEvent[] = [];
+    const selfDir = resolve(contentDir, 'self-notes');
+    const selfPath = resolve(selfDir, 'own-write.md');
+    const content = '# Ours\n';
+    mkdirSync(selfDir, { recursive: true });
+    writeFileSync(selfPath, content, 'utf-8');
+    registerWrite(realpathSync(selfPath), contentHash(content));
+
+    await handleRawEvents(
+      [{ type: 'create', path: selfDir }],
+      contentDir,
+      undefined,
+      fileIndex,
+      folderIndex,
+      async (e) => {
+        collected.push(e);
+      },
+    );
+
+    expect(fileIndex.has('self-notes/own-write')).toBe(true);
+    expect(collected.filter((e) => e.kind === 'create')).toHaveLength(0);
+  });
+
+  test('file rescue suppresses files under a ContentFilter-excluded subfolder', async () => {
+    writeFileSync(resolve(tmpDir, '.gitignore'), 'vendor/\n');
+    const filter = createContentFilter({ projectDir: tmpDir, contentDir });
+    const fileIndex = new Map();
+    const folderIndex = new Map();
+    const collected: DiskEvent[] = [];
+    const packDir = resolve(contentDir, 'pack');
+    const vendorDir = resolve(packDir, 'vendor');
+    mkdirSync(vendorDir, { recursive: true });
+    writeFileSync(resolve(packDir, 'note.md'), '# Note\n', 'utf-8');
+    writeFileSync(resolve(vendorDir, 'data.json'), '{}', 'utf-8');
+    writeFileSync(resolve(vendorDir, 'hidden.md'), '# Hidden\n', 'utf-8');
+
+    await handleRawEvents(
+      [{ type: 'create', path: packDir }],
+      contentDir,
+      filter,
+      fileIndex,
+      folderIndex,
+      async (e) => {
+        collected.push(e);
+      },
+    );
+
+    expect(fileIndex.has('pack/note')).toBe(true);
+    expect(fileIndex.has('pack/vendor/data.json')).toBe(false);
+    expect(fileIndex.has('pack/vendor/hidden')).toBe(false);
+    expect(collected.some((e) => e.kind === 'file-create')).toBe(false);
+    expect(collected.filter((e) => e.kind === 'create').map((e) => e.docName)).toEqual([
+      'pack/note',
+    ]);
+  });
+
+  test('file rescue skips symlinked files in a freshly created directory', async () => {
+    const fileIndex = new Map();
+    const folderIndex = new Map();
+    const collected: DiskEvent[] = [];
+    const targetPath = resolve(contentDir, 'link-target.md');
+    writeFileSync(targetPath, '# Target\n', 'utf-8');
+    const linkedDir = resolve(contentDir, 'linked');
+    mkdirSync(linkedDir, { recursive: true });
+    writeFileSync(resolve(linkedDir, 'real.md'), '# Real\n', 'utf-8');
+    symlinkSync(targetPath, resolve(linkedDir, 'alias.md'));
+
+    await handleRawEvents(
+      [{ type: 'create', path: linkedDir }],
+      contentDir,
+      undefined,
+      fileIndex,
+      folderIndex,
+      async (e) => {
+        collected.push(e);
+      },
+    );
+
+    // Only the regular file is rescued; the symlink waits for its own raw
+    // event, which carries the escape check + alias resolution.
+    expect(fileIndex.has('linked/real')).toBe(true);
+    expect(fileIndex.has('linked/alias')).toBe(false);
+    expect(collected.filter((e) => e.kind === 'create').map((e) => e.docName)).toEqual([
+      'linked/real',
+    ]);
+  });
 });
 
 // ─── Symlink-aware watcher ──────────────────────────────────────────────────
