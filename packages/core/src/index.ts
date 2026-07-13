@@ -107,6 +107,7 @@ export {
   type Config,
   type ConfigPatch,
   ConfigSchema,
+  checkEmbeddingsBaseUrl,
   DEFAULT_EMBEDDINGS_BASE_URL,
   DEFAULT_EMBEDDINGS_MODEL,
   DEFAULT_LOGS_MAX_BYTES,

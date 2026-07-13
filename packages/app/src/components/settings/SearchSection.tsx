@@ -18,7 +18,11 @@
  * Account (stored in `~/.ok/secrets.yml`); this section only points there when a
  * key is missing.
  */
-import { DEFAULT_EMBEDDINGS_BASE_URL, humanFormat } from '@inkeep/open-knowledge-core';
+import {
+  checkEmbeddingsBaseUrl,
+  DEFAULT_EMBEDDINGS_BASE_URL,
+  humanFormat,
+} from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -49,6 +53,10 @@ export function SearchSection() {
   const { projectLocalConfig, projectLocalSynced, projectLocalBinding } = useConfigContext();
   const { status, refresh } = useSemanticSearchStatus();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [baseUrlError, setBaseUrlError] = useState<string | null>(null);
+  // Don't nag mid-typing: surface the endpoint error only after the field has
+  // been committed once (blur/Enter), then keep it live so a fix clears it.
+  const [baseUrlTouched, setBaseUrlTouched] = useState(false);
   const settleTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
   useEffect(
@@ -60,6 +68,17 @@ export function SearchSection() {
 
   const configuredBaseUrl =
     projectLocalConfig?.search?.semantic?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL;
+
+  // When the persisted endpoint changes externally (e.g. `ok embeddings set-url`
+  // in a terminal while Settings is open), the `key`-based Input remounts with a
+  // fresh value — reset the touched gate + error so it starts clean too. This is
+  // the React "adjust state during render on a changed value" pattern (no effect).
+  const [prevConfiguredBaseUrl, setPrevConfiguredBaseUrl] = useState(configuredBaseUrl);
+  if (configuredBaseUrl !== prevConfiguredBaseUrl) {
+    setPrevConfiguredBaseUrl(configuredBaseUrl);
+    setBaseUrlTouched(false);
+    setBaseUrlError(null);
+  }
 
   const enabled = projectLocalConfig?.search?.semantic?.enabled ?? false;
   const bindingReady = projectLocalSynced && projectLocalBinding !== null;
@@ -126,7 +145,30 @@ export function SearchSection() {
     if (write(true)) setConfirmOpen(false);
   }
 
+  // Mirror the server's pre-flight guard (`checkEmbeddingsBaseUrl`) so a
+  // guaranteed-to-fail endpoint is flagged at entry instead of surfacing later
+  // as a provider-rejected status. Empty resets to the default (always valid).
+  function baseUrlProblemMessage(value: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const problem = checkEmbeddingsBaseUrl(trimmed);
+    if (problem === null) return null;
+    return problem === 'invalid-url'
+      ? t`Enter a valid URL (for example https://api.openai.com/v1).`
+      : t`Use an https:// URL — http:// is only allowed for localhost.`;
+  }
+
+  // Live-validate only after the field has been committed once (touched), so the
+  // error doesn't flash while the user is still typing a URL.
+  function onBaseUrlChange(value: string): void {
+    if (baseUrlTouched) setBaseUrlError(baseUrlProblemMessage(value));
+  }
+
   function commitBaseUrlInput(input: HTMLInputElement): void {
+    setBaseUrlTouched(true);
+    const message = baseUrlProblemMessage(input.value);
+    setBaseUrlError(message);
+    if (message !== null) return; // invalid — leave the error shown, don't persist
     const normalized = normalizeBaseUrl(input.value);
     if (writeBaseUrl(input.value)) input.value = normalized;
   }
@@ -218,6 +260,7 @@ export function SearchSection() {
           key={configuredBaseUrl}
           id="settings-search-base-url"
           defaultValue={configuredBaseUrl}
+          onChange={(e) => onBaseUrlChange(e.currentTarget.value)}
           onBlur={(e) => commitBaseUrlInput(e.currentTarget)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -229,11 +272,25 @@ export function SearchSection() {
           disabled={!bindingReady}
           spellCheck={false}
           autoComplete="off"
+          aria-invalid={baseUrlError !== null}
+          aria-describedby="settings-search-base-url-message"
           data-testid="settings-search-base-url"
           className="h-8 font-mono text-sm"
         />
-        <p className="text-muted-foreground text-1sm" data-testid="settings-search-base-url-help">
-          <Trans>Clear the field to reset back to the default OpenAI endpoint.</Trans>
+        {/* One persistent live region (not a conditionally-mounted node) so a
+            screen reader reliably announces the error when it appears — swapping
+            in a fresh aria-live element WITH content is often missed. */}
+        <p
+          id="settings-search-base-url-message"
+          aria-live="polite"
+          className={baseUrlError ? 'text-1sm text-destructive' : 'text-muted-foreground text-1sm'}
+          data-testid={
+            baseUrlError ? 'settings-search-base-url-error' : 'settings-search-base-url-help'
+          }
+        >
+          {baseUrlError ?? (
+            <Trans>Clear the field to reset back to the default OpenAI endpoint.</Trans>
+          )}
         </p>
       </div>
 

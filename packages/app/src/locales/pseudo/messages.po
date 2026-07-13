@@ -2798,6 +2798,10 @@ msgstr ""
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a valid URL (for example https://api.openai.com/v1)."
+msgstr ""
+
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Entry"
@@ -7682,6 +7686,10 @@ msgstr ""
 
 #: src/components/EmptyEditorState.tsx
 msgid "Use a starter pack"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Use an https:// URL — http:// is only allowed for localhost."
 msgstr ""
 
 #: src/components/ShareButton.tsx
