@@ -77,6 +77,8 @@ If you are logged in with the GitHub CLI, OpenKnowledge will use those credentia
 
 Manage the connection from **Settings → Account**. **Connect GitHub** authorizes OpenKnowledge to browse and sync your repositories; **Disconnect** clears OpenKnowledge's GitHub token only. From a terminal, the [`ok auth`](/docs/reference/cli) subcommands manage the same credentials: `ok auth signout` matches **Disconnect**, `ok auth pat` stores a Personal Access Token when device authentication isn't an option, and `--host` targets GitHub Enterprise.
 
+For projects whose `origin` points at a GitHub Enterprise Server host, OpenKnowledge uses that remote host for auth checks, token relay, and push-permission checks instead of falling back to `github.com`.
+
 The sync status indicator surfaces an auth-error state when stored credentials stop working, and sync pauses until you reconnect.
 
 ## Sync status and conflicts
@@ -119,4 +121,3 @@ A few situations stop sync from completing successfully. In each case the sync s
 ### Temporary problems
 
 - **Network or service hiccups.** Flaky Wi-Fi, a VPN drop, or a brief GitHub outage. OpenKnowledge keeps retrying in the background; no action needed unless the issue lasts long enough that you want to manually trigger a sync from the indicator.
-
