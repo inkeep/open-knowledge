@@ -384,7 +384,7 @@
       "delimiter": "*",
       "witness": "*.y.*{b",
       "side": "after-close",
-      "roundTrip": "\\*.y.\\*\\{b\n"
+      "roundTrip": "\\*.y.\\*{b\n"
     },
     {
       "alphabet": "r23",
@@ -393,7 +393,7 @@
       "delimiter": "_",
       "witness": "_.y._{b",
       "side": "after-close",
-      "roundTrip": "\\_.y.\\_\\{b\n"
+      "roundTrip": "\\_.y.\\_{b\n"
     },
     {
       "alphabet": "r23",
@@ -402,7 +402,7 @@
       "delimiter": "**",
       "witness": "**.y.**{b",
       "side": "after-close",
-      "roundTrip": "\\*\\*.y.\\*\\*\\{b\n"
+      "roundTrip": "\\*\\*.y.\\*\\*{b\n"
     },
     {
       "alphabet": "r23",
@@ -411,7 +411,7 @@
       "delimiter": "~~",
       "witness": "~~.y.~~{b",
       "side": "after-close",
-      "roundTrip": "\\~\\~.y.\\~\\~\\{b\n"
+      "roundTrip": "\\~\\~.y.\\~\\~{b\n"
     },
     {
       "alphabet": "r23",
@@ -420,7 +420,7 @@
       "delimiter": "==",
       "witness": "==.y.=={b",
       "side": "after-close",
-      "roundTrip": "==.y.==\\{b\n"
+      "roundTrip": "==.y.=={b\n"
     },
     {
       "alphabet": "backslash-escape",

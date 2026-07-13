@@ -415,11 +415,43 @@ export const toMarkdownHandlers = {
           : contentCol;
       const pad = ' '.repeat(padWidth);
       const firstGap = child.checked === null || child.checked === undefined ? markerGap : ' ';
-      const itemContent = state.containerFlow(child, info);
-      const indented = itemContent
-        .split('\n')
-        .map((l, idx) => (idx === 0 ? `${marker}${firstGap}${l}` : l ? `${pad}${l}` : l))
-        .join('\n');
+      const itemChildren = child.children ?? [];
+      const firstBlockIsList = itemChildren[0]?.type === 'list';
+      let indented: string;
+      if (firstBlockIsList) {
+        const isTask = child.checked !== null && child.checked !== undefined;
+        const nestedMd = state.containerFlow({ ...child, children: [itemChildren[0]] }, info);
+        const trailing = itemChildren.slice(1);
+        const trailingMd = trailing.length
+          ? state.containerFlow({ ...child, children: trailing }, info)
+          : '';
+        const nestedIndented = nestedMd
+          .split('\n')
+          .map((l, idx) =>
+            idx === 0 ? (isTask ? `${pad}${l}` : `${marker}${firstGap}${l}`) : l ? `${pad}${l}` : l,
+          )
+          .join('\n');
+        const parts: string[] = [];
+        if (isTask) {
+          parts.push(marker, '', nestedIndented);
+        } else {
+          parts.push(nestedIndented);
+        }
+        if (trailingMd) {
+          const trailingIndented = trailingMd
+            .split('\n')
+            .map((l) => (l ? `${pad}${l}` : l))
+            .join('\n');
+          parts.push('', trailingIndented);
+        }
+        indented = parts.join('\n');
+      } else {
+        const itemContent = state.containerFlow(child, info);
+        indented = itemContent
+          .split('\n')
+          .map((l, idx) => (idx === 0 ? `${marker}${firstGap}${l}` : l ? `${pad}${l}` : l))
+          .join('\n');
+      }
       out.push(indented);
     }
 
@@ -796,6 +828,11 @@ function safeText(state: State, value: string, info: Info): string {
     if (u.character === '<') return false;
     if (u.character === '[') return false;
     if (u.character === '(') return false;
+    if (u.character === '!' && u.after === '\\[' && u.inConstruct === 'phrasing') return false;
+    if (u.character === '@' && u.before === '[+\\-.\\w]') return false;
+    if (u.character === '{' && Array.isArray(u.inConstruct) && u.inConstruct.includes('phrasing')) {
+      return false;
+    }
     if (u.character === '`') return false;
     if (
       (u.character === '*' || u.character === '_' || u.character === '~') &&
@@ -811,6 +848,17 @@ function safeText(state: State, value: string, info: Info): string {
       return false;
     }
     return true;
+  });
+  state.unsafe = state.unsafe.map((u) => {
+    if (u.character !== ')' || u.atBreak !== true || u.before !== '\\d+' || u.after !== undefined) {
+      return u;
+    }
+    const narrowed: typeof u & { _compiled?: RegExp | null } = {
+      ...u,
+      after: '(?:[ \t\r\n]|$)',
+    };
+    delete narrowed._compiled;
+    return narrowed;
   });
   let result: string;
   try {
