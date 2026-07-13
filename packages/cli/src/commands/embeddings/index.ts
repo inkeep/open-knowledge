@@ -4,6 +4,7 @@
  * Subcommands:
  *   - `set-key`   store the provider API key in `~/.ok/secrets.yml` (0600).
  *   - `clear-key` remove the stored key.
+ *   - `set-url` / `clear-url`  set / reset `search.semantic.baseUrl` (project-local).
  *   - `enable` / `disable`  flip `search.semantic.enabled` for the project (project-local).
  *   - `status`    show key presence (machine-global) + enabled/capability/coverage (per-project).
  *
@@ -15,7 +16,11 @@
  */
 
 import { resolve } from 'node:path';
-import { humanFormat } from '@inkeep/open-knowledge-core';
+import {
+  checkEmbeddingsBaseUrl,
+  DEFAULT_EMBEDDINGS_BASE_URL,
+  humanFormat,
+} from '@inkeep/open-knowledge-core';
 import { writeConfigPatch } from '@inkeep/open-knowledge-core/server';
 import {
   DEFAULT_EMBEDDINGS_DIMENSIONS,
@@ -114,6 +119,74 @@ function clearKeyCommand(): Command {
         return;
       }
       process.stderr.write(`✓ Embeddings provider API key cleared (${touched.join(', ')}).\n`);
+    });
+}
+
+/**
+ * `set-url` / `clear-url` set / reset `search.semantic.baseUrl` in the
+ * project-local config — the same field + scope the Settings endpoint input
+ * uses, so a running server picks the change up live. `set-url` validates the
+ * URL against the SAME rule the server enforces before sending the key
+ * (`checkEmbeddingsBaseUrl`: https, or http only for loopback) so a
+ * guaranteed-to-fail endpoint is rejected here instead of degrading to lexical
+ * at warm time. `clear-url` writes the default endpoint back (mirrors clearing
+ * the Settings field). Human-run (the field is `agentSettable: false`).
+ */
+function setUrlCommand(): Command {
+  return new Command('set-url')
+    .description('Set the embeddings API endpoint for this project (project-local)')
+    .argument('<url>', 'OpenAI-compatible base URL, e.g. https://api.openai.com/v1')
+    .option('--cwd <path>', 'Project directory (defaults to the current directory)')
+    .action(async (url: string, opts: { cwd?: string }) => {
+      const baseUrl = url.trim();
+      const problem = checkEmbeddingsBaseUrl(baseUrl);
+      if (problem !== null) {
+        process.stderr.write(
+          problem === 'invalid-url'
+            ? `Not a valid URL: ${url}\n`
+            : `Refusing an insecure endpoint: use https:// (http:// is allowed only for localhost). Got: ${url}\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const projectDir = resolve(opts.cwd ?? process.cwd());
+      const result = await writeConfigPatch({
+        cwd: projectDir,
+        scope: 'project-local',
+        patch: { search: { semantic: { baseUrl } } },
+      });
+      if (!result.ok) {
+        process.stderr.write(
+          `Failed to set the embeddings endpoint — ${humanFormat(result.error)}\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      process.stderr.write(`✓ Embeddings endpoint set to ${baseUrl} for ${projectDir}\n`);
+    });
+}
+
+function clearUrlCommand(): Command {
+  return new Command('clear-url')
+    .description('Reset the embeddings API endpoint to the default OpenAI endpoint (project-local)')
+    .option('--cwd <path>', 'Project directory (defaults to the current directory)')
+    .action(async (opts: { cwd?: string }) => {
+      const projectDir = resolve(opts.cwd ?? process.cwd());
+      const result = await writeConfigPatch({
+        cwd: projectDir,
+        scope: 'project-local',
+        patch: { search: { semantic: { baseUrl: DEFAULT_EMBEDDINGS_BASE_URL } } },
+      });
+      if (!result.ok) {
+        process.stderr.write(
+          `Failed to reset the embeddings endpoint — ${humanFormat(result.error)}\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      process.stderr.write(
+        `✓ Embeddings endpoint reset to ${DEFAULT_EMBEDDINGS_BASE_URL} for ${projectDir}\n`,
+      );
     });
 }
 
@@ -230,6 +303,8 @@ export function embeddingsCommand(): Command {
     .description('Manage the semantic-search embeddings provider key + status')
     .addCommand(setKeyCommand())
     .addCommand(clearKeyCommand())
+    .addCommand(setUrlCommand())
+    .addCommand(clearUrlCommand())
     .addCommand(toggleEnabledCommand('enable', true))
     .addCommand(toggleEnabledCommand('disable', false))
     .addCommand(statusCommand());

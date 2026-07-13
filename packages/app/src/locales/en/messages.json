@@ -123,6 +123,7 @@
     "2fkdnR": ["Nothing to undo on this file"],
     "2hYmUH": ["my@email.com"],
     "2hpdRq": ["Hide panel (", ["panelShortcutLabel"], ")"],
+    "2j1kfc": ["Enter a valid URL (for example https://api.openai.com/v1)."],
     "2n3oDU": [
       "Project-level pages ordered by inbound link count, up to ",
       ["FULLSCREEN_HUB_LIMIT"],
@@ -808,6 +809,7 @@
     "JL3si7": ["Updating"],
     "JLUTgi": ["No tags yet — author `#tagname` in any doc to populate the index."],
     "JLzQi_": ["Close ", ["accessibleLabel"]],
+    "JM_aq-": ["Use an https:// URL — http:// is only allowed for localhost."],
     "JOcPqH": ["Bring a remote repository onto this machine."],
     "JWsZlx": ["Open a project to edit."],
     "JZ8cO6": ["Light, dark, or follow the OS."],

@@ -406,4 +406,104 @@ describe('SearchSection', () => {
 
     expect(calls).toEqual([{ search: { semantic: { baseUrl: DEFAULT_EMBEDDINGS_BASE_URL } } }]);
   });
+
+  test('a malformed URL is not flagged mid-typing, but errors on commit and blocks the write', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
+
+    render(<SearchSection />);
+
+    const input = screen.getByTestId('settings-search-base-url');
+    await user.clear(input);
+    await user.type(input, 'not-a-url');
+
+    // "Reward early": no error while the user is still typing (untouched).
+    expect(screen.queryByTestId('settings-search-base-url-error')).toBeNull();
+
+    await user.tab(); // blur commit → validate
+
+    expect(screen.getByTestId('settings-search-base-url-error')).toBeDefined();
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(calls).toEqual([]); // guaranteed-to-fail endpoint is not persisted
+  });
+
+  test('committing an invalid URL via Enter also errors and blocks the write', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
+
+    render(<SearchSection />);
+
+    const input = screen.getByTestId('settings-search-base-url');
+    await user.clear(input);
+    // Enter is the distinct commit path (preventDefault + commitBaseUrlInput).
+    await user.type(input, 'not-a-url{Enter}');
+
+    expect(screen.getByTestId('settings-search-base-url-error')).toBeDefined();
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(calls).toEqual([]);
+  });
+
+  test('a plaintext non-loopback endpoint errors on commit and blocks the write', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
+
+    render(<SearchSection />);
+
+    const input = screen.getByTestId('settings-search-base-url');
+    await user.clear(input);
+    await user.type(input, 'http://azure.example.com/v1');
+    await user.tab();
+
+    expect(screen.getByTestId('settings-search-base-url-error')).toBeDefined();
+    expect(calls).toEqual([]);
+  });
+
+  test('an http loopback endpoint is accepted (no error) and written', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
+
+    render(<SearchSection />);
+
+    const input = screen.getByTestId('settings-search-base-url');
+    await user.clear(input);
+    await user.type(input, 'http://localhost:11434/v1');
+    await user.tab();
+
+    expect(screen.queryByTestId('settings-search-base-url-error')).toBeNull();
+    expect(calls).toEqual([{ search: { semantic: { baseUrl: 'http://localhost:11434/v1' } } }]);
+  });
+
+  test('after a failed commit, fixing the value clears the error live and writes on re-commit', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
+
+    render(<SearchSection />);
+
+    const input = screen.getByTestId('settings-search-base-url');
+    await user.clear(input);
+    await user.type(input, 'nope');
+    await user.tab(); // commit → error shows, field is now "touched"
+    expect(screen.getByTestId('settings-search-base-url-error')).toBeDefined();
+
+    // "Punish late": once touched, a fix clears the error live (no re-blur needed).
+    await user.clear(input);
+    await user.type(input, 'https://azure.example.com/openai/v1');
+    expect(screen.queryByTestId('settings-search-base-url-error')).toBeNull();
+    expect(input.getAttribute('aria-invalid')).toBe('false');
+
+    await user.tab();
+    expect(calls).toEqual([
+      { search: { semantic: { baseUrl: 'https://azure.example.com/openai/v1' } } },
+    ]);
+  });
 });

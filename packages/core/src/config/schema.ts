@@ -28,6 +28,34 @@ export const DEFAULT_LOGS_MAX_BYTES = 26_214_400;
 export const DEFAULT_EMBEDDINGS_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_EMBEDDINGS_MODEL = 'text-embedding-3-small';
 
+/** Why an embeddings base URL is rejected: unparseable, or a plaintext scheme. */
+export type EmbeddingsBaseUrlProblem = 'invalid-url' | 'insecure-scheme';
+
+/**
+ * Validate an embeddings base URL against the SAME rule the server enforces
+ * before it will send the Bearer API key (`assertSafeEmbeddingsBaseUrl` in the
+ * embedder): a parseable URL that is `https:`, or `http:` only for a loopback
+ * host (a local dev gateway, where the key never leaves the machine). Returns
+ * `null` when acceptable, else the problem. Shared so the app's inline
+ * validation and the `ok embeddings set-url` CLI reject a guaranteed-to-fail
+ * endpoint at entry instead of letting it surface later as a provider-rejected
+ * status. Whitespace is the caller's to trim.
+ */
+export function checkEmbeddingsBaseUrl(baseUrl: string): EmbeddingsBaseUrlProblem | null {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return 'invalid-url';
+  }
+  if (url.protocol === 'https:') return null;
+  // `URL.hostname` returns IPv6 hosts bracketed (`[::1]`), never bare `::1`.
+  const host = url.hostname.toLowerCase();
+  const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+  if (url.protocol === 'http:' && isLoopback) return null;
+  return 'insecure-scheme';
+}
+
 export function normalizeAttachmentFolderPath(value: string): string {
   const trimmed = value.trim();
   return trimmed === '' ? DEFAULT_ATTACHMENT_FOLDER_PATH : trimmed;
