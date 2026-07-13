@@ -343,6 +343,64 @@ test.describe('OQ1: Tab/Shift-Tab scoping by cursor context', () => {
     expect(ytext).not.toMatch(/^- *$/m);
   });
 
+  // #609 cause 2 — deleting/merging list items (as distinct from cause 1's
+  // paste mis-placement, covered by handle-paste.list-placement.test.ts).
+  // StarterKit's ListKeymap (its joinItemBackward/liftListItem branches
+  // target the fragmented BulletList/TaskItem schema) could lift a merged
+  // item clean out of the list into a bare, unmarked paragraph, or re-nest
+  // it at the wrong depth with `checked` dropped. list.ts's ListItemNode
+  // now binds Backspace/Delete itself via joinTextblockBackward/Forward at
+  // priority 101 (ahead of ListKeymap's default 100).
+  test('Backspace merging into a previous item with a nested sublist does not orphan the merged item', async ({
+    page,
+    api,
+  }) => {
+    const docName = uniqueDocName('bksp-merge-sublist');
+    await openDoc(api, page, docName);
+    await seedMarkdown(api, page, docName, '- [ ] top\n  - [ ] child\n- [ ] next\n');
+
+    await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
+    // Click into "next" — a top-level item whose preceding sibling ("top")
+    // has a nested sublist.
+    await page.locator('.ProseMirror li', { hasText: 'next' }).first().click();
+    await page.keyboard.press('Home');
+    await waitForPmSelectionInNode(page, 'listItem');
+
+    await page.keyboard.press('Backspace');
+
+    // "next" must merge as text into the list (onto "child", the deepest
+    // preceding textblock) — never survive as a bare paragraph with no
+    // bullet/checkbox sitting outside any list item.
+    await expect.poll(() => getYText(page)).toContain('childnext');
+    const ytext = await getYText(page);
+    expect(ytext).not.toMatch(/\n\nnext/);
+    expect(ytext).toContain('- [ ] top');
+  });
+
+  test('Delete at the end of a nested item merges the next top-level item at the correct depth', async ({
+    page,
+    api,
+  }) => {
+    const docName = uniqueDocName('del-merge-depth');
+    await openDoc(api, page, docName);
+    await seedMarkdown(api, page, docName, '- [ ] a\n  - [ ] b\n  - [ ] c\n- [ ] d\n');
+
+    await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
+    await page.locator('.ProseMirror li', { hasText: /^c$/ }).first().click();
+    await page.keyboard.press('End');
+    await waitForPmSelectionInNode(page, 'listItem');
+
+    await page.keyboard.press('Delete');
+
+    // "d" merges onto "c" at the nested depth, keeping "c"'s checkbox on the
+    // surviving item and its indentation — not re-nested as a bare bullet
+    // at the wrong depth.
+    await expect.poll(() => getYText(page)).toMatch(/^ {2}- \[ \] cd$/m);
+    const ytext = await getYText(page);
+    expect(ytext).toContain('- [ ] a');
+    expect(ytext).not.toMatch(/^- d$/m);
+  });
+
   test.fixme('Tab inside a codeBlock inserts 2 spaces', async ({ page, api }) => {
     const docName = uniqueDocName('tab-codeblock');
     await openDoc(api, page, docName);
