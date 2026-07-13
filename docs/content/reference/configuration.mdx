@@ -100,7 +100,7 @@ To turn it on (per machine):
 
 1. Store the provider key in `~/.ok/secrets.yml` (0600, this machine only): `ok embeddings set-key` (reads the key from a hidden prompt or stdin). Check it with `ok embeddings status`; remove it with `ok embeddings clear-key`.
 2. Enable it for the project: `ok embeddings enable`, or the **Settings → This project → Search** toggle. Either sets `search.semantic.enabled: true` in project-local config (`<project>/.ok/local/config.yml`), picked up live by a running server; `ok embeddings disable` turns it off.
-3. (Optional) point at a non-OpenAI provider via `search.semantic.baseUrl` / `model` / `dimensions`.
+3. (Optional) point at a non-OpenAI provider (Azure / self-hosted): `ok embeddings set-url <url>` — or set `search.semantic.baseUrl` in project-local config; `ok embeddings clear-url` resets to the default. Tune `model` / `dimensions` in config.
 
 The first semantic search kicks off a background embed of the corpus (cents for a whole vault with `text-embedding-3-small`); vectors are cached incrementally under `.ok/local/` and only changed docs re-embed. If the key is missing, the provider errors, or you're offline, search silently degrades to lexical — it never blocks or errors. Each MCP `search` response reports embedding coverage so an agent knows when vectors are still filling in.
 

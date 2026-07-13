@@ -16,6 +16,7 @@
  * zero egress. A null return means "no key → degrade to lexical search".
  */
 
+import { checkEmbeddingsBaseUrl } from '@inkeep/open-knowledge-core';
 import {
   type EmbeddingErrorReason,
   recordEmbeddingProviderError,
@@ -193,17 +194,15 @@ export function normalizeProviderId(baseUrl: string): string {
  * catches it and degrades to lexical, so a misconfig never causes egress.
  */
 function assertSafeEmbeddingsBaseUrl(baseUrl: string): void {
-  let url: URL;
-  try {
-    url = new URL(baseUrl);
-  } catch {
+  // Rules are shared with the app + CLI via `checkEmbeddingsBaseUrl` so
+  // client-side validation can never diverge from this server-side guard.
+  const problem = checkEmbeddingsBaseUrl(baseUrl);
+  if (problem === null) return;
+  if (problem === 'invalid-url') {
     throw new Error(`embeddings baseUrl is not a valid URL: ${baseUrl}`);
   }
-  if (url.protocol === 'https:') return;
-  const host = url.hostname.toLowerCase();
-  const isLoopback =
-    host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
-  if (url.protocol === 'http:' && isLoopback) return;
+  // insecure-scheme — re-parse for the host detail (already proven parseable).
+  const url = new URL(baseUrl);
   throw new Error(
     `refusing to send the embeddings API key to a non-HTTPS endpoint (${url.protocol}//${url.host}); ` +
       'use https:// (http:// is allowed only for localhost)',

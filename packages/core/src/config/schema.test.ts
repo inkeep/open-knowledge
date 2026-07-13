@@ -1,9 +1,40 @@
 import { describe, expect, test } from 'bun:test';
 import {
   ConfigSchema,
+  checkEmbeddingsBaseUrl,
   isValidAttachmentFolderPath,
   normalizeAttachmentFolderPath,
 } from './schema.ts';
+
+describe('checkEmbeddingsBaseUrl', () => {
+  test('accepts https endpoints', () => {
+    expect(checkEmbeddingsBaseUrl('https://api.openai.com/v1')).toBeNull();
+    expect(checkEmbeddingsBaseUrl('https://azure.example.com/openai/v1/')).toBeNull();
+    expect(checkEmbeddingsBaseUrl('https://api.example.com')).toBeNull();
+  });
+
+  test('accepts http only for loopback hosts (key never leaves the machine)', () => {
+    expect(checkEmbeddingsBaseUrl('http://localhost:11434/v1')).toBeNull();
+    expect(checkEmbeddingsBaseUrl('http://127.0.0.1:8080/v1')).toBeNull();
+    expect(checkEmbeddingsBaseUrl('http://[::1]:1234/v1')).toBeNull();
+  });
+
+  test('rejects plaintext http to a non-loopback host', () => {
+    expect(checkEmbeddingsBaseUrl('http://evil.example/v1')).toBe('insecure-scheme');
+    expect(checkEmbeddingsBaseUrl('http://api.openai.com/v1')).toBe('insecure-scheme');
+  });
+
+  test('rejects non-http(s) schemes', () => {
+    expect(checkEmbeddingsBaseUrl('ftp://api.example.com')).toBe('insecure-scheme');
+    expect(checkEmbeddingsBaseUrl('file:///etc/passwd')).toBe('insecure-scheme');
+  });
+
+  test('rejects unparseable input', () => {
+    expect(checkEmbeddingsBaseUrl('not a url')).toBe('invalid-url');
+    expect(checkEmbeddingsBaseUrl('api.openai.com/v1')).toBe('invalid-url');
+    expect(checkEmbeddingsBaseUrl('')).toBe('invalid-url');
+  });
+});
 
 describe('content.attachmentFolderPath', () => {
   test('defaults to "./" when absent', () => {
