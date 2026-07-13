@@ -14,6 +14,7 @@ import { InlineLinkInputRule } from '../inline-link-input-rule';
 import { getComponentItems, getInlineComponentItems } from '../slash-command/component-items';
 import { getEmbedStarterItems } from '../slash-command/embed-starter-items';
 import { getSlashCommandItems } from '../slash-command/items';
+
 import { BlockMover } from './block-mover';
 // BridgeIdPlugin — SelectionStatePlugin consumes it to resolve stable
 // ancestor-chain IDs across PM re-renders (see Precedent "Selection state
@@ -22,6 +23,7 @@ import { BlockMover } from './block-mover';
 // Y.XmlElement-keyed IDs. bridge-id-plugin lives on as a standalone
 // stable-identity primitive.
 import { BridgeIdPlugin } from './bridge-id-plugin';
+import { CellInsertionGate } from './cell-insertion-gate';
 import { chunkWrapperDecorationPlugin } from './chunk-wrapper-decoration';
 import { CodeBlockFidelity } from './code-block';
 import { BlockDragHandle } from './drag-handle';
@@ -42,6 +44,26 @@ import { TagClickPlugin } from './tag-click-plugin';
 import { Tag } from './tag-view';
 import { WikiLink } from './wiki-link';
 import { WikiLinkEmbed } from './wiki-link-embed';
+
+/**
+ * The slash menu's wired item sources — the single production list. Coverage
+ * tests import this instead of re-declaring it so a source added here is
+ * automatically inside the "no block component offered in a cell" net.
+ */
+export const SLASH_ITEM_SOURCES = [
+  getSlashCommandItems,
+  getComponentItems,
+  // Themed `html preview` embed starters (chart, stat cards, custom SVG,
+  // interactive control) — the human on-ramp for the embed palette.
+  getEmbedStarterItems,
+  // Inline-atom slash entries (Tag — placeholder pill with inline
+  // input; future inline atoms like mathInline can extend this
+  // list). Kept separate from `getComponentItems` because inline
+  // atoms aren't in the descriptor registry — they map to direct
+  // PM nodes via the `mdxJsxTextElement` short-circuit in
+  // `markdown/index.ts`.
+  getInlineComponentItems,
+] as const;
 
 // Replace core extensions that have app-side NodeViews or mark views.
 export const sharedExtensions = [
@@ -68,21 +90,12 @@ export const sharedExtensions = [
     if (ext.name === 'codeBlock') return CodeBlockFidelity;
     return ext;
   }),
+  // Refuse a block jsxComponent inside a table cell at the owned insertion
+  // routes — a component there serializes to zero bytes (GFM cells are
+  // phrasing-only). Client producer-input gate; never in core sharedExtensions.
+  CellInsertionGate,
   SlashCommand.configure({
-    itemsSources: [
-      getSlashCommandItems,
-      getComponentItems,
-      // Themed `html preview` embed starters (chart, stat cards, custom SVG,
-      // interactive control) — the human on-ramp for the embed palette.
-      getEmbedStarterItems,
-      // Inline-atom slash entries (Tag — placeholder pill with inline
-      // input; future inline atoms like mathInline can extend this
-      // list). Kept separate from `getComponentItems` because inline
-      // atoms aren't in the descriptor registry — they map to direct
-      // PM nodes via the `mdxJsxTextElement` short-circuit in
-      // `markdown/index.ts`.
-      getInlineComponentItems,
-    ],
+    itemsSources: [...SLASH_ITEM_SOURCES],
     categoryLabels: {
       content: 'Components',
       layout: 'Layout',

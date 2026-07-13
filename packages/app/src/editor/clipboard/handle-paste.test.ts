@@ -90,7 +90,15 @@ function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
         // biome-ignore lint/suspicious/noExplicitAny: fake schema for unit test
         nodeFromJSON: (json: any) => ({
           slice: (_f: number, _t: number) => ({ json, size: 10, content: { size: 10 } }),
-          content: { size: 10 },
+          // fakeMdManager parses to a single non-list block; model the fragment
+          // shape applyJsonSlice's list-splice check reads (childCount + forEach)
+          // so it recognizes "not all lists" and takes the closed-slice path.
+          content: {
+            size: 10,
+            childCount: 1,
+            // biome-ignore lint/suspicious/noExplicitAny: fake fragment child
+            forEach: (fn: (child: any) => void) => fn({ type: { name: 'paragraph' } }),
+          },
         }),
       },
       tr: {

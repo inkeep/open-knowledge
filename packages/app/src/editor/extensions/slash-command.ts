@@ -1,9 +1,10 @@
 import { Extension } from '@tiptap/core';
-import { PluginKey } from '@tiptap/pm/state';
+import { type EditorState, PluginKey } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from '@tiptap/suggestion';
 import { filterItems, getSlashCommandItems, type SlashCommandItem } from '../slash-command/items';
 import { SlashCommandMenu } from '../slash-command/SlashCommandMenu';
+import { isSelectionInTableCell } from '../table-cell-context';
 import { getEditorSourceMode } from './editor-mode-context';
 import {
   createSuggestionPopup,
@@ -55,6 +56,65 @@ export interface SlashCommandOptions {
   categoryLabels: Record<string, string>;
 }
 
+/**
+ * Resolve the item list the slash menu renders: merge every configured source,
+ * warn on duplicate names in dev, category-sort so the flat order matches the
+ * grouped render, drop block-component items when the caret is in a table cell
+ * (they would no-op there — the cell-insertion gate refuses a block component
+ * in a phrasing-only cell), then apply the search query. Exported so tests
+ * exercise the exact transform the extension runs rather than a re-derivation.
+ */
+export function buildSlashMenuItems(options: {
+  sources: (() => SlashCommandItem[])[];
+  categoryOrder: string[];
+  query: string;
+  state: EditorState;
+}): SlashCommandItem[] {
+  const { sources, categoryOrder, query, state } = options;
+  const allItems = sources.flatMap((source) => {
+    try {
+      return source();
+    } catch (err) {
+      console.error('[slash-command] item source threw an error', err);
+      return [];
+    }
+  });
+  if (process.env.NODE_ENV !== 'production') {
+    const seen = new Set<string>();
+    for (const item of allItems) {
+      if (seen.has(item.name)) {
+        console.warn(
+          `[slash-command] duplicate item name "${item.name}" — both will appear in the menu; ensure names are unique across sources`,
+        );
+      }
+      seen.add(item.name);
+    }
+  }
+  // Sort items so source order matches the visual (category-grouped) order the
+  // menu renders. `SlashCommandMenu` groups items into category buckets in
+  // first-appearance order and builds `indexMap` from the flat source array —
+  // if those orders diverge, `selectedIndex` (which advances through the source
+  // array) points to a button whose DOM position differs, so `data-selected`
+  // lands on the wrong visual item. Category order comes from `categoryOrder`
+  // (the `categoryLabels` keys); unknown categories sort last. Stable sort
+  // preserves within-category source order.
+  const indexOfCategory = (cat: string): number => {
+    const i = categoryOrder.indexOf(cat);
+    return i === -1 ? Number.POSITIVE_INFINITY : i;
+  };
+  const sorted = allItems
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => {
+      const diff = indexOfCategory(a.item.category) - indexOfCategory(b.item.category);
+      return diff !== 0 ? diff : a.i - b.i;
+    })
+    .map((x) => x.item);
+  const offerable = isSelectionInTableCell(state)
+    ? sorted.filter((item) => !item.insertsBlockComponent)
+    : sorted;
+  return filterItems(offerable, query);
+}
+
 export const SlashCommand = Extension.create<SlashCommandOptions>({
   name: 'slashCommand',
 
@@ -91,49 +151,13 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
         // non-whitespace character after the trigger. Setting allowedPrefixes to
         // null would allow mid-word triggers like "hello/world" (regression).
 
-        items: ({ query }) => {
-          const allItems = extension.options.itemsSources.flatMap((source) => {
-            try {
-              return source();
-            } catch (err) {
-              console.error('[slash-command] item source threw an error', err);
-              return [];
-            }
-          });
-          if (process.env.NODE_ENV !== 'production') {
-            const seen = new Set<string>();
-            for (const item of allItems) {
-              if (seen.has(item.name)) {
-                console.warn(
-                  `[slash-command] duplicate item name "${item.name}" — both will appear in the menu; ensure names are unique across sources`,
-                );
-              }
-              seen.add(item.name);
-            }
-          }
-          // Sort items so source order matches the visual (category-grouped)
-          // order the menu renders. `SlashCommandMenu` groups items into
-          // category buckets in first-appearance order and builds `indexMap`
-          // from the flat source array — if those orders diverge, `selectedIndex`
-          // (which advances through the source array) points to a button whose
-          // DOM position differs from `selectedIndex`, so `data-selected=true`
-          // lands on the wrong visual item. Category order is taken from
-          // `categoryLabels` keys (declaration order); unknown categories
-          // sort last. Stable sort preserves within-category source order.
-          const categoryOrder = Object.keys(extension.options.categoryLabels);
-          const indexOfCategory = (cat: string): number => {
-            const i = categoryOrder.indexOf(cat);
-            return i === -1 ? Number.POSITIVE_INFINITY : i;
-          };
-          const sorted = allItems
-            .map((item, i) => ({ item, i }))
-            .sort((a, b) => {
-              const diff = indexOfCategory(a.item.category) - indexOfCategory(b.item.category);
-              return diff !== 0 ? diff : a.i - b.i;
-            })
-            .map((x) => x.item);
-          return filterItems(sorted, query);
-        },
+        items: ({ query, editor }) =>
+          buildSlashMenuItems({
+            sources: extension.options.itemsSources,
+            categoryOrder: Object.keys(extension.options.categoryLabels),
+            query,
+            state: editor.state,
+          }),
 
         command: ({ editor, range, props: item }) => {
           try {

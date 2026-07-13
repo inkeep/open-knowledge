@@ -64,6 +64,14 @@ export interface SlashCommandItem {
   description?: string;
 
   /**
+   * True when selecting this item inserts a block `jsxComponent`. A GFM table
+   * cell is phrasing-only, so the cell-insertion gate refuses that placement;
+   * the menu withholds these items when the caret is in a cell rather than
+   * offer an affordance that would silently no-op.
+   */
+  insertsBlockComponent?: boolean;
+
+  /**
    * Optional hover preview shown alongside the menu when this item is selected
    * (via mouse hover or keyboard navigation). Items without a preview cause the
    * side panel to disappear.

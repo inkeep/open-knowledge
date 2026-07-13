@@ -563,6 +563,8 @@ function getCustomBlockComponentItems(): SlashCommandItem[] {
       category: 'media',
       aliases: ['file', 'attachment', 'download', 'upload', 'document', 'doc', 'docx', 'zip'],
       description: 'Attach a downloadable file (`.pdf` / `.docx` / `.zip` / …)',
+      // Inserts a WikiEmbedFile jsxComponent block — refused in a table cell.
+      insertsBlockComponent: true,
       command: openFilePickerAndUpload,
       preview: {
         description: t`Notion-style inline row for a downloadable file. Drag-drop also works.`,
@@ -611,6 +613,9 @@ export function getComponentItems(): SlashCommandItem[] {
       command: createInsertCommand(desc),
       aliases: desc.searchTerms,
       description: desc.description,
+      // Every registered descriptor here is a block jsxComponent — refused in a
+      // table cell, so the slash menu withholds it there.
+      insertsBlockComponent: true,
       preview,
     };
   });

@@ -20,6 +20,12 @@
  * Branch E: text/plain only → markdown-first if isMarkdown threshold hit;
  *           else verbatim plain-text insert.
  *
+ * Placement: the markdown branches insert the re-parsed JSON as a closed
+ * slice, EXCEPT when the caret is inside a list item and the pasted content
+ * is entirely lists — then `buildListSiblingSpliceTr` splices the pasted
+ * items as siblings at the caret's list level instead of letting the fitter
+ * nest or orphan them (issue #609).
+ *
  * codeBlock short-circuit: cursor inside a codeBlock → skip all branches,
  * insert text/plain verbatim.
  *
@@ -60,7 +66,8 @@
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import { htmlToMdast, mdastToMarkdown } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
-import { TextSelection } from '@tiptap/pm/state';
+import { Fragment, type Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { type EditorState, TextSelection, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { PREVENT_AUTOLINK_META } from '../gfm-autolink-plugin.ts';
 import { type ClipboardSource, detectSource } from './detect-source.ts';
@@ -447,6 +454,97 @@ function tryBranchHtml(
   return applyJsonSlice(view, json, source, 'D', html.length);
 }
 
+/**
+ * A list item is "blank" when it holds only empty paragraphs — no text, no
+ * nested list, no other block. Splitting a target item at a caret sitting at
+ * its very start or end yields one such blank half; the splice drops those so
+ * no empty item is minted.
+ */
+function isBlankListItem(item: ProseMirrorNode): boolean {
+  if (item.textContent.length > 0) return false;
+  let onlyEmptyParagraphs = true;
+  item.forEach((child) => {
+    if (child.type.name !== 'paragraph' || child.content.size > 0) onlyEmptyParagraphs = false;
+  });
+  return onlyEmptyParagraphs;
+}
+
+/**
+ * List-aware placement for OK→OK paste (#609 cause 1).
+ *
+ * `applyJsonSlice` normally inserts the re-parsed markdown as a CLOSED slice.
+ * When the caret sits inside a list item and the pasted content is entirely
+ * lists, that closed slice makes ProseMirror's fitter nest the pasted list as
+ * a child of the target item (caret at item end) or mint a degenerate
+ * empty-leading-paragraph + nested-list shape (caret at item start) — the
+ * mis-placement users see as orphaned todo rows.
+ *
+ * Instead, split the target item at the caret and splice the pasted items in
+ * between as SIBLINGS at the target item's own list level:
+ * `[before-caret item if non-empty] + pasted items + [after-caret item if
+ * non-empty]`. Whole list items are moved verbatim, so a pasted item's own
+ * nested list rides along as its child and any container it holds (component,
+ * table) is never opened.
+ *
+ * Returns a built transaction, or null to fall back to the closed-slice path:
+ * a ranged (non-collapsed) selection, a caret not inside a list-item textblock,
+ * or pasted content that is not purely lists all keep current behavior.
+ */
+function buildListSiblingSpliceTr(
+  state: EditorState,
+  docNode: ProseMirrorNode,
+): Transaction | null {
+  const { selection } = state;
+  if (!selection.empty) return null;
+
+  // Payload gate first (reads only the pasted doc): every top-level node must
+  // be a list, else this is not the list-splice case.
+  const pastedItems: ProseMirrorNode[] = [];
+  let allLists = docNode.content.childCount > 0;
+  docNode.content.forEach((child) => {
+    if (child.type.name !== 'list') {
+      allLists = false;
+      return;
+    }
+    child.forEach((item) => {
+      if (item.type.name === 'listItem') pastedItems.push(item);
+    });
+  });
+  if (!allLists || pastedItems.length === 0) return null;
+
+  const { $from } = selection;
+  let itemDepth = -1;
+  for (let depth = $from.depth; depth > 0; depth--) {
+    if ($from.node(depth).type.name === 'listItem') {
+      itemDepth = depth;
+      break;
+    }
+  }
+  if (itemDepth < 0) return null;
+  // A gap cursor (also "empty") can sit between blocks where the parent is the
+  // list itself; the split math below assumes a caret inside the item's text.
+  if (!$from.parent.isTextblock) return null;
+
+  const targetItem = $from.node(itemDepth);
+  const itemStart = $from.before(itemDepth);
+  const itemEnd = $from.after(itemDepth);
+  const caretOffset = $from.pos - $from.start(itemDepth);
+  const beforeItem = targetItem.cut(0, caretOffset);
+  const afterItem = targetItem.cut(caretOffset);
+
+  const replacement: ProseMirrorNode[] = [];
+  const keepBefore = !isBlankListItem(beforeItem);
+  if (keepBefore) replacement.push(beforeItem);
+  replacement.push(...pastedItems);
+  if (!isBlankListItem(afterItem)) replacement.push(afterItem);
+
+  const tr = state.tr.replaceWith(itemStart, itemEnd, Fragment.fromArray(replacement));
+  let caretPos = itemStart + (keepBefore ? beforeItem.nodeSize : 0);
+  for (const item of pastedItems) caretPos += item.nodeSize;
+  tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(caretPos, tr.doc.content.size)), -1));
+  return tr;
+}
+
 function applyJsonSlice(
   view: EditorView,
   json: JSONContent,
@@ -456,12 +554,18 @@ function applyJsonSlice(
 ): boolean {
   try {
     const node = view.state.schema.nodeFromJSON(json);
-    view.dispatch(
-      view.state.tr
-        .replaceSelection(node.slice(0, node.content.size))
-        .setMeta(PREVENT_AUTOLINK_META, true)
-        .scrollIntoView(),
-    );
+    // Scope the splice attempt so a throw in its position math degrades to the
+    // proven closed-slice path below, not to the outer catch — which would
+    // toast a degradation and hand the paste to PM's native fallthrough even
+    // though the closed slice could have delivered it.
+    let spliceTr: Transaction | null = null;
+    try {
+      spliceTr = buildListSiblingSpliceTr(view.state, node);
+    } catch {
+      spliceTr = null;
+    }
+    const tr = spliceTr ?? view.state.tr.replaceSelection(node.slice(0, node.content.size));
+    view.dispatch(tr.setMeta(PREVENT_AUTOLINK_META, true).scrollIntoView());
     return true;
   } catch (err) {
     logConversionFail({

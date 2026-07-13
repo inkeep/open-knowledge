@@ -1993,10 +1993,12 @@ export function createServer(options: ServerOptions): ServerInstance {
           const isDirty = ours !== base;
 
           if (isDirty && shadowRef.current) {
-            // Silent rescue checkpoint — preserve in-memory
-            // content on a timeline ref so TimelinePanel renders it as an
-            // 'external-change-rescue' row. Fire-and-forget; failures warn
-            // but don't block the delete lifecycle.
+            // Silent rescue checkpoint — preserve the dirty in-memory
+            // content on a checkpoint ref so it survives this external
+            // delete and stays recoverable via GET /api/rescue. It does
+            // NOT appear in the human timeline: TimelinePanel drops all
+            // checkpoint-type rows. Fire-and-forget; failures warn but
+            // don't block the delete lifecycle.
             const shadowForCheckpoint = shadowRef.current;
             const branch = headWatcher?.getLastKnownBranch() ?? 'main';
             queueMicrotask(() => {

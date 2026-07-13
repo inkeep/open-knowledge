@@ -28,6 +28,7 @@ import {
   simulateCopyAndRead,
   simulateCutAndRead,
   test,
+  waitForPmSelectionInNode,
   waitForActiveProviderSynced as waitForProvider,
 } from './_helpers';
 
@@ -1700,5 +1701,248 @@ test.describe('Clipboard component contract — drag-and-drop (US-009)', () => {
     expect(out.html).not.toMatch(/<svg[^>]*class="[^"]*lucide-/);
     expect(out.html).toContain('⌄');
     expect(out.html).toContain('ℹ');
+  });
+});
+
+// ─── Insertion-route correctness: #609 list placement + cell gate (persisted bytes) ───
+//
+// Both diagnoses behind this batch lived at the client→server persistence
+// boundary: #609 mis-placed pasted list items (nested-as-child or orphan
+// shapes) and a block component dropped into a table cell projected to zero
+// persisted bytes. Mounted-editor Bun tests prove the in-process transaction;
+// only a real browser paste round-tripped through the server proves the
+// PERSISTED Y.Text bytes these scenarios assert.
+
+const TASK_SEED = '- [ ] alpha\n- [ ] bravo\n- [x] charlie\n- [ ] delta\n- [ ] echo\n';
+const TABLE_SEED = '| a | b |\n| --- | --- |\n| c | d |\n';
+
+/**
+ * Minimal structural view of the DEV-only `window.__activeEditor` (a TipTap
+ * `Editor`) these scenarios drive from inside `page.evaluate` — enough to walk
+ * the doc, place a selection, and reach the PM view DOM. A structural cast
+ * avoids `any` while keeping the e2e file free of ProseMirror type imports.
+ */
+type DevPmNode = { type: { name: string }; firstChild: { content: { size: number } } | null };
+interface DevEditorHandle {
+  state: {
+    doc: { descendants: (fn: (node: DevPmNode, pos: number) => boolean | undefined) => void };
+  };
+  commands: { setTextSelection: (pos: number | { from: number; to: number }) => boolean };
+  view: { dom: HTMLElement };
+}
+
+/**
+ * Copy the nth (0-based) top-level list item through the real clipboard hooks
+ * and return the captured MIME map — the exact payload an OK→OK copy carries.
+ * Selecting the item's paragraph text is enough for the serializer to emit the
+ * full `- [ ] text` line: the list marker rides the open slice's context.
+ * `pos + 2` steps over the listItem-open and paragraph-open tokens.
+ */
+async function copyListItem(
+  page: Page,
+  itemIndex: number,
+): Promise<{ plain: string; html: string }> {
+  return page.evaluate((n) => {
+    const editor = (window as unknown as { __activeEditor?: DevEditorHandle }).__activeEditor;
+    if (!editor) throw new Error('copyListItem: no active editor');
+    let from = -1;
+    let to = -1;
+    let i = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (from !== -1) return false;
+      if (node.type.name === 'listItem') {
+        if (i === n) {
+          from = pos + 2;
+          to = from + (node.firstChild ? node.firstChild.content.size : 0);
+          return false;
+        }
+        i++;
+      }
+      return true;
+    });
+    if (from === -1) throw new Error(`copyListItem: listItem ${n} not found`);
+    editor.commands.setTextSelection({ from, to });
+    const captured: Record<string, string> = {};
+    const dt = new DataTransfer();
+    const orig = dt.setData.bind(dt);
+    dt.setData = (k: string, v: string): void => {
+      captured[k] = v;
+      orig(k, v);
+    };
+    editor.view.dom.dispatchEvent(
+      new ClipboardEvent('copy', { clipboardData: dt, bubbles: true, cancelable: true }),
+    );
+    return { plain: captured['text/plain'] ?? '', html: captured['text/html'] ?? '' };
+  }, itemIndex);
+}
+
+/** Collapse the caret at the start or end of the nth list item's text. */
+async function setListItemCaret(
+  page: Page,
+  itemIndex: number,
+  where: 'start' | 'end',
+): Promise<void> {
+  await page.evaluate(
+    ({ n, edge }) => {
+      const editor = (window as unknown as { __activeEditor?: DevEditorHandle }).__activeEditor;
+      if (!editor) throw new Error('setListItemCaret: no active editor');
+      let start = -1;
+      let end = -1;
+      let i = 0;
+      editor.state.doc.descendants((node, pos) => {
+        if (start !== -1) return false;
+        if (node.type.name === 'listItem') {
+          if (i === n) {
+            start = pos + 2;
+            end = start + (node.firstChild ? node.firstChild.content.size : 0);
+            return false;
+          }
+          i++;
+        }
+        return true;
+      });
+      if (start === -1) throw new Error(`setListItemCaret: listItem ${n} not found`);
+      editor.commands.setTextSelection(edge === 'end' ? end : start);
+    },
+    { n: itemIndex, edge: where },
+  );
+  await waitForPmSelectionInNode(page, 'listItem');
+}
+
+/** Collapse the caret inside the first table data cell. */
+async function setFirstCellCaret(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const editor = (window as unknown as { __activeEditor?: DevEditorHandle }).__activeEditor;
+    if (!editor) throw new Error('setFirstCellCaret: no active editor');
+    let caret = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (caret !== -1) return false;
+      if (node.type.name === 'tableCell') {
+        caret = pos + 2;
+        return false;
+      }
+      return true;
+    });
+    if (caret === -1) throw new Error('setFirstCellCaret: no tableCell found');
+    editor.commands.setTextSelection(caret);
+  });
+  await waitForPmSelectionInNode(page, 'tableCell');
+}
+
+/** Count jsxComponent nodes in the live editor doc. */
+async function countComponentsInDoc(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const editor = (window as unknown as { __activeEditor?: DevEditorHandle }).__activeEditor;
+    if (!editor) throw new Error('countComponentsInDoc: no active editor');
+    let n = 0;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'jsxComponent') n++;
+      return true;
+    });
+    return n;
+  });
+}
+
+test.describe('#609 sibling-item list paste placement (persisted bytes)', () => {
+  let docName: string;
+
+  test.beforeEach(async ({ page, api }) => {
+    docName = `test-paste-609-${randomUUID().slice(0, 8)}`;
+    await api.createPage(`${docName}.md`);
+    await page.goto(`/#/${docName}`);
+    await waitForProvider(page);
+    await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+    await api.replaceDoc(docName, TASK_SEED);
+    await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('echo');
+    await page.click('.ProseMirror:not(.composer-prosemirror)');
+  });
+
+  test('copied task item pasted at item-start lands as a sibling above with no orphan bytes', async ({
+    page,
+  }) => {
+    const payload = await copyListItem(page, 1); // "bravo"
+    expect(payload.plain).toContain('- [ ] bravo');
+
+    await setListItemCaret(page, 3, 'start'); // start of "delta"
+    await pasteWithMimes(page, { 'text/plain': payload.plain, 'text/html': payload.html });
+
+    await expect(async () => {
+      const content = await getYText(page);
+      // The pasted item is a full sibling immediately above the intact target.
+      expect(content).toContain('- [ ] bravo\n- [ ] delta');
+      // The item that was above delta keeps its own line and checked state.
+      expect(content).toContain('- [x] charlie');
+      // None of the #609 orphan byte shapes are minted.
+      expect(content).not.toMatch(/- \[ \] - \[ \]/);
+      expect(content).not.toMatch(/^\s*\\- /m);
+      expect(content).not.toMatch(/- - /);
+    }).toPass({ timeout: 8_000 });
+  });
+
+  test('copied task item pasted at item-end lands as a sibling below, never a child', async ({
+    page,
+  }) => {
+    const payload = await copyListItem(page, 1); // "bravo"
+    expect(payload.plain).toContain('- [ ] bravo');
+
+    await setListItemCaret(page, 3, 'end'); // end of "delta"
+    await pasteWithMimes(page, { 'text/plain': payload.plain, 'text/html': payload.html });
+
+    await expect(async () => {
+      const content = await getYText(page);
+      // delta → pasted bravo → echo, all siblings at the same list level.
+      expect(content).toContain('- [ ] delta\n- [ ] bravo\n- [ ] echo');
+      // A child sublist would indent the pasted item — assert it never does.
+      expect(content).not.toMatch(/\n[ \t]+- \[ \] bravo/);
+      expect(content).not.toMatch(/- \[ \] - \[ \]/);
+      expect(content).not.toMatch(/^\s*\\- /m);
+    }).toPass({ timeout: 8_000 });
+  });
+});
+
+test.describe('cell-insertion gate — component paste into a table cell (persisted bytes)', () => {
+  let docName: string;
+
+  test.beforeEach(async ({ page, api }) => {
+    docName = `test-paste-cell-gate-${randomUUID().slice(0, 8)}`;
+    await api.createPage(`${docName}.md`);
+    await page.goto(`/#/${docName}`);
+    await waitForProvider(page);
+    await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+    await api.replaceDoc(docName, TABLE_SEED);
+    await expect(async () => {
+      expect(await getYText(page)).toMatch(/\|\s*c\s*\|\s*d\s*\|/);
+    }).toPass({ timeout: 5_000 });
+    await page.click('.ProseMirror:not(.composer-prosemirror)');
+  });
+
+  test('pasting a block component with the caret in a cell leaves the document bytes unchanged', async ({
+    page,
+  }) => {
+    await setFirstCellCaret(page);
+    const baseline = await getYText(page);
+    expect(baseline).toMatch(/\|\s*c\s*\|\s*d\s*\|/);
+
+    await pasteWithMimes(page, {
+      'text/plain': '<Callout>\n\nnote\n\n</Callout>\n',
+      'text/html':
+        '<div data-pm-slice="0 0 paragraph"><p>&lt;Callout&gt;note&lt;/Callout&gt;</p></div>',
+    });
+
+    // The gate rejects the transaction synchronously — the live doc gains no
+    // component from any branch (no fall-through re-insert).
+    expect(await countComponentsInDoc(page)).toBe(0);
+
+    // Give any propagation two frames, then assert the persisted bytes are
+    // byte-identical to the pre-paste baseline and never carry the component.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+    );
+    const after = await getYText(page);
+    expect(after).toBe(baseline);
+    expect(after).not.toContain('Callout');
   });
 });
