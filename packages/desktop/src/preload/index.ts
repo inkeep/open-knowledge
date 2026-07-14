@@ -436,15 +436,21 @@ const bridge: OkDesktopBridge = {
   },
 
   worktree: {
-    // One discriminated channel (`ok:worktree:dispatch`) backs both methods,
-    // respecting the hand-rolled-channel cap. Each method knows its branch, so
-    // it casts the union result to its own arm (the shapes overlap only on the
-    // shared `no-git` failure, so a runtime discriminant would be noise).
+    // One discriminated channel (`ok:worktree:dispatch`) backs all three
+    // methods, respecting the hand-rolled-channel cap. Each method knows its
+    // branch, so it casts the union result to its own arm (the shapes overlap
+    // only on the shared `no-git` failure, so a runtime discriminant would be
+    // noise).
     list: () => invoke('ok:worktree:dispatch', { kind: 'list' }) as Promise<WorktreeListResult>,
     create: (request: WorktreeCreateRequest) =>
       invoke('ok:worktree:dispatch', {
         kind: 'create',
         ...request,
+      }) as Promise<WorktreeCreateResult>,
+    checkout: (request: { branch: string }) =>
+      invoke('ok:worktree:dispatch', {
+        kind: 'checkout',
+        branch: request.branch,
       }) as Promise<WorktreeCreateResult>,
   },
 

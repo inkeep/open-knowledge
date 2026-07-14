@@ -51,7 +51,7 @@
     {
       "name": "all JS chunks combined (gzipped)",
       "path": "dist/assets/*.js",
-      "limit": "3.08 MB",
+      "limit": "3.09 MB",
       "gzip": true,
       "running": false
     },

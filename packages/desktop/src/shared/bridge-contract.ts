@@ -1504,10 +1504,22 @@ export interface OkDesktopBridge {
    * 'new-window', entryPoint: 'worktree' })` — this surface is git-only.
    * Backed by `ok:worktree:dispatch` (one consolidated channel, discriminated
    * on `kind`, per the `ok:sharing:dispatch` precedent).
+   *
+   * `checkout` is the share-receive arm: unlike `create` (whose caller picked
+   * the branch from the selector model and therefore knows where it lives),
+   * a share payload names a branch the receiver may never have fetched. Main
+   * resolves it — existing local ref → plain checkout; remote-tracking ref
+   * only → new tracking branch off `origin/<branch>`; neither → bounded
+   * `git fetch origin <branch>`, then the tracking checkout — and delegates
+   * to the same create-or-locate path (an existing worktree is located, not
+   * refused). The receiver's root checkout is never touched. Failures extend
+   * the create result union: `branch-not-found` (branch gone from origin —
+   * terminal) and `fetch-failed` (network/timeout — retryable).
    */
   worktree: {
     list(): Promise<WorktreeListResult>;
     create(request: WorktreeCreateRequest): Promise<WorktreeCreateResult>;
+    checkout(request: { branch: string }): Promise<WorktreeCreateResult>;
   };
 
   /**

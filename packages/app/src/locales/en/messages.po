@@ -409,6 +409,10 @@ msgstr "{seconds}s ago"
 msgid "{settingsDescriptorLabel} properties"
 msgstr "{settingsDescriptorLabel} properties"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "{shareBranch} isn't a valid branch name."
+msgstr "{shareBranch} isn't a valid branch name."
+
 #: src/components/CreatedItemsList.tsx
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, one {skill} other {skills}}"
@@ -504,6 +508,10 @@ msgstr "<0>ok</0> won't run in external terminals until you add it later from th
 msgid "📝 or assets/icon.png"
 msgstr "📝 or assets/icon.png"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
+msgstr "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "A branch with that name already exists. Open its worktree from the switcher instead."
@@ -580,6 +588,10 @@ msgstr "A template named <0>{trimmedSlug}</0> already exists here. Saving create
 #: src/components/FolderPropertiesCard.tsx
 msgid "A title, description, tags — anything that describes this folder."
 msgstr "A title, description, tags — anything that describes this folder."
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "A worktree folder for {shareBranch} already exists."
+msgstr "A worktree folder for {shareBranch} already exists."
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "A worktree folder for that branch already exists."
@@ -1843,6 +1855,10 @@ msgstr "Could not load templates. Try again later."
 #: src/components/TrashFailureModal.tsx
 msgid "Could not move \"{targetName}\" to the Trash. Do you want to permanently delete instead?"
 msgstr "Could not move \"{targetName}\" to the Trash. Do you want to permanently delete instead?"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not open {shareBranch} in a worktree. Try again."
+msgstr "Could not open {shareBranch} in a worktree. Try again."
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Could not open {target}. Try opening it manually."
@@ -4982,12 +4998,12 @@ msgid "Open graph"
 msgstr "Open graph"
 
 #: src/components/ShareBranchSwitchDialog.tsx
-msgid "Open in {shareBranch}"
-msgstr "Open in {shareBranch}"
-
-#: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open in current branch"
 msgstr "Open in current branch"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Open in worktree"
+msgstr "Open in worktree"
 
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -5111,6 +5127,10 @@ msgstr "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 #: src/components/NavigatorApp.tsx
 msgid "Opening {openingLabel}…"
 msgstr "Opening {openingLabel}…"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Opening worktree"
+msgstr "Opening worktree"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Opening..."
@@ -6766,6 +6786,10 @@ msgstr "Switch and update branch"
 msgid "Switch project"
 msgstr "Switch project"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Switch to {shareBranch}"
+msgstr "Switch to {shareBranch}"
+
 #: src/components/settings/SharingSection.tsx
 msgid "Switch to local-only refused"
 msgstr "Switch to local-only refused"
@@ -7013,6 +7037,7 @@ msgid "Thanks for subscribing. Watch your inbox for product updates."
 msgstr "Thanks for subscribing. Watch your inbox for product updates."
 
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
 msgstr "That branch is already open in another worktree."
 
@@ -7147,8 +7172,8 @@ msgid "This {targetNoun} moved to <0>{0}</0>. Open it there?"
 msgstr "This {targetNoun} moved to <0>{0}</0>. Open it there?"
 
 #: src/components/ShareBranchSwitchDialog.tsx
-msgid "This {targetNoun} only exists on branch <0>{shareBranch}</0>. You have uncommitted changes that prevent switching. Commit or stash your changes, then open the share link again."
-msgstr "This {targetNoun} only exists on branch <0>{shareBranch}</0>. You have uncommitted changes that prevent switching. Commit or stash your changes, then open the share link again."
+msgid "This {targetNoun} only exists on branch <0>{shareBranch}</0>. You have uncommitted changes that prevent switching here — open it in a worktree to leave your changes untouched."
+msgstr "This {targetNoun} only exists on branch <0>{shareBranch}</0>. You have uncommitted changes that prevent switching here — open it in a worktree to leave your changes untouched."
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "This {targetNoun} was added to branch <0>{shareBranch}</0> recently. Switch and update to open it."
@@ -7271,6 +7296,7 @@ msgid "This project is running an older version of OpenKnowledge (v{0}) than thi
 msgstr "This project is running an older version of OpenKnowledge (v{0}) than this app (v{1})."
 
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
 msgid "This project isn't a git repository, so worktrees aren't available."
 msgstr "This project isn't a git repository, so worktrees aren't available."
 

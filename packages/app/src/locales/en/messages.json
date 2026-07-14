@@ -560,6 +560,13 @@
     "DId6MT": ["Project-level pages with no outgoing graph edges."],
     "DJd000": ["Activate the previous editor tab."],
     "DPfwMq": ["Done"],
+    "DTI-fp": [
+      "This ",
+      ["targetNoun"],
+      " only exists on branch <0>",
+      ["shareBranch"],
+      "</0>. You have uncommitted changes that prevent switching here — open it in a worktree to leave your changes untouched."
+    ],
     "DVh_Tb": ["Failed to clean up after trash"],
     "DXd9LM": ["New worktree"],
     "D_WKe_": ["Click an agent's avatar in the presence bar to view their session."],
@@ -814,6 +821,7 @@
     "JWsZlx": ["Open a project to edit."],
     "JZ8cO6": ["Light, dark, or follow the OS."],
     "Jejur6": ["Couldn't load document"],
+    "JfPuv7": [["shareBranch"], " isn't a valid branch name."],
     "Jhj_lh": ["Modify the link target, anchor, and display label."],
     "JkCD2u": ["Sync paused — you don't have permission to push to this repo"],
     "JmfgFc": ["(a worktree of ", ["0"], ")"],
@@ -1068,6 +1076,7 @@
     "PR9FSv": ["Move to the next visual-editor find result."],
     "PRnH8G": ["of ", ["0"]],
     "PVUn_c": ["Open folder"],
+    "PZtgO0": ["Opening worktree"],
     "P_bX4O": ["How to set up"],
     "PdA9NZ": [["ahead"], " ahead"],
     "PdJZ5p": ["No skills yet."],
@@ -1261,6 +1270,7 @@
     "VIwCaD": ["Entry"],
     "VM7H66": ["This file is binary and can't be shown as text."],
     "VNgKZz": ["Advanced settings"],
+    "VTulZj": ["Open in worktree"],
     "VU3Nrn": ["Missing"],
     "VUijjF": ["Embed an image with optional alt text."],
     "VYd_YA": ["Open an existing project folder from disk."],
@@ -1292,6 +1302,7 @@
     ],
     "W8vpBM": ["starter pack"],
     "W9_Bub": ["Local changes overlap with incoming sync"],
+    "WALN45": ["Switch to ", ["shareBranch"]],
     "WHPvOb": ["All files are hidden by view filters."],
     "WL6puM": ["Path resolves outside project"],
     "WMIKXK": [
@@ -1348,13 +1359,6 @@
     "Xl-UUg": ["guides/install or https://example.com"],
     "XmJfZT": ["name"],
     "XnlF3W": ["Add the next matching source selection."],
-    "XnoA1k": [
-      "This ",
-      ["targetNoun"],
-      " only exists on branch <0>",
-      ["shareBranch"],
-      "</0>. You have uncommitted changes that prevent switching. Commit or stash your changes, then open the share link again."
-    ],
     "XopE_I": ["Failed to parse backlinks error response (HTTP ", ["status"], ")"],
     "XpIZmv": ["Fenced code block with monospace text."],
     "XqNHcm": ["Couldn't update skill targets: ", ["0"]],
@@ -1458,7 +1462,6 @@
       ["currentLabel"],
       "</1>."
     ],
-    "_BthEY": ["Open in ", ["shareBranch"]],
     "_NX6gG": ["Managing project AI tools is unavailable in this build."],
     "_PACVa": ["Release notes"],
     "_PBJRl": ["Add at least one letter or number."],
@@ -1554,6 +1557,7 @@
     "cF9DyA": ["Reconnecting after server restart"],
     "cIptmH": ["In the Claude Desktop App"],
     "cKjLuT": ["(project + user)"],
+    "cN1Gcp": ["A worktree folder for ", ["shareBranch"], " already exists."],
     "cOSAfL": ["No repositories found on your GitHub account."],
     "cOrTMo": ["Your share link is ready below."],
     "cRHuuI": ["Couldn't copy path"],
@@ -1631,6 +1635,7 @@
     "e4PbgC": ["Duplicate the file-tree item copied from the Files sidebar."],
     "e8L17t": ["A non-empty folder already exists at this path. Pick a different folder."],
     "e8zRrb": ["Show Files"],
+    "e8zYa8": ["Could not open ", ["shareBranch"], " in a worktree. Try again."],
     "eBIT9h": ["Paste failed.", ["restoreSuffix"]],
     "eFJkVt": ["Clone failed: ", ["cloneError"]],
     "eG8Jsg": ["Toggle source tab focus mode"],
@@ -1729,6 +1734,11 @@
     "gwykHF": ["This doc hasn't synced to GitHub yet. The link will work after the next sync."],
     "h-AdvS": ["The folders and templates are already here, so there's nothing to add."],
     "h06R3C": ["No pages are missing outgoing graph links."],
+    "h3QZcB": [
+      "A branch named ",
+      ["shareBranch"],
+      " already exists. Open its worktree from the switcher instead."
+    ],
     "h6EvY-": [
       "This will replace the current document content with the version from <0>",
       ["relative"],

@@ -12,7 +12,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { BranchInfoResponse, CheckoutResponse } from '@inkeep/open-knowledge-core';
+import type {
+  BranchInfoResponse,
+  CheckoutResponse,
+  WorktreeCreateResult,
+} from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { OkDesktopBridge, OkShareReceivedPayload } from '@/lib/desktop-bridge-types';
@@ -63,6 +67,12 @@ mock.module('sonner', () => ({
   toast: { error: toastError, info: mock(() => {}), success: mock(() => {}) },
 }));
 
+// The worktree leg refreshes the window's cached worktree model on create
+// success. Spy at the module seam (same pattern as NewWorktreeDialog.dom.test)
+// so the production store never boots against the absent test bridge.
+const refreshWorktrees = mock(() => {});
+mock.module('@/lib/worktree-store', () => ({ refreshWorktrees }));
+
 const { createShareReceiveStore } = await import('@/lib/share/receive-store');
 const { missDialogStore } = await import('@/lib/share/miss-dialog-store');
 const { ShareBranchSwitchDialog } = await import('./ShareBranchSwitchDialog');
@@ -73,6 +83,7 @@ interface BridgeMock {
   fetchTargetStatus: ReturnType<typeof mock>;
   awaitBranchSwitched: ReturnType<typeof mock>;
   open: ReturnType<typeof mock>;
+  checkout: ReturnType<typeof mock>;
 }
 
 function makeBridge(overrides: Partial<BridgeMock> = {}): {
@@ -97,6 +108,9 @@ function makeBridge(overrides: Partial<BridgeMock> = {}): {
     fetchTargetStatus: overrides.fetchTargetStatus ?? mock(async () => null),
     awaitBranchSwitched: overrides.awaitBranchSwitched ?? mock(async () => ({ ok: true as const })),
     open: overrides.open ?? mock(async () => undefined),
+    checkout:
+      overrides.checkout ??
+      mock(async () => ({ ok: true as const, path: '/repo/.ok/worktrees/branch', created: true })),
   };
   const bridge = {
     project: {
@@ -105,6 +119,9 @@ function makeBridge(overrides: Partial<BridgeMock> = {}): {
       fetchTargetStatus: calls.fetchTargetStatus,
       awaitBranchSwitched: calls.awaitBranchSwitched,
       open: calls.open,
+    },
+    worktree: {
+      checkout: calls.checkout,
     },
   } as unknown as OkDesktopBridge;
   return { bridge, calls };
@@ -815,5 +832,411 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
     await screen.findByTestId('share-branch-switch-switch');
     // Fail-open on the omitted hint: no verdict fetch, today's behavior.
     expect(calls.fetchTargetStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe('ShareBranchSwitchDialog — worktree leg', () => {
+  beforeEach(() => {
+    refreshWorktrees.mockClear();
+  });
+  afterEach(() => {
+    cleanup();
+    toastError.mockReset();
+  });
+
+  /**
+   * Branch-info fixture spanning the ready-variant matrix: the variant derives
+   * from shareTargetExists × whether conflictFiles is non-empty.
+   */
+  function branchInfoFor(fixture: {
+    shareTargetExists: boolean;
+    conflictFiles?: readonly string[];
+  }): BranchInfoResponse {
+    const files = fixture.conflictFiles ?? [];
+    return {
+      ok: true,
+      currentBranch: 'main',
+      currentHeadSha: 'aaaaaaa',
+      detached: false,
+      shareTargetExists: fixture.shareTargetExists,
+      dirtyConflicts:
+        files.length > 0 ? { conflicts: true, files: [...files] } : { conflicts: false, files: [] },
+    };
+  }
+
+  /**
+   * Installs the payload and renders the dialog. Returns `emit` so a test can
+   * deliver a second share payload mid-flow — the store overwrites its
+   * snapshot, which is the dialog's per-payload reset trigger.
+   */
+  function renderDialog(
+    bridge: OkDesktopBridge,
+    store: ReturnType<typeof createShareReceiveStore>,
+    payload = projectBranchSwitchPayload(),
+  ) {
+    let emitShare: (p: OkShareReceivedPayload) => void = () => {};
+    const fakeBridgeForStore = {
+      onShareReceived: (cb: (p: OkShareReceivedPayload) => void) => {
+        emitShare = cb;
+        cb(payload);
+        return () => {};
+      },
+    } as unknown as OkDesktopBridge;
+    store.install({ bridge: fakeBridgeForStore });
+    render(<ShareBranchSwitchDialog bridge={bridge} store={store} />);
+    return { payload, emit: (p: OkShareReceivedPayload) => emitShare(p) };
+  }
+
+  async function findEnabledWorktreeButton(): Promise<HTMLButtonElement> {
+    const btn = (await screen.findByTestId('share-branch-switch-worktree')) as HTMLButtonElement;
+    await waitFor(() => {
+      expect(btn.disabled).toBe(false);
+    });
+    return btn;
+  }
+
+  const variantFixtures = [
+    { kind: 'A', label: 'target on current branch, clean tree', shareTargetExists: true },
+    { kind: 'B', label: 'target missing, clean tree', shareTargetExists: false },
+    {
+      kind: 'C',
+      label: 'target on current branch, dirty conflicts',
+      shareTargetExists: true,
+      conflictFiles: ['docs/notes.md'],
+    },
+    {
+      kind: 'D',
+      label: 'target missing, dirty conflicts',
+      shareTargetExists: false,
+      conflictFiles: ['docs/notes.md'],
+    },
+  ] as const;
+
+  for (const fixture of variantFixtures) {
+    test(`Open in worktree renders enabled in variant ${fixture.kind} (${fixture.label})`, async () => {
+      const store = createShareReceiveStore();
+      const { bridge } = makeBridge({
+        fetchBranchInfo: mock(async () => branchInfoFor(fixture)),
+      });
+      renderDialog(bridge, store);
+      await findEnabledWorktreeButton();
+    });
+  }
+
+  test('variant D routes the dead end to the worktree action: new copy, switch disabled with the conflict list', async () => {
+    const store = createShareReceiveStore();
+    const { bridge } = makeBridge({
+      fetchBranchInfo: mock(async () =>
+        branchInfoFor({
+          shareTargetExists: false,
+          conflictFiles: ['docs/notes.md', 'package.json'],
+        }),
+      ),
+    });
+    renderDialog(bridge, store);
+
+    await findEnabledWorktreeButton();
+
+    // Body copy points at the enabled worktree action instead of the old
+    // commit-or-stash-then-retry dead end.
+    expect(screen.getByTestId('share-branch-switch-dialog').textContent).toContain(
+      'open it in a worktree to leave your changes untouched',
+    );
+
+    const switchBtn = screen.getByTestId('share-branch-switch-switch') as HTMLButtonElement;
+    expect(switchBtn.disabled).toBe(true);
+    const describedBy = switchBtn.getAttribute('aria-describedby');
+    expect(describedBy).toBe('share-receive-branch-conflict-files');
+    const conflictList = document.getElementById(describedBy ?? '');
+    expect(conflictList?.textContent).toContain('docs/notes.md');
+    expect(conflictList?.textContent).toContain('package.json');
+
+    // No current-branch copy of the target exists in variant D.
+    expect(screen.queryByTestId('share-branch-switch-open-current')).toBeNull();
+  });
+
+  test('a checkout that locates an existing worktree (created:false) still opens that window', async () => {
+    const store = createShareReceiveStore();
+    const existingPath = '/Users/alice/projects/open-knowledge/.ok/worktrees/feat-branch-x';
+    const { bridge, calls } = makeBridge({
+      checkout: mock(async () => ({ ok: true as const, path: existingPath, created: false })),
+    });
+    renderDialog(bridge, store);
+
+    const worktreeBtn = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(calls.open).toHaveBeenCalledTimes(1);
+    });
+    const openArg = calls.open.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(openArg.path).toBe(existingPath);
+    expect(openArg.target).toBe('new-window');
+    expect(store.getSnapshot()).toBeNull();
+  });
+
+  test('an open() rejection after a successful create surfaces the toast; the worktree persists in the switcher', async () => {
+    const store = createShareReceiveStore();
+    const worktreePath = '/Users/alice/projects/open-knowledge/.ok/worktrees/feat-branch-x';
+    const { bridge, calls } = makeBridge({
+      checkout: mock(async () => ({ ok: true as const, path: worktreePath, created: true })),
+      open: mock(async () => {
+        throw new Error('window spawn failed');
+      }),
+    });
+    renderDialog(bridge, store);
+
+    const worktreeBtn = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(calls.open).toHaveBeenCalledTimes(1);
+    });
+    // store.dismiss() runs synchronously before the open settles, so by the
+    // time the rejection lands the snapshot is already null and the catch's
+    // toast is the user's only signal — pin both.
+    expect(store.getSnapshot()).toBeNull();
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        `Could not open ${worktreePath}. Try opening it manually.`,
+      );
+    });
+    // The worktree exists on disk regardless of the failed window spawn; the
+    // cache refresh already ran, so the switcher/palette list it.
+    expect(refreshWorktrees).toHaveBeenCalledTimes(1);
+  });
+
+  test('a folder share rides the worktree leg with its target kind passed through', async () => {
+    const store = createShareReceiveStore();
+    const base = projectBranchSwitchPayload();
+    const payload = {
+      ...base,
+      share: { ...base.share, target: { kind: 'folder' as const, folderPath: 'docs' } },
+    };
+    const { bridge, calls } = makeBridge();
+    renderDialog(bridge, store, payload);
+
+    const worktreeBtn = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(calls.open).toHaveBeenCalledTimes(1);
+    });
+    const openArg = calls.open.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(openArg.pendingDeepLinkTarget).toEqual({ kind: 'folder', path: 'docs' });
+    expect(openArg.pendingBranch).toBe(payload.share.branch);
+  });
+
+  test('Open in worktree checks out the share branch and opens its window at the shared target — no CC1 wait', async () => {
+    const store = createShareReceiveStore();
+    const worktreePath = '/Users/alice/projects/open-knowledge/.ok/worktrees/feat-branch-x';
+    const { bridge, calls } = makeBridge({
+      checkout: mock(async () => ({ ok: true as const, path: worktreePath, created: true })),
+    });
+    const payload = projectBranchSwitchPayload();
+    const fakeBridgeForStore = {
+      onShareReceived: (cb: (p: OkShareReceivedPayload) => void) => {
+        cb(payload);
+        return () => {};
+      },
+    } as unknown as OkDesktopBridge;
+    store.install({ bridge: fakeBridgeForStore });
+    render(<ShareBranchSwitchDialog bridge={bridge} store={store} />);
+
+    const worktreeBtn = await screen.findByTestId('share-branch-switch-worktree');
+    expect((worktreeBtn as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+
+    expect(calls.checkout).toHaveBeenCalledTimes(1);
+    expect(calls.checkout).toHaveBeenCalledWith({ branch: payload.share.branch });
+
+    // Success opens the worktree window directly; the CC1 branch-switched gate
+    // belongs to the same-window switch leg only.
+    await waitFor(() => {
+      expect(calls.open).toHaveBeenCalledTimes(1);
+    });
+    expect(calls.awaitBranchSwitched).not.toHaveBeenCalled();
+
+    // Exact payload pin: path from the create result, its own window, worktree
+    // entry point, deep-link target passthrough, and the share branch.
+    expect(calls.open.mock.calls[0]?.[0]).toEqual({
+      path: worktreePath,
+      target: 'new-window',
+      entryPoint: 'worktree',
+      pendingDeepLinkTarget: { kind: 'doc', path: 'docs/notes.md' },
+      pendingBranch: payload.share.branch,
+    });
+
+    // The anchor window's cached worktree model refreshes so the switcher and
+    // palette list the new worktree.
+    expect(refreshWorktrees).toHaveBeenCalledTimes(1);
+
+    // Dialog dismissed after dispatch.
+    expect(store.getSnapshot()).toBeNull();
+  });
+
+  test('mid-create shows in-place progress with actions disabled and Cancel live; dismissal ignores the late result', async () => {
+    const store = createShareReceiveStore();
+    let resolveCheckout: (result: WorktreeCreateResult) => void = () => {};
+    const { bridge, calls } = makeBridge({
+      checkout: mock(
+        () =>
+          new Promise<WorktreeCreateResult>((resolve) => {
+            resolveCheckout = resolve;
+          }),
+      ),
+    });
+    renderDialog(bridge, store);
+
+    const worktreeBtn = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+
+    const status = screen.getByTestId('share-branch-switch-creating-worktree');
+    expect(status.getAttribute('role')).toBe('status');
+
+    expect(worktreeBtn.disabled).toBe(true);
+    const switchBtn = screen.getByTestId('share-branch-switch-switch') as HTMLButtonElement;
+    expect(switchBtn.disabled).toBe(true);
+    const openCurrentBtn = screen.getByTestId(
+      'share-branch-switch-open-current',
+    ) as HTMLButtonElement;
+    expect(openCurrentBtn.disabled).toBe(true);
+    const cancelBtn = screen.getByTestId('share-branch-switch-cancel') as HTMLButtonElement;
+    expect(cancelBtn.disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(cancelBtn);
+      await Promise.resolve();
+    });
+    expect(store.getSnapshot()).toBeNull();
+
+    // The create resolving after dismissal is stale: no window, no cache
+    // refresh, no toast.
+    await act(async () => {
+      resolveCheckout({ ok: true, path: '/repo/.ok/worktrees/feat-branch-x', created: true });
+      await Promise.resolve();
+    });
+    expect(calls.open).not.toHaveBeenCalled();
+    expect(refreshWorktrees).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test('a fetch failure keeps the dialog open with the connection toast so the user can retry', async () => {
+    const store = createShareReceiveStore();
+    const { bridge, calls } = makeBridge({
+      checkout: mock(async () => ({ ok: false as const, reason: 'fetch-failed' as const })),
+    });
+    renderDialog(bridge, store);
+
+    const worktreeBtn = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith('Could not fetch branch. Check your connection.');
+    });
+    // Stay-open: the same dialog re-enables its actions for a retry or a
+    // different choice.
+    expect(store.getSnapshot()).not.toBeNull();
+    expect(screen.getByTestId('share-branch-switch-dialog')).toBeDefined();
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId('share-branch-switch-worktree') as HTMLButtonElement).disabled,
+      ).toBe(false);
+    });
+    expect(calls.open).not.toHaveBeenCalled();
+  });
+
+  test('a branch deleted upstream dismisses the dialog with the no-longer-exists toast', async () => {
+    const store = createShareReceiveStore();
+    const { bridge, calls } = makeBridge({
+      checkout: mock(async () => ({ ok: false as const, reason: 'branch-not-found' as const })),
+    });
+    renderDialog(bridge, store);
+
+    const worktreeBtn = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        'Branch feat/branch-x no longer exists on the remote.',
+      );
+    });
+    await waitFor(() => {
+      expect(store.getSnapshot()).toBeNull();
+    });
+    expect(calls.open).not.toHaveBeenCalled();
+    expect(refreshWorktrees).not.toHaveBeenCalled();
+  });
+
+  test('a second share arriving mid-create supersedes the in-flight create and ignores its result', async () => {
+    const store = createShareReceiveStore();
+    let resolveCheckout: (result: WorktreeCreateResult) => void = () => {};
+    const { bridge, calls } = makeBridge({
+      checkout: mock(
+        () =>
+          new Promise<WorktreeCreateResult>((resolve) => {
+            resolveCheckout = resolve;
+          }),
+      ),
+    });
+    const { emit } = renderDialog(bridge, store);
+
+    const worktreeBtn = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('share-branch-switch-creating-worktree')).toBeDefined();
+
+    const second = projectBranchSwitchPayload();
+    second.share.branch = 'feat/branch-y';
+    await act(async () => {
+      emit(second);
+      await Promise.resolve();
+    });
+
+    // The dialog re-arms for the new payload.
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId('share-branch-switch-worktree') as HTMLButtonElement).disabled,
+      ).toBe(false);
+    });
+    expect(screen.getByTestId('share-branch-switch-metadata-branch').textContent).toContain(
+      'feat/branch-y',
+    );
+
+    // The superseded create resolving now is stale: nothing may fire, and the
+    // new payload's dialog must stay up untouched.
+    await act(async () => {
+      resolveCheckout({ ok: true, path: '/repo/.ok/worktrees/feat-branch-x', created: true });
+      await Promise.resolve();
+    });
+    expect(calls.open).not.toHaveBeenCalled();
+    expect(refreshWorktrees).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+    expect(store.getSnapshot()).not.toBeNull();
+    expect(screen.getByTestId('share-branch-switch-dialog')).toBeDefined();
+    expect(calls.checkout).toHaveBeenCalledTimes(1);
   });
 });

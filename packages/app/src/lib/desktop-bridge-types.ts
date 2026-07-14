@@ -1125,7 +1125,9 @@ export interface OkDesktopBridge {
   /**
    * Worktree selector (worktree = window). `list` enumerates the current
    * project's local branches + their worktrees; `create` creates or locates a
-   * branch's worktree under `<mainRoot>/.ok/worktrees/`. The renderer opens the
+   * branch's worktree under `<mainRoot>/.ok/worktrees/`; `checkout` is the
+   * share-receive arm (resolves where the branch lives — fetching from
+   * `origin` when needed — then create-or-locates). The renderer opens the
    * worktree window via `project.open({ entryPoint: 'worktree' })`. Canonical
    * contract in `packages/desktop/src/shared/bridge-contract.ts`. Renderer
    * consumers: `ProjectSwitcher` + `NewWorktreeDialog`.
@@ -1133,6 +1135,7 @@ export interface OkDesktopBridge {
   worktree: {
     list(): Promise<WorktreeListResult>;
     create(request: WorktreeCreateRequest): Promise<WorktreeCreateResult>;
+    checkout(request: { branch: string }): Promise<WorktreeCreateResult>;
   };
 
   /**

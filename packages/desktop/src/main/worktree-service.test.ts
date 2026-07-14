@@ -16,7 +16,11 @@ import { addOkPathsToGitExclude, getOkArtifactPaths } from '@inkeep/open-knowled
 import { initContent } from '@inkeep/open-knowledge-server';
 import { discoverProject } from './folder-admission.ts';
 import { clearRecentGitCache } from './worktree-recents.ts';
-import { createWorktree, listWorktreeSelector } from './worktree-service.ts';
+import {
+  checkoutShareBranchWorktree,
+  createWorktree,
+  listWorktreeSelector,
+} from './worktree-service.ts';
 import { seedWorktreeProjectSetup } from './worktree-setup-inherit.ts';
 
 const execFileAsync = promisify(execFile);
@@ -69,6 +73,24 @@ async function addBareRemote(mainRepo: string, pushBranches: string[]): Promise<
   // Refresh remote-tracking refs so `refs/remotes/origin/<b>` exists locally.
   await git(mainRepo, 'fetch', 'origin');
   return bare;
+}
+
+/** The root-checkout state the share-checkout leg must never disturb: commit,
+ *  current branch, and working-tree status. Remote-tracking refs and FETCH_HEAD
+ *  are deliberately NOT captured — a fetch writes those by design, and they are
+ *  invisible to the user's working copy. */
+interface RepoSnapshot {
+  readonly head: string;
+  readonly branch: string;
+  readonly status: string;
+}
+
+async function repoSnapshot(repo: string): Promise<RepoSnapshot> {
+  return {
+    head: (await git(repo, 'rev-parse', 'HEAD')).trim(),
+    branch: (await git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).trim(),
+    status: await git(repo, 'status', '--porcelain'),
+  };
 }
 
 describe('worktree-service', () => {
@@ -473,6 +495,242 @@ describe('worktree-service', () => {
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.reason).toBe('invalid-branch');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Share-receive checkout — branch resolution (local ref → remote-tracking ref
+// → bounded fetch) + failure classes, all against real git with a bare origin
+// on the same filesystem. Every test also pins the feature's headline promise:
+// the receiver's main repo (HEAD, current branch, working-tree status) is
+// never touched, whichever resolution mode ran.
+// ---------------------------------------------------------------------------
+
+describe('worktree-service — share-branch checkout', () => {
+  let handle: Handle | null = null;
+  afterEach(() => {
+    handle?.cleanup();
+    handle = null;
+    clearRecentGitCache();
+  });
+
+  // local-ref mode: an existing local branch is checked out into its worktree
+  // WITHOUT any fetch — makeRepo configures no remote at all, so an attempted
+  // fetch would fail the create — and the main repo's HEAD, current branch,
+  // and dirty state stay untouched.
+  test('checkoutShareBranchWorktree (local ref) checks out into a worktree, main repo untouched', async () => {
+    handle = await makeRepo(['share-me']);
+    // Uncommitted work in the receiver's main repo — the state the worktree leg
+    // must never disturb.
+    writeFileSync(join(handle.mainRepo, 'wip.txt'), 'uncommitted work\n');
+    const headBefore = (await git(handle.mainRepo, 'rev-parse', 'HEAD')).trim();
+    const statusBefore = await git(handle.mainRepo, 'status', '--porcelain');
+    expect(statusBefore).toContain('wip.txt');
+
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'share-me',
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.created).toBe(true);
+    expect(res.path).toBe(join(handle.mainRepo, '.ok', 'worktrees', 'share-me'));
+    const wtBranch = await git(res.path, 'rev-parse', '--abbrev-ref', 'HEAD');
+    expect(wtBranch.trim()).toBe('share-me');
+
+    expect((await git(handle.mainRepo, 'rev-parse', 'HEAD')).trim()).toBe(headBefore);
+    expect((await git(handle.mainRepo, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe('main');
+    expect(await git(handle.mainRepo, 'status', '--porcelain')).toBe(statusBefore);
+  });
+
+  // remote-tracking-only mode: no local ref, but origin/<b> is known from an
+  // earlier fetch. The remote URL is broken AFTER setup, so if this mode
+  // wrongly reached for the network the create would fail — success proves the
+  // resolution used the existing remote-tracking ref alone.
+  test('checkoutShareBranchWorktree (remote-tracking only) creates a tracking worktree without fetching', async () => {
+    handle = await makeRepo(['remote-only']);
+    await addBareRemote(handle.mainRepo, ['main', 'remote-only']);
+    await git(handle.mainRepo, 'branch', '-D', 'remote-only');
+    await git(handle.mainRepo, 'remote', 'set-url', 'origin', join(handle.root, 'gone.git'));
+    // Sanity: only the remote-tracking ref remains.
+    expect((await git(handle.mainRepo, 'branch', '--list', 'remote-only')).trim()).toBe('');
+    expect(
+      (await git(handle.mainRepo, 'branch', '-r', '--list', 'origin/remote-only')).trim(),
+    ).not.toBe('');
+    writeFileSync(join(handle.mainRepo, 'wip.txt'), 'uncommitted work\n');
+    const before = await repoSnapshot(handle.mainRepo);
+
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'remote-only',
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.created).toBe(true);
+    expect(res.path).toBe(join(handle.mainRepo, '.ok', 'worktrees', 'remote-only'));
+    expect((await git(res.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe('remote-only');
+    // The new local branch tracks the remote ref it was cut from.
+    const upstream = await git(
+      res.path,
+      'rev-parse',
+      '--abbrev-ref',
+      '--symbolic-full-name',
+      '@{upstream}',
+    );
+    expect(upstream.trim()).toBe('origin/remote-only');
+    expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
+  });
+
+  // never-fetched mode: the branch exists ONLY on the bare origin (pushed from
+  // a scratch clone after the main repo's last fetch), so resolution must
+  // fetch first. The default fetch refspec materializes the remote-tracking
+  // ref, and the worktree's new local branch tracks it.
+  test('checkoutShareBranchWorktree (never fetched) fetches the branch and creates a tracking worktree', async () => {
+    handle = await makeRepo();
+    await addBareRemote(handle.mainRepo, ['main']);
+    const scratch = join(handle.root, 'scratch');
+    await git(handle.root, 'clone', join(handle.mainRepo, '..', 'origin.git'), scratch);
+    await git(scratch, 'config', 'user.email', 'test@example.com');
+    await git(scratch, 'config', 'user.name', 'Test');
+    await git(scratch, 'checkout', '-b', 'never-fetched');
+    writeFileSync(join(scratch, 'remote-only.txt'), 'from remote\n');
+    await git(scratch, 'add', '-A');
+    await git(scratch, 'commit', '-m', 'remote-only commit');
+    await git(scratch, 'push', 'origin', 'never-fetched');
+    // Sanity: the main repo knows nothing of the branch — no local ref and no
+    // remote-tracking ref.
+    expect((await git(handle.mainRepo, 'branch', '--list', 'never-fetched')).trim()).toBe('');
+    expect(
+      (await git(handle.mainRepo, 'branch', '-r', '--list', 'origin/never-fetched')).trim(),
+    ).toBe('');
+    writeFileSync(join(handle.mainRepo, 'wip.txt'), 'uncommitted work\n');
+    const before = await repoSnapshot(handle.mainRepo);
+
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'never-fetched',
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.created).toBe(true);
+    expect(res.path).toBe(join(handle.mainRepo, '.ok', 'worktrees', 'never-fetched'));
+    // The worktree holds the remote commit's content — the fetch actually ran.
+    expect(existsSync(join(res.path, 'remote-only.txt'))).toBe(true);
+    // The fetch materialized the remote-tracking ref; the local branch tracks it.
+    expect(
+      (await git(handle.mainRepo, 'branch', '-r', '--list', 'origin/never-fetched')).trim(),
+    ).not.toBe('');
+    const upstream = await git(
+      res.path,
+      'rev-parse',
+      '--abbrev-ref',
+      '--symbolic-full-name',
+      '@{upstream}',
+    );
+    expect(upstream.trim()).toBe('origin/never-fetched');
+    expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
+  });
+
+  // create-or-locate: a second share for the same branch must find the first
+  // share's worktree, not attempt a duplicate.
+  test('checkoutShareBranchWorktree (second share, same branch) returns the existing worktree with created:false', async () => {
+    handle = await makeRepo(['share-me']);
+    writeFileSync(join(handle.mainRepo, 'wip.txt'), 'uncommitted work\n');
+    const first = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'share-me',
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.created).toBe(true);
+    const before = await repoSnapshot(handle.mainRepo);
+
+    const second = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'share-me',
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.created).toBe(false);
+    expect(second.path).toBe(first.path);
+    expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
+  });
+
+  // fetch-leg failure, terminal class: the branch never existed on origin, so
+  // git reports "couldn't find remote ref" and the checkout returns the
+  // terminal branch-not-found — with nothing created locally.
+  test('checkoutShareBranchWorktree classifies a branch absent from origin as branch-not-found', async () => {
+    handle = await makeRepo();
+    await addBareRemote(handle.mainRepo, ['main']);
+    writeFileSync(join(handle.mainRepo, 'wip.txt'), 'uncommitted work\n');
+    const before = await repoSnapshot(handle.mainRepo);
+
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'ghost',
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe('branch-not-found');
+    // The failed resolution created nothing: no worktree dir, no local branch.
+    expect(existsSync(join(handle.mainRepo, '.ok', 'worktrees', 'ghost'))).toBe(false);
+    expect((await git(handle.mainRepo, 'branch', '--list', 'ghost')).trim()).toBe('');
+    expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
+  });
+
+  // fetch-leg failure, retryable class: origin's URL points at a path that
+  // doesn't exist (a network-down stand-in), so the fetch fails without
+  // matching the branch-gone discriminator, and the stderr is surfaced for
+  // diagnostics.
+  test('checkoutShareBranchWorktree classifies an unreachable origin as fetch-failed', async () => {
+    handle = await makeRepo();
+    await git(handle.mainRepo, 'remote', 'add', 'origin', join(handle.root, 'missing.git'));
+    writeFileSync(join(handle.mainRepo, 'wip.txt'), 'uncommitted work\n');
+    const before = await repoSnapshot(handle.mainRepo);
+
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'any-branch',
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe('fetch-failed');
+    expect(typeof res.message).toBe('string');
+    expect((res.message ?? '').length).toBeGreaterThan(0);
+    expect(existsSync(join(handle.mainRepo, '.ok', 'worktrees', 'any-branch'))).toBe(false);
+    expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
+  });
+
+  // fetch-leg hang: an ext:: transport that just sleeps stands in for a
+  // stalled network. The injected bound must kill the fetch (classified
+  // retryable) long before the transport would give up on its own. The elapsed
+  // LOWER bound proves the transport genuinely hung — an instant transport
+  // failure would classify identically but wouldn't exercise the kill. The
+  // orphaned sleep self-expires without holding the test process open.
+  test('checkoutShareBranchWorktree kills a hanging fetch at the injected timeout (fetch-failed)', async () => {
+    handle = await makeRepo();
+    // ext:: transports are disallowed by default on modern git; opt in via
+    // repo config so the service's plain `git fetch` spawn (no -c flags)
+    // honors it. git-remote-ext splits the address on spaces with no shell,
+    // so `ext::sleep 60` runs `sleep` with argument `60`.
+    await git(handle.mainRepo, 'config', 'protocol.ext.allow', 'always');
+    await git(handle.mainRepo, 'remote', 'add', 'origin', 'ext::sleep 60');
+    writeFileSync(join(handle.mainRepo, 'wip.txt'), 'uncommitted work\n');
+    const before = await repoSnapshot(handle.mainRepo);
+
+    const t0 = Date.now();
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'any-branch',
+      fetchTimeoutMs: 500,
+    });
+    const elapsed = Date.now() - t0;
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe('fetch-failed');
+    expect(elapsed).toBeGreaterThanOrEqual(450);
+    expect(elapsed).toBeLessThan(10_000);
+    expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
   });
 });
 

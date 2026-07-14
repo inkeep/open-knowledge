@@ -15,6 +15,7 @@ import type {
   OkShareReceivedPayload,
   ShareFolderValidationResult,
 } from '@/lib/desktop-bridge-types';
+import type { VerdictCellKind, WorktreeCheckoutSideEffectReason } from './branch-switch-flow';
 
 export {
   type BranchMatchOutcome,
@@ -127,6 +128,12 @@ export type BranchAction = 'switch' | 'fallback' | 'fetch-failed' | 'open-curren
  * `branch-switch-timeout` are the terminal outcomes after dismissal gates
  * on the CC1 `branch-switched` broadcast — dismissal MUST NOT fire on
  * checkout HTTP 200 alone.
+ *
+ * `open-worktree` is the worktree-leg click; its failure variants carry the
+ * toast reason as a suffix (`open-worktree-failed:fetch-failed`, ...) so
+ * failure classes stay countable without a second field. A `switch` logged
+ * together with `verdict_cell` records a verdict-cell action — see
+ * `ReceiveLogFields.verdict_cell`.
  */
 export type BranchDialogAction =
   | 'switch'
@@ -134,7 +141,9 @@ export type BranchDialogAction =
   | 'cancel'
   | 'pivot-to-other-worktree'
   | 'branch-switch-complete'
-  | 'branch-switch-timeout';
+  | 'branch-switch-timeout'
+  | 'open-worktree'
+  | `open-worktree-failed:${WorktreeCheckoutSideEffectReason}`;
 
 export interface ReceiveLogFields {
   readonly q2_path?: 'clone' | 'local';
@@ -151,6 +160,13 @@ export interface ReceiveLogFields {
   readonly doc_check?: CheckTargetExistsResult;
   /** User-visible action taken on the branch-switch dialog. */
   readonly branch_dialog_action?: BranchDialogAction;
+  /**
+   * Verdict cell the stale-ref recovery flow resolved to. Logged alone when
+   * the cell renders; logged alongside `branch_dialog_action` when the user
+   * acts from that cell — the pair makes the verdict-cell cohort and its
+   * per-cell action distribution countable on session inspection.
+   */
+  readonly verdict_cell?: VerdictCellKind;
 }
 
 /**
@@ -171,5 +187,6 @@ export function formatReceiveLog(fields: ReceiveLogFields): string {
   if (fields.branch_dialog_action !== undefined) {
     parts.push(`branch_dialog_action=${fields.branch_dialog_action}`);
   }
+  if (fields.verdict_cell !== undefined) parts.push(`verdict_cell=${fields.verdict_cell}`);
   return parts.join(' ');
 }

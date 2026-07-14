@@ -940,11 +940,22 @@ export interface RequestChannels {
    *     locate) the worktree for `branch` under `<mainRoot>/.ok/worktrees/`.
    *     Opening the worktree window reuses the existing `ok:project:open`
    *     path (entryPoint `'worktree'`) — this channel is git-only.
-   * The renderer's `bridge.worktree.{list,create}` recovers per-operation
-   * typing from the discriminated result.
+   *   - `{ kind: 'checkout', branch }` → share-receive arm: resolve where an
+   *     EXISTING `branch` lives (local ref → plain checkout; remote-tracking
+   *     ref only → new tracking branch; neither → bounded
+   *     `git fetch origin <branch>` first), then create or locate its
+   *     worktree the same way. Failures add `branch-not-found` /
+   *     `fetch-failed` to the create result union.
+   * The renderer's `bridge.worktree.{list,create,checkout}` recovers
+   * per-operation typing from the discriminated result.
    */
   'ok:worktree:dispatch': {
-    args: [request: { kind: 'list' } | ({ kind: 'create' } & WorktreeCreateRequest)];
+    args: [
+      request:
+        | { kind: 'list' }
+        | ({ kind: 'create' } & WorktreeCreateRequest)
+        | { kind: 'checkout'; branch: string },
+    ];
     result: WorktreeListResult | WorktreeCreateResult;
   };
   /** Request main to close the current project's window. */

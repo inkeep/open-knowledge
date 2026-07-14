@@ -117,6 +117,10 @@ export interface WorktreeCreateRequest {
  * IPC-facing result of creating/locating a worktree. `created: false` means the
  * branch already had a worktree and `path` points at it (open that window
  * instead). The failure reasons map git's refusal modes to actionable copy.
+ * `branch-not-found` / `fetch-failed` arise only from the share-scoped
+ * `checkout` operation, whose branch resolution may `git fetch` from `origin`
+ * (branch gone upstream vs. a retryable network/timeout failure); the other
+ * failure reasons come from validation and `git worktree add`.
  */
 export type WorktreeCreateResult =
   | { readonly ok: true; readonly path: string; readonly created: boolean }
@@ -128,6 +132,8 @@ export type WorktreeCreateResult =
         | 'already-checked-out'
         | 'path-exists'
         | 'no-git'
+        | 'branch-not-found'
+        | 'fetch-failed'
         | 'error';
       readonly message?: string;
     };

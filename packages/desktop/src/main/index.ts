@@ -356,7 +356,11 @@ import {
   classifyRecentGitAsync,
   readWorktreeBranchAsync,
 } from './worktree-recents.ts';
-import { createWorktree, listWorktreeSelector } from './worktree-service.ts';
+import {
+  checkoutShareBranchWorktree,
+  createWorktree,
+  listWorktreeSelector,
+} from './worktree-service.ts';
 
 // Modern macOS chrome treatment. Three architectural facts the field set
 // encodes:
@@ -3935,6 +3939,9 @@ function registerIpcHandlers() {
     }
     if (request.kind === 'list') {
       return listWorktreeSelector(anchor, anchor);
+    }
+    if (request.kind === 'checkout') {
+      return checkoutShareBranchWorktree({ anchorPath: anchor, branch: request.branch });
     }
     return createWorktree({
       anchorPath: anchor,
