@@ -44,6 +44,7 @@ import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { CodePreviewEditModal } from '../components/CodePreviewEditModal';
 import { PreviewBlockedNotice } from '../components/PreviewBlockedNotice';
 import { ResizeHandles } from '../components/ResizeHandles.tsx';
+import { serializeWysiwygSelection } from '../edit-with-ai-selection';
 import { CODE_BLOCK_LANGUAGES, normalizeCodeLanguage } from './code-block-languages';
 import {
   addMetaToken,
@@ -631,29 +632,31 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
             aria-label={t`Ask AI about this code block`}
             data-testid="ok-codeblock-ask-ai-btn"
             onClick={() => {
-              // Ground the passage the same way the text-selection bubble
-              // menu's Ask AI does — doc named as an `@`-mention, block
-              // source inline (or a locus pointer when it is large). The
-              // fence markers are preserved so the agent can drop the
-              // edited version back in place without stripping/rewrapping.
+              // Make this code block the WYSIWYG selection so
+              // `serializeWysiwygSelection` emits the canonical fenced form
+              // (the code-block-fidelity extension's `fenceLength` outlasts
+              // any inner backtick run). `composeSelectionPrompt` then
+              // decides inline vs locus against the encoded-URL budget; the
+              // dispatch routes through `TerminalSessionsHost` which pastes
+              // to a live PTY or launches a fresh Claude tab.
               const docName = getEditorDocName(editor);
-              const language = rawLanguage ?? '';
-              const infoString = rawMeta ? `${language} ${rawMeta}`.trim() : language;
-              const body = node.textContent;
-              // Fence must outlast the longest backtick run inside the body
-              // (CommonMark §4.5): a body containing ``` would close a
-              // 3-backtick wrapper early and the receiving agent would see
-              // truncated code + orphan closer text. Same guarantee
-              // `composeSelectionPrompt`'s own internal `fenceFor` gives its
-              // locus-pointer path.
-              const longestBacktickRun = (body.match(/`+/g) ?? []).reduce(
-                (m, r) => Math.max(m, r.length),
-                0,
-              );
-              const fence = '`'.repeat(Math.max(3, longestBacktickRun + 1));
-              const selectionMarkdown = `${fence}${infoString}\n${body}\n${fence}`;
+              const pos = typeof getPos === 'function' ? getPos() : undefined;
+              if (typeof pos !== 'number') return;
+              try {
+                editor.commands.setNodeSelection(pos);
+              } catch (err) {
+                // Mirrors `handleDelete`'s classification — concurrent remote
+                // edits or Observer B re-parse can shift `pos` between
+                // getPos() and setNodeSelection, producing a RangeError. The
+                // block has moved or vanished, so there is nothing to Ask AI
+                // about; keep the error off the boundary for benign races.
+                if (!(err instanceof RangeError)) throw err;
+                console.warn('[CodeBlockView] Ask AI failed — position race', err);
+                return;
+              }
+              const selectionMarkdown = serializeWysiwygSelection(editor);
               requestAnimationFrame(() => {
-                if (docName === null || body.trim() === '') {
+                if (docName === null || !selectionMarkdown.trim()) {
                   emitOpenAskAiComposer();
                   return;
                 }

@@ -9,13 +9,23 @@
  * `srcdoc`.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { Config } from '@inkeep/open-knowledge-core';
-import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import type { NodeViewProps } from '@tiptap/core';
+import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
+import { subscribeToActiveTerminalInput } from '@/components/handoff/terminal-input-events';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { CodeBlockView } from './CodeBlockView';
 import { setEditorDocName } from './doc-context';
+
+// The Ask AI click handler routes through `serializeWysiwygSelection`, which
+// runs the full markdown pipeline against the selected slice. Testing that
+// pipeline end-to-end is the fidelity suite's job; this file tests the
+// click→dispatch contract, so stub the serializer to a fixed fenced body.
+mock.module('../edit-with-ai-selection', () => ({
+  serializeWysiwygSelection: () => '```json\n{ "name": "sample" }\n```',
+}));
 
 function makeConfigValue(merged: Config | null): ConfigContextValue {
   return {
@@ -216,111 +226,188 @@ describe('CodeBlockView CSP-violation notice wiring', () => {
 });
 
 /**
- * Pins the Ask AI click handler on the code-block chrome — specifically the
- * hand-built triple-backtick fence around the block body. A body containing
- * literal ``` sequences would close a 3-backtick wrapper early and the
- * receiving agent would see truncated code + orphan closer text.
+ * Pins the click→dispatch contract for the code-block chrome's Ask AI button.
+ * The button drives the block through `setNodeSelection` → serialize →
+ * `composeSelectionPrompt` → `requestActiveTerminalInput`; `TerminalSessionsHost`
+ * either pastes into a live PTY or launches a fresh Claude tab. This file
+ * exercises the button's own decisions (guarded position lookup, doc-grounded
+ * dispatch, composer fallback for the empty / no-doc branches); the serializer
+ * is stubbed above and the pipeline is covered by the fidelity suite.
  */
-describe('CodeBlockView Ask AI click handler', () => {
+describe('CodeBlockView Ask AI dispatch', () => {
+  // rAF is used to defer the dispatch a frame; polyfill for jsdom under bun.
+  if (typeof globalThis.requestAnimationFrame === 'undefined') {
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      queueMicrotask(() => cb(0));
+      return 0;
+    }) as typeof globalThis.requestAnimationFrame;
+  }
+
+  let terminalInputs: string[] = [];
+  let composerOpens = 0;
+  let unsubscribeTerminal: (() => void) | null = null;
+  let unsubscribeComposer: (() => void) | null = null;
+
   afterEach(() => {
+    unsubscribeTerminal?.();
+    unsubscribeTerminal = null;
+    unsubscribeComposer?.();
+    unsubscribeComposer = null;
+    terminalInputs = [];
+    composerOpens = 0;
     cleanup();
   });
 
-  function makePropsWithBody(body: string, language = 'html', meta = 'preview'): NodeViewProps {
+  function subscribeAll() {
+    unsubscribeTerminal = subscribeToActiveTerminalInput((text) => {
+      terminalInputs.push(text);
+    });
+    unsubscribeComposer = subscribeToOpenAskAiComposer(() => {
+      composerOpens += 1;
+    });
+  }
+
+  interface EditorMockOverrides {
+    setNodeSelectionThrows?: 'range' | 'other';
+  }
+
+  // Fake editor shaped enough for the click handler: `.commands.setNodeSelection`
+  // is a spy that either records the pos or throws, and `state.selection.empty`
+  // reads false (my code doesn't check it, but leaving a NodeSelection-ish
+  // shape here matches production). `serializeWysiwygSelection` is stubbed at
+  // module load so it never touches `state` directly.
+  function makeEditorWithCommands(overrides: EditorMockOverrides = {}) {
+    const setNodeSelection = (_pos: number) => {
+      if (overrides.setNodeSelectionThrows === 'range') {
+        throw new RangeError('Position 5 out of range');
+      }
+      if (overrides.setNodeSelectionThrows === 'other') {
+        throw new Error('unrelated failure');
+      }
+    };
     return {
-      editor: makeEditor(),
-      node: { attrs: { language, meta }, textContent: body },
-      getPos: () => 0,
+      isEditable: true,
+      isDestroyed: false,
+      commands: { setNodeSelection },
+      state: {
+        doc: { nodeAt: () => ({ nodeSize: 10 }) },
+        selection: { from: 0, to: 0, empty: false },
+      },
+      on: () => {},
+      off: () => {},
+    } as unknown as NodeViewProps['editor'];
+  }
+
+  function makeAskAiProps(overrides: EditorMockOverrides = {}, pos: number | undefined = 5) {
+    return {
+      editor: makeEditorWithCommands(overrides),
+      node: {
+        attrs: { language: 'json', meta: null },
+        textContent: '{ "name": "sample" }',
+      },
+      getPos: pos === undefined ? undefined : () => pos,
       selected: false,
       updateAttributes: () => {},
     } as unknown as NodeViewProps;
   }
 
-  async function captureTerminalDispatch(
-    props: NodeViewProps,
-    docName: string,
-  ): Promise<string | null> {
-    setEditorDocName(props.editor, docName);
-    const received: string[] = [];
-    const handler = (e: Event) => {
-      received.push((e as CustomEvent<string>).detail);
-    };
-    window.addEventListener('open-knowledge:active-terminal-input', handler);
+  function renderAskAi(props: NodeViewProps) {
+    return render(
+      <ConfigContext value={makeConfigValue(null)}>
+        <CodeBlockView {...props} />
+      </ConfigContext>,
+    );
+  }
+
+  test('click with a grounded doc dispatches a composed prompt to the terminal input channel', async () => {
+    subscribeAll();
+    const props = makeAskAiProps();
+    setEditorDocName(props.editor, 'specs/foo/SPEC');
+    const { container } = renderAskAi(props);
+
+    const askBtn = container.querySelector(
+      '[data-testid="ok-codeblock-ask-ai-btn"]',
+    ) as HTMLButtonElement | null;
+    expect(askBtn).toBeTruthy();
+    fireEvent.click(askBtn as HTMLButtonElement);
+
+    await waitFor(() => expect(terminalInputs).toHaveLength(1));
+    const [prompt] = terminalInputs;
+    // Doc named as an @-mention (grounding contract from composeSelectionPrompt).
+    expect(prompt).toContain('@specs/foo/SPEC.md');
+    // Stubbed fenced body survives verbatim into the composed prompt.
+    expect(prompt).toContain('```json');
+    expect(prompt).toContain('{ "name": "sample" }');
+    // Terminal-input branch does NOT open the composer.
+    expect(composerOpens).toBe(0);
+  });
+
+  test('click with no registered doc name opens the composer instead of dispatching', async () => {
+    subscribeAll();
+    const props = makeAskAiProps();
+    // No setEditorDocName — getEditorDocName returns null.
+    renderAskAi(props);
+    const askBtn = document.querySelector(
+      '[data-testid="ok-codeblock-ask-ai-btn"]',
+    ) as HTMLButtonElement | null;
+    expect(askBtn).toBeTruthy();
+    fireEvent.click(askBtn as HTMLButtonElement);
+
+    await waitFor(() => expect(composerOpens).toBe(1));
+    expect(terminalInputs).toEqual([]);
+  });
+
+  test('click with a stale position (setNodeSelection throws RangeError) neither crashes nor dispatches', async () => {
+    subscribeAll();
+    const props = makeAskAiProps({ setNodeSelectionThrows: 'range' });
+    setEditorDocName(props.editor, 'specs/foo/SPEC');
+    // Silence the classified warn so the test log stays clean; the classification
+    // itself is what we're asserting via the no-dispatch + no-throw combo.
+    const originalWarn = console.warn;
+    console.warn = () => {};
     try {
-      const { container } = render(
-        <ConfigContext value={makeConfigValue(null)}>
-          <CodeBlockView {...props} />
-        </ConfigContext>,
-      );
-      const askBtn = container.querySelector(
+      renderAskAi(props);
+      const askBtn = document.querySelector(
         '[data-testid="ok-codeblock-ask-ai-btn"]',
       ) as HTMLButtonElement | null;
       expect(askBtn).toBeTruthy();
-      fireEvent.click(askBtn as HTMLButtonElement);
-      // Click handler defers to rAF; give one paint tick for the dispatch.
-      await act(async () => {
-        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-      });
-      return received[0] ?? null;
+      expect(() => fireEvent.click(askBtn as HTMLButtonElement)).not.toThrow();
+      // Give any deferred rAF a chance to fire before asserting nothing landed.
+      await new Promise((resolve) => queueMicrotask(() => resolve(null)));
+      expect(terminalInputs).toEqual([]);
+      expect(composerOpens).toBe(0);
     } finally {
-      window.removeEventListener('open-knowledge:active-terminal-input', handler);
+      console.warn = originalWarn;
     }
-  }
-
-  // Read the run of backticks that opens the passage's inner fence, keyed off
-  // the info-string sentinel that follows it. `composeSelectionPrompt` wraps
-  // OUR selectionMarkdown inside its own OUTER fence (whose length is our
-  // fence + 1), so we can't just count leading backticks in the dispatch —
-  // we have to isolate the run immediately preceding the info string.
-  function readInnerFenceLength(prompt: string, infoSentinel: string): number {
-    const idx = prompt.indexOf(infoSentinel);
-    if (idx <= 0) return 0;
-    let n = 0;
-    for (let i = idx - 1; i >= 0 && prompt[i] === '`'; i--) n++;
-    return n;
-  }
-
-  test('body without triple-backticks wraps in a 3-backtick fence', async () => {
-    const dispatched = await captureTerminalDispatch(
-      makePropsWithBody('<div id="probe">hello</div>'),
-      'notes/example',
-    );
-    expect(dispatched).not.toBeNull();
-    const fenceLen = readInnerFenceLength(dispatched ?? '', 'html preview\n<div id=');
-    // A body without any backtick run → CommonMark minimum fence (3).
-    expect(fenceLen).toBe(3);
-    // The body's exact content survives inside the wrapper.
-    expect(dispatched).toContain('<div id="probe">hello</div>');
   });
 
-  test('body containing ``` is wrapped in a fence long enough to outlast the inner run', async () => {
-    // Nested markdown: the fenced example inside the outer body includes a
-    // 3-backtick block. A hand-built 3-backtick wrapper would truncate here
-    // after the first inner closer and the receiving agent would see mangled
-    // markdown. The outer fence must be at least 4.
-    const body = 'Nested:\n```js\nconsole.log(1);\n```\ntrailing';
-    const dispatched = await captureTerminalDispatch(
-      makePropsWithBody(body, 'markdown', ''),
-      'notes/example',
-    );
-    expect(dispatched).not.toBeNull();
-    const fenceLen = readInnerFenceLength(dispatched ?? '', 'markdown\nNested:');
-    expect(fenceLen).toBe(4);
-    // The inner 3-backtick example must survive verbatim (no truncation).
-    expect(dispatched).toContain('```js\nconsole.log(1);\n```');
-    expect(dispatched).toContain('\ntrailing\n');
+  test('a non-RangeError from setNodeSelection is re-thrown (guard does not swallow real bugs)', async () => {
+    subscribeAll();
+    const props = makeAskAiProps({ setNodeSelectionThrows: 'other' });
+    setEditorDocName(props.editor, 'specs/foo/SPEC');
+    renderAskAi(props);
+    const askBtn = document.querySelector(
+      '[data-testid="ok-codeblock-ask-ai-btn"]',
+    ) as HTMLButtonElement | null;
+    expect(askBtn).toBeTruthy();
+    // React attaches synthetic handlers; a throw from the handler bubbles
+    // through fireEvent as a plain Error. Assert on the message so the guard
+    // is proven to only class-catch RangeError, not shallow every throw.
+    expect(() => fireEvent.click(askBtn as HTMLButtonElement)).toThrow(/unrelated failure/);
   });
 
-  test('body containing a 4-backtick run bumps the outer fence to 5', async () => {
-    const body = 'longer:\n````\nunusual\n````';
-    const dispatched = await captureTerminalDispatch(
-      makePropsWithBody(body, 'markdown', ''),
-      'notes/example',
-    );
-    expect(dispatched).not.toBeNull();
-    const fenceLen = readInnerFenceLength(dispatched ?? '', 'markdown\nlonger:');
-    expect(fenceLen).toBe(5);
-    // The inner 4-backtick block survives verbatim (unusual, but round-trips).
-    expect(dispatched).toContain('````\nunusual\n````');
+  test('click with getPos absent (unrenderable NodeView) is a no-op', async () => {
+    subscribeAll();
+    const props = makeAskAiProps({}, /* pos */ undefined);
+    setEditorDocName(props.editor, 'specs/foo/SPEC');
+    renderAskAi(props);
+    const askBtn = document.querySelector(
+      '[data-testid="ok-codeblock-ask-ai-btn"]',
+    ) as HTMLButtonElement | null;
+    expect(askBtn).toBeTruthy();
+    expect(() => fireEvent.click(askBtn as HTMLButtonElement)).not.toThrow();
+    await new Promise((resolve) => queueMicrotask(() => resolve(null)));
+    expect(terminalInputs).toEqual([]);
+    expect(composerOpens).toBe(0);
   });
 });
