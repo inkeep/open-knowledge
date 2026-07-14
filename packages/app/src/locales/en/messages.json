@@ -80,12 +80,15 @@
     "0yL--g": ["Review conflicts"],
     "10g8I_": ["Turn off Only markdown files"],
     "12F9WL": ["(no id)"],
+    "15OSDO": ["SSH"],
     "16D5Zj": ["Are you sure you want to delete ", ["itemName"], "? This action cannot be undone."],
+    "16NxA7": ["Open project"],
     "1AumWo": ["Push failed — check the server logs for details."],
     "1EcCom": [["keyName"], " value"],
     "1FLarN": ["Describe what you want to create to continue"],
     "1GhYxC": ["of ", ["totalPages"]],
     "1HBhDS": ["Checking out files"],
+    "1Lcfdy": ["No folders in this location."],
     "1MGRQl": ["Terminal sessions"],
     "1QfxQT": ["Dismiss"],
     "1RluQD": ["Show replace"],
@@ -117,6 +120,9 @@
     "2QM24L": ["All tags"],
     "2RBzMG": ["Network error — check your connection and try again"],
     "2XQ8Ww": ["Open preview when agent edits"],
+    "2Xcoe7": [
+      "This removes the machine and its saved recent-project and session metadata from OpenKnowledge."
+    ],
     "2YOwme": ["Restarted — now running v", ["appRuntime"], "."],
     "2YZwPB": ["Forward-links response did not match expected shape."],
     "2bVHbB": ["Available in every project on this computer."],
@@ -137,6 +143,7 @@
     "322lyb": ["Highlight tips, warnings, and notes."],
     "34qyH5": ["Could not reach server"],
     "36WXSC": ["Couldn't delete template: ", ["error"]],
+    "36ZUr2": ["Remove the saved connection for ", ["0"], "?"],
     "36aWJD": ["Join us on Discord"],
     "379t2h": ["Unified diff"],
     "38foVZ": ["Loading diff"],
@@ -164,6 +171,7 @@
     "3a_Bd7": ["Open source doc: ", ["mirrorSrc"]],
     "3aeN7X": ["All files"],
     "3cOo2C": ["Create a folder from the current document or folder context."],
+    "3d4aXS": ["Failed to load SSH machines."],
     "3ePd3I": ["What's new"],
     "3h5zMp": ["Something went wrong loading the settings panel."],
     "3iyGWF": ["Open recent project"],
@@ -207,10 +215,12 @@
     "4c_a6S": ["Nothing set yet."],
     "4g19V6": ["Failed to update property"],
     "4hJhzz": ["Table"],
+    "4iwBH3": ["Work with a project on another machine."],
     "4jDd0j": ["Anyone can see"],
     "4mLBx9": ["Subscriptions aren't available right now."],
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
+    "4pSxwB": ["Go"],
     "4rjwLG": ["Create with ", ["0"], " CLI"],
     "4sKwf6": ["File already exists"],
     "4uNLmk": ["Pulling"],
@@ -245,9 +255,18 @@
       ["path"],
       ". Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
     ],
+    "5NIAwW": ["Check that the path exists and that your SSH account can read it."],
     "5OTgC7": ["Open and focus the bottom Ask AI prompt composer."],
     "5OqaJi": ["Enter a project name"],
     "5QGTaA": ["Could not copy relative path"],
+    "5QRgp0": [
+      "The SSH machine is unavailable, so the remote terminal couldn't start. Check the connection and try again."
+    ],
+    "5Srnlh": [
+      "Commands run with the full access of your SSH account on ",
+      ["0"],
+      ". Turn this off to disable the remote shell."
+    ],
     "5SwVv1": ["Not installed"],
     "5Tk8Fb": ["Loading files"],
     "5WDhAk": ["Link to a page or external URL."],
@@ -342,6 +361,8 @@
       "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
     ],
     "7PzzBU": ["User"],
+    "7U78Tk": ["Connection successful."],
+    "7XZDcO": ["Save machine"],
     "7YRrJ9": [
       "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
@@ -358,6 +379,7 @@
     "7uBlRT": ["Copy the focused file-tree item so Paste can duplicate it."],
     "80c4-P": ["Code copied to clipboard"],
     "81H_23": ["Add properties"],
+    "82_cHI": ["Could not browse ", ["requestedPath"], " on ", ["machineName"], ". ", ["detail"]],
     "881Uwh": ["Delete selected table"],
     "89TtiD": [
       "New file from template \"",
@@ -391,6 +413,7 @@
     "8fRyLo": ["Invalid patch payload"],
     "8fc_3j": ["Protected branch — cannot push"],
     "8m8diM": ["No location selected. Use Browse to choose a folder."],
+    "8mIb7u": ["Open remote project"],
     "8tjQCz": ["Explore"],
     "8uAWix": [
       "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
@@ -399,6 +422,11 @@
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "96G6Re": ["New folder"],
     "96w9hU": ["Something went wrong opening this file (HTTP ", ["status"], ")."],
+    "97AViW": [
+      "A remote shell is off for this project. Turning it on runs commands with the full access of your SSH account on ",
+      ["0"],
+      "."
+    ],
     "99eR72": ["Visual editor table selection"],
     "9Bd18D": ["Failed to load hub pages"],
     "9NJWgv": ["Backlinks"],
@@ -409,6 +437,7 @@
     "9V0W-R": [
       "Adds the OpenKnowledge skill to the <0>Claude Desktop App</0> so it's available in Chat and Cowork sessions."
     ],
+    "9W2ANt": ["Loading SSH machines..."],
     "9bCiQ8": ["No pages are missing incoming graph links."],
     "9clcD5": ["Open documents tagged #", ["chip"]],
     "9dw5bW": ["Create with ", ["0"]],
@@ -433,6 +462,7 @@
     "9sBe85": ["Follow us on"],
     "9tJX8r": ["By meaning"],
     "9zb2WA": ["Connecting"],
+    "A10lA2": ["Loading folders..."],
     "A1taO8": ["Search"],
     "A50vr3": ["Use lowercase letters, digits, and <0>-</0> only."],
     "A5CYnd": ["Broken link"],
@@ -444,6 +474,7 @@
     ],
     "AB4qw9": ["New terminal"],
     "AE7BY3": ["The terminal session ended."],
+    "AHveU-": ["Delete permanently"],
     "AIn2Yv": [["displayName"], " CLI, ", ["hint"]],
     "AItsE5": ["Open it there"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktrees"] }]],
@@ -520,6 +551,9 @@
     "CCTop_": ["Recent"],
     "CFnavk": ["This project isn't a git repository, so worktrees aren't available."],
     "CKyk7Q": ["Go back"],
+    "CLut6v": [
+      "Testing also installs or updates matching OpenKnowledge support in the SSH user's home directory."
+    ],
     "COr1Y7": [
       "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
     ],
@@ -577,6 +611,10 @@
     ],
     "DhLHEb": ["Failed to load activity"],
     "DiFKSL": ["Counting markdown files"],
+    "DkVVq6": ["Open local folder"],
+    "Dmvx5e": [
+      "Couldn't reconnect to the SSH project. Check the SSH connection and the remote OpenKnowledge prerequisites, then try again."
+    ],
     "Dnn2XG": ["Automatic"],
     "DrYM2Z": ["Sync disabled"],
     "DskIkK": ["Sign-in stream ended without confirmation — please try again"],
@@ -600,6 +638,7 @@
     ],
     "E7BhZn": ["Blank note"],
     "E9bKSA": ["Creating"],
+    "EAcqqW": ["Connection failed."],
     "EBVbtP": ["Could not duplicate item"],
     "EDl9kS": ["Subscribe"],
     "EDm3wJ": ["Loading diff renderer"],
@@ -705,6 +744,7 @@
     "GF51cw": [
       "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime."
     ],
+    "GFRtjt": ["Opening remote project..."],
     "GGsM4y": ["Selected in graph"],
     "GHsJb8": ["Show .ok folders"],
     "GJH-AT": [
@@ -771,6 +811,9 @@
     "I1gRhX": ["Failed to rename"],
     "I5685_": ["Try a prompt"],
     "I5AfhE": ["Sync status unavailable — server unreachable."],
+    "I6NZOL": [
+      "OpenKnowledge uses your system SSH config and SSH agent. Passwords and private keys are never stored."
+    ],
     "I7Exsw": ["Follow us on X"],
     "IA1wNb": ["The Claude Desktop App didn't open the file. Is it installed? (", ["msg"], ")"],
     "IA6JW2": ["Detecting"],
@@ -811,6 +854,7 @@
     "JLzQi_": ["Close ", ["accessibleLabel"]],
     "JM_aq-": ["Use an https:// URL — http:// is only allowed for localhost."],
     "JOcPqH": ["Bring a remote repository onto this machine."],
+    "JVR1YW": ["Machine name"],
     "JWsZlx": ["Open a project to edit."],
     "JZ8cO6": ["Light, dark, or follow the OS."],
     "Jejur6": ["Couldn't load document"],
@@ -844,6 +888,7 @@
     "KPW5WC": ["moved template"],
     "KQGZuq": ["Reused if it already exists, created if not."],
     "KRJ6xh": ["No tags yet. Continue typing to create one."],
+    "KUP3Yh": ["Failed to open the remote project."],
     "KWL_Ih": ["Blog post"],
     "KX1MZR": ["Your repositories"],
     "KYSocE": ["Research the extinction of flightless birds"],
@@ -970,10 +1015,12 @@
     "N55YNr": [
       "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
     ],
+    "N5c59j": ["Connect to an SSH machine and open a project directly from its filesystem."],
     "NEzPEh": ["Create a new branch, or check out an existing one, in its own window."],
     "NF_Wcg": ["Show skills section"],
     "NIWAux": ["No docs registered under #", ["tagDocsName"], "."],
     "NJyQi_": ["Branch ", ["shareBranch"], " no longer exists on the remote."],
+    "NKJBO1": ["Failed to save the SSH machine."],
     "NKkZXl": ["Initialize and open"],
     "NNJsn7": [
       "One more step: enable it in Cursor → Settings → Tools & MCP (Cursor leaves project servers off until you turn them on)."
@@ -984,6 +1031,7 @@
     "NRSLBe": [["diffMin"], "m ago"],
     "NSnIUP": ["Two-page (even)"],
     "NUr4kz": ["A reusable starting point for new documents in this folder."],
+    "NVwtTv": ["Add SSH machine"],
     "NYUhy5": ["Subfolder name"],
     "N_7kkF": [
       "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
@@ -1055,6 +1103,13 @@
     "P6gXB-": ["Replace ", ["keyName"]],
     "P6lAT3": ["Folder target: ", ["linkTitle"], ". Click to open the overview."],
     "P8yDjG": ["Name can’t be empty, \".\", \"..\", or contain / or \\"],
+    "PAbaOj": [
+      "Run a real terminal docked inside OpenKnowledge on ",
+      ["0"],
+      ", starting in ",
+      ["1"],
+      "."
+    ],
     "PB4upl": ["Find previous match"],
     "PBwmDJ": ["Searching by meaning"],
     "PBxg_E": ["Not now"],
@@ -1127,6 +1182,9 @@
     "R9IDFz": ["Renames the folder on disk and the id agents use to invoke it."],
     "RDjuBN": ["Setup"],
     "RDrXh4": ["Configure user, project, and integration settings."],
+    "RFK-la": [
+      "The remote macOS or Linux machine needs Node.js 24 or newer and Git 2.31.0 or newer in a POSIX-compatible login shell. OpenKnowledge installs its remote support in your SSH home directory automatically."
+    ],
     "RG4XHV": ["Copy ", ["0"], " prompt"],
     "RGCCrg": ["Copy share link"],
     "RGkNeJ": ["Initialize a starter pack"],
@@ -1165,6 +1223,7 @@
     "SCzAbA": [["phase"], " — ", ["pct"], "%"],
     "SEYWYq": ["Undo all edits on this file?"],
     "SFN6dN": ["Heading 3"],
+    "SGYnqh": ["Permanently delete {0}?"],
     "STTOnz": [["keyName"], " type: complex value (nested; read-only)"],
     "SUOoXn": ["Failed to open project."],
     "SVLPt5": [["formatted"], " GitHub stars"],
@@ -1214,6 +1273,8 @@
     "UPjaXD": ["Couldn't duplicate \"", ["0"], "\": ", ["1"]],
     "UQAp48": ["Search templates"],
     "UQMMvx": ["Moved \"", ["name"], "\" to ", ["0"]],
+    "UQaKhB": ["Check that your SSH account can read its home directory."],
+    "UQqYNy": ["Port (optional)"],
     "URmyfc": ["Details"],
     "UTNVyS": ["Select the full source document."],
     "UTZ97u": ["Selection must be inside the project"],
@@ -1250,9 +1311,11 @@
       " has been moved, renamed, or deleted in your local copy. Please commit your changes or enable auto-sync."
     ],
     "Uuj_R4": ["New from template"],
+    "UvRSPL": ["Remote folders"],
     "Uw6ERJ": ["Couldn't copy: ", ["detail"]],
     "UyROxs": [["mins", "plural", { "one": ["#", " min ago"], "other": ["#", " min ago"] }]],
     "V48OUT": ["You deleted <0>", ["filePath"], "</0> locally, but it was modified upstream."],
+    "V58SpF": ["SSH machine"],
     "V7QxyT": ["Connection dropped"],
     "VAHWL_": ["Connected as <0>@", ["signedInLogin"], "</0>"],
     "VBE2dw": [
@@ -1340,6 +1403,7 @@
     "XU0OXn": ["Enable auto-sync"],
     "XV5sC0": ["Open worktree"],
     "XW18jo": ["Page headings response did not match success schema"],
+    "XXsaBn": ["Enter a whole-number port from 1 to 65535."],
     "XYlJJT": ["Setting up"],
     "XcGbim": ["Show hidden files"],
     "Xet9MX": ["Failed to load backlinks"],
@@ -1393,11 +1457,13 @@
     "Yi0VMG": ["Upload ", ["keyName"]],
     "YjhKI5": ["Cloning..."],
     "YlDuro": ["Fit height"],
+    "Yopd0Q": ["Machine saved."],
     "YsEYYS": [
       ["behind", "plural", { "one": ["#", " commit behind"], "other": ["#", " commits behind"] }]
     ],
     "YwPUUP": ["This pack is already set up here."],
     "YyXtnN": ["Underline"],
+    "Z0HzWe": ["devbox or user@example.com"],
     "Z1LF1M": ["Sharing a doc needs a GitHub repository. Create one for this project."],
     "Z2M5XM": ["Reason: ", ["reason"], " (", ["osDetail"], ")"],
     "Z3FXyt": ["Loading..."],
@@ -1437,6 +1503,7 @@
     "ZgGuA4": [["0", "plural", { "one": ["File"], "other": ["Files"] }]],
     "ZhhOwV": ["Quote"],
     "ZjtgI-": ["Command palette"],
+    "Zl4i3m": ["Enter a path to browse its folders."],
     "Zon_qG": ["Mirror source <0>", ["label"], "</0>"],
     "ZptNUh": ["Show ", ["hidden"], " more"],
     "ZsGpr_": ["Paste link"],
@@ -1459,6 +1526,7 @@
       "</1>."
     ],
     "_BthEY": ["Open in ", ["shareBranch"]],
+    "_MvHYe": ["the SSH machine"],
     "_NX6gG": ["Managing project AI tools is unavailable in this build."],
     "_PACVa": ["Release notes"],
     "_PBJRl": ["Add at least one letter or number."],
@@ -1481,6 +1549,7 @@
     "_eguJc": ["Uploading"],
     "_gkGSK": ["deleted template"],
     "_hPpdX": ["Skill renamed"],
+    "_jcZBu": ["Development server"],
     "_pY_Vq": ["The repository was moved, renamed, or deleted."],
     "_qD6mn": ["Pick the folder where you've cloned it."],
     "_rP3HI": [["minutes"], "m ago"],
@@ -1528,6 +1597,9 @@
     "bD8I7O": ["Complete"],
     "bGa3Fk": ["Uploading file"],
     "bH382I": ["Edit this HTML — the preview updates live."],
+    "bN4T1I": [
+      "Remote files are deleted immediately. They are not moved to Trash, and this action cannot be undone."
+    ],
     "bSD4im": ["Search worktrees and branches"],
     "bS_boY": ["Replace current match"],
     "bUUVED": ["Asset"],
@@ -1540,6 +1612,7 @@
     "blFttG": ["Search projects"],
     "bmC18N": ["Clearing local collaboration data for \"", ["docName"], "\" before reconnecting."],
     "brCtGB": ["History unavailable"],
+    "buBL51": ["Remove SSH machine?"],
     "bultyE": [
       "When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.)."
     ],
@@ -1578,6 +1651,7 @@
     "csDS2L": ["Available"],
     "ct2kv5": ["No headings in ", ["pageTarget"]],
     "cuA8QW": ["Organize specs"],
+    "czJUwk": ["Machine removed."],
     "d1JjXo": [
       "Your local copy of branch <0>",
       ["branch"],
@@ -1627,6 +1701,7 @@
     "e0NrBM": ["Project"],
     "e1Rn_k": ["Open containing folder"],
     "e1hptq": ["Embed a video with native player controls."],
+    "e2zZ3E": ["Test connection"],
     "e4GHWP": ["Pull"],
     "e4PbgC": ["Duplicate the file-tree item copied from the Files sidebar."],
     "e8L17t": ["A non-empty folder already exists at this path. Pick a different folder."],
@@ -1762,6 +1837,7 @@
     "hY8pka": ["Select next occurrence"],
     "hYDc6B": ["Name cannot be empty"],
     "hYgDIe": ["Create"],
+    "hZRKnO": ["SSH host or config alias"],
     "hZoBHK": ["Empty starting content"],
     "haHgQj": ["Copied relative path"],
     "habOU_": ["Failed to update the auto-approve setting — ", ["detail"]],
@@ -1796,6 +1872,7 @@
     "iEQQyu": ["Agent"],
     "iEYxO4": ["Show thumbnails"],
     "iGCs04": ["No templates available"],
+    "iGIjUv": ["Keep machine"],
     "iH8pgl": ["Back"],
     "iHAJDj": ["Resolving default location"],
     "iKSP5j": ["Word wrap"],
@@ -1812,6 +1889,7 @@
     ],
     "iTylMl": ["Templates"],
     "iXTp5j": ["Scope: "],
+    "iZKtXv": ["Enter a remote path."],
     "idD8Ev": ["Saved"],
     "ig5vUe": ["Failed to load file"],
     "iilQXA": ["Folder duplicated"],
@@ -1844,12 +1922,14 @@
     "jSO1X5": ["Inherited templates can't be renamed here — rename it in the folder that owns it."],
     "jSY41h": ["\"", ["docName"], "\" took too long. Check your connection."],
     "jTLWxh": ["Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox)."],
+    "jTUEbc": ["Remote path"],
     "jX0IPx": ["A skill with this name already exists."],
     "jZ_E5M": ["Fetch failed — check the server logs for details."],
     "j_Z6g7": ["Shared default"],
     "jbSG8V": ["Show Files (", ["sidebarShortcutLabel"], ")"],
     "jdGUeI": ["Couldn't create template: ", ["error"]],
     "jerqF0": ["Loading branch state"],
+    "jgDQvg": ["Could not browse the SSH home directory. ", ["detail"]],
     "jhtG3I": [" Your selection has been restored."],
     "jjtmV_": ["First file name"],
     "jol95m": ["Failed to open Project Navigator."],
@@ -1890,6 +1970,7 @@
       "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
     ],
     "kYL1lH": ["Agent activity"],
+    "kZ_tbb": ["Add machine"],
     "k_pade": ["Config sharing is now shared. Commit the OK files to share with your team."],
     "k_yIIc": ["Will be created at: <0>", ["targetPreview"], "</0>"],
     "kdzzOK": ["Off — search ranks by keyword only. No content leaves this computer."],
@@ -1969,6 +2050,7 @@
     "makN88": ["No patterns yet. Type a folder or file name below to start hiding files."],
     "mdKFEy": ["You cancelled loading \"", ["docName"], "\"."],
     "mdzKSV": [["nodeCount", "plural", { "one": ["#", " node"], "other": ["#", " nodes"] }]],
+    "mefYjP": ["OpenKnowledge checks the folder first and asks before creating project files."],
     "mf37rL": ["Retrying"],
     "mg0YGL": ["Source multi-cursor and multi-select"],
     "mk2poV": ["e.g. server.ts"],
@@ -1992,6 +2074,7 @@
     ],
     "mwMF9u": ["Open CodeMirror search in source editor mode."],
     "mxY24F": ["Duplicate the focused file-tree item when focus is in the Files sidebar."],
+    "n-PHuv": ["Up"],
     "n2lRue": ["Commit or stash changes to switch:"],
     "n5n_vi": ["Private repository"],
     "n6hXUm": [
@@ -2177,6 +2260,7 @@
     "rBc32v": ["Couldn't reach the embeddings provider — press ↵ to retry"],
     "rFw02Q": ["Uploading ", ["keyName"]],
     "rJVoVX": ["Source find results"],
+    "rLiU78": ["Enter an SSH host or config alias."],
     "rNifQd": ["Remove property"],
     "rQAQus": ["Couldn't save template: ", ["error"]],
     "rQRrkB": ["yesterday"],
@@ -2257,6 +2341,7 @@
     "t6w1cq": ["Open a blank editor tab."],
     "tAPZEx": ["Below"],
     "tHKQ6j": ["Renaming"],
+    "tMCZ--": ["Enter a machine name."],
     "tP5DDk": ["Apply link"],
     "tUvUfp": ["Use a folder you already have."],
     "tW_yvQ": ["Expand ", ["docName"]],
@@ -2317,6 +2402,7 @@
     "uksqrP": ["Repository not found. It may have been renamed, deleted, or moved."],
     "un8kBM": ["Creating page: ", ["linkTitle"], "."],
     "ur2XSb": ["Visual editor"],
+    "usx04M": ["Remove machine"],
     "uuoHOU": ["Command failed."],
     "uynXup": [["tokens", "plural", { "one": ["token"], "other": ["tokens"] }]],
     "v-h2hx": ["Delete ", ["targetGitPath"]],
@@ -2340,6 +2426,7 @@
     "vLyv1R": ["Hide"],
     "vQIVHc": ["Folder properties"],
     "vWc9a0": ["Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."],
+    "vXckDu": ["It never deletes or changes projects, files, or other data on the remote machine."],
     "vZVeFG": ["Upload failed — please try again"],
     "vbK_ZG": ["Files sidebar"],
     "ve8vEM": ["Code expired — please try again"],
@@ -2355,6 +2442,7 @@
     "w4hMYl": [
       "Could not read branch state for this project. Close this dialog and open the share link again."
     ],
+    "w61W3L": ["Remove ", ["0"]],
     "w6sBjd": ["Terminal settings not yet loaded — try again in a moment"],
     "w7SsvI": ["That folder isn't an OpenKnowledge project yet. Initialize it and open?"],
     "w7nm4K": ["Indented blockquote for citations."],
@@ -2364,6 +2452,7 @@
     "wJo9oS": ["Close find"],
     "wQp1V3": ["Mirror of <0>", ["src"], "</0>"],
     "wT4iQr": ["Open visual-editor find with replace controls expanded."],
+    "wTTZ3E": ["Open over SSH"],
     "wTcjov": ["No workspace"],
     "wXO4Tg": [["hrs"], "h ago"],
     "w_Sphq": ["Attachments"],
@@ -2381,6 +2470,7 @@
       "Skills teach agents repeatable tasks. Author them here; install a skill to project it into your editors' skill folders."
     ],
     "wndeIl": ["Project-level pages with neither incoming nor outgoing graph edges."],
+    "wpFII3": ["Open project menu for ", ["0"], " on ", ["1"], " at ", ["2"]],
     "wtcxiD": ["Share this setup with your team?"],
     "wvbc1r": ["Couldn't open document"],
     "wzq9Rv": [
@@ -2450,6 +2540,7 @@
     "yHikCO": ["Open CodeMirror's go-to-line prompt."],
     "yIPXut": ["Preparing search"],
     "yKu_3Y": ["Restore"],
+    "yKyDRc": ["Permanently delete selected items?"],
     "yLEyuq": ["Product updates in your inbox."],
     "yLq4w4": ["Separator"],
     "yMgL_E": ["Find field navigation"],
@@ -2500,6 +2591,7 @@
     "zLak8b": ["Activate new tab"],
     "zQBg2C": ["Move the current block up or down one position."],
     "zUhPuR": ["Open containing folder, ", ["hint"]],
+    "zUvb4N": ["Failed to remove the SSH machine."],
     "zXj1rA": ["Search by meaning"],
     "zZ_I5K": ["Open project menu"],
     "zaXlhf": [

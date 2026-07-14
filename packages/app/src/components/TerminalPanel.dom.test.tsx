@@ -193,7 +193,7 @@ mock.module('next-themes', () => ({
 
 type CreateResult =
   | { ok: true; ptyId: string }
-  | { ok: false; reason: 'no-project' | 'not-consented' };
+  | { ok: false; reason: 'no-project' | 'not-consented' | 'remote-unavailable' };
 
 const WIRED: ClaudeReadiness = { claude: 'present', mcp: 'wired' };
 
@@ -274,8 +274,28 @@ function makeBridge(
   };
 }
 
+function makeRemoteBridge() {
+  const harness = makeBridge({ ok: true, ptyId: 'pty-remote' });
+  Object.assign(harness.bridge.config, {
+    projectPath: 'ssh:machine-1:%2Fsrv%2Fknowledge',
+    remote: {
+      kind: 'ssh',
+      machineId: 'machine-1',
+      machineName: 'Build box',
+      path: '/srv/knowledge',
+      platform: 'linux',
+      pathSeparator: '/',
+    },
+  });
+  return harness;
+}
+
 const { TerminalPanel } = await import('./TerminalPanel');
 const { XTERM_DARK_THEME, XTERM_LIGHT_THEME } = await import('./terminal-theme');
+const { hashFromAssetPath } = await import('../lib/doc-hash');
+const { __resetPageListCacheForTests, setPageListCache } = await import(
+  '../editor/page-list-cache'
+);
 
 describe('TerminalPanel', () => {
   beforeEach(() => {
@@ -285,10 +305,12 @@ describe('TerminalPanel', () => {
     allROs = [];
     webglThrows = false;
     mockResolvedTheme = 'dark';
+    __resetPageListCacheForTests();
     (globalThis as { ResizeObserver: unknown }).ResizeObserver = MockResizeObserver;
   });
   afterEach(() => {
     cleanup();
+    __resetPageListCacheForTests();
   });
 
   test('mounts an accessible region, configures xterm for a11y, and creates a PTY sized to the fitted terminal', async () => {
@@ -538,6 +560,22 @@ describe('TerminalPanel', () => {
       'pty-1',
       "'/dropped/shot.png' '/dropped/a b'\\''s.png' ",
     );
+  });
+
+  test('dropping local files into a remote terminal never writes their Finder paths', async () => {
+    const { bridge, terminal } = makeRemoteBridge();
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(lastTerm?.onDataCb).toBeTruthy());
+
+    const container = document.querySelector('[data-terminal-status]');
+    if (container === null) throw new Error('terminal container not found');
+
+    const localFile = new File(['x'], 'local-secret.txt', { type: 'text/plain' });
+    const dataTransfer = { types: ['Files'], files: [localFile] };
+    fireEvent.dragOver(container, { dataTransfer });
+    fireEvent.drop(container, { dataTransfer });
+
+    expect(terminal.input).not.toHaveBeenCalled();
   });
 
   test('a drop where every file resolves to no disk path writes nothing (clipboard blobs)', async () => {
@@ -1028,6 +1066,20 @@ describe('TerminalPanel', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  test('reports an SSH outage without mislabeling it as a consent refusal', async () => {
+    const { bridge, terminal } = makeBridge({ ok: false, reason: 'remote-unavailable' });
+    render(<TerminalPanel bridge={bridge} />);
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-terminal-status="remote-unavailable"]')).not.toBeNull(),
+    );
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/SSH machine is unavailable/i);
+    expect(alert.textContent).not.toMatch(/isn't enabled/i);
+    expect(lastTerm?.focus).not.toHaveBeenCalled();
+    expect(terminal.onData).not.toHaveBeenCalled();
+  });
+
   test('omits the "Close terminal" button when no onClose is provided', async () => {
     const { bridge } = makeBridge({ ok: false, reason: 'not-consented' });
     render(<TerminalPanel bridge={bridge} />);
@@ -1468,6 +1520,62 @@ describe('TerminalPanel', () => {
       expect(link?.text).toBe('/tmp/out/report.pdf');
       link?.activate({} as MouseEvent, link.text);
       await waitFor(() => expect(revealExternal).toHaveBeenCalledWith('/tmp/out/report.pdf'));
+    });
+
+    test('remote absolute paths resolve from the remote root and assets stay in-app', async () => {
+      const { bridge, openAsset, revealAsset, checkTargetExists } = makeRemoteBridge();
+      setPageListCache({
+        pages: new Set(),
+        folderPaths: new Set(),
+        assetPaths: new Set(['data/x.csv']),
+        pagesBySlug: new Map(),
+      });
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      term.lineText = 'wrote /srv/knowledge/data/x.csv';
+
+      const [link] = await provide(term);
+      expect(link?.text).toBe('/srv/knowledge/data/x.csv');
+      // Snapshot hit: the absolute path only resolves when the provider uses
+      // `/srv/knowledge` as its root; no local-filesystem IPC probe is needed.
+      expect(checkTargetExists).not.toHaveBeenCalled();
+
+      window.location.hash = '';
+      link?.activate({} as MouseEvent, link.text);
+      expect(window.location.hash).toBe(hashFromAssetPath('data/x.csv'));
+      expect(openAsset).not.toHaveBeenCalled();
+      expect(revealAsset).not.toHaveBeenCalled();
+    });
+
+    test('uncached remote targets probe with the opaque SSH key, never a local-looking remote path', async () => {
+      const { bridge, checkTargetExists } = makeRemoteBridge();
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      term.lineText = 'edited /srv/knowledge/notes/a.md';
+
+      await provide(term);
+      expect(checkTargetExists).toHaveBeenCalledWith({
+        projectPath: 'ssh:machine-1:%2Fsrv%2Fknowledge',
+        kind: 'doc',
+        path: 'notes/a.md',
+      });
+      expect(checkTargetExists).not.toHaveBeenCalledWith(
+        expect.objectContaining({ projectPath: '/srv/knowledge' }),
+      );
+    });
+
+    test('remote terminals do not link absolute paths outside the remote project', async () => {
+      const { bridge, revealExternal, checkTargetExists } = makeRemoteBridge();
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+      const term = lastTerm as MockTerminal;
+      term.lineText = 'built /tmp/out/report.pdf';
+
+      expect(await provide(term)).toEqual([]);
+      expect(checkTargetExists).not.toHaveBeenCalled();
+      expect(revealExternal).not.toHaveBeenCalled();
     });
 
     test('defers URL clicks to a mouse-tracking TUI (no double-open with claude)', async () => {

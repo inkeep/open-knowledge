@@ -20,7 +20,14 @@ import {
   type spawn as NativeSpawn,
   spawn as nativeSpawn,
 } from 'node:child_process';
-import { closeSync, existsSync as fsExistsSync, mkdirSync as fsMkdirSync, openSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync as fsExistsSync,
+  mkdirSync as fsMkdirSync,
+  lstatSync,
+  openSync,
+  realpathSync,
+} from 'node:fs';
 import { rm } from 'node:fs/promises';
 import type { Server as HttpServer } from 'node:http';
 import { basename, join } from 'node:path';
@@ -631,6 +638,10 @@ interface BootStartServerOptions {
   skipAutoInit?: boolean;
   /** Skip the auto-spawn-of-ok-ui-sibling step entirely (does not call `spawnOkUi`). */
   skipUiAutoSpawn?: boolean;
+  /** Pin the server filesystem watcher. Remote companions use bundled chokidar. */
+  watcherBackend?: 'parcel' | 'chokidar';
+  /** Already-canonical content root supplied by the remote confinement gate. */
+  resolvedContentDir?: string;
   /** Override for `spawnOkUi`'s underlying spawn — passed through to it. */
   spawn?: typeof NativeSpawn;
   /** Override idle-shutdown threshold; default 30 min. Tests use small values. */
@@ -769,6 +780,19 @@ export interface BootedStartServer {
   resolvedUiPort: number | null;
 }
 
+/** Re-check the remote confinement proof immediately before server boot. */
+export function assertResolvedContentDirectory(contentDir: string): void {
+  let canonicalPath: string;
+  try {
+    canonicalPath = realpathSync.native(contentDir);
+  } catch (cause) {
+    throw new Error('The validated content directory no longer exists.', { cause });
+  }
+  if (canonicalPath !== contentDir || !lstatSync(canonicalPath).isDirectory()) {
+    throw new Error('The validated content directory changed before server startup.');
+  }
+}
+
 /**
  * Boot the collab server end-to-end and return a handle. Pure of process-level
  * concerns (signal handlers, banner, browser-open, exit codes) so integration
@@ -893,8 +917,11 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
   // Resolve content directory before bootServer (CLI reads it from Config;
   // bootServer takes a resolved contentDir as input). Ephemeral mode overrides
   // it to the single file's real parent rather than `config.content.dir`.
-  const contentDir = ephemeralContentDir ?? resolveContentDir(config, cwd);
-  if (!ephemeral && !existsSync(contentDir)) {
+  const contentDir =
+    ephemeralContentDir ?? opts.resolvedContentDir ?? resolveContentDir(config, cwd);
+  if (!ephemeral && opts.resolvedContentDir !== undefined) {
+    assertResolvedContentDirectory(contentDir);
+  } else if (!ephemeral && !existsSync(contentDir)) {
     mkdirSync(contentDir, { recursive: true });
     log.info({ contentDir }, 'Created content directory');
   }
@@ -1020,6 +1047,7 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     // Pass the exact runtime that started this server so /api/local-op/* can
     // spawn additional CLI processes without needing open-knowledge on PATH.
     localOpCliArgs: [process.execPath, process.argv[1]],
+    watcherBackend: opts.watcherBackend,
     // CLI-specific opt-ins
     attachUiSibling,
     idleShutdownMs: idleThresholdMs,

@@ -169,10 +169,27 @@ type CodexReadiness = { onPath: string; okServerConfigured?: boolean };
 
 function stubDesktopBridge(readiness: CodexReadiness | Error): void {
   (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = {
+    config: { remote: null },
     terminal: {
       cliPreflight: async () =>
         readiness instanceof Error ? Promise.reject(readiness) : readiness,
     },
+  };
+}
+
+function stubRemoteDesktopBridge(): void {
+  (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = {
+    config: {
+      remote: {
+        kind: 'ssh',
+        machineId: 'machine-1',
+        machineName: 'Build host',
+        path: '/srv/project',
+        platform: 'linux',
+        pathSeparator: '/',
+      },
+    },
+    terminal: { cliPreflight: async () => ({ onPath: 'present', okServerConfigured: false }) },
   };
 }
 
@@ -231,6 +248,35 @@ describe("TerminalSection (codex-can't-honor note)", () => {
   test('the web build (no desktop bridge) never probes', async () => {
     render(<TerminalSection />);
     await waitFor(() => expect(autoApproveSwitch()).not.toBeNull());
+    expect(codexNote()).toBeNull();
+  });
+});
+
+describe('TerminalSection (remote project authority copy)', () => {
+  beforeEach(() => {
+    consentState = { enabled: true, synced: true };
+    writerImpl = () => ({ ok: true });
+    userConfig = { agents: { autoApproveOkTools: true } };
+    userSynced = true;
+    userBinding = { patch: () => ({ ok: true }) };
+    stubRemoteDesktopBridge();
+  });
+  afterEach(() => {
+    cleanup();
+    (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = undefined;
+  });
+
+  test('names the SSH machine/path and does not offer local-only agent auto-approval', () => {
+    render(<TerminalSection />);
+    expect(
+      screen.getByText(
+        'Run a real terminal docked inside OpenKnowledge on Build host, starting in /srv/project.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByTestId('settings-terminal-body').textContent).toContain(
+      'full access of your SSH account on Build host',
+    );
+    expect(screen.queryByTestId('settings-terminal-autoapprove-toggle')).toBeNull();
     expect(codexNote()).toBeNull();
   });
 });

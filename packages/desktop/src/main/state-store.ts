@@ -12,6 +12,11 @@
 
 import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  isSafeSshDestination,
+  remoteProjectKey,
+  type SshMachine,
+} from '@inkeep/open-knowledge-core';
 
 interface RecentProject {
   path: string;
@@ -30,6 +35,12 @@ interface RecentProject {
    * existed self-heal without a schema bump.
    */
   gitRemoteUrl?: string;
+  /** SSH location metadata. `path` above is the opaque machine-scoped key. */
+  remote?: {
+    machineId: string;
+    machineName: string;
+    path: string;
+  };
 }
 
 /**
@@ -93,6 +104,8 @@ export const MAX_SUPPORTED_SCHEMA_VERSION = 1;
 export interface AppState {
   /** LRU-capped recent-projects, newest first. */
   recentProjects: RecentProject[];
+  /** Saved non-secret SSH destinations. Authentication stays in OpenSSH. */
+  sshMachines: SshMachine[];
   /** Most recently opened project, or null if Navigator was last visible. */
   lastOpenedProject: string | null;
   /**
@@ -244,10 +257,78 @@ export interface AppState {
 }
 
 const RECENT_CAP = 20;
+const MAX_SSH_MACHINE_ID_LENGTH = 256;
+const MAX_SSH_MACHINE_NAME_LENGTH = 256;
+const MAX_SSH_HOST_LENGTH = 512;
+const MAX_REMOTE_PATH_LENGTH = 16 * 1024;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: validating persisted state.
+const SSH_CONTROL_CHARACTER = /[\x00-\x1F\x7F]/;
+
+function parsePersistedSshText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > maxLength || SSH_CONTROL_CHARACTER.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+/**
+ * Browser-safe counterpart to the endpoint rules in validateSshMachine.
+ * Persisted state must never turn an invalid explicit port into an implicit
+ * default-port connection, or restore a host that the IPC boundary rejects.
+ */
+function parsePersistedSshMachine(value: unknown): SshMachine | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const machine = value as Record<string, unknown>;
+  const id = parsePersistedSshText(machine.id, MAX_SSH_MACHINE_ID_LENGTH);
+  const name = parsePersistedSshText(machine.name, MAX_SSH_MACHINE_NAME_LENGTH);
+  const host = parsePersistedSshText(machine.host, MAX_SSH_HOST_LENGTH);
+  if (
+    id === null ||
+    name === null ||
+    host === null ||
+    machine.host !== host ||
+    !isSafeSshDestination(host)
+  ) {
+    return null;
+  }
+  if (
+    machine.port !== undefined &&
+    (!Number.isInteger(machine.port) ||
+      (machine.port as number) < 1 ||
+      (machine.port as number) > 65_535)
+  ) {
+    return null;
+  }
+  return machine.port === undefined
+    ? { id, name, host }
+    : { id, name, host, port: machine.port as number };
+}
+
+function parsePersistedRemoteProject(value: unknown): NonNullable<RecentProject['remote']> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const remote = value as Record<string, unknown>;
+  const machineId = parsePersistedSshText(remote.machineId, MAX_SSH_MACHINE_ID_LENGTH);
+  const machineName = parsePersistedSshText(remote.machineName, MAX_SSH_MACHINE_NAME_LENGTH);
+  const path = remote.path;
+  if (
+    machineId === null ||
+    machineName === null ||
+    typeof path !== 'string' ||
+    !path.startsWith('/') ||
+    path.length > MAX_REMOTE_PATH_LENGTH ||
+    SSH_CONTROL_CHARACTER.test(path)
+  ) {
+    return null;
+  }
+  return { machineId, machineName, path };
+}
 
 export function emptyState(): AppState {
   return {
     recentProjects: [],
+    sshMachines: [],
     lastOpenedProject: null,
     versionPendingInstall: null,
     attemptedInstall: null,
@@ -411,6 +492,86 @@ export function addRecentProject(
   return { ...state, recentProjects: updated, lastOpenedProject: projectPath };
 }
 
+/** Add or move an SSH-backed project to the front of recents. */
+export function addRecentRemoteProject(
+  state: AppState,
+  projectKey: string,
+  name: string,
+  machine: SshMachine,
+  remotePath: string,
+): AppState {
+  const now = new Date().toISOString();
+  const filtered = state.recentProjects.filter((p) => p.path !== projectKey);
+  const entry: RecentProject = {
+    path: projectKey,
+    name,
+    lastOpenedAt: now,
+    remote: {
+      machineId: machine.id,
+      machineName: machine.name,
+      path: remotePath,
+    },
+  };
+  return {
+    ...state,
+    recentProjects: [entry, ...filtered].slice(0, RECENT_CAP),
+    lastOpenedProject: projectKey,
+  };
+}
+
+/** Upsert a validated non-secret SSH machine and refresh its recent labels. */
+export function saveSshMachine(state: AppState, machine: SshMachine): AppState {
+  const existing = state.sshMachines.find((item) => item.id === machine.id);
+  if (existing && (existing.host !== machine.host || existing.port !== machine.port)) {
+    // A machine id is part of every remote project/window key. Rebinding it
+    // in place could leave an existing editor tunneled to the old endpoint
+    // while a newly opened terminal or reconnect targets the new endpoint.
+    throw new Error('An SSH machine endpoint cannot be changed in place. Add a new machine.');
+  }
+  const nextMachines = [machine, ...state.sshMachines.filter((item) => item.id !== machine.id)];
+  return {
+    ...state,
+    sshMachines: nextMachines,
+    recentProjects: state.recentProjects.map((recent) =>
+      recent.remote?.machineId === machine.id
+        ? {
+            ...recent,
+            remote: { ...recent.remote, machineName: machine.name },
+          }
+        : recent,
+    ),
+  };
+}
+
+/**
+ * Forget a machine and every recent/session that depends on it. This never
+ * reaches the remote host and never deletes project data.
+ */
+export function removeSshMachine(state: AppState, machineId: string): AppState {
+  const machineProjectPrefix = `ssh:${encodeURIComponent(machineId)}:`;
+  const projectSessions = { ...state.projectSessions };
+  for (const key of Object.keys(projectSessions)) {
+    if (key.startsWith(machineProjectPrefix)) delete projectSessions[key];
+  }
+  const projectWindowBounds = { ...state.projectWindowBounds };
+  for (const key of Object.keys(projectWindowBounds)) {
+    if (key.startsWith(machineProjectPrefix)) delete projectWindowBounds[key];
+  }
+  return {
+    ...state,
+    sshMachines: state.sshMachines.filter((machine) => machine.id !== machineId),
+    recentProjects: state.recentProjects.filter((recent) => recent.remote?.machineId !== machineId),
+    lastOpenedProject:
+      state.lastOpenedProject?.startsWith(machineProjectPrefix) === true
+        ? null
+        : state.lastOpenedProject,
+    projectSessions,
+    projectWindowBounds,
+    pendingWindowRestore:
+      state.pendingWindowRestore?.filter((key) => !key.startsWith(machineProjectPrefix)) ?? null,
+  };
+}
+
 /** Remove a project from the recent list. */
 export function removeRecentProject(state: AppState, projectPath: string): AppState {
   const projectSessions = { ...state.projectSessions };
@@ -473,7 +634,10 @@ export function annotateMissing(
 ): RecentProject[] {
   return state.recentProjects.map((p) => ({
     ...p,
-    missing: !exists(p.path),
+    // Offline SSH projects remain selectable; connection errors are surfaced
+    // when opened. A local `existsSync` probe cannot say anything useful about
+    // a remote path and would otherwise mark every remote recent Missing.
+    missing: p.remote === undefined ? !exists(p.path) : false,
   }));
 }
 
@@ -598,6 +762,20 @@ export function evaluateSchemaCompatibility(
 export function parseAppState(raw: unknown): AppState | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const obj = raw as Record<string, unknown>;
+
+  const sshMachines: SshMachine[] = [];
+  if (obj.sshMachines !== undefined) {
+    if (!Array.isArray(obj.sshMachines)) return null;
+    const seen = new Set<string>();
+    for (const value of obj.sshMachines) {
+      const parsed = parsePersistedSshMachine(value);
+      if (parsed === null || seen.has(parsed.id)) return null;
+      seen.add(parsed.id);
+      sshMachines.push(parsed);
+    }
+  }
+  const sshMachinesById = new Map(sshMachines.map((machine) => [machine.id, machine]));
+
   const recentRaw = obj.recentProjects;
   if (!Array.isArray(recentRaw)) return null;
   const recentProjects: RecentProject[] = [];
@@ -616,6 +794,19 @@ export function parseAppState(raw: unknown): AppState | null {
       };
       if (typeof item.gitRemoteUrl === 'string' && item.gitRemoteUrl.length > 0) {
         entry.gitRemoteUrl = item.gitRemoteUrl;
+      }
+      if (item.remote !== undefined) {
+        const remote = parsePersistedRemoteProject(item.remote);
+        const machine = remote ? sshMachinesById.get(remote.machineId) : undefined;
+        if (
+          remote === null ||
+          machine === undefined ||
+          machine.name !== remote.machineName ||
+          item.path !== remoteProjectKey(remote.machineId, remote.path)
+        ) {
+          return null;
+        }
+        entry.remote = remote;
       }
       recentProjects.push(entry);
     }
@@ -673,6 +864,7 @@ export function parseAppState(raw: unknown): AppState | null {
     typeof obj.spellCheckEnabled === 'boolean' ? obj.spellCheckEnabled : true;
   return {
     recentProjects,
+    sshMachines,
     lastOpenedProject,
     versionPendingInstall,
     attemptedInstall,

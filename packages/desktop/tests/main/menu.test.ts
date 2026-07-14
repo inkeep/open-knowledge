@@ -16,7 +16,11 @@ import { describe, expect, mock, test } from 'bun:test';
 import type { MenuItemConstructorOptions } from 'electron';
 import { buildMenuTemplate, type MenuDeps } from '../../src/main/menu.ts';
 
-type RecentRow = { path: string; name: string };
+type RecentRow = {
+  path: string;
+  name: string;
+  remote?: { machineName: string; path: string };
+};
 
 function makeDeps(overrides: Partial<MenuDeps> = {}): MenuDeps {
   return {
@@ -77,6 +81,22 @@ describe('buildMenuTemplate', () => {
     expect(sub?.[1]?.label).toBe('beta');
     expect(sub?.[2]?.type).toBe('separator');
     expect(sub?.[3]?.label).toBe('Clear menu');
+  });
+
+  test('remote recents show their SSH machine and path instead of the opaque state key', () => {
+    const recents: RecentRow[] = [
+      {
+        path: 'ssh:machine-1:%2Fsrv%2Fwiki',
+        name: 'wiki',
+        remote: { machineName: 'Build box', path: '/srv/wiki' },
+      },
+    ];
+    const template = buildMenuTemplate(makeDeps({ getRecentProjects: () => recents }));
+    const openRecent = findByLabel(template, 'Recent project');
+    const sub = openRecent?.submenu as MenuItemConstructorOptions[] | undefined;
+
+    expect(sub?.[0]?.sublabel).toBe('Build box • /srv/wiki');
+    expect(sub?.[0]?.sublabel).not.toContain('ssh:');
   });
 
   test('clamps at 10 entries even when more are present', () => {

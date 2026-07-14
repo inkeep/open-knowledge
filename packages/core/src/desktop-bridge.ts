@@ -17,6 +17,13 @@ import type {
   WorktreeListResult,
 } from './git/worktree-selector-model.ts';
 import type { TerminalCli } from './handoff/terminal-launch.ts';
+import type {
+  RemoteDirectoryListing,
+  RemoteProjectInfo,
+  SshConnectionTestResult,
+  SshMachine,
+  SshMachineDraft,
+} from './remote-project.ts';
 import type { LocalOpOkInitResponse } from './schemas/api/local-op.ts';
 import type {
   BranchInfoResponse,
@@ -44,6 +51,8 @@ interface OkDesktopConfig {
   readonly projectPath: string;
   /** Display name for the project (usually basename of projectPath). */
   readonly projectName: string;
+  /** SSH metadata for a remote window; null for local/navigator windows. */
+  readonly remote: RemoteProjectInfo | null;
   /** Render mode — `navigator` renders the Project Navigator, `editor` renders the doc editor, `terminal` renders the standalone terminal window. */
   readonly mode: OkDesktopMode;
 }
@@ -862,7 +871,10 @@ export type OkServerRestartOutcome =
 /** Result of `terminal.create`. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
 export type OkPtyCreateResult =
   | { readonly ok: true; readonly ptyId: string }
-  | { readonly ok: false; readonly reason: 'no-project' | 'not-consented' };
+  | {
+      readonly ok: false;
+      readonly reason: 'no-project' | 'not-consented' | 'remote-unavailable';
+    };
 
 /** Entry of `terminal.list`. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
 export interface OkPtyListEntry {
@@ -899,7 +911,7 @@ export interface OkPtyExit {
  */
 export interface ClaudeReadiness {
   readonly claude: 'present' | 'not-found' | 'unknown';
-  readonly mcp: 'wired' | 'needs-rewire';
+  readonly mcp: 'wired' | 'needs-rewire' | 'unknown';
   /** True when the project's own `open-knowledge` `.mcp.json` entry is verified
    *  to be OK's canonical managed server (cli `isOwnManagedEntry`), so the docked
    *  terminal may pre-approve it on Claude launch instead of re-showing Claude's
@@ -1202,6 +1214,16 @@ export interface OkDesktopBridge {
   /** IPC-relayed clipboard writer (sandboxed renderer cannot call clipboard directly). */
   clipboard: {
     writeText(text: string): Promise<void>;
+  };
+
+  /** Saved-machine management and SSH-backed project opening. */
+  remote: {
+    listMachines(): Promise<SshMachine[]>;
+    saveMachine(machine: SshMachineDraft): Promise<SshMachine>;
+    removeMachine(machineId: string): Promise<void>;
+    testMachine(machineId: string): Promise<SshConnectionTestResult>;
+    listDirectories(request: { machineId: string; path: string }): Promise<RemoteDirectoryListing>;
+    openProject(request: { machineId: string; path: string }): Promise<boolean>;
   };
 
   /**

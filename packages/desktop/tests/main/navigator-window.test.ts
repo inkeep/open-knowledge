@@ -149,8 +149,12 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
           }
         }),
         executeJavaScript: mock(() => Promise.resolve()),
-        setWindowOpenHandler: mock(() => {}),
-        on: mock(() => {}),
+        setWindowOpenHandler: mock(() => {
+          loadCallOrder.push('set-window-open-handler');
+        }),
+        on: mock(() => {
+          loadCallOrder.push('on-will-navigate');
+        }),
       },
       loadFile: mock(() => {
         loadCallOrder.push('loadFile');
@@ -194,6 +198,28 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
     };
   }
 
+  test('installs the navigation boundary before packaged or dev renderer loading begins', () => {
+    for (const rendererDevUrl of [null, 'http://localhost:5173/'] as const) {
+      const win = makeNavWindow();
+      createNavigatorWindow({
+        createWindow: () => win,
+        rendererEntryPath: '/fake/index.html',
+        rendererDevUrl,
+        openExternal: async () => {},
+        appVersion: '9.9.9-test',
+        showGate: makeShowGate(),
+      });
+
+      const loadEvent = rendererDevUrl ? 'loadURL' : 'loadFile';
+      expect(win.loadCallOrder.indexOf('set-window-open-handler')).toBeLessThan(
+        win.loadCallOrder.indexOf(loadEvent),
+      );
+      expect(win.loadCallOrder.indexOf('on-will-navigate')).toBeLessThan(
+        win.loadCallOrder.indexOf(loadEvent),
+      );
+    }
+  });
+
   test("cold path: pendingPayload registers webContents.once('dom-ready') BEFORE loadFile", () => {
     // Mirrors window-manager's pendingDeepLinkDoc regression: registering
     // the listener after loadFile silently misses dom-ready on a fast load.
@@ -201,6 +227,7 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
     createNavigatorWindow({
       createWindow: () => win,
       rendererEntryPath: '/fake/index.html',
+      openExternal: async () => {},
       appVersion: '9.9.9-test',
       showGate: makeShowGate(),
       pendingPayload: makePayload(),
@@ -243,6 +270,7 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
     createNavigatorWindow({
       createWindow: () => win,
       rendererEntryPath: '/fake/index.html',
+      openExternal: async () => {},
       appVersion: '9.9.9-test',
       showGate: makeShowGate(),
     });
@@ -268,6 +296,7 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
     createNavigatorWindow({
       createWindow: () => win,
       rendererEntryPath: '/fake/index.html',
+      openExternal: async () => {},
       appVersion: '9.9.9-test',
       showGate: makeShowGate(),
       pendingPayload: payload,

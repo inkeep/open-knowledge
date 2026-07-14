@@ -48,6 +48,16 @@ export interface RecentProjectEntry {
   missing?: boolean;
   gitRemoteUrl?: string;
   /**
+   * Present for an SSH-backed recent. `path` remains the opaque, machine-scoped
+   * project key used by existing project-open APIs; this object carries the
+   * human-facing remote path and machine label.
+   */
+  remote?: {
+    machineId: string;
+    machineName: string;
+    path: string;
+  };
+  /**
    * Git-worktree relationship, computed at list-time (not persisted) so the
    * project switcher can nest linked worktrees under their main project.
    * Absent for non-git projects. `gitCommonDir` is the repo identity shared by

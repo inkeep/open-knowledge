@@ -103,24 +103,43 @@ const projectLocalPatch = mock((_patch: unknown) => projectPatchResult);
 const showItemInFolderMock = mock((_path: string) => Promise.resolve());
 const notifyViewMenuStateChangedMock = mock((_snapshot: unknown) => {});
 const onOpenSearch = mock(() => {});
+let menuActionListener: ((action: string) => void) | null = null;
 
 function setFolderState(next: FolderState) {
   folderState = next;
   for (const listener of treeListeners) listener();
 }
 
-function installBridge() {
+function installBridge({ remote = false }: { remote?: boolean } = {}) {
   Object.defineProperty(window, 'okDesktop', {
     configurable: true,
     value: {
       platform: 'darwin',
+      config: {
+        projectPath: remote ? 'ssh:machine-1:%2Fsrv%2Fwiki' : '/tmp/open-knowledge',
+        remote: remote
+          ? {
+              machineId: 'machine-1',
+              machineLabel: 'Build box',
+              projectPath: '/srv/wiki',
+            }
+          : undefined,
+      },
       editor: {
         notifyViewMenuStateChanged: notifyViewMenuStateChangedMock,
+      },
+      project: {
+        listRecent: () => Promise.resolve([{ path: '/tmp/another-project' }]),
       },
       shell: {
         showItemInFolder: showItemInFolderMock,
       },
-      onMenuAction: () => () => {},
+      onMenuAction: (listener: (action: string) => void) => {
+        menuActionListener = listener;
+        return () => {
+          if (menuActionListener === listener) menuActionListener = null;
+        };
+      },
     },
   });
 }
@@ -442,6 +461,7 @@ describe('FileSidebar runtime behavior', () => {
     toastSuccesses = [];
     toastErrors = [];
     pillRenderErrors = [];
+    menuActionListener = null;
     treeListeners.clear();
     for (const fn of [
       treeCalls.collapseAll,
@@ -780,6 +800,18 @@ describe('FileSidebar runtime behavior', () => {
       docPath: '',
       projectDir: '/tmp/open-knowledge',
     });
+  });
+
+  test('SSH projects suppress Finder-only actions from renderer and native menus', async () => {
+    installBridge({ remote: true });
+    await renderSidebar();
+
+    expect(screen.queryByTestId('empty-space-menu-reveal-in-finder')).toBeNull();
+    expect(screen.getByTestId('empty-space-menu-copy-full-path')).toBeTruthy();
+    await waitFor(() => expect(menuActionListener).not.toBeNull());
+
+    act(() => menuActionListener?.('reveal-in-finder'));
+    expect(showItemInFolderMock).not.toHaveBeenCalled();
   });
 
   test('empty-space visibility toggles carry full-form labels and patch their own leaves', async () => {

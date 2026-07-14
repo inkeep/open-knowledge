@@ -74,6 +74,8 @@ function AssetPreviewBody({ assetPath, mediaKind }: AssetPreviewProps) {
   // so the user can override an image / video / pdf / no-viewer asset
   // into the text-editor pane and back via the assetPath-keyed reset.
   const effectiveMediaKind: InlineAssetMediaKind | null = forceText ? 'text' : mediaKind;
+  const canOpenWithLocalApplication =
+    typeof window === 'undefined' || window.okDesktop?.config.remote == null;
 
   // PDFs render edge-to-edge via the bundled `<Pdf>` viewer — toolbar +
   // page-scroll fill the available height. `fillContainer` makes the
@@ -176,22 +178,24 @@ function AssetPreviewBody({ assetPath, mediaKind }: AssetPreviewProps) {
               >
                 <Trans>View as text</Trans>
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="font-mono uppercase"
-                onClick={() => {
-                  void dispatchAssetClick({
-                    url: src,
-                    projectRelPath: assetPath,
-                    ext: rawExtension.toLowerCase(),
-                    title: fileName,
-                    forceOsDelegation: false,
-                  });
-                }}
-              >
-                <Trans>Open file</Trans>
-              </Button>
+              {canOpenWithLocalApplication ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="font-mono uppercase"
+                  onClick={() => {
+                    void dispatchAssetClick({
+                      url: src,
+                      projectRelPath: assetPath,
+                      ext: rawExtension.toLowerCase(),
+                      title: fileName,
+                      forceOsDelegation: false,
+                    });
+                  }}
+                >
+                  <Trans>Open file</Trans>
+                </Button>
+              ) : null}
             </div>
           </div>
         )}

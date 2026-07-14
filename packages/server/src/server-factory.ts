@@ -180,6 +180,8 @@ export interface ServerOptions {
   debounce?: number;
   maxDebounce?: number;
   gitEnabled?: boolean;
+  /** Pin the filesystem watcher implementation instead of auto-selecting one. */
+  watcherBackend?: 'parcel' | 'chokidar';
   commitDebounceMs?: number;
   wipRef?: string;
   /**
@@ -3301,7 +3303,9 @@ export function createServer(options: ServerOptions): ServerInstance {
         // cost is visible apart from the surrounding index work.
         const seedWalkStartMono = performance.now();
         watcher = await withSpan('ok.boot.seed-walk', undefined, async () =>
-          startWatcher(contentDir, onDiskEvent, contentFilter),
+          startWatcher(contentDir, onDiskEvent, contentFilter, {
+            forceBackend: options.watcherBackend,
+          }),
         );
         recordBootPhase('seedWalkMs', Math.round(performance.now() - seedWalkStartMono));
 
@@ -3871,6 +3875,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             }
           }
         },
+        { forceBackend: options.watcherBackend },
       );
     } catch (err) {
       // HEAD watching now falls back to chokidar when @parcel/watcher can't

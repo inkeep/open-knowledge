@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { spawn as NativeSpawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { hostname, tmpdir } from 'node:os';
@@ -9,6 +16,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import { type Config, ConfigSchema } from '@inkeep/open-knowledge-server';
 import {
+  assertResolvedContentDirectory,
   awaitUiSiblingPort,
   type BootedStartServer,
   bootStartServer,
@@ -52,6 +60,25 @@ describe('resolveHost', () => {
 
   test('explicit undefined --host falls through to env (precedence: flag > env > default)', () => {
     expect(resolveHost({ host: undefined }, { HOST: '0.0.0.0' })).toBe('0.0.0.0');
+  });
+});
+
+describe('assertResolvedContentDirectory', () => {
+  test('rejects a directory replaced by a symlink after remote validation', async () => {
+    const root = await mkdtemp(resolve(tmpdir(), 'ok-content-proof-'));
+    const contentDir = resolve(root, 'content');
+    const outsideDir = resolve(root, 'outside');
+    mkdirSync(contentDir);
+    mkdirSync(outsideDir);
+    const validatedPath = realpathSync.native(contentDir);
+
+    await rm(contentDir, { recursive: true });
+    symlinkSync(outsideDir, contentDir, 'dir');
+
+    expect(() => assertResolvedContentDirectory(validatedPath)).toThrow(
+      'The validated content directory changed before server startup.',
+    );
+    await rm(root, { recursive: true, force: true });
   });
 });
 

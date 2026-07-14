@@ -46,6 +46,15 @@ export interface SkillInstaller {
   install(opts?: SkillInstallOptions): Promise<SkillInstallResult>;
 }
 
+export type SkillInstallerTransport = 'desktop-ipc' | 'project-http';
+
+/** Pure transport classifier: remote builds must happen beside the remote project. */
+export function selectSkillInstallerTransport(
+  desktop: Pick<OkDesktopBridge, 'config' | 'skill'> | undefined,
+): SkillInstallerTransport {
+  return desktop?.skill && !desktop.config.remote ? 'desktop-ipc' : 'project-http';
+}
+
 /**
  * Bridge subset this module consumes. Derived from the canonical desktop-bridge
  * type so the contract has a single source of truth.
@@ -181,14 +190,17 @@ export function httpSkillInstaller(opts: HttpSkillInstallerOptions = {}): SkillI
 }
 
 /**
- * Pick the right installer for the current host. Returns `null` only when
- * no installer can be constructed (server-side rendering / non-browser
- * environment). Browser tabs always get `httpSkillInstaller` — the local
- * Hocuspocus server is reachable via same-origin fetch.
+ * Pick the right installer for the current project host. SSH-backed desktop
+ * windows use HTTP so the skill is built beside the remote project; the
+ * renderer's fetch wrapper routes the relative request through the tunnel.
+ * Returns `null` only when no installer can be constructed (SSR).
  */
 export function defaultSkillInstaller(): SkillInstaller | null {
   if (typeof window === 'undefined') return null;
-  const electronBridge = window.okDesktop?.skill;
+  const electronBridge =
+    selectSkillInstallerTransport(window.okDesktop) === 'desktop-ipc'
+      ? window.okDesktop?.skill
+      : undefined;
   if (electronBridge) return electronSkillInstaller(electronBridge);
   return httpSkillInstaller();
 }

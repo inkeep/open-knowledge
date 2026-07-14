@@ -21,9 +21,10 @@
  *   6. bootAutoUpdater (wired last so update toasts find a real window)
  *   7. macOS Dock icon click → re-open Navigator
  *
- * Process model: one BrowserWindow ↔ one utilityProcess ↔ one Hocuspocus
- * server ↔ one contentDir. The window manager owns spawn/teardown; this
- * entry wires it into Electron lifecycle + IPC handlers.
+ * Process model: a local project window owns/attaches to one utility server;
+ * an SSH-backed window owns a loopback tunnel to the server beside the remote
+ * project. The window manager owns both lifecycles; this entry wires them into
+ * Electron lifecycle + IPC handlers.
  */
 
 import { spawn } from 'node:child_process';
@@ -69,9 +70,14 @@ import {
 } from '@inkeep/open-knowledge';
 import {
   CLIENT_VERSION_HEADER,
+  isRemoteProjectKey,
   PROTOCOL_VERSION,
+  type RemoteProjectInfo,
+  remoteProjectKey,
   ServerInfoSuccessSchema,
   SPAWN_ERROR_LOG,
+  type SshMachine,
+  TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
   type TerminalCli,
 } from '@inkeep/open-knowledge-core';
@@ -102,7 +108,11 @@ import {
   writeBundleDecision,
   writeTargetVersion,
 } from '@inkeep/open-knowledge-server';
-import type { BrowserWindowConstructorOptions, MessageBoxOptions } from 'electron';
+import type {
+  BrowserWindowConstructorOptions,
+  IpcMainInvokeEvent,
+  MessageBoxOptions,
+} from 'electron';
 import {
   app,
   BrowserWindow,
@@ -140,7 +150,7 @@ import {
   channelFromVersion,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
-import { resolveBootRestoreDecision } from './boot-restore-decision.ts';
+import { bootLaunchNeedsEarlyGit, resolveBootRestoreDecision } from './boot-restore-decision.ts';
 import { runBootstrap } from './bootstrap.ts';
 import {
   type BranchInfoProxyDeps,
@@ -239,6 +249,10 @@ import {
   runMcpWiringOnFirstLaunch,
 } from './mcp-wiring.ts';
 import { installApplicationMenu } from './menu.ts';
+import {
+  isAuthorizedProjectProxyIpcSender,
+  isTrustedNavigatorIpcSender,
+} from './navigator-trust-boundary.ts';
 import { createNavigatorWindow, tryCloseNavigator } from './navigator-window.ts';
 import { runOkInit } from './ok-init.ts';
 import {
@@ -271,6 +285,17 @@ import {
   type ReducedTransparencyDeps,
   type VibrancyMaterial,
 } from './reduced-transparency-handler.ts';
+import { attachRemoteEditorTrustBoundary } from './remote-editor-trust-boundary.ts';
+import { RemoteMachineOpenGuard } from './remote-machine-open-guard.ts';
+import { parseRemoteDispatchRequest, resolveRemoteProjectOpen } from './remote-project-open.ts';
+import {
+  buildSshTerminalArgs,
+  createRemoteProjectService,
+  DEFAULT_SSH_PATH,
+  validateSshMachine,
+} from './remote-project-service.ts';
+import { RemoteReconnectCoordinator } from './remote-reconnect-coordinator.ts';
+import { createRemoteSessionCleanup } from './remote-session-lifecycle.ts';
 import { removeGitFolder } from './remove-git-folder.ts';
 import { attachRendererConsoleCapture } from './renderer-console-capture.ts';
 import { resolveDetachedSpawnArgs } from './resolve-detached-spawn-args.ts';
@@ -287,6 +312,7 @@ import { type RendererMarks, StartupWaterfall } from './startup-waterfall.ts';
 import {
   type AppState,
   addRecentProject,
+  addRecentRemoteProject,
   annotateMissing,
   emptyState,
   evaluateSchemaCompatibility,
@@ -295,8 +321,10 @@ import {
   type PersistedWindowBounds,
   parseAppState,
   removeRecentProject,
+  removeSshMachine,
   type SchemaIncompatibilityDiagnostic,
   saveAppStateToDir,
+  saveSshMachine,
   setLastUsedProjectParent,
   setProjectSessionState,
   setProjectWindowBounds,
@@ -323,7 +351,14 @@ import {
   resolveTerminalWindowProject,
   type TerminalBrowserWindow,
 } from './terminal-window.ts';
-import { getTerminalWindowContext, resolvePtyProjectRoot } from './terminal-window-registry.ts';
+import {
+  closeTerminalWindowsForProject,
+  getTerminalWindowContext,
+  hasLocalProjectAuthority,
+  isPtyWindowAuthorityCurrent,
+  resolvePtyProjectRoot,
+  resolveWindowProjectAuthority,
+} from './terminal-window-registry.ts';
 import { applyThemeApplied } from './theme-applied-handler.ts';
 import { applyThemeSource, isOkThemeSource } from './theme-handler.ts';
 import {
@@ -701,6 +736,10 @@ function setSpellCheckEnabledAppWide(enabled: boolean): void {
  */
 function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
   session.defaultSession.setSpellCheckerEnabled(appState.spellCheckEnabled);
+  // The application menu is global, but local-file actions are not valid for
+  // SSH-backed windows. Rebuild on focus so switching between local and remote
+  // projects cannot leave the previous window's enablement behind.
+  win.on('focus', refreshApplicationMenu);
   const openExternalSafely = handleShellOpenExternal({
     openExternal: (url) => shell.openExternal(url),
   });
@@ -725,6 +764,18 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
 }
 let navigatorWindow: BrowserWindowLike | null = null;
 let wm: WindowManager;
+const remoteProjectService = createRemoteProjectService({
+  remoteCompanionPath: app.isPackaged
+    ? join(process.resourcesPath, 'cli', 'dist', 'remote-companion.mjs')
+    : join(__dirname, '../../../cli/dist/remote-companion.mjs'),
+});
+/** Effective OpenSSH endpoint identity pinned when each remote project opens. */
+const remoteConnectionFingerprints = new Map<
+  string,
+  { readonly fingerprint: string; readonly owner: symbol }
+>();
+const remoteMachineOpenGuard = new RemoteMachineOpenGuard();
+const remoteReconnectCoordinator = new RemoteReconnectCoordinator();
 /**
  * Module-scoped reap surface of the docked-terminal PTY mediator, published by
  * `registerIpcHandlers` (which runs before any window is created). Lifted out
@@ -1302,6 +1353,9 @@ function ensureWindowManager() {
     removeDir: (dir: string) => fsPromises.rm(dir, { recursive: true, force: true }),
     rendererEntryPath,
     rendererDevUrl,
+    openExternal: handleShellOpenExternal({
+      openExternal: (url) => shell.openExternal(url),
+    }),
     appVersion: app.getVersion(),
     // The desktop's own server identity — what its bundled server would write
     // to a lock. Equal to `app.getVersion()` under the fixed-group lockstep,
@@ -1425,6 +1479,9 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
       ? join(process.resourcesPath, 'app', 'index.html')
       : join(__dirname, '../renderer/index.html'),
     rendererDevUrl,
+    openExternal: handleShellOpenExternal({
+      openExternal: (url) => shell.openExternal(url),
+    }),
     appVersion: app.getVersion(),
     showGate,
     pendingPayload,
@@ -1472,6 +1529,38 @@ function logAiIntegrationOutcomes(result: ProjectAiIntegrationsResult): number {
 // the cap is exceeded, so the probe stays cheap on typical vault-sized trees.
 const BOOT_BUDGET_FILE_CAP = 10_000;
 
+let localGitPreflightReady = false;
+let localGitPreflightInFlight: Promise<boolean> | null = null;
+
+/**
+ * Gate only operations that touch a local project. The Navigator and SSH-backed
+ * projects do not need Git on the desktop machine, so running this globally at
+ * startup would prevent a remote-only user from adding their first machine.
+ */
+async function ensureLocalGitReady(): Promise<boolean> {
+  if (localGitPreflightReady) return true;
+  if (localGitPreflightInFlight) return localGitPreflightInFlight;
+
+  const pending = ensureGitAvailable({
+    assertGitAvailable,
+    // Electron's MessageBoxOptions wants a mutable `buttons: string[]`; the
+    // handler's contract uses `readonly string[]`.
+    showMessageBox: async (opts) => dialog.showMessageBox({ ...opts, buttons: [...opts.buttons] }),
+    openExternal: (url) => shell.openExternal(url),
+    log: { warn: (msg, obj) => console.warn(msg, obj) },
+  }).then((outcome) => {
+    if (outcome === 'aborted') return false;
+    localGitPreflightReady = true;
+    return true;
+  });
+  localGitPreflightInFlight = pending;
+  try {
+    return await pending;
+  } finally {
+    if (localGitPreflightInFlight === pending) localGitPreflightInFlight = null;
+  }
+}
+
 async function openProject(
   projectPath: string,
   entryPoint: EntryPoint,
@@ -1490,6 +1579,10 @@ async function openProject(
     },
     'opening project',
   );
+  if (!(await ensureLocalGitReady())) {
+    app.quit();
+    return;
+  }
   ensureWindowManager();
 
   // Admission funnel. Resolve the pick BEFORE any window/utility spawn so we
@@ -1874,6 +1967,177 @@ async function openProject(
   refreshApplicationMenu();
 }
 
+function remoteProjectName(remotePath: string): string {
+  const trimmed = remotePath.replace(/[\\/]+$/, '');
+  const name = trimmed.split(/[\\/]/).pop();
+  return name && name.length > 0 ? name : remotePath;
+}
+
+function findSshMachine(machineId: string): SshMachine {
+  const machine = appState.sshMachines.find((candidate) => candidate.id === machineId);
+  if (!machine) throw new Error('The saved SSH machine no longer exists.');
+  return machine;
+}
+
+/** Resolve SSH metadata for either an editor window or a detached terminal. */
+function remoteProjectForWindow(window: BrowserWindow | null): RemoteProjectInfo | undefined {
+  if (!window) return undefined;
+  const editor = wm
+    ? wm.getContextForBrowserWindow(window as unknown as BrowserWindowLike)
+    : undefined;
+  return editor?.remote ?? getTerminalWindowContext(window.id)?.remote;
+}
+
+function connectionFingerprintForRemote(remote: RemoteProjectInfo): string | undefined {
+  return remoteConnectionFingerprints.get(remoteProjectKey(remote.machineId, remote.path))
+    ?.fingerprint;
+}
+
+/**
+ * Open an SSH-backed project through a desktop-owned loopback tunnel. The
+ * renderer still talks to the normal project HTTP/WebSocket server, so the
+ * file tree, search, editor, assets, and CRDT persistence stay on the remote
+ * machine without teaching those surfaces a second transport.
+ */
+async function openRemoteProject(
+  machineId: string,
+  remotePath: string,
+  initialize: boolean,
+): Promise<void> {
+  return remoteMachineOpenGuard.run(machineId, () =>
+    openRemoteProjectWithStableMachine(machineId, remotePath, initialize),
+  );
+}
+
+async function openRemoteProjectWithStableMachine(
+  machineId: string,
+  remotePath: string,
+  initialize: boolean,
+): Promise<void> {
+  const machine = findSshMachine(machineId);
+  ensureWindowManager();
+
+  // The Navigator inspects and canonicalizes the path before it reaches this
+  // function. Recents therefore focus an existing editor before opening SSH.
+  const requestedKey = remoteProjectKey(machine.id, remotePath);
+  const requestedExisting = wm.focusWindowForProject(requestedKey);
+  if (requestedExisting) {
+    appState = addRecentRemoteProject(
+      appState,
+      requestedKey,
+      remoteProjectName(remotePath),
+      machine,
+      remotePath,
+    );
+    saveAppState(appState);
+    refreshApplicationMenu();
+    tryCloseNavigator(navigatorWindow, { projectPath: requestedKey });
+    return;
+  }
+
+  const session = await remoteProjectService.startProject(machine, remotePath, { initialize });
+  const projectKey = remoteProjectKey(machine.id, session.projectPath);
+  const canonicalExisting = wm.focusWindowForProject(projectKey);
+  if (canonicalExisting) {
+    session.close();
+    appState = addRecentRemoteProject(
+      appState,
+      projectKey,
+      remoteProjectName(session.projectPath),
+      machine,
+      session.projectPath,
+    );
+    saveAppState(appState);
+    refreshApplicationMenu();
+    tryCloseNavigator(navigatorWindow, { projectPath: projectKey });
+    return;
+  }
+
+  const remote: RemoteProjectInfo = {
+    kind: 'ssh',
+    machineId: machine.id,
+    machineName: machine.name,
+    path: session.projectPath,
+    platform: session.platform,
+    pathSeparator: session.pathSeparator,
+  };
+  const projectName = remoteProjectName(session.projectPath);
+  const previousFingerprint = remoteConnectionFingerprints.get(projectKey);
+  const connectionOwner = Symbol(projectKey);
+  remoteConnectionFingerprints.set(projectKey, {
+    fingerprint: session.connectionFingerprint,
+    owner: connectionOwner,
+  });
+  const sessionCleanup = createRemoteSessionCleanup({
+    closeAttachedWindows: () => closeTerminalWindowsForProject(projectKey),
+    closeTransport: session.close,
+    isAuthoritative: () => remoteConnectionFingerprints.get(projectKey)?.owner === connectionOwner,
+    releaseAuthority: () => {
+      if (remoteConnectionFingerprints.get(projectKey)?.owner === connectionOwner) {
+        remoteConnectionFingerprints.delete(projectKey);
+      }
+    },
+  });
+  let ctx: NonNullable<ReturnType<WindowManager['getWindowFor']>>;
+  try {
+    ctx = await wm.createRemoteProjectWindow({
+      projectKey,
+      projectName,
+      remote,
+      port: session.localPort,
+      apiOrigin: session.apiOrigin,
+      collabUrl: session.collabUrl,
+      retireTunnel: session.closeTunnel,
+      closeSession: sessionCleanup.close,
+    });
+  } catch (error) {
+    // WindowManager normally invokes this on every failed create path. Keep an
+    // explicit idempotent close here so a future constructor failure cannot
+    // strand the SSH server before a ProjectContext exists.
+    sessionCleanup.close();
+    if (previousFingerprint === undefined) remoteConnectionFingerprints.delete(projectKey);
+    else remoteConnectionFingerprints.set(projectKey, previousFingerprint);
+    throw error;
+  }
+  const openedNewSession = ctx.apiOrigin === session.apiOrigin;
+  if (!openedNewSession) {
+    if (previousFingerprint === undefined) remoteConnectionFingerprints.delete(projectKey);
+    else remoteConnectionFingerprints.set(projectKey, previousFingerprint);
+  } else {
+    // From this point the window owns the fresh transport. Its teardown may
+    // revoke attached remote terminal windows before releasing the tunnel.
+    sessionCleanup.commit();
+  }
+
+  getLogger('project').info(
+    {
+      projectName,
+      machineId: machine.id,
+      apiOrigin: session.apiOrigin,
+      ownedRemoteServer: session.owned,
+    },
+    'remote project window created',
+  );
+  appState = addRecentRemoteProject(
+    appState,
+    projectKey,
+    projectName,
+    machine,
+    session.projectPath,
+  );
+  saveAppState(appState);
+  refreshApplicationMenu();
+  tryCloseNavigator(navigatorWindow, { projectPath: projectKey });
+}
+
+async function openRecentRemoteProject(projectKey: string): Promise<void> {
+  const recent = appState.recentProjects.find((entry) => entry.path === projectKey);
+  if (!recent?.remote) {
+    throw new Error('The remote project metadata is missing. Remove this recent and add it again.');
+  }
+  await openRemoteProject(recent.remote.machineId, recent.remote.path, false);
+}
+
 async function openProjectOrFallbackToNavigator(
   projectPath: string,
   entryPoint: EntryPoint,
@@ -1883,6 +2147,24 @@ async function openProjectOrFallbackToNavigator(
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload,
   pendingTargetMissing?: boolean,
 ) {
+  if (isRemoteProjectKey(projectPath)) {
+    try {
+      await openRecentRemoteProject(projectPath);
+    } catch (err) {
+      const recent = appState.recentProjects.find((entry) => entry.path === projectPath);
+      const detail = recent?.remote
+        ? `${recent.remote.machineName} • ${recent.remote.path}`
+        : projectPath;
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      getLogger('project').warn(
+        { projectName: recent?.name, error: errorMessage },
+        'remote project open failed',
+      );
+      dialog.showErrorBox('Unable to open remote project', `${detail}\n\n${errorMessage}`);
+      openNavigator();
+    }
+    return;
+  }
   try {
     await openProject(
       projectPath,
@@ -2106,6 +2388,7 @@ function refreshApplicationMenu(): void {
 }
 
 async function runApplicationMenuRefresh(): Promise<void> {
+  const focusedRemote = remoteProjectForWindow(BrowserWindow.getFocusedWindow()) !== undefined;
   // installApplicationMenu is async because it dynamically imports
   // `electron.Menu` (see menu.ts header — keeps `buildMenuTemplate`
   // unit-testable under Bun). Failures are logged; an uninstallable menu
@@ -2232,13 +2515,16 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // Worktree selector (worktree = window). Both delegate to the
     // focused renderer's ProjectSwitcher surface: `new-worktree` opens the
     // create dialog, `switch-worktree` opens the sidebar switcher.
-    onNewWorktree: () => sendMenuActionToFocused('new-worktree'),
-    onSwitchWorktree: () => sendMenuActionToFocused('switch-worktree'),
+    onNewWorktree: focusedRemote ? undefined : () => sendMenuActionToFocused('new-worktree'),
+    onSwitchWorktree: focusedRemote ? undefined : () => sendMenuActionToFocused('switch-worktree'),
     onRename: () => sendMenuActionToFocused('rename'),
     onDuplicate: () => sendMenuActionToFocused('duplicate'),
-    onMoveToTrash: () => sendMenuActionToFocused('move-to-trash'),
+    // Remote deletion is a permanent server operation, never macOS Trash.
+    // Keep the misleading native menu item disabled; the in-app delete flow
+    // presents explicit permanent-delete confirmation copy.
+    onMoveToTrash: focusedRemote ? undefined : () => sendMenuActionToFocused('move-to-trash'),
     onCloseActiveTabOrWindow: () => sendMenuActionToFocused('close-active-tab-or-window'),
-    onRevealInFinder: () => sendMenuActionToFocused('reveal-in-finder'),
+    onRevealInFinder: focusedRemote ? undefined : () => sendMenuActionToFocused('reveal-in-finder'),
     onSendToAi: () => sendMenuActionToFocused('send-to-ai'),
     onCopyFullPath: () => sendMenuActionToFocused('copy-full-path'),
     onCopyRelativePath: () => sendMenuActionToFocused('copy-relative-path'),
@@ -2502,8 +2788,10 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
   }
 
   const projectCandidates = collectDesktopUninstallProjectCandidates({
-    recentProjects: appState.recentProjects,
-    openProjectPaths: wm?.getOpenProjectPaths() ?? [],
+    recentProjects: appState.recentProjects.filter((recent) => recent.remote === undefined),
+    openProjectPaths: (wm?.getOpenProjectPaths() ?? []).filter(
+      (projectPath) => !isRemoteProjectKey(projectPath),
+    ),
     lockDirs,
   });
   let projectPaths: string[] = [];
@@ -2614,6 +2902,24 @@ function openTerminalWindow(): void {
       });
       applyCascadePosition(win);
       attachSpellcheckMenuToWindow(win);
+      if (project?.remote) {
+        attachRemoteEditorTrustBoundary(
+          win.webContents,
+          { rendererEntryPath, rendererDevUrl },
+          {
+            apiOrigin: project.apiOrigin,
+            openExternal: handleShellOpenExternal({
+              openExternal: (url) => shell.openExternal(url),
+            }),
+            log: (event) => {
+              getLogger('security').warn(
+                { event: 'desktop-remote-terminal-navigation-blocked', ...event.data },
+                event.message,
+              );
+            },
+          },
+        );
+      }
       return win as unknown as TerminalBrowserWindow;
     },
     rendererEntryPath,
@@ -2949,6 +3255,77 @@ function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
 }
 
 /**
+ * Resolve a CLI against the remote login-interactive PATH used by SSH-backed
+ * terminal sessions. Remote project MCP configuration is intentionally never
+ * auto-approved here: Desktop cannot safely inspect the remote agent's config,
+ * so Claude/Codex retain their own trust prompts.
+ */
+async function resolveRemoteTerminalCliOnPath(
+  machine: SshMachine,
+  cli: TerminalCli,
+  expectedConnectionFingerprint?: string,
+): Promise<CliReadiness> {
+  try {
+    const available = await remoteProjectService.isCommandAvailable(
+      machine,
+      TERMINAL_CLIS[cli].bin,
+      expectedConnectionFingerprint,
+    );
+    return {
+      onPath: available ? 'present' : 'not-found',
+      ...(cli === 'codex' ? { okServerConfigured: false } : {}),
+    };
+  } catch (err) {
+    getLogger('terminal').warn(
+      { machineId: machine.id, cli, err: formatUnknownError(err) },
+      'remote CLI PATH probe failed',
+    );
+    return {
+      onPath: 'unknown',
+      ...(cli === 'codex' ? { okServerConfigured: false } : {}),
+    };
+  }
+}
+
+async function resolveRemoteTerminalClaudeReadiness(
+  machine: SshMachine,
+  expectedConnectionFingerprint?: string,
+): Promise<ClaudeReadiness> {
+  const cli = await resolveRemoteTerminalCliOnPath(
+    machine,
+    'claude',
+    expectedConnectionFingerprint,
+  );
+  return {
+    claude: cli.onPath,
+    // Desktop cannot inspect or repair Claude's configuration on the SSH
+    // machine. Keep the state honest and avoid offering the local rewire flow.
+    mcp: 'unknown',
+    mcpPreApprovable: false,
+  };
+}
+
+async function resolveRemoteTerminalCliInstalledMap(
+  machine: SshMachine,
+  expectedConnectionFingerprint?: string,
+): Promise<Record<TerminalCli, boolean>> {
+  const entries = await Promise.all(
+    TERMINAL_CLI_IDS.map(
+      async (cli) =>
+        [
+          cli,
+          await remoteProjectService.isCommandAvailable(
+            machine,
+            TERMINAL_CLIS[cli].bin,
+            expectedConnectionFingerprint,
+          ),
+        ] as const,
+    ),
+  );
+  return Object.fromEntries(entries) as Record<TerminalCli, boolean>;
+}
+
+/**
  * Time-to-live for the cached batched CLI installed-map. The New-chat default
  * auto-pick re-queries on each click; installs/uninstalls are rare, so a short
  * TTL spares four login-shell probes per click while staying fresh enough that a
@@ -3133,6 +3510,8 @@ function registerIpcHandlers() {
     const win = BrowserWindow.fromWebContents(event.sender);
     const editorCtx =
       win && wm ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike) : null;
+    const terminalWindow = win ? getTerminalWindowContext(win.id) : undefined;
+    const remote = editorCtx?.remote ?? terminalWindow?.remote;
     // A standalone terminal window is not in `windowsByPath` (one-per-project,
     // focus-existing), so `getContextForBrowserWindow` returns nothing for it.
     // Editor windows keep their existing per-project resolution; a terminal
@@ -3140,12 +3519,12 @@ function registerIpcHandlers() {
     // falling back to homedir() when project-less (never null — create() refuses
     // null). A window in neither map (e.g. the Navigator) resolves to null and
     // is refused below rather than spawning a shell at an arbitrary dir.
-    const projectPath = resolvePtyProjectRoot({
+    const resolvedProjectPath = resolvePtyProjectRoot({
       editorProjectPath: editorCtx?.projectPath ?? null,
-      terminalWindow: win ? getTerminalWindowContext(win.id) : undefined,
+      terminalWindow,
       homedir: osHomedir(),
     });
-    if (!win || !projectPath) {
+    if (!win || !resolvedProjectPath) {
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:pty:create',
@@ -3166,7 +3545,11 @@ function registerIpcHandlers() {
     // race — re-enabling (false→absent) — so a shell-open immediately after
     // re-enable isn't refused on a stale `false`; never trusting the renderer.
     // The not-opted-out path stays instant and only a just-re-enabled open waits.
-    if (!isTerminalConsented(projectPath) && !(await isTerminalConsentedWithGrace(projectPath))) {
+    if (
+      remote === undefined &&
+      !isTerminalConsented(resolvedProjectPath) &&
+      !(await isTerminalConsentedWithGrace(resolvedProjectPath))
+    ) {
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:pty:create',
@@ -3175,13 +3558,89 @@ function registerIpcHandlers() {
       });
       return { ok: false, reason: 'not-consented' };
     }
+    let remoteMachine: SshMachine | null = null;
+    if (remote) {
+      try {
+        remoteMachine = findSshMachine(remote.machineId);
+      } catch (err) {
+        getLogger('terminal').warn(
+          { machineId: remote.machineId, err: formatUnknownError(err) },
+          'remote terminal machine is no longer available',
+        );
+        return { ok: false, reason: 'remote-unavailable' };
+      }
+    }
+    if (remote && remoteMachine) {
+      let allowed: boolean;
+      try {
+        allowed = await remoteProjectService.isTerminalAllowed(
+          remoteMachine,
+          remote.path,
+          connectionFingerprintForRemote(remote),
+        );
+      } catch (err) {
+        getLogger('terminal').warn(
+          { machineId: remote.machineId, err: formatUnknownError(err) },
+          'remote terminal consent check failed; refusing shell',
+        );
+        return { ok: false, reason: 'remote-unavailable' };
+      }
+      if (!allowed) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:pty:create',
+          reason: 'not-consented',
+          handler: 'createPty',
+        });
+        return { ok: false, reason: 'not-consented' };
+      }
+    }
+    // Both consent paths may await. The window can close (or an editor can be
+    // replaced) while the probe is in flight, after its close reaper has
+    // already run. Revalidate the exact captured authority before creating a
+    // PTY so a completed probe cannot resurrect an orphan SSH/local shell.
+    const liveWindow = BrowserWindow.fromWebContents(event.sender);
+    const liveEditorContext =
+      liveWindow && wm
+        ? wm.getContextForBrowserWindow(liveWindow as unknown as BrowserWindowLike)
+        : null;
+    const liveTerminalWindow = liveWindow ? getTerminalWindowContext(liveWindow.id) : undefined;
+    if (
+      !isPtyWindowAuthorityCurrent({
+        sameWindow: liveWindow === win,
+        windowDestroyed: win.isDestroyed(),
+        senderDestroyed: event.sender.isDestroyed(),
+        capturedEditorContext: editorCtx,
+        liveEditorContext,
+        capturedTerminalWindow: terminalWindow,
+        liveTerminalWindow,
+      })
+    ) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:pty:create',
+        reason: 'no-project',
+        handler: 'createPty',
+      });
+      return { ok: false, reason: 'no-project' };
+    }
     return terminalManager.create({
       windowId: win.id,
       webContents: win.webContents,
-      projectRoot: projectPath,
+      // node-pty's cwd is local even when the child executable is ssh. The
+      // remote command performs its own argument-safe `cd` before starting the
+      // login shell.
+      projectRoot: remote ? osHomedir() : resolvedProjectPath,
       cols: clampPtyDimension(opts.cols, DEFAULT_PTY_COLS),
       rows: clampPtyDimension(opts.rows, DEFAULT_PTY_ROWS),
-      launchCommand: opts.launchCommand,
+      ...(remote && remoteMachine
+        ? {
+            executable: {
+              file: DEFAULT_SSH_PATH,
+              args: buildSshTerminalArgs(remoteMachine, remote.path, opts.launchCommand),
+            },
+          }
+        : { launchCommand: opts.launchCommand }),
     });
   });
   handle('ok:pty:input', async (event, req) => {
@@ -3250,54 +3709,109 @@ function registerIpcHandlers() {
     return undefined;
   });
   handle('ok:terminal:claude-assist', async (event, req) => {
+    const callerWin = BrowserWindow.fromWebContents(event.sender);
+    const callerRemote = remoteProjectForWindow(callerWin);
     let rewireError: string | undefined;
-    if (req.action === 'rewire' && process.platform === 'darwin' && app.isPackaged) {
+    if (
+      !callerRemote &&
+      req.action === 'rewire' &&
+      process.platform === 'darwin' &&
+      app.isPackaged
+    ) {
       // Re-arm MCP wiring: the same forceShow consent path as
       // File -> Set up OpenKnowledge integrations, so the user can wire
       // `open-knowledge` into Claude Code. Fires ONLY from the renderer's
       // re-wire button — agents have no ok:terminal:* surface, and the consent
       // dialog itself is human-only.
-      const win = BrowserWindow.fromWebContents(event.sender);
       mcpWiringHandle?.destroy();
       mcpWiringHandle = null;
       try {
         mcpWiringHandle = armMcpWiring({
           forceShow: true,
-          immediateDispatchTarget: win?.webContents,
+          immediateDispatchTarget: callerWin?.webContents,
         });
       } catch (err) {
         rewireError = formatUnknownError(err);
         getLogger('terminal').warn({ err: rewireError }, 'claude mcp rewire failed');
       }
     }
+    if (callerRemote) {
+      let machine: SshMachine;
+      try {
+        machine = findSshMachine(callerRemote.machineId);
+      } catch (err) {
+        getLogger('terminal').warn(
+          { machineId: callerRemote.machineId, err: formatUnknownError(err) },
+          'remote Claude preflight machine is no longer available',
+        );
+        return {
+          claude: 'unknown',
+          mcp: 'unknown',
+          mcpPreApprovable: false,
+        } satisfies ClaudeReadiness;
+      }
+      return resolveRemoteTerminalClaudeReadiness(
+        machine,
+        connectionFingerprintForRemote(callerRemote),
+      );
+    }
     // Scope the project-MCP pre-approval check to the caller window's project
     // (its `.mcp.json` is what `claude` reads in the PTY cwd). A window with no
     // bound project → undefined → not pre-approvable (Claude prompts).
-    const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const projectRoot =
+    const callerContext =
       callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
+        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)
         : undefined;
+    const terminalContext = callerWin ? getTerminalWindowContext(callerWin.id) : undefined;
+    const projectRoot = callerContext?.projectPath ?? terminalContext?.projectRoot ?? undefined;
     const readiness = await resolveTerminalClaudeReadiness(projectRoot);
     // Surface the rewire failure to the renderer so the button doesn't no-op
     // silently; readiness itself is still computed for the rest of the banner.
     return rewireError === undefined ? readiness : { ...readiness, rewireError };
   });
 
-  handle('ok:terminal:cli-preflight', async (_event, req): Promise<CliReadiness> => {
+  handle('ok:terminal:cli-preflight', async (event, req): Promise<CliReadiness> => {
     // `req.cli` crosses the IPC boundary as a compile-time `TerminalCli`, but
     // `createHandler` casts rawArgs without runtime enforcement — validate the
     // untrusted discriminant against the registry before it indexes
     // `TERMINAL_CLIS[...].bin`. An out-of-registry value yields a safe `unknown`
     // verdict (never a silent TypeError, never a `command -v <bad>` probe).
-    if (!(req.cli in TERMINAL_CLIS)) {
+    if (typeof req.cli !== 'string' || !Object.hasOwn(TERMINAL_CLIS, req.cli)) {
       getLogger('terminal').warn({ cli: req.cli }, 'cli-preflight: unknown cli discriminant');
       return { onPath: 'unknown' };
+    }
+    const remote = remoteProjectForWindow(BrowserWindow.fromWebContents(event.sender));
+    if (remote) {
+      let machine: SshMachine;
+      try {
+        machine = findSshMachine(remote.machineId);
+      } catch (err) {
+        getLogger('terminal').warn(
+          { machineId: remote.machineId, cli: req.cli, err: formatUnknownError(err) },
+          'remote CLI preflight machine is no longer available',
+        );
+        return {
+          onPath: 'unknown',
+          ...(req.cli === 'codex' ? { okServerConfigured: false } : {}),
+        };
+      }
+      return resolveRemoteTerminalCliOnPath(
+        machine,
+        req.cli,
+        connectionFingerprintForRemote(remote),
+      );
     }
     return resolveTerminalCliOnPath(req.cli);
   });
 
-  handle('ok:terminal:cli-installed-map', async (): Promise<Record<TerminalCli, boolean>> => {
+  handle('ok:terminal:cli-installed-map', async (event): Promise<Record<TerminalCli, boolean>> => {
+    const remote = remoteProjectForWindow(BrowserWindow.fromWebContents(event.sender));
+    if (remote) {
+      return resolveRemoteTerminalCliInstalledMap(
+        findSshMachine(remote.machineId),
+        connectionFingerprintForRemote(remote),
+      );
+    }
     return resolveTerminalCliInstalledMap();
   });
 
@@ -3329,18 +3843,23 @@ function registerIpcHandlers() {
   });
 
   handle('ok:shell:spawn-cursor', async (event, path) => {
-    // Scope the spawn to the caller window's project directory. A
-    // BrowserWindow without a ProjectContext (e.g. the Navigator, before it
-    // spawns an editor) should never reach this handler, but we treat that
-    // case as "no project scope" — a missing `projectPath` passes through to
-    // `spawnCursorImpl` which gates on the presence of the field. The
-    // validateSpawnPath + isPathWithinProject checks inside the impl refuse
-    // any out-of-scope path when a project IS bound.
+    // Scope the spawn to the caller-owned editor or standalone-terminal
+    // project. Remote paths belong to the SSH machine and must never be handed
+    // to a local Cursor process. A genuinely project-less caller preserves the
+    // existing unscoped behavior; every project-bound local caller is
+    // containment-gated by `spawnCursorImpl`.
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const callerProjectPath =
+    const callerContext =
       callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
+        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)
         : undefined;
+    const callerAuthority = resolveWindowProjectAuthority({
+      editorProjectPath: callerContext?.projectPath,
+      editorRemote: callerContext?.remote,
+      terminalWindow: callerWin ? getTerminalWindowContext(callerWin.id) : undefined,
+    });
+    if (callerAuthority?.remote) return { ok: false, reason: 'invalid-path' } as const;
+    const callerProjectPath = callerAuthority?.projectPath;
     const outcome = await spawnCursorImpl(
       {
         platform: process.platform,
@@ -3401,11 +3920,12 @@ function registerIpcHandlers() {
   // asset scope.
   handle('ok:shell:open-asset', async (event, relPath) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const callerProjectPath =
+    const callerContext =
       callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
+        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)
         : undefined;
-    if (!callerProjectPath) {
+    const callerProjectPath = callerContext?.projectPath;
+    if (!callerProjectPath || callerContext?.remote) {
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:shell:open-asset',
@@ -3435,11 +3955,12 @@ function registerIpcHandlers() {
 
   handle('ok:shell:reveal-asset', async (event, relPath) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const callerProjectPath =
+    const callerContext =
       callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
+        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)
         : undefined;
-    if (!callerProjectPath) {
+    const callerProjectPath = callerContext?.projectPath;
+    if (!callerProjectPath || callerContext?.remote) {
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:shell:reveal-asset',
@@ -3478,10 +3999,9 @@ function registerIpcHandlers() {
   handle('ok:shell:show-asset-menu', async (event, params) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     if (!callerWin || !wm) return undefined;
-    const projectPath = wm.getContextForBrowserWindow(
-      callerWin as unknown as BrowserWindowLike,
-    )?.projectPath;
-    if (!projectPath) return undefined;
+    const callerContext = wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike);
+    const projectPath = callerContext?.projectPath;
+    if (!projectPath || callerContext?.remote) return undefined;
     popAssetMenu(
       {
         Menu,
@@ -3524,10 +4044,11 @@ function registerIpcHandlers() {
     // Resolve caller window's project directory (undefined for Navigator).
     // Validation, refusal, and security rationale live in `showItemInFolderImpl`.
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const callerProjectPath =
+    const callerContext =
       callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
+        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)
         : undefined;
+    const callerProjectPath = callerContext?.remote ? undefined : callerContext?.projectPath;
     const result = showItemInFolderImpl(
       {
         platform: process.platform,
@@ -3550,6 +4071,14 @@ function registerIpcHandlers() {
     // Out-of-project reveal for terminal clickable-links. Uncontained by design;
     // the confirmation dialog is the trust boundary (see reveal-external.ts).
     const callerWin = BrowserWindow.fromWebContents(event.sender);
+    const callerContext =
+      callerWin && wm
+        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)
+        : undefined;
+    const terminalContext = callerWin ? getTerminalWindowContext(callerWin.id) : undefined;
+    if (callerContext?.remote || terminalContext?.remote) {
+      return { ok: false, reason: 'invalid-path' } as const;
+    }
     const result = await handleRevealExternal(absPath, {
       // statSync (not existsSync) so a permission error (EACCES/EPERM on a system
       // path) surfaces as `unreadable` rather than being flattened to `missing`.
@@ -3585,10 +4114,14 @@ function registerIpcHandlers() {
 
   handle('ok:shell:trash-item', async (event, absPath) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const callerProjectPath =
+    const callerContext =
       callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
+        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)
         : undefined;
+    if (callerContext?.remote) {
+      return { ok: false, reason: 'path-escape' } as const;
+    }
+    const callerProjectPath = callerContext?.projectPath;
     // Path normalization happens at span-creation time using the renderer
     // input (pre-realpath). The post-realpath canonical path is what we'd
     // emit to logs/index — but it may include the user home prefix, so we
@@ -3670,6 +4203,97 @@ function registerIpcHandlers() {
     return undefined;
   });
 
+  handle('ok:remote:dispatch', async (event, request) => {
+    const callerWindow = BrowserWindow.fromWebContents(event.sender);
+    if (
+      callerWindow === null ||
+      !isTrustedNavigatorIpcSender(callerWindow, navigatorWindow, event.senderFrame, {
+        rendererEntryPath: app.isPackaged
+          ? join(process.resourcesPath, 'app', 'index.html')
+          : join(__dirname, '../renderer/index.html'),
+        rendererDevUrl,
+      })
+    ) {
+      throw new Error('ok:remote:dispatch rejected: Navigator window required');
+    }
+    const typedRequest = parseRemoteDispatchRequest(request);
+    if (typedRequest === null) {
+      throw new Error('ok:remote:dispatch rejected: invalid request');
+    }
+    const machineFor = (machineId: unknown): SshMachine => {
+      if (typeof machineId !== 'string' || machineId.length === 0) {
+        throw new Error('ok:remote:dispatch rejected: invalid machine id');
+      }
+      return findSshMachine(machineId);
+    };
+
+    switch (typedRequest.kind) {
+      case 'list-machines':
+        return appState.sshMachines;
+      case 'save-machine': {
+        if (typeof typedRequest.machine !== 'object' || typedRequest.machine === null) {
+          throw new Error('ok:remote:dispatch rejected: invalid machine');
+        }
+        const requestedId = typedRequest.machine.id;
+        if (typeof requestedId === 'string') remoteMachineOpenGuard.assertMutable(requestedId);
+        if (
+          requestedId !== undefined &&
+          !appState.sshMachines.some((machine) => machine.id === requestedId)
+        ) {
+          throw new Error('ok:remote:dispatch rejected: unknown machine id');
+        }
+        // Validate the original object plus the main-owned id as one exact
+        // allowlisted shape. Extra renderer fields are rejected by
+        // validateSshMachine instead of being silently dropped.
+        const machine = validateSshMachine({
+          ...typedRequest.machine,
+          id: requestedId ?? randomUUID(),
+        });
+        appState = saveSshMachine(appState, machine);
+        saveAppState(appState);
+        refreshApplicationMenu();
+        return machine;
+      }
+      case 'remove-machine': {
+        const machine = machineFor(typedRequest.machineId);
+        remoteMachineOpenGuard.assertMutable(machine.id);
+        const activePrefix = `ssh:${encodeURIComponent(machine.id)}:`;
+        if ([...remoteConnectionFingerprints.keys()].some((key) => key.startsWith(activePrefix))) {
+          throw new Error("Close this machine's open projects before removing it.");
+        }
+        appState = removeSshMachine(appState, machine.id);
+        saveAppState(appState);
+        refreshApplicationMenu();
+        return undefined;
+      }
+      case 'test-machine':
+        return remoteProjectService.testMachine(machineFor(typedRequest.machineId));
+      case 'list-directories': {
+        if (typeof typedRequest.path !== 'string') {
+          throw new Error('ok:remote:dispatch rejected: invalid remote path');
+        }
+        return remoteProjectService.listDirectories(
+          machineFor(typedRequest.machineId),
+          typedRequest.path,
+        );
+      }
+      case 'open-project': {
+        return remoteMachineOpenGuard.run(typedRequest.machineId, async () => {
+          const machine = machineFor(typedRequest.machineId);
+          const inspection = await remoteProjectService.inspectProject(machine, typedRequest.path);
+          const decision = await resolveRemoteProjectOpen(machine, inspection, {
+            showInitializationDialog: (options) => dialog.showMessageBox(callerWindow, options),
+          });
+          if (decision === null) return false;
+          await openRemoteProjectWithStableMachine(machine.id, decision.path, decision.initialize);
+          return true;
+        });
+      }
+      default:
+        throw new Error('ok:remote:dispatch rejected: unsupported operation');
+    }
+  });
+
   handle('ok:theme:set-source', async (_event, { source }) => {
     return applyThemeSource(
       {
@@ -3729,10 +4353,11 @@ function registerIpcHandlers() {
     const ctx = wm?.getContextForBrowserWindow(win as unknown as BrowserWindowLike);
     if (!ctx) throw new Error('No project context for this window');
     return {
-      collabUrl: `ws://localhost:${ctx.port}/collab`,
+      collabUrl: `ws://${ctx.remote ? '127.0.0.1' : 'localhost'}:${ctx.port}/collab`,
       apiOrigin: ctx.apiOrigin,
       projectPath: ctx.projectPath,
       projectName: ctx.projectName,
+      remote: ctx.remote ?? null,
       mode: 'editor' as const,
       // Mirrors the preload's cold-start config: `true` under the Electron
       // smoke suite so the renderer uses xterm's DOM renderer (see TerminalPanel).
@@ -3760,6 +4385,16 @@ function registerIpcHandlers() {
     if (!win) throw new Error('webContents has no parent BrowserWindow');
     const ctx = wm?.getContextForBrowserWindow(win as unknown as BrowserWindowLike);
     if (!ctx) throw new Error('No project context for this window');
+    if (ctx.remote) {
+      return request.kind === 'status'
+        ? {
+            kind: 'status' as const,
+            mode: 'no-git' as const,
+            excluded: [],
+            trackedUpstream: [],
+          }
+        : { kind: 'no-exclude' as const, reason: 'no-git' as const };
+    }
     if (request.kind === 'status') {
       return handleSharingStatus(ctx.projectPath);
     }
@@ -3779,7 +4414,7 @@ function registerIpcHandlers() {
     // paths are left un-probed.
     return Promise.all(
       annotateMissing(appState).map(async (entry): Promise<RecentProject> => {
-        if (entry.missing) return entry;
+        if (entry.missing || entry.remote !== undefined) return entry;
         const [git, branch] = await Promise.all([
           classifyRecentGitAsync(entry.path),
           // Resolve the branch via git (walks up), not a raw `.git/HEAD` read, so
@@ -3850,6 +4485,10 @@ function registerIpcHandlers() {
       throw new Error(
         `ok:project:open rejected: invalid entryPoint '${String(request.entryPoint)}'`,
       );
+    }
+    if (isRemoteProjectKey(request.path)) {
+      await openProjectOrFallbackToNavigator(request.path, request.entryPoint);
+      return undefined;
     }
     // Renderer-initiated share-receive opens (fresh clone, multi-worktree pivot)
     // reach window-open here instead of through the URL-scheme dispatcher, which
@@ -3928,7 +4567,7 @@ function registerIpcHandlers() {
     const ctx =
       win && wm ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike) : null;
     const projectPath = ctx?.projectPath ?? null;
-    if (!projectPath) {
+    if (!projectPath || ctx?.remote) {
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:worktree:dispatch',
@@ -3964,10 +4603,14 @@ function registerIpcHandlers() {
   });
 
   handle('ok:project:check-target-exists', async (_event, request) => {
+    if (isRemoteProjectKey(request.projectPath)) return 'unreadable' as const;
     return checkTargetExistsImpl(request.projectPath, request.kind, request.path);
   });
 
   handle('ok:project:read-head-branch', async (_event, projectPath) => {
+    if (isRemoteProjectKey(projectPath)) {
+      return { currentBranch: null, headSha: null, detached: false };
+    }
     return readHeadBranchImpl(projectPath);
   });
 
@@ -3975,28 +4618,90 @@ function registerIpcHandlers() {
     readServerLock: (lockDir) => readServerLock(lockDir),
     isProcessAlive,
     fetch: globalThis.fetch,
+    resolveProjectOrigin: (projectPath) => {
+      const ctx = wm?.getWindowFor(projectPath);
+      return ctx?.remote ? ctx.apiOrigin : undefined;
+    },
     log: {
       warn: (message, meta) => console.warn(message, meta ?? {}),
     },
   };
 
-  handle('ok:project:fetch-branch-info', async (_event, request) => {
+  const projectProxyRendererTarget = {
+    rendererEntryPath: app.isPackaged
+      ? join(process.resourcesPath, 'app', 'index.html')
+      : join(__dirname, '../renderer/index.html'),
+    rendererDevUrl,
+  };
+  const authorizeProjectProxyRequest = (
+    event: IpcMainInvokeEvent,
+    requestedProjectPath: unknown,
+    channel: string,
+  ): boolean => {
+    const callerWindow = BrowserWindow.fromWebContents(event.sender);
+    const callerContext =
+      callerWindow && wm
+        ? wm.getContextForBrowserWindow(callerWindow as unknown as BrowserWindowLike)
+        : undefined;
+    const authorized = isAuthorizedProjectProxyIpcSender({
+      callerWindow,
+      navigatorWindow,
+      frame: event.senderFrame,
+      target: projectProxyRendererTarget,
+      callerProjectPath: callerContext?.projectPath,
+      requestedProjectPath,
+    });
+    if (!authorized) {
+      logIpcError({
+        event: 'ipc.error',
+        channel,
+        reason: 'project-mismatch',
+        handler: 'authorizeProjectProxyRequest',
+      });
+    }
+    return authorized;
+  };
+
+  handle('ok:project:fetch-branch-info', async (event, request) => {
+    if (!authorizeProjectProxyRequest(event, request.projectPath, 'ok:project:fetch-branch-info')) {
+      return null;
+    }
     return proxyFetchBranchInfo(request, branchInfoProxyDeps);
   });
 
-  handle('ok:project:run-checkout', async (_event, request) => {
+  handle('ok:project:run-checkout', async (event, request) => {
+    if (!authorizeProjectProxyRequest(event, request.projectPath, 'ok:project:run-checkout')) {
+      return null;
+    }
     return proxyRunCheckout(request, branchInfoProxyDeps);
   });
 
-  handle('ok:project:fetch-target-status', async (_event, request) => {
+  handle('ok:project:fetch-target-status', async (event, request) => {
+    if (
+      !authorizeProjectProxyRequest(event, request.projectPath, 'ok:project:fetch-target-status')
+    ) {
+      return null;
+    }
     return proxyShareTargetStatus(request, branchInfoProxyDeps);
   });
 
-  handle('ok:project:await-branch-switched', async (_event, request) => {
+  handle('ok:project:await-branch-switched', async (event, request) => {
+    if (
+      !authorizeProjectProxyRequest(event, request.projectPath, 'ok:project:await-branch-switched')
+    ) {
+      return { ok: false as const, reason: 'project-not-open' as const };
+    }
     return proxyAwaitBranchSwitched(request, branchInfoProxyDeps);
   });
 
   handle('ok:project:ok-init', async (_event, request) => {
+    if (isRemoteProjectKey(request.projectPath)) {
+      return {
+        ok: false as const,
+        reason: 'init-failed' as const,
+        message: 'Remote worktree initialization is not available from this window.',
+      };
+    }
     return runOkInit(request.projectPath);
   });
 
@@ -4010,24 +4715,240 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  handle('ok:project:restart-server', async (_event, projectPath) => {
-    // Renderer-initiated from the version-drift notification. Terminates the
-    // attached (not-owned) server and recreates the window against a fresh
-    // own-version spawn. The returned outcome only reaches the renderer on
-    // failure (a surviving window) — success recreates the originating window.
-    // The try/catch makes the contract uniform: every path resolves with an
-    // outcome rather than rejecting on a destroyed renderer.
-    if (!wm) {
+  handle('ok:project:restart-server', async (event, projectPath) => {
+    // Renderer-initiated after a stopped server or version-drift notification.
+    // Local projects spawn a replacement utility process; SSH projects first
+    // establish a fresh remote session and transactionally replace the window.
+    // The returned outcome only reaches the renderer on failure (a surviving
+    // window) — success closes and recreates the originating window.
+    const windowManager = wm;
+    const callerWindow = BrowserWindow.fromWebContents(event.sender);
+    const callerContext =
+      windowManager && callerWindow
+        ? windowManager.getContextForBrowserWindow(callerWindow as unknown as BrowserWindowLike)
+        : undefined;
+    const callerTerminalContext = callerWindow
+      ? getTerminalWindowContext(callerWindow.id)
+      : undefined;
+    const callerAuthority = resolveWindowProjectAuthority({
+      editorProjectPath: callerContext?.projectPath,
+      editorRemote: callerContext?.remote,
+      terminalWindow: callerTerminalContext,
+    });
+
+    if (callerContext?.remote) {
+      // Never trust the renderer to select a different project or machine for
+      // this lifecycle operation. The BrowserWindow-owned context is the
+      // authoritative identity.
+      if (projectPath !== callerContext.projectPath) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:project:restart-server',
+          reason: 'project-mismatch',
+          handler: 'restartServer',
+        });
+        return { ok: false, reason: 'other' };
+      }
+
+      const priorRemote = callerContext.remote;
+      return remoteReconnectCoordinator.run(callerContext.projectPath, () =>
+        remoteMachineOpenGuard.run(priorRemote.machineId, async () => {
+          let reconnectOwner: symbol | undefined;
+          let reconnectFingerprint: string | undefined;
+          let releaseReconnectAuthority: (() => void) | undefined;
+          let priorTransportRevoked = false;
+          try {
+            const machine = findSshMachine(priorRemote.machineId);
+            const priorConnection = remoteConnectionFingerprints.get(callerContext.projectPath);
+            if (priorConnection === undefined) {
+              throw new Error('The remote project connection identity is missing.');
+            }
+            if (
+              callerContext.window.isDestroyed?.() === true ||
+              windowManager.getContextForBrowserWindow(callerContext.window) !== callerContext
+            ) {
+              throw new Error('The remote project window closed while reconnecting.');
+            }
+            // A remote companion exclusively owns its server. Revoke the old
+            // transport before starting the replacement; the editor window
+            // stays visible so a failed restart can report and retry cleanly.
+            const closePriorSession = callerContext.closeRemoteSession;
+            callerContext.closeRemoteSession = undefined;
+            callerContext.retireRemoteTunnel = undefined;
+            closePriorSession?.();
+            priorTransportRevoked = true;
+            reconnectOwner = Symbol(callerContext.projectPath);
+            reconnectFingerprint = priorConnection.fingerprint;
+            const owner = reconnectOwner;
+            releaseReconnectAuthority = () => {
+              if (remoteConnectionFingerprints.get(callerContext.projectPath)?.owner === owner) {
+                remoteConnectionFingerprints.delete(callerContext.projectPath);
+              }
+            };
+            remoteConnectionFingerprints.set(callerContext.projectPath, {
+              fingerprint: priorConnection.fingerprint,
+              owner,
+            });
+            // Until a fresh session exists, the surviving editor window owns
+            // the temporary reconnect authority. Closing it while SSH waits
+            // must not leave a retry fingerprint pinned without a window.
+            callerContext.closeRemoteSession = releaseReconnectAuthority;
+            const session = await remoteProjectService.startProject(machine, priorRemote.path, {
+              initialize: false,
+              expectedConnectionFingerprint: priorConnection.fingerprint,
+              waitForOwnerExit: true,
+            });
+            if (
+              callerContext.window.isDestroyed?.() === true ||
+              windowManager.getContextForBrowserWindow(callerContext.window) !== callerContext
+            ) {
+              session.close();
+              throw new Error('The remote project window closed while reconnecting.');
+            }
+            const projectKey = remoteProjectKey(machine.id, session.projectPath);
+            if (projectKey !== callerContext.projectPath) {
+              // A canonical-path identity change cannot be committed as an in-place
+              // restart without corrupting the one-window-per-project map.
+              session.close();
+              throw new Error('The remote project canonical path changed while reconnecting.');
+            }
+
+            const remote: RemoteProjectInfo = {
+              kind: 'ssh',
+              machineId: machine.id,
+              machineName: machine.name,
+              path: session.projectPath,
+              platform: session.platform,
+              pathSeparator: session.pathSeparator,
+            };
+            const projectName = remoteProjectName(session.projectPath);
+            const connectionOwner = Symbol(projectKey);
+            const sessionCleanup = createRemoteSessionCleanup({
+              closeAttachedWindows: () => closeTerminalWindowsForProject(projectKey),
+              closeTransport: session.close,
+              isAuthoritative: () =>
+                remoteConnectionFingerprints.get(projectKey)?.owner === connectionOwner,
+              releaseAuthority: () => {
+                if (remoteConnectionFingerprints.get(projectKey)?.owner === connectionOwner) {
+                  remoteConnectionFingerprints.delete(projectKey);
+                }
+              },
+            });
+            const closeReplacementSession = () => {
+              try {
+                sessionCleanup.close();
+              } finally {
+                releaseReconnectAuthority?.();
+              }
+            };
+            // From here the replacement session owns temporary cleanup. The
+            // originating context must be unowned before WindowManager starts
+            // its exclusive replacement transaction.
+            callerContext.closeRemoteSession = undefined;
+            try {
+              const replacementContext = await windowManager.replaceRemoteProjectWindow(
+                {
+                  projectKey,
+                  projectName,
+                  remote,
+                  port: session.localPort,
+                  apiOrigin: session.apiOrigin,
+                  collabUrl: session.collabUrl,
+                  retireTunnel: session.closeTunnel,
+                  closeSession: closeReplacementSession,
+                },
+                callerContext.window,
+              );
+              if (replacementContext.apiOrigin !== session.apiOrigin) {
+                throw new Error('A different remote session won the reconnect transaction.');
+              }
+              if (
+                replacementContext.window.isDestroyed?.() === true ||
+                windowManager.getContextForBrowserWindow(replacementContext.window) !==
+                  replacementContext
+              ) {
+                throw new Error('The replacement remote project window closed before handoff.');
+              }
+              // Existing standalone terminals were launched with the originating
+              // tunnel URLs. Revoke and close them at the transaction boundary;
+              // keeping them until final editor teardown would leave dead attach
+              // contexts after a reconnect chose a new local port.
+              closeTerminalWindowsForProject(projectKey);
+              // Switch authority only after WindowManager commits. During
+              // load, the temporary reconnect owner pins the same endpoint.
+              remoteConnectionFingerprints.set(projectKey, {
+                fingerprint: session.connectionFingerprint,
+                owner: connectionOwner,
+              });
+              sessionCleanup.commit();
+            } catch (error) {
+              closeReplacementSession();
+              closeTerminalWindowsForProject(projectKey);
+              throw error;
+            }
+
+            appState = addRecentRemoteProject(
+              appState,
+              projectKey,
+              projectName,
+              machine,
+              session.projectPath,
+            );
+            saveAppState(appState);
+            refreshApplicationMenu();
+            return { ok: true };
+          } catch (err) {
+            if (priorTransportRevoked) {
+              const originStillOpen =
+                callerContext.window.isDestroyed?.() !== true &&
+                windowManager.getContextForBrowserWindow(callerContext.window) === callerContext;
+              if (
+                originStillOpen &&
+                reconnectOwner !== undefined &&
+                reconnectFingerprint !== undefined &&
+                releaseReconnectAuthority
+              ) {
+                remoteConnectionFingerprints.set(callerContext.projectPath, {
+                  fingerprint: reconnectFingerprint,
+                  owner: reconnectOwner,
+                });
+                callerContext.closeRemoteSession = releaseReconnectAuthority;
+                callerContext.retireRemoteTunnel = undefined;
+              } else {
+                releaseReconnectAuthority?.();
+              }
+            }
+            logIpcError({
+              event: 'ipc.error',
+              channel: 'ok:project:restart-server',
+              reason: 'remote-reconnect-failed',
+              handler: 'restartServer',
+              cause: err,
+            });
+            return { ok: false, reason: 'other' };
+          }
+        }),
+      );
+    }
+
+    // A remote-shaped key without a matching sender-owned remote context is a
+    // rejected trust-boundary crossing, not a local filesystem request.
+    if (
+      !windowManager ||
+      !hasLocalProjectAuthority(callerAuthority, projectPath) ||
+      isRemoteProjectKey(projectPath) ||
+      windowManager.getWindowFor(projectPath)?.remote
+    ) {
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:project:restart-server',
-        reason: 'no-window-manager',
+        reason: 'project-mismatch',
         handler: 'restartServer',
       });
       return { ok: false, reason: 'other' };
     }
     try {
-      const outcome = await wm.restartAttachedServer(projectPath, {
+      const outcome = await windowManager.restartAttachedServer(projectPath, {
         localOpCliArgs: resolveLocalOpCliArgs(),
       });
       if (outcome.ok === false) {
@@ -4256,9 +5177,11 @@ function registerIpcHandlers() {
   // See packages/desktop/src/main/ipc/seed.ts.
   const resolveSeedProjectRoot = (event: Electron.IpcMainInvokeEvent): string | undefined => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    return callerWin && wm
-      ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
-      : undefined;
+    const ctx =
+      callerWin && wm
+        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)
+        : undefined;
+    return ctx?.remote ? undefined : ctx?.projectPath;
   };
   handle('ok:seed:plan', async (event, options) => {
     const result = await handleSeedPlan(
@@ -4624,9 +5547,8 @@ function registerProjectIntegrationsSettingsIpc(): void {
     resolveProjectDir: (event) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       if (!win) return null;
-      return (
-        wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike)?.projectPath ?? null
-      );
+      const ctx = wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike);
+      return ctx?.remote ? null : (ctx?.projectPath ?? null);
     },
     tildify: tildifyHomePath,
     logger: {
@@ -5127,7 +6049,7 @@ function bootPrimaryInstance(): void {
         pendingRestore: appState.pendingWindowRestore,
         lastOpenedProject: appState.lastOpenedProject,
         optionHeld: process.argv.includes('--navigator'),
-        pathExists: existsSync,
+        pathExists: (projectPath) => isRemoteProjectKey(projectPath) || existsSync(projectPath),
         // A launch-claiming URL that opens its own window — a single-file open
         // (`ok <file>`) OR a valid share — suppresses the default boot-restore
         // window so the URL flush owns the launch. Read AFTER the settle barrier
@@ -5156,38 +6078,17 @@ function bootPrimaryInstance(): void {
         }
       }
 
-      // Git preflight — runs for every launch EXCEPT a single-file deep-link,
-      // whose ephemeral server boots git-off. Projects use git for the shadow
-      // repo, so a missing/old binary surfaces here as a recoverable native
-      // dialog (Open Install Page / Retry / Quit) instead of a spawn-ENOENT deep
-      // in a later CRDT trace, BEFORE the project window + detached server child
-      // are created. The Navigator preflights too — it opens no git-backed server
-      // itself, but it's the gateway to project opens, so the gate stays where it
-      // was pre-fix. Only the no-project ephemeral single-file shape skips it:
-      // that server boots git-off, so requiring git would block `ok <file>` for a
-      // user without it. A share launch ALSO yields `action: 'none'` (it
-      // suppresses the default window) but opens/clones a git-backed project, so
-      // it still preflights — gate on `singleFileLaunch()`, not the bare `'none'`.
-      // A project later opened from a single-file session falls back to the
-      // server child's own bootServer() preflight as the backstop.
-      const skipGitPreflight = decision.action === 'none' && protocolControl.singleFileLaunch();
-      if (!skipGitPreflight) {
-        const gitOutcome = await ensureGitAvailable({
-          assertGitAvailable,
-          // Electron's MessageBoxOptions wants a mutable `buttons: string[]`; the
-          // handler's contract uses `readonly string[]`. Spread to a fresh
-          // mutable copy at the boundary.
-          showMessageBox: async (opts) =>
-            dialog.showMessageBox({ ...opts, buttons: [...opts.buttons] }),
-          openExternal: (url) => shell.openExternal(url),
-          log: { warn: (msg, obj) => console.warn(msg, obj) },
-        });
-        if (gitOutcome === 'aborted') {
-          // User clicked Quit (or an unrecoverable non-typed error fired). Open
-          // no window; bootstrap ran but no project window/server was spawned.
-          app.quit();
-          return;
-        }
+      // Local project opens run the recoverable Git preflight inside
+      // `openProject`, while remote opens and the Navigator require no local
+      // Git at all. A cold-start share is the one startup flow that performs a
+      // Git clone before `openProject` gets control, so retain the early gate
+      // for that shape. Single-file URL launches remain Git-free.
+      if (
+        bootLaunchNeedsEarlyGit(decision, protocolControl.singleFileLaunch()) &&
+        !(await ensureLocalGitReady())
+      ) {
+        app.quit();
+        return;
       }
 
       if (decision.action === 'restore') {

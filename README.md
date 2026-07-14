@@ -36,6 +36,7 @@
 Highlights:
 - Full true **WYSIWYG** so that editing markdown files feels like editing a Google Doc or Notion page. 
 - **macOS app** and **web UI** with file navigator, search, tabs, graph wiki link viewer, and more. 
+- **Remote projects over SSH** in the macOS app, with no separate web-editor tunnel to manage.
 - Integrated **side-by-side AI-editing** with **Claude, Codex, OpenCode, Pi and others**. Can be used with any harness/agent via MCP/CLI.
 - Out-of-the-box **MCP**, **skills**, and **agentic search** for LLM Wikis, second brains, and knowledge graphs.
 - No-code **Team sharing** and **Auto-sync** powered by git/GitHub under the hood.
@@ -67,6 +68,14 @@ To get more complex, you can use the starter packs to create LLM Wikis, second b
 Either way, the app will walk you through installing the MCP and skills for agent harnesses detected on your computer. These are designed to help agents with enriched search + authoring of documents.
 
 Git/GitHub based sync and sharing can optionally be enabled. 
+
+### Remote projects over SSH
+
+The macOS app can open a project directly from a remote macOS or Linux machine with a POSIX-compatible login shell. The remote machine needs Node.js 24 or newer and Git 2.31.0 or newer. You do not need to install the `ok` CLI on the SSH machine: Desktop installs its matching, versioned remote support under the SSH user's `~/.ok/remote` directory without `sudo` or PATH changes. OpenKnowledge inspects the selected folder before changing it; if it is not initialized, the app shows the exact folder and project files and asks you to confirm before creating `.ok/config.yml`, `.ok/.gitignore`, and `.okignore`.
+
+Make sure the machine is reachable non-interactively through your system SSH config or SSH agent. In the app's project Navigator, choose **Open over SSH**, add the SSH host or config alias, and select the remote folder.
+
+OpenKnowledge starts its bundled support process on the remote loopback interface and reaches it through a local SSH tunnel. The project server is not exposed on the remote machine's network, and the app does not store passwords or private keys.
 
 Docs for general usage: <https://openknowledge.ai/docs>.
 

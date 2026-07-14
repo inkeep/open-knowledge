@@ -15,7 +15,15 @@
  */
 
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Folder, FolderOpenIcon, GitBranch, Loader2Icon, PlusIcon, XIcon } from 'lucide-react';
+import {
+  Folder,
+  FolderOpenIcon,
+  GitBranch,
+  Loader2Icon,
+  PlusIcon,
+  ServerIcon,
+  XIcon,
+} from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
@@ -47,6 +55,7 @@ import { OkIcon } from './icons/ok';
 import { McpConsentDialog } from './McpConsentDialog';
 import { PackCardGrid } from './PackCardGrid';
 import { basenameOf } from './project-switcher-recents';
+import { RemoteProjectDialog } from './RemoteProjectDialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 
@@ -94,6 +103,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const [openingLabel, setOpeningLabel] = useState<string | null>(null);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [remoteDialogOpen, setRemoteDialogOpen] = useState(false);
   // Starter pack chosen on the packs-forward first-run grid, plus the pack
   // list. Threaded into CreateProjectDialog so it can name the pack as
   // read-only context in its description and seed the fresh project with it;
@@ -157,7 +167,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         // Best-effort batched HEAD-branch read for every non-missing entry.
         // `readHeadBranch` is a pure-fs read (no git subprocess) and never
         // throws; the IPC layer can still reject if the bridge is unavailable.
-        const eligible = result.filter((r) => !r.missing);
+        const eligible = result.filter((r) => !r.missing && r.remote === undefined);
         const entries = await Promise.all(
           eligible.map(async (r): Promise<[string, string | null]> => {
             try {
@@ -244,6 +254,8 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
 
   const onCreate = () => setCreateDialogOpen(true);
 
+  const onOpenRemote = () => setRemoteDialogOpen(true);
+
   // First-run pack pick → open the create dialog with the pack pre-selected
   // and the full pack list so the dialog's Select can switch in-place.
   const onPackSelect = (packId: OkPackId, packs: OkSeedPackInfo[]) => {
@@ -263,8 +275,8 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
     }
   };
 
-  const onOpenRecent = (path: string) =>
-    openWithIndicator(path, 'recents', displayNameForPath(path));
+  const onOpenRecent = (project: RecentProject) =>
+    openWithIndicator(project.path, 'recents', project.name);
 
   const onRemoveRecent = (path: string) =>
     runWithErrorState(async () => {
@@ -348,9 +360,10 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
               onOpenFolder={onOpenFolder}
               onClone={onClone}
               onCreate={onCreate}
+              onOpenRemote={onOpenRemote}
             />
           ) : (
-            <section className="grid shrink-0 sm:grid-cols-3 gap-3">
+            <section className="grid shrink-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <NavigatorCard
                 title={t`Create new project`}
                 description={t`Start a new OpenKnowledge project.`}
@@ -371,6 +384,13 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
                 onClick={onClone}
                 dataTestId="nav-clone"
                 Icon={GithubIcon}
+              />
+              <NavigatorCard
+                title={t`Open over SSH`}
+                description={t`Work with a project on another machine.`}
+                onClick={onOpenRemote}
+                dataTestId="nav-open-remote"
+                Icon={ServerIcon}
               />
             </section>
           )}
@@ -413,7 +433,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
                     key={r.path}
                     project={r}
                     branch={recentBranches.get(r.path) ?? null}
-                    onOpen={() => onOpenRecent(r.path)}
+                    onOpen={() => onOpenRecent(r)}
                     onRemove={() => onRemoveRecent(r.path)}
                   />
                 ))}
@@ -440,6 +460,12 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         bridge={bridge}
         initialPackId={createPackId}
         packs={createPacks}
+      />
+
+      <RemoteProjectDialog
+        open={remoteDialogOpen}
+        onOpenChange={setRemoteDialogOpen}
+        bridge={bridge}
       />
 
       <AuthModal
@@ -573,11 +599,13 @@ function FirstRunPacksView({
   onOpenFolder,
   onClone,
   onCreate,
+  onOpenRemote,
 }: {
   onPackSelect: (packId: OkPackId, packs: OkSeedPackInfo[]) => void;
   onOpenFolder: () => void;
   onClone: () => void;
   onCreate: () => void;
+  onOpenRemote: () => void;
 }) {
   const [packs, setPacks] = useState<OkSeedPackInfo[] | null>(null);
 
@@ -670,6 +698,16 @@ function FirstRunPacksView({
             <PlusIcon aria-hidden="true" className="size-3.5" />
             <Trans>Blank project</Trans>
           </Button>
+          <Button
+            type="button"
+            variant="link-muted"
+            size="sm"
+            onClick={onOpenRemote}
+            data-testid="nav-first-run-remote"
+          >
+            <ServerIcon aria-hidden="true" className="size-3.5" />
+            <Trans>Open over SSH</Trans>
+          </Button>
         </div>
       </div>
     </section>
@@ -707,7 +745,11 @@ function RecentRow({
         <div className="flex min-w-0 items-center gap-3">
           {/* Uniform folder icon for every row — worktree vs project is conveyed
             by the worktree pill + the branch chip, not by the icon. */}
-          <Folder aria-hidden="true" className="size-[18px] shrink-0 text-muted-foreground" />
+          {project.remote ? (
+            <ServerIcon aria-hidden="true" className="size-[18px] shrink-0 text-muted-foreground" />
+          ) : (
+            <Folder aria-hidden="true" className="size-[18px] shrink-0 text-muted-foreground" />
+          )}
           <div className="flex min-w-0 flex-col gap-1 truncate">
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate font-medium text-sm text-gray-700 dark:text-foreground">
@@ -721,13 +763,29 @@ function RecentRow({
                   <GitBranch aria-hidden="true" className="size-2.5" />
                   <Trans>worktree</Trans>
                 </Badge>
+              ) : project.remote ? (
+                <Badge variant="secondary" className="shrink-0 rounded-full text-2xs">
+                  <Trans>SSH</Trans>
+                </Badge>
               ) : null}
             </div>
             <span
               className="truncate w-full text-muted-foreground text-xs"
-              title={isWorktree ? (project.mainRoot ?? '') : project.path}
+              title={
+                isWorktree
+                  ? (project.mainRoot ?? '')
+                  : project.remote
+                    ? `${project.remote.machineName} • ${project.remote.path}`
+                    : project.path
+              }
             >
-              {isWorktree ? <Trans>of {basenameOf(project.mainRoot ?? '')}</Trans> : project.path}
+              {isWorktree ? (
+                <Trans>of {basenameOf(project.mainRoot ?? '')}</Trans>
+              ) : project.remote ? (
+                `${project.remote.machineName} • ${project.remote.path}`
+              ) : (
+                project.path
+              )}
             </span>
           </div>
         </div>

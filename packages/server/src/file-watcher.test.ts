@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,6 +16,7 @@ import {
   reconcileFileIndexAfterFilterRebuild,
   registerWrite,
   startWatcher,
+  startWatcherBackend,
   updateLastKnownHash,
   writeTracker,
 } from './file-watcher';
@@ -363,6 +364,32 @@ describe('classifyEvents', () => {
 });
 
 // ─── startWatcher file index ────────────────────────────────────────────────
+
+describe('watcher backend selection', () => {
+  const subscription = { unsubscribe: async () => {} };
+
+  test('forced Chokidar bypasses Parcel entirely', async () => {
+    const startParcel = mock(async () => subscription);
+    const startChokidar = mock(async () => subscription);
+
+    const selected = await startWatcherBackend('chokidar', startParcel, startChokidar);
+
+    expect(selected.backend).toBe('chokidar');
+    expect(startParcel).not.toHaveBeenCalled();
+    expect(startChokidar).toHaveBeenCalledTimes(1);
+  });
+
+  test('forced Parcel fails instead of falling back to Chokidar', async () => {
+    const startParcel = mock(async () => null);
+    const startChokidar = mock(async () => subscription);
+
+    await expect(startWatcherBackend('parcel', startParcel, startChokidar)).rejects.toThrow(
+      '@parcel/watcher unavailable for file watching (forced backend)',
+    );
+    expect(startParcel).toHaveBeenCalledTimes(1);
+    expect(startChokidar).not.toHaveBeenCalled();
+  });
+});
 
 describe('startWatcher file index', () => {
   let tmpDir: string;

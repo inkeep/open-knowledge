@@ -22,6 +22,7 @@ export function TerminalSection() {
   const { enabled, synced } = useTerminalConsentState();
   const writer = useTerminalEnabledWriter();
   const isOn = enabled !== false;
+  const remote = typeof window !== 'undefined' ? (window.okDesktop?.config?.remote ?? null) : null;
 
   const { userConfig, userBinding, userSynced } = useConfigContext();
   // Default on: only an explicit `false` reads as off (mirrors the launch-site
@@ -36,7 +37,10 @@ export function TerminalSection() {
   const [codexNeedsInit, setCodexNeedsInit] = useState(false);
   useEffect(() => {
     const bridge = window.okDesktop;
-    if (!bridge) return;
+    // Remote agent launches intentionally do not inherit the local desktop's
+    // MCP auto-approval state. Do not probe or imply that this toggle can make
+    // a remote Codex launch pre-approved.
+    if (!bridge || bridge.config?.remote) return;
     let cancelled = false;
     bridge.terminal
       .cliPreflight('codex')
@@ -88,7 +92,9 @@ export function TerminalSection() {
           {t`Terminal`}
         </h3>
         <p className="text-sm text-muted-foreground">
-          {t`Run a real terminal docked inside OpenKnowledge, starting in this project's folder.`}
+          {remote
+            ? t`Run a real terminal docked inside OpenKnowledge on ${remote.machineName}, starting in ${remote.path}.`
+            : t`Run a real terminal docked inside OpenKnowledge, starting in this project's folder.`}
         </p>
       </div>
 
@@ -98,9 +104,13 @@ export function TerminalSection() {
             {t`Enable terminal for this project`}
           </label>
           <p className="text-1sm text-muted-foreground" data-testid="settings-terminal-body">
-            {isOn
-              ? t`Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell.`
-              : t`A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account.`}
+            {remote
+              ? isOn
+                ? t`Commands run with the full access of your SSH account on ${remote.machineName}. Turn this off to disable the remote shell.`
+                : t`A remote shell is off for this project. Turning it on runs commands with the full access of your SSH account on ${remote.machineName}.`
+              : isOn
+                ? t`Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell.`
+                : t`A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account.`}
           </p>
         </div>
         <Switch
@@ -113,35 +123,37 @@ export function TerminalSection() {
         />
       </div>
 
-      <div className="flex items-center justify-between gap-3 rounded-md border p-3">
-        <div className="space-y-0.5">
-          <label htmlFor="settings-terminal-autoapprove-toggle" className="text-sm font-medium">
-            {t`Let agents use OpenKnowledge without asking`}
-          </label>
-          <p
-            className="text-1sm text-muted-foreground"
-            data-testid="settings-terminal-autoapprove-body"
-          >
-            {t`Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs "ok open"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent.`}
-          </p>
-          {autoApproveOn && codexNeedsInit ? (
+      {remote === null ? (
+        <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+          <div className="space-y-0.5">
+            <label htmlFor="settings-terminal-autoapprove-toggle" className="text-sm font-medium">
+              {t`Let agents use OpenKnowledge without asking`}
+            </label>
             <p
               className="text-1sm text-muted-foreground"
-              data-testid="settings-terminal-autoapprove-codex-note"
+              data-testid="settings-terminal-autoapprove-body"
             >
-              {t`Codex will still ask until you run "ok init" in a terminal for this project.`}
+              {t`Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs "ok open"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent.`}
             </p>
-          ) : null}
+            {autoApproveOn && codexNeedsInit ? (
+              <p
+                className="text-1sm text-muted-foreground"
+                data-testid="settings-terminal-autoapprove-codex-note"
+              >
+                {t`Codex will still ask until you run "ok init" in a terminal for this project.`}
+              </p>
+            ) : null}
+          </div>
+          <Switch
+            id="settings-terminal-autoapprove-toggle"
+            checked={autoApproveOn}
+            onCheckedChange={applyAutoApprove}
+            disabled={!userSynced || userBinding === null}
+            aria-label={t`Let agents use OpenKnowledge without asking`}
+            data-testid="settings-terminal-autoapprove-toggle"
+          />
         </div>
-        <Switch
-          id="settings-terminal-autoapprove-toggle"
-          checked={autoApproveOn}
-          onCheckedChange={applyAutoApprove}
-          disabled={!userSynced || userBinding === null}
-          aria-label={t`Let agents use OpenKnowledge without asking`}
-          data-testid="settings-terminal-autoapprove-toggle"
-        />
-      </div>
+      ) : null}
     </section>
   );
 }

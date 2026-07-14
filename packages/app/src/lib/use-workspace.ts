@@ -64,6 +64,13 @@ export function resolveSyncWorkspace(
   if (!windowLike) return null;
   const okDesktop = windowLike.okDesktop;
   if (!okDesktop) return null;
+  const remote = okDesktop.config.remote;
+  if (remote) {
+    return {
+      contentDir: remote.path,
+      pathSeparator: remote.pathSeparator,
+    };
+  }
   return {
     contentDir: okDesktop.config.projectPath,
     pathSeparator: okDesktop.platform === 'win32' ? '\\' : '/',

@@ -24,7 +24,12 @@ import type {
   LocalOpOkInitResponse,
   OkFolderState,
   RecentProjectEntry,
+  RemoteDirectoryListing,
+  RemoteProjectInfo,
   ShareTargetStatusResponse,
+  SshConnectionTestResult,
+  SshMachine,
+  SshMachineDraft,
   TerminalCli,
   WorktreeCreateRequest,
   WorktreeCreateResult,
@@ -32,6 +37,7 @@ import type {
 } from '@inkeep/open-knowledge-core';
 
 export type { OkFolderState, RecentProjectEntry };
+export type OkSshMachine = SshMachine;
 
 /** Seed scaffolder shapes — structurally duplicated from
  * `@inkeep/open-knowledge-server`'s seed module. See core's desktop-bridge.ts
@@ -142,6 +148,8 @@ export interface OkDesktopConfig {
   readonly apiOrigin: string;
   readonly projectPath: string;
   readonly projectName: string;
+  /** SSH metadata for a remote window; null for local/navigator windows. */
+  readonly remote: RemoteProjectInfo | null;
   readonly mode: OkDesktopMode;
   /**
    * `true` only under the Electron smoke suite. The renderer reads it to use
@@ -765,7 +773,10 @@ export type OkServerRestartOutcome =
 /** Result of `terminal.create`. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
 export type OkPtyCreateResult =
   | { readonly ok: true; readonly ptyId: string }
-  | { readonly ok: false; readonly reason: 'no-project' | 'not-consented' };
+  | {
+      readonly ok: false;
+      readonly reason: 'no-project' | 'not-consented' | 'remote-unavailable';
+    };
 
 /** Entry of `terminal.list`. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
 export interface OkPtyListEntry {
@@ -802,7 +813,7 @@ export interface OkPtyExit {
  */
 export interface ClaudeReadiness {
   readonly claude: 'present' | 'not-found' | 'unknown';
-  readonly mcp: 'wired' | 'needs-rewire';
+  readonly mcp: 'wired' | 'needs-rewire' | 'unknown';
   /** True when the project's own `open-knowledge` `.mcp.json` entry is verified
    *  to be OK's canonical managed server (cli `isOwnManagedEntry`), so the docked
    *  terminal may pre-approve it on Claude launch instead of re-showing Claude's
@@ -988,6 +999,15 @@ export interface OkDesktopBridge {
   };
   clipboard: {
     writeText(text: string): Promise<void>;
+  };
+  /** Saved-machine management and SSH-backed project opening. */
+  remote: {
+    listMachines(): Promise<SshMachine[]>;
+    saveMachine(machine: SshMachineDraft): Promise<SshMachine>;
+    removeMachine(machineId: string): Promise<void>;
+    testMachine(machineId: string): Promise<SshConnectionTestResult>;
+    listDirectories(request: { machineId: string; path: string }): Promise<RemoteDirectoryListing>;
+    openProject(request: { machineId: string; path: string }): Promise<boolean>;
   };
   project: {
     listRecent(): Promise<RecentProjectEntry[]>;

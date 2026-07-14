@@ -9,7 +9,8 @@
  *       dropdown re-renders live without being closed.
  *
  * Host wiring:
- *   - Electron (`window.okDesktop` populated): `detectProtocol` IPC per scheme.
+ *   - Local Electron (`window.okDesktop` populated): `detectProtocol` IPC per scheme.
+ *   - SSH-backed Electron: `GET /api/installed-agents` on the remote project server.
  *   - Web (`window.okDesktop` undefined): single `GET /api/installed-agents`.
  *
  * Defense-in-depth: web-host Cursor is always `installed: false` regardless of
@@ -33,6 +34,16 @@ import {
 } from '@/lib/handoff/install-detect';
 // Side-effect import only — loads the `Window.okDesktop?` global augmentation.
 import '@/lib/desktop-bridge-types';
+import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+
+export type InstalledAgentProbeTransport = 'desktop-ipc' | 'project-http';
+
+/** Pure classifier: application protocols are local-only; SSH probes the remote server. */
+export function selectInstalledAgentProbeTransport(
+  desktop: Pick<OkDesktopBridge, 'config'> | undefined,
+): InstalledAgentProbeTransport {
+  return desktop && !desktop.config.remote ? 'desktop-ipc' : 'project-http';
+}
 
 /**
  * Pure host classifier — true when the Electron preload has populated
@@ -54,7 +65,7 @@ export function isElectronHostDefault(
  */
 export function defaultProbeDeps(): ProbeDeps {
   const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
-  if (bridge) {
+  if (bridge && selectInstalledAgentProbeTransport(bridge) === 'desktop-ipc') {
     const detector = (scheme: string) => bridge.shell.detectProtocol(scheme);
     return {
       probe: (): Promise<SchemeStates> => probeViaElectron({ detectProtocol: detector }),
@@ -62,6 +73,9 @@ export function defaultProbeDeps(): ProbeDeps {
       now: Date.now,
     };
   }
+  // For an SSH-backed desktop window the always-installed fetch wrapper routes
+  // this relative request through the loopback tunnel, so install state reflects
+  // the remote host rather than applications installed on the local Mac.
   const fetchFn = globalThis.fetch.bind(globalThis);
   return {
     probe: (): Promise<SchemeStates> => probeViaFetch({ fetch: fetchFn }),

@@ -17,7 +17,12 @@ import { ConfigContext } from '@/lib/config-context';
 import type { ClaudeReadiness, OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { cn } from '@/lib/utils';
 import { getPageListCache } from '../editor/page-list-cache';
-import { filePathToDocName, hashFromDocName, hashFromFolderPath } from '../lib/doc-hash';
+import {
+  filePathToDocName,
+  hashFromAssetPath,
+  hashFromDocName,
+  hashFromFolderPath,
+} from '../lib/doc-hash';
 import { ClaudeReadinessBanner } from './ClaudeReadinessBanner';
 import type { TerminalLaunchIntent } from './EditorPane';
 import { filesFromExternalDrop, isExternalFileDrag } from './file-tree-adapter';
@@ -151,7 +156,13 @@ export function TerminalPanel({
   );
 }
 
-type SessionStatus = 'starting' | 'running' | 'no-project' | 'not-consented' | 'exited';
+type SessionStatus =
+  | 'starting'
+  | 'running'
+  | 'no-project'
+  | 'not-consented'
+  | 'remote-unavailable'
+  | 'exited';
 
 interface TerminalSessionProps {
   readonly bridge: OkDesktopBridge;
@@ -201,6 +212,7 @@ function TerminalSession({
   // Set when a codex/cursor/opencode launch probed `not-found` on PATH — drives
   // the missing-CLI banner. Claude uses its own readiness banner instead.
   const [missingCli, setMissingCli] = useState<TerminalCli | null>(null);
+  const isRemoteProject = bridge.config.remote != null;
 
   // Auto-approve OK's own tools for the baked launch (user-scope preference,
   // default on). Read the config context nullably (`use`, not `useConfigContext`)
@@ -243,6 +255,10 @@ function TerminalSession({
     const screenReaderModeAtMount =
       bridge.config.e2eSmoke === true || (bridge.accessibility?.isScreenReaderActive() ?? true);
     const recentOpen = createRecentOpenGuard();
+    // Desktop state identifies an SSH project with an opaque `ssh:...` key.
+    // Files printed by the remote PTY are rooted at the canonical remote path,
+    // so link resolution and existence probes must use that filesystem root.
+    const projectFilesystemRoot = bridge.config.remote?.path ?? bridge.config.projectPath;
     const openUrl = (uri: string) => {
       // Defer while a full-screen TUI owns the mouse: the click is delivered to
       // the app as a mouse report, so the terminal must not also open the link.
@@ -324,6 +340,12 @@ function TerminalSession({
             .catch((err) => console.warn('[terminal] revealExternal failed:', err));
           return;
         case 'asset':
+          if (isRemoteProject) {
+            // The asset already has an in-app preview backed by the tunneled
+            // project server. Never hand a remote path to the local OS opener.
+            window.location.hash = hashFromAssetPath(target.relPath);
+            return;
+          }
           void bridge.shell
             .openAsset(target.relPath)
             .then((result) => {
@@ -350,7 +372,8 @@ function TerminalSession({
     };
     linkProviderDisposable = term.registerLinkProvider(
       createTerminalFileLinkProvider({
-        projectPath: bridge.config.projectPath,
+        projectPath: projectFilesystemRoot,
+        allowExternalPaths: !isRemoteProject,
         readLogicalLine: (bufferLineNumber) => {
           const buf = term.buffer.active;
           const idx = bufferLineNumber - 1;
@@ -376,6 +399,10 @@ function TerminalSession({
         getSnapshot: getPageListCache,
         checkTargetExists: (kind, path) =>
           bridge.project.checkTargetExists({
+            // Main uses the opaque SSH project key to recognize that it must
+            // not stat this path on the local Mac. Resolution still uses the
+            // canonical remote root above; uncached remote targets fail safe
+            // as `unreadable` until a remote-scoped probe exists.
             projectPath: bridge.config.projectPath,
             kind,
             path,
@@ -819,7 +846,7 @@ function TerminalSession({
         // Main refused the spawn. Surface why via an explicit notice rather
         // than leaving the bare (focused) canvas — the two reasons are distinct
         // and recoverable in different ways. Do NOT focus the dead canvas.
-        setStatus(result.reason === 'not-consented' ? 'not-consented' : 'no-project');
+        setStatus(result.reason);
         return;
       }
 
@@ -877,7 +904,7 @@ function TerminalSession({
     // adoptPtyId is stable for a session instance (a restart remounts via the
     // parent key rather than changing it), so listing it never re-runs this
     // mount/adopt effect — it only satisfies the exhaustive-deps check.
-  }, [bridge, adoptPtyId, launch]);
+  }, [bridge, adoptPtyId, launch, isRemoteProject]);
 
   // Re-skin the live terminal when the app theme changes. Mutating
   // `term.options.theme` re-paints in place, so an open session follows
@@ -922,6 +949,10 @@ function TerminalSession({
     function onDrop(event: DragEvent) {
       if (!isExternalFileDrag(event)) return;
       event.preventDefault();
+      // Finder paths belong to the local Mac and are meaningless to a shell on
+      // an SSH host. Still prevent Chromium's file navigation, but never write
+      // the local path into a remote PTY.
+      if (isRemoteProject) return;
       const livePtyId = ptyIdRef.current;
       if (livePtyId === null) return;
       const paths = filesFromExternalDrop(event)
@@ -950,7 +981,7 @@ function TerminalSession({
       container.removeEventListener('dragover', onDragOver, { capture: true });
       container.removeEventListener('drop', onDrop, { capture: true });
     };
-  }, [bridge]);
+  }, [bridge, isRemoteProject]);
 
   return (
     // Column layout so the readiness banner is a strip ABOVE the terminal
@@ -975,7 +1006,7 @@ function TerminalSession({
       {status === 'exited' && exitInfo ? (
         <TerminalExitNotice info={exitInfo} onRestart={onRestart} />
       ) : null}
-      {status === 'no-project' || status === 'not-consented' ? (
+      {status === 'no-project' || status === 'not-consented' || status === 'remote-unavailable' ? (
         <TerminalRefusalNotice reason={status} onClose={onClose} />
       ) : null}
     </div>

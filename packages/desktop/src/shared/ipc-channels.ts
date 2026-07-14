@@ -30,7 +30,7 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 82 (ratchet cap 82). The 74→75 bump reconciled a merge collision:
+ * Count is 83 (ratchet cap 83). The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -46,8 +46,10 @@
  * one-channel-per-operation design rather than a dispatch fold. The 81→82 bump
  * added the terminal clickable-links out-of-project reveal
  * (`ok:shell:reveal-external`): a distinct trust boundary from `reveal-asset`
- * (uncontained + dialog-gated), so it could not fold onto it. Full rationale in
- * the ratchet test header.
+ * (uncontained + dialog-gated), so it could not fold onto it. The 82→83 bump
+ * added one discriminated `ok:remote:dispatch` channel for all saved-machine,
+ * remote-directory, connection-test, and remote-open operations. Full
+ * rationale lives in the ratchet test header.
  */
 
 import type {
@@ -57,7 +59,11 @@ import type {
   EditorId,
   LocalOpOkInitResponse,
   OkFolderState,
+  RemoteDirectoryListing,
   ShareTargetStatusResponse,
+  SshConnectionTestResult,
+  SshMachine,
+  SshMachineDraft,
   TerminalCli,
   WorktreeCreateRequest,
   WorktreeCreateResult,
@@ -118,6 +124,23 @@ export type OkSharingSetModeResult =
  *  recover the per-operation typing despite the consolidated wire channel. */
 export type OkSharingResult = OkSharingStatusResult | OkSharingSetModeResult;
 
+/** One discriminated IPC channel backs the complete remote-project surface. */
+export type OkRemoteDispatchRequest =
+  | { kind: 'list-machines' }
+  | { kind: 'save-machine'; machine: SshMachineDraft }
+  | { kind: 'remove-machine'; machineId: string }
+  | { kind: 'test-machine'; machineId: string }
+  | { kind: 'list-directories'; machineId: string; path: string }
+  | { kind: 'open-project'; machineId: string; path: string };
+
+export type OkRemoteDispatchResult =
+  | SshMachine[]
+  | SshMachine
+  | SshConnectionTestResult
+  | RemoteDirectoryListing
+  | boolean
+  | undefined;
+
 /** Recent-project row as surfaced to the Navigator. */
 export interface RecentProject {
   path: string;
@@ -133,6 +156,12 @@ export interface RecentProject {
    * receive decision tree.
    */
   gitRemoteUrl?: string;
+  /** SSH location metadata. `path` is the opaque machine-scoped project key. */
+  remote?: {
+    machineId: string;
+    machineName: string;
+    path: string;
+  };
   /**
    * Git-worktree relationship, computed at list-time (not persisted) so the
    * project switcher can nest linked worktrees under their main project.
@@ -795,6 +824,15 @@ export interface RequestChannels {
   'ok:sharing:dispatch': {
     args: [request: { kind: 'status' } | { kind: 'set-mode'; mode: 'shared' | 'local-only' }];
     result: OkSharingResult;
+  };
+  /**
+   * Saved SSH machines, folder browsing, connection testing, and remote
+   * project opening. A single discriminated channel avoids six new hand-rolled
+   * channels while main still validates every request arm independently.
+   */
+  'ok:remote:dispatch': {
+    args: [request: OkRemoteDispatchRequest];
+    result: OkRemoteDispatchResult;
   };
   /** Read the LRU-capped recent-projects list from app state. */
   'ok:project:list-recent': { args: []; result: RecentProject[] };

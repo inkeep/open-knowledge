@@ -53,6 +53,7 @@ import {
   buildWorktreeFlyoutEntries,
   groupRecentsByRepo,
   type RecentRepoGroup,
+  recentProjectDisplayPath,
   type WorktreeFlyoutEntry,
 } from './project-switcher-recents';
 
@@ -247,7 +248,7 @@ function GroupRow({
       >
         <ProjectLabel
           name={group.project.name}
-          path={group.project.path}
+          path={recentProjectDisplayPath(group.project)}
           current={projectIsCurrent}
         />
       </DropdownMenuItem>
@@ -372,8 +373,11 @@ function FlyoutGroup({
           >
             {group.project.name}
           </span>
-          <span className="truncate text-muted-foreground text-xs" title={group.project.path}>
-            {group.project.path}
+          <span
+            className="truncate text-muted-foreground text-xs"
+            title={recentProjectDisplayPath(group.project)}
+          >
+            {recentProjectDisplayPath(group.project)}
           </span>
         </span>
         {projectIsCurrent ? (
@@ -676,7 +680,7 @@ function SearchResults({
   const matches = (text: string): boolean => text.toLowerCase().includes(query);
 
   const projectMatches = recents.filter(
-    (r) => !r.isLinkedWorktree && (matches(r.name) || matches(r.path)),
+    (r) => !r.isLinkedWorktree && (matches(r.name) || matches(recentProjectDisplayPath(r))),
   );
   const openedWorktreeMatches = recents.filter(
     (r) => r.isLinkedWorktree === true && (matches(r.branch ?? '') || matches(r.path)),
@@ -720,7 +724,11 @@ function SearchResults({
           className="flex w-full min-w-0 flex-col items-start gap-0.5"
           data-testid={`project-switcher-recent-${r.path}`}
         >
-          <ProjectLabel name={r.name} path={r.path} current={r.path === currentPath} />
+          <ProjectLabel
+            name={r.name}
+            path={recentProjectDisplayPath(r)}
+            current={r.path === currentPath}
+          />
         </DropdownMenuItem>
       ))}
       {openedWorktreeMatches.map((r) => (

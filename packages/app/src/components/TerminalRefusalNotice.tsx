@@ -15,7 +15,7 @@ import { useLingui } from '@lingui/react/macro';
 import { Button } from '@/components/ui/button';
 
 interface TerminalRefusalNoticeProps {
-  readonly reason: 'no-project' | 'not-consented';
+  readonly reason: 'no-project' | 'not-consented' | 'remote-unavailable';
   /** Release focus / collapse the dock back to the editor. */
   readonly onClose?: () => void;
 }
@@ -26,7 +26,9 @@ export function TerminalRefusalNotice({ reason, onClose }: TerminalRefusalNotice
   const message =
     reason === 'not-consented'
       ? t`Terminal access isn't enabled for this project.`
-      : t`There's no project folder for this window, so a terminal can't start here.`;
+      : reason === 'remote-unavailable'
+        ? t`The SSH machine is unavailable, so the remote terminal couldn't start. Check the connection and try again.`
+        : t`There's no project folder for this window, so a terminal can't start here.`;
 
   return (
     <div

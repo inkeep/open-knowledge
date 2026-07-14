@@ -506,7 +506,7 @@ function RevealInFileManagerMenuItem({
 }) {
   const { t } = useLingui();
   const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
-  if (!bridge) return null;
+  if (!bridge || bridge.config.remote) return null;
   const platform = bridge.platform;
   const label = revealInFileManagerLabel(platform);
   const hint = !workspace ? t`No workspace` : null;
@@ -3943,7 +3943,7 @@ export function FileTree({
 
     const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
     try {
-      if (bridge && workspace) {
+      if (bridge && workspace && !bridge.config.remote) {
         // Electron path: 2-step Trash flow.
         const { trashed, failed } = await trashTargetsViaShell(deleteTargets, bridge, workspace);
         if (trashed.length > 0) {
@@ -4467,8 +4467,31 @@ export function FileTree({
             // Trash flow on Electron uses VSCode-verbatim copy;
             // web mode (no OS Trash) keeps today's hard-delete copy.
             {...(() => {
-              const variant: 'electron' | 'web' =
-                typeof window !== 'undefined' && window.okDesktop != null ? 'electron' : 'web';
+              const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
+              if (bridge?.config.remote) {
+                const listedTargets =
+                  deleteRequest.targets.length > 1 ? deleteRequest.targets : null;
+                return {
+                  customTitle:
+                    deleteRequest.targets.length === 1
+                      ? t`Permanently delete '${trashTargetDisplayName(primaryDeleteTarget)}'?`
+                      : t`Permanently delete selected items?`,
+                  customDescription: '',
+                  customDetail: t`Remote files are deleted immediately. They are not moved to Trash, and this action cannot be undone.`,
+                  customConfirmLabel: t`Delete permanently`,
+                  customConfirmLabelBusy: t`Deleting`,
+                  children: listedTargets ? (
+                    <ul className="flex flex-col gap-1 font-mono text-foreground text-xs">
+                      {listedTargets.map((target) => (
+                        <li key={`${target.kind}:${target.path}`} data-testid="delete-target-row">
+                          {trashTargetDisplayName(target)}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null,
+                };
+              }
+              const variant: 'electron' | 'web' = bridge ? 'electron' : 'web';
               const copy = selectTrashConfirmCopy(variant, deleteRequest.targets);
               if (copy) {
                 return {

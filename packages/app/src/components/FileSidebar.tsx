@@ -576,7 +576,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
           return;
         }
         case 'reveal-in-finder': {
-          if (!bridge || !workspace) return;
+          if (!bridge || !workspace || bridge.config.remote) return;
           const absPath = resolveActiveTargetAbsPath(activeTarget, workspace);
           void bridge.shell.showItemInFolder(absPath);
           return;
@@ -1215,7 +1215,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
             <Trans>New folder</Trans>
           </ContextMenuItem>
           <ContextMenuSeparator />
-          {bridge ? (
+          {bridge && !bridge.config.remote ? (
             <ContextMenuItem
               disabled={!workspace}
               onSelect={handleEmptySpaceReveal}

@@ -1547,12 +1547,11 @@ async function startParcelWatcher(
     parcel = await import('@parcel/watcher');
   } catch (err) {
     // Expected in packaged builds: @parcel/watcher is a native module that
-    // isn't bundled, so we fall back to chokidar. The `watching … backend:
-    // chokidar` info line records the outcome — this is debug-only so the
-    // terminal stays clean (it's a routine fallback, not an error).
+    // isn't bundled. The later `watching … backend: chokidar` info line records
+    // the selected backend when automatic fallback is allowed.
     getLogger('file-watcher').debug(
       { err: err instanceof Error ? err.message : String(err) },
-      '[file-watcher] @parcel/watcher import failed; falling back to chokidar',
+      '[file-watcher] @parcel/watcher import failed',
     );
     return null;
   }
@@ -1592,7 +1591,7 @@ async function startParcelWatcher(
 
     return subscription;
   } catch (err) {
-    console.warn('[file-watcher] @parcel/watcher subscribe failed, falling back to chokidar:', err);
+    console.warn('[file-watcher] @parcel/watcher subscribe failed:', err);
     return null;
   }
 }
@@ -1679,6 +1678,26 @@ async function startChokidarWatcher(
 
 // ─── Watcher ─────────────────────────────────────────────────────────────────
 
+/** Select exactly one watcher backend, preserving forced-backend failures. */
+export async function startWatcherBackend(
+  forceBackend: WatcherBackend | undefined,
+  startParcel: () => Promise<AsyncSubscription | null>,
+  startChokidar: () => Promise<AsyncSubscription>,
+): Promise<{ subscription: AsyncSubscription; backend: WatcherBackend }> {
+  if (forceBackend === 'chokidar') {
+    return { subscription: await startChokidar(), backend: 'chokidar' };
+  }
+
+  const parcelSubscription = await startParcel();
+  if (parcelSubscription) {
+    return { subscription: parcelSubscription, backend: 'parcel' };
+  }
+  if (forceBackend === 'parcel') {
+    throw new Error('@parcel/watcher unavailable for file watching (forced backend)');
+  }
+  return { subscription: await startChokidar(), backend: 'chokidar' };
+}
+
 /**
  * Start watching a content directory for external .md file changes.
  * Calls onDiskEvent for each classified event (not our own persistence writes).
@@ -1696,6 +1715,7 @@ export async function startWatcher(
   contentDirRaw: string,
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   contentFilter?: ContentFilter,
+  opts: { forceBackend?: WatcherBackend } = {},
 ): Promise<WatcherHandle> {
   let contentDir: string;
   try {
@@ -1741,30 +1761,29 @@ export async function startWatcher(
   let subscription: AsyncSubscription;
   let backend: WatcherBackend;
   try {
-    const parcelSub = await startParcelWatcher(
-      contentDir,
-      contentFilter,
-      fileIndex,
-      folderIndex,
-      onDiskEvent,
-      aliasMap,
-      bumpFileIndexGeneration,
-    );
-    if (parcelSub) {
-      subscription = parcelSub;
-      backend = 'parcel';
-    } else {
-      subscription = await startChokidarWatcher(
-        contentDir,
-        contentFilter,
-        fileIndex,
-        folderIndex,
-        onDiskEvent,
-        aliasMap,
-        bumpFileIndexGeneration,
-      );
-      backend = 'chokidar';
-    }
+    ({ subscription, backend } = await startWatcherBackend(
+      opts.forceBackend,
+      () =>
+        startParcelWatcher(
+          contentDir,
+          contentFilter,
+          fileIndex,
+          folderIndex,
+          onDiskEvent,
+          aliasMap,
+          bumpFileIndexGeneration,
+        ),
+      () =>
+        startChokidarWatcher(
+          contentDir,
+          contentFilter,
+          fileIndex,
+          folderIndex,
+          onDiskEvent,
+          aliasMap,
+          bumpFileIndexGeneration,
+        ),
+    ));
   } catch (e) {
     clearInterval(evictionInterval);
     throw e;

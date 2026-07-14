@@ -4,14 +4,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   addRecentProject,
+  addRecentRemoteProject,
   annotateMissing,
   emptyState,
   getProjectSessionState,
   type PersistedWindowBounds,
   parseAppState,
   removeRecentProject,
+  removeSshMachine,
   type SaveAppStateFs,
   saveAppStateToDir,
+  saveSshMachine,
   setLastUsedProjectParent,
   setProjectSessionState,
   setProjectWindowBounds,
@@ -179,6 +182,200 @@ describe('state-store (recent projects + LRU)', () => {
     expect(parseAppState('not state')).toBeNull();
     expect(parseAppState(null)).toBeNull();
     expect(parseAppState(42)).toBeNull();
+  });
+});
+
+describe('state-store (SSH machines and remote recents)', () => {
+  const machine = {
+    id: 'build-box',
+    name: 'Build box',
+    host: 'dev@example.com',
+    port: 2222,
+  } as const;
+
+  test('saves a machine and adds a machine-scoped recent project', () => {
+    const withMachine = saveSshMachine(emptyState(), machine);
+    const next = addRecentRemoteProject(
+      withMachine,
+      'ssh:build-box:%2Fsrv%2Fdocs',
+      'docs',
+      machine,
+      '/srv/docs',
+    );
+
+    expect(next.sshMachines).toEqual([machine]);
+    expect(next.lastOpenedProject).toBe('ssh:build-box:%2Fsrv%2Fdocs');
+    expect(next.recentProjects[0]).toMatchObject({
+      path: 'ssh:build-box:%2Fsrv%2Fdocs',
+      name: 'docs',
+      remote: {
+        machineId: 'build-box',
+        machineName: 'Build box',
+        path: '/srv/docs',
+      },
+    });
+  });
+
+  test('remote recents are not marked missing by local filesystem probes', () => {
+    const state = addRecentRemoteProject(
+      saveSshMachine(emptyState(), machine),
+      'ssh:build-box:%2Fsrv%2Fdocs',
+      'docs',
+      machine,
+      '/srv/docs',
+    );
+    const exists = mock(() => false);
+
+    expect(annotateMissing(state, exists)[0]?.missing).toBe(false);
+    expect(exists).not.toHaveBeenCalled();
+  });
+
+  test('renaming a machine updates the label stored on dependent recents', () => {
+    let state = saveSshMachine(emptyState(), machine);
+    state = addRecentRemoteProject(
+      state,
+      'ssh:build-box:%2Fsrv%2Fdocs',
+      'docs',
+      machine,
+      '/srv/docs',
+    );
+
+    const next = saveSshMachine(state, { ...machine, name: 'GPU host' });
+    expect(next.recentProjects[0]?.remote?.machineName).toBe('GPU host');
+  });
+
+  test('refuses to rebind an existing machine identity to another endpoint', () => {
+    const state = saveSshMachine(emptyState(), machine);
+
+    expect(() => saveSshMachine(state, { ...machine, host: 'other@example.com' })).toThrow(
+      'An SSH machine endpoint cannot be changed in place. Add a new machine.',
+    );
+    expect(() => saveSshMachine(state, { ...machine, port: 22 })).toThrow(
+      'An SSH machine endpoint cannot be changed in place. Add a new machine.',
+    );
+  });
+
+  test('removing a machine removes every dependent persisted project record', () => {
+    const key = 'ssh:build-box:%2Fsrv%2Fdocs';
+    const orphanKey = 'ssh:build-box:%2Fsrv%2Forphan';
+    const similarlyNamedMachineKey = 'ssh:build-box-extra:%2Fsrv%2Fdocs';
+    const localKey = '/tmp/local';
+    let state = saveSshMachine(emptyState(), machine);
+    state = addRecentRemoteProject(state, key, 'docs', machine, '/srv/docs');
+    for (const projectKey of [key, orphanKey, similarlyNamedMachineKey, localKey]) {
+      state = setProjectSessionState(state, projectKey, {
+        openTabs: ['README'],
+        pinnedTabIds: [],
+        activeDocName: 'README',
+        activeTabId: 'README',
+        updatedAt: '2026-07-13T00:00:00Z',
+      });
+      state = setProjectWindowBounds(state, projectKey, {
+        x: 10,
+        y: 10,
+        width: 800,
+        height: 600,
+        isMaximized: false,
+        isFullScreen: false,
+      });
+    }
+    state = {
+      ...state,
+      pendingWindowRestore: [key, orphanKey, similarlyNamedMachineKey, localKey],
+    };
+
+    const next = removeSshMachine(state, machine.id);
+    expect(next.sshMachines).toEqual([]);
+    expect(next.recentProjects).toEqual([]);
+    expect(next.lastOpenedProject).toBeNull();
+    expect(next.projectSessions[key]).toBeUndefined();
+    expect(next.projectSessions[orphanKey]).toBeUndefined();
+    expect(next.projectSessions[similarlyNamedMachineKey]).toBeDefined();
+    expect(next.projectSessions[localKey]).toBeDefined();
+    expect(next.projectWindowBounds[key]).toBeUndefined();
+    expect(next.projectWindowBounds[orphanKey]).toBeUndefined();
+    expect(next.projectWindowBounds[similarlyNamedMachineKey]).toBeDefined();
+    expect(next.projectWindowBounds[localKey]).toBeDefined();
+    expect(next.pendingWindowRestore).toEqual([similarlyNamedMachineKey, localKey]);
+  });
+
+  test('session cleanup scopes an encoded machine id exactly', () => {
+    const encodedMachine = { ...machine, id: 'build:box' };
+    const encodedPrefix = `ssh:${encodeURIComponent(encodedMachine.id)}:`;
+    const ownKey = `${encodedPrefix}%2Fsrv%2Fdocs`;
+    const unencodedLookalike = 'ssh:build:box:%2Fsrv%2Fdocs';
+    let state = saveSshMachine(emptyState(), encodedMachine);
+    for (const projectKey of [ownKey, unencodedLookalike]) {
+      state = setProjectSessionState(state, projectKey, {
+        openTabs: ['README'],
+        pinnedTabIds: [],
+        activeDocName: 'README',
+        activeTabId: 'README',
+        updatedAt: '2026-07-13T00:00:00Z',
+      });
+    }
+
+    const next = removeSshMachine(state, encodedMachine.id);
+
+    expect(next.projectSessions[ownKey]).toBeUndefined();
+    expect(next.projectSessions[unencodedLookalike]).toBeDefined();
+  });
+
+  test('parseAppState defensively round-trips valid SSH state', () => {
+    const state = addRecentRemoteProject(
+      saveSshMachine(emptyState(), machine),
+      'ssh:build-box:%2Fsrv%2Fdocs',
+      'docs',
+      machine,
+      '/srv/docs',
+    );
+    const parsed = parseAppState(JSON.parse(JSON.stringify(state)));
+
+    expect(parsed?.sshMachines).toEqual([machine]);
+    expect(parsed?.recentProjects[0]?.remote).toEqual({
+      machineId: 'build-box',
+      machineName: 'Build box',
+      path: '/srv/docs',
+    });
+  });
+
+  test('parseAppState rejects malformed, unsafe, and duplicate SSH machine state', () => {
+    const invalidMachines = [
+      { ...machine, name: 'duplicate' },
+      { id: 'bad-port', name: 'Bad', host: 'bad', port: 70_000 },
+      { id: 'string-port', name: 'String port', host: 'bad', port: '22' },
+      { id: 'unsafe-host', name: 'Unsafe', host: '-oProxyCommand=oops' },
+      { id: 'spaced-host', name: 'Spaced', host: 'dev @example.com' },
+      { id: 'trimmed-host', name: 'Trimmed', host: ' example.com ' },
+      { id: 'missing-host', name: 'Missing' },
+    ];
+    for (const invalid of invalidMachines) {
+      expect(parseAppState({ recentProjects: [], sshMachines: [machine, invalid] })).toBeNull();
+    }
+    expect(parseAppState({ recentProjects: [], sshMachines: 'invalid' })).toBeNull();
+  });
+
+  test('parseAppState rejects remote recents that are stale, malformed, or relabeled', () => {
+    const validRemote = {
+      machineId: machine.id,
+      machineName: machine.name,
+      path: '/srv/docs',
+    };
+    const validRecent = {
+      path: 'ssh:build-box:%2Fsrv%2Fdocs',
+      name: 'docs',
+      lastOpenedAt: '2026-07-13T00:00:00Z',
+      remote: validRemote,
+    };
+    for (const recent of [
+      { ...validRecent, path: 'ssh:other:%2Fsrv%2Fdocs' },
+      { ...validRecent, remote: { ...validRemote, machineId: 'missing' } },
+      { ...validRecent, remote: { ...validRemote, machineName: 'Stale label' } },
+      { ...validRecent, remote: { ...validRemote, path: '../outside' } },
+      { ...validRecent, remote: null },
+    ]) {
+      expect(parseAppState({ recentProjects: [recent], sshMachines: [machine] })).toBeNull();
+    }
   });
 });
 

@@ -347,6 +347,28 @@ describe('CommandPalette DOM behavior', () => {
     );
   });
 
+  test('uses the SSH server icon for a remote recent project', async () => {
+    const bridge = createBridge();
+    bridge.project.listRecent = mock(() =>
+      Promise.resolve([
+        {
+          name: 'Remote Notes',
+          path: 'ssh:machine-1:%2Fsrv%2Fnotes',
+          lastOpenedAt: '2026-07-14T00:00:00.000Z',
+          remote: {
+            machineId: 'machine-1',
+            machineName: 'Build box',
+            path: '/srv/notes',
+          },
+        },
+      ]),
+    );
+
+    await renderPalette({ bridge });
+    const row = await screen.findByTestId('command-palette-recent-ssh:machine-1:%2Fsrv%2Fnotes');
+    expect(row.querySelector('svg.lucide-server')).not.toBeNull();
+  });
+
   test('settings command is searchable by preferences/config, closes the palette, and routes through the canonical hash', async () => {
     const { onOpenChange } = await renderPalette({ bridge: null });
 
@@ -640,6 +662,39 @@ describe('CommandPalette DOM behavior', () => {
       });
     });
     expect(refreshWorktreesMock).toHaveBeenCalled();
+  });
+
+  test('does not expose local worktrees from an SSH-backed project window', async () => {
+    worktreeModelMock = {
+      mainRoot: '/projects/current',
+      currentBranch: 'main',
+      entries: [
+        {
+          branch: 'local-only',
+          worktreePath: '/projects/current/.ok/worktrees/local-only',
+          isCurrent: false,
+          isMain: false,
+          locked: false,
+        },
+      ],
+    };
+    const bridge = createBridge();
+    Object.assign(bridge.config, {
+      projectPath: 'ssh:machine-1:%2Fsrv%2Fknowledge',
+      remote: {
+        kind: 'ssh',
+        machineId: 'machine-1',
+        machineName: 'Build box',
+        path: '/srv/knowledge',
+        platform: 'linux',
+        pathSeparator: '/',
+      },
+    });
+
+    await renderPalette({ bridge });
+
+    expect(screen.queryByTestId('command-palette-worktree-local-only')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Worktrees' })).toBeNull();
   });
 });
 

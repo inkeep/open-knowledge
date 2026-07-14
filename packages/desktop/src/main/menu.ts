@@ -60,7 +60,11 @@ export interface MenuDeps {
    */
   openProject(projectPath: string, entryPoint: EntryPoint): Promise<void>;
   /** Current recent-projects list (top-of-LRU first). Used to build Recent project submenu. */
-  getRecentProjects(): ReadonlyArray<{ path: string; name: string }>;
+  getRecentProjects(): ReadonlyArray<{
+    path: string;
+    name: string;
+    remote?: { machineName: string; path: string };
+  }>;
   /** Clear the recent-projects list (File → Recent project → Clear menu). */
   clearRecentProjects(): void;
   /** Open an external URL (Help menu). Injected so the `shell` runtime value doesn't cross the module boundary. */
@@ -330,7 +334,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
       : [
           ...recents.slice(0, 10).map((row) => ({
             label: row.name,
-            sublabel: row.path,
+            sublabel: row.remote ? `${row.remote.machineName} • ${row.remote.path}` : row.path,
             click: () => {
               void deps.openProject(row.path, 'recents');
             },

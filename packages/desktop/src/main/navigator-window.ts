@@ -17,6 +17,7 @@
  */
 
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
+import { attachNavigatorTrustBoundary } from './navigator-trust-boundary.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { ShareNavigatorPayload } from './url-scheme.ts';
 import type { BrowserWindowLike, WindowManagerDeps } from './window-manager.ts';
@@ -53,6 +54,8 @@ interface NavigatorDeps {
   /** Dev-server URL injected by electron-vite (`process.env.ELECTRON_RENDERER_URL`).
    *  When set, main uses `loadURL` for HMR; otherwise falls back to `loadFile`. */
   rendererDevUrl?: string | null;
+  /** Allowlisted OS-browser delegation for external Navigator links. */
+  openExternal: (url: string) => Promise<void>;
   /** App version, passed to the preload via additionalArguments. */
   appVersion: string;
   /**
@@ -89,6 +92,18 @@ export function createNavigatorWindow(deps: NavigatorDeps): BrowserWindowLike {
     // here. Editor windows override with their own `projectName` title.
     title: 'OpenKnowledge',
   });
+  // Install the navigation boundary before any renderer load begins. The
+  // Navigator preload exposes launcher/SSH operations, so a transient
+  // cross-origin navigation must never retain those privileges and an iframe
+  // must never gain a child BrowserWindow with the same preload.
+  attachNavigatorTrustBoundary(
+    window.webContents,
+    {
+      rendererEntryPath: deps.rendererEntryPath,
+      rendererDevUrl: deps.rendererDevUrl,
+    },
+    { openExternal: deps.openExternal },
+  );
   // Defer OS-level window display until both first-paint AND chrome-theme
   // signals arrive — same dual-signal gate as editor windows. The Navigator
   // path has no utility-process gate, so without this defer the user sees

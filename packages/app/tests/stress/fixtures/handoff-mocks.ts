@@ -357,6 +357,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           apiOrigin: workerBaseURL,
           projectPath: workerContentDir,
           projectName: 'handoff-e2e-fixture',
+          remote: null,
           mode: 'editor' as const,
           e2eSmoke: false,
           singleFile: false,
@@ -558,6 +559,18 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         },
         share: {
           validateLocalFolder: async () => ({ kind: 'not-git' as const }),
+        },
+        remote: {
+          listMachines: async () => [],
+          saveMachine: async (machine) => ({ ...machine, id: machine.id ?? 'mock-machine' }),
+          removeMachine: async () => {},
+          testMachine: async () => ({ ok: true as const }),
+          listDirectories: async ({ path }) => ({
+            path,
+            parentPath: null,
+            directories: [],
+          }),
+          openProject: async () => true,
         },
         // Sidebar context-menu surfaces — no-op stubs. Stress fixtures
         // don't exercise File-menu state-aware rebuilds or View-menu

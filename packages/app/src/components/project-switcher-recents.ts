@@ -13,6 +13,11 @@
 import type { WorktreeSelectorModel } from '@inkeep/open-knowledge-core';
 import type { RecentProjectEntry } from '@/lib/desktop-bridge-types';
 
+/** Human-facing path for local and SSH-backed recent rows. */
+export function recentProjectDisplayPath(project: RecentProjectEntry): string {
+  return project.remote ? `${project.remote.machineName} • ${project.remote.path}` : project.path;
+}
+
 export interface RecentRepoGroup {
   /** The main project row (synthesized from `mainRoot` when not itself a recent). */
   readonly project: RecentProjectEntry;

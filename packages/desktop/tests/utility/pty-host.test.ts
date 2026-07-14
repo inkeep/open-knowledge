@@ -156,6 +156,21 @@ describe('setupPtyHost — create', () => {
     ]);
   });
 
+  test('spawns a main-owned executable with exact argv and no shell interpretation', () => {
+    const h = makeHarness({ env: { SHELL: '/bin/zsh', PATH: '/usr/bin' } });
+    h.fire(
+      CREATE({
+        executable: '/usr/bin/ssh',
+        args: ['-tt', '--', 'devbox', "exec '$SHELL' -l"],
+        launchCommand: 'must-not-run-locally',
+      }),
+    );
+
+    expect(h.spawnCalls[0]?.file).toBe('/usr/bin/ssh');
+    expect(h.spawnCalls[0]?.args).toEqual(['-tt', '--', 'devbox', "exec '$SHELL' -l"]);
+    expect(h.spawnCalls[0]?.options.cwd).toBe('/project/root');
+  });
+
   test('falls back to /bin/zsh when SHELL is unset', () => {
     const h = makeHarness({ env: { PATH: '/usr/bin' } });
     h.fire(CREATE());

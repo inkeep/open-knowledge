@@ -54,6 +54,12 @@ export interface TerminalFileLinkProviderDeps {
   ) => Promise<CheckTargetExistsResult>;
   /** Route a validated target (editor nav / OS open). */
   readonly onActivate: (target: TerminalLinkTarget) => void;
+  /**
+   * Whether absolute paths outside `projectPath` should become optimistic
+   * links. Remote terminals disable this: desktop cannot safely reveal a path
+   * that exists on another machine through its local file manager.
+   */
+  readonly allowExternalPaths?: boolean;
   /** Per-line detection/validation cap. Defaults to 10 (bounds probe work). */
   readonly maxLinksPerLine?: number;
 }
@@ -142,6 +148,7 @@ export function createTerminalFileLinkProvider(deps: TerminalFileLinkProviderDep
 
           let target: TerminalLinkTarget;
           if (resolved.kind === 'external') {
+            if (deps.allowExternalPaths === false) return null;
             // Out-of-project absolute path. Not existence-gated here: there is no
             // project-scoped probe for a path outside the project, so it links
             // optimistically and the reveal handler stats it (a missing path

@@ -70,6 +70,7 @@ const closeDocumentMock = mock(() => {});
 const closeAndClearForRenameMock = mock(async () => {});
 const remapTabsForRenameMock = mock(() => {});
 const dispatchHandoffMock = mock(async () => ({ ok: true as const }));
+const trashItemMock = mock(async (_path: string) => ({ ok: true as const }));
 
 const DOCUMENTS: FileEntry[] = [
   {
@@ -225,8 +226,31 @@ let deleteConfirmationProps: {
   itemName?: string;
   customTitle?: string;
   customDescription?: string;
+  customDetail?: string;
+  customConfirmLabel?: string;
+  customConfirmLabelBusy?: string;
   onDelete?: () => void | Promise<void>;
 } | null = null;
+
+function installRemoteBridge() {
+  Object.defineProperty(window, 'okDesktop', {
+    configurable: true,
+    value: {
+      platform: 'darwin',
+      config: {
+        remote: {
+          machineId: 'machine-1',
+          machineLabel: 'Build box',
+          projectPath: '/srv/wiki',
+        },
+      },
+      shell: {
+        showItemInFolder: () => Promise.resolve(),
+        trashItem: trashItemMock,
+      },
+    },
+  });
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -391,6 +415,9 @@ mock.module('@/components/DeleteConfirmationDialog', () => ({
     itemName?: string;
     customTitle?: string;
     customDescription?: string;
+    customDetail?: string;
+    customConfirmLabel?: string;
+    customConfirmLabelBusy?: string;
     onDelete?: () => void | Promise<void>;
   }) => {
     deleteConfirmationProps = props;
@@ -486,11 +513,20 @@ describe('FileTree duplicate action runtime behavior', () => {
     addPageMock.mockClear();
     openTargetMock.mockClear();
     notifySidebarFileSelectedMock.mockClear();
+    trashItemMock.mockClear();
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: undefined,
+    });
     consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
     cleanup();
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: undefined,
+    });
     consoleWarnSpy.mockRestore();
   });
 
@@ -1005,6 +1041,39 @@ describe('FileTree duplicate action runtime behavior', () => {
     await screen.findByTestId('delete-confirmation-dialog');
     expect(deleteConfirmationProps?.itemName).toBe('source.mdx');
     expect(deleteConfirmationProps?.customTitle).toBeUndefined();
+  });
+
+  test('SSH projects confirm an irreversible delete and never invoke the local Trash', async () => {
+    installRemoteBridge();
+    renderFileTree();
+    await screen.findByRole('menuitem', { name: /duplicate/i });
+
+    model.focusedPath = 'notes/source.mdx';
+    model.selectedPaths = [];
+    screen.getByTestId('tree-focus-target').focus();
+    fireEvent.keyDown(document, { key: 'Delete' });
+
+    await screen.findByTestId('delete-confirmation-dialog');
+    expect(deleteConfirmationProps).toMatchObject({
+      customTitle: "Permanently delete 'source.mdx'?",
+      customDescription: '',
+      customDetail:
+        'Remote files are deleted immediately. They are not moved to Trash, and this action cannot be undone.',
+      customConfirmLabel: 'Delete permanently',
+      customConfirmLabelBusy: 'Deleting',
+    });
+
+    fetchCalls = [];
+    await act(async () => {
+      await deleteConfirmationProps?.onDelete?.();
+    });
+
+    await waitFor(() => expect(deletePathCalls()).toHaveLength(1));
+    expect(JSON.parse(String(deletePathCalls()[0]?.init?.body))).toEqual({
+      kind: 'file',
+      path: 'notes/source',
+    });
+    expect(trashItemMock).not.toHaveBeenCalled();
   });
 
   test('Delete does not open confirmation while another file-tree action is busy', async () => {

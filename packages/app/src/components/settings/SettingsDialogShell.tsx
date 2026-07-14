@@ -96,6 +96,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   // The docked terminal is desktop-only (the real shell has no web host), so
   // its per-project revoke toggle only appears under the Electron preload.
   const isOkDesktopHost = typeof window !== 'undefined' && window.okDesktop != null;
+  const isRemoteProject = typeof window !== 'undefined' && window.okDesktop?.config.remote != null;
 
   const groups: SidebarGroup[] = [
     {
@@ -122,11 +123,13 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
         ...(isOkDesktopHost ? [{ id: 'terminal', label: t`Terminal` }] : []),
         // Per-project MCP wiring + runtime skill — desktop-only because the
         // install actors live in the Electron main process (like Terminal).
-        ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),
+        ...(isOkDesktopHost && !isRemoteProject
+          ? [{ id: 'project-ai-tools', label: t`AI tools` }]
+          : []),
         { id: 'project-templates', label: t`Templates` },
         { id: 'skills', label: t`Skills` },
         { id: 'okignore', label: t`Ignore patterns` },
-        { id: 'sharing', label: t`Config sharing` },
+        ...(!isRemoteProject ? [{ id: 'sharing', label: t`Config sharing` }] : []),
       ],
     },
     {

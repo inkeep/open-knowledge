@@ -95,6 +95,9 @@ function makeWindow(opts?: { minimized?: boolean; focused?: boolean }): BrowserW
         if (event === 'dom-ready') domReadyHandler = cb;
         else if (event === 'did-finish-load') didFinishLoadHandler = cb;
       }),
+      executeJavaScript: mock(async () => {}),
+      setWindowOpenHandler: mock(() => {}),
+      on: mock(() => {}),
     },
     loadFile: mock(() => Promise.resolve()),
     loadURL: mock(() => Promise.resolve()),
@@ -105,6 +108,16 @@ function makeWindow(opts?: { minimized?: boolean; focused?: boolean }): BrowserW
     fireDomReady: () => domReadyHandler?.(),
     fireDidFinishLoad: () => didFinishLoadHandler?.(),
   };
+}
+
+function releaseRemoteOrigin(context: {
+  closeRemoteSession?: () => void;
+  retireRemoteTunnel?: () => void;
+}): void {
+  const closeSession = context.closeRemoteSession;
+  context.closeRemoteSession = undefined;
+  context.retireRemoteTunnel = undefined;
+  closeSession?.();
 }
 
 interface ShowGateRegistration {
@@ -244,6 +257,508 @@ describe('WindowManager', () => {
     env2.utilities[0]?.fire({ type: 'ready', port: 52011, apiOrigin: 'http://localhost:52011' });
     await plainPromise;
     expect(env2.createWindowOpts[0]?.additionalArguments).not.toContain('--ok-fresh-create=1');
+  });
+
+  test('createRemoteProjectWindow injects remote metadata and closes its session with the window', async () => {
+    const wm = new WindowManager(env.deps);
+    const closeSession = mock(() => {});
+    const ctx = await wm.createRemoteProjectWindow({
+      projectKey: 'ssh:build-box:%2Fsrv%2Fwiki',
+      projectName: 'wiki',
+      remote: {
+        kind: 'ssh',
+        machineId: 'build-box',
+        machineName: 'Build box',
+        path: '/srv/wiki',
+        platform: 'linux',
+        pathSeparator: '/',
+      },
+      port: 45123,
+      apiOrigin: 'http://127.0.0.1:45123',
+      collabUrl: 'ws://127.0.0.1:45123/collab',
+      closeSession,
+    });
+
+    expect(ctx.remote?.path).toBe('/srv/wiki');
+    expect(env.createWindowOpts[0]?.additionalArguments).toContain(
+      '--ok-remote-machine-id=build-box',
+    );
+    expect(env.createWindowOpts[0]?.additionalArguments).toContain('--ok-remote-path=/srv/wiki');
+    expect(wm.windowCount()).toBe(1);
+
+    env.windows[0]?.fireClose();
+    expect(closeSession).toHaveBeenCalledTimes(1);
+    expect(wm.windowCount()).toBe(0);
+  });
+
+  test('installs the remote editor trust boundary before loading the renderer', async () => {
+    const order: string[] = [];
+    const window = makeWindow();
+    window.webContents.setWindowOpenHandler = mock(() => {
+      order.push('window-open-boundary');
+    });
+    window.webContents.on = mock(() => {
+      order.push('navigate-boundary');
+    });
+    window.loadFile = mock(async () => {
+      order.push('load-file');
+    });
+    env.deps.createWindow = () => window;
+    const wm = new WindowManager(env.deps);
+
+    await wm.createRemoteProjectWindow({
+      projectKey: 'ssh:build-box:%2Fsrv%2Fwiki',
+      projectName: 'wiki',
+      remote: {
+        kind: 'ssh',
+        machineId: 'build-box',
+        machineName: 'Build box',
+        path: '/srv/wiki',
+        platform: 'linux',
+        pathSeparator: '/',
+      },
+      port: 45123,
+      apiOrigin: 'http://127.0.0.1:45123',
+      collabUrl: 'ws://127.0.0.1:45123/collab',
+      closeSession: () => {},
+    });
+
+    expect(order).toEqual(['window-open-boundary', 'navigate-boundary', 'load-file']);
+  });
+
+  test('reserves a remote key during renderer load and closes a concurrent duplicate session', async () => {
+    let resolveLoad: (() => void) | undefined;
+    const loading = new Promise<void>((resolve) => {
+      resolveLoad = resolve;
+    });
+    const window = makeWindow();
+    window.loadFile = mock(() => loading);
+    env.deps.createWindow = (opts) => {
+      env.createWindowOpts.push(opts);
+      env.windows.push(window);
+      return window;
+    };
+    const wm = new WindowManager(env.deps);
+    const firstClose = mock(() => {});
+    const secondClose = mock(() => {});
+    const options = {
+      projectKey: 'ssh:build-box:%2Fsrv%2Fwiki',
+      projectName: 'wiki',
+      remote: {
+        kind: 'ssh' as const,
+        machineId: 'build-box',
+        machineName: 'Build box',
+        path: '/srv/wiki',
+        platform: 'linux',
+        pathSeparator: '/' as const,
+      },
+      port: 45123,
+      apiOrigin: 'http://127.0.0.1:45123',
+      collabUrl: 'ws://127.0.0.1:45123/collab',
+    };
+
+    const first = wm.createRemoteProjectWindow({ ...options, closeSession: firstClose });
+    const second = await wm.createRemoteProjectWindow({ ...options, closeSession: secondClose });
+    expect(env.windows).toHaveLength(1);
+    expect(secondClose).toHaveBeenCalledTimes(1);
+    expect(window.focus).toHaveBeenCalled();
+
+    resolveLoad?.();
+    expect(await first).toBe(second);
+    window.fireClose();
+    expect(firstClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('cleans up a remote reservation when its window closes during load', async () => {
+    let resolveLoad: (() => void) | undefined;
+    const loading = new Promise<void>((resolve) => {
+      resolveLoad = resolve;
+    });
+    const window = makeWindow();
+    window.loadFile = mock(() => loading);
+    env.deps.createWindow = () => window;
+    const wm = new WindowManager(env.deps);
+    const closeSession = mock(() => {});
+
+    const pending = wm.createRemoteProjectWindow({
+      projectKey: 'ssh:build-box:%2Fsrv%2Fwiki',
+      projectName: 'wiki',
+      remote: {
+        kind: 'ssh',
+        machineId: 'build-box',
+        machineName: 'Build box',
+        path: '/srv/wiki',
+        platform: 'linux',
+        pathSeparator: '/',
+      },
+      port: 45123,
+      apiOrigin: 'http://127.0.0.1:45123',
+      collabUrl: 'ws://127.0.0.1:45123/collab',
+      closeSession,
+    });
+    window.markDestroyed();
+    window.fireClose();
+    resolveLoad?.();
+
+    await expect(pending).rejects.toThrow('closed while loading');
+    expect(closeSession).toHaveBeenCalledTimes(1);
+    expect(wm.windowCount()).toBe(0);
+  });
+
+  test('transactionally replaces a remote window after releasing the original session', async () => {
+    const wm = new WindowManager(env.deps);
+    const projectKey = 'ssh:build-box:%2Fsrv%2Fwiki';
+    const remote = {
+      kind: 'ssh' as const,
+      machineId: 'build-box',
+      machineName: 'Build box',
+      path: '/srv/wiki',
+      platform: 'linux',
+      pathSeparator: '/' as const,
+    };
+    const originalTunnelRetire = mock(() => {});
+    const originalSessionClose = mock(() => originalTunnelRetire());
+    const original = await wm.createRemoteProjectWindow({
+      projectKey,
+      projectName: 'wiki',
+      remote,
+      port: 45123,
+      apiOrigin: 'http://127.0.0.1:45123',
+      collabUrl: 'ws://127.0.0.1:45123/collab',
+      retireTunnel: originalTunnelRetire,
+      closeSession: originalSessionClose,
+    });
+    const originalWindow = env.windows[0];
+    if (!originalWindow) throw new Error('original remote window missing');
+    releaseRemoteOrigin(original);
+
+    const replacementSessionClose = mock(() => {});
+    const replacementTunnelRetire = mock(() => {});
+    const replacement = await wm.replaceRemoteProjectWindow(
+      {
+        projectKey,
+        projectName: 'wiki',
+        remote,
+        port: 45124,
+        apiOrigin: 'http://127.0.0.1:45124',
+        collabUrl: 'ws://127.0.0.1:45124/collab',
+        retireTunnel: replacementTunnelRetire,
+        closeSession: replacementSessionClose,
+      },
+      originalWindow,
+    );
+
+    expect(replacement).not.toBe(original);
+    expect(replacement.apiOrigin).toBe('http://127.0.0.1:45124');
+    expect(wm.getWindowFor(projectKey)).toBe(replacement);
+    expect(originalWindow.close).toHaveBeenCalledTimes(1);
+    expect(originalWindow.isDestroyed?.()).toBe(true);
+    // The old companion and tunnel are gone before replacement starts.
+    expect(originalTunnelRetire).toHaveBeenCalledTimes(1);
+    expect(replacementTunnelRetire).not.toHaveBeenCalled();
+    expect(originalSessionClose).toHaveBeenCalledTimes(1);
+    expect(replacementSessionClose).not.toHaveBeenCalled();
+
+    env.windows[1]?.close?.();
+    expect(replacementSessionClose).toHaveBeenCalledTimes(1);
+    expect(originalSessionClose).toHaveBeenCalledTimes(1);
+    expect(wm.windowCount()).toBe(0);
+  });
+
+  test('keeps the original editor visible when the replacement window fails to load', async () => {
+    const wm = new WindowManager(env.deps);
+    const projectKey = 'ssh:build-box:%2Fsrv%2Fwiki';
+    const remote = {
+      kind: 'ssh' as const,
+      machineId: 'build-box',
+      machineName: 'Build box',
+      path: '/srv/wiki',
+      platform: 'linux',
+      pathSeparator: '/' as const,
+    };
+    const originalTunnelRetire = mock(() => {});
+    const originalSessionClose = mock(() => originalTunnelRetire());
+    const original = await wm.createRemoteProjectWindow({
+      projectKey,
+      projectName: 'wiki',
+      remote,
+      port: 45123,
+      apiOrigin: 'http://127.0.0.1:45123',
+      collabUrl: 'ws://127.0.0.1:45123/collab',
+      retireTunnel: originalTunnelRetire,
+      closeSession: originalSessionClose,
+    });
+    const originalWindow = env.windows[0];
+    if (!originalWindow) throw new Error('original remote window missing');
+    releaseRemoteOrigin(original);
+
+    const failedWindow = makeWindow();
+    failedWindow.loadFile = mock(() => Promise.reject(new Error('replacement load failed')));
+    env.deps.createWindow = (opts) => {
+      env.createWindowOpts.push(opts);
+      env.windows.push(failedWindow);
+      return failedWindow;
+    };
+    const replacementSessionClose = mock(() => {});
+    await expect(
+      wm.replaceRemoteProjectWindow(
+        {
+          projectKey,
+          projectName: 'wiki',
+          remote,
+          port: 45124,
+          apiOrigin: 'http://127.0.0.1:45124',
+          collabUrl: 'ws://127.0.0.1:45124/collab',
+          closeSession: replacementSessionClose,
+        },
+        originalWindow,
+      ),
+    ).rejects.toThrow('replacement load failed');
+
+    expect(failedWindow.close).toHaveBeenCalledTimes(1);
+    expect(replacementSessionClose).toHaveBeenCalledTimes(1);
+    expect(originalWindow.close).not.toHaveBeenCalled();
+    expect(originalTunnelRetire).toHaveBeenCalledTimes(1);
+    expect(originalSessionClose).toHaveBeenCalledTimes(1);
+    expect(wm.getWindowFor(projectKey)).toBe(original);
+  });
+
+  test('releases each owned session before repeated remote replacements', async () => {
+    const wm = new WindowManager(env.deps);
+    const projectKey = 'ssh:build-box:%2Fsrv%2Fwiki';
+    const remote = {
+      kind: 'ssh' as const,
+      machineId: 'build-box',
+      machineName: 'Build box',
+      path: '/srv/wiki',
+      platform: 'linux',
+      pathSeparator: '/' as const,
+    };
+    const retires = [mock(() => {}), mock(() => {}), mock(() => {})];
+    const closes = retires.map((retire) => mock(() => retire()));
+
+    let current = await wm.createRemoteProjectWindow({
+      projectKey,
+      projectName: 'wiki',
+      remote,
+      port: 45123,
+      apiOrigin: 'http://127.0.0.1:45123',
+      collabUrl: 'ws://127.0.0.1:45123/collab',
+      retireTunnel: retires[0],
+      closeSession: closes[0] as () => void,
+    });
+
+    releaseRemoteOrigin(current);
+    current = await wm.replaceRemoteProjectWindow(
+      {
+        projectKey,
+        projectName: 'wiki',
+        remote,
+        port: 45124,
+        apiOrigin: 'http://127.0.0.1:45124',
+        collabUrl: 'ws://127.0.0.1:45124/collab',
+        retireTunnel: retires[1],
+        closeSession: closes[1] as () => void,
+      },
+      current.window,
+    );
+    expect(retires[0]).toHaveBeenCalledTimes(1);
+    expect(retires[1]).not.toHaveBeenCalled();
+    expect(closes[0]).toHaveBeenCalledTimes(1);
+    expect(closes[1]).not.toHaveBeenCalled();
+    expect(closes[2]).not.toHaveBeenCalled();
+
+    releaseRemoteOrigin(current);
+    const latest = await wm.replaceRemoteProjectWindow(
+      {
+        projectKey,
+        projectName: 'wiki',
+        remote,
+        port: 45125,
+        apiOrigin: 'http://127.0.0.1:45125',
+        collabUrl: 'ws://127.0.0.1:45125/collab',
+        retireTunnel: retires[2],
+        closeSession: closes[2] as () => void,
+      },
+      current.window,
+    );
+    expect(retires[0]).toHaveBeenCalledTimes(1);
+    expect(retires[1]).toHaveBeenCalledTimes(1);
+    expect(retires[2]).not.toHaveBeenCalled();
+    expect(closes[0]).toHaveBeenCalledTimes(1);
+    expect(closes[1]).toHaveBeenCalledTimes(1);
+    expect(closes[2]).not.toHaveBeenCalled();
+
+    latest.window.close?.();
+    expect(closes[2]).toHaveBeenCalledTimes(1);
+  });
+
+  test('refuses a replacement after its originating remote window has closed', async () => {
+    const wm = new WindowManager(env.deps);
+    const projectKey = 'ssh:build-box:%2Fsrv%2Fwiki';
+    const remote = {
+      kind: 'ssh' as const,
+      machineId: 'build-box',
+      machineName: 'Build box',
+      path: '/srv/wiki',
+      platform: 'linux',
+      pathSeparator: '/' as const,
+    };
+    const originalSessionClose = mock(() => {});
+    const original = await wm.createRemoteProjectWindow({
+      projectKey,
+      projectName: 'wiki',
+      remote,
+      port: 45123,
+      apiOrigin: 'http://127.0.0.1:45123',
+      collabUrl: 'ws://127.0.0.1:45123/collab',
+      closeSession: originalSessionClose,
+    });
+    original.window.close?.();
+    const replacementSessionClose = mock(() => {});
+
+    await expect(
+      wm.replaceRemoteProjectWindow(
+        {
+          projectKey,
+          projectName: 'wiki',
+          remote,
+          port: 45124,
+          apiOrigin: 'http://127.0.0.1:45124',
+          collabUrl: 'ws://127.0.0.1:45124/collab',
+          closeSession: replacementSessionClose,
+        },
+        original.window,
+      ),
+    ).rejects.toThrow('closed before it could be replaced');
+
+    expect(replacementSessionClose).toHaveBeenCalledTimes(1);
+    expect(originalSessionClose).toHaveBeenCalledTimes(1);
+    expect(env.windows).toHaveLength(1);
+    expect(wm.getWindowFor(projectKey)).toBeUndefined();
+  });
+
+  test('does not resurrect a remote project closed while its replacement loads', async () => {
+    const wm = new WindowManager(env.deps);
+    const projectKey = 'ssh:build-box:%2Fsrv%2Fwiki';
+    const remote = {
+      kind: 'ssh' as const,
+      machineId: 'build-box',
+      machineName: 'Build box',
+      path: '/srv/wiki',
+      platform: 'linux',
+      pathSeparator: '/' as const,
+    };
+    const originalTunnelRetire = mock(() => {});
+    const originalSessionClose = mock(() => originalTunnelRetire());
+    const original = await wm.createRemoteProjectWindow({
+      projectKey,
+      projectName: 'wiki',
+      remote,
+      port: 45123,
+      apiOrigin: 'http://127.0.0.1:45123',
+      collabUrl: 'ws://127.0.0.1:45123/collab',
+      retireTunnel: originalTunnelRetire,
+      closeSession: originalSessionClose,
+    });
+    const originalWindow = env.windows[0];
+    if (!originalWindow) throw new Error('original remote window missing');
+    releaseRemoteOrigin(original);
+    let resolveLoad: (() => void) | undefined;
+    const loading = new Promise<void>((resolve) => {
+      resolveLoad = resolve;
+    });
+    const replacementWindow = makeWindow();
+    replacementWindow.loadFile = mock(() => loading);
+    env.deps.createWindow = (opts) => {
+      env.createWindowOpts.push(opts);
+      env.windows.push(replacementWindow);
+      return replacementWindow;
+    };
+    const replacementSessionClose = mock(() => {});
+
+    const replacement = wm.replaceRemoteProjectWindow(
+      {
+        projectKey,
+        projectName: 'wiki',
+        remote,
+        port: 45124,
+        apiOrigin: 'http://127.0.0.1:45124',
+        collabUrl: 'ws://127.0.0.1:45124/collab',
+        closeSession: replacementSessionClose,
+      },
+      originalWindow,
+    );
+    originalWindow.close?.();
+    resolveLoad?.();
+
+    await expect(replacement).rejects.toThrow('closed while it was being replaced');
+    expect(replacementWindow.close).toHaveBeenCalledTimes(1);
+    expect(replacementSessionClose).toHaveBeenCalledTimes(1);
+    expect(originalTunnelRetire).toHaveBeenCalledTimes(1);
+    expect(originalSessionClose).toHaveBeenCalledTimes(1);
+    expect(wm.getWindowFor(projectKey)).toBeUndefined();
+  });
+
+  test('does not commit a replacement closed while the originating window is closing', async () => {
+    const wm = new WindowManager(env.deps);
+    const projectKey = 'ssh:build-box:%2Fsrv%2Fwiki';
+    const remote = {
+      kind: 'ssh' as const,
+      machineId: 'build-box',
+      machineName: 'Build box',
+      path: '/srv/wiki',
+      platform: 'linux',
+      pathSeparator: '/' as const,
+    };
+    const originalSessionClose = mock(() => {});
+    await wm.createRemoteProjectWindow({
+      projectKey,
+      projectName: 'wiki',
+      remote,
+      port: 45123,
+      apiOrigin: 'http://127.0.0.1:45123',
+      collabUrl: 'ws://127.0.0.1:45123/collab',
+      closeSession: originalSessionClose,
+    });
+    const original = wm.getWindowFor(projectKey);
+    if (!original) throw new Error('original remote context missing');
+    const originalWindow = env.windows[0];
+    if (!originalWindow) throw new Error('original remote window missing');
+    releaseRemoteOrigin(original);
+    // Hold closeAndAwait open so the replacement can close inside that await.
+    originalWindow.close = mock(() => {});
+
+    const replacementWindow = makeWindow();
+    env.deps.createWindow = (opts) => {
+      env.createWindowOpts.push(opts);
+      env.windows.push(replacementWindow);
+      return replacementWindow;
+    };
+    const replacementSessionClose = mock(() => {});
+    const replacement = wm.replaceRemoteProjectWindow(
+      {
+        projectKey,
+        projectName: 'wiki',
+        remote,
+        port: 45124,
+        apiOrigin: 'http://127.0.0.1:45124',
+        collabUrl: 'ws://127.0.0.1:45124/collab',
+        closeSession: replacementSessionClose,
+      },
+      originalWindow,
+    );
+    await wait(0);
+    expect(originalWindow.close).toHaveBeenCalledTimes(1);
+
+    replacementWindow.close?.();
+    originalWindow.markDestroyed();
+    originalWindow.fireClose();
+
+    await expect(replacement).rejects.toThrow('closed before the replacement committed');
+    expect(replacementSessionClose).toHaveBeenCalledTimes(1);
+    expect(originalSessionClose).toHaveBeenCalledTimes(1);
+    expect(wm.getWindowFor(projectKey)).toBeUndefined();
   });
 
   test('createProjectWindow forks utility, sends init, waits for ready, creates window', async () => {

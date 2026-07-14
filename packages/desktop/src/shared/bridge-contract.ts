@@ -25,7 +25,12 @@ import type {
   EditorId,
   LocalOpOkInitResponse,
   OkFolderState,
+  RemoteDirectoryListing,
+  RemoteProjectInfo,
   ShareTargetStatusResponse,
+  SshConnectionTestResult,
+  SshMachine,
+  SshMachineDraft,
   TerminalCli,
   WorktreeCreateRequest,
   WorktreeCreateResult,
@@ -121,6 +126,8 @@ export interface OkDesktopConfig {
   readonly apiOrigin: string;
   readonly projectPath: string;
   readonly projectName: string;
+  /** SSH metadata for a remote window; null for local/navigator windows. */
+  readonly remote: RemoteProjectInfo | null;
   readonly mode: OkDesktopMode;
   /**
    * `true` only under the Electron smoke suite (main injects `--ok-e2e-smoke=1`).
@@ -877,7 +884,8 @@ export type OkServerRestartOutcome =
  * (fail-open): the terminal is allowed by default, so main refuses only when the
  * window's project-local `terminal.enabled === false`, preventing a renderer
  * regression or compromise from spawning a real shell in a project a human has
- * explicitly opted out of.
+ * explicitly opted out of. `remote-unavailable` keeps SSH/helper failures
+ * distinct from both project authority and the user's consent choice.
  *
  * NOTE: structurally mirrored verbatim in `core/src/desktop-bridge.ts` and
  * `app/src/lib/desktop-bridge-types.ts` — the m1-smoke + bridge-contract-types
@@ -885,7 +893,10 @@ export type OkServerRestartOutcome =
  */
 export type OkPtyCreateResult =
   | { readonly ok: true; readonly ptyId: string }
-  | { readonly ok: false; readonly reason: 'no-project' | 'not-consented' };
+  | {
+      readonly ok: false;
+      readonly reason: 'no-project' | 'not-consented' | 'remote-unavailable';
+    };
 
 /**
  * One entry of the reload-rehydration inventory (`terminal.list`) — a ptyId that
@@ -945,7 +956,7 @@ export interface OkPtyExit {
  */
 export interface ClaudeReadiness {
   readonly claude: 'present' | 'not-found' | 'unknown';
-  readonly mcp: 'wired' | 'needs-rewire';
+  readonly mcp: 'wired' | 'needs-rewire' | 'unknown';
   /** True when the project's own `open-knowledge` `.mcp.json` entry is verified
    *  to be OK's canonical managed server (cli `isOwnManagedEntry`), so the docked
    *  terminal may pre-approve it on Claude launch instead of re-showing Claude's
@@ -1289,6 +1300,16 @@ export interface OkDesktopBridge {
 
   clipboard: {
     writeText(text: string): Promise<void>;
+  };
+
+  /** Saved-machine management and SSH-backed project opening. */
+  remote: {
+    listMachines(): Promise<SshMachine[]>;
+    saveMachine(machine: SshMachineDraft): Promise<SshMachine>;
+    removeMachine(machineId: string): Promise<void>;
+    testMachine(machineId: string): Promise<SshConnectionTestResult>;
+    listDirectories(request: { machineId: string; path: string }): Promise<RemoteDirectoryListing>;
+    openProject(request: { machineId: string; path: string }): Promise<boolean>;
   };
 
   project: {

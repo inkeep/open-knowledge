@@ -149,6 +149,31 @@ describe('createTerminalManager — create', () => {
     expect(h.forked).toHaveLength(0);
   });
 
+  test('forwards a main-owned executable override to the PTY host', () => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: '/Users/me',
+      cols: 80,
+      rows: 24,
+      executable: {
+        file: '/usr/bin/ssh',
+        args: ['-tt', '--', 'devbox', 'remote-command'],
+      },
+    });
+
+    expect(h.forked[0]?.posted).toContainEqual({
+      type: 'create',
+      ptyId: 'pty-1',
+      cwd: '/Users/me',
+      cols: 80,
+      rows: 24,
+      executable: '/usr/bin/ssh',
+      args: ['-tt', '--', 'devbox', 'remote-command'],
+    });
+  });
+
   test('a second create for the same window reuses the host with a fresh ptyId', () => {
     const h = makeManager();
     const wc = makeWebContents();

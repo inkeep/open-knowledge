@@ -10,6 +10,7 @@ let cloneDialogProps: Array<{
   open: boolean;
   onCloneComplete: (payload: { dir: string }) => void;
 }> = [];
+let remoteDialogProps: Array<{ open: boolean; bridge: unknown }> = [];
 
 mock.module('next-themes', () => ({
   useTheme: () => ({ theme: undefined }),
@@ -50,6 +51,13 @@ mock.module('./CloneDialog', () => ({
   CloneDialog: (props: { open: boolean; onCloneComplete: (payload: { dir: string }) => void }) => {
     cloneDialogProps.push(props);
     return <div data-testid="clone-dialog" data-open={String(props.open)} />;
+  },
+}));
+
+mock.module('./RemoteProjectDialog', () => ({
+  RemoteProjectDialog: (props: { open: boolean; bridge: unknown }) => {
+    remoteDialogProps.push(props);
+    return <div data-testid="remote-project-dialog" data-open={String(props.open)} />;
   },
 }));
 
@@ -130,6 +138,7 @@ describe('NavigatorApp launcher runtime behavior', () => {
     themeBridgeCalls = [];
     createDialogProps = [];
     cloneDialogProps = [];
+    remoteDialogProps = [];
   });
 
   afterEach(() => {
@@ -151,6 +160,7 @@ describe('NavigatorApp launcher runtime behavior', () => {
     expectVisualClassTokens(chromeRow.className, ['inset-x-0', 'h-9']);
     expect(screen.getByTestId('nav-open').getAttribute('data-electron-no-drag')).toBeNull();
     expect(screen.getByTestId('nav-create-new').getAttribute('data-electron-no-drag')).toBeNull();
+    expect(screen.getByTestId('nav-open-remote').textContent).toContain('Open over SSH');
     await screen.findByTestId('nav-recent-list');
     expect(document.querySelector('[data-electron-no-drag]')).toBeNull();
   });
@@ -182,6 +192,12 @@ describe('NavigatorApp launcher runtime behavior', () => {
       expect(screen.getByTestId('create-project-dialog').getAttribute('data-open')).toBe('true');
     });
     expect(createDialogProps.at(-1)?.bridge).toBe(bridge);
+
+    fireEvent.click(screen.getByTestId('nav-open-remote'));
+    await waitFor(() => {
+      expect(screen.getByTestId('remote-project-dialog').getAttribute('data-open')).toBe('true');
+    });
+    expect(remoteDialogProps.at(-1)?.bridge).toBe(bridge);
 
     fireEvent.click(screen.getByTestId('nav-clone'));
     await waitFor(() => {
@@ -219,8 +235,9 @@ describe('NavigatorApp launcher runtime behavior', () => {
     fireEvent.click(await screen.findByText('Recent Project'));
 
     const overlay = await screen.findByTestId('nav-opening-overlay');
-    // Label is the path's last segment, not the full path.
-    expect(overlay.textContent).toContain('Opening recent');
+    // Recent rows use their saved human-readable project name, never an opaque
+    // local/SSH state key.
+    expect(overlay.textContent).toContain('Opening Recent Project');
     expect(overlay.getAttribute('role')).toBe('status');
 
     // Failure-path parity: the main-side wrapper swallows errors and resolves
@@ -301,5 +318,33 @@ describe('NavigatorApp launcher runtime behavior', () => {
     expect(plainRow.textContent).toContain('Plain Notes');
     expect(plainRow.textContent).toContain('/Users/x/plain-notes');
     expect(plainRow.textContent).not.toContain('worktree');
+  });
+
+  test('remote recents show an SSH badge plus machine and canonical remote path', async () => {
+    const bridge = createBridge();
+    bridge.project.listRecent = mock(() =>
+      Promise.resolve([
+        {
+          path: 'ssh:machine-1:%2Fsrv%2Fknowledge',
+          name: 'knowledge',
+          remote: {
+            kind: 'ssh',
+            machineId: 'machine-1',
+            machineName: 'Build box',
+            path: '/srv/knowledge',
+            platform: 'linux',
+            pathSeparator: '/',
+          },
+        },
+      ]),
+    );
+    await renderNavigator(bridge);
+
+    const list = await screen.findByTestId('nav-recent-list');
+    expect(list.textContent).toContain('knowledge');
+    expect(list.textContent).toContain('SSH');
+    expect(list.textContent).toContain('Build box • /srv/knowledge');
+    expect(list.textContent).not.toContain('ssh:machine-1');
+    expect(list.querySelector('svg.lucide-server')).not.toBeNull();
   });
 });

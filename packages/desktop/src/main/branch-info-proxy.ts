@@ -68,6 +68,8 @@ export interface BranchInfoProxyDeps {
   readonly readServerLock: (lockDir: string) => ServerLockReadShape | null;
   readonly isProcessAlive: (pid: number) => boolean;
   readonly fetch: typeof fetch;
+  /** Direct origin for transports without a local on-disk server lock. */
+  readonly resolveProjectOrigin?: (projectPath: string) => string | null | undefined;
   /** Delay between lock-presence polls. Default 50ms. */
   readonly pollIntervalMs?: number;
   /** Maximum total time spent polling for the lock. Default 5_000ms. */
@@ -95,6 +97,8 @@ export async function resolveProjectServerOrigin(
   deps: BranchInfoProxyDeps,
   signal?: AbortSignal,
 ): Promise<string | null> {
+  const directOrigin = deps.resolveProjectOrigin?.(projectPath);
+  if (directOrigin !== undefined) return directOrigin;
   const lockDir = joinPath(projectPath, '.ok', 'local');
   const pollIntervalMs = deps.pollIntervalMs ?? 50;
   const pollTimeoutMs = deps.pollTimeoutMs ?? 5_000;

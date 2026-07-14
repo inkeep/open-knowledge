@@ -1107,6 +1107,17 @@ export {
   parseInstalledSkills,
 } from './installed-skills/schema.ts';
 export {
+  isRemoteProjectKey,
+  isSafeSshDestination,
+  type RemoteDirectoryEntry,
+  type RemoteDirectoryListing,
+  type RemoteProjectInfo,
+  remoteProjectKey,
+  type SshConnectionTestResult,
+  type SshMachine,
+  type SshMachineDraft,
+} from './remote-project.ts';
+export {
   createWorkspaceSearchCorpus,
   createWorkspaceSearchDocument,
   DEFAULT_RRF_K,
