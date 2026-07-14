@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 import {
   activateAssetLink,
   handleChipLinkClick,
+  navigateToMarkdownTarget,
   toInternalHashHref,
 } from './internal-link-helpers';
 
@@ -132,6 +133,70 @@ describe('activateAssetLink', () => {
 
     expect(assign).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledWith('#/__asset__/docs/report.html');
+  });
+});
+
+/**
+ * External-link routing for the source-mode markdown-link path
+ * (`md-link-source.ts` → `navigateToMarkdownTarget`). Mirrors the WYSIWYG
+ * `internal-link.external-open.test.ts` contract: on desktop the external
+ * branch routes through the bridge (`okDesktop.shell.openExternal`), on web it
+ * falls back to `window.open`, and an unsafe scheme is refused (the branch was
+ * migrated off `openHashHrefInNewTab`, whose internal scheme gate is replaced
+ * by an explicit `isSafeNavigationUrl` guard).
+ */
+describe('navigateToMarkdownTarget — external routing', () => {
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+      writable: true,
+    });
+  });
+
+  function stubWindow(overrides: { okDesktop?: unknown; open?: unknown }): void {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { hash: '' }, open: overrides.open, okDesktop: overrides.okDesktop },
+      writable: true,
+    });
+  }
+
+  it('desktop (bridge present): routes through okDesktop.shell.openExternal, NOT window.open', () => {
+    const openExternal = mock(async (_url: string) => {});
+    const openWindow = mock(() => null);
+    stubWindow({ okDesktop: { shell: { openExternal } }, open: openWindow });
+
+    navigateToMarkdownTarget({ kind: 'external', url: 'https://example.com/watch' });
+
+    expect(openExternal).toHaveBeenCalledTimes(1);
+    expect(openExternal).toHaveBeenCalledWith('https://example.com/watch');
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it('web (no bridge): falls back to window.open with the new-tab + noopener features', () => {
+    const openWindow = mock(() => null);
+    stubWindow({ okDesktop: undefined, open: openWindow });
+
+    navigateToMarkdownTarget({ kind: 'external', url: 'https://example.com/web' });
+
+    expect(openWindow).toHaveBeenCalledTimes(1);
+    expect(openWindow).toHaveBeenCalledWith(
+      'https://example.com/web',
+      '_blank',
+      'noopener,noreferrer',
+    );
+  });
+
+  it('unsafe scheme is refused: neither the bridge nor window.open fires', () => {
+    const openExternal = mock(async (_url: string) => {});
+    const openWindow = mock(() => null);
+    stubWindow({ okDesktop: { shell: { openExternal } }, open: openWindow });
+
+    navigateToMarkdownTarget({ kind: 'external', url: 'javascript:alert(1)' });
+
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(openWindow).not.toHaveBeenCalled();
   });
 });
 

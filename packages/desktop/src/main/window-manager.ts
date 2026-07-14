@@ -36,6 +36,8 @@ import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
 import { getLocalDir } from '@inkeep/open-knowledge-server';
 import type { OkServerRestartOutcome } from '../shared/bridge-contract.ts';
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
+import type { AssetOpenResult } from './asset-allowlist.ts';
+import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { ShareDeepLinkBranchSwitchPayload } from './url-scheme.ts';
 import { classifyServerVersion } from './version-drift.ts';
@@ -688,6 +690,27 @@ export interface WindowManagerDeps {
     /** Mark the moment `loadURL`/`loadFile` resolved. */
     markLoadUrlResolved?(): void;
   };
+  /**
+   * External-link safety-net delegates, grouped so the net is all-or-nothing.
+   * `attachSafetyNet` needs BOTH to function, so a partial wiring (one delegate
+   * but not the other) is unrepresentable rather than silently producing
+   * net-less windows — the #617 failure class must not resurface at the wiring
+   * layer. Absent in the unit harnesses that don't exercise the net; present in
+   * production (wired once in `index.ts`) and the factory-net tests.
+   */
+  safetyNet?: {
+    /**
+     * OS-browser delegate. Window-independent — `index.ts` wires
+     * `handleShellOpenExternal({ openExternal: url => shell.openExternal(url) })`.
+     */
+    openExternal: (url: string) => Promise<void>;
+    /**
+     * Project-scoped asset opener for the in-app-asset branch. Parameterized by
+     * `projectPath` because each window's containment root differs — `index.ts`
+     * wires `(projectPath, relPath) => openAssetSafely({ projectPath, platform, openPath }, relPath)`.
+     */
+    openAsset: (projectPath: string, relPath: string) => Promise<AssetOpenResult>;
+  };
 }
 
 /**
@@ -1311,6 +1334,35 @@ export class WindowManager {
     });
   }
 
+  /**
+   * Attach the external-link safety net to a freshly-created editor window, so
+   * EVERY factory path (spawn + ephemeral + attach, including the
+   * restart → recreate window) denies a `window.open(externalUrl)` and delegates
+   * it to the OS browser. The single enforcement point keeps the three factories
+   * from drifting — previously the net was wired per-call-site in `index.ts`, so
+   * a window created by any other path came up net-less.
+   *
+   * `setWindowOpenHandler` must be registered BEFORE the window's `loadURL`, so
+   * every caller invokes this immediately after `createWindow`.
+   *
+   * Guarded on the grouped `safetyNet` dep: unit harnesses that don't exercise
+   * the net omit it (their webContents fake has no `setWindowOpenHandler`), so
+   * the net stays off for them; production + the factory-net tests wire it.
+   */
+  private attachSafetyNet(
+    webContents: BrowserWindowLike['webContents'],
+    editorOrigin: string,
+    assetRoot: string,
+  ): void {
+    const net = this.deps.safetyNet;
+    if (!net) return;
+    attachAssetSafetyNet(webContents, {
+      editorOrigin,
+      openExternal: net.openExternal,
+      openAsset: (relPath) => net.openAsset(assetRoot, relPath),
+    });
+  }
+
   async createProjectWindow(opts: CreateProjectWindowOpts): Promise<ProjectContext> {
     const projectPath = resolve(opts.projectPath);
     const canonicalKey = this.canonicalizeKey(projectPath);
@@ -1682,6 +1734,7 @@ export class WindowManager {
       projectPath,
     });
     this.deps.startup?.markWindowCreated?.();
+    this.attachSafetyNet(window.webContents, apiOrigin, projectPath);
 
     // Deep-link gate — register `dom-ready` listener BEFORE awaiting `loadURL`.
     // A synchronous send from url-scheme.ts's routeUrl would work today only
@@ -1986,6 +2039,10 @@ export class WindowManager {
       ],
       title: formatEditorTitle(projectName),
     });
+    // Asset root is the file's real parent (`opts.contentDir`), NOT the throwaway
+    // temp projectDir — so `![[sibling]]` assets are allowlisted against the
+    // directory they actually live in.
+    this.attachSafetyNet(window.webContents, apiOrigin, opts.contentDir);
 
     const disposeShowGate = this.deps.showGate.register(window, { kind: 'editor' });
 
@@ -2319,6 +2376,7 @@ export class WindowManager {
       projectPath,
     });
     this.deps.startup?.markWindowCreated?.();
+    this.attachSafetyNet(window.webContents, apiOrigin, projectPath);
 
     // Deep-link gate — same pattern as the spawn path. Register the
     // `dom-ready` listener BEFORE `await loadURL` so the one-shot event

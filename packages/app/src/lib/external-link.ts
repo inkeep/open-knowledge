@@ -1,3 +1,5 @@
+import { isSafeNavigationUrl } from '@/editor/safe-navigation-url';
+
 /**
  * In Electron, `<a target="_blank">` opens the URL in an in-app
  * BrowserWindow. Wire this onto BOTH `onClick` and `onAuxClick` so
@@ -9,7 +11,12 @@ export function dispatchExternalLinkClick(e: { preventDefault: () => void }, url
   const openExternal = window.okDesktop?.shell?.openExternal;
   if (!openExternal) return;
   e.preventDefault();
-  void openExternal(url);
+  // Same catch discipline as openExternalUrl: the bridge rejects schemes
+  // outside the main-process allowlist; swallow + warn so a rejected open
+  // can't surface as an unhandled rejection.
+  void openExternal(url).catch((err: unknown) => {
+    console.warn('[external-link] openExternal failed', url, err);
+  });
 }
 
 /**
@@ -37,11 +44,28 @@ interface OpenExternalUrlDeps {
  * `window.open(url, '_blank', 'noopener,noreferrer')` new-tab behavior.
  */
 export function openExternalUrl(url: string, deps: OpenExternalUrlDeps = {}): void {
+  // Structural security gate (defense-in-depth): refuse `javascript:`/`data:`/
+  // `vbscript:` etc. here so no caller can route an unsafe scheme to
+  // `window.open` (web fallback) by forgetting the check. Callers that need
+  // the boolean to drive control flow (e.g. a link chip that falls through to
+  // its edit panel) still call `isSafeNavigationUrl` themselves; this makes the
+  // invariant hold regardless. Relative `#/…` hash routes are not external and
+  // never reach here.
+  if (!isSafeNavigationUrl(url)) {
+    console.warn('[external-link] blocked non-safe scheme', url);
+    return;
+  }
   const globalBridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
   const okDesktop = 'okDesktop' in deps ? deps.okDesktop : globalBridge;
   const openExternal = okDesktop?.shell?.openExternal;
   if (openExternal) {
-    void openExternal(url);
+    // Fire-and-forget, but catch: the desktop bridge REJECTS schemes outside
+    // the main-process outbound allowlist (e.g. an authored `tel:` link passes
+    // the renderer's isSafeNavigationUrl gate but is not in ALLOWED_SCHEMES).
+    // Swallow + warn so a rejected open can't surface as an unhandled rejection.
+    void openExternal(url).catch((err: unknown) => {
+      console.warn('[external-link] openExternal failed', url, err);
+    });
     return;
   }
   const globalOpen = typeof window !== 'undefined' ? window.open.bind(window) : undefined;

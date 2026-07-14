@@ -134,7 +134,6 @@ import { buildAboutPanelOptions } from './about-panel.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
 import { openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
 import { popAssetMenu } from './asset-menu.ts';
-import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import {
   bootAutoUpdater,
   channelFromVersion,
@@ -1369,6 +1368,25 @@ function ensureWindowManager() {
       markWindowCreated: () => startupWaterfall.mark('windowCreated'),
       markLoadUrlResolved: () => startupWaterfall.mark('loadUrlResolved'),
     },
+    // External-link safety net, attached by the window factory to EVERY editor
+    // window (see WindowManager.attachSafetyNet). `openExternal` is
+    // window-independent; `openAsset` is parameterized by the window's project
+    // path so containment resolves against the right root. Grouped so the two
+    // delegates are wired together or not at all.
+    safetyNet: {
+      openExternal: handleShellOpenExternal({
+        openExternal: (url) => shell.openExternal(url),
+      }),
+      openAsset: (projectPath, relPath) =>
+        openAssetSafely(
+          {
+            projectPath,
+            platform: process.platform,
+            openPath: (canonical) => shell.openPath(canonical),
+          },
+          relPath,
+        ),
+    },
   });
 }
 
@@ -1832,21 +1850,9 @@ async function openProject(
     },
     'project window created',
   );
-  attachAssetSafetyNet(ctx.window.webContents, {
-    editorOrigin: ctx.apiOrigin,
-    openAsset: (relPath) =>
-      openAssetSafely(
-        {
-          projectPath: ctx.projectPath,
-          platform: process.platform,
-          openPath: (canonical) => shell.openPath(canonical),
-        },
-        relPath,
-      ),
-    openExternal: handleShellOpenExternal({
-      openExternal: (url) => shell.openExternal(url),
-    }),
-  });
+  // The external-link / asset safety net is attached by the window factory
+  // (WindowManager.attachSafetyNet) on every editor window, so no per-call-site
+  // wiring is needed here.
   // Toast dispatch on did-finish-load so the renderer's sonner subscriber is
   // mounted. `prefers-reduced-motion: reduce` is honored sonner-side.
   if (toastPayload !== null) {
@@ -2027,25 +2033,9 @@ async function openEphemeralFile(filePath: string): Promise<void> {
       { file: plan.canonicalFilePath, apiOrigin: ctx.apiOrigin },
       'ephemeral single-file window created',
     );
-    // The asset-safety-net root is the file's REAL parent (`ctx.projectPath` ===
-    // `plan.contentDir`), NOT the throwaway temp projectDir — so `![[sibling]]`
-    // `![](path)` assets are allowlisted against the directory they
-    // actually live in.
-    attachAssetSafetyNet(ctx.window.webContents, {
-      editorOrigin: ctx.apiOrigin,
-      openAsset: (relPath) =>
-        openAssetSafely(
-          {
-            projectPath: ctx.projectPath,
-            platform: process.platform,
-            openPath: (canonical) => shell.openPath(canonical),
-          },
-          relPath,
-        ),
-      openExternal: handleShellOpenExternal({
-        openExternal: (url) => shell.openExternal(url),
-      }),
-    });
+    // The external-link / asset safety net is attached by the window factory
+    // (WindowManager.attachSafetyNet) — for ephemeral windows the asset root is
+    // the file's real parent (`opts.contentDir`), wired there.
     tryCloseNavigator(navigatorWindow, { projectPath: plan.contentDir });
     refreshApplicationMenu();
   } catch (err) {

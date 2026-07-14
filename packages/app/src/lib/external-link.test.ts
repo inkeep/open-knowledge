@@ -43,3 +43,19 @@ describe('openExternalUrl — web host (no bridge)', () => {
     expect(openWindow).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
   });
 });
+
+describe('openExternalUrl — structural scheme gate (internal)', () => {
+  test('an unsafe scheme is refused on the web path — never reaches window.open', () => {
+    const openWindow = mock(() => null);
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the security gate with a hostile scheme
+    openExternalUrl('javascript:alert(1)' as any, { okDesktop: undefined, openWindow });
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  test('an unsafe scheme is refused on the desktop path — never reaches the bridge', () => {
+    const openExternal = mock(() => Promise.resolve());
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the security gate with a hostile scheme
+    openExternalUrl('javascript:alert(1)' as any, { okDesktop: { shell: { openExternal } } });
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+});

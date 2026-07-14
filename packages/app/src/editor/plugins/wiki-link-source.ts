@@ -24,6 +24,7 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 import { classifyWikiLinkTarget, type HeadingEntry } from '@inkeep/open-knowledge-core';
+import { openExternalUrl } from '@/lib/external-link';
 import { hashFromAssetPath, hashFromDocName } from '../../lib/doc-hash';
 import { resolveWikiLinkAssetTarget } from '../extensions/wiki-link-helpers';
 import {
@@ -35,11 +36,7 @@ import {
   type PageItem,
   type WikiLinkContext,
 } from '../extensions/wiki-link-suggestion';
-import {
-  openHashHrefInNewTab,
-  openInternalHashHrefInNewTab,
-  shouldOpenInNewTab,
-} from '../internal-link-helpers';
+import { openInternalHashHrefInNewTab, shouldOpenInNewTab } from '../internal-link-helpers';
 
 // ── Data fetching (module-level TTL cache wrapping shared fetchers) ──────────
 //
@@ -230,11 +227,13 @@ const wikiLinkClickHandler = EditorView.domEventHandlers({
           if (!classified) return false;
           event.preventDefault();
           if (classified.kind === 'external') {
-            // classifyWikiLinkTarget admits any URI scheme via isExternalHref,
-            // so a raw window.open of an authored URL would execute
-            // javascript:/data:/etc. payloads in the viewer's origin.
-            // openHashHrefInNewTab gates the scheme via isSafeNavigationUrl.
-            openHashHrefInNewTab(classified.url);
+            // Route through the desktop bridge so the OS default browser opens
+            // the URL (web falls back to window.open) — symmetric with the
+            // WYSIWYG wiki-link chip. classifyWikiLinkTarget admits any URI
+            // scheme via isExternalHref; openExternalUrl refuses unsafe
+            // schemes internally, so an authored javascript:/data: href is
+            // dropped there (the event is already consumed via preventDefault).
+            openExternalUrl(classified.url);
           } else if (classified.kind === 'asset') {
             const assetPath =
               resolveWikiLinkAssetTarget(

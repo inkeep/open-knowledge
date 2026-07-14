@@ -5,6 +5,7 @@ import {
   type DocLinkTarget,
 } from '@inkeep/open-knowledge-core';
 import { hashFromAssetPath, hashFromDocName } from '../lib/doc-hash';
+import { openExternalUrl } from '../lib/external-link';
 import { dispatchAssetClick } from './asset-dispatch';
 import { isSafeNavigationUrl } from './safe-navigation-url';
 
@@ -180,6 +181,15 @@ export function navigateToMarkdownTarget(
     return;
   }
 
+  if (target.kind === 'external') {
+    // Route through the desktop bridge so the OS default browser opens the URL
+    // (web falls back to window.open) — symmetric with the WYSIWYG link chip.
+    // openExternalUrl gates unsafe schemes internally now, so no guard here.
+    openExternalUrl(target.url);
+    return;
+  }
+
+  // asset — open the in-app asset preview / OS target in a new tab.
   openHashHrefInNewTab(target.url);
 }
 

@@ -19,6 +19,7 @@
  */
 import { WikiLink as BaseWikiLink, classifyWikiLinkTarget } from '@inkeep/open-knowledge-core';
 import { createElement } from 'react';
+import { openExternalUrl } from '@/lib/external-link';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';
 import { type ResolvedPageIcon, resolvePageIcon } from '../../components/page-header-utils';
 import { hashFromAssetPath } from '../../lib/doc-hash';
@@ -306,10 +307,13 @@ export const WikiLink = BaseWikiLink.extend<{ docName: string }>({
           }
           return true;
         }
-        // external — refuse unsafe schemes. Always
-        // open in a new tab regardless of bare-click vs Cmd-click.
+        // external — route through the desktop bridge so a click reaches the
+        // OS default browser instead of an in-app child window (web falls back
+        // to window.open). openExternalUrl gates unsafe schemes internally; this
+        // gate is for control flow — an unsafe href returns false so the chip
+        // falls through to its edit affordance instead of silently no-opening.
         if (!isSafeNavigationUrl(classified.url)) return false;
-        openHashHrefInNewTab(classified.url);
+        openExternalUrl(classified.url);
         return true;
       };
       layer.register({

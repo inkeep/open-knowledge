@@ -400,6 +400,8 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
                 actionLabel: t`Open link`,
                 secondaryLabel: selectedNode.url,
                 onAction: () => {
+                  // openExternalUrl gates unsafe schemes internally (a node URL can
+                  // carry any authored scheme), then routes to the OS browser / new tab.
                   openExternalUrl(selectedNode.url);
                   setIsExpanded(false);
                 },
