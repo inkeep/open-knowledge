@@ -75,7 +75,10 @@ async function renderMenuWithTerminal(menuInput: HandoffDispatchInput | null = i
   render(
     <TooltipProvider>
       <TerminalLaunchProvider
-        value={{ launchInTerminal: (i, cli) => launchCalls.push({ input: i, cli }) }}
+        value={{
+          launchInTerminal: (i, cli) => launchCalls.push({ input: i, cli }),
+          installedClis: {},
+        }}
       >
         <OpenInAgentMenu input={menuInput} />
       </TerminalLaunchProvider>

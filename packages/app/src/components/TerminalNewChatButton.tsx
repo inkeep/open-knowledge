@@ -32,6 +32,12 @@ interface TerminalNewChatButtonProps {
   /** Dropdown "Terminal" row — make a bare shell the new default (persist,
    *  terminal-only) AND open a new bare-shell tab. */
   readonly onPickTerminal: () => void;
+  /** The CLIs to list — already gated by the host via {@link visibleTerminalClis}
+   *  (Claude plus CLIs the probe hasn't ruled out, and always the current pick),
+   *  so a CLI that's been probed absent doesn't appear. This is a presentational
+   *  component: it renders the list as given. Falls back to the full
+   *  {@link VISIBLE_CLIS} only for callers/tests that don't pass a gated list. */
+  readonly visibleClis?: readonly TerminalCli[];
   readonly className?: string;
 }
 
@@ -50,6 +56,7 @@ export function TerminalNewChatButton({
   onLaunchSelected,
   onPickCli,
   onPickTerminal,
+  visibleClis = VISIBLE_CLIS,
   className,
 }: TerminalNewChatButtonProps) {
   const { t } = useLingui();
@@ -99,7 +106,7 @@ export function TerminalNewChatButton({
           <DropdownMenuLabel>
             <Trans>New chat</Trans>
           </DropdownMenuLabel>
-          {VISIBLE_CLIS.map((cli) => {
+          {visibleClis.map((cli) => {
             const { displayName: name } = TERMINAL_CLIS[cli];
             return (
               <DropdownMenuItem

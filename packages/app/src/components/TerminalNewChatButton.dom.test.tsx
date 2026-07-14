@@ -5,7 +5,10 @@ import userEvent from '@testing-library/user-event';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { TerminalNewChatButton, type TerminalNewTabChoice } from './TerminalNewChatButton';
 
-function renderButton(selected: TerminalNewTabChoice = 'claude') {
+function renderButton(
+  selected: TerminalNewTabChoice = 'claude',
+  visibleClis?: readonly TerminalCli[],
+) {
   const onLaunchSelected = mock(() => {});
   const onPickCli = mock((_cli: TerminalCli) => {});
   const onPickTerminal = mock(() => {});
@@ -16,6 +19,7 @@ function renderButton(selected: TerminalNewTabChoice = 'claude') {
         onLaunchSelected={onLaunchSelected}
         onPickCli={onPickCli}
         onPickTerminal={onPickTerminal}
+        visibleClis={visibleClis}
       />
     </TooltipProvider>,
   );
@@ -55,6 +59,23 @@ describe('TerminalNewChatButton', () => {
     for (const name of ['Claude CLI', 'Codex CLI', 'OpenCode CLI', 'Cursor CLI']) {
       expect(await screen.findByRole('menuitem', { name })).toBeDefined();
     }
+    expect(screen.getByRole('menuitem', { name: 'Terminal' })).toBeDefined();
+  });
+
+  test('lists only the CLIs in visibleClis (Claude + detected), hiding the rest', async () => {
+    const user = userEvent.setup();
+    // The host passes the already-gated list from `visibleTerminalClis`: Claude
+    // (always-visible anchor) plus detected `codex`. Antigravity/Cursor weren't
+    // detected on PATH, so their rows are absent.
+    renderButton('claude', ['claude', 'codex']);
+
+    await user.click(screen.getByRole('button', { name: 'Choose CLI for new chat' }));
+
+    expect(await screen.findByRole('menuitem', { name: 'Claude CLI' })).toBeDefined();
+    expect(screen.getByRole('menuitem', { name: 'Codex CLI' })).toBeDefined();
+    expect(screen.queryByRole('menuitem', { name: 'Antigravity CLI' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Cursor CLI' })).toBeNull();
+    // The bare-shell Terminal row is independent of CLI gating — always present.
     expect(screen.getByRole('menuitem', { name: 'Terminal' })).toBeDefined();
   });
 

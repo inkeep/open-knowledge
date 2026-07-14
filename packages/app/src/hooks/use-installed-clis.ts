@@ -3,14 +3,21 @@ import { useEffect, useState } from 'react';
 
 /**
  * Which launchable CLIs are on PATH, from the desktop probe (cached ~60s in
- * main). Shared by every default-CLI entry point — the header / tab-strip
- * "New chat" and the "Ask X" bubble — so they resolve the same installed set.
+ * main). Shared by every launch entry point — the header / tab-strip "New chat",
+ * the "Ask X" bubble, and the Open-with-AI menus — so they resolve and gate the
+ * same installed set.
  *
- * Starts empty (unknown, not "none installed") until the async probe resolves;
- * `resolveDefaultCli` treats an unknown key optimistically. Capability-guarded:
- * a partial/older bridge, or the web host with no `terminal` surface, leaves the
- * map empty, and a probe failure degrades silently to "none installed" (New chat
- * then defaults to claude and the existing install banner handles the miss).
+ * Starts empty (unknown, not "none installed") until the async probe resolves.
+ * A partial/older bridge, the web host with no `terminal` surface, or a probe
+ * failure leaves keys `undefined` (unknown). Consumers must NOT read unknown as
+ * "absent": `resolveDefaultCli` treats it optimistically, and `visibleTerminalClis`
+ * fails open (an unknown CLI still renders), so a probe miss never silently drops
+ * an installed CLI from the launch surfaces for the whole session.
+ *
+ * Re-probes when the window regains focus so a CLI installed mid-session (the
+ * user left to a terminal/installer and came back) appears without an app
+ * restart, and a transient probe failure or a cold empty map self-heals. The
+ * main-process 60s cache keeps repeat focus events cheap.
  */
 export function useInstalledClis(): Partial<Record<TerminalCli, boolean>> {
   const [installedClis, setInstalledClis] = useState<Partial<Record<TerminalCli, boolean>>>({});
@@ -21,18 +28,23 @@ export function useInstalledClis(): Partial<Record<TerminalCli, boolean>> {
     // synchronous "not a function" the .catch can't intercept.
     if (typeof terminal?.cliInstalledMap !== 'function') return;
     let cancelled = false;
-    void terminal
-      .cliInstalledMap()
-      .then((map) => {
-        if (!cancelled) setInstalledClis(map);
-      })
-      .catch((err) => {
-        // Recoverable: the resolver degrades to "none installed" → claude default.
-        // warn + [terminal] matches the terminal surface's probe-failure convention.
-        console.warn('[terminal] cliInstalledMap probe failed; defaulting to none installed:', err);
-      });
+    const probe = () => {
+      void terminal
+        .cliInstalledMap()
+        .then((map) => {
+          if (!cancelled) setInstalledClis(map);
+        })
+        .catch((err) => {
+          // Recoverable: unknown keys stay unknown (fail-open visibility; claude
+          // auto-pick default). warn + [terminal] matches the surface convention.
+          console.warn('[terminal] cliInstalledMap probe failed:', err);
+        });
+    };
+    probe();
+    window.addEventListener('focus', probe);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', probe);
     };
   }, []);
   return installedClis;

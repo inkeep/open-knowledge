@@ -153,7 +153,7 @@ async function renderComposer(
   opts: { withTerminal: boolean; scenario?: CreateScenario } = { withTerminal: true },
 ) {
   const value = opts.withTerminal
-    ? { launchInTerminal: (i: HandoffDispatchInput) => launchCalls.push(i) }
+    ? { launchInTerminal: (i: HandoffDispatchInput) => launchCalls.push(i), installedClis: {} }
     : null;
   render(
     <TerminalLaunchProvider value={value}>

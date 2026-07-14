@@ -244,7 +244,10 @@ async function renderComposer(
 
 // Variant that supplies a docked-terminal launcher so the picker offers the
 // "Claude CLI" option (desktop parity). Records every launched input.
-async function renderComposerWithTerminal(docName = 'notes') {
+async function renderComposerWithTerminal(
+  docName = 'notes',
+  installedClis: Record<string, boolean> = {},
+) {
   const { BottomComposer } = await import('./BottomComposer');
   const { TerminalLaunchProvider } = await import('./handoff/TerminalLaunchContext');
   return render(
@@ -253,6 +256,11 @@ async function renderComposerWithTerminal(docName = 'notes') {
         launchInTerminal: (input, cli) => {
           terminalLaunchCalls.push({ input, cli });
         },
+        // The composer reads the install map from here (not its own probe), so it
+        // drives both the no-pick default (resolveDefaultCli) and row gating
+        // (visibleTerminalClis). Default {} ⇒ probe unresolved ⇒ fail-open (all
+        // CLIs), matching the ungated rows most tests were written against.
+        installedClis,
       }}
     >
       <BottomComposer docName={docName} surface="wysiwyg" />
@@ -271,6 +279,7 @@ async function renderComposerWithThrowingTerminal(docName = 'notes') {
         launchInTerminal: () => {
           throw new Error('no terminal session');
         },
+        installedClis: {},
       }}
     >
       <BottomComposer docName={docName} surface="wysiwyg" />
@@ -278,14 +287,15 @@ async function renderComposerWithThrowingTerminal(docName = 'notes') {
   );
 }
 
-// Desktop + a CLI install probe: installs a fake terminal bridge exposing
-// `cliInstalledMap` so the no-pick default resolves to the first-installed CLI.
-// (`terminalLaunch` still comes from the provider; the bridge only feeds the probe.)
+// Desktop + a known install map: the composer now reads the map straight from
+// the launch provider (not its own probe), so pass it through the provider value
+// to drive the no-pick default. The `okDesktop` bridge is set for parity with the
+// real desktop host but is no longer what feeds the composer's default.
 async function renderComposerWithInstalledClis(installed: Record<string, boolean>) {
   (window as { okDesktop?: unknown }).okDesktop = {
     terminal: { cliInstalledMap: async () => installed },
   };
-  return renderComposerWithTerminal();
+  return renderComposerWithTerminal('notes', installed);
 }
 
 // Folder mode: the composer is scoped to a folder (no open doc, no surface).

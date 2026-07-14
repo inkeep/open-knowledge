@@ -30,6 +30,7 @@ import {
   useDocumentTransition,
 } from '@/editor/DocumentContext';
 import { parseEditorTabId } from '@/editor/editor-tabs';
+import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useReconcileSkillTabs } from '@/hooks/use-reconcile-skill-tabs';
 import { ConfigProvider } from '@/lib/config-provider';
 import {
@@ -472,11 +473,16 @@ function AppBody() {
   // directive would point the agent at a surface the user is already viewing.
   // Null on the web host (no real OS shell) so the menu rows that consume it
   // render nothing.
+  // Which launchable CLIs are on PATH — each launch surface gates its rows from
+  // this map via `visibleTerminalClis` so a CLI that isn't installed (e.g.
+  // Antigravity) doesn't clutter the menu once the probe confirms it absent.
+  const installedClis = useInstalledClis();
   const terminalLaunch: TerminalLaunchContextValue | null = desktopBridge
     ? {
         launchInTerminal: (input, cli) => {
           requestTerminalLaunch(composeTerminalLaunchPrompt(input, cli), cli);
         },
+        installedClis,
       }
     : null;
 

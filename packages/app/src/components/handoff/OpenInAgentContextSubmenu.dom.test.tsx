@@ -92,7 +92,10 @@ async function renderSubmenu({
   render(
     withTerminal ? (
       <TerminalLaunchProvider
-        value={{ launchInTerminal: (i, cli) => launchCalls.push({ input: i, cli }) }}
+        value={{
+          launchInTerminal: (i, cli) => launchCalls.push({ input: i, cli }),
+          installedClis: {},
+        }}
       >
         {submenu}
       </TerminalLaunchProvider>

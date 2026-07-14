@@ -13,6 +13,7 @@ import {
 import { loadStickyAgent, saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
 import { cn } from '@/lib/utils';
 import type { TerminalLaunchIntent } from './EditorPane';
+import { visibleTerminalClis } from './handoff/terminal-cli-display';
 import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
 import { requestTerminalLaunch } from './handoff/terminal-launch-events';
 import { TerminalGate } from './TerminalGate';
@@ -286,6 +287,10 @@ export function TerminalSessionsHost({
   );
   const newChatDefaultCli = resolveDefaultCli(stickyCliId, installedClis ?? {});
   const newChatSelected: TerminalNewTabChoice = preferBareTerminal ? 'terminal' : newChatDefaultCli;
+  // Gate the New-chat dropdown rows to Claude + CLIs the probe hasn't ruled out,
+  // keeping the resolved default (`newChatDefaultCli`) so the split button's
+  // current pick is always present in its own dropdown (with its checkmark).
+  const newChatVisibleClis = visibleTerminalClis(installedClis ?? {}, newChatDefaultCli);
 
   // Tab-strip New-chat primary: open a promptless session running `cli`.
   function openNewChatSession(cli: TerminalCli) {
@@ -718,6 +723,7 @@ export function TerminalSessionsHost({
         onNewChatLaunch={launchSelectedNewTab}
         onNewChatPickCli={pickNewChatCli}
         onNewChatPickTerminal={pickNewChatTerminal}
+        newChatVisibleClis={newChatVisibleClis}
         onClose={closeSession}
         onRename={setSessionCustomLabel}
         // Pointer-drag reorder: the strip computes the new visual order and the

@@ -62,10 +62,21 @@ type LaunchCall = { input: HandoffDispatchInput; cli: TerminalCli };
 async function renderMenu(opts: {
   launcher: ((input: HandoffDispatchInput, cli: TerminalCli) => void) | null;
   menuInput?: HandoffDispatchInput | null;
+  // The raw PATH-detection map the production provider supplies. The component
+  // gates its own rows via `visibleTerminalClis`, so feeding the map here (not a
+  // pre-gated list) exercises that production wiring. Defaults to `{}` (probe
+  // unresolved → fail-open, every CLI shown).
+  installedClis?: Partial<Record<TerminalCli, boolean>>;
 }) {
   const menuInput = 'menuInput' in opts ? opts.menuInput : input;
   render(
-    <TerminalLaunchProvider value={opts.launcher ? { launchInTerminal: opts.launcher } : null}>
+    <TerminalLaunchProvider
+      value={
+        opts.launcher
+          ? { launchInTerminal: opts.launcher, installedClis: opts.installedClis ?? {} }
+          : null
+      }
+    >
       <OpenInAgentMenu input={menuInput ?? null} />
     </TerminalLaunchProvider>,
   );
@@ -85,6 +96,39 @@ describe('Open-with-AI Terminal CLI rows', () => {
 
   test('renders a row per CLI when the launcher is available (desktop)', async () => {
     await renderMenu({ launcher: () => {} });
+    await openMenu();
+    expect(screen.getByTestId('open-in-agent-terminal-claude')).toBeTruthy();
+    expect(screen.getByTestId('open-in-agent-terminal-codex')).toBeTruthy();
+    expect(screen.getByTestId('open-in-agent-terminal-cursor')).toBeTruthy();
+  });
+
+  test('gates rows through the real probe map: Claude always, detected shown, probed-absent hidden', async () => {
+    // A complete resolved map: only `codex` on PATH. The component runs
+    // `visibleTerminalClis` itself, so this exercises the production wiring —
+    // Claude (always-visible anchor) plus `codex`; Cursor and Antigravity are
+    // probed absent (`false`), so their rows are gone.
+    await renderMenu({
+      launcher: () => {},
+      installedClis: {
+        claude: false,
+        codex: true,
+        opencode: false,
+        cursor: false,
+        pi: false,
+        antigravity: false,
+      },
+    });
+    await openMenu();
+    expect(screen.getByTestId('open-in-agent-terminal-claude')).toBeTruthy();
+    expect(screen.getByTestId('open-in-agent-terminal-codex')).toBeTruthy();
+    expect(screen.queryByTestId('open-in-agent-terminal-antigravity')).toBeNull();
+    expect(screen.queryByTestId('open-in-agent-terminal-cursor')).toBeNull();
+  });
+
+  test('fails open before the probe resolves (empty map) — installed CLIs stay launchable', async () => {
+    // Regression guard for the "probe failed / older bridge hides everything"
+    // defect: an empty map must show every CLI, not collapse to Claude-only.
+    await renderMenu({ launcher: () => {}, installedClis: {} });
     await openMenu();
     expect(screen.getByTestId('open-in-agent-terminal-claude')).toBeTruthy();
     expect(screen.getByTestId('open-in-agent-terminal-codex')).toBeTruthy();
