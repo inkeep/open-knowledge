@@ -519,6 +519,50 @@ describe('runRemoteServe', () => {
     expect(pauseCalls).toBe(1);
   });
 
+  test('forces a remote companion to exit when server teardown hangs', async () => {
+    const stdinListeners = new Map<'end' | 'close', () => void | Promise<void>>();
+    let deadline: (() => void) | undefined;
+    let forcedExitCode: number | undefined;
+
+    await runRemoteServe({
+      config,
+      cwd: '/project',
+      resolvedContentDir: '/project',
+      nonce: NONCE,
+      deps: {
+        canonicalize: (path) => path,
+        readLock: () => null,
+        boot: async () => ({
+          port: 45678,
+          ready: Promise.resolve(),
+          destroy: () => new Promise<void>(() => {}),
+        }),
+        writeStdout: () => {},
+        onceSignal: () => {},
+        offSignal: () => {},
+        watchStdinForDisconnect: true,
+        onceStdin: (event, listener) => stdinListeners.set(event, listener),
+        offStdin: (event) => stdinListeners.delete(event),
+        resumeStdin: () => {},
+        pauseStdin: () => {},
+        scheduleShutdownDeadline: (listener) => {
+          deadline = listener;
+          return () => {
+            deadline = undefined;
+          };
+        },
+        forceExit: (code) => {
+          forcedExitCode = code;
+        },
+      },
+    });
+
+    void stdinListeners.get('end')?.();
+    expect(deadline).toBeDefined();
+    deadline?.();
+    expect(forcedExitCode).toBe(1);
+  });
+
   test('destroys a partial boot when async readiness rejects', async () => {
     let destroyCalls = 0;
     const failure = new Error('watcher init failed');

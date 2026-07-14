@@ -91,12 +91,16 @@ export interface RemoteServeDeps {
   offStdin(event: StdinLifecycleEvent, listener: StdinLifecycleListener): void;
   resumeStdin(): void;
   pauseStdin(): void;
+  scheduleShutdownDeadline(listener: () => void): () => void;
+  forceExit(code: number): void;
   setExitCode(code: number): void;
   platform: NodeJS.Platform;
   pathSeparator: string;
   protocolVersion: number;
   runtimeVersion: string;
 }
+
+const REMOTE_SHUTDOWN_DEADLINE_MS = 5_000;
 
 export interface RunRemoteServeOptions {
   config: Config;
@@ -282,6 +286,12 @@ function defaultDeps(): RemoteServeDeps {
     pauseStdin: () => {
       process.stdin.pause();
     },
+    scheduleShutdownDeadline: (listener) => {
+      const timer = setTimeout(listener, REMOTE_SHUTDOWN_DEADLINE_MS);
+      timer.unref();
+      return () => clearTimeout(timer);
+    },
+    forceExit: (code) => process.exit(code),
     setExitCode: (code) => {
       process.exitCode = code;
     },
@@ -410,13 +420,21 @@ export async function runRemoteServe(options: RunRemoteServeOptions): Promise<Re
     }
   };
   const shutdown = (_reason: RemoteServeShutdownReason): Promise<void> => {
-    shutdownPromise ??= booted
-      .destroy()
-      .catch(() => {
-        deps.setExitCode(1);
-        deps.writeStdout(formatRemoteErrorLine(options.nonce, 'startup-failed'));
-      })
-      .finally(removeLifecycleHandlers);
+    if (shutdownPromise === null) {
+      // A stuck server teardown must not leave an orphaned SSH companion whose
+      // live PID pins the project lock indefinitely.
+      const cancelDeadline = deps.scheduleShutdownDeadline(() => deps.forceExit(1));
+      shutdownPromise = booted
+        .destroy()
+        .catch(() => {
+          deps.setExitCode(1);
+          deps.writeStdout(formatRemoteErrorLine(options.nonce, 'startup-failed'));
+        })
+        .finally(() => {
+          cancelDeadline();
+          removeLifecycleHandlers();
+        });
+    }
     return shutdownPromise;
   };
 
