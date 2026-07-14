@@ -403,6 +403,19 @@ export interface WindowManagerDeps {
      * `<title>OpenKnowledge</title>` from overwriting this after load.
      */
     title: string;
+    /**
+     * Resolved user-facing project path (`ProjectContext.projectPath`) —
+     * the same string that keys `recentProjects` / `projectSessions` and
+     * that `getOpenProjectPaths()` returns, so the production seam keys
+     * window-bounds memory and focus-recency tracking consistently with
+     * both the relaunch-restore snapshot and `removeRecentProject` cleanup
+     * (which deletes by this exact string — a divergent key would leak the
+     * bounds entry). Present only for project windows (spawn + attach);
+     * ephemeral single-file windows omit it and keep cascade placement +
+     * no focus tracking (their "projectPath" is the file's parent dir,
+     * never a project, and file keys are never pruned from recents).
+     */
+    projectPath?: string;
     /** Other webPreferences / window opts the manager wants to set. */
   }): BrowserWindowLike;
   /**
@@ -1666,6 +1679,7 @@ export class WindowManager {
     const window = this.deps.createWindow({
       additionalArguments,
       title: formatEditorTitle(projectName),
+      projectPath,
     });
     this.deps.startup?.markWindowCreated?.();
 
@@ -2302,6 +2316,7 @@ export class WindowManager {
         ...(freshlyCreated ? ['--ok-fresh-create=1'] : []),
       ],
       title: formatEditorTitle(projectName),
+      projectPath,
     });
     this.deps.startup?.markWindowCreated?.();
 

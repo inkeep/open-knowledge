@@ -7,12 +7,14 @@ import {
   annotateMissing,
   emptyState,
   getProjectSessionState,
+  type PersistedWindowBounds,
   parseAppState,
   removeRecentProject,
   type SaveAppStateFs,
   saveAppStateToDir,
   setLastUsedProjectParent,
   setProjectSessionState,
+  setProjectWindowBounds,
   setSpellCheckEnabled,
 } from '../../src/main/state-store.ts';
 
@@ -533,5 +535,97 @@ describe('state-store (spellCheckEnabled — app-wide spell-check toggle)', () =
     const state = setSpellCheckEnabled(emptyState(), true);
     const reparsed = parseAppState(JSON.parse(JSON.stringify(state)));
     expect(reparsed?.spellCheckEnabled).toBe(true);
+  });
+});
+
+describe('state-store (projectWindowBounds — per-project window frame memory)', () => {
+  const BOUNDS: PersistedWindowBounds = {
+    x: 320,
+    y: 152,
+    width: 1280,
+    height: 800,
+    isMaximized: false,
+    isFullScreen: false,
+  };
+
+  test('emptyState seeds an empty map', () => {
+    expect(emptyState().projectWindowBounds).toEqual({});
+  });
+
+  test('setProjectWindowBounds immutably records a frame', () => {
+    const original = emptyState();
+    const next = setProjectWindowBounds(original, '/tmp/a', BOUNDS);
+    expect(next.projectWindowBounds['/tmp/a']).toEqual(BOUNDS);
+    expect(original.projectWindowBounds).toEqual({});
+  });
+
+  test('setProjectWindowBounds overwrites a prior frame for the same key', () => {
+    let s = setProjectWindowBounds(emptyState(), '/tmp/a', BOUNDS);
+    s = setProjectWindowBounds(s, '/tmp/a', { ...BOUNDS, x: 640, isMaximized: true });
+    expect(s.projectWindowBounds['/tmp/a']).toEqual({ ...BOUNDS, x: 640, isMaximized: true });
+  });
+
+  test('round-trips through parseAppState', () => {
+    const state = setProjectWindowBounds(emptyState(), '/tmp/a', {
+      ...BOUNDS,
+      isFullScreen: true,
+    });
+    const reparsed = parseAppState(JSON.parse(JSON.stringify(state)));
+    expect(reparsed?.projectWindowBounds['/tmp/a']).toEqual({ ...BOUNDS, isFullScreen: true });
+  });
+
+  test('parseAppState defaults a legacy state.json without the key to {}', () => {
+    const parsed = parseAppState({ recentProjects: [], lastOpenedProject: null });
+    expect(parsed?.projectWindowBounds).toEqual({});
+  });
+
+  test('parseAppState drops corrupt entries and keeps valid siblings', () => {
+    const parsed = parseAppState({
+      recentProjects: [],
+      projectWindowBounds: {
+        '/tmp/valid': BOUNDS,
+        '/tmp/non-numeric': { ...BOUNDS, x: 'left' },
+        '/tmp/non-finite': { ...BOUNDS, y: Number.NaN },
+        '/tmp/zero-size': { ...BOUNDS, width: 0 },
+        '/tmp/not-an-object': 42,
+        '': BOUNDS,
+      },
+    });
+    expect(Object.keys(parsed?.projectWindowBounds ?? {})).toEqual(['/tmp/valid']);
+  });
+
+  test('parseAppState rounds fractional coordinates and coerces flags to booleans', () => {
+    const parsed = parseAppState({
+      recentProjects: [],
+      projectWindowBounds: {
+        '/tmp/a': { x: 1.5, y: -2.4, width: 1280.9, height: 800.2, isMaximized: 'yes' },
+      },
+    });
+    expect(parsed?.projectWindowBounds['/tmp/a']).toEqual({
+      x: 2,
+      y: -2,
+      width: 1281,
+      height: 800,
+      isMaximized: false,
+      isFullScreen: false,
+    });
+  });
+
+  test('parseAppState coerces a non-object projectWindowBounds to {}', () => {
+    expect(
+      parseAppState({ recentProjects: [], projectWindowBounds: ['/tmp/a'] })?.projectWindowBounds,
+    ).toEqual({});
+    expect(
+      parseAppState({ recentProjects: [], projectWindowBounds: 'nope' })?.projectWindowBounds,
+    ).toEqual({});
+  });
+
+  test('removeRecentProject drops the window-bounds entry alongside the session', () => {
+    let s = addRecentProject(emptyState(), '/tmp/a', 'a');
+    s = setProjectWindowBounds(s, '/tmp/a', BOUNDS);
+    s = setProjectWindowBounds(s, '/tmp/b', BOUNDS);
+    const next = removeRecentProject(s, '/tmp/a');
+    expect(next.projectWindowBounds['/tmp/a']).toBeUndefined();
+    expect(next.projectWindowBounds['/tmp/b']).toEqual(BOUNDS);
   });
 });

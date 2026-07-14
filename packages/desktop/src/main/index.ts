@@ -292,12 +292,14 @@ import {
   evaluateSchemaCompatibility,
   getProjectSessionState,
   MAX_SUPPORTED_SCHEMA_VERSION,
+  type PersistedWindowBounds,
   parseAppState,
   removeRecentProject,
   type SchemaIncompatibilityDiagnostic,
   saveAppStateToDir,
   setLastUsedProjectParent,
   setProjectSessionState,
+  setProjectWindowBounds,
   setSpellCheckEnabled as setSpellCheckEnabledState,
   type UpdateChannel,
 } from './state-store.ts';
@@ -349,6 +351,7 @@ import {
   WindowManager,
 } from './window-manager.ts';
 import { WINDOW_MIN_SIZE } from './window-min-size.ts';
+import { resolveRestoredPlacement, sortByFocusSequence } from './window-placement.ts';
 import {
   classifyRecentGit,
   classifyRecentGitAsync,
@@ -443,6 +446,19 @@ function pickCascadeAnchor(): BrowserWindow | null {
   return null;
 }
 
+/**
+ * Register a window as a future cascade anchor and wire its removal. Split
+ * from `applyCascadePosition` so windows restored to remembered bounds still
+ * anchor later cascades without being repositioned themselves.
+ */
+function registerCascadeAnchor(win: BrowserWindow): void {
+  cascadeOrder.push(win);
+  win.on('closed', () => {
+    const idx = cascadeOrder.indexOf(win);
+    if (idx !== -1) cascadeOrder.splice(idx, 1);
+  });
+}
+
 function applyCascadePosition(win: BrowserWindow): void {
   const anchor = pickCascadeAnchor();
   if (anchor) {
@@ -455,10 +471,96 @@ function applyCascadePosition(win: BrowserWindow): void {
     });
     if (pos) win.setPosition(pos.x, pos.y);
   }
-  cascadeOrder.push(win);
-  win.on('closed', () => {
-    const idx = cascadeOrder.indexOf(win);
-    if (idx !== -1) cascadeOrder.splice(idx, 1);
+  registerCascadeAnchor(win);
+}
+
+/**
+ * Position a new editor window: the project's remembered frame when one is
+ * persisted and still usable on the current display set, else the cascade
+ * default. Maximize / full-screen re-entry is deferred to the window's
+ * `'show'` — both `maximize()` and macOS full-screen force the native window
+ * visible, which would bypass the dual-signal show gate and resurface the
+ * un-themed first-paint flash the gate exists to prevent.
+ */
+function applyProjectWindowPlacement(win: BrowserWindow, projectPath: string | undefined): void {
+  const saved = projectPath !== undefined ? appState.projectWindowBounds[projectPath] : undefined;
+  const placement = resolveRestoredPlacement({
+    saved,
+    workAreas: screen.getAllDisplays().map((d) => d.workArea),
+    minSize: WINDOW_MIN_SIZE.EDITOR,
+  });
+  if (!placement) {
+    applyCascadePosition(win);
+    return;
+  }
+  win.setBounds(placement.bounds);
+  if (placement.maximize || placement.fullscreen) {
+    win.once('show', () => {
+      if (win.isDestroyed()) return;
+      if (placement.fullscreen) win.setFullScreen(true);
+      else win.maximize();
+    });
+  }
+  registerCascadeAnchor(win);
+}
+
+/**
+ * Persist a project window's frame so the next open of the same project
+ * restores it. macOS emits `'moved'` / `'resized'` once per completed drag
+ * (not continuously), and the mode events + `'close'` are one-shot, so each
+ * event persists synchronously — no debounce timer whose flush could be lost
+ * to a quit. `getNormalBounds()` keeps the persisted rect at the
+ * un-maximized / un-fullscreened frame while the flags remember the mode.
+ */
+function trackProjectWindowBounds(win: BrowserWindow, projectPath: string): void {
+  const persist = () => {
+    if (win.isDestroyed()) return;
+    const bounds: PersistedWindowBounds = {
+      ...win.getNormalBounds(),
+      isMaximized: win.isMaximized(),
+      isFullScreen: win.isFullScreen(),
+    };
+    appState = setProjectWindowBounds(appState, projectPath, bounds);
+    saveAppState(appState);
+  };
+  win.on('moved', persist);
+  win.on('resized', persist);
+  win.on('maximize', persist);
+  win.on('unmaximize', persist);
+  win.on('enter-full-screen', persist);
+  win.on('leave-full-screen', persist);
+  win.on('close', persist);
+}
+
+// Focus-recency tracking for project windows. The sequence map orders the
+// relaunch-restore snapshot (least → most recently focused) and
+// `lastOpenedProject` follows focus so a cold boot reopens the project the
+// user was last IN, not the one they happened to open last. Frozen from the
+// first shutdown signal onward: teardown closes windows one by one and macOS
+// re-focuses a surviving window after each close, so tracking those events
+// would record "whichever window closed last" as the user's last-active
+// project, overwriting the truth captured before teardown began. A cancelled
+// quit leaves tracking frozen — degrading to the pre-tracking behavior
+// (`lastOpenedProject` still advances on every project OPEN), never worse.
+let projectFocusSeqCounter = 0;
+const projectFocusSeq = new Map<string, number>();
+let focusTrackingFrozen = false;
+
+function freezeFocusTracking(reason: string): void {
+  if (focusTrackingFrozen) return;
+  focusTrackingFrozen = true;
+  getLogger('lifecycle').info({ reason }, 'project focus tracking frozen for shutdown');
+}
+
+function trackProjectWindowFocus(win: BrowserWindow, projectPath: string): void {
+  win.on('focus', () => {
+    if (focusTrackingFrozen) return;
+    projectFocusSeqCounter += 1;
+    projectFocusSeq.set(projectPath, projectFocusSeqCounter);
+    if (appState.lastOpenedProject !== projectPath) {
+      appState = { ...appState, lastOpenedProject: projectPath };
+      saveAppState(appState);
+    }
   });
 }
 
@@ -972,7 +1074,11 @@ function ensureWindowManager() {
       win.on('page-title-updated', (e) => {
         e.preventDefault();
       });
-      applyCascadePosition(win);
+      applyProjectWindowPlacement(win, opts.projectPath);
+      if (opts.projectPath !== undefined) {
+        trackProjectWindowBounds(win, opts.projectPath);
+        trackProjectWindowFocus(win, opts.projectPath);
+      }
       attachSpellcheckMenuToWindow(win);
       // Per-window PTY reap: closing the window kills its shell (no orphan).
       // Idempotent — the manager no-ops for a window that never opened one. The
@@ -5085,9 +5191,30 @@ function bootPrimaryInstance(): void {
       }
 
       if (decision.action === 'restore') {
-        for (const projectPath of decision.projects) {
-          void openProjectOrFallbackToNavigator(projectPath, 'recents');
-        }
+        // Parallel opens — the snapshot is ordered least → most recently
+        // focused (see `pendingWindowRestore`), but each window shows only
+        // when its own theme gate releases, so completion order (and thus
+        // which window ends up focused) is nondeterministic. Raise the
+        // snapshot's LAST entry once every open settles AND its window is
+        // actually visible: `bringToFront` calls `show()`, so raising a
+        // still-gated window would bypass the dual-signal show gate and
+        // resurface the un-themed first paint.
+        const opens = decision.projects.map((projectPath) =>
+          openProjectOrFallbackToNavigator(projectPath, 'recents'),
+        );
+        const lastActiveProject = decision.projects[decision.projects.length - 1];
+        void Promise.allSettled(opens).then(() => {
+          if (lastActiveProject === undefined) return;
+          const ctx = wm?.getWindowFor(lastActiveProject);
+          // Absent context = the open failed and fell back to the Navigator;
+          // nothing to raise.
+          if (!ctx || ctx.window.isDestroyed?.() === true) return;
+          const raise = () => {
+            if (ctx.window.isDestroyed?.() !== true) wm?.focusWindowForProject(lastActiveProject);
+          };
+          if (ctx.window.isVisible?.() === true) raise();
+          else (ctx.window as unknown as BrowserWindow).once('show', raise);
+        });
       } else if (decision.action === 'lastOpened') {
         void openProjectOrFallbackToNavigator(decision.project, 'recents');
       } else if (decision.action === 'navigator') {
@@ -5303,12 +5430,22 @@ function bootPrimaryInstance(): void {
         // window-close IPC isn't fast enough — Hocuspocus drain + file-watcher
         // teardown can outlast ShipIt's poll budget.
         prepareForRelaunch: async () => {
+          // Freeze focus tracking BEFORE any teardown: the window-close
+          // cascade below re-focuses each surviving window, and tracking
+          // those events would rewrite `lastOpenedProject` / the focus
+          // sequence with close-order noise after the snapshot is taken.
+          freezeFocusTracking('prepare-for-relaunch');
           // Snapshot every open project window so the post-update boot
-          // restores all of them — not just `lastOpenedProject`. Persist
-          // BEFORE the server shutdown: `saveAppState` is a synchronous tmp-
-          // write + rename that completes well before `stopAllOwnedServers`
-          // returns or `quitAndInstall()` fires.
-          const openProjects = wm?.getOpenProjectPaths() ?? [];
+          // restores all of them — not just `lastOpenedProject` — ordered
+          // least → most recently focused so the boot can raise the last
+          // entry and land the user in the window they were working in.
+          // Persist BEFORE the server shutdown: `saveAppState` is a
+          // synchronous tmp-write + rename that completes well before
+          // `stopAllOwnedServers` returns or `quitAndInstall()` fires.
+          const openProjects = sortByFocusSequence(
+            wm?.getOpenProjectPaths() ?? [],
+            projectFocusSeq,
+          );
           appState = { ...appState, pendingWindowRestore: openProjects };
           if (!saveAppState(appState)) {
             // Persisting the snapshot failed, so the post-update boot may not
@@ -5427,6 +5564,10 @@ function bootPrimaryInstance(): void {
   // survives the imminent exit.
   app.on('before-quit', () => {
     getLogger('lifecycle').info({}, 'before-quit');
+    // Stop tracking focus before the quit sequence closes windows — each
+    // close re-focuses a surviving window, and recording that churn would
+    // overwrite `lastOpenedProject` with whichever window closed last.
+    freezeFocusTracking('before-quit');
     // Flush pending startup telemetry before exit. `emitStartupWaterfall`
     // covers a quit during the post-window-shown flush-deadline window (the
     // `.unref()`'d deadline timer won't fire once the process is exiting): it
@@ -5445,6 +5586,10 @@ function bootPrimaryInstance(): void {
   // from "the user just quit".
   electronAutoUpdater.on('before-quit-for-update', () => {
     getLogger('updater').info({}, 'before-quit-for-update — update install will relaunch the app');
+    // Same focus-churn guard as `before-quit` — this event precedes it on the
+    // silent install-on-quit path and is idempotent with the earlier
+    // `prepareForRelaunch` freeze on the "Relaunch now" path.
+    freezeFocusTracking('before-quit-for-update');
     // Shut down the servers this desktop spawned BEFORE the swap completes, so
     // the relaunched (new-version) app spawns fresh instead of attaching to a
     // stale old-version server and showing the version-drift toast. Fires on
