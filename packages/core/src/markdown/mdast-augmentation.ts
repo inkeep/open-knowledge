@@ -177,7 +177,7 @@ declare module 'mdast' {
     sourceDelimiter?: '~' | '~~';
   }
   interface BlockquoteData {
-    sourceMarkerSpacings?: Array<number | 'single' | 'none'>;
+    sourceMarkerSpacings?: Array<number | 'single' | 'none' | 'lazy'>;
   }
   interface TableData {
     sourceDashCounts?: number[];

@@ -39,12 +39,7 @@ export function mergedPostParseWalkerPlugin() {
         parent as { type?: string } | undefined,
       );
 
-      if (
-        node.type === 'heading' &&
-        parent !== undefined &&
-        typeof index === 'number' &&
-        (node as Nodes & { data?: { sourceStyle?: string } }).data?.sourceStyle === 'setext'
-      ) {
+      if (node.type === 'heading' && parent !== undefined && typeof index === 'number') {
         const headingEnd = node.position?.end?.line;
         const next = (parent as Parent).children[index + 1] as Nodes | undefined;
         const nextStart = next?.position?.start?.line;

@@ -1105,11 +1105,11 @@ describe('Server Observer B — error recovery paths', () => {
     __resetBridgeWatchdogForTests();
     resetMetrics();
 
-    // Beyond-tolerance fixture (a lazy blockquote continuation canonicalizes
-    // to a `> `-prefixed line), so a coherent witness pair WOULD qualify for
-    // the in-sync residual merge.
+    // Beyond-tolerance fixture (a literal NBSP canonicalizes to a plain
+    // space), so a coherent witness pair WOULD qualify for the in-sync
+    // residual merge.
     const ngRaw =
-      '---\ntitle: NG recovery fixture\n---\n\n# Hello\n\n> Lazy quote\nstays lazy.\n\nBody text stays.\n';
+      '---\ntitle: NG recovery fixture\n---\n\n# Hello\n\nKeeps a\u00A0nbsp byte.\n\nBody text stays.\n';
     const doc = new Y.Doc();
     const xmlFragment = doc.getXmlFragment('default');
     const ytext = doc.getText('source');
@@ -1638,13 +1638,15 @@ describe('Observer A routing — Path B fires iff Y.Text holds unabsorbed change
     cleanup();
   });
 
-  // Beyond-tolerance fixture: the lazy blockquote continuation
-  // canonicalizes to a `> `-prefixed continuation line — a byte divergence
-  // normalizeBridge does NOT tolerate. Storage never sanitizes: these bytes must survive in-sync
-  // fragment settlements. (The original inline-math `$a + b$` fixture was
-  // retired when the engine grew byte-faithful for single-`$` math.)
+  // Beyond-tolerance fixture: a literal NBSP (U+00A0) canonicalizes to a
+  // plain space (the patched remark-prosemirror reserves NBSP as its
+  // whitespace sentinel) — a byte divergence normalizeBridge does NOT
+  // tolerate. Storage never sanitizes: these bytes must survive in-sync
+  // fragment settlements. (Prior fixtures — inline-math `$a + b$`, then the
+  // lazy blockquote continuation — were each retired when the engine grew
+  // byte-faithful for them.)
   const NG_RAW =
-    '---\ntitle: NG routing fixture\n---\n\n# Hello\n\n> Lazy quote\nstays lazy.\n\nBody text stays.\n';
+    '---\ntitle: NG routing fixture\n---\n\n# Hello\n\nKeeps a\u00A0nbsp byte.\n\nBody text stays.\n';
 
   test('in-sync doc with beyond-tolerance residual: fragment change preserves NG bytes without a Path B fire', () => {
     __resetBridgeWatchdogForTests();
@@ -1679,8 +1681,8 @@ describe('Observer A routing — Path B fires iff Y.Text holds unabsorbed change
     // raw byte form (no wholesale canonical rewrite of Y.Text).
     const finalText = ytext.toString();
     expect(finalText).toContain('User WYSIWYG edit.');
-    expect(finalText).toContain('> Lazy quote\nstays lazy.');
-    expect(finalText).not.toContain('> stays lazy.');
+    expect(finalText).toContain('Keeps a\u00A0nbsp byte.');
+    expect(finalText).not.toContain('Keeps a nbsp byte.');
     expect(finalText).toContain('Body text stays.');
 
     cleanup();
@@ -1745,8 +1747,8 @@ describe('Observer A routing — Path B fires iff Y.Text holds unabsorbed change
     });
     expect(events1).toHaveLength(0);
     expect(getMetrics().observerAResidualMergeRuns).toBe(1);
-    expect(ytext.toString()).toContain('> Lazy quote\nstays lazy.');
-    expect(ytext.toString()).not.toContain('> stays lazy.');
+    expect(ytext.toString()).toContain('Keeps a\u00A0nbsp byte.');
+    expect(ytext.toString()).not.toContain('Keeps a nbsp byte.');
 
     // Second in-sync fragment edit: the post-merge settlement kept the
     // witnesses coherent and beyond tolerance, so this must dispatch the
@@ -1761,8 +1763,8 @@ describe('Observer A routing — Path B fires iff Y.Text holds unabsorbed change
     const finalText = ytext.toString();
     expect(finalText).toContain('First edit.');
     expect(finalText).toContain('Second edit.');
-    expect(finalText).toContain('> Lazy quote\nstays lazy.');
-    expect(finalText).not.toContain('> stays lazy.');
+    expect(finalText).toContain('Keeps a\u00A0nbsp byte.');
+    expect(finalText).not.toContain('Keeps a nbsp byte.');
 
     cleanup();
   });
@@ -1788,7 +1790,7 @@ describe('Observer A routing — Path B fires iff Y.Text holds unabsorbed change
     // a no-op updateYFragment would never trigger the short-circuit. Mirrors
     // an agent write under a paired origin.
     const pairedRaw =
-      '---\ntitle: NG routing fixture\n---\n\n# Hello\n\n> Lazy quote\nstays lazy.\n\nPaired body.\n';
+      '---\ntitle: NG routing fixture\n---\n\n# Hello\n\nKeeps a\u00A0nbsp byte.\n\nPaired body.\n';
     // Fixture precondition: pairedRaw is also beyond-tolerance, so the
     // coherence flag (not residualInTolerance) is what gates the residual
     // merge after the paired write.

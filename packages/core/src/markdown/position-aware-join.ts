@@ -8,14 +8,14 @@ type MaybeTyped = {
 };
 type FlowNode = Parameters<Join>[0];
 
-function isContiguousSetextWithParagraph(left: FlowNode, right: FlowNode): boolean {
+function isContiguousHeadingWithParagraph(left: FlowNode, right: FlowNode): boolean {
   const lt = left as MaybeTyped;
   const rt = right as MaybeTyped;
   return lt.type === 'heading' && lt.data?.sourceContiguousNext === true && rt.type === 'paragraph';
 }
 
 export const positionAwareBlankLineJoin: Join = (left, right) => {
-  if (isContiguousSetextWithParagraph(left, right)) return 0;
+  if (isContiguousHeadingWithParagraph(left, right)) return 0;
   const dataGap = (right as MaybeTyped).data?.sourcePrecedingBlankLines;
   if (typeof dataGap === 'number' && dataGap >= 2) return dataGap;
   const lp = (left as MaybePositioned).position;

@@ -118,10 +118,14 @@ const FIXTURES = [
     preservedSlice: '- Third bullet\n**Trigger to revisit:**',
   },
   {
-    label: 'blockquote lazy continuation',
-    raw: '---\ntitle: Blockquote continuation fixture\n---\n\n# Hello\n\n> Lazy quote\nstays lazy.\n\nBody text stays.\n',
-    // Canonical form gains the `> ` prefix on the continuation line.
-    preservedSlice: '> Lazy quote\nstays lazy.',
+    label: 'nested blockquote lazy continuation',
+    // A TOP-LEVEL blockquote lazy continuation is byte-faithful now (the
+    // `'lazy'` marker-spacing capture replays it), so it left this family;
+    // the NESTED form still canonicalizes because the spacings capture
+    // bails after the first line on nested blockquotes.
+    raw: '---\ntitle: Blockquote continuation fixture\n---\n\n# Hello\n\n> > Nested quote\nlazy tail.\n\nBody text stays.\n',
+    // Canonical form gains the `> > ` prefix on the continuation line.
+    preservedSlice: '> > Nested quote\nlazy tail.',
   },
 ] as const;
 

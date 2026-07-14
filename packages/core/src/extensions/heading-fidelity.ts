@@ -14,10 +14,11 @@
  *                             content length per CommonMark §4.3 (1+ chars).
  *                             `null` means no captured length (synthesized
  *                             PM tree, ATX form, or legacy input).
- *   - sourceContiguousNext:   setext-only — the next sibling at parse time
- *                             was a paragraph with NO blank line between
- *                             this heading's underline and the paragraph's
- *                             first line. Drives positionAwareBlankLineJoin
+ *   - sourceContiguousNext:   the next sibling at parse time was a
+ *                             paragraph with NO blank line between this
+ *                             heading's last line (setext underline or the
+ *                             ATX heading line) and the paragraph's first
+ *                             line. Drives positionAwareBlankLineJoin
  *                             so the no-blank-line shape survives PM
  *                             round-trip (where source `position` info is
  *                             destroyed). Default `false`.
