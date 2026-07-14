@@ -27,15 +27,18 @@
 
 import { readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import type { RemoteProjectInfo } from '@inkeep/open-knowledge-core';
 import {
   DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS,
+  isRemoteProjectKey,
   SPAWN_ERROR_LOG,
 } from '@inkeep/open-knowledge-core';
 import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
 import { getLocalDir } from '@inkeep/open-knowledge-server';
 import type { OkServerRestartOutcome } from '../shared/bridge-contract.ts';
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
+import { attachRemoteEditorTrustBoundary } from './remote-editor-trust-boundary.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { ShareDeepLinkBranchSwitchPayload } from './url-scheme.ts';
 import { classifyServerVersion } from './version-drift.ts';
@@ -278,6 +281,11 @@ interface ProjectContext {
    * `false`, closing the window leaves the sibling-owned server running.
    */
   ownsServer: boolean;
+  /** SSH metadata + tunnel cleanup for a remote editor window. */
+  remote?: RemoteProjectInfo;
+  /** Close only the current session's superseded local SSH port forward. */
+  retireRemoteTunnel?: () => void;
+  closeRemoteSession?: () => void;
   /**
    * No-project ephemeral single-file session teardown state. Present only on
    * windows created by `createEphemeralWindow`. Unlike a normal detached
@@ -388,6 +396,19 @@ interface CreateProjectWindowOpts {
    * manager decoupled from `EntryPoint` semantics.
    */
   freshlyCreated?: boolean;
+}
+
+export interface CreateRemoteProjectWindowOpts {
+  /** Opaque machine-scoped key, also used by recents and session state. */
+  projectKey: string;
+  projectName: string;
+  remote: RemoteProjectInfo;
+  port: number;
+  apiOrigin: string;
+  collabUrl: string;
+  /** Retires this session's tunnel without releasing remote server ownership. */
+  retireTunnel?: () => void;
+  closeSession: () => void;
 }
 
 /** Test-injectable side-effect surface (Electron + node:fs primitives). */
@@ -529,6 +550,13 @@ export interface WindowManagerDeps {
   /** electron-vite dev-server URL (`process.env.ELECTRON_RENDERER_URL`). When present,
    *  main uses `loadURL` for HMR; otherwise falls back to `loadFile(rendererEntryPath)`. */
   rendererDevUrl?: string | null;
+  /**
+   * Open a public web/mail URL outside an SSH-backed editor window. The remote
+   * editor trust boundary applies its own narrow URL policy before invoking
+   * this callback. Production wires the shared shell.openExternal allowlist;
+   * Required so a remote editor never silently drops a user-approved link.
+   */
+  openExternal(url: string): Promise<void>;
   /**
    * App version (`app.getVersion()`), threaded through to the renderer's preload
    * via `--ok-app-version=<v>` in `additionalArguments`. Without this, the preload
@@ -808,6 +836,7 @@ export class WindowManager {
    * paths don't throw past the call site.
    */
   private canonicalizeKey(projectPath: string): string {
+    if (isRemoteProjectKey(projectPath)) return projectPath;
     const absolute = resolve(projectPath);
     const rp = this.deps.realpathSync ?? realpathSync;
     try {
@@ -1783,6 +1812,251 @@ export class WindowManager {
     };
     this.windowsByPath.set(canonicalKey, context);
     return context;
+  }
+
+  /**
+   * Create an editor window against a server reached through a desktop-owned
+   * SSH loopback tunnel. The renderer receives the same HTTP/WS transport as a
+   * local project; only the project identity and remote metadata differ.
+   */
+  async createRemoteProjectWindow(opts: CreateRemoteProjectWindowOpts): Promise<ProjectContext> {
+    const canonicalKey = opts.projectKey;
+    let sessionClosed = false;
+    const closeRemoteSession = (): void => {
+      if (sessionClosed) return;
+      sessionClosed = true;
+      try {
+        opts.closeSession();
+      } catch (err) {
+        this.deps.log?.warn(
+          {
+            event: 'desktop-remote-session-close-failed',
+            err: err instanceof Error ? err.message : String(err),
+          },
+          '[window-manager] remote session cleanup failed',
+        );
+      }
+    };
+    const existing = this.windowsByPath.get(canonicalKey);
+    if (existing && existing.window.isDestroyed?.() !== true) {
+      // The caller already opened a fresh SSH session. Do not leak it when the
+      // one-window-per-project dedup focuses the existing window instead.
+      closeRemoteSession();
+      this.bringToFront(existing.window);
+      return existing;
+    }
+    if (existing) this.windowsByPath.delete(canonicalKey);
+
+    let window: BrowserWindowLike | null = null;
+    let disposeShowGate: (() => void) | null = null;
+    let context: ProjectContext | null = null;
+    try {
+      window = this.deps.createWindow({
+        additionalArguments: [
+          `--ok-collab-url=${opts.collabUrl}`,
+          `--ok-api-origin=${opts.apiOrigin}`,
+          `--ok-project-path=${opts.projectKey}`,
+          `--ok-project-name=${opts.projectName}`,
+          '--ok-mode=editor',
+          `--ok-app-version=${this.deps.appVersion}`,
+          `--ok-remote-machine-id=${opts.remote.machineId}`,
+          `--ok-remote-machine-name=${opts.remote.machineName}`,
+          `--ok-remote-path=${opts.remote.path}`,
+          `--ok-remote-platform=${opts.remote.platform}`,
+          `--ok-remote-path-separator=${opts.remote.pathSeparator}`,
+        ],
+        title: formatEditorTitle(`${opts.projectName} • ${opts.remote.machineName}`),
+      });
+      // Install before any renderer load. The tunneled project server can serve
+      // author-controlled HTML, so it must never replace this privileged top
+      // frame and inherit the preload bridge.
+      attachRemoteEditorTrustBoundary(
+        window.webContents,
+        {
+          rendererEntryPath: this.deps.rendererEntryPath,
+          rendererDevUrl: this.deps.rendererDevUrl,
+        },
+        {
+          apiOrigin: opts.apiOrigin,
+          openExternal: this.deps.openExternal,
+          log: (event) => {
+            this.deps.log?.warn(
+              { event: 'desktop-remote-editor-navigation-blocked', ...event.data },
+              `[window-manager] ${event.message}`,
+            );
+          },
+        },
+      );
+      disposeShowGate = this.deps.showGate.register(window, { kind: 'editor' });
+
+      // Reserve the key before renderer loading begins. Two concurrent opens can
+      // otherwise both pass the dedup check, create separate tunnels/windows,
+      // and leave the first session unreachable when the second map write wins.
+      context = {
+        projectPath: opts.projectKey,
+        canonicalKey,
+        projectName: opts.projectName,
+        port: opts.port,
+        apiOrigin: opts.apiOrigin,
+        window,
+        utility: null,
+        ownsServer: false,
+        remote: opts.remote,
+        retireRemoteTunnel: opts.retireTunnel,
+        closeRemoteSession,
+      };
+      const ownedContext = context;
+      this.windowsByPath.set(canonicalKey, ownedContext);
+      window.on('closed', () => {
+        disposeShowGate?.();
+        if (this.windowsByPath.get(canonicalKey) === ownedContext) {
+          this.windowsByPath.delete(canonicalKey);
+        }
+        // Resolve cleanup through the context instead of capturing the initial
+        // function. A transactional reconnect transfers the prior owner cleanup
+        // onto the replacement context before it closes the old window.
+        ownedContext.closeRemoteSession?.();
+      });
+
+      if (this.deps.rendererDevUrl) {
+        await window.loadURL(this.deps.rendererDevUrl);
+      } else {
+        await window.loadFile(this.deps.rendererEntryPath);
+      }
+      if (window.isDestroyed?.() === true) {
+        throw new Error('Remote project window closed while loading.');
+      }
+      return ownedContext;
+    } catch (error) {
+      disposeShowGate?.();
+      if (context && this.windowsByPath.get(canonicalKey) === context) {
+        this.windowsByPath.delete(canonicalKey);
+      }
+      closeRemoteSession();
+      // A rejected load does not guarantee Electron destroyed the native
+      // window. Close the failed candidate so it cannot survive off-map as an
+      // untracked editor with a dead tunnel.
+      if (window && window.isDestroyed?.() !== true) {
+        try {
+          window.close?.();
+        } catch (closeError) {
+          this.deps.log?.warn(
+            {
+              event: 'desktop-remote-window-close-failed',
+              err: closeError instanceof Error ? closeError.message : String(closeError),
+            },
+            '[window-manager] failed remote window could not be closed',
+          );
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Transactionally replace an SSH-backed project window with a fresh
+   * tunnel/window. The originating window stays alive while the replacement
+   * loads. A failure closes only the fresh session and restores the old
+   * context; the old window closes only after the replacement is committed.
+   *
+   * The caller revokes the originating SSH transport before entering this
+   * transaction. This method keeps only the editor window alive while the
+   * replacement loads.
+   */
+  async replaceRemoteProjectWindow(
+    opts: CreateRemoteProjectWindowOpts,
+    originatingWindow: BrowserWindowLike,
+  ): Promise<ProjectContext> {
+    let replacementSessionClosed = false;
+    const closeReplacementSession = (): void => {
+      if (replacementSessionClosed) return;
+      replacementSessionClosed = true;
+      try {
+        opts.closeSession();
+      } catch (err) {
+        this.deps.log?.warn(
+          {
+            event: 'desktop-remote-session-close-failed',
+            err: err instanceof Error ? err.message : String(err),
+          },
+          '[window-manager] replacement remote session cleanup failed',
+        );
+      }
+    };
+    return this.replaceRemoteProjectWindowTransaction(
+      { ...opts, closeSession: closeReplacementSession },
+      originatingWindow,
+    );
+  }
+
+  private async replaceRemoteProjectWindowTransaction(
+    opts: CreateRemoteProjectWindowOpts,
+    expectedOriginatingWindow: BrowserWindowLike,
+  ): Promise<ProjectContext> {
+    const canonicalKey = opts.projectKey;
+    const originating = this.windowsByPath.get(canonicalKey);
+    if (
+      !originating ||
+      originating.window !== expectedOriginatingWindow ||
+      originating.window.isDestroyed?.() === true
+    ) {
+      opts.closeSession();
+      throw new Error('Remote project window closed before it could be replaced.');
+    }
+    if (!originating.remote) {
+      opts.closeSession();
+      throw new Error('Cannot replace a local project window with a remote session.');
+    }
+    if (originating.closeRemoteSession || originating.retireRemoteTunnel) {
+      opts.closeSession();
+      throw new Error('Release the originating remote session before replacing its window.');
+    }
+
+    // Keep the old native window alive, but let createRemoteProjectWindow
+    // reserve the canonical key for the fresh renderer during its load. Its
+    // IPC calls therefore resolve to the replacement context, just like an
+    // ordinary remote open. Cleanup is already disarmed by the reconnect
+    // caller before it starts the exclusively owned replacement server.
+    this.windowsByPath.delete(canonicalKey);
+
+    let replacement: ProjectContext | undefined;
+    try {
+      replacement = await this.createRemoteProjectWindow(opts);
+      if (replacement.window.isDestroyed?.() === true) {
+        throw new Error('Remote replacement window closed while loading.');
+      }
+      if (originating.window.isDestroyed?.() === true) {
+        throw new Error('Remote project window closed while it was being replaced.');
+      }
+
+      await this.closeAndAwait(originating.window);
+      if (replacement.window.isDestroyed?.() === true) {
+        throw new Error('Remote replacement window closed before the replacement committed.');
+      }
+      return replacement;
+    } catch (error) {
+      if (replacement) {
+        await this.closeAndAwait(replacement.window);
+        if (this.windowsByPath.get(canonicalKey) === replacement) {
+          this.windowsByPath.delete(canonicalKey);
+        }
+        replacement.closeRemoteSession?.();
+      } else {
+        // Covers constructor/show-gate failures before a ProjectContext exists.
+        opts.closeSession();
+      }
+
+      if (originating.window.isDestroyed?.() === true) {
+        // No live window remains after replacement failure.
+      } else {
+        const current = this.windowsByPath.get(canonicalKey);
+        if (!current || current.window.isDestroyed?.() === true) {
+          this.windowsByPath.set(canonicalKey, originating);
+          this.bringToFront(originating.window);
+        }
+      }
+      throw error;
+    }
   }
 
   /**

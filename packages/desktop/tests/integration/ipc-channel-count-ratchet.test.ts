@@ -321,7 +321,17 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * opposite security contracts. Single member; the typed-ipc migration remains the
  * committed end state, with the `ipc-channels.ts` header updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 82;
+/**
+ * Bumped from 82 to 83 for SSH-backed projects:
+ *
+ *   - `ok:remote:dispatch` — a single discriminated channel folds saved-machine
+ *     CRUD, fixed SSH connection tests, remote directory reads, and remote
+ *     project opens. These operations cannot use the local `ok:project:open`
+ *     path because SSH setup must remain main-only and must never expose raw
+ *     SSH flags/commands to the renderer. Keeping every operation on one
+ *     request union makes the feature +1 rather than six separate channels.
+ */
+const REQUEST_CHANNEL_CAP = 83;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

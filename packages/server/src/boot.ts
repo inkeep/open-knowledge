@@ -194,6 +194,7 @@ export interface BootServerOptions
     | 'debounce'
     | 'maxDebounce'
     | 'gitEnabled'
+    | 'watcherBackend'
     | 'commitDebounceMs'
     | 'wipRef'
     | 'destroyTimeoutMs'
@@ -617,6 +618,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     debounce: opts.debounce,
     maxDebounce: opts.maxDebounce,
     gitEnabled: opts.gitEnabled,
+    watcherBackend: opts.watcherBackend,
     commitDebounceMs: opts.commitDebounceMs,
     wipRef: opts.wipRef,
     enableTestRoutes: opts.enableTestRoutes,

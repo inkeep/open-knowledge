@@ -35,6 +35,10 @@ export interface PtyCreateMessage {
    * exits. Omitted for a plain terminal tab (spawned as the bare `$SHELL -l -i`).
    */
   launchCommand?: string;
+  /** Main-owned executable override (for example `/usr/bin/ssh`). */
+  executable?: string;
+  /** Exact argv paired with `executable`; never interpreted by a shell. */
+  args?: string[];
 }
 interface PtyInputMessage {
   type: 'input';
@@ -153,7 +157,12 @@ function asIncomingMessage(raw: unknown): PtyHostIncomingMessage | null {
       return typeof m.cwd === 'string' &&
         typeof m.cols === 'number' &&
         typeof m.rows === 'number' &&
-        (m.launchCommand === undefined || typeof m.launchCommand === 'string')
+        (m.launchCommand === undefined || typeof m.launchCommand === 'string') &&
+        ((m.executable === undefined && m.args === undefined) ||
+          (typeof m.executable === 'string' &&
+            m.executable.length > 0 &&
+            Array.isArray(m.args) &&
+            m.args.every((arg) => typeof arg === 'string')))
         ? (raw as PtyHostIncomingMessage)
         : null;
     case 'input':
@@ -288,9 +297,13 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     }
     const shell = resolveShell(env, message.shell);
     const shellEnv = buildShellEnv(env);
+    const executable = message.executable ?? shell;
+    const args = message.executable
+      ? (message.args ?? [])
+      : buildShellArgs(shell, message.launchCommand);
     let pty: PtyProcessLike;
     try {
-      pty = deps.spawn(shell, buildShellArgs(shell, message.launchCommand), {
+      pty = deps.spawn(executable, args, {
         name: 'xterm-256color',
         cols: message.cols,
         rows: message.rows,

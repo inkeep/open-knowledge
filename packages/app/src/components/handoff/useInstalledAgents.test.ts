@@ -19,6 +19,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
+import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
 describe('useInstalledAgents module surface', () => {
   test('exports the hook + classifier + deps factory', async () => {
@@ -48,5 +49,32 @@ describe('isElectronHostDefault — pure host classifier', () => {
   test('returns true when okDesktop is any non-nullish object (Electron preload populated)', async () => {
     const { isElectronHostDefault } = await import('./useInstalledAgents');
     expect(isElectronHostDefault({ okDesktop: { shell: {} } })).toBe(true);
+  });
+});
+
+describe('selectInstalledAgentProbeTransport', () => {
+  test('local Electron probes application protocols through IPC', async () => {
+    const { selectInstalledAgentProbeTransport } = await import('./useInstalledAgents');
+    const desktop = {
+      config: { remote: null },
+    } as unknown as Pick<OkDesktopBridge, 'config'>;
+    expect(selectInstalledAgentProbeTransport(desktop)).toBe('desktop-ipc');
+  });
+
+  test('SSH Electron probes the remote project server through HTTP', async () => {
+    const { selectInstalledAgentProbeTransport } = await import('./useInstalledAgents');
+    const desktop = {
+      config: {
+        remote: {
+          kind: 'ssh',
+          machineId: 'machine-1',
+          machineName: 'Build box',
+          path: '/srv/knowledge',
+          platform: 'linux',
+          pathSeparator: '/',
+        },
+      },
+    } as unknown as Pick<OkDesktopBridge, 'config'>;
+    expect(selectInstalledAgentProbeTransport(desktop)).toBe('project-http');
   });
 });

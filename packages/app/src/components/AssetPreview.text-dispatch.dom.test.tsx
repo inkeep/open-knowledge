@@ -21,7 +21,7 @@
  *
  * Runs under `bun run test:dom` (jsdom substrate per precedent #43).
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 
 // Stub dispatchAssetClick so the button's onClick does not attempt a
@@ -46,9 +46,14 @@ mock.module('@/lib/config-provider', () => ({
 const { AssetPreview } = await import('./AssetPreview.tsx');
 
 describe('AssetPreview — text-viewer dispatch', () => {
+  beforeEach(() => {
+    Reflect.deleteProperty(window, 'okDesktop');
+  });
+
   afterEach(() => {
     cleanup();
     dispatchAssetClickStub.mockClear();
+    Reflect.deleteProperty(window, 'okDesktop');
   });
 
   test('mediaKind=text on a json asset mounts TextViewer (not the fallback)', () => {
@@ -99,6 +104,34 @@ describe('AssetPreview — text-viewer dispatch', () => {
       projectRelPath: 'docs/report.docx',
       ext: 'docx',
     });
+  });
+
+  test('remote assets keep the in-app text view and hide the local native-open action', () => {
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: {
+        config: {
+          remote: {
+            kind: 'ssh',
+            machineId: 'machine-1',
+            machineName: 'Build box',
+            path: '/srv/knowledge',
+            platform: 'linux',
+            pathSeparator: '/',
+          },
+          apiOrigin: 'http://127.0.0.1:43123',
+        },
+      },
+    });
+
+    const { container } = render(<AssetPreview assetPath="docs/report.docx" mediaKind={null} />);
+    expect(container.querySelector('[data-testid="asset-preview-open-as-text"]')).not.toBeNull();
+    expect(
+      Array.from(container.querySelectorAll('button')).find((button) =>
+        /open file/i.test(button.textContent ?? ''),
+      ),
+    ).toBeUndefined();
+    expect(dispatchAssetClickStub).not.toHaveBeenCalled();
   });
 
   test('clicking "View as text" flips into the text branch', () => {

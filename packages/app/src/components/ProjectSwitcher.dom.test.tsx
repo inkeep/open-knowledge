@@ -389,6 +389,73 @@ describe('ProjectSwitcher dropdown behavior', () => {
     expect(newWorktreeProps.at(-1)?.initialBranchName).toBe('');
   });
 
+  test('remote projects show an accessible SSH identity and suppress worktree affordances', async () => {
+    const bridge = createBridge();
+    bridge.config.projectPath = 'ssh:machine-1:%2Fsrv%2Fknowledge';
+    Object.assign(bridge.config, {
+      remote: {
+        kind: 'ssh',
+        machineId: 'machine-1',
+        machineName: 'Build box',
+        path: '/srv/knowledge',
+        platform: 'linux',
+        pathSeparator: '/',
+      },
+    });
+
+    render(<ProjectSwitcher bridge={bridge as never} />);
+    const trigger = screen.getByTestId('project-switcher-trigger');
+    expect(trigger.getAttribute('title')).toBe('Build box • /srv/knowledge');
+    expect(trigger.getAttribute('title')).not.toContain('ssh:machine-1');
+    expect(trigger.getAttribute('aria-label')).toBe(
+      'Open project menu for Current Project on Build box at /srv/knowledge',
+    );
+    expect(screen.getByTestId('project-switcher-remote-location').textContent).toContain(
+      'Build box • /srv/knowledge',
+    );
+
+    await openMenu();
+    expect(screen.queryByTestId('project-switcher-new-worktree')).toBeNull();
+    expect(screen.queryByTestId('new-worktree-dialog')).toBeNull();
+    expect(screen.getByTestId('project-switcher-open-folder').textContent).toContain(
+      'Open local folder',
+    );
+
+    act(() => menuActionCb?.('new-worktree'));
+    expect(screen.queryByTestId('new-worktree-dialog')).toBeNull();
+  });
+
+  test('project search matches the displayed SSH machine and remote path, not the opaque key', async () => {
+    const bridge = createBridge();
+    bridge.project.listRecent = mock(() =>
+      Promise.resolve([
+        {
+          name: 'Remote Notes',
+          path: 'ssh:machine-2:%2Fopt%2Fteam-notes',
+          lastOpenedAt: '2026-07-01',
+          remote: {
+            machineId: 'machine-2',
+            machineName: 'Deploy box',
+            path: '/opt/team-notes',
+          },
+        },
+      ]),
+    );
+    render(<ProjectSwitcher bridge={bridge as never} />);
+    await openMenu();
+
+    const search = screen.getByTestId('project-switcher-search');
+    fireEvent.change(search, { target: { value: 'deploy box' } });
+    expect(
+      await screen.findByTestId('project-switcher-recent-ssh:machine-2:%2Fopt%2Fteam-notes'),
+    ).not.toBeNull();
+
+    fireEvent.change(search, { target: { value: '/opt/team-notes' } });
+    expect(
+      await screen.findByTestId('project-switcher-recent-ssh:machine-2:%2Fopt%2Fteam-notes'),
+    ).not.toBeNull();
+  });
+
   test('the flyout "Create worktree …" action opens the dialog PRE-FILLED with the typed name', async () => {
     // A git-enriched current-project recent so RecentProjectsMenu renders the
     // grouped flyout for it (the create option only shows for the current

@@ -11,11 +11,41 @@
  */
 
 import { describe, expect, mock, test } from 'bun:test';
+import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
   type ElectronSkillBridge,
   electronSkillInstaller,
   httpSkillInstaller,
+  selectSkillInstallerTransport,
 } from './skill-installer';
+
+function desktopHost(remote: boolean): Pick<OkDesktopBridge, 'config' | 'skill'> {
+  return {
+    config: {
+      remote: remote
+        ? {
+            kind: 'ssh',
+            machineId: 'machine-1',
+            machineName: 'Build box',
+            path: '/srv/knowledge',
+            platform: 'linux',
+            pathSeparator: '/',
+          }
+        : null,
+    },
+    skill: {},
+  } as unknown as Pick<OkDesktopBridge, 'config' | 'skill'>;
+}
+
+describe('selectSkillInstallerTransport', () => {
+  test('local desktop builds through IPC', () => {
+    expect(selectSkillInstallerTransport(desktopHost(false))).toBe('desktop-ipc');
+  });
+
+  test('SSH desktop builds through tunneled project HTTP', () => {
+    expect(selectSkillInstallerTransport(desktopHost(true))).toBe('project-http');
+  });
+});
 
 describe('electronSkillInstaller', () => {
   test('bridge ok: returns ok with path', async () => {

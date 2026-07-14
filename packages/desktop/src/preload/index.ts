@@ -20,6 +20,7 @@
  */
 
 import type {
+  RemoteProjectInfo,
   WorktreeCreateRequest,
   WorktreeCreateResult,
   WorktreeListResult,
@@ -209,6 +210,39 @@ function readConfigFromArgv(): OkDesktopConfig {
   const apiOrigin = parseArg('api-origin') ?? '';
   const projectPath = parseArg('project-path') ?? '';
   const projectName = parseArg('project-name') ?? '';
+  const remoteMachineId = parseArg('remote-machine-id');
+  const remoteMachineName = parseArg('remote-machine-name');
+  const remotePath = parseArg('remote-path');
+  const remotePlatform = parseArg('remote-platform');
+  const remotePathSeparator = parseArg('remote-path-separator');
+  const remoteValues = [
+    remoteMachineId,
+    remoteMachineName,
+    remotePath,
+    remotePlatform,
+    remotePathSeparator,
+  ];
+  const remoteValueCount = remoteValues.filter((value) => value !== undefined).length;
+  if (remoteValueCount !== 0 && remoteValueCount !== remoteValues.length) {
+    throw new Error('Remote window arguments are incomplete.');
+  }
+  let remote: RemoteProjectInfo | null = null;
+  if (remoteValueCount > 0) {
+    if (remotePlatform !== 'darwin' && remotePlatform !== 'linux') {
+      throw new Error('Remote platform is not supported.');
+    }
+    if (remotePathSeparator !== '/') {
+      throw new Error('Remote path separator is not supported.');
+    }
+    remote = {
+      kind: 'ssh',
+      machineId: remoteMachineId as string,
+      machineName: remoteMachineName as string,
+      path: remotePath as string,
+      platform: remotePlatform,
+      pathSeparator: '/',
+    };
+  }
   const mode = resolveOkDesktopMode(parseArg('mode'));
   // Present only on ephemeral single-file windows (`ok <file>`); every normal
   // project window omits the flag and coerces to `false`.
@@ -233,6 +267,7 @@ function readConfigFromArgv(): OkDesktopConfig {
     apiOrigin,
     projectPath,
     projectName,
+    remote,
     mode,
     e2eSmoke,
     singleFile,
@@ -414,6 +449,37 @@ const bridge: OkDesktopBridge = {
 
   clipboard: {
     writeText: (text: string) => invoke('ok:clipboard:write-text', text),
+  },
+
+  remote: {
+    listMachines: () =>
+      invoke('ok:remote:dispatch', { kind: 'list-machines' }) as ReturnType<
+        OkDesktopBridge['remote']['listMachines']
+      >,
+    saveMachine: (machine) =>
+      invoke('ok:remote:dispatch', { kind: 'save-machine', machine }) as ReturnType<
+        OkDesktopBridge['remote']['saveMachine']
+      >,
+    removeMachine: (machineId) =>
+      invoke('ok:remote:dispatch', { kind: 'remove-machine', machineId }) as ReturnType<
+        OkDesktopBridge['remote']['removeMachine']
+      >,
+    testMachine: (machineId) =>
+      invoke('ok:remote:dispatch', { kind: 'test-machine', machineId }) as ReturnType<
+        OkDesktopBridge['remote']['testMachine']
+      >,
+    listDirectories: ({ machineId, path }) =>
+      invoke('ok:remote:dispatch', {
+        kind: 'list-directories',
+        machineId,
+        path,
+      }) as ReturnType<OkDesktopBridge['remote']['listDirectories']>,
+    openProject: ({ machineId, path }) =>
+      invoke('ok:remote:dispatch', {
+        kind: 'open-project',
+        machineId,
+        path,
+      }) as ReturnType<OkDesktopBridge['remote']['openProject']>,
   },
 
   project: {

@@ -159,6 +159,7 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
     mockDesktopPresent = false;
     mockBodyMode = 'probe';
     mockShowInstallSkill = true;
+    Reflect.deleteProperty(window, 'okDesktop');
     consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -250,6 +251,33 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
 
     expect(screen.getByText('Integrations')).toBeTruthy();
     expect(screen.getByTestId('settings-sidebar-item-claude-desktop')).toBeTruthy();
+  });
+
+  test('remote windows hide project-local AI tooling and config sharing but keep normal settings', () => {
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: {
+        config: {
+          remote: {
+            kind: 'ssh',
+            machineId: 'machine-1',
+            machineName: 'Build box',
+            path: '/srv/knowledge',
+            platform: 'linux',
+            pathSeparator: '/',
+          },
+        },
+      },
+    });
+
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+
+    expect(screen.getByTestId('settings-sidebar-item-preferences')).toBeTruthy();
+    expect(screen.getByTestId('settings-sidebar-item-search')).toBeTruthy();
+    expect(screen.getByTestId('settings-sidebar-item-project-templates')).toBeTruthy();
+    expect(screen.getByTestId('settings-sidebar-item-terminal')).toBeTruthy();
+    expect(screen.queryByTestId('settings-sidebar-item-project-ai-tools')).toBeNull();
+    expect(screen.queryByTestId('settings-sidebar-item-sharing')).toBeNull();
   });
 
   test('changes sections through the sidebar and resets to Preferences on each fresh open', async () => {

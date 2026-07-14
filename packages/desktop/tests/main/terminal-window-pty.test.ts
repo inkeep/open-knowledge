@@ -69,6 +69,7 @@ const WIN_BOUND = 80_001;
 const WIN_LESS = 80_002;
 const WIN_A = 80_003;
 const WIN_B = 80_004;
+const NOOP_LIFECYCLE = { window: {}, reapPtys: () => {} };
 
 afterEach(() => {
   for (const id of [WIN_BOUND, WIN_LESS, WIN_A, WIN_B]) unregisterTerminalWindow(id);
@@ -76,7 +77,7 @@ afterEach(() => {
 
 describe('terminal window ok:pty:create cwd resolution (seam 7 / D10)', () => {
   test('a project-bound terminal window spawns a live PTY at its registered project root', () => {
-    registerTerminalWindow(WIN_BOUND, { projectRoot: PROJECT });
+    registerTerminalWindow(WIN_BOUND, { projectRoot: PROJECT }, NOOP_LIFECYCLE);
     const cwd = resolveTerminalWindowCwd(WIN_BOUND);
     expect(cwd).toBe(PROJECT);
 
@@ -102,7 +103,7 @@ describe('terminal window ok:pty:create cwd resolution (seam 7 / D10)', () => {
   });
 
   test('a project-less terminal window spawns a live PTY at the home directory (never null)', () => {
-    registerTerminalWindow(WIN_LESS, { projectRoot: null });
+    registerTerminalWindow(WIN_LESS, { projectRoot: null }, NOOP_LIFECYCLE);
     const cwd = resolveTerminalWindowCwd(WIN_LESS);
     expect(cwd).toBe(HOME);
 
@@ -127,8 +128,8 @@ describe('terminal window ok:pty:create cwd resolution (seam 7 / D10)', () => {
   });
 
   test('multiple terminal windows for the same project each fork their own PTY host', () => {
-    registerTerminalWindow(WIN_A, { projectRoot: PROJECT });
-    registerTerminalWindow(WIN_B, { projectRoot: PROJECT });
+    registerTerminalWindow(WIN_A, { projectRoot: PROJECT }, NOOP_LIFECYCLE);
+    registerTerminalWindow(WIN_B, { projectRoot: PROJECT }, NOOP_LIFECYCLE);
     const { mgr, forked } = makeManager();
 
     const a = mgr.create({

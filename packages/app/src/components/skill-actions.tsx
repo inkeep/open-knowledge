@@ -288,7 +288,7 @@ export function SkillContextMenuItems({
 
   return (
     <>
-      {bridge && absolutePath ? (
+      {bridge && !bridge.config.remote && absolutePath ? (
         <DropdownMenuItem onSelect={() => void bridge.shell.showItemInFolder(absolutePath)}>
           <FolderOpen aria-hidden />
           <Trans>Reveal in Finder</Trans>

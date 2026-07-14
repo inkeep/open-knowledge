@@ -106,6 +106,15 @@ interface TerminalCreateRequest {
    * Omitted for a plain terminal tab. Forwarded verbatim to the host's create.
    */
   launchCommand?: string;
+  /**
+   * Main-owned executable override for transports such as an SSH-backed
+   * terminal. Never populated from renderer input; the renderer controls only
+   * dimensions and the allowlisted agent launch request above.
+   */
+  executable?: {
+    file: string;
+    args: string[];
+  };
 }
 
 interface TerminalAddressedRequest {
@@ -530,6 +539,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         cols: req.cols,
         rows: req.rows,
         launchCommand: req.launchCommand,
+        ...(req.executable ? { executable: req.executable.file, args: req.executable.args } : {}),
       });
       return { ok: true, ptyId };
     },

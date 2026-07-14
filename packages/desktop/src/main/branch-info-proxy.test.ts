@@ -48,6 +48,22 @@ const validBranchInfo: BranchInfoResponse = {
 };
 
 describe('resolveProjectServerOrigin', () => {
+  test('uses a direct transport origin without probing a local lock', async () => {
+    let lockReads = 0;
+    const origin = await resolveProjectServerOrigin(
+      'ssh:machine:project',
+      buildDeps({
+        resolveProjectOrigin: () => 'http://127.0.0.1:54321',
+        readServerLock: () => {
+          lockReads += 1;
+          return null;
+        },
+      }),
+    );
+    expect(origin).toBe('http://127.0.0.1:54321');
+    expect(lockReads).toBe(0);
+  });
+
   test('returns http origin when the lock is live', async () => {
     const origin = await resolveProjectServerOrigin('/tmp/p', buildDeps());
     expect(origin).toBe('http://localhost:12345');

@@ -264,4 +264,12 @@ describe('CLI preAction project anchoring (cold spawn)', () => {
     expect(exitCode).toBe(0);
     expect(stderr).not.toContain('Using OpenKnowledge project at');
   }, 30_000);
+
+  test('does not expose Desktop companion commands through the public CLI', () => {
+    const { exitCode, stdout, stderr } = spawnCli(['remote']);
+
+    expect(exitCode).not.toBe(0);
+    expect(stdout).toBe('');
+    expect(stderr).toContain('too many arguments');
+  });
 });

@@ -10,6 +10,7 @@
 import { useSidebar } from '@/components/ui/sidebar';
 import { useCurrentBranch } from '@/hooks/use-current-branch';
 import { extractFolderBasename } from '@/lib/path-utils';
+import { desktopProjectLocation } from '@/lib/remote-project-display';
 import { useWorkspace } from '@/lib/use-workspace';
 
 export interface EditorFooterIdentity {
@@ -30,7 +31,9 @@ export function useEditorFooterIdentity(): EditorFooterIdentity | null {
   const projectName =
     desktopBridge?.config.projectName ??
     (workspace ? extractFolderBasename(workspace.contentDir) || null : null);
-  const projectPath = desktopBridge?.config.projectPath ?? workspace?.contentDir ?? null;
+  const projectPath = desktopBridge
+    ? desktopProjectLocation(desktopBridge.config)
+    : (workspace?.contentDir ?? null);
 
   if (projectName === null && branch === null) return null;
   return { projectName, projectPath, branch };

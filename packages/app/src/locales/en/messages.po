@@ -549,6 +549,11 @@ msgstr "A pull quote stands out from the surrounding text."
 msgid "A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account."
 msgstr "A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account."
 
+#. placeholder {0}: remote.machineName
+#: src/components/settings/TerminalSection.tsx
+msgid "A remote shell is off for this project. Turning it on runs commands with the full access of your SSH account on {0}."
+msgstr "A remote shell is off for this project. Turning it on runs commands with the full access of your SSH account on {0}."
+
 #: src/components/NewTemplateDialog.tsx
 msgid "A reusable starting point for new documents in this folder."
 msgstr "A reusable starting point for new documents in this folder."
@@ -690,6 +695,10 @@ msgstr "Add item to {keyName}"
 msgid "Add link"
 msgstr "Add link"
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Add machine"
+msgstr "Add machine"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords. This setting applies only to this computer."
 msgstr "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords. This setting applies only to this computer."
@@ -710,6 +719,10 @@ msgstr "Add property"
 #: src/components/ObjectWidget.tsx
 msgid "Add property to {keyName}"
 msgstr "Add property to {keyName}"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Add SSH machine"
+msgstr "Add SSH machine"
 
 #: src/editor/components/Tabs.tsx
 msgid "Add tab"
@@ -987,6 +1000,7 @@ msgstr "Available in every project on this computer."
 msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 msgstr "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 
+#: src/components/RemoteProjectDialog.tsx
 #: src/components/SeedDialog.tsx
 msgid "Back"
 msgstr "Back"
@@ -1184,6 +1198,7 @@ msgstr "Can't safely edit this tool's config"
 #: src/components/NewTemplateDialog.tsx
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/PublishToGitHubDialog.tsx
+#: src/components/RemoteProjectDialog.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -1213,6 +1228,14 @@ msgstr "Check out remote branch"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Check out worktree"
 msgstr "Check out worktree"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Check that the path exists and that your SSH account can read it."
+msgstr "Check that the path exists and that your SSH account can read it."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Check that your SSH account can read its home directory."
+msgstr "Check that your SSH account can read its home directory."
 
 #: src/components/PropertyWidgets.tsx
 msgid "Checkbox"
@@ -1505,6 +1528,11 @@ msgstr "Commands"
 msgid "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
 msgstr "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
 
+#. placeholder {0}: remote.machineName
+#: src/components/settings/TerminalSection.tsx
+msgid "Commands run with the full access of your SSH account on {0}. Turn this off to disable the remote shell."
+msgstr "Commands run with the full access of your SSH account on {0}. Turn this off to disable the remote shell."
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Commit or stash changes to switch:"
 msgstr "Commit or stash changes to switch:"
@@ -1618,6 +1646,10 @@ msgstr "Connect this project to GitHub to share."
 msgid "Connect to AI tools"
 msgstr "Connect to AI tools"
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Connect to an SSH machine and open a project directly from its filesystem."
+msgstr "Connect to an SSH machine and open a project directly from its filesystem."
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Connect to GitHub"
 msgstr "Connect to GitHub"
@@ -1659,9 +1691,17 @@ msgstr "Connection dropped"
 msgid "Connection error — try again"
 msgstr "Connection error — try again"
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Connection failed."
+msgstr "Connection failed."
+
 #: src/presence/use-sync-toasts.ts
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "Connection lost — keep this tab open, your edits will sync when reconnected"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Connection successful."
+msgstr "Connection successful."
 
 #. Next step for a Codex project MCP row
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -1778,6 +1818,14 @@ msgstr "Copy the focused file-tree item so Paste can duplicate it."
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Copying..."
 msgstr "Copying..."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Could not browse {requestedPath} on {machineName}. {detail}"
+msgstr "Could not browse {requestedPath} on {machineName}. {detail}"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Could not browse the SSH home directory. {detail}"
+msgstr "Could not browse the SSH home directory. {detail}"
 
 #: src/components/FileTree.tsx
 msgid "Could not complete delete"
@@ -2033,6 +2081,10 @@ msgstr "Couldn't reach the embeddings provider — press ↵ to retry"
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
 msgstr "Couldn't reconnect after server restart"
+
+#: src/lib/restart-collab-server.ts
+msgid "Couldn't reconnect to the SSH project. Check the SSH connection and the remote OpenKnowledge prerequisites, then try again."
+msgstr "Couldn't reconnect to the SSH project. Check the SSH connection and the remote OpenKnowledge prerequisites, then try again."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Couldn't remove <0>{targetGitPath}</0>: {removeGitError}"
@@ -2329,6 +2381,10 @@ msgstr "Delete block"
 msgid "Delete code block"
 msgstr "Delete code block"
 
+#: src/components/FileTree.tsx
+msgid "Delete permanently"
+msgstr "Delete permanently"
+
 #: src/components/TrashFailureModal.tsx
 msgid "Delete Permanently"
 msgstr "Delete Permanently"
@@ -2350,6 +2406,7 @@ msgid "deleted template"
 msgstr "deleted template"
 
 #: src/components/DeleteConfirmationDialog.tsx
+#: src/components/FileTree.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Deleting"
 msgstr "Deleting"
@@ -2411,6 +2468,14 @@ msgstr "Detected on this machine"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
 msgstr "Detecting"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "devbox or user@example.com"
+msgstr "devbox or user@example.com"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Development server"
+msgstr "Development server"
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram"
@@ -2787,9 +2852,21 @@ msgstr "Eng specs"
 msgid "Enter a folder name (e.g. brain)."
 msgstr "Enter a folder name (e.g. brain)."
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Enter a machine name."
+msgstr "Enter a machine name."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Enter a path to browse its folders."
+msgstr "Enter a path to browse its folders."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr "Enter a project name"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Enter a remote path."
+msgstr "Enter a remote path."
 
 #: src/components/CloneDialog.tsx
 msgid "Enter a repository URL or owner/repo"
@@ -2806,6 +2883,14 @@ msgstr "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
 msgstr "Enter a valid URL (for example https://api.openai.com/v1)."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Enter a whole-number port from 1 to 65535."
+msgstr "Enter a whole-number port from 1 to 65535."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Enter an SSH host or config alias."
+msgstr "Enter an SSH host or config alias."
 
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -3007,6 +3092,10 @@ msgstr "Failed to load skill targets: {0}"
 msgid "Failed to load skills: {0}"
 msgstr "Failed to load skills: {0}"
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Failed to load SSH machines."
+msgstr "Failed to load SSH machines."
+
 #: src/components/CommandPalette.tsx
 msgid "Failed to load tags. Press Escape and re-open to retry."
 msgstr "Failed to load tags. Press Escape and re-open to retry."
@@ -3038,6 +3127,10 @@ msgstr "Failed to open Project Navigator."
 msgid "Failed to open project."
 msgstr "Failed to open project."
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Failed to open the remote project."
+msgstr "Failed to open the remote project."
+
 #: src/components/CommandPalette.tsx
 #: src/components/RecentProjectsMenu.tsx
 msgid "Failed to open worktree."
@@ -3058,6 +3151,10 @@ msgstr "Failed to parse forward-links error response (HTTP {status})"
 #: src/components/NavigatorApp.tsx
 msgid "Failed to remove project."
 msgstr "Failed to remove project."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Failed to remove the SSH machine."
+msgstr "Failed to remove the SSH machine."
 
 #: src/components/PropertyPanel.tsx
 msgid "Failed to rename"
@@ -3080,6 +3177,10 @@ msgstr "Failed to render PDF"
 #: src/components/ObjectWidget.tsx
 msgid "Failed to reorder"
 msgstr "Failed to reorder"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Failed to save the SSH machine."
+msgstr "Failed to save the SSH machine."
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Failed to update attachment location — {detail}"
@@ -3383,6 +3484,10 @@ msgstr "Global outside text fields"
 #: src/lib/skill-scope.ts
 msgid "Global Skill"
 msgstr "Global Skill"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Go"
+msgstr "Go"
 
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/LargeFileEditorState.tsx
@@ -3840,6 +3945,10 @@ msgstr "Invalid input — pick a different folder."
 msgid "Invalid patch payload"
 msgstr "Invalid patch payload"
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "It never deletes or changes projects, files, or other data on the remote machine."
+msgstr "It never deletes or changes projects, files, or other data on the remote machine."
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Italic"
 msgstr "Italic"
@@ -3883,6 +3992,10 @@ msgstr "Keep disabled"
 #: src/components/DiffViewBoundary.tsx
 msgid "Keep file deleted"
 msgstr "Keep file deleted"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Keep machine"
+msgstr "Keep machine"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Keep my version"
@@ -4024,6 +4137,10 @@ msgstr "Loading files"
 msgid "Loading folder contents"
 msgstr "Loading folder contents"
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Loading folders..."
+msgstr "Loading folders..."
+
 #: src/components/DocPanel.tsx
 msgid "Loading graph"
 msgstr "Loading graph"
@@ -4059,6 +4176,10 @@ msgstr "Loading repositories"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Loading settings"
 msgstr "Loading settings"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Loading SSH machines..."
+msgstr "Loading SSH machines..."
 
 #: src/components/PackCardGrid.tsx
 msgid "Loading starter packs"
@@ -4119,6 +4240,18 @@ msgstr "Looking for <0>{lookingForUrl}</0>."
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Lost connection to \"{docName}\"."
 msgstr "Lost connection to \"{docName}\"."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Machine name"
+msgstr "Machine name"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Machine removed."
+msgstr "Machine removed."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Machine saved."
+msgstr "Machine saved."
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Make this knowledge base available as a Claude Skill."
@@ -4549,6 +4682,10 @@ msgstr "No file or folder selected"
 #: src/components/FileTree.tsx
 msgid "No files yet."
 msgstr "No files yet."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "No folders in this location."
+msgstr "No folders in this location."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "No git remote"
@@ -5007,6 +5144,10 @@ msgstr "Open link"
 msgid "Open link in new tab"
 msgstr "Open link in new tab"
 
+#: src/components/ProjectSwitcher.tsx
+msgid "Open local folder"
+msgstr "Open local folder"
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "Open Navigator"
 msgstr "Open Navigator"
@@ -5015,17 +5156,36 @@ msgstr "Open Navigator"
 msgid "Open or close visual-editor find."
 msgstr "Open or close visual-editor find."
 
+#: src/components/NavigatorApp.tsx
+msgid "Open over SSH"
+msgstr "Open over SSH"
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Open preview when agent edits"
 msgstr "Open preview when agent edits"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Open project"
+msgstr "Open project"
 
 #: src/components/ProjectSwitcher.tsx
 msgid "Open project menu"
 msgstr "Open project menu"
 
+#. placeholder {0}: bridge.config.projectName
+#. placeholder {1}: bridge.config.remote.machineName
+#. placeholder {2}: bridge.config.remote.path
+#: src/components/ProjectSwitcher.tsx
+msgid "Open project menu for {0} on {1} at {2}"
+msgstr "Open project menu for {0} on {1} at {2}"
+
 #: src/components/CommandPalette.tsx
 msgid "Open recent project"
 msgstr "Open recent project"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Open remote project"
+msgstr "Open remote project"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
@@ -5112,9 +5272,17 @@ msgstr "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 msgid "Opening {openingLabel}…"
 msgstr "Opening {openingLabel}…"
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Opening remote project..."
+msgstr "Opening remote project..."
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "Opening..."
 msgstr "Opening..."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "OpenKnowledge checks the folder first and asks before creating project files."
+msgstr "OpenKnowledge checks the folder first and asks before creating project files."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "OpenKnowledge initializes at <0>{projectDir}</0> — the parent of <1>{pickedRelative}</1> because it contains a <2>.git</2> folder (one .ok/ per git repo). <3>Content directory</3> defaults to <4>.</4> (the whole repo); type a sub-folder to narrow it."
@@ -5131,6 +5299,10 @@ msgstr "OpenKnowledge is using this GitHub account."
 #: src/components/ConsentDialogBody.tsx
 msgid "OpenKnowledge stores its configuration and internal files inside a newly created <0>.ok</0> directory in your project root folder."
 msgstr "OpenKnowledge stores its configuration and internal files inside a newly created <0>.ok</0> directory in your project root folder."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "OpenKnowledge uses your system SSH config and SSH agent. Passwords and private keys are never stored."
+msgstr "OpenKnowledge uses your system SSH config and SSH agent. Passwords and private keys are never stored."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "OpenKnowledge will be initialized at <0>{gitRoot}</0> — the parent of your new folder, because it contains a <1>.git</1> folder (one project per git repo)."
@@ -5340,6 +5512,15 @@ msgstr "Pattern syntax error: {message}"
 msgid "Pattern warnings: {summary}"
 msgstr "Pattern warnings: {summary}"
 
+#. placeholder {0}: trashTargetDisplayName(primaryDeleteTarget)
+#: src/components/FileTree.tsx
+msgid "Permanently delete '{0}'?"
+msgstr "Permanently delete '{0}'?"
+
+#: src/components/FileTree.tsx
+msgid "Permanently delete selected items?"
+msgstr "Permanently delete selected items?"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Permanently deletes <0>{targetGitPath}</0> and all its git history. Working files stay in place. If the parent git repo is intentional (e.g. you cloned it), cancel and pick a location outside it."
 msgstr "Permanently deletes <0>{targetGitPath}</0> and all its git history. Working files stay in place. If the parent git repo is intentional (e.g. you cloned it), cancel and pick a location outside it."
@@ -5375,6 +5556,10 @@ msgstr "Plain"
 #: src/components/SubscribeForm.tsx
 msgid "Please enter a valid email address."
 msgstr "Please enter a valid email address."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Port (optional)"
+msgstr "Port (optional)"
 
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -5668,10 +5853,27 @@ msgstr "remote"
 msgid "Remote branch <0>{remoteCheckoutRef}</0> will be checked out as a new local tracking branch <1>{trimmed}</1>, in its own window under <2>.ok/worktrees/</2>."
 msgstr "Remote branch <0>{remoteCheckoutRef}</0> will be checked out as a new local tracking branch <1>{trimmed}</1>, in its own window under <2>.ok/worktrees/</2>."
 
+#: src/components/FileTree.tsx
+msgid "Remote files are deleted immediately. They are not moved to Trash, and this action cannot be undone."
+msgstr "Remote files are deleted immediately. They are not moved to Trash, and this action cannot be undone."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Remote folders"
+msgstr "Remote folders"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Remote path"
+msgstr "Remote path"
+
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Remove"
 msgstr "Remove"
+
+#. placeholder {0}: selectedMachine.name
+#: src/components/RemoteProjectDialog.tsx
+msgid "Remove {0}"
+msgstr "Remove {0}"
 
 #: src/components/PropertyWidgets.tsx
 msgid "Remove {chip}"
@@ -5718,6 +5920,10 @@ msgstr "Remove item {0}"
 msgid "Remove link"
 msgstr "Remove link"
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Remove machine"
+msgstr "Remove machine"
+
 #: src/components/TemplateForm.tsx
 msgid "Remove property"
 msgstr "Remove property"
@@ -5726,9 +5932,18 @@ msgstr "Remove property"
 msgid "Remove selection"
 msgstr "Remove selection"
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Remove SSH machine?"
+msgstr "Remove SSH machine?"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "Remove the parent <0>.git</0> folder"
+
+#. placeholder {0}: machinePendingRemoval.name
+#: src/components/RemoteProjectDialog.tsx
+msgid "Remove the saved connection for {0}?"
+msgstr "Remove the saved connection for {0}?"
 
 #. Warning shown when the user unchecks an already-installed skill
 #: src/components/McpConsentDialogBody.tsx
@@ -6009,6 +6224,12 @@ msgstr "Role"
 msgid "root"
 msgstr "root"
 
+#. placeholder {0}: remote.machineName
+#. placeholder {1}: remote.path
+#: src/components/settings/TerminalSection.tsx
+msgid "Run a real terminal docked inside OpenKnowledge on {0}, starting in {1}."
+msgstr "Run a real terminal docked inside OpenKnowledge on {0}, starting in {1}."
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
 msgstr "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
@@ -6040,6 +6261,10 @@ msgstr "Save changes"
 #: src/components/FolderPropertiesCard.tsx
 msgid "Save failed: {error}"
 msgstr "Save failed: {error}"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Save machine"
+msgstr "Save machine"
 
 #: src/components/DiffView.tsx
 msgid "Save resolution"
@@ -6649,6 +6874,18 @@ msgstr "Split diff"
 msgid "Split list item"
 msgstr "Split list item"
 
+#: src/components/NavigatorApp.tsx
+msgid "SSH"
+msgstr "SSH"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "SSH host or config alias"
+msgstr "SSH host or config alias"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "SSH machine"
+msgstr "SSH machine"
+
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "Star us on GitHub"
@@ -7004,6 +7241,14 @@ msgstr "Terminal settings not loaded yet — try again in a moment."
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr "Terminal settings not yet loaded — try again in a moment"
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "Test connection"
+msgstr "Test connection"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Testing also installs or updates matching OpenKnowledge support in the SSH user's home directory."
+msgstr "Testing also installs or updates matching OpenKnowledge support in the SSH user's home directory."
+
 #: src/components/PropertyWidgets.tsx
 msgid "Text"
 msgstr "Text"
@@ -7077,6 +7322,10 @@ msgstr "The preview blocks resources that don't meet its security rules (for exa
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 
+#: src/components/RemoteProjectDialog.tsx
+msgid "The remote macOS or Linux machine needs Node.js 24 or newer and Git 2.31.0 or newer in a POSIX-compatible login shell. OpenKnowledge installs its remote support in your SSH home directory automatically."
+msgstr "The remote macOS or Linux machine needs Node.js 24 or newer and Git 2.31.0 or newer in a POSIX-compatible login shell. OpenKnowledge installs its remote support in your SSH home directory automatically."
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository is private and your GitHub account doesn't have access to it."
 msgstr "The repository is private and your GitHub account doesn't have access to it."
@@ -7084,6 +7333,14 @@ msgstr "The repository is private and your GitHub account doesn't have access to
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository was moved, renamed, or deleted."
 msgstr "The repository was moved, renamed, or deleted."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "the SSH machine"
+msgstr "the SSH machine"
+
+#: src/components/TerminalRefusalNotice.tsx
+msgid "The SSH machine is unavailable, so the remote terminal couldn't start. Check the connection and try again."
+msgstr "The SSH machine is unavailable, so the remote terminal couldn't start. Check the connection and try again."
 
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
@@ -7287,6 +7544,10 @@ msgstr "This project's running server doesn't support live editing. Restart Open
 #: src/lib/install-server-drift-listener.ts
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr "This project's server (v{0}) is newer than this app (v{1})."
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "This removes the machine and its saved recent-project and session metadata from OpenKnowledge."
+msgstr "This removes the machine and its saved recent-project and session metadata from OpenKnowledge."
 
 #. placeholder {0}: skill.bundledVersion ?? ''
 #. placeholder {1}: skill.installedVersion
@@ -7585,6 +7846,10 @@ msgstr "Unrecognized link"
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Unrecognized wiki link"
 msgstr "Unrecognized wiki link"
+
+#: src/components/RemoteProjectDialog.tsx
+msgid "Up"
+msgstr "Up"
 
 #: src/components/SkillUpdateDialog.tsx
 msgid "Update"
@@ -7910,6 +8175,10 @@ msgstr "Will replace existing OpenKnowledge entry"
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Word wrap"
 msgstr "Word wrap"
+
+#: src/components/NavigatorApp.tsx
+msgid "Work with a project on another machine."
+msgstr "Work with a project on another machine."
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/NewWorktreeDialog.tsx

@@ -22,6 +22,19 @@ export type BootRestoreDecision =
   | { clearSnapshot: boolean; action: 'navigator' }
   | { clearSnapshot: boolean; action: 'none' };
 
+/**
+ * Whether startup itself must verify local Git before dispatching the chosen
+ * action. Local project restores are gated later by `openProject`; Navigator
+ * and SSH-backed restores need no local Git. Only a cold-start share clones
+ * before that local-project gate, while a single-file URL is Git-free.
+ */
+export function bootLaunchNeedsEarlyGit(
+  decision: BootRestoreDecision,
+  singleFileLaunch: boolean,
+): boolean {
+  return decision.action === 'none' && !singleFileLaunch;
+}
+
 // Pure boot-restore decision. A non-null `pendingRestore` means an update
 // relaunch happened, so the snapshot is always consumed (`clearSnapshot`) even
 // when Option suppresses the actual restore. A non-null-but-empty/all-missing

@@ -24,6 +24,26 @@ describe('resolveSyncWorkspace', () => {
     });
   });
 
+  test('SSH window uses the remote path and separator instead of the desktop platform', () => {
+    const result = resolveSyncWorkspace({
+      okDesktop: {
+        platform: 'darwin',
+        config: {
+          projectPath: 'ssh:machine:key',
+          remote: {
+            kind: 'ssh',
+            machineId: 'machine',
+            machineName: 'Linux box',
+            path: '/home/dev/notes',
+            platform: 'linux',
+            pathSeparator: '/',
+          },
+        },
+      },
+    } as unknown as Window);
+    expect(result).toEqual({ contentDir: '/home/dev/notes', pathSeparator: '/' });
+  });
+
   test('Electron Windows: backslash separator', () => {
     const windowLike = {
       okDesktop: {

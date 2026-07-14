@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { bootRestoreDecision } from './boot-restore-decision.ts';
+import { bootLaunchNeedsEarlyGit, bootRestoreDecision } from './boot-restore-decision.ts';
 
 function existsIn(paths: string[]): (p: string) => boolean {
   const set = new Set(paths);
@@ -158,5 +158,25 @@ describe('bootRestoreDecision', () => {
       action: 'restore',
       projects: ['/projects/a', '/projects/b'],
     });
+  });
+});
+
+describe('bootLaunchNeedsEarlyGit', () => {
+  test('does not gate the Navigator or project restores before dispatch', () => {
+    expect(bootLaunchNeedsEarlyGit({ clearSnapshot: false, action: 'navigator' }, false)).toBe(
+      false,
+    );
+    expect(
+      bootLaunchNeedsEarlyGit(
+        { clearSnapshot: true, action: 'restore', projects: ['ssh:machine:%2Frepo'] },
+        false,
+      ),
+    ).toBe(false);
+  });
+
+  test('gates a cold-start share but not a single-file URL launch', () => {
+    const urlOwned = { clearSnapshot: false, action: 'none' } as const;
+    expect(bootLaunchNeedsEarlyGit(urlOwned, false)).toBe(true);
+    expect(bootLaunchNeedsEarlyGit(urlOwned, true)).toBe(false);
   });
 });

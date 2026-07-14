@@ -17,7 +17,15 @@
  */
 
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ChevronsUpDown, FolderOpen, GitBranch, LayoutGrid, Plus, Search } from 'lucide-react';
+import {
+  ChevronsUpDown,
+  FolderOpen,
+  GitBranch,
+  LayoutGrid,
+  Plus,
+  Search,
+  Server,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
   DropdownMenu,
@@ -33,6 +41,7 @@ import { useCurrentBranch } from '@/hooks/use-current-branch';
 import { useWorktrees } from '@/hooks/use-worktrees';
 import type { OkDesktopBridge, RecentProjectEntry } from '@/lib/desktop-bridge-types';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
+import { desktopProjectLocation } from '@/lib/remote-project-display';
 import { cn } from '@/lib/utils';
 import { CreateProjectDialog } from './CreateProjectDialog';
 import { NewWorktreeDialog } from './NewWorktreeDialog';
@@ -92,6 +101,7 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
   // shared with the command palette). Feeds the switcher's search so an
   // un-opened branch is reachable by name; null until it lands / off-desktop.
   const worktreeModel = useWorktrees();
+  const isRemoteProject = bridge.config.remote != null;
 
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
   // Tracks whether a real `pointerdown` reached the trigger this interaction.
@@ -154,6 +164,9 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
   // dropdown (which lazy-loads the worktree list).
   useEffect(() => {
     return bridge.onMenuAction((action) => {
+      if (isRemoteProject && (action === 'new-worktree' || action === 'switch-worktree')) {
+        return;
+      }
       if (action === 'new-worktree') {
         setOpen(false);
         setFlyoutPath(null);
@@ -163,7 +176,7 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
         setOpen(true);
       }
     });
-  }, [bridge]);
+  }, [bridge, isRemoteProject]);
 
   const onOpenFolder = () => {
     handleOpenChange(false);
@@ -216,7 +229,7 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
   const menuRecents = isSearching
     ? loadedRecents.filter((r) => !r.isLinkedWorktree)
     : loadedRecents;
-  const menuWorktreeModel = isSearching ? null : worktreeModel;
+  const menuWorktreeModel = isSearching || isRemoteProject ? null : worktreeModel;
 
   return (
     <>
@@ -235,11 +248,15 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
           <SidebarMenuButton
             className={cn(
               'justify-between text-sidebar-foreground/70 hover:text-sidebar-foreground! data-open:hover:text-sidebar-foreground!',
-              branch !== null && 'h-auto py-1.5',
+              (branch !== null || isRemoteProject) && 'h-auto py-1.5',
             )}
             data-testid="project-switcher-trigger"
-            aria-label={t`Open project menu`}
-            title={bridge.config.projectPath}
+            aria-label={
+              bridge.config.remote
+                ? t`Open project menu for ${bridge.config.projectName} on ${bridge.config.remote.machineName} at ${bridge.config.remote.path}`
+                : t`Open project menu`
+            }
+            title={desktopProjectLocation(bridge.config)}
             // In the macOS desktop app Chromium does not deliver real
             // `pointerdown` events to the renderer (only `mousedown`/`click`),
             // so Radix's pointerdown-driven open never fires and clicking the
@@ -269,6 +286,17 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
           >
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="truncate">{bridge.config.projectName}</span>
+              {bridge.config.remote ? (
+                <span
+                  className="flex min-w-0 items-center gap-1 text-xs text-sidebar-foreground/50 group-hover/menu-button:text-sidebar-foreground"
+                  data-testid="project-switcher-remote-location"
+                >
+                  <Server aria-hidden="true" className="size-3! shrink-0" />
+                  <span className="truncate">
+                    {bridge.config.remote.machineName} • {bridge.config.remote.path}
+                  </span>
+                </span>
+              ) : null}
               {branch !== null ? (
                 <span
                   className="flex min-w-0 items-center gap-1 text-xs text-sidebar-foreground/50 group-hover/menu-button:text-sidebar-foreground"
@@ -379,13 +407,13 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
             data-testid="project-switcher-open-folder"
           >
             <FolderOpen aria-hidden="true" className="text-muted-foreground" />
-            <Trans>Open folder</Trans>
+            {isRemoteProject ? <Trans>Open local folder</Trans> : <Trans>Open folder</Trans>}
           </DropdownMenuItem>
           {/* "New worktree" sits at the bottom of the project-selection menu:
             the per-project worktree flyouts are the primary worktree affordance
             now, so the standalone create action is a secondary, last-position
             entry. Gated on the current project being a git repo (a branch). */}
-          {branch !== null ? (
+          {branch !== null && !isRemoteProject ? (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -409,40 +437,42 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
         onOpenChange={setCreateProjectOpen}
         bridge={bridge}
       />
-      <NewWorktreeDialog
-        open={newWorktreeOpen}
-        onOpenChange={setNewWorktreeOpen}
-        bridge={bridge}
-        currentBranch={branch}
-        initialBranchName={newWorktreeInitialName}
-        branches={worktreeModel?.entries
-          .map((entry) => entry.branch)
-          .filter((b): b is string => b !== null)}
-        // Branches that ALREADY have an open worktree (a non-null
-        // `worktreePath`). The dialog uses this to distinguish "check out this
-        // branch into a new worktree" from "this branch already has a worktree —
-        // just open its window", since `worktree.create` on an already-checked-
-        // out branch returns the existing path (`created: false`) and opens it.
-        existingWorktreeBranches={
-          new Set(
-            worktreeModel?.entries
-              .filter((entry) => entry.branch !== null && entry.worktreePath !== null)
-              .map((entry) => entry.branch as string),
-          )
-        }
-        // Remote-tracking refs (`origin/<x>`) drive both the remote-checkout
-        // mode (a remote-only typed name) and the `--no-track` remote base
-        // options.
-        remoteBranches={worktreeModel?.remoteBranches}
-        // Per-branch "behind origin" counts for the base selector's nudge hint.
-        behindByBranch={
-          new Map(
-            worktreeModel?.entries
-              .filter((entry) => entry.branch !== null && entry.behind !== undefined)
-              .map((entry) => [entry.branch as string, entry.behind as number]),
-          )
-        }
-      />
+      {!isRemoteProject ? (
+        <NewWorktreeDialog
+          open={newWorktreeOpen}
+          onOpenChange={setNewWorktreeOpen}
+          bridge={bridge}
+          currentBranch={branch}
+          initialBranchName={newWorktreeInitialName}
+          branches={worktreeModel?.entries
+            .map((entry) => entry.branch)
+            .filter((b): b is string => b !== null)}
+          // Branches that ALREADY have an open worktree (a non-null
+          // `worktreePath`). The dialog uses this to distinguish "check out this
+          // branch into a new worktree" from "this branch already has a worktree —
+          // just open its window", since `worktree.create` on an already-checked-
+          // out branch returns the existing path (`created: false`) and opens it.
+          existingWorktreeBranches={
+            new Set(
+              worktreeModel?.entries
+                .filter((entry) => entry.branch !== null && entry.worktreePath !== null)
+                .map((entry) => entry.branch as string),
+            )
+          }
+          // Remote-tracking refs (`origin/<x>`) drive both the remote-checkout
+          // mode (a remote-only typed name) and the `--no-track` remote base
+          // options.
+          remoteBranches={worktreeModel?.remoteBranches}
+          // Per-branch "behind origin" counts for the base selector's nudge hint.
+          behindByBranch={
+            new Map(
+              worktreeModel?.entries
+                .filter((entry) => entry.branch !== null && entry.behind !== undefined)
+                .map((entry) => [entry.branch as string, entry.behind as number]),
+            )
+          }
+        />
+      ) : null}
     </>
   );
 }

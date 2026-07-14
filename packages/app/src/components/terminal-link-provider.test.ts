@@ -77,6 +77,17 @@ describe('createTerminalFileLinkProvider', () => {
     expect(activated[0]).toEqual({ kind: 'external', absPath: '/tmp/out/report.pdf' });
   });
 
+  test('suppresses out-of-project absolute paths when the host cannot reveal them', async () => {
+    const { provider, activated, checkTargetExists } = makeProvider({
+      readLogicalLine: row('built /tmp/out/report.pdf'),
+      allowExternalPaths: false,
+    });
+
+    expect(await provide(provider, 1)).toBeUndefined();
+    expect(checkTargetExists).not.toHaveBeenCalled();
+    expect(activated).toEqual([]);
+  });
+
   test('does not link a path the probe reports missing', async () => {
     const { provider } = makeProvider({
       readLogicalLine: row('missing gone/file.md'),

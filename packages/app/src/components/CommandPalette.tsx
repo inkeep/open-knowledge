@@ -24,6 +24,7 @@ import {
   Network,
   Package,
   Plus,
+  Server,
   Settings,
   Sparkles,
 } from 'lucide-react';
@@ -97,7 +98,7 @@ import { cn } from '@/lib/utils.ts';
 import { refreshWorktrees } from '@/lib/worktree-store';
 import { buildHandoffInput, useHandoffDispatch } from './handoff/useHandoffDispatch';
 import { useInstalledAgents } from './handoff/useInstalledAgents';
-import { basenameOf } from './project-switcher-recents';
+import { basenameOf, recentProjectDisplayPath } from './project-switcher-recents';
 
 const COMMAND_PALETTE_SEARCH_TIMEOUT_MS = 3000;
 // Re-poll cadence while the server reports the search index is still warming
@@ -439,7 +440,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   // in switching to yourself. `null` off-desktop / until the first fetch lands.
   const worktreeModel = useWorktrees();
   const switchableWorktrees =
-    bridge && worktreeModel
+    bridge && bridge.config.remote == null && worktreeModel
       ? worktreeModel.entries.filter((entry) => entry.branch !== null && !entry.isCurrent)
       : [];
   const initialCreateDir = resolveCreateInitialDir(activeTarget, activeDocName);
@@ -856,7 +857,9 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     switchableProjects.length > 0 &&
     (trimmedDeferredQuery === '' ||
       switchableProjects.some((row) =>
-        matchesCommandQuery(`${row.name} ${row.path}`, deferredQuery, ['open recent project']),
+        matchesCommandQuery(`${row.name} ${recentProjectDisplayPath(row)}`, deferredQuery, [
+          'open recent project',
+        ]),
       ));
   const matchedWorktrees = switchableWorktrees.filter(
     (entry) =>
@@ -1568,9 +1571,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             <CommandGroup heading={t`Open recent project`}>
               {switchableProjects
                 .filter((row) =>
-                  matchesCommandQuery(`${row.name} ${row.path}`, deferredQuery, [
-                    'open recent project',
-                  ]),
+                  matchesCommandQuery(
+                    `${row.name} ${recentProjectDisplayPath(row)}`,
+                    deferredQuery,
+                    ['open recent project'],
+                  ),
                 )
                 .slice(0, 10)
                 .map((row) => {
@@ -1579,13 +1584,13 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                   // a branch; every project uses the same plain folder. The
                   // base-project note names the repo a worktree belongs to
                   // (e.g. "worktree of pnw-fishing").
-                  const RowIcon = isWorktree ? GitBranch : Folder;
+                  const RowIcon = isWorktree ? GitBranch : row.remote ? Server : Folder;
                   const worktreeOf =
                     isWorktree && row.mainRoot !== undefined ? basenameOf(row.mainRoot) : null;
                   return (
                     <CommandItem
                       key={row.path}
-                      value={`${row.name} ${row.path} recent project`}
+                      value={`${row.name} ${recentProjectDisplayPath(row)} recent project`}
                       disabled={row.missing}
                       onSelect={() =>
                         runAction(
@@ -1610,7 +1615,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                           </span>
                         ) : null}
                         <span className="truncate text-muted-foreground text-xs">
-                          {row.path}
+                          {recentProjectDisplayPath(row)}
                           {row.missing ? (
                             <>
                               {'  '}

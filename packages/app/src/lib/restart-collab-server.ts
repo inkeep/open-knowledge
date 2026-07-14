@@ -13,7 +13,13 @@ import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
  */
 
 /** Map a failed `restartServer` outcome reason to a user-facing message. */
-export function restartServerFailureMessage(reason: 'eperm' | 'other'): string {
+export function restartServerFailureMessage(
+  reason: 'eperm' | 'other',
+  remoteProject = false,
+): string {
+  if (remoteProject) {
+    return t`Couldn't reconnect to the SSH project. Check the SSH connection and the remote OpenKnowledge prerequisites, then try again.`;
+  }
   return reason === 'eperm'
     ? t`Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again.`
     : t`Couldn't restart the server. Try \`ok start\` in this folder.`;
@@ -32,5 +38,8 @@ export async function restartCollabServer(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const outcome = await bridge.restartServer(bridge.config.projectPath);
   if (outcome.ok) return { ok: true };
-  return { ok: false, message: restartServerFailureMessage(outcome.reason) };
+  return {
+    ok: false,
+    message: restartServerFailureMessage(outcome.reason, bridge.config.remote != null),
+  };
 }

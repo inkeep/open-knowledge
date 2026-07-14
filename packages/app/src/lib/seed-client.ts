@@ -1,5 +1,6 @@
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import type {
+  OkDesktopBridge,
   OkPackId,
   OkScaffoldApplyResult,
   OkScaffoldPlan,
@@ -63,10 +64,21 @@ interface SeedClientShape {
   listPacks: () => Promise<OkSeedListPacksResult>;
 }
 
+export type SeedTransport = 'desktop-ipc' | 'project-http';
+
+/** Pure transport classifier used by the runtime adapter and regression tests. */
+export function selectSeedTransport(
+  desktop: Pick<OkDesktopBridge, 'config' | 'seed'> | undefined,
+): SeedTransport {
+  return desktop?.seed && !desktop.config.remote ? 'desktop-ipc' : 'project-http';
+}
+
 /**
  * Runtime adapter that returns the right transport for plan/apply/list-packs —
- * Electron IPC when the desktop bridge is populated, otherwise HTTP fetch to
- * the Hocuspocus `/api/seed/*` endpoints. Either path hits the same underlying
+ * Electron IPC for local desktop projects, otherwise HTTP fetch to the
+ * Hocuspocus `/api/seed/*` endpoints. SSH-backed desktop projects deliberately
+ * use HTTP so the operation runs beside the remote filesystem rather than in
+ * desktop main. Either path hits the same underlying
  * functions in `@inkeep/open-knowledge-server`. The HTTP path emits flat
  * `{plan}` / `{result}` / `{packs}` on success and RFC 9457 problem+json on
  * error; this adapter translates either back to the in-process discriminated
@@ -74,7 +86,7 @@ interface SeedClientShape {
  */
 export function seedClient(): SeedClientShape {
   const okDesktop = typeof window !== 'undefined' ? window.okDesktop : undefined;
-  if (okDesktop?.seed) {
+  if (okDesktop?.seed && selectSeedTransport(okDesktop) === 'desktop-ipc') {
     const desktopApply = okDesktop.seed.apply;
     return {
       plan: okDesktop.seed.plan,

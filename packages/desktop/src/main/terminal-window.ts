@@ -17,6 +17,7 @@
  */
 
 import { basename } from 'node:path';
+import type { RemoteProjectInfo } from '@inkeep/open-knowledge-core';
 import type { ShowGateRegistry } from './show-gate.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
 import {
@@ -37,6 +38,7 @@ export interface TerminalWindowProject {
   readonly projectName: string;
   readonly collabUrl: string;
   readonly apiOrigin: string;
+  readonly remote?: RemoteProjectInfo;
 }
 
 interface CreateTerminalWindowDeps {
@@ -60,7 +62,10 @@ const GENERIC_TITLE = 'Open Knowledge Terminal';
 
 export function createTerminalWindow(deps: CreateTerminalWindowDeps): TerminalBrowserWindow {
   const { project } = deps;
-  const title = project ? `${GENERIC_TITLE} — ${project.projectName}` : GENERIC_TITLE;
+  const projectTitle = project?.remote
+    ? `${project.projectName} • ${project.remote.machineName}`
+    : project?.projectName;
+  const title = projectTitle ? `${GENERIC_TITLE} — ${projectTitle}` : GENERIC_TITLE;
   const window = deps.createWindow({
     additionalArguments: [
       '--ok-mode=terminal',
@@ -73,20 +78,39 @@ export function createTerminalWindow(deps: CreateTerminalWindowDeps): TerminalBr
       `--ok-api-origin=${project?.apiOrigin ?? ''}`,
       `--ok-project-path=${project?.projectPath ?? ''}`,
       `--ok-project-name=${project?.projectName ?? GENERIC_TITLE}`,
+      ...(project?.remote
+        ? [
+            `--ok-remote-machine-id=${project.remote.machineId}`,
+            `--ok-remote-machine-name=${project.remote.machineName}`,
+            `--ok-remote-path=${project.remote.path}`,
+            `--ok-remote-platform=${project.remote.platform}`,
+            `--ok-remote-path-separator=${project.remote.pathSeparator}`,
+          ]
+        : []),
     ],
     title,
   });
+  const windowId = window.id;
 
   // Record the window's cwd + attach context BEFORE the renderer loads, so the
   // first `ok:pty:create` resolves a shell. Terminal windows are deliberately
   // absent from `windowsByPath` (one-per-project, focus-existing), so this is
   // their only cwd/consent source. projectRoot is null when project-less; the
   // create handler falls back to homedir().
-  registerTerminalWindow(window.id, {
-    projectRoot: project?.projectPath ?? null,
-    collabUrl: project?.collabUrl,
-    apiOrigin: project?.apiOrigin,
-  });
+  registerTerminalWindow(
+    windowId,
+    {
+      projectRoot: project?.projectPath ?? null,
+      projectName: project?.projectName,
+      collabUrl: project?.collabUrl,
+      apiOrigin: project?.apiOrigin,
+      remote: project?.remote,
+    },
+    {
+      window,
+      reapPtys: () => deps.terminalReaper.killForWindow(windowId),
+    },
+  );
 
   // Closing the window reaps its PTY host (no orphan shells) and drops its
   // registry entry. The reap wiring captures the id eagerly (the window is
@@ -95,7 +119,7 @@ export function createTerminalWindow(deps: CreateTerminalWindowDeps): TerminalBr
   const disposeShowGate = deps.showGate.register(window, { kind: 'terminal' });
   window.on('closed', () => {
     disposeShowGate();
-    unregisterTerminalWindow(window.id);
+    unregisterTerminalWindow(windowId);
   });
 
   // Surface load failures with a grep-able structured warn (mirrors the
@@ -110,7 +134,7 @@ export function createTerminalWindow(deps: CreateTerminalWindowDeps): TerminalBr
         event: 'terminal-load-failed',
         // Terminal windows are multi-instance (unlike the single Navigator), so
         // attribute the failure to the specific window.
-        windowId: window.id,
+        windowId,
         target: deps.rendererDevUrl ?? deps.rendererEntryPath,
         message: err instanceof Error ? err.message : String(err),
       }),
@@ -127,6 +151,7 @@ interface EditorProjectContext {
   readonly projectName: string;
   readonly port: number;
   readonly apiOrigin: string;
+  readonly remote?: RemoteProjectInfo;
 }
 
 /**
@@ -146,16 +171,20 @@ export function resolveTerminalWindowProject(args: {
     return {
       projectPath: args.editor.projectPath,
       projectName: args.editor.projectName,
-      collabUrl: `ws://localhost:${args.editor.port}/collab`,
+      collabUrl: `ws://${args.editor.remote ? '127.0.0.1' : 'localhost'}:${args.editor.port}/collab`,
       apiOrigin: args.editor.apiOrigin,
+      remote: args.editor.remote,
     };
   }
   if (args.terminal?.projectRoot) {
+    const remoteProjectName = args.terminal.remote?.path.split(/[/\\]/).filter(Boolean).at(-1);
     return {
       projectPath: args.terminal.projectRoot,
-      projectName: basename(args.terminal.projectRoot),
+      projectName:
+        args.terminal.projectName ?? remoteProjectName ?? basename(args.terminal.projectRoot),
       collabUrl: args.terminal.collabUrl ?? '',
       apiOrigin: args.terminal.apiOrigin ?? '',
+      remote: args.terminal.remote,
     };
   }
   return null;

@@ -7,13 +7,32 @@ import {
   type TerminalBrowserWindow,
   type TerminalWindowProject,
 } from './terminal-window.ts';
-import { getTerminalWindowContext, unregisterTerminalWindow } from './terminal-window-registry.ts';
+import {
+  closeTerminalWindowsForProject,
+  getTerminalWindowContext,
+  unregisterTerminalWindow,
+} from './terminal-window-registry.ts';
 
 const PROJECT: TerminalWindowProject = {
   projectPath: '/Users/me/project',
   projectName: 'project',
   collabUrl: 'ws://localhost:5200/collab',
   apiOrigin: 'http://localhost:5200',
+};
+
+const REMOTE_PROJECT: TerminalWindowProject = {
+  projectPath: 'ssh://machine-1/srv/project',
+  projectName: 'project',
+  collabUrl: 'ws://127.0.0.1:5200/collab',
+  apiOrigin: 'http://127.0.0.1:5200',
+  remote: {
+    kind: 'ssh',
+    machineId: 'machine-1',
+    machineName: 'Build host',
+    path: '/srv/project',
+    platform: 'linux',
+    pathSeparator: '/',
+  },
 };
 
 /** A fake window exposing only what the factory touches; `closed` handlers are
@@ -26,6 +45,8 @@ function makeFakeWindow(id: number) {
       if (event === 'closed') closedHandlers.push(cb);
     },
     once: () => {},
+    close: mock(() => {}),
+    destroy: mock(() => {}),
     loadFile: mock(async () => {}),
     loadURL: mock(async () => {}),
     webContents: { send: () => {}, once: () => {} },
@@ -96,11 +117,20 @@ describe('createTerminalWindow', () => {
     expect(h.createWindow.mock.calls[0]?.[0]?.title).toBe('Open Knowledge Terminal — project');
   });
 
+  test('includes the SSH machine in a remote terminal window title', () => {
+    const h = makeDeps({ id: 70_001, project: REMOTE_PROJECT });
+    createTerminalWindow(h.deps);
+    expect(h.createWindow.mock.calls[0]?.[0]?.title).toBe(
+      'Open Knowledge Terminal — project • Build host',
+    );
+  });
+
   test('records the window in the terminalWindows registry with its project root', () => {
     const h = makeDeps({ id: 70_001, project: PROJECT });
     createTerminalWindow(h.deps);
     expect(getTerminalWindowContext(70_001)).toEqual({
       projectRoot: '/Users/me/project',
+      projectName: 'project',
       collabUrl: 'ws://localhost:5200/collab',
       apiOrigin: 'http://localhost:5200',
     });
@@ -152,6 +182,17 @@ describe('createTerminalWindow', () => {
 
     a.fake.fireClosed();
     b.fake.fireClosed();
+  });
+
+  test('registers the native handle so remote-session teardown can close the terminal', () => {
+    const h = makeDeps({ id: 70_001, project: REMOTE_PROJECT });
+    createTerminalWindow(h.deps);
+
+    expect(closeTerminalWindowsForProject(REMOTE_PROJECT.projectPath)).toBe(1);
+    expect(h.killForWindow).toHaveBeenCalledWith(70_001);
+    expect(h.fake.window.destroy).toHaveBeenCalledTimes(1);
+    expect(h.fake.window.close).not.toHaveBeenCalled();
+    expect(getTerminalWindowContext(70_001)).toBeUndefined();
   });
 
   test('uses loadURL with the dev URL when provided, else loadFile', () => {
@@ -219,6 +260,35 @@ describe('resolveTerminalWindowProject', () => {
     });
   });
 
+  test('a remote editor keeps the collab URL on the IPv4 loopback tunnel', () => {
+    const remote = {
+      kind: 'ssh' as const,
+      machineId: 'machine-1',
+      machineName: 'Build host',
+      path: '/srv/project',
+      platform: 'linux',
+      pathSeparator: '/' as const,
+    };
+    expect(
+      resolveTerminalWindowProject({
+        editor: {
+          projectPath: 'ssh://machine-1/srv/project',
+          projectName: 'project',
+          port: 5200,
+          apiOrigin: 'http://127.0.0.1:5200',
+          remote,
+        },
+        terminal: undefined,
+      }),
+    ).toEqual({
+      projectPath: 'ssh://machine-1/srv/project',
+      projectName: 'project',
+      collabUrl: 'ws://127.0.0.1:5200/collab',
+      apiOrigin: 'http://127.0.0.1:5200',
+      remote,
+    });
+  });
+
   test('a focused terminal window inherits its registry context (chaining)', () => {
     expect(
       resolveTerminalWindowProject({
@@ -234,6 +304,27 @@ describe('resolveTerminalWindowProject', () => {
       projectName: 'proj',
       collabUrl: 'ws://localhost:5300/collab',
       apiOrigin: 'http://localhost:5300',
+    });
+  });
+
+  test('remote terminal chaining preserves the display name instead of exposing the opaque key', () => {
+    expect(
+      resolveTerminalWindowProject({
+        editor: null,
+        terminal: {
+          projectRoot: 'ssh:machine-1:%2Fsrv%2Fproject',
+          projectName: 'project',
+          collabUrl: 'ws://127.0.0.1:5300/collab',
+          apiOrigin: 'http://127.0.0.1:5300',
+          remote: REMOTE_PROJECT.remote,
+        },
+      }),
+    ).toEqual({
+      projectPath: 'ssh:machine-1:%2Fsrv%2Fproject',
+      projectName: 'project',
+      collabUrl: 'ws://127.0.0.1:5300/collab',
+      apiOrigin: 'http://127.0.0.1:5300',
+      remote: REMOTE_PROJECT.remote,
     });
   });
 

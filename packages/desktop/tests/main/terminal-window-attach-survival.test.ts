@@ -207,11 +207,15 @@ describe('terminal window PTY survives owner-server teardown (seam 6 / FR4 / D2)
     //    inherits the collab/api argv). It is registered in the terminalWindows
     //    registry — deliberately absent from windowsByPath — so ok:pty:create
     //    resolves its cwd from the registry.
-    registerTerminalWindow(TERM_WIN_ID, {
-      projectRoot: PROJECT,
-      collabUrl: `ws://localhost:${ownerCtx.port}/collab`,
-      apiOrigin: ownerCtx.apiOrigin,
-    });
+    registerTerminalWindow(
+      TERM_WIN_ID,
+      {
+        projectRoot: PROJECT,
+        collabUrl: `ws://localhost:${ownerCtx.port}/collab`,
+        apiOrigin: ownerCtx.apiOrigin,
+      },
+      { window: {}, reapPtys: () => {} },
+    );
     const cwd = resolvePtyProjectRoot({
       editorProjectPath: null,
       terminalWindow: getTerminalWindowContext(TERM_WIN_ID),
