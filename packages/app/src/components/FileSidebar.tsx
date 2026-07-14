@@ -12,7 +12,14 @@ import {
   SquarePen,
   UnfoldVertical,
 } from 'lucide-react';
-import { type ComponentProps, type FC, type MouseEventHandler, useEffect, useState } from 'react';
+import {
+  type ComponentProps,
+  type FC,
+  type MouseEventHandler,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { ConflictsSection } from '@/components/ConflictsSection';
@@ -360,6 +367,13 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   const showExpandAll = hasFolders && !allExpanded;
   const showCollapseAll = hasFolders && !noneExpanded;
   const showTreeStateSection = showExpandAll || showCollapseAll;
+  const suppressCreateMenuFocusRestoreRef = useRef(false);
+  const handleCreateMenuCloseAutoFocus = (event: Event) => {
+    if (!suppressCreateMenuFocusRestoreRef.current) return;
+    suppressCreateMenuFocusRestoreRef.current = false;
+    // Radix would otherwise steal focus back from the inline rename input.
+    event.preventDefault();
+  };
 
   // Sidebar-wide context-menu surface. Right-click anywhere inside the
   // sidebar except interactive controls (toolbar buttons, search-pill button,
@@ -384,14 +398,17 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // see one set of stable identities across renders.
   const handleEmptySpaceCreateFile = () => {
     if (!workspace) return;
+    suppressCreateMenuFocusRestoreRef.current = true;
     tree?.startCreating('file', '');
   };
   const handleEmptySpaceSelectTemplate = (templateName: string) => {
     if (!workspace) return;
+    suppressCreateMenuFocusRestoreRef.current = true;
     tree?.createFromTemplate('', templateName);
   };
   const handleEmptySpaceCreateFolder = () => {
     if (!workspace) return;
+    suppressCreateMenuFocusRestoreRef.current = true;
     tree?.startCreating('folder', '');
   };
   const handleEmptySpaceReveal = () => {
@@ -932,12 +949,17 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                   // template runs the same inline-rename create flow as New file.
                   <DropdownMenu>
                     <ToolbarDropdownTrigger icon={FilePlus} label={t`New from template`} />
-                    <DropdownMenuContent align="end" className="min-w-52">
+                    <DropdownMenuContent
+                      align="end"
+                      className="min-w-52"
+                      onCloseAutoFocus={handleCreateMenuCloseAutoFocus}
+                    >
                       <TemplateMenuRows
                         parentDir={initialCreateDir}
-                        onSelectTemplate={(templateName) =>
-                          tree?.createFromTemplate(initialCreateDir, templateName)
-                        }
+                        onSelectTemplate={(templateName) => {
+                          suppressCreateMenuFocusRestoreRef.current = true;
+                          tree?.createFromTemplate(initialCreateDir, templateName);
+                        }}
                         ItemComponent={DropdownMenuItem}
                       />
                     </DropdownMenuContent>
@@ -1130,7 +1152,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
             />
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="min-w-52">
+        <ContextMenuContent className="min-w-52" onCloseAutoFocus={handleCreateMenuCloseAutoFocus}>
           {/*
            * Empty-space menu — 4 sections.
            *
