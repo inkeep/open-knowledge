@@ -659,6 +659,7 @@
     "docFidelity",
     "sourceLiteral",
     "starterKit",
+    "listBoundaryMerge",
     "table",
     "tableRow",
     "tableHeader",
