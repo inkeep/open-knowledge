@@ -378,39 +378,71 @@ jobs:
           # at Build time, so the workspace-wide on-disk override step
           # above is what makes them match the tag. See PRD-6650.
           #
-          # Retry the build+publish once on failure. The two observed
-          # stuck-draft causes were both transient and un-retried: a bare EOF
-          # fetching the Electron runtime zip during packaging (app-builder's
-          # DownloadNoRetry path aborts on a single dropped connection), and a
-          # 403 from uploads.github.com mid-publish after a fully successful
-          # sign+notarize (concurrent-upload throttling). Either aborts the run
-          # before the Promote step and orphans the draft release. Re-running
-          # the whole invocation is idempotent: electron-builder deletes then
-          # re-uploads same-named assets on republish, so a partial asset set
-          # left by a failed first attempt is overwritten, not duplicated. A
-          # persistent (non-transient) failure still exits non-zero after the
-          # final attempt and lands in the Warn-on-stuck-draft path + the
-          # scheduled draft-release janitor.
+          # Retry the build+publish on TRANSIENT signing/notarize/upload/download
+          # failures only. All of these are infrastructure flakes outside our
+          # control that leave no durable artifact and clear on a re-run:
+          #   - codesign's timestamp step calling Apple's TSA (timestamp.apple.com)
+          #     returning "A timestamp was expected but was not found" or the TSA
+          #     being unavailable. This is the class that stuck v0.30.2 as a draft
+          #     (run 29445364406): each `codesign --timestamp` is a single, un-retried
+          #     shell-out inside electron-builder, so a dropped TSA response aborts
+          #     the whole build. electron-builder has NO knob to retry it — the only
+          #     lever we have is re-running the whole invocation.
+          #   - @electron/notarize's notarytool HTTP round-trip to
+          #     appstoreconnect.apple.com timing out (NSURLError -1001 /
+          #     HTTPError(statusCode: nil)). This is what failed attempt 1 of the
+          #     same run before the TSA flake killed attempt 2.
+          #   - a bare EOF fetching the Electron runtime zip during packaging
+          #     (app-builder's DownloadNoRetry path aborts on one dropped connection).
+          #   - GitHub upload throttling (5xx / secondary-rate-limit) from
+          #     uploads.github.com mid-publish after a successful sign+notarize.
+          # Re-running the whole invocation is idempotent: electron-builder deletes
+          # then re-uploads same-named assets on republish, so a partial asset set
+          # left by a failed attempt is overwritten, not duplicated.
+          #
+          # CRITICAL: retry is gated on a transient-signature allowlist matched
+          # against the captured build output. Anything NOT on the allowlist — an
+          # expired/invalid cert, a notarization REJECTION (status Invalid), an
+          # entitlements error, an Apple developer-agreement 403, or a real
+          # build/compile error — is a hard failure that fails LOUD on the first
+          # attempt and is never masked by a blind retry. A persistent transient
+          # class that exhausts all attempts still exits non-zero and lands in the
+          # Warn-on-stuck-draft path + the scheduled draft-release janitor.
           set -uo pipefail
+          # Extended-regex allowlist of transient infra-flake signatures (matched
+          # case-insensitively against combined stdout+stderr). Keep this list
+          # narrow: every entry must be an out-of-our-control infra flake, never a
+          # signature a real cert/notary/entitlements/build error could emit.
+          transient_signatures='A timestamp was expected but was not found|The timestamp service is not available|HTTPError\(statusCode: nil|The request timed out|NSURLErrorDomain Code=-100[13459]|kCFErrorDomainCFNetwork|The network connection was lost|Could not connect to the server|ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|Client network socket disconnected|unexpected EOF|502 Bad Gateway|503 Service Unavailable|504 Gateway Time-?out|You have exceeded a secondary rate limit|abuse detection mechanism|was submitted too quickly'
           attempt=1
-          max_attempts=2
+          max_attempts=3
           while true; do
             echo "::group::electron-builder publish attempt ${attempt}/${max_attempts}"
-            if bun run build:desktop && bunx electron-builder --mac --publish always \
+            attempt_log="${RUNNER_TEMP:-/tmp}/electron-builder-attempt-${attempt}.log"
+            # `pipefail` (set above) makes the `if` see the electron-builder exit
+            # code through `tee`; tee mirrors output to the CI log AND captures it
+            # for the transient-vs-real classification below.
+            if { bun run build:desktop && bunx electron-builder --mac --publish always \
               --config.extraMetadata.version=${{ steps.channel.outputs.version }} \
               --config.publish.channel=${{ steps.channel.outputs.channel }} \
-              --config.publish.releaseType=${{ steps.channel.outputs.release_type }}; then
+              --config.publish.releaseType=${{ steps.channel.outputs.release_type }} ; } 2>&1 | tee "${attempt_log}"; then
               echo "::endgroup::"
               echo "electron-builder succeeded on attempt ${attempt}."
               break
             fi
             echo "::endgroup::"
+            # Fail hard on anything that is NOT a known transient infra flake so a
+            # real cert/notary/entitlements/build failure is never hidden by a retry.
+            if ! grep -qiE "${transient_signatures}" "${attempt_log}"; then
+              echo "::error::electron-builder failed on attempt ${attempt} with a NON-transient error (no known infra-flake signature matched). Not retrying — a real signing/notarize/cert/entitlements/build failure must fail loud, not be masked. See the log above."
+              exit 1
+            fi
             if [ "${attempt}" -ge "${max_attempts}" ]; then
-              echo "::error::electron-builder failed after ${max_attempts} attempts."
+              echo "::error::electron-builder failed after ${max_attempts} attempts; the last failure matched a transient signing/notarize/upload signature but retries are exhausted."
               exit 1
             fi
             backoff=$((attempt * 30))
-            echo "::warning::electron-builder attempt ${attempt} failed; retrying in ${backoff}s (transient sign/notarize/upload/download flakes are retried once)."
+            echo "::warning::electron-builder attempt ${attempt} failed with a transient infra signature; retrying in ${backoff}s (bounded transient-only retry)."
             sleep "${backoff}"
             attempt=$((attempt + 1))
           done
