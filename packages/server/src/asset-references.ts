@@ -24,7 +24,7 @@ const MARKDOWN_LINK_OR_IMAGE_RE =
   /!?\[[^\]\n]*(?:\][^[\]\n]*)?\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+['"][^'"]*['"])?\)/g;
 const WIKI_LINK_OR_EMBED_RE = /!?\[\[([^[\]|#]+?)(?:#[^\]|]+?)?(?:\|[^\]]+?)?\]\]/g;
 const HTML_LINK_ATTR_RE =
-  /<[\w:-]+\b[^>]*?\s+(?:href|src)\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|“([^”\n]*)”|([^\s"'=<>`]+))/gi;
+  /<[\w:-]+\b[^>]*?\s+(?:href|src)\s*=\s*(?:”([^”\n]*)”|'([^'\n]*)'|\u201c([^\u201d\n]*)\u201d|([^\s”'=<>`]+))/gi;
 
 export function isRemoteOrOpaqueHref(href: string): boolean {
   return (
