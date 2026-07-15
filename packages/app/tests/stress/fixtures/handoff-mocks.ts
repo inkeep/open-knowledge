@@ -430,6 +430,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         worktree: {
           list: async () => ({ ok: false as const, reason: 'no-git' as const }),
           create: async () => ({ ok: false as const, reason: 'no-git' as const }),
+          checkout: async () => ({ ok: false as const, reason: 'no-git' as const }),
         },
         sharing: {
           status: async () =>
@@ -443,6 +444,16 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             kind: 'applied' as const,
             mode: 'shared' as const,
           }),
+        },
+        bugReport: {
+          create: async () => ({ ok: false as const, error: 'test mock' }),
+          send: async () => ({
+            ok: false as const,
+            reason: 'send-failed' as const,
+            fallback: { mailtoUrl: 'mailto:support@inkeep.com' },
+          }),
+          crashAck: async () => ({ ok: true as const }),
+          onCrashDetected: () => () => {},
         },
         navigator: {
           open: async () => {},

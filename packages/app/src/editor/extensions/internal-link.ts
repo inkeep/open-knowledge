@@ -43,10 +43,10 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { type Editor, mergeAttributes } from '@tiptap/core';
 import { createElement } from 'react';
+import { openExternalUrl } from '@/lib/external-link';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';
 import {
   activateAssetLink,
-  openHashHrefInNewTab,
   openInternalHashHrefInNewTab,
   toInternalHashHref,
 } from '../internal-link-helpers';
@@ -219,15 +219,18 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
           }
           return true;
         case 'external':
-          // Refuse javascript:/data:/etc via scheme allowlist.
-          // Fall through if unsafe so the PropPanel surfaces the URL for
-          // the author to edit. External links ALWAYS open in a new tab —
-          // bare-click on cross-origin content shouldn't navigate away
-          // from the editor (both branches end up calling
-          // `openHashHrefInNewTab`, just routed for symmetry with the
-          // doc/anchor branches above).
+          // External links route through the desktop bridge
+          // (`openExternalUrl`) so a click reaches the OS default browser
+          // instead of Electron's default new-window (which renders the page
+          // in an in-app child BrowserWindow). Symmetric with the graph view;
+          // on web it falls back to `window.open(url, '_blank', …)`.
+          //
+          // `openExternalUrl` refuses unsafe schemes internally, so this gate
+          // is for CONTROL FLOW, not security: an unsafe href returns false so
+          // the chip's primary handler falls through and the PropPanel surfaces
+          // the URL for the author to edit (rather than silently no-opening).
           if (!isSafeNavigationUrl(target.url)) return false;
-          openHashHrefInNewTab(target.url);
+          openExternalUrl(target.url);
           return true;
         default:
           return assertNeverLinkTarget(target);

@@ -25,6 +25,7 @@ import { JsxInline } from './jsx-inline.ts';
 import { LinkFidelity } from './link-fidelity.ts';
 import { LinkRefDefFidelity } from './link-ref-def-fidelity.ts';
 import { List, ListItem } from './list.ts';
+import { ListBoundaryMerge } from './list-boundary-merge.ts';
 import { MathInline } from './math-inline.ts';
 import { RawMdxFallback } from './raw-mdx-fallback.ts';
 import { SourceLiteralMark } from './source-literal-mark.ts';
@@ -124,6 +125,11 @@ export const sharedExtensions = [
       width: 2,
     },
   }),
+  // Preempts ListKeymap's two nested-boundary misfires (orphan lift on
+  // Backspace, wrong-depth/checked-loss on Delete). MUST stay registered
+  // after StarterKit: at equal priority the later-registered extension's
+  // key handlers run first, which is the entire delivery mechanism.
+  ListBoundaryMerge,
   // TableFidelity wraps Table with a `sourceDashCounts` attr: the GFM
   // alignment-row dash counts captured at parse time and threaded back to
   // the to-markdown handler so `:---:` round-trips byte-equal.

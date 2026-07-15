@@ -1078,7 +1078,7 @@ function buildPmToMdastHandlers(
   if (n.blockquote) {
     nodeHandlers.blockquote = fromPmNode('blockquote', (pmNode: PmNode) => {
       const spacings = pmNode.attrs.sourceMarkerSpacings;
-      const data: { sourceMarkerSpacings?: Array<number | 'single' | 'none'> } = {};
+      const data: { sourceMarkerSpacings?: Array<number | 'single' | 'none' | 'lazy'> } = {};
       if (Array.isArray(spacings) && spacings.length > 0) {
         data.sourceMarkerSpacings = spacings;
       }

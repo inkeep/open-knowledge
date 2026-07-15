@@ -238,17 +238,20 @@ export interface BootServerOptions
   /**
    * Serve content-directory assets (images / video / audio / PDF / file
    * attachments) over this HTTP server, mirroring the `bun run dev` Vite
-   * plugin and `ok ui`. Default `false`.
+   * plugin and `ok ui`. Default `true`; pass `false` to opt out (tests
+   * that pin the no-middleware surface).
    *
-   * The Electron utility sets this `true`: the BrowserWindow renderer
-   * page origin (a Vite dev URL or a `file://` path) has no asset middleware,
-   * so server-absolute `/<contentDir-relative>` image srcs can't resolve
-   * there. With this on, the renderer rewrites those srcs onto
-   * `window.okDesktop.config.apiOrigin` (the utility server's origin), which
-   * serves them via `createAssetServeMiddleware` — the canonical primitive,
-   * so the inline/attachment policy + fail-closed 404 guard come for free.
-   * The CLI leaves it `false` — `ok ui` already serves content assets on its
-   * own port.
+   * Default-on because the desktop renderer resolves server-absolute
+   * `/<contentDir-relative>` image srcs against
+   * `window.okDesktop.config.apiOrigin`, and attach-mode treats lock kind as
+   * provenance-only — the desktop attaches to servers it did not spawn
+   * (MCP-autostarted, user-run `ok start`). Every attachable server must
+   * therefore expose the content-asset surface, or inline images 404 in
+   * attach-mode windows. Serving is additive: the same bytes are already
+   * reachable via `/api/asset`, and `createAssetServeMiddleware` — the
+   * canonical primitive — brings the inline/attachment policy + fail-closed
+   * 404 guard. `ok ui` continues to serve content assets on its own port for
+   * browser mode; the React shell (`reactShellDistDir`) stays opt-in.
    */
   serveContentAssets?: boolean;
   /**
@@ -682,19 +685,22 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   httpServer.headersTimeout = 30_000;
   httpServer.requestTimeout = 60_000;
 
-  // Content-asset serving — desktop mode only. Reuses the canonical
+  // Content-asset serving — default-on for every boot path so attach-mode
+  // desktop windows resolve inline-image srcs against any lock holder (see
+  // the `serveContentAssets` option doc). Reuses the canonical
   // `createAssetServeMiddleware` (STOP rule: serve-side asset admission goes
   // through this factory) so the inline/attachment Content-Disposition policy
   // + fail-closed 404 guard match the Vite dev plugin and `ok ui`.
-  const contentAssetMiddleware = opts.serveContentAssets
-    ? createAssetServeMiddleware({
-        contentFilter: serverInstance.contentFilter,
-        contentSirv: sirv(opts.contentDir, { dev: true, dotfiles: false }),
-        inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
-        assetExtensions: ASSET_EXTENSIONS,
-        blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
-      })
-    : undefined;
+  const contentAssetMiddleware =
+    opts.serveContentAssets !== false
+      ? createAssetServeMiddleware({
+          contentFilter: serverInstance.contentFilter,
+          contentSirv: sirv(opts.contentDir, { dev: true, dotfiles: false }),
+          inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
+          assetExtensions: ASSET_EXTENSIONS,
+          blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
+        })
+      : undefined;
 
   // When serving the React shell, try to advertise via `ui.lock` so external
   // preview-URL consumers find our port. If a live holder already owns the

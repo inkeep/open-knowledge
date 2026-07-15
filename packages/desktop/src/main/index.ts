@@ -40,12 +40,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
-import { homedir as osHomedir, hostname as osHostname } from 'node:os';
+import { homedir as osHomedir, hostname as osHostname, release as osRelease } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
   ALL_EDITOR_IDS,
   addOkPathsToGitExclude,
   classifyExistingMcpEntry,
+  defaultBugReportZipPath,
   detectInstalledEditors,
   EDITOR_TARGETS,
   getOkArtifactPaths,
@@ -107,6 +108,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  crashReporter,
   dialog,
   autoUpdater as electronAutoUpdater,
   ipcMain,
@@ -134,7 +136,6 @@ import { buildAboutPanelOptions } from './about-panel.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
 import { openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
 import { popAssetMenu } from './asset-menu.ts';
-import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import {
   bootAutoUpdater,
   channelFromVersion,
@@ -167,6 +168,11 @@ import {
   runLoginShellProbe,
 } from './claude-readiness.ts';
 import { requestUserConsent, walkExceedsCap } from './consent-dialog.ts';
+import {
+  type CrashDetection,
+  createCrashDetection,
+  startLocalCrashReporter,
+} from './crash-detection.ts';
 import {
   CreateNewProjectError,
   folderState,
@@ -208,6 +214,11 @@ import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { formatInstanceAppName, resolveInstanceLabel } from './instance-identity.ts';
 import { deriveInstanceUserDataDir } from './instance-isolation.ts';
 import { registerIntegrationsSettings } from './integrations-settings.ts';
+import {
+  handleBugReportCrashAck,
+  handleBugReportCreate,
+  handleBugReportSend,
+} from './ipc/bug-report.ts';
 import { handleBuildAndOpen, handleDetectClaudeDesktop } from './ipc/install-skill.ts';
 import {
   createLocalOpState,
@@ -292,12 +303,14 @@ import {
   evaluateSchemaCompatibility,
   getProjectSessionState,
   MAX_SUPPORTED_SCHEMA_VERSION,
+  type PersistedWindowBounds,
   parseAppState,
   removeRecentProject,
   type SchemaIncompatibilityDiagnostic,
   saveAppStateToDir,
   setLastUsedProjectParent,
   setProjectSessionState,
+  setProjectWindowBounds,
   setSpellCheckEnabled as setSpellCheckEnabledState,
   type UpdateChannel,
 } from './state-store.ts';
@@ -349,12 +362,17 @@ import {
   WindowManager,
 } from './window-manager.ts';
 import { WINDOW_MIN_SIZE } from './window-min-size.ts';
+import { resolveRestoredPlacement, sortByFocusSequence } from './window-placement.ts';
 import {
   classifyRecentGit,
   classifyRecentGitAsync,
   readWorktreeBranchAsync,
 } from './worktree-recents.ts';
-import { createWorktree, listWorktreeSelector } from './worktree-service.ts';
+import {
+  checkoutShareBranchWorktree,
+  createWorktree,
+  listWorktreeSelector,
+} from './worktree-service.ts';
 
 // Modern macOS chrome treatment. Three architectural facts the field set
 // encodes:
@@ -443,6 +461,19 @@ function pickCascadeAnchor(): BrowserWindow | null {
   return null;
 }
 
+/**
+ * Register a window as a future cascade anchor and wire its removal. Split
+ * from `applyCascadePosition` so windows restored to remembered bounds still
+ * anchor later cascades without being repositioned themselves.
+ */
+function registerCascadeAnchor(win: BrowserWindow): void {
+  cascadeOrder.push(win);
+  win.on('closed', () => {
+    const idx = cascadeOrder.indexOf(win);
+    if (idx !== -1) cascadeOrder.splice(idx, 1);
+  });
+}
+
 function applyCascadePosition(win: BrowserWindow): void {
   const anchor = pickCascadeAnchor();
   if (anchor) {
@@ -455,10 +486,96 @@ function applyCascadePosition(win: BrowserWindow): void {
     });
     if (pos) win.setPosition(pos.x, pos.y);
   }
-  cascadeOrder.push(win);
-  win.on('closed', () => {
-    const idx = cascadeOrder.indexOf(win);
-    if (idx !== -1) cascadeOrder.splice(idx, 1);
+  registerCascadeAnchor(win);
+}
+
+/**
+ * Position a new editor window: the project's remembered frame when one is
+ * persisted and still usable on the current display set, else the cascade
+ * default. Maximize / full-screen re-entry is deferred to the window's
+ * `'show'` — both `maximize()` and macOS full-screen force the native window
+ * visible, which would bypass the dual-signal show gate and resurface the
+ * un-themed first-paint flash the gate exists to prevent.
+ */
+function applyProjectWindowPlacement(win: BrowserWindow, projectPath: string | undefined): void {
+  const saved = projectPath !== undefined ? appState.projectWindowBounds[projectPath] : undefined;
+  const placement = resolveRestoredPlacement({
+    saved,
+    workAreas: screen.getAllDisplays().map((d) => d.workArea),
+    minSize: WINDOW_MIN_SIZE.EDITOR,
+  });
+  if (!placement) {
+    applyCascadePosition(win);
+    return;
+  }
+  win.setBounds(placement.bounds);
+  if (placement.maximize || placement.fullscreen) {
+    win.once('show', () => {
+      if (win.isDestroyed()) return;
+      if (placement.fullscreen) win.setFullScreen(true);
+      else win.maximize();
+    });
+  }
+  registerCascadeAnchor(win);
+}
+
+/**
+ * Persist a project window's frame so the next open of the same project
+ * restores it. macOS emits `'moved'` / `'resized'` once per completed drag
+ * (not continuously), and the mode events + `'close'` are one-shot, so each
+ * event persists synchronously — no debounce timer whose flush could be lost
+ * to a quit. `getNormalBounds()` keeps the persisted rect at the
+ * un-maximized / un-fullscreened frame while the flags remember the mode.
+ */
+function trackProjectWindowBounds(win: BrowserWindow, projectPath: string): void {
+  const persist = () => {
+    if (win.isDestroyed()) return;
+    const bounds: PersistedWindowBounds = {
+      ...win.getNormalBounds(),
+      isMaximized: win.isMaximized(),
+      isFullScreen: win.isFullScreen(),
+    };
+    appState = setProjectWindowBounds(appState, projectPath, bounds);
+    saveAppState(appState);
+  };
+  win.on('moved', persist);
+  win.on('resized', persist);
+  win.on('maximize', persist);
+  win.on('unmaximize', persist);
+  win.on('enter-full-screen', persist);
+  win.on('leave-full-screen', persist);
+  win.on('close', persist);
+}
+
+// Focus-recency tracking for project windows. The sequence map orders the
+// relaunch-restore snapshot (least → most recently focused) and
+// `lastOpenedProject` follows focus so a cold boot reopens the project the
+// user was last IN, not the one they happened to open last. Frozen from the
+// first shutdown signal onward: teardown closes windows one by one and macOS
+// re-focuses a surviving window after each close, so tracking those events
+// would record "whichever window closed last" as the user's last-active
+// project, overwriting the truth captured before teardown began. A cancelled
+// quit leaves tracking frozen — degrading to the pre-tracking behavior
+// (`lastOpenedProject` still advances on every project OPEN), never worse.
+let projectFocusSeqCounter = 0;
+const projectFocusSeq = new Map<string, number>();
+let focusTrackingFrozen = false;
+
+function freezeFocusTracking(reason: string): void {
+  if (focusTrackingFrozen) return;
+  focusTrackingFrozen = true;
+  getLogger('lifecycle').info({ reason }, 'project focus tracking frozen for shutdown');
+}
+
+function trackProjectWindowFocus(win: BrowserWindow, projectPath: string): void {
+  win.on('focus', () => {
+    if (focusTrackingFrozen) return;
+    projectFocusSeqCounter += 1;
+    projectFocusSeq.set(projectPath, projectFocusSeqCounter);
+    if (appState.lastOpenedProject !== projectPath) {
+      appState = { ...appState, lastOpenedProject: projectPath };
+      saveAppState(appState);
+    }
   });
 }
 
@@ -798,6 +915,13 @@ let debugIpc: DebugIpcHandle | null = null;
  * when the wiring no-ops (marker present, dev mode, non-macOS, etc.).
  */
 let mcpWiringHandle: RunMcpWiringHandle | null = null;
+/**
+ * First-party crash detection (local-only crash reporter, process-gone
+ * listeners, boot-time dirty-shutdown/minidump scan). Created at the top of
+ * `bootPrimaryInstance`; null only in the duplicate-instance and driver-smoke
+ * boot paths, which never prompt.
+ */
+let crashDetection: CrashDetection | null = null;
 
 /**
  * Active-editor target snapshot pushed by the renderer via
@@ -972,7 +1096,11 @@ function ensureWindowManager() {
       win.on('page-title-updated', (e) => {
         e.preventDefault();
       });
-      applyCascadePosition(win);
+      applyProjectWindowPlacement(win, opts.projectPath);
+      if (opts.projectPath !== undefined) {
+        trackProjectWindowBounds(win, opts.projectPath);
+        trackProjectWindowFocus(win, opts.projectPath);
+      }
       attachSpellcheckMenuToWindow(win);
       // Per-window PTY reap: closing the window kills its shell (no orphan).
       // Idempotent — the manager no-ops for a window that never opened one. The
@@ -1262,6 +1390,25 @@ function ensureWindowManager() {
       },
       markWindowCreated: () => startupWaterfall.mark('windowCreated'),
       markLoadUrlResolved: () => startupWaterfall.mark('loadUrlResolved'),
+    },
+    // External-link safety net, attached by the window factory to EVERY editor
+    // window (see WindowManager.attachSafetyNet). `openExternal` is
+    // window-independent; `openAsset` is parameterized by the window's project
+    // path so containment resolves against the right root. Grouped so the two
+    // delegates are wired together or not at all.
+    safetyNet: {
+      openExternal: handleShellOpenExternal({
+        openExternal: (url) => shell.openExternal(url),
+      }),
+      openAsset: (projectPath, relPath) =>
+        openAssetSafely(
+          {
+            projectPath,
+            platform: process.platform,
+            openPath: (canonical) => shell.openPath(canonical),
+          },
+          relPath,
+        ),
     },
   });
 }
@@ -1726,21 +1873,9 @@ async function openProject(
     },
     'project window created',
   );
-  attachAssetSafetyNet(ctx.window.webContents, {
-    editorOrigin: ctx.apiOrigin,
-    openAsset: (relPath) =>
-      openAssetSafely(
-        {
-          projectPath: ctx.projectPath,
-          platform: process.platform,
-          openPath: (canonical) => shell.openPath(canonical),
-        },
-        relPath,
-      ),
-    openExternal: handleShellOpenExternal({
-      openExternal: (url) => shell.openExternal(url),
-    }),
-  });
+  // The external-link / asset safety net is attached by the window factory
+  // (WindowManager.attachSafetyNet) on every editor window, so no per-call-site
+  // wiring is needed here.
   // Toast dispatch on did-finish-load so the renderer's sonner subscriber is
   // mounted. `prefers-reduced-motion: reduce` is honored sonner-side.
   if (toastPayload !== null) {
@@ -1921,25 +2056,9 @@ async function openEphemeralFile(filePath: string): Promise<void> {
       { file: plan.canonicalFilePath, apiOrigin: ctx.apiOrigin },
       'ephemeral single-file window created',
     );
-    // The asset-safety-net root is the file's REAL parent (`ctx.projectPath` ===
-    // `plan.contentDir`), NOT the throwaway temp projectDir — so `![[sibling]]`
-    // `![](path)` assets are allowlisted against the directory they
-    // actually live in.
-    attachAssetSafetyNet(ctx.window.webContents, {
-      editorOrigin: ctx.apiOrigin,
-      openAsset: (relPath) =>
-        openAssetSafely(
-          {
-            projectPath: ctx.projectPath,
-            platform: process.platform,
-            openPath: (canonical) => shell.openPath(canonical),
-          },
-          relPath,
-        ),
-      openExternal: handleShellOpenExternal({
-        openExternal: (url) => shell.openExternal(url),
-      }),
-    });
+    // The external-link / asset safety net is attached by the window factory
+    // (WindowManager.attachSafetyNet) — for ephemeral windows the asset root is
+    // the file's real parent (`opts.contentDir`), wired there.
     tryCloseNavigator(navigatorWindow, { projectPath: plan.contentDir });
     refreshApplicationMenu();
   } catch (err) {
@@ -2083,6 +2202,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
       if (!target) return;
       target.webContents.executeJavaScript("window.location.hash = '#settings'; undefined");
     },
+    onReportBug: () => sendMenuActionToFocused('report-bug'),
     // App-menu / Help-menu "Check for Updates…" entries fire this. Returns
     // void: the menu doesn't surface in-flight progress; the existing
     // `update-available` / `update-not-available` electron-updater events
@@ -3426,6 +3546,11 @@ function registerIpcHandlers() {
       {
         platform: process.platform,
         projectPath: callerProjectPath,
+        // The bug-report zip lives in `~/.ok/bug-reports/`, outside every
+        // project, so the review/failure card's Reveal would otherwise be
+        // refused (`out-of-project`, or `no-project-bound` from a Navigator
+        // window). This dir is main-derived, not renderer-influenced.
+        allowedRoots: [dirname(defaultBugReportZipPath())],
         showItemInFolder: (p) => shell.showItemInFolder(p),
       },
       path,
@@ -3661,6 +3786,50 @@ function registerIpcHandlers() {
     return handleSharingSetMode(ctx.projectPath, mode);
   });
 
+  // In-app bug reporting — build the redacted diagnostic bundle for the
+  // sender window's project, upload a reviewed bundle to the private intake,
+  // or acknowledge a crash-detected invitation. Unlike the sibling
+  // project-scoped channels, a window with no project context (Navigator) is
+  // NOT refused: the bundle degrades to system-wide (user logs + sysinfo),
+  // labeled via `summary.systemWide`.
+  handle('ok:bug-report:dispatch', async (event, request) => {
+    if (request.kind === 'crash-ack') {
+      return handleBugReportCrashAck(
+        { ackCrashEvent: (eventId) => crashDetection?.ack(eventId) },
+        request,
+      );
+    }
+    if (request.kind === 'send') {
+      return handleBugReportSend(
+        {
+          intakeBaseUrl: process.env.OK_BUG_REPORT_INTAKE_URL,
+          appVersion: app.getVersion(),
+          platform: `${process.platform} ${osRelease()}`,
+          // Same containment root the Reveal handler whitelists above — only
+          // zips `create` produced may be read and uploaded.
+          bugReportsRoot: dirname(defaultBugReportZipPath()),
+        },
+        request,
+      );
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const ctx =
+      win && wm ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike) : null;
+    return handleBugReportCreate(
+      {
+        projectDir: ctx?.projectPath ?? null,
+        desktopMeta: {
+          version: app.getVersion(),
+          packaged: app.isPackaged,
+          channel: channelFromVersion(app.getVersion()),
+        },
+        newestMinidumpPath: () => crashDetection?.newestMinidumpPath() ?? null,
+        logger: getLogger('bug-report'),
+      },
+      request,
+    );
+  });
+
   handle('ok:project:list-recent', async () => {
     // Enrich each present recent with its git-worktree relationship so the
     // renderer can nest linked worktrees under their main project. Each present
@@ -3839,6 +4008,9 @@ function registerIpcHandlers() {
     }
     if (request.kind === 'list') {
       return listWorktreeSelector(anchor, anchor);
+    }
+    if (request.kind === 'checkout') {
+      return checkoutShareBranchWorktree({ anchorPath: anchor, branch: request.branch });
     }
     return createWorktree({
       anchorPath: anchor,
@@ -4732,11 +4904,62 @@ function bootPrimaryInstance(): void {
     'desktop main process starting',
   );
 
+  // Crash handling is strictly local: Crashpad writes minidumps under
+  // `app.getPath('crashDumps')` and uploads nothing. Started before any
+  // window so every child process inherits coverage, then the boot-time scan
+  // arms a report invitation if the previous session ended uncleanly. NO
+  // userland `uncaughtException` handler is involved anywhere in this
+  // pipeline — see process-safety-net.ts for why one must never be added.
+  startLocalCrashReporter(crashReporter);
+  crashDetection = createCrashDetection({
+    sentinelPath: join(app.getPath('userData'), 'bug-report-dirty-shutdown.json'),
+    ackStorePath: join(app.getPath('userData'), 'bug-report-crash-acks.json'),
+    crashDumpsDir: app.getPath('crashDumps'),
+    // Deliver to one live window — focused first — and report undeliverable
+    // so the invitation waits for the next renderer-ready signal instead of
+    // dropping (at boot, or when the only window is the one that crashed).
+    emit: (event) => {
+      const focused = BrowserWindow.getFocusedWindow();
+      const candidates = focused
+        ? [focused, ...BrowserWindow.getAllWindows()]
+        : BrowserWindow.getAllWindows();
+      for (const win of candidates) {
+        const contents = win.webContents;
+        if (contents.isDestroyed() || contents.isCrashed() || contents.isLoading()) continue;
+        sendToRenderer(contents, 'ok:bug-report:crash-detected', event);
+        return true;
+      }
+      return false;
+    },
+    now: () => new Date(),
+    logger: getLogger('crash-detection'),
+  });
+  crashDetection.detectBootCrash();
+  app.on('child-process-gone', (_event, details) => {
+    crashDetection?.handleChildProcessGone(details);
+  });
+
   // Capture renderer console output into the desktop pino log
   // (`~/.ok/logs/desktop.<date>.log`, bundled by `ok bug-report`). Registered
   // before `whenReady` so every window's webContents is covered from creation.
   app.on('web-contents-created', (_event, contents) => {
     attachRendererConsoleCapture(contents);
+    contents.on('render-process-gone', (_e, details) => {
+      crashDetection?.handleRenderProcessGone(details);
+    });
+    // A freshly-loaded renderer can take a waiting crash invitation (boot
+    // events detect before any window exists; delivery must not race load).
+    // Both `did-finish-load` AND `did-stop-loading` retry delivery: a boot
+    // invite's `emit` skips a window that is `isLoading()`, and for a sole
+    // editor window whose `did-finish-load` fires while a follow-on load is
+    // still in flight, `did-finish-load` alone never retries once the window
+    // settles — the invitation would stay armed but undelivered. `did-stop-
+    // loading` is that missing "load settled" signal. `notifyRendererReady`
+    // is idempotent (guarded by the delivered flag), so the extra call is a
+    // no-op once delivered.
+    const retryDelivery = () => crashDetection?.notifyRendererReady();
+    contents.on('did-finish-load', retryDelivery);
+    contents.on('did-stop-loading', retryDelivery);
   });
 
   // Assistive-tech flips (e.g. VoiceOver, NVDA attach/detach) fan out to every window so
@@ -5085,9 +5308,30 @@ function bootPrimaryInstance(): void {
       }
 
       if (decision.action === 'restore') {
-        for (const projectPath of decision.projects) {
-          void openProjectOrFallbackToNavigator(projectPath, 'recents');
-        }
+        // Parallel opens — the snapshot is ordered least → most recently
+        // focused (see `pendingWindowRestore`), but each window shows only
+        // when its own theme gate releases, so completion order (and thus
+        // which window ends up focused) is nondeterministic. Raise the
+        // snapshot's LAST entry once every open settles AND its window is
+        // actually visible: `bringToFront` calls `show()`, so raising a
+        // still-gated window would bypass the dual-signal show gate and
+        // resurface the un-themed first paint.
+        const opens = decision.projects.map((projectPath) =>
+          openProjectOrFallbackToNavigator(projectPath, 'recents'),
+        );
+        const lastActiveProject = decision.projects[decision.projects.length - 1];
+        void Promise.allSettled(opens).then(() => {
+          if (lastActiveProject === undefined) return;
+          const ctx = wm?.getWindowFor(lastActiveProject);
+          // Absent context = the open failed and fell back to the Navigator;
+          // nothing to raise.
+          if (!ctx || ctx.window.isDestroyed?.() === true) return;
+          const raise = () => {
+            if (ctx.window.isDestroyed?.() !== true) wm?.focusWindowForProject(lastActiveProject);
+          };
+          if (ctx.window.isVisible?.() === true) raise();
+          else (ctx.window as unknown as BrowserWindow).once('show', raise);
+        });
       } else if (decision.action === 'lastOpened') {
         void openProjectOrFallbackToNavigator(decision.project, 'recents');
       } else if (decision.action === 'navigator') {
@@ -5303,12 +5547,22 @@ function bootPrimaryInstance(): void {
         // window-close IPC isn't fast enough — Hocuspocus drain + file-watcher
         // teardown can outlast ShipIt's poll budget.
         prepareForRelaunch: async () => {
+          // Freeze focus tracking BEFORE any teardown: the window-close
+          // cascade below re-focuses each surviving window, and tracking
+          // those events would rewrite `lastOpenedProject` / the focus
+          // sequence with close-order noise after the snapshot is taken.
+          freezeFocusTracking('prepare-for-relaunch');
           // Snapshot every open project window so the post-update boot
-          // restores all of them — not just `lastOpenedProject`. Persist
-          // BEFORE the server shutdown: `saveAppState` is a synchronous tmp-
-          // write + rename that completes well before `stopAllOwnedServers`
-          // returns or `quitAndInstall()` fires.
-          const openProjects = wm?.getOpenProjectPaths() ?? [];
+          // restores all of them — not just `lastOpenedProject` — ordered
+          // least → most recently focused so the boot can raise the last
+          // entry and land the user in the window they were working in.
+          // Persist BEFORE the server shutdown: `saveAppState` is a
+          // synchronous tmp-write + rename that completes well before
+          // `stopAllOwnedServers` returns or `quitAndInstall()` fires.
+          const openProjects = sortByFocusSequence(
+            wm?.getOpenProjectPaths() ?? [],
+            projectFocusSeq,
+          );
           appState = { ...appState, pendingWindowRestore: openProjects };
           if (!saveAppState(appState)) {
             // Persisting the snapshot failed, so the post-update boot may not
@@ -5427,6 +5681,10 @@ function bootPrimaryInstance(): void {
   // survives the imminent exit.
   app.on('before-quit', () => {
     getLogger('lifecycle').info({}, 'before-quit');
+    // Stop tracking focus before the quit sequence closes windows — each
+    // close re-focuses a surviving window, and recording that churn would
+    // overwrite `lastOpenedProject` with whichever window closed last.
+    freezeFocusTracking('before-quit');
     // Flush pending startup telemetry before exit. `emitStartupWaterfall`
     // covers a quit during the post-window-shown flush-deadline window (the
     // `.unref()`'d deadline timer won't fire once the process is exiting): it
@@ -5445,6 +5703,10 @@ function bootPrimaryInstance(): void {
   // from "the user just quit".
   electronAutoUpdater.on('before-quit-for-update', () => {
     getLogger('updater').info({}, 'before-quit-for-update — update install will relaunch the app');
+    // Same focus-churn guard as `before-quit` — this event precedes it on the
+    // silent install-on-quit path and is idempotent with the earlier
+    // `prepareForRelaunch` freeze on the "Relaunch now" path.
+    freezeFocusTracking('before-quit-for-update');
     // Shut down the servers this desktop spawned BEFORE the swap completes, so
     // the relaunched (new-version) app spawns fresh instead of attaching to a
     // stale old-version server and showing the version-drift toast. Fires on
@@ -5465,6 +5727,9 @@ function bootPrimaryInstance(): void {
   // after each call makes subsequent will-quit re-entrances no-ops.
   app.on('will-quit', () => {
     getLogger('lifecycle').info({}, 'will-quit');
+    // A quit that reaches here was orderly — clear the dirty-shutdown
+    // sentinel so the next boot doesn't read this session as a crash.
+    crashDetection?.markCleanQuit();
     // Reap every window's PTY host first so no user shell / spawn-helper
     // outlives the app. Idempotent (clears the map; a second pass no-ops).
     terminalReaper?.killAll();

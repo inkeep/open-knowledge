@@ -25,12 +25,7 @@
  * shell is exclusively the selection-bubble path).
  */
 
-import {
-  type TargetData,
-  TERMINAL_CLI_IDS,
-  TERMINAL_CLIS,
-  type TerminalCli,
-} from '@inkeep/open-knowledge-core';
+import { type TargetData, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDown, Loader2, TextQuote, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -39,7 +34,7 @@ import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
-import { cliIconTargetId } from '@/components/handoff/terminal-cli-display';
+import { cliIconTargetId, visibleTerminalClis } from '@/components/handoff/terminal-cli-display';
 import {
   buildComposerHandoffInput,
   useHandoffDispatch,
@@ -58,7 +53,6 @@ import {
   selectionSnapshotToCompose,
 } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
-import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useSelectionContext } from '@/hooks/use-selection-context';
 import { resolveDefaultCli } from '@/lib/default-cli-resolver';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
@@ -216,10 +210,6 @@ export function BottomComposer({
   // without a subscription.
   const [stickyId] = useState(() => loadStickyAgent());
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Which CLIs are on PATH (desktop probe, main-cached ~60s). Only used to pick
-  // the no-pick desktop default (resolveDefaultCli below); an explicit CLI pick
-  // still launches regardless of install. Shared with the header/tab-strip New chat.
-  const installedClis = useInstalledClis();
   // The rich input owns its content; the host tracks only emptiness (pushed up
   // via `onEmptyChange`) to drive the placeholder + send-enabled state, and
   // reads the instruction + chip mentions at submit via the imperative handle.
@@ -485,7 +475,9 @@ export function BottomComposer({
   // what New chat launches. Derived, never saved, so a freshly-installed CLI can
   // take over the default mid-session; web keeps the app-target default.
   const defaultCli: TerminalCli | null =
-    terminalLaunch !== null && effectiveId === null ? resolveDefaultCli(null, installedClis) : null;
+    terminalLaunch !== null && effectiveId === null
+      ? resolveDefaultCli(null, terminalLaunch.installedClis)
+      : null;
   const selectedCli: TerminalCli | null = explicitCli ?? defaultCli;
   const isTerminalSelected = selectedCli !== null;
   const resolvedTarget = isTerminalSelected ? null : resolveStickyAgent(states, effectiveId);
@@ -508,12 +500,13 @@ export function BottomComposer({
   // name carries "<name> CLI" (WCAG 2.5.3 — the accessible name contains the
   // visible label) so AT users can tell a Terminal row apart from a same-named
   // Desktop row. The "Terminal" section header plus the brand icon carry that
-  // same distinction for sighted users. No install probe here — the terminal can
-  // launch any CLI the user has on PATH, and a missing binary just prints
-  // "command not found" (same as typing it).
+  // same distinction for sighted users. Gated by `visibleTerminalClis` (Claude
+  // plus CLIs the probe hasn't ruled out) so an uninstalled CLI doesn't appear
+  // once probed absent; `selectedCli` is kept so the current pick can't be gated
+  // out of its own dropdown. Single install-map source: the launch context.
   const cliRows =
     terminalLaunch !== null
-      ? TERMINAL_CLI_IDS.map((cli) => {
+      ? visibleTerminalClis(terminalLaunch.installedClis, selectedCli).map((cli) => {
           const { displayName } = TERMINAL_CLIS[cli];
           return {
             cli,

@@ -5,9 +5,9 @@
  * Behavior:
  *   - Render only targets where `installStates[t.id].installed === true`.
  *   - Installed app launchers sit under a "Desktop" section label; the docked
- *     terminal launchers — one row per agent CLI in `VISIBLE_CLIS` (Claude,
- *     Codex, Cursor) — sit under a "Terminal" section label, gated on a desktop
- *     terminal bridge.
+ *     terminal launchers — one row per PATH-gated CLI (`visibleTerminalClis`:
+ *     Claude plus CLIs the probe hasn't ruled out) — sit under a "Terminal"
+ *     section label, gated on a desktop terminal bridge.
  *   - Empty state: when no targets are install-detected and there is no
  *     terminal launcher, render a disabled "No installed agents found" item
  *     (no section labels then).
@@ -50,7 +50,7 @@ import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { TargetIcon } from './OpenInAgentMenuItem';
 import { useTerminalLaunch } from './TerminalLaunchContext';
-import { cliIconTargetId, VISIBLE_CLIS } from './terminal-cli-display';
+import { cliIconTargetId, visibleTerminalClis } from './terminal-cli-display';
 import type { HandoffDispatchInput } from './useHandoffDispatch';
 
 /**
@@ -109,6 +109,9 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
   // When nothing is install-detected and there's no terminal launcher to fall
   // back on, surface a disabled hint rather than an empty flyout.
   const showEmptyHint = !showDesktopSection && !showTerminalSection;
+  // Claude plus every CLI the probe hasn't ruled out (fail-open); no "current
+  // pick" to preserve on this launch-only submenu, so no `keep`.
+  const terminalClis = terminalLaunch ? visibleTerminalClis(terminalLaunch.installedClis) : [];
 
   return (
     <DropdownMenuSub>
@@ -131,7 +134,7 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
                 (plus the "No workspace" hint when input is missing), so it
                 contains the visible label and AT users can tell it apart from a
                 Desktop row (WCAG 2.5.3 — name contains visible label). */}
-            {VISIBLE_CLIS.map((cli) => {
+            {terminalClis.map((cli) => {
               const { displayName } = TERMINAL_CLIS[cli];
               return (
                 <DropdownMenuItem

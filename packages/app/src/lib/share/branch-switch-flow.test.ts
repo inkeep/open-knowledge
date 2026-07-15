@@ -6,10 +6,12 @@ import {
   applyBranchInfo,
   applyCheckoutOutcome,
   applyVerdict,
+  applyWorktreeCheckoutOutcome,
   type BranchSwitchDialogState,
   classifyCheckoutOutcome,
   formatCurrentLabel,
   initialBranchSwitchState,
+  markCreatingWorktree,
   markSwitching,
   markVerdictPending,
   selectBranchSwitchVariant,
@@ -622,5 +624,182 @@ describe('applyCheckoutOutcome — ff-diverged transition', () => {
       resolution: { kind: 'diverged' },
     });
     expect(result.sideEffect).toBeUndefined();
+  });
+});
+
+describe('markCreatingWorktree (worktree leg)', () => {
+  test('ready → creating-worktree, preserving info for the stay-open failure fallback', () => {
+    const ready: BranchSwitchDialogState = { phase: 'ready', info: cleanInfo() };
+    expect(markCreatingWorktree(ready)).toEqual({
+      phase: 'creating-worktree',
+      info: cleanInfo(),
+    });
+  });
+});
+
+describe('applyWorktreeCheckoutOutcome (worktree leg)', () => {
+  const creating: BranchSwitchDialogState = { phase: 'creating-worktree', info: cleanInfo() };
+
+  test('successful create transitions to opening-worktree carrying the worktree path (no toast)', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, {
+      ok: true,
+      path: '/repo/.ok/worktrees/feat-x',
+      created: true,
+    });
+    expect(result.state).toEqual({
+      phase: 'opening-worktree',
+      path: '/repo/.ok/worktrees/feat-x',
+    });
+    expect(result.sideEffect).toBeUndefined();
+  });
+
+  test('locate (created: false) also transitions to opening-worktree — the existing window opens, no duplicate', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, {
+      ok: true,
+      path: '/repo/.ok/worktrees/feat-x',
+      created: false,
+    });
+    expect(result.state).toEqual({
+      phase: 'opening-worktree',
+      path: '/repo/.ok/worktrees/feat-x',
+    });
+    expect(result.sideEffect).toBeUndefined();
+  });
+
+  test('fetch-failed stays open: back to ready with the connection-toast signal (user can retry)', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, { ok: false, reason: 'fetch-failed' });
+    expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });
+    expect(result.sideEffect).toEqual({ kind: 'toast', reason: 'fetch-failed' });
+  });
+
+  test('branch-not-found dismisses with the branch-gone toast signal (terminal, mirrors the switch leg)', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, {
+      ok: false,
+      reason: 'branch-not-found',
+    });
+    expect(result.state).toEqual({ phase: 'dismissed', reason: 'branch-not-found' });
+    expect(result.sideEffect).toEqual({ kind: 'toast', reason: 'branch-not-found' });
+  });
+
+  test('every other create refusal stays open with a reason-specific toast signal', () => {
+    const reasons = [
+      'invalid-branch',
+      'branch-exists',
+      'already-checked-out',
+      'path-exists',
+      'no-git',
+      'error',
+    ] as const;
+    for (const reason of reasons) {
+      const result = applyWorktreeCheckoutOutcome(creating, { ok: false, reason });
+      expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });
+      expect(result.sideEffect).toEqual({ kind: 'toast', reason });
+    }
+  });
+
+  test('null (IPC rejection) stays open with the proxy-null toast signal', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, null);
+    expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });
+    expect(result.sideEffect).toEqual({ kind: 'toast', reason: 'proxy-null' });
+  });
+});
+
+describe('worktree leg — stale-result and cross-phase identity guards', () => {
+  test('a checkout result landing in any non-create phase is identity with no ghost toast', () => {
+    // Dismiss-mid-create and second-share supersession both land here: the
+    // per-payload reset rewinds to loading before a late result arrives, and
+    // ready / dismissed / opening-worktree cover a dialog that already moved
+    // on. None may mutate state or fire a toast.
+    const wrongPhases: BranchSwitchDialogState[] = [
+      { phase: 'loading' },
+      { phase: 'ready', info: cleanInfo() },
+      { phase: 'verdict-pending', info: cleanInfo() },
+      { phase: 'verdict', info: cleanInfo(), resolution: { kind: 'on-origin' } },
+      { phase: 'switching', info: cleanInfo(), pendingDoc: 'docs/foo.md' },
+      { phase: 'awaiting-cc1-recycle', pendingDoc: 'docs/foo.md' },
+      {
+        phase: 'branch-in-other-worktree',
+        info: cleanInfo(),
+        otherWorktreePath: '/tmp/wt/feat-bar',
+        pendingDoc: 'docs/foo.md',
+      },
+      { phase: 'opening-worktree', path: '/repo/.ok/worktrees/feat-x' },
+      { phase: 'error' },
+      { phase: 'dismissed', reason: 'branch-not-found' },
+    ];
+    for (const state of wrongPhases) {
+      const lateSuccess = applyWorktreeCheckoutOutcome(state, {
+        ok: true,
+        path: '/repo/.ok/worktrees/feat-x',
+        created: true,
+      });
+      expect(lateSuccess.state).toBe(state);
+      expect(lateSuccess.sideEffect).toBeUndefined();
+
+      const lateFailure = applyWorktreeCheckoutOutcome(state, {
+        ok: false,
+        reason: 'fetch-failed',
+      });
+      expect(lateFailure.state).toBe(state);
+      expect(lateFailure.sideEffect).toBeUndefined();
+
+      const lateNull = applyWorktreeCheckoutOutcome(state, null);
+      expect(lateNull.state).toBe(state);
+      expect(lateNull.sideEffect).toBeUndefined();
+    }
+  });
+
+  test('markCreatingWorktree only fires from ready — identity everywhere else, including verdict cells', () => {
+    const nonReady: BranchSwitchDialogState[] = [
+      { phase: 'loading' },
+      { phase: 'verdict-pending', info: cleanInfo() },
+      { phase: 'verdict', info: cleanInfo(), resolution: { kind: 'diverged' } },
+      { phase: 'switching', info: cleanInfo(), pendingDoc: 'docs/foo.md' },
+      { phase: 'awaiting-cc1-recycle', pendingDoc: 'docs/foo.md' },
+      {
+        phase: 'branch-in-other-worktree',
+        info: cleanInfo(),
+        otherWorktreePath: '/tmp/wt/feat-bar',
+        pendingDoc: 'docs/foo.md',
+      },
+      { phase: 'creating-worktree', info: cleanInfo() },
+      { phase: 'opening-worktree', path: '/repo/.ok/worktrees/feat-x' },
+      { phase: 'error' },
+      { phase: 'dismissed', reason: 'branch-not-found' },
+    ];
+    for (const state of nonReady) {
+      expect(markCreatingWorktree(state)).toBe(state);
+    }
+  });
+
+  test('creating-worktree ignores unrelated late transitions (branch-info, verdict, switch-leg checkout)', () => {
+    const creating: BranchSwitchDialogState = { phase: 'creating-worktree', info: cleanInfo() };
+    expect(applyBranchInfo(creating, cleanInfo())).toBe(creating);
+    expect(applyBranchInfo(creating, null)).toBe(creating);
+    expect(markSwitching(creating, 'docs/foo.md')).toBe(creating);
+    expect(markVerdictPending(creating)).toBe(creating);
+    expect(applyVerdict(creating, { verdict: 'on-origin' })).toBe(creating);
+    const lateCheckout = applyCheckoutOutcome(creating, { ok: true });
+    expect(lateCheckout.state).toBe(creating);
+    expect(lateCheckout.sideEffect).toBeUndefined();
+  });
+
+  test('opening-worktree is a reducer terminal — every transition is identity', () => {
+    // The component opens the window and dismisses from here; only the
+    // per-payload reset may replace this state. A late branch-info, verdict,
+    // or checkout response must not yank the dialog back mid-open.
+    const opening: BranchSwitchDialogState = {
+      phase: 'opening-worktree',
+      path: '/repo/.ok/worktrees/feat-x',
+    };
+    expect(applyBranchInfo(opening, cleanInfo())).toBe(opening);
+    expect(applyBranchInfo(opening, null)).toBe(opening);
+    expect(markSwitching(opening, 'docs/foo.md')).toBe(opening);
+    expect(markVerdictPending(opening)).toBe(opening);
+    expect(applyVerdict(opening, null)).toBe(opening);
+    expect(markCreatingWorktree(opening)).toBe(opening);
+    const lateCheckout = applyCheckoutOutcome(opening, null);
+    expect(lateCheckout.state).toBe(opening);
+    expect(lateCheckout.sideEffect).toBeUndefined();
   });
 });

@@ -201,4 +201,38 @@ describe('formatReceiveLog', () => {
       formatReceiveLog({ branch_dialog_action: 'branch-switch-complete', branch: 'feat/x' }),
     ).toBe('[receive] branch=feat/x branch_dialog_action=branch-switch-complete');
   });
+
+  test('emits the worktree-leg action and its reason-suffixed failure variants', () => {
+    expect(formatReceiveLog({ branch_dialog_action: 'open-worktree', branch: 'feat/x' })).toBe(
+      '[receive] branch=feat/x branch_dialog_action=open-worktree',
+    );
+    expect(
+      formatReceiveLog({
+        branch_dialog_action: 'open-worktree-failed:fetch-failed',
+        branch: 'feat/x',
+      }),
+    ).toBe('[receive] branch=feat/x branch_dialog_action=open-worktree-failed:fetch-failed');
+    expect(
+      formatReceiveLog({ branch_dialog_action: 'open-worktree-failed:branch-not-found' }),
+    ).toBe('[receive] branch_dialog_action=open-worktree-failed:branch-not-found');
+  });
+
+  test('emits verdict_cell so verdict-cell renders are countable', () => {
+    expect(formatReceiveLog({ verdict_cell: 'on-origin', branch: 'feat/x' })).toBe(
+      '[receive] branch=feat/x verdict_cell=on-origin',
+    );
+    expect(formatReceiveLog({ verdict_cell: 'never-on-branch' })).toBe(
+      '[receive] verdict_cell=never-on-branch',
+    );
+  });
+
+  test('a verdict-cell action is countable via the branch_dialog_action + verdict_cell pair', () => {
+    expect(
+      formatReceiveLog({
+        branch_dialog_action: 'switch',
+        branch: 'feat/x',
+        verdict_cell: 'renamed',
+      }),
+    ).toBe('[receive] branch=feat/x branch_dialog_action=switch verdict_cell=renamed');
+  });
 });

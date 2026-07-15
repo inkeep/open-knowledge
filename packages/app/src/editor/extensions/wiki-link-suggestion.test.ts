@@ -576,6 +576,44 @@ describe('context-aware ranking', () => {
   });
 });
 
+describe('page/folder docName collision', () => {
+  // A folder and a page can legally share a docName (`wiki/` next to
+  // `wiki.md`). Kind-collapsed corpus ids used to make the second insert throw
+  // inside the typed-query path, which @tiptap/suggestion swallows — freezing
+  // the dropdown on the empty-query list for every keystroke.
+  const collisionCorpus: PageItem[] = [
+    { kind: 'page', docName: '_tbd/2026-07-03-alpha', title: 'Alpha note' },
+    { kind: 'page', docName: '_tbd/2026-07-03-beta', title: 'Beta note' },
+    { kind: 'page', docName: 'conferences/conference-schedule', title: 'Conference Schedule' },
+    { kind: 'page', docName: 'wiki', title: 'Wiki' },
+    { kind: 'folder', docName: 'wiki', title: 'wiki' },
+  ];
+
+  test('typed query filters instead of throwing', () => {
+    expect(filterPages(collisionCorpus, 'confe').map((p) => p.docName)).toEqual([
+      'conferences/conference-schedule',
+    ]);
+  });
+
+  test('query matching the colliding name returns page and folder as distinct items', () => {
+    const results = filterPages(collisionCorpus, 'wiki');
+    expect(results.map((p) => ({ kind: p.kind, docName: p.docName }))).toEqual([
+      { kind: 'page', docName: 'wiki' },
+      { kind: 'folder', docName: 'wiki' },
+    ]);
+  });
+
+  test('folders and assets stay suggestible under the explicit scopes', () => {
+    const corpus: PageItem[] = [
+      { kind: 'page', docName: 'notes', title: 'Notes' },
+      { kind: 'folder', docName: 'projects', title: 'projects' },
+      { kind: 'asset', docName: '/img/diagram.png', title: 'diagram.png' },
+    ];
+    expect(filterPages(corpus, 'projects').map((p) => p.docName)).toEqual(['projects']);
+    expect(filterPages(corpus, 'diagram').map((p) => p.docName)).toEqual(['/img/diagram.png']);
+  });
+});
+
 describe('loadWikiLinkContext', () => {
   const realFetch = globalThis.fetch;
 

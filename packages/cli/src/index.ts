@@ -17,6 +17,15 @@ export {
   type TokenStore,
 } from './auth/token-store.ts';
 export {
+  type BundleExtraFile,
+  type BundleLogger,
+  defaultBugReportZipPath,
+} from './commands/bug-report-bundle.ts';
+// The bug-report secret scrub — shared with the desktop send path so the
+// note travelling in upload metadata / the mailto body gets the same
+// treatment as the note.txt copy inside the bundle.
+export { redactContent } from './commands/bug-report-redact.ts';
+export {
   ALL_EDITOR_IDS,
   buildManagedServerEntry,
   EDITOR_LABELS,
@@ -120,6 +129,15 @@ export {
   removeProjectSkill,
   writeProjectSkill,
 } from './integrations/write-project-skill.ts';
+// Leveled bug-report capture — shared by `ok bug-report` and the desktop
+// report-a-bug flow so the two stay in lockstep.
+export {
+  type CollectReportBundleOptions,
+  collectReportBundle,
+  type ReportBundleLevel,
+  type ReportBundleResult,
+  type ReportBundleSummary,
+} from './report-bundle.ts';
 export {
   addOkPathsToGitExclude,
   type ExcludeWriteResult,

@@ -6,10 +6,32 @@
  * documented in precedent #43(d).
  */
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import type { OkBugReportCreateResult } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as syncPromiseModule from '@/editor/sync-promise';
 import { DocumentErrorBoundary, errorCopy } from './DocumentErrorBoundary';
+
+// Radix Dialog (focus trap) reaches for DOM globals the jsdom preload does not
+// expose on globalThis. Same hoist as CloneDialog.dom.test.tsx.
+type WindowGlobals = { NodeFilter?: typeof NodeFilter };
+type GlobalWithDomShims = typeof globalThis &
+  WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
+const globalWithDomShims = globalThis as GlobalWithDomShims;
+if (
+  globalWithDomShims.NodeFilter === undefined &&
+  globalWithDomShims.window?.NodeFilter !== undefined
+) {
+  globalWithDomShims.NodeFilter = globalWithDomShims.window.NodeFilter;
+}
+if (globalWithDomShims.ResizeObserver === undefined) {
+  class NoopResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalWithDomShims.ResizeObserver = NoopResizeObserver;
+}
 
 let shouldThrow = false;
 
@@ -18,6 +40,53 @@ function MaybeThrow({ label }: { label: string }) {
     throw new Error(`MaybeThrow boom: ${label}`);
   }
   return <span data-testid="payload">{label}</span>;
+}
+
+type CreateRequest = { level: 'standard' | 'full'; note?: string };
+
+function installBugReportBridge(): CreateRequest[] {
+  const createCalls: CreateRequest[] = [];
+  const bridge = {
+    bugReport: {
+      create: (request: CreateRequest) => {
+        createCalls.push(request);
+        const result: OkBugReportCreateResult = {
+          ok: true,
+          zipPath: '/tmp/report.zip',
+          zipSizeBytes: 1024,
+          summary: {
+            level: request.level,
+            systemWide: false,
+            projectSlug: 'demo',
+            files: [],
+            redactions: [],
+            redactedLineCount: 0,
+            generatedAt: '2026-07-10T00:00:00.000Z',
+          },
+        };
+        return Promise.resolve(result);
+      },
+      send: () => Promise.resolve({ ok: true as const, reference: 'OK-TEST01' }),
+    },
+    shell: {
+      showItemInFolder: () => Promise.resolve(),
+      openExternal: () => Promise.resolve(),
+    },
+  };
+  for (const host of [window, globalThis] as unknown as Array<Record<string, unknown>>) {
+    Object.defineProperty(host, 'okDesktop', { configurable: true, writable: true, value: bridge });
+  }
+  return createCalls;
+}
+
+function clearBugReportBridge() {
+  for (const host of [window, globalThis] as unknown as Array<Record<string, unknown>>) {
+    Object.defineProperty(host, 'okDesktop', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+  }
 }
 
 describe('DocumentErrorBoundary (Tier-3 mount)', () => {
@@ -32,6 +101,7 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
 
   afterEach(() => {
     cleanup();
+    clearBugReportBridge();
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
   });
@@ -163,6 +233,48 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     expect(sawBackNavWarn).toBe(true);
 
     invalidateSpy.mockRestore();
+  });
+
+  test('Report this error opens the report dialog with full detail and the crash context in the note', async () => {
+    shouldThrow = true;
+    const createCalls = installBugReportBridge();
+    render(
+      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={mock(() => {})}>
+        <MaybeThrow label="alpha" />
+      </DocumentErrorBoundary>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /report this error/i }));
+
+    // ReportBugDialog is lazy-loaded — await the body chunk mounting.
+    expect(await screen.findByRole('dialog')).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Report a bug' })).not.toBeNull();
+    const checkbox = screen.getByRole('checkbox', { name: 'Include detailed diagnostics' });
+    expect(checkbox.getAttribute('aria-checked')).toBe('true');
+
+    await user.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    expect(createCalls).toEqual([
+      {
+        level: 'full',
+        note: 'Crash source: document view\nDocument: alpha.md\nError: MaybeThrow boom: alpha',
+      },
+    ]);
+  });
+
+  test('the report action is absent without the desktop bridge', () => {
+    shouldThrow = true;
+    clearBugReportBridge();
+    render(
+      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={mock(() => {})}>
+        <MaybeThrow label="alpha" />
+      </DocumentErrorBoundary>,
+    );
+
+    expect(screen.getByRole('button', { name: /try again/i })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /report this error/i })).toBeNull();
   });
 
   test('onError logs bracket-prefix console.error including the doc name and error title', () => {

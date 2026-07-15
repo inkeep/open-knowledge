@@ -344,9 +344,17 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
       runMiddleware(reactShellMiddleware, 'react-shell', onMiss);
     const notFound = (): void => {
       if (res.writableEnded || res.headersSent) return;
+      // When this server doesn't serve the React shell (CLI / MCP-spawned —
+      // content assets mount by default but the UI lives on the `ok ui`
+      // sibling), keep the operator hint so a human loading `/` in a browser
+      // is pointed at the right port.
+      const uiHint =
+        reactShellMiddleware === undefined
+          ? 'The React UI is served by `ok ui` (run `ok ui` and check `ui.lock.port`). '
+          : '';
       errorResponse(res, 404, 'urn:ok:error:not-found', 'Not found.', {
         handler: 'mcp-mount',
-        detail: `No handler for ${url ?? '/'}`,
+        detail: `${uiHint}No handler for ${url ?? '/'}`,
       });
     };
 

@@ -10,13 +10,20 @@
  * alone — dismissal waits for the CC1 `branch-switched` broadcast via
  * `bridge.project.awaitBranchSwitched`.
  *
+ * That CC1 gate covers the switch leg only. The primary "Open in worktree"
+ * action opens the share branch in its OWN window (`worktree.checkout` →
+ * `project.open`) and never recycles this window's checkout, so on create
+ * success it dispatches directly — same posture as the pivot path. Do not
+ * wire the CC1 wait into that leg.
+ *
  * Cancel discipline: this window IS the editor; Cancel only dismisses the
  * store (no window close), so the user remains in the project on its
  * current branch.
  */
 
+import type { WorktreeCreateResult } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { GitBranch, Loader2, MapPin } from 'lucide-react';
+import { AppWindow, GitBranch, Loader2, MapPin } from 'lucide-react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 
@@ -40,18 +47,23 @@ import {
   applyBranchInfo,
   applyCheckoutOutcome,
   applyVerdict,
+  applyWorktreeCheckoutOutcome,
   type BranchSwitchDialogState,
   type CheckoutSideEffectReason,
   formatCurrentLabel,
   initialBranchSwitchState,
+  markCreatingWorktree,
   markSwitching,
   markVerdictPending,
   selectBranchSwitchVariant,
   shouldProbeTargetStatus,
+  type VerdictCellKind,
+  type WorktreeCheckoutSideEffectReason,
 } from '@/lib/share/branch-switch-flow';
 import { missDialogStore } from '@/lib/share/miss-dialog-store';
 import { formatReceiveLog } from '@/lib/share/receive-flow';
 import { type ShareReceiveStore, shareReceiveStore } from '@/lib/share/receive-store';
+import { refreshWorktrees } from '@/lib/worktree-store';
 
 export interface ShareBranchSwitchDialogProps {
   bridge: OkDesktopBridge;
@@ -204,6 +216,16 @@ export function ShareBranchSwitchDialog({
     store.dismiss();
   }, [branchSwitchState, active, store]);
 
+  // Receive-log breadcrumb: one line per resolved verdict cell, so the
+  // stale-ref cohort stays countable on session inspection (actions taken from
+  // a cell log `verdict_cell` alongside `branch_dialog_action` separately).
+  // Fires once per resolution object — re-renders reuse the same state object,
+  // and each verdict entry (including a later ff-diverged re-entry) is a new one.
+  useEffect(() => {
+    if (branchSwitchState.phase !== 'verdict') return;
+    console.log(formatReceiveLog({ verdict_cell: branchSwitchState.resolution.kind }));
+  }, [branchSwitchState]);
+
   // CC1-driven post-checkout navigation gate. After Switch resolves
   // `{ok:true}` the state transitions to `awaiting-cc1-recycle`; we poll
   // server-info (the late-join backstop for the CC1 `branch-switched`
@@ -302,12 +324,17 @@ export function ShareBranchSwitchDialog({
   // checkout so the doc lands); the plain switch and the diverged cell pass it
   // off. `pendingDoc` is the post-switch navigation target — the original path,
   // or `renamedTo` when a rename was accepted.
-  function runSwitch(pendingDoc: string, fastForward: boolean): void {
+  function runSwitch(
+    pendingDoc: string,
+    fastForward: boolean,
+    verdictCell?: VerdictCellKind,
+  ): void {
     console.log(
       formatReceiveLog({
         branch_dialog_action: 'switch',
         branch_action: 'switch',
         branch: shareBranch,
+        verdict_cell: verdictCell,
       }),
     );
     setBranchSwitchState((prev) => markSwitching(prev, pendingDoc));
@@ -362,18 +389,18 @@ export function ShareBranchSwitchDialog({
   // a plain switch (no fast-forward — the receive flow never merges).
   function handleSwitchAndUpdate(): void {
     if (branchSwitchState.phase !== 'verdict') return;
-    runSwitch(shareTargetPath(share.target), true);
+    runSwitch(shareTargetPath(share.target), true, branchSwitchState.resolution.kind);
   }
 
   function handleOpenRenamed(): void {
     if (branchSwitchState.phase !== 'verdict') return;
     if (branchSwitchState.resolution.kind !== 'renamed') return;
-    runSwitch(branchSwitchState.resolution.renamedTo, true);
+    runSwitch(branchSwitchState.resolution.renamedTo, true, branchSwitchState.resolution.kind);
   }
 
   function handlePlainSwitchFromVerdict(): void {
     if (branchSwitchState.phase !== 'verdict') return;
-    runSwitch(shareTargetPath(share.target), false);
+    runSwitch(shareTargetPath(share.target), false, branchSwitchState.resolution.kind);
   }
 
   function handleOpenCurrent(): void {
@@ -401,6 +428,128 @@ export function ShareBranchSwitchDialog({
         toast.error(t`The ${targetNoun} could not be opened — try navigating to it manually.`);
       });
     store.dismiss();
+  }
+
+  // Toast copy per worktree-checkout failure reason. Mirrors the worktree-create
+  // error vocabulary (NewWorktreeDialog's inline copy), adapted where that copy
+  // assumes a typed-name form field. Exhaustive so a new create-failure reason
+  // is a compile error here instead of a silent generic toast.
+  function showWorktreeFailureToast(reason: WorktreeCheckoutSideEffectReason): void {
+    switch (reason) {
+      case 'branch-not-found':
+        toast.error(t`Branch ${shareBranch} no longer exists on the remote.`);
+        return;
+      case 'fetch-failed':
+        toast.error(t`Could not fetch branch. Check your connection.`);
+        return;
+      case 'already-checked-out':
+        toast.error(t`That branch is already open in another worktree.`);
+        return;
+      case 'branch-exists':
+        toast.error(
+          t`A branch named ${shareBranch} already exists. Open its worktree from the switcher instead.`,
+        );
+        return;
+      case 'path-exists':
+        toast.error(t`A worktree folder for ${shareBranch} already exists.`);
+        return;
+      case 'no-git':
+        toast.error(t`This project isn't a git repository, so worktrees aren't available.`);
+        return;
+      case 'invalid-branch':
+        toast.error(t`${shareBranch} isn't a valid branch name.`);
+        return;
+      case 'proxy-null':
+      case 'error':
+        toast.error(t`Could not open ${shareBranch} in a worktree. Try again.`);
+        return;
+      default: {
+        const _exhaustive: never = reason;
+        throw new Error(`Unhandled worktree failure reason: ${String(_exhaustive)}`);
+      }
+    }
+  }
+
+  // Apply a worktree-checkout result (or IPC rejection as `null`) through the
+  // pure reducer. The updater's identity guard makes a late result a no-op —
+  // after a Cancel or a second share payload's reset, nothing below fires
+  // because neither branch's capture variable gets set.
+  function applyWorktreeOutcome(result: WorktreeCreateResult | null): void {
+    let failureReason: WorktreeCheckoutSideEffectReason | null = null;
+    let shouldDismiss = false;
+    let openPath: string | null = null;
+    setBranchSwitchState((prev) => {
+      const { state: next, sideEffect } = applyWorktreeCheckoutOutcome(prev, result);
+      if (sideEffect) {
+        failureReason = sideEffect.reason;
+        shouldDismiss = next.phase === 'dismissed';
+      }
+      if (next.phase === 'opening-worktree') {
+        openPath = next.path;
+      }
+      return next;
+    });
+    if (failureReason !== null) {
+      console.log(
+        formatReceiveLog({
+          branch_dialog_action: `open-worktree-failed:${failureReason}`,
+          branch: shareBranch,
+        }),
+      );
+      showWorktreeFailureToast(failureReason);
+    }
+    if (openPath !== null) {
+      // The anchor window's cached worktree model is stale now (a worktree was
+      // created or located) — refresh so this window's switcher + palette show it.
+      refreshWorktrees();
+      const target = openPath;
+      void bridge.project
+        .open({
+          path: target,
+          target: 'new-window',
+          entryPoint: 'worktree',
+          pendingDeepLinkTarget: {
+            kind: share.target.kind,
+            path: shareTargetPath(share.target),
+          },
+          pendingBranch: shareBranch,
+        })
+        .catch((err) => {
+          // The dialog dismisses synchronously below; without a toast a reject
+          // here strands the user with no new window and no signal. The
+          // worktree itself persists, reachable from the switcher.
+          console.warn(
+            '[receive] worktree-open-failed branch_dialog_action=open-worktree',
+            err instanceof Error ? err.message : err,
+          );
+          toast.error(t`Could not open ${target}. Try opening it manually.`);
+        });
+      store.dismiss();
+    }
+    if (shouldDismiss) store.dismiss();
+  }
+
+  function handleOpenWorktree(): void {
+    if (branchSwitchState.phase !== 'ready') return;
+    console.log(
+      formatReceiveLog({
+        branch_dialog_action: 'open-worktree',
+        branch: shareBranch,
+      }),
+    );
+    setBranchSwitchState(markCreatingWorktree);
+    void bridge.worktree
+      .checkout({ branch: shareBranch })
+      .then((result) => {
+        applyWorktreeOutcome(result);
+      })
+      .catch((err) => {
+        console.warn(
+          '[receive] worktree-checkout rejected branch_dialog_action=open-worktree',
+          err instanceof Error ? err.message : err,
+        );
+        applyWorktreeOutcome(null);
+      });
   }
 
   function handlePivot(): void {
@@ -433,22 +582,34 @@ export function ShareBranchSwitchDialog({
   // Cancel: this window IS the editor; closing it would close the user's
   // session. store.dismiss() leaves the editor open on its current branch.
   function handleCancel(): void {
-    console.log(formatReceiveLog({ branch_dialog_action: 'cancel' }));
+    console.log(
+      formatReceiveLog({
+        branch_dialog_action: 'cancel',
+        verdict_cell:
+          branchSwitchState.phase === 'verdict' ? branchSwitchState.resolution.kind : undefined,
+      }),
+    );
     store.dismiss();
   }
 
   const variant =
-    branchSwitchState.phase === 'ready' || branchSwitchState.phase === 'switching'
+    branchSwitchState.phase === 'ready' ||
+    branchSwitchState.phase === 'switching' ||
+    branchSwitchState.phase === 'creating-worktree'
       ? selectBranchSwitchVariant(branchSwitchState.info)
       : null;
   const currentLabel =
-    branchSwitchState.phase === 'ready' || branchSwitchState.phase === 'switching'
+    branchSwitchState.phase === 'ready' ||
+    branchSwitchState.phase === 'switching' ||
+    branchSwitchState.phase === 'creating-worktree'
       ? formatCurrentLabel(branchSwitchState.info)
       : (payloadCurrentBranch ?? 'HEAD');
   const switching =
     branchSwitchState.phase === 'switching' || branchSwitchState.phase === 'awaiting-cc1-recycle';
+  const creating = branchSwitchState.phase === 'creating-worktree';
   const openCurrentLabel = t`Open in current branch`;
-  const switchLabel = t`Open in ${shareBranch}`;
+  const switchLabel = t`Switch to ${shareBranch}`;
+  const worktreeLabel = t`Open in worktree`;
   const conflictListId = 'share-receive-branch-conflict-files';
   const isLoading = branchSwitchState.phase === 'loading';
   const isError = branchSwitchState.phase === 'error';
@@ -603,8 +764,8 @@ export function ShareBranchSwitchDialog({
                 <code className="rounded-sm bg-muted px-1 py-0.5 text-foreground/80">
                   {shareBranch}
                 </code>
-                . You have uncommitted changes that prevent switching. Commit or stash your changes,
-                then open the share link again.
+                . You have uncommitted changes that prevent switching here — open it in a worktree
+                to leave your changes untouched.
               </Trans>
             </p>
           ) : variant?.kind === 'B' ? (
@@ -667,6 +828,17 @@ export function ShareBranchSwitchDialog({
               <Trans>Switching branches</Trans>
             </p>
           ) : null}
+          {creating ? (
+            <p
+              className="mt-3 flex items-center gap-2 text-sm text-muted-foreground"
+              data-testid="share-branch-switch-creating-worktree"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <Trans>Opening worktree</Trans>
+            </p>
+          ) : null}
         </DialogBody>
         <DialogFooter className="sm:justify-between">
           <Button
@@ -714,7 +886,7 @@ export function ShareBranchSwitchDialog({
                   variant="outline"
                   className="font-mono uppercase"
                   onClick={handleOpenCurrent}
-                  disabled={switching}
+                  disabled={switching || creating}
                   data-testid="share-branch-switch-open-current"
                 >
                   <MapPin className="size-3.5" aria-hidden />
@@ -722,9 +894,10 @@ export function ShareBranchSwitchDialog({
                 </Button>
               ) : null}
               <Button
+                variant="outline"
                 onClick={handleSwitch}
-                disabled={!variant?.switchEnabled || switching}
-                aria-disabled={!variant?.switchEnabled || switching}
+                disabled={!variant?.switchEnabled || switching || creating}
+                aria-disabled={!variant?.switchEnabled || switching || creating}
                 aria-describedby={
                   variant && !variant.switchEnabled && variant.conflictingFiles.length > 0
                     ? conflictListId
@@ -741,6 +914,23 @@ export function ShareBranchSwitchDialog({
                   <>
                     <GitBranch className="size-3.5" aria-hidden />
                     {switchLabel}
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleOpenWorktree}
+                disabled={!variant || switching || creating}
+                data-testid="share-branch-switch-worktree"
+              >
+                {creating ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    {worktreeLabel}
+                  </>
+                ) : (
+                  <>
+                    <AppWindow className="size-3.5" aria-hidden />
+                    {worktreeLabel}
                   </>
                 )}
               </Button>

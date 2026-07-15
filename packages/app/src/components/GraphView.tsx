@@ -414,6 +414,8 @@ function applyGraphNodeClick({
   const action = resolveGraphNodeClickAction(node, docClickBehavior);
 
   if (action.kind === 'external') {
+    // openExternalUrl gates unsafe schemes internally (a graph node URL can
+    // carry any authored scheme), then routes to the OS browser / new tab.
     openExternalUrl(action.url);
     return;
   }
@@ -1191,6 +1193,8 @@ export function GraphView({
             showPointerCursor={(obj) => Boolean(obj && 'kind' in obj)}
             onNodeClick={(node: NodeObject<GraphNode>) => {
               if (node.kind === 'external') {
+                // openExternalUrl gates unsafe schemes internally (a node URL can
+                // carry any authored scheme), then routes to the OS browser / new tab.
                 openExternalUrl(node.url);
                 return;
               }

@@ -50,6 +50,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test as base } from '@playwright/test';
+import { resetContentToFixtureBaseline } from './content-reset.ts';
 import {
   APP_PACKAGE_ROOT,
   checkCollabSync,
@@ -99,14 +100,22 @@ export interface ApiHelpers {
    */
   writeAsAgent(docName: string, markdown: string, identity: AgentIdentity): Promise<void>;
   /**
-   * Reset a specific document (or all documents if `docName` omitted) via
-   * `/api/test-reset`. Isolates per-test CRDT + persistence state without
-   * tearing down the whole worker.
+   * Reset a specific document via `/api/test-reset` (defaults to `test-doc`
+   * when `docName` is omitted — the server never resets other docs from this
+   * route; see `handleTestReset` in `api-extension.ts`). Isolates per-test
+   * CRDT + persistence state without tearing down the whole worker.
    */
   testReset(docName?: string): Promise<void>;
   /**
-   * Reset the worker's server and seed N unique docs. Every test that needs
-   * a clean workspace should call this first.
+   * Reset the worker's content to the fixture baseline, seed N docs, and
+   * wait for the file-watcher index (`/api/pages` — the sidebar's data
+   * source) to reflect exactly that state. Every test that needs a clean
+   * workspace should call this first, BEFORE `page.goto` — the settle gate
+   * is what keeps sidebar rows from trickling in mid-test and reflowing the
+   * tree under a coordinate click.
+   *
+   * `name` is an extension-less docName (authors `.md`) or an
+   * extension-qualified `foo.mdx` (authors `.mdx`).
    */
   seedDocs(docs: Array<{ name: string; markdown: string }>): Promise<void>;
 }
@@ -233,6 +242,106 @@ async function warmupAppFirstLoad(
  * upload (cold `dirCount[sidebar-folder]` fails its precondition guard).
  */
 export const REQUIRED_FIXTURE_ENTRY_NAMES = ['test-doc.md', 'sidebar-folder'] as const;
+
+/**
+ * docNames the fixture baseline always contains (the seeded entries above,
+ * as the file-watcher indexes them). `waitForSeededPagesSettled` treats these
+ * as expected alongside a test's own seeds.
+ */
+const REQUIRED_FIXTURE_DOC_NAMES = ['test-doc', 'sidebar-folder/nested-doc'] as const;
+
+/**
+ * Poll `/api/pages` (the file-watcher index — the sidebar's data source)
+ * until it reflects exactly the post-seed workspace: every seeded docName
+ * present, and no top-level doc outside the fixture baseline + seeds.
+ *
+ * Why this gate exists: it verifies the complete post-seed workspace is
+ * queryable BEFORE the browser loads, so the page's initial `/api/pages`
+ * fetch returns the final row set and the virtualized tree never reflows
+ * mid-test as rows arrive/leave — the reflow that lands coordinate clicks
+ * on wrong or stale rows and surfaces downstream as provider-sync timeouts
+ * / wrong-doc content (the docs-open stability-detector class). The
+ * `create-page`/`delete-path` API routes mutate the index synchronously
+ * before returning, so seeds through them are typically settled on the
+ * first poll; the asynchronous paths this gate (and its rescan rescue)
+ * actually covers are the watcher-fed ones — direct-disk writes such as
+ * `resetContentToFixtureBaseline`'s `rmSync` of non-doc entries, external
+ * writers, and the Linux dropped-create race.
+ *
+ * Docs under preserved fixture folders and dot-prefixed entries (`.ok/...`)
+ * are tolerated — `resetContentToFixtureBaseline` only clears top-level
+ * entries, and collapsed-folder children can't reflow the visible tree.
+ */
+async function waitForSeededPagesSettled(baseURL: string, seededNames: string[]): Promise<void> {
+  const missingSet = new Set(seededNames);
+  const allowedTopSegments = new Set<string>([
+    ...REQUIRED_FIXTURE_DOC_NAMES.map((n) => n.split('/')[0] ?? n),
+    ...seededNames.map((n) => n.split('/')[0] ?? n),
+  ]);
+  const SETTLE_TIMEOUT_MS = 30_000;
+  const RESCUE_AFTER_MS = 8_000;
+  const started = Date.now();
+  let rescued = false;
+  let lastState = '(no /api/pages response yet)';
+  while (true) {
+    // Per-fetch signal spans only the REMAINING settle budget — a full-budget
+    // signal on a fetch started late would let an in-flight stall hold the
+    // function up to 2x its documented contract, and the parent fixture/test
+    // timeout would then fire instead of this function's descriptive error.
+    const remaining = SETTLE_TIMEOUT_MS - (Date.now() - started);
+    if (remaining <= 0) break;
+    const res = await fetch(`${baseURL}/api/pages`, {
+      signal: AbortSignal.timeout(remaining),
+    }).catch((err: unknown) => {
+      lastState = `fetch error: ${err instanceof Error ? err.message : String(err)}`;
+      return null;
+    });
+    if (res?.ok) {
+      let body: { pages?: Array<{ docName: string }> } | null = null;
+      try {
+        body = (await res.json()) as { pages?: Array<{ docName: string }> };
+      } catch {
+        lastState = '/api/pages returned 200 with a non-JSON body';
+      }
+      if (body) {
+        const docNames = (body.pages ?? []).map((p) => p.docName).filter((n) => !n.startsWith('.'));
+        const missing = docNames.reduce((set, n) => {
+          set.delete(n);
+          return set;
+        }, new Set(missingSet));
+        const extras = docNames.filter((n) => !allowedTopSegments.has(n.split('/')[0] ?? n));
+        if (missing.size === 0 && extras.length === 0) return;
+        lastState = `missing=[${[...missing].join(', ')}] extras=[${extras.join(', ')}]`;
+      }
+    }
+    // One-shot rescue for the @parcel/watcher dropped-create race on Linux:
+    // /api/test-rescan-files re-runs the seed walk (additive), covering a
+    // create event the watcher lost. Only after a grace period — a healthy
+    // watcher settles in well under a second.
+    if (!rescued && Date.now() - started > RESCUE_AFTER_MS) {
+      rescued = true;
+      // Record a failed rescue in lastState — the rescue is one-shot with no
+      // retry, so a silent failure would burn the remaining budget and leave
+      // triage pointing at the watcher when the endpoint itself broke.
+      const rescueRes = await fetch(`${baseURL}/api/test-rescan-files`, {
+        method: 'POST',
+        // Bounded like the main poll — a hung rescue endpoint must not block
+        // the loop past the settle budget and swallow the descriptive error.
+        signal: AbortSignal.timeout(Math.max(1, SETTLE_TIMEOUT_MS - (Date.now() - started))),
+      }).catch((err: unknown) => {
+        lastState = `rescue-fetch error: ${err instanceof Error ? err.message : String(err)}`;
+        return null;
+      });
+      if (rescueRes && !rescueRes.ok) {
+        lastState = `rescue-fetch returned ${rescueRes.status}`;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  throw new Error(
+    `seeded docs did not settle in /api/pages within ${SETTLE_TIMEOUT_MS}ms: ${lastState}`,
+  );
+}
 
 /**
  * Pre-seed the per-worker content directory with files that specific tests
@@ -463,6 +572,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         }
       },
       async seedDocs(docs: Array<{ name: string; markdown: string }>): Promise<void> {
+        // Clear cross-spec leftovers first: the worker server is shared
+        // across every spec file on this worker and `/api/test-reset` only
+        // truncates `test-doc`, so without this the sidebar accumulates
+        // unbounded rows from prior specs — the reflow + misdirected-click
+        // source behind the docs-open stability-detector class.
+        await resetContentToFixtureBaseline(baseURL, workerServer.contentDir);
         // Use the error-throwing helper rather than a bare fetch. A silent
         // test-reset failure (server not ready, transient error, alias
         // collision) would otherwise let createPage/replaceDoc operate on
@@ -470,8 +585,15 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         // with no signal about the actual fault. Surface the reset error
         // loudly so triage finds it immediately.
         await helpers.testReset();
-        for (const d of docs) await helpers.createPage(`${d.name}.md`);
-        for (const d of docs) await helpers.replaceDoc(d.name, d.markdown);
+        const docNameOf = (name: string) => name.replace(/\.(md|mdx)$/i, '');
+        for (const d of docs) {
+          await helpers.createPage(/\.(md|mdx)$/i.test(d.name) ? d.name : `${d.name}.md`);
+        }
+        for (const d of docs) await helpers.replaceDoc(docNameOf(d.name), d.markdown);
+        await waitForSeededPagesSettled(
+          baseURL,
+          docs.map((d) => docNameOf(d.name)),
+        );
       },
     };
     await use(helpers);

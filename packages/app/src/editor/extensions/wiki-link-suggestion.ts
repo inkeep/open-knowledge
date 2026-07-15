@@ -11,6 +11,7 @@ import {
   ProblemDetailsSchema,
   searchWorkspaceCorpus,
   type WorkspaceSearchCorpus,
+  type WorkspaceSearchKind,
 } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
@@ -133,7 +134,12 @@ export function autocompleteBoost(docName: string, context: WikiLinkContext): nu
 
 interface SuggestionSearchCorpus<T> {
   fingerprint: string;
-  byPath: ReadonlyMap<string, T>;
+  /**
+   * Keyed by the corpus document id (`${kind}:${path}`), NOT by bare docName —
+   * a folder and a page can legally share a docName (`wiki/` next to `wiki.md`),
+   * so a docName-keyed map would let one silently shadow the other.
+   */
+  byId: ReadonlyMap<string, T>;
   corpus: WorkspaceSearchCorpus;
 }
 
@@ -174,8 +180,13 @@ export function filterPages(
   // base score + context boost and trim. With an empty context every boost is 0,
   // so the comparator matches core's own (score desc, path asc) and the trimmed
   // top-N is identical to requesting `limit: MAX_ITEMS` directly.
+  //
+  // Scopes are explicit: the corpus classifies folders/assets under their real
+  // kinds, and `autocomplete` intent alone would scope to pages only and drop
+  // them from the picker.
   return searchWorkspaceCorpus(searchCorpus.corpus, query, {
     intent: 'autocomplete',
+    scopes: ['page', 'folder', 'file'],
     limit: MAX_WORKSPACE_SEARCH_LIMIT,
   })
     .map((result) => ({
@@ -187,8 +198,22 @@ export function filterPages(
         b.adjusted - a.adjusted || a.result.document.path.localeCompare(b.result.document.path),
     )
     .slice(0, MAX_ITEMS)
-    .map((entry) => searchCorpus.byPath.get(entry.result.document.path))
+    .map((entry) => searchCorpus.byId.get(entry.result.document.id))
     .filter((page) => !!page);
+}
+
+/**
+ * Corpus kind for a picker item. Folders and assets must NOT be indexed as
+ * `page`: the corpus document id is `${kind}:${path}`, and a folder can share a
+ * docName with a page (`wiki/` next to `wiki.md`), so kind-collapsing produced
+ * duplicate ids — Orama throws on the duplicate insert, the suggestion plugin
+ * swallows the rejection, and the dropdown silently froze on the empty-query
+ * list for every typed query. Mirrors the command palette's classification.
+ */
+function pageSearchKind(item: PageItem): WorkspaceSearchKind {
+  if (item.kind === 'folder') return 'folder';
+  if (item.kind === 'asset') return 'file';
+  return 'page';
 }
 
 function getCachedPageSearchCorpus(pages: readonly PageItem[]): SuggestionSearchCorpus<PageItem> {
@@ -198,11 +223,11 @@ function getCachedPageSearchCorpus(pages: readonly PageItem[]): SuggestionSearch
   if (cachedPageSearchCorpus?.fingerprint === fingerprint) return cachedPageSearchCorpus;
   cachedPageSearchCorpus = {
     fingerprint,
-    byPath: new Map(pages.map((page) => [page.docName, page])),
+    byId: new Map(pages.map((page) => [`${pageSearchKind(page)}:${page.docName}`, page])),
     corpus: createWorkspaceSearchCorpus(
       pages.map((page) =>
         createWorkspaceSearchDocument({
-          kind: 'page',
+          kind: pageSearchKind(page),
           path: page.docName,
           title: page.title,
         }),
@@ -221,7 +246,7 @@ function getCachedHeadingSearchCorpus(
   if (cachedHeadingSearchCorpus?.fingerprint === fingerprint) return cachedHeadingSearchCorpus;
   cachedHeadingSearchCorpus = {
     fingerprint,
-    byPath: new Map(headings.map((heading) => [heading.slug, heading])),
+    byId: new Map(headings.map((heading) => [`page:${heading.slug}`, heading])),
     corpus: createWorkspaceSearchCorpus(
       headings.map((heading) =>
         createWorkspaceSearchDocument({
@@ -242,7 +267,7 @@ export function filterHeadings(headings: HeadingEntry[], anchorQuery: string): H
     intent: 'autocomplete',
     limit: MAX_ITEMS,
   })
-    .map((result) => searchCorpus.byPath.get(result.document.path))
+    .map((result) => searchCorpus.byId.get(result.document.id))
     .filter((heading) => !!heading);
 }
 

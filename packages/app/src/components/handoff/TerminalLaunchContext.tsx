@@ -25,6 +25,15 @@ export interface TerminalLaunchContextValue {
    * (deep-link parity). Human-only — driven by a UI click.
    */
   readonly launchInTerminal: (input: HandoffDispatchInput, cli: TerminalCli) => void;
+  /**
+   * The PATH-detection map from the desktop probe — which launchable CLIs are on
+   * PATH. The single source every launch surface gates its rows from: each passes
+   * it through {@link visibleTerminalClis} (with its own current pick as `keep`)
+   * so gating logic lives in ONE place and can't drift between surfaces. A partial
+   * map: `undefined` = unknown/unresolved (shown, fail-open), `false` = probed
+   * absent (hidden), `true` = detected. Provided by `App.tsx` from the live probe.
+   */
+  readonly installedClis: Partial<Record<TerminalCli, boolean>>;
 }
 
 const TerminalLaunchContext = createContext<TerminalLaunchContextValue | null>(null);

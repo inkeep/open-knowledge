@@ -33,6 +33,30 @@ async function createFolder(baseURL: string, path: string): Promise<void> {
   throw new Error(`create-folder failed for ${path}: ${res.status} ${await res.text()}`);
 }
 
+async function putRootTemplate(baseURL: string, name: string, title: string): Promise<void> {
+  const res = await fetch(`${baseURL}/api/template`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      folder: '',
+      name,
+      frontmatter: { title },
+      body: 'Template body',
+    }),
+  });
+
+  if (res.ok) return;
+  throw new Error(`PUT /api/template failed for ${name}: ${res.status} ${await res.text()}`);
+}
+
+async function deleteRootTemplate(baseURL: string, name: string): Promise<void> {
+  const query = new URLSearchParams({ folder: '', name });
+  const res = await fetch(`${baseURL}/api/template?${query}`, { method: 'DELETE' });
+
+  if (res.ok || res.status === 404) return;
+  throw new Error(`DELETE /api/template failed for ${name}: ${res.status} ${await res.text()}`);
+}
+
 async function clearVisibleContentEntries(baseURL: string, contentDir: string): Promise<void> {
   for (const entry of readdirSync(contentDir, { withFileTypes: true })) {
     if (entry.name.startsWith('.')) continue;
@@ -298,6 +322,136 @@ async function installDelayedDesktopSessionBridge(
 
 test.describe('FileTree sidebar create', () => {
   test.describe.configure({ mode: 'serial' });
+
+  for (const scenario of [
+    {
+      kind: 'file' as const,
+      menuItemName: 'New file',
+      defaultName: 'Untitled',
+      renameInputName: /rename Untitled\.md/i,
+      renamedPath: 'zz-root-menu-file',
+      renamedTreeItem: 'zz-root-menu-file.md',
+    },
+    {
+      kind: 'folder' as const,
+      menuItemName: 'New folder',
+      defaultName: 'New Folder',
+      renameInputName: /rename New Folder/i,
+      renamedPath: 'zz-root-menu-folder',
+      renamedTreeItem: 'zz-root-menu-folder',
+    },
+  ]) {
+    test(`project-root context menu keeps new ${scenario.kind} rename focused`, async ({
+      page,
+      workerServer,
+      api,
+    }) => {
+      await deletePathIfExists(workerServer.baseURL, scenario.kind, scenario.defaultName);
+      await deletePathIfExists(workerServer.baseURL, scenario.kind, scenario.renamedPath);
+
+      try {
+        await gotoRootAndAwaitSidebar(page);
+
+        const projectRoot = page.locator('[data-sidebar-root-context]');
+        await expect(projectRoot).toBeVisible();
+        await projectRoot.click({ button: 'right' });
+        const contextMenu = page.locator('[data-slot="context-menu-content"]');
+        await expect(contextMenu).toBeVisible();
+        await page.getByRole('menuitem', { name: scenario.menuItemName, exact: true }).click();
+
+        const renameInput = page.getByRole('textbox', { name: scenario.renameInputName });
+        await expect(renameInput).toBeVisible({ timeout: 10_000 });
+        await expect(contextMenu).toHaveCount(0);
+        await expect(renameInput).toBeFocused();
+
+        await page.keyboard.type(scenario.renamedPath);
+        await page.keyboard.press('Enter');
+
+        await expect(sidebarTreeItem(page, scenario.renamedTreeItem)).toBeVisible({
+          timeout: 10_000,
+        });
+        await expect
+          .poll(() =>
+            existsSync(
+              join(
+                workerServer.contentDir,
+                scenario.kind === 'file' ? `${scenario.renamedPath}.md` : scenario.renamedPath,
+              ),
+            ),
+          )
+          .toBe(true);
+      } finally {
+        await deletePathIfExists(workerServer.baseURL, scenario.kind, scenario.defaultName);
+        await deletePathIfExists(workerServer.baseURL, scenario.kind, scenario.renamedPath);
+        await restoreRequiredFixtureEntries(workerServer.baseURL, api);
+      }
+    });
+  }
+
+  for (const scenario of [
+    {
+      surface: 'project-root context menu',
+      templateName: 'zz-root-menu-focus-template',
+      templateTitle: 'Root menu focus template',
+      renamedPath: 'zz-root-menu-template-file',
+      menuSlot: 'context-menu-content',
+      selectTemplate: async (page: Page, templateTitle: string) => {
+        const projectRoot = page.locator('[data-sidebar-root-context]');
+        await expect(projectRoot).toBeVisible();
+        await projectRoot.click({ button: 'right' });
+        await page.getByRole('menuitem', { name: 'New from template', exact: true }).hover();
+        await page.getByRole('menuitem', { name: templateTitle, exact: true }).click();
+      },
+    },
+    {
+      surface: 'toolbar template menu',
+      templateName: 'zz-toolbar-focus-template',
+      templateTitle: 'Toolbar focus template',
+      renamedPath: 'zz-toolbar-template-file',
+      menuSlot: 'dropdown-menu-content',
+      selectTemplate: async (page: Page, templateTitle: string) => {
+        const trigger = page.getByRole('button', { name: 'New from template', exact: true });
+        await expect(trigger).toBeVisible({ timeout: 15_000 });
+        await trigger.click();
+        await page.getByRole('menuitem', { name: templateTitle, exact: true }).click();
+      },
+    },
+  ]) {
+    test(`${scenario.surface} keeps template rename focused`, async ({
+      page,
+      workerServer,
+      api,
+    }) => {
+      await deletePathIfExists(workerServer.baseURL, 'file', 'Untitled');
+      await deletePathIfExists(workerServer.baseURL, 'file', scenario.renamedPath);
+      await putRootTemplate(workerServer.baseURL, scenario.templateName, scenario.templateTitle);
+
+      try {
+        await gotoRootAndAwaitSidebar(page);
+        await scenario.selectTemplate(page, scenario.templateTitle);
+
+        const renameInput = page.getByRole('textbox', { name: /rename Untitled\.md/i });
+        await expect(renameInput).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator(`[data-slot="${scenario.menuSlot}"]`)).toHaveCount(0);
+        await expect(renameInput).toBeFocused();
+
+        await page.keyboard.type(scenario.renamedPath);
+        await page.keyboard.press('Enter');
+
+        await expect(sidebarTreeItem(page, `${scenario.renamedPath}.md`)).toBeVisible({
+          timeout: 10_000,
+        });
+        await expect
+          .poll(() => existsSync(join(workerServer.contentDir, `${scenario.renamedPath}.md`)))
+          .toBe(true);
+      } finally {
+        await deletePathIfExists(workerServer.baseURL, 'file', 'Untitled');
+        await deletePathIfExists(workerServer.baseURL, 'file', scenario.renamedPath);
+        await deleteRootTemplate(workerServer.baseURL, scenario.templateName);
+        await restoreRequiredFixtureEntries(workerServer.baseURL, api);
+      }
+    });
+  }
 
   test('desktop refresh preserves restored tabs while hash navigation is opening', async ({
     page,

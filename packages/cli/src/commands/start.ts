@@ -691,14 +691,15 @@ interface BootStartServerOptions {
     logger?: (event: { event: string }) => void;
   }) => Promise<unknown> | unknown;
   /**
-   * When `true`, the server serves content-directory assets
-   * (images/video/PDF/file attachments) at their `/<contentDir-relative>`
-   * paths via `createAssetServeMiddleware` — matching the Vite dev plugin
-   * and `ok ui`. Off by default — terminal-launched `ok start` relies on
-   * the `ok ui` sibling for asset serving. The OpenKnowledge desktop
-   * passes this when spawning the detached server so its renderer can
-   * fetch assets from the same origin as `/api/*` and `/collab*`. Forwards
-   * directly to `BootServerOptions.serveContentAssets`.
+   * When `true` (the `bootServer` default), the server serves
+   * content-directory assets (images/video/PDF/file attachments) at their
+   * `/<contentDir-relative>` paths via `createAssetServeMiddleware` —
+   * matching the Vite dev plugin and `ok ui`. On by default so a desktop
+   * window that ATTACHES to this server (MCP-autostarted or terminal
+   * `ok start` — its renderer fetches assets from the same origin as
+   * `/api/*` and `/collab*`) renders inline images; the `ok ui` sibling
+   * still serves assets for browser mode. Forwards directly to
+   * `BootServerOptions.serveContentAssets`.
    */
   serveContentAssets?: boolean;
   /**
@@ -1041,9 +1042,12 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
       return withIdleShutdownProcessExit(reaped, { log, exit: opts.idleExit });
     },
     log,
-    // Single-origin opt-ins for desktop-spawned servers. Forwarded only
-    // when set so terminal `ok start` retains today's two-process behavior.
-    ...(opts.serveContentAssets ? { serveContentAssets: true } : {}),
+    // Content assets serve by default (bootServer default-on); the React
+    // shell stays a desktop-spawn opt-in so terminal `ok start` retains the
+    // two-process shell model (`ok ui` sibling).
+    ...(opts.serveContentAssets !== undefined
+      ? { serveContentAssets: opts.serveContentAssets }
+      : {}),
     ...(opts.reactShellDistDir ? { reactShellDistDir: opts.reactShellDistDir } : {}),
   });
 
@@ -1114,7 +1118,11 @@ interface StartCommandOptions {
   open?: boolean;
   /** From `--mode`: undefined (default → browser) | 'browser' | 'app'. */
   mode?: StartMode;
-  /** From `--serve-content-assets`. See `BootStartServerOptions.serveContentAssets`. */
+  /**
+   * From `--serve-content-assets`. Redundant now that `bootServer` defaults
+   * the surface on; accepted for compatibility with older desktop spawners
+   * that still pass the flag. See `BootStartServerOptions.serveContentAssets`.
+   */
   serveContentAssets?: boolean;
   /** From `--react-shell-dist-dir <path>`. See `BootStartServerOptions.reactShellDistDir`. */
   reactShellDistDir?: string;
@@ -1260,7 +1268,9 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       host,
       port,
       ...(requestedUiPort !== undefined ? { uiPort: requestedUiPort } : {}),
-      ...(opts.serveContentAssets ? { serveContentAssets: true } : {}),
+      ...(opts.serveContentAssets !== undefined
+        ? { serveContentAssets: opts.serveContentAssets }
+        : {}),
       ...(opts.reactShellDistDir ? { reactShellDistDir: opts.reactShellDistDir } : {}),
       ...(opts.singleFile ? { singleFile: opts.singleFile } : {}),
       ...(opts.projectDir ? { projectDir: opts.projectDir } : {}),
@@ -1471,7 +1481,10 @@ export function startCommand(getConfig: () => Config): Command {
     .option('-H, --host <host>', 'Server host', undefined)
     .option('--open', 'Open browser after start')
     .option('--mode <mode>', "Force dispatch mode: 'browser' or 'app'", parseStartMode)
-    .option('--serve-content-assets', 'Serve content assets from this server')
+    .option(
+      '--serve-content-assets',
+      'Serve content assets from this server (now the default; kept for compatibility)',
+    )
     .option(
       '--react-shell-dist-dir <path>',
       'Serve React shell from <path> (suppresses ok ui sibling)',

@@ -160,13 +160,16 @@ export function applyPositionSliceToNode(
 
       const slice = source.slice(startOff, endOff);
       const lines = slice.split('\n');
-      const markerSpacings: number[] = [];
+      const markerSpacings: Array<number | 'lazy'> = [];
       for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
         const line = lines[lineIdx];
-        if (line.length === 0) continue;
+        if (line.trim().length === 0) continue;
         if (isNested && lineIdx > 0) break;
         const stripped = line.replace(/^ {1,3}/, '');
-        if (stripped[0] !== '>') continue;
+        if (stripped[0] !== '>') {
+          if (lineIdx > 0 && line.trimStart()[0] !== '>') markerSpacings.push('lazy');
+          continue;
+        }
         const restAfterMarker = stripped.slice(1).trimEnd();
         if (restAfterMarker === '') continue;
         if (stripped[1] === '\t') {

@@ -1,15 +1,15 @@
 /**
- * "Ask AI" button for the WYSIWYG bubble menu. When a terminal is already open,
- * it sends the selected passage into the active shell (e.g. a running `claude`
- * TUI) via `requestActiveTerminalInput` — the host owns the PTY state and falls
- * back to the composer when no terminal is open. The passage is not pasted raw:
- * it rides as the same grounded selection prompt the bottom "Ask AI" composer
- * builds (`composeSelectionPrompt`) — the doc named as an `@`-mention plus the
- * passage inline (or a locus "read via OK MCP" pointer when it is large) — so
- * the running agent can place the passage in its doc instead of receiving an
- * unattributed blob. With no selection to send it opens and focuses the docked
- * bottom "Ask AI" composer, the same path the ⌘L shortcut runs; the composer
- * pins the live selection as a removable context pill.
+ * "Ask AI" button for the WYSIWYG bubble menu. Sends the selected passage into
+ * the active shell (e.g. a running `claude` TUI) via
+ * `requestActiveTerminalInput` — the host owns PTY state and launches a fresh
+ * Claude tab when none is open, either way pre-loaded with the same grounded
+ * selection prompt (`composeSelectionPrompt` builds it: doc named as an
+ * `@`-mention plus the passage inline, or a locus "read via OK MCP" pointer
+ * when it is large) — so the running agent can place the passage in its doc
+ * instead of receiving an unattributed blob. With no selection to send
+ * (caret-only or no active doc) it opens the docked "Ask AI" composer, the
+ * same path the ⌘L shortcut runs; the composer pins the live selection as a
+ * removable context pill.
  *
  * Mounted only in the bubble menu's text branch: image / file node selections
  * swap the whole bar to a separate control tree, and selection handoff does
@@ -104,18 +104,19 @@ function EditWithAiBubbleMenu({
         size="sm"
         data-testid="edit-with-ai-bubble-button"
         className="gap-1 px-2 text-sm font-medium text-accent-foreground/80"
-        // With a terminal open, send the selected passage into the active shell
-        // (the host decides reuse vs. composer-fallback) as a GROUNDED prompt
-        // (see `composeTerminalSelectionPaste`). Caret-only / empty selection
-        // (or no active doc to ground against) has nothing to send, so open the
+        // Send the selected passage into the active shell (host reuses a live
+        // PTY or launches a fresh Claude tab) as a GROUNDED prompt (see
+        // `composeTerminalSelectionPaste`). Caret-only / empty selection (or
+        // no active doc to ground against) has nothing to send, so open the
         // composer.
         //
-        // Deferred a frame: the composer-fallback focus (and a terminal focus)
-        // fires synchronously inside this click, before ProseMirror's own focus
-        // handling on the trailing mouseup, which would steal the caret back to
-        // the doc and leave the composer unfocused. Reading the selection first
-        // keeps the passage from the click moment even though the write runs
-        // later. Mirrors LinkEditPopover's rAF focus.
+        // Deferred a frame: the composer focus (empty-selection branch) and
+        // the terminal focus fire synchronously inside this click, before
+        // ProseMirror's own focus handling on the trailing mouseup, which
+        // would steal the caret back to the doc and leave the composer
+        // unfocused. Reading the selection first keeps the passage from the
+        // click moment even though the write runs later. Mirrors
+        // LinkEditPopover's rAF focus.
         onClick={() => {
           const docName = getEditorDocName(editor);
           const selectionMarkdown = serializeWysiwygSelection(editor);

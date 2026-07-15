@@ -15,10 +15,10 @@
  *   - Render only targets where `states[t.id]?.installed === true`, scoped to
  *     `VISIBLE_TARGETS`.
  *   - Installed app launchers sit under a "Desktop" section label; the docked
- *     terminal launchers — one row per agent CLI in `VISIBLE_CLIS` (Claude,
- *     Codex, Cursor), each with a "<Brand> CLI" accessible name — sit under a
- *     "Terminal" section label. The terminal section is absent on the web host
- *     (`useTerminalLaunch()` is null — no shell).
+ *     terminal launchers — one row per PATH-gated CLI (`visibleTerminalClis`:
+ *     Claude plus CLIs the probe hasn't ruled out), each with a "<Brand> CLI"
+ *     accessible name — sit under a "Terminal" section label. The terminal
+ *     section is absent on the web host (`useTerminalLaunch()` is null — no shell).
  *   - Empty state: when nothing is install-detected and there is no terminal
  *     launcher, render a "No installed agents found" hint (no section labels).
  *
@@ -44,7 +44,7 @@ import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { TargetIcon } from './OpenInAgentMenuItem';
 import { type TerminalLaunchContextValue, useTerminalLaunch } from './TerminalLaunchContext';
-import { cliIconTargetId, VISIBLE_CLIS } from './terminal-cli-display';
+import { cliIconTargetId, visibleTerminalClis } from './terminal-cli-display';
 import { type HandoffDispatchInput, useHandoffDispatch } from './useHandoffDispatch';
 import { useInstalledAgents } from './useInstalledAgents';
 
@@ -101,6 +101,9 @@ function OpenWithAiPanel({
   const showDesktopSection = installedTargets.length > 0;
   const showTerminalSection = terminalLaunch !== null;
   const hasRows = showDesktopSection || showTerminalSection;
+  // Claude plus every CLI the probe hasn't ruled out (fail-open). No `keep`:
+  // this popover launches, it doesn't show a "current pick" to preserve.
+  const terminalClis = terminalLaunch ? visibleTerminalClis(terminalLaunch.installedClis) : [];
 
   return (
     <div className="flex flex-col gap-1">
@@ -129,7 +132,7 @@ function OpenWithAiPanel({
               >
                 <Trans>Terminal</Trans>
               </legend>
-              {VISIBLE_CLIS.map((cli) => {
+              {terminalClis.map((cli) => {
                 const { displayName } = TERMINAL_CLIS[cli];
                 return (
                   <Button

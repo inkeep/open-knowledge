@@ -1213,11 +1213,35 @@ describe('bootStartServer (integration)', () => {
     for (const c of captured) expect(c.reclaimDisableEnv).toBeNull();
   });
 
-  // --- single-origin opt-ins (--serve-content-assets, --react-shell-dist-dir) ---
+  // --- content-asset serving (default-on) + --react-shell-dist-dir opt-in ---
 
-  test('serveContentAssets: false (default) — content paths return the SPA-pointer 404', async () => {
-    // Pre-seed a real asset in the content directory. With serveContentAssets
-    // off, the server has no /<contentDir-relative> middleware and the request
+  test('default — content assets are served from the server origin', async () => {
+    // Nested path mirrors the attach-mode desktop shape: the renderer rewrites
+    // `/<contentDir-relative>` inline-image srcs onto the lock holder's origin,
+    // so a server booted with NO flags (MCP-autostarted, terminal `ok start`)
+    // must serve them or attached windows render broken images.
+    const assetBytes = `fake-png-bytes-${Math.random()}`;
+    mkdirSync(join(tmpDir, 'specs', 'nested'), { recursive: true });
+    writeFileSync(join(tmpDir, 'specs', 'nested', 'mockup.png'), assetBytes, 'utf-8');
+
+    booted = await bootStartServer({
+      config: makeTestConfig(),
+      cwd: tmpDir,
+      host: TEST_HOST,
+      skipAutoInit: true,
+      skipUiAutoSpawn: true,
+    });
+
+    const res = await fetchText(booted.port, '/specs/nested/mockup.png');
+    expect(res.status).toBe(200);
+    expect(res.body).toBe(assetBytes);
+    // PNGs are inline-renderable; Content-Disposition should be inline.
+    const disposition = res.headers['content-disposition'];
+    expect(typeof disposition === 'string' ? disposition : '').toContain('inline');
+  });
+
+  test('serveContentAssets: false — content paths return the SPA-pointer 404', async () => {
+    // Explicit opt-out: no /<contentDir-relative> middleware, so the request
     // falls through to the "React UI is served by `ok ui`" pointer.
     writeFileSync(join(tmpDir, 'fixture-asset.png'), 'fake-png-bytes', 'utf-8');
 
@@ -1227,36 +1251,13 @@ describe('bootStartServer (integration)', () => {
       host: TEST_HOST,
       skipAutoInit: true,
       skipUiAutoSpawn: true,
+      serveContentAssets: false,
     });
 
     const res = await fetchText(booted.port, '/fixture-asset.png');
     expect(res.status).toBe(404);
     const body = JSON.parse(res.body);
     expect(body.detail).toContain('React UI is served by `ok ui`');
-  });
-
-  test('serveContentAssets: true — content asset is served from the server origin', async () => {
-    // Real fixture; serveContentAssets installs createAssetServeMiddleware
-    // over the content directory, so the same path now returns 200 with the
-    // file bytes (Content-Disposition: inline for image extensions).
-    const assetBytes = `fake-png-bytes-${Math.random()}`;
-    writeFileSync(join(tmpDir, 'fixture-asset.png'), assetBytes, 'utf-8');
-
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-      skipUiAutoSpawn: true,
-      serveContentAssets: true,
-    });
-
-    const res = await fetchText(booted.port, '/fixture-asset.png');
-    expect(res.status).toBe(200);
-    expect(res.body).toBe(assetBytes);
-    // PNGs are inline-renderable; Content-Disposition should be inline.
-    const disposition = res.headers['content-disposition'];
-    expect(typeof disposition === 'string' ? disposition : '').toContain('inline');
   });
 
   test('reactShellDistDir — server serves the shell on /, auto-suppresses ok ui sibling', async () => {

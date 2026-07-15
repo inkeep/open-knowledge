@@ -368,3 +368,66 @@ test.describe('OQ1: Tab/Shift-Tab scoping by cursor context', () => {
     expect(ytext).not.toMatch(/^- /m);
   });
 });
+
+// #609's remaining orphan source: upstream ListKeymap's lift/depth branches
+// misfire at NESTED item boundaries (as distinct from cause 1's paste
+// mis-placement, covered by handle-paste.list-placement.test.ts). The
+// ListBoundaryMerge core extension preempts exactly those configurations
+// with joinTextblockBackward/Forward — see
+// packages/core/src/extensions/list-boundary-merge.ts. Unit-tier coverage:
+// packages/app/src/editor/list-boundary-merge.test.ts. These pins assert the
+// persisted Y.Text bytes through the full CRDT bridge.
+// Test scenarios credited to inkeep/open-knowledge#613 by @blokboy.
+test.describe('Nested list-item boundary merges (Backspace/Delete)', () => {
+  test('Backspace merging into a previous item with a nested sublist does not orphan the merged item', async ({
+    page,
+    api,
+  }) => {
+    const docName = uniqueDocName('bksp-merge-sublist');
+    await openDoc(api, page, docName);
+    await seedMarkdown(api, page, docName, '- [ ] top\n  - [ ] child\n- [ ] next\n');
+
+    await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
+    // Click into "next" — a top-level item whose preceding sibling ("top")
+    // has a nested sublist.
+    await page.locator('.ProseMirror li', { hasText: 'next' }).last().click();
+    await page.keyboard.press('Home');
+    await waitForPmSelectionInNode(page, 'listItem');
+
+    await page.keyboard.press('Backspace');
+
+    // "next" must merge as text into the list (onto "child", the deepest
+    // preceding textblock) — never survive as a bare paragraph with no
+    // bullet/checkbox sitting outside any list item.
+    await expect.poll(() => getYText(page)).toContain('childnext');
+    const ytext = await getYText(page);
+    expect(ytext).not.toMatch(/\n\nnext/);
+    expect(ytext).toContain('- [ ] top');
+  });
+
+  test('Delete at the end of a nested item merges the next top-level item at the correct depth', async ({
+    page,
+    api,
+  }) => {
+    const docName = uniqueDocName('del-merge-depth');
+    await openDoc(api, page, docName);
+    await seedMarkdown(api, page, docName, '- [ ] a\n  - [ ] b\n  - [ ] c\n- [ ] d\n');
+
+    await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
+    await page.locator('.ProseMirror li').filter({ hasText: /^c$/ }).last().click();
+    await page.keyboard.press('End');
+    await waitForPmSelectionInNode(page, 'listItem');
+
+    await page.keyboard.press('Delete');
+
+    // "d" merges onto "c" at the nested depth, keeping "c"'s checkbox on the
+    // surviving item and its indentation. The pre-fix corruption was the
+    // indented plain-bullet form `  - d` (wrong depth AND checkbox dropped) —
+    // assert against exactly that, not just a top-level `- d` leftover.
+    await expect.poll(() => getYText(page)).toMatch(/^ {2}- \[ \] cd$/m);
+    const ytext = await getYText(page);
+    expect(ytext).toContain('- [ ] a');
+    expect(ytext).not.toMatch(/^ {2}- d$/m);
+    expect(ytext).not.toMatch(/^- d$/m);
+  });
+});

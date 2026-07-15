@@ -14,7 +14,7 @@ import {
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
-import { cliIconTargetId, VISIBLE_CLIS } from '@/components/handoff/terminal-cli-display';
+import { cliIconTargetId, visibleTerminalClis } from '@/components/handoff/terminal-cli-display';
 import {
   buildCreateHandoffInput,
   getDisplayNameDefault,
@@ -289,6 +289,12 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
   // under "Terminal". The separator sits between them only when both render.
   const showDesktopSection = selectableTargets.length > 0;
   const showTerminalSection = terminalLaunch !== null;
+  // Claude plus every CLI the probe hasn't ruled out (fail-open), and always the
+  // current pick (`selectedCli`) so this composer's own Create target can't be
+  // gated out of its own dropdown.
+  const terminalClis = terminalLaunch
+    ? visibleTerminalClis(terminalLaunch.installedClis, selectedCli)
+    : [];
 
   return (
     <div className={cn('flex w-full flex-col gap-3', className)}>
@@ -402,7 +408,7 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                         brand name while the accessible name is "<Brand> CLI" so AT
                         users can tell it apart from the matching Desktop row (WCAG
                         2.5.3 — the name contains the visible label). */}
-                      {VISIBLE_CLIS.map((cli) => {
+                      {terminalClis.map((cli) => {
                         const { displayName } = TERMINAL_CLIS[cli];
                         return (
                           <DropdownMenuItem

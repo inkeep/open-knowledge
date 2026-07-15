@@ -32,6 +32,24 @@ interface RecentProject {
   gitRemoteUrl?: string;
 }
 
+/**
+ * Persisted frame of a project's editor window, captured on move/resize/
+ * mode-change/close and restored on the next open of the same project.
+ * `x/y/width/height` always hold the NORMAL-state frame
+ * (`BrowserWindow.getNormalBounds()`), so leaving maximize/full-screen
+ * restores the pre-mode geometry; the two flags remember the mode itself.
+ */
+export interface PersistedWindowBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Window was maximized (macOS zoom); bounds hold the pre-maximize frame. */
+  isMaximized: boolean;
+  /** Window was in native full-screen; bounds hold the non-fullscreen frame. */
+  isFullScreen: boolean;
+}
+
 interface ProjectSessionState {
   /** User-open tabs for this project, in visible tab order. */
   openTabs: string[];
@@ -155,6 +173,24 @@ export interface AppState {
   /** Per-project editor session state, keyed by realpath-canonical contentDir. */
   projectSessions: Record<string, ProjectSessionState>;
   /**
+   * Per-project editor-window frame memory, keyed by the resolved project
+   * path (`ProjectContext.projectPath`) — the exact string that keys
+   * `projectSessions` and `recentProjects[].path`, so the
+   * `removeRecentProject` cleanup below deletes by the same key. Written on
+   * every completed move/resize/mode-change and
+   * on window close; read at window creation so reopening a project lands
+   * its window where the user left it (same display, same position, same
+   * size) instead of the cascade default. Entries whose frame no longer
+   * intersects a connected display are ignored at read time (`window-
+   * placement.ts`), not rewritten — so unplugging a monitor while a project
+   * is CLOSED keeps its memory intact for when the monitor returns. (A
+   * project whose window is open during the unplug re-persists wherever
+   * macOS migrates the window — the memory tracks where the window IS.)
+   * Removed alongside `projectSessions` when a project is dropped from
+   * recents.
+   */
+  projectWindowBounds: Record<string, PersistedWindowBounds>;
+  /**
    * Schema version of the persisted state, written by whichever build last
    * touched it. Reads default to `1` when the field is missing. The boot
    * path in main/index.ts compares this against `MAX_SUPPORTED_SCHEMA_VERSION`
@@ -188,6 +224,14 @@ export interface AppState {
    * path consumes it and opens the Navigator rather than `lastOpenedProject`.
    * Cleared back to `null` on the boot that consumes it, before any window
    * opens, so a crash mid-restore can't loop the restore forever.
+   *
+   * Ordered least → MOST recently focused: the snapshot is sorted by the
+   * focus-recency sequence at `prepareForRelaunch` time (before any window
+   * closes — teardown's close cascade re-focuses surviving windows and would
+   * corrupt the order), and the restoring boot raises the LAST entry once its
+   * window is visible, so the user lands back in the window they were
+   * actually working in. Readers must not assume the pre-ordering-era
+   * insertion order.
    */
   pendingWindowRestore: string[] | null;
   /**
@@ -213,6 +257,7 @@ export function emptyState(): AppState {
     stuckHintShown: false,
     dismissedRepairForBundle: null,
     projectSessions: {},
+    projectWindowBounds: {},
     schemaVersion: CURRENT_SCHEMA_VERSION,
     lastUsedProjectParent: null,
     pendingWindowRestore: null,
@@ -285,6 +330,40 @@ function parseProjectSessionState(raw: unknown): ProjectSessionState {
   };
 }
 
+function parsePersistedWindowBounds(raw: unknown): PersistedWindowBounds | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const obj = raw as Record<string, unknown>;
+  const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  if (
+    !isFiniteNumber(obj.x) ||
+    !isFiniteNumber(obj.y) ||
+    !isFiniteNumber(obj.width) ||
+    !isFiniteNumber(obj.height)
+  ) {
+    return null;
+  }
+  if (obj.width <= 0 || obj.height <= 0) return null;
+  return {
+    x: Math.round(obj.x),
+    y: Math.round(obj.y),
+    width: Math.round(obj.width),
+    height: Math.round(obj.height),
+    isMaximized: obj.isMaximized === true,
+    isFullScreen: obj.isFullScreen === true,
+  };
+}
+
+function parseProjectWindowBounds(raw: unknown): Record<string, PersistedWindowBounds> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+  const boundsByProject: Record<string, PersistedWindowBounds> = {};
+  for (const [projectKey, value] of Object.entries(raw)) {
+    if (projectKey.length === 0) continue;
+    const bounds = parsePersistedWindowBounds(value);
+    if (bounds !== null) boundsByProject[projectKey] = bounds;
+  }
+  return boundsByProject;
+}
+
 function parseProjectSessions(raw: unknown): Record<string, ProjectSessionState> {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
   const sessions: Record<string, ProjectSessionState> = {};
@@ -336,11 +415,33 @@ export function addRecentProject(
 export function removeRecentProject(state: AppState, projectPath: string): AppState {
   const projectSessions = { ...state.projectSessions };
   delete projectSessions[projectPath];
+  const projectWindowBounds = { ...state.projectWindowBounds };
+  delete projectWindowBounds[projectPath];
   return {
     ...state,
     recentProjects: state.recentProjects.filter((p) => p.path !== projectPath),
     lastOpenedProject: state.lastOpenedProject === projectPath ? null : state.lastOpenedProject,
     projectSessions,
+    projectWindowBounds,
+  };
+}
+
+/**
+ * Record a project window's frame. Returns a new state — caller persists.
+ * `projectPath` is the resolved project path (`ProjectContext.projectPath`),
+ * the same string that keys `projectSessions` / `recentProjects[].path` —
+ * NOT the realpath-canonical `canonicalKey`, or `removeRecentProject` (which
+ * deletes by the recents entry's path) would leak the entry for symlinked
+ * projects.
+ */
+export function setProjectWindowBounds(
+  state: AppState,
+  projectPath: string,
+  bounds: PersistedWindowBounds,
+): AppState {
+  return {
+    ...state,
+    projectWindowBounds: { ...state.projectWindowBounds, [projectPath]: bounds },
   };
 }
 
@@ -550,6 +651,9 @@ export function parseAppState(raw: unknown): AppState | null {
       ? obj.schemaVersion
       : 1;
   const projectSessions = parseProjectSessions(obj.projectSessions);
+  // Additive field: a state.json predating window-bounds memory (or a
+  // corrupted per-entry blob) coerces to the empty map — cascade placement.
+  const projectWindowBounds = parseProjectWindowBounds(obj.projectWindowBounds);
   // Defensive: only string values survive; everything else (null, undefined,
   // wrong type from a corrupted state.json) coerces to null and the read
   // handler falls back to the platform default.
@@ -578,6 +682,7 @@ export function parseAppState(raw: unknown): AppState | null {
     stuckHintShown,
     dismissedRepairForBundle,
     projectSessions,
+    projectWindowBounds,
     schemaVersion,
     lastUsedProjectParent,
     pendingWindowRestore,

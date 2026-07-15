@@ -35,10 +35,11 @@
 
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { OkBlob } from '@/components/OkBlob';
+import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { Button } from '@/components/ui/button';
 import { MountAbortError } from '@/editor/mount-promise';
 import {
@@ -176,6 +177,7 @@ function DocumentErrorFallback({
   const { title, summary } = errorCopy(error);
   const canGoBack = !!previousDocName && !!onNavigateBack;
   const retryRef = useRef<HTMLButtonElement>(null);
+  const [reportOpen, setReportOpen] = useState(false);
   // Desktop only, and only for reach failures: "Try again" recycles the
   // provider against the SAME server, which never succeeds once that server
   // has stopped. Restart spawns a fresh one. `ok ui` (browser) mode has no
@@ -234,6 +236,15 @@ function DocumentErrorFallback({
             <Trans>Restart server</Trans>
           </Button>
         ) : null}
+        {bridge ? (
+          <Button
+            variant="ghost"
+            className="font-mono uppercase"
+            onClick={() => setReportOpen(true)}
+          >
+            <Trans>Report this error</Trans>
+          </Button>
+        ) : null}
         {canGoBack ? (
           <Button
             variant="ghost"
@@ -266,6 +277,19 @@ function DocumentErrorFallback({
           </Button>
         ) : null}
       </div>
+      {bridge ? (
+        <ReportBugDialog
+          open={reportOpen}
+          onOpenChange={setReportOpen}
+          crashContext={{
+            source: 'document view',
+            // Read the doc from the error itself for the same aborted-transition
+            // reason as back-nav: activeDocName can lag the errored target.
+            docName: errorDocName(error) ?? activeDocName,
+            errorMessage: error instanceof Error && error.message ? error.message : String(error),
+          }}
+        />
+      ) : null}
     </div>
   );
 }

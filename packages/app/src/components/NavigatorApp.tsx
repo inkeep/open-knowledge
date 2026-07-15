@@ -47,6 +47,7 @@ import { OkIcon } from './icons/ok';
 import { McpConsentDialog } from './McpConsentDialog';
 import { PackCardGrid } from './PackCardGrid';
 import { basenameOf } from './project-switcher-recents';
+import { ReportBugDialog } from './ReportBugDialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 
@@ -94,6 +95,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const [openingLabel, setOpeningLabel] = useState<string | null>(null);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [reportBugOpen, setReportBugOpen] = useState(false);
   // Starter pack chosen on the packs-forward first-run grid, plus the pack
   // list. Threaded into CreateProjectDialog so it can name the pack as
   // read-only context in its description and seed the fresh project with it;
@@ -198,10 +200,13 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   // File → New project… (the `new-project` menu action) opens the same
   // CreateProjectDialog the "Create new project" card opens. The application
   // menu fires to whichever window is focused, so the Navigator must react to
-  // it too — not just the editor window's App-root trigger.
+  // it too — not just the editor window's App-root trigger. Same story for
+  // Help → Report a Bug…, which here opens the report dialog scoped
+  // system-wide (the Navigator has no project).
   useEffect(() => {
     return bridge.onMenuAction((action) => {
       if (action === 'new-project') setCreateDialogOpen(true);
+      if (action === 'report-bug') setReportBugOpen(true);
       if (action === 'close-active-tab-or-window') window.close();
     });
   }, [bridge]);
@@ -441,6 +446,8 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         initialPackId={createPackId}
         packs={createPacks}
       />
+
+      <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} systemWide />
 
       <AuthModal
         open={authModalOpen}

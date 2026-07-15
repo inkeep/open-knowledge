@@ -1,13 +1,15 @@
 /**
- * DOM mount test for NavigatorApp's `new-project` menu-action subscription —
- * the launcher-window mirror of `CreateProjectMenuTrigger`'s editor-window
- * subscription. Both windows must react when main fires the `new-project`
- * action since the menu dispatches to whichever window is focused.
+ * DOM mount tests for NavigatorApp's menu-action subscription — the
+ * launcher-window mirror of the editor-window App-root triggers
+ * (`CreateProjectMenuTrigger`, `ReportBugMenuTrigger`). Both windows must
+ * react when main fires a menu action since the menu dispatches to whichever
+ * window is focused.
  *
  * Pins the user-visible contract: NavigatorApp's CreateProjectDialog opens
- * only after the menu action fires, and unrelated menu actions are ignored.
- * The subscription is captured via a fake bridge and invoked directly — the
- * same path main's `sendMenuActionToFocused('new-project')` drives over IPC.
+ * only after the `new-project` action fires, `report-bug` opens the
+ * system-wide ReportBugDialog, and unrelated menu actions are ignored. The
+ * subscription is captured via a fake bridge and invoked directly — the same
+ * path main's `sendMenuActionToFocused(...)` drives over IPC.
  *
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
@@ -55,7 +57,12 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 
 const ASYNC_TIMEOUT_MS = 2000;
 
-type MenuActionLike = 'new-project' | 'new-doc' | 'toggle-sidebar' | 'close-active-tab-or-window';
+type MenuActionLike =
+  | 'new-project'
+  | 'new-doc'
+  | 'toggle-sidebar'
+  | 'close-active-tab-or-window'
+  | 'report-bug';
 
 interface NavigatorBridgeStub {
   bridge: OkDesktopBridge;
@@ -184,6 +191,27 @@ describe('NavigatorApp new-project menu-action subscription', () => {
     // Give any erroneous open a chance to render before asserting absence.
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByTestId('create-project-dialog') !== null).toBe(false);
+  });
+
+  test('report-bug menu action opens the system-wide ReportBugDialog', async () => {
+    const stub = makeNavigatorBridge();
+    render(<NavigatorApp bridge={stub.bridge} />);
+
+    // Let listRecent's microtask settle so the subscription useEffect runs.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    stub.fire('report-bug');
+
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('dialog', { name: 'Report a bug' })).not.toBeNull();
+      },
+      { timeout: ASYNC_TIMEOUT_MS },
+    );
+    // The Navigator has no project, so the compose summary must carry the
+    // system-wide labeling rather than the project-scoped line.
+    expect(screen.getByText(/no project is open/)).not.toBeNull();
   });
 
   test('close-active-tab-or-window menu action closes the navigator window', async () => {

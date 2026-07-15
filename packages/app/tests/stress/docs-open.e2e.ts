@@ -12,14 +12,67 @@ import { DOCUMENT_OPEN_BYTE_LIMIT } from '@inkeep/open-knowledge-core';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 
-async function openFromSidebar(page: Page, filename: string) {
+async function openFromSidebar(
+  page: Page,
+  filename: string,
+  options: { verifyNavigation?: boolean } = {},
+) {
   const row = page.getByRole('treeitem', { name: filename, exact: true });
-  // Render-gate before acting: a bare bounded click conflates "app/tree not
-  // rendered yet" with "row missing", and its hand-rolled budget sat below
-  // the config-owned expect budget the suite calibrates for CI contention.
-  // Gate visibility web-first (inherits the config budget), then click.
-  await expect(row).toBeVisible();
-  await row.click();
+  // The URL hash is `#/<extension-less docName>[#<anchor>]` (see
+  // `hashFromDocName`); row activation sets it synchronously with the nav
+  // intent, before any provider sync — so it verifies the CLICK landed,
+  // independent of the error/sync outcome the test may be arming downstream.
+  // Compared by exact doc-segment equality, not substring: a prefix-sibling
+  // doc (`doc-a2` when verifying `doc-a`) must still count as a missed click.
+  const expectedDocName = filename.replace(/\.(md|mdx)$/i, '');
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Render-gate before acting: a bare bounded click conflates "app/tree not
+    // rendered yet" with "row missing", and its hand-rolled budget sat below
+    // the config-owned expect budget the suite calibrates for CI contention.
+    // Gate visibility web-first (inherits the config budget), then click.
+    await expect(row).toBeVisible();
+    await row.click();
+    // Rapid-sequence callers (F11) opt out: verifying each intermediate
+    // click would serialize the navigations and destroy the coalescing
+    // premise under test.
+    if (options.verifyNavigation === false) return;
+    // Verify the activation registered. The tree is a virtualized,
+    // row-recycling list rendered from watcher-fed data; a reflow between
+    // the click's actionability check and dispatch can land the click on a
+    // recycled/shifted row (observed in the e2e-stability runs as wrong-doc
+    // actives and 60s provider-sync timeouts). Re-click instead of letting
+    // every downstream gate burn its full budget on a nav that never fired.
+    try {
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(() => {
+              const hash = decodeURIComponent(window.location.hash);
+              if (!hash.startsWith('#/')) return null;
+              const rest = hash.slice(2);
+              const anchorIndex = rest.indexOf('#');
+              return anchorIndex < 0 ? rest : rest.slice(0, anchorIndex);
+            }),
+          {
+            timeout: 2_000,
+            intervals: [50, 100, 200, 400],
+          },
+        )
+        .toBe(expectedDocName);
+      return;
+    } catch (err) {
+      if (attempt === maxAttempts) {
+        // .catch: a crashed/closed page here must not preempt the diagnostic
+        // throw below with a raw secondary Playwright error.
+        const hash = await page.evaluate(() => window.location.hash).catch(() => '(unavailable)');
+        throw new Error(
+          `sidebar click on ${filename} never registered after ${maxAttempts} attempts (hash=${hash})`,
+          { cause: err },
+        );
+      }
+    }
+  }
 }
 
 function sidebarItem(page: Page, filename: string) {
@@ -608,9 +661,19 @@ test.describe('docs-open — hybrid navigation UX', () => {
     // load-bearing premise) without injecting any test-side wait — each
     // click takes ~5-30ms (actionability bound), so the 4 clicks still
     // dispatch within ~100ms.
-    await openFromSidebar(page, 'doc-b.md');
-    await openFromSidebar(page, 'doc-c.md');
-    await openFromSidebar(page, 'doc-d.md');
+    // Pre-assert every target row visible BEFORE the burst so the in-burst
+    // per-click visibility gates are all instant cache hits — a cold row
+    // mid-sequence would silently serialize the timing premise.
+    for (const name of ['doc-b.md', 'doc-c.md', 'doc-d.md', 'doc-e.md']) {
+      await expect(page.getByRole('treeitem', { name, exact: true })).toBeVisible();
+    }
+    // verifyNavigation:false on the intermediate clicks — per-click nav
+    // verification would serialize the sequence and destroy the coalescing
+    // premise. The final click keeps verification: doc-e's activation is the
+    // test's load-bearing outcome.
+    await openFromSidebar(page, 'doc-b.md', { verifyNavigation: false });
+    await openFromSidebar(page, 'doc-c.md', { verifyNavigation: false });
+    await openFromSidebar(page, 'doc-d.md', { verifyNavigation: false });
     await openFromSidebar(page, 'doc-e.md');
 
     // Wait for final state: doc E is active and visible.
@@ -992,9 +1055,10 @@ test.describe('docs-open — hybrid navigation UX', () => {
     // integration can't reach (sidebar DOM → hash nav → editor mount).
     const docName = 'mdx-sidebar-proof';
     const mdxBody = '# MDX Sidebar Proof\n\nContent rendered from a .mdx file via sidebar click.\n';
-    await api.testReset();
-    await api.createPage(`${docName}.mdx`);
-    await api.replaceDoc(docName, mdxBody);
+    // seedDocs (extension-qualified name → authors .mdx) rather than raw
+    // createPage/replaceDoc: it clears cross-spec leftovers and settles the
+    // watcher index pre-goto, so the sidebar click can't race the tree.
+    await api.seedDocs([{ name: `${docName}.mdx`, markdown: mdxBody }]);
 
     await page.goto('/');
     // The sidebar displays the filename with extension — so the text to click

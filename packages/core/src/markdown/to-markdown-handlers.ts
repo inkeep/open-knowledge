@@ -45,6 +45,9 @@ const upstreamMdxJsxFlowHandler: Handle = (() => {
   );
 })();
 
+const LAZY_UNSAFE_LINE_RE =
+  /^[ \t]*(?:$|#{1,6}(?:[ \t]|[ \t]*$)|>|(?:[-+*]|\d{1,9}[.)])[ \t]|`{3,}|~{3,}|=+[ \t]*$|-+[ \t]*$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$)/;
+
 export const toMarkdownHandlers = {
   text(node, _parent, state, info) {
     if (typeof node.data?.sourceRaw === 'string') {
@@ -705,7 +708,9 @@ export const toMarkdownHandlers = {
 
     return state.indentLines(inner, (line, _lineNumber, blank) => {
       if (blank) return '>';
-      const spacing = spacings?.[nonBlankIdx++];
+      const lineIdx = nonBlankIdx++;
+      const spacing = spacings?.[lineIdx];
+      if (spacing === 'lazy' && lineIdx > 0 && !LAZY_UNSAFE_LINE_RE.test(line)) return line;
       if (spacing === 'none' || spacing === 0) return `>${line}`;
       if (typeof spacing === 'number' && spacing >= 2 && !line.startsWith(' ')) {
         return `>${' '.repeat(spacing)}${line}`;

@@ -8,6 +8,9 @@
  *     to the share's branch.
  *   - `CheckoutResponse` from `POST /api/git/checkout` — outcome of the
  *     server-side checkout call once the user clicks "Switch".
+ *   - `WorktreeCreateResult` from the desktop bridge's `worktree.checkout` —
+ *     outcome of the share-scoped worktree create-or-locate once the user
+ *     clicks "Open in worktree".
  *
  * The state-matrix logic lives here so it's testable without mounting a
  * React tree. The dialog component renders the variant returned by
@@ -19,12 +22,19 @@
  * settled before the doc opens. `classifyCheckoutOutcome` returns
  * `'await-cc1'` for this case; the dialog then waits on that signal before
  * opening the doc.
+ *
+ * That CC1 gate covers the switch leg only — it exists because a same-window
+ * checkout recycles the CRDT session under the open doc. The worktree leg
+ * (`markCreatingWorktree` / `applyWorktreeCheckoutOutcome`) opens the share
+ * branch in its OWN window and never touches the anchor window's checkout, so
+ * on success it opens directly with no CC1 wait, like the pivot leg.
  */
 
 import type {
   BranchInfoResponse,
   CheckoutResponse,
   ShareTargetStatusResponse,
+  WorktreeCreateResult,
 } from '@inkeep/open-knowledge-core';
 
 /**
@@ -259,6 +269,13 @@ type VerdictResolution =
   | { readonly kind: 'never-on-branch' }
   | { readonly kind: 'diverged' };
 
+/**
+ * Verdict-cell kinds, exported for the receive-log vocabulary
+ * (`ReceiveLogFields.verdict_cell`) so verdict-cell renders and their actions
+ * are countable in session logs without duplicating the resolution union.
+ */
+export type VerdictCellKind = VerdictResolution['kind'];
+
 export type BranchSwitchDialogState =
   | { readonly phase: 'loading' }
   | { readonly phase: 'ready'; readonly info: BranchInfoResponse }
@@ -301,6 +318,29 @@ export type BranchSwitchDialogState =
       readonly otherWorktreePath: string;
       readonly pendingDoc: string;
     }
+  | {
+      /**
+       * "Open in worktree" was clicked; the bridge's `worktree.checkout`
+       * call is in flight. `info` is preserved so failures can fall back to
+       * `ready` (retry / pick another action) without re-fetching
+       * branch-info. Dismissal mid-create is safe: a late result is ignored
+       * by the phase guard on `applyWorktreeCheckoutOutcome`, and a create
+       * that completes anyway just leaves the worktree on disk, reachable
+       * from the worktree switcher.
+       */
+      readonly phase: 'creating-worktree';
+      readonly info: BranchInfoResponse;
+    }
+  | {
+      /**
+       * Worktree create-or-locate succeeded. The dialog opens `path` in a
+       * new window and dismisses — directly, with NO CC1 `branch-switched`
+       * wait: that gate exists for same-window checkout recycles, and this
+       * leg never touches the anchor window's checkout (pivot precedent).
+       */
+      readonly phase: 'opening-worktree';
+      readonly path: string;
+    }
   | { readonly phase: 'error' }
   | { readonly phase: 'dismissed'; readonly reason: 'branch-not-found' };
 
@@ -335,6 +375,20 @@ export function markSwitching(
 ): BranchSwitchDialogState {
   if (state.phase !== 'ready' && state.phase !== 'verdict') return state;
   return { phase: 'switching', info: state.info, pendingDoc };
+}
+
+/**
+ * Transition to `creating-worktree` when the user clicks "Open in worktree".
+ * Fires from `ready` only — the worktree action is a ready-phase affordance,
+ * enabled in every variant including the dirty-conflict cells, because
+ * worktree creation never touches the root working tree. The verdict cells
+ * keep their own checkout-based actions and don't offer it. From every other
+ * phase this is an identity no-op so a delayed click can't race a checkout
+ * or create already in flight.
+ */
+export function markCreatingWorktree(state: BranchSwitchDialogState): BranchSwitchDialogState {
+  if (state.phase !== 'ready') return state;
+  return { phase: 'creating-worktree', info: state.info };
 }
 
 /**
@@ -497,5 +551,75 @@ export function applyCheckoutOutcome(
   return {
     state: { phase: 'ready', info: state.info },
     sideEffect: { kind: 'toast', reason: outcome.reason },
+  };
+}
+
+/**
+ * Discriminated reason for the toast side-effect the dialog renders when
+ * `applyWorktreeCheckoutOutcome` leaves `creating-worktree` on a failure.
+ * Derived from the bridge's failure union so a new create-failure reason
+ * automatically widens this vocabulary (and the receive-log failure variants
+ * built on it) instead of silently vanishing. `proxy-null` mirrors the switch
+ * leg: the IPC call itself rejected, so there is no typed reason to surface.
+ */
+export type WorktreeCheckoutSideEffectReason =
+  | 'proxy-null'
+  | Extract<WorktreeCreateResult, { ok: false }>['reason'];
+
+/**
+ * Pair of `{state, sideEffect?}` returned by `applyWorktreeCheckoutOutcome`,
+ * mirroring `ApplyCheckoutOutcomeResult`: the reducer stays pure and the
+ * dialog component fires `toast(...)` from the typed signal.
+ */
+export interface ApplyWorktreeCheckoutOutcomeResult {
+  readonly state: BranchSwitchDialogState;
+  readonly sideEffect?: {
+    readonly kind: 'toast';
+    readonly reason: WorktreeCheckoutSideEffectReason;
+  };
+}
+
+/**
+ * Apply a `worktree.checkout` result (or IPC rejection, passed as `null`) to
+ * the dialog state:
+ *
+ *   - `{ok: true}`       → `opening-worktree` (dialog opens the worktree path
+ *                          in a new window and dismisses; no toast). Applies
+ *                          to locate too (`created: false`) — an existing
+ *                          worktree's window opens instead of a duplicate.
+ *   - `branch-not-found` → `dismissed` + toast (terminal: the branch is gone
+ *                          upstream, same semantics as the switch leg)
+ *   - other failures     → `ready` + toast keyed on the reason, so the dialog
+ *                          stays open for a retry or another action
+ *                          (`fetch-failed` maps to the connection copy)
+ *   - `null`             → `ready` + proxy-null toast
+ *
+ * Only callable from `creating-worktree` — identity (no side effect) from
+ * every other phase, so a result landing after dismissal, or after a second
+ * share payload reset the dialog, can't mutate state or fire a ghost toast.
+ */
+export function applyWorktreeCheckoutOutcome(
+  state: BranchSwitchDialogState,
+  result: WorktreeCreateResult | null,
+): ApplyWorktreeCheckoutOutcomeResult {
+  if (state.phase !== 'creating-worktree') return { state };
+  if (result === null) {
+    return {
+      state: { phase: 'ready', info: state.info },
+      sideEffect: { kind: 'toast', reason: 'proxy-null' },
+    };
+  }
+  if (result.ok) {
+    return { state: { phase: 'opening-worktree', path: result.path } };
+  }
+  if (result.reason === 'branch-not-found') {
+    return {
+      state: { phase: 'dismissed', reason: 'branch-not-found' },
+      sideEffect: { kind: 'toast', reason: 'branch-not-found' },
+    };
+  }
+  return {
+    state: { phase: 'ready', info: state.info },
+    sideEffect: { kind: 'toast', reason: result.reason },
   };
 }

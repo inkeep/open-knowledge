@@ -9,8 +9,8 @@ import { DotTexture } from './dot-texture';
 
 const socialLinks = [
   { href: GITHUB_URL, label: 'GitHub', Icon: GitHubIcon },
-  { href: DISCORD_URL, label: 'Discord', Icon: DiscordIcon },
   { href: X_URL, label: 'X', Icon: XIcon },
+  { href: DISCORD_URL, label: 'Discord', Icon: DiscordIcon },
 ];
 
 const legalLinks = [

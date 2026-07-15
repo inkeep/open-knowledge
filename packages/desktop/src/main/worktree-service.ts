@@ -27,6 +27,8 @@ import { isAbsolute, join, sep } from 'node:path';
 import { promisify } from 'node:util';
 import {
   buildWorktreeSelectorModel,
+  isBranchNotFoundGitError,
+  isValidBranchName,
   parseBranchList,
   stripRemotePrefix,
   WORKTREES_PARENT_DIR,
@@ -45,6 +47,18 @@ const execFileAsync = promisify(execFile);
 /** English-stable git env — mirrors `list-git-worktrees.ts` so stderr
  *  classification survives a non-English host locale. */
 const GIT_ENV = { ...process.env, LANG: 'C', LC_ALL: 'C' } as const;
+
+/** Fetch spawn env: `GIT_ENV` plus `GIT_TERMINAL_PROMPT=0`, mirroring the
+ *  server's git discipline — desktop main has no terminal to answer a
+ *  credential prompt, so a credentialed remote must fail fast (into the
+ *  `fetch-failed` arm) instead of stalling until the timeout kill. */
+const FETCH_GIT_ENV = { ...GIT_ENV, GIT_TERMINAL_PROMPT: '0' } as const;
+
+/** Default bound for the share-checkout fetch — matches the server's
+ *  fast-forward fetch bound so a stalled network degrades to a typed
+ *  `fetch-failed` instead of an indefinite hang. Injectable per call so tests
+ *  can exercise the bound without waiting 15s. */
+const SHARE_FETCH_TIMEOUT_MS = 15_000;
 
 export type { WorktreeCreateResult, WorktreeListResult };
 
@@ -188,6 +202,141 @@ export async function createWorktree(args: CreateWorktreeArgs): Promise<Worktree
     // Advisory; the worktree opens fine without it (falls back to the prompt).
   }
   return { ok: true, path: worktreePath, created: true };
+}
+
+export interface ShareBranchCheckoutArgs {
+  /** A path inside the repo (the focused window's project) — the git anchor. */
+  readonly anchorPath: string;
+  /** The share payload's branch — an EXISTING branch to locate; this arm never
+   *  invents one (contrast `createWorktree`'s create modes). */
+  readonly branch: string;
+  /** Override for the fetch bound; defaults to `SHARE_FETCH_TIMEOUT_MS`. */
+  readonly fetchTimeoutMs?: number;
+}
+
+/**
+ * Create (or locate) the worktree for a share link's branch, resolving where
+ * the branch lives first:
+ *
+ *   1. local `refs/heads/<branch>` exists → check it out as-is (a stale local
+ *      ref is accepted; a shared doc missing from it surfaces through the open
+ *      path's target-existence probe rather than an eager fetch here).
+ *   2. only `refs/remotes/origin/<branch>` exists → new local tracking branch
+ *      off that ref.
+ *   3. neither → `git fetch origin <branch>` (bounded + prompt-free), then the
+ *      tracking arm. With the default refspec the fetch materializes the
+ *      remote-tracking ref; a repo whose fetch refspec doesn't cover the
+ *      branch (e.g. a --single-branch clone) writes only FETCH_HEAD and falls
+ *      into the generic add-error arm.
+ *
+ * Every arm delegates to `createWorktree`, so path convention, seeding, and
+ * create-or-locate reuse are identical to selector-created worktrees — and the
+ * anchor repo's working tree, HEAD, and existing local branches are never
+ * touched (the fetch writes only remote-tracking refs and FETCH_HEAD).
+ *
+ * Fetch failures split on core's branch-not-found classifier: branch gone from
+ * `origin` → `branch-not-found` (terminal); anything else, including the
+ * timeout kill → `fetch-failed` (retryable). Failures are values, never throws.
+ */
+export async function checkoutShareBranchWorktree(
+  args: ShareBranchCheckoutArgs,
+): Promise<WorktreeCreateResult> {
+  const branch = args.branch.trim();
+  // Revalidate at the IPC seam before the first git spawn: the fetch arm
+  // passes `branch` as a bare positional (no `--` guard — mirrors the server's
+  // fetch), so a dash-prefixed or otherwise malformed name must never reach
+  // it. `isValidBranchName` is the same predicate the server applied to the
+  // share payload; `worktreeRelativeDir` screens path escapes.
+  if (
+    !isValidBranchName(branch) ||
+    worktreeRelativeDir(branch) === null ||
+    !isAbsolute(args.anchorPath)
+  ) {
+    return { ok: false, reason: 'invalid-branch' };
+  }
+  // Screen non-git anchors before the ref probes so the failure classifies as
+  // `no-git` rather than a misleading `fetch-failed` out of the fetch arm.
+  const worktrees = await listGitWorktrees(args.anchorPath);
+  if (worktrees.length === 0) return { ok: false, reason: 'no-git' };
+
+  if (await refExists(args.anchorPath, `refs/heads/${branch}`)) {
+    return createWorktree({ anchorPath: args.anchorPath, branch, createBranch: false });
+  }
+  const remoteRef = `origin/${branch}`;
+  if (!(await refExists(args.anchorPath, `refs/remotes/${remoteRef}`))) {
+    const failure = await fetchShareBranch(
+      args.anchorPath,
+      branch,
+      args.fetchTimeoutMs ?? SHARE_FETCH_TIMEOUT_MS,
+    );
+    if (failure !== null) return failure;
+  }
+  return createWorktree({
+    anchorPath: args.anchorPath,
+    branch,
+    remoteRef,
+    createBranch: true,
+  });
+}
+
+/** True iff the exact, fully-qualified ref exists (`git show-ref --verify`
+ *  exits 0). Any failure — including a non-repo cwd — reads as "no ref"
+ *  (fail-soft, per the module contract). Exit 1 is the expected missing-ref
+ *  case; anything else (spawn failure, permission denial, timeout kill) is
+ *  warn-logged so a local-filesystem fault stays distinguishable from the
+ *  network failure the caller would otherwise misattribute it to. The timeout
+ *  bounds a stalled .git so the IPC handler can't hang on a local probe. */
+async function refExists(anchorPath: string, ref: string): Promise<boolean> {
+  try {
+    await execFileAsync('git', ['show-ref', '--verify', '--quiet', ref], {
+      cwd: anchorPath,
+      env: GIT_ENV,
+      timeout: 5_000,
+    });
+    return true;
+  } catch (err) {
+    const code = (err as { code?: number | string }).code;
+    if (code !== 1) {
+      console.warn(
+        `[worktree-service] refExists unexpected failure ref=${ref} error=${gitErrorText(err).replace(/\s+/g, ' ').slice(0, 200)}`,
+      );
+    }
+    return false;
+  }
+}
+
+/**
+ * `git fetch origin <branch>`, bounded and prompt-free. Returns `null` on
+ * success, else the classified failure: `branch-not-found` when origin reports
+ * the ref gone, `fetch-failed` for everything else (unreachable remote, auth
+ * refusal, timeout kill), with the collapsed truncated stderr as diagnostics.
+ */
+async function fetchShareBranch(
+  anchorPath: string,
+  branch: string,
+  timeoutMs: number,
+): Promise<Extract<WorktreeCreateResult, { ok: false }> | null> {
+  try {
+    await execFileAsync('git', ['fetch', 'origin', branch], {
+      cwd: anchorPath,
+      env: FETCH_GIT_ENV,
+      timeout: timeoutMs,
+    });
+    return null;
+  } catch (err) {
+    if (isBranchNotFoundGitError(err)) return { ok: false, reason: 'branch-not-found' };
+    // A timeout kill, an auth refusal, and an unreachable remote all classify
+    // `fetch-failed`; prefix the kill metadata so session-log triage can tell
+    // the elapsed-timeout case apart without correlating wall-clock times.
+    const killed = (err as { killed?: boolean }).killed === true;
+    const signal = (err as { signal?: string }).signal;
+    const raw = gitErrorText(err).replace(/\s+/g, ' ').slice(0, 280);
+    return {
+      ok: false,
+      reason: 'fetch-failed',
+      message: killed ? `[timeout signal=${signal ?? 'SIGTERM'}] ${raw}` : raw,
+    };
+  }
 }
 
 /**
@@ -372,18 +521,23 @@ interface AddErrorClassification {
   readonly message?: string;
 }
 
-function classifyAddError(err: unknown): AddErrorClassification {
+/** Raw error text of a failed git spawn: stderr when present (Buffer or
+ *  string), else the error message. Buffer.isBuffer narrows the stable
+ *  `stderrRaw` local, so no non-null assertion is needed (biome's --unsafe fix
+ *  rewrites `!` → `?.`, which would otherwise reintroduce a possibly-undefined
+ *  value). */
+function gitErrorText(err: unknown): string {
   const e = typeof err === 'object' && err !== null ? (err as ExecErr) : null;
   const stderrRaw = e?.stderr;
-  // Buffer.isBuffer narrows the stable `stderrRaw` local, so no non-null
-  // assertion is needed (biome's --unsafe fix rewrites `!` → `?.`, which would
-  // otherwise reintroduce a possibly-undefined `raw`).
-  const raw: string =
-    stderrRaw !== undefined && stderrRaw !== null
-      ? Buffer.isBuffer(stderrRaw)
-        ? stderrRaw.toString('utf-8')
-        : String(stderrRaw)
-      : String(e?.message ?? err);
+  return stderrRaw !== undefined && stderrRaw !== null
+    ? Buffer.isBuffer(stderrRaw)
+      ? stderrRaw.toString('utf-8')
+      : String(stderrRaw)
+    : String(e?.message ?? err);
+}
+
+function classifyAddError(err: unknown): AddErrorClassification {
+  const raw = gitErrorText(err);
   const stderr = raw.toLowerCase();
   if (stderr.includes('already checked out')) return { reason: 'already-checked-out' };
   if (stderr.includes('already exists') && stderr.includes('branch')) {

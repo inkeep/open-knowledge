@@ -11,6 +11,7 @@
 import { SHOW_INSTALL_SKILL, type WorktreeSelectorEntry } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
+  Bug,
   Download,
   FilePlus2,
   FileText,
@@ -70,6 +71,7 @@ import { FileEntryIcon } from '@/components/file-entry-icon';
 import { defaultInitialDir } from '@/components/file-tree-utils';
 import { NewItemDialog } from '@/components/NewItemDialog';
 import { usePageList } from '@/components/PageListContext';
+import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { SeedDialog } from '@/components/SeedDialog';
 import {
   CommandDialog,
@@ -347,6 +349,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [createDialogKind, setCreateDialogKind] = useState<'file' | 'folder' | null>(null);
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [reportBugOpen, setReportBugOpen] = useState(false);
   // Tag-mode state. Loaded lazily on first `tag:` keystroke; cached for
   // the lifetime of the palette session (cleared on close in the open-
   // toggle effect). Loading flag drives the `tag-list` placeholder UI;
@@ -850,6 +853,13 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     matchesCommandQuery(t`Install for Claude Chat & Cowork (Desktop App)`, deferredQuery, [
       'claude desktop install cowork',
     ]);
+  // Desktop-only (bundle creation runs over the Electron bridge). Not gated
+  // on `singleFile`: with no project open the report degrades to the
+  // system-wide bundle, so the command stays available.
+  const showReportBug =
+    !inExclusiveMode &&
+    bridge !== null &&
+    matchesCommandQuery(t`Report a bug`, deferredQuery, ['bug report issue feedback problem']);
   const showProjectRecents =
     !inExclusiveMode &&
     bridge !== null &&
@@ -900,6 +910,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     showProjectSwitch ||
     showSettings ||
     showInstallClaudeDesktop ||
+    showReportBug ||
     showProjectRecents ||
     showAgentGroup;
 
@@ -1473,7 +1484,8 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           showProjectOpenFolder ||
           showProjectSwitch ||
           showSettings ||
-          showInstallClaudeDesktop ? (
+          showInstallClaudeDesktop ||
+          showReportBug ? (
             <CommandGroup heading={t`Project`}>
               {showCreateProject && bridge ? (
                 <CommandItem
@@ -1558,6 +1570,21 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                   <Download />
                   <span>
                     <Trans>Install for Claude Chat & Cowork (Desktop App)</Trans>
+                  </span>
+                </CommandItem>
+              ) : null}
+              {showReportBug ? (
+                <CommandItem
+                  value="report a bug issue feedback"
+                  onSelect={() => {
+                    onOpenChange(false);
+                    setReportBugOpen(true);
+                  }}
+                  data-testid="command-palette-report-bug"
+                >
+                  <Bug />
+                  <span>
+                    <Trans>Report a bug</Trans>
                   </span>
                 </CommandItem>
               ) : null}
@@ -1702,6 +1729,9 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           bridge={bridge}
         />
       ) : null}
+      {/* Desktop-only — `showReportBug` gates the launching command on
+          `bridge !== null`, so the dialog only mounts when the bridge exists. */}
+      {bridge ? <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} /> : null}
     </>
   );
 }

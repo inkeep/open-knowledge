@@ -28,6 +28,7 @@ let requestDocPanelTabCalls: string[] = [];
 let seedDialogProps: Array<{ open: boolean }> = [];
 let newItemDialogProps: Array<{ open: boolean; kind: string; initialDir: string }> = [];
 let createProjectDialogProps: Array<{ open: boolean; bridge: unknown }> = [];
+let reportBugDialogProps: Array<{ open: boolean }> = [];
 let commandDialogProps: CommandDialogProps[] = [];
 let refreshInstallStatesCalls = 0;
 const refreshInstallStates = () => {
@@ -137,6 +138,13 @@ mock.module('@/components/CreateProjectDialog', () => ({
         data-testid="create-project-dialog"
       />
     );
+  },
+}));
+
+mock.module('@/components/ReportBugDialog', () => ({
+  ReportBugDialog: (props: { open: boolean }) => {
+    reportBugDialogProps.push(props);
+    return <div data-open={String(props.open)} data-testid="report-bug-dialog" />;
   },
 }));
 
@@ -266,6 +274,7 @@ describe('CommandPalette DOM behavior', () => {
     seedDialogProps = [];
     newItemDialogProps = [];
     createProjectDialogProps = [];
+    reportBugDialogProps = [];
     commandDialogProps = [];
     refreshInstallStatesCalls = 0;
     worktreeModelMock = null;
@@ -388,6 +397,30 @@ describe('CommandPalette DOM behavior', () => {
       expect(screen.getByTestId('create-project-dialog').getAttribute('data-open')).toBe('true');
     });
     expect(createProjectDialogProps.at(-1)?.bridge).toBe(bridge);
+  });
+
+  test('report-a-bug command is desktop-only, searchable by issue tokens, and opens ReportBugDialog', async () => {
+    await renderPalette({ bridge: null });
+
+    await setQuery('bug');
+    expect(screen.queryByTestId('command-palette-report-bug')).toBeNull();
+    expect(screen.queryByTestId('report-bug-dialog')).toBeNull();
+
+    cleanup();
+    const bridge = createBridge();
+    const { onOpenChange } = await renderPalette({ bridge });
+
+    await setQuery('issue');
+    const reportBug = screen.getByTestId('command-palette-report-bug');
+    expect(reportBug.textContent).toContain('Report a bug');
+
+    fireEvent.click(reportBug);
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    await waitFor(() => {
+      expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
+    });
+    expect(reportBugDialogProps.at(-1)?.open).toBe(true);
   });
 
   test('starter-pack command is searchable, participates in empty-state aggregation, and opens SeedDialog after closing', async () => {

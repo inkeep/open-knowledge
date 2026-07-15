@@ -114,6 +114,10 @@ interface TerminalTabStripProps {
   readonly onNewChatPickCli: (cli: TerminalCli) => void;
   /** Dropdown "Terminal" — persist a bare shell as the default AND open one. */
   readonly onNewChatPickTerminal: () => void;
+  /** CLIs to list in the New-chat dropdown — Claude plus PATH-detected CLIs
+   *  (resolved by the host), so an uninstalled CLI doesn't appear unless
+   *  detected. Optional: the button falls back to the full list. */
+  readonly newChatVisibleClis?: readonly TerminalCli[];
   /** Fires with the session id when the user closes a tab. */
   readonly onClose: (id: string) => void;
   /**
@@ -201,6 +205,7 @@ export function TerminalTabStrip({
   onNewChatLaunch,
   onNewChatPickCli,
   onNewChatPickTerminal,
+  newChatVisibleClis,
   onClose,
   onRename,
   onReorder,
@@ -499,6 +504,7 @@ export function TerminalTabStrip({
           onLaunchSelected={onNewChatLaunch}
           onPickCli={onNewChatPickCli}
           onPickTerminal={onNewChatPickTerminal}
+          visibleClis={newChatVisibleClis}
           className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}
         />
         {/* Spacer pushes the trailing controls to the far right. */}

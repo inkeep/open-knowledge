@@ -11,8 +11,8 @@
  * because Radix submenus inherit roving focus from their parent root primitive.
  *
  * Installed app launchers sit under a "Desktop" section label; the docked
- * terminal launchers — one row per agent CLI in `VISIBLE_CLIS` (Claude, Codex,
- * Cursor) — sit under a "Terminal" section label.
+ * terminal launchers — one row per PATH-gated CLI (`visibleTerminalClis`: Claude
+ * plus CLIs the probe hasn't ruled out) — sit under a "Terminal" section label.
  *
  * When there is nothing to render (no installed targets and no terminal
  * launcher), the entire submenu is hidden so the user doesn't land on an empty
@@ -42,7 +42,7 @@ import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { TargetIcon } from './OpenInAgentMenuItem';
 import { useTerminalLaunch } from './TerminalLaunchContext';
-import { cliIconTargetId, VISIBLE_CLIS } from './terminal-cli-display';
+import { cliIconTargetId, visibleTerminalClis } from './terminal-cli-display';
 import type { HandoffDispatchInput } from './useHandoffDispatch';
 
 /** Status hint shown alongside per-target rows when the input is not ready
@@ -97,6 +97,9 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
   if (!showDesktopSection && !showTerminalSection) {
     return null;
   }
+  // Claude plus every CLI the probe hasn't ruled out (fail-open); launch-only
+  // submenu with no "current pick" to preserve, so no `keep`.
+  const terminalClis = terminalLaunch ? visibleTerminalClis(terminalLaunch.installedClis) : [];
 
   return (
     <ContextMenuSub>
@@ -119,7 +122,7 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
                 workspace" hint when input is missing), so it contains the
                 visible label and AT users can tell it apart from a Desktop row
                 (WCAG 2.5.3 — name contains visible label). */}
-            {VISIBLE_CLIS.map((cli) => {
+            {terminalClis.map((cli) => {
               const { displayName } = TERMINAL_CLIS[cli];
               return (
                 <ContextMenuItem

@@ -117,7 +117,11 @@ interface TestEnv {
   utilities: MockUtility[];
   windows: Array<ReturnType<typeof makeWindow>>;
   /** Opts recorded from each createWindow call, parallel to `windows`. */
-  createWindowOpts: Array<{ additionalArguments: string[]; title: string }>;
+  createWindowOpts: Array<{
+    additionalArguments: string[];
+    title: string;
+    projectPath?: string;
+  }>;
   forkUtilityArgs: string[][];
   timers: Array<{ cb: () => void; ms: number }>;
   killProbe: ReturnType<typeof mock>;
@@ -129,7 +133,11 @@ interface TestEnv {
 function buildEnv(): TestEnv {
   const utilities: MockUtility[] = [];
   const windows: Array<ReturnType<typeof makeWindow>> = [];
-  const createWindowOpts: Array<{ additionalArguments: string[]; title: string }> = [];
+  const createWindowOpts: Array<{
+    additionalArguments: string[];
+    title: string;
+    projectPath?: string;
+  }> = [];
   const forkUtilityArgs: string[][] = [];
   const timers: Array<{ cb: () => void; ms: number }> = [];
   const killProbe = mock(() => {});
@@ -203,6 +211,18 @@ describe('WindowManager', () => {
     env.utilities[0]?.fire({ type: 'ready', port: 52010, apiOrigin: 'http://localhost:52010' });
     await promise;
     expect(env.createWindowOpts[0]?.title).toBe('dragon-wiki — OpenKnowledge');
+  });
+
+  test('createProjectWindow threads project identity to the window seam (spawn path)', async () => {
+    // The production seam keys per-project window-bounds memory and
+    // focus-recency tracking on `projectPath` — it must arrive alongside the
+    // window construction opts, and must be the SAME string
+    // `getOpenProjectPaths()` returns (= `ctx.projectPath`).
+    const wm = new WindowManager(env.deps);
+    const promise = wm.createProjectWindow({ projectPath: '/tmp/dragon-wiki' });
+    env.utilities[0]?.fire({ type: 'ready', port: 52010, apiOrigin: 'http://localhost:52010' });
+    const ctx = await promise;
+    expect(env.createWindowOpts[0]?.projectPath).toBe(ctx.projectPath);
   });
 
   test('createProjectWindow injects --ok-fresh-create=1 only when freshlyCreated is set', async () => {
@@ -712,6 +732,10 @@ describe('WindowManager', () => {
       expect(env.windows.length).toBe(1);
       // Title is set from projectName in the attach path too.
       expect(env.createWindowOpts[0]?.title).toBe('dragon — OpenKnowledge');
+      // Project identity for bounds/focus memory rides the attach path too —
+      // it's the production path, so omitting it here would silently disable
+      // window-position restore in packaged builds.
+      expect(env.createWindowOpts[0]?.projectPath).toBe(ctx.projectPath);
     });
 
     test('attach path injects --ok-fresh-create=1 when freshlyCreated is set (production path)', async () => {

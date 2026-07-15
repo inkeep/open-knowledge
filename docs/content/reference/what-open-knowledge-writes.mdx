@@ -10,7 +10,7 @@ OpenKnowledge keeps your knowledge base as plain markdown in your own project di
 This page lists every one of them: **when** each write happens, **what** it is, and **where** it is written.
 
 <Callout type="info" title="The short version">
-  **Nothing leaves your machine by default — except the desktop app's automatic checks.** Diagnostic logs and telemetry stay on your machine. The things that *can* send data off it — semantic search, a diagnostic bundle, and GitHub sync — are opt-in or on-demand. The desktop app is the exception: it checks for updates automatically (sending its app version and channel), and on its first launch opens your browser once to check for a pending share link. All of them are listed under [What leaves your machine](#what-leaves-your-machine).
+  **Nothing leaves your machine by default — except the desktop app's automatic checks.** Diagnostic logs and telemetry stay on your machine. The things that *can* send data off it — semantic search, a diagnostic or bug-report bundle, and GitHub sync — are opt-in or on-demand. The desktop app is the exception: it checks for updates automatically (sending its app version and channel), and on its first launch opens your browser once to check for a pending share link. All of them are listed under [What leaves your machine](#what-leaves-your-machine).
 </Callout>
 
 ## How to read this page
@@ -37,6 +37,9 @@ The macOS app ships as a signed `.dmg` you drag into `/Applications`. On launch 
 | `~/.ok/logs/desktop.<date>.log` | Desktop app + renderer log | Outside-project (home dir) |
 | `~/.ok/mcp-status.json` | Records your first-launch MCP-setup consent choice | Outside-project (home dir) |
 | `~/Library/Caches/OpenKnowledge-updater/` | Staged auto-update downloads (electron-updater) | Outside-project (home dir) |
+| `~/Library/Application Support/OpenKnowledge/Crashpad/` | Native crash minidumps, written by the OS crash handler (Electron's Crashpad) if the app ever crashes. Local-only: the crash reporter runs with `uploadToServer: false`, so no dump is ever uploaded automatically | Outside-project (home dir) |
+| `~/Library/Application Support/OpenKnowledge/bug-report-dirty-shutdown.json` | Dirty-shutdown sentinel — written on **every** launch and removed on a clean quit, so the next launch can tell whether the previous session crashed | Outside-project (home dir) |
+| `~/Library/Application Support/OpenKnowledge/bug-report-crash-acks.json` | Records which crash-report invitations you already answered or dismissed, so the same crash never re-prompts | Outside-project (home dir) |
 
 The app registers the `openknowledge://` URL scheme (for deep links) and checks for updates — on launch and periodically while it runs — against the OpenKnowledge update service at `openknowledge.ai/updates`, which redirects to the GitHub release asset and counts the update per version and channel (falling back to GitHub directly if it's unreachable). An update on your channel downloads in the background and installs on the next quit; you can also check on demand from **Check for updates…** in the app and Help menus. The channel (stable or beta) is fixed by the build you installed — switch by reinstalling the other from `openknowledge.ai/download/stable` or `/download/beta`. Override the feed with `OK_UPDATER_FEED_URL`.
 
@@ -121,7 +124,7 @@ On each launch and project open, the app also runs **repair sweeps**: it rewrite
 | `~/.ok/skills/<name>/` | Your global-scope authored skills (kept by `ok uninstall` unless `--purge-content`) | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/mcp-status.json` | First-launch MCP consent record | No |
-| `~/.ok/logs/`, `~/.ok/bug-reports/` | Desktop and CLI logs, and bug-report bundles from `ok bug-report` (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
+| `~/.ok/logs/`, `~/.ok/bug-reports/` | Desktop and CLI logs, and bug-report bundles from `ok bug-report` and the app's **Help → Report a Bug…** dialog (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
 | `~/.ok/bin/`, `~/.ok/env.sh` | `PATH` shim (see [Shell and `PATH`](#shell-and-path) above) | No |
 
 **Auth tokens** (for GitHub sync, sharing, and cloning) are stored in the macOS **Keychain** under the service name `open-knowledge`. The `~/.ok/auth.yml` file is only a fallback for headless environments where the Keychain isn't reachable; when the Keychain becomes available, the token is migrated into it and the file copy is removed.
@@ -235,7 +238,7 @@ Disable all three with `OK_RECLAIM_DISABLE=1`.
 | `~/.ok/skills/<name>/` | Your global-scope authored skills (kept by `ok uninstall` unless `--purge-content`) | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/logs/` | CLI logs (`cli.<date>.log`), size- and age-capped | No |
-| `~/.ok/bug-reports/` | Bug-report bundles from `ok bug-report` (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
+| `~/.ok/bug-reports/` | Bug-report bundles from `ok bug-report` — the desktop app's **Help → Report a Bug…** dialog writes here too (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
 
 **Auth tokens** (for GitHub sync, sharing, and cloning) are stored in your operating system's secure credential store when one is available — the macOS **Keychain** (service `open-knowledge`), or the platform equivalent (Windows Credential Manager, Linux Secret Service) — falling back to a `0600` `~/.ok/auth.yml` file on headless systems (a Linux server, CI) where none is reachable.
 
@@ -267,6 +270,7 @@ By default, **nothing.** Everything above is written to your own disk. The only 
 | What | When | Where it goes |
 | --- | --- | --- |
 | Diagnostic bundle | Only when you run `ok diagnose bundle` (you can inspect it first) | Wherever you send it |
+| In-app bug report | Only when you click **Send** in the desktop app's **Help → Report a Bug…** dialog — it builds a secret-redacted zip you can reveal and inspect first, and nothing is sent without that explicit click. After a crash, the same dialog adds an **off-by-default** "Include crash dump" checkbox: a crash dump is a memory snapshot that can contain document content and can't be redacted, and it is only ever attached when you check that box | By default, Send makes no network request — it opens a prefilled email draft to support@inkeep.com that you send yourself, naming the zip to attach. Only when an operator has configured a bug-report intake endpoint ([`OK_BUG_REPORT_INTAKE_URL`](/docs/reference/configuration#environment-variables)) does Send upload the zip there, falling back to the same email draft if the upload fails |
 | Semantic search embeddings | Only when you enable [semantic search](/docs/reference/configuration#semantic-search) **and** set a key — off by default | Your configured embeddings provider (OpenAI by default) |
 | GitHub sync / share | When you sync, clone, publish, or share | GitHub |
 | Update check | Automatically — on launch and periodically while the desktop app runs | OpenKnowledge update service (`openknowledge.ai/updates`), which redirects to GitHub; sends the app version and channel |

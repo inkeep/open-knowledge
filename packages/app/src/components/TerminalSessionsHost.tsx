@@ -12,9 +12,10 @@ import {
 } from '@/lib/terminal-new-tab-store';
 import { loadStickyAgent, saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
 import { cn } from '@/lib/utils';
-import { emitOpenAskAiComposer } from './ask-ai-composer-events';
 import type { TerminalLaunchIntent } from './EditorPane';
+import { visibleTerminalClis } from './handoff/terminal-cli-display';
 import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
+import { requestTerminalLaunch } from './handoff/terminal-launch-events';
 import { TerminalGate } from './TerminalGate';
 import type { TerminalNewTabChoice } from './TerminalNewChatButton';
 import { TerminalTabStrip } from './TerminalTabStrip';
@@ -286,6 +287,10 @@ export function TerminalSessionsHost({
   );
   const newChatDefaultCli = resolveDefaultCli(stickyCliId, installedClis ?? {});
   const newChatSelected: TerminalNewTabChoice = preferBareTerminal ? 'terminal' : newChatDefaultCli;
+  // Gate the New-chat dropdown rows to Claude + CLIs the probe hasn't ruled out,
+  // keeping the resolved default (`newChatDefaultCli`) so the split button's
+  // current pick is always present in its own dropdown (with its checkmark).
+  const newChatVisibleClis = visibleTerminalClis(installedClis ?? {}, newChatDefaultCli);
 
   // Tab-strip New-chat primary: open a promptless session running `cli`.
   function openNewChatSession(cli: TerminalCli) {
@@ -543,12 +548,12 @@ export function TerminalSessionsHost({
     };
   }, [bridge]);
 
-  // The editor's "Ask AI" selection affordance routes here: when a terminal is
-  // open with a live PTY, write the selected text straight into the active shell
-  // (e.g. a running claude TUI). No trailing newline — the user reviews/sends it.
-  // With no terminal open, fall back to the bottom Ask-AI composer, the same
-  // surface a caret-only Ask AI opens. The host is mounted whenever the desktop
-  // bridge exists (even with zero sessions), so this subscription is always live.
+  // The editor's "Ask AI" selection affordance routes here. Live PTY → write
+  // the composed prompt into the active shell (e.g. a running claude TUI); no
+  // trailing newline so the user reviews/sends. No PTY → launch a fresh Claude
+  // tab pre-loaded with the same prompt (mirrors the "Open in terminal" path
+  // used by menu surfaces). The host is mounted whenever the desktop bridge
+  // exists (even with zero sessions), so this subscription is always live.
   useEffect(() => {
     return subscribeToActiveTerminalInput((text) => {
       const activeId = activeSessionIdRef.current;
@@ -557,7 +562,7 @@ export function TerminalSessionsHost({
         bridge.terminal.input(livePtyId, text);
         queueMicrotask(() => focusTerminalSession(activeId));
       } else {
-        emitOpenAskAiComposer();
+        requestTerminalLaunch(text, 'claude');
       }
     });
   }, [bridge]);
@@ -718,6 +723,7 @@ export function TerminalSessionsHost({
         onNewChatLaunch={launchSelectedNewTab}
         onNewChatPickCli={pickNewChatCli}
         onNewChatPickTerminal={pickNewChatTerminal}
+        newChatVisibleClis={newChatVisibleClis}
         onClose={closeSession}
         onRename={setSessionCustomLabel}
         // Pointer-drag reorder: the strip computes the new visual order and the

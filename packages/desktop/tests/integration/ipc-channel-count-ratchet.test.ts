@@ -312,7 +312,27 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  *     single channel over two distinct operations against a namespace that
  *     deliberately keeps each PTY operation on its own channel.
  *
- * Bumped from 81 to 82 for the terminal clickable-links out-of-project reveal
+ * Bumped from 81 to 82 for the in-app "Report a bug" surface:
+ *
+ *   - `ok:bug-report:dispatch` — builds the redacted diagnostic zip for the
+ *     sender window's project (system-wide when the window has no project)
+ *     via the CLI package's leveled `collectReportBundle`, in-process. Main
+ *     owns it because the inputs are main-process state: the window-manager
+ *     project context, `app.getVersion()`/`app.isPackaged`/the update
+ *     channel (stamped as `OK_DESKTOP_*` metadata), and the `~/.ok/bug-reports/`
+ *     write. A single discriminated channel per the `ok:sharing:dispatch`
+ *     precedent: the report surface's upload (`send`) and crash-ack
+ *     operations widen this channel's payload — the preferred
+ *     payload-widening path — instead of adding channels, so the whole
+ *     surface costs one slot. Could not fold into any existing channel: no
+ *     diagnostics/reporting surface exists — `ok:shell:*` is scoped to
+ *     asset reveal/open, `ok:update:*` to the updater lifecycle, and the
+ *     `ok:project:*` reads carry unrelated schemas. New `ok:bug-report:*`
+ *     namespace, single member. The typed-ipc migration remains the
+ *     committed end state; scoped exception with the `ipc-channels.ts`
+ *     header commitment updated in lock-step.
+ *
+ * Bumped from 82 to 83 for the terminal clickable-links out-of-project reveal
  * (`ok:shell:reveal-external`): when a terminal link points at an existing file
  * OUTSIDE the window's project, main pops a "reveal in Finder?" confirmation and
  * reveals on confirm. It is a distinct trust boundary from `ok:shell:reveal-asset`
@@ -321,7 +341,7 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * opposite security contracts. Single member; the typed-ipc migration remains the
  * committed end state, with the `ipc-channels.ts` header updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 82;
+const REQUEST_CHANNEL_CAP = 83;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

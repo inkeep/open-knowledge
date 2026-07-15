@@ -10,7 +10,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { join, posix as pathPosix, win32 as pathWin32 } from 'node:path';
+import { join } from 'node:path';
 import {
   createOsProbe,
   type ExecFileLike,
@@ -20,6 +20,11 @@ import {
   resolveCursorSpawnInvocation,
 } from '@inkeep/open-knowledge-server';
 import type { HandoffStatsLine, SpawnOutcome } from '../shared/ipc-channels.ts';
+import { isPathWithinProject, validateSpawnPath } from './path-containment.ts';
+
+// Re-exported so the sole remaining consumer (asset-allowlist.ts) keeps its
+// import site; the implementations live in the leaf module.
+export { isPathWithinProject, validateSpawnPath };
 
 const DEFAULT_PROBE_TIMEOUT_MS = 2000;
 const WHICH_TIMEOUT_MS = 500;
@@ -197,81 +202,6 @@ interface SpawnCursorDeps {
 // transports — same redirect logic runs in `POST /api/spawn-cursor` and in
 // this Electron IPC `spawnCursor`, so a future fix only needs one edit.
 
-/** Reject non-absolute paths, null bytes, and empties. Shared with tests. */
-export function validateSpawnPath(path: string, platform: NodeJS.Platform): boolean {
-  if (!path || typeof path !== 'string') return false;
-  if (path.includes('\0')) return false;
-  if (platform === 'win32') {
-    // Match `C:\…`, `C:/…`, or UNC `\\server\share\…`.
-    return /^([a-zA-Z]:[\\/]|\\\\)/.test(path);
-  }
-  // POSIX (darwin / linux) — absolute paths start with `/`.
-  return path.startsWith('/');
-}
-
-/**
- * Resolve both paths canonically and verify `path` lies at or under
- * `projectPath`. Returns false on invalid inputs or boundary escape.
- *
- * Uses `path/posix` or `path/win32` explicitly instead of the host default so
- * Windows inputs resolve correctly on a POSIX dev runner under test, and
- * production behavior follows the caller's platform regardless of Node's
- * runtime `path` module.
- *
- * On Windows, also rejects when the two paths don't share a canonical root
- * (drive letter or `\\server\share` for UNC, `\\?\…` / `\\.\…` for device
- * namespaces). Without that check, `path.win32.relative()` returns the
- * absolute "to" path when roots differ — and the rel-shape probes below
- * miss the UNC / device-prefix forms because they don't begin with a drive
- * letter. Root comparison is case-insensitive (Windows filesystem semantics).
- *
- * Lexical comparison only — does not resolve symlinks. A symlink inside
- * `projectPath` that targets a path outside (e.g. `<proj>/notes -> /etc`)
- * passes this check; the OS will follow it at use time.
- *
- * **Logical sibling of `isPathWithinDir` in `@inkeep/open-knowledge-server`.**
- * Both implement the same containment algorithm; the desktop version is
- * retained because its test suite exercises edge cases this file uniquely
- * cares about (Electron `showItemInFolder` UNC + device-namespace handling).
- * If the two versions ever drift, consolidate by re-exporting one as the
- * other — they share a security contract.
- */
-export function isPathWithinProject(
-  userPath: string,
-  projectPath: string,
-  platform: NodeJS.Platform,
-): boolean {
-  if (!validateSpawnPath(userPath, platform)) return false;
-  if (!validateSpawnPath(projectPath, platform)) return false;
-  const p = platform === 'win32' ? pathWin32 : pathPosix;
-  try {
-    const canonicalUser = p.resolve(userPath);
-    const canonicalProject = p.resolve(projectPath);
-    if (platform === 'win32') {
-      const userRoot = p.parse(canonicalUser).root.toLowerCase();
-      const projectRoot = p.parse(canonicalProject).root.toLowerCase();
-      if (!userRoot || !projectRoot || userRoot !== projectRoot) return false;
-    }
-    if (canonicalUser === canonicalProject) return true;
-    const rel = p.relative(canonicalProject, canonicalUser);
-    // `relative` returns `..` / `..\foo` / `../foo` when `userPath` escapes
-    // the project root, or an absolute form when roots differ on Windows.
-    if (rel === '' || rel === '.') return true;
-    if (rel === '..' || rel.startsWith(`..${p.sep}`)) return false;
-    // Defense-in-depth — the root check above already rejects cross-root,
-    // but if a future code path introduces another way for `rel` to come
-    // back absolute (drive `D:\…`, UNC `\\server\…`, device `\\?\…`,
-    // `\\.\…`), refuse it here.
-    if (platform === 'win32' && (/^[a-zA-Z]:[\\/]/.test(rel) || rel.startsWith('\\\\'))) {
-      return false;
-    }
-    if (platform !== 'win32' && rel.startsWith('/')) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // Cursor binary discovery (`whichCursorReal`) is now imported from
 // `@inkeep/open-knowledge-server` as `resolveCursorBinaryDefault`. Both
 // transports — this file's Electron IPC and the server's
@@ -347,21 +277,30 @@ type ShowItemInFolderOutcome =
 /** Injected deps for `showItemInFolder` — the electron `shell.showItemInFolder` and platform/projectPath. */
 interface ShowItemInFolderDeps {
   readonly platform: NodeJS.Platform;
-  /** Caller window's project directory; if omitted, validation refuses any path. */
+  /** Caller window's project directory; if omitted, only `allowedRoots` paths are permitted. */
   readonly projectPath: string | undefined;
+  /**
+   * Extra trusted roots the path may lie under besides the project — for
+   * main-produced artifacts that legitimately live outside any project (the
+   * bug-report zip in `~/.ok/bug-reports/`). These are constant, main-derived
+   * directories, never renderer-influenced, so admitting them keeps the
+   * containment guarantee that bounds a compromised renderer.
+   */
+  readonly allowedRoots?: readonly string[];
   /** Wraps `electron.shell.showItemInFolder`. Replaceable in tests. */
   readonly showItemInFolder: (path: string) => void;
 }
 
 /**
  * Reveal the given path in the OS file manager. The path must be absolute,
- * free of null bytes, and lie at or under `deps.projectPath` — otherwise the
- * call is refused. Bounds a renderer compromise from steering the OS file
- * manager at arbitrary filesystem locations. Same defense pattern as
- * `spawnCursor`.
+ * free of null bytes, and lie at or under `deps.projectPath` OR one of
+ * `deps.allowedRoots` — otherwise the call is refused. Bounds a renderer
+ * compromise from steering the OS file manager at arbitrary filesystem
+ * locations. Same defense pattern as `spawnCursor`.
  *
- * When `projectPath` is undefined (e.g. Navigator window with no bound
- * project), refuses every path — the only safe default.
+ * A window with no bound project (Navigator) can still reveal an
+ * `allowedRoots` path; only when neither the project nor any allowed root
+ * contains the path is the reveal refused.
  */
 export function showItemInFolder(
   deps: ShowItemInFolderDeps,
@@ -370,11 +309,16 @@ export function showItemInFolder(
   if (!validateSpawnPath(path, deps.platform)) {
     return { ok: false, reason: 'invalid-format' };
   }
-  if (deps.projectPath === undefined) {
-    return { ok: false, reason: 'no-project-bound' };
-  }
-  if (!isPathWithinProject(path, deps.projectPath, deps.platform)) {
-    return { ok: false, reason: 'out-of-project' };
+  const withinAllowedRoot = (deps.allowedRoots ?? []).some((root) =>
+    isPathWithinProject(path, root, deps.platform),
+  );
+  if (!withinAllowedRoot) {
+    if (deps.projectPath === undefined) {
+      return { ok: false, reason: 'no-project-bound' };
+    }
+    if (!isPathWithinProject(path, deps.projectPath, deps.platform)) {
+      return { ok: false, reason: 'out-of-project' };
+    }
   }
   deps.showItemInFolder(path);
   return { ok: true };

@@ -394,7 +394,7 @@ export function resolveCursorSpawnInvocation(
  * platform. Lexical comparison only (no symlink resolution); a symlink inside
  * `contentDir` that targets outside (`<dir>/notes -> /etc`) passes here, and
  * the OS will follow it at use time. Same constraint as
- * `isPathWithinProject` in `packages/desktop/src/main/ipc-handlers.ts`.
+ * `isPathWithinProject` in `packages/desktop/src/main/path-containment.ts`.
  */
 export function isPathWithinDir(
   userPath: string,
