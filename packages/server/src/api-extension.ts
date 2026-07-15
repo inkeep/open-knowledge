@@ -102,6 +102,8 @@ import {
   LINKABLE_ASSET_EXTENSIONS,
   type LifecycleStatus,
   LinkGraphSuccessSchema,
+  LinkPreviewRequestSchema,
+  LinkPreviewResponseSchema,
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
   LocalOpAuthHostRequestSchema,
@@ -481,6 +483,10 @@ import {
 import { validateBody, withValidation } from './http/request-validation.ts';
 import { successResponse } from './http/success-response.ts';
 import { initContent } from './init-project.ts';
+import { guardedFetch } from './link-preview/guarded-fetch.ts';
+import { buildLinkPreviewMetadata, type GuardedFetch } from './link-preview/metadata.ts';
+import { LinkPreviewCache, type LinkPreviewOutcome } from './link-preview/preview-cache.ts';
+import { classifyLinkPreviewRequest } from './link-preview/request-gate.ts';
 import {
   checkLocalOpSecurity,
   createConcurrencyGuard,
@@ -2645,6 +2651,24 @@ export interface ApiExtensionOptions {
    */
   projectDir?: string;
   /**
+   * SSRF-guarded fetch used by `POST /api/link-preview` for both the page and
+   * the favicon. Defaults to the real `guardedFetch` chokepoint; tests inject a
+   * fake that returns chosen bytes so the route → parse → cache → envelope
+   * wiring can be exercised without real network egress. Production never sets
+   * it, so the guard is always the real one.
+   */
+  linkPreviewFetch?: GuardedFetch;
+  /**
+   * Fresh-read getter for the project-local `linkPreviews.enabled` egress
+   * opt-in — the same per-request fresh-read contract as
+   * `getSemanticSimilarityFloor`, so a runtime Settings toggle applies to the
+   * next hover without a restart. FAIL-CLOSED: when omitted, or when the read
+   * throws, `POST /api/link-preview` treats previews as disabled and performs
+   * no outbound fetch — the renderer-side gate is a UX optimization, never the
+   * enforcement point.
+   */
+  getLinkPreviewsEnabled?: () => boolean;
+  /**
    * Basename-index resolver for `![[photo.png]]` wiki-embed refs. Threaded
    * into every server-side `mdManager.parseWithFallback` call (managed-rename
    * body rewrite, rollback content apply) so the resulting PM image/link
@@ -2867,6 +2891,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     getSemanticSimilarityFloor,
     embeddingsSecretsFile,
     ephemeral = false,
+    linkPreviewFetch,
+    getLinkPreviewsEnabled,
   } = options;
 
   // Concurrency guard: at most 1 in-flight request per local-op endpoint
@@ -17457,6 +17483,147 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'semantic-status', method: 'GET', skipBodyParse: true },
   );
 
+  // ───────────────────── Link preview (external hover cards) ─────────────────
+  // Fetches page metadata for an external link on the user's behalf, so it is
+  // guarded on two independent axes: an anti-proxy gate decides WHO may ask, and
+  // the SSRF-guarded fetch decides WHERE the server may reach. The gate refuses
+  // absent / `null` / non-loopback Origins that the shared /api/* allowlist would
+  // wave through, because an admitted caller would be a readable server-side
+  // request-forgery proxy for any local browser tab. Read-only — kept out of
+  // MUTATING_ROUTES.
+  const LINK_PREVIEW_HANDLER = 'link-preview';
+  // Ephemeral single-file mode keeps zero user-dir artifacts, so its cache stays
+  // in memory; otherwise it lives beside the other project-local sidecars.
+  const linkPreviewCacheDir = ephemeral
+    ? null
+    : resolve(projectDir ?? contentDir, '.ok', 'local', 'link-previews');
+  const linkPreviewCache = new LinkPreviewCache({ cacheDir: linkPreviewCacheDir });
+  // Load the disk cache once, lazily, before the first lookup. init() never
+  // throws; serializing it ahead of load() keeps a warm entry from being
+  // clobbered by a late disk read.
+  let linkPreviewCacheInit: Promise<void> | null = null;
+  const ensureLinkPreviewCacheReady = (): Promise<void> => {
+    linkPreviewCacheInit ??= linkPreviewCache.init();
+    return linkPreviewCacheInit;
+  };
+  const linkPreviewFetchImpl: GuardedFetch = linkPreviewFetch ?? guardedFetch;
+
+  // The cache-miss path: one SSRF-guarded page fetch, a bounded head-scan parse,
+  // and a favicon fetch through the SAME chokepoint. Never throws — the guard
+  // and the parser each absorb their own failures into a bounded reason.
+  async function computeLinkPreview(rawUrl: string): Promise<LinkPreviewOutcome> {
+    const fetched = await linkPreviewFetchImpl(rawUrl);
+    if (!fetched.ok) return { ok: false, reason: fetched.reason };
+    const metadata = await buildLinkPreviewMetadata({
+      html: new TextDecoder().decode(fetched.body),
+      requestUrl: rawUrl,
+      finalUrl: fetched.finalUrl,
+      fetch: linkPreviewFetchImpl,
+    });
+    return { ok: true, metadata };
+  }
+
+  // The egress opt-in is enforced HERE, not only in the renderer: the anti-proxy
+  // gate admits ANY loopback http(s) origin by design, so without this check a
+  // second local app could drive outbound fetches while the user has previews
+  // OFF. Fail-closed (absent getter or a throwing read = disabled) and evaluated
+  // fresh per request so a Settings toggle applies without a restart.
+  const linkPreviewsEnabled = (): boolean => {
+    try {
+      return getLinkPreviewsEnabled?.() === true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleLinkPreview = withValidation(
+    LinkPreviewRequestSchema,
+    async (_req, res, body) => {
+      try {
+        // Checked BEFORE the cache is touched so the disabled path can never
+        // record a negative entry that would outlive re-enabling.
+        if (!linkPreviewsEnabled()) {
+          // Outcome instrumentation: one greppable category per request.
+          // Category ONLY, never the URL, hostname, resolved IP, or fetched
+          // content.
+          log.debug({ outcome: 'disabled' }, '[link-preview] request outcome');
+          successResponse(
+            res,
+            200,
+            LinkPreviewResponseSchema,
+            { ok: false, reason: 'disabled' },
+            { handler: LINK_PREVIEW_HANDLER },
+          );
+          return;
+        }
+        await ensureLinkPreviewCacheReady();
+        // Side flag on the compute closure: load() invokes compute only on a
+        // cache miss, so hit-vs-computed falls out here without widening the
+        // cache API.
+        let computed = false;
+        const outcome = await linkPreviewCache.load(body.url, () => {
+          computed = true;
+          return computeLinkPreview(body.url);
+        });
+        // Persist is best-effort and never throws; fire-and-forget so a slow disk
+        // write can't stall the response.
+        void linkPreviewCache.persist();
+        // Rejections cross the wire with ONE coarse reason. The granular guard
+        // taxonomy (private-ip / dns-failure / non-html / …) stays in local logs
+        // and the on-disk cache for debugging, but returning it would let a
+        // loopback caller pair chosen hostnames with reasons to enumerate
+        // internal names; the renderer ignores the field either way.
+        const wireOutcome: LinkPreviewOutcome = outcome.ok
+          ? outcome
+          : { ok: false, reason: 'blocked' };
+        // Outcome instrumentation: one greppable category per request
+        // (disabled / cache-hit / fetched-ok / fallback). A negative cache hit
+        // logs cache-hit (served without a fetch). Category ONLY, never the
+        // URL, hostname, resolved IP, or fetched content; the granular
+        // rejection taxonomy is already logged at the guarded-fetch chokepoint.
+        log.debug(
+          { outcome: computed ? (outcome.ok ? 'fetched-ok' : 'fallback') : 'cache-hit' },
+          '[link-preview] request outcome',
+        );
+        successResponse(res, 200, LinkPreviewResponseSchema, wireOutcome, {
+          handler: LINK_PREVIEW_HANDLER,
+        });
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
+          handler: LINK_PREVIEW_HANDLER,
+          cause: e,
+        });
+      }
+    },
+    {
+      handler: LINK_PREVIEW_HANDLER,
+      method: 'POST',
+      // Reject a cross-origin / null-origin / non-JSON caller before the body is
+      // read, so a bypass request never reaches the outbound fetch.
+      preBodyGate: (req, res) => {
+        const verdict = classifyLinkPreviewRequest({
+          origin: req.headers.origin,
+          contentType: req.headers['content-type'],
+        });
+        if (verdict.ok) return true;
+        if (verdict.reason === 'origin') {
+          errorResponse(res, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', {
+            handler: LINK_PREVIEW_HANDLER,
+          });
+        } else {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:invalid-request',
+            'Content-Type must be application/json.',
+            { handler: LINK_PREVIEW_HANDLER },
+          );
+        }
+        return false;
+      },
+    },
+  );
+
   const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
     '/api/config': handleApiConfig,
     '/api/asset': handleAsset,
@@ -17465,6 +17632,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/documents': handleDocumentList,
     '/api/backlinks': handleBacklinks,
     '/api/backlink-counts': handleBacklinkCounts,
+    '/api/link-preview': handleLinkPreview,
     '/api/forward-links': handleForwardLinks,
     '/api/link-graph': handleLinkGraph,
     '/api/dead-links': handleDeadLinks,

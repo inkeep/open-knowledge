@@ -170,6 +170,20 @@ describe('appearance.sidebar view toggles', () => {
   });
 });
 
+describe('linkPreviews.enabled (external link-hover preview egress opt-in)', () => {
+  test('defaults to disabled when the block is absent', () => {
+    expect(ConfigSchema.parse({}).linkPreviews).toEqual({ enabled: false });
+  });
+
+  test('defaults enabled to false when linkPreviews is present but enabled is absent', () => {
+    expect(ConfigSchema.parse({ linkPreviews: {} }).linkPreviews.enabled).toBe(false);
+  });
+
+  test('accepts an explicit opt-in', () => {
+    expect(ConfigSchema.parse({ linkPreviews: { enabled: true } }).linkPreviews.enabled).toBe(true);
+  });
+});
+
 describe('legacy upload.* keys remain non-authoritative', () => {
   test('upload.* keys pass through looseObject without schema error', () => {
     const result = ConfigSchema.safeParse({

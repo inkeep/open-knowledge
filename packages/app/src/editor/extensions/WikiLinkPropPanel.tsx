@@ -61,6 +61,8 @@ import {
   LinkPathSuggestionInput,
   preventLinkPathSuggestionDialogDismiss,
 } from '../link-path-suggestions';
+import { InternalDocPreviewCard } from '../link-preview/InternalDocPreviewCard.tsx';
+import { useInternalDocPreview } from '../link-preview/use-internal-doc-preview.ts';
 import { isSafeNavigationUrl } from '../safe-navigation-url';
 import { CopyButton } from './LinkPropPanelCopy';
 import { useHeadings } from './use-headings';
@@ -356,6 +358,21 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
   const [isCreating, setIsCreating] = useState(false);
   const { t } = useLingui();
 
+  // Call the doc-preview hook unconditionally (Rules of Hooks), before the node
+  // guard. The card only renders for a resolved doc target; unresolved / folder
+  // / asset / external states leave the pill as-is.
+  const resolvedDocPreview = useInternalDocPreview({
+    docName:
+      !externalTarget &&
+      !loading &&
+      linkIntent?.kind === 'navigate' &&
+      linkIntent.displayState === 'resolved'
+        ? linkIntent.hashDocName
+        : null,
+    anchor,
+    enabled: true,
+  });
+
   if (!node) {
     // Node was removed mid-render — gracefully close.
     return null;
@@ -638,6 +655,8 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
             </Tooltip>
           </div>
         </div>
+
+        {resolvedDocPreview ? <InternalDocPreviewCard preview={resolvedDocPreview} /> : null}
       </InteractionPropPanel>
 
       <EditWikiLinkDialog

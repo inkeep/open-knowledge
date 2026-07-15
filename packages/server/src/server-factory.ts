@@ -613,6 +613,22 @@ export function createServer(options: ServerOptions): ServerInstance {
     });
   }
 
+  // Same project-local, fresh-read contract as `readSemanticSearchConfig`, for
+  // the link-preview egress opt-in: `linkPreviews.enabled` must never be honored
+  // from a committed/shared config layer (one collaborator must not switch on
+  // egress for everyone who clones), and a Settings toggle must apply to the
+  // next hover without a restart. An absent or invalid config reads as disabled
+  // (`readConfigSafely` degrades to schema defaults), keeping the route
+  // fail-closed.
+  function readLinkPreviewsEnabled(): boolean {
+    const local = readConfigSafely({
+      absPath: resolveConfigPath('project-local', projectDir, configHomedirOverride),
+      sideline: false,
+      warn: (message) => log.warn({ message }, '[config] could not read project-local config'),
+    });
+    return local.value.linkPreviews?.enabled === true;
+  }
+
   // Provider identity for the cache key + the service's re-warm trigger. A change
   // here (provider/model/dims) re-loads the embedder and invalidates the cache.
   function semanticProviderFingerprint(cfg: ResolvedSemanticConfig): string {
@@ -1571,6 +1587,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       },
       semanticSearch,
       getSemanticSimilarityFloor: () => readSemanticSearchConfig().similarityFloor,
+      getLinkPreviewsEnabled: readLinkPreviewsEnabled,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),
       ephemeral,
       onReferencedAssetsCacheInvalidator: (invalidate) => {

@@ -49,6 +49,7 @@ import {
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
+import { useConfigContext } from '../../lib/config-provider';
 import { type CreatePageSeed, createPageFromSeedAndUpdate } from '../../lib/create-page';
 import { normalizeDocNameInput } from '../../lib/doc-paths';
 import { cn } from '../../lib/utils';
@@ -63,6 +64,10 @@ import {
   LinkPathSuggestionInput,
   preventLinkPathSuggestionDialogDismiss,
 } from '../link-path-suggestions';
+import { ExternalLinkPreviewCard } from '../link-preview/ExternalLinkPreviewCard.tsx';
+import { InternalDocPreviewCard } from '../link-preview/InternalDocPreviewCard.tsx';
+import { useExternalLinkPreview } from '../link-preview/use-external-link-preview.ts';
+import { useInternalDocPreview } from '../link-preview/use-internal-doc-preview.ts';
 import { isSafeNavigationUrl } from '../safe-navigation-url';
 import { CopyButton } from './LinkPropPanelCopy';
 import { consumePendingLinkEdit } from './link-edit-autoopen';
@@ -364,13 +369,34 @@ export function InternalLinkPropPanel({
   const { addPage, folderPaths, pages, loading } = usePageList();
   const { t } = useLingui();
 
+  // Classify + resolve the target before the early-return guards so the
+  // doc-preview hook is called unconditionally (Rules of Hooks). The card only
+  // renders for a resolved doc target; every other kind leaves the pill as-is.
+  const target = href ? classifyMarkdownHref(href, sourceDocName) : null;
+  const docIntent =
+    target?.kind === 'doc' ? resolveLinkTargetIntent(target.docName, { pages, folderPaths }) : null;
+  const docPreview = useInternalDocPreview({
+    docName:
+      target?.kind === 'doc' &&
+      docIntent?.kind === 'navigate' &&
+      docIntent.displayState === 'resolved'
+        ? target.docName
+        : null,
+    anchor: target?.kind === 'doc' ? target.anchor : null,
+    enabled: true,
+  });
+  const { projectLocalConfig } = useConfigContext();
+  const externalPreview = useExternalLinkPreview({
+    url: target?.kind === 'external' ? target.url : null,
+    enabled: projectLocalConfig?.linkPreviews?.enabled ?? false,
+  });
+
   if (!info) {
     // Mark removed mid-render — gracefully close.
     return null;
   }
 
   const linkText = editor.state.doc.textBetween(info.from, info.to);
-  const target = href ? classifyMarkdownHref(href, sourceDocName) : null;
 
   function handleSave(nextHref: string, nextText: string, labelChanged: boolean) {
     const live = getCurrentMarkInfo(editor.state, nodeId);
@@ -508,12 +534,11 @@ export function InternalLinkPropPanel({
       className: 'text-muted-foreground',
     };
   } else if (target?.kind === 'doc') {
-    const intent = resolveLinkTargetIntent(target.docName, { pages, folderPaths });
-    isFolder = intent.kind === 'navigate' && intent.displayState === 'folder';
-    isUnresolved = intent.kind === 'create';
+    isFolder = docIntent?.kind === 'navigate' && docIntent.displayState === 'folder';
+    isUnresolved = docIntent?.kind === 'create';
     missingCreateSeed =
-      intent.kind === 'create'
-        ? { initialDir: intent.initialDir, suggestedName: intent.suggestedName }
+      docIntent?.kind === 'create'
+        ? { initialDir: docIntent.initialDir, suggestedName: docIntent.suggestedName }
         : null;
     if (isFolder) {
       stateLabel = {
@@ -715,6 +740,9 @@ export function InternalLinkPropPanel({
             </Tooltip>
           </div>
         </div>
+
+        {docPreview ? <InternalDocPreviewCard preview={docPreview} /> : null}
+        {externalPreview ? <ExternalLinkPreviewCard metadata={externalPreview} /> : null}
       </InteractionPropPanel>
     </>
   );

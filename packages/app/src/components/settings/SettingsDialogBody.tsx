@@ -108,6 +108,7 @@ import { cn } from '@/lib/utils';
 import { AccountSection } from './AccountSection';
 import { AiToolsSection } from './AiToolsSection';
 import { EmbeddingsKeySection } from './EmbeddingsKeySection';
+import { LinkPreviewsSection } from './LinkPreviewsSection';
 import { OkignoreSection } from './OkignoreSection';
 import { ProjectAiToolsSection } from './ProjectAiToolsSection';
 import { ProjectTemplatesSection } from './ProjectTemplatesSection';
@@ -224,6 +225,14 @@ export function SettingsDialogBody({
     // Project-local semantic-search opt-in. Reads its own project-local
     // binding from ConfigContext (like SyncSection) — no prop threading.
     return <SearchSection />;
+  }
+  if (activeId === 'link-previews') {
+    // Project-local external-link-preview egress opt-in. Reads its own
+    // project-local binding from ConfigContext, same as SearchSection. The
+    // nav item is hidden on the packaged file:// renderer, whose Origin:
+    // null requests the preview route's anti-proxy gate rejects (see the
+    // gating in SettingsDialogShell).
+    return <LinkPreviewsSection />;
   }
   if (activeId === 'terminal') {
     // Desktop-only per-project shell consent (the nav item is gated to the

@@ -55,6 +55,7 @@
     "0Gd0NU": ["Shared"],
     "0LBDjY": ["\"", ["0"], "\" uninstalled — back to a draft"],
     "0NA4b3": ["Keep my version"],
+    "0NkNB5": [["0"], "mo ago"],
     "0SBTff": ["Show terminal"],
     "0TnCvC": ["Rename ", ["0"]],
     "0YEbfk": ["Connect to AI tools"],
@@ -122,6 +123,7 @@
     "2IYGkU": ["This doc has unpushed changes. Recipients will see the last pushed version."],
     "2QM24L": ["All tags"],
     "2RBzMG": ["Network error — check your connection and try again"],
+    "2Snes1": ["This sends the link's address off your machine"],
     "2XQ8Ww": ["Open preview when agent edits"],
     "2YOwme": ["Restarted — now running v", ["appRuntime"], "."],
     "2YZwPB": ["Forward-links response did not match expected shape."],
@@ -244,6 +246,7 @@
     "57fiu8": ["(read-only — edit in source mode for now)"],
     "5ALjdr": ["Move through visual-editor find results from the find field."],
     "5Ajb15": ["The formula <0>c = √(a² + b²)</0> renders inline."],
+    "5AzM72": ["This setting is per-machine and isn't shared with collaborators."],
     "5ClEAu": ["Inline hashtag for cross-doc grouping."],
     "5D3Ior": ["Hide folder"],
     "5DFPDh": [
@@ -265,6 +268,7 @@
     "5QGTaA": ["Could not copy relative path"],
     "5SwVv1": ["Not installed"],
     "5Tk8Fb": ["Loading files"],
+    "5Umg9i": ["Disable external link previews"],
     "5WDhAk": ["Link to a page or external URL."],
     "5ZB7XC": ["File drop zone"],
     "5e1Dri": ["The menu label agents pick this template by (required)."],
@@ -639,6 +643,7 @@
     "EJuO7B": ["Connect a GitHub account to browse and sync your repositories."],
     "ELYtNJ": [".ok folders"],
     "EL_YRd": ["Mirror of <0>api-spec</0>"],
+    "ENpRJV": ["External link previews"],
     "EOjU5V": ["Inline Math Properties"],
     "ETyvvg": ["No language match."],
     "EVnzPs": ["Edit with AI"],
@@ -782,6 +787,7 @@
     "HXFyWD": ["Split diff"],
     "HdkSiO": ["New file"],
     "HfI1dR": ["I already have it locally →"],
+    "HjNrT0": [["0", "plural", { "one": ["#", " backlink"], "other": ["#", " backlinks"] }]],
     "Hl89Qd": ["Loading templates"],
     "HlmZBk": ["Documents response did not match expected shape."],
     "Hnl9nT": ["Set where pasted and dropped files are stored for this project."],
@@ -897,6 +903,7 @@
     "KkEAud": ["Create a file from the current document or folder context."],
     "KmydK6": ["Bold"],
     "KnoB--": ["Will be saved as <0>", ["sanitized"], "</0>."],
+    "KpOJFY": ["Enable external link previews"],
     "Kr3VPS": ["Codex will still ask until you run \"ok init\" in a terminal for this project."],
     "KsAPaB": ["This branch is checked out in:"],
     "KszKI_": ["Skill level"],
@@ -988,8 +995,12 @@
     "MmqnGI": ["No global skills yet."],
     "Mnavhe": [["propPanelDescriptorLabel"], " Properties"],
     "MqQoV-": ["Describe what you want to build, start a blank file, or scaffold from a template."],
+    "MqsbfN": ["Turn on external link previews?"],
     "MrwYIK": ["Toggle a source comment through CodeMirror."],
     "MsuXaI": ["Hide panel (", ["panelShortcut"], ")"],
+    "My0wYT": [
+      "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
+    ],
     "My9uXI": [
       "Updated \"",
       ["display"],
@@ -1180,12 +1191,14 @@
     "RN62Q8": [
       "We'll build <0>openknowledge.skill</0>, save it to <1>~/Downloads</1>, and open the Claude Desktop App for you."
     ],
+    "RO-yts": ["Failed to disable link previews — ", ["detail"]],
     "RSqaSd": ["Project root"],
     "RVZJWQ": ["Search projects..."],
     "RXNu_r": ["Shared via git with everyone working on this project."],
     "RY6Bq1": ["Open shared ", ["targetNoun"]],
     "RaPMZv": ["Keyboard shortcuts available in the editor and workspace."],
     "Rah7yq": ["What should the AI do? (optional)"],
+    "Rb1zMa": ["No excerpt"],
     "RfHNf8": ["Open activity panel for ", ["tooltipName"]],
     "RfaEio": ["Toggle source comment"],
     "RgbKEe": ["You don't have access to this repository."],
@@ -1309,6 +1322,9 @@
     "VBE2dw": [
       "Build and keep track of the world behind your story. A home for your characters, places, factions, and the lore that ties them together, so details stay consistent as you write."
     ],
+    "VFQXPl": [
+      "External link previews show a card with the site name, page title, and description when you hover a link."
+    ],
     "VIwCaD": ["Entry"],
     "VM7H66": ["This file is binary and can't be shown as text."],
     "VNgKZz": ["Advanced settings"],
@@ -1401,6 +1417,10 @@
     "Xet9MX": ["Failed to load backlinks"],
     "Xewl6B": ["Your local copy is behind. Pull the latest changes, then open the link again."],
     "XfzqjK": ["template \"", ["name"], "\""],
+    "Xisk4u": ["Edited ", ["editedAgo"]],
+    "Xk0-VC": [
+      "Previews of links to other documents in this project are always on and read from the local index — nothing leaves your computer for those."
+    ],
     "Xl-UUg": ["guides/install or https://example.com"],
     "XmJfZT": ["name"],
     "XnlF3W": ["Add the next matching source selection."],
@@ -1441,6 +1461,7 @@
     "YaeyFh": ["Pulls may overwrite uncommitted edits in your local files."],
     "Yea-K5": ["Restore to this point"],
     "Yi0VMG": ["Upload ", ["keyName"]],
+    "YjMLg2": ["Off — external links show only their URL. No requests leave this computer."],
     "YjhKI5": ["Cloning..."],
     "YlDuro": ["Fit height"],
     "YsEYYS": [
@@ -1482,6 +1503,7 @@
     "ZYtq3m": [
       "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
     ],
+    "ZatAO_": ["Failed to enable link previews — ", ["detail"]],
     "Zf0w-R": [
       "Take a piece of writing from a rough idea to a finished draft to something you're ready to share. Good for blog posts, essays, or anything you want to move through clear stages."
     ],
@@ -1566,6 +1588,7 @@
     "ajz9F8": ["Couldn't load conflict content for ", ["filePath"], ". Try reloading the page."],
     "aoa6xA": ["network error (is `ok ui` running?)"],
     "arUUsK": ["Product updates"],
+    "ax9kie": ["Link preview settings not yet loaded — try again in a moment"],
     "az8lvo": ["Off"],
     "b3Thhd": ["Upload failed"],
     "b4AQFK": ["Open activity panel for ", ["tooltipName"], ", editing ", ["realCurrentDoc"]],
@@ -1611,6 +1634,9 @@
     "c8jBgX": ["Checking for updates on GitHub"],
     "cEoyWz": ["Add item to ", ["keyName"]],
     "cF9DyA": ["Reconnecting after server restart"],
+    "cGV6Mh": [
+      "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
+    ],
     "cIptmH": ["In the Claude Desktop App"],
     "cKjLuT": ["(project + user)"],
     "cN1Gcp": ["A worktree folder for ", ["shareBranch"], " already exists."],
@@ -1778,6 +1804,7 @@
       "This page doesn't exist yet. Open it to create the page in the editor and collapse the graph."
     ],
     "ggs9f8": ["Search files, folders, or commands"],
+    "gh27t1": ["Link previews"],
     "gijbne": ["Failed to rename path"],
     "gk_-qj": ["Couldn't rename template: ", ["0"]],
     "gljvbT": [["words", "plural", { "one": ["word"], "other": ["words"] }]],
@@ -2000,6 +2027,7 @@
     "lVWEIL": ["Indexed ", ["embedded"], " of ", ["total"], " pages."],
     "lWNpNB": ["Add cursors or select matching occurrences through CodeMirror."],
     "lXKZGw": ["Heading 1"],
+    "lY27jj": [["0"], "y ago"],
     "lZAiSP": ["Backlinks response did not match expected shape."],
     "l_FAT6": ["Use letters, digits, <0>-</0> or <1>_</1> only."],
     "l_UFPv": ["Properties"],
@@ -2009,6 +2037,9 @@
     "ljHjfg": ["That branch is already open in another worktree."],
     "lkYioO": ["Show or hide document panel"],
     "ll2yNl": ["Content directory"],
+    "lmBPt0": [
+      "Only external links trigger a request. Links to other documents in this project preview from the local index and never leave your computer."
+    ],
     "lond3p": ["Shows above the code body. Round-trips as `title=\"...\"` in markdown."],
     "lrhetp": ["+ ", ["overflow"], " more"],
     "ls1N1w": ["(missing)"],
@@ -2258,6 +2289,9 @@
     "rQAQus": ["Couldn't save template: ", ["error"]],
     "rQRrkB": ["yesterday"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") isn't installed or on your PATH."],
+    "rVJpLz": [
+      "On — hovering an external link sends its URL to the destination site to fetch a preview."
+    ],
     "rVgSRB": ["Collapse ", ["docName"]],
     "rVxu1k": ["No pages link here yet."],
     "rXz97P": ["Numbered list of items."],
@@ -2489,6 +2523,7 @@
     "xNyj3h": ["Reinstall for Claude Chat & Cowork"],
     "xOTzt5": ["just now"],
     "xSVO3J": ["What gets created"],
+    "xV5sXw": [["0"], "w ago"],
     "xWEvuo": ["Ask AI"],
     "xXo8FT": ["Save failed: ", ["error"]],
     "xYMPyY": [

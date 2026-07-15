@@ -88,6 +88,11 @@ const EXEMPT_HANDLERS = new Set([
   'handleBacklinks',
   'handleBacklinkCounts',
   'handleForwardLinks',
+  // POST /api/link-preview — read-only external metadata fetch for the editor
+  // hover card. No Y.Doc / vault mutation and no agent-authored content; its
+  // access control is the route's own anti-proxy gate plus the SSRF guard, not
+  // agent-identity attribution.
+  'handleLinkPreview',
   'handleLinkGraph',
   'handleSearch',
   // GET /api/semantic-status — read-only setup/coverage probe for the Settings

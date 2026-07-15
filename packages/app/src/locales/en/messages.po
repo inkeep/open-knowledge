@@ -113,6 +113,11 @@ msgstr "(some may already be hidden by other rules)"
 msgid "(user-level only)"
 msgstr "(user-level only)"
 
+#. placeholder {0}: preview.backlinkCount
+#: src/editor/link-preview/InternalDocPreviewCard.tsx
+msgid "{0, plural, one {# backlink} other {# backlinks}}"
+msgstr "{0, plural, one {# backlink} other {# backlinks}}"
+
 #. placeholder {0}: tag.count
 #: src/components/CommandPalette.tsx
 msgid "{0, plural, one {# doc} other {# docs}}"
@@ -177,20 +182,41 @@ msgstr "{0}/{1} — {2}"
 msgid "{0}/{1} {2}"
 msgstr "{0}/{1} {2}"
 
+#. placeholder {0}: Math.floor(diff / DAY_MS)
 #. placeholder {0}: Math.floor(diffSec / 86400)
 #: src/components/FolderTimelineCard.tsx
+#: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "{0}d ago"
 msgstr "{0}d ago"
 
+#. placeholder {0}: Math.floor(diff / HOUR_MS)
 #. placeholder {0}: Math.floor(diffSec / 3600)
 #: src/components/FolderTimelineCard.tsx
+#: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "{0}h ago"
 msgstr "{0}h ago"
 
+#. placeholder {0}: Math.floor(diff / MINUTE_MS)
 #. placeholder {0}: Math.floor(diffSec / 60)
 #: src/components/FolderTimelineCard.tsx
+#: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "{0}m ago"
 msgstr "{0}m ago"
+
+#. placeholder {0}: Math.floor(diff / MONTH_MS)
+#: src/editor/link-preview/InternalDocPreviewCard.tsx
+msgid "{0}mo ago"
+msgstr "{0}mo ago"
+
+#. placeholder {0}: Math.floor(diff / WEEK_MS)
+#: src/editor/link-preview/InternalDocPreviewCard.tsx
+msgid "{0}w ago"
+msgstr "{0}w ago"
+
+#. placeholder {0}: Math.floor(diff / YEAR_MS)
+#: src/editor/link-preview/InternalDocPreviewCard.tsx
+msgid "{0}y ago"
+msgstr "{0}y ago"
 
 #: src/components/EditorTabs.tsx
 msgid "{accessibleLabel} (conflict)"
@@ -1257,6 +1283,7 @@ msgstr "Can't safely edit this tool's config"
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
+#: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
@@ -2535,6 +2562,10 @@ msgstr "Diff layout"
 msgid "Diff unavailable"
 msgstr "Diff unavailable"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Disable external link previews"
+msgstr "Disable external link previews"
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Disable git auto-sync"
 msgstr "Disable git auto-sync"
@@ -2775,6 +2806,10 @@ msgstr "Edit wiki link"
 msgid "Edit with AI"
 msgstr "Edit with AI"
 
+#: src/editor/link-preview/InternalDocPreviewCard.tsx
+msgid "Edited {editedAgo}"
+msgstr "Edited {editedAgo}"
+
 #: src/components/FolderTimelineCard.tsx
 msgid "edited template"
 msgstr "edited template"
@@ -2862,6 +2897,10 @@ msgstr "Empty starting content"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Enable auto-sync"
 msgstr "Enable auto-sync"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Enable external link previews"
+msgstr "Enable external link previews"
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Enable git auto-sync"
@@ -2978,6 +3017,14 @@ msgstr "Explore"
 msgid "External link"
 msgstr "External link"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "External link previews"
+msgstr "External link previews"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "External link previews show a card with the site name, page title, and description when you hover a link."
+msgstr "External link previews show a card with the site name, page title, and description when you hover a link."
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "External wiki link"
 msgstr "External wiki link"
@@ -3027,6 +3074,10 @@ msgstr "Failed to delete path"
 msgid "Failed to delete property"
 msgstr "Failed to delete property"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Failed to disable link previews — {detail}"
+msgstr "Failed to disable link previews — {detail}"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Failed to disable semantic search — {detail}"
 msgstr "Failed to disable semantic search — {detail}"
@@ -3038,6 +3089,10 @@ msgstr "Failed to disable sync — {detail}"
 #: src/components/FileTree.tsx
 msgid "Failed to duplicate path"
 msgstr "Failed to duplicate path"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Failed to enable link previews — {detail}"
+msgstr "Failed to enable link previews — {detail}"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Failed to enable semantic search — {detail}"
@@ -3989,6 +4044,7 @@ msgstr "Jump to tab 1-8"
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
+#: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "just now"
 msgstr "just now"
 
@@ -4064,6 +4120,15 @@ msgstr "Link"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Link copied."
 msgstr "Link copied."
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Link preview settings not yet loaded — try again in a moment"
+msgstr "Link preview settings not yet loaded — try again in a moment"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Link previews"
+msgstr "Link previews"
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "Link target"
@@ -4662,6 +4727,10 @@ msgstr "No edits yet."
 msgid "No emoji found."
 msgstr "No emoji found."
 
+#: src/editor/link-preview/InternalDocPreviewCard.tsx
+msgid "No excerpt"
+msgstr "No excerpt"
+
 #: src/components/FileSidebar.tsx
 msgid "No file or folder selected"
 msgstr "No file or folder selected"
@@ -4929,6 +4998,10 @@ msgstr "of {totalPages}"
 msgid "Off"
 msgstr "Off"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Off — external links show only their URL. No requests leave this computer."
+msgstr "Off — external links show only their URL. No requests leave this computer."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "Off — search ranks by keyword only. No content leaves this computer."
@@ -4948,6 +5021,10 @@ msgstr "ok ui responded but server.lock has no port yet"
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "On"
 msgstr "On"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
+msgstr "On — hovering an external link sends its URL to the destination site to fetch a preview."
 
 #: src/components/settings/SearchSection.tsx
 msgid "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
@@ -4970,6 +5047,10 @@ msgstr "One pattern per line — appended to <0>.okignore</0>."
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Only collaborators"
 msgstr "Only collaborators"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Only external links trigger a request. Links to other documents in this project preview from the local index and never leave your computer."
+msgstr "Only external links trigger a request. Links to other documents in this project preview from the local index and never leave your computer."
 
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
@@ -5545,6 +5626,10 @@ msgstr "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or op
 #: src/components/ConsentDialogBody.tsx
 msgid "Preview unavailable: {errorDetail}"
 msgstr "Preview unavailable: {errorDetail}"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Previews of links to other documents in this project are always on and read from the local index — nothing leaves your computer for those."
+msgstr "Previews of links to other documents in this project are always on and read from the local index — nothing leaves your computer for those."
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Previous match"
@@ -6594,6 +6679,10 @@ msgstr "Show {0} more"
 msgid "Show {hidden} more"
 msgstr "Show {hidden} more"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
+msgstr "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
 msgstr "Show advanced"
@@ -7513,6 +7602,14 @@ msgstr "This replaces the current skill content with the bundled version {0}. An
 msgid "This sends content off your machine"
 msgstr "This sends content off your machine"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "This sends the link's address off your machine"
+msgstr "This sends the link's address off your machine"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "This setting is per-machine and isn't shared with collaborators."
+msgstr "This setting is per-machine and isn't shared with collaborators."
+
 #: src/components/settings/SearchSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key set with <0>ok embeddings set-key</0>."
 msgstr "This setting is per-machine and isn't shared with collaborators. It needs an API key set with <0>ok embeddings set-key</0>."
@@ -7644,9 +7741,14 @@ msgstr "Try again"
 msgid "Turn off Only markdown files"
 msgstr "Turn off Only markdown files"
 
+#: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/SearchSection.tsx
 msgid "Turn on"
 msgstr "Turn on"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Turn on external link previews?"
+msgstr "Turn on external link previews?"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Turn on semantic search?"
@@ -8097,6 +8199,10 @@ msgstr "When enabled, the agent opens or refreshes the preview after each edit. 
 #: src/components/CreatedItemsList.tsx
 msgid "When the agent runs its scheduled work."
 msgstr "When the agent runs its scheduled work."
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
+msgstr "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Where newly added attachments are placed."

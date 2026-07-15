@@ -59,6 +59,16 @@ describe('getLeafFieldMeta', () => {
     });
   });
 
+  test('returns project-local metadata for the linkPreviews.enabled egress opt-in', () => {
+    const meta = getLeafFieldMeta(ConfigSchema, ['linkPreviews', 'enabled']);
+    expect(meta).toEqual({
+      scope: 'project-local',
+      agentSettable: false,
+      defaultScope: 'project-local',
+      description: expect.any(String),
+    });
+  });
+
   test('returns undefined for an unresolved path', () => {
     const meta = getLeafFieldMeta(ConfigSchema, ['content', 'nonexistent']);
     expect(meta).toBeUndefined();

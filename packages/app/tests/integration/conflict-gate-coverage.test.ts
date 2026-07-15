@@ -79,6 +79,9 @@ const EXEMPT_HANDLERS = new Set([
   'handleBacklinks',
   'handleBacklinkCounts',
   'handleForwardLinks',
+  // POST /api/link-preview — read-only external metadata fetch; never writes a
+  // doc, so there is no in-conflict write to gate.
+  'handleLinkPreview',
   'handleLinkGraph',
   'handleSearch',
   // GET /api/semantic-status — read-only setup/coverage probe; no Y.Doc

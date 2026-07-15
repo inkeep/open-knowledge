@@ -195,7 +195,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     ]);
   });
 
-  test('project-local-strict fields cover autoSync.enabled + appearance.sidebar.* + search.semantic.* + terminal.enabled', () => {
+  test('project-local-strict fields cover autoSync.enabled + appearance.sidebar.* + linkPreviews.enabled + search.semantic.* + terminal.enabled', () => {
     // Project-local fields are per-machine, per-project: each teammate's
     // choice never crosses the git boundary.
     // `<projectDir>/.ok/local/config.yml` is gitignored and never mirrored
@@ -205,6 +205,9 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     // per-machine opt-in for embeddings search — enabling it sends content to
     // a third-party provider (egress) and needs a local API key, so the choice
     // (and its non-secret provider knobs) is inherently per-machine.
+    // `linkPreviews.enabled` is the per-machine opt-in for external link-hover
+    // previews — enabling it sends the hovered URL to the destination site
+    // (egress), so like semantic search the choice is inherently per-machine.
     // `terminal.enabled` gates the in-app real OS shell: a full-privilege
     // capability consented per-machine, never inherited via a clone.
     const leaves: { path: string[]; schema: unknown }[] = [];
@@ -219,6 +222,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'appearance.sidebar.showOnlyMarkdownFiles',
       'appearance.sidebar.showSkillsSection',
       'autoSync.enabled',
+      'linkPreviews.enabled',
       'search.semantic.baseUrl',
       'search.semantic.dimensions',
       'search.semantic.enabled',

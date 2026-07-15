@@ -534,6 +534,26 @@ export const ConfigSchema = z.looseObject({
         model: DEFAULT_EMBEDDINGS_MODEL,
       },
     }),
+  // PROJECT-LOCAL scope: external link-hover previews send the hovered URL to
+  // the destination site to fetch its metadata (egress), so — like semantic
+  // search — each teammate opts in on their own machine rather than inheriting
+  // one collaborator's egress choice through git. Default OFF; the feature
+  // ships dark. Internal (document-to-document) link previews are read entirely
+  // from the local index with no network request and are NOT gated by this key.
+  linkPreviews: z
+    .looseObject({
+      enabled: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          defaultScope: 'project-local',
+          description:
+            "Show a rich preview card (site name, page title, description, favicon) when you hover an external link in the editor. When ON, hovering an external link sends that link's URL to the destination site to fetch its preview metadata — outbound egress, one request per previewed link. Default OFF. Per-machine (project-local) — not shared with collaborators. Previews of links to other documents in this project are read from the local index with no network request and are always on.",
+        })
+        .default(false),
+    })
+    .default({ enabled: false }),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

@@ -25,6 +25,7 @@ export * from './client-logs.ts';
 export * from './document-read.ts';
 export * from './embed-detect.ts';
 export * from './history.ts';
+export * from './link-preview.ts';
 export * from './links-orphans.ts';
 export * from './local-op.ts';
 export * from './metrics.ts';

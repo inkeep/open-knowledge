@@ -21,7 +21,9 @@
  * Sidebar IA:
  *   USER         → Preferences, Hotkeys, Account, AI tools & CLI (Electron
  *                  host only)
- *   THIS PROJECT → Sync, Search, Templates, Ignore patterns, Config sharing
+ *   THIS PROJECT → Sync, Search, Link previews (hidden on the packaged
+ *                  file:// renderer), Templates, Ignore patterns, Config
+ *                  sharing
  *   INTEGRATIONS → Claude Desktop (hidden when desktopPresent === false)
  */
 
@@ -35,6 +37,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { useConfigContext } from '@/lib/config-provider';
+import { isFileProtocolPage } from '@/lib/file-protocol-page';
 import { useClaudeDesktopIntegration } from '@/lib/handoff/use-claude-desktop-integration';
 import { cn } from '@/lib/utils';
 
@@ -97,6 +100,17 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   // its per-project revoke toggle only appears under the Electron preload.
   const isOkDesktopHost = typeof window !== 'undefined' && window.okDesktop != null;
 
+  // The packaged desktop renderer loads over file:// (desktop main's
+  // loadFile), so its POST /api/link-preview requests carry Origin: null,
+  // which the route's anti-proxy gate rejects by design (see
+  // packages/server/src/link-preview/request-gate.ts). External link
+  // previews can never render on that host, so hide the toggle instead of
+  // promising a setting that cannot work. The DEV desktop renderer loads
+  // from http://localhost (loopback Origin, gate passes) and keeps the
+  // item. Remove this gate when a loopback-origin/desktop discriminator
+  // ships.
+  const isFileProtocolRenderer = isFileProtocolPage();
+
   const groups: SidebarGroup[] = [
     {
       id: 'user',
@@ -119,6 +133,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
       items: [
         { id: 'sync', label: t`Sync` },
         { id: 'search', label: t`Search` },
+        ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
         ...(isOkDesktopHost ? [{ id: 'terminal', label: t`Terminal` }] : []),
         // Per-project MCP wiring + runtime skill — desktop-only because the
         // install actors live in the Electron main process (like Terminal).
