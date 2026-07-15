@@ -2,9 +2,10 @@ import { getGitHubStars } from '@inkeep/open-knowledge-core';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { BookOpen, CircleDot, CircleHelp, Globe, Mail, Megaphone, Star } from 'lucide-react';
+import { BookOpen, Bug, CircleDot, CircleHelp, Globe, Mail, Megaphone, Star } from 'lucide-react';
 import type { ComponentProps, FC, ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
+import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { SubscribeForm } from '@/components/SubscribeForm';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -32,13 +33,17 @@ interface ResourceSection {
   links: ResourceLink[];
 }
 
+// Anchor for the desktop-only "Report a bug" action row, which is interleaved
+// directly after this link in the Resources list.
+const FILE_AN_ISSUE_HREF = `${GITHUB_REPO_URL}/issues/new`;
+
 const sections: ResourceSection[] = [
   {
     key: 'resources',
     heading: msg`Resources`,
     links: [
       { label: msg`Docs`, href: 'https://openknowledge.ai/docs', icon: BookOpen },
-      { label: msg`File an issue`, href: `${GITHUB_REPO_URL}/issues/new`, icon: CircleDot },
+      { label: msg`File an issue`, href: FILE_AN_ISSUE_HREF, icon: CircleDot },
       { label: msg`Website`, href: 'https://openknowledge.ai/', icon: Globe },
     ],
   },
@@ -102,6 +107,21 @@ const ResourceLinkRow: FC<{ link: ResourceLink; trailing?: ReactNode }> = ({ lin
   );
 };
 
+// Desktop-only action row: opens the in-app Report-a-bug dialog rather than
+// navigating out, so it renders as a button styled to match the link rows.
+const ReportBugRow: FC<{ onSelect: () => void }> = ({ onSelect }) => (
+  <li>
+    <Button
+      variant="ghost"
+      className={cn(rowClassName, 'h-auto w-full justify-start font-normal')}
+      onClick={onSelect}
+    >
+      <Bug aria-hidden="true" className="size-4 shrink-0" />
+      <Trans>Report a bug</Trans>
+    </Button>
+  </li>
+);
+
 const SectionHeading: FC<{ children: ReactNode }> = ({ children }) => (
   <p className="font-mono tracking-wide uppercase text-muted-foreground text-xs mb-1">{children}</p>
 );
@@ -110,7 +130,13 @@ export const HelpPopover: FC = () => {
   const { t } = useLingui();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [subscribeOpen, setSubscribeOpen] = useState(false);
+  const [reportBugOpen, setReportBugOpen] = useState(false);
   const [starCount, setStarCount] = useState<number | null>(null);
+
+  // The Report-a-bug flow (bundle create + upload) lives entirely behind the
+  // Electron bridge, so the action row and its dialog only exist on desktop;
+  // in the web/CLI host `window.okDesktop` is undefined and the row is omitted.
+  const hasDesktopBridge = typeof window !== 'undefined' && window.okDesktop != null;
 
   // Fetch the repo's star count the first time the menu opens (GitHub's public
   // API sends `Access-Control-Allow-Origin: *`, so the cross-origin GET works
@@ -126,96 +152,112 @@ export const HelpPopover: FC = () => {
   }, [popoverOpen, starCount]);
 
   return (
-    <Popover
-      open={popoverOpen}
-      onOpenChange={(open) => {
-        setPopoverOpen(open);
-        // Reset the nested Subscribe popover when the menu closes, so it
-        // doesn't re-appear already-open on the next menu open.
-        if (!open) setSubscribeOpen(false);
-      }}
-    >
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 hover:bg-accent text-muted-foreground"
-            >
-              <CircleHelp className="size-4" />
-              <span className="sr-only">
-                <Trans>Resources</Trans>
-              </span>
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>
-          <Trans>Resources</Trans>
-        </TooltipContent>
-      </Tooltip>
-      <PopoverContent align="end" className="w-56 p-3">
-        {sections.map((section, index) => (
-          <div key={section.key} className={cn(index > 0 && 'mt-3')}>
-            <SectionHeading>{t(section.heading)}</SectionHeading>
-            <nav aria-label={t(section.heading)}>
+    <>
+      <Popover
+        open={popoverOpen}
+        onOpenChange={(open) => {
+          setPopoverOpen(open);
+          // Reset the nested Subscribe popover when the menu closes, so it
+          // doesn't re-appear already-open on the next menu open.
+          if (!open) setSubscribeOpen(false);
+        }}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 hover:bg-accent text-muted-foreground"
+              >
+                <CircleHelp className="size-4" />
+                <span className="sr-only">
+                  <Trans>Resources</Trans>
+                </span>
+              </Button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent>
+            <Trans>Resources</Trans>
+          </TooltipContent>
+        </Tooltip>
+        <PopoverContent align="end" className="w-56 p-3">
+          {sections.map((section, index) => (
+            <div key={section.key} className={cn(index > 0 && 'mt-3')}>
+              <SectionHeading>{t(section.heading)}</SectionHeading>
+              <nav aria-label={t(section.heading)}>
+                <ul className="space-y-0.5">
+                  {section.links.map((link) => (
+                    <Fragment key={link.href}>
+                      <ResourceLinkRow
+                        link={link}
+                        trailing={
+                          link.href === GITHUB_REPO_URL && starCount !== null ? (
+                            <StarCount count={starCount} />
+                          ) : undefined
+                        }
+                      />
+                      {/* Interleaved right after "File an issue" so the two
+                          issue-reporting actions sit together; desktop-only. */}
+                      {hasDesktopBridge && link.href === FILE_AN_ISSUE_HREF && (
+                        <ReportBugRow
+                          onSelect={() => {
+                            setPopoverOpen(false);
+                            setReportBugOpen(true);
+                          }}
+                        />
+                      )}
+                    </Fragment>
+                  ))}
+                </ul>
+              </nav>
+            </div>
+          ))}
+
+          <div className="mt-3">
+            <SectionHeading>
+              <Trans>Product updates</Trans>
+            </SectionHeading>
+            <nav aria-label={t`Product updates`}>
               <ul className="space-y-0.5">
-                {section.links.map((link) => (
-                  <ResourceLinkRow
-                    key={link.href}
-                    link={link}
-                    trailing={
-                      link.href === GITHUB_REPO_URL && starCount !== null ? (
-                        <StarCount count={starCount} />
-                      ) : undefined
-                    }
-                  />
-                ))}
+                <ResourceLinkRow
+                  link={{ label: msg`What's new`, href: WHATS_NEW_HREF, icon: Megaphone }}
+                />
+                <li>
+                  <Popover open={subscribeOpen} onOpenChange={setSubscribeOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className={cn(rowClassName, 'h-auto w-full justify-start font-normal')}
+                      >
+                        <Mail aria-hidden="true" className="size-4 shrink-0" />
+                        <Trans>Subscribe</Trans>
+                      </Button>
+                    </PopoverTrigger>
+                    {/* Open to the left of the whole dropdown: the row is inset
+                      by the dropdown's p-3, so sideOffset clears that padding
+                      plus a gap rather than overlapping the menu. */}
+                    <PopoverContent side="left" align="center" sideOffset={20} className="w-80">
+                      <SubscribeForm
+                        source="resources_menu"
+                        autoFocus
+                        onDismiss={() => setSubscribeOpen(false)}
+                        // Subscribing here also satisfies the returning-user
+                        // subscribe card's suppression flag — one subscribe, from
+                        // any surface, stops the nudge.
+                        onSuccess={() => subscribeCardStore.markSubscribed()}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </li>
               </ul>
             </nav>
           </div>
-        ))}
-
-        <div className="mt-3">
-          <SectionHeading>
-            <Trans>Product updates</Trans>
-          </SectionHeading>
-          <nav aria-label={t`Product updates`}>
-            <ul className="space-y-0.5">
-              <ResourceLinkRow
-                link={{ label: msg`What's new`, href: WHATS_NEW_HREF, icon: Megaphone }}
-              />
-              <li>
-                <Popover open={subscribeOpen} onOpenChange={setSubscribeOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className={cn(rowClassName, 'h-auto w-full justify-start font-normal')}
-                    >
-                      <Mail aria-hidden="true" className="size-4 shrink-0" />
-                      <Trans>Subscribe</Trans>
-                    </Button>
-                  </PopoverTrigger>
-                  {/* Open to the left of the whole dropdown: the row is inset
-                      by the dropdown's p-3, so sideOffset clears that padding
-                      plus a gap rather than overlapping the menu. */}
-                  <PopoverContent side="left" align="center" sideOffset={20} className="w-80">
-                    <SubscribeForm
-                      source="resources_menu"
-                      autoFocus
-                      onDismiss={() => setSubscribeOpen(false)}
-                      // Subscribing here also satisfies the returning-user
-                      // subscribe card's suppression flag — one subscribe, from
-                      // any surface, stops the nudge.
-                      onSuccess={() => subscribeCardStore.markSubscribed()}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </li>
-            </ul>
-          </nav>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+      {/* Sibling to the Popover so the dialog survives the menu closing on
+          select. Desktop-only — gated on the same bridge as the trigger row. */}
+      {hasDesktopBridge && <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />}
+    </>
   );
 };

@@ -27,12 +27,13 @@ import {
   AlertCircleIcon,
   ArchiveIcon,
   CheckIcon,
-  FileTextIcon,
   Loader2,
   ShieldIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { CopyButton } from '@/components/CopyButton';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -44,10 +45,37 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 
 const GITHUB_NEW_ISSUE_URL = 'https://github.com/inkeep/open-knowledge/issues/new';
+const SUPPORT_EMAIL = 'support@inkeep.com';
+
+/** Bare mailto with a prefilled subject — used on the success screen, where the
+ *  report reference becomes the subject so the team can correlate the email. */
+function supportMailtoUrl(subject: string): string {
+  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}`;
+}
+
+/**
+ * `support@inkeep.com` as the app's external-link affordance rather than a code
+ * span. `href` opens the prefilled draft where one exists (email/failure) or a
+ * subject-only mailto (success).
+ */
+function SupportEmailLink({ href }: { href: string }) {
+  return (
+    <a
+      href={href}
+      onClick={(e) => dispatchExternalLinkClick(e, href)}
+      onAuxClick={(e) => dispatchExternalLinkClick(e, href)}
+      className="text-primary hover:underline"
+    >
+      {SUPPORT_EMAIL}
+    </a>
+  );
+}
 
 export interface ReportBugCrashContext {
   /** Surface the error escaped from, e.g. 'document view' or 'app shell'. */
@@ -163,17 +191,19 @@ function ReportBugDialog({
   const [note, setNote] = useState('');
   const [detailed, setDetailed] = useState(crashContext !== undefined || crashInvite !== undefined);
   const [includeDump, setIncludeDump] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [sentFraction, setSentFraction] = useState(0);
   // Bumped whenever the current async create/send no longer owns the dialog
   // (cancel, close): the awaiting handler compares and drops its result.
   const opSeqRef = useRef(0);
-  const copyResetRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const noteId = useId();
+  const logsId = useId();
+  const logsHintId = useId();
   const detailedId = useId();
   const detailedHintId = useId();
   const dumpId = useId();
   const dumpHintId = useId();
+  const referenceId = useId();
+  const whatToIncludeId = useId();
 
   const sending = phase.step === 'sending';
   const noteContextLines =
@@ -199,12 +229,6 @@ function ReportBugDialog({
     };
   }, [sending]);
 
-  useEffect(() => {
-    return () => {
-      clearTimeout(copyResetRef.current);
-    };
-  }, []);
-
   function handleOpenChange(nextOpen: boolean) {
     // Mid-upload the footer Cancel is the only way out — swallowing Radix's
     // Escape/outside-click close keeps the result from landing in a void.
@@ -212,14 +236,13 @@ function ReportBugDialog({
     if (!nextOpen) {
       opSeqRef.current += 1;
       // Reset the form on any concluded close (success, email draft, or upload
-      // failure) so the next open starts clean — not just on success.
+      // failure) so the next open starts clean, not just on success.
       if (phase.step === 'success' || phase.step === 'email' || phase.step === 'failure') {
         setNote('');
         setDetailed(crashContext !== undefined || crashInvite !== undefined);
         setIncludeDump(false);
       }
       setPhase(COMPOSE_IDLE);
-      setCopied(false);
     }
     onOpenChange(nextOpen);
   }
@@ -300,18 +323,6 @@ function ReportBugDialog({
     void window.okDesktop?.shell.openExternal(url);
   }
 
-  function handleCopyReference(reference: string) {
-    void scheduleClipboardWrite(reference)
-      .then(() => {
-        setCopied(true);
-        clearTimeout(copyResetRef.current);
-        copyResetRef.current = setTimeout(() => setCopied(false), 1600);
-      })
-      .catch(() => {
-        // Every clipboard path refused — the reference stays selectable text.
-      });
-  }
-
   function handleOpenGithubIssue(reference: string) {
     const params = new URLSearchParams({
       title: t`Bug report ${reference}`,
@@ -336,13 +347,13 @@ function ReportBugDialog({
               {crashInvite === undefined && (
                 <DialogDescription>
                   <Trans>
-                    Package logs and system info into a report you can review, then send it
-                    privately to the OpenKnowledge team.
+                    Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until
+                    you've reviewed it.
                   </Trans>
                 </DialogDescription>
               )}
             </DialogHeader>
-            <DialogBody className="flex flex-col gap-4">
+            <DialogBody className="flex flex-col gap-5">
               {crashInvite !== undefined && (
                 <div className="flex items-start gap-2.5 rounded-md border border-chart-3/35 bg-chart-3/10 px-3 py-2.5 text-sm">
                   <TriangleAlertIcon
@@ -412,93 +423,117 @@ function ReportBugDialog({
                   disabled={phase.creating}
                 />
               </div>
-              <div className="flex items-start gap-2.5">
-                <Checkbox
-                  id={detailedId}
-                  checked={detailed}
-                  onCheckedChange={(value) => setDetailed(value === true)}
-                  aria-describedby={detailedHintId}
-                  disabled={phase.creating}
-                  className="mt-0.5"
-                />
-                <div className="flex flex-col gap-0.5">
-                  <label htmlFor={detailedId} className="text-sm font-medium">
-                    <Trans>Include detailed diagnostics</Trans>
-                  </label>
-                  <p id={detailedHintId} className="text-xs text-muted-foreground">
-                    <Trans>
-                      Adds telemetry, server state, and runtime info when available. Document names
-                      are anonymized.
-                    </Trans>
+              {/* One group so the heading reads as owning the rows below it:
+                  tighter than the body's gap-5, looser inside than the label
+                  sits to its notes. */}
+              {/* biome-ignore lint/a11y/useSemanticElements: role="group" + aria-labelledby groups the checkboxes under the heading without <fieldset>/<legend>'s layout-reset and legend-flow quirks. */}
+              <div role="group" aria-labelledby={whatToIncludeId} className="flex flex-col gap-3.5">
+                <div className="flex flex-col gap-1.5">
+                  <p id={whatToIncludeId} className="text-sm font-medium">
+                    <Trans>What to include</Trans>
                   </p>
+                  {/* The crash-invite variant offers a non-redactable crash
+                      dump, so the blanket "secrets are redacted" reassurance
+                      would read oddly here — its banner already carries the
+                      "nothing is sent until you review it" line. crashContext
+                      and crashInvite never co-occur, so this also gates the
+                      error-details note. */}
+                  {crashInvite === undefined && (
+                    <p className="text-1sm text-muted-foreground">
+                      {crashContext !== undefined ? (
+                        <Trans>
+                          Details about the error you just hit are included. Secrets like API keys
+                          and tokens are redacted automatically.
+                        </Trans>
+                      ) : (
+                        <Trans>Secrets like API keys and tokens are redacted automatically.</Trans>
+                      )}
+                    </p>
+                  )}
                 </div>
-              </div>
-              {crashInvite !== undefined && (
+                {/* Base tier: logs are in every report. A checked+disabled box
+                  states that non-negotiably while staying visually parallel to
+                  the optional row below. The label, badge, and hint are real
+                  text, so the fact is conveyed even where a disabled control is
+                  skipped by assistive tech. */}
                 <div className="flex items-start gap-2.5">
                   <Checkbox
-                    id={dumpId}
-                    checked={includeDump}
-                    onCheckedChange={(value) => setIncludeDump(value === true)}
-                    aria-describedby={dumpHintId}
+                    id={logsId}
+                    checked
+                    disabled
+                    aria-describedby={logsHintId}
+                    className="mt-0.5"
+                  />
+                  <div className="flex flex-col gap-0.5">
+                    <label
+                      htmlFor={logsId}
+                      className="flex items-center gap-2 text-sm font-medium text-foreground"
+                    >
+                      <Trans>Logs & system info</Trans>
+                      <Badge variant="primary" className="text-2xs">
+                        <Trans>Always included</Trans>
+                      </Badge>
+                    </label>
+                    <p id={logsHintId} className="text-1sm text-muted-foreground">
+                      {systemWide ? (
+                        <Trans>
+                          App & system info and recent app logs. No project is open, so project logs
+                          aren't included.
+                        </Trans>
+                      ) : (
+                        <Trans>
+                          App & system info, recent app logs, and project server logs: the
+                          essentials we need to reproduce the issue.
+                        </Trans>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <Checkbox
+                    id={detailedId}
+                    checked={detailed}
+                    onCheckedChange={(value) => setDetailed(value === true)}
+                    aria-describedby={detailedHintId}
                     disabled={phase.creating}
                     className="mt-0.5"
                   />
                   <div className="flex flex-col gap-0.5">
-                    <label htmlFor={dumpId} className="text-sm font-medium">
-                      <Trans>Include crash dump</Trans>
+                    <label htmlFor={detailedId} className="text-sm font-medium">
+                      <Trans>Detailed diagnostics</Trans>
                     </label>
-                    <p id={dumpHintId} className="text-xs text-muted-foreground">
+                    <p id={detailedHintId} className="text-1sm text-muted-foreground">
                       <Trans>
-                        A memory snapshot from the crash. It can contain document content and can't
-                        be redacted — leave off unless you're comfortable sharing it.
+                        Adds telemetry, server state, and runtime info when available. Document
+                        names are anonymized.
                       </Trans>
                     </p>
                   </div>
                 </div>
-              )}
-              {crashInvite === undefined && (
-                <div className="flex flex-col gap-2 rounded-md border bg-muted/50 px-3 py-2.5 text-xs">
-                  <div className="flex items-start gap-2">
-                    <FileTextIcon
-                      className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-                      aria-hidden="true"
+                {crashInvite !== undefined && (
+                  <div className="flex items-start gap-2.5">
+                    <Checkbox
+                      id={dumpId}
+                      checked={includeDump}
+                      onCheckedChange={(value) => setIncludeDump(value === true)}
+                      aria-describedby={dumpHintId}
+                      disabled={phase.creating}
+                      className="mt-0.5"
                     />
-                    <span>
-                      {systemWide ? (
+                    <div className="flex flex-col gap-0.5">
+                      <label htmlFor={dumpId} className="text-sm font-medium">
+                        <Trans>Crash dump</Trans>
+                      </label>
+                      <p id={dumpHintId} className="text-1sm text-muted-foreground">
                         <Trans>
-                          App & system info, recent app logs — no project is open, so no project
-                          logs are included.
+                          A memory snapshot from the crash. It can contain document content and
+                          can't be redacted, so leave it off unless you're comfortable sharing it.
                         </Trans>
-                      ) : (
-                        <Trans>App & system info, recent app logs, project server logs</Trans>
-                      )}
-                    </span>
-                  </div>
-                  {crashContext !== undefined && (
-                    <div className="flex items-start gap-2">
-                      <AlertCircleIcon
-                        className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                      <span>
-                        <Trans>Details about the error you just hit are included.</Trans>
-                      </span>
+                      </p>
                     </div>
-                  )}
-                  <div className="flex items-start gap-2 border-t pt-2 text-muted-foreground">
-                    <ShieldIcon
-                      className="mt-0.5 size-3.5 shrink-0 text-chart-2"
-                      aria-hidden="true"
-                    />
-                    <span>
-                      <Trans>
-                        Secrets like API keys and tokens are redacted automatically. You'll review
-                        the report before it's sent.
-                      </Trans>
-                    </span>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </DialogBody>
             <DialogFooter>
               <Button
@@ -528,7 +563,7 @@ function ReportBugDialog({
                 <Trans>Review your report</Trans>
               </DialogTitle>
               <DialogDescription>
-                <Trans>Take a look if you'd like — this exact file is what we receive.</Trans>
+                <Trans>Take a look if you'd like. This exact file is what we receive.</Trans>
               </DialogDescription>
             </DialogHeader>
             <DialogBody className="flex flex-col gap-4">
@@ -540,7 +575,10 @@ function ReportBugDialog({
                 onReveal={revealZip}
               />
               <div className="flex items-start gap-2 rounded-md border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
-                <ShieldIcon className="mt-0.5 size-3.5 shrink-0 text-chart-2" aria-hidden="true" />
+                <ShieldIcon
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
                 <span>
                   <Trans>
                     Sent privately to the OpenKnowledge team, along with your note and app version.
@@ -623,48 +661,54 @@ function ReportBugDialog({
         {phase.step === 'success' && (
           <>
             <DialogBody>
-              <div role="status" className="flex flex-col items-center gap-2.5 py-2 text-center">
-                <div
-                  className="grid size-11 place-items-center rounded-full bg-chart-2/15 text-chart-2"
-                  aria-hidden="true"
-                >
-                  <CheckIcon className="size-5" />
+              <div className="flex flex-col gap-3">
+                {/* Scope the live region to the confirmation + summary line so
+                    success announces a focused message, not the whole subtree
+                    (reference field + follow-up copy stay outside it). */}
+                <div role="status" className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckIcon className="size-5 shrink-0 text-primary" aria-hidden="true" />
+                    <DialogTitle>
+                      <Trans>Thanks for the report!</Trans>
+                    </DialogTitle>
+                  </div>
+                  <DialogDescription>
+                    <Trans>We've filed it with the team and attached your logs.</Trans>
+                  </DialogDescription>
                 </div>
-                <DialogTitle>
-                  <Trans>Report sent — thank you</Trans>
-                </DialogTitle>
-                <DialogDescription>
-                  <Trans>We've filed it with the team and attached your logs.</Trans>
-                </DialogDescription>
-                <div className="flex items-center gap-2.5 rounded-md border border-dashed px-3.5 py-2 font-mono text-sm font-semibold tracking-wide">
-                  {phase.reference}
-                  <Button
-                    variant="link"
-                    className="h-auto p-0 font-sans text-xs font-medium"
-                    // Bare "Copy" is self-describing next to the reference
-                    // visually, but generic when a screen reader tabs past it.
-                    // The visible text stays a prefix of the accessible name
-                    // (WCAG 2.5.3 label-in-name).
-                    aria-label={copied ? t`Copied report reference` : t`Copy report reference`}
-                    onClick={() => handleCopyReference(phase.reference)}
-                  >
-                    {copied ? <Trans>Copied</Trans> : <Trans>Copy</Trans>}
-                  </Button>
+                {/* Reference snippet + shared CopyButton — same affordance as
+                    the ShareButton link field. */}
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={referenceId} className="text-sm font-medium">
+                    <Trans>Report reference</Trans>
+                  </label>
+                  <div className="relative">
+                    <Input
+                      id={referenceId}
+                      readOnly
+                      value={phase.reference}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onClick={(e) => e.currentTarget.select()}
+                      className="select-all bg-muted pr-9 font-mono text-sm font-medium tracking-wide"
+                    />
+                    <div className="absolute inset-y-0 right-1 flex items-center">
+                      <CopyButton
+                        copyContent={phase.reference}
+                        clipboardWrite={scheduleClipboardWrite}
+                      />
+                    </div>
+                  </div>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   <Trans>
-                    Want to follow along? Open a GitHub issue and mention your reference.
-                  </Trans>
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  <Trans>
-                    Or write to{' '}
-                    <code className="font-mono text-xs text-foreground">support@inkeep.com</code>
+                    <span className="font-medium text-foreground">Want to follow along?</span> Open
+                    a GitHub issue and mention your reference. Or write to{' '}
+                    <SupportEmailLink href={supportMailtoUrl(t`Bug report ${phase.reference}`)} />
                   </Trans>
                 </p>
               </div>
             </DialogBody>
-            <DialogFooter className="sm:justify-center">
+            <DialogFooter>
               <Button
                 variant="outline"
                 className="font-mono uppercase"
@@ -690,7 +734,7 @@ function ReportBugDialog({
                   upload happened, so no alert banner belongs here. */}
               <DialogDescription>
                 <Trans>
-                  Nothing was uploaded — the report stays on this Mac until you email it to us.
+                  Nothing was uploaded. The report stays on this Mac until you email it to us.
                 </Trans>
               </DialogDescription>
             </DialogHeader>
@@ -704,8 +748,7 @@ function ReportBugDialog({
               />
               <p className="text-sm text-muted-foreground">
                 <Trans>
-                  Attach the file in an email to{' '}
-                  <code className="font-mono text-xs text-foreground">support@inkeep.com</code>
+                  Attach the file in an email to <SupportEmailLink href={phase.mailtoUrl} />
                 </Trans>
               </p>
             </DialogBody>
@@ -731,7 +774,7 @@ function ReportBugDialog({
                 <Trans>Couldn't send the report</Trans>
               </DialogTitle>
               <DialogDescription className="sr-only">
-                <Trans>Your report couldn't be sent — try again or email it instead.</Trans>
+                <Trans>Your report couldn't be sent. Try again or email it instead.</Trans>
               </DialogDescription>
             </DialogHeader>
             <DialogBody className="flex flex-col gap-4">
@@ -749,7 +792,7 @@ function ReportBugDialog({
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     <Trans>
-                      Your report is saved on this Mac — nothing was lost. You can email it to us
+                      Your report is saved on this Mac, so nothing was lost. You can email it to us
                       instead.
                     </Trans>
                   </p>
@@ -764,8 +807,7 @@ function ReportBugDialog({
               />
               <p className="text-sm text-muted-foreground">
                 <Trans>
-                  Attach the file in an email to{' '}
-                  <code className="font-mono text-xs text-foreground">support@inkeep.com</code>
+                  Attach the file in an email to <SupportEmailLink href={phase.mailtoUrl} />
                 </Trans>
               </p>
             </DialogBody>
@@ -812,9 +854,11 @@ function ZipCard({ zipPath, zipSizeBytes, fileCount, rawDumpIncluded, onReveal }
   const sizeText = formatSize(zipSizeBytes);
   return (
     <div className="flex items-center gap-2.5 rounded-md border px-3 py-2.5">
-      <ArchiveIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-mono text-xs" title={name}>
+      <div className="flex items-center justify-center size-8 rounded-md bg-muted">
+        <ArchiveIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <p className="truncate text-1sm" title={name}>
           {name}
         </p>
         <p className="text-xs text-muted-foreground">

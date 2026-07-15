@@ -250,7 +250,7 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     // ReportBugDialog is lazy-loaded — await the body chunk mounting.
     expect(await screen.findByRole('dialog')).not.toBeNull();
     expect(screen.getByRole('heading', { name: 'Report a bug' })).not.toBeNull();
-    const checkbox = screen.getByRole('checkbox', { name: 'Include detailed diagnostics' });
+    const checkbox = screen.getByRole('checkbox', { name: 'Detailed diagnostics' });
     expect(checkbox.getAttribute('aria-checked')).toBe('true');
 
     await user.click(screen.getByRole('button', { name: 'Create report' }));

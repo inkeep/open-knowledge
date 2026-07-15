@@ -77,6 +77,13 @@ describe('HelpPopover runtime behavior', () => {
     expect(screen.queryByText('Settings')).toBeNull();
   });
 
+  test('omits the desktop-only Report a bug action in the web host', async () => {
+    await renderOpenHelpPopover();
+
+    const nav = screen.getByRole('navigation', { name: 'Resources' });
+    expect(within(nav).queryByRole('button', { name: 'Report a bug' })).toBeNull();
+  });
+
   test('renders Resources links in the required order', async () => {
     await renderOpenHelpPopover();
 
@@ -157,5 +164,32 @@ describe('HelpPopover runtime behavior', () => {
 
     await userEvent.click(subscribe);
     expect(screen.getByTestId('subscribe-email')).not.toBeNull();
+  });
+});
+
+describe('HelpPopover with the desktop bridge present', () => {
+  beforeEach(() => {
+    // The Report-a-bug row and dialog are gated on `window.okDesktop`; a
+    // minimal stub is enough since the dialog only reaches into the bridge on
+    // Create, not on mount. Cast through unknown — the row's presence check is
+    // structural, so the stub needn't satisfy the full bridge contract.
+    (window as unknown as { okDesktop?: unknown }).okDesktop = {};
+  });
+
+  afterEach(() => {
+    cleanup();
+    (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+  });
+
+  test('adds a Report a bug action immediately after File an issue', async () => {
+    await renderOpenHelpPopover();
+
+    const nav = screen.getByRole('navigation', { name: 'Resources' });
+    const fileAnIssue = within(nav).getByRole('link', { name: 'File an issue' });
+    const reportBug = within(nav).getByRole('button', { name: 'Report a bug' });
+
+    // Positioned right after the File an issue row so the two issue-reporting
+    // actions sit together (DOCUMENT_POSITION_FOLLOWING === 4).
+    expect(fileAnIssue.compareDocumentPosition(reportBug)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });

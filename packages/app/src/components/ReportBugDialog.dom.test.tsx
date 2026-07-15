@@ -18,6 +18,7 @@ import type {
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 mock.module('@lingui/react/macro', () => ({
@@ -156,7 +157,9 @@ async function renderDialog(
   const { ReportBugDialog } = await import('./ReportBugDialog');
   const openChangeCalls: boolean[] = [];
   render(
-    <ReportBugDialog open={true} onOpenChange={(next) => openChangeCalls.push(next)} {...props} />,
+    <TooltipProvider>
+      <ReportBugDialog open={true} onOpenChange={(next) => openChangeCalls.push(next)} {...props} />
+    </TooltipProvider>,
   );
   // ReportBugDialog is lazy-loaded — wait for the body chunk to resolve and
   // mount before returning so callers' synchronous queries see the dialog.
@@ -178,7 +181,7 @@ describe('ReportBugDialog', () => {
     clearBridge();
   });
 
-  test('compose state offers a labeled optional note, an off-by-default diagnostics checkbox, and the privacy summary', async () => {
+  test('compose state offers a labeled optional note, an always-on logs row, an off-by-default diagnostics checkbox, and the redaction note', async () => {
     installBridge();
     await renderDialog();
 
@@ -186,7 +189,7 @@ describe('ReportBugDialog', () => {
     expect(screen.getByRole('heading', { name: 'Report a bug' })).not.toBeNull();
     expect(
       screen.getByText(
-        'Package logs and system info into a report you can review, then send it privately to the OpenKnowledge team.',
+        "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it.",
       ),
     ).not.toBeNull();
 
@@ -195,8 +198,21 @@ describe('ReportBugDialog', () => {
       'e.g. The editor froze after I pasted a large table',
     );
 
-    const checkbox = screen.getByRole('checkbox', { name: 'Include detailed diagnostics' });
+    expect(screen.getByText('What to include')).not.toBeNull();
+
+    // The base tier is always included: checked and non-interactive.
+    const logsCheckbox = screen.getByRole('checkbox', { name: /Logs & system info/ });
+    expect(logsCheckbox.getAttribute('aria-checked')).toBe('true');
+    expect(logsCheckbox.hasAttribute('disabled')).toBe(true);
+    expect(
+      screen.getByText(
+        'App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue.',
+      ),
+    ).not.toBeNull();
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Detailed diagnostics' });
     expect(checkbox.getAttribute('aria-checked')).toBe('false');
+    expect(checkbox.hasAttribute('disabled')).toBe(false);
     expect(
       screen.getByText(
         'Adds telemetry, server state, and runtime info when available. Document names are anonymized.',
@@ -204,12 +220,7 @@ describe('ReportBugDialog', () => {
     ).not.toBeNull();
 
     expect(
-      screen.getByText('App & system info, recent app logs, project server logs'),
-    ).not.toBeNull();
-    expect(
-      screen.getByText(
-        "Secrets like API keys and tokens are redacted automatically. You'll review the report before it's sent.",
-      ),
+      screen.getByText('Secrets like API keys and tokens are redacted automatically.'),
     ).not.toBeNull();
 
     expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeNull();
@@ -222,7 +233,7 @@ describe('ReportBugDialog', () => {
 
     expect(
       screen.getByText(
-        'App & system info, recent app logs — no project is open, so no project logs are included.',
+        "App & system info and recent app logs. No project is open, so project logs aren't included.",
       ),
     ).not.toBeNull();
   });
@@ -235,7 +246,7 @@ describe('ReportBugDialog', () => {
 
     expect(log.createCalls).toEqual([{ level: 'standard', note: 'The editor froze' }]);
     expect(
-      screen.getByText("Take a look if you'd like — this exact file is what we receive."),
+      screen.getByText("Take a look if you'd like. This exact file is what we receive."),
     ).not.toBeNull();
     expect(screen.getByText('2026-07-10T00-00-00-bugreport.zip')).not.toBeNull();
     expect(screen.getByText(/6\.8 MB · secrets redacted · 2 files/)).not.toBeNull();
@@ -253,7 +264,7 @@ describe('ReportBugDialog', () => {
     const log = installBridge();
     await renderDialog();
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Include detailed diagnostics' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Detailed diagnostics' }));
     await createReport();
 
     expect(log.createCalls).toEqual([{ level: 'full', note: undefined }]);
@@ -296,7 +307,7 @@ describe('ReportBugDialog', () => {
       await Promise.resolve();
     });
 
-    await screen.findByRole('heading', { name: 'Report sent — thank you' });
+    await screen.findByRole('heading', { name: 'Thanks for the report!' });
     expect(log.sendCalls).toEqual([
       {
         zipPath: ZIP_PATH,
@@ -308,10 +319,10 @@ describe('ReportBugDialog', () => {
         },
       },
     ]);
-    expect(screen.getByText('OK-8H3KQD')).not.toBeNull();
+    expect(screen.getByDisplayValue('OK-8H3KQD')).not.toBeNull();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Copy report reference' }));
-    await screen.findByRole('button', { name: 'Copied report reference' });
+    await userEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    await screen.findByRole('button', { name: 'Copied!' });
     expect(log.clipboard).toEqual(['OK-8H3KQD']);
 
     await userEvent.click(screen.getByRole('button', { name: 'Open GitHub issue' }));
@@ -349,12 +360,12 @@ describe('ReportBugDialog', () => {
 
     await screen.findByRole('heading', { name: "Couldn't send the report" });
     expect(
-      screen.getByText("Your report couldn't be sent — try again or email it instead."),
+      screen.getByText("Your report couldn't be sent. Try again or email it instead."),
     ).not.toBeNull();
     const alert = screen.getByRole('alert');
     expect(alert.textContent).toContain("The report service couldn't be reached.");
     expect(alert.textContent).toContain(
-      'Your report is saved on this Mac — nothing was lost. You can email it to us instead.',
+      'Your report is saved on this Mac, so nothing was lost. You can email it to us instead.',
     );
     expect(screen.getByText('2026-07-10T00-00-00-bugreport.zip')).not.toBeNull();
 
@@ -365,7 +376,7 @@ describe('ReportBugDialog', () => {
     expect(log.opened).toEqual(['mailto:support@inkeep.com?subject=OpenKnowledge%20bug']);
 
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByRole('heading', { name: 'Report sent — thank you' });
+    await screen.findByRole('heading', { name: 'Thanks for the report!' });
     expect(log.sendCalls).toHaveLength(2);
     expect(log.sendCalls[1].zipPath).toBe(ZIP_PATH);
     expect(log.sendCalls[1].metadata.note).toBe('still my note');
@@ -388,7 +399,7 @@ describe('ReportBugDialog', () => {
     await screen.findByRole('heading', { name: 'Send your report by email' });
     expect(
       screen.getByText(
-        'Nothing was uploaded — the report stays on this Mac until you email it to us.',
+        'Nothing was uploaded. The report stays on this Mac until you email it to us.',
       ),
     ).not.toBeNull();
     // An informational state, not an error: no alert, no unreachable-service
@@ -439,9 +450,13 @@ describe('ReportBugDialog', () => {
       crashContext: { source: 'document view', docName: 'alpha.md', errorMessage: 'boom' },
     });
 
-    const checkbox = screen.getByRole('checkbox', { name: 'Include detailed diagnostics' });
+    const checkbox = screen.getByRole('checkbox', { name: 'Detailed diagnostics' });
     expect(checkbox.getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByText('Details about the error you just hit are included.')).not.toBeNull();
+    expect(
+      screen.getByText(
+        'Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically.',
+      ),
+    ).not.toBeNull();
 
     await createReport('It crashed while I typed');
 
@@ -453,7 +468,7 @@ describe('ReportBugDialog', () => {
     ]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
-    await screen.findByRole('heading', { name: 'Report sent — thank you' });
+    await screen.findByRole('heading', { name: 'Thanks for the report!' });
     expect(log.sendCalls[0].metadata.note).toBe(
       'It crashed while I typed\n\nCrash source: document view\nDocument: alpha.md\nError: boom',
     );
@@ -494,20 +509,24 @@ describe('ReportBugDialog', () => {
       'e.g. Switching projects while a sync was running',
     );
 
+    // The base logs row is always-on in the crash variant too.
+    const logsCheckbox = screen.getByRole('checkbox', { name: /Logs & system info/ });
+    expect(logsCheckbox.getAttribute('aria-checked')).toBe('true');
+    expect(logsCheckbox.hasAttribute('disabled')).toBe(true);
+
     expect(
-      screen
-        .getByRole('checkbox', { name: 'Include detailed diagnostics' })
-        .getAttribute('aria-checked'),
+      screen.getByRole('checkbox', { name: 'Detailed diagnostics' }).getAttribute('aria-checked'),
     ).toBe('true');
 
-    const dumpBox = screen.getByRole('checkbox', { name: 'Include crash dump' });
+    const dumpBox = screen.getByRole('checkbox', { name: 'Crash dump' });
     expect(dumpBox.getAttribute('aria-checked')).toBe('false');
     expect(screen.getByText(/a memory snapshot from the crash\./i)).not.toBeNull();
     expect(screen.getByText(/can't be redacted/i)).not.toBeNull();
 
     expect(screen.getByRole('button', { name: 'Not now' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
-    // The banner carries the consent line, so the what's-included box yields.
+    // The redaction note is suppressed here: the crash-dump row already
+    // qualifies redaction, and the banner carries the review-gate reassurance.
     expect(screen.queryByText(/secrets like api keys and tokens are redacted/i)).toBeNull();
   });
 
@@ -527,11 +546,11 @@ describe('ReportBugDialog', () => {
     ]);
   });
 
-  test('checking Include crash dump opts the minidump into create', async () => {
+  test('checking Crash dump opts the minidump into create', async () => {
     const log = installBridge();
     await renderDialog({ crashInvite: BOOT_INVITE });
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Include crash dump' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Crash dump' }));
     await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
 
@@ -542,7 +561,7 @@ describe('ReportBugDialog', () => {
     const log = installBridge();
     await renderDialog();
 
-    expect(screen.queryByRole('checkbox', { name: 'Include crash dump' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Crash dump' })).toBeNull();
 
     await createReport();
     expect(log.createCalls).toEqual([{ level: 'standard' }]);
@@ -562,7 +581,7 @@ describe('ReportBugDialog', () => {
     });
     await renderDialog({ crashInvite: BOOT_INVITE });
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Include crash dump' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Crash dump' }));
     await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
 

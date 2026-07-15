@@ -11,7 +11,6 @@
     "-3ois8": ["Hard break"],
     "-5jISU": [["0", "plural", { "one": ["#", " template"], "other": ["#", " templates"] }]],
     "-8PP0T": ["Match case"],
-    "-9ErB5": ["Copied report reference"],
     "-K0AvT": ["Disconnect"],
     "-LHLx7": ["edited template"],
     "-QCLWk": ["Templates available"],
@@ -93,6 +92,7 @@
     "1GhYxC": ["of ", ["totalPages"]],
     "1HBhDS": ["Checking out files"],
     "1MGRQl": ["Terminal sessions"],
+    "1OKzC_": ["Your report couldn't be sent. Try again or email it instead."],
     "1QfxQT": ["Dismiss"],
     "1RluQD": ["Show replace"],
     "1TNIig": ["Open"],
@@ -108,6 +108,9 @@
     "1hvhf0": ["The folder on disk and the id agents use to invoke this skill."],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
     "1t_NnN": ["Reject"],
+    "2-CeZn": [
+      "Your report is saved on this Mac, so nothing was lost. You can email it to us instead."
+    ],
     "2277Tu": ["Collapse graph"],
     "237hSL": ["Ended"],
     "25Pw6a": ["Cloning"],
@@ -119,7 +122,11 @@
     "2B6eYX": ["What this checkbox changes"],
     "2BBAbc": ["List"],
     "2FYpfJ": ["More"],
+    "2FnYUD": [
+      "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
+    ],
     "2GT3Hf": ["Global"],
+    "2H43L8": ["Secrets like API keys and tokens are redacted automatically."],
     "2IYGkU": ["This doc has unpushed changes. Recipients will see the last pushed version."],
     "2QM24L": ["All tags"],
     "2RBzMG": ["Network error — check your connection and try again"],
@@ -139,7 +146,6 @@
       " results."
     ],
     "2q_Q7x": ["Visibility"],
-    "2rQ8G4": ["Or write to <0>support@inkeep.com</0>"],
     "2ryd91": ["Failed to rename property"],
     "2tgFCe": ["Starting clone"],
     "2vIPtm": ["Open link in new tab"],
@@ -183,6 +189,7 @@
     "3h5zMp": ["Something went wrong loading the settings panel."],
     "3iyGWF": ["Open recent project"],
     "3jod3l": ["Connect GitHub"],
+    "3l_cXP": ["Take a look if you'd like. This exact file is what we receive."],
     "3m2GBo": ["Searching docs"],
     "3mFsc3": ["Restore with remote changes"],
     "3o3tur": ["Starter content"],
@@ -228,7 +235,6 @@
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
     "4rjwLG": ["Create with ", ["0"], " CLI"],
     "4sKwf6": ["File already exists"],
-    "4tOxNU": ["Report sent — thank you"],
     "4uNLmk": ["Pulling"],
     "4v2Yyz": ["Select every visible file-tree row when focus is in the Files sidebar."],
     "4xtLTl": ["Hidden folder “", ["basename"], "”"],
@@ -404,6 +410,7 @@
     "8PifYj": ["Mermaid diagram"],
     "8PmoQF": ["Open the insert menu in an empty or active text position."],
     "8RtNI0": ["Failed to load documents"],
+    "8TvlHF": ["Crash dump"],
     "8XQRON": ["Loading repositories"],
     "8_brI5": ["Name is required"],
     "8cS0nH": ["Config sharing unavailable: ", ["0"], "."],
@@ -431,6 +438,7 @@
     "9V0W-R": [
       "Adds the OpenKnowledge skill to the <0>Claude Desktop App</0> so it's available in Chat and Cowork sessions."
     ],
+    "9XIEYq": ["Attach the file in an email to <0/>"],
     "9bCiQ8": ["No pages are missing incoming graph links."],
     "9clcD5": ["Open documents tagged #", ["chip"]],
     "9dw5bW": ["Create with ", ["0"]],
@@ -465,7 +473,6 @@
       "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
     ],
     "AB4qw9": ["New terminal"],
-    "ACCCV-": ["Nothing was uploaded — the report stays on this Mac until you email it to us."],
     "AE7BY3": ["The terminal session ended."],
     "AIn2Yv": [["displayName"], " CLI, ", ["hint"]],
     "AItsE5": ["Open it there"],
@@ -510,7 +517,6 @@
         { "one": ["#", " file conflicted"], "other": ["#", " files conflicted"] }
       ]
     ],
-    "B7XVXd": ["Attach the file in an email to <0>support@inkeep.com</0>"],
     "BAH4qX": ["Selected graph item"],
     "BBqGS9": ["Desktop"],
     "BD0XSC": ["Failed to load project templates"],
@@ -537,6 +543,7 @@
     "Bx4EXG": ["Actions for ", ["label"]],
     "By-7Pn": ["Toggle a bullet list."],
     "BymzO4": ["Document outline"],
+    "C0hoX6": ["Always included"],
     "C37Zkt": ["Send to"],
     "C62P6b": ["Editor selection"],
     "C7XjNB": ["Global Skill"],
@@ -547,7 +554,6 @@
     "COr1Y7": [
       "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
     ],
-    "CSIkhP": ["Take a look if you'd like — this exact file is what we receive."],
     "CSL0l1": ["Couldn't clear the key — please try again."],
     "CTJLpz": ["\"", ["trimmed"], "\" already exists here"],
     "CU3AiE": ["Switching branches"],
@@ -565,9 +571,6 @@
     "Ck9XRt": ["Couldn't save the key — please try again."],
     "CmeH9S": ["Add property to ", ["keyName"]],
     "CoHvYd": ["Moved ", ["0"], " to position ", ["1"], " of ", ["2"]],
-    "Ct7b_s": [
-      "Your report is saved on this Mac — nothing was lost. You can email it to us instead."
-    ],
     "CvsD6Y": ["via ", ["viaTags"]],
     "D-Oh1s": ["How to set up ", ["0"], " (opens in browser)"],
     "D12vtS": ["(detached)"],
@@ -702,6 +705,9 @@
     ],
     "FEqWFL": ["Guides your AI agents on how to work here."],
     "FEr96N": ["Theme"],
+    "FHSN1Z": [
+      "<0>Want to follow along?</0> Open a GitHub issue and mention your reference. Or write to <1/>"
+    ],
     "FNTx6u": ["Search \"", ["semanticSubmitQuery"], "\" by meaning"],
     "FOGD7m": ["Create something great."],
     "FRYB1Q": ["/api/config returned a malformed body"],
@@ -714,6 +720,7 @@
       ")."
     ],
     "FXk_zY": ["Adds a guided workflow for authoring new Agent Skills."],
+    "FgRAvd": ["Logs & system info"],
     "FjkaiT": ["Zoom out"],
     "FnMkli": ["Sync disabled — you don't have permission to push"],
     "FqTpiN": ["Bird wiki"],
@@ -758,6 +765,9 @@
     "GUYwCr": ["Dismiss notice"],
     "GUqTzn": ["Competitor research"],
     "GXf9hG": ["Cloning ", ["repoName"], "..."],
+    "GZzDqc": [
+      "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
+    ],
     "G_686w": ["Task List"],
     "G_efLf": ["Installed into"],
     "G_mWXb": ["Filter languages"],
@@ -822,6 +832,7 @@
     "IWGfGF": ["Checking your GitHub connection"],
     "IX7-sq": ["Something went wrong opening \"", ["docName"], "\"."],
     "IX_uXB": ["my-feature"],
+    "IYciRC": ["Thanks for the report!"],
     "IajAbS": ["Add a starter pack"],
     "If0crP": ["Open with AI ", ["targetDisplayName"], ", ", ["hint"]],
     "IgTwLt": ["Open this document in the editor and collapse the graph."],
@@ -960,6 +971,7 @@
       ]
     ],
     "LwMxXg": ["Failed to open worktree."],
+    "M-IF14": ["Report reference"],
     "M1OfV9": ["Next source diagnostic"],
     "M3ytY_": [
       "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
@@ -1008,7 +1020,6 @@
       ["0"],
       " — your previous version is in history if you need to restore it."
     ],
-    "N-eM-f": ["Details about the error you just hit are included."],
     "N1KkEO": ["Jump to last tab"],
     "N1YYa7": ["Loading image"],
     "N1mdmS": ["This file can't be opened in the text editor."],
@@ -1071,9 +1082,6 @@
     "OJeiSH": ["Failed to add property"],
     "OLBz-_": ["Mermaid diagram failed to render."],
     "OLIKgw": ["Drag item ", ["0"], " to reorder"],
-    "OLt6sc": [
-      "Package logs and system info into a report you can review, then send it privately to the OpenKnowledge team."
-    ],
     "ONPvOb": ["Loading agent activity"],
     "ONgEZF": ["Loading headings for ", ["pageTarget"]],
     "OOIVJo": ["Uninstalled \"", ["0"], "\" from ", ["1"]],
@@ -1281,6 +1289,7 @@
     "URmyfc": ["Details"],
     "UTNVyS": ["Select the full source document."],
     "UTZ97u": ["Selection must be inside the project"],
+    "UTgWxm": ["Nothing was uploaded. The report stays on this Mac until you email it to us."],
     "UVLlMV": ["Couldn't reach GitHub. Try again?"],
     "UW2Fg3": [
       "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
@@ -1361,8 +1370,8 @@
     "W8vpBM": ["starter pack"],
     "W9_Bub": ["Local changes overlap with incoming sync"],
     "WHPvOb": ["All files are hidden by view filters."],
+    "WJjviG": ["What to include"],
     "WL6puM": ["Path resolves outside project"],
-    "WM-NnH": ["Your report couldn't be sent — try again or email it instead."],
     "WMIKXK": [
       "Are you sure you want to delete ",
       ["targetCount"],
@@ -1404,7 +1413,6 @@
     "XDzAnp": ["Opens in a new tab"],
     "XH30C4": ["document"],
     "XJOV1Y": ["Activity"],
-    "XLfzgb": ["Want to follow along? Open a GitHub issue and mention your reference."],
     "XPJ0sN": [["settingsDescriptorLabel"], " properties"],
     "XPqe3B": ["Create new tag #", ["tagValue"]],
     "XRuL0i": ["Create page"],
@@ -1450,6 +1458,9 @@
     "YC6_wP": ["Edit ", ["keyName"]],
     "YEP3X2": ["Delete a table when the active table cell selection covers the full table."],
     "YGIi_c": ["Reinstall"],
+    "YIp4R0": [
+      "A memory snapshot from the crash. It can contain document content and can't be redacted, so leave it off unless you're comfortable sharing it."
+    ],
     "YJ1BTp": ["A skill with that name already exists."],
     "YKLP_-": ["Template renamed"],
     "YLMBSd": ["e.g. The editor froze after I pasted a large table"],
@@ -1510,6 +1521,9 @@
     "ZgGuA4": [["0", "plural", { "one": ["File"], "other": ["Files"] }]],
     "ZhhOwV": ["Quote"],
     "ZjtgI-": ["Command palette"],
+    "ZoOlzR": [
+      "App & system info and recent app logs. No project is open, so project logs aren't included."
+    ],
     "Zon_qG": ["Mirror source <0>", ["label"], "</0>"],
     "ZptNUh": ["Show ", ["hidden"], " more"],
     "ZsGpr_": ["Paste link"],
@@ -1599,17 +1613,11 @@
     ],
     "b4itZn": ["Working"],
     "b5aNbi": ["The ", ["targetNoun"], " could not be opened — try navigating to it manually."],
-    "b6bBkz": [
-      "App & system info, recent app logs — no project is open, so no project logs are included."
-    ],
     "bBE5tC": ["Detected on this machine"],
     "bBcFK_": ["Open emoji picker for ", ["keyName"]],
     "bD8I7O": ["Complete"],
     "bGa3Fk": ["Uploading file"],
     "bH382I": ["Edit this HTML — the preview updates live."],
-    "bJKq1H": [
-      "A memory snapshot from the crash. It can contain document content and can't be redacted — leave off unless you're comfortable sharing it."
-    ],
     "bSD4im": ["Search worktrees and branches"],
     "bS_boY": ["Replace current match"],
     "bUUVED": ["Asset"],
@@ -1672,7 +1680,6 @@
     ],
     "d2uTPx": ["Server error (HTTP ", ["status"], ")"],
     "d5rK4X": [["chars", "plural", { "one": ["char"], "other": ["chars"] }]],
-    "d7WfDG": ["Include detailed diagnostics"],
     "dD7NPy": ["Outline"],
     "dDpCOp": ["Rename succeeded but the sidebar may be out of date — refresh to resync"],
     "dEgA5A": ["Cancel"],
@@ -1836,7 +1843,6 @@
       "</1>. Your current content is already saved in the timeline — you can restore it anytime."
     ],
     "h7FzJC": ["Link-graph response did not match expected shape."],
-    "h7jL_x": ["App & system info, recent app logs, project server logs"],
     "h9QFb9": ["Skill \"", ["0"], "\" deleted"],
     "hBMK4W": ["Project templates"],
     "hCOLSd": [
@@ -1965,7 +1971,6 @@
     "k4CuuV": [
       "Ready-made folders and templates to get you started quickly. Select a pack to preview what gets created, then add it to your project."
     ],
-    "k7VziB": ["Copy report reference"],
     "kCNU4q": [
       "Indexing your pages — ",
       ["semanticIndexedCount"],
@@ -2017,7 +2022,6 @@
     "l8G3S9": ["Auto-sync is off — you don't have permission to push to this repo"],
     "lAiyU_": ["Only the current document uses <0>#", ["tag"], "</0>."],
     "lCC_D5": ["Subscribing..."],
-    "lDqYpA": ["Include crash dump"],
     "lGs_bQ": ["Page <0>*</0>"],
     "lHCR4I": ["Clear the field to reset back to the default OpenAI endpoint."],
     "lHwYMr": ["Server error: ", ["status"], " ", ["statusText"]],
@@ -2191,9 +2195,6 @@
       "You picked ~/Documents. OpenKnowledge will index every markdown file under it. If you only want to manage a sub-folder, choose a smaller scope."
     ],
     "ogAuyr": ["Back to document view"],
-    "olTIwK": [
-      "Secrets like API keys and tokens are redacted automatically. You'll review the report before it's sent."
-    ],
     "omXJcU": ["Close others"],
     "optX0N": [["0"], "h ago"],
     "oqB2ez": ["Previous match"],
@@ -2246,6 +2247,7 @@
       ["tabCount", "plural", { "one": ["#", " tab"], "other": ["#", " tabs"] }]
     ],
     "qAx7xG": ["Fixed folder in content root"],
+    "qEEfPk": ["Bug report ", ["0"]],
     "qEIFZu": ["Key ending in ", ["keyHint"]],
     "qEue6Q": [" or "],
     "qFWMl-": ["View as text"],
@@ -2283,6 +2285,9 @@
       "</0>."
     ],
     "rBc32v": ["Couldn't reach the embeddings provider — press ↵ to retry"],
+    "rD-woT": [
+      "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
+    ],
     "rFw02Q": ["Uploading ", ["keyName"]],
     "rJVoVX": ["Source find results"],
     "rNifQd": ["Remove property"],
@@ -2637,6 +2642,7 @@
       "}</1> fills in on create."
     ],
     "ztKII6": ["Failed to add item"],
+    "zvjCD4": ["Detailed diagnostics"],
     "zwBp5t": ["Private"],
     "zyKa-I": ["Star us on GitHub"]
   }

@@ -211,7 +211,7 @@ describe('NavigatorApp new-project menu-action subscription', () => {
     );
     // The Navigator has no project, so the compose summary must carry the
     // system-wide labeling rather than the project-scoped line.
-    expect(screen.getByText(/no project is open/)).not.toBeNull();
+    expect(screen.getByText(/No project is open/)).not.toBeNull();
   });
 
   test('close-active-tab-or-window menu action closes the navigator window', async () => {

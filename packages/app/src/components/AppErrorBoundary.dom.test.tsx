@@ -171,14 +171,16 @@ describe('AppErrorBoundary', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /report this error/i }));
 
-    // ReportBugDialog is lazy-loaded — await the body chunk mounting.
-    expect(await screen.findByRole('dialog')).not.toBeNull();
-    const checkbox = screen.getByRole('checkbox', { name: 'Include detailed diagnostics' });
+    // ReportBugDialog is lazy-loaded — await the body chunk mounting. This is
+    // typically the first site in the suite to cold-load the chunk, so give it
+    // generous headroom over findByRole's 1000ms default.
+    expect(await screen.findByRole('dialog', {}, { timeout: 3000 })).not.toBeNull();
+    const checkbox = screen.getByRole('checkbox', { name: 'Detailed diagnostics' });
     expect(checkbox.getAttribute('aria-checked')).toBe('true');
-    // Navigator window → the compose summary is labeled system-wide.
+    // Navigator window → the logs hint is labeled system-wide.
     expect(
       screen.getByText(
-        'App & system info, recent app logs — no project is open, so no project logs are included.',
+        "App & system info and recent app logs. No project is open, so project logs aren't included.",
       ),
     ).not.toBeNull();
 

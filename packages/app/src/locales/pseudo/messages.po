@@ -550,6 +550,10 @@ msgstr ""
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr ""
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "<0>Want to follow along?</0> Open a GitHub issue and mention your reference. Or write to <1/>"
+msgstr ""
+
 #: src/components/PageHeaderWidgets.tsx
 msgid "📝 or assets/icon.png"
 msgstr ""
@@ -579,7 +583,7 @@ msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "A memory snapshot from the crash. It can contain document content and can't be redacted — leave off unless you're comfortable sharing it."
+msgid "A memory snapshot from the crash. It can contain document content and can't be redacted, so leave it off unless you're comfortable sharing it."
 msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
@@ -896,6 +900,10 @@ msgstr ""
 msgid "Already set up — ok is available in your terminal"
 msgstr ""
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Always included"
+msgstr ""
+
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "An unexpected error occurred."
@@ -922,11 +930,11 @@ msgid "API key set"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "App & system info, recent app logs — no project is open, so no project logs are included."
+msgid "App & system info and recent app logs. No project is open, so project logs aren't included."
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "App & system info, recent app logs, project server logs"
+msgid "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
 msgstr ""
 
 #: src/components/CreatedItemsList.tsx
@@ -1001,7 +1009,7 @@ msgid "Asset: {title}"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Attach the file in an email to <0>support@inkeep.com</0>"
+msgid "Attach the file in an email to <0/>"
 msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
@@ -1207,6 +1215,11 @@ msgstr ""
 
 #: src/components/CloneDialog.tsx
 msgid "Browse your repos:"
+msgstr ""
+
+#. placeholder {0}: phase.reference
+#: src/components/ReportBugDialogBody.tsx
+msgid "Bug report {0}"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -1785,7 +1798,6 @@ msgstr ""
 
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Copied"
 msgstr ""
@@ -1804,10 +1816,6 @@ msgstr ""
 msgid "Copied relative path"
 msgstr ""
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Copied report reference"
-msgstr ""
-
 #: src/components/CopyButton.tsx
 msgid "Copied!"
 msgstr ""
@@ -1815,7 +1823,6 @@ msgstr ""
 #: src/components/CopyButton.tsx
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 msgid "Copy"
 msgstr ""
 
@@ -1858,10 +1865,6 @@ msgstr ""
 
 #: src/components/skill-actions.tsx
 msgid "Copy Path"
-msgstr ""
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Copy report reference"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -2230,6 +2233,10 @@ msgstr ""
 msgid "Counting markdown files"
 msgstr ""
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Crash dump"
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/NewItemDialog.tsx
@@ -2516,12 +2523,16 @@ msgstr ""
 msgid "Detached HEAD — checkout a branch to resume"
 msgstr ""
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Detailed diagnostics"
+msgstr ""
+
 #: src/editor/components/Callout.tsx
 msgid "Details"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Details about the error you just hit are included."
+msgid "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
 msgstr ""
 
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -3801,14 +3812,6 @@ msgstr ""
 msgid "In the Claude Desktop App"
 msgstr ""
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Include crash dump"
-msgstr ""
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Include detailed diagnostics"
-msgstr ""
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
 msgstr ""
@@ -4290,6 +4293,10 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
+msgstr ""
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Logs & system info"
 msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
@@ -4961,7 +4968,7 @@ msgid "Nothing to undo on this file"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Nothing was uploaded — the report stays on this Mac until you email it to us."
+msgid "Nothing was uploaded. The report stays on this Mac until you email it to us."
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
@@ -5374,10 +5381,6 @@ msgstr ""
 msgid "Or use a starter pack"
 msgstr ""
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Or write to <0>support@inkeep.com</0>"
-msgstr ""
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Ordered list"
 msgstr ""
@@ -5417,10 +5420,6 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Owner"
-msgstr ""
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Package logs and system info into a report you can review, then send it privately to the OpenKnowledge team."
 msgstr ""
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
@@ -6057,16 +6056,17 @@ msgid "Replace the active match from the replace field."
 msgstr ""
 
 #: src/components/CommandPalette.tsx
+#: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
 msgid "Report a bug"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Report reference: {reference}"
+msgid "Report reference"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Report sent — thank you"
+msgid "Report reference: {reference}"
 msgstr ""
 
 #: src/components/AppErrorBoundary.tsx
@@ -6419,7 +6419,7 @@ msgid "Second item"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Secrets like API keys and tokens are redacted automatically. You'll review the report before it's sent."
+msgid "Secrets like API keys and tokens are redacted automatically."
 msgstr ""
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
@@ -7186,7 +7186,7 @@ msgid "Tags matching \"{tagListQuery}\""
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Take a look if you'd like — this exact file is what we receive."
+msgid "Take a look if you'd like. This exact file is what we receive."
 msgstr ""
 
 #: src/components/SeedDialog.tsx
@@ -7212,6 +7212,10 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Team Wiki"
+msgstr ""
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
 msgstr ""
 
 #: src/components/TemplateDeleteDialog.tsx
@@ -7298,6 +7302,10 @@ msgstr ""
 
 #: src/components/SubscribeForm.tsx
 msgid "Thanks for subscribing. Watch your inbox for product updates."
+msgstr ""
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Thanks for the report!"
 msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
@@ -8101,10 +8109,6 @@ msgstr ""
 msgid "Waiting for authorization"
 msgstr ""
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Want to follow along? Open a GitHub issue and mention your reference."
-msgstr ""
-
 #: src/components/settings/AccountSection.tsx
 msgid "We couldn't check your GitHub connection."
 msgstr ""
@@ -8173,6 +8177,10 @@ msgstr ""
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "What this checkbox changes"
+msgstr ""
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "What to include"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -8388,7 +8396,7 @@ msgid "Your local copy of branch <0>{branch}</0> is behind. Pull the latest chan
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Your report couldn't be sent — try again or email it instead."
+msgid "Your report couldn't be sent. Try again or email it instead."
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -8396,7 +8404,7 @@ msgid "Your report is being sent."
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Your report is saved on this Mac — nothing was lost. You can email it to us instead."
+msgid "Your report is saved on this Mac, so nothing was lost. You can email it to us instead."
 msgstr ""
 
 #: src/components/CloneDialog.tsx
