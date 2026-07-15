@@ -123,6 +123,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Link to triggering run
+        # Back-link: on the publish-stable path, promote-stable forwards its run
+        # URL in client_payload.dispatched_by. Blank on the beta push path.
+        env:
+          DISPATCHED_BY: ${{ github.event.client_payload.dispatched_by }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${DISPATCHED_BY:-}" ]]; then
+            echo "::notice::Triggered by ${DISPATCHED_BY}"
+            { echo "### Triggered by"; echo "- ${DISPATCHED_BY}"; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:

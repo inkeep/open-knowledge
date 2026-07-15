@@ -191,5 +191,23 @@ jobs:
           # beta, but under "latest soaked" the target may sit below the head.
           # promote-stable's explicit-tag path skips its own fully-cut guard, so this
           # script's unshipped + fully-cut checks are the safety net for this dispatch.
-          gh workflow run promote-stable.yml -f beta_tag="$TARGET"
+          SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run promote-stable.yml -f beta_tag="$TARGET" -f dispatched_by="$SELF_URL"
           echo "::notice::Dispatched promote-stable for ${TARGET} (it computes the stable version from the changeset delta, then npm --tag latest + stable DMG + main-reset)."
+          # Link this run to the promote-stable run it just created. `gh workflow
+          # run` does not return the new run id, so resolve it (best-effort) as the
+          # newest workflow_dispatch run of promote-stable created after SINCE.
+          CHILD=""
+          for _ in 1 2 3 4 5 6 7 8; do
+            CHILD=$(gh run list --workflow=promote-stable.yml --event=workflow_dispatch --limit 8 --json url,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$SINCE\")] | sort_by(.createdAt) | last | .url // empty" 2>/dev/null || true)
+            [[ -n "$CHILD" ]] && break
+            sleep 3
+          done
+          {
+            echo "### Dispatched promote-stable"
+            echo "- Beta: \`${TARGET}\`"
+            if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open the promote-stable workflow)"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$CHILD" ]]; then echo "::notice::promote-stable run: ${CHILD}"; fi

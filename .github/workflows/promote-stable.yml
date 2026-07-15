@@ -62,6 +62,10 @@ on:
         description: "Beta tag to promote (e.g., v0.4.0-beta.3). Leave blank to promote the newest beta."
         required: false
         type: string
+      dispatched_by:
+        description: "URL of the run that dispatched this promotion (run-to-run link). Blank for manual runs."
+        required: false
+        type: string
   # Codeless external trigger (e.g., a Slack Workflow Builder button) fires
   # this via POST /repos/inkeep/open-knowledge/dispatches with body
   # {"event_type": "promote-stable-latest"}. No client_payload is read — the
@@ -81,6 +85,9 @@ permissions:
   # write — see release.yml's permission comment for why npm publishing
   # does not need that scope here.
   contents: write
+  # Read-only: lets the dispatch steps resolve the run URLs of the workflows they
+  # trigger (release.yml, desktop-release.yml, main-reset) for run-to-run links.
+  actions: read
 
 concurrency:
   group: ok-release-cadence
@@ -222,6 +229,21 @@ jobs:
           # to $GITHUB_OUTPUT. skip=true is a clean no-op (the beta is already
           # shipped, or adds no changesets) and gates every step below.
           node scripts/compute-stable-version.mjs "$BETA_TAG"
+
+      - name: Link to triggering run
+        # Back-link: who dispatched this promotion. Present on the automated path
+        # (select-beta-to-promote passes its run URL); blank on manual / external
+        # repository_dispatch runs.
+        env:
+          DISPATCHED_BY: ${{ inputs.dispatched_by }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${DISPATCHED_BY:-}" ]]; then
+            echo "::notice::Triggered by ${DISPATCHED_BY}"
+            { echo "### Triggered by"; echo "- ${DISPATCHED_BY}"; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Triggered manually or by external repository_dispatch." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Tag stable at beta SHA
         if: steps.ver.outputs.skip != 'true'
@@ -409,13 +431,27 @@ jobs:
           STABLE_VERSION: ${{ steps.ver.outputs.stable_version }}
         run: |
           set -euo pipefail
+          SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           payload=$(jq -nc \
             --arg ref "$STABLE_TAG" \
             --arg version "$STABLE_VERSION" \
-            '{event_type: "publish-stable", client_payload: {ref: $ref, version: $version}}')
+            --arg by "$SELF_URL" \
+            '{event_type: "publish-stable", client_payload: {ref: $ref, version: $version, dispatched_by: $by}}')
           gh api -X POST "repos/${GITHUB_REPOSITORY}/dispatches" --input - <<<"$payload"
           echo "Dispatched publish-stable to release.yml (ref=${STABLE_TAG}, version=${STABLE_VERSION})."
-          echo "release.yml will run the npm publish + provenance attestation in its own job."
+          # Best-effort forward-link to the release.yml run we just triggered.
+          CHILD=""
+          for _ in 1 2 3 4 5 6; do
+            CHILD=$(gh run list --workflow=release.yml --event=repository_dispatch --limit 8 --json url,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$SINCE\")] | sort_by(.createdAt) | last | .url // empty" 2>/dev/null || true)
+            [[ -n "$CHILD" ]] && break
+            sleep 3
+          done
+          {
+            echo "### Dispatched release.yml (npm publish)"
+            if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open release.yml)"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Trigger desktop-release.yml to build + upload stable DMG
         if: steps.ver.outputs.skip != 'true'
@@ -435,12 +471,27 @@ jobs:
           STABLE_TAG: ${{ steps.ver.outputs.stable_tag }}
         run: |
           set -euo pipefail
+          SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           payload=$(jq -nc \
             --arg tag "$STABLE_TAG" \
             --arg ref "$STABLE_TAG" \
-            '{event_type: "desktop-release", client_payload: {release_tag: $tag, ref: $ref}}')
+            --arg by "$SELF_URL" \
+            '{event_type: "desktop-release", client_payload: {release_tag: $tag, ref: $ref, dispatched_by: $by}}')
           gh api -X POST "repos/${GITHUB_REPOSITORY}/dispatches" --input - <<<"$payload"
           echo "Dispatched desktop-release for ${STABLE_TAG}; desktop-release.yml will build the signed DMG and upload it + latest-mac.yml to the stable Release."
+          # Best-effort forward-link to the desktop-release.yml run we just triggered.
+          CHILD=""
+          for _ in 1 2 3 4 5 6; do
+            CHILD=$(gh run list --workflow=desktop-release.yml --event=repository_dispatch --limit 8 --json url,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$SINCE\")] | sort_by(.createdAt) | last | .url // empty" 2>/dev/null || true)
+            [[ -n "$CHILD" ]] && break
+            sleep 3
+          done
+          {
+            echo "### Dispatched desktop-release.yml (signed DMG)"
+            if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open desktop-release.yml)"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Detect bridge App for cross-repo dispatch
         if: steps.ver.outputs.skip != 'true'
@@ -492,7 +543,21 @@ jobs:
           DELTA_IDS: ${{ steps.ver.outputs.delta_ids }}
         run: |
           set -euo pipefail
-          payload=$(jq -nc --arg v "$STABLE_VERSION" --argjson d "${DELTA_IDS:-[]}" \
-            '{event_type: "main-reset", client_payload: {stable_version: $v, delta_ids: $d}}')
+          SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          payload=$(jq -nc --arg v "$STABLE_VERSION" --argjson d "${DELTA_IDS:-[]}" --arg by "$SELF_URL" \
+            '{event_type: "main-reset", client_payload: {stable_version: $v, delta_ids: $d, dispatched_by: $by}}')
           gh api -X POST "repos/inkeep/agents-private/dispatches" --input - <<<"$payload"
+          # Best-effort cross-repo forward-link (the bridge token reads agents-private).
+          CHILD=""
+          for _ in 1 2 3 4 5 6; do
+            CHILD=$(gh run list --repo inkeep/agents-private --workflow=public-open-knowledge-main-reset.yml --event=repository_dispatch --limit 8 --json url,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$SINCE\")] | sort_by(.createdAt) | last | .url // empty" 2>/dev/null || true)
+            [[ -n "$CHILD" ]] && break
+            sleep 3
+          done
+          {
+            echo "### Dispatched main-reset (agents-private)"
+            if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open the main-reset workflow on agents-private)"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "Dispatched main-reset to agents-private (stable_version=${STABLE_VERSION}, delta_ids=${DELTA_IDS})."

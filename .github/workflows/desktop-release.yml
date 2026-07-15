@@ -102,6 +102,18 @@ jobs:
     # retry and stays at 45.
     timeout-minutes: 75
     steps:
+      - name: Link to triggering run
+        # Back-link: promote-stable forwards its run URL in
+        # client_payload.dispatched_by. Blank on manual / beta paths.
+        env:
+          DISPATCHED_BY: ${{ github.event.client_payload.dispatched_by }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${DISPATCHED_BY:-}" ]]; then
+            echo "::notice::Triggered by ${DISPATCHED_BY}"
+            { echo "### Triggered by"; echo "- ${DISPATCHED_BY}"; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # On `repository_dispatch`, check out the ref supplied by the upstream
       # workflow via `client_payload.ref` — that's the exact commit
       # release.yml / promote-stable.yml resolved when cutting the tag, so
