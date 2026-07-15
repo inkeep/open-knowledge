@@ -188,6 +188,13 @@ export interface CreateTestServerOptions {
    * grows byte-faithful.
    */
   mdManager?: MarkdownManager;
+  /**
+   * Seed the project `.ok/config.yml` with the markdownlint plugin enabled.
+   * markdownlint is opt-in (off by default), so lint tests that exercise real
+   * diagnostics must turn it on — mirrors a project that enabled it. Only
+   * applies to fresh contentDirs (`options.contentDir === undefined`).
+   */
+  markdownlintEnabled?: boolean;
 }
 
 export async function createTestServer(options: CreateTestServerOptions = {}): Promise<TestServer> {
@@ -234,7 +241,12 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
     // is trying to reload.
     if (options.contentDir === undefined) {
       mkdirSync(join(contentDir, '.ok'), { recursive: true });
-      writeFileSync(join(contentDir, '.ok', 'config.yml'), '', 'utf-8');
+      // markdownlint is off by default; opt it in for lint tests that need
+      // real diagnostics (readLinterBaseConfig reads this file fresh per request).
+      const seedConfig = options.markdownlintEnabled
+        ? 'contentRules:\n  markdownlint:\n    enabled: true\n'
+        : '';
+      writeFileSync(join(contentDir, '.ok', 'config.yml'), seedConfig, 'utf-8');
     }
 
     // Mirror the production auto-git-init path: every fresh tmpDir gets a real

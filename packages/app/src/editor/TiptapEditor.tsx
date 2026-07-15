@@ -33,6 +33,7 @@ import { wrapExtensionsWithTiming } from '@/lib/perf/cold-mount-instrumentation'
 import type { SidebarDragPayload } from '@/lib/sidebar-drag';
 import { useIdentity } from '../presence/identity';
 import { registerEditor, unregisterEditor } from './active-editor';
+import { applyLintFixes } from './apply-lint-fix.ts';
 import { buildAwarenessUser } from './awareness-user';
 import { bindingStalenessGuardPlugin, type WedgeDetail } from './binding-staleness-guard';
 import { BubbleMenuBar } from './bubble-menu/BubbleMenuBar';
@@ -46,6 +47,7 @@ import { useDocumentContext } from './DocumentContext';
 import { setEditorDocName } from './extensions/doc-context.ts';
 import { setEditorSourceMode } from './extensions/editor-mode-context.ts';
 import { FrozenTableHeaders } from './extensions/frozen-table-headers.ts';
+import { MarkdownLintDecorations } from './extensions/markdown-lint-decorations.ts';
 import { sharedExtensions } from './extensions/shared.ts';
 import { uploadDecorationPlugin } from './image-upload/index.ts';
 import { getMountId } from './mount-id-registry';
@@ -394,6 +396,15 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
     // mapping was supplied.
     ...guard,
     FrozenTableHeaders,
+    // Block-level lint decorations (WYSIWYG): self-contained, keys off the PM
+    // doc (not documentName), no Y observer — pool-safe like FrozenTableHeaders.
+    // `getSource` snapshots Y.Text('source') per pass (a read, not an observer)
+    // so WYSIWYG lints the same bytes as the Problems panel and source mode.
+    MarkdownLintDecorations.configure({
+      docName: provider.configuration.name ?? '',
+      getSource: () => provider.document.getText('source').toString(),
+      applyFix: (fixes) => applyLintFixes(provider, fixes),
+    }),
   ];
 }
 

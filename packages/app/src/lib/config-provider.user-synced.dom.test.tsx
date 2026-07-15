@@ -185,6 +185,17 @@ mock.module('@inkeep/open-knowledge-core', () => ({
     mergeLayeredCalls.push([user, project, projectLocal]);
     return mergedConfig;
   },
+  // `@/lib/color-themes` (pulled in transitively via config-provider and
+  // SettingsDialogBody) now re-exports the theme registry from core, so the
+  // wholesale core mock must stub every re-exported symbol or color-themes'
+  // re-exports fail to resolve (a hard named-import error for `colorThemeMode`,
+  // which SettingsDialogBody imports statically).
+  colorThemeMode: (id?: string) => (id && id !== 'default' && id !== 'custom' ? 'dark' : undefined),
+  expandPalette: () => ({}),
+  generateColorThemesCss: () => '',
+  isDarkTheme: (id?: string) => Boolean(id) && id !== 'default' && id !== 'custom',
+  resolveThemePlugin: (id?: string) => ({ id: id ?? 'default', label: 'Default', kind: 'system' }),
+  THEME_PLUGINS: [],
 }));
 
 // Module-level toggle for the second case (mount-time pre-synced seed).

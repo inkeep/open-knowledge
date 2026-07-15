@@ -43,10 +43,20 @@
     so the BrowserWindow's vibrancy material shows through. Web mode
     (no `window.okDesktop`) skips the class so chrome stays solid.
 
+    The IDE color palette is read from `ok-color-theme-v1` and applied as
+    the `data-color-theme` attribute consumed by
+    `color-themes.generated.css`. Each named IDE palette carries its own mode, so
+    a present value forces the `dark` class (or clears it for a light palette like
+    `catppuccin-latte`) regardless of `ok-theme-v1`. The `custom`
+    palette is replayed from `ok-custom-theme-v1` (`{ css, dark }`): its prebuilt
+    stylesheet is injected as a `<style>` and its `dark` flag drives the class.
+    Paired consumers: `src/lib/use-apply-config-color-theme.ts` (writes the
+    caches) + `src/lib/color-themes.ts` (the id allowlist — keep it in sync).
+
     Single-line script body — same biome HTML-formatter constraint as
     the editor-mode FOUC above.
   -->
-  <script>(() => { let t = 'system'; try { const r = localStorage.getItem('ok-theme-v1'); if (r === 'light' || r === 'dark' || r === 'system') t = r; } catch {} let dark = t === 'dark'; if (t === 'system') { try { dark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch {} } if (dark) document.documentElement.classList.add('dark'); if (window.okDesktop) document.documentElement.classList.add('electron-mode'); })();</script>
+  <script>(() => { let t = 'system'; try { const r = localStorage.getItem('ok-theme-v1'); if (r === 'light' || r === 'dark' || r === 'system') t = r; } catch {} let ct = null; try { const c = localStorage.getItem('ok-color-theme-v1'); if (c && ['dracula', 'catppuccin-frappe', 'catppuccin-latte', 'monokai', 'gruvbox', 'solarized', 'custom'].includes(c)) ct = c; } catch {} let dark = t === 'dark'; if (t === 'system') { try { dark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch {} } let customCss = null; if (ct === 'custom') { try { const raw = localStorage.getItem('ok-custom-theme-v1'); if (raw) { const o = JSON.parse(raw); if (o?.css) { customCss = o.css; dark = !!o.dark; } } } catch {} if (!customCss) ct = null; } else if (ct) { dark = !['catppuccin-latte'].includes(ct); } if (dark) document.documentElement.classList.add('dark'); if (ct) document.documentElement.setAttribute('data-color-theme', ct); if (customCss) { const s = document.createElement('style'); s.id = 'ok-custom-theme'; s.textContent = customCss; document.head.appendChild(s); } if (window.okDesktop) document.documentElement.classList.add('electron-mode'); })();</script>
   <style>html { background-color: __OK_CHROME_BG_LIGHT__ } html.dark { background-color: __OK_CHROME_BG_DARK__ }</style>
 </head>
 

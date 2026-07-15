@@ -215,6 +215,61 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 });
 
+describe('TagPillInput — free-text grammar', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  function renderFreeText(opts: RenderOpts = {}) {
+    const onChange = opts.onChange ?? mock(() => {});
+    const result = render(
+      <TooltipProvider>
+        <TagPillInput value={opts.value ?? []} onChange={onChange} grammar="free-text" />
+      </TooltipProvider>,
+    );
+    return { ...result, onChange };
+  }
+
+  test('commits values the tag grammar rejects, verbatim — no leading-# strip', () => {
+    // markdownlint option lists hold values like MD043's `## Summary`:
+    // spaces fail the tag grammar and the leading `#` would be stripped
+    // by the frontmatter normalization. Free-text must preserve both.
+    const onChange = mock(() => {});
+    const { container } = renderFreeText({ onChange });
+    const input = container.querySelector('input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '## Summary' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]?.[0]).toEqual(['## Summary']);
+    expect(input.value).toBe('');
+    expect(input.getAttribute('aria-invalid')).toBeNull();
+  });
+
+  test('never flags seeded pills as invalid (no tag-grammar styling)', () => {
+    const { container } = renderFreeText({ value: ['## Summary', '*', 'has spaces'] });
+    expect(container.querySelectorAll('[data-tag-invalid="true"]')).toHaveLength(0);
+  });
+
+  test('still trims, drops empty drafts, and dedupes', () => {
+    const onChange = mock(() => {});
+    const { container } = renderFreeText({ value: ['*'], onChange });
+    const input = container.querySelector('input') as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledTimes(0);
+
+    fireEvent.change(input, { target: { value: '*' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledTimes(0);
+    expect(input.value).toBe('');
+
+    fireEvent.change(input, { target: { value: '  ## Details  ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(['*', '## Details']);
+  });
+});
+
 describe('TagPillInput — a11y id wiring (regression: PR #1288 review findings)', () => {
   afterEach(() => {
     cleanup();

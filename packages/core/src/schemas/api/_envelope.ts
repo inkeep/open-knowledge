@@ -379,6 +379,12 @@ export const ProblemTypeSchema = z.enum([
   'urn:ok:error:handoff-target-not-installed',
   'urn:ok:error:handoff-spawn-timeout',
   'urn:ok:error:handoff-spawn-failed',
+  // `POST /api/lint/markdownlint-config` refuses (409) to rewrite a native
+  // markdownlint config that is an executable module (`.cjs`/`.mjs`). Distinct
+  // from `invalid-request` (400 shape) so SDK consumers read it as a Conflict —
+  // "change the resource (convert to JSON/JSONC/YAML) and retry" — not a
+  // never-retry malformed request.
+  'urn:ok:error:config-not-writable',
 ]) satisfies StandardSchemaV1;
 export type ProblemType = z.infer<typeof ProblemTypeSchema>;
 

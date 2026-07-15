@@ -3,7 +3,12 @@ import { search } from '@codemirror/search';
 import { Compartment, EditorSelection, EditorState } from '@codemirror/state';
 import { placeholder as cmPlaceholder, EditorView, keymap } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { createCodeFenceTracker } from '@inkeep/open-knowledge-core';
+import {
+  createCodeFenceTracker,
+  DEFAULT_LINTER_CONFIG,
+  type PersistedLinterConfig,
+  toEffectiveBase,
+} from '@inkeep/open-knowledge-core';
 import { isMacOS } from '@tiptap/core';
 import { basicSetup } from 'codemirror';
 import { useTheme } from 'next-themes';
@@ -12,6 +17,7 @@ import { yCollab } from 'y-codemirror.next';
 import type * as Y from 'yjs';
 import { emitOpenAskAiComposer } from '@/components/ask-ai-composer-events';
 import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
+import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
 import {
   createNestedCMExtensions,
   darkTheme,
@@ -22,6 +28,7 @@ import { useConfigContext } from '@/lib/config-provider';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { createSourceClipboardExtension } from './clipboard/index.ts';
 import { type CmCacheEntry, mountCmEditor, parkCmEditor } from './editor-cache';
+import { useDocLintConfig } from './lint-config-client';
 import { getMountId } from './mount-id-registry';
 import { markUserTyping } from './observers';
 import { publishSelectionContext, selectionSnapshotFromSource } from './selection-context';
@@ -34,6 +41,7 @@ import {
   clearPendingSourceNavigation,
   consumePendingSourceNavigation,
 } from './source-editor-navigation';
+import { createMarkdownLintExtension } from './source-lint/markdown-lint-source';
 import { createSourcePolishExtension } from './source-polish';
 import { FM_FENCE_LINE_RE } from './source-polish/view-plugin';
 import { attachTypingBurstDetector } from './typing-burst-detector';
@@ -107,6 +115,27 @@ function applyRawMdxNavigation(view: EditorView, detail: RawMdxNavDetail): void 
   });
 }
 
+/** Jump to a lint diagnostic's 1-based line/column. Lines/columns are clamped —
+ *  the doc may shift between the click and this dispatch. */
+function applyLintNavigation(view: EditorView, detail: LintNavDetail): void {
+  const doc = view.state.doc;
+  const lineNumber = Math.min(Math.max(detail.line, 1), doc.lines);
+  const line = doc.line(lineNumber);
+  const pos = Math.min(line.from + Math.max(0, detail.column - 1), line.to);
+  view.dispatch({
+    selection: EditorSelection.cursor(pos),
+    // `y: 'start'` (not 'center'/'nearest'): in full-page source mode the editor
+    // renders at content height with no internal scrollport, so CM measures the
+    // target as already visible against its own scrollDOM and 'center'/'nearest'
+    // never scroll the real ancestor (ScrollPreservingContainer) — the jump
+    // silently no-ops whenever the doc overflows the viewport. Top-edge alignment
+    // propagates to the ancestor and honors `scrollMargins`, matching the search
+    // scrollToMatch + outline-nav fix above.
+    effects: EditorView.scrollIntoView(pos, { y: 'start' }),
+  });
+  view.focus();
+}
+
 export function SourceEditor({
   docName,
   ytext,
@@ -135,6 +164,21 @@ export function SourceEditor({
   const { merged } = useConfigContext();
   const sourceModeActiveRef = useRef(isSourceModeActive);
   const wordWrap = merged?.editor?.wordWrap ?? true;
+  // Markdown-linter config. The EFFECTIVE config for this doc (project base +
+  // native `.markdownlint.*` rules) comes from the server; fall back to the
+  // project config from the config CRDT while it loads / on error. Like
+  // theme/wordWrap, it's applied via a Compartment reconfigure (no remount); the
+  // serialized key is the reconfigure effect's dependency.
+  const { data: lintConfigData } = useDocLintConfig(docName);
+  // The server `effective` already carries native-file markdownlint `rules`. The
+  // persisted-config fallback omits them, so lift it through `toEffectiveBase`
+  // (seeds empty `rules`) until the server config resolves.
+  const linterConfig =
+    lintConfigData?.effective ??
+    (merged?.contentRules
+      ? toEffectiveBase(merged.contentRules as unknown as PersistedLinterConfig)
+      : DEFAULT_LINTER_CONFIG);
+  const linterConfigKey = JSON.stringify(linterConfig);
 
   useEffect(() => {
     sourceModeActiveRef.current = isSourceModeActive;
@@ -207,6 +251,7 @@ export function SourceEditor({
           const themeCompartment = new Compartment();
           const wordWrapCompartment = new Compartment();
           const placeholderCompartment = new Compartment();
+          const lintCompartment = new Compartment();
           const state = EditorState.create({
             doc: ytext.toString(),
             extensions: [
@@ -244,6 +289,7 @@ export function SourceEditor({
                 currentDocName: resolvedDocName,
               }),
               createSourcePolishExtension(),
+              lintCompartment.of(createMarkdownLintExtension(linterConfig, docName)),
               sourceClipboard,
               EditorView.updateListener.of((update) => {
                 if (!update.selectionSet && !update.docChanged) return;
@@ -308,6 +354,7 @@ export function SourceEditor({
             themeCompartment,
             wordWrapCompartment,
             placeholderCompartment,
+            lintCompartment,
           };
         },
       });
@@ -423,6 +470,21 @@ export function SourceEditor({
     });
   }, [placeholder]);
 
+  // Re-apply the linter config (rule toggles + the enabled flag) via the
+  // cache-entry compartment. Runs on mount too, so a cache-hit reattach
+  // re-lints under the current config. `linterConfigKey` (serialized config)
+  // is the dependency — the object identity is unstable.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: linterConfig is keyed by linterConfigKey
+  useEffect(() => {
+    const entry = cmEntryRef.current;
+    if (!entry) return;
+    entry.view.dispatch({
+      effects: entry.lintCompartment.reconfigure(
+        createMarkdownLintExtension(linterConfig, docName),
+      ),
+    });
+  }, [linterConfigKey]);
+
   // Outline panel click → jump to the Nth heading line in the CodeMirror doc.
   useEffect(() => {
     function onNav(e: Event) {
@@ -435,6 +497,20 @@ export function SourceEditor({
     }
     window.addEventListener(OUTLINE_NAV_EVENT, onNav);
     return () => window.removeEventListener(OUTLINE_NAV_EVENT, onNav);
+  }, [docName, isSourceModeActive]);
+
+  // Problems panel click → jump to the diagnostic's line in the CodeMirror doc.
+  useEffect(() => {
+    function onLintNav(e: Event) {
+      const detail = (e as CustomEvent<LintNavDetail>).detail;
+      if (!detail || !isSourceModeActive) return;
+      const view = viewRef.current;
+      if (!view) return;
+      applyLintNavigation(view, detail);
+      clearPendingSourceNavigation(docName);
+    }
+    window.addEventListener(LINT_NAV_EVENT, onLintNav);
+    return () => window.removeEventListener(LINT_NAV_EVENT, onLintNav);
   }, [docName, isSourceModeActive]);
 
   // Replays the most recent source-navigation intent once the editor chunk is
@@ -450,6 +526,11 @@ export function SourceEditor({
 
     if (pendingNavigation.kind === 'outline') {
       applyOutlineNavigation(view, pendingNavigation.detail);
+      return;
+    }
+
+    if (pendingNavigation.kind === 'lint') {
+      applyLintNavigation(view, pendingNavigation.detail);
       return;
     }
 

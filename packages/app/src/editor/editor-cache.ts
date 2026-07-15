@@ -264,6 +264,10 @@ export interface CmCacheEntry {
   /** Placeholder compartment embedded in `view`. Same per-entry rationale as
    * `themeCompartment` (lowest impact — placeholder only shows on empty docs). */
   placeholderCompartment: Compartment;
+  /** Markdown-linter compartment embedded in `view`. Same per-entry rationale
+   * as `themeCompartment` — reconfigured when the `contentRules.*` config changes so
+   * a backgrounded doc re-lints under the new rules on reattach. */
+  lintCompartment: Compartment;
   scrollTop: number;
   /** See `TiptapCacheEntry.hadFocus`. */
   hadFocus: boolean;
@@ -300,6 +304,8 @@ interface CmFactoryResult {
   wordWrapCompartment: Compartment;
   /** Placeholder compartment embedded in `view`. See `CmCacheEntry.placeholderCompartment`. */
   placeholderCompartment: Compartment;
+  /** Lint compartment embedded in `view`. See `CmCacheEntry.lintCompartment`. */
+  lintCompartment: Compartment;
 }
 
 type CmFactory = (container: HTMLElement) => CmFactoryResult;
@@ -946,6 +952,7 @@ export function mountCmEditor(params: MountCmParams): CmCacheEntry {
       themeCompartment: fresh.themeCompartment,
       wordWrapCompartment: fresh.wordWrapCompartment,
       placeholderCompartment: fresh.placeholderCompartment,
+      lintCompartment: fresh.lintCompartment,
       scrollTop: 0,
       hadFocus: false,
       activeMountKey: docName,
@@ -1014,6 +1021,7 @@ export function mountCmEditor(params: MountCmParams): CmCacheEntry {
     themeCompartment: fresh.themeCompartment,
     wordWrapCompartment: fresh.wordWrapCompartment,
     placeholderCompartment: fresh.placeholderCompartment,
+    lintCompartment: fresh.lintCompartment,
     scrollTop: 0,
     hadFocus: false,
     activeMountKey: docName,

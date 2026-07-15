@@ -57,6 +57,7 @@
     "@tiptap/starter-kit": "^3.22.3",
     "decode-named-character-reference": "^1.3.0",
     "diff-match-patch": "^1.0.5",
+    "markdownlint": "^0.41.0",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-math": "^3.0.0",
     "mdast-util-mdx": "3.0.0",
@@ -94,6 +95,7 @@
     "test:perf:regression": "bun run tests/perf/run-regression-gate.ts",
     "test:health:unit": "bun test tests/health/parse-health-gate.test.ts",
     "test:health": "bun run tests/health/parse-health-gate.ts tests/health/baseline.json",
+    "generate:lint-catalog": "bun run scripts/generate-markdownlint-catalog.ts && biome check --write src/markdown/lint/rule-catalog.generated.ts",
     "regen-schema-snapshot": "bun run scripts/regen-schema-snapshot.ts"
   },
   "devDependencies": {

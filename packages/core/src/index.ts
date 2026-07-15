@@ -396,6 +396,54 @@ export {
   mdastToMarkdown,
 } from './markdown/html-to-mdast.ts';
 export { MarkdownManager, type SerializeCallOptions } from './markdown/index.ts';
+// Markdown linter (the content-rules lint-plugin registry). Browser-safe;
+// consumed by the editor's CodeMirror lint facet + the no-code Settings GUI.
+export {
+  applyTextEdits,
+  canonicalRuleId,
+  DEFAULT_LINTER_CONFIG,
+  DEFAULT_MARKDOWNLINT_CONFIG,
+  displayCategoryForRule,
+  findRuleConfigEntry,
+  fixDocument,
+  fixMarkdownText,
+  LINT_PLUGINS,
+  type LintAuditResponse,
+  LintAuditResponseSchema,
+  type LintConfigResponse,
+  LintConfigResponseSchema,
+  type LintDiagnostic,
+  type LintDocResult,
+  LintDocResultSchema,
+  type LinterConfig,
+  LinterConfigSchema,
+  type LintFixRequest,
+  LintFixRequestSchema,
+  type LintFixResult,
+  LintFixResultSchema,
+  type LintPlugin,
+  type LintPluginId,
+  type LintPosition,
+  type LintRange,
+  type LintSeverity,
+  type LintTextEdit,
+  lintDocument,
+  MARKDOWNLINT_RULE_CATALOG,
+  type MarkdownlintRuleSetting,
+  type MarkdownlintRuleSeverity,
+  MarkdownlintRuleWriteRequestSchema,
+  type MarkdownlintRuleWriteValue,
+  type MarkdownlintSlice,
+  type PersistedLinterConfig,
+  RULE_DISPLAY_CATEGORIES,
+  type RuleCatalogEntry,
+  type RuleDisplayCategory,
+  type RuleOptionSpec,
+  type RuleOptionType,
+  resolveMarkdownlintConfig,
+  runMarkdownlint,
+  toEffectiveBase,
+} from './markdown/lint/index.ts';
 export { markdownToHtml, mdastToHtml } from './markdown/mdast-to-html.ts';
 export { normalizeDocRelativeAssetUrl } from './markdown/resolve-image-url.ts';
 export {
@@ -625,6 +673,8 @@ export {
   LinkPreviewRequestSchema,
   type LinkPreviewResponse,
   LinkPreviewResponseSchema,
+  type LintViolationWarning,
+  LintViolationWarningSchema,
   type LocalOpAuthEmptySuccess,
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
@@ -928,6 +978,16 @@ export {
   type DerivedViewChannel,
   DerivedViewChannelSchema,
 } from './schemas/cc1.ts';
+export type { ColorThemeBase, ThemePlugin, ThemePluginId } from './theme/theme-plugins.ts';
+export {
+  colorThemeMode,
+  expandPalette,
+  generateColorThemesCss,
+  isDarkTheme,
+  resolveThemePlugin,
+  THEME_PLUGIN_IDS,
+  THEME_PLUGINS,
+} from './theme/theme-plugins.ts';
 export {
   HIDDEN_CONFIG_BASENAMES,
   isHiddenDocName,

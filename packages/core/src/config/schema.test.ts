@@ -192,3 +192,20 @@ describe('legacy upload.* keys remain non-authoritative', () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe('contentRules forward compatibility', () => {
+  test('an unknown plugin slice survives parse instead of being stripped', () => {
+    // A NEWER OK version's plugin config (a direct child of `contentRules`) must
+    // round-trip through an older version's parse→write-back cycle, not silently
+    // disappear.
+    const parsed = ConfigSchema.parse({
+      contentRules: { 'future-linter': { enabled: true, level: 'strict' } },
+    });
+    expect(parsed.contentRules['future-linter']).toEqual({
+      enabled: true,
+      level: 'strict',
+    });
+    // The known slice still defaults alongside the unknown one (off by default).
+    expect(parsed.contentRules.markdownlint).toEqual({ enabled: false });
+  });
+});

@@ -1,0 +1,5 @@
+{
+  "title": "Content rules",
+  "icon": "LuListChecks",
+  "pages": ["overview", "markdownlint"]
+}

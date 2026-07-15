@@ -1,0 +1,43 @@
+---
+title: markdownlint
+icon: LuListChecks
+description: The markdownlint linter for content rules — VS Code-parity defaults, your project's native `.markdownlint.*` config, and a no-code browser for all 53 rules.
+---
+
+markdownlint is the first content-rules linter — the standard [markdownlint](https://github.com/DavidAnson/markdownlint) engine, the same one behind `markdownlint-cli2` and the popular editor extensions. This page covers its defaults, how it reads your project's config, and the built-in rule browser. For the linter-agnostic parts — where problems appear, the Problems panel, `ok lint`, and agent advisories — see the [content rules overview](/docs/advanced/content-rules/overview).
+
+## Default rules
+
+The rules aren't stored in OK config — they live in your project's own native markdownlint file (see [below](#your-markdownlint-file)). With **no file**, OK uses the same default as the [VS Code markdownlint extension](https://github.com/DavidAnson/vscode-markdownlint): every rule on, except `MD013` (line-length). Nothing else is pre-disabled — so, exactly as in VS Code:
+
+- `MD033` flags inline HTML, including MDX/JSX components like `<Callout>`,
+- `MD041` flags docs that don't open with a top-level heading,
+- `MD025` flags a frontmatter `title` beside an H1.
+
+Turn off whichever don't fit your project — the first change [creates the file for you](#the-rule-browser).
+
+## Your `.markdownlint.*` file
+
+The rules live in your project's own native markdownlint file — `.markdownlint.jsonc`, `.markdownlint.json`, `.markdownlint.yaml`, or `.markdownlint.yml` (`.markdownlintrc` is recognized too; the first that exists wins). It's a plain, portable markdownlint config: the same file `markdownlint-cli2` and editor extensions read, with nothing OK-specific in it.
+
+- **A file governs wholesale.** When a native file exists it's honored exactly as `markdownlint-cli2` would honor it — OK layers nothing underneath.
+- **Per-folder cascade.** The nearest `.markdownlint.*` file on the walk from a doc's folder up to the project root governs that doc, matching `markdownlint-cli2` conventions. Subfolders inherit shared config explicitly via `extends` with a relative path (npm-package `extends` isn't resolved).
+- **Aliases and severities.** Rule aliases are valid keys (`line-length` ≡ `MD013`, matched case-insensitively), and `"error"` / `"warning"` severity strings are honored — either as the rule's value (`"MD010": "error"`) or as a `severity` key in its options object. Everything else reports as a warning.
+- **Executable configs.** A `.markdownlint.cjs` / `.mjs` is detected but **not executed**: you get a loud configuration warning, linting falls back to OK's defaults, and OK will never rewrite the file. Convert it to JSON, JSONC, or YAML to have it govern.
+
+## The rule browser
+
+**Settings ▸ Plugins ▸ markdownlint** (markdownlint appears there once the plugin is enabled) lists the full catalog — all 53 rules, generated from the installed engine's own config schema, so it always matches what actually runs. Search by id, alias, or name; browse by category (Headings, Lists, Whitespace, Code, Links & images, Style); or check **Only modified** to see just the rules your config changes. Expanding a rule reveals a link to its upstream documentation and typed editors for each of its options.
+
+Every edit writes back to your native `.markdownlint.*` file, preserving what you wrote: JSON and JSONC files get minimal text edits (comments and formatting survive), and a rule you configured under an alias stays under that alias. Severity strings are shown as a read-only badge. If the project has no file yet, the first change creates a `.markdownlint.json` seeded with the defaults — from then on that file is the whole story for OK and every other markdownlint tool.
+
+## Auto-fix and severities
+
+- **Auto-fix covers only some rules.** markdownlint can mechanically fix problems like hard tabs, trailing whitespace, list-marker style, and blank-line spacing — but not ones that need a human decision, such as inline HTML (`MD033`) or a missing top-level heading (`MD041`). In source mode the **Fix** action appears only on a problem markdownlint can fix; `ok lint --fix` applies every fixable problem across the project and leaves the rest untouched, still reported. There's no "fix everything" — the rest always need a manual edit.
+- **Severities.** A rule reports as a warning unless your config promotes it to `"error"`. Set `"error"` as the rule's value or via a `severity` key, then gate CI on just those rules with `ok lint --errors-only`.
+
+## See also
+
+- [Content rules overview](/docs/advanced/content-rules/overview): where problems show up, the Problems panel, `ok lint`, and agents
+- [Configuration reference](/docs/reference/configuration): `config.yml` and what's shared via git
+- [markdownlint rules](https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md): the upstream rule reference

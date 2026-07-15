@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
+import { THEME_PLUGIN_IDS } from '../theme/theme-plugins.ts';
 import { fieldRegistry } from './field-registry.ts';
 
 // Credential attribute key denylist for the local telemetry file sink. The
@@ -184,6 +185,103 @@ export const ConfigSchema = z.looseObject({
           defaultScope: 'user',
           description:
             "Editor color theme: 'light', 'dark', or 'system' (follow the OS). A personal preference (user scope) — not shared with the project.",
+        })
+        .optional(),
+      // The IDE color palette layered on top of the light/dark `theme` mode
+      // above. `default` defers entirely to `theme`; the named palettes
+      // (Dracula, Catppuccin Frappé, Catppuccin Latte, …) are self-contained
+      // themes that force their own light/dark mode; `custom` applies the
+      // user's own `appearance.customTheme` seed below. A personal preference
+      // (user scope). The id list is DERIVED from the `THEME_PLUGINS` registry
+      // (`packages/core/src/theme/theme-plugins.ts`) via `THEME_PLUGIN_IDS` — add
+      // a theme there and this enum follows, with no edit here.
+      colorTheme: z
+        .enum(THEME_PLUGIN_IDS)
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description:
+            "IDE color palette: 'default' (follows the light/dark theme), one of 'dracula', 'catppuccin-frappe', 'catppuccin-latte', 'monokai', 'gruvbox', 'solarized', or 'custom' (your own colors from appearance.customTheme). A personal preference (user scope) — not shared with the project.",
+        })
+        .optional(),
+      // Whether the Themes plugin appears under Settings → Plugins. The theme is
+      // a user-scope plugin (personal, not shared via git), toggled on the Plugins
+      // management page like the lint plugins. Default on (absent → enabled).
+      colorThemeEnabled: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description:
+            'Whether the Themes plugin appears in Settings → Plugins. A personal preference (user scope). Default on.',
+        })
+        .optional(),
+      // Six seed colors for the `custom` color theme. The app derives the full
+      // token set from these (text contrast, muted text, accents) — see
+      // `expandCustomSeed` in `packages/app/src/lib/color-themes.ts`. Each value
+      // is a `#rrggbb` hex string; light-vs-dark mode is auto-detected from the
+      // background's luminance. A personal preference (user scope).
+      customTheme: z
+        .looseObject({
+          background: z
+            .string()
+            .register(fieldRegistry, {
+              scope: 'user',
+              agentSettable: false,
+              defaultScope: 'user',
+              description: 'Custom theme: editor canvas background, as a #rrggbb hex string.',
+            })
+            .optional(),
+          surface: z
+            .string()
+            .register(fieldRegistry, {
+              scope: 'user',
+              agentSettable: false,
+              defaultScope: 'user',
+              description:
+                'Custom theme: elevated surfaces (cards, sidebar, popovers), as a #rrggbb hex string.',
+            })
+            .optional(),
+          foreground: z
+            .string()
+            .register(fieldRegistry, {
+              scope: 'user',
+              agentSettable: false,
+              defaultScope: 'user',
+              description: 'Custom theme: primary text color, as a #rrggbb hex string.',
+            })
+            .optional(),
+          primary: z
+            .string()
+            .register(fieldRegistry, {
+              scope: 'user',
+              agentSettable: false,
+              defaultScope: 'user',
+              description:
+                'Custom theme: accent color for buttons, links, and focus, as a #rrggbb hex string.',
+            })
+            .optional(),
+          accent: z
+            .string()
+            .register(fieldRegistry, {
+              scope: 'user',
+              agentSettable: false,
+              defaultScope: 'user',
+              description:
+                'Custom theme: secondary accent (syntax highlights, charts), as a #rrggbb hex string.',
+            })
+            .optional(),
+          border: z
+            .string()
+            .register(fieldRegistry, {
+              scope: 'user',
+              agentSettable: false,
+              defaultScope: 'user',
+              description: 'Custom theme: hairline border + input color, as a #rrggbb hex string.',
+            })
+            .optional(),
         })
         .optional(),
       preview: z
@@ -534,6 +632,47 @@ export const ConfigSchema = z.looseObject({
         model: DEFAULT_EMBEDDINGS_MODEL,
       },
     }),
+  // Content rules (the markdown linter). PROJECT scope: lint standards (which
+  // rules run, whether linting is on) are an authoring decision shared with the
+  // team via git — the OK equivalent of a committed `.markdownlint.json`. The
+  // no-code settings section + the desktop View-menu toggle write here; the
+  // CodeMirror lint facet reads it. Defaults match `DEFAULT_LINTER_CONFIG` in
+  // `markdown/lint`.
+  contentRules: z
+    .looseObject({
+      // Lint plugins. Each entry is one built-in lint family with its own
+      // per-plugin `enabled`; diagnostics from enabled plugins are concatenated.
+      //
+      // This leaf is hand-authored (not folded from the lint registry) because it
+      // carries config-system metadata — per-field scope / agentSettable /
+      // description + the walker registration contract — and deriving it would
+      // couple markdown/lint to config. Adding a plugin means adding its slice
+      // here too; `linter-leaf-registry-consistency.test.ts` fails loudly if this
+      // drifts from LINT_PLUGINS.
+      //
+      // looseObject: a plugin slice written by a NEWER OK version must survive
+      // an older version's parse→write-back cycle instead of being stripped. Each
+      // plugin is a direct child of `contentRules` (no `plugins` wrapper).
+      markdownlint: z
+        .object({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description: 'Whether the markdownlint plugin (body rules) contributes diagnostics.',
+            })
+            .default(false),
+          // The markdownlint `rules` are NOT persisted here. They live in the
+          // project's own `.markdownlint.{json,jsonc,yaml,yml}` (native file =
+          // source of truth, discovered server-side and injected into the
+          // effective config; OK's tuned defaults layer under it). OK config
+          // persists only this toggle.
+        })
+        .default({ enabled: false }),
+    })
+    .default({ markdownlint: { enabled: false } }),
   // PROJECT-LOCAL scope: external link-hover previews send the hovered URL to
   // the destination site to fetch its metadata (egress), so — like semantic
   // search — each teammate opts in on their own machine rather than inheriting

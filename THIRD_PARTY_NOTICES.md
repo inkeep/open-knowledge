@@ -1205,6 +1205,11 @@ Homepage: https://github.com/codemirror/legacy-modes
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
+### `@codemirror/lint@6.9.7`
+Homepage: https://code.haverbeke.berlin/codemirror/lint
+
+Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
+
 ### `@codemirror/lint@6.9.5`
 Homepage: https://github.com/codemirror/lint
 
@@ -1225,8 +1230,8 @@ Homepage: https://github.com/codemirror/state
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@codemirror/view@6.41.0`
-Homepage: https://github.com/codemirror/view
+### `@codemirror/view@6.43.3`
+Homepage: https://code.haverbeke.berlin/codemirror/view
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
@@ -4034,6 +4039,11 @@ Homepage: https://github.com/wooorm/markdown-table
 
 Copyright (c) Titus Wormer <tituswormer@gmail.com>
 
+### `markdownlint@0.41.0`
+Homepage: https://github.com/DavidAnson/markdownlint
+
+Copyright (c) David Anson
+
 ### `marked@16.4.2`
 Homepage: https://marked.js.org
 
@@ -4172,6 +4182,11 @@ Copyright (c) Titus Wormer <tituswormer@gmail.com>
 
 ### `micromark-core-commonmark@2.0.3`
 Homepage: https://github.com/micromark/micromark/tree/main/packages/micromark-core-commonmark
+
+Copyright (c) Titus Wormer <tituswormer@gmail.com>
+
+### `micromark-extension-directive@4.0.0`
+Homepage: https://github.com/micromark/micromark-extension-directive
 
 Copyright (c) Titus Wormer <tituswormer@gmail.com>
 
@@ -5271,6 +5286,11 @@ Copyright Brian White. All rights reserved.
 Homepage: https://github.com/open-draft/strict-event-emitter
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
+### `string-width@8.2.1`
+Homepage: https://github.com/sindresorhus/string-width
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
 ### `string-width@7.2.0`
 Homepage: https://github.com/sindresorhus/string-width

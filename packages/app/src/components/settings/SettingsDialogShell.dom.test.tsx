@@ -87,6 +87,9 @@ let mockCollabUrl: string | null = 'ws://test.invalid';
 let mockDesktopPresent = false;
 let mockBodyMode: BodyMode = 'probe';
 let mockShowInstallSkill = true;
+// markdownlint is opt-in (off by default); the default mock represents a
+// project that has enabled it, so the Plugins group lists its panel.
+let mockProjectConfig: unknown = { contentRules: { markdownlint: { enabled: true } } };
 
 mock.module('@inkeep/open-knowledge-core', () => ({
   get SHOW_INSTALL_SKILL() {
@@ -117,7 +120,7 @@ mock.module('@/lib/config-provider', () => ({
     okignoreBinding: mockOkignoreBinding,
     okignoreSynced: mockOkignoreSynced,
     userConfig: null,
-    projectConfig: null,
+    projectConfig: mockProjectConfig,
     projectLocalConfig: null,
     projectLocalSynced: false,
     merged: null,
@@ -159,6 +162,7 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
     mockDesktopPresent = false;
     mockBodyMode = 'probe';
     mockShowInstallSkill = true;
+    mockProjectConfig = { contentRules: { markdownlint: { enabled: true } } };
     consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -238,7 +242,28 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
     expect(sync.disabled).toBe(true);
     expect(sync.getAttribute('aria-disabled')).toBe('true');
     expect(sync.getAttribute('aria-describedby')).toBe('settings-group-project-caption');
-    expect(screen.getByText('Open a project to edit.')).toBeTruthy();
+    // The project group gates on a loaded project (its caption renders); the
+    // Plugins group no longer gates — the user-scope theme plugin keeps it shown.
+    expect(screen.getAllByText('Open a project to edit.').length).toBeGreaterThan(0);
+  });
+
+  test('the Plugins group always lists the theme plugin, even with no project', () => {
+    mockCollabUrl = null;
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    // Themes is user-scope (no project required), so its panel shows in the
+    // Plugins group even when the project-scope items are gated.
+    expect(screen.getByTestId('settings-sidebar-item-plugin:theme')).toBeTruthy();
+    expect(screen.getByText('Themes')).toBeTruthy();
+  });
+
+  test('has a per-scope Plugins manage item under both User and This project', () => {
+    // Default mock has a project (mockCollabUrl set) with markdownlint enabled.
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    // Two manage entries — one per scope — plus the shared Plugins panel group.
+    expect(screen.getByTestId('settings-sidebar-item-user-plugins-manage')).toBeTruthy();
+    expect(screen.getByTestId('settings-sidebar-item-plugins-manage')).toBeTruthy();
+    expect(screen.getByTestId('settings-sidebar-item-plugin:markdownlint')).toBeTruthy();
+    expect(screen.getByTestId('settings-sidebar-item-plugin:theme')).toBeTruthy();
   });
 
   test('hides or shows the Integrations group from desktop availability', () => {

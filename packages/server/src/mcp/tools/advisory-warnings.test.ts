@@ -5,7 +5,13 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import type { BrokenLink, RenderWarning, WriteWarning } from '@inkeep/open-knowledge-core';
+import type {
+  AdvisoryWarning,
+  BrokenLink,
+  LintViolationWarning,
+  RenderWarning,
+  WriteWarning,
+} from '@inkeep/open-knowledge-core';
 import {
   formatAdvisoryBriefs,
   formatAdvisoryLines,
@@ -220,5 +226,73 @@ describe('formatBrokenLinkBrief', () => {
     expect(formatBrokenLinkBrief([noSuchDoc, unresolvable])).toBe(
       '⚠ 2 broken outbound links (see brokenLinks).',
     );
+  });
+});
+
+describe('content-rule (lint) violations', () => {
+  const lint = (over: Partial<LintViolationWarning> = {}): LintViolationWarning => ({
+    kind: 'lint-violation',
+    source: 'markdownlint',
+    code: 'MD010',
+    message: 'Hard tabs',
+    severity: 'warning',
+    line: 3,
+    column: 1,
+    ...over,
+  });
+
+  test('formatAdvisoryLines emits one line per violation, with rule + line + message', () => {
+    const lines = formatAdvisoryLines([
+      lint(),
+      lint({
+        code: 'MD043',
+        message: 'Required heading structure',
+        severity: 'error',
+        line: 1,
+      }),
+    ]);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('markdownlint/MD010');
+    expect(lines[0]).toContain('line 3');
+    expect(lines[1]).toContain('markdownlint/MD043');
+    expect(lines[1]).toContain('error');
+  });
+
+  test('formatAdvisoryBriefs emits a brief per violation', () => {
+    const briefs = formatAdvisoryBriefs([lint()]);
+    expect(briefs.some((b) => b.includes('MD010'))).toBe(true);
+  });
+
+  test('coexists with render + integrity entries', () => {
+    const lines = formatAdvisoryLines([mermaidWarning(), lint()]);
+    expect(lines.some((l) => l.toLowerCase().includes('mermaid'))).toBe(true);
+    expect(lines.some((l) => l.includes('MD010'))).toBe(true);
+  });
+});
+
+describe('unrecognized-kind fallback', () => {
+  // A kind added to AdvisoryWarningSchema before this relay learns its
+  // family — the closed union requires the cast.
+  const future = { kind: 'future-advisory-kind', detail: 42 } as unknown as AdvisoryWarning;
+
+  test('formatAdvisoryLines emits a generic line instead of dropping the entry', () => {
+    const lines = formatAdvisoryLines([future]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('⚠');
+    expect(lines[0]).toContain('future-advisory-kind');
+  });
+
+  test('formatAdvisoryBriefs emits a generic brief instead of dropping the entry', () => {
+    const briefs = formatAdvisoryBriefs([future]);
+    expect(briefs).toHaveLength(1);
+    expect(briefs[0]).toContain('future-advisory-kind');
+  });
+
+  test('recognized siblings keep their dedicated formats alongside the fallback', () => {
+    const lines = formatAdvisoryLines([DIVERGENCE, future, mermaidWarning()]);
+    expect(lines).toHaveLength(3);
+    expect(lines.some((l) => l.includes('Content divergence'))).toBe(true);
+    expect(lines.some((l) => l.toLowerCase().includes('mermaid'))).toBe(true);
+    expect(lines.some((l) => l.includes('future-advisory-kind'))).toBe(true);
   });
 });

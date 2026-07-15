@@ -24,6 +24,8 @@ Open any doc from the sidebar. The body renders as WYSIWYG markdown with familia
 
 A slash command (`/`) opens an insert menu for headings, lists, tables, code blocks, callouts, footnotes, inline math, and the other content shapes the editor supports.
 
+Markdown problems (hard tabs, heading increments, and the rest) are flagged inline as you write, with a **Problems** panel in the document panel for the whole doc or project. See [Content rules](/docs/advanced/content-rules/overview).
+
 ### Tables
 
 Insert a table from the slash menu. The header row stays visible as you scroll down a long table, the first column stays pinned as you scroll sideways, and dragging a row or column handle reorders it. Cells are single-line in the stored markdown: pressing Enter inside a cell — or pasting a table whose cells hold lists or paragraphs — joins the lines with `<br />`, the GFM line-break idiom, so the table stays valid for everyone else opening the file. `<br>` tags in existing files render as real line breaks and round-trip byte-for-byte.

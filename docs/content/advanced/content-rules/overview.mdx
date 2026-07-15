@@ -1,0 +1,52 @@
+---
+title: Overview
+icon: LuBookOpen
+description: A non-blocking linting layer over your project's markdown — problems as you write, a Problems panel, `ok lint` for CI, and advisories for AI agents. Enable it per project.
+---
+
+Content rules are a lightweight linting layer over your project's markdown. **Enable a linter for a project** and it checks your markdown as you write. Findings are **non-blocking**: they surface as warnings, never stop a save, and never gate an agent's edit.
+
+Today the only linter is [markdownlint](/docs/advanced/content-rules/markdownlint) — the standard engine for markdown style (hard tabs, heading increments, list markers, and the rest). Content rules is built as a pluggable system, and more linters are planned. This page covers the parts that are the same whatever the linter runs; the [markdownlint page](/docs/advanced/content-rules/markdownlint) covers that engine's rules and configuration.
+
+## Where problems show up
+
+- **Source mode** — wavy underlines on the offending range, markers in the lint gutter, hover tooltips, and (for auto-fixable rules) an inline **Fix** action.
+- **WYSIWYG** — the block a problem falls in is marked, so issues stay visible without raw markdown lines to underline.
+- **The Problems panel** — a tab in the document panel on the right, with a live count badge and two scopes:
+  - **This doc** — live diagnostics for the open document, in both WYSIWYG and source mode. Click a problem to jump to it: source mode lands on the exact line and column, WYSIWYG scrolls to the block it falls in.
+  - **Project** — an on-demand audit of every in-scope document. It runs when you first open the scope and on the refresh button — never in the background. Results group per file with error/warning totals; configuration problems (a malformed config file, a broken `extends`) surface at the top. Clicking a problem opens the offending doc at that position.
+
+The panel is also available in [single-file sessions](/docs/features/editor#open-a-single-file) (`ok <file>`).
+
+## Enabling a linter
+
+Open **Settings ▸ This project ▸ Plugins** and turn on a linter; open editors react live. Each linter has its own toggle, off until you enable it. The choice is saved to the project's `config.yml` (see the [configuration reference](/docs/reference/configuration)), so committing it shares the setting with every collaborator — the whole-project equivalent of a committed lint config.
+
+## From the command line
+
+`ok lint` runs content rules headlessly, with the same config resolution as the editor:
+
+```bash
+ok lint                 # audit the whole project
+ok lint guides/         # scope to a folder
+ok lint guides/intro.md # or a single file
+ok lint --fix           # apply auto-fixes in place
+ok lint --json          # structured JSON output
+ok lint --errors-only   # exit non-zero only on error-severity problems
+```
+
+The exit code is CI-friendly: non-zero when any problems are found. Findings are warnings unless your config promotes a rule to `"error"` severity, so `--errors-only` lets you gate CI on just the rules you've chosen to enforce.
+
+## AI agents
+
+Agents get the same signal you see:
+
+- The MCP **`lint`** tool lints a single document or audits the project (optionally scoped to a folder or file), and with `fix: true` on a document auto-fixes fixable rules in place — attributed and live in the preview, the same result as the editor's **Fix** action. Audit output is capped at 10 files × 10 diagnostics per file with explicit "… and N more" indicators — the totals always reflect the full scan, and re-running with a narrower scope recovers the detail. See the [MCP reference](/docs/reference/mcp).
+- Every agent write response carries up to 10 lint findings for the document it touched, so an agent can clean up after itself without being asked. Advisory only — a finding never blocks the write.
+
+## See also
+
+- [markdownlint](/docs/advanced/content-rules/markdownlint): the rules, your `.markdownlint.*` config, and the rule browser
+- [Editor](/docs/features/editor): source mode, WYSIWYG, and the document panel
+- [Configuration reference](/docs/reference/configuration): `config.yml` and what's shared via git
+- [MCP reference](/docs/reference/mcp): the tools agents use to read and write your project

@@ -21,6 +21,13 @@ mock.module('@/components/PropertyContext', () => ({
   useProperties: () => ({ requestAddProperty: () => {} }),
 }));
 
+// EditorArea reads the project config binding (for the desktop "toggle content
+// rules" menu action). These tests mount EditorArea outside a ConfigProvider,
+// so stub the hook with a null binding — the toggle handler is a no-op here.
+mock.module('@/lib/config-provider', () => ({
+  useConfigContext: () => ({ projectBinding: null }),
+}));
+
 const FOLDER_DOC_CTX = {
   activeDocName: 'folder/index',
   activeProvider: null,

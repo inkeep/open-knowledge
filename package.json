@@ -66,7 +66,9 @@
     "turbo": "^2.7.0"
   },
   "overrides": {
-    "mdast-util-mdx-jsx": "3.2.0"
+    "mdast-util-mdx-jsx": "3.2.0",
+    "@codemirror/state": "6.6.0",
+    "@codemirror/view": "6.43.3"
   },
   "puppeteer": {
     "skipDownload": true

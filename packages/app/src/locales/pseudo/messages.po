@@ -123,6 +123,11 @@ msgstr ""
 msgid "{0, plural, one {# doc} other {# docs}}"
 msgstr ""
 
+#. placeholder {0}: audit.result.errorCount
+#: src/components/ProblemsPanel.tsx
+msgid "{0, plural, one {# error} other {# errors}}"
+msgstr ""
+
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "{0, plural, one {# item} other {# items}}"
@@ -131,6 +136,11 @@ msgstr ""
 #. placeholder {0}: entries.length
 #: src/components/ObjectWidget.tsx
 msgid "{0, plural, one {# key} other {# keys}}"
+msgstr ""
+
+#. placeholder {0}: opts.length
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "{0, plural, one {# option set} other {# options set}}"
 msgstr ""
 
 #. placeholder {0}: blocked.length
@@ -148,6 +158,11 @@ msgstr ""
 msgid "{0, plural, one {# use} other {# uses}}"
 msgstr ""
 
+#. placeholder {0}: audit.result.warningCount
+#: src/components/ProblemsPanel.tsx
+msgid "{0, plural, one {# warning} other {# warnings}}"
+msgstr ""
+
 #. placeholder {0}: fileRows.length
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {File} other {Files}}"
@@ -156,6 +171,16 @@ msgstr ""
 #. placeholder {0}: folderRows.length
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Folder} other {Folders}}"
+msgstr ""
+
+#. placeholder {0}: result.fileCount
+#: src/components/ProblemsPanel.tsx
+msgid "{0, plural, one {No problems across # document.} other {No problems across # documents.}}"
+msgstr ""
+
+#. placeholder {0}: labels[key]
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "{0} hex value"
 msgstr ""
 
 #. placeholder {0}: templates.length
@@ -329,6 +354,11 @@ msgstr ""
 msgid "{docName} is {0}. OpenKnowledge currently opens files up to {1}."
 msgstr ""
 
+#. placeholder {0}: entries.length
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "{enabledCount}/{0} on"
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} files failed to upload}}"
 msgstr ""
@@ -374,6 +404,11 @@ msgstr ""
 #: src/components/PageHeaderWidgets.tsx
 #: src/components/PropertyWidgets.tsx
 msgid "{keyName} value"
+msgstr ""
+
+#. placeholder {0}: diagnostics.length
+#: src/components/DocPanel.tsx
+msgid "{label} ({0})"
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -558,6 +593,10 @@ msgstr ""
 msgid "📝 or assets/icon.png"
 msgstr ""
 
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "A <0>Modified</0> badge marks rules your config sets explicitly — directly, or inherited through <1>extends</1>. Unmarked rules keep their default state."
+msgstr ""
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
 msgstr ""
@@ -597,6 +636,10 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "A non-empty folder already exists at this path. Pick a different folder."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
@@ -657,6 +700,10 @@ msgstr ""
 
 #: src/editor/slash-command/items.tsx
 msgid "Above"
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Accent"
 msgstr ""
 
 #: src/components/DiffView.tsx
@@ -1024,6 +1071,10 @@ msgstr ""
 msgid "Authorize in browser"
 msgstr ""
 
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Auto"
+msgstr ""
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Auto-approve settings not yet loaded — try again in a moment"
 msgstr ""
@@ -1085,6 +1136,10 @@ msgstr ""
 
 #: src/components/ActivityModeContent.tsx
 msgid "Back to document view"
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Background"
 msgstr ""
 
 #: src/components/LinksPanel.tsx
@@ -1149,6 +1204,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Border"
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -1527,6 +1586,10 @@ msgstr ""
 msgid "Clusters"
 msgstr ""
 
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Code"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Code block"
 msgstr ""
@@ -1597,6 +1660,10 @@ msgstr ""
 msgid "Collapsible section with a clickable summary."
 msgstr ""
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Color theme"
+msgstr ""
+
 #: src/components/CommandPalette.tsx
 msgid "Command failed."
 msgstr ""
@@ -1619,6 +1686,10 @@ msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Commits happen automatically"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Common markdown issues — hard tabs, heading increments, list markers, and more."
 msgstr ""
 
 #: src/components/HelpPopover.tsx
@@ -1673,6 +1744,10 @@ msgstr ""
 
 #: src/components/settings/SharingSection.tsx
 msgid "Config sharing unchanged — see details below."
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Configuration warnings"
 msgstr ""
 
 #: src/components/settings/SettingsDialogShell.tsx
@@ -1786,6 +1861,10 @@ msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Content root"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Content rules not yet loaded — try again in a moment"
 msgstr ""
 
 #: src/editor/bubble-menu/FootnoteBubbleButton.tsx
@@ -2398,8 +2477,16 @@ msgstr ""
 msgid "Custom open-knowledge entry — not managed by OpenKnowledge"
 msgstr ""
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Custom theme"
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Customize how the editor looks and behaves."
+msgstr ""
+
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Dark"
 msgstr ""
 
 #: src/components/PropertyWidgets.tsx
@@ -2416,6 +2503,11 @@ msgstr ""
 
 #: src/components/TemplateForm.tsx
 msgid "Default properties"
+msgstr ""
+
+#. placeholder {0}: formatOptionConfigValue(spec.default)
+#: src/components/settings/rule-option-field.tsx
+msgid "Default: <0>{0}</0>"
 msgstr ""
 
 #: src/components/DeleteConfirmationDialog.tsx
@@ -2568,6 +2660,13 @@ msgstr ""
 msgid "Diff unavailable"
 msgstr ""
 
+#. placeholder {0}: plugin.label
+#. placeholder {0}: rule.name
+#: src/components/settings/LintingSection.tsx
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Disable {0}"
+msgstr ""
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Disable external link previews"
 msgstr ""
@@ -2582,6 +2681,10 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Disable sync"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Disable Themes"
 msgstr ""
 
 #: src/components/TemplateProperties.tsx
@@ -2661,6 +2764,15 @@ msgstr ""
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
+msgstr ""
+
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Documentation"
+msgstr ""
+
+#. placeholder {0}: rule.id
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Documentation for {0} (opens in browser)"
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -2792,6 +2904,10 @@ msgstr ""
 msgid "Edit {keyName}"
 msgstr ""
 
+#: src/components/settings/rule-option-field.tsx
+msgid "Edit in config file"
+msgstr ""
+
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "Edit markdown link"
 msgstr ""
@@ -2842,6 +2958,10 @@ msgstr ""
 
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Editors to install skills into"
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Edits apply live. Light or dark is chosen from the background."
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
@@ -2897,6 +3017,13 @@ msgstr ""
 msgid "Empty starting content"
 msgstr ""
 
+#. placeholder {0}: plugin.label
+#. placeholder {0}: rule.name
+#: src/components/settings/LintingSection.tsx
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Enable {0}"
+msgstr ""
+
 #: src/components/AutoSyncOnboardingDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
@@ -2932,12 +3059,20 @@ msgstr ""
 msgid "Enable terminal for this project"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable Themes"
+msgstr ""
+
 #: src/components/ActivityModeContent.tsx
 msgid "Ended"
 msgstr ""
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Enter a 6-digit hex like #1A2B3C"
 msgstr ""
 
 #: src/components/SeedDialog.tsx
@@ -3254,8 +3389,21 @@ msgstr ""
 msgid "Failed to reorder"
 msgstr ""
 
+#. placeholder {0}: humanFormat(result.error)
+#: src/components/settings/LintingSection.tsx
+msgid "Failed to save content rules — {0}"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Failed to save theme setting"
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Failed to update attachment location — {detail}"
+msgstr ""
+
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Failed to update markdownlint rules"
 msgstr ""
 
 #: src/components/ObjectWidget.tsx
@@ -3399,8 +3547,21 @@ msgstr ""
 msgid "Fit width"
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+#: src/editor/extensions/markdown-lint-decorations.ts
+msgid "Fix"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Fix {flatId}"
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Fixed folder in content root"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Flag common markdown issues in the editor. Powered by <0>markdownlint<1/></0>."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -3566,6 +3727,15 @@ msgstr ""
 msgid "Go to line"
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "Go to line {displayLine}"
+msgstr ""
+
+#. placeholder {0}: file.file
+#: src/components/ProblemsPanel.tsx
+msgid "Go to line {displayLine} in {0}"
+msgstr ""
+
 #: src/components/DocPanel.tsx
 #: src/components/GraphPanel.tsx
 msgid "Graph"
@@ -3624,8 +3794,16 @@ msgstr ""
 msgid "heading-slug"
 msgstr ""
 
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Headings"
+msgstr ""
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Heads up"
+msgstr ""
+
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Heads up: editing any rule or option here creates a <0>.markdownlint.json</0> file in your project to save your changes."
 msgstr ""
 
 #: src/editor/slash-command/embed-starter-items.tsx
@@ -4106,8 +4284,16 @@ msgstr ""
 msgid "Level"
 msgstr ""
 
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Light"
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Light, dark, or follow the OS."
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "line {displayLine}"
 msgstr ""
 
 #: src/editor/bubble-menu/LinkEditPopover.tsx
@@ -4152,8 +4338,16 @@ msgstr ""
 msgid "Links"
 msgstr ""
 
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Links & images"
+msgstr ""
+
 #: src/components/PropertyWidgets.tsx
 msgid "List"
+msgstr ""
+
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Lists"
 msgstr ""
 
 #: src/components/PageHeaderWidgets.tsx
@@ -4405,6 +4599,7 @@ msgid "Missing page: {linkTitle}. Click to create."
 msgstr ""
 
 #: src/components/FolderOverview.tsx
+#: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Modified"
 msgstr ""
 
@@ -4689,6 +4884,10 @@ msgstr ""
 msgid "Next tab"
 msgstr ""
 
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "No <0>.markdownlint.*</0> file yet — every rule runs on the same defaults as the VS Code markdownlint extension: all on, except line length."
+msgstr ""
+
 #: src/components/FileSidebar.tsx
 msgid "No AI agents installed"
 msgstr ""
@@ -4860,6 +5059,10 @@ msgstr ""
 msgid "No patterns yet. Type a folder or file name below to start hiding files."
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "No problems found."
+msgstr ""
+
 #: src/components/settings/SkillsManagerSection.tsx
 msgid "No project skills yet. Author one to teach agents a repeatable task scoped to this knowledge base."
 msgstr ""
@@ -4883,6 +5086,10 @@ msgstr ""
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "No results"
+msgstr ""
+
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "No rules match your filters."
 msgstr ""
 
 #: src/components/SkillsSidebarSection.tsx
@@ -5057,6 +5264,10 @@ msgstr ""
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Only markdown files"
+msgstr ""
+
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Only modified"
 msgstr ""
 
 #: src/editor/components/TagDialog.tsx
@@ -5572,8 +5783,20 @@ msgstr ""
 msgid "Permission denied"
 msgstr ""
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Pick “Custom” above to use this palette."
+msgstr ""
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
+msgstr ""
+
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Pick a built-in IDE color palette, or define your own."
+msgstr ""
+
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Pick a built-in IDE palette. The dark IDE themes override the light/dark setting in Preferences."
 msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
@@ -5598,6 +5821,11 @@ msgstr ""
 
 #: src/components/SubscribeForm.tsx
 msgid "Please enter a valid email address."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Plugins"
 msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
@@ -5633,6 +5861,10 @@ msgstr ""
 msgid "Previous tab"
 msgstr ""
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Primary"
+msgstr ""
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Private"
 msgstr ""
@@ -5643,6 +5875,16 @@ msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
 msgid "probe failed"
+msgstr ""
+
+#: src/components/DocPanel.tsx
+#: src/components/ProblemsPanel.tsx
+msgid "Problems"
+msgstr ""
+
+#. placeholder {0}: file.file
+#: src/components/ProblemsPanel.tsx
+msgid "Problems in {0}"
 msgstr ""
 
 #: src/components/HelpPopover.tsx
@@ -5658,6 +5900,7 @@ msgid "project"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
+#: src/components/PanelScopeHeader.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr ""
@@ -5672,6 +5915,10 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Project plugins are your project's authoring standard — turn them on or off here. The choice is committed to config.yml and shared with every collaborator via git. Each enabled plugin gets its own page under Plugins in the settings sidebar."
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -5845,6 +6092,10 @@ msgstr ""
 
 #: src/components/FileTree.tsx
 msgid "Reconnecting…"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Refresh audit"
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -6104,10 +6355,20 @@ msgstr ""
 msgid "research-note"
 msgstr ""
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Reset"
+msgstr ""
+
+#. placeholder {0}: rule.id
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Reset {0} to default"
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Reset {labelText} to default"
 msgstr ""
 
+#: src/components/settings/markdownlint-rule-browser.tsx
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Reset to default"
 msgstr ""
@@ -6261,12 +6522,20 @@ msgstr ""
 msgid "root"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Run a project audit from the Problems panel."
+msgstr ""
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Run this in your terminal"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Running project audit"
 msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
@@ -6320,6 +6589,7 @@ msgid "Saving"
 msgstr ""
 
 #: src/components/NewSkillDialog.tsx
+#: src/components/PanelScopeHeader.tsx
 msgid "Scope"
 msgstr ""
 
@@ -6384,6 +6654,14 @@ msgstr ""
 
 #: src/components/ProjectSwitcher.tsx
 msgid "Search projects..."
+msgstr ""
+
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Search rules"
+msgstr ""
+
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Search rules by id, alias, or name"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -7003,6 +7281,10 @@ msgstr ""
 msgid "Strikethrough"
 msgstr ""
 
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Style"
+msgstr ""
+
 #: src/components/SeedDialog.tsx
 msgid "Subfolder name"
 msgstr ""
@@ -7034,6 +7316,10 @@ msgstr ""
 
 #: src/components/BottomComposer.tsx
 msgid "Summarize everything I changed this week"
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Surface"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -7297,6 +7583,7 @@ msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr ""
 
 #: src/components/PropertyWidgets.tsx
+#: src/components/settings/CustomThemeEditor.tsx
 msgid "Text"
 msgstr ""
 
@@ -7327,6 +7614,10 @@ msgstr ""
 
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "The audit could not be completed. Try again."
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -7416,8 +7707,18 @@ msgstr ""
 msgid "Theme"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Themes"
+msgstr ""
+
 #: src/components/TerminalRefusalNotice.tsx
 msgid "There's no project folder for this window, so a terminal can't start here."
+msgstr ""
+
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
@@ -7469,6 +7770,10 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
+msgstr ""
+
+#: src/components/PanelScopeHeader.tsx
+msgid "This doc"
 msgstr ""
 
 #: src/components/ShareFreshnessWarning.tsx
@@ -8047,6 +8352,10 @@ msgstr ""
 msgid "User"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "User plugins are personal to this device — turn them on or off here. The choice lives in your user config and is never committed to the project. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+msgstr ""
+
 #: src/components/settings/EmbeddingsKeySection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."
 msgstr ""
@@ -8213,6 +8522,10 @@ msgstr ""
 
 #: src/components/SeedDialog.tsx
 msgid "Where should it live?"
+msgstr ""
+
+#: src/components/settings/markdownlint-rule-browser.tsx
+msgid "Whitespace"
 msgstr ""
 
 #: src/components/CreatedItemsList.tsx

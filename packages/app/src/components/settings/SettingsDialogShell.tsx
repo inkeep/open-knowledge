@@ -19,11 +19,12 @@
  * the body chunk is cached after the first open.
  *
  * Sidebar IA:
- *   USER         → Preferences, Hotkeys, Account, AI tools & CLI (Electron
- *                  host only)
- *   THIS PROJECT → Sync, Search, Link previews (hidden on the packaged
- *                  file:// renderer), Templates, Ignore patterns, Config
- *                  sharing
+ *   USER         → Preferences, Hotkeys, Account, Plugins (user-scope manage),
+ *                  AI tools & CLI (Electron host only)
+ *   THIS PROJECT → Sync, Search, Plugins (project-scope manage), Link previews
+ *                  (hidden on the packaged file:// renderer), Templates, Ignore
+ *                  patterns, Config sharing
+ *   PLUGINS      → one panel per enabled plugin (project + user, side by side)
  *   INTEGRATIONS → Claude Desktop (hidden when desktopPresent === false)
  */
 
@@ -40,6 +41,7 @@ import { useConfigContext } from '@/lib/config-provider';
 import { isFileProtocolPage } from '@/lib/file-protocol-page';
 import { useClaudeDesktopIntegration } from '@/lib/handoff/use-claude-desktop-integration';
 import { cn } from '@/lib/utils';
+import { LINT_PLUGIN_META } from './lint-plugin-meta';
 
 /**
  * GitHub Releases tag URL — mirrors `releaseUrlFor` in the desktop main
@@ -59,7 +61,7 @@ interface SidebarItem {
 }
 
 interface SidebarGroup {
-  id: 'user' | 'project' | 'integrations';
+  id: 'user' | 'project' | 'plugins' | 'integrations';
   label: string;
   /**
    * `false` renders the group disabled (no-project state for THIS
@@ -78,7 +80,8 @@ interface SettingsDialogShellProps {
 export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellProps) {
   const { t } = useLingui();
   const { collabUrl } = useDocumentContext();
-  const { userBinding, userSynced, okignoreBinding, okignoreSynced } = useConfigContext();
+  const { userBinding, userSynced, okignoreBinding, okignoreSynced, projectConfig, merged } =
+    useConfigContext();
   const { desktopPresent } = useClaudeDesktopIntegration();
 
   // Always default to USER → Preferences on each fresh open. No
@@ -100,6 +103,18 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   // its per-project revoke toggle only appears under the Electron preload.
   const isOkDesktopHost = typeof window !== 'undefined' && window.okDesktop != null;
 
+  // One sidebar item per ENABLED project-scope plugin. These populate the
+  // "Project plugins" sidebar group; the manage page (which toggles membership)
+  // lives under "This project".
+  const enabledPluginItems: SidebarItem[] = LINT_PLUGIN_META.filter(
+    (p) => projectConfig?.contentRules?.[p.id]?.enabled === true,
+  ).map((p) => ({ id: `plugin:${p.id}`, label: p.label }));
+
+  // The theme is a user-scope plugin, toggled on the Plugins-manage page
+  // (`appearance.colorThemeEnabled`, default on). When off it drops out of the
+  // "User plugins" sidebar group.
+  const themeEnabled = merged?.appearance?.colorThemeEnabled !== false;
+
   // The packaged desktop renderer loads over file:// (desktop main's
   // loadFile), so its POST /api/link-preview requests carry Origin: null,
   // which the route's anti-proxy gate rejects by design (see
@@ -120,6 +135,8 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
         { id: 'preferences', label: t`Preferences` },
         { id: 'hotkeys', label: t`Hotkeys` },
         { id: 'account', label: t`Account` },
+        // User-scope plugin management (toggle personal plugins like Themes).
+        { id: 'user-plugins-manage', label: t`Plugins` },
         // Machine-level OK footprint (per-editor MCP entries, Agent Skills,
         // the ok PATH command) — user-scoped, and desktop-only because the
         // install actors live in the Electron main process.
@@ -133,6 +150,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
       items: [
         { id: 'sync', label: t`Sync` },
         { id: 'search', label: t`Search` },
+        { id: 'plugins-manage', label: t`Plugins` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
         ...(isOkDesktopHost ? [{ id: 'terminal', label: t`Terminal` }] : []),
         // Per-project MCP wiring + runtime skill — desktop-only because the
@@ -142,6 +160,19 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
         { id: 'skills', label: t`Skills` },
         { id: 'okignore', label: t`Ignore patterns` },
         { id: 'sharing', label: t`Config sharing` },
+      ],
+    },
+    // Dedicated group listing every ENABLED plugin's own panel — project-scope
+    // lint plugins (shown when a project is open) and the user-scope theme
+    // plugin, side by side. Membership is toggled on the per-scope Plugins
+    // manage pages (User → Plugins, This project → Plugins).
+    {
+      id: 'plugins',
+      label: t`Plugins`,
+      enabled: true,
+      items: [
+        ...(hasProject ? enabledPluginItems : []),
+        ...(themeEnabled ? [{ id: 'plugin:theme', label: t`Themes` }] : []),
       ],
     },
     {

@@ -39,6 +39,7 @@ import { createRealDetectDeps, detectDesktop, launchDesktop } from './commands/d
 import { diagnoseCommand } from './commands/diagnose.ts';
 import { embeddingsCommand } from './commands/embeddings/index.ts';
 import { initCommand } from './commands/init.ts';
+import { lintCommand } from './commands/lint.ts';
 import { mcpCommand } from './commands/mcp.ts';
 import { migrateCommand } from './commands/migrate.ts';
 import { openCommand } from './commands/open.ts';
@@ -221,6 +222,9 @@ program.addCommand(skillsCommand());
 // preview command — read-only content scope inspection
 const preview = previewCommand(() => resolvedConfig);
 program.addCommand(preview);
+
+// lint command — headless markdown linting (whole project, a folder, or a file)
+program.addCommand(lintCommand(() => resolvedConfig));
 
 // ui command — serves the React editor (sibling of `start`).
 const ui = uiCommand(() => resolvedConfig);

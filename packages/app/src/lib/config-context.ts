@@ -62,3 +62,13 @@ export function useConfigContext(): ConfigContextValue {
   }
   return ctx;
 }
+
+/**
+ * Like `useConfigContext` but returns `null` instead of throwing when no
+ * `<ConfigProvider />` is mounted. For components that also render in
+ * provider-less unit harnesses (e.g. the Settings theme controls, tested with a
+ * bare binding) — they fall back to defaults when the merged config is absent.
+ */
+export function useConfigContextOptional(): ConfigContextValue | null {
+  return use(ConfigContext);
+}

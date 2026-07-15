@@ -143,7 +143,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     expect(allowlisted).toEqual([]);
   });
 
-  test('user-strict fields cover agents.autoApproveOkTools + appearance.preview.autoOpen + appearance.theme + editor.wordWrap', () => {
+  test('user-strict fields cover agents.autoApproveOkTools + appearance.{colorTheme,colorThemeEnabled,customTheme.*,preview.autoOpen,theme} + editor.wordWrap', () => {
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const userStrict = leaves
@@ -152,13 +152,21 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .sort();
     expect(userStrict).toEqual([
       'agents.autoApproveOkTools',
+      'appearance.colorTheme',
+      'appearance.colorThemeEnabled',
+      'appearance.customTheme.accent',
+      'appearance.customTheme.background',
+      'appearance.customTheme.border',
+      'appearance.customTheme.foreground',
+      'appearance.customTheme.primary',
+      'appearance.customTheme.surface',
       'appearance.preview.autoOpen',
       'appearance.theme',
       'editor.wordWrap',
     ]);
   });
 
-  test('project-strict fields cover autoSync.default + content.* + telemetry.localSink.*', () => {
+  test('project-strict fields cover autoSync.default + content.* + contentRules.* + telemetry.localSink.*', () => {
     // `autoSync.default` is the committed seed for a machine's
     // `autoSync.enabled` on first open (true/false/null). Project scope is the
     // whole point — it travels with the repo so a maintainer pre-answers the
@@ -178,6 +186,11 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     // defaults shared across collaborators in the committed `config.yml`;
     // disabling the sink is also a project-level decision (sensitive
     // workspaces opt out across the whole team).
+    //
+    // `contentRules.*` is the project's markdown authoring standard — which
+    // lint plugins run. Shared via the committed `config.yml` (the OK analog of
+    // a checked-in `.markdownlint.json`). Each plugin's slice registers its own
+    // leaves under `contentRules.<id>.*`.
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const projectStrict = leaves
@@ -188,6 +201,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'autoSync.default',
       'content.attachmentFolderPath',
       'content.dir',
+      'contentRules.markdownlint.enabled',
       'telemetry.localSink.attributeDenylist',
       'telemetry.localSink.enabled',
       'telemetry.localSink.logs.maxBytes',

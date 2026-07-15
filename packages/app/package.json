@@ -26,7 +26,7 @@
     "measure:fuzz": "bash scripts/measure-fuzz.sh",
     "measure:stress": "bash scripts/measure-stress.sh",
     "perf:compare": "bash scripts/perf-compare.sh",
-    "test:e2e": "playwright test tests/stress/ux-interactions.e2e.ts tests/stress/file-tree-create.e2e.ts tests/stress/file-tree-drag-to-root.e2e.ts tests/stress/file-tree-deselect-to-root.e2e.ts tests/stress/file-tree-compact-folders.e2e.ts tests/stress/create-then-rename-editable.e2e.ts tests/stress/find-replace.e2e.ts tests/stress/editor-tabs.e2e.ts tests/stress/crdt-stress.e2e.ts tests/stress/slash-command.e2e.ts tests/stress/paste-fidelity.e2e.ts tests/stress/fr-7a-disconnect-source-mode.e2e.ts tests/stress/docs-open.e2e.ts tests/stress/frozen-table-headers.e2e.ts tests/stress/asset-embed.e2e.ts tests/stress/asset-embed-advanced.e2e.ts tests/stress/asset-click-dispatch.e2e.ts tests/stress/handoff.e2e.ts tests/stress/multi-agent-presence.e2e.ts tests/stress/editor-mode-persistence.e2e.ts tests/stress/sidebar-search-pill.e2e.ts tests/stress/command-palette-semantic.e2e.ts tests/stress/agent-activity-panel.e2e.ts tests/stress/drop-pipeline-auto-open.e2e.ts tests/stress/command-palette-flicker.e2e.ts tests/stress/cm6-list-hanging-indent.e2e.ts tests/stress/ng7-rapid-nav-coherence.e2e.ts tests/stress/reveal-on-activate.e2e.ts tests/stress/selection-indicator.e2e.ts tests/stress/new-file-cross-doc-bleed.e2e.ts tests/stress/editor-mode-flip-cross-doc-bleed.e2e.ts tests/stress/editor-area-viewport-resize.e2e.ts tests/stress/qa-sidebar-responsive.e2e.ts tests/stress/prd-6955-reassertion-repro.e2e.ts tests/stress/prd-6955-reassertion-wedge.e2e.ts tests/stress/prd-6914-repro.e2e.ts tests/stress/showall-lazy-tree.e2e.ts tests/stress/tabs-component-strip.e2e.ts tests/stress/source-find-scroll.e2e.ts tests/stress/harness-app-warmth.e2e.ts tests/stress/qa-canary-authoring-both-modes.e2e.ts tests/stress/qa-canary-live-typing.e2e.ts tests/stress/keystroke-cadence-danger-space.e2e.ts tests/stress/jsx-unregistered-backspace-delete.e2e.ts tests/stress/jsx-unregistered-ime-concurrent.e2e.ts tests/stress/jsx-backspace-delete.e2e.ts tests/stress/link-authoring-bytes.e2e.ts tests/stress/link-authoring-apex.e2e.ts tests/stress/quiet-tree-hidden-doc.e2e.ts tests/stress/show-ok-folders.e2e.ts",
+    "test:e2e": "playwright test tests/stress/ux-interactions.e2e.ts tests/stress/file-tree-create.e2e.ts tests/stress/file-tree-drag-to-root.e2e.ts tests/stress/file-tree-deselect-to-root.e2e.ts tests/stress/file-tree-compact-folders.e2e.ts tests/stress/create-then-rename-editable.e2e.ts tests/stress/find-replace.e2e.ts tests/stress/editor-tabs.e2e.ts tests/stress/crdt-stress.e2e.ts tests/stress/slash-command.e2e.ts tests/stress/paste-fidelity.e2e.ts tests/stress/fr-7a-disconnect-source-mode.e2e.ts tests/stress/docs-open.e2e.ts tests/stress/frozen-table-headers.e2e.ts tests/stress/asset-embed.e2e.ts tests/stress/asset-embed-advanced.e2e.ts tests/stress/asset-click-dispatch.e2e.ts tests/stress/handoff.e2e.ts tests/stress/multi-agent-presence.e2e.ts tests/stress/editor-mode-persistence.e2e.ts tests/stress/sidebar-search-pill.e2e.ts tests/stress/command-palette-semantic.e2e.ts tests/stress/agent-activity-panel.e2e.ts tests/stress/drop-pipeline-auto-open.e2e.ts tests/stress/command-palette-flicker.e2e.ts tests/stress/cm6-list-hanging-indent.e2e.ts tests/stress/ng7-rapid-nav-coherence.e2e.ts tests/stress/reveal-on-activate.e2e.ts tests/stress/selection-indicator.e2e.ts tests/stress/new-file-cross-doc-bleed.e2e.ts tests/stress/editor-mode-flip-cross-doc-bleed.e2e.ts tests/stress/editor-area-viewport-resize.e2e.ts tests/stress/qa-sidebar-responsive.e2e.ts tests/stress/prd-6955-reassertion-repro.e2e.ts tests/stress/prd-6955-reassertion-wedge.e2e.ts tests/stress/prd-6914-repro.e2e.ts tests/stress/showall-lazy-tree.e2e.ts tests/stress/tabs-component-strip.e2e.ts tests/stress/source-find-scroll.e2e.ts tests/stress/harness-app-warmth.e2e.ts tests/stress/qa-canary-authoring-both-modes.e2e.ts tests/stress/qa-canary-live-typing.e2e.ts tests/stress/keystroke-cadence-danger-space.e2e.ts tests/stress/jsx-unregistered-backspace-delete.e2e.ts tests/stress/jsx-unregistered-ime-concurrent.e2e.ts tests/stress/jsx-backspace-delete.e2e.ts tests/stress/link-authoring-bytes.e2e.ts tests/stress/link-authoring-apex.e2e.ts",
     "test:e2e:install-browsers": "playwright install chromium webkit firefox",
     "test:visual": "playwright test --config playwright.visual.config.ts",
     "test:visual:update": "playwright test --config playwright.visual.config.ts --update-snapshots",
@@ -36,6 +36,7 @@
     "sweep:cache-regime": "bun run tests/perf/profile.ts --scenario=sweep-cache-regime",
     "sweep:convention-cap-graduation": "bun run tests/perf/profile.ts --scenario=sweep-convention-cap-graduation",
     "probe:tiptap-leak": "bun run tests/perf/probes/tiptap-destroy-leak.ts",
+    "gen:color-themes": "bun run scripts/gen-color-themes.ts",
     "audit:strings": "bun run scripts/audit-strings/extract.ts",
     "audit:strings:casing": "bun run scripts/audit-strings/check-casing.ts",
     "size": "turbo run build --filter=@inkeep/open-knowledge-app && size-limit"
@@ -44,21 +45,21 @@
     {
       "name": "main app bundle (gzipped)",
       "path": "dist/assets/index-*.js",
-      "limit": "470 kB",
+      "limit": "476 kB",
       "gzip": true,
       "running": false
     },
     {
       "name": "all JS chunks combined (gzipped)",
       "path": "dist/assets/*.js",
-      "limit": "3.10 MB",
+      "limit": "3.17 MB",
       "gzip": true,
       "running": false
     },
     {
       "name": "main CSS (gzipped)",
       "path": "dist/assets/index-*.css",
-      "limit": "52 kB",
+      "limit": "54 kB",
       "gzip": true,
       "running": false
     }
@@ -76,10 +77,11 @@
     "@codemirror/lang-yaml": "^6.1.2",
     "@codemirror/language": "^6.12.3",
     "@codemirror/legacy-modes": "^6.5.1",
+    "@codemirror/lint": "^6.9.7",
     "@codemirror/merge": "^6.12.1",
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.6.0",
-    "@codemirror/view": "^6.41.0",
+    "@codemirror/view": "^6.43.3",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

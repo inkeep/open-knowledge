@@ -78,14 +78,16 @@ describe('advisory warnings on POST /api/agent-write-md', () => {
     expect(body.warning).toBeUndefined();
   });
 
-  test('valid fences and fence-less docs carry no renderWarnings field', async () => {
+  test('valid fences and fence-less docs carry no render warnings', async () => {
+    // Filter to render entries: lint-violation advisories (e.g. MD047 on a
+    // fixture without a trailing newline) legitimately ride the same array.
     const valid = await writeMd(VALID_FENCE, uniqueDoc('rw-valid'));
     expect(valid.status).toBe(200);
-    expect(valid.body.warnings).toBeUndefined();
+    expect((valid.body.warnings ?? []).filter((w) => w.kind === 'mermaid-parse-error')).toEqual([]);
 
     const plain = await writeMd('# Plain\n\nNo diagrams.', uniqueDoc('rw-plain'));
     expect(plain.status).toBe(200);
-    expect(plain.body.warnings).toBeUndefined();
+    expect((plain.body.warnings ?? []).filter((w) => w.kind === 'mermaid-parse-error')).toEqual([]);
   });
 
   test('append composition is validated on the post-write state', async () => {
@@ -93,12 +95,13 @@ describe('advisory warnings on POST /api/agent-write-md', () => {
     // An unclosed fence is valid mermaid on its own (CommonMark runs it to
     // EOF) — the appended prose lands INSIDE the fence body and breaks it.
     const first = await writeMd('```mermaid\ngraph LR\n  A-->B', docName);
-    expect(first.body.warnings).toBeUndefined();
+    expect((first.body.warnings ?? []).filter((w) => w.kind === 'mermaid-parse-error')).toEqual([]);
 
     const second = await writeMd('\nplain prose now inside the fence', docName, 'append');
     expect(second.status).toBe(200);
-    expect(second.body.warnings).toHaveLength(1);
-    const w = second.body.warnings?.[0];
+    const render = (second.body.warnings ?? []).filter((w) => w.kind === 'mermaid-parse-error');
+    expect(render).toHaveLength(1);
+    const w = render[0];
     expect(w?.kind === 'mermaid-parse-error' && w.fenceFirstLine).toBe('graph LR');
   });
 
@@ -206,5 +209,37 @@ describe('advisory warnings on POST /api/agent-patch', () => {
     await writeMd(INVALID_SEQUENCE_FENCE, docName);
     const { body } = await patchDoc(docName, 'nonce; cookie cleared', 'nonce, cookie cleared');
     expect(body.warnings).toBeUndefined();
+  });
+});
+
+describe('content-rule (lint) violations on the agent write path', () => {
+  test('markdownlint violations ride warnings[] so agents see what the GUI shows', async () => {
+    const { writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    // markdownlint is opt-in (off by default); enable it for this project so the
+    // write-path advisory surfaces the violation the GUI would show. The base
+    // config is read fresh per request, so writing it here takes effect on the
+    // write below. Restore it afterward so sibling tests keep the default (off).
+    const cfgPath = join(server.contentDir, '.ok', 'config.yml');
+    writeFileSync(cfgPath, 'contentRules:\n  markdownlint:\n    enabled: true\n', 'utf-8');
+    try {
+      const docName = uniqueDoc('rw-lint-style');
+      // The body carries a hard tab (markdownlint MD010). Agent writes surface
+      // the same content-rule violations the editor GUI shows — whole-doc,
+      // advisory only, capped — so an MCP client learns about them without a
+      // separate `lint` round-trip.
+      const { status, body } = await writeMd(
+        '---\ntitle: Hi\n---\n\n# Doc\n\n\tindented\n',
+        docName,
+      );
+      expect(status).toBe(200);
+      const lint = (body.warnings ?? []).filter((w) => w.kind === 'lint-violation');
+      expect(lint.length).toBeGreaterThan(0);
+      const md010 = lint.find((w) => w.kind === 'lint-violation' && w.code === 'MD010');
+      expect(md010?.kind === 'lint-violation' && md010.source).toBe('markdownlint');
+      expect(md010?.kind === 'lint-violation' && md010.line).toBe(7);
+    } finally {
+      writeFileSync(cfgPath, '', 'utf-8');
+    }
   });
 });

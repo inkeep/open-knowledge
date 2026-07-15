@@ -6,7 +6,7 @@ import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
 import { getInitialTerminalHeight, writeTerminalHeight } from '@/lib/terminal-height-store';
 import { cn } from '@/lib/utils';
 import { TerminalRevealTab } from './TerminalRevealTab';
-import { xtermThemeForMode } from './terminal-theme';
+import { useLiveXtermTheme } from './use-live-xterm-theme';
 
 const TERMINAL_PANEL_ID = 'terminal-dock-panel';
 
@@ -69,7 +69,7 @@ export function TerminalDock({
   const { resolvedTheme } = useTheme();
   const panelRef = usePanelRef();
   const [isCollapsed, setIsCollapsed] = useState(!visible);
-  const xtermBackground = xtermThemeForMode(resolvedTheme).background;
+  const xtermBackground = useLiveXtermTheme(resolvedTheme).background;
   // A right-docked terminal keeps `visible` true while this panel sits collapsed
   // and empty — the handle must gate on this, not `visible`, or the grabber
   // lingers and drags up an empty panel.

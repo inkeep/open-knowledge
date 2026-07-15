@@ -28,8 +28,8 @@ import { createTerminalFileLinkProvider } from './terminal-link-provider';
 import { createRecentOpenGuard, type TerminalLinkTarget } from './terminal-links';
 import { createSameFrameRepaint } from './terminal-render-flush';
 import { createResizeThrottle } from './terminal-resize-throttle';
-import { xtermThemeForMode } from './terminal-theme';
 import { nextWheelReports, sgrWheelReport, wheelReportPosition } from './terminal-wheel';
+import { useLiveXtermTheme } from './use-live-xterm-theme';
 
 /**
  * Interval for the PTY-resize throttle (see terminal-resize-throttle.ts).
@@ -115,6 +115,7 @@ export function TerminalPanel({
   // Paint the panel chrome (the kill strip) with the exact xterm canvas color so
   // the strip and the terminal read as one surface — single source: terminal-theme.
   const { resolvedTheme } = useTheme();
+  const xtermTheme = useLiveXtermTheme(resolvedTheme);
   // Restart is a full session reset: bumping the key remounts TerminalSession,
   // which disposes the dead terminal and spawns a fresh PTY in the same window
   // (cwd is fixed per window in main) — no stale listeners survive the swap.
@@ -129,7 +130,7 @@ export function TerminalPanel({
     // is remounted.
     <section
       aria-label={t`Terminal`}
-      style={{ backgroundColor: xtermThemeForMode(resolvedTheme).background }}
+      style={{ backgroundColor: xtermTheme.background }}
       className={cn('relative flex h-full w-full flex-col overflow-hidden', className)}
     >
       {/* Positioning context for the session's absolute exit/refusal notices, so
@@ -187,12 +188,14 @@ function TerminalSession({
   const onTitleChangeRef = useRef(onTitleChange);
   const onPtyIdRef = useRef(onPtyId);
   const { resolvedTheme } = useTheme();
+  // Palette derived from the live theme tokens (mode + color theme + custom).
+  const xtermTheme = useLiveXtermTheme(resolvedTheme);
   // Live xterm instance, exposed so the theme effect below can re-skin it in
   // place — re-theming must not tear down and respawn the PTY.
   const termRef = useRef<Terminal | null>(null);
-  // Resolved theme captured at first render, used for the initial xterm
-  // palette; later theme changes flow through the dedicated effect below.
-  const initialResolvedThemeRef = useRef(resolvedTheme);
+  // Palette captured at first render, used for the initial xterm theme; later
+  // theme changes flow through the dedicated effect below.
+  const initialXtermThemeRef = useRef(xtermTheme);
   const [status, setStatus] = useState<SessionStatus>('starting');
   const [readiness, setReadiness] = useState<ClaudeReadiness | null>(null);
   const [exitInfo, setExitInfo] = useState<TerminalExitInfo | null>(null);
@@ -285,7 +288,7 @@ function TerminalSession({
       linkHandler: {
         activate: (_event, uri) => openUrl(uri),
       },
-      theme: xtermThemeForMode(initialResolvedThemeRef.current),
+      theme: initialXtermThemeRef.current,
     });
     termRef.current = term;
     const fit = new FitAddon();
@@ -879,14 +882,16 @@ function TerminalSession({
     // mount/adopt effect — it only satisfies the exhaustive-deps check.
   }, [bridge, adoptPtyId, launch]);
 
-  // Re-skin the live terminal when the app theme changes. Mutating
-  // `term.options.theme` re-paints in place, so an open session follows
-  // light/dark switches without a restart (the PTY and scrollback survive).
+  // Re-skin the live terminal when the app theme changes — light/dark AND the
+  // color-theme layer (useLiveXtermTheme keeps identity stable until colors
+  // actually change). Mutating `term.options.theme` re-paints in place, so an
+  // open session follows theme switches without a restart (the PTY and
+  // scrollback survive).
   useEffect(() => {
     const term = termRef.current;
     if (term === null) return;
-    term.options.theme = xtermThemeForMode(resolvedTheme);
-  }, [resolvedTheme]);
+    term.options.theme = xtermTheme;
+  }, [xtermTheme]);
 
   // Follow assistive-tech attach/detach in place: toggling
   // `term.options.screenReaderMode` builds or tears down xterm's a11y DOM

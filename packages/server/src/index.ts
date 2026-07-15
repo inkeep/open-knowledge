@@ -222,6 +222,23 @@ export {
   writeRootGitignoreForNewRepo,
 } from './init-project.ts';
 export {
+  type DiscoveredMarkdownlintConfig,
+  discoverMarkdownlintConfig,
+  findNativeMarkdownlintFile,
+  readOwnNativeRules,
+  resolveNativeMarkdownlintConfig,
+} from './lint/markdownlint-discovery.ts';
+export {
+  type WriteMarkdownlintResult,
+  writeMarkdownlintRule,
+} from './lint/markdownlint-write.ts';
+export {
+  composeEffectiveLinterConfig,
+  type ResolveLinterConfigOptions,
+  resolveEffectiveLinterConfig,
+  resolveNativeConfigForDoc,
+} from './lint/resolve-config.ts';
+export {
   createLiveDerivedIndexExtension,
   LIVE_DERIVED_INDEX_DEBOUNCE_MS,
   type LiveDerivedIndexOptions,

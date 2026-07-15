@@ -32,6 +32,7 @@ const PROJECT_ANCHORED_COMMANDS: ReadonlySet<string> = new Set([
   'ui',
   'mcp',
   'preview',
+  'lint',
   // `deinit` removes THIS project's OK footprint, so it must anchor to the
   // enclosing project root when run from a subdirectory. `uninstall` is global
   // and deliberately NOT anchored (it discovers projects itself).

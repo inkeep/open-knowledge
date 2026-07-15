@@ -1,5 +1,5 @@
 {
   "title": "Advanced",
   "icon": "LuLayers",
-  "pages": ["folders-and-templates"]
+  "pages": ["folders-and-templates", "content-rules"]
 }

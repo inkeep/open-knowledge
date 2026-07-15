@@ -66,7 +66,7 @@ import { shouldPaintOverlay } from './editor-area-overlay';
 import { computeStickyRepinLayout } from './editor-area-sticky-repin';
 import { TerminalDock } from './TerminalDock';
 import { TerminalRevealTab } from './TerminalRevealTab';
-import { xtermThemeForMode } from './terminal-theme';
+import { useLiveXtermTheme } from './use-live-xterm-theme';
 
 const LazyActivityModeContent = lazy(async () => {
   const mod = await import('@/components/ActivityModeContent');
@@ -199,7 +199,7 @@ function EditorAreaInner({
   // strip + chrome read as one continuous surface with the terminal — matching the
   // bottom dock (TerminalDock applies the same fill). Without it the strip shows
   // the app background and reads as a black seam above the terminal.
-  const xtermBackground = xtermThemeForMode(resolvedTheme).background;
+  const xtermBackground = useLiveXtermTheme(resolvedTheme).background;
   const {
     activeDocName,
     activeProvider,

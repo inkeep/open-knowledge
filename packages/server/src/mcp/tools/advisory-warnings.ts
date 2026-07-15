@@ -20,6 +20,7 @@ import {
   AdvisoryWarningSchema,
   type BrokenLink,
   BrokenLinkSchema,
+  type LintViolationWarning,
   type RenderWarning,
   type WriteWarning,
 } from '@inkeep/open-knowledge-core';
@@ -87,11 +88,55 @@ function renderEntries(warnings: AdvisoryWarning[]): RenderWarning[] {
   return warnings.filter((w): w is RenderWarning => w.kind === 'mermaid-parse-error');
 }
 
+function lintEntries(warnings: AdvisoryWarning[]): LintViolationWarning[] {
+  return warnings.filter((w): w is LintViolationWarning => w.kind === 'lint-violation');
+}
+
+/**
+ * Kinds the family partitions above recognize. Entries outside this set — a
+ * kind added to `AdvisoryWarningSchema` before this relay learns its family —
+ * must still surface on the text channel (generic fallback line below), not
+ * vanish for text-only consumers.
+ */
+const RELAYED_KINDS: ReadonlySet<string> = new Set([
+  'content-divergence',
+  'disk-edit-reconciled',
+  'mermaid-parse-error',
+  'lint-violation',
+]);
+
+function unrecognizedEntries(warnings: AdvisoryWarning[]): AdvisoryWarning[] {
+  return warnings.filter((w) => !RELAYED_KINDS.has(w.kind));
+}
+
+/** Generic fallback `⚠` line for a kind this relay has no dedicated format for. */
+function formatUnrecognizedLine(d: AdvisoryWarning): string {
+  return `⚠ Advisory "${d.kind}" — see structuredContent.document.warnings for details.`;
+}
+
+/** Generic fallback `⚠` brief for a kind this relay has no dedicated format for. */
+function formatUnrecognizedBrief(d: AdvisoryWarning): string {
+  return `⚠ Advisory "${d.kind}" (see warnings).`;
+}
+
+/** `⚠` line for a single content-rule violation (flat `source/code` rule id). */
+function formatLintLine(d: LintViolationWarning): string {
+  const mark = d.severity === 'error' ? 'error' : 'warning';
+  return `⚠ Content rule ${d.source}/${d.code} (${mark}, line ${d.line}): ${d.message}`;
+}
+
+/** Brief `⚠` suffix for a content-rule violation on a batch per-doc line. */
+function formatLintBrief(d: LintViolationWarning): string {
+  return `⚠ ${d.source}/${d.code} (line ${d.line}): ${d.message}`;
+}
+
 /** Full `⚠` lines (single-doc write + edit + restore): per integrity entry, plus one grouped render line. */
 export function formatAdvisoryLines(warnings: AdvisoryWarning[]): string[] {
   const lines = integrityEntries(warnings).map(formatIntegrityLine);
   const render = renderEntries(warnings);
   if (render.length > 0) lines.push(formatRenderWarningsLine(render));
+  lines.push(...lintEntries(warnings).map(formatLintLine));
+  lines.push(...unrecognizedEntries(warnings).map(formatUnrecognizedLine));
   return lines;
 }
 
@@ -100,6 +145,8 @@ export function formatAdvisoryBriefs(warnings: AdvisoryWarning[]): string[] {
   const briefs = integrityEntries(warnings).map(formatIntegrityBrief);
   const render = renderEntries(warnings);
   if (render.length > 0) briefs.push(formatRenderWarningsBrief(render));
+  briefs.push(...lintEntries(warnings).map(formatLintBrief));
+  briefs.push(...unrecognizedEntries(warnings).map(formatUnrecognizedBrief));
   return briefs;
 }
 

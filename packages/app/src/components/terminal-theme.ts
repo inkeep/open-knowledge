@@ -68,3 +68,63 @@ export const XTERM_LIGHT_THEME = {
 export function xtermThemeForMode(resolvedTheme: string | undefined): ITheme {
   return resolvedTheme === 'dark' ? XTERM_DARK_THEME : XTERM_LIGHT_THEME;
 }
+
+/** Resolve one design token (`--background`, …) to a concrete color, or null. */
+export type TokenColorReader = (token: string) => string | null;
+
+/**
+ * Default token reader: a detached-then-attached probe span whose
+ * `backgroundColor` is `var(<token>)`, read back through `getComputedStyle`.
+ * The round-trip makes the browser resolve `var()` chains and relative color
+ * syntax (`oklch(from var(--primary) …)`) to a concrete color string, which
+ * xterm's browser build can parse via its canvas litmus. Returns null when the
+ * token is unset or the environment can't resolve it (tests, SSR).
+ */
+function readTokenColor(token: string): string | null {
+  try {
+    const probe = document.createElement('span');
+    probe.style.display = 'none';
+    probe.style.backgroundColor = `var(${token})`;
+    document.body.appendChild(probe);
+    try {
+      const resolved = getComputedStyle(probe).backgroundColor;
+      // An unset token computes to the transparent initial value — treat as
+      // absent rather than skinning the terminal invisible. A value still
+      // containing `var(` means the environment didn't resolve custom
+      // properties (happy-dom in tests) — also absent.
+      if (!resolved || resolved === 'rgba(0, 0, 0, 0)' || resolved === 'transparent') return null;
+      if (resolved.includes('var(')) return null;
+      return resolved;
+    } finally {
+      probe.remove();
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The curated mode palette with its surface slots re-derived from the live
+ * theme tokens, so the terminal follows plugin/custom color themes instead of
+ * only light/dark. ANSI slots stay curated by mode: the 16 ANSI colors have no
+ * mapping onto the semantic token set that preserves terminal legibility, and
+ * `minimumContrastRatio` lifts residual clashes. Any token that fails to
+ * resolve falls back to the curated value, so this degrades to
+ * `xtermThemeForMode` when no color theme is active or off-DOM.
+ */
+export function computeLiveXtermTheme(
+  resolvedTheme: string | undefined,
+  readToken: TokenColorReader = readTokenColor,
+): ITheme {
+  const base = xtermThemeForMode(resolvedTheme);
+  const background = readToken('--background') ?? base.background;
+  const foreground = readToken('--foreground') ?? base.foreground;
+  return {
+    ...base,
+    background,
+    foreground,
+    cursor: foreground,
+    cursorAccent: background,
+    selectionBackground: readToken('--selection-soft') ?? base.selectionBackground,
+  };
+}

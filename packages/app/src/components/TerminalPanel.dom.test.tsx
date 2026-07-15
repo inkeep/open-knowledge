@@ -1221,7 +1221,7 @@ describe('TerminalPanel', () => {
     const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
     render(<TerminalPanel bridge={bridge} />);
     await waitFor(() => expect(lastTerm).not.toBeNull());
-    expect(lastTerm?.options.theme).toBe(XTERM_LIGHT_THEME);
+    expect(lastTerm?.options.theme).toEqual(XTERM_LIGHT_THEME);
 
     cleanup();
     lastTerm = null;
@@ -1229,7 +1229,7 @@ describe('TerminalPanel', () => {
     const second = makeBridge({ ok: true, ptyId: 'pty-2' });
     render(<TerminalPanel bridge={second.bridge} />);
     await waitFor(() => expect(lastTerm).not.toBeNull());
-    expect(lastTerm?.options.theme).toBe(XTERM_DARK_THEME);
+    expect(lastTerm?.options.theme).toEqual(XTERM_DARK_THEME);
   });
 
   test('re-skins the live terminal on a theme switch without respawning the PTY', async () => {
@@ -1239,13 +1239,13 @@ describe('TerminalPanel', () => {
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
 
     const term = lastTerm;
-    expect(term?.options.theme).toBe(XTERM_DARK_THEME);
+    expect(term?.options.theme).toEqual(XTERM_DARK_THEME);
 
     // Flip the app theme and re-render: the open session must re-skin in place.
     mockResolvedTheme = 'light';
     rerender(<TerminalPanel bridge={bridge} />);
 
-    await waitFor(() => expect(lastTerm?.options.theme).toBe(XTERM_LIGHT_THEME));
+    await waitFor(() => expect(lastTerm?.options.theme).toEqual(XTERM_LIGHT_THEME));
     // Same xterm instance, same PTY — no teardown/respawn on a theme change.
     expect(lastTerm).toBe(term);
     expect(term?.dispose).not.toHaveBeenCalled();

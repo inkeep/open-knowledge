@@ -14,11 +14,15 @@ import {
   type ConfigIssue,
   createBasenameIndex,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
+  DEFAULT_LINTER_CONFIG,
   humanFormat,
   isKnownConfigError,
+  type LinterConfig,
   type MarkdownManager,
+  type PersistedLinterConfig,
   type Principal,
   parseGlobalSkillBundleDoc,
+  toEffectiveBase,
 } from '@inkeep/open-knowledge-core';
 import {
   readConfigSafely,
@@ -601,6 +605,21 @@ export function createServer(options: ServerOptions): ServerInstance {
       );
     }
     return project.value.autoSync?.default === true;
+  }
+
+  // Project-scope base linter config, read FRESH per request so a config edit
+  // (project `.ok/config.yml` → contentRules.*) takes effect without a restart.
+  function readLinterBaseConfig(): LinterConfig {
+    const project = readConfigSafely({
+      absPath: resolveConfigPath('project', projectDir),
+      sideline: false,
+      warn: (message) => log.warn({ message }, '[config] could not read project config for linter'),
+    });
+    // Persisted config omits markdownlint `rules` (native-file sourced); lift it
+    // to an effective base (rules placeholder), which the resolver fills from the
+    // native `.markdownlint.*` file.
+    const persisted = project.value.contentRules as PersistedLinterConfig | undefined;
+    return persisted ? toEffectiveBase(persisted) : DEFAULT_LINTER_CONFIG;
   }
 
   // Project-local-only read (shared with `ok embeddings status` so they can't
@@ -1587,6 +1606,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       },
       semanticSearch,
       getSemanticSimilarityFloor: () => readSemanticSearchConfig().similarityFloor,
+      getLinterBaseConfig: () => readLinterBaseConfig(),
       getLinkPreviewsEnabled: readLinkPreviewsEnabled,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),
       ephemeral,

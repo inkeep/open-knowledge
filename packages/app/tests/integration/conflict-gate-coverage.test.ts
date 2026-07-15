@@ -63,6 +63,11 @@ const REQUIRED_HANDLERS = [
   'handleSkillFile',
   'handleSkillFilePut',
   'handleSkillUpdate',
+  // `/api/lint/fix` — auto-fix a document's markdownlint violations through
+  // `applyAgentMarkdownWrite`, which refuses a mid-conflict doc
+  // (`DocInConflictError` → `respondDocInConflict`), so the gate rides the
+  // shared agent-write spine.
+  'handleLintFix',
 ];
 
 /**
@@ -94,6 +99,17 @@ const EXEMPT_HANDLERS = new Set([
   'handleTagsForName',
   'handlePages',
   'handleFolderConfig',
+  // `/api/lint/config` (GET) + `/api/lint/markdownlint-config` (POST) — read the
+  // effective lint config / write the native `.markdownlint.*` rules. No Y.Doc
+  // target (config files, not documents), so the per-doc conflict gate does not
+  // apply — same posture as `handleFolderConfig`.
+  'handleGetLintConfig',
+  'handleWriteMarkdownlintRule',
+  // `/api/lint` (GET) + `/api/lint/audit` (GET) — read-only lint of one doc /
+  // the project. No Y.Doc target (reads from disk), so the per-doc conflict gate
+  // does not apply.
+  'handleLintDoc',
+  'handleLintAudit',
   // `/api/templates` — project-wide flat enumeration of every template
   // (read-only). Walks `<folder>/.ok/templates/*.md`; no Y.Doc target,
   // so the per-doc conflict gate does not apply.

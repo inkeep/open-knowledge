@@ -51,6 +51,9 @@ function shiftJKeydownInit(): KeyboardEventInit {
 
 mock.module('@lingui/react/macro', () => ({
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
+  Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
+    <>{(value === 1 ? one : other).replace('#', String(value))}</>
+  ),
   useLingui: () => ({
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>
       strings.reduce((acc, part, index) => `${acc}${part}${values[index] ?? ''}`, ''),

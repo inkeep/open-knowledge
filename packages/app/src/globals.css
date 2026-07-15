@@ -2,6 +2,10 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "./cmd-f.css";
+/* IDE color-theme palettes (Dracula, Nord, …). Generated from
+   src/lib/color-themes.ts — `html[data-color-theme="…"]` rules out-specify the
+   base :root/.dark blocks below. See color-themes.ts for the generator. */
+@import "./color-themes.generated.css";
 @plugin "tailwind-scrollbar";
 
 /* --- Activity Panel unified-diff styling (react-diff-view) ---
@@ -4955,6 +4959,127 @@ html.electron-mode [data-slot="sidebar-inner"] {
 .dark .cm-editor .cm-md-internal-link.cm-md-link-broken,
 .dark .cm-editor .cm-wiki-link.cm-wiki-link-broken {
   --broken-link-color: oklch(72% 0.18 25);
+}
+
+/* Markdown linter (@codemirror/lint) — re-theme the default diagnostic surfaces
+   onto OK's tokens so warnings/errors read consistently in light and dark. The
+   wavy underline uses text-decoration (the same visual language as broken
+   refs above) rather than the library's SVG background, which doesn't track
+   our oklch palette. Severity colors: amber for warning, red for error. */
+.cm-editor .cm-lintRange-warning {
+  background: none;
+  text-decoration: underline wavy var(--lint-warning-color, oklch(70% 0.15 75));
+  text-underline-offset: 0.2em;
+}
+.cm-editor .cm-lintRange-error {
+  background: none;
+  text-decoration: underline wavy var(--lint-error-color, oklch(55% 0.15 25));
+  text-underline-offset: 0.2em;
+}
+.dark .cm-editor .cm-lintRange-warning {
+  --lint-warning-color: oklch(80% 0.13 80);
+}
+.dark .cm-editor .cm-lintRange-error {
+  --lint-error-color: oklch(72% 0.18 25);
+}
+/* Diagnostic tooltip + lint panel onto OK popover tokens. */
+.cm-tooltip.cm-tooltip-lint,
+.cm-panel.cm-panel-lint {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 0.25rem);
+}
+.cm-diagnostic {
+  border-left-width: 3px;
+}
+.cm-diagnostic-warning {
+  border-left-color: var(--lint-warning-color, oklch(70% 0.15 75));
+}
+.cm-diagnostic-error {
+  border-left-color: var(--lint-error-color, oklch(55% 0.15 25));
+}
+.cm-diagnosticAction {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: var(--radius-sm, 0.25rem);
+}
+
+/* WYSIWYG markdown-lint decorations (markdown-lint-decorations.ts). Source mode
+   underlines the exact error range; WYSIWYG has no source columns, so we flag
+   the top-level block a diagnostic falls in with the SAME wavy underline visual
+   language — applied to the block's text via a node decoration. No background
+   fill or accent bar (those read as a heavy full-width highlight); just the
+   recognizable squiggle, reusing the --lint-*-color tokens so the two surfaces
+   match in light and dark. The native `title` tooltip the plugin sets on the
+   block lists the rule + message on hover. */
+.ProseMirror .ok-lint-block {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--lint-warning-color, oklch(70% 0.15 75));
+  text-decoration-skip-ink: none;
+  text-underline-offset: 0.2em;
+}
+.ProseMirror .ok-lint-block.ok-lint-block-error {
+  text-decoration-color: var(--lint-error-color, oklch(55% 0.15 25));
+}
+.dark .ProseMirror .ok-lint-block {
+  --lint-warning-color: oklch(80% 0.13 80);
+}
+.dark .ProseMirror .ok-lint-block.ok-lint-block-error {
+  --lint-error-color: oklch(72% 0.18 25);
+}
+/* Textless blocks (thematic break, block image) carry no inline text, so the
+   wavy text-decoration above paints nothing. Swap it for an outline that reads
+   the same warning/error color. The base .ok-lint-block class stays applied for
+   the hover-tooltip lookup; here we cancel its (invisible) underline. */
+.ProseMirror .ok-lint-block-atom {
+  text-decoration: none;
+  outline: 2px dashed var(--lint-warning-color, oklch(70% 0.15 75));
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.ProseMirror .ok-lint-block-atom.ok-lint-block-error {
+  outline-color: var(--lint-error-color, oklch(55% 0.15 25));
+}
+/* Hover tooltip for a decorated lint block (markdown-lint-decorations.ts). A
+   styled, instant alternative to the native `title` — OK popover tokens,
+   one diagnostic per line, never intercepts pointer events. */
+.ok-lint-tooltip {
+  position: absolute;
+  z-index: 50;
+  max-width: 22rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 0.25rem);
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-md, 0 2px 8px oklch(0% 0 0 / 0.15));
+  font-size: 0.75rem;
+  line-height: 1.1rem;
+  white-space: pre-line;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+}
+.ok-lint-tooltip-message {
+  white-space: pre-line;
+}
+.ok-lint-tooltip-fix {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-fd-primary-foreground, #fff);
+  background: var(--color-fd-primary, oklch(55% 0.2 255));
+}
+.ok-lint-tooltip-fix:hover {
+  filter: brightness(1.08);
+}
+.ok-lint-tooltip[hidden] {
+  display: none;
 }
 
 /* Tables — hanging indent only, composed through .cm-line's additive-calc

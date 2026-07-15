@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { ConfigProvider } from '@/lib/config-provider';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
 
 // A missing target with a live provider — the phantom-doc state the resolver
@@ -100,13 +101,17 @@ mock.module('@/components/DocPanel', () => ({ DocPanel: () => <div data-testid="
 const { EditorArea } = await import('./EditorArea');
 
 function renderEditorArea() {
+  // EditorArea reads useConfigContext (projectBinding); a null collabUrl
+  // provider skips binding creation, matching the no-project fail-open path.
   return render(
-    <EditorArea
-      editorMode="wysiwyg"
-      onModeChange={() => {}}
-      activeTab="timeline"
-      onActiveTabChange={() => {}}
-    />,
+    <ConfigProvider collabUrl={null}>
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="timeline"
+        onActiveTabChange={() => {}}
+      />
+    </ConfigProvider>,
   );
 }
 

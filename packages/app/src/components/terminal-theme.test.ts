@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { XTERM_DARK_THEME, XTERM_LIGHT_THEME, xtermThemeForMode } from './terminal-theme';
+import {
+  computeLiveXtermTheme,
+  XTERM_DARK_THEME,
+  XTERM_LIGHT_THEME,
+  xtermThemeForMode,
+} from './terminal-theme';
 
 /** WCAG relative luminance of a `#rrggbb` color, in [0, 1]. */
 function luminance(hex: string): number {
@@ -92,5 +97,42 @@ describe('curated xterm palettes', () => {
     expect(
       contrastRatio(XTERM_DARK_THEME.foreground, XTERM_DARK_THEME.background),
     ).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('computeLiveXtermTheme', () => {
+  const reader = (tokens: Record<string, string>) => (token: string) => tokens[token] ?? null;
+
+  test('overrides surface slots from resolved theme tokens', () => {
+    const theme = computeLiveXtermTheme(
+      'dark',
+      reader({
+        '--background': 'rgb(20, 24, 34)',
+        '--foreground': 'rgb(220, 224, 234)',
+        '--selection-soft': 'rgba(90, 120, 255, 0.3)',
+      }),
+    );
+    expect(theme.background).toBe('rgb(20, 24, 34)');
+    expect(theme.foreground).toBe('rgb(220, 224, 234)');
+    expect(theme.cursor).toBe('rgb(220, 224, 234)');
+    expect(theme.cursorAccent).toBe('rgb(20, 24, 34)');
+    expect(theme.selectionBackground).toBe('rgba(90, 120, 255, 0.3)');
+  });
+
+  test('keeps the curated ANSI slots for the mode', () => {
+    const theme = computeLiveXtermTheme('dark', reader({ '--background': 'rgb(1, 2, 3)' }));
+    for (const slot of ANSI_16) expect(theme[slot]).toBe(XTERM_DARK_THEME[slot]);
+  });
+
+  test('falls back to the curated palette when tokens do not resolve', () => {
+    expect(computeLiveXtermTheme('dark', () => null)).toEqual(XTERM_DARK_THEME);
+    expect(computeLiveXtermTheme('light', () => null)).toEqual(XTERM_LIGHT_THEME);
+  });
+
+  test('partial resolution falls back per slot', () => {
+    const theme = computeLiveXtermTheme('light', reader({ '--background': 'rgb(9, 9, 9)' }));
+    expect(theme.background).toBe('rgb(9, 9, 9)');
+    expect(theme.foreground).toBe(XTERM_LIGHT_THEME.foreground);
+    expect(theme.selectionBackground).toBe(XTERM_LIGHT_THEME.selectionBackground);
   });
 });

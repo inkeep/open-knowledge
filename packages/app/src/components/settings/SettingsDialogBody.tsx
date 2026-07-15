@@ -93,6 +93,8 @@ import {
   useSyncEnabledWriter,
 } from '@/hooks/use-enable-sync-with-confirm';
 import { useGitSyncStatus } from '@/hooks/use-git-sync-status';
+import { colorThemeMode, customThemeKind, resolveCustomSeed } from '@/lib/color-themes';
+import { useConfigContextOptional } from '@/lib/config-context';
 import { useConfigContext } from '@/lib/config-provider';
 import { subscribeToConfigValidationRejected } from '@/lib/config-validation-events';
 import { useClaudeDesktopIntegration } from '@/lib/handoff/use-claude-desktop-integration';
@@ -104,11 +106,16 @@ import {
   SHORTCUT_CATEGORY_ORDER,
   type ShortcutBinding,
 } from '@/lib/keyboard-shortcuts';
+import { applyColorThemeToDom } from '@/lib/use-apply-config-color-theme';
 import { cn } from '@/lib/utils';
 import { AccountSection } from './AccountSection';
 import { AiToolsSection } from './AiToolsSection';
+import { ColorThemePicker } from './ColorThemePicker';
+import { CustomThemeEditor } from './CustomThemeEditor';
 import { EmbeddingsKeySection } from './EmbeddingsKeySection';
 import { LinkPreviewsSection } from './LinkPreviewsSection';
+import { ProjectPluginsManageSection, UserPluginsManageSection } from './LintingSection';
+import { LINT_PLUGIN_UI } from './lint-plugins';
 import { OkignoreSection } from './OkignoreSection';
 import { ProjectAiToolsSection } from './ProjectAiToolsSection';
 import { ProjectTemplatesSection } from './ProjectTemplatesSection';
@@ -136,8 +143,12 @@ interface FieldDef {
   path: string[];
   label: MessageDescriptor;
   description?: MessageDescriptor;
-  /** Optional override: 'enum-toggle' renders enum as a ToggleGroup; default is select-style toggle. */
-  control?: 'enum-toggle';
+  /**
+   * Optional override: 'enum-toggle' renders enum as a ToggleGroup;
+   * 'theme-tiles' renders the IDE color-palette tile picker; default is a
+   * select-style toggle.
+   */
+  control?: 'enum-toggle' | 'theme-tiles';
 }
 
 const FIELDS_USER_PREFERENCES: FieldDef[] = [
@@ -156,6 +167,18 @@ const FIELDS_USER_PREFERENCES: FieldDef[] = [
     path: ['appearance', 'preview', 'autoOpen'],
     label: msg`Open preview when agent edits`,
     description: msg`When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.).`,
+  },
+];
+
+// The color-theme picker is a theme "plugin": it lives in the Plugins menu
+// (Settings → Plugins → Themes) as a peer of the lint plugins, not in
+// Preferences. `appearance.theme` (light/dark/system) stays in Preferences.
+const FIELDS_THEME_PLUGIN: FieldDef[] = [
+  {
+    path: ['appearance', 'colorTheme'],
+    label: msg`Color theme`,
+    description: msg`Pick a built-in IDE palette. The dark IDE themes override the light/dark setting in Preferences.`,
+    control: 'theme-tiles',
   },
 ];
 
@@ -225,6 +248,29 @@ export function SettingsDialogBody({
     // Project-local semantic-search opt-in. Reads its own project-local
     // binding from ConfigContext (like SyncSection) — no prop threading.
     return <SearchSection />;
+  }
+  if (activeId === 'plugins-manage') {
+    // Project-scope plugins management (This project → Plugins): toggle the
+    // project's content-rule plugins + the audit pointer.
+    return <ProjectPluginsManageSection />;
+  }
+  if (activeId === 'user-plugins-manage') {
+    // User-scope plugins management (User → Plugins): toggle personal plugins
+    // (Themes) via the user-scope binding.
+    return <UserPluginsManageSection userBinding={userBinding} />;
+  }
+  if (activeId === 'plugin:theme') {
+    // The theme "plugin" — a peer of the lint plugins in the Plugins menu, not a
+    // lint plugin (it owns no `contentRules` slice). Its config is user-scope.
+    return userBinding ? <ThemePluginSection userBinding={userBinding} /> : <SectionSkeleton />;
+  }
+  if (activeId.startsWith('plugin:')) {
+    // One enabled lint plugin's settings panel.
+    const pluginId = activeId.slice('plugin:'.length);
+    const plugin = LINT_PLUGIN_UI.find((p) => p.id === pluginId);
+    if (!plugin) return null;
+    const PluginSection = plugin.Section;
+    return <PluginSection key={activeId} />;
   }
   if (activeId === 'link-previews') {
     // Project-local external-link-preview egress opt-in. Reads its own
@@ -486,6 +532,28 @@ function BoundSchemaSection({
         flashedPath={flashedPath}
       />
     </Form>
+  );
+}
+
+/**
+ * The theme "plugin" panel — the color-palette picker + custom-theme editor,
+ * rendered in the Plugins menu (Settings → Plugins → Themes) as a peer of the
+ * lint plugins. Reuses the same user-scope config-form machinery the Preferences
+ * pane uses.
+ */
+function ThemePluginSection({ userBinding }: { userBinding: ConfigBinding }) {
+  const { t } = useLingui();
+  return (
+    <div className="space-y-6">
+      <BoundSchemaSection
+        title={t`Themes`}
+        description={t`Pick a built-in IDE color palette, or define your own.`}
+        scope="user"
+        binding={userBinding}
+        fields={FIELDS_THEME_PLUGIN}
+      />
+      <CustomThemeEditor userBinding={userBinding} />
+    </div>
   );
 }
 
@@ -1213,7 +1281,7 @@ function SettingsField({ field, scope, commitField, isFlashed }: SettingsFieldPr
                   onCommit={runCommitIfDirty}
                 />
               </FormControl>
-              <SavedIndicator visible={savedTick} />
+              <SavedIndicator visible={savedTick} srOnly={field.control === 'theme-tiles'} />
             </div>
             <FormMessage data-field-error={field.path.join('.')} />
           </FormItem>
@@ -1267,6 +1335,39 @@ function FieldControlBody({
   // mounts one in `main.tsx`. The actual flip is gated to the theme field in
   // the enum-toggle branch below, so non-theme controls are unaffected.
   const { setTheme } = useTheme();
+  // Optional: the theme-tiles control reads the custom-theme seed from config,
+  // but FieldControlBody also renders in provider-less unit harnesses.
+  const merged = useConfigContextOptional()?.merged ?? null;
+  if (field.control === 'theme-tiles') {
+    const { id: forwardedId, ...wrapperSlotProps } = slotForwarded;
+    const customSeed = merged?.appearance?.customTheme;
+    return (
+      <ColorThemePicker
+        {...wrapperSlotProps}
+        id={forwardedId}
+        value={typeof ctl.value === 'string' ? ctl.value : 'default'}
+        customSeed={customSeed}
+        aria-label={t(field.label)}
+        onSelect={(next) => {
+          // Optimistic apply: paint the palette overlay synchronously and flip
+          // next-themes to the palette's forced mode so `dark:` variants land
+          // immediately. A built-in palette forces light (Catppuccin Latte) or
+          // dark; `custom` follows its seed. `default` is system-kind, so
+          // `colorThemeMode` returns undefined — no flip, and the ConfigProvider
+          // effect restores the user's saved light/dark mode on the round-trip.
+          applyColorThemeToDom(next, customSeed);
+          if (next === 'custom') {
+            setTheme(customThemeKind(resolveCustomSeed(customSeed)) === 'dark' ? 'dark' : 'light');
+          } else {
+            const mode = colorThemeMode(next);
+            if (mode) setTheme(mode);
+          }
+          ctl.onChange(next);
+          onCommit();
+        }}
+      />
+    );
+  }
   if (typeTag === 'boolean') {
     return (
       <Switch
@@ -1492,17 +1593,21 @@ function StringArrayControlBody({
   );
 }
 
-function SavedIndicator({ visible }: { visible: boolean }) {
+function SavedIndicator({ visible, srOnly = false }: { visible: boolean; srOnly?: boolean }) {
   // Live region — auto-save replaces an explicit Save button, so this
   // checkmark IS the save confirmation. Polite announcement so screen
   // readers say "Saved" without interrupting other speech (WCAG 4.1.3).
   // Always render the wrapper so the SR-only text node is present at
   // mount time; the visible checkmark is the only thing that toggles.
+  // `srOnly` keeps the announcement but never paints the checkmark — for
+  // controls whose committed value is already visually self-evident (the
+  // theme tiles repaint the whole app) and whose full-width layout the
+  // appearing icon would momentarily compress.
   return (
     <span role="status" aria-live="polite" className="text-emerald-600">
       {visible ? (
         <>
-          <Check aria-hidden="true" className="size-3.5" />
+          {srOnly ? null : <Check aria-hidden="true" className="size-3.5" />}
           <span className="sr-only">
             <Trans>Saved</Trans>
           </span>

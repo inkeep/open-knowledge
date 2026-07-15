@@ -254,6 +254,31 @@ export const RenderWarningSchema = z
 export type RenderWarning = z.infer<typeof RenderWarningSchema>;
 
 /**
+ * A markdown-lint / content-rule violation on the post-write document. Strictly
+ * advisory — the write always lands (storage never gates on rules). Emitted by
+ * `handleAgentWriteMd` / `handleAgentPatch` against the doc's effective rule
+ * config, capped server-side, so an agent writing a doc sees the same
+ * violations the editor would show. `kind` is the discriminator; one write can
+ * carry several violations.
+ */
+export const LintViolationWarningSchema = z
+  .object({
+    kind: z.literal('lint-violation'),
+    /** Which plugin produced it — its registry id (e.g. `markdownlint`). */
+    source: z.string(),
+    /** The engine's native rule id, unprefixed (e.g. `MD010`). */
+    code: z.string(),
+    /** Human-readable, already-resolved message. */
+    message: z.string(),
+    severity: z.enum(['error', 'warning', 'info', 'hint']),
+    /** 1-based line / column in the source document (agent-facing display units). */
+    line: z.number().int().positive(),
+    column: z.number().int().positive(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LintViolationWarning = z.infer<typeof LintViolationWarningSchema>;
+
+/**
  * Unified advisory channel on mutating-write success bodies: every advisory
  * the write produced, discriminated by `kind`. Two families with different
  * remedies coexist here — write-integrity entries (`content-divergence`,
@@ -273,6 +298,7 @@ export const AdvisoryWarningSchema = z.discriminatedUnion('kind', [
   ContentDivergenceWarningSchema,
   DiskEditReconciledWarningSchema,
   RenderWarningSchema,
+  LintViolationWarningSchema,
 ]);
 export type AdvisoryWarning = z.infer<typeof AdvisoryWarningSchema>;
 

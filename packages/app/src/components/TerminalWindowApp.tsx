@@ -4,7 +4,7 @@ import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { ConfigProvider } from '@/lib/config-provider';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { TerminalSessionsHost } from './TerminalSessionsHost';
-import { xtermThemeForMode } from './terminal-theme';
+import { useLiveXtermTheme } from './use-live-xterm-theme';
 
 interface TerminalWindowAppProps {
   /** Desktop bridge — the terminal window renders only on the Electron host. */
@@ -41,6 +41,9 @@ export function TerminalWindowApp({ bridge }: TerminalWindowAppProps) {
 
 function TerminalWindowBody({ bridge }: TerminalWindowAppProps) {
   const { resolvedTheme } = useTheme();
+  // Live theme tokens (mode + color theme + custom), matching the xterm canvas
+  // inside — the window chrome must not clash with a plugin/custom theme.
+  const xtermTheme = useLiveXtermTheme(resolvedTheme);
   const installedClis = useInstalledClis();
   // The host portals its session subtree into this container (a callback-ref
   // state so the host re-renders once the div mounts).
@@ -53,7 +56,7 @@ function TerminalWindowBody({ bridge }: TerminalWindowAppProps) {
       <div
         ref={setContainer}
         className="flex h-screen min-h-0 flex-col"
-        style={{ backgroundColor: xtermThemeForMode(resolvedTheme).background }}
+        style={{ backgroundColor: xtermTheme.background }}
       />
       <TerminalSessionsHost
         bridge={bridge}

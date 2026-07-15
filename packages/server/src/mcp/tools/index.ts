@@ -48,6 +48,7 @@ import { register as registerPreviewUrl } from './get-preview-url.ts';
 import { register as registerHistory } from './history.ts';
 import { register as registerInstall } from './install.ts';
 import { register as registerLinks } from './links.ts';
+import { register as registerLint } from './lint.ts';
 import { register as registerMove } from './move.ts';
 import { register as registerPalette } from './palette.ts';
 import { register as registerResolveConflict } from './resolve-conflict.ts';
@@ -143,6 +144,15 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     serverUrl: opts.serverUrl,
     config: opts.config,
     resolveCwd: named('links'),
+  });
+  // Markdown lint — surface rule violations (single doc or project-wide audit);
+  // `fix: true` applies auto-fixes through the agent-write spine, so it takes
+  // `identityRef` to attribute the write (mirrors write/edit).
+  registerLint(registrationServer, {
+    serverUrl: opts.serverUrl,
+    config: opts.config,
+    resolveCwd: named('lint'),
+    identityRef: opts.identityRef,
   });
 
   // CRUD verbs — polymorphic over document / folder / template / asset

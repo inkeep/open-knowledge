@@ -326,3 +326,69 @@ describe('SettingsDialogBody theme toggle — optimistic apply', () => {
     expect(patches).toEqual([{ appearance: { theme: 'light' } }]);
   });
 });
+
+/**
+ * The color-palette picker (Settings → Plugins → Themes) optimistically flips
+ * next-themes to the palette's FORCED mode, not merely "dark or nothing". A
+ * light-kind built-in (Catppuccin Latte) must flip to light so the `.dark`
+ * class drops in the same tick the light palette paints — otherwise Tailwind
+ * `dark:` variants coexist with the light palette until the config round-trips,
+ * a flash of dark-on-light. Same harness/probe rationale as the toggle tests
+ * above: with no ConfigProvider effect mounted, only the optimistic
+ * `setTheme(colorThemeMode(next))` path can move the probe.
+ */
+function renderThemePluginWithTheme(binding: ConfigBinding) {
+  themeStorageKeySeq += 1;
+  return render(
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      storageKey={`ok-theme-v1-test-${themeStorageKeySeq}`}
+    >
+      <SettingsContextProvider>
+        <TooltipProvider>
+          <SettingsDialogBody
+            activeId="plugin:theme"
+            userBinding={binding}
+            okignoreBinding={null}
+            okignoreSynced={false}
+          />
+          <ThemeProbe />
+        </TooltipProvider>
+      </SettingsContextProvider>
+    </ThemeProvider>,
+  );
+}
+
+describe('SettingsDialogBody color-palette picker — optimistic mode flip', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('selecting a light palette (Catppuccin Latte) flips next-themes to light', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    renderThemePluginWithTheme(binding);
+
+    expect(screen.getByTestId('theme-probe').textContent).toBe('system');
+
+    await user.click(screen.getByRole('radio', { name: /Catppuccin Latte/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('theme-probe').textContent).toBe('light');
+    });
+  });
+
+  test('selecting a dark palette (Catppuccin Frappé) flips next-themes to dark', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    renderThemePluginWithTheme(binding);
+
+    await user.click(screen.getByRole('radio', { name: /Catppuccin Frappé/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('theme-probe').textContent).toBe('dark');
+    });
+  });
+});

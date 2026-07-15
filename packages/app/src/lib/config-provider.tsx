@@ -42,8 +42,10 @@ import { type ReactNode, useEffect, useState } from 'react';
 import * as Y from 'yjs';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
 import { buildAuthToken } from './auth-token';
+import { colorThemeMode, customThemeKind, resolveCustomSeed } from './color-themes';
 import { ConfigContext, type ConfigContextValue } from './config-context';
 import { useServerInstanceId } from './server-instance-store';
+import { useApplyConfigColorTheme } from './use-apply-config-color-theme';
 import { useApplyConfigTheme } from './use-apply-config-theme';
 
 export { useConfigContext } from './config-context';
@@ -276,11 +278,34 @@ export function ConfigProvider({
       : null;
 
   const themeValue = merged?.appearance?.theme;
-  // Bridge `appearance.theme` from the merged config into next-themes app-wide.
+  const colorThemeValue = merged?.appearance?.colorTheme;
+  const customSeed = merged?.appearance?.customTheme;
+  // The Themes plugin toggle. Disabled means the effect stops: the default
+  // palette applies and the saved `colorTheme` is ignored (not cleared — it
+  // comes back when the plugin is re-enabled). Default on (absent → enabled).
+  const colorThemeEnabled = merged?.appearance?.colorThemeEnabled !== false;
+  // A non-`default` palette takes over the appearance: it forces next-themes
+  // into its own light/dark mode so Tailwind `dark:` variants resolve against
+  // the themed tokens. Most IDE palettes are dark (Dracula, Catppuccin Frappé,
+  // …); a light palette (Catppuccin Latte) forces light. `custom` derives its
+  // mode from the seed background's luminance. `default` (and a disabled Themes
+  // plugin) defers to the user's light/dark/system `appearance.theme`. We never
+  // patch `appearance.theme` here — switching back to `default` restores the
+  // saved mode from config.
+  const effectiveMode = !colorThemeEnabled
+    ? themeValue
+    : colorThemeValue === 'custom'
+      ? customThemeKind(resolveCustomSeed(customSeed))
+      : (colorThemeMode(colorThemeValue) ?? themeValue);
+  // Bridge the effective mode from the merged config into next-themes app-wide.
   // The hook owns the dependency discipline that prevents a cross-window
   // light/dark flicker storm across open project windows — see
   // `useApplyConfigTheme`.
-  useApplyConfigTheme(themeValue);
+  useApplyConfigTheme(effectiveMode);
+  // Apply the palette overlay (`data-color-theme` attribute + FOUC cache; for
+  // `custom`, the runtime `<style>` built from the seed). Honors the plugin
+  // toggle: disabled clears the overlay and its FOUC caches.
+  useApplyConfigColorTheme(colorThemeValue, customSeed, colorThemeEnabled);
 
   // Push `appearance.theme` to Electron main's `nativeTheme.themeSource`
   // and signal the cold-launch show-gate via the shared `useThemeBridge`
@@ -301,7 +326,7 @@ export function ConfigProvider({
   // appearance from frame 1 and the gate releases promptly.
   useThemeBridge(
     typeof window !== 'undefined' ? window.okDesktop : undefined,
-    themeValue ?? 'system',
+    effectiveMode ?? 'system',
   );
 
   const value: ConfigContextValue = {

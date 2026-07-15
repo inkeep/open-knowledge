@@ -21,6 +21,16 @@ interface TagPillInputProps {
   'aria-invalid'?: boolean | 'true' | 'false';
   disabled?: boolean;
   /**
+   * Entry grammar. `frontmatter-tag` (default) enforces the frontmatter
+   * `tags:` value grammar: a leading `#` is stripped on commit, invalid
+   * entries are rejected with the grammar hint, and non-conforming pills
+   * are flagged. `free-text` admits any non-empty entry verbatim — for
+   * callers whose entries are not frontmatter tags (markdownlint option
+   * lists hold values like `## Summary` that the tag grammar would
+   * reject, and whose leading `#` must survive).
+   */
+  grammar?: 'frontmatter-tag' | 'free-text';
+  /**
    * Forwarded onto the inner `<input>` so RHF's `form.setFocus(name)`
    * resolves through `Controller.field.ref`. Without this, `setFocus` on
    * a TagPillInput-bound field silently no-ops, breaking the L3 rejection
@@ -52,6 +62,7 @@ function TagPillInput({
   placeholder,
   id,
   disabled,
+  grammar = 'frontmatter-tag',
   'aria-describedby': ariaDescribedBy,
   'aria-invalid': ariaInvalid,
   ref,
@@ -73,21 +84,24 @@ function TagPillInput({
   const grammarHintId = `${id ?? fallbackId}-grammar-hint`;
   const resolvedPlaceholder = placeholder ?? t`Add tag`;
 
+  const tagGrammar = grammar === 'frontmatter-tag';
+
   const addTag = (raw: string) => {
     const tag = raw.trim();
     if (!tag) return;
-    if (!isValidFrontmatterTagValue(tag)) {
+    if (tagGrammar && !isValidFrontmatterTagValue(tag)) {
       setDraftRejected(true);
       return;
     }
-    // Normalize leading `#`. `isValidFrontmatterTagValue` strips
-    // a single leading `#` for paste tolerance (Obsidian-shape
+    // Normalize leading `#` (tag grammar only). `isValidFrontmatterTagValue`
+    // strips a single leading `#` for paste tolerance (Obsidian-shape
     // input), so `#showcase` passes the gate above — but the
     // committed list must hold canonical bare values. Without this,
     // the next on-disk YAML parse would silently re-normalize the
     // value (drifting display) and the dedup check below would
-    // miss the duplicate `#showcase` / `showcase` pair.
-    const normalized = tag.startsWith('#') ? tag.slice(1) : tag;
+    // miss the duplicate `#showcase` / `showcase` pair. Free-text
+    // entries commit verbatim (`## Summary` keeps its `#`s).
+    const normalized = tagGrammar && tag.startsWith('#') ? tag.slice(1) : tag;
     if (value.includes(normalized)) {
       setDraft('');
       setDraftRejected(false);
@@ -122,7 +136,8 @@ function TagPillInput({
         // source-mode editor (or programmatic seed) — surface them
         // with a destructive variant + grammar-hint tooltip so the
         // author can find and clean them up without context-switching.
-        const invalid = !isValidFrontmatterTagValue(tag);
+        // Free-text mode has no grammar, so nothing to flag.
+        const invalid = tagGrammar && !isValidFrontmatterTagValue(tag);
         const badge = (
           <Badge
             // Tags are unique within the list (dedup above) — `tag` itself

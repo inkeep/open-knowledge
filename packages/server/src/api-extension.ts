@@ -65,6 +65,7 @@ import {
   createWorkspaceSearchDocument,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_DEDUP_MODE,
+  DEFAULT_LINTER_CONFIG,
   DeadLinksSuccessSchema,
   DeletePathRequestSchema,
   DeletePathSuccessSchema,
@@ -104,6 +105,13 @@ import {
   LinkGraphSuccessSchema,
   LinkPreviewRequestSchema,
   LinkPreviewResponseSchema,
+  LintAuditResponseSchema,
+  LintConfigResponseSchema,
+  LintDocResultSchema,
+  type LinterConfig,
+  LintFixRequestSchema,
+  LintFixResultSchema,
+  type LintViolationWarning,
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
   LocalOpAuthHostRequestSchema,
@@ -115,8 +123,10 @@ import {
   LocalOpEmbeddingsSetKeyRequestSchema,
   LocalOpOkInitRequestSchema,
   LocalOpOkInitResponseSchema,
+  lintDocument,
   MANAGED_ARTIFACT_PREFIX_SKILL,
   MANAGED_ARTIFACT_PREFIX_TEMPLATE,
+  MarkdownlintRuleWriteRequestSchema,
   MetricsAgentPresenceSuccessSchema,
   MetricsParseHealthSuccessSchema,
   MetricsReconciliationSuccessSchema,
@@ -316,6 +326,13 @@ import {
   recordSkillInstall,
   removeSkillInstall,
 } from './installed-skills-marker.ts';
+import { auditProject, lintAndFixSource, lintDoc } from './lint/audit.ts';
+import { type WriteMarkdownlintResult, writeMarkdownlintRule } from './lint/markdownlint-write.ts';
+import {
+  composeEffectiveLinterConfig,
+  resolveEffectiveLinterConfig,
+  resolveNativeConfigForDoc,
+} from './lint/resolve-config.ts';
 import { validateMermaidFences } from './mermaid-validator.ts';
 import {
   extractPageIcon,
@@ -2144,12 +2161,21 @@ function classifyDuplicatePathFilesystemProblem(
 }
 
 function docNameExistsWithAnySupportedExtension(contentDir: string, docName: string): boolean {
+  return resolveDocFilePath(contentDir, docName) !== null;
+}
+
+/**
+ * Resolve a docName — extension-carrying or extension-less — to its on-disk
+ * contentDir-relative path, or null when no supported file exists.
+ */
+function resolveDocFilePath(contentDir: string, docName: string): string | null {
   if (isSupportedDocFile(docName)) {
-    return existsSync(resolve(contentDir, docName));
+    return existsSync(resolve(contentDir, docName)) ? docName : null;
   }
-  return SUPPORTED_DOC_EXTENSIONS.some((ext) =>
-    existsSync(resolve(contentDir, `${docName}${ext}`)),
-  );
+  for (const ext of SUPPORTED_DOC_EXTENSIONS) {
+    if (existsSync(resolve(contentDir, `${docName}${ext}`))) return `${docName}${ext}`;
+  }
+  return null;
 }
 
 function hasSameStemDocumentSibling(contentDir: string, relPath: string): boolean {
@@ -2774,6 +2800,13 @@ export interface ApiExtensionOptions {
    * the real path when omitted.
    */
   embeddingsSecretsFile?: string;
+  /**
+   * Resolve the project's base `contentRules` config (project scope), read FRESH
+   * per request so a config edit takes effect without a restart. The lint
+   * endpoints inject the native `.markdownlint.*` rules over this base.
+   * Omitted in tests → falls back to `DEFAULT_LINTER_CONFIG`.
+   */
+  getLinterBaseConfig?: () => LinterConfig;
 }
 
 interface WorkspaceSearchCacheEntry {
@@ -2890,6 +2923,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     semanticSearch,
     getSemanticSimilarityFloor,
     embeddingsSecretsFile,
+    getLinterBaseConfig,
     ephemeral = false,
     linkPreviewFetch,
     getLinkPreviewsEnabled,
@@ -5356,6 +5390,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           ...(writeMdDivergenceEntry ? [writeMdDivergenceEntry] : []),
           ...(writeMdWarning ? [writeMdWarning] : []),
           ...(renderWarnings ?? []),
+          ...(await computeLintViolations(
+            session.dc.document.getText('source').toString(),
+            resolvedDocName,
+          )),
         ];
         successResponse(
           res,
@@ -7149,6 +7187,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           ...(patchDivergenceEntry ? [patchDivergenceEntry] : []),
           ...(patchWarning ? [patchWarning] : []),
           ...(renderWarnings ?? []),
+          ...(await computeLintViolations(
+            session.dc.document.getText('source').toString(),
+            docName,
+          )),
         ];
         successResponse(
           res,
@@ -17483,6 +17525,423 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'semantic-status', method: 'GET', skipBodyParse: true },
   );
 
+  // ---- Markdown linter: effective config + per-doc lint + project audit ----
+  // The editor reads the effective config; the Settings GUI writes native
+  // `.markdownlint.*` rules through the markdownlint-config endpoint.
+
+  // Content-rule violations on a post-write document, for the agent write/edit
+  // advisory channel. Every enabled lint source rides along — markdownlint
+  // included — so agents see the same violations the editor GUI surfaces.
+  // Whole-doc semantics: pre-existing violations reappear on every write to
+  // the doc, which is why the cap matters. Capped; advisory only — never
+  // gates the write. Empty when linting is disabled.
+  const LINT_VIOLATION_CAP = 10;
+  async function computeLintViolations(
+    source: string,
+    docName: string,
+  ): Promise<LintViolationWarning[]> {
+    const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+    // Advisory-only means advisory-only: by the time this runs the write has
+    // already committed (CRDT + disk + snapshot), so a lint engine crash must
+    // degrade to zero advisories — never bubble into the handler's catch and
+    // turn a committed write into a 500 the agent would retry.
+    try {
+      const effective = resolveEffectiveLinterConfig(contentDir, base, {
+        docName,
+        onProblem: (problem) => log.warn({ problem, docName }, '[lint] native config problem'),
+      });
+      return (await lintDocument(source, effective, docName))
+        .slice(0, LINT_VIOLATION_CAP)
+        .map((d) => ({
+          kind: 'lint-violation' as const,
+          source: d.source,
+          code: d.code,
+          message: d.message,
+          severity: d.severity,
+          // Advisory display units are 1-based; the diagnostic range is 0-based LSP.
+          line: d.range.start.line + 1,
+          column: d.range.start.character + 1,
+        }));
+    } catch (err) {
+      log.warn(
+        { err, docName },
+        '[lint] advisory lint pass failed post-write; omitting advisories',
+      );
+      return [];
+    }
+  }
+
+  const handleGetLintConfig = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      try {
+        // A `?doc=` is accepted (the editor passes the active doc) but the
+        // effective config resolves per doc (cli2 cascade: nearest native
+        // file on the doc→root walk governs); no `?doc=` → root-level.
+        const url = new URL(req.url ?? '', 'http://localhost');
+        const docName = url.searchParams.get('doc');
+        if (docName !== null && (docName === '' || !isSafeDocName(docName))) {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid doc.', {
+            handler: 'lint-config',
+          });
+          return;
+        }
+        const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const configProblems: string[] = [];
+        const native = resolveNativeConfigForDoc(contentDir, docName ?? undefined, (problem) =>
+          configProblems.push(problem),
+        );
+        const effective = composeEffectiveLinterConfig(base, native);
+        successResponse(
+          res,
+          200,
+          LintConfigResponseSchema,
+          { effective, configFile: native?.file ?? null, configProblems },
+          { handler: 'lint-config' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to resolve lint config.',
+          {
+            handler: 'lint-config',
+            cause: e,
+          },
+        );
+      }
+    },
+    { handler: 'lint-config', method: 'GET', skipBodyParse: true },
+  );
+
+  // Edit one rule in the project's native `.markdownlint.*` file (the source of
+  // truth). Root-level only for now; returns the recomputed effective config
+  // so the settings panel reflects the change.
+  const handleWriteMarkdownlintRule = withValidation(
+    MarkdownlintRuleWriteRequestSchema,
+    async (_req, res, body) => {
+      let writeResult: WriteMarkdownlintResult;
+      try {
+        writeResult = writeMarkdownlintRule(resolve(contentDir), body.ruleId, body.value);
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to write markdownlint config.',
+          { handler: 'markdownlint-config', cause: e },
+        );
+        return;
+      }
+      // A declined write must not read as success: the settings panel would
+      // reload, show the rule silently reverted, and the user would retry.
+      if (writeResult.action === 'declined-executable') {
+        errorResponse(
+          res,
+          409,
+          'urn:ok:error:config-not-writable',
+          `The native markdownlint config (${writeResult.file}) is an executable module OK will not rewrite — edit it directly or convert it to JSON/JSONC/YAML.`,
+          { handler: 'markdownlint-config' },
+        );
+        return;
+      }
+      // Past this point the rule IS on disk — a re-read failure must not
+      // report the write itself as failed.
+      try {
+        const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const configProblems: string[] = [];
+        const native = resolveNativeConfigForDoc(contentDir, undefined, (problem) =>
+          configProblems.push(problem),
+        );
+        const effective = composeEffectiveLinterConfig(base, native);
+        successResponse(
+          res,
+          200,
+          LintConfigResponseSchema,
+          { effective, configFile: native?.file ?? null, configProblems },
+          { handler: 'markdownlint-config' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'The markdownlint rule was saved, but the effective config could not be re-read.',
+          { handler: 'markdownlint-config', cause: e },
+        );
+      }
+    },
+    { handler: 'markdownlint-config', method: 'POST' },
+  );
+
+  const handleLintDoc = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      try {
+        const url = new URL(req.url ?? '', 'http://localhost');
+        const docName = url.searchParams.get('doc') ?? '';
+        if (docName === '' || !isSafeDocName(docName)) {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing or invalid doc.', {
+            handler: 'lint',
+          });
+          return;
+        }
+        const docRelPath = resolveDocFilePath(contentDir, docName);
+        if (docRelPath === null) {
+          errorResponse(res, 404, 'urn:ok:error:doc-not-found', 'Document not found.', {
+            handler: 'lint',
+          });
+          return;
+        }
+        const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const result = await lintDoc({
+          projectDir: projectDir ?? contentDir,
+          contentDir,
+          baseConfig,
+          docRelPath,
+        });
+        successResponse(res, 200, LintDocResultSchema, result, { handler: 'lint' });
+      } catch (e) {
+        if (e instanceof SymlinkEscapeError) {
+          errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
+            handler: 'lint',
+          });
+          return;
+        }
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to lint document.', {
+          handler: 'lint',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'lint', method: 'GET', skipBodyParse: true },
+  );
+
+  const handleLintAudit = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      try {
+        const url = new URL(req.url ?? '', 'http://localhost');
+        const rawTarget = url.searchParams.get('path');
+        const target = rawTarget === null || rawTarget === '' ? undefined : rawTarget;
+        // Absolute paths and traversal must not reach the walker: an audit
+        // response carries offending-text snippets, so an unchecked scope is
+        // an arbitrary-directory read for any connected agent.
+        if (target !== undefined && !isValidRelativeContentPath(target)) {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid path.', {
+            handler: 'lint-audit',
+          });
+          return;
+        }
+        const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const result = await auditProject({
+          projectDir: projectDir ?? contentDir,
+          contentDir,
+          baseConfig,
+          targetPath: target,
+        });
+        successResponse(res, 200, LintAuditResponseSchema, result, { handler: 'lint-audit' });
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to audit project.', {
+          handler: 'lint-audit',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'lint-audit', method: 'GET', skipBodyParse: true },
+  );
+
+  const handleLintFix = withValidation(
+    LintFixRequestSchema,
+    async (_req, res, body) => {
+      try {
+        const effectiveDocName = requireNonEmptyDocName(body.docName, res, 'lint-fix');
+        if (effectiveDocName === null) return;
+        const resolvedDocName = resolveAlias(effectiveDocName);
+
+        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
+          extractAgentIdentity(body);
+
+        if (isSystemDoc(resolvedDocName) || isConfigDoc(resolvedDocName)) {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:reserved-doc-name',
+            `'${resolvedDocName}' is a reserved document name.`,
+            { handler: 'lint-fix' },
+          );
+          return;
+        }
+
+        const docRelPath = resolveDocFilePath(contentDir, resolvedDocName);
+        if (docRelPath === null) {
+          errorResponse(res, 404, 'urn:ok:error:doc-not-found', 'Document not found.', {
+            handler: 'lint-fix',
+          });
+          return;
+        }
+        // Refuse a symlink whose canonical target escapes the content dir BEFORE
+        // loading the session. The read path (lintDoc) guards via realpath; this
+        // CRDT-load path must too — otherwise persistence silently drops the
+        // escaped load and the endpoint returns a misleading 200 ("clean")
+        // instead of a path-escape 400. Throws SymlinkEscapeError → 400 below.
+        assertNoSymlinkEscape(resolve(contentDir, docRelPath), contentDir);
+
+        const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const { stored: storedSummary } = summaryResponseFields(normalizeSummary(body.summary));
+        const session = await sessionManager.getSession(resolvedDocName, agentId, {
+          displayName: agentName,
+          colorSeed,
+          clientName,
+        });
+
+        // Lint + fix the LIVE CRDT source (not disk) so the fix ranges resolve
+        // against the bytes we actually mutate. `fixDocument` delegates to
+        // upstream markdownlint's `applyFixes` — we author no fix logic.
+        const source = session.dc.document.getText('source').toString();
+        const { cfg, before, fixed } = await lintAndFixSource({
+          projectDir: projectDir ?? contentDir,
+          contentDir,
+          baseConfig,
+          docRelPath,
+          source,
+        });
+
+        let after = before;
+        let reLintWarning: string | undefined;
+        if (fixed !== source) {
+          // Land the fixed bytes through the sanctioned agent-write spine:
+          // attributed to the calling agent (never the anonymous `file-system`
+          // writer a shell `ok lint --fix` produces), item-preserving (`patch`),
+          // conflict- and FM-gated, and bridged to WYSIWYG + the live preview.
+          // The setPresence('writing')/touchMode('idle') pairing mirrors
+          // `handleAgentWriteMd` so the fix flashes a live "writing" badge; the
+          // try/finally shape is structurally enforced by agent-presence.test.ts.
+          try {
+            const icon = iconFromClientName(clientName);
+            const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
+            agentPresenceBroadcaster?.setPresence(agentId, {
+              displayName: agentName,
+              icon,
+              color,
+              currentDoc: resolvedDocName,
+              mode: 'writing',
+              ts: Date.now(),
+            });
+            session.dc.document.transact(() => {
+              applyAgentMarkdownWrite(
+                session.dc.document,
+                fixed,
+                'patch',
+                options.resolveEmbed
+                  ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
+                  : undefined,
+              );
+            }, session.origin);
+
+            recordContributor(
+              resolvedDocName,
+              agentId,
+              agentName,
+              colorSeed,
+              undefined,
+              buildAgentActor({ clientName, clientVersion, label }),
+              storedSummary,
+            );
+          } finally {
+            agentPresenceBroadcaster?.touchMode(agentId, 'idle');
+          }
+
+          const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
+          if (flushOutcome?.kind === 'failure') {
+            respondPersistenceFailure(res, flushOutcome.failure, 'lint-fix');
+            return;
+          }
+          if (flushOutcome?.kind === 'divergence') {
+            respondDiskDivergence(res, 'lint-fix');
+            return;
+          }
+          flushDocToGit(resolvedDocName, 'lint-fix');
+
+          // Remaining problems: re-lint the ACTUAL post-write source (bridge
+          // normalization can shift bytes vs `fixed`), reusing the resolved cfg.
+          // The write is already durable here (transacted + flushed to disk +
+          // git); a re-lint exception (markdownlint's `lint()` can throw) must
+          // NOT surface as a 500 that makes the caller believe the fix failed
+          // and retry / take compensating actions on already-fixed content.
+          // Fall back to the pre-fix diagnostics and report the re-lint failure
+          // as a warning instead.
+          try {
+            after = await lintDocument(
+              session.dc.document.getText('source').toString(),
+              cfg,
+              docRelPath,
+            );
+          } catch (relintErr) {
+            reLintWarning = `Re-lint after fix failed: ${relintErr instanceof Error ? relintErr.message : String(relintErr)}`;
+            log.warn(
+              { err: relintErr, handler: 'lint-fix' },
+              'post-write re-lint failed; reporting pre-fix diagnostics',
+            );
+            after = before;
+          }
+        }
+
+        const errorCount = after.filter((d) => d.severity === 'error').length;
+        const warningCount = after.length - errorCount;
+        // Net problems the auto-fix resolved (clamped — a fix never nets negative).
+        const fixedCount = Math.max(0, before.length - after.length);
+
+        successResponse(
+          res,
+          200,
+          LintFixResultSchema,
+          {
+            file: docRelPath,
+            fixedCount,
+            diagnostics: after,
+            errorCount,
+            warningCount,
+            ...(reLintWarning ? { warning: reLintWarning } : {}),
+          },
+          { handler: 'lint-fix' },
+        );
+      } catch (e) {
+        if (e instanceof SymlinkEscapeError) {
+          errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
+            handler: 'lint-fix',
+          });
+          return;
+        }
+        if (e instanceof DocInConflictError) {
+          respondDocInConflict(res, e, 'lint-fix');
+          return;
+        }
+        if (e instanceof FrontmatterMalformedError) {
+          respondFrontmatterMalformed(res, e, 'lint-fix');
+          return;
+        }
+        if (e instanceof AgentSessionCapacityError) {
+          errorResponse(
+            res,
+            503,
+            'urn:ok:error:too-many-agent-sessions',
+            'Too many agent sessions.',
+            { handler: 'lint-fix', cause: e, extraHeaders: { 'Retry-After': '10' } },
+          );
+          return;
+        }
+        log.error({ err: e }, '[lint-fix] handler failed');
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to fix document.', {
+          handler: 'lint-fix',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'lint-fix', method: 'POST' },
+  );
+
   // ───────────────────── Link preview (external hover cards) ─────────────────
   // Fetches page metadata for an external link on the user's behalf, so it is
   // guarded on two independent axes: an anti-proxy gate decides WHO may ask, and
@@ -17654,6 +18113,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/skill-targets': handleSkillTargets,
     '/api/search': handleSearch,
     '/api/semantic-status': handleSemanticStatus,
+    '/api/lint/config': handleGetLintConfig,
+    '/api/lint/markdownlint-config': handleWriteMarkdownlintRule,
+    '/api/lint': handleLintDoc,
+    '/api/lint/audit': handleLintAudit,
+    '/api/lint/fix': handleLintFix,
     '/api/suggest-links': handleSuggestLinks,
     '/api/page-headings': handlePageHeadings,
     '/api/create-page': handleCreatePage,
@@ -17728,6 +18192,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // loopback Host header. /api/workspace enforces this inline already.
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
     '/api/upload',
+    '/api/lint/markdownlint-config',
+    '/api/lint/fix',
     '/api/create-page',
     '/api/create-folder',
     '/api/duplicate-path',

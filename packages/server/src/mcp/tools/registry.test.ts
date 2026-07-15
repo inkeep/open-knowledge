@@ -1,8 +1,8 @@
 /**
- * Registry assertion — pins the 17-tool surface of `registerAllTools`.
+ * Registry assertion — pins the tool surface of `registerAllTools`.
  *
- * The OK MCP redesign collapsed the original surface to 17 native
- * CRUD verbs + discriminated reads:
+ * The OK MCP redesign collapsed the original surface to native
+ * CRUD verbs + discriminated reads (`lint` was added later as a read):
  *   - `write` / `edit` / `delete` / `move` are polymorphic over
  *     document / folder / template / asset — absorbing write_document,
  *     edit_document, edit_frontmatter, delete_document, rename(_document/_folder),
@@ -16,7 +16,7 @@
  *   - `history` / `config` / `preview_url` dropped the `get_` prefix.
  *   - read_document / grep / list_documents were dropped (exec subsumes).
  *
- * This test guards both ends: the 17 retained tools are present; none of the
+ * This test guards both ends: the expected tools are present; none of the
  * names in RETIRED_TOOL_NAMES are.
  */
 
@@ -42,6 +42,7 @@ const EXPECTED_TOOLS = [
   'palette',
   'preview_url',
   'share_link',
+  'lint',
   // Writes — CRUD verbs + version
   'write',
   'edit',
@@ -123,13 +124,13 @@ function captureRegistered(): string[] {
   return names;
 }
 
-describe('registerAllTools — 19-tool surface (SPEC.md §9.1 / AC8 + PRD-6935 install + skills read)', () => {
-  test('registers exactly 19 tools', () => {
+describe('registerAllTools — full tool surface (SPEC.md §9.1 / AC8 + install + skills + lint)', () => {
+  test('registers exactly the expected number of tools', () => {
     const names = captureRegistered();
-    expect(names.length).toBe(19);
+    expect(names.length).toBe(EXPECTED_TOOLS.length);
   });
 
-  test('the 19 expected tool names are all present', () => {
+  test('the expected tool names are all present', () => {
     const names = new Set(captureRegistered());
     for (const expected of EXPECTED_TOOLS) {
       expect(names).toContain(expected);
@@ -167,8 +168,9 @@ describe('registerAllTools — 19-tool surface (SPEC.md §9.1 / AC8 + PRD-6935 i
  *
  * On the auto-approved side: `write` / `edit` / `checkpoint` / `restore_version`
  * / `resolve_conflict` all mutate KB content, but the shadow repo versions every
- * write, so `history` + `restore_version` recover them. `exec` is a read-only
- * allowlisted sandbox. `install` is NOT here — it projects executable skill
+ * write, so `history` + `restore_version` recover them. `lint` joins them: its
+ * `fix: true` mode is a recoverable, shadow-versioned content write (report-only
+ * otherwise). `exec` is read-only (sandboxed allowlist). `install` is NOT here — it projects executable skill
  * scripts into the agent's own config dir, which no KB version history undoes.
  */
 const OK_AUTO_APPROVED_TOOLS = [
@@ -187,6 +189,7 @@ const OK_AUTO_APPROVED_TOOLS = [
   'conflicts',
   'resolve_conflict',
   'workflow',
+  'lint',
 ] as const;
 
 describe('docked-terminal auto-approve classification', () => {

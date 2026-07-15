@@ -63,6 +63,12 @@ const REQUIRED_HANDLERS = [
   // (extractActorIdentity for the timeline + extractAgentIdentity for the
   // session) like the other content-write handlers.
   'handleSkillUpdate',
+  // `/api/lint/fix` — apply markdownlint's auto-fixes to a document through the
+  // agent-write spine (applyAgentMarkdownWrite). A mutating CRDT content-doc
+  // write, so it threads extractAgentIdentity at entry to attribute the fix to
+  // the calling agent (never the anonymous `file-system` writer a shell
+  // `ok lint --fix` produces).
+  'handleLintFix',
 ];
 
 /**
@@ -113,6 +119,17 @@ const EXEMPT_HANDLERS = new Set([
   // seed/sync/local-op handlers. No agent identity needed.
   'handleFolderConfig',
   'handleTemplate',
+  // `/api/lint/config` (GET) + `/api/lint/markdownlint-config` (POST) — the markdown
+  // linter's effective-config read and the native `.markdownlint.*` rule write.
+  // Project-configuration writes (lint rules), not agent-authored document
+  // content — same rationale as `handleFolderConfig`. No agent identity needed.
+  'handleGetLintConfig',
+  'handleWriteMarkdownlintRule',
+  // `/api/lint` (GET) + `/api/lint/audit` (GET) — read-only lint of a single doc
+  // / the whole project. No writes, no agent identity — same rationale as the
+  // other read handlers below.
+  'handleLintDoc',
+  'handleLintAudit',
   // `/api/templates` — project-wide flat enumeration of every template
   // (read-only). Returns the union of all `<folder>/.ok/templates/*.md`;
   // same rationale as `handleTagsList` — read path, no agent identity.

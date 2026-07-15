@@ -1,22 +1,29 @@
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Clock, Link2, ListTree, Network } from 'lucide-react';
+import { AlertTriangle, Clock, Link2, ListTree, Network } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import type { DiffLayout } from '@/components/DiffView';
 import { LinksPanel } from '@/components/LinksPanel';
 import { OutlinePanel } from '@/components/OutlinePanel';
+import { ProblemsPanel } from '@/components/ProblemsPanel';
 import { TimelineContent } from '@/components/TimelinePanel';
+import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { applyLintFixes } from '@/editor/apply-lint-fix';
+import { useDocumentContext } from '@/editor/DocumentContext';
+import { useDocLintConfig } from '@/editor/lint-config-client';
+import { useDocDiagnostics } from '@/editor/useDocDiagnostics';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 
-export type PanelTab = 'outline' | 'links' | 'graph' | 'timeline';
+export type PanelTab = 'outline' | 'links' | 'graph' | 'timeline' | 'problems';
 
 export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
   { id: 'outline', icon: ListTree },
   { id: 'links', icon: Link2 },
   { id: 'graph', icon: Network },
   { id: 'timeline', icon: Clock },
+  { id: 'problems', icon: AlertTriangle },
 ];
 
 /** Localized display label for a doc-panel tab. */
@@ -24,6 +31,7 @@ function tabLabel(id: PanelTab): string {
   if (id === 'outline') return t`Outline`;
   if (id === 'links') return t`Links`;
   if (id === 'graph') return t`Graph`;
+  if (id === 'problems') return t`Problems`;
   return t`Timeline`;
 }
 
@@ -72,13 +80,30 @@ export function DocPanel({
   // TimelineContent unmounts when activeTab leaves 'timeline'.
   const { t } = useLingui();
   const [diffLayout, setDiffLayout] = useState<DiffLayout>('unified');
-  // Single-file `ok <file>` keeps only the Outline tab. Links/Graph need a
-  // multi-doc knowledge base, and Timeline is git history — all empty or inert
-  // for a lone git-off file. Coerce a persisted links/graph/timeline selection
-  // back to outline so the rail never renders a now-hidden panel, and drop the
-  // one-item tab strip entirely.
+  // Live, mode-agnostic lint diagnostics for the active doc — drives both the
+  // Problems tab badge and the panel itself. Reads `Y.Text('source')`, so it
+  // works in WYSIWYG mode too. Gated to the matching provider during nav.
+  const { activeProvider, activeDocName } = useDocumentContext();
+  const { data: lintConfig } = useDocLintConfig(docName);
+  const lintProvider = activeDocName === docName ? activeProvider : null;
+  const diagnostics = useDocDiagnostics(lintProvider, lintConfig?.effective ?? null);
+  // Apply a diagnostic's auto-fix to the source CRDT. `lintProvider` is the
+  // active provider only when it matches this doc, so a fix always targets the
+  // document the user is viewing.
+  const handleFix = (diagnostic: (typeof diagnostics)[number]) => {
+    if (lintProvider !== null && diagnostic.fixes && diagnostic.fixes.length > 0) {
+      applyLintFixes(lintProvider, diagnostic.fixes);
+    }
+  };
+  // Single-file `ok <file>` keeps only the Outline + Problems tabs. Links/Graph
+  // need a multi-doc knowledge base, and Timeline is git history — all empty or
+  // inert for a lone git-off file; linting applies to any single file. Coerce a
+  // persisted now-hidden selection back to outline so the rail never renders a
+  // hidden panel.
   const singleFile = useSingleFileMode();
-  const tabs = singleFile ? TABS.filter((tab) => tab.id === 'outline') : TABS;
+  const tabs = singleFile
+    ? TABS.filter((tab) => tab.id === 'outline' || tab.id === 'problems')
+    : TABS;
   const effectiveTab: PanelTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'outline';
   const showTabStrip = mode === 'doc' && tabs.length > 1;
   return (
@@ -100,6 +125,7 @@ export function DocPanel({
           >
             {tabs.map(({ id, icon: Icon }) => {
               const label = tabLabel(id);
+              const showBadge = id === 'problems' && diagnostics.length > 0;
               return (
                 <Tooltip key={id}>
                   <ToggleGroupItem
@@ -107,11 +133,20 @@ export function DocPanel({
                     role="tab"
                     id={`tab-${id}`}
                     aria-controls={`panel-${id}`}
-                    aria-label={label}
+                    aria-label={showBadge ? t`${label} (${diagnostics.length})` : label}
                     asChild
                   >
-                    <TooltipTrigger>
+                    <TooltipTrigger className="relative">
                       <Icon />
+                      {showBadge && (
+                        <Badge
+                          variant="destructive"
+                          aria-hidden="true"
+                          className="absolute -right-1.5 -top-1.5 h-4 min-w-4 rounded-full px-1 text-[10px] leading-none"
+                        >
+                          {diagnostics.length > 99 ? '99+' : diagnostics.length}
+                        </Badge>
+                      )}
                     </TooltipTrigger>
                   </ToggleGroupItem>
                   <TooltipContent side="bottom">{label}</TooltipContent>
@@ -156,6 +191,13 @@ export function DocPanel({
               docName={docName}
               diffLayout={diffLayout}
               onDiffLayoutChange={setDiffLayout}
+            />
+          )}
+          {effectiveTab === 'problems' && (
+            <ProblemsPanel
+              docName={docName}
+              diagnostics={diagnostics}
+              onFix={lintProvider !== null ? handleFix : undefined}
             />
           )}
         </div>
