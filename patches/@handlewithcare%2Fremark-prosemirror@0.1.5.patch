@@ -263,7 +263,7 @@ index 8433f31fff4e82e5fbb0fae2bb8ba1f68cc30f35..617679158b4d2bb7dab2505e5a2ade7c
 -                const result = schema.text(replaceNewlines(trimLines(String(node.value))));
 +                const value = replaceNewlines(trimLines(String(node.value)));
 +                if (!value) return null;
-+                const result = schema.text(/^\s+$/.test(value) ? value.replace(/ /g, '\u00A0') : value);
++                const result = schema.text(value);
                  return result;
              },
              ...handlers,

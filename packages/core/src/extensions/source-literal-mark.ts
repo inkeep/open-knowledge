@@ -51,13 +51,19 @@ export const SourceLiteralMark = Mark.create({
  *
  * Legitimate divergence between visible text and raw is bounded to:
  *   - markdown backslash escapes (`\<punct>` in source → `<punct>` in value)
- *   - U+00A0 (NBSP) → U+0020 (SPACE) normalization applied during parse
- *   - an inline-whitespace numeric char-ref (`&#x20;` / `&#x9;`) whose decoded
- *     codepoint IS the visible text: the byte-fidelity serializer mints these
- *     for a phrasing-boundary space/tab, the editor shows the real space/tab
- *     while `sourceRaw` keeps the exact bytes. Strictly scoped to inline
- *     whitespace — the decoded value can only ever be a single space or tab, so
- *     it cannot smuggle attacker-visible text (script, scheme, structure).
+ *   - U+00A0 (NBSP) folded to U+0020 (SPACE) for comparison: a defensive
+ *     acceptance of a benign NBSP-vs-space divergence (both are horizontal
+ *     spacing). Parse no longer normalizes NBSP to space — a document NBSP now
+ *     round-trips verbatim — so this fold only admits a benign paste/legacy
+ *     divergence, never a structure-smuggling one.
+ *   - an inline-whitespace numeric char-ref (`&#x20;` / `&#x9;` / `&#xA0;`) whose
+ *     decoded codepoint IS the visible text: the byte-fidelity serializer mints
+ *     these for a phrasing-boundary space/tab/NBSP, the editor shows the real
+ *     whitespace char while `sourceRaw` keeps the exact bytes. Strictly scoped to
+ *     inline whitespace — the decoded value can only ever be a single space, tab,
+ *     or NBSP, so it cannot smuggle attacker-visible text (script, scheme,
+ *     structure). This branch matches the decoded codepoint EXACTLY (unfolded),
+ *     keeping it in lockstep with the mdast→PM decode.
  *
  * Newlines and other control characters are rejected outright: sourceLiteral
  * is an inline-only mark, so a control character in the raw bytes would by
@@ -76,12 +82,19 @@ export function isValidSourceLiteralRaw(sourceRaw: unknown, visibleText: unknown
   if (normalizedRaw === normalizedVisible) return true;
   if (stripMarkdownBackslashEscapes(normalizedRaw) === normalizedVisible) return true;
   // A run of inline-whitespace numeric char-refs displayed as its decoded
-  // spaces/tabs. The decoded value is provably whitespace-only (each member is a
-  // space or tab), so this divergence class cannot display innocuous text while
-  // persisting attacker bytes. A run (not a single ref) is admitted because the
-  // mdast→PM display decode coalesces contiguous boundary-whitespace refs into
-  // one segment to dodge ProseMirror's equal-mark text-node merge.
-  return decodeInlineWhitespaceNumericCharRefRun(normalizedRaw) === normalizedVisible;
+  // spaces/tabs/NBSPs. The decoded value is provably whitespace-only (each member
+  // is a space, tab, or NBSP), so this divergence class cannot display innocuous
+  // text while persisting attacker bytes. A run (not a single ref) is admitted
+  // because the mdast→PM display decode coalesces contiguous boundary-whitespace
+  // refs into one segment to dodge ProseMirror's equal-mark text-node merge.
+  //
+  // This branch compares the UNFOLDED bytes on both sides, unlike the two above:
+  // the mdast→PM decode sets the display to exactly
+  // decodeInlineWhitespaceNumericCharRefRun(raw) (an NBSP for `&#xA0;`, a space
+  // for `&#x20;`), so the gate must match that same decoded codepoint. Folding
+  // NBSP→space here would reject a legitimate `&#xA0;`/NBSP pair while the direct
+  // branch above still admits the benign literal-NBSP↔space divergence.
+  return decodeInlineWhitespaceNumericCharRefRun(sourceRaw) === visibleText;
 }
 
 /**

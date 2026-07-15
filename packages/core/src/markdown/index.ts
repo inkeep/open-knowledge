@@ -1,4 +1,3 @@
-
 import {
   type FromProseMirrorOptions,
   fromPmMark,
@@ -197,7 +196,6 @@ export class MarkdownManager {
   }
 }
 
-
 const registry = createRegistry();
 
 function destructureAttrs(
@@ -246,7 +244,6 @@ function destructureAttrs(
   return result;
 }
 
-
 function hasDirtyDescendant(node: PmNode): boolean {
   let found = false;
   node.descendants((child) => {
@@ -265,7 +262,6 @@ function effectiveDirty(node: PmNode, freshnessChecker?: StructuralFreshnessChec
   if (node.attrs.sourceDirty || hasDirtyDescendant(node)) return true;
   return freshnessChecker ? freshnessChecker.isDiverged(node.toJSON()) : false;
 }
-
 
 function isEmptyMdastParagraph(node: MdastNodes): boolean {
   if (node.type !== 'paragraph') return false;
@@ -334,7 +330,6 @@ function extractTextFromMdastNodes(nodes: MdastNodes[]): string {
   }
   return out;
 }
-
 
 import {
   AUDIO_EXTENSIONS,
@@ -471,17 +466,16 @@ function buildMdastToPmHandlers(
       const sourceRaw = typeof node.data?.sourceRaw === 'string' ? node.data.sourceRaw : null;
       if (!value && !sourceRaw) return null;
       if (sourceRaw) {
-        const normalized = value.replaceAll('\u00A0', ' ');
         return m.sourceLiteral
-          ? schema.text(normalized, [m.sourceLiteral.create({ sourceRaw })])
-          : schema.text(normalized);
+          ? schema.text(value, [m.sourceLiteral.create({ sourceRaw })])
+          : schema.text(value);
       }
       const escapedChars: Array<{ offset: number; char: string }> | undefined =
         node.data?.escapedChars;
       const entityRefSpans: Array<{ offset: number; length: number; raw: string }> | undefined =
         node.data?.entityRefSpans;
       if (!escapedChars?.length && !entityRefSpans?.length) {
-        return schema.text(value.replaceAll('\u00A0', ' '));
+        return schema.text(value);
       }
       type Marker =
         | { kind: 'escape'; offset: number; length: number }
@@ -519,13 +513,11 @@ function buildMdastToPmHandlers(
       let lastIdx = 0;
       for (const marker of coalesced) {
         if (marker.offset > lastIdx) {
-          const segment = value.slice(lastIdx, marker.offset).replaceAll('\u00A0', ' ');
+          const segment = value.slice(lastIdx, marker.offset);
           if (segment) fragments.push(schema.text(segment));
         }
         if (marker.offset < value.length) {
-          const segmentText = value
-            .slice(marker.offset, marker.offset + marker.length)
-            .replaceAll('\u00A0', ' ');
+          const segmentText = value.slice(marker.offset, marker.offset + marker.length);
           if (segmentText) {
             if (marker.kind === 'escape') {
               fragments.push(schema.text(segmentText, [m.escapeMark.create()]));
@@ -544,7 +536,7 @@ function buildMdastToPmHandlers(
         }
       }
       if (lastIdx < value.length) {
-        const remaining = value.slice(lastIdx).replaceAll('\u00A0', ' ');
+        const remaining = value.slice(lastIdx);
         if (remaining) fragments.push(schema.text(remaining));
       }
       return fragments.length === 1 ? fragments[0] : fragments;
@@ -584,7 +576,6 @@ function buildMdastToPmHandlers(
       sourceLayout: node.data?.sourceLayout ?? 'block',
     }));
   }
-
 
   if (m.emphasis) {
     handlers.emphasis = toPmMark(m.emphasis, (node: Emphasis) => ({
@@ -664,7 +655,6 @@ function buildMdastToPmHandlers(
       sourceContinuationIndent: node.data?.sourceContinuationIndent ?? null,
     }));
   }
-
 
   if (m.link) {
     const sourceLiteralMark = m.sourceLiteral;
@@ -944,7 +934,6 @@ function buildMdastToPmHandlers(
     };
   }
 
-
   const blockUnknownHandler = (node: {
     type: string;
     position?: { start: { offset: number }; end: { offset: number } };
@@ -1069,7 +1058,6 @@ function buildMdastToPmHandlers(
 
   return handlers as RemarkProseMirrorOptions['handlers'];
 }
-
 
 function buildPmToMdastHandlers(
   schema: Schema,

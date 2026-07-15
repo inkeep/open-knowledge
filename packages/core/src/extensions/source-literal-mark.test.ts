@@ -6,9 +6,10 @@
  * can mutate the PM document could pin one byte sequence as visible text and
  * a different sequence in `sourceRaw`, persisting bytes the user never saw —
  * a hidden-content injection vector. `isValidSourceLiteralRaw` is the gate
- * that bounds legitimate divergence to: markdown backslash escapes, NBSP
- * normalization, and an inline-whitespace numeric char-ref run (`&#x20;`/`&#x9;`)
- * whose decoded space(s)/tab(s) equal the visible text.
+ * that bounds legitimate divergence to: markdown backslash escapes, a benign
+ * literal-NBSP-vs-space divergence, and an inline-whitespace numeric char-ref run
+ * (`&#x20;`/`&#x9;`/`&#xA0;`) whose decoded space(s)/tab(s)/NBSP(s) equal the
+ * visible text.
  */
 
 import { describe, expect, test } from 'bun:test';
@@ -110,12 +111,28 @@ describe('isValidSourceLiteralRaw — inline-whitespace numeric char-ref diverge
     expect(isValidSourceLiteralRaw('&#32;', ' ')).toBe(true); // decimal space
     expect(isValidSourceLiteralRaw('&#x9;', '\t')).toBe(true); // hex tab
     expect(isValidSourceLiteralRaw('&#9;', '\t')).toBe(true); // decimal tab
+    // NBSP (U+00A0) - the serializer mints `&#xA0;` at an attention boundary;
+    // the editor shows the real NBSP while sourceRaw keeps the exact bytes.
+    // Visible NBSP written as a \u00A0 escape, never a literal byte (false-green hazard).
+    expect(isValidSourceLiteralRaw('&#xA0;', '\u00A0')).toBe(true); // hex NBSP
+    expect(isValidSourceLiteralRaw('&#XA0;', '\u00A0')).toBe(true); // capital X
+    expect(isValidSourceLiteralRaw('&#160;', '\u00A0')).toBe(true); // decimal NBSP
   });
 
   test('accepts a RUN of whitespace refs decoding to the visible run (coalesced segment)', () => {
     expect(isValidSourceLiteralRaw('&#x20;&#x20;', '  ')).toBe(true);
     expect(isValidSourceLiteralRaw('&#x9;&#x9;', '\t\t')).toBe(true);
     expect(isValidSourceLiteralRaw('&#x20;&#x9;', ' \t')).toBe(true);
+    expect(isValidSourceLiteralRaw('&#xA0;&#xA0;', '\u00A0\u00A0')).toBe(true);
+    expect(isValidSourceLiteralRaw('&#x20;&#xA0;', ' \u00A0')).toBe(true);
+  });
+
+  test('char-ref decode branch matches the decoded codepoint EXACTLY (no NBSP<->space fold)', () => {
+    // The mdast->PM decode always sets a `&#xA0;` node's display to a real NBSP
+    // and a `&#x20;` node's display to a real space, so the gate matches the
+    // decoded codepoint exactly on this branch — a cross pairing is rejected.
+    expect(isValidSourceLiteralRaw('&#xA0;', ' ')).toBe(false); // NBSP ref, plain-space visible
+    expect(isValidSourceLiteralRaw('&#x20;', '\u00A0')).toBe(false); // space ref, NBSP visible
   });
 
   test('rejects a run whose decoded length does NOT match the visible run', () => {

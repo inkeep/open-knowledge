@@ -1,4 +1,3 @@
-
 import type { Nodes, Parents } from 'mdast';
 import type { MdxJsxAttribute, MdxJsxExpressionAttribute, MdxJsxFlowElement } from 'mdast-util-mdx';
 import type { Handle, Info, State } from 'mdast-util-to-markdown';
@@ -82,7 +81,7 @@ export const toMarkdownHandlers = {
       return result;
     }
 
-    return safeText(state, (node.value ?? '').replaceAll('\u00A0', ' '), info);
+    return safeText(state, node.value ?? '', info);
   },
 
   emphasis(node, _parent, state, info) {
@@ -822,7 +821,8 @@ function isWhitespaceNumericCharRef(body: string): boolean {
     code === 0x0b ||
     code === 0x0c ||
     code === 0x0d ||
-    code === 0x20
+    code === 0x20 ||
+    code === 0xa0
   );
 }
 
