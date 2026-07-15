@@ -20,6 +20,12 @@
  */
 
 import type {
+  OkBugReportCrashAckResult,
+  OkBugReportCrashDetectedEvent,
+  OkBugReportCreateResult,
+  OkBugReportSendMetadata,
+  OkBugReportSendResult,
+  ReportBundleLevel,
   WorktreeCreateRequest,
   WorktreeCreateResult,
   WorktreeListResult,
@@ -471,6 +477,39 @@ const bridge: OkDesktopBridge = {
         throw new Error('ok:sharing:dispatch: expected set-mode result, got status');
       }
       return result;
+    },
+  },
+
+  bugReport: {
+    // The `kind` discriminant is added here so the renderer surface stays
+    // per-operation while the wire stays one consolidated channel
+    // (`ok:bug-report:dispatch`), respecting the hand-rolled-channel cap.
+    // Each method knows its operation, so it casts the union result to its
+    // own arm (the worktree-dispatch precedent).
+    create: (request: { level: ReportBundleLevel; note?: string; includeCrashDump?: boolean }) =>
+      invoke('ok:bug-report:dispatch', {
+        kind: 'create',
+        level: request.level,
+        note: request.note,
+        includeCrashDump: request.includeCrashDump,
+      }) as Promise<OkBugReportCreateResult>,
+    send: (request: { zipPath: string; metadata: OkBugReportSendMetadata }) =>
+      invoke('ok:bug-report:dispatch', {
+        kind: 'send',
+        zipPath: request.zipPath,
+        metadata: request.metadata,
+      }) as Promise<OkBugReportSendResult>,
+    crashAck: (request: { eventId: string }) =>
+      invoke('ok:bug-report:dispatch', {
+        kind: 'crash-ack',
+        eventId: request.eventId,
+      }) as Promise<OkBugReportCrashAckResult>,
+    onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void) {
+      const listener = (_event: IpcRendererEvent, event: OkBugReportCrashDetectedEvent) =>
+        cb(event);
+      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      ipcRenderer.on('ok:bug-report:crash-detected', listener);
+      return () => ipcRenderer.removeListener('ok:bug-report:crash-detected', listener);
     },
   },
 

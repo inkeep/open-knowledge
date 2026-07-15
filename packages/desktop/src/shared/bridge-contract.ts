@@ -24,7 +24,13 @@ import type {
   CreateNewBannerKind,
   EditorId,
   LocalOpOkInitResponse,
+  OkBugReportCrashAckResult,
+  OkBugReportCrashDetectedEvent,
+  OkBugReportCreateResult,
+  OkBugReportSendMetadata,
+  OkBugReportSendResult,
   OkFolderState,
+  ReportBundleLevel,
   ShareTargetStatusResponse,
   TerminalCli,
   WorktreeCreateRequest,
@@ -221,7 +227,11 @@ export type OkMenuAction =
   // Worktree selector (worktree = window). `new-worktree` opens the
   // create dialog; `switch-worktree` opens the sidebar worktree switcher.
   | 'new-worktree'
-  | 'switch-worktree';
+  | 'switch-worktree'
+  // Help → Report a Bug… — opens the in-app bug-report dialog. Both window
+  // types subscribe: editor windows report project-scoped, the Navigator
+  // reports system-wide.
+  | 'report-bug';
 
 /** Returned by `onProjectSwitched` / `onMenuAction`. Call to detach the listener. */
 type OkUnsubscribe = () => void;
@@ -1534,6 +1544,40 @@ export interface OkDesktopBridge {
   sharing: {
     status(): Promise<OkSharingStatusResult>;
     setMode(mode: 'shared' | 'local-only'): Promise<OkSharingSetModeResult>;
+  };
+
+  /**
+   * In-app "Report a bug" — `create` builds the redacted diagnostic zip for
+   * the sender window's project (system-wide when the window has no project,
+   * labeled via `summary.systemWide`) under `~/.ok/bug-reports/`, folding in
+   * the newest un-acked crash minidump only when `includeCrashDump` is set
+   * (the crash invite's explicit opt-in — minidumps carry raw memory no text
+   * redaction can scrub); `send` uploads the reviewed zip to the private
+   * intake endpoint when one is configured, otherwise resolving to the
+   * prefilled email fallback (`fallback.mailtoUrl`) — `reason` discriminates
+   * the designed no-intake email path (`'email-draft'`, no network attempted)
+   * from a real upload failure (`'send-failed'`), so the dialog only renders
+   * an error for the latter. `onCrashDetected` delivers main's crash-detected invitations
+   * (the `ok:bug-report:crash-detected` push; boot events arrive on the first
+   * renderer that finishes loading, so subscribe at module init) and
+   * `crashAck` records the user's answer so one crash event never re-prompts,
+   * restarts included. Backed by `ok:bug-report:dispatch` (one consolidated
+   * channel, discriminated on `kind`, per the `ok:sharing:dispatch`
+   * precedent). Never rejects on capture or upload failure — the results are
+   * discriminated.
+   */
+  bugReport: {
+    create(request: {
+      level: ReportBundleLevel;
+      note?: string;
+      includeCrashDump?: boolean;
+    }): Promise<OkBugReportCreateResult>;
+    send(request: {
+      zipPath: string;
+      metadata: OkBugReportSendMetadata;
+    }): Promise<OkBugReportSendResult>;
+    crashAck(request: { eventId: string }): Promise<OkBugReportCrashAckResult>;
+    onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void): OkUnsubscribe;
   };
 
   /**

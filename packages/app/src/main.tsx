@@ -25,13 +25,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from 'next-themes';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { AppErrorBoundary, CrashReportingBoundary } from '@/components/AppErrorBoundary';
 import { selectDesktopRootApp } from '@/components/desktop-root-app';
+import { ReportBugCrashInviteTrigger } from '@/components/ReportBugCrashInviteTrigger';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 // Side-effect import to load the `Window.okDesktop?` global augmentation.
 import '@/lib/desktop-bridge-types';
 import { installClientFetchWrapper } from '@/lib/client-fetch';
 import { installConsentListener } from '@/lib/consent-store';
+import { installCrashInviteListener } from '@/lib/crash-invite-store';
 // Side-effect import: loads + activates the i18n catalog before first render.
 import { i18n } from '@/lib/i18n';
 import { installClientLogForwarder } from '@/lib/install-client-log-forwarder';
@@ -175,6 +178,14 @@ if (typeof window !== 'undefined') {
   installShareReceivedListener({ bridge: window.okDesktop });
 }
 
+// Desktop-only: crash-detected invitations from main feeding the crash-invite
+// store. Module-init because main delivers boot-time invitations on this
+// window's first did-finish-load, which can beat React's effect flush — the
+// store buffers until ReportBugCrashInviteTrigger mounts. No-op in web/CLI.
+if (typeof window !== 'undefined') {
+  installCrashInviteListener({ bridge: window.okDesktop });
+}
+
 // Desktop-only: ephemeral single-file window (`ok <file>`). Seed the doc into
 // the hash BEFORE `createRoot().render()` so `NavigationHandler`'s first-mount
 // read lands on the file — deterministic, no post-load `ok:deep-link` IPC to
@@ -209,7 +220,28 @@ createRoot(root).render(
           disableTransitionOnChange
           storageKey="ok-theme-v1"
         >
-          <TooltipProvider>{selectDesktopRootApp(desktopBridge)}</TooltipProvider>
+          {/*
+           * Last-resort shell boundary: catches render crashes that escape
+           * every inner boundary (per-Activity DocumentErrorBoundary, settings
+           * chunk) so an app-shell crash shows a recoverable fallback instead
+           * of unmounting the root. Inside the providers so the fallback keeps
+           * i18n + theme.
+           */}
+          <TooltipProvider>
+            <AppErrorBoundary>{selectDesktopRootApp(desktopBridge)}</AppErrorBoundary>
+            {/*
+             * Crash-invite dialog host — a sibling of the root app, outside
+             * the shell boundary, so an invitation still surfaces while the
+             * fallback is showing, in every window mode. Being outside every
+             * boundary also means a throw here would unmount the React root,
+             * so it gets its own null-fallback boundary.
+             */}
+            {desktopBridge !== undefined && (
+              <CrashReportingBoundary>
+                <ReportBugCrashInviteTrigger bridge={desktopBridge} />
+              </CrashReportingBoundary>
+            )}
+          </TooltipProvider>
           {/*
            * Sonner toaster for ad-hoc status/error toasts (clone dialog, file
            * tree, etc.). Auto-update notices are NOT routed here — they live

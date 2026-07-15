@@ -17,6 +17,14 @@ import type {
   WorktreeListResult,
 } from './git/worktree-selector-model.ts';
 import type { TerminalCli } from './handoff/terminal-launch.ts';
+import type {
+  OkBugReportCrashAckResult,
+  OkBugReportCrashDetectedEvent,
+  OkBugReportCreateResult,
+  OkBugReportSendMetadata,
+  OkBugReportSendResult,
+  ReportBundleLevel,
+} from './logger-types.ts';
 import type { LocalOpOkInitResponse } from './schemas/api/local-op.ts';
 import type {
   BranchInfoResponse,
@@ -97,7 +105,11 @@ type OkMenuAction =
   // create dialog; `switch-worktree` opens the sidebar worktree switcher.
   // Both delegate to the renderer's ProjectSwitcher surface.
   | 'new-worktree'
-  | 'switch-worktree';
+  | 'switch-worktree'
+  // Help → Report a Bug… — opens the in-app bug-report dialog. Both window
+  // types subscribe: editor windows report project-scoped, the Navigator
+  // reports system-wide.
+  | 'report-bug';
 
 /**
  * Unsubscribe closure returned from `onProjectSwitched` / `onMenuAction`.
@@ -1330,6 +1342,28 @@ export interface OkDesktopBridge {
   sharing: {
     status(): Promise<OkSharingStatusResult>;
     setMode(mode: 'shared' | 'local-only'): Promise<OkSharingSetModeResult>;
+  };
+
+  /**
+   * In-app "Report a bug" — `create` builds the redacted diagnostic zip
+   * (optional crash-dump opt-in via `includeCrashDump`); `send` uploads it
+   * with an email fallback; `onCrashDetected` / `crashAck` carry the
+   * crash-invite round-trip.
+   * Canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
+   * Mirrored here per the OkDesktopBridge 3-way-mirror invariant.
+   */
+  bugReport: {
+    create(request: {
+      level: ReportBundleLevel;
+      note?: string;
+      includeCrashDump?: boolean;
+    }): Promise<OkBugReportCreateResult>;
+    send(request: {
+      zipPath: string;
+      metadata: OkBugReportSendMetadata;
+    }): Promise<OkBugReportSendResult>;
+    crashAck(request: { eventId: string }): Promise<OkBugReportCrashAckResult>;
+    onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void): OkUnsubscribe;
   };
 
   /**

@@ -1,0 +1,9 @@
+---
+"@inkeep/open-knowledge": minor
+---
+
+Report a bug from inside the app. OpenKnowledge Desktop gains a full in-app bug-report flow: open it from Help → Report a Bug… or the ⌘K command palette, add an optional note, and the app packages logs and system info into a single secret-redacted zip you can reveal in Finder and review before anything leaves your machine. By default, Send makes no network request — it opens a prefilled email draft to support@inkeep.com that names the saved report file for you to attach. When a bug-report intake endpoint is configured (`OK_BUG_REPORT_INTAKE_URL`), Send instead uploads the report privately to the OpenKnowledge team, falling back to the same email draft if the upload fails — nothing is ever sent without your explicit action. A successful upload returns a report reference you can quote when opening a public GitHub issue.
+
+The desktop app also detects crashes locally, first-party only (Electron's crash reporter runs with uploads disabled): if a window process dies or the app quit unexpectedly last session, it invites — never auto-sends — the same report flow, with crash context prefilled and an opt-in, default-off checkbox for attaching the crash dump. Error screens (per-document and a new app-wide boundary) gain a "Report this error" action wired to the same dialog.
+
+For programmatic use, the CLI package now exports `collectReportBundle({ level, projectDir, note, redact, outputPath, extraFiles })`, the leveled bundling API behind both the desktop flow and `ok bug-report`: level `standard` collects the bug-report set (logs, lock/spawn diagnostics, system info), `full` adds the diagnose superset (telemetry spans, live server state, runtime metadata) and degrades gracefully by omitting pieces that aren't available, and `extraFiles` attaches pre-collected artifacts verbatim (the crash-dump opt-in rides on it). `ok bug-report` output is unchanged — it now routes through the same API.

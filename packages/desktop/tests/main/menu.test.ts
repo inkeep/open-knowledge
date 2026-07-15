@@ -383,6 +383,29 @@ describe('buildMenuTemplate', () => {
     });
   });
 
+  describe('Report a Bug… menu item', () => {
+    test('always renders in the Help menu, even without the dep wired', () => {
+      // Unlike Check for updates… (capability-gated on the updater handle),
+      // the report flow is always available — the item renders with default
+      // deps and clicking it is a safe no-op.
+      const template = buildMenuTemplate(makeDeps());
+      const helpMenu = template.find((t) => t.label === 'Help');
+      const sub = helpMenu?.submenu as MenuItemConstructorOptions[] | undefined;
+      if (!sub) throw new Error('Help submenu missing');
+      expect(sub.find((i) => i.label === 'Report a Bug…')).toBeDefined();
+    });
+
+    test('click dispatches deps.onReportBug()', () => {
+      const onReportBug = mock(() => {});
+      const deps = makeDeps({ onReportBug });
+      const template = buildMenuTemplate(deps);
+      const item = findByLabel(template, 'Report a Bug…');
+      if (!item || typeof item.click !== 'function') throw new Error('Report a Bug… click missing');
+      (item.click as () => void)();
+      expect(onReportBug).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('Uninstall OpenKnowledge… menu item', () => {
     test('omitted entirely when onUninstall dep is undefined', () => {
       const template = buildMenuTemplate(makeDeps());

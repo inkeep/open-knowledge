@@ -28,6 +28,7 @@ import {
 } from 'node:fs';
 import { arch as osArch, platform as osPlatform, tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import type { BundleRedaction as SecretScrubEntry } from '@inkeep/open-knowledge-core';
 import {
   DEFAULT_LOGS_MAX_BYTES,
   DEFAULT_SPANS_MAX_BYTES,
@@ -36,6 +37,8 @@ import {
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import { parse as parseYaml } from 'yaml';
 import { ZipFile } from 'yazl';
+import type { BundleExtraFile, BundleLogger } from '../commands/bug-report-bundle.ts';
+import { redactContent } from '../commands/bug-report-redact.ts';
 import { PACKAGE_VERSION } from '../constants.ts';
 import { type RedactStagedBundleResult, redactStagedBundle } from './bundle-redact.ts';
 
@@ -47,12 +50,14 @@ import { type RedactStagedBundleResult, redactStagedBundle } from './bundle-reda
 // (`collected.manifest.X` / `collected.summary.X`). They stay file-local for
 // now; consumers (the deferred `/report-bug` skill) can index into the public
 // types — e.g., `CollectedBundle['manifest']['files'][number]` — without
-// needing to import each interface by name.
+// needing to import each interface by name. `DesktopMetadata` is the one
+// exception: it is exported as the value type of the `readDesktopEnv` seam so
+// `collectReportBundle` callers (the desktop app) can inject host metadata.
 
 /** Schema version pinned at 1 for v1 bundles. */
 type BundleSchemaVersion = 1;
 
-interface DesktopMetadata {
+export interface DesktopMetadata {
   electronVersion: string;
   packaged: boolean;
   channel: string;
@@ -70,6 +75,13 @@ interface BundleFileEntry {
    * is the size of record.
    */
   lines: number;
+}
+
+interface BundleSecretScrub {
+  /** Per-file audit (zip-relative paths) — only files where a pattern matched. */
+  redactions: SecretScrubEntry[];
+  /** Total lines scrubbed across all files. */
+  redactedLineCount: number;
 }
 
 interface BundleRedaction {
@@ -90,6 +102,12 @@ interface BundleRedaction {
    * those hashes.
    */
   docNameCollisions?: Record<string, string[]>;
+  /**
+   * Audit of the secret-pattern scrub (the `ok bug-report` scrub applied to
+   * the staged copies). Present only when the collector ran with
+   * `scrubSecrets`.
+   */
+  secretScrub?: BundleSecretScrub;
 }
 
 type BundleServerStatus = 'running' | 'not-running';
@@ -158,6 +176,20 @@ export interface CollectBundleOpts {
    * staged copies.
    */
   redact?: boolean;
+  /**
+   * Apply the bug-report secret-pattern scrub to every staged text file
+   * (.jsonl/.json/.txt/.log/.lock). Staged copies only — originals on disk
+   * are untouched. Audit lands in `manifest.redaction.secretScrub`.
+   */
+  scrubSecrets?: boolean;
+  /** User note staged verbatim as `note.txt` at the bundle root. */
+  note?: string;
+  /**
+   * Files copied byte-for-byte under `extra/` (e.g. an opted-in crash
+   * minidump). Staged after the secret scrub — binary payloads must never be
+   * text-scrubbed.
+   */
+  extraFiles?: BundleExtraFile[];
   /** Test-injectable dependencies — every field defaults to a real-system implementation. */
   deps?: CollectBundleDeps;
 }
@@ -188,6 +220,8 @@ export interface CollectBundleDeps {
    * 'false'` in production — exposed for tests so the gate is observable.
    */
   isOtlpPushEnabled?: () => boolean;
+  /** Sink for collection-quality warnings (e.g. an opted-in extra file that vanished). Absent means silent. */
+  logger?: BundleLogger;
 }
 
 interface BundleSummary {
@@ -315,7 +349,7 @@ function defaultReadShadowHead(contentDir: string): string | null {
   return result.stdout ?? '';
 }
 
-function defaultReadDesktopEnv(): DesktopMetadata | null {
+export function defaultReadDesktopEnv(): DesktopMetadata | null {
   const electronVersion = process.env.OK_DESKTOP_VERSION;
   const packagedRaw = process.env.OK_DESKTOP_PACKAGED;
   const channel = process.env.OK_DESKTOP_CHANNEL;
@@ -492,6 +526,30 @@ function shouldCountLines(relPath: string): boolean {
   return LINE_COUNTED_EXTENSIONS.has(relPath.slice(lastDot));
 }
 
+const SECRET_SCRUB_EXTENSIONS = new Set(['.jsonl', '.json', '.txt', '.log', '.lock']);
+
+function isSecretScrubbable(relPath: string): boolean {
+  const lastDot = relPath.lastIndexOf('.');
+  if (lastDot === -1) return false;
+  return SECRET_SCRUB_EXTENSIONS.has(relPath.slice(lastDot));
+}
+
+function scrubStagedSecrets(stagingDir: string): BundleSecretScrub {
+  const redactions: SecretScrubEntry[] = [];
+  for (const absPath of walkStagedFiles(stagingDir)) {
+    const relPath = relativeZipPath(stagingDir, absPath);
+    if (!isSecretScrubbable(relPath)) continue;
+    const { redacted, patterns, lineCount } = redactContent(readFileSync(absPath, 'utf-8'));
+    if (patterns.length === 0) continue;
+    writeFileSync(absPath, redacted);
+    redactions.push({ file: relPath, lineCount, patterns });
+  }
+  return {
+    redactions,
+    redactedLineCount: redactions.reduce((sum, r) => sum + r.lineCount, 0),
+  };
+}
+
 function relativeZipPath(stagingDir: string, absPath: string): string {
   return relative(stagingDir, absPath).split(sep).join('/');
 }
@@ -518,139 +576,147 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
   const isOtlpPushEnabled = deps.isOtlpPushEnabled ?? defaultIsOtlpPushEnabled;
 
   const stagingDir = mkdtempSync(join(tmpdir(), 'ok-bundle-'));
-  mkdirSync(join(stagingDir, 'telemetry'), { recursive: true });
-  mkdirSync(join(stagingDir, 'logs'), { recursive: true });
-  mkdirSync(join(stagingDir, 'state'), { recursive: true });
+  try {
+    mkdirSync(join(stagingDir, 'telemetry'), { recursive: true });
+    mkdirSync(join(stagingDir, 'logs'), { recursive: true });
+    mkdirSync(join(stagingDir, 'state'), { recursive: true });
 
-  stageFileIfPresent(spansCurrentPath(projectDir), join(stagingDir, 'telemetry', SPANS_CURRENT));
-  stageFileIfPresent(spansPreviousPath(projectDir), join(stagingDir, 'telemetry', SPANS_PREVIOUS));
-  stageFileIfPresent(logsCurrentPath(projectDir), join(stagingDir, 'logs', LOGS_CURRENT));
-  stageFileIfPresent(logsPreviousPath(projectDir), join(stagingDir, 'logs', LOGS_PREVIOUS));
+    stageFileIfPresent(spansCurrentPath(projectDir), join(stagingDir, 'telemetry', SPANS_CURRENT));
+    stageFileIfPresent(
+      spansPreviousPath(projectDir),
+      join(stagingDir, 'telemetry', SPANS_PREVIOUS),
+    );
+    stageFileIfPresent(logsCurrentPath(projectDir), join(stagingDir, 'logs', LOGS_CURRENT));
+    stageFileIfPresent(logsPreviousPath(projectDir), join(stagingDir, 'logs', LOGS_PREVIOUS));
 
-  // Server lock + status + agent presence.
-  const lockDir = join(projectDir, '.ok', 'local');
-  const lockPath = join(lockDir, 'server.lock');
-  let serverStatus: BundleServerStatus = 'not-running';
-  let serverStatusReason = 'no server.lock';
-  let lockPort: number | null = null;
+    // Server lock + status + agent presence.
+    const lockDir = join(projectDir, '.ok', 'local');
+    const lockPath = join(lockDir, 'server.lock');
+    let serverStatus: BundleServerStatus = 'not-running';
+    let serverStatusReason = 'no server.lock';
+    let lockPort: number | null = null;
 
-  if (existsSync(lockPath)) {
-    stageFileIfPresent(lockPath, join(stagingDir, 'state', 'server.lock'));
-    try {
-      const lockContent = readFileSync(lockPath, 'utf-8');
-      const lock = JSON.parse(lockContent) as { port?: number };
-      if (typeof lock.port === 'number') {
-        lockPort = lock.port;
-      } else {
-        serverStatusReason = 'lock present but no port';
+    if (existsSync(lockPath)) {
+      stageFileIfPresent(lockPath, join(stagingDir, 'state', 'server.lock'));
+      try {
+        const lockContent = readFileSync(lockPath, 'utf-8');
+        const lock = JSON.parse(lockContent) as { port?: number };
+        if (typeof lock.port === 'number') {
+          lockPort = lock.port;
+        } else {
+          serverStatusReason = 'lock present but no port';
+        }
+      } catch {
+        serverStatusReason = 'lock present but unparseable';
       }
-    } catch {
-      serverStatusReason = 'lock present but unparseable';
     }
-  }
 
-  if (lockPort !== null) {
-    const presence = await fetchAgentPresence(lockPort);
-    if (presence !== null) {
-      writeFileSync(join(stagingDir, 'state', 'agent-presence.json'), presence);
-      serverStatus = 'running';
-      serverStatusReason = '';
-    } else {
-      serverStatusReason = `agent-presence endpoint at :${lockPort} unreachable`;
+    if (lockPort !== null) {
+      const presence = await fetchAgentPresence(lockPort);
+      if (presence !== null) {
+        writeFileSync(join(stagingDir, 'state', 'agent-presence.json'), presence);
+        serverStatus = 'running';
+        serverStatusReason = '';
+      } else {
+        serverStatusReason = `agent-presence endpoint at :${lockPort} unreachable`;
+      }
     }
-  }
 
-  // Shadow-repo head — best effort.
-  const shadowHead = readShadowHead(contentDir);
-  if (shadowHead !== null) {
-    writeFileSync(join(stagingDir, 'state', 'shadow-head.txt'), shadowHead);
-  }
-
-  // last-spawn-error.log (Electron host writes this when a spawn fails).
-  stageFileIfPresent(
-    join(lockDir, 'last-spawn-error.log'),
-    join(stagingDir, 'state', 'last-spawn-error.log'),
-  );
-
-  // Runtime + desktop block.
-  const runtime = readRuntime();
-  const desktop = readDesktopEnv();
-  const runtimeJson = {
-    ok: {
-      version: okVersion(),
-      nodeVersion: runtime.nodeVersion,
-      platform: runtime.platform,
-      arch: runtime.arch,
-    },
-    host: { desktop },
-  };
-  writeFileSync(
-    join(stagingDir, 'state', 'runtime.json'),
-    `${JSON.stringify(runtimeJson, null, 2)}\n`,
-  );
-
-  const statusBody =
-    serverStatus === 'running' ? 'running\n' : `not-running (${serverStatusReason})\n`;
-  writeFileSync(join(stagingDir, 'state', 'server-status.txt'), statusBody);
-
-  // process/ — only when caller hands us a pre-collected dir.
-  if (opts.processDir && existsSync(opts.processDir)) {
-    const processDest = join(stagingDir, 'process');
-    mkdirSync(processDest, { recursive: true });
-    cpSync(opts.processDir, processDest, { recursive: true });
-  }
-
-  // Apply redaction to the staged copies BEFORE the file inventory walk so
-  // the recorded bytes/lines reflect post-redaction state. Originals on disk
-  // are not touched — only the staged copies in stagingDir. The redactor
-  // returns the inverse map for the manifest.
-  let redactionResult: RedactStagedBundleResult | null = null;
-  if (opts.redact === true) {
-    redactionResult = redactStagedBundle({ stagingDir, contentDir });
-  }
-
-  // Manifest. Config lookup uses projectDir (where `.ok/config.yml` lives)
-  // rather than contentDir — when `content.dir != '.'`, these differ and
-  // contentDir wouldn't contain the project config file.
-  const localSink = resolveLocalSinkBlock(projectDir);
-  const stagedFiles = walkStagedFiles(stagingDir);
-  const files: BundleFileEntry[] = [];
-  let totalBytes = 0;
-  let docNameCount = 0;
-  for (const absPath of stagedFiles) {
-    const relPath = relativeZipPath(stagingDir, absPath);
-    const bytes = statSync(absPath).size;
-    const lines = shouldCountLines(relPath) ? countLines(absPath) : 0;
-    files.push({ path: relPath, bytes, lines });
-    totalBytes += bytes;
-    if (relPath.startsWith('telemetry/') && shouldCountLines(relPath)) {
-      docNameCount += countDocNameOccurrences(absPath);
+    // Shadow-repo head — best effort.
+    const shadowHead = readShadowHead(contentDir);
+    if (shadowHead !== null) {
+      writeFileSync(join(stagingDir, 'state', 'shadow-head.txt'), shadowHead);
     }
-  }
 
-  const manifest: BundleManifest = {
-    schemaVersion: 1,
-    createdAt: now().toISOString(),
-    ok: {
-      version: okVersion(),
-      nodeVersion: runtime.nodeVersion,
-      platform: runtime.platform,
-      arch: runtime.arch,
-    },
-    host: { desktop },
-    contentDir: {
-      // pathSha256 stays as the SHA-256 of the original absolute path — it's
-      // a stable correlation identifier for the recipient. The absolutePath
-      // string itself is masked when redaction is on so the bundle doesn't
-      // leak the user's home directory layout.
-      pathSha256: hashContentDirPath(contentDir),
-      absolutePath: redactionResult !== null ? '<CONTENT_DIR>' : contentDir,
-    },
-    telemetry: {
-      localSink,
-      otlpPushEnabled: isOtlpPushEnabled(),
-    },
-    redaction:
+    // last-spawn-error.log (Electron host writes this when a spawn fails).
+    stageFileIfPresent(
+      join(lockDir, 'last-spawn-error.log'),
+      join(stagingDir, 'state', 'last-spawn-error.log'),
+    );
+
+    // Runtime + desktop block.
+    const runtime = readRuntime();
+    const desktop = readDesktopEnv();
+    const runtimeJson = {
+      ok: {
+        version: okVersion(),
+        nodeVersion: runtime.nodeVersion,
+        platform: runtime.platform,
+        arch: runtime.arch,
+      },
+      host: { desktop },
+    };
+    writeFileSync(
+      join(stagingDir, 'state', 'runtime.json'),
+      `${JSON.stringify(runtimeJson, null, 2)}\n`,
+    );
+
+    const statusBody =
+      serverStatus === 'running' ? 'running\n' : `not-running (${serverStatusReason})\n`;
+    writeFileSync(join(stagingDir, 'state', 'server-status.txt'), statusBody);
+
+    // process/ — only when caller hands us a pre-collected dir.
+    if (opts.processDir && existsSync(opts.processDir)) {
+      const processDest = join(stagingDir, 'process');
+      mkdirSync(processDest, { recursive: true });
+      cpSync(opts.processDir, processDest, { recursive: true });
+    }
+
+    // Apply redaction to the staged copies BEFORE the file inventory walk so
+    // the recorded bytes/lines reflect post-redaction state. Originals on disk
+    // are not touched — only the staged copies in stagingDir. The redactor
+    // returns the inverse map for the manifest.
+    let redactionResult: RedactStagedBundleResult | null = null;
+    if (opts.redact === true) {
+      redactionResult = redactStagedBundle({ stagingDir, contentDir });
+    }
+
+    // Staged before the scrub so a secret pasted into the note gets caught too.
+    if (opts.note) {
+      writeFileSync(join(stagingDir, 'note.txt'), opts.note);
+    }
+
+    let secretScrub: BundleSecretScrub | null = null;
+    if (opts.scrubSecrets === true) {
+      secretScrub = scrubStagedSecrets(stagingDir);
+    }
+
+    for (const extra of opts.extraFiles ?? []) {
+      const staged = stageFileIfPresent(
+        extra.sourcePath,
+        join(stagingDir, 'extra', extra.zipName ?? basename(extra.sourcePath)),
+      );
+      if (!staged) {
+        // Unlike the availability-gated telemetry/log sources, an extra is an
+        // artifact the user explicitly opted into sharing (e.g. a crash
+        // minidump) — its absence must be traceable, not silent.
+        deps.logger?.warn(
+          { sourcePath: extra.sourcePath },
+          'extra file missing; omitted from bundle',
+        );
+      }
+    }
+
+    // Manifest. Config lookup uses projectDir (where `.ok/config.yml` lives)
+    // rather than contentDir — when `content.dir != '.'`, these differ and
+    // contentDir wouldn't contain the project config file.
+    const localSink = resolveLocalSinkBlock(projectDir);
+    const stagedFiles = walkStagedFiles(stagingDir);
+    const files: BundleFileEntry[] = [];
+    let totalBytes = 0;
+    let docNameCount = 0;
+    for (const absPath of stagedFiles) {
+      const relPath = relativeZipPath(stagingDir, absPath);
+      const bytes = statSync(absPath).size;
+      const lines = shouldCountLines(relPath) ? countLines(absPath) : 0;
+      files.push({ path: relPath, bytes, lines });
+      totalBytes += bytes;
+      if (relPath.startsWith('telemetry/') && shouldCountLines(relPath)) {
+        docNameCount += countDocNameOccurrences(absPath);
+      }
+    }
+
+    const redaction: BundleRedaction =
       redactionResult !== null
         ? Object.keys(redactionResult.docNameCollisions).length > 0
           ? {
@@ -659,50 +725,85 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
               docNameCollisions: redactionResult.docNameCollisions,
             }
           : { applied: true, docNameMapSidecar: null }
-        : { applied: false, docNameMapSidecar: null },
-    serverStatus,
-    files,
-  };
-
-  writeFileSync(join(stagingDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-
-  // contentDirVisible scan runs AFTER manifest write so it doesn't include
-  // the manifest's own `absolutePath` field — the user's prompt cares about
-  // JSONLs + state files where the path bleeds in via spans / logs / lock
-  // metadata, not the recipient-facing inventory.
-  const contentDirVisible = stagedFiles.some((absPath) => {
-    try {
-      return readFileSync(absPath, 'utf-8').includes(contentDir);
-    } catch {
-      // Binary file (cpuprofile, dmp) — skip the substring scan.
-      return false;
+        : { applied: false, docNameMapSidecar: null };
+    if (secretScrub !== null) {
+      redaction.secretScrub = secretScrub;
     }
-  });
 
-  const summary: BundleSummary = {
-    totalBytes,
-    fileCount: files.length,
-    docNameCount,
-    contentDirVisible,
-    redacted: redactionResult !== null,
-  };
+    const manifest: BundleManifest = {
+      schemaVersion: 1,
+      createdAt: now().toISOString(),
+      ok: {
+        version: okVersion(),
+        nodeVersion: runtime.nodeVersion,
+        platform: runtime.platform,
+        arch: runtime.arch,
+      },
+      host: { desktop },
+      contentDir: {
+        // pathSha256 stays as the SHA-256 of the original absolute path — it's
+        // a stable correlation identifier for the recipient. The absolutePath
+        // string itself is masked when redaction is on so the bundle doesn't
+        // leak the user's home directory layout.
+        pathSha256: hashContentDirPath(contentDir),
+        absolutePath: redactionResult !== null ? '<CONTENT_DIR>' : contentDir,
+      },
+      telemetry: {
+        localSink,
+        otlpPushEnabled: isOtlpPushEnabled(),
+      },
+      redaction,
+      serverStatus,
+      files,
+    };
 
-  let cleaned = false;
-  const cleanup = (): void => {
-    if (cleaned) return;
-    cleaned = true;
+    writeFileSync(join(stagingDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+
+    // contentDirVisible scan runs AFTER manifest write so it doesn't include
+    // the manifest's own `absolutePath` field — the user's prompt cares about
+    // JSONLs + state files where the path bleeds in via spans / logs / lock
+    // metadata, not the recipient-facing inventory.
+    const contentDirVisible = stagedFiles.some((absPath) => {
+      try {
+        return readFileSync(absPath, 'utf-8').includes(contentDir);
+      } catch {
+        // Binary file (cpuprofile, dmp) — skip the substring scan.
+        return false;
+      }
+    });
+
+    const summary: BundleSummary = {
+      totalBytes,
+      fileCount: files.length,
+      docNameCount,
+      contentDirVisible,
+      redacted: redactionResult !== null,
+    };
+
+    let cleaned = false;
+    const cleanup = (): void => {
+      if (cleaned) return;
+      cleaned = true;
+      rmSync(stagingDir, { recursive: true, force: true });
+    };
+
+    const redactionMapPayload =
+      redactionResult !== null
+        ? {
+            docNameMap: redactionResult.docNameMap,
+            docNameCollisions: redactionResult.docNameCollisions,
+          }
+        : null;
+
+    return { stagingDir, manifest, summary, redactionMapPayload, cleanup };
+  } catch (err) {
+    // The cleanup handle only exists on the returned value, so a throw during
+    // staging is the one path where nobody else can release the tmpdir — and
+    // what would be stranded there are copies of logs and telemetry that may
+    // not have been redacted yet.
     rmSync(stagingDir, { recursive: true, force: true });
-  };
-
-  const redactionMapPayload =
-    redactionResult !== null
-      ? {
-          docNameMap: redactionResult.docNameMap,
-          docNameCollisions: redactionResult.docNameCollisions,
-        }
-      : null;
-
-  return { stagingDir, manifest, summary, redactionMapPayload, cleanup };
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------

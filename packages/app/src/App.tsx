@@ -22,6 +22,7 @@ import {
   withLargeFileOpenGuard,
 } from '@/components/navigation-targets';
 import { PageListProvider, usePageList } from '@/components/PageListContext';
+import { ReportBugMenuTrigger } from '@/components/ReportBugMenuTrigger';
 import { SystemDocSubscriber } from '@/components/SystemDocSubscriber';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import {
@@ -502,6 +503,9 @@ function AppBody() {
             Desktop-only — the `new-project` menu action never fires in
             the web host, so the dialog stays unmounted there. */}
         {desktopBridge ? <CreateProjectMenuTrigger bridge={desktopBridge} /> : null}
+        {/* Help → Report a Bug… opens ReportBugDialog here — same
+            desktop-only App-root trigger pattern as CreateProjectMenuTrigger. */}
+        {desktopBridge ? <ReportBugMenuTrigger bridge={desktopBridge} /> : null}
         {/* First-launch consent dialog — host-agnostic. Self-gates on
             the shared `mcpConsentStore` snapshot; renders nothing until
             main fires `ok:mcp-wiring:show`. Mounted identically in

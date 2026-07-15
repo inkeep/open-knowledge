@@ -30,7 +30,7 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 82 (ratchet cap 82). The 74→75 bump reconciled a merge collision:
+ * Count is 83 (ratchet cap 83). The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -44,6 +44,9 @@
  * sender window's project). The 79→81 bump added terminal-tab reload-survival
  * (`ok:pty:set-meta` + `ok:pty:set-order`) — two slots, following the `ok:pty:*`
  * one-channel-per-operation design rather than a dispatch fold. The 81→82 bump
+ * added the in-app report-a-bug surface (`ok:bug-report:dispatch`, a
+ * discriminated fold per the sharing-dispatch precedent; later report
+ * operations widen its payload rather than adding channels). The 82→83 bump
  * added the terminal clickable-links out-of-project reveal
  * (`ok:shell:reveal-external`): a distinct trust boundary from `reveal-asset`
  * (uncontained + dialog-gated), so it could not fold onto it. Full rationale in
@@ -56,6 +59,9 @@ import type {
   CreateNewBannerKind,
   EditorId,
   LocalOpOkInitResponse,
+  OkBugReportCrashAckResult,
+  OkBugReportCreateResult,
+  OkBugReportSendResult,
   OkFolderState,
   ShareTargetStatusResponse,
   TerminalCli,
@@ -69,6 +75,7 @@ import type {
   PackId,
   ScaffoldPlan,
 } from '@inkeep/open-knowledge-server';
+import type { OkBugReportRequest } from '../main/ipc/bug-report.ts';
 import type { BuildAndOpenResult } from '../main/ipc/install-skill.ts';
 import type { SeedApplyResult, SeedListPacksResult, SeedPlanResult } from '../main/ipc/seed.ts';
 import type { KeyringSmokeResult } from '../utility/keyring-smoke.ts';
@@ -795,6 +802,28 @@ export interface RequestChannels {
   'ok:sharing:dispatch': {
     args: [request: { kind: 'status' } | { kind: 'set-mode'; mode: 'shared' | 'local-only' }];
     result: OkSharingResult;
+  };
+  /**
+   * In-app "Report a bug" — one consolidated discriminated channel (the
+   * `ok:sharing:dispatch` precedent) so the whole report surface costs a
+   * single hand-rolled slot; report operations widen this payload instead of
+   * adding channels.
+   *   - `{kind: 'create', level, note?, includeCrashDump?}` → build the
+   *     redacted diagnostic zip for the sender window's project (system-wide
+   *     when the sender has no project context) under `~/.ok/bug-reports/`;
+   *     the crash-dump flag is the crash invite's explicit opt-in.
+   *   - `{kind: 'send', zipPath, metadata}` → upload the reviewed zip to the
+   *     private intake endpoint; any failure (endpoint unconfigured included)
+   *     degrades to a prefilled email fallback.
+   *   - `{kind: 'crash-ack', eventId}` → persist that the user answered a
+   *     `ok:bug-report:crash-detected` invitation so that crash event never
+   *     re-prompts, across restarts included.
+   * Never throws — every failure mode is discriminated so the dialog can
+   * render it; each preload method casts the union result to its own arm.
+   */
+  'ok:bug-report:dispatch': {
+    args: [request: OkBugReportRequest];
+    result: OkBugReportCreateResult | OkBugReportSendResult | OkBugReportCrashAckResult;
   };
   /** Read the LRU-capped recent-projects list from app state. */
   'ok:project:list-recent': { args: []; result: RecentProject[] };

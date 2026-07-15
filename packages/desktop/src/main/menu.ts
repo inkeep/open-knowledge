@@ -13,7 +13,7 @@
  *   - Project menu (Save Version, Version History, Reveal .ok/, Trust Project)
  *   - File → Clone from GitHub…
  *   - View → Graph / Timeline / Backlinks / Outline toggles
- *   - Help menu (Documentation, Report Issue, Check for updates)
+ *   - Help → Documentation
  *
  * The menu is rebuilt on recent-projects changes so the Recent project submenu
  * stays current without us reaching into Electron's menu-item mutation API
@@ -97,6 +97,14 @@ export interface MenuDeps {
    * mounted there — same precedent as `openInstallSkillDialog`.
    */
   openSettings?(): void;
+  /**
+   * Help → Report a Bug… click handler — fires the `report-bug` menu action
+   * to the focused renderer, which opens the in-app report dialog (editor
+   * windows and the Navigator both subscribe). Optional for the same reason
+   * as `openInstallSkillDialog` — unit tests build the menu without wiring
+   * it; the item itself always renders.
+   */
+  onReportBug?(): void;
   /**
    * "Check for updates…" click handler — fires an out-of-cadence
    * `autoUpdater.checkForUpdates()` via the `ok:update:check-now` IPC.
@@ -765,6 +773,10 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         {
           label: 'OpenKnowledge on GitHub',
           click: () => deps.openExternalUrl('https://github.com/inkeep/open-knowledge'),
+        },
+        {
+          label: 'Report a Bug…',
+          click: () => deps.onReportBug?.(),
         },
         // Cross-platform "Check for updates…" — Windows/Linux convention
         // is to place this in Help, since those platforms have no

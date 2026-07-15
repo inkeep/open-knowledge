@@ -22,8 +22,14 @@ import type {
   CreateNewBannerKind,
   EditorId,
   LocalOpOkInitResponse,
+  OkBugReportCrashAckResult,
+  OkBugReportCrashDetectedEvent,
+  OkBugReportCreateResult,
+  OkBugReportSendMetadata,
+  OkBugReportSendResult,
   OkFolderState,
   RecentProjectEntry,
+  ReportBundleLevel,
   ShareTargetStatusResponse,
   TerminalCli,
   WorktreeCreateRequest,
@@ -228,7 +234,11 @@ type OkMenuAction =
   // Worktree selector (worktree = window). `new-worktree` opens the
   // create dialog; `switch-worktree` opens the sidebar worktree switcher.
   | 'new-worktree'
-  | 'switch-worktree';
+  | 'switch-worktree'
+  // Help → Report a Bug… — opens the in-app bug-report dialog. Both window
+  // types subscribe: editor windows report project-scoped, the Navigator
+  // reports system-wide.
+  | 'report-bug';
 
 type OkUnsubscribe = () => void;
 
@@ -1146,6 +1156,28 @@ export interface OkDesktopBridge {
   sharing: {
     status(): Promise<OkSharingStatusResult>;
     setMode(mode: 'shared' | 'local-only'): Promise<OkSharingSetModeResult>;
+  };
+
+  /**
+   * In-app "Report a bug" — `create` builds the redacted diagnostic zip
+   * (optional crash-dump opt-in via `includeCrashDump`); `send` uploads it
+   * with an email fallback; `onCrashDetected` / `crashAck` carry the
+   * crash-invite round-trip.
+   * Canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
+   * Mirrored here per the OkDesktopBridge 3-way-mirror invariant.
+   */
+  bugReport: {
+    create(request: {
+      level: ReportBundleLevel;
+      note?: string;
+      includeCrashDump?: boolean;
+    }): Promise<OkBugReportCreateResult>;
+    send(request: {
+      zipPath: string;
+      metadata: OkBugReportSendMetadata;
+    }): Promise<OkBugReportSendResult>;
+    crashAck(request: { eventId: string }): Promise<OkBugReportCrashAckResult>;
+    onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void): OkUnsubscribe;
   };
 
   /**

@@ -156,6 +156,10 @@ mock.module('@/components/CreateProjectMenuTrigger', () => ({
   CreateProjectMenuTrigger: () => <div data-testid="create-project-menu-trigger" />,
 }));
 
+mock.module('@/components/ReportBugMenuTrigger', () => ({
+  ReportBugMenuTrigger: () => <div data-testid="report-bug-menu-trigger" />,
+}));
+
 mock.module('@/components/ShareBranchSwitchDialog', () => ({
   ShareBranchSwitchDialog: () => <div data-testid="share-branch-switch-dialog" />,
 }));

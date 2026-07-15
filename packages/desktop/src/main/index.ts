@@ -40,12 +40,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
-import { homedir as osHomedir, hostname as osHostname } from 'node:os';
+import { homedir as osHomedir, hostname as osHostname, release as osRelease } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
   ALL_EDITOR_IDS,
   addOkPathsToGitExclude,
   classifyExistingMcpEntry,
+  defaultBugReportZipPath,
   detectInstalledEditors,
   EDITOR_TARGETS,
   getOkArtifactPaths,
@@ -107,6 +108,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  crashReporter,
   dialog,
   autoUpdater as electronAutoUpdater,
   ipcMain,
@@ -167,6 +169,11 @@ import {
 } from './claude-readiness.ts';
 import { requestUserConsent, walkExceedsCap } from './consent-dialog.ts';
 import {
+  type CrashDetection,
+  createCrashDetection,
+  startLocalCrashReporter,
+} from './crash-detection.ts';
+import {
   CreateNewProjectError,
   folderState,
   resolveDefaultProjectsRoot,
@@ -207,6 +214,11 @@ import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { formatInstanceAppName, resolveInstanceLabel } from './instance-identity.ts';
 import { deriveInstanceUserDataDir } from './instance-isolation.ts';
 import { registerIntegrationsSettings } from './integrations-settings.ts';
+import {
+  handleBugReportCrashAck,
+  handleBugReportCreate,
+  handleBugReportSend,
+} from './ipc/bug-report.ts';
 import { handleBuildAndOpen, handleDetectClaudeDesktop } from './ipc/install-skill.ts';
 import {
   createLocalOpState,
@@ -903,6 +915,13 @@ let debugIpc: DebugIpcHandle | null = null;
  * when the wiring no-ops (marker present, dev mode, non-macOS, etc.).
  */
 let mcpWiringHandle: RunMcpWiringHandle | null = null;
+/**
+ * First-party crash detection (local-only crash reporter, process-gone
+ * listeners, boot-time dirty-shutdown/minidump scan). Created at the top of
+ * `bootPrimaryInstance`; null only in the duplicate-instance and driver-smoke
+ * boot paths, which never prompt.
+ */
+let crashDetection: CrashDetection | null = null;
 
 /**
  * Active-editor target snapshot pushed by the renderer via
@@ -2183,6 +2202,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
       if (!target) return;
       target.webContents.executeJavaScript("window.location.hash = '#settings'; undefined");
     },
+    onReportBug: () => sendMenuActionToFocused('report-bug'),
     // App-menu / Help-menu "Check for Updates…" entries fire this. Returns
     // void: the menu doesn't surface in-flight progress; the existing
     // `update-available` / `update-not-available` electron-updater events
@@ -3526,6 +3546,11 @@ function registerIpcHandlers() {
       {
         platform: process.platform,
         projectPath: callerProjectPath,
+        // The bug-report zip lives in `~/.ok/bug-reports/`, outside every
+        // project, so the review/failure card's Reveal would otherwise be
+        // refused (`out-of-project`, or `no-project-bound` from a Navigator
+        // window). This dir is main-derived, not renderer-influenced.
+        allowedRoots: [dirname(defaultBugReportZipPath())],
         showItemInFolder: (p) => shell.showItemInFolder(p),
       },
       path,
@@ -3759,6 +3784,50 @@ function registerIpcHandlers() {
     }
     const mode: 'shared' | 'local-only' = request.mode === 'local-only' ? 'local-only' : 'shared';
     return handleSharingSetMode(ctx.projectPath, mode);
+  });
+
+  // In-app bug reporting — build the redacted diagnostic bundle for the
+  // sender window's project, upload a reviewed bundle to the private intake,
+  // or acknowledge a crash-detected invitation. Unlike the sibling
+  // project-scoped channels, a window with no project context (Navigator) is
+  // NOT refused: the bundle degrades to system-wide (user logs + sysinfo),
+  // labeled via `summary.systemWide`.
+  handle('ok:bug-report:dispatch', async (event, request) => {
+    if (request.kind === 'crash-ack') {
+      return handleBugReportCrashAck(
+        { ackCrashEvent: (eventId) => crashDetection?.ack(eventId) },
+        request,
+      );
+    }
+    if (request.kind === 'send') {
+      return handleBugReportSend(
+        {
+          intakeBaseUrl: process.env.OK_BUG_REPORT_INTAKE_URL,
+          appVersion: app.getVersion(),
+          platform: `${process.platform} ${osRelease()}`,
+          // Same containment root the Reveal handler whitelists above — only
+          // zips `create` produced may be read and uploaded.
+          bugReportsRoot: dirname(defaultBugReportZipPath()),
+        },
+        request,
+      );
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const ctx =
+      win && wm ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike) : null;
+    return handleBugReportCreate(
+      {
+        projectDir: ctx?.projectPath ?? null,
+        desktopMeta: {
+          version: app.getVersion(),
+          packaged: app.isPackaged,
+          channel: channelFromVersion(app.getVersion()),
+        },
+        newestMinidumpPath: () => crashDetection?.newestMinidumpPath() ?? null,
+        logger: getLogger('bug-report'),
+      },
+      request,
+    );
   });
 
   handle('ok:project:list-recent', async () => {
@@ -4835,11 +4904,62 @@ function bootPrimaryInstance(): void {
     'desktop main process starting',
   );
 
+  // Crash handling is strictly local: Crashpad writes minidumps under
+  // `app.getPath('crashDumps')` and uploads nothing. Started before any
+  // window so every child process inherits coverage, then the boot-time scan
+  // arms a report invitation if the previous session ended uncleanly. NO
+  // userland `uncaughtException` handler is involved anywhere in this
+  // pipeline — see process-safety-net.ts for why one must never be added.
+  startLocalCrashReporter(crashReporter);
+  crashDetection = createCrashDetection({
+    sentinelPath: join(app.getPath('userData'), 'bug-report-dirty-shutdown.json'),
+    ackStorePath: join(app.getPath('userData'), 'bug-report-crash-acks.json'),
+    crashDumpsDir: app.getPath('crashDumps'),
+    // Deliver to one live window — focused first — and report undeliverable
+    // so the invitation waits for the next renderer-ready signal instead of
+    // dropping (at boot, or when the only window is the one that crashed).
+    emit: (event) => {
+      const focused = BrowserWindow.getFocusedWindow();
+      const candidates = focused
+        ? [focused, ...BrowserWindow.getAllWindows()]
+        : BrowserWindow.getAllWindows();
+      for (const win of candidates) {
+        const contents = win.webContents;
+        if (contents.isDestroyed() || contents.isCrashed() || contents.isLoading()) continue;
+        sendToRenderer(contents, 'ok:bug-report:crash-detected', event);
+        return true;
+      }
+      return false;
+    },
+    now: () => new Date(),
+    logger: getLogger('crash-detection'),
+  });
+  crashDetection.detectBootCrash();
+  app.on('child-process-gone', (_event, details) => {
+    crashDetection?.handleChildProcessGone(details);
+  });
+
   // Capture renderer console output into the desktop pino log
   // (`~/.ok/logs/desktop.<date>.log`, bundled by `ok bug-report`). Registered
   // before `whenReady` so every window's webContents is covered from creation.
   app.on('web-contents-created', (_event, contents) => {
     attachRendererConsoleCapture(contents);
+    contents.on('render-process-gone', (_e, details) => {
+      crashDetection?.handleRenderProcessGone(details);
+    });
+    // A freshly-loaded renderer can take a waiting crash invitation (boot
+    // events detect before any window exists; delivery must not race load).
+    // Both `did-finish-load` AND `did-stop-loading` retry delivery: a boot
+    // invite's `emit` skips a window that is `isLoading()`, and for a sole
+    // editor window whose `did-finish-load` fires while a follow-on load is
+    // still in flight, `did-finish-load` alone never retries once the window
+    // settles — the invitation would stay armed but undelivered. `did-stop-
+    // loading` is that missing "load settled" signal. `notifyRendererReady`
+    // is idempotent (guarded by the delivered flag), so the extra call is a
+    // no-op once delivered.
+    const retryDelivery = () => crashDetection?.notifyRendererReady();
+    contents.on('did-finish-load', retryDelivery);
+    contents.on('did-stop-loading', retryDelivery);
   });
 
   // Assistive-tech flips (e.g. VoiceOver, NVDA attach/detach) fan out to every window so
@@ -5607,6 +5727,9 @@ function bootPrimaryInstance(): void {
   // after each call makes subsequent will-quit re-entrances no-ops.
   app.on('will-quit', () => {
     getLogger('lifecycle').info({}, 'will-quit');
+    // A quit that reaches here was orderly — clear the dirty-shutdown
+    // sentinel so the next boot doesn't read this session as a crash.
+    crashDetection?.markCleanQuit();
     // Reap every window's PTY host first so no user shell / spawn-helper
     // outlives the app. Idempotent (clears the map; a second pass no-ops).
     terminalReaper?.killAll();

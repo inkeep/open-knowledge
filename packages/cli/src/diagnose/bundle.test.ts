@@ -7,7 +7,16 @@
  */
 
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { ZipFile } from 'yazl';
@@ -602,5 +611,44 @@ describe('collectBundle — manifest.telemetry.localSink cascade', () => {
     expect(collected.manifest.telemetry.localSink.spansMaxBytes).toBe(52_428_800);
     expect(collected.manifest.telemetry.localSink.logsMaxBytes).toBe(26_214_400);
     collected.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Staging cleanup on a mid-staging throw
+// ---------------------------------------------------------------------------
+
+describe('collectBundle — staging cleanup on throw', () => {
+  test('a mid-staging throw removes the staging dir instead of stranding staged copies', async () => {
+    const marker = `staging-leak-${randomUUID()}`;
+    const contentDir = makeTmpDir();
+    // Staged before `readRuntime` runs, so by the time the injected failure
+    // fires, this bundle's bytes already sit in the tmpdir staging area.
+    writeAt(contentDir, '.ok/local/logs/server-current.jsonl', `{"msg":"${marker}"}\n`);
+
+    await expect(
+      collectBundle({
+        contentDir,
+        deps: makeDeterministicDeps({
+          readRuntime: () => {
+            throw new Error('runtime probe failed');
+          },
+        }),
+      }),
+    ).rejects.toThrow('runtime probe failed');
+
+    // Content-marker scan instead of a directory diff: concurrently running
+    // suites also create `ok-bundle-*` staging dirs, but only this bundle can
+    // contain the marker.
+    const candidates = readdirSync(tmpdir()).filter((d) => d.startsWith('ok-bundle-'));
+    for (const dir of candidates) {
+      let staged = '';
+      try {
+        staged = readFileSync(join(tmpdir(), dir, 'logs', 'server-current.jsonl'), 'utf-8');
+      } catch {
+        // Another suite's staging dir (different layout, or already cleaned).
+      }
+      expect(staged).not.toContain(marker);
+    }
   });
 });

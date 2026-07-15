@@ -118,6 +118,7 @@ Each project runs its own local server. These commands let you see and stop them
 | `ok config validate` | Validate the merged config (defaults → user → project) |
 | `ok config migrate` | Remove deprecated keys from `config.yml` (`--dry-run` to preview; `--scope` project, user, or both) |
 | `ok skills manage` | Control whether OpenKnowledge adopts your editor skills into this project (`--on`, `--off`, `--status`; default off) |
+| `ok bug-report` | Package a support bundle — recent app logs, the project's server logs and lock diagnostics, and system info — as an auto-redacted zip under `~/.ok/bug-reports/`, revealed in Finder when it's done (`--no-reveal` to skip). Collects the same `standard` set as the desktop app's **Help → Report a Bug…**; `ok diagnose bundle` produces the `full` superset (telemetry spans, live server state) into the project's `.ok/local/diagnostics/` |
 
 ## Global flags
 

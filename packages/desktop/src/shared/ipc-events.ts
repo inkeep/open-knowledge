@@ -14,6 +14,7 @@
  * wrapper files by a lint rule.
  */
 
+import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
 import type {
   OkDesktopConfig,
   OkLocalOpAuthEvent,
@@ -291,4 +292,15 @@ export interface EventChannels {
    * xterm's `screenReaderMode` in place.
    */
   'ok:accessibility:changed': { payload: { screenReaderActive: boolean } };
+  /**
+   * Main → one renderer inviting a bug report for a detected crash: a
+   * renderer/child process death mid-session, or a boot-time dirty-shutdown /
+   * fresh-minidump detection. Fired at most once per crash event, to a single
+   * live window; boot-time events wait for the first renderer-ready signal
+   * instead of racing window load. Invitation only — nothing is captured or
+   * sent until the user acts. The renderer answers over
+   * `ok:bug-report:dispatch` (`kind: 'crash-ack'`); an acked event id never
+   * fires again, across restarts included.
+   */
+  'ok:bug-report:crash-detected': { payload: OkBugReportCrashDetectedEvent };
 }
