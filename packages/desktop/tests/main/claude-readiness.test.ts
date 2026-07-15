@@ -307,6 +307,7 @@ describe('resolveCliInstalledMap', () => {
     const codes: Record<TerminalCli, number | null> = {
       claude: 0,
       codex: 127,
+      copilot: 0,
       opencode: null,
       cursor: 0,
       pi: 127,
@@ -315,6 +316,7 @@ describe('resolveCliInstalledMap', () => {
     expect(await resolveCliInstalledMap({ probe: (cli) => Promise.resolve(codes[cli]) })).toEqual({
       claude: true,
       codex: false,
+      copilot: true,
       opencode: false,
       cursor: true,
       pi: false,
@@ -329,6 +331,7 @@ describe('resolveCliInstalledMap', () => {
     expect(map).toEqual({
       claude: true,
       codex: false,
+      copilot: true,
       opencode: true,
       cursor: true,
       pi: true,

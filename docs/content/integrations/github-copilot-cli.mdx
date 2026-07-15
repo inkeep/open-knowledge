@@ -1,0 +1,29 @@
+---
+title: GitHub Copilot CLI
+description: Use OpenKnowledge with GitHub Copilot CLI.
+icon: custom/GitHub
+---
+
+OpenKnowledge plugs into GitHub Copilot CLI through MCP.
+
+## Install
+
+<McpInstall editor="GitHub Copilot CLI" />
+
+`ok init` writes the MCP server to `~/.copilot/mcp-config.json`, or to `$COPILOT_HOME/mcp-config.json` when `COPILOT_HOME` is set. The configuration is global because Copilot CLI prioritizes global MCP configuration over project configuration.
+
+If the Copilot config directory does not exist yet, launch Copilot CLI once and rerun `ok init` so it can write the MCP configuration.
+
+It also installs the project skill at `.github/skills/open-knowledge/SKILL.md` so Copilot can follow the project's OpenKnowledge workflow.
+
+## Open with AI
+
+In OpenKnowledge's docked terminal, select **GitHub Copilot** from the new-chat picker. It starts Copilot CLI in interactive mode with context for the current project. The option is hidden when the `copilot` executable is not installed.
+
+## Verify
+
+Open the project in GitHub Copilot CLI and ask:
+
+<VerifyExec subject="GitHub Copilot CLI" />
+
+If you don't see the tool, restart Copilot CLI. If `ok init` reported that your config was left unchanged, fix the reported config issue and rerun `ok init`. To add it manually, create an `open-knowledge` entry in `mcpServers` that runs `ok mcp`.

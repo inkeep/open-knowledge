@@ -11,6 +11,7 @@ export type EditorId =
   | 'claude-desktop'
   | 'cursor'
   | 'codex'
+  | 'copilot'
   | 'opencode'
   | 'openclaw'
   | 'pi'
@@ -23,6 +24,7 @@ export const ALL_EDITOR_IDS = [
   'claude-desktop',
   'cursor',
   'codex',
+  'copilot',
   'opencode',
   'openclaw',
   'pi',
@@ -42,6 +44,7 @@ export const EDITOR_LABELS = {
   'claude-desktop': 'Claude Desktop',
   cursor: 'Cursor',
   codex: 'Codex',
+  copilot: 'GitHub Copilot',
   opencode: 'OpenCode',
   openclaw: 'OpenClaw',
   pi: 'Pi',
@@ -60,7 +63,7 @@ export const EDITOR_LABELS = {
  *
  * Each editor installs into its OWN primary skills dir so "install on Codex
  * only" is honest. Codex's is `.codex/skills` (alongside its `.codex/config.toml`
- * MCP path).
+ * MCP path); Copilot's is `.github/skills`, its documented project location.
  *
  * Why per-editor and NOT a shared `.agents/skills` broadcast at project scope:
  * `.agents/skills` was Codex's old shared path and conflated Cursor+Codex. At
@@ -91,6 +94,7 @@ export const EDITOR_PROJECT_SKILL_ROOT = {
   'claude-desktop': null,
   cursor: '.cursor/skills',
   codex: '.codex/skills',
+  copilot: '.github/skills',
   // OpenCode scans `.opencode/skills` natively (alongside `.agents/skills` and
   // `.claude/skills`); OK writes its own primary dir so install-on-OpenCode is
   // honest and never shares Codex's write.
@@ -133,21 +137,22 @@ export const PROJECT_SKILL_EDITOR_IDS = ALL_EDITOR_IDS.filter(
  * canonical editor constants. Adding a project-skill editor to
  * `EDITOR_PROJECT_SKILL_ROOT` flows here automatically.
  *
- * Pi is the one carve-out: its user-global skills dir is `~/.pi/agent/skills`
- * (the agent home is nested one level below the `.pi` dotdir), NOT the
- * `~/<hostDir>/skills` layout this derivation assumes — and Pi natively reads
- * the central `~/.agents/skills` hub, which the user-bundle installer already
- * writes. Including it here would create a dead `~/.pi/skills/` dir nothing
- * reads.
+ * Pi and Copilot are carve-outs: Pi's user-global skills dir is
+ * `~/.pi/agent/skills` (the agent home is nested one level below the `.pi`
+ * dotdir), while Copilot's is `~/.copilot/skills`, not `~/.github/skills`.
+ * Both natively read the central `~/.agents/skills` hub that the user-bundle
+ * installer already writes, so including either here would create a dead path.
  */
 export const HOSTS_WITH_USER_SKILL_DIR: ReadonlyArray<{
   readonly hostDir: string;
   readonly editorId: EditorId;
-}> = PROJECT_SKILL_EDITOR_IDS.filter((editorId) => editorId !== 'pi').map((editorId) => ({
-  // `editorId` came from the non-null filter, so the root is a string.
-  hostDir: (EDITOR_PROJECT_SKILL_ROOT[editorId] ?? '').split('/')[0],
-  editorId,
-}));
+}> = PROJECT_SKILL_EDITOR_IDS.filter((editorId) => editorId !== 'pi' && editorId !== 'copilot').map(
+  (editorId) => ({
+    // `editorId` came from the non-null filter, so the root is a string.
+    hostDir: (EDITOR_PROJECT_SKILL_ROOT[editorId] ?? '').split('/')[0],
+    editorId,
+  }),
+);
 
 /**
  * OpenKnowledge integration-doc slug per editor — the setup guide at
@@ -160,6 +165,7 @@ export const EDITOR_SETUP_DOC_SLUG = {
   'claude-desktop': 'claude-code',
   cursor: 'cursor',
   codex: 'codex',
+  copilot: 'github-copilot-cli',
   opencode: 'opencode',
   openclaw: 'openclaw',
   pi: 'pi',
@@ -181,6 +187,12 @@ export const EDITOR_PROJECT_CONFIG_PATH = {
   'claude-desktop': null,
   cursor: '.cursor/mcp.json',
   codex: '.codex/config.toml',
+  // Copilot's `~/.copilot/mcp-config.json` is user-global. It can also read
+  // standard workspace `.mcp.json` files, but OK does not duplicate its own
+  // server into the shared Claude workspace config: one user-global entry
+  // avoids same-named-source precedence ambiguity while project skills still
+  // install to `.github/skills`.
+  copilot: null,
   opencode: 'opencode.json',
   // OpenClaw's MCP config is user-global (`~/.openclaw/openclaw.json`); no
   // project-local variant, so it is never detected as "project-configured".

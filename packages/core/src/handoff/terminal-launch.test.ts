@@ -18,7 +18,7 @@ const OK_ALLOW = `["mcp__${MCP_SERVER_NAME}","Bash(ok open:*)"]`;
 const OK_DENY = `["mcp__${MCP_SERVER_NAME}__delete","mcp__${MCP_SERVER_NAME}__move","mcp__${MCP_SERVER_NAME}__share_link","mcp__${MCP_SERVER_NAME}__install"]`;
 
 describe('TERMINAL_CLI_IDS', () => {
-  it('lists the CLIs in auto-pick priority order (claude > codex > opencode > cursor > pi > antigravity)', () => {
+  it('lists the CLIs in auto-pick priority order (claude > codex > opencode > cursor > copilot > pi > antigravity)', () => {
     // The single constant drives both the visible launch-row order and the
     // default-CLI auto-pick, so display and defaulting can never disagree.
     expect([...TERMINAL_CLI_IDS]).toEqual([
@@ -26,6 +26,7 @@ describe('TERMINAL_CLI_IDS', () => {
       'codex',
       'opencode',
       'cursor',
+      'copilot',
       'pi',
       'antigravity',
     ]);
@@ -121,6 +122,7 @@ describe('buildCliLaunchCommand', () => {
     // which opens the GUI editor). Without opting in, even claude is bare.
     expect(buildCliLaunchCommand('claude', 'hi')).toBe("claude 'hi'\r");
     expect(buildCliLaunchCommand('codex', 'hi')).toBe("codex 'hi'\r");
+    expect(buildCliLaunchCommand('copilot', 'hi')).toBe("copilot --interactive 'hi'\r");
     expect(buildCliLaunchCommand('cursor', 'hi')).toBe("cursor-agent 'hi'\r");
     // OpenCode's positional is the project dir, so the prompt rides on --prompt.
     expect(buildCliLaunchCommand('opencode', 'hi')).toBe("opencode --prompt 'hi'\r");
@@ -162,6 +164,7 @@ describe('buildCliLaunchArgString', () => {
   it('keeps the fixed per-CLI shape (registry bin + single-quoted prompt)', () => {
     expect(buildCliLaunchArgString('claude', 'hi')).toBe("claude 'hi'");
     expect(buildCliLaunchArgString('codex', 'hi')).toBe("codex 'hi'");
+    expect(buildCliLaunchArgString('copilot', 'hi')).toBe("copilot --interactive 'hi'");
     expect(buildCliLaunchArgString('cursor', 'hi')).toBe("cursor-agent 'hi'");
     expect(buildCliLaunchArgString('opencode', 'hi')).toBe("opencode --prompt 'hi'");
     expect(buildCliLaunchArgString('pi', 'hi')).toBe("pi 'hi'");
@@ -180,6 +183,7 @@ describe('buildCliLaunchArgString promptless (New chat)', () => {
     for (const emptyPrompt of [null, undefined, ''] as const) {
       expect(buildCliLaunchArgString('claude', emptyPrompt)).toBe('claude');
       expect(buildCliLaunchArgString('codex', emptyPrompt)).toBe('codex');
+      expect(buildCliLaunchArgString('copilot', emptyPrompt)).toBe('copilot');
       expect(buildCliLaunchArgString('cursor', emptyPrompt)).toBe('cursor-agent');
       // OpenCode carries a prompt on `--prompt`; with no prompt the flag is
       // dropped entirely so the bare TUI opens (positional stays the cwd).
@@ -235,8 +239,11 @@ describe('claude MCP pre-approval', () => {
     );
   });
 
-  it('never added for codex/cursor/opencode, even when opted in (claude-only flag)', () => {
+  it('never added for codex/copilot/cursor/opencode, even when opted in (claude-only flag)', () => {
     expect(buildCliLaunchCommand('codex', 'hi', { mcpPreApprove: true })).toBe("codex 'hi'\r");
+    expect(buildCliLaunchCommand('copilot', 'hi', { mcpPreApprove: true })).toBe(
+      "copilot --interactive 'hi'\r",
+    );
     expect(buildCliLaunchCommand('cursor', 'hi', { mcpPreApprove: true })).toBe(
       "cursor-agent 'hi'\r",
     );
@@ -284,7 +291,10 @@ describe('OK auto-approve (autoApproveOkTools)', () => {
     expect(buildCliLaunchArgString('codex', 'hi')).toBe("codex 'hi'");
   });
 
-  it('is claude/codex only — cursor/opencode/pi never get an auto-approve arg', () => {
+  it('is claude/codex only — copilot/cursor/opencode/pi never get an auto-approve arg', () => {
+    expect(buildCliLaunchArgString('copilot', 'hi', { autoApproveOkTools: true })).toBe(
+      "copilot --interactive 'hi'",
+    );
     expect(buildCliLaunchArgString('cursor', 'hi', { autoApproveOkTools: true })).toBe(
       "cursor-agent 'hi'",
     );

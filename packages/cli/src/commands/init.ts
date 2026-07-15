@@ -8,7 +8,8 @@
  *      config file. The CLI owns the `open-knowledge` / `open-knowledge-ui`
  *      entries and rewrites them to the current defaults on every run.
  *
- * Supports Claude, Claude Desktop, Cursor, Codex, and OpenCode.
+ * Supports Claude, Claude Desktop, Cursor, Codex, GitHub Copilot, OpenCode,
+ * and other registered MCP hosts.
  * Missing editor config roots are skipped so init does not create new user-home
  * directories for tools that are not installed.
  */
@@ -1669,12 +1670,17 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
 
   // 2. Wire MCP config per editor (unless --no-mcp). Defaults are scope-aware:
   // user-level writes stay limited to editors detected on this machine, while
-  // project-level writes create all standardized project config files so a repo
-  // can be prepared for teammates who use different editors.
+  // project-level targets include every host with either a config or a skill
+  // surface. That lets a global-MCP host such as Copilot receive its project
+  // skill without duplicating its server into a shared workspace config.
   const userEditorIds = options.editors ?? detectInstalledEditors(projectRoot, options.home);
   const projectEditorIds =
     options.editors ??
-    ALL_EDITOR_IDS.filter((id) => EDITOR_TARGETS[id].projectConfigPath !== undefined);
+    ALL_EDITOR_IDS.filter(
+      (id) =>
+        EDITOR_TARGETS[id].projectConfigPath !== undefined ||
+        EDITOR_TARGETS[id].projectSkillPath !== undefined,
+    );
   const userTargets = resolveEditorTargets(userEditorIds as EditorId[]);
   const projectTargets = resolveEditorTargets(projectEditorIds as EditorId[]);
   const skipMcp = options.mcp === false || scope === null;
@@ -1750,13 +1756,16 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
     const skillPath = target.projectSkillPath?.(projectRoot);
     if (!skillPath || writtenSkillPaths.has(skillPath)) continue;
     writtenSkillPaths.add(skillPath);
-    projectSkillResults.push(writeProjectSkill(target, projectRoot));
+    projectSkillResults.push(writeProjectSkill(target, projectRoot, { home: options.home }));
   }
 
-  // Editors skipped for project-scope because they have no project-local config format.
+  // Editors skipped for project-scope because they have no project-local artifact.
+  // Copilot has no project MCP-config format, but it does receive a project skill.
   const projectScopeUnsupportedLabels =
     !skipMcp && scope !== null && writesProject(scope)
-      ? projectTargets.filter((t) => !t.projectConfigPath).map((t) => t.label)
+      ? projectTargets
+          .filter((t) => !t.projectConfigPath && !t.projectSkillPath)
+          .map((t) => t.label)
       : undefined;
 
   const legacyProjectConfigs = skipMcp
@@ -2125,6 +2134,9 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
           break;
         case 'skipped-unsupported':
           lines.push(`  ${label}${pad}no known project skill surface; skipped`);
+          break;
+        case 'skipped-prerequisite':
+          lines.push(`  ${label}${pad}OpenKnowledge MCP is not configured; skipped`);
           break;
         case 'failed':
           lines.push(`  ${label}${pad}${displayPath}  ${error('FAILED')}: ${skill.error}`);

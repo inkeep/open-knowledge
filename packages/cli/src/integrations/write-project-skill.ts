@@ -5,9 +5,19 @@
  * (`writeProjectAiIntegrations`) install the project-level runtime skill
  * through this one shared implementation.
  */
-import { cpSync, existsSync, lstatSync, mkdirSync, realpathSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { resolveBundledSkillDir } from '@inkeep/open-knowledge-server';
+import { type ParseError, parse as parseJsonc } from 'jsonc-parser';
 import type { EditorId, EditorMcpTarget } from '../commands/editors.ts';
 
 // ---------------------------------------------------------------------------
@@ -104,12 +114,82 @@ function assertProjectAncestorsContained(targetPath: string, cwd: string): void 
 export interface ProjectSkillResult {
   readonly editorId: EditorId;
   readonly label: string;
-  readonly action: 'written' | 'overwritten' | 'skipped-unsupported' | 'failed';
+  readonly action:
+    | 'written'
+    | 'overwritten'
+    | 'skipped-unsupported'
+    | 'skipped-prerequisite'
+    | 'failed';
   readonly path: string;
   readonly error?: string;
 }
 
-export function writeProjectSkill(target: EditorMcpTarget, cwd: string): ProjectSkillResult {
+export interface ProjectSkillWriteOptions {
+  readonly home?: string;
+}
+
+const MCP_CONFIG_MAX_BYTES = 10 * 1024 * 1024;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function configHasOpenKnowledgeEntry(
+  target: EditorMcpTarget,
+  cwd: string,
+  configPath: string,
+): boolean {
+  try {
+    if (statSync(configPath).size > MCP_CONFIG_MAX_BYTES) return false;
+  } catch {
+    return false;
+  }
+
+  let raw: string;
+  try {
+    raw = readFileSync(configPath, 'utf-8');
+  } catch {
+    return false;
+  }
+
+  const errors: ParseError[] = [];
+  const parsed = parseJsonc(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw, errors, {
+    allowTrailingComma: true,
+    disallowComments: false,
+  });
+  if (errors.length > 0 || !isRecord(parsed)) return false;
+
+  const topLevel = parsed[target.topLevelKey];
+  if (!isRecord(topLevel)) return false;
+  const serverMap = target.serverMapSubKey ? topLevel[target.serverMapSubKey] : topLevel;
+  if (!isRecord(serverMap)) return false;
+  return isRecord(serverMap[target.serverName(cwd)]);
+}
+
+/**
+ * Copilot loads OK's runtime skill from the project but its MCP registration
+ * from user-global config. Shared project MCP wiring belongs to other hosts and
+ * cannot satisfy Copilot's prerequisite.
+ */
+function isProjectSkillPrerequisiteMet(
+  target: EditorMcpTarget,
+  cwd: string,
+  options: ProjectSkillWriteOptions = {},
+): boolean {
+  if (target.id !== 'copilot') return true;
+
+  try {
+    return configHasOpenKnowledgeEntry(target, cwd, target.configPath(cwd, options.home));
+  } catch {
+    return false;
+  }
+}
+
+export function writeProjectSkill(
+  target: EditorMcpTarget,
+  cwd: string,
+  options: ProjectSkillWriteOptions = {},
+): ProjectSkillResult {
   const skillPath = target.projectSkillPath?.(cwd);
   if (!skillPath) {
     return {
@@ -117,6 +197,14 @@ export function writeProjectSkill(target: EditorMcpTarget, cwd: string): Project
       label: target.label,
       action: 'skipped-unsupported',
       path: '',
+    };
+  }
+  if (!isProjectSkillPrerequisiteMet(target, cwd, options)) {
+    return {
+      editorId: target.id,
+      label: target.label,
+      action: 'skipped-prerequisite',
+      path: skillPath,
     };
   }
 

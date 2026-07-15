@@ -37,6 +37,7 @@ import type { CSSProperties, ReactNode, SVGProps } from 'react';
 import { AntigravityIcon } from '@/components/icons/antigravity';
 import { ClaudeIcon } from '@/components/icons/claude';
 import { CodexBrandIcon } from '@/components/icons/codex';
+import { CopilotIcon } from '@/components/icons/copilot';
 import { CursorIcon } from '@/components/icons/cursor';
 import { OpenCodeIcon } from '@/components/icons/opencode';
 import { PiIcon } from '@/components/icons/pi';
@@ -69,6 +70,7 @@ const TARGET_ICON_KEY: Record<TargetData['id'], string> = {
   'claude-code': 'claude',
   codex: 'openai',
   cursor: 'cursor',
+  copilot: 'github',
   // No `AGENT_ICON_COLORS` entry → renders monochrome (inherits the row's text
   // color), which suits OpenCode's, Pi's, and Antigravity's monochrome brand marks.
   opencode: 'opencode',
@@ -104,6 +106,8 @@ export function TargetIcon({
   if (id === 'codex')
     return <CodexBrandIcon style={mergedStyle} className={mergedClass} {...props} />;
   if (id === 'cursor') return <CursorIcon style={mergedStyle} className={mergedClass} {...props} />;
+  if (id === 'copilot')
+    return <CopilotIcon style={mergedStyle} className={mergedClass} {...props} />;
   if (id === 'opencode')
     return <OpenCodeIcon style={mergedStyle} className={mergedClass} {...props} />;
   if (id === 'pi') return <PiIcon style={mergedStyle} className={mergedClass} {...props} />;

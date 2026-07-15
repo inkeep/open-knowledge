@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import {
   _clearTerminalSessionRegistry,
   findIdleMatchingSession,
@@ -14,7 +15,7 @@ afterEach(() => {
 
 function register(
   id: string,
-  cli: 'claude' | 'codex' | 'cursor' | null,
+  cli: TerminalCli | null,
   ptyId: string | null,
   lastOutputAt: number,
   hasOutput: boolean,

@@ -32,7 +32,7 @@ export function sha256(buf: Buffer): string {
  * `.ok/` (init artifact), `.git/` (git metadata), `node_modules/`, and the
  * editor / agent tool dirs: `ok init` installs the project-local skill into
  * every configured editor's skills root (`.claude/skills/`, `.cursor/skills/`,
- * `.codex/skills/`, `.opencode/skills/`, `.pi/skills/`, plus the generic
+ * `.codex/skills/`, `.github/skills/`, `.opencode/skills/`, `.pi/skills/`, plus the generic
  * `.agents/skills/`).
  * Those SKILL.md files are tool-config artifacts, not user knowledge-base
  * content — the load-without-mutate property is about user `.md` / `.mdx`
@@ -47,6 +47,7 @@ const SNAPSHOT_EXCLUDED_DIRS = new Set([
   '.claude',
   '.cursor',
   '.codex',
+  '.github',
   '.opencode',
   '.pi',
   '.agents',

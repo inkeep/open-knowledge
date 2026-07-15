@@ -50,13 +50,19 @@ describe('TerminalNewChatButton', () => {
     expect(onPickTerminal).not.toHaveBeenCalled();
   });
 
-  test('the dropdown lists every CLI plus a Terminal option', async () => {
+  test('the dropdown lists every available CLI plus a Terminal option', async () => {
     const user = userEvent.setup();
     renderButton('claude');
 
     await user.click(screen.getByRole('button', { name: 'Choose CLI for new chat' }));
 
-    for (const name of ['Claude CLI', 'Codex CLI', 'OpenCode CLI', 'Cursor CLI']) {
+    for (const name of [
+      'Claude CLI',
+      'Codex CLI',
+      'GitHub Copilot CLI',
+      'OpenCode CLI',
+      'Cursor CLI',
+    ]) {
       expect(await screen.findByRole('menuitem', { name })).toBeDefined();
     }
     expect(screen.getByRole('menuitem', { name: 'Terminal' })).toBeDefined();
@@ -73,6 +79,7 @@ describe('TerminalNewChatButton', () => {
 
     expect(await screen.findByRole('menuitem', { name: 'Claude CLI' })).toBeDefined();
     expect(screen.getByRole('menuitem', { name: 'Codex CLI' })).toBeDefined();
+    expect(screen.queryByRole('menuitem', { name: 'GitHub Copilot CLI' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Antigravity CLI' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Cursor CLI' })).toBeNull();
     // The bare-shell Terminal row is independent of CLI gating — always present.

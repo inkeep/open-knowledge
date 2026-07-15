@@ -168,6 +168,68 @@ describe('projectSkillWriter', () => {
     expect(existsSync(outcome.path ?? '')).toBe(true);
   });
 
+  test('does not write the Copilot skill without an OpenKnowledge MCP entry', () => {
+    const outcome = projectSkillWriter.write(EDITOR_TARGETS.copilot, projectDir, {
+      home: tmpRoot,
+    });
+
+    expect(outcome.action).toBe('skipped-prerequisite');
+    expect(outcome.path).toBe(join(projectDir, '.github', 'skills', 'open-knowledge', 'SKILL.md'));
+    expect(existsSync(outcome.path ?? '')).toBe(false);
+  });
+
+  test('writes the Copilot skill when its user-global MCP entry exists', () => {
+    const copilotHome = join(tmpRoot, '.copilot');
+    mkdirSync(copilotHome, { recursive: true });
+    writeFileSync(
+      join(copilotHome, 'mcp-config.json'),
+      JSON.stringify({
+        mcpServers: { 'open-knowledge': { command: 'custom-ok', args: ['mcp'] } },
+      }),
+    );
+
+    const outcome = projectSkillWriter.write(EDITOR_TARGETS.copilot, projectDir, {
+      home: tmpRoot,
+    });
+
+    expect(outcome.action).toBe('written');
+    expect(existsSync(outcome.path ?? '')).toBe(true);
+  });
+
+  test('does not read an oversized Copilot MCP config as a skill prerequisite', () => {
+    const copilotHome = join(tmpRoot, '.copilot');
+    mkdirSync(copilotHome, { recursive: true });
+    writeFileSync(
+      join(copilotHome, 'mcp-config.json'),
+      `${JSON.stringify({
+        mcpServers: { 'open-knowledge': { command: 'custom-ok', args: ['mcp'] } },
+      })}${' '.repeat(10 * 1024 * 1024)}`,
+    );
+
+    const outcome = projectSkillWriter.write(EDITOR_TARGETS.copilot, projectDir, {
+      home: tmpRoot,
+    });
+
+    expect(outcome.action).toBe('skipped-prerequisite');
+    expect(existsSync(outcome.path ?? '')).toBe(false);
+  });
+
+  test('does not write the Copilot skill when only shared project MCP wiring exists', () => {
+    writeFileSync(
+      join(projectDir, '.mcp.json'),
+      JSON.stringify({
+        mcpServers: { 'open-knowledge': { command: 'custom-ok', args: ['mcp'] } },
+      }),
+    );
+
+    const outcome = projectSkillWriter.write(EDITOR_TARGETS.copilot, projectDir, {
+      home: tmpRoot,
+    });
+
+    expect(outcome.action).toBe('skipped-prerequisite');
+    expect(existsSync(outcome.path ?? '')).toBe(false);
+  });
+
   test('replaces an existing skill and reports action "overwritten"', () => {
     // First write seeds the skill tree.
     const first = projectSkillWriter.write(EDITOR_TARGETS.claude, projectDir, {});

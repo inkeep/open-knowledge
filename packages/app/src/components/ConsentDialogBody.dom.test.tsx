@@ -208,7 +208,12 @@ describe('ConsentDialogBody runtime form behavior', () => {
           return '/project/docs/notes';
         },
       },
-    } as Pick<OkDesktopBridge, 'dialog'>);
+      onboarding: {
+        probeContent: async () => ({ ok: true, count: 0, sample: [], truncated: false }),
+      },
+    } satisfies Pick<OkDesktopBridge, 'dialog'> & {
+      onboarding: Pick<OkDesktopBridge['onboarding'], 'probeContent'>;
+    });
     renderConsentDialog();
     await expandAdvanced();
 

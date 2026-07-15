@@ -6,7 +6,11 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
+import {
+  type HandoffTarget,
+  type InstallState,
+  TERMINAL_CLI_IDS,
+} from '@inkeep/open-knowledge-core';
 import {
   loadStickyAgent,
   parseStickyCliId,
@@ -121,7 +125,7 @@ describe('unified-agent-store — resolveStickyAgent', () => {
 
 describe('terminalCliId / parseStickyCliId', () => {
   test('round-trips each CLI through the per-CLI sentinel', () => {
-    for (const cli of ['claude', 'codex', 'cursor'] as const) {
+    for (const cli of TERMINAL_CLI_IDS) {
       expect(parseStickyCliId(terminalCliId(cli))).toBe(cli);
     }
   });

@@ -52,6 +52,14 @@ export const KNOWN_TARGETS = [
     tagline: 'AI-first VS Code fork with multi-file edits.',
   },
   {
+    // Terminal-only target, reached via the `copilot` CLI launch row.
+    id: 'copilot',
+    displayName: 'GitHub Copilot',
+    schemes: [],
+    installUrl: 'https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started',
+    tagline: "GitHub's terminal-native coding agent.",
+  },
+  {
     // Terminal-only target: no URL scheme (empty `schemes`), so it is never
     // deep-link-dispatched (no `dispatch.ts` URL case, no `RECIPES` recipe) nor
     // install-probed via scheme. It surfaces ONLY as a terminal-CLI launch row
@@ -90,11 +98,12 @@ export const KNOWN_TARGETS = [
 // group, and the empty-state "Create with <agent>" composer.
 export const VISIBLE_TARGETS: ReadonlyArray<TargetData> = KNOWN_TARGETS.filter(
   // `claude-cowork`: dispatch-by-ID only, no render surface.
-  // `opencode` / `pi` / `antigravity`: terminal-only — surfaced via the
+  // `copilot` / `opencode` / `pi` / `antigravity`: terminal-only — surfaced via the
   // terminal-CLI rows, not the GUI deep-link target list, so they must not
   // appear as dispatchable rows.
   (target) =>
     target.id !== 'claude-cowork' &&
+    target.id !== 'copilot' &&
     target.id !== 'opencode' &&
     target.id !== 'pi' &&
     target.id !== 'antigravity',

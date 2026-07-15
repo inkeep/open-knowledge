@@ -116,6 +116,14 @@ export async function dispatchHandoff(
         },
         fetchImpl,
       );
+    case 'copilot':
+      // Terminal-only target: Copilot has no desktop URL transport and is
+      // launched through `requestTerminalLaunch`, never this deep-link path.
+      return {
+        ok: false,
+        reason: 'invalid-payload',
+        detail: 'copilot is terminal-only; launch via requestTerminalLaunch',
+      };
     case 'opencode':
       // Terminal-only target: OpenCode has no URL scheme and is launched via
       // `requestTerminalLaunch` (the terminal-CLI path), never the deep-link

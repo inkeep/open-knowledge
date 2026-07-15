@@ -700,6 +700,7 @@ describe('runInit', () => {
       mkdirSync(dirname(resolveClaudeDesktopConfigPath({ home: fakeHome })), { recursive: true });
       mkdirSync(dirname(cursorConfigPath()), { recursive: true });
       mkdirSync(dirname(codexConfigPath()), { recursive: true });
+      mkdirSync(join(fakeHome, '.copilot'), { recursive: true });
       mkdirSync(dirname(opencodeConfigPath()), { recursive: true });
       mkdirSync(join(fakeHome, '.openclaw'), { recursive: true });
       mkdirSync(join(fakeHome, '.pi', 'agent'), { recursive: true });
@@ -726,6 +727,7 @@ describe('runInit', () => {
       expect(existsSync(resolveClaudeDesktopConfigPath({ home: fakeHome }))).toBe(true);
       expect(existsSync(cursorConfigPath())).toBe(true);
       expect(existsSync(codexConfigPath())).toBe(true);
+      expect(existsSync(join(fakeHome, '.copilot', 'mcp-config.json'))).toBe(true);
       expect(existsSync(opencodeConfigPath())).toBe(true);
       expect(existsSync(lmStudioConfigPath())).toBe(true);
       // OpenClaw nests under `mcp.servers` — verify the entry landed there.
@@ -1315,6 +1317,101 @@ describe('runInit', () => {
       );
     });
 
+    it('wires Copilot’s user-global MCP config and project-local GitHub skill', async () => {
+      mkdirSync(join(fakeHome, '.copilot'), { recursive: true });
+      const result = await runInitForTest({ editors: ['copilot'], scope: 'user' });
+
+      expect(result.editors).toEqual([
+        expect.objectContaining({
+          editorId: 'copilot',
+          action: 'written',
+          configPath: join(fakeHome, '.copilot', 'mcp-config.json'),
+        }),
+      ]);
+      expect(existsSync(join(fakeHome, '.copilot', 'mcp-config.json'))).toBe(true);
+      expect(existsSync(join(testDir, '.mcp.json'))).toBe(false);
+      expect(result.projectSkills).toContainEqual(
+        expect.objectContaining({
+          editorId: 'copilot',
+          action: 'written',
+          path: join(testDir, '.github', 'skills', 'open-knowledge', 'SKILL.md'),
+        }),
+      );
+    });
+
+    it('includes Copilot’s project skill in the default detected-editor run', async () => {
+      mkdirSync(join(fakeHome, '.copilot'), { recursive: true });
+      const result = await runInitForTest({ scope: 'user' });
+
+      expect(result.projectSkills).toContainEqual(
+        expect.objectContaining({
+          editorId: 'copilot',
+          action: 'written',
+          path: join(testDir, '.github', 'skills', 'open-knowledge', 'SKILL.md'),
+        }),
+      );
+    });
+
+    it('does not install Copilot’s project skill when its MCP config is skipped', async () => {
+      const result = await runInitForTest({ editors: ['copilot'], mcp: false });
+
+      expect(result.editors[0]).toMatchObject({
+        editorId: 'copilot',
+        action: 'skipped-flag',
+      });
+      expect(result.projectSkills).toContainEqual(
+        expect.objectContaining({
+          editorId: 'copilot',
+          action: 'skipped-prerequisite',
+        }),
+      );
+      expect(existsSync(join(testDir, '.github', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+        false,
+      );
+    });
+
+    it('installs Copilot’s project skill with custom pre-existing MCP wiring', async () => {
+      mkdirSync(join(fakeHome, '.copilot'), { recursive: true });
+      writeFileSync(
+        join(fakeHome, '.copilot', 'mcp-config.json'),
+        JSON.stringify({
+          mcpServers: {
+            'open-knowledge': { command: 'custom-ok', args: ['mcp'] },
+          },
+        }),
+      );
+
+      const result = await runInitForTest({ editors: ['copilot'], mcp: false });
+
+      expect(result.projectSkills).toContainEqual(
+        expect.objectContaining({ editorId: 'copilot', action: 'written' }),
+      );
+      expect(existsSync(join(testDir, '.github', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+        true,
+      );
+    });
+
+    it('does not install Copilot’s project skill when its MCP config write is declined', async () => {
+      mkdirSync(join(fakeHome, '.copilot'), { recursive: true });
+      writeFileSync(join(fakeHome, '.copilot', 'mcp-config.json'), '{ "mcpServers": ');
+
+      const result = await runInitForTest({ editors: ['copilot'], scope: 'user' });
+
+      expect(result.editors[0]).toMatchObject({
+        editorId: 'copilot',
+        action: 'declined',
+      });
+      expect(result.projectSkills).toContainEqual(
+        expect.objectContaining({
+          editorId: 'copilot',
+          action: 'skipped-prerequisite',
+        }),
+      );
+      expect(existsSync(join(testDir, '.github', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+        false,
+      );
+    });
+
     it('scope=project writes only project-level config for Claude', async () => {
       const result = await runInitForTest({ editors: ['claude'], scope: 'project' });
       // Only the project-scope result
@@ -1385,6 +1482,25 @@ describe('runInit', () => {
       });
       // No entries since claude-desktop has no projectConfigPath
       expect(result.editors).toHaveLength(0);
+    });
+
+    it('scope=project skips Copilot’s skill because it cannot establish MCP wiring', async () => {
+      const result = await runInitForTest({ editors: ['copilot'], scope: 'project' });
+
+      expect(result.editors).toHaveLength(0);
+      expect(result.projectSkills).toContainEqual(
+        expect.objectContaining({
+          editorId: 'copilot',
+          action: 'skipped-prerequisite',
+          path: join(testDir, '.github', 'skills', 'open-knowledge', 'SKILL.md'),
+        }),
+      );
+      expect(existsSync(join(testDir, '.github', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+        false,
+      );
+      expect(formatInitResult(result, testDir)).not.toContain(
+        'GitHub Copilot does not support project-level config; skipped',
+      );
     });
 
     it('scope=both writes user-level AND project-level for claude', async () => {
@@ -2032,6 +2148,7 @@ describe('detectInstalledEditors', () => {
   const originalPlatform = process.platform;
   const originalHome = process.env.HOME;
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const originalCopilotHome = process.env.COPILOT_HOME;
 
   const cursorConfigPath = () => resolveCursorConfigPath({ home: fakeHome });
   const codexConfigPath = () => resolveCodexConfigPath({ home: fakeHome, env: {} });
@@ -2048,6 +2165,7 @@ describe('detectInstalledEditors', () => {
     mkdirSync(fakeHome, { recursive: true });
     process.env.HOME = fakeHome;
     delete process.env.XDG_CONFIG_HOME;
+    delete process.env.COPILOT_HOME;
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
   });
 
@@ -2065,6 +2183,11 @@ describe('detectInstalledEditors', () => {
       delete process.env.XDG_CONFIG_HOME;
     } else {
       process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+    }
+    if (originalCopilotHome === undefined) {
+      delete process.env.COPILOT_HOME;
+    } else {
+      process.env.COPILOT_HOME = originalCopilotHome;
     }
     rmSync(testDir, { recursive: true, force: true });
   });
@@ -2110,6 +2233,15 @@ describe('detectInstalledEditors', () => {
     expect(detected).toContain('codex');
   });
 
+  it('detects Copilot when ~/.copilot exists', async () => {
+    mkdirSync(join(fakeHome, '.copilot'), { recursive: true });
+    expect(detectInstalledEditors(testDir, fakeHome)).toContain('copilot');
+  });
+
+  it('does NOT detect Copilot when ~/.copilot is absent', async () => {
+    expect(detectInstalledEditors(testDir, fakeHome)).not.toContain('copilot');
+  });
+
   it('detects Claude Desktop when its config directory exists', async () => {
     mkdirSync(dirname(resolveClaudeDesktopConfigPath({ home: fakeHome })), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
@@ -2126,6 +2258,7 @@ describe('detectInstalledEditors', () => {
     mkdirSync(dirname(resolveClaudeDesktopConfigPath({ home: fakeHome })), { recursive: true });
     mkdirSync(dirname(cursorConfigPath()), { recursive: true });
     mkdirSync(dirname(codexConfigPath()), { recursive: true });
+    mkdirSync(join(fakeHome, '.copilot'), { recursive: true });
     mkdirSync(dirname(opencodeConfigPath()), { recursive: true });
     mkdirSync(join(fakeHome, '.openclaw'), { recursive: true });
     mkdirSync(join(fakeHome, '.pi', 'agent'), { recursive: true });
@@ -2152,7 +2285,8 @@ describe('detectInstalledEditors', () => {
     mkdirSync(dirname(cursorConfigPath()), { recursive: true });
     mkdirSync(dirname(codexConfigPath()), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
-    // Order comes from ALL_EDITOR_IDS = ['claude', 'claude-desktop', 'cursor', 'codex']
+    // These are the only configured roots in this fixture, so their order follows
+    // the corresponding prefix of ALL_EDITOR_IDS.
     expect(detected).toEqual(['claude', 'claude-desktop', 'cursor', 'codex']);
   });
 

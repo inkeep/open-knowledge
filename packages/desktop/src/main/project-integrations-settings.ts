@@ -102,7 +102,10 @@ export interface ProjectIntegrationsCliSurface {
   writeProjectSkill(
     id: McpWiringEditorId,
     projectDir: string,
-  ): { action: 'written' | 'overwritten' | 'skipped-unsupported' | 'failed'; error?: string };
+  ): {
+    action: 'written' | 'overwritten' | 'skipped-unsupported' | 'skipped-prerequisite' | 'failed';
+    error?: string;
+  };
   removeProjectSkill(
     id: McpWiringEditorId,
     projectDir: string,

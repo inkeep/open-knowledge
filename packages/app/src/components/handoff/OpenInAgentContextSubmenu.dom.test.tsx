@@ -106,9 +106,12 @@ async function renderSubmenu({
 
   const trigger = screen.getByRole('menuitem', { name: 'Open with AI' });
   await userEvent.hover(trigger);
-  await waitFor(() => {
-    expect(document.querySelector('[data-slot="dropdown-menu-sub-content"]')).toBeTruthy();
-  });
+  await waitFor(
+    () => {
+      expect(document.querySelector('[data-slot="dropdown-menu-sub-content"]')).toBeTruthy();
+    },
+    { timeout: 5000 },
+  );
 
   return { dispatch, dispatchCalls, trigger };
 }

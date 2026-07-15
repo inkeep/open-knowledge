@@ -48,7 +48,7 @@ describe('getOkArtifactPaths', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('returns the canonical thirteen-path artifact set when no config.yml exists', () => {
+  it('returns the canonical fourteen-path artifact set when no config.yml exists', () => {
     const paths = getOkArtifactPaths(dir);
     expect(paths).toContain(`${OK_DIR}/`);
     expect(paths).toContain('.okignore');
@@ -59,6 +59,7 @@ describe('getOkArtifactPaths', () => {
     expect(paths).toContain('.claude/skills/open-knowledge/');
     expect(paths).toContain('.cursor/skills/open-knowledge/');
     expect(paths).toContain('.codex/skills/open-knowledge/');
+    expect(paths).toContain('.github/skills/open-knowledge/');
     // OpenCode installs into its own `.opencode/skills/` (its own primary dir,
     // not a shared `.agents/skills/` write), so it adds a distinct skill path on
     // top of its `opencode.json` config.
@@ -68,7 +69,7 @@ describe('getOkArtifactPaths', () => {
     expect(paths).toContain('.pi/extensions/open-knowledge.ts');
     expect(paths).toContain('.pi/skills/open-knowledge/');
     expect(paths).toContain('.claude/launch.json');
-    expect(paths).toHaveLength(13);
+    expect(paths).toHaveLength(14);
   });
 
   it('preserves a stable order so `ok config-sharing status` and unit-test snapshots are deterministic', () => {
@@ -91,9 +92,9 @@ describe('getOkArtifactPaths', () => {
     expect(paths).not.toContain('docs/.ok/');
     expect(paths).not.toContain('docs/.okignore');
     expect(paths.some((p) => p.includes('**'))).toBe(false);
-    // content.dir must not inflate the set — same thirteen paths as the
+    // content.dir must not inflate the set — same fourteen paths as the
     // no-config case, just never `<contentDir>`-prefixed.
-    expect(paths).toHaveLength(13);
+    expect(paths).toHaveLength(14);
   });
 
   it('excludes each installed skill projection per the OF3 marker (PRD-6934 C9 fix)', () => {
@@ -108,7 +109,7 @@ describe('getOkArtifactPaths', () => {
         schema: 1,
         skills: {
           'trip-log': {
-            hosts: ['claude', 'cursor'],
+            hosts: ['claude', 'cursor', 'copilot'],
             contentHash: 'abc',
             scope: 'project',
             scripts: false,
@@ -128,6 +129,7 @@ describe('getOkArtifactPaths', () => {
     const paths = getOkArtifactPaths(dir);
     expect(paths).toContain('.claude/skills/trip-log/');
     expect(paths).toContain('.cursor/skills/trip-log/');
+    expect(paths).toContain('.github/skills/trip-log/');
     expect(paths).toContain('.codex/skills/fishing-pack/'); // codex → .codex
     // The shipped bundle excludes remain alongside the authored ones.
     expect(paths).toContain('.claude/skills/open-knowledge/');
@@ -137,7 +139,7 @@ describe('getOkArtifactPaths', () => {
     mkdirSync(join(dir, OK_DIR, 'local'), { recursive: true });
     writeFileSync(join(dir, OK_DIR, 'local', 'installed-skills.json'), '{ corrupt', 'utf-8');
     const paths = getOkArtifactPaths(dir);
-    expect(paths).toHaveLength(13); // corrupt marker → fail-soft, no per-skill paths
+    expect(paths).toHaveLength(14); // corrupt marker → fail-soft, no per-skill paths
   });
 });
 

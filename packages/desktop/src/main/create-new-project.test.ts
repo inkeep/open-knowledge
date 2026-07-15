@@ -551,12 +551,28 @@ describe('runCreateNew — installs the project-local skill (PRD-6733)', () => {
   // `writeProjectAiIntegrations` now routes through `applyProjectIntegrations`
   // (the same orchestrator the onboarding-consent path uses), so both desktop
   // project-setup entry points install the skill.
-  test('installs the open-knowledge project skill for claude, cursor, and codex', async () => {
-    const result = await runCreateNew({
-      parent: tmpRoot,
-      name: 'Skill Install',
-      editors: [...ALL_EDITOR_IDS],
-    });
+  test('installs project skills when the selected editors provide MCP wiring', async () => {
+    const originalCopilotHome = process.env.COPILOT_HOME;
+    const copilotHome = join(tmpRoot, 'copilot-with-mcp');
+    process.env.COPILOT_HOME = copilotHome;
+    mkdirSync(copilotHome, { recursive: true });
+    writeFileSync(
+      join(copilotHome, 'mcp-config.json'),
+      JSON.stringify({
+        mcpServers: { 'open-knowledge': { command: 'custom-ok', args: ['mcp'] } },
+      }),
+    );
+    let result: Awaited<ReturnType<typeof runCreateNew>>;
+    try {
+      result = await runCreateNew({
+        parent: tmpRoot,
+        name: 'Skill Install',
+        editors: [...ALL_EDITOR_IDS],
+      });
+    } finally {
+      if (originalCopilotHome === undefined) delete process.env.COPILOT_HOME;
+      else process.env.COPILOT_HOME = originalCopilotHome;
+    }
 
     expect(
       existsSync(join(result.projectDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md')),
@@ -568,12 +584,14 @@ describe('runCreateNew — installs the project-local skill (PRD-6733)', () => {
       existsSync(join(result.projectDir, '.codex', 'skills', 'open-knowledge', 'SKILL.md')),
     ).toBe(true);
     expect(
+      existsSync(join(result.projectDir, '.github', 'skills', 'open-knowledge', 'SKILL.md')),
+    ).toBe(true);
+    expect(
       existsSync(join(result.projectDir, '.opencode', 'skills', 'open-knowledge', 'SKILL.md')),
     ).toBe(true);
     expect(existsSync(join(result.projectDir, '.pi', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
       true,
     );
-
     // The result's `aiIntegrations` carries the per-(editor × integration)
     // outcomes — the project-skill writer ran and reported success for every
     // editor that has a project skill surface.
@@ -583,10 +601,38 @@ describe('runCreateNew — installs the project-local skill (PRD-6733)', () => {
     expect(skillWrites.map((o) => o.editorId).sort()).toEqual([
       'claude',
       'codex',
+      'copilot',
       'cursor',
       'opencode',
       'pi',
     ]);
+  });
+
+  test('skips the Copilot project skill when Copilot is selected without MCP wiring', async () => {
+    const originalCopilotHome = process.env.COPILOT_HOME;
+    process.env.COPILOT_HOME = join(tmpRoot, 'copilot-without-mcp');
+    let result: Awaited<ReturnType<typeof runCreateNew>>;
+    try {
+      result = await runCreateNew({
+        parent: tmpRoot,
+        name: 'Copilot Without MCP',
+        editors: ['copilot'],
+      });
+    } finally {
+      if (originalCopilotHome === undefined) delete process.env.COPILOT_HOME;
+      else process.env.COPILOT_HOME = originalCopilotHome;
+    }
+
+    expect(
+      existsSync(join(result.projectDir, '.github', 'skills', 'open-knowledge', 'SKILL.md')),
+    ).toBe(false);
+    expect(result.aiIntegrations.integrations).toContainEqual(
+      expect.objectContaining({
+        editorId: 'copilot',
+        integration: 'project-skill',
+        action: 'skipped-prerequisite',
+      }),
+    );
   });
 });
 

@@ -40,12 +40,12 @@ describe('project-skill editor-id single source', () => {
 
   test('HOSTS_WITH_USER_SKILL_DIR derives from the same editors (CLI repair-skills ↔ desktop skill-reclaim share it)', () => {
     // Single source for the host-dir sweep both the CLI and desktop run.
-    // editorId set === PROJECT_SKILL_EDITOR_IDS minus the documented Pi
-    // carve-out (Pi's user-global skills dir is `~/.pi/agent/skills`, not the
-    // `~/<hostDir>/skills` layout this sweep assumes, and Pi reads the central
-    // `~/.agents/skills` hub natively); hostDir === the root's top-level dotdir.
+    // editorId set === PROJECT_SKILL_EDITOR_IDS minus the documented Pi and
+    // Copilot carve-outs. Their user-global skills dirs do not follow the
+    // `~/<hostDir>/skills` layout this sweep assumes; both read the central
+    // `~/.agents/skills` hub natively. hostDir === the root's top-level dotdir.
     expect(asStrings(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.editorId))).toEqual(
-      asStrings(PROJECT_SKILL_EDITOR_IDS.filter((id) => id !== 'pi')),
+      asStrings(PROJECT_SKILL_EDITOR_IDS.filter((id) => id !== 'pi' && id !== 'copilot')),
     );
     for (const { hostDir, editorId } of HOSTS_WITH_USER_SKILL_DIR) {
       expect(hostDir).toBe((EDITOR_PROJECT_SKILL_ROOT[editorId] ?? '').split('/')[0]);
@@ -61,6 +61,14 @@ describe('project-skill editor-id single source', () => {
     expect(SkillTargetEditorSchema.options).toContain('pi');
     expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.editorId)).not.toContain('pi');
     expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.hostDir)).not.toContain('.pi');
+  });
+
+  test('Copilot IS a project-skill install target but NOT a user-global host-dir sweep member', () => {
+    // Copilot scans `.github/skills` per project, but keeps global skills at
+    // `~/.copilot/skills`; it also reads the central `~/.agents/skills` hub.
+    expect(SkillTargetEditorSchema.options).toContain('copilot');
+    expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.editorId)).not.toContain('copilot');
+    expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.hostDir)).not.toContain('.github');
   });
 
   test('Claude Desktop is NOT a project-skill install target (user-global only, null root)', () => {

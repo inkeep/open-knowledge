@@ -260,6 +260,8 @@ export interface McpInstallOptions {
    * never sets it.
    */
   skipAvailabilityCheck?: boolean;
+  /** Override the user home used by cross-scope integration prerequisites. */
+  home?: string;
 }
 
 /**
@@ -575,6 +577,19 @@ export function resolveCodexConfigPath(options: AppSupportOptions = {}): string 
 }
 
 /**
+ * GitHub Copilot CLI keeps user-global MCP configuration under `COPILOT_HOME`
+ * (default `~/.copilot`). Its standard JSON `mcpServers` envelope is compatible
+ * with the managed launcher used by Claude and Cursor.
+ */
+export function resolveCopilotConfigPath(options: AppSupportOptions = {}): string {
+  const platformName = options.platformName ?? process.platform;
+  const home = options.home ?? homedir();
+  const env = options.env ?? process.env;
+  const copilotHome = env.COPILOT_HOME ?? pathApiForPlatform(platformName).join(home, '.copilot');
+  return pathApiForPlatform(platformName).join(copilotHome, 'mcp-config.json');
+}
+
+/**
  * OpenCode follows the XDG base-dir convention on every platform: its global
  * config lives at `$XDG_CONFIG_HOME/opencode/` (default `~/.config/opencode/`),
  * NOT under macOS `~/Library/Application Support`. On Windows it resolves
@@ -802,6 +817,22 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> = {
     // `EDITOR_PROJECT_SKILL_ROOT` (codex) and must match it. Codex also reads
     // `.agents/skills/` as a generic store, but OK writes the primary dir.
     projectSkillPath: (cwd) => join(cwd, '.codex', 'skills', 'open-knowledge', 'SKILL.md'),
+  },
+  copilot: {
+    id: 'copilot',
+    label: EDITOR_LABELS.copilot,
+    configPath: (_cwd, home) => resolveCopilotConfigPath({ home }),
+    format: 'json',
+    topLevelKey: 'mcpServers',
+    serverName: () => MCP_SERVER_NAME,
+    buildEntry: (_cwd, options) => buildManagedServerEntry(options),
+    scope: 'global',
+    detectPath: (_cwd, home) => dirname(resolveCopilotConfigPath({ home })),
+    // Copilot's project skills use the GitHub-standard `.github/skills` root.
+    // Its MCP config remains user-global: duplicating the `open-knowledge`
+    // server into the shared workspace `.mcp.json` would leave two same-named
+    // sources for Copilot to reconcile.
+    projectSkillPath: (cwd) => join(cwd, '.github', 'skills', 'open-knowledge', 'SKILL.md'),
   },
   opencode: {
     id: 'opencode',

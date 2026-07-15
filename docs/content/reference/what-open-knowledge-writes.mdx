@@ -88,9 +88,9 @@ When you initialize or open a project, the app scaffolds the same project files 
 | `.okignore` | Paths excluded from the editor, search, and agents — see [Ignore patterns](/docs/features/ignore-patterns) | In-project, committed |
 | `.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json` | Project-scoped MCP registration for the four MCP-capable project editors (Claude, Cursor, Codex, OpenCode), written regardless of what's installed so the repo is ready for teammates | In-project, committed |
 | `.pi/extensions/open-knowledge.ts` | Managed bridge extension connecting [Pi](/docs/integrations/pi) (which has no MCP support) to the project | In-project, committed |
-| `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.opencode/skills/`, `.pi/skills/` | Project-local "rich" OpenKnowledge skill (`SKILL.md`) for the same five editors | In-project, committed |
+| `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.github/skills/`, `.opencode/skills/`, `.pi/skills/` | Project-local "rich" OpenKnowledge skill (`SKILL.md`) for Claude, Cursor, Codex, GitHub Copilot, OpenCode, and Pi | In-project, committed |
 | `.ok/skill-targets.json` | Committed list of which editors receive skills, written when you customize the targets | In-project, committed |
-| `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, `~/.openclaw/openclaw.json`, `~/.gemini/config/mcp_config.json`, `~/.lmstudio/mcp.json`, `~/.hermes/config.yaml` | User-level `open-knowledge` MCP registration, one per detected editor, so it's available in every project (`~/.openclaw/openclaw.json` only when `~/.openclaw/` exists; `~/.gemini/config/mcp_config.json` is Antigravity's shared IDE + `agy` config, only when `~/.gemini/` exists; `~/.lmstudio/mcp.json` and `~/.hermes/config.yaml` only when those apps are installed) | Outside-project (editor config) |
+| `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.copilot/mcp-config.json`, `~/.config/opencode/opencode.json`, `~/.openclaw/openclaw.json`, `~/.gemini/config/mcp_config.json`, `~/.lmstudio/mcp.json`, `~/.hermes/config.yaml` | User-level `open-knowledge` MCP registration, one per detected editor, so it's available in every project (`~/.copilot/mcp-config.json` only when `~/.copilot/` exists; `~/.openclaw/openclaw.json` only when `~/.openclaw/` exists; `~/.gemini/config/mcp_config.json` is Antigravity's shared IDE + `agy` config, only when `~/.gemini/` exists; `~/.lmstudio/mcp.json` and `~/.hermes/config.yaml` only when those apps are installed) | Outside-project (editor config) |
 
 ### While a project is open
 
@@ -165,7 +165,7 @@ The `postinstall` step is **non-fatal** (install always succeeds even if it fail
 | `.gitignore` (project root) | Seeded (with `.DS_Store`) **only** when `ok init` creates a new git repo | In-project, committed |
 | `.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json` | Project-scoped MCP registration for the four MCP-capable project editors (Claude, Cursor, Codex, OpenCode) regardless of what's installed — prepares the repo for teammates (with `--scope project` or `both`) | In-project, committed |
 | `.pi/extensions/open-knowledge.ts` | Managed bridge extension connecting [Pi](/docs/integrations/pi) (which has no MCP support) to the project | In-project, committed |
-| `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.opencode/skills/`, `.pi/skills/` | Project-local "rich" OpenKnowledge skill (`SKILL.md`) for the same five editors | In-project, committed |
+| `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.github/skills/`, `.opencode/skills/`, `.pi/skills/` | Project-local "rich" OpenKnowledge skill (`SKILL.md`) for Claude, Cursor, Codex, GitHub Copilot, OpenCode, and Pi | In-project, committed |
 | `.ok/skill-targets.json` | Committed list of which editors receive skills, written when you customize the targets | In-project, committed |
 
 With `--scope user` or `both` (the default), `ok init` also registers the `open-knowledge` MCP server in each detected editor's **user-level** config, so it's available in every project:
@@ -176,6 +176,7 @@ With `--scope user` or `both` (the default), `ok init` also registers the `open-
 | `~/Library/Application Support/Claude/claude_desktop_config.json` | Claude Desktop | Outside-project (editor config) |
 | `~/.cursor/mcp.json` | Cursor | Outside-project (editor config) |
 | `~/.codex/config.toml` | Codex | Outside-project (editor config) |
+| `~/.copilot/mcp-config.json` | GitHub Copilot CLI (only when `~/.copilot/` exists; respects `COPILOT_HOME`) | Outside-project (editor config) |
 | `~/.config/opencode/opencode.json` | OpenCode | Outside-project (editor config) |
 | `~/.openclaw/openclaw.json` | OpenClaw (only when `~/.openclaw/` exists) | Outside-project (editor config) |
 | `~/.gemini/config/mcp_config.json` | Antigravity (only when `~/.gemini/` exists) — shared by the IDE and the `agy` CLI | Outside-project (editor config) |

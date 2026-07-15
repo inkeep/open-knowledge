@@ -603,6 +603,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           cliInstalledMap: async () => ({
             claude: true,
             codex: true,
+            copilot: true,
             opencode: true,
             cursor: true,
             pi: true,

@@ -14,7 +14,7 @@
  * absent, OK falls back to the editors the project is already configured for.
  *
  * Only editors with a project skill surface are valid targets
- * (`claude` / `cursor` / `codex` / `opencode` / `pi`; Claude Desktop, OpenClaw,
+ * (`claude` / `cursor` / `codex` / `copilot` / `opencode` / `pi`; Claude Desktop, OpenClaw,
  * and Antigravity read user-global skills only).
  */
 
@@ -38,7 +38,7 @@ export const SKILL_TARGETS_SCHEMA_VERSION = 1;
  * `.filter` widens to `EditorId`, so the cast restates the narrow literal shape:
  * `Exclude<EditorId, 'claude-desktop' | 'openclaw' | 'antigravity' | 'hermes'>`
  * is exactly the set of editors WITH a project skill surface (`claude` /
- * `cursor` / `codex` / `opencode` / `pi`). claude-desktop, openclaw,
+ * `cursor` / `codex` / `copilot` / `opencode` / `pi`). claude-desktop, openclaw,
  * antigravity, and hermes have a null project skill root (user-global skills
  * only), so they are excluded. schema.test.ts asserts the cast stays
  * value-equal to the derived list as a backstop.

@@ -36,6 +36,7 @@ type IntegrationId = 'mcp-config' | 'project-skill';
  *   - `'overwritten'` — replaced an existing artifact
  *   - `'skipped-unsupported'` — editor has no surface for this integration
  *     (e.g. Claude Desktop has no `projectConfigPath` / no `projectSkillPath`)
+ *   - `'skipped-prerequisite'` — the editor's required MCP entry is absent
  *   - `'declined'`    — a present config OK can't safely edit was left
  *     byte-unchanged (guest-ownership); `reason` is the bounded cause. NOT a
  *     failure — registration was skipped non-destructively.
@@ -48,7 +49,13 @@ type IntegrationId = 'mcp-config' | 'project-skill';
 export interface IntegrationWriteOutcome {
   readonly integration: IntegrationId;
   readonly editorId: EditorId;
-  readonly action: 'written' | 'overwritten' | 'skipped-unsupported' | 'declined' | 'failed';
+  readonly action:
+    | 'written'
+    | 'overwritten'
+    | 'skipped-unsupported'
+    | 'skipped-prerequisite'
+    | 'declined'
+    | 'failed';
   readonly path?: string;
   readonly error?: string;
   readonly reason?: McpDeclineReason;
@@ -155,12 +162,9 @@ export const mcpConfigWriter: ProjectIntegrationWriter = {
 
 export const projectSkillWriter: ProjectIntegrationWriter = {
   id: 'project-skill',
-  // `_options` is intentionally unused — `writeProjectSkill` copies a bundled
-  // asset directory; none of the McpInstallOptions fields apply. Accepted so
-  // every writer has the same call signature.
-  write(target, projectDir, _options) {
+  write(target, projectDir, options) {
     try {
-      const result = writeProjectSkill(target, projectDir);
+      const result = writeProjectSkill(target, projectDir, { home: options.home });
       return {
         integration: 'project-skill',
         editorId: target.id,

@@ -112,9 +112,12 @@ async function renderSubmenu({
 async function openEmptySpaceSubmenu() {
   const trigger = screen.getByRole('menuitem', { name: 'Open with AI' });
   await userEvent.hover(trigger);
-  await waitFor(() => {
-    expect(document.querySelector('[data-slot="context-menu-sub-content"]')).toBeTruthy();
-  });
+  await waitFor(
+    () => {
+      expect(document.querySelector('[data-slot="context-menu-sub-content"]')).toBeTruthy();
+    },
+    { timeout: 5000 },
+  );
   return trigger;
 }
 

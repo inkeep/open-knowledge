@@ -176,6 +176,7 @@ describe('dispatchHandoff — runtime exhaustiveness guard', () => {
   });
 
   test.each([
+    'copilot',
     'opencode',
     'pi',
     'antigravity',

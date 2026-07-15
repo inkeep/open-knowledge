@@ -23,6 +23,10 @@ describe('visibleTerminalClis', () => {
     ]);
   });
 
+  it('hides GitHub Copilot when the probe confirms it is absent', () => {
+    expect(visibleTerminalClis({ ...allAbsent, copilot: false })).not.toContain('copilot');
+  });
+
   it('always keeps Claude — the install-nudge anchor — even when probed absent', () => {
     expect(visibleTerminalClis(allAbsent)).toEqual(['claude']);
   });

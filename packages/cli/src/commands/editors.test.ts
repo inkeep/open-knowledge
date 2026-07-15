@@ -17,6 +17,7 @@ import {
   resolveClaudeCodeConfigPath,
   resolveClaudeDesktopConfigPath,
   resolveCodexConfigPath,
+  resolveCopilotConfigPath,
   resolveCursorConfigPath,
   resolveEditorTargets,
   resolveHermesConfigPath,
@@ -151,6 +152,24 @@ describe('resolveCodexConfigPath', () => {
         env: { CODEX_HOME: '/tmp/custom-codex-home' },
       }),
     ).toBe('/tmp/custom-codex-home/config.toml');
+  });
+});
+
+describe('resolveCopilotConfigPath', () => {
+  it('builds the default Copilot CLI MCP path', () => {
+    expect(
+      resolveCopilotConfigPath({ home: '/Users/alice', platformName: 'darwin', env: {} }),
+    ).toBe('/Users/alice/.copilot/mcp-config.json');
+  });
+
+  it('honors COPILOT_HOME when present', () => {
+    expect(
+      resolveCopilotConfigPath({
+        home: '/Users/alice',
+        platformName: 'darwin',
+        env: { COPILOT_HOME: '/tmp/custom-copilot-home' },
+      }),
+    ).toBe('/tmp/custom-copilot-home/mcp-config.json');
   });
 });
 
@@ -316,6 +335,35 @@ describe('EDITOR_TARGETS.pi', () => {
   });
 });
 
+describe('EDITOR_TARGETS.copilot', () => {
+  const t = EDITOR_TARGETS.copilot;
+
+  it('writes the managed launcher into Copilot CLI’s user-global mcpServers file', () => {
+    expect(t.format).toBe('json');
+    expect(t.topLevelKey).toBe('mcpServers');
+    expect(t.scope).toBe('global');
+    expect(t.configPath('', '/Users/alice')).toBe('/Users/alice/.copilot/mcp-config.json');
+    expect(t.detectPath?.('', '/Users/alice')).toBe('/Users/alice/.copilot');
+    expect(t.projectConfigPath).toBeUndefined();
+    expect(t.projectSkillPath?.('/proj')).toBe('/proj/.github/skills/open-knowledge/SKILL.md');
+  });
+
+  it('uses COPILOT_HOME for both config and installation detection', () => {
+    const previous = process.env.COPILOT_HOME;
+    try {
+      process.env.COPILOT_HOME = '/tmp/custom-copilot-home';
+      expect(t.configPath('', '/Users/alice')).toBe('/tmp/custom-copilot-home/mcp-config.json');
+      expect(t.detectPath?.('', '/Users/alice')).toBe('/tmp/custom-copilot-home');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.COPILOT_HOME;
+      } else {
+        process.env.COPILOT_HOME = previous;
+      }
+    }
+  });
+});
+
 describe('EDITOR_TARGETS.openclaw', () => {
   it('nests the managed launcher under mcp.servers', () => {
     const t = EDITOR_TARGETS.openclaw;
@@ -459,6 +507,7 @@ describe('buildManagedServerEntry', () => {
       'claude-desktop',
       'cursor',
       'codex',
+      'copilot',
       'openclaw',
       'antigravity',
     ];
@@ -764,6 +813,7 @@ describe('buildManagedServerEntry (win32)', () => {
       'claude-desktop',
       'cursor',
       'codex',
+      'copilot',
       'openclaw',
       'antigravity',
     ];

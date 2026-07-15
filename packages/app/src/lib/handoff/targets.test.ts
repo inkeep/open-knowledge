@@ -2,18 +2,29 @@ import { describe, expect, test } from 'bun:test';
 import { KNOWN_TARGETS, VISIBLE_TARGETS } from './targets.ts';
 
 describe('KNOWN_TARGETS', () => {
-  test('has exactly seven targets (four GUI + terminal-only OpenCode, Pi, Antigravity)', () => {
-    expect(KNOWN_TARGETS.length).toBe(7);
+  test('has exactly eight targets (four GUI + terminal-only Copilot, OpenCode, Pi, Antigravity)', () => {
+    expect(KNOWN_TARGETS.length).toBe(8);
   });
 
   test('ids cover the full HandoffTarget union', () => {
     const ids = new Set(KNOWN_TARGETS.map((t) => t.id));
     expect(ids).toEqual(
-      new Set(['claude-cowork', 'claude-code', 'codex', 'cursor', 'opencode', 'pi', 'antigravity']),
+      new Set([
+        'claude-cowork',
+        'claude-code',
+        'codex',
+        'cursor',
+        'copilot',
+        'opencode',
+        'pi',
+        'antigravity',
+      ]),
     );
   });
 
-  test('opencode, pi, and antigravity are terminal-only — no URL scheme', () => {
+  test('copilot, opencode, pi, and antigravity are terminal-only — no URL scheme', () => {
+    const copilot = KNOWN_TARGETS.find((t) => t.id === 'copilot');
+    expect(copilot?.schemes).toEqual([]);
     const opencode = KNOWN_TARGETS.find((t) => t.id === 'opencode');
     expect(opencode?.schemes).toEqual([]);
     const pi = KNOWN_TARGETS.find((t) => t.id === 'pi');
@@ -48,6 +59,7 @@ describe('KNOWN_TARGETS', () => {
     expect(byId.get('claude-code')).toBe('Claude');
     expect(byId.get('codex')).toBe('Codex');
     expect(byId.get('cursor')).toBe('Cursor');
+    expect(byId.get('copilot')).toBe('GitHub Copilot');
     expect(byId.get('opencode')).toBe('OpenCode');
     expect(byId.get('pi')).toBe('Pi');
     expect(byId.get('antigravity')).toBe('Antigravity');
@@ -65,11 +77,12 @@ describe('VISIBLE_TARGETS (UI render allow-list)', () => {
     expect(ids.has('claude-cowork')).toBe(false);
   });
 
-  test('hides the terminal-only opencode + pi + antigravity targets from the GUI deep-link list', () => {
-    // OpenCode, Pi, and Antigravity surface as terminal-CLI launch rows
+  test('hides the terminal-only copilot + opencode + pi + antigravity targets from the GUI deep-link list', () => {
+    // Copilot, OpenCode, Pi, and Antigravity surface as terminal-CLI launch rows
     // (TERMINAL_CLI_IDS), not GUI deep-link targets, so they must not appear in
     // VISIBLE_TARGETS.
     const ids = new Set(VISIBLE_TARGETS.map((t) => t.id));
+    expect(ids.has('copilot')).toBe(false);
     expect(ids.has('opencode')).toBe(false);
     expect(ids.has('pi')).toBe(false);
     expect(ids.has('antigravity')).toBe(false);

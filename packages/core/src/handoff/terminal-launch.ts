@@ -44,7 +44,14 @@ export function shellSingleQuote(s: string): string {
  * one-shot variants: `codex exec` and `cursor-agent -p` both run-and-exit, so
  * the session wouldn't stay open for the user to continue in).
  */
-export type TerminalCli = 'claude' | 'codex' | 'cursor' | 'opencode' | 'pi' | 'antigravity';
+export type TerminalCli =
+  | 'claude'
+  | 'codex'
+  | 'copilot'
+  | 'cursor'
+  | 'opencode'
+  | 'pi'
+  | 'antigravity';
 
 export interface TerminalCliInfo {
   /** PATH binary launched in the PTY. Interpolated (alongside any opted-in
@@ -168,6 +175,15 @@ export const TERMINAL_CLIS = {
     handoffTarget: 'codex',
     autoApproveArg: CODEX_OK_AUTO_APPROVE_ARG,
   },
+  copilot: {
+    // Copilot's `--prompt` mode exits after one response. `--interactive`
+    // executes the starting prompt but keeps the session open for follow-up.
+    bin: 'copilot',
+    displayName: 'GitHub Copilot',
+    docsUrl: 'https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started',
+    handoffTarget: 'copilot',
+    promptFlag: '--interactive',
+  },
   cursor: {
     bin: 'cursor-agent',
     displayName: 'Cursor',
@@ -214,13 +230,16 @@ export const TERMINAL_CLIS = {
 /**
  * Stable launch order — drives the menu rows and any iteration over CLIs. Order
  * is also the default-CLI auto-pick priority (first installed wins), so the
- * visible row order and the resolved default can never disagree.
+ * visible row order and the resolved default can never disagree. Copilot is
+ * placed after the established primary CLI defaults to avoid changing an
+ * existing multi-CLI user's first-run selection.
  */
 export const TERMINAL_CLI_IDS = [
   'claude',
   'codex',
   'opencode',
   'cursor',
+  'copilot',
   'pi',
   'antigravity',
 ] as const satisfies readonly TerminalCli[];
