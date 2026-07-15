@@ -218,6 +218,7 @@ import {
   handleBugReportCrashAck,
   handleBugReportCreate,
   handleBugReportSend,
+  resolveBugReportIntakeUrl,
 } from './ipc/bug-report.ts';
 import { handleBuildAndOpen, handleDetectClaudeDesktop } from './ipc/install-skill.ts';
 import {
@@ -3802,7 +3803,12 @@ function registerIpcHandlers() {
     if (request.kind === 'send') {
       return handleBugReportSend(
         {
-          intakeBaseUrl: process.env.OK_BUG_REPORT_INTAKE_URL,
+          // Packaged builds default to the production intake so a shipped app
+          // uploads; `OK_BUG_REPORT_INTAKE_URL` overrides, dev stays on email.
+          intakeBaseUrl: resolveBugReportIntakeUrl({
+            envUrl: process.env.OK_BUG_REPORT_INTAKE_URL,
+            packaged: app.isPackaged,
+          }),
           appVersion: app.getVersion(),
           platform: `${process.platform} ${osRelease()}`,
           // Same containment root the Reveal handler whitelists above — only

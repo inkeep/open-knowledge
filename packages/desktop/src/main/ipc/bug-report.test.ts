@@ -34,11 +34,13 @@ import { handleShellOpenExternal } from '../shell-allowlist.ts';
 import {
   type BugReportCreateDeps,
   type BugReportSendDeps,
+  DEFAULT_BUG_REPORT_INTAKE_URL,
   handleBugReportCrashAck,
   handleBugReportCreate,
   handleBugReportSend,
   MAX_UPLOAD_ZIP_BYTES,
   parseTransportSafeUrl,
+  resolveBugReportIntakeUrl,
 } from './bug-report.ts';
 
 const tmpDirs: string[] = [];
@@ -437,6 +439,37 @@ function makeSendRig(intakeBaseUrl: string | undefined): {
     zipPath: makeZipFixture(bugReportsRoot),
   };
 }
+
+describe('resolveBugReportIntakeUrl', () => {
+  test('an explicit env URL always wins, packaged or not', () => {
+    const envUrl = 'https://intake.example.test';
+    expect(resolveBugReportIntakeUrl({ envUrl, packaged: true })).toBe(envUrl);
+    expect(resolveBugReportIntakeUrl({ envUrl, packaged: false })).toBe(envUrl);
+  });
+
+  test('a packaged build with no env falls back to the production intake', () => {
+    expect(resolveBugReportIntakeUrl({ envUrl: undefined, packaged: true })).toBe(
+      DEFAULT_BUG_REPORT_INTAKE_URL,
+    );
+  });
+
+  test('an unpackaged build with no env stays undefined (email fallback, no accidental upload)', () => {
+    expect(resolveBugReportIntakeUrl({ envUrl: undefined, packaged: false })).toBeUndefined();
+  });
+
+  test('an empty or whitespace env value is treated as unset', () => {
+    expect(resolveBugReportIntakeUrl({ envUrl: '', packaged: true })).toBe(
+      DEFAULT_BUG_REPORT_INTAKE_URL,
+    );
+    expect(resolveBugReportIntakeUrl({ envUrl: '   ', packaged: false })).toBeUndefined();
+  });
+
+  test('a surrounding-whitespace env value is trimmed', () => {
+    expect(resolveBugReportIntakeUrl({ envUrl: '  https://x.test  ', packaged: true })).toBe(
+      'https://x.test',
+    );
+  });
+});
 
 describe('handleBugReportSend — upload happy path', () => {
   test('runs mint, direct PUT with verbatim signed headers, and completion, returning the reference', async () => {
