@@ -6956,15 +6956,15 @@ msgstr "Summarize everything I changed this week"
 msgid "Switch and update branch"
 msgstr "Switch and update branch"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Switch branch"
+msgstr "Switch branch"
+
 #: src/components/CommandPalette.tsx
 #: src/components/ProjectSwitcher.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Switch project"
 msgstr "Switch project"
-
-#: src/components/ShareBranchSwitchDialog.tsx
-msgid "Switch to {shareBranch}"
-msgstr "Switch to {shareBranch}"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Switch to local-only refused"

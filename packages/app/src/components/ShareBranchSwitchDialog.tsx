@@ -608,7 +608,7 @@ export function ShareBranchSwitchDialog({
     branchSwitchState.phase === 'switching' || branchSwitchState.phase === 'awaiting-cc1-recycle';
   const creating = branchSwitchState.phase === 'creating-worktree';
   const openCurrentLabel = t`Open in current branch`;
-  const switchLabel = t`Switch to ${shareBranch}`;
+  const switchLabel = t`Switch branch`;
   const worktreeLabel = t`Open in worktree`;
   const conflictListId = 'share-receive-branch-conflict-files';
   const isLoading = branchSwitchState.phase === 'loading';
@@ -880,7 +880,7 @@ export function ShareBranchSwitchDialog({
               </Button>
             ) : null
           ) : (
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-2">
+            <div className="flex min-w-0 flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-2">
               {variant?.openCurrentEnabled ? (
                 <Button
                   variant="outline"

@@ -6951,14 +6951,14 @@ msgstr ""
 msgid "Switch and update branch"
 msgstr ""
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Switch branch"
+msgstr ""
+
 #: src/components/CommandPalette.tsx
 #: src/components/ProjectSwitcher.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Switch project"
-msgstr ""
-
-#: src/components/ShareBranchSwitchDialog.tsx
-msgid "Switch to {shareBranch}"
 msgstr ""
 
 #: src/components/settings/SharingSection.tsx
