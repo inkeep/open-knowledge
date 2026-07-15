@@ -1,3 +1,4 @@
+import { originGitHubHost } from '@inkeep/open-knowledge-server';
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import { detectGh } from '../../auth/gh-detect.ts';
@@ -60,9 +61,13 @@ async function runRepos(opts: ReposOptions, tokenStore: TokenStore): Promise<voi
 export function reposCommand(getTokenStore: () => Promise<TokenStore>): Command {
   return new Command('repos')
     .description('List accessible repositories')
-    .option('--host <host>', 'GitHub or GitHub Enterprise hostname', 'github.com')
+    .option(
+      '--host <host>',
+      'GitHub or GitHub Enterprise hostname (default: workspace origin host)',
+    )
     .option('--json', 'Output JSON', false)
-    .action(async (opts: ReposOptions) => {
-      await runRepos(opts, await getTokenStore());
+    .action(async (opts: Omit<ReposOptions, 'host'> & { host?: string }) => {
+      const host = opts.host ?? originGitHubHost(process.cwd());
+      await runRepos({ ...opts, host }, await getTokenStore());
     });
 }

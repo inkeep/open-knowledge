@@ -35,6 +35,9 @@ describe('resolveProjectAnchor — command gating', () => {
     'ui',
     'mcp',
     'preview',
+    // `auth` anchors so its `--host` default derives from the enclosing
+    // project's origin host.
+    'auth',
   ])('anchors lifecycle command %s', (name) => {
     expect(resolveProjectAnchor(name, '/proj/sub/dir', stubHit)).toBe('/proj');
   });
@@ -49,7 +52,6 @@ describe('resolveProjectAnchor — command gating', () => {
     'clone',
     'open',
     'ps',
-    'auth',
     'config',
     'diagnose',
   ])('keeps literal-cwd semantics for %s without probing the filesystem', (name) => {

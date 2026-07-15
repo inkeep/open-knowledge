@@ -454,6 +454,7 @@ export {
   hasGcLogLatch,
   type ShadowObjectStats,
 } from './shadow-repo-stats.ts';
+export { originGitHubHost } from './share/git-context.ts';
 export {
   createEphemeralProjectDir,
   prepareSingleFileOpen,

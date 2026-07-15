@@ -1,3 +1,4 @@
+import { originGitHubHost } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { runDeviceFlow } from '../../auth/device-flow.ts';
 import type { TokenStore } from '../../auth/token-store.ts';
@@ -96,10 +97,14 @@ async function runLogin(
 export function loginCommand(getTokenStore: () => Promise<TokenStore>): Command {
   return new Command('login')
     .description('Authenticate with GitHub via Device Flow')
-    .option('--host <host>', 'GitHub or GitHub Enterprise hostname', 'github.com')
+    .option(
+      '--host <host>',
+      'GitHub or GitHub Enterprise hostname (default: workspace origin host)',
+    )
     .option('--json', 'Output JSONL progress events', false)
-    .action(async (opts: LoginOptions) => {
+    .action(async (opts: Omit<LoginOptions, 'host'> & { host?: string }) => {
+      const host = opts.host ?? originGitHubHost(process.cwd());
       const store = await getTokenStore();
-      await runLogin(opts, store);
+      await runLogin({ ...opts, host }, store);
     });
 }

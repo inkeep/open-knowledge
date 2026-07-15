@@ -1,3 +1,4 @@
+import { originGitHubHost } from '@inkeep/open-knowledge-server';
 import password from '@inquirer/password';
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
@@ -53,9 +54,13 @@ async function runPat(
 export function patCommand(getTokenStore: () => Promise<TokenStore>): Command {
   return new Command('pat')
     .description('Store a Personal Access Token')
-    .option('--host <host>', 'GitHub or GitHub Enterprise hostname', 'github.com')
+    .option(
+      '--host <host>',
+      'GitHub or GitHub Enterprise hostname (default: workspace origin host)',
+    )
     .option('--json', 'Output JSON', false)
-    .action(async (opts: PatOptions) => {
-      await runPat(opts, await getTokenStore());
+    .action(async (opts: Omit<PatOptions, 'host'> & { host?: string }) => {
+      const host = opts.host ?? originGitHubHost(process.cwd());
+      await runPat({ ...opts, host }, await getTokenStore());
     });
 }

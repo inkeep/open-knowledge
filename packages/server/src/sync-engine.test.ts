@@ -92,6 +92,7 @@ async function initGitWithOrigin(originUrl = 'https://github.com/inkeep/open-kno
 interface FakeProbeRecorder {
   calls: number;
   next: import('./github-permissions.ts').PushPermission[];
+  opts: import('./github-permissions.ts').CheckPushPermissionOptions[];
   fn: (
     opts: import('./github-permissions.ts').CheckPushPermissionOptions,
   ) => Promise<import('./github-permissions.ts').PushPermission>;
@@ -101,8 +102,10 @@ function fakeProbe(...sequence: Array<import('./github-permissions.ts').PushPerm
   const rec: FakeProbeRecorder = {
     calls: 0,
     next: [...sequence],
-    fn: async () => {
+    opts: [],
+    fn: async (opts) => {
       rec.calls++;
+      rec.opts.push(opts);
       return rec.next.shift() ?? { kind: 'unknown', error: 'network' };
     },
   };
@@ -1508,6 +1511,23 @@ describe('SyncEngine push-permission probe', () => {
     });
   });
 
+  test('probes a GitHub Enterprise origin against the enterprise host', async () => {
+    await initGitWithOrigin('https://ghes.acme.test/inkeep/open-knowledge.git');
+    const probe = fakeProbe({ kind: 'allowed' });
+    const engine = makeProbeEngine({ syncEnabled: false, fakeProbe: probe.fn });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    expect(probe.calls).toBe(1);
+    expect(probe.opts[0]).toMatchObject({
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+      host: 'ghes.acme.test',
+    });
+    expect(engine.getStatus().pushPermission).toEqual({
+      checkStatus: 'allowed',
+    });
+  });
+
   test('records `denied` and pauses in-memory when syncEnabled is true', async () => {
     await initGitWithOrigin();
     const probe = fakeProbe({ kind: 'denied', reason: 'no-collaborator' });
@@ -1915,6 +1935,25 @@ describe('SyncEngine gh-token credential relay', () => {
       // resolver is consulted (so the token reaches the credential helper env).
       expect(detect.calls()).toBeGreaterThan(0);
       expect(detect.lastHost()).toBe('github.com');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('resolves the gh token against a GitHub Enterprise origin host', async () => {
+    await initGitWithOrigin('https://ghes.acme.test/inkeep/open-knowledge.git');
+    const detect = recordDetectGh({ available: true, token: 'gho_relayed' });
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      syncEnabled: true,
+      detectGh: detect.fn,
+    });
+    try {
+      (engine as unknown as { gitHandle: () => unknown }).gitHandle();
+      expect(detect.calls()).toBe(1);
+      expect(detect.lastHost()).toBe('ghes.acme.test');
     } finally {
       await engine.destroy();
     }

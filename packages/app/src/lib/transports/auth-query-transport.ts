@@ -22,6 +22,13 @@ import type {
   OkLocalOpAuthStatusResponse,
 } from '@/lib/desktop-bridge-types';
 
+/**
+ * Client-side fallback only — the coalescing-map key and the display `host`
+ * on error responses when the caller omitted one. Deliberately NOT sent on
+ * the wire: a host-less request lets the server derive the host from the
+ * workspace's origin remote, which the client cannot know. Workspace-scoped
+ * callers should omit `host`.
+ */
 const DEFAULT_AUTH_QUERY_HOST = 'github.com';
 // Default HTTP transports are created per component; keep status single-flight
 // at module scope so overlapping callers share one local-op request.

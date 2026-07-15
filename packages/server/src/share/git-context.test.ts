@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import {
   branchExistsOnOrigin,
+  originGitHubHost,
   readGitHeadBranch,
   readOriginGitHubRepo,
   readSyncRemoteInfo,
@@ -113,6 +114,7 @@ describe('readOriginGitHubRepo', () => {
     seedRepo(dir, { config: CANONICAL_CONFIG_HTTPS });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -124,6 +126,7 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -135,6 +138,7 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -146,6 +150,7 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -158,11 +163,70 @@ describe('readOriginGitHubRepo', () => {
     expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github' });
   });
 
-  test('returns non-github for HTTPS gitlab URL', () => {
+  test('presumes an unknown host is a GitHub Enterprise host', () => {
+    // GHES hostnames are arbitrary, so unknown hosts classify as GitHub with
+    // the host carried in the result. A self-hosted non-GitHub forge on a
+    // custom domain is indistinguishable and lands here too — downstream
+    // consumers degrade gracefully for it.
     seedRepo(dir, {
-      config: '[remote "origin"]\n\turl = https://gitlab.example.com/inkeep/open-knowledge.git\n',
+      config: '[remote "origin"]\n\turl = https://ghes.acme.test/inkeep/open-knowledge.git\n',
     });
-    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github' });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'ghes.acme.test',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+    });
+  });
+
+  test('parses scp-style GHES origin and carries the host', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = git@github.corp.example.com:team/kb.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'github.corp.example.com',
+      owner: 'team',
+      repo: 'kb',
+    });
+  });
+
+  test('strips a non-standard port from a GHES host', () => {
+    // Downstream consumers (`gh auth token --hostname`, the `/api/v3` probe
+    // base) address the host by name; a retained `:8443` would break both.
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://ghes.acme.test:8443/acme/kb.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'ghes.acme.test',
+      owner: 'acme',
+      repo: 'kb',
+    });
+  });
+
+  test('parses the git:// protocol form', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = git://github.com/inkeep/open-knowledge.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'github.com',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+    });
+  });
+
+  test('normalizes host casing, port, and www-folding', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://WWW.GitHub.com:443/inkeep/open-knowledge.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'github.com',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+    });
   });
 
   test('returns no-remote when [remote "origin"] section is absent', () => {
@@ -189,6 +253,17 @@ describe('readOriginGitHubRepo', () => {
     expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github' });
   });
 
+  test('credential-embedded https URLs classify as non-github (documented limitation)', () => {
+    // The https form deliberately excludes userinfo, matching the cli's
+    // `parseGitUrl` grammar — a `user:pass@host` origin falls through to
+    // `non-github` (and downstream host defaults fall back to github.com),
+    // the same treatment such URLs received for github.com itself.
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://user:pass@ghes.corp.example/org/repo.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github' });
+  });
+
   test('uses the first url= line and ignores subsequent ones', () => {
     seedRepo(dir, {
       config:
@@ -196,6 +271,7 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -208,9 +284,47 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
+  });
+});
+
+describe('originGitHubHost', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'share-git-host-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('returns github.com for a github.com origin', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://github.com/inkeep/open-knowledge.git\n',
+    });
+    expect(originGitHubHost(dir)).toBe('github.com');
+  });
+
+  test('returns the enterprise host for a GHES origin', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://ghes.acme.test/acme/kb.git\n',
+    });
+    expect(originGitHubHost(dir)).toBe('ghes.acme.test');
+  });
+
+  test('falls back to github.com for a known non-GitHub forge', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = git@gitlab.com:team/notes.git\n',
+    });
+    expect(originGitHubHost(dir)).toBe('github.com');
+  });
+
+  test('falls back to github.com when there is no .git at all', () => {
+    expect(originGitHubHost(dir)).toBe('github.com');
   });
 });
 
@@ -304,12 +418,22 @@ describe('readSyncRemoteInfo', () => {
     });
   });
 
-  test('non-github origin yields a readable label and a null webUrl (no link)', () => {
+  test('GHES origin yields a host-qualified label and a browsable webUrl', () => {
     seedRepo(dir, {
-      config: '[remote "origin"]\n\turl = https://gitlab.example.com/team/notes.git\n',
+      config: '[remote "origin"]\n\turl = https://ghes.acme.test/team/notes.git\n',
     });
     expect(readSyncRemoteInfo(dir)).toEqual({
-      label: 'gitlab.example.com/team/notes',
+      label: 'ghes.acme.test/team/notes',
+      webUrl: 'https://ghes.acme.test/team/notes',
+    });
+  });
+
+  test('known non-github forge yields a readable label and a null webUrl (no link)', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://gitlab.com/team/notes.git\n',
+    });
+    expect(readSyncRemoteInfo(dir)).toEqual({
+      label: 'gitlab.com/team/notes',
       webUrl: null,
     });
   });
@@ -374,6 +498,7 @@ describe('linked-worktree common-dir resolution', () => {
   test('reads origin config via commondir (regression: worktree reported no-remote)', () => {
     expect(readOriginGitHubRepo(project)).toEqual({
       kind: 'ok',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });

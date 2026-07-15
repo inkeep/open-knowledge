@@ -1,3 +1,4 @@
+import { originGitHubHost } from '@inkeep/open-knowledge-server';
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import { detectGh } from '../../auth/gh-detect.ts';
@@ -113,9 +114,13 @@ async function runStatus(opts: StatusOptions, tokenStore: TokenStore): Promise<v
 export function statusCommand(getTokenStore: () => Promise<TokenStore>): Command {
   return new Command('status')
     .description('Show authentication status')
-    .option('--host <host>', 'GitHub or GitHub Enterprise hostname', 'github.com')
+    .option(
+      '--host <host>',
+      'GitHub or GitHub Enterprise hostname (default: workspace origin host)',
+    )
     .option('--json', 'Output JSON', false)
-    .action(async (opts: StatusOptions) => {
-      await runStatus(opts, await getTokenStore());
+    .action(async (opts: Omit<StatusOptions, 'host'> & { host?: string }) => {
+      const host = opts.host ?? originGitHubHost(process.cwd());
+      await runStatus({ ...opts, host }, await getTokenStore());
     });
 }

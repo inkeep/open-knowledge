@@ -214,6 +214,24 @@ describe('POST /api/share/construct-url', () => {
     expect(json).toEqual({ ok: false, error: 'non-github-remote' });
   });
 
+  test('non-github-remote: GHES origins are refused while the URL builders are github.com-only', async () => {
+    // Origin classification recognizes GHES hosts, so this gate is the only
+    // thing preventing share from minting github.com links for a repo that
+    // lives on an enterprise host. Pins the `origin.host !== 'github.com'`
+    // arm of the gate.
+    rig = await bootRig((projectDir) => {
+      seedRemoteAndHead(projectDir, {
+        head: 'ref: refs/heads/main\n',
+        originUrl: 'https://ghes.acme.test/team/notes.git',
+        branchesOnOrigin: ['main'],
+      });
+    });
+    const res = await postConstructUrl(rig.port, { kind: 'doc', docPath: 'a.md' });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({ ok: false, error: 'non-github-remote' });
+  });
+
   test('invalid-path: rejects .. segment', async () => {
     rig = await bootRig((projectDir) => {
       seedRemoteAndHead(projectDir, {

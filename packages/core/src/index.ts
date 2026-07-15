@@ -213,7 +213,10 @@ export {
 } from './constants/embedded-host.ts';
 export { SHOW_INSTALL_SKILL } from './constants/feature-flags.ts';
 export type { OkFolderState } from './constants/folder-state.ts';
-export { DEFAULT_GITHUB_OAUTH_CLIENT_ID } from './constants/github.ts';
+export {
+  DEFAULT_GITHUB_OAUTH_CLIENT_ID,
+  KNOWN_NON_GITHUB_GIT_HOSTS,
+} from './constants/github.ts';
 export { isOrphanMode, ORPHAN_MODES, type OrphanMode } from './constants/graph.ts';
 export { GREP_MAX_RESULTS, MCP_SERVER_NAME, READ_DOCUMENT_HISTORY_DEPTH } from './constants/mcp.ts';
 export { MENU_LABELS, type MenuLabelKey } from './constants/menu-labels.ts';

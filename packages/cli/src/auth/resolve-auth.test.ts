@@ -104,6 +104,21 @@ describe('resolveAuth', () => {
   // Host isolation
   // ---------------------------------------------------------------------------
 
+  test('Tier A detection is scoped to the requested host', async () => {
+    const store = makeStore(tmpDir);
+    const seenHosts: (string | undefined)[] = [];
+    // gh is authenticated for github.com but not the GHES host.
+    const ghGithubComOnly = (host?: string): GhDetectResult => {
+      seenHosts.push(host);
+      return host === 'ghes.acme.test' ? { available: false } : { available: true, token: 'x' };
+    };
+    const result = await resolveAuth('ghes.acme.test', store, {}, ghGithubComOnly);
+    expect(seenHosts).toEqual(['ghes.acme.test']);
+    expect(result.tier).toBe('none');
+    const githubResult = await resolveAuth('github.com', store, {}, ghGithubComOnly);
+    expect(githubResult.tier).toBe('A');
+  });
+
   test('token for different host returns none', async () => {
     const store = makeStore(tmpDir);
     await store.set('gitlab.com', 'bob', 'glpat_xyz');

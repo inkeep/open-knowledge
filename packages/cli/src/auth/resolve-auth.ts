@@ -20,7 +20,8 @@ interface ResolveAuthOptions {
 /**
  * Resolve the best available auth method for a given git hostname.
  *
- * Tier A — gh CLI available and authenticated:
+ * Tier A — gh CLI available and authenticated for `host` (detection is
+ *   host-scoped via `gh auth token --hostname`):
  *   credentialArgs = ['-c', "credential.helper=!gh auth git-credential"]
  *
  * Tier B/C — token stored in TokenStore (keyring or file):
@@ -35,11 +36,11 @@ export async function resolveAuth(
   host: string,
   tokenStore: TokenStore,
   options: ResolveAuthOptions = {},
-  _detectGhFn: () => ReturnType<typeof detectGh> = detectGh,
+  _detectGhFn: (host?: string) => ReturnType<typeof detectGh> = detectGh,
 ): Promise<ResolvedAuth> {
   // Tier A: gh CLI
   if (!options.skipGhDetect) {
-    const gh = _detectGhFn();
+    const gh = _detectGhFn(host);
     if (gh.available) {
       return {
         tier: 'A',

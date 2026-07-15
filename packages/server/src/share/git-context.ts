@@ -10,20 +10,30 @@
  * packed-refs fallback; no `git ls-remote`.
  *
  * The github-origin parser here is intentionally narrower than
- * `parseGitUrl` in `packages/cli/src/github/url.ts` — share is GitHub-only;
- * non-github remotes return `non-github` so the caller can surface the
- * matching toast. Widening the cli's regex is a STOP rule
- * ; keeping a narrow server-local parser avoids the temptation
- * and stays decoupled from the cli (which depends on `@inkeep/open-knowledge-server`
- * — adding the reverse dependency would create a cycle).
+ * `parseGitUrl` in `packages/cli/src/github/url.ts` — it covers only the four
+ * URL forms produced by real GitHub/GHES clones (https, ssh://, scp-style,
+ * git://), not the cli grammar's shorthand forms. It stays a server-local
+ * parser because the cli depends on `@inkeep/open-knowledge-server` — importing
+ * the cli's parser here would create a cycle.
+ *
+ * Host classification follows the cli's `validateGitHubHost` philosophy:
+ * GHES hostnames are arbitrary, so any parseable origin whose host is not a
+ * known non-GitHub forge (`KNOWN_NON_GITHUB_GIT_HOSTS`) is treated as a
+ * GitHub host and carries its `host` in the result. Known forges (gitlab,
+ * bitbucket, …) classify as `non-github` so callers surface the matching
+ * toast.
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
+import { KNOWN_NON_GITHUB_GIT_HOSTS } from '@inkeep/open-knowledge-core';
+import { getLogger } from '../logger.ts';
+
+const log = getLogger('git-context');
 
 /** Outcome of `readOriginGitHubRepo`. */
 export type OriginResult =
-  | { kind: 'ok'; owner: string; repo: string }
+  | { kind: 'ok'; host: string; owner: string; repo: string }
   | { kind: 'no-remote' }
   | { kind: 'non-github' };
 
@@ -156,36 +166,59 @@ export function extractOriginUrl(configContents: string): string | null {
   return null;
 }
 
+/** Parsed origin repo: normalized host + owner/repo path segments. */
+interface ParsedOriginRepo {
+  host: string;
+  owner: string;
+  repo: string;
+}
+
 /**
- * Match a github.com origin URL and return `{owner, repo}`. Returns null for
- * non-github hosts (gitlab, internal forges) and unparseable strings.
- *
- * Scope is intentionally narrow: only the forms used in production GitHub
- * clones. The full URL grammar lives in `parseGitUrl` in `packages/cli/`;
- * widening this regex to cover GHES wildcard forms would re-create that
- * surface and risk drifting from the cli's source of truth.
+ * Lowercase, strip a trailing `:port`, and fold `www.github.com` →
+ * `github.com`. Ports are dropped because every downstream consumer (token
+ * relay via `gh auth token --hostname`, the `/api/v3` probe base, browse
+ * URLs) addresses the host by name.
  */
-function parseGitHubOriginUrl(originUrl: string): { owner: string; repo: string } | null {
+function normalizeGitHost(rawHost: string): string {
+  const host = rawHost.toLowerCase().replace(/:\d+$/, '');
+  return host === 'www.github.com' ? 'github.com' : host;
+}
+
+/**
+ * Match a GitHub-host origin URL (github.com or GHES) and return
+ * `{host, owner, repo}`. Returns null for known non-GitHub forges
+ * (`KNOWN_NON_GITHUB_GIT_HOSTS`) and unparseable strings. Unknown hosts are
+ * presumed GitHub; the downstream probe/token paths degrade gracefully when
+ * one turns out not to be.
+ */
+function parseGitHubOriginUrl(originUrl: string): ParsedOriginRepo | null {
   const raw = originUrl.trim();
   if (!raw) return null;
 
-  // https://github.com/<owner>/<repo>(.git)?
-  let m = /^https?:\/\/(?:www\.)?github\.com\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
-  if (m) return { owner: m[1], repo: m[2] };
+  const classify = (host: string, owner: string, repo: string): ParsedOriginRepo | null => {
+    const normalized = normalizeGitHost(host);
+    if (KNOWN_NON_GITHUB_GIT_HOSTS.has(normalized)) return null;
+    return { host: normalized, owner, repo };
+  };
 
-  // ssh://[user@]github.com[:port]/<owner>/<repo>(.git)?
-  m = /^ssh:\/\/(?:[\w.-]+@)?github\.com(?::\d+)?\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(
+  // https://<host>[:port]/<owner>/<repo>(.git)?
+  let m = /^https?:\/\/([\w.-]+(?::\d+)?)\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
+  if (m) return classify(m[1], m[2], m[3]);
+
+  // ssh://[user@]<host>[:port]/<owner>/<repo>(.git)?
+  m = /^ssh:\/\/(?:[\w.-]+@)?([\w.-]+)(?::\d+)?\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(
     raw,
   );
-  if (m) return { owner: m[1], repo: m[2] };
+  if (m) return classify(m[1], m[2], m[3]);
 
-  // git@github.com:<owner>/<repo>(.git)?
-  m = /^[\w.-]+@github\.com:([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?$/.exec(raw);
-  if (m) return { owner: m[1], repo: m[2] };
+  // <user>@<host>:<owner>/<repo>(.git)?  (scp-style; `@` is required, so
+  // Windows drive paths like `C:\x` can never match)
+  m = /^[\w.-]+@([\w.-]+):([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?$/.exec(raw);
+  if (m) return classify(m[1], m[2], m[3]);
 
-  // git://github.com/<owner>/<repo>(.git)?
-  m = /^git:\/\/github\.com\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
-  if (m) return { owner: m[1], repo: m[2] };
+  // git://<host>[:port]/<owner>/<repo>(.git)?
+  m = /^git:\/\/([\w.-]+(?::\d+)?)\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
+  if (m) return classify(m[1], m[2], m[3]);
 
   return null;
 }
@@ -200,7 +233,7 @@ function parseGitHubOriginUrl(originUrl: string): { owner: string; repo: string 
  */
 function readParsedOrigin(
   projectDir: string,
-): { originUrl: string; github: { owner: string; repo: string } | null } | null {
+): { originUrl: string; github: ParsedOriginRepo | null } | null {
   const gitDir = resolveGitDir(projectDir);
   if (!gitDir) return null;
   // Origin config lives in the common dir, which differs from `gitDir` for a
@@ -220,23 +253,46 @@ function readParsedOrigin(
 
 /**
  * Read `.git/config`, locate `[remote "origin"]`, and classify the URL.
- * Returns `ok` for github.com origins, `non-github` for parseable origins
- * pointing elsewhere (gitlab, bitbucket, ...), `no-remote` when no origin
- * URL is configured.
+ * Returns `ok` (with the origin `host` — `github.com` or a GHES hostname)
+ * for GitHub-host origins, `non-github` for known non-GitHub forges (gitlab,
+ * bitbucket, ...) and unparseable URLs, `no-remote` when no origin URL is
+ * configured.
  */
 export function readOriginGitHubRepo(projectDir: string): OriginResult {
   const parsed = readParsedOrigin(projectDir);
   if (!parsed) return { kind: 'no-remote' };
-  if (parsed.github) return { kind: 'ok', owner: parsed.github.owner, repo: parsed.github.repo };
-  // Origin URL present but not parseable as github.com — surface as
-  // `non-github` so the caller renders the matching toast.
+  if (parsed.github) {
+    const { host, owner, repo } = parsed.github;
+    return { kind: 'ok', host, owner, repo };
+  }
+  // Origin URL present but a known non-GitHub forge or unparseable — surface
+  // as `non-github` so the caller renders the matching toast.
   return { kind: 'non-github' };
 }
 
 /**
+ * The workspace origin's GitHub host (github.com or GHES), falling back to
+ * github.com when there is no parseable GitHub origin. Single source of the
+ * "which host do auth surfaces target by default" rule — the local-op auth
+ * relay and the CLI `--host` defaults both call this. Never throws (all
+ * `.git` reads underneath are individually guarded): the CLI evaluates it
+ * at command registration, where a throw would break every invocation.
+ */
+export function originGitHubHost(projectDir: string): string {
+  const origin = readOriginGitHubRepo(projectDir);
+  if (origin.kind === 'ok') return origin.host;
+  log.debug(
+    { kind: origin.kind },
+    '[git-context] origin is not a GitHub host — falling back to github.com',
+  );
+  return 'github.com';
+}
+
+/**
  * UI-facing summary of the origin remote for the sync-status payload.
- * `webUrl` is non-null only for github.com origins (the Sync UI renders it as
- * a link); other forges yield a readable `label` with no link.
+ * `webUrl` is non-null for GitHub-host origins — github.com AND GHES (the
+ * Sync UI renders it as a link); known non-GitHub forges yield a readable
+ * `label` with no link.
  */
 export interface SyncRemoteInfo {
   label: string;
@@ -252,9 +308,11 @@ export function readSyncRemoteInfo(projectDir: string): SyncRemoteInfo | null {
   const parsed = readParsedOrigin(projectDir);
   if (!parsed) return null;
   if (parsed.github) {
+    const { host, owner, repo } = parsed.github;
     return {
-      label: `${parsed.github.owner}/${parsed.github.repo}`,
-      webUrl: `https://github.com/${parsed.github.owner}/${parsed.github.repo}`,
+      // Enterprise hosts keep the host in the label; github.com stays terse.
+      label: host === 'github.com' ? `${owner}/${repo}` : `${host}/${owner}/${repo}`,
+      webUrl: `https://${host}/${owner}/${repo}`,
     };
   }
   // Non-github origin: show a readable host/path label, never linkified.

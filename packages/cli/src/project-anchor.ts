@@ -36,6 +36,10 @@ const PROJECT_ANCHORED_COMMANDS: ReadonlySet<string> = new Set([
   // enclosing project root when run from a subdirectory. `uninstall` is global
   // and deliberately NOT anchored (it discovers projects itself).
   'deinit',
+  // `auth` defaults `--host` to the enclosing project's origin host, so it
+  // must anchor when run from a subdirectory; auth commands take no path
+  // arguments, so literal-cwd semantics have nothing to preserve.
+  'auth',
 ]);
 
 /**

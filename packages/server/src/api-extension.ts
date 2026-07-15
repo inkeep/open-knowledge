@@ -334,6 +334,7 @@ import {
 import { computeShareFreshness } from './share/freshness.ts';
 import {
   branchExistsOnOrigin,
+  originGitHubHost,
   readGitHeadBranch,
   readOriginGitHubRepo,
 } from './share/git-context.ts';
@@ -11637,6 +11638,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const LOCAL_OP_AUTH_REPOS_KEY = '/api/local-op/auth/repos';
   const LOCAL_OP_AUTH_SIGNOUT_KEY = '/api/local-op/auth/signout';
 
+  /**
+   * Default host for the auth relay endpoints when the request omits `host`.
+   * Read per-request (not cached): the origin remote can change over the
+   * server's lifetime.
+   */
+  const defaultAuthHost = (): string => originGitHubHost(projectDir ?? contentDir);
+
   // In-flight device-flow controller for the login endpoint. Lets a disconnect
   // or a fresh start free/displace the slot synchronously instead of waiting
   // for the cancelled child to exit. Object identity is the ownership token:
@@ -11675,7 +11683,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     res: ServerResponse,
     body: LocalOpAuthHostRequest,
   ): Promise<void> {
-    const host = body.host ?? 'github.com';
+    const host = body.host ?? defaultAuthHost();
 
     if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_LOGIN_KEY)) {
       const stale = authLoginInFlight;
@@ -11816,7 +11824,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const handleLocalOpAuthStatus = withValidation(
     LocalOpAuthHostRequestSchema,
     async (_req, res, body) => {
-      const host = body.host ?? 'github.com';
+      const host = body.host ?? defaultAuthHost();
 
       if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_STATUS_KEY)) {
         errorResponse(
@@ -11946,7 +11954,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     res: ServerResponse,
     body: LocalOpAuthHostRequest,
   ): Promise<void> {
-    const host = body.host ?? 'github.com';
+    const host = body.host ?? defaultAuthHost();
 
     if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_REPOS_KEY)) {
       errorResponse(
@@ -12094,7 +12102,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const handleLocalOpAuthSignout = withValidation(
     LocalOpAuthHostRequestSchema,
     async (_req, res, body) => {
-      const host = body.host ?? 'github.com';
+      const host = body.host ?? defaultAuthHost();
 
       if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_SIGNOUT_KEY)) {
         errorResponse(
@@ -16568,7 +16576,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        if (origin.kind === 'non-github') {
+        // `construct-url.ts` builds github.com-only links, so GHES origins
+        // must keep failing this gate until the builders take a host.
+        if (origin.kind === 'non-github' || origin.host !== 'github.com') {
           emitShareConstructUrlLog('non-github-remote', { kind: body.kind });
           successResponse(
             res,

@@ -43,6 +43,7 @@ import {
 import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
 import {
+  originGitHubHost,
   readOriginGitHubRepo,
   readSyncRemoteInfo,
   type SyncRemoteInfo,
@@ -58,14 +59,6 @@ const log = getLogger('sync-engine');
  * ref value, so we pattern-match before feeding it to `update-ref`.
  */
 const SHA_HEX_40 = /^[0-9a-f]{40}$/i;
-
-/**
- * Host the relayed gh token authenticates. The origin parser (`git-context.ts`)
- * is GitHub-only — a GHES or non-github remote classifies as `non-github` and
- * never reaches the credential paths — so the sync engine only ever
- * authenticates against github.com.
- */
-const SYNC_GH_TOKEN_HOST = 'github.com';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -392,17 +385,31 @@ export class SyncEngine {
   }
 
   /**
+   * Host the relayed gh token authenticates: the origin remote's GitHub host
+   * (github.com or GHES), falling back to github.com when the origin is
+   * missing or a non-GitHub forge (the relay is then harmless surplus).
+   * Resolved per handle from `.git/config` — a few small file reads, noise
+   * next to the subprocess each handle spawns — so a remote swap mid-session
+   * is picked up without a restart. The token stays cached per host in
+   * `ghTokenSource`.
+   */
+  private syncGhTokenHost(): string {
+    return originGitHubHost(this.projectDir);
+  }
+
+  /**
    * Single construction point for every git handle the engine spawns. Threads
-   * the credential args plus the cached gh token (host-scoped to github.com) so
-   * fetch/push authenticate via gh when available. Local-only handles (e.g.
-   * `remote -v`, `merge --abort`) carry the token harmlessly — the cache keeps
-   * resolution to at most one `gh` spawn per minute regardless of handle count.
+   * the credential args plus the cached gh token (scoped to the origin's
+   * GitHub host) so fetch/push authenticate via gh when available. Local-only
+   * handles (e.g. `remote -v`, `merge --abort`) carry the token harmlessly —
+   * the cache keeps resolution to at most one `gh` spawn per minute
+   * regardless of handle count.
    */
   private gitHandle(gitIndexFile?: string): GitHandle {
     return createGitInstance(this.projectDir, {
       credentialArgs: this.credentialArgs,
       gitIndexFile,
-      ghToken: this.ghTokenSource.get(SYNC_GH_TOKEN_HOST) ?? undefined,
+      ghToken: this.ghTokenSource.get(this.syncGhTokenHost()) ?? undefined,
     });
   }
 
@@ -859,10 +866,11 @@ export class SyncEngine {
     // attributes that would inflate downstream log indices if pino is ever
     // bridged into the OTLP pipeline (pino-opentelemetry-transport).
     // Matches the sibling cardinality discipline in github-permissions.ts.
+    // `host` is bounded (one value per project) and safe to log.
     log.info(
       {
         caller,
-        host: 'github.com',
+        host: origin.host,
         hasDetectGh: this.detectGh !== undefined,
         hasTokenStore: this.tokenStore !== undefined && this.tokenStore !== null,
       },
@@ -873,7 +881,7 @@ export class SyncEngine {
       outcome = await this.checkPushPermissionFn({
         owner: origin.owner,
         repo: origin.repo,
-        host: 'github.com',
+        host: origin.host,
         detectGh: this.detectGh,
         tokenStore: this.tokenStore,
       });
