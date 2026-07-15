@@ -1823,15 +1823,15 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
     expect(rig.clock.clearTimeout).toHaveBeenCalled();
   });
 
-  test('UPDATE_CHECK_INTERVAL_MS is the short pre-release cadence; jitter is a small fraction of it', () => {
-    // Currently 5 min (intentionally short while the update flow is being
-    // validated pre-release; restore to hourly before GA — see the constant's
-    // JSDoc). When that flips, bump this expectation alongside it.
-    expect(UPDATE_CHECK_INTERVAL_MS).toBe(5 * 60 * 1000);
-    // Jitter: seconds-to-a-minute scale, and always a small fraction of the
-    // base interval so "every N minutes" still roughly holds.
-    expect(UPDATE_CHECK_JITTER_MS).toBeGreaterThanOrEqual(5 * 1000);
-    expect(UPDATE_CHECK_JITTER_MS).toBeLessThanOrEqual(60 * 1000);
+  test('UPDATE_CHECK_INTERVAL_MS is the hourly cadence; jitter is a small fraction of it', () => {
+    // Hourly: the beta manifest poll resolves through a proxy that calls
+    // GitHub's unauthenticated List Releases API on a shared IP budget, so
+    // poll frequency is rate-limit-sensitive. See the constant's JSDoc.
+    expect(UPDATE_CHECK_INTERVAL_MS).toBe(60 * 60 * 1000);
+    // Jitter: 5 min, pinned as the steady-state target. Still a small fraction
+    // of the base interval so "hourly" roughly holds, wide enough to break
+    // fleet lockstep.
+    expect(UPDATE_CHECK_JITTER_MS).toBe(5 * 60 * 1000);
     expect(UPDATE_CHECK_JITTER_MS).toBeLessThan(UPDATE_CHECK_INTERVAL_MS);
   });
 

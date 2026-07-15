@@ -17,9 +17,8 @@
  * stuck-hint closes the escape hatch after 7 consecutive failed days.
  *
  * Cadence: `checkForUpdates()` at boot, then a self-rescheduling timer that
- * fires every `UPDATE_CHECK_INTERVAL_MS` (5 min while the update flow is being
- * validated pre-release; restore to hourly before GA) plus a fresh per-fire
- * random jitter in `[0, UPDATE_CHECK_JITTER_MS)` (~30 s). The jitter
+ * fires every `UPDATE_CHECK_INTERVAL_MS` (hourly) plus a fresh per-fire
+ * random jitter in `[0, UPDATE_CHECK_JITTER_MS)` (~5 min). The jitter
  * de-correlates the install base so a release day doesn't pile every client
  * onto GitHub's release-metadata endpoint in the same wall-clock instant (no
  * thundering herd). Singleton per app launch — one timer process-wide, not one
@@ -321,30 +320,34 @@ const DEFAULT_LOGGER: Logger = {
  * (see `UPDATE_CHECK_JITTER_MS`), so a check never lands sooner than this after
  * the previous one.
  *
- * Currently 5 minutes — intentionally short while the auto-update flow is still
- * being exercised pre-release (a 1-hour wait between checks makes manual
- * update-flow testing impractical). Restore to hourly (`60 * 60 * 1000`,
- * matching Obsidian's cadence) and bump the jitter back to ~5 min once the flow
- * has been validated in the field.
+ * Hourly, matching Obsidian's cadence. A check's manifest poll is cheap, but on
+ * the beta channel it resolves through a docs-site proxy that calls GitHub's
+ * unauthenticated List Releases API (60 req/hr, keyed on the proxy's shared
+ * egress IP, not the client's) to find the newest prerelease. Client poll
+ * frequency therefore feeds into one shared, fleet-wide budget rather than a
+ * per-client one; a short cache on the proxy softens that coupling but does not
+ * remove it. An hour keeps the whole install base clear of the limit; a shorter
+ * interval buys only faster update pickup, not worth spending the rate-limit
+ * headroom on. Stable is unaffected (it resolves via GitHub's `releases/latest`
+ * web redirect, no API).
  */
-export const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
  * Upper bound on the random jitter added to each periodic-check delay. A fresh
  * value in `[0, UPDATE_CHECK_JITTER_MS)` is drawn per fire and added to
  * `UPDATE_CHECK_INTERVAL_MS`, so checks land somewhere in
- * `[UPDATE_CHECK_INTERVAL_MS, UPDATE_CHECK_INTERVAL_MS + 30 s)` after the
+ * `[UPDATE_CHECK_INTERVAL_MS, UPDATE_CHECK_INTERVAL_MS + 5 min)` after the
  * previous one — never sooner than the base interval, but spread across a
- * ~30-second window so an install base that booted together (or all woke from
+ * ~5-minute window so an install base that booted together (or all woke from
  * sleep at the same wall-clock instant) doesn't re-synchronize onto GitHub's
  * release-metadata endpoint. Kept a small fraction of the base interval so
- * "every N minutes" still roughly holds, and scaled down alongside
- * `UPDATE_CHECK_INTERVAL_MS` (bump back to ~5 min when the base goes hourly).
- * Magnitude is plenty regardless: the check is a small HTTPS GET of
- * `latest-mac.yml` against a CDN-fronted public repo, so any minutes-or-less
- * spread is negligible load — the point is to break lockstep, not rate-limit.
+ * "hourly" still roughly holds. Breaking lockstep matters on the beta channel:
+ * a synchronized fleet collapses the per-instance manifest-poll spread that
+ * keeps the shared GitHub API budget (see `UPDATE_CHECK_INTERVAL_MS`) from
+ * spiking in any one window.
  */
-export const UPDATE_CHECK_JITTER_MS = 30 * 1000;
+export const UPDATE_CHECK_JITTER_MS = 5 * 60 * 1000;
 
 /**
  * How long after a clean `quitAndInstall()` return the process may stay alive
