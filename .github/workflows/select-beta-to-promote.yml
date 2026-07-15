@@ -1,29 +1,34 @@
-name: Auto-promote stable
+name: Select beta to promote
 
-# Scheduled gatekeeper on inkeep/open-knowledge that AUTOMATICALLY promotes the
-# LATEST beta that has soaked >= 24h online to stable, but only fires the
-# promotion inside the US business-hours window (9am ET .. 4pm PT, Mon-Fri).
+# Scheduled gatekeeper on inkeep/open-knowledge that SELECTS the most-recently
+# soak-proven beta to promote to stable and dispatches promote-stable.yml with
+# it, but only inside the US business-hours window (9am ET .. 4pm PT, Mon-Fri).
+# It does SELECTION ONLY — it computes no version. promote-stable.yml owns
+# version determination (scripts/compute-stable-version.mjs), so manual and auto
+# promotions share one source of version truth.
 #
 # "Latest soaked" (not simply "newest"): it walks the beta tags newest -> oldest
-# in the established version order and promotes the first that is unpromoted,
-# fully cut, and >= 24h online. A fresher beta cut < 24h ago is skipped in favor
-# of the previous soaked beta; the skipped beta's changeset rolls forward into a
-# later beta/stable via the cumulative changeset model, so nothing is lost. The
-# descent stops at the first already-promoted beta, so it never reaches back
-# across a promoted cycle boundary. This selection logic lives in
-# .github/scripts/promote-stable-auto.mjs (unit-tested under `bun test --cwd
+# in the established version order and selects the first that is unshipped, fully
+# cut, and >= 24h online. A fresher beta cut < 24h ago is skipped in favor of the
+# previous soaked beta; the skipped beta's changeset rolls forward — promote-
+# stable batches the whole delta over the latest stable into one bump, so nothing
+# is lost. The descent stops at the first already-shipped beta (its commit is
+# contained in the latest stable), so it never reaches back across a shipped
+# boundary. This selection logic lives in
+# .github/scripts/select-beta-to-promote.mjs (unit-tested under `bun test --cwd
 # .github/scripts`), not inline bash — it is the sole safety gate for automated
-# promotions (see NOTE below), so it is fail-loud and test-covered.
+# selection (see NOTE below), so it is fail-loud and test-covered.
 #
 # This workflow does NOT reimplement promotion. It dispatches promote-stable.yml
-# with an EXPLICIT beta_tag (the selected beta); promote-stable tags vX.Y.Z,
+# with an EXPLICIT beta_tag (the selected beta); promote-stable computes the
+# stable version from the changeset delta over the latest stable, tags it,
 # creates the Release, and cascades npm --tag latest + signed stable DMG +
 # main-reset unchanged. "OK desktop to stable" is covered for free via the
 # promote-stable -> desktop-release cascade (latest-mac.yml + DMG). NOTE:
-# promote-stable's Guard A/B run only on its blank/auto path, so the explicit
-# dispatch bypasses them; the script performs the unpromoted + fully-cut checks
-# itself, and fails loud (job error, retry next tick) on any non-404 gh/git
-# error rather than folding an infra failure into a promote/no-op decision.
+# promote-stable's fully-cut guard runs only on its blank/auto path, so the
+# explicit dispatch bypasses it; this script performs the unshipped + fully-cut
+# checks itself, and fails loud (job error, retry next tick) on any non-404
+# gh/git error rather than folding an infra failure into a select/no-op decision.
 #
 # Why a schedule is the backbone (not push alone): eligibility here is reached
 # by the passage of TIME (a beta crossing 24h old), not by a commit. During a
@@ -51,8 +56,8 @@ name: Auto-promote stable
 # never blocks a real cut. Double-promotion is prevented three ways:
 # (1) cancel-in-progress supersedes an overlapping eval, (2) a fail-loud in-flight
 # check skips when a promote-stable run is already in_progress/queued, and
-# (3) the script stops at the first already-promoted beta and never selects one
-# whose stable tag already exists.
+# (3) the script stops at the first already-shipped beta (commit contained in the
+# latest stable) and never selects one whose changes are already released.
 
 on:
   schedule:
@@ -150,18 +155,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SOAK_SECONDS: "86400" # 24h online soak
-        # Writes target= / stable= to GITHUB_OUTPUT (empty target => no-op). Exits
-        # non-zero (fails the job) on any non-404 gh/git infra error — a fail-loud
+        # Writes target= to GITHUB_OUTPUT (empty target => no-op). Exits non-zero
+        # (fails the job) on any non-404 gh/git infra error — a fail-loud
         # retry-next-tick, never a silent skip. Logic + tests:
-        # .github/scripts/promote-stable-auto.{mjs,test.mjs}.
-        run: node .github/scripts/promote-stable-auto.mjs
+        # .github/scripts/select-beta-to-promote.{mjs,test.mjs}.
+        run: node .github/scripts/select-beta-to-promote.mjs
 
       - name: Guard against an in-flight promotion, then dispatch
         if: steps.hours.outputs.open == 'true' && steps.select.outputs.target != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET: ${{ steps.select.outputs.target }}
-          TARGET_STABLE: ${{ steps.select.outputs.stable }}
           # workflow_dispatch supplies the boolean; schedule/push leave inputs
           # null, so default to "false" (never a dry run on the automated path).
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
@@ -169,7 +173,7 @@ jobs:
           set -euo pipefail
           # Don't double-fire while a promote-stable run is already active — covers
           # the window between dispatch and promote-stable pushing the stable tag
-          # (after which the script's stop-at-already-promoted catches it). Fail
+          # (after which the script's stop-at-already-shipped catches it). Fail
           # loud on a query error: an evaluator that cannot confirm "no promotion
           # in flight" must abort and retry next tick, not assume zero (no
           # `|| echo 0`).
@@ -180,12 +184,12 @@ jobs:
             exit 0
           fi
           if [[ "$DRY_RUN" == "true" ]]; then
-            echo "::notice::DRY RUN: would dispatch promote-stable.yml with beta_tag=${TARGET} -> ${TARGET_STABLE}."
+            echo "::notice::DRY RUN: would dispatch promote-stable.yml with beta_tag=${TARGET} (promote-stable computes the stable version)."
             exit 0
           fi
           # Explicit beta_tag (not blank): a blank dispatch auto-resolves the NEWEST
           # beta, but under "latest soaked" the target may sit below the head.
-          # promote-stable's explicit-tag path skips its own Guard A/B, so the
-          # script's unpromoted + fully-cut checks are the safety net for this dispatch.
+          # promote-stable's explicit-tag path skips its own fully-cut guard, so this
+          # script's unshipped + fully-cut checks are the safety net for this dispatch.
           gh workflow run promote-stable.yml -f beta_tag="$TARGET"
-          echo "::notice::Dispatched promote-stable for ${TARGET} -> ${TARGET_STABLE} (npm --tag latest + stable DMG + main-reset)."
+          echo "::notice::Dispatched promote-stable for ${TARGET} (it computes the stable version from the changeset delta, then npm --tag latest + stable DMG + main-reset)."

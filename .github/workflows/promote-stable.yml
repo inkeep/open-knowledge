@@ -153,30 +153,22 @@ jobs:
           fi
           echo "beta_tag=$RESOLVED" >> "$GITHUB_OUTPUT"
 
-      - name: Guard - auto-resolved beta is unpromoted + fully cut
-        # Only the auto path (Slack button / blank dispatch) needs these
-        # guards. The explicit beta_tag path is an operator override that
-        # keeps the workflow's idempotent recovery behavior (re-run to repair
-        # a partial promotion), so it bypasses this step.
+      - name: Guard - auto-resolved beta is fully cut
+        # Only the blank/auto dispatch path (promote-newest) needs this guard.
+        # The explicit beta_tag path is an operator override that keeps the
+        # workflow's idempotent recovery behavior (re-run to repair a partial
+        # promotion), so it bypasses this step. The "already promoted" no-op is
+        # no longer checked here — compute-stable-version.mjs derives the target
+        # from the changeset delta over the latest stable and emits skip=true (a
+        # clean no-op) when the beta is already shipped, so a stripped-name
+        # stable-tag existence check would be both redundant and wrong (one beta
+        # name no longer maps 1:1 to one stable version).
         if: steps.resolve.outputs.auto == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BETA_TAG: ${{ steps.resolve.outputs.beta_tag }}
         run: |
           set -euo pipefail
-
-          # Guard A — must not already be promoted to stable. After a
-          # promotion the newest beta tag still points at the just-promoted
-          # version until a fresh beta is cut. release.yml's "beta base must
-          # lead the latest stable" guard guarantees no new vX.Y.Z-beta.M is
-          # cut once vX.Y.Z exists, so a present stable tag means this beta is
-          # already released — re-promoting would re-publish an existing npm
-          # version (hard error) and re-upload onto the live stable Release.
-          STABLE_TAG="v$(printf '%s' "$BETA_TAG" | sed -E 's/^v//; s/-beta\.[0-9]+$//')"
-          if git rev-parse "refs/tags/${STABLE_TAG}" >/dev/null 2>&1; then
-            echo "::error::Newest beta ${BETA_TAG} is already promoted to stable ${STABLE_TAG}. Cut a new beta before promoting again — there is nothing newer to release."
-            exit 1
-          fi
 
           # Guard B — the beta cut must be COMPLETE. release.yml creates the
           # beta Release as --draft; desktop-release.yml flips it to published
@@ -199,7 +191,7 @@ jobs:
             echo "::error::Beta ${BETA_TAG} is not fully cut (draft=${isDraft}, dmg=${dmg}, mac.yml=${manifest}). Its desktop-release build is still running or failed — wait a few minutes and retry, or fix the failed cut before promoting."
             exit 1
           fi
-          echo "Beta ${BETA_TAG} is complete (published, ${dmg} dmg, ${manifest} mac.yml) and not yet promoted to ${STABLE_TAG}; safe to promote."
+          echo "Beta ${BETA_TAG} is complete (published, ${dmg} dmg, ${manifest} mac.yml); safe to promote."
 
       - name: Verify beta tag exists
         env:
@@ -220,33 +212,19 @@ jobs:
           BETA_TAG: ${{ steps.resolve.outputs.beta_tag }}
         run: |
           set -euo pipefail
-          # Derive the version from the beta tag NAME, not from package.json
-          # at the tagged commit. release.yml's zero-commit-bump cadence
-          # applies the -beta.N version via a transient jq override that is
-          # never committed (its `Restore working tree` step reverts it), so
-          # the tagged commit's package.json still carries the placeholder
-          # version on main. The tag name is the only authoritative source
-          # of the cycle version.
-          if [[ ! "$BETA_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-beta\.[0-9]+$ ]]; then
-            echo "::error::Beta tag '$BETA_TAG' is not in the expected vX.Y.Z-beta.N format."
-            exit 1
-          fi
-
-          BETA_VERSION="${BETA_TAG#v}"
-          STABLE_VERSION="${BASH_REMATCH[1]}"
-          STABLE_TAG="v${STABLE_VERSION}"
-          BETA_SHA=$(git rev-parse "refs/tags/${BETA_TAG}")
-
-          {
-            echo "beta_version=$BETA_VERSION"
-            echo "stable_version=$STABLE_VERSION"
-            echo "stable_tag=$STABLE_TAG"
-            echo "beta_sha=$BETA_SHA"
-          } >> "$GITHUB_OUTPUT"
-
-          echo "Promoting beta tag $BETA_TAG (SHA $BETA_SHA) to stable $STABLE_VERSION ($STABLE_TAG)"
+          # Compute the stable version as a SINGLE semver bump over the current
+          # latest stable, from the changeset delta between that stable's SHA and
+          # this beta's SHA — NOT by stripping -beta.N. Stripping collapsed every
+          # beta in a cycle to one stable, so a later beta could never promote and
+          # a manual re-promote collided with the existing vX.Y.Z tag. This script
+          # is the single source of version truth for manual + auto promotions; it
+          # writes skip / stable_version / stable_tag / beta_sha / latest_stable_sha
+          # to $GITHUB_OUTPUT. skip=true is a clean no-op (the beta is already
+          # shipped, or adds no changesets) and gates every step below.
+          node scripts/compute-stable-version.mjs "$BETA_TAG"
 
       - name: Tag stable at beta SHA
+        if: steps.ver.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           STABLE_TAG: ${{ steps.ver.outputs.stable_tag }}
@@ -272,6 +250,7 @@ jobs:
 
       - name: Aggregate beta release bodies since previous stable
         id: changelog
+        if: steps.ver.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           STABLE_TAG: ${{ steps.ver.outputs.stable_tag }}
@@ -297,12 +276,17 @@ jobs:
             | grep -v "^${STABLE_TAG}$" \
             | head -n 1 || true)
 
+          # Betas whose changes are in this stable = beta tags reachable from the
+          # promoted beta SHA but NOT from the previous stable. Under delta
+          # versioning the promoted beta's NAME (e.g. v0.30.1-beta.6) no longer
+          # matches the computed stable version (e.g. 0.30.2), so we range by
+          # commit ancestry (--merged/--no-merged), not a name glob.
           if [[ -n "$PREV_STABLE" ]]; then
-            echo "Aggregating betas in range ${PREV_STABLE}..${STABLE_TAG}"
-            BETA_TAGS_IN_RANGE=$(git tag --list "v${STABLE_VERSION}-beta.*" --merged "$BETA_SHA" --sort=version:refname | grep -v "^${PREV_STABLE}$" || true)
+            echo "Aggregating betas reachable from ${BETA_TAG_INPUT} but not ${PREV_STABLE}"
+            BETA_TAGS_IN_RANGE=$(git tag --list 'v*-beta.*' --merged "$BETA_SHA" --no-merged "$PREV_STABLE" --sort=version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' || true)
           else
-            echo "No previous stable tag; aggregating all betas at ${STABLE_VERSION}"
-            BETA_TAGS_IN_RANGE=$(git tag --list "v${STABLE_VERSION}-beta.*" --merged "$BETA_SHA" --sort=version:refname || true)
+            echo "No previous stable tag; aggregating all betas reachable from ${BETA_TAG_INPUT}"
+            BETA_TAGS_IN_RANGE=$(git tag --list 'v*-beta.*' --merged "$BETA_SHA" --sort=version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' || true)
           fi
 
           # Under the zero-commit-bump cadence, beta release bodies are
@@ -364,6 +348,7 @@ jobs:
           echo "------------------------------"
 
       - name: Create stable GitHub Release
+        if: steps.ver.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           STABLE_TAG: ${{ steps.ver.outputs.stable_tag }}
@@ -398,6 +383,7 @@ jobs:
           fi
 
       - name: Trigger release.yml to publish stable to npm
+        if: steps.ver.outputs.skip != 'true'
         # Same-repo repository_dispatch into release.yml. release.yml
         # listens for event_type=publish-stable, checks out the stable
         # tag, applies the transient package.json#version override, and
@@ -432,6 +418,7 @@ jobs:
           echo "release.yml will run the npm publish + provenance attestation in its own job."
 
       - name: Trigger desktop-release.yml to build + upload stable DMG
+        if: steps.ver.outputs.skip != 'true'
         # The `gh release create` above creates the release as `--draft`
         # so it stays out of the .atom feed until desktop-release.yml
         # uploads latest-mac.yml AND promotes draft → published. GitHub
@@ -456,6 +443,7 @@ jobs:
           echo "Dispatched desktop-release for ${STABLE_TAG}; desktop-release.yml will build the signed DMG and upload it + latest-mac.yml to the stable Release."
 
       - name: Detect bridge App for cross-repo dispatch
+        if: steps.ver.outputs.skip != 'true'
         # Auto-triggering main-reset.yml on agents-private needs a credential
         # with write access to THAT repo; the workflow-default GITHUB_TOKEN is
         # scoped to legacy only and cannot dispatch cross-repo. The "Inkeep OK
@@ -498,9 +486,13 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.bridge-token.outputs.token }}
           STABLE_VERSION: ${{ steps.ver.outputs.stable_version }}
+          # JSON array of changeset IDs this stable consumed. main-reset consumes
+          # ONLY these and leaves later changesets pending, so the anchor advances
+          # exactly one stable per promotion without stranding newer work.
+          DELTA_IDS: ${{ steps.ver.outputs.delta_ids }}
         run: |
           set -euo pipefail
-          payload=$(jq -nc --arg v "$STABLE_VERSION" \
-            '{event_type: "main-reset", client_payload: {stable_version: $v}}')
+          payload=$(jq -nc --arg v "$STABLE_VERSION" --argjson d "${DELTA_IDS:-[]}" \
+            '{event_type: "main-reset", client_payload: {stable_version: $v, delta_ids: $d}}')
           gh api -X POST "repos/inkeep/agents-private/dispatches" --input - <<<"$payload"
-          echo "Dispatched main-reset to agents-private (stable_version=${STABLE_VERSION})."
+          echo "Dispatched main-reset to agents-private (stable_version=${STABLE_VERSION}, delta_ids=${DELTA_IDS})."

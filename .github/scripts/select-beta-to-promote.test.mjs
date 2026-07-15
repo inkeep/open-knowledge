@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { deriveStableTag, parseBetaTags, selectPromotion } from "./promote-stable-auto.mjs";
+import { parseBetaTags, selectPromotion } from "./select-beta-to-promote.mjs";
 
 // Fixed clock so tests never call Date.now().
 const NOW = Date.parse("2026-07-08T20:00:00Z");
@@ -24,28 +24,14 @@ function fetcher(map) {
   };
 }
 
-const noneExist = () => false;
-const existsIn = (...tags) => {
+const shippedNone = () => false;
+const shippedIn = (...tags) => {
   const set = new Set(tags);
   return (t) => set.has(t);
 };
 
 const select = (over) =>
-  selectPromotion({ tagExists: noneExist, soakSeconds: SOAK, nowMs: NOW, ...over });
-
-describe("deriveStableTag", () => {
-  test("strips the -beta.N suffix", () => {
-    expect(deriveStableTag("v0.9.0-beta.1")).toBe("v0.9.0");
-    expect(deriveStableTag("v1.2.3-beta.0")).toBe("v1.2.3");
-  });
-  test("keeps double-digit beta numbers intact", () => {
-    expect(deriveStableTag("v0.10.0-beta.10")).toBe("v0.10.0");
-  });
-  test("throws on a non-beta tag", () => {
-    expect(() => deriveStableTag("v0.10.0")).toThrow();
-    expect(() => deriveStableTag("random")).toThrow();
-  });
-});
+  selectPromotion({ isAlreadyShipped: shippedNone, soakSeconds: SOAK, nowMs: NOW, ...over });
 
 describe("parseBetaTags", () => {
   test("filters to conforming beta tags, preserving order", () => {
@@ -66,7 +52,7 @@ describe("selectPromotion", () => {
         "v0.10.0-beta.5": meta({ publishedAt: SOAKED }),
       }),
     });
-    expect(r).toEqual({ kind: "select", target: "v0.10.0-beta.5", stableTag: "v0.10.0" });
+    expect(r).toEqual({ kind: "select", target: "v0.10.0-beta.5" });
   });
 
   test("selects the head when the head itself is soaked", () => {
@@ -77,21 +63,33 @@ describe("selectPromotion", () => {
         "v0.10.0-beta.5": meta({ publishedAt: SOAKED }),
       }),
     });
-    expect(r).toEqual({ kind: "select", target: "v0.10.0-beta.6", stableTag: "v0.10.0" });
+    expect(r).toEqual({ kind: "select", target: "v0.10.0-beta.6" });
   });
 
-  test("stops at the first already-promoted beta and never reaches an older cycle", () => {
+  test("selects the newest soaked UNSHIPPED beta, even across a version boundary", () => {
+    // Catch-up shape: a fresh head, then several soaked betas spanning two X.Y.Z
+    // lines, none shipped yet -> pick the newest soaked (promote-stable batches
+    // the whole changeset delta over the latest stable into one bump).
+    const r = select({
+      betaTags: ["v0.31.0-beta.1", "v0.31.0-beta.0", "v0.30.1-beta.8"],
+      fetchReleaseMeta: fetcher({
+        "v0.31.0-beta.1": meta({ publishedAt: FRESH }),
+        "v0.31.0-beta.0": meta({ publishedAt: SOAKED }),
+        "v0.30.1-beta.8": meta({ publishedAt: SOAKED }),
+      }),
+    });
+    expect(r).toEqual({ kind: "select", target: "v0.31.0-beta.0" });
+  });
+
+  test("stops at the first already-shipped beta and never reaches an older cycle", () => {
     const r = select({
       betaTags: ["v0.10.0-beta.6", "v0.9.0-beta.3"],
-      tagExists: existsIn("v0.10.0"), // beta.6's stable already exists
+      isAlreadyShipped: shippedIn("v0.10.0-beta.6"), // beta.6 is contained in the latest stable
       fetchReleaseMeta: fetcher({
         "v0.9.0-beta.3": meta({ publishedAt: SOAKED }), // soaked but must NOT be chosen
       }),
     });
-    expect(r.kind).toBe("stop-promoted");
-    expect(r.beta).toBe("v0.10.0-beta.6");
-    expect(r.stableTag).toBe("v0.10.0");
-    expect(r.target).toBeUndefined();
+    expect(r).toEqual({ kind: "none" });
   });
 
   test("skips a draft head and promotes the older soaked beta", () => {
@@ -102,7 +100,7 @@ describe("selectPromotion", () => {
         "v0.10.0-beta.5": meta({ publishedAt: SOAKED }),
       }),
     });
-    expect(r).toEqual({ kind: "select", target: "v0.10.0-beta.5", stableTag: "v0.10.0" });
+    expect(r).toEqual({ kind: "select", target: "v0.10.0-beta.5" });
   });
 
   test("skips a head missing the DMG asset", () => {
