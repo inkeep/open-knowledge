@@ -771,6 +771,11 @@ const bridge: OkDesktopBridge = {
 
   platform: process.platform as 'darwin' | 'win32' | 'linux',
   appVersion: parseArg('app-version') ?? '0.0.0',
+  // Named parallel dev instance (branch/worktree). Present only when this launch
+  // relocated `userData` to a named sibling (auto-derived from git or explicit
+  // `OK_INSTANCE`); the default install omits the flag → null. Surfaced as the
+  // header branch badge so concurrent dev instances are tellable apart.
+  instanceLabel: parseArg('instance-label') ?? null,
 
   // Resolve a dropped File to its on-disk path. `webUtils.getPathForFile` is a
   // renderer-side call (no IPC) and the only way to recover the path since

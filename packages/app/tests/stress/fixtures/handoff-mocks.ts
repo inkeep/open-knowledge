@@ -613,6 +613,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         },
         platform: 'darwin' as const,
         appVersion: 'test-0.0.0',
+        instanceLabel: null,
         getPathForFile: () => null,
       } satisfies OkDesktopBridge;
 

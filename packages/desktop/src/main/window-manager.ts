@@ -92,6 +92,16 @@ export function setWindowInstanceLabel(label: string | null): void {
 }
 
 /**
+ * `--ok-instance-label` preload arg for the current named instance, spread into
+ * each editor window's `additionalArguments` so the renderer can show the
+ * branch/worktree badge in the header. Present only for a named parallel
+ * instance; the default install omits it (preload coerces absent → null).
+ */
+function instanceLabelArgs(): string[] {
+  return windowInstanceLabel ? [`--ok-instance-label=${windowInstanceLabel}`] : [];
+}
+
+/**
  * Editor window title format — `<projectName> — OpenKnowledge`, plus a
  * ` (<instance>)` suffix when this is a named parallel instance. The em dash
  * + app-name suffix follows the macOS/VS Code/Cursor convention: the project
@@ -1718,6 +1728,7 @@ export class WindowManager {
       `--ok-project-name=${projectName}`,
       `--ok-mode=editor`,
       `--ok-app-version=${this.deps.appVersion}`,
+      ...instanceLabelArgs(),
       // Startup instrumentation (Plan A): carry main's `ok.app-startup`
       // traceparent so the renderer parents its startup span into the launch
       // trace. Appended only when present (OTel enabled in main).
@@ -2036,6 +2047,7 @@ export class WindowManager {
         // a fresh temp dir (no session/tab restore), so a drop had no safety net.
         `--ok-initial-doc=${opts.docName}`,
         `--ok-app-version=${this.deps.appVersion}`,
+        ...instanceLabelArgs(),
       ],
       title: formatEditorTitle(projectName),
     });
@@ -2363,6 +2375,7 @@ export class WindowManager {
         `--ok-project-name=${projectName}`,
         `--ok-mode=editor`,
         `--ok-app-version=${this.deps.appVersion}`,
+        ...instanceLabelArgs(),
         ...(this.deps.startup?.traceparent !== undefined
           ? [`--ok-startup-traceparent=${this.deps.startup.traceparent}`]
           : []),

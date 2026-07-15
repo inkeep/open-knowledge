@@ -1435,6 +1435,14 @@ export interface OkDesktopBridge {
   readonly platform: 'darwin' | 'win32' | 'linux';
   readonly appVersion: string;
   /**
+   * Named parallel dev-instance label (branch/worktree) when this launch
+   * relocated `userData` to a named sibling — auto-derived from the git
+   * checkout or an explicit `OK_INSTANCE`. Null for the default install and in
+   * web / CLI distribution. Drives the header branch badge. Lockstep with the
+   * main-side `OkDesktopBridge` (`packages/desktop/src/shared/bridge-contract.ts`).
+   */
+  readonly instanceLabel: string | null;
+  /**
    * Resolve a dropped `File` to its absolute filesystem path via Electron
    * `webUtils.getPathForFile` (renderer-side, no IPC). Returns null for a File
    * with no backing path on disk (e.g. an in-memory clipboard blob). The

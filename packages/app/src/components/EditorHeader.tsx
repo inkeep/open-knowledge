@@ -19,6 +19,7 @@ import { PresenceBar } from '@/presence/PresenceBar';
 import { BetaBadge } from './BetaBadge';
 import { EditorTabs } from './EditorTabs';
 import { HelpPopover } from './HelpPopover';
+import { InstanceBadge } from './InstanceBadge';
 import { PublishToGitHubDialog } from './PublishToGitHubDialog';
 import { SettingsButton } from './SettingsButton';
 import { ShareButton } from './ShareButton';
@@ -191,6 +192,7 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
         <SyncStatusBadge onSignIn={onSignIn} onSetIdentity={onSetIdentity} />
         <PresenceBar />
         <Separator orientation="vertical" className="h-4 shrink-0 data-vertical:self-center" />
+        <InstanceBadge />
         <BetaBadge />
         {/* Settings is unavailable in single-file mode (config editing is inert). */}
         {!singleFile && <SettingsButton />}

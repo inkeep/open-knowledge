@@ -2640,6 +2640,14 @@ msgstr ""
 msgid "Detecting"
 msgstr ""
 
+#: src/components/InstanceBadge.tsx
+msgid "Dev instance: {label}"
+msgstr ""
+
+#: src/components/InstanceBadge.tsx
+msgid "Dev instance: {label} (isolated from other worktrees)"
+msgstr ""
+
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram"
 msgstr ""

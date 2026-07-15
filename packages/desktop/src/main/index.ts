@@ -136,6 +136,7 @@ import { buildAboutPanelOptions } from './about-panel.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
 import { openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
 import { popAssetMenu } from './asset-menu.ts';
+import { resolveEffectiveInstanceName } from './auto-instance.ts';
 import {
   bootAutoUpdater,
   channelFromVersion,
@@ -4719,9 +4720,23 @@ function registerProjectIntegrationsSettingsIpc(): void {
  */
 const ICON_PNG_PATH = join(__dirname, '..', '..', 'build', 'icon.png');
 
-function installDockIcon() {
+function installDockIcon(instanceLabel: string | null) {
   if (process.platform !== 'darwin') return;
   if (app.isPackaged) return; // packaged build uses the bundle's .icns
+  // Differentiate parallel dev instances on the Dock. macOS reads the Dock
+  // tile *name* (hover tooltip) from the running bundle's Info.plist, which in
+  // dev is Electron's own — `app.setName()` renames the menu bar but not the
+  // Dock tile, and there is no runtime API to rename it for an unpackaged app.
+  // A badge is the only way to put the instance label onto the Dock icon at
+  // runtime; the OK icon already identifies it as OpenKnowledge. No-op for the
+  // default install (label null). See electron/electron#3391, #19892.
+  if (instanceLabel) {
+    try {
+      app.dock?.setBadge(instanceLabel);
+    } catch (err) {
+      console.warn('[main] dock badge set failed', { err: (err as Error).message });
+    }
+  }
   if (!existsSync(ICON_PNG_PATH)) {
     console.warn('[main] skipping dock icon — build/icon.png missing');
     return;
@@ -4847,26 +4862,40 @@ installStdioBrokenPipeGuard(process, {
 // Dev-only parallel-instance isolation. Electron keys the single-instance lock
 // on `userData` (and Chromium storage + recents live there), so two desktop
 // processes sharing one `userData` can't coexist — the second fails
-// `requestSingleInstanceLock()` and quits. `OK_INSTANCE=<name>` relocates this
-// launch's `userData` to a named sibling dir, giving each instance its own lock
-// + isolated storage. Must run before `requestSingleInstanceLock()` and any
-// `userData` read; packaged builds ignore it so releases are never affected.
-if (!app.isPackaged && process.env.OK_INSTANCE) {
-  const relocatedUserData = deriveInstanceUserDataDir(
-    app.getPath('userData'),
-    process.env.OK_INSTANCE,
-  );
-  if (relocatedUserData) {
-    mkdirSync(relocatedUserData, { recursive: true });
-    app.setPath('userData', relocatedUserData);
-    getRootDesktopLogger().info(
-      {
-        event: 'desktop.parallel-instance',
-        instance: process.env.OK_INSTANCE,
-        userData: relocatedUserData,
-      },
-      'relocated userData for parallel dev instance',
-    );
+// `requestSingleInstanceLock()` and quits. Relocating this launch's `userData`
+// to a named sibling dir gives each instance its own lock + isolated storage.
+//
+// The instance name is `OK_INSTANCE` when set, else auto-derived from the git
+// checkout (branch name, or worktree dir on detached HEAD) so two `bun run dev`
+// launches from different worktrees isolate automatically — no env needed. The
+// repo default branch (main/master) is skipped so plain dev on main keeps the
+// classic shared `userData`; `OK_AUTO_INSTANCE=0` disables auto-derivation.
+// Must run before `requestSingleInstanceLock()` and any `userData` read;
+// packaged builds ignore it so releases are never affected.
+if (!app.isPackaged) {
+  // Auto-derivation is for humans running `bun run dev` from a worktree; keep it
+  // out of the E2E desktop smoke, which drives an unpackaged build on a feature
+  // branch. Deriving there would run git on the launch path and relocate
+  // `userData` on every smoke launch. Explicit `OK_INSTANCE` still wins, so a
+  // test can opt into isolation on purpose.
+  const resolved = resolveEffectiveInstanceName(process.env, app.getAppPath(), {
+    autoDeriveEnabled: process.env.OK_DESKTOP_E2E_SMOKE !== '1',
+  });
+  if (resolved) {
+    const relocatedUserData = deriveInstanceUserDataDir(app.getPath('userData'), resolved.name);
+    if (relocatedUserData) {
+      mkdirSync(relocatedUserData, { recursive: true });
+      app.setPath('userData', relocatedUserData);
+      getRootDesktopLogger().info(
+        {
+          event: 'desktop.parallel-instance',
+          instance: resolved.name,
+          source: resolved.source,
+          userData: relocatedUserData,
+        },
+        'relocated userData for parallel dev instance',
+      );
+    }
   }
 }
 
@@ -5140,7 +5169,7 @@ function bootPrimaryInstance(): void {
           nativeTheme.themeSource = source;
         },
         refreshApplicationMenu,
-        installDockIcon,
+        installDockIcon: () => installDockIcon(instanceLabel),
         log: { warn: (msg, obj) => console.warn(msg, obj) },
         appVersion: app.getVersion(),
         maxSupportedSchemaVersion: MAX_SUPPORTED_SCHEMA_VERSION,
