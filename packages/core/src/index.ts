@@ -210,6 +210,8 @@ export {
   type EditorId,
   HOSTS_WITH_USER_SKILL_DIR,
   PROJECT_SKILL_EDITOR_IDS,
+  PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
+  RESERVED_PROJECT_SKILL_NAME,
 } from './constants/editors.ts';
 export {
   detectEmbeddedHostFromBrowser,

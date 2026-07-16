@@ -15,7 +15,12 @@
 
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { CONFIG_SCHEMA_MAJOR_PATH, LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';
+import {
+  CONFIG_SCHEMA_MAJOR_PATH,
+  LOCAL_DIR,
+  OK_DIR,
+  PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
+} from '@inkeep/open-knowledge-core';
 import { tracedMkdirSync, tracedWriteFileSync } from './fs-traced.ts';
 
 /**
@@ -194,8 +199,9 @@ function writeIfMissing(filePath: string, content: string, label: string): boole
 function ensureGitignoreEntries(
   filePath: string,
   scaffoldContent: string,
+  label = '.ok/.gitignore',
 ): 'created' | 'updated' | 'unchanged' {
-  assertNotSymlink(filePath, '.ok/.gitignore');
+  assertNotSymlink(filePath, label);
   if (!existsSync(filePath)) {
     tracedWriteFileSync(filePath, scaffoldContent, 'utf-8');
     return 'created';
@@ -404,4 +410,46 @@ export function writeRootGitignoreForNewRepo(projectDir: string): 'created' | 's
   return writeIfMissing(join(projectDir, '.gitignore'), ROOT_GITIGNORE_TEMPLATE, '.gitignore')
     ? 'created'
     : 'skipped';
+}
+
+/**
+ * The committed `.gitignore` block that always excludes OK's built-in
+ * `open-knowledge` project-skill projection (`.{host}/skills/open-knowledge/`)
+ * from git. Header comment plus one line per editor host dir, derived from the
+ * single core source `PROJECT_SKILL_PROJECTION_IGNORE_PATHS`.
+ *
+ * Unlike the OK config sharing toggle (which lives in the per-machine
+ * `.git/info/exclude`), this block goes in the COMMITTED project-root
+ * `.gitignore` so it travels to every clone. That is what makes it race-free: a
+ * fresh clone that runs `git add .` before ever opening the project in OK
+ * already has the rule, so the regenerated, version-stamped projection can never
+ * be staged.
+ */
+const PROJECT_SKILL_GITIGNORE_BLOCK = `# OpenKnowledge regenerates its built-in project skill on every open, and
+# different app builds version-stamp it differently. It is a per-machine
+# artifact — keep it out of git so teammates don't collide under auto-sync.
+${PROJECT_SKILL_PROJECTION_IGNORE_PATHS.join('\n')}
+`;
+
+/**
+ * Ensure the project-root `.gitignore` excludes OK's built-in project-skill
+ * projection. Append-if-missing: creates the file when absent, otherwise appends
+ * only the lines not already present (preserving every user line). Idempotent
+ * and symlink-guarded.
+ *
+ * Called on EVERY `ok init` / desktop project setup / open — not just fresh
+ * `git init` — because a project may have been created before this rule existed
+ * or opened inside a pre-existing repo. `writeRootGitignoreForNewRepo` (the
+ * `.DS_Store` seed) is fresh-repo-only and user-territory; this block is a
+ * correctness requirement, so it runs unconditionally and merges into whatever
+ * `.gitignore` already exists.
+ */
+export function ensureProjectSkillGitignore(
+  projectDir: string,
+): 'created' | 'updated' | 'unchanged' {
+  return ensureGitignoreEntries(
+    join(projectDir, '.gitignore'),
+    PROJECT_SKILL_GITIGNORE_BLOCK,
+    '.gitignore',
+  );
 }

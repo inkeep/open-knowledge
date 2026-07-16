@@ -30,6 +30,7 @@ import {
   INSTALLED_SKILLS_REL,
   OK_DIR,
   parseInstalledSkills,
+  RESERVED_PROJECT_SKILL_NAME,
 } from '@inkeep/open-knowledge-core';
 // `resolveGitDirDetailed` is in the `node:fs`-importing subpath of core —
 // the barrel deliberately omits it to keep the main entry browser-safe
@@ -93,10 +94,18 @@ export type SharingMode = 'shared' | 'local-only' | 'no-git';
  *  - `.mcp.json`                        — Claude Code project MCP (merged file)
  *  - `.cursor/mcp.json`                 — Cursor project MCP (merged file)
  *  - `.codex/config.toml`               — Codex project MCP (merged file)
- *  - `.claude/skills/open-knowledge/`   — Claude project SKILL.md bundle (whole-tree)
- *  - `.cursor/skills/open-knowledge/`   — Cursor project SKILL.md bundle (whole-tree)
- *  - `.codex/skills/open-knowledge/`    — Codex project SKILL.md bundle (whole-tree)
  *  - `.claude/launch.json`              — Claude launcher entry (merged file)
+ *
+ * NOT here: OK's built-in `open-knowledge` project-skill projection
+ * (`.{host}/skills/open-knowledge/`). That bundle is a LOCAL, per-machine
+ * artifact — the app regenerates it on every open and different builds
+ * version-stamp it differently — so it is ALWAYS git-excluded via a committed
+ * `.gitignore` block (`ensureProjectSkillGitignore` in
+ * `@inkeep/open-knowledge-server`), independent of this shared/local-only
+ * toggle. Carving it OUT here is what makes the exclusion unconditional:
+ * leaving it in would only hide it in local-only mode, and it must be hidden in
+ * BOTH modes. Authored skills at `.{host}/skills/<other-name>/` stay in the
+ * toggle (handled by the installed-skill marker loop below).
  *
  * `.ok/` and `.okignore` are emitted UNANCHORED (slash-free). gitignore
  * matches a slash-free pattern at every depth, so one entry each covers the
@@ -126,32 +135,28 @@ export function getOkArtifactPaths(projectRoot: string): readonly string[] {
     if (target.projectConfigPath) {
       paths.push(toProjectRelative(target.projectConfigPath(projectRoot), projectRoot));
     }
-    if (target.projectSkillPath) {
-      // The target points at `<dir>/SKILL.md`; exclude the whole bundle
-      // dir so future skill assets (manifest, scripts/, etc.) are covered
-      // by the same line. Equivalent to writing both `SKILL.md` and the
-      // dir separately, but cleaner in the exclude file.
-      const skillFile = toProjectRelative(target.projectSkillPath(projectRoot), projectRoot);
-      paths.push(`${dirnamePosix(skillFile)}/`);
-    }
+    // `target.projectSkillPath` (the built-in `open-knowledge` bundle
+    // projection) is deliberately NOT excluded here — it is ALWAYS git-ignored
+    // via the committed `.gitignore` block, not this per-machine toggle. See
+    // the doc comment above.
   }
   paths.push(CLAUDE_LAUNCH_JSON);
 
-  // The loop above only excludes the single
-  // hardcoded `open-knowledge` bundle per editor — authored skills
-  // (`.{host}/skills/<name>/`) and pack skills would still leak in
-  // local-only mode. Enumerate the installed-skill set and
-  // exclude each skill's projection per the hosts it was installed to. A
-  // blanket `skills/` exclude would over-reach into hand-placed non-OK
-  // skills, so this is installed-skill-set-aware (only OK-managed
-  // projections). When no marker exists (nothing installed on this machine),
-  // only the bundle excludes apply.
+  // Authored skills (`.{host}/skills/<name>/`) and pack skills DO follow the
+  // shared/local-only toggle. Enumerate the installed-skill set and exclude
+  // each skill's projection per the hosts it was installed to. A blanket
+  // `skills/` exclude would over-reach into hand-placed non-OK skills, so this
+  // is installed-skill-set-aware (only OK-managed projections). The reserved
+  // built-in `open-knowledge` bundle is skipped — it is always git-ignored via
+  // the committed `.gitignore` block, never this toggle (see doc comment
+  // above). When no marker exists, only `.ok/` + config excludes apply.
   const markerPath = join(projectRoot, ...INSTALLED_SKILLS_REL);
   if (existsSync(markerPath)) {
     try {
       const marker = parseInstalledSkills(readFileSync(markerPath, 'utf-8'));
       if (marker) {
         for (const [name, entry] of Object.entries(marker.skills)) {
+          if (name === RESERVED_PROJECT_SKILL_NAME) continue;
           for (const host of entry.hosts) {
             const root = EDITOR_PROJECT_SKILL_ROOT[host as EditorId];
             if (root) paths.push(`${root}/${name}/`);
@@ -560,14 +565,4 @@ function toProjectRelative(absPath: string, projectRoot: string): string {
 /** POSIX-ify a path string. Idempotent on already-POSIX inputs. */
 function toPosix(p: string): string {
   return sep === '/' ? p : p.split(sep).join('/');
-}
-
-/**
- * Directory-of, POSIX semantics. `dirname('foo/bar')` is `'foo'`. Used to
- * shorten an editor's `projectSkillPath` (a file path ending in
- * `SKILL.md`) into the bundle dir we exclude as a whole tree.
- */
-function dirnamePosix(p: string): string {
-  const ix = p.lastIndexOf('/');
-  return ix < 0 ? '.' : p.slice(0, ix);
 }

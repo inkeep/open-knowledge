@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RESERVED_PROJECT_SKILL_NAME } from '@inkeep/open-knowledge-core';
 import { BUNDLE_IDS, BUNDLE_SKILL_NAME, bundleSkillMdPath } from './skill-bundles.ts';
 
 // Repo root = three levels up from this file (packages/server/src → root).
@@ -26,6 +27,13 @@ describe('skill-bundles (single source of truth)', () => {
       const nameLine = /^name:\s*(.+)$/m.exec(raw)?.[1]?.trim();
       expect(nameLine).toBe(BUNDLE_SKILL_NAME[id]);
     }
+  });
+
+  test("core's RESERVED_PROJECT_SKILL_NAME stays in lock-step with BUNDLE_SKILL_NAME.project", () => {
+    // Core can't depend on server, so it duplicates the reserved project-skill
+    // name. This pins the two so a bundle rename can't silently break the
+    // git-exclude carve-out / `.gitignore` block that key off the core copy.
+    expect(RESERVED_PROJECT_SKILL_NAME).toBe(BUNDLE_SKILL_NAME.project);
   });
 
   test('write-skill description is within the skill contract (≤1024, no XML tags)', () => {

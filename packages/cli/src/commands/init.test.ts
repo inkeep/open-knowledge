@@ -1196,7 +1196,7 @@ describe('runInit', () => {
       expect(output).toContain(`Seeded .gitignore at ${testDir}/.gitignore (.DS_Store)`);
     });
 
-    it('pre-existing .git/ → does NOT touch a hand-authored project-root .gitignore', async () => {
+    it('pre-existing .git/ → preserves a hand-authored .gitignore but appends the always-excluded project-skill block', async () => {
       mkdirSync(join(testDir, '.git'));
       writeFileSync(join(testDir, '.git/HEAD'), 'ref: refs/heads/main\n');
       const original = '# user-authored\nnode_modules/\n';
@@ -1205,19 +1205,25 @@ describe('runInit', () => {
       const result = await runInitForTest({ editors: ['claude'] });
 
       expect(result.didGitInit).toBe(false);
+      // The `.DS_Store` seed (`writeRootGitignoreForNewRepo`) still never
+      // touches an existing file — `rootGitignoreCreated` stays false and its
+      // disclosure is omitted.
       expect(result.rootGitignoreCreated).toBe(false);
-      const after = readFileSync(join(testDir, '.gitignore'), 'utf-8');
-      expect(after).toBe(original);
-      // Formatter omits the seed disclosure
       const output = formatInitResult(result, testDir);
       expect(output).not.toContain('Seeded .gitignore');
+      // But the built-in project-skill projection block IS appended
+      // (append-only) so it can never be committed. User lines are preserved.
+      const after = readFileSync(join(testDir, '.gitignore'), 'utf-8');
+      expect(after.startsWith(original)).toBe(true);
+      expect(after).toContain('.claude/skills/open-knowledge/');
+      expect(after).toContain('.pi/skills/open-knowledge/');
     });
 
-    it('fresh tmpdir WITH a pre-existing .gitignore → did-git-init but seed is skipped', async () => {
+    it('fresh tmpdir WITH a pre-existing .gitignore → .DS_Store seed skipped, project-skill block appended', async () => {
       // Edge case: user pre-staged a folder with their own .gitignore but no
-      // .git/. ensureProjectGit runs `git init`; the seed helper sees the
-      // existing file and skips. The fresh-git-init disclosure still fires;
-      // the seed disclosure does not.
+      // .git/. ensureProjectGit runs `git init`; the `.DS_Store` seed helper
+      // sees the existing file and skips. The always-excluded project-skill
+      // block is still appended (append-only).
       const original = 'secrets.env\n';
       writeFileSync(join(testDir, '.gitignore'), original, 'utf-8');
 
@@ -1225,9 +1231,11 @@ describe('runInit', () => {
 
       expect(result.didGitInit).toBe(true);
       expect(result.rootGitignoreCreated).toBe(false);
-      expect(readFileSync(join(testDir, '.gitignore'), 'utf-8')).toBe(original);
-      // Formatter suppresses the seed disclosure when rootGitignoreCreated is
-      // false even though didGitInit fired — completes the 2×2 matrix.
+      const after = readFileSync(join(testDir, '.gitignore'), 'utf-8');
+      expect(after.startsWith(original)).toBe(true);
+      expect(after).toContain('.claude/skills/open-knowledge/');
+      // Formatter suppresses the `.DS_Store` seed disclosure when
+      // rootGitignoreCreated is false even though didGitInit fired.
       const output = formatInitResult(result, testDir);
       expect(output).not.toContain('Seeded .gitignore');
     });

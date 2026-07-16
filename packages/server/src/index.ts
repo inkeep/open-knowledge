@@ -213,6 +213,7 @@ export {
   type BuildConfigYmlOptions,
   buildConfigYmlContent,
   CONFIG_FILENAME,
+  ensureProjectSkillGitignore,
   type InitContentOptions,
   type InitContentResult,
   initContent,
@@ -363,6 +364,11 @@ export {
   ensureProjectGit,
   ProjectGitInitError,
 } from './project-git.ts';
+export {
+  type UntrackProjectSkillResult,
+  type UntrackSkipReason,
+  untrackTrackedProjectSkillProjection,
+} from './project-skill-git.ts';
 export {
   type BlockConflict,
   CONFLICT_MARKER_RE,

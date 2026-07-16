@@ -90,8 +90,10 @@ describe('ok config-sharing unshare → share round-trip', () => {
     const exclude = readExclude(dir);
     expect(exclude).toContain('.ok/');
     expect(exclude).toContain('.mcp.json');
-    expect(exclude).toContain('.claude/skills/open-knowledge/');
     expect(exclude).toContain('.claude/launch.json');
+    // The built-in project-skill projection is NEVER in the sharing toggle — it
+    // is always excluded via the committed `.gitignore` block instead.
+    expect(exclude).not.toContain('.claude/skills/open-knowledge/');
     expect(process.exitCode).not.toBe(1);
   });
 

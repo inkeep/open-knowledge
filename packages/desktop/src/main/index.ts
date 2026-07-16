@@ -83,6 +83,7 @@ import {
   createEphemeralProjectDir,
   discoverLockDirs,
   ensureProjectGit,
+  ensureProjectSkillGitignore,
   findEnclosingGitRoot,
   findEnclosingProjectRoot,
   getLocalDir,
@@ -99,6 +100,7 @@ import {
   resolveBundledSkillDir,
   resolveLockDir,
   USER_GLOBAL_BUNDLE_IDS,
+  untrackTrackedProjectSkillProjection,
   withSpan,
   writeBundleDecision,
   writeTargetVersion,
@@ -1790,6 +1792,16 @@ async function openProject(
     aiIntegrationsFailedCount = logAiIntegrationOutcomes(
       writeProjectAiIntegrations(discovery.projectDir, [...request.editorIds]),
     );
+    // Always exclude OK's built-in project-skill projection via the committed
+    // `.gitignore` (independent of the sharing toggle below) so the per-machine,
+    // per-build bundle can never be committed. Non-fatal.
+    try {
+      ensureProjectSkillGitignore(discovery.projectDir);
+    } catch (err) {
+      console.warn(
+        `[onboarding] skipping project-skill .gitignore entry at ${discovery.projectDir}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     // Sharing-mode transition. Runs AFTER every artifact-
     // writing step so the tracked-files probe inside
     // `addOkPathsToGitExclude` sees the latest on-disk shape. On a tracked-
@@ -1859,6 +1871,38 @@ async function openProject(
         err: err instanceof Error ? err.message : String(err),
       });
     });
+
+    // Heal the git posture of OK's built-in project-skill projection for an
+    // existing (managed) repo: (1) ensure the committed `.gitignore` entry so a
+    // repo created before this rule gets it, and (2) untrack the projection if
+    // it is already tracked upstream — the fix for the recurring-conflict bug
+    // where teammates on different app builds restamp the bundle's version
+    // line. The untrack is a fire-and-forget dedicated commit that races safely
+    // with auto-sync (see `untrackTrackedProjectSkillProjection`); it is a
+    // no-op once HEAD no longer tracks the bundle.
+    try {
+      ensureProjectSkillGitignore(resolvedProjectDir);
+    } catch (err) {
+      console.warn('[main] project-skill .gitignore ensure failed', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    void untrackTrackedProjectSkillProjection(resolvedProjectDir)
+      .then((result) => {
+        if (result.kind === 'untracked') {
+          getLogger('project').info(
+            { dirs: result.dirs, commitSha: result.commitSha },
+            'untracked OpenKnowledge project-skill projection (now local-only)',
+          );
+        } else if (result.kind === 'failed') {
+          console.warn('[main] project-skill untrack failed', { err: result.error });
+        }
+      })
+      .catch((err) => {
+        console.warn('[main] project-skill untrack threw', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
   }
 
   // Emit one onboarding-consent span per completed flow. SDK disabled → no-op.

@@ -48,7 +48,7 @@ describe('getOkArtifactPaths', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('returns the canonical fourteen-path artifact set when no config.yml exists', () => {
+  it('returns the canonical eight-path artifact set (bundle projection carved out) when no config.yml exists', () => {
     const paths = getOkArtifactPaths(dir);
     expect(paths).toContain(`${OK_DIR}/`);
     expect(paths).toContain('.okignore');
@@ -56,20 +56,20 @@ describe('getOkArtifactPaths', () => {
     expect(paths).toContain('.cursor/mcp.json');
     expect(paths).toContain('.codex/config.toml');
     expect(paths).toContain('opencode.json');
-    expect(paths).toContain('.claude/skills/open-knowledge/');
-    expect(paths).toContain('.cursor/skills/open-knowledge/');
-    expect(paths).toContain('.codex/skills/open-knowledge/');
-    expect(paths).toContain('.github/skills/open-knowledge/');
-    // OpenCode installs into its own `.opencode/skills/` (its own primary dir,
-    // not a shared `.agents/skills/` write), so it adds a distinct skill path on
-    // top of its `opencode.json` config.
-    expect(paths).toContain('.opencode/skills/open-knowledge/');
     // Pi has no MCP config — its project artifact is the managed bridge
-    // extension, plus its own `.pi/skills/` primary dir.
+    // extension.
     expect(paths).toContain('.pi/extensions/open-knowledge.ts');
-    expect(paths).toContain('.pi/skills/open-knowledge/');
     expect(paths).toContain('.claude/launch.json');
-    expect(paths).toHaveLength(14);
+    // OK's built-in `open-knowledge` project-skill projection is NOT in the
+    // sharing-toggle set — it is always excluded via the committed `.gitignore`
+    // block, regardless of sharing mode.
+    expect(paths).not.toContain('.claude/skills/open-knowledge/');
+    expect(paths).not.toContain('.cursor/skills/open-knowledge/');
+    expect(paths).not.toContain('.codex/skills/open-knowledge/');
+    expect(paths).not.toContain('.github/skills/open-knowledge/');
+    expect(paths).not.toContain('.opencode/skills/open-knowledge/');
+    expect(paths).not.toContain('.pi/skills/open-knowledge/');
+    expect(paths).toHaveLength(8);
   });
 
   it('preserves a stable order so `ok config-sharing status` and unit-test snapshots are deterministic', () => {
@@ -92,16 +92,17 @@ describe('getOkArtifactPaths', () => {
     expect(paths).not.toContain('docs/.ok/');
     expect(paths).not.toContain('docs/.okignore');
     expect(paths.some((p) => p.includes('**'))).toBe(false);
-    // content.dir must not inflate the set — same fourteen paths as the
+    // content.dir must not inflate the set — same eight paths as the
     // no-config case, just never `<contentDir>`-prefixed.
-    expect(paths).toHaveLength(14);
+    expect(paths).toHaveLength(8);
   });
 
-  it('excludes each installed skill projection per the OF3 marker (PRD-6934 C9 fix)', () => {
-    // The pre-fix set covered only the single hardcoded `open-knowledge`
-    // bundle, so authored + pack skills leaked in local-only mode. With an
-    // installed-skills marker present, every projection `.{host}/skills/<name>/`
-    // is excluded per the hosts it was installed to.
+  it('excludes each AUTHORED skill projection per the marker, but never the built-in bundle', () => {
+    // Authored + pack skills still follow the shared/local-only toggle. With an
+    // installed-skills marker present, every authored projection
+    // `.{host}/skills/<name>/` is excluded per the hosts it was installed to.
+    // The reserved built-in `open-knowledge` bundle is NEVER added here — it is
+    // always git-ignored via the committed `.gitignore` block instead.
     mkdirSync(join(dir, OK_DIR, 'local'), { recursive: true });
     writeFileSync(
       join(dir, OK_DIR, 'local', 'installed-skills.json'),
@@ -122,6 +123,15 @@ describe('getOkArtifactPaths', () => {
             scripts: true,
             installedAt: '2026-06-05T00:00:00.000Z',
           },
+          // A stray marker entry using the reserved name must be skipped, never
+          // re-added to the toggle set.
+          'open-knowledge': {
+            hosts: ['claude', 'cursor'],
+            contentHash: 'ghi',
+            scope: 'project',
+            scripts: false,
+            installedAt: '2026-06-05T00:00:00.000Z',
+          },
         },
       }),
       'utf-8',
@@ -131,15 +141,16 @@ describe('getOkArtifactPaths', () => {
     expect(paths).toContain('.cursor/skills/trip-log/');
     expect(paths).toContain('.github/skills/trip-log/');
     expect(paths).toContain('.codex/skills/fishing-pack/'); // codex → .codex
-    // The shipped bundle excludes remain alongside the authored ones.
-    expect(paths).toContain('.claude/skills/open-knowledge/');
+    // The reserved built-in bundle is carved out in BOTH loops.
+    expect(paths).not.toContain('.claude/skills/open-knowledge/');
+    expect(paths).not.toContain('.cursor/skills/open-knowledge/');
   });
 
-  it('falls back to the bundle-only set when the marker is absent or corrupt', () => {
+  it('falls back to the bundle-carved-out base set when the marker is absent or corrupt', () => {
     mkdirSync(join(dir, OK_DIR, 'local'), { recursive: true });
     writeFileSync(join(dir, OK_DIR, 'local', 'installed-skills.json'), '{ corrupt', 'utf-8');
     const paths = getOkArtifactPaths(dir);
-    expect(paths).toHaveLength(14); // corrupt marker → fail-soft, no per-skill paths
+    expect(paths).toHaveLength(8); // corrupt marker → fail-soft, no per-skill paths
   });
 });
 

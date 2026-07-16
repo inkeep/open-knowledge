@@ -128,6 +128,38 @@ export const PROJECT_SKILL_EDITOR_IDS = ALL_EDITOR_IDS.filter(
 );
 
 /**
+ * Reserved name of OpenKnowledge's built-in project-skill bundle — the ONE skill
+ * OK ships and re-projects into every wired editor's host dir on every project
+ * open (`.{host}/skills/open-knowledge/`). Mirrors `BUNDLE_SKILL_NAME.project`
+ * (and `SHIPPED_SKILL_NAME`) in `@inkeep/open-knowledge-server`; duplicated here
+ * because core cannot depend on server, and pinned in lock-step by a server-side
+ * test. Authored / pack skills take other names — the reserved `open-knowledge*`
+ * prefix keeps them from shadowing this bundle.
+ */
+export const RESERVED_PROJECT_SKILL_NAME = 'open-knowledge';
+
+/**
+ * Per-editor host-dir paths OK re-projects its built-in `open-knowledge` bundle
+ * into (`.{host}/skills/open-knowledge/`) — POSIX, trailing slash, derived from
+ * `EDITOR_PROJECT_SKILL_ROOT` so a new project-skill editor flows here
+ * automatically.
+ *
+ * This projection is a LOCAL, per-machine artifact: the app regenerates it on
+ * every open, and different builds version-stamp its frontmatter differently, so
+ * committing it to git makes teammates collide under auto-sync (recurring merge
+ * conflicts / "external-changes-pending"). These paths are therefore ALWAYS
+ * git-excluded via a committed `.gitignore` block (`ensureProjectSkillGitignore`),
+ * independent of the OK shared/local-only sharing toggle. Authored skills at
+ * `.{host}/skills/<other-name>/` are NOT here — they still follow the toggle.
+ */
+export const PROJECT_SKILL_PROJECTION_IGNORE_PATHS: readonly string[] = ALL_EDITOR_IDS.flatMap(
+  (id) => {
+    const root = EDITOR_PROJECT_SKILL_ROOT[id];
+    return root === null ? [] : [`${root}/${RESERVED_PROJECT_SKILL_NAME}/`];
+  },
+);
+
+/**
  * Editors that keep a `~/.<host>/skills/<name>/` (and `<projectDir>/.<host>/skills/`)
  * layout — the single source for the CLI `repair-skills` + desktop `skill-reclaim`
  * sweeps (previously a hand-maintained literal duplicated in BOTH, with only the

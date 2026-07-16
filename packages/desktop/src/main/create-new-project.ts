@@ -31,6 +31,7 @@ import {
   coercePackId,
   type EnsureProjectGitResult,
   ensureProjectGit,
+  ensureProjectSkillGitignore,
   findEnclosingProjectRoot,
   initContent,
   planSeed,
@@ -438,6 +439,19 @@ export async function runCreateNew(
   //    the project root wouldn't see them. `writeProjectAiIntegrations` never
   //    throws; per-(editor × integration) failures land in `integrations`.
   const aiIntegrations = writeProjectAiIntegrations(projectDir, [...editors]);
+
+  // 8b. Always exclude OK's built-in project-skill projection via the committed
+  //     `.gitignore` (independent of the sharing toggle below) so the
+  //     per-machine, per-build bundle can never be committed. Non-fatal — a
+  //     seed failure leaves a valid project. Nothing is tracked yet on a fresh
+  //     create, so no untrack migration is needed here.
+  try {
+    ensureProjectSkillGitignore(projectDir);
+  } catch (err) {
+    console.warn(
+      `[create-new-project] skipping project-skill .gitignore entry at ${projectDir}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   // 9. Sharing-mode transition.
   //    Mirrors the consent-dialog flow in main/index.ts — same single

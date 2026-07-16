@@ -291,9 +291,15 @@ describe('runCreateNew — git-root promotion', () => {
     expect(cfg).not.toMatch(/^\s*dir:\s*notes\/MyProj/m);
 
     // Promotion lands on a pre-existing `.git/` (the enclosing repo).
-    // ensureProjectGit reports didInit=false → seed helper does NOT run,
-    // and any `.gitignore` the enclosing repo owns is left alone.
-    expect(existsSync(resolve(repo, '.gitignore'))).toBe(false);
+    // ensureProjectGit reports didInit=false → the `.DS_Store` seed helper does
+    // NOT run. But the always-excluded project-skill `.gitignore` block IS
+    // written (append-only) regardless, so the per-build bundle can never be
+    // committed.
+    const gi = resolve(repo, '.gitignore');
+    expect(existsSync(gi)).toBe(true);
+    const giBody = readFileSync(gi, 'utf8');
+    expect(giBody).toContain('.claude/skills/open-knowledge/');
+    expect(giBody).not.toContain('.DS_Store'); // the DS_Store seed stayed gated
   });
 
   test('no promotion when parent has no enclosing git repo — projectDir === target, content.dir === "."', async () => {

@@ -26,6 +26,7 @@ import type {
 import {
   BUNDLE_SKILL_NAME,
   ensureProjectGit,
+  ensureProjectSkillGitignore,
   GitNotAvailableError,
   GitTooOldError,
   initContent,
@@ -33,6 +34,7 @@ import {
   MCP_SERVER_NAME,
   ProjectGitInitError,
   USER_GLOBAL_BUNDLE_IDS,
+  untrackTrackedProjectSkillProjection,
   writeBundleDecision,
   writeRootGitignoreForNewRepo,
 } from '@inkeep/open-knowledge-server';
@@ -1659,6 +1661,25 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
         `[ok] Skipping .gitignore seed at ${projectRoot}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  }
+
+  // 1c. Always exclude OK's built-in project-skill projection via the committed
+  // `.gitignore` — unconditionally (fresh OR existing repo), since the bundle is
+  // a per-machine, per-build artifact that must never be committed. Then heal a
+  // repo where it is ALREADY tracked (idempotent no-op otherwise). Both are
+  // non-fatal: the project is fully usable even if git is unavailable.
+  try {
+    ensureProjectSkillGitignore(projectRoot);
+  } catch (err) {
+    console.warn(
+      `[ok] Skipping project-skill .gitignore entry at ${projectRoot}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const untrackResult = await untrackTrackedProjectSkillProjection(projectRoot);
+  if (untrackResult.kind === 'untracked') {
+    console.warn(
+      `[ok] Untracked the OpenKnowledge project skill (${untrackResult.dirs.join(', ')}) — it is now local-only. Teammates will see this as a deletion on their next pull.`,
+    );
   }
 
   const scope = await resolveMcpScope({

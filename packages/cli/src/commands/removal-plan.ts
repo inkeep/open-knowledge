@@ -18,6 +18,7 @@
 
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
+import { PROJECT_SKILL_PROJECTION_IGNORE_PATHS } from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 // `resolveShadowDir` (resolves `<gitdir>/ok/`, worktree-aware; throws on a
 // malformed/inaccessible .git pointer) lives in the node:fs-importing subpath
@@ -198,8 +199,16 @@ export function deinitOps(
   });
 
   // 5. Whole-remove the OK-owned dirs/files — everything in the artifact set
-  //    EXCEPT the surgically-handled MCP configs + launch.json.
-  for (const rel of getOkArtifactPaths(projectRoot)) {
+  //    EXCEPT the surgically-handled MCP configs + launch.json, PLUS the
+  //    built-in `open-knowledge` project-skill projection. That projection was
+  //    carved OUT of `getOkArtifactPaths` (it is always git-ignored, never in
+  //    the sharing toggle), but it is still part of OK's footprint, so deinit
+  //    must sweep it here.
+  const removeRelPaths = new Set<string>([
+    ...getOkArtifactPaths(projectRoot),
+    ...PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
+  ]);
+  for (const rel of removeRelPaths) {
     const bare = rel.replace(/\/$/, '');
     if (mcpRelPaths.has(bare)) continue; // handled surgically
     if (bare === '.claude/launch.json') continue; // handled by launch-entry

@@ -10,9 +10,14 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { OK_DIR } from '@inkeep/open-knowledge-core';
+import {
+  OK_DIR,
+  PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
+  RESERVED_PROJECT_SKILL_NAME,
+} from '@inkeep/open-knowledge-core';
 import {
   buildConfigYmlContent,
+  ensureProjectSkillGitignore,
   initContent,
   OK_OKIGNORE_TEMPLATE,
   packageVersionMajorMinor,
@@ -430,5 +435,66 @@ describe('buildConfigYmlContent', () => {
     expect(out).toContain('~/.ok/global.yml');
     expect(out).toContain('./.ok/config.yml');
     expect(out).not.toContain('~/.ok/config.yml');
+  });
+});
+
+describe('ensureProjectSkillGitignore', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = resolve(
+      tmpdir(),
+      `skill-gitignore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('creates a `.gitignore` with every editor-host projection path when absent', () => {
+    expect(ensureProjectSkillGitignore(testDir)).toBe('created');
+    const body = readFileSync(join(testDir, '.gitignore'), 'utf-8');
+    for (const p of PROJECT_SKILL_PROJECTION_IGNORE_PATHS) {
+      expect(body).toContain(p);
+    }
+    // Covers all editor host roots, not just claude.
+    expect(body).toContain('.claude/skills/open-knowledge/');
+    expect(body).toContain('.cursor/skills/open-knowledge/');
+    expect(body).toContain('.codex/skills/open-knowledge/');
+    expect(body).toContain('.github/skills/open-knowledge/');
+    expect(body).toContain('.opencode/skills/open-knowledge/');
+    expect(body).toContain('.pi/skills/open-knowledge/');
+  });
+
+  it('appends only the missing projection lines to an existing `.gitignore`, preserving user lines', () => {
+    writeFileSync(join(testDir, '.gitignore'), '# user rules\nnode_modules/\n.DS_Store\n', 'utf-8');
+    expect(ensureProjectSkillGitignore(testDir)).toBe('updated');
+    const body = readFileSync(join(testDir, '.gitignore'), 'utf-8');
+    expect(body).toContain('# user rules');
+    expect(body).toContain('node_modules/');
+    expect(body).toContain('.DS_Store');
+    expect(body).toContain('.claude/skills/open-knowledge/');
+  });
+
+  it('is idempotent — a second call reports `unchanged` and does not duplicate lines', () => {
+    ensureProjectSkillGitignore(testDir);
+    expect(ensureProjectSkillGitignore(testDir)).toBe('unchanged');
+    const body = readFileSync(join(testDir, '.gitignore'), 'utf-8');
+    const occurrences = body.split('.claude/skills/open-knowledge/').length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it('is skill-name-scoped — it never blanket-excludes `.{host}/skills/`', () => {
+    ensureProjectSkillGitignore(testDir);
+    const body = readFileSync(join(testDir, '.gitignore'), 'utf-8');
+    // Every emitted line is the reserved-name bundle dir, never a bare
+    // `.{host}/skills/` that would catch authored skills too.
+    for (const line of body.split('\n').filter((l) => l.trim() && !l.startsWith('#'))) {
+      expect(line).toContain(`/${RESERVED_PROJECT_SKILL_NAME}/`);
+    }
+    expect(body).not.toContain('.claude/skills/\n');
+    expect(body).not.toContain('.cursor/skills/\n');
   });
 });
