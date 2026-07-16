@@ -697,6 +697,21 @@ describe('applyWorktreeCheckoutOutcome (worktree leg)', () => {
     }
   });
 
+  test('helper-not-found stays open and threads the missing command to the toast signal', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, {
+      ok: false,
+      reason: 'helper-not-found',
+      helper: 'git-lfs',
+      message: 'git-lfs filter-process: git-lfs: command not found',
+    });
+    expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });
+    expect(result.sideEffect).toEqual({
+      kind: 'toast',
+      reason: 'helper-not-found',
+      helper: 'git-lfs',
+    });
+  });
+
   test('null (IPC rejection) stays open with the proxy-null toast signal', () => {
     const result = applyWorktreeCheckoutOutcome(creating, null);
     expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });

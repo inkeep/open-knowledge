@@ -667,6 +667,10 @@ msgstr "A real shell is off for this project. Turning it on runs commands with t
 msgid "A report helps us find the cause. Nothing is sent until you review it."
 msgstr "A report helps us find the cause. Nothing is sent until you review it."
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "a required git tool"
+msgstr "a required git tool"
+
 #: src/components/NewTemplateDialog.tsx
 msgid "A reusable starting point for new documents in this folder."
 msgstr "A reusable starting point for new documents in this folder."
@@ -3705,6 +3709,14 @@ msgstr "Git auto-sync"
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
+msgstr "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
+
+#: src/components/NewWorktreeDialog.tsx
+msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
+msgstr "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."

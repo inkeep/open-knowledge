@@ -22,8 +22,9 @@ import { execFile, execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { gitSpawnEnv } from './git-spawn-env.ts';
 
-const GIT_ENV = { ...process.env, LANG: 'C', LC_ALL: 'C' } as const;
+const GIT_ENV = gitSpawnEnv();
 
 const execFileAsync = promisify(execFile);
 

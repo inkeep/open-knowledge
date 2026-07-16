@@ -434,8 +434,20 @@ export function ShareBranchSwitchDialog({
   // error vocabulary (NewWorktreeDialog's inline copy), adapted where that copy
   // assumes a typed-name form field. Exhaustive so a new create-failure reason
   // is a compile error here instead of a silent generic toast.
-  function showWorktreeFailureToast(reason: WorktreeCheckoutSideEffectReason): void {
+  function showWorktreeFailureToast(
+    reason: WorktreeCheckoutSideEffectReason,
+    helper?: string,
+  ): void {
     switch (reason) {
+      case 'helper-not-found': {
+        // `helper` accompanies this reason from the classifier; the fallback
+        // keeps the copy coherent if a future producer omits it.
+        const tool = helper ?? t`a required git tool`;
+        toast.error(
+          t`Git needs ${tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again.`,
+        );
+        return;
+      }
       case 'branch-not-found':
         toast.error(t`Branch ${shareBranch} no longer exists on the remote.`);
         return;
@@ -476,12 +488,14 @@ export function ShareBranchSwitchDialog({
   // because neither branch's capture variable gets set.
   function applyWorktreeOutcome(result: WorktreeCreateResult | null): void {
     let failureReason: WorktreeCheckoutSideEffectReason | null = null;
+    let failureHelper: string | undefined;
     let shouldDismiss = false;
     let openPath: string | null = null;
     setBranchSwitchState((prev) => {
       const { state: next, sideEffect } = applyWorktreeCheckoutOutcome(prev, result);
       if (sideEffect) {
         failureReason = sideEffect.reason;
+        failureHelper = sideEffect.helper;
         shouldDismiss = next.phase === 'dismissed';
       }
       if (next.phase === 'opening-worktree') {
@@ -496,7 +510,7 @@ export function ShareBranchSwitchDialog({
           branch: shareBranch,
         }),
       );
-      showWorktreeFailureToast(failureReason);
+      showWorktreeFailureToast(failureReason, failureHelper);
     }
     if (openPath !== null) {
       // The anchor window's cached worktree model is stale now (a worktree was

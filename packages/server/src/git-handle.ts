@@ -6,8 +6,23 @@
  * write operations to prevent concurrent git index corruption.
  */
 
-import { resolve } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { delimiter, resolve } from 'node:path';
+import { augmentGitSpawnPath } from '@inkeep/open-knowledge-core';
 import simpleGit, { type SimpleGit, type SimpleGitOptions } from 'simple-git';
+
+/** Existence probe for `augmentGitSpawnPath` — directories only. Named to
+ *  match the `GitSpawnPathOptions.isDir` seam (and the desktop twin in
+ *  `git-spawn-env.ts`); duplicated rather than shared because core stays
+ *  browser-compatible and can't export a `node:fs` probe. */
+function isDir(dir: string): boolean {
+  try {
+    return existsSync(dir) && statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+}
 
 export { withParentLock } from './git-mutex.ts';
 
@@ -143,10 +158,19 @@ export function buildGitEnv(ghToken?: RelayGhToken): Record<string, string> {
     GIT_TERMINAL_PROMPT: '0',
     GIT_MERGE_AUTOEDIT: 'no',
   };
+  // Augmented, not raw: a packaged-desktop-spawned server inherits launchd's
+  // minimal PATH, which resolves git but NOT the helpers git spawns
+  // mid-operation (git-lfs filters, credential helpers, hooks). Appending
+  // well-known tool dirs keeps existing PATH entries authoritative while
+  // making those helpers resolvable — the terminal-launched `ok start` path
+  // is a no-op (its PATH already contains them).
   const path = process.env.PATH ?? process.env.Path;
-  if (path !== undefined) {
-    env.PATH = path;
-  }
+  env.PATH = augmentGitSpawnPath(path, {
+    platform: process.platform,
+    homeDir: homedir(),
+    isDir,
+    delimiter,
+  });
   for (const key of GIT_AUTH_ENV_KEYS) {
     const value = process.env[key];
     if (value !== undefined) env[key] = value;

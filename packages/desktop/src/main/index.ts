@@ -4107,17 +4107,33 @@ function registerIpcHandlers() {
     if (request.kind === 'list') {
       return listWorktreeSelector(anchor, anchor);
     }
-    if (request.kind === 'checkout') {
-      return checkoutShareBranchWorktree({ anchorPath: anchor, branch: request.branch });
+    const result =
+      request.kind === 'checkout'
+        ? await checkoutShareBranchWorktree({ anchorPath: anchor, branch: request.branch })
+        : await createWorktree({
+            anchorPath: anchor,
+            branch: request.branch,
+            baseBranch: request.baseBranch,
+            baseRef: request.baseRef,
+            remoteRef: request.remoteRef,
+            createBranch: request.createBranch,
+          });
+    if (!result.ok) {
+      // The renderer's toast shows only the typed reason; the classified git
+      // stderr in `message` (and the missing-helper name) lands here so a
+      // failure is diagnosable from ~/.ok/logs without a devtools session.
+      getLogger('worktree').warn(
+        {
+          kind: request.kind,
+          reason: result.reason,
+          helper: result.helper,
+          message: result.message,
+          branch: request.branch,
+        },
+        'worktree dispatch failed',
+      );
     }
-    return createWorktree({
-      anchorPath: anchor,
-      branch: request.branch,
-      baseBranch: request.baseBranch,
-      baseRef: request.baseRef,
-      remoteRef: request.remoteRef,
-      createBranch: request.createBranch,
-    });
+    return result;
   });
 
   handle('ok:share:validate-folder', async (_event, request) => {

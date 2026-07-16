@@ -133,6 +133,8 @@ function createErrorCopy(reason: string): MessageDescriptor {
       return msg`Enter a valid branch name (no spaces, no leading dot, no "..").`;
     case 'no-git':
       return msg`This project isn't a git repository, so worktrees aren't available.`;
+    case 'helper-not-found':
+      return msg`Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again.`;
     default:
       return msg`Couldn't create the worktree. Try a different name.`;
   }

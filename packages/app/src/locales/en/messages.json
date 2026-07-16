@@ -826,6 +826,9 @@
     "Hp1l6f": ["Current"],
     "HpK_8d": ["Reload"],
     "HptUxX": ["Number"],
+    "HqOPpj": [
+      "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
+    ],
     "HqiZvw": [
       "OpenKnowledge stores its configuration and internal files inside a newly created <0>.ok</0> directory in your project root folder."
     ],
@@ -1542,6 +1545,11 @@
     "Z6rrjc": [
       "No <0>.markdownlint.*</0> file yet — every rule runs on the same defaults as the VS Code markdownlint extension: all on, except line length."
     ],
+    "Z7x_Zh": [
+      "Git needs ",
+      ["tool"],
+      " for this repository, but it isn't installed or couldn't be found. Install it, then try again."
+    ],
     "Z8KDox": ["Enter a folder name (e.g. brain)."],
     "Z8lGw6": ["Share"],
     "ZARuZJ": ["Couldn't load files"],
@@ -1703,6 +1711,7 @@
     "cGV6Mh": [
       "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
     ],
+    "cHhH3i": ["a required git tool"],
     "cIptmH": ["In the Claude Desktop App"],
     "cKjLuT": ["(project + user)"],
     "cN1Gcp": ["A worktree folder for ", ["shareBranch"], " already exists."],

@@ -335,6 +335,12 @@ export {
 } from './extensions/wiki-link-embed.ts';
 export { parseBranchList } from './git/branch-list-parser.ts';
 export {
+  augmentGitSpawnPath,
+  type GitSpawnPathOptions,
+  wellKnownToolDirs,
+} from './git/git-spawn-path.ts';
+export { detectMissingGitHelper } from './git/missing-git-helper.ts';
+export {
   type BridgeWorktreeEntry,
   parseWorktreeListPorcelain,
 } from './git/worktree-list-parser.ts';

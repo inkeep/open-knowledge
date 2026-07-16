@@ -27,6 +27,7 @@ import { isAbsolute, join, sep } from 'node:path';
 import { promisify } from 'node:util';
 import {
   buildWorktreeSelectorModel,
+  detectMissingGitHelper,
   isBranchNotFoundGitError,
   isValidBranchName,
   parseBranchList,
@@ -37,6 +38,7 @@ import {
   type WorktreeListResult,
   worktreeRelativeDir,
 } from '@inkeep/open-knowledge-core';
+import { gitSpawnEnv } from './git-spawn-env.ts';
 import { listGitWorktrees } from './list-git-worktrees.ts';
 import { seedWorktreeAutoSync } from './worktree-autosync-inherit.ts';
 import { clearRecentGitCache } from './worktree-recents.ts';
@@ -44,9 +46,8 @@ import { seedWorktreeProjectSetup } from './worktree-setup-inherit.ts';
 
 const execFileAsync = promisify(execFile);
 
-/** English-stable git env — mirrors `list-git-worktrees.ts` so stderr
- *  classification survives a non-English host locale. */
-const GIT_ENV = { ...process.env, LANG: 'C', LC_ALL: 'C' } as const;
+/** English-stable, PATH-augmented git env — see `git-spawn-env.ts`. */
+const GIT_ENV = gitSpawnEnv();
 
 /** Fetch spawn env: `GIT_ENV` plus `GIT_TERMINAL_PROMPT=0`, mirroring the
  *  server's git discipline — desktop main has no terminal to answer a
@@ -516,10 +517,19 @@ interface ExecErr {
   message?: string;
 }
 
-interface AddErrorClassification {
-  readonly reason: 'branch-exists' | 'already-checked-out' | 'path-exists' | 'error';
-  readonly message?: string;
-}
+type AddErrorClassification =
+  | {
+      /** The command git couldn't spawn — required, mirroring the
+       *  `WorktreeCreateResult` arm this classification flows into. */
+      readonly reason: 'helper-not-found';
+      readonly helper: string;
+      readonly message?: string;
+    }
+  | {
+      readonly reason: 'branch-exists' | 'already-checked-out' | 'path-exists' | 'error';
+      readonly message?: string;
+      readonly helper?: never;
+    };
 
 /** Raw error text of a failed git spawn: stderr when present (Buffer or
  *  string), else the error message. Buffer.isBuffer narrows the stable
@@ -544,5 +554,12 @@ function classifyAddError(err: unknown): AddErrorClassification {
     return { reason: 'branch-exists' };
   }
   if (stderr.includes('already exists')) return { reason: 'path-exists' };
+  // A configured helper (git-lfs filter, credential helper, hook interpreter)
+  // that PATH can't resolve — surfaced by name so the failure copy can say
+  // which tool to install instead of the retry-blind generic arm.
+  const helper = detectMissingGitHelper(raw);
+  if (helper !== null) {
+    return { reason: 'helper-not-found', helper, message: raw.replace(/\s+/g, ' ').slice(0, 300) };
+  }
   return { reason: 'error', message: raw.replace(/\s+/g, ' ').slice(0, 300) };
 }

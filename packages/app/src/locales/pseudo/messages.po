@@ -662,6 +662,10 @@ msgstr ""
 msgid "A report helps us find the cause. Nothing is sent until you review it."
 msgstr ""
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "a required git tool"
+msgstr ""
+
 #: src/components/NewTemplateDialog.tsx
 msgid "A reusable starting point for new documents in this folder."
 msgstr ""
@@ -3699,6 +3703,14 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
+msgstr ""
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
+msgstr ""
+
+#: src/components/NewWorktreeDialog.tsx
+msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx

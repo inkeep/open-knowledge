@@ -126,6 +126,18 @@ export type WorktreeCreateResult =
   | { readonly ok: true; readonly path: string; readonly created: boolean }
   | {
       readonly ok: false;
+      readonly reason: 'helper-not-found';
+      /**
+       * The command git tried to spawn and couldn't resolve (e.g. `git-lfs`),
+       * extracted by `detectMissingGitHelper`. Required on this arm so a
+       * producer can't emit the reason without naming the tool — the failure
+       * copy shows it verbatim so the user knows what to install.
+       */
+      readonly helper: string;
+      readonly message?: string;
+    }
+  | {
+      readonly ok: false;
       readonly reason:
         | 'invalid-branch'
         | 'branch-exists'
@@ -136,6 +148,7 @@ export type WorktreeCreateResult =
         | 'fetch-failed'
         | 'error';
       readonly message?: string;
+      readonly helper?: never;
     };
 
 export interface BuildWorktreeSelectorModelInput {

@@ -24,6 +24,7 @@ import { realpathSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { promisify } from 'node:util';
 import { type BridgeWorktreeEntry, parseWorktreeListPorcelain } from '@inkeep/open-knowledge-core';
+import { gitSpawnEnv } from './git-spawn-env.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -61,7 +62,7 @@ export async function listGitWorktrees(anchorPath: string): Promise<BridgeWorktr
   try {
     const result = await execFileAsync('git', ['worktree', 'list', '--porcelain'], {
       cwd: anchorPath,
-      env: { ...process.env, LANG: 'C', LC_ALL: 'C' },
+      env: gitSpawnEnv(),
       maxBuffer: MAX_STDOUT_BYTES,
     });
     stdout = String(result.stdout);

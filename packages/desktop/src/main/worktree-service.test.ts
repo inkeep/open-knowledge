@@ -328,6 +328,52 @@ describe('worktree-service', () => {
     expect(res.reason).toBe('path-exists');
   });
 
+  // drive the `helper-not-found` branch via a real git failure: a REQUIRED
+  // clean/smudge filter whose command doesn't exist anywhere on PATH — the
+  // same failure shape a Homebrew git-lfs produces under a packaged app's
+  // minimal launchd PATH (the checkout aborts before writing any files).
+  test('createWorktree classifies a missing required filter as helper-not-found', async () => {
+    handle = await makeRepo();
+    const missing = 'ok-test-missing-helper-cmd';
+    await git(handle.mainRepo, 'config', 'filter.okbogus.clean', `${missing} clean`);
+    await git(handle.mainRepo, 'config', 'filter.okbogus.smudge', `${missing} smudge`);
+    await git(handle.mainRepo, 'config', 'filter.okbogus.required', 'true');
+    writeFileSync(join(handle.mainRepo, '.gitattributes'), 'data.bin filter=okbogus\n');
+    // Commit the attributed file with the filter DISABLED (`-c` outranks the
+    // repo config) so the fixture commit itself doesn't need the helper.
+    writeFileSync(join(handle.mainRepo, 'data.bin'), 'payload\n');
+    await git(
+      handle.mainRepo,
+      '-c',
+      'filter.okbogus.required=false',
+      '-c',
+      'filter.okbogus.clean=cat',
+      'add',
+      '-A',
+    );
+    await git(
+      handle.mainRepo,
+      '-c',
+      'filter.okbogus.required=false',
+      '-c',
+      'filter.okbogus.clean=cat',
+      'commit',
+      '-m',
+      'add filtered file',
+    );
+    await git(handle.mainRepo, 'branch', 'filtered');
+    const res = await createWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'filtered',
+      createBranch: false,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe('helper-not-found');
+    expect(res.helper).toContain(missing);
+    expect((res.message ?? '').length).toBeGreaterThan(0);
+  });
+
   // drive the `error` fallthrough with a git failure that matches none of
   // the recognized classifications, and confirm the raw stderr is surfaced.
   test('createWorktree surfaces an unrecognized git failure as error with a message', async () => {

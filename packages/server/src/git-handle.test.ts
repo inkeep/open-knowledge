@@ -49,9 +49,12 @@ describe('buildGitEnv', () => {
     expect(buildGitEnv().GIT_MERGE_AUTOEDIT).toBe('no');
   });
 
-  test('preserves PATH so a bare-command credential helper resolves', () => {
+  test('preserves PATH (as a prefix) so a bare-command credential helper resolves', () => {
     withEnvEntries({ PATH: '/custom/bin:/usr/bin' }, () => {
-      expect(buildGitEnv().PATH).toBe('/custom/bin:/usr/bin');
+      // Augmentation may APPEND well-known tool dirs (git-lfs & co. under a
+      // packaged app's minimal launchd PATH) but must never reorder or drop
+      // the inherited entries — existing resolution stays authoritative.
+      expect(buildGitEnv().PATH?.startsWith('/custom/bin:/usr/bin')).toBe(true);
     });
   });
 

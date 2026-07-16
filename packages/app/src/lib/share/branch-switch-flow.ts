@@ -576,6 +576,9 @@ export interface ApplyWorktreeCheckoutOutcomeResult {
   readonly sideEffect?: {
     readonly kind: 'toast';
     readonly reason: WorktreeCheckoutSideEffectReason;
+    /** Set iff `reason === 'helper-not-found'` — the missing command git
+     *  reported (e.g. `git-lfs`), interpolated into the toast copy. */
+    readonly helper?: string;
   };
 }
 
@@ -620,6 +623,6 @@ export function applyWorktreeCheckoutOutcome(
   }
   return {
     state: { phase: 'ready', info: state.info },
-    sideEffect: { kind: 'toast', reason: result.reason },
+    sideEffect: { kind: 'toast', reason: result.reason, helper: result.helper },
   };
 }
