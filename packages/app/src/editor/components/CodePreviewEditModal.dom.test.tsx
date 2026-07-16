@@ -6,15 +6,19 @@
  *   - the Save button commits the current draft via `onSave`
  *   - a fresh open re-seeds from `initialValue` (no stale-draft carryover)
  *   - the preview pane mounts only when `renderPreview` is supplied
+ *   - Cmd/Ctrl+Enter commits the draft and closes (the Mod-Enter save
+ *     binding must beat `defaultKeymap`'s insertBlankLine)
  *
- * CodeMirror's keymap (Esc, Cmd+Enter) lives inside its own EditorView
- * and isn't reachable via DOM-fire keyboard events in jsdom (it reads
- * from KeyboardEvent.code which jsdom doesn't fully populate). Those
- * shortcuts are exercised in Playwright instead.
+ * CodeMirror's keymap runs off a native `keydown` on `.cm-content`; a
+ * jsdom `KeyboardEvent` with `key`/`code` populated reaches it (same
+ * pattern as `SourceEditor.dom.test.tsx`). Esc is still exercised only in
+ * Playwright — it bubbles past CodeMirror to Radix's own dialog-close
+ * handler, a path jsdom's synthetic event doesn't drive.
  */
 
 import { afterEach, describe, expect, test } from 'bun:test';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { EditorView } from '@codemirror/view';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { CodePreviewEditModal } from './CodePreviewEditModal';
 
@@ -27,6 +31,15 @@ if (typeof window !== 'undefined' && !(globalThis as { NodeFilter?: unknown }).N
   (globalThis as { NodeFilter?: unknown }).NodeFilter = (
     window as unknown as { NodeFilter: unknown }
   ).NodeFilter;
+}
+
+// CodeMirror's post-mount measure pass (`isScrolledToBottom`) reads the bare
+// `Window` constructor off the global scope; jsdom exposes it on `window` but
+// not `globalThis`. Bridge it so the measure rAF doesn't spew unhandled
+// `ReferenceError: Window is not defined` while the source editor lays out.
+// Mirrors `SourceEditor.dom.test.tsx`.
+if (typeof window !== 'undefined' && !(globalThis as { Window?: unknown }).Window) {
+  (globalThis as { Window?: unknown }).Window = (window as unknown as { Window: unknown }).Window;
 }
 
 afterEach(() => {
@@ -184,6 +197,58 @@ describe('CodePreviewEditModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => {
       expect(saved).toEqual(['<h1>first</h1>', '<h1>second</h1>']);
+    });
+  });
+
+  test('Cmd/Ctrl+Enter commits the draft via onSave and closes the modal', async () => {
+    // Regression guard for the Mod-Enter precedence bug: `@codemirror/commands`
+    // defaultKeymap binds Mod-Enter to insertBlankLine, so the modal's own save
+    // binding has to sit ahead of the spread to win. If it slips behind
+    // defaultKeymap, insertBlankLine consumes the key, onSave never fires, and
+    // the waitFor below times out.
+    let saved: string | null = null;
+    render(
+      <Harness
+        initialValue="graph TD; A-->B"
+        onSave={(v) => {
+          saved = v;
+        }}
+      />,
+    );
+    const host = await screen.findByTestId('ok-code-preview-edit-modal-source');
+    await waitFor(() => {
+      expect(host.querySelector('.cm-content')).toBeTruthy();
+    });
+    const content = host.querySelector<HTMLElement>('.cm-content');
+    if (!content) throw new Error('CodeMirror content never mounted');
+    // Confirms the EditorView is live so the dispatched key reaches its keymap.
+    expect(EditorView.findFromDOM(content)).toBeTruthy();
+
+    // CodeMirror resolves `Mod` to Meta on macOS and Ctrl elsewhere, keyed off
+    // the platform captured at `@codemirror/view` import time (navigator.platform,
+    // unchanged in this file). Send whichever modifier matches so the binding
+    // fires regardless of the CI host OS.
+    const modProps = /Mac/.test(navigator.platform) ? { metaKey: true } : { ctrlKey: true };
+    await act(async () => {
+      content.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          bubbles: true,
+          cancelable: true,
+          ...modProps,
+        }),
+      );
+    });
+
+    // onSave fired with the exact draft — no blank line inserted, because our
+    // binding returned true before insertBlankLine could run …
+    await waitFor(() => {
+      expect(saved).toBe('graph TD; A-->B');
+    });
+    // … and the modal closed.
+    await waitFor(() => {
+      expect(screen.queryByTestId('ok-code-preview-edit-modal-body')).toBeNull();
     });
   });
 });

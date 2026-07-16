@@ -427,6 +427,7 @@
     "8fRyLo": ["Invalid patch payload"],
     "8fc_3j": ["Protected branch — cannot push"],
     "8m8diM": ["No location selected. Use Browse to choose a folder."],
+    "8nWu1k": ["Empty diagram"],
     "8tjQCz": ["Explore"],
     "8uAWix": [
       "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."

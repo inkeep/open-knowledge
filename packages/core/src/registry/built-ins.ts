@@ -1336,6 +1336,11 @@ export const builtInComponents: JsxComponentMeta[] = [
     icon: 'Workflow',
     category: 'content',
     displayName: 'Mermaid',
+    // Every prop is hidden (source is authored in the fullscreen edit modal,
+    // not the PropPanel), so the editor can't fall back on the autoFocus
+    // placeholder path for an empty diagram. This label drives an explicit
+    // empty-state card the NodeView renders instead of a zero-height stub.
+    placeholder: { label: 'Add a Mermaid diagram' },
     description:
       'Diagram rendered from Mermaid source (flowchart, sequence, class, state, ER, gantt, pie). Authored exclusively as ` ```mermaid ` fenced code.',
     searchTerms: [

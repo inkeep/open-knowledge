@@ -1892,9 +1892,22 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
   }, [state.status, canEdit]);
 
   if (!chart.trim()) {
+    // Reached in read-only render contexts and the edit-modal preview with an
+    // empty draft. The editor's authoring path renders a click-to-edit
+    // placeholder card upstream (JsxComponentView), so this stays passive and
+    // non-interactive — but it MUST hold real height: a zero-height stub
+    // collapses the block and clips the hover chrome (the sliver bug).
     return (
-      <div className="mermaid mermaid-placeholder" data-component-type="mermaid">
-        <span className="mermaid-empty"> </span>
+      <div
+        className={cn(
+          'mermaid mermaid-placeholder flex min-h-16 w-full items-center justify-center rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-6 text-sm text-muted-foreground',
+          className,
+        )}
+        data-component-type="mermaid"
+      >
+        <span className="mermaid-empty">
+          <Trans>Empty diagram</Trans>
+        </span>
       </div>
     );
   }

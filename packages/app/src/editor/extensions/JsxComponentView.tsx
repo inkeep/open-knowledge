@@ -421,17 +421,44 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
         : null;
   const [editModalOpen, setEditModalOpen] = useState(false);
 
-  // Auto-open popover when: (1) component becomes selected AND (2) the
-  // pendingAutoOpen flag is set. Uses controlled state so it works across
-  // React re-renders (defaultOpen only reads on first mount). `wasSelected`
-  // ref prevents double-fire under Strict Mode; explicit deps ensure the
-  // effect only runs when one of the watched values actually changes.
+  // Source-bearing self-closing leaves (today only MermaidFence) hide their
+  // single required prop from the PropPanel and author it in the fullscreen
+  // edit modal (the pencil). With every prop hidden `hasEditableProps` is
+  // false, so neither the gear nudge nor the autoFocus `shouldRenderPlaceholder`
+  // path fires — an empty one would otherwise mount its renderer's zero-height
+  // empty state, giving no click target and clipping the hover chrome. When the
+  // source prop is empty/absent and the editor is editable, render the shared
+  // placeholder card (real min-height + a clear CTA) wired to open the modal.
+  const isSourceBearing = editableSource !== null;
+  const sourcePropValue = editableSource ? currentProps[editableSource.propName] : undefined;
+  const showSourcePlaceholder =
+    isSourceBearing &&
+    !hasEditableProps &&
+    editor.isEditable &&
+    (typeof sourcePropValue !== 'string' || sourcePropValue.trim() === '');
+  const sourcePlaceholder = showSourcePlaceholder ? resolveDescriptorPlaceholder(descriptor) : null;
+
+  // Auto-open the config surface when (1) the component becomes selected and
+  // (2) the pendingAutoOpen flag is set (slash insert / add-child). Editable-
+  // props components open the PropPanel popover; a source-bearing leaf has no
+  // popover, so it opens the edit modal instead. Controlled state survives
+  // re-renders (defaultOpen only reads on first mount); `wasSelected` prevents
+  // a Strict-Mode double-fire.
   useEffect(() => {
-    if (selected && !wasSelected.current && hasEditableProps && consumeAutoOpen(pos)) {
-      setPopoverOpen(true);
+    if (
+      selected &&
+      !wasSelected.current &&
+      (hasEditableProps || isSourceBearing) &&
+      consumeAutoOpen(pos)
+    ) {
+      if (hasEditableProps) {
+        setPopoverOpen(true);
+      } else {
+        setEditModalOpen(true);
+      }
     }
     wasSelected.current = selected;
-  }, [selected, hasEditableProps, pos]);
+  }, [selected, hasEditableProps, isSourceBearing, pos]);
 
   const primitiveProps = extractPrimitiveProps(node.attrs, descriptor.reactNodePropNames);
   // Compat descriptors render through their canonical's React component via
@@ -724,7 +751,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   // skip the wrapper-level handler so setNodeSelection does not double-fire
   // alongside `openPanel`'s own selection + popover-open.
   const handleBodyClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (showPlaceholder) return;
+    if (showPlaceholder || showSourcePlaceholder) return;
     if (!isSelfClosingLeaf) return;
     const target = e.target as HTMLElement;
     // React events bubble through the React tree including portals, so
@@ -1295,6 +1322,18 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               selected={isInnermostSelected}
             />
           </PopoverAnchor>
+        ) : showSourcePlaceholder && sourcePlaceholder ? (
+          // Source-bearing leaf (Mermaid) with an empty source prop. No
+          // PopoverAnchor: its authoring surface is the fullscreen edit modal,
+          // not the PropPanel popover, so the card opens the modal directly.
+          // The card's min-height is what keeps the block a real click target
+          // and stops the hover chrome (pencil / trash) from being clipped.
+          <DescriptorPlaceholder
+            label={sourcePlaceholder.label}
+            Icon={sourcePlaceholder.Icon}
+            onClick={() => setEditModalOpen(true)}
+            selected={isInnermostSelected}
+          />
         ) : (
           <ComponentErrorBoundary
             resetKey={resetKey}

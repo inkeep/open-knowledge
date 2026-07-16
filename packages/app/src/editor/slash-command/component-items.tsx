@@ -432,6 +432,10 @@ export function consumeAutoOpen(pos?: number): boolean {
  * After inserting a component, focus appropriately:
  * - Has editable props → NodeSelect the component (triggers popover auto-open)
  * - Has children only → place cursor inside children for typing
+ * - Self-closing leaf with no editable props (source-bearing, e.g. Mermaid,
+ *   whose source is authored in the fullscreen edit modal) → NodeSelect it so
+ *   the placeholder card + chrome show, and flag the NodeView to auto-open its
+ *   edit modal on selection
  */
 export function focusInsertedComponent(
   editor: Editor,
@@ -449,6 +453,18 @@ export function focusInsertedComponent(
     });
   } else if (descriptor.hasChildren) {
     editor.commands.setTextSelection(insertPos + 2);
+  } else {
+    // Self-closing leaf with no editable props — today only MermaidFence,
+    // whose source lives in the fullscreen edit modal, not the PropPanel.
+    // Without this branch a slash insert did nothing visible: no selection,
+    // no cursor move, and the empty renderer collapsed to a zero-height
+    // sliver. NodeSelect it so the placeholder card + chrome render, and let
+    // the NodeView auto-open the edit modal off the same pendingAutoOpen flag
+    // the popover path uses.
+    setPendingAutoOpen(insertPos);
+    requestAnimationFrame(() => {
+      editor.commands.setNodeSelection(insertPos);
+    });
   }
 }
 

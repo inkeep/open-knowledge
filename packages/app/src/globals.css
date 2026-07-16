@@ -965,6 +965,17 @@
      does not prematurely hide it. padding-left compensates so text is unchanged. */
   margin-left: -2.5rem;
   padding-left: 2.5rem;
+  /* Mirror the same negative-margin/padding trick on the right. Without it, the
+     content box's right edge sits flush with the editor element's border-box
+     right edge (content-end), so a `w-full` bordered block (e.g. the empty-Mermaid
+     placeholder card) paints its right border with ZERO in-element slack — the
+     left border has 2.5rem of it. Any right-side clip (an overflow ancestor's edge
+     or a scrollbar gutter at wide widths) then shaves that flush 1px right border
+     while the slack-protected left/top/bottom survive. Extending the border-box
+     2.5rem into the right gutter (padding-right compensates, so text and every
+     block stay put) gives the right border the same slack the left already has. */
+  margin-right: -2.5rem;
+  padding-right: 2.5rem;
   @apply text-gray-800 dark:text-white/80;
 }
 
@@ -982,6 +993,11 @@
   line-height: 1.5;
   margin-left: 0;
   padding-left: 0;
+  /* Drop the right gutter mirror too — the slim composer is a single-line prompt,
+     not a document body, so it needs neither the drag-handle hit area nor the
+     full-width-block border slack. */
+  margin-right: 0;
+  padding-right: 0;
 }
 
 .ProseMirror.composer-prosemirror p {

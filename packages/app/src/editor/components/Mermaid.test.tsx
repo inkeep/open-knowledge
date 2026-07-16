@@ -37,10 +37,15 @@ const {
 } = await import('./Mermaid.tsx');
 
 describe('MermaidView — placeholder branch', () => {
-  test('empty chart renders the placeholder shell', () => {
+  test('empty chart renders the placeholder shell with real height', () => {
     const html = renderToString(<MermaidView chart="" />);
-    expect(html).toContain('class="mermaid mermaid-placeholder"');
+    expect(html).toContain('mermaid-placeholder');
     expect(html).toContain('data-component-type="mermaid"');
+    // The empty state must hold height so the block is a real target and the
+    // hover chrome isn't clipped (the zero-height sliver bug); it also carries
+    // a visible hint instead of a blank space.
+    expect(html).toContain('min-h-16');
+    expect(html).toContain('Empty diagram');
   });
 
   test('whitespace-only chart treated as empty', () => {

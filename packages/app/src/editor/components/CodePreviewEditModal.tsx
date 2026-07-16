@@ -266,14 +266,21 @@ export function CodePreviewEditModal({
         // tuned for WCAG-AA contrast on both light and dark surfaces.
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         syntaxHighlighting(propEditorHighlight),
-        // `indentWithTab` MUST come first so Tab inserts indentation
-        // instead of moving focus to the next dialog control (the
-        // browser's default Tab handling). Esc still bubbles to Radix
-        // so the dialog close path works.
+        // Within a single `keymap.of([...])`, earlier array entries win for
+        // a given key (their commands run first; the first to return true
+        // stops the chain). Two orderings ride on that:
+        //   - The `Mod-Enter` save binding MUST precede `...defaultKeymap`,
+        //     because defaultKeymap binds `Mod-Enter` to `insertBlankLine`.
+        //     Behind the spread, insertBlankLine would win and Cmd/Ctrl+Enter
+        //     would insert a newline instead of committing — contradicting
+        //     the footer's "⌘ Enter saves" promise. Our binding returns true,
+        //     so first position makes it authoritative.
+        //   - `indentWithTab` binds `Tab` (a different key), so its order
+        //     relative to the others is immaterial; it stays near the front
+        //     so Tab inserts indentation instead of moving focus to the next
+        //     dialog control. Esc still bubbles to Radix so the dialog close
+        //     path works.
         keymap.of([
-          indentWithTab,
-          ...defaultKeymap,
-          ...historyKeymap,
           {
             key: 'Mod-Enter',
             preventDefault: true,
@@ -283,6 +290,9 @@ export function CodePreviewEditModal({
               return true;
             },
           },
+          indentWithTab,
+          ...defaultKeymap,
+          ...historyKeymap,
         ]),
         EditorView.lineWrapping,
         EditorState.tabSize.of(2),

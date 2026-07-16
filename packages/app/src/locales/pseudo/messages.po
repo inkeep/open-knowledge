@@ -3025,6 +3025,10 @@ msgstr ""
 msgid "Empty"
 msgstr ""
 
+#: src/editor/components/Mermaid.tsx
+msgid "Empty diagram"
+msgstr ""
+
 #: src/components/NewItemDialog.tsx
 msgid "Empty starting content"
 msgstr ""
