@@ -99,8 +99,10 @@
  * the desktop case only:
  *
  * When packages/desktop's `electron-vite dev` serves this CSS with
- * `root: packages/app + configFile: false`, Vite runs with CWD=packages/desktop
- * so Tailwind's auto-detection scans packages/desktop/** — which has no .tsx
+ * `root: packages/app` (electron-vite resolves its own config from the desktop
+ * package and does not use the app's vite.config.ts), Vite runs with
+ * CWD=packages/desktop so Tailwind's auto-detection scans packages/desktop/**
+ * — which has no .tsx
  * files, so zero utility classes get emitted. The @source directive below
  * anchors the scan to packages/app/src/** (relative to this CSS file) and is
  * inert for packages/app's own dev because the same paths are already
@@ -109,6 +111,18 @@
  * token bridge in D-MF2 / FR-14.)
  */
 @source "./**/*.{tsx,ts,jsx,js}";
+
+/*
+ * index.html is the only place the `antialiased` body class is used, and it
+ * sits outside the src glob above. Under packages/app's own `bun run dev` /
+ * `vite build` it's covered by the Vite HTML entry, but electron-vite dev
+ * (CWD=packages/desktop; the app's vite.config.ts is not used) relies solely
+ * on these @source
+ * directives — without this line `.antialiased` is never emitted there and
+ * desktop-dev text renders heavier than production. Keep in sync with the
+ * class in index.html.
+ */
+@source "../index.html";
 
 @custom-variant dark (&:is(.dark *));
 
