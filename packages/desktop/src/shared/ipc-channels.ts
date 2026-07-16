@@ -61,6 +61,7 @@ import type {
   LocalOpOkInitResponse,
   OkBugReportCrashAckResult,
   OkBugReportCreateResult,
+  OkBugReportScreenshot,
   OkBugReportSendResult,
   OkFolderState,
   ShareTargetStatusResponse,
@@ -818,12 +819,20 @@ export interface RequestChannels {
    *   - `{kind: 'crash-ack', eventId}` → persist that the user answered a
    *     `ok:bug-report:crash-detected` invitation so that crash event never
    *     re-prompts, across restarts included.
+   *   - `{kind: 'capture-screenshot'}` → capture the sender window before the
+   *     dialog paints; returns a downscaled preview (or `null`) and holds the
+   *     full-res bytes in main for a later `create` to stage.
    * Never throws — every failure mode is discriminated so the dialog can
    * render it; each preload method casts the union result to its own arm.
    */
   'ok:bug-report:dispatch': {
     args: [request: OkBugReportRequest];
-    result: OkBugReportCreateResult | OkBugReportSendResult | OkBugReportCrashAckResult;
+    result:
+      | OkBugReportCreateResult
+      | OkBugReportSendResult
+      | OkBugReportCrashAckResult
+      | OkBugReportScreenshot
+      | null;
   };
   /** Read the LRU-capped recent-projects list from app state. */
   'ok:project:list-recent': { args: []; result: RecentProject[] };

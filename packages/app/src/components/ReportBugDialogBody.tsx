@@ -20,8 +20,10 @@
 
 import type {
   OkBugReportCrashDetectedEvent,
+  OkBugReportScreenshot,
   ReportBundleSummary,
 } from '@inkeep/open-knowledge-core';
+import { BUG_REPORT_SCREENSHOT_ZIP_ENTRY } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
   AlertCircleIcon,
@@ -145,14 +147,19 @@ function zipBasename(zipPath: string): string {
 }
 
 /**
- * The one artifact bundled raw is the opted-in crash minidump under `extra/`
- * — process memory that text redaction cannot scrub. The review/email/failure
- * cards must qualify their "secrets redacted" claim whenever one is present.
- * The summary's file inventory, not the dialog's checkbox state, is the
- * truth: opting in with no dump on disk adds nothing to the bundle.
+ * The one artifact whose rawness the cards must call out is the opted-in crash
+ * minidump under `extra/` — process memory that text redaction cannot scrub.
+ * The review/email/failure cards must qualify their "secrets redacted" claim
+ * whenever one is present. The opted-in screenshot also lands under `extra/`
+ * but is excluded here: the user previewed it before including it, so it needs
+ * no after-the-fact "not redacted" caveat. The summary's file inventory, not
+ * the dialog's checkbox state, is the truth: opting in with no dump on disk
+ * adds nothing to the bundle.
  */
 function reportIncludesRawDump(report: CreatedReport): boolean {
-  return report.summary.files.some((file) => file.startsWith('extra/'));
+  return report.summary.files.some(
+    (file) => file.startsWith('extra/') && file !== BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
+  );
 }
 
 export interface ReportBugDialogProps {
@@ -177,6 +184,15 @@ export interface ReportBugDialogProps {
    * dismiss. The event's kind and id fold into the report's note.
    */
   crashInvite?: OkBugReportCrashDetectedEvent;
+  /**
+   * Screenshot of the app captured (by the gate) before this dialog painted,
+   * or `null` when none is available (web, capture failed, or capture timed
+   * out). When present, compose shows a preview + a default-on "Screenshot"
+   * checkbox; keeping it checked stages the full-resolution image into the
+   * bundle. The gate owns capture so every trigger gets the screenshot without
+   * threading it through each mount site.
+   */
+  screenshot?: OkBugReportScreenshot | null;
 }
 
 function ReportBugDialog({
@@ -185,12 +201,16 @@ function ReportBugDialog({
   systemWide = false,
   crashContext,
   crashInvite,
+  screenshot = null,
 }: ReportBugDialogProps) {
   const { t } = useLingui();
   const [phase, setPhase] = useState<Phase>(COMPOSE_IDLE);
   const [note, setNote] = useState('');
   const [detailed, setDetailed] = useState(crashContext !== undefined || crashInvite !== undefined);
   const [includeDump, setIncludeDump] = useState(false);
+  // Default-on per the spec: when a screenshot was captured it rides along
+  // unless the user unchecks it. Only ever sent to `create` when one exists.
+  const [includeScreenshot, setIncludeScreenshot] = useState(true);
   const [sentFraction, setSentFraction] = useState(0);
   // Bumped whenever the current async create/send no longer owns the dialog
   // (cancel, close): the awaiting handler compares and drops its result.
@@ -202,6 +222,8 @@ function ReportBugDialog({
   const detailedHintId = useId();
   const dumpId = useId();
   const dumpHintId = useId();
+  const screenshotId = useId();
+  const screenshotHintId = useId();
   const referenceId = useId();
   const whatToIncludeId = useId();
 
@@ -241,6 +263,9 @@ function ReportBugDialog({
         setNote('');
         setDetailed(crashContext !== undefined || crashInvite !== undefined);
         setIncludeDump(false);
+        // Re-default the screenshot to on so the next open (which captures a
+        // fresh screenshot) starts checked, matching the compose default.
+        setIncludeScreenshot(true);
       }
       setPhase(COMPOSE_IDLE);
     }
@@ -265,6 +290,9 @@ function ReportBugDialog({
       // Only the crash invite ever asks for the dump — the plain compose has
       // no opt-in surface, so it must not even send the flag.
       ...(crashInvite !== undefined ? { includeCrashDump: includeDump } : {}),
+      // Only send the flag when a screenshot was actually captured — absent
+      // means main has nothing staged, so it must not claim an inclusion.
+      ...(screenshot !== null ? { includeScreenshot } : {}),
     });
     if (opSeqRef.current !== seq) return;
     if (result.ok) {
@@ -510,6 +538,40 @@ function ReportBugDialog({
                     </p>
                   </div>
                 </div>
+                {screenshot !== null && (
+                  <div className="flex items-start gap-2.5">
+                    <Checkbox
+                      id={screenshotId}
+                      checked={includeScreenshot}
+                      onCheckedChange={(value) => setIncludeScreenshot(value === true)}
+                      aria-describedby={screenshotHintId}
+                      disabled={phase.creating}
+                      className="mt-0.5"
+                    />
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <label htmlFor={screenshotId} className="text-sm font-medium">
+                        <Trans>Screenshot</Trans>
+                      </label>
+                      <p id={screenshotHintId} className="text-1sm text-muted-foreground">
+                        <Trans>
+                          A picture of the app from just before you opened this. It isn't redacted,
+                          so check the preview and uncheck it if anything shouldn't be shared.
+                        </Trans>
+                      </p>
+                      {/* Preview dims when excluded so the checkbox state reads
+                          at a glance; the label above already names it. */}
+                      <div className="mt-0.5 overflow-hidden rounded-md border bg-muted/40">
+                        <img
+                          src={screenshot.dataUrl}
+                          alt={t`Preview of the screenshot`}
+                          className={`block max-h-44 w-full object-contain transition-opacity motion-reduce:transition-none ${
+                            includeScreenshot ? 'opacity-100' : 'opacity-40'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {crashInvite !== undefined && (
                   <div className="flex items-start gap-2.5">
                     <Checkbox

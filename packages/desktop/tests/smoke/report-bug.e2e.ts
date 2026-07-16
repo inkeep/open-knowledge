@@ -144,6 +144,15 @@ test.describe('Report-a-bug entry points', () => {
     await paletteRow.click();
     await expect(composeDialog).toBeVisible({ timeout: 10_000 });
 
+    // The include-a-screenshot option is deliberately NOT asserted here:
+    // `webContents.capturePage()` returns an empty image on the headless CI
+    // runner (the window is never composited to a readable surface), so the
+    // gate offers no screenshot and the checkbox/preview never appear. That
+    // path is covered where it can run deterministically — the bun unit tier
+    // (byte-identical staging at `extra/screenshot.png`) and the app DOM tier
+    // (preview, default-on checkbox, opt-out, launcher-wait) — with mocked
+    // capture. This smoke test stays scoped to the entry points + bundle flow.
+
     // Compose → create. The note rides into the bundle; typing it here
     // exercises the same field the crash variants relabel.
     await composeDialog
@@ -165,7 +174,8 @@ test.describe('Report-a-bug entry points', () => {
     expect(zips).toHaveLength(1);
     const zipName = zips[0];
     expect(zipName).toMatch(/-bugreport\.zip$/);
-    expect(statSync(join(reportsDir, zipName)).size).toBeGreaterThan(0);
+    const zipPath = join(reportsDir, zipName);
+    expect(statSync(zipPath).size).toBeGreaterThan(0);
     await expect(reviewDialog.getByTitle(zipName)).toBeVisible();
   });
 });

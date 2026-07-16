@@ -642,6 +642,10 @@ msgstr ""
 msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr ""
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 msgid "A project already exists at this location. Pick a different parent folder."
 msgstr ""
@@ -5853,6 +5857,10 @@ msgstr ""
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
 msgstr ""
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Preview of the screenshot"
+msgstr ""
+
 #: src/components/ConsentDialogBody.tsx
 msgid "Preview unavailable: {errorDetail}"
 msgstr ""
@@ -6603,6 +6611,10 @@ msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Scope: "
+msgstr ""
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Screenshot"
 msgstr ""
 
 #: src/components/CommandPalette.tsx

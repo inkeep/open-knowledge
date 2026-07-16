@@ -79,6 +79,30 @@ export interface ReportBundleSummary {
 }
 
 /**
+ * Zip name of the opted-in app screenshot inside a bug-report bundle, and its
+ * full entry path once the bundle collector prefixes every `extraFiles` entry
+ * with `extra/`. Named here so main (which stages the screenshot) and the
+ * renderer (which must tell a screenshot apart from the raw crash dump in the
+ * review card's `summary.files` inventory) agree on the exact string.
+ */
+export const BUG_REPORT_SCREENSHOT_ZIP_NAME = 'screenshot.png';
+export const BUG_REPORT_SCREENSHOT_ZIP_ENTRY = `extra/${BUG_REPORT_SCREENSHOT_ZIP_NAME}`;
+
+/**
+ * A captured picture of the app window handed to the renderer for the report
+ * dialog's include-a-screenshot preview. `dataUrl` is a downscaled PNG for the
+ * `<img>` preview only; the full-resolution bytes stay in main and are staged
+ * into the bundle only when the user keeps the screenshot checked. `width` /
+ * `height` are the capture's logical (DIP) dimensions, so the preview can hold
+ * the real aspect ratio without a layout shift.
+ */
+export interface OkBugReportScreenshot {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+/**
  * Result of the desktop `ok:bug-report:dispatch` create operation. Never
  * thrown across the IPC boundary — every failure mode is discriminated so the
  * report dialog can render its failure state.

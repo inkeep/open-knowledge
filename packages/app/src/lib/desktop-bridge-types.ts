@@ -25,6 +25,7 @@ import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
   OkFolderState,
@@ -1160,9 +1161,10 @@ export interface OkDesktopBridge {
 
   /**
    * In-app "Report a bug" — `create` builds the redacted diagnostic zip
-   * (optional crash-dump opt-in via `includeCrashDump`); `send` uploads it
-   * with an email fallback; `onCrashDetected` / `crashAck` carry the
-   * crash-invite round-trip.
+   * (optional crash-dump opt-in via `includeCrashDump`, optional app
+   * screenshot via `includeScreenshot`); `captureScreenshot` grabs the app
+   * before the dialog paints; `send` uploads it with an email fallback;
+   * `onCrashDetected` / `crashAck` carry the crash-invite round-trip.
    * Canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
    * Mirrored here per the OkDesktopBridge 3-way-mirror invariant.
    */
@@ -1171,7 +1173,9 @@ export interface OkDesktopBridge {
       level: ReportBundleLevel;
       note?: string;
       includeCrashDump?: boolean;
+      includeScreenshot?: boolean;
     }): Promise<OkBugReportCreateResult>;
+    captureScreenshot(): Promise<OkBugReportScreenshot | null>;
     send(request: {
       zipPath: string;
       metadata: OkBugReportSendMetadata;

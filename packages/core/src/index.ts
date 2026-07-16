@@ -28,6 +28,7 @@ export type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportScreenshot,
   OkBugReportSendFallbackReason,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
@@ -36,7 +37,11 @@ export type {
   SerializedError,
   SerializedErrorTruncation,
 } from './logger-types.ts';
-export { LOG_LEVELS } from './logger-types.ts';
+export {
+  BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
+  BUG_REPORT_SCREENSHOT_ZIP_NAME,
+  LOG_LEVELS,
+} from './logger-types.ts';
 // Renderer/browser console-capture helpers (level mapping, structured-message
 // unwrap, batch bounds) shared by the desktop main listener, the server
 // `/api/client-logs` ingest, and the web renderer forwarder.

@@ -447,6 +447,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         },
         bugReport: {
           create: async () => ({ ok: false as const, error: 'test mock' }),
+          captureScreenshot: async () => null,
           send: async () => ({
             ok: false as const,
             reason: 'send-failed' as const,

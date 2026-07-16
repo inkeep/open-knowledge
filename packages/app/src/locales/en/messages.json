@@ -864,6 +864,7 @@
     "IreQBq": ["Repository"],
     "It9ARY": ["Toggle the right document panel."],
     "Ix0K8o": ["Hide external URL nodes"],
+    "IxyZXD": ["Screenshot"],
     "J2MgzQ": ["Undo all edits on ", ["docName"]],
     "J2Mv98": ["Name (e.g. ", ["login"], ")"],
     "J2eKUI": ["File"],
@@ -1450,6 +1451,7 @@
     "WqLq6M": ["Open with AI ", ["displayName"]],
     "Wt5W56": ["Sync is off — your edits will not sync to the remote repository."],
     "Wtw22s": ["Installing"],
+    "WuntOK": ["Preview of the screenshot"],
     "WyQxwa": ["Connect this project to GitHub to share."],
     "WyXG7w": ["Close all"],
     "Wyxs0x": ["Path cannot contain \"..\""],
@@ -2705,6 +2707,9 @@
     "yz7wBu": ["Close"],
     "yzF66j": ["Link"],
     "yzGPkm": ["Expand graph"],
+    "yzYE4B": [
+      "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+    ],
     "z-lawV": ["worktree"],
     "z0a2EA": ["Diagram from Mermaid source — flowchart, sequence, class, state, ER, gantt, pie."],
     "z1uNN0": ["No emoji found."],

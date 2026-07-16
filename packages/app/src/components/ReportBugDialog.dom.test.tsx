@@ -11,6 +11,7 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type {
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
   ReportBundleSummary,
@@ -66,8 +67,20 @@ const CREATE_OK: OkBugReportCreateResult = {
   zipSizeBytes: 7130316, // renders as "6.8 MB"
   summary: SUMMARY,
 };
+const SCREENSHOT: OkBugReportScreenshot = {
+  // A 1x1 transparent PNG stands in for the captured preview.
+  dataUrl:
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  width: 1200,
+  height: 800,
+};
 
-type CreateRequest = { level: 'standard' | 'full'; note?: string; includeCrashDump?: boolean };
+type CreateRequest = {
+  level: 'standard' | 'full';
+  note?: string;
+  includeCrashDump?: boolean;
+  includeScreenshot?: boolean;
+};
 type SendRequest = { zipPath: string; metadata: OkBugReportSendMetadata };
 
 interface BridgeLog {
@@ -76,12 +89,15 @@ interface BridgeLog {
   revealed: string[];
   opened: string[];
   clipboard: string[];
+  screenshotCalls: number;
 }
 
 function installBridge(
   handlers: {
     create?: (request: CreateRequest) => Promise<OkBugReportCreateResult>;
     send?: (request: SendRequest) => Promise<OkBugReportSendResult>;
+    /** Omit to model a build without capture (the gate reveals with no screenshot). */
+    captureScreenshot?: () => Promise<OkBugReportScreenshot | null>;
   } = {},
 ): BridgeLog {
   const log: BridgeLog = {
@@ -90,6 +106,7 @@ function installBridge(
     revealed: [],
     opened: [],
     clipboard: [],
+    screenshotCalls: 0,
   };
   const bridge = {
     bugReport: {
@@ -103,6 +120,16 @@ function installBridge(
           ? handlers.send(request)
           : Promise.resolve({ ok: true as const, reference: 'OK-8H3KQD' });
       },
+      // Only present when a handler is supplied, so the default suite exercises
+      // the no-capture reveal path (matching a non-desktop / older bridge).
+      ...(handlers.captureScreenshot
+        ? {
+            captureScreenshot: () => {
+              log.screenshotCalls += 1;
+              return handlers.captureScreenshot?.() ?? Promise.resolve(null);
+            },
+          }
+        : {}),
     },
     shell: {
       showItemInFolder: (path: string) => {
@@ -179,6 +206,11 @@ describe('ReportBugDialog', () => {
   afterEach(() => {
     cleanup();
     clearBridge();
+    // Drop any launcher stand-in a test appended so it can't stall the next
+    // test's capture (the gate waits for these to clear before shooting).
+    for (const el of document.querySelectorAll('[cmdk-root],[data-radix-popper-content-wrapper]')) {
+      el.remove();
+    }
   });
 
   test('compose state offers a labeled optional note, an always-on logs row, an off-by-default diagnostics checkbox, and the redaction note', async () => {
@@ -599,5 +631,116 @@ describe('ReportBugDialog', () => {
 
     expect(screen.getByText(/6\.8 MB · secrets redacted · 2 files/)).not.toBeNull();
     expect(screen.queryByText(/crash dump not redacted/)).toBeNull();
+  });
+
+  test('a captured screenshot shows a default-on preview + checkbox that ride into create', async () => {
+    const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
+    await renderDialog();
+
+    // Captured exactly once — before the dialog was revealed.
+    expect(log.screenshotCalls).toBe(1);
+
+    const shot = screen.getByRole('checkbox', { name: 'Screenshot' });
+    expect(shot.getAttribute('aria-checked')).toBe('true');
+    const preview = screen.getByAltText('Preview of the screenshot');
+    expect(preview.getAttribute('src')).toBe(SCREENSHOT.dataUrl);
+
+    await createReport();
+    expect(log.createCalls).toEqual([{ level: 'standard', includeScreenshot: true }]);
+  });
+
+  test('unchecking the screenshot keeps it out of create', async () => {
+    const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
+    await renderDialog();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Screenshot' }));
+    await createReport();
+
+    expect(log.createCalls).toEqual([{ level: 'standard', includeScreenshot: false }]);
+  });
+
+  test('without capture support neither the screenshot checkbox nor the flag appears', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
+    await createReport();
+
+    expect(log.createCalls).toEqual([{ level: 'standard' }]);
+    expect(log.createCalls[0]).not.toHaveProperty('includeScreenshot');
+  });
+
+  test('the review card leaves the redaction claim unqualified for a screenshot-only bundle', async () => {
+    installBridge({
+      captureScreenshot: () => Promise.resolve(SCREENSHOT),
+      create: () =>
+        Promise.resolve({
+          ...CREATE_OK,
+          summary: { ...SUMMARY, files: [...SUMMARY.files, 'extra/screenshot.png'] },
+        }),
+    });
+    await renderDialog();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    // The screenshot rides under extra/, but the user already previewed it, so
+    // it must NOT trip the crash-dump "not redacted" wording.
+    expect(screen.getByText(/6\.8 MB · secrets redacted · 3 files/)).not.toBeNull();
+    expect(screen.queryByText(/crash dump not redacted/)).toBeNull();
+  });
+
+  test('the capture waits for the launcher (⌘K palette) to clear before revealing', async () => {
+    // Stand in for the command palette still animating out as the dialog opens
+    // (the reported leak: the palette was opened only to reach Report a bug).
+    const launcher = document.createElement('div');
+    launcher.setAttribute('cmdk-root', '');
+    document.body.appendChild(launcher);
+
+    const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
+    const { ReportBugDialog } = await import('./ReportBugDialog');
+    render(
+      <TooltipProvider>
+        <ReportBugDialog open onOpenChange={() => {}} />
+      </TooltipProvider>,
+    );
+
+    // While the launcher is on screen the shot is held back: nothing captured
+    // and the dialog stays hidden.
+    await Promise.resolve();
+    expect(log.screenshotCalls).toBe(0);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // Launcher unmounts → capture fires and the dialog reveals with the preview.
+    launcher.remove();
+    await screen.findByRole('dialog');
+    expect(log.screenshotCalls).toBe(1);
+    expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
+  });
+
+  test('a capture that rejects still reveals the dialog, with no screenshot option', async () => {
+    const log = installBridge({
+      captureScreenshot: () => Promise.reject(new Error('capture failed')),
+    });
+    await renderDialog();
+
+    // The gate's capture `.catch(() => settle(null))` must degrade gracefully:
+    // the dialog opens (no stranded user), just without a screenshot to offer.
+    expect(screen.getByRole('dialog')).not.toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
+    expect(log.screenshotCalls).toBe(1);
+  });
+
+  test('the crash-invite variant skips capture entirely — opens instantly, no screenshot', async () => {
+    const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
+    await renderDialog({ crashInvite: BOOT_INVITE });
+
+    // The crash invite opens itself the moment main reports a crash, so the
+    // gate must not hold it closed for a capture (that would delay an already
+    // unprompted dialog) nor offer a screenshot — the crash dump is its artifact.
+    expect(log.screenshotCalls).toBe(0);
+    expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
+    // Still the crash-invite compose (its banner renders).
+    expect(screen.getByText('OpenKnowledge quit unexpectedly last time.')).not.toBeNull();
   });
 });

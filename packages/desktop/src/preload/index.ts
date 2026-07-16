@@ -23,6 +23,7 @@ import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
   ReportBundleLevel,
@@ -486,13 +487,23 @@ const bridge: OkDesktopBridge = {
     // (`ok:bug-report:dispatch`), respecting the hand-rolled-channel cap.
     // Each method knows its operation, so it casts the union result to its
     // own arm (the worktree-dispatch precedent).
-    create: (request: { level: ReportBundleLevel; note?: string; includeCrashDump?: boolean }) =>
+    create: (request: {
+      level: ReportBundleLevel;
+      note?: string;
+      includeCrashDump?: boolean;
+      includeScreenshot?: boolean;
+    }) =>
       invoke('ok:bug-report:dispatch', {
         kind: 'create',
         level: request.level,
         note: request.note,
         includeCrashDump: request.includeCrashDump,
+        includeScreenshot: request.includeScreenshot,
       }) as Promise<OkBugReportCreateResult>,
+    captureScreenshot: () =>
+      invoke('ok:bug-report:dispatch', {
+        kind: 'capture-screenshot',
+      }) as Promise<OkBugReportScreenshot | null>,
     send: (request: { zipPath: string; metadata: OkBugReportSendMetadata }) =>
       invoke('ok:bug-report:dispatch', {
         kind: 'send',

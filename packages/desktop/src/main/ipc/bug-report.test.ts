@@ -33,8 +33,12 @@ import { createCrashDetection } from '../crash-detection.ts';
 import { handleShellOpenExternal } from '../shell-allowlist.ts';
 import {
   type BugReportCreateDeps,
+  type BugReportScreenshotEntry,
   type BugReportSendDeps,
+  type CapturableImage,
+  type CaptureScreenshotDeps,
   DEFAULT_BUG_REPORT_INTAKE_URL,
+  handleBugReportCaptureScreenshot,
   handleBugReportCrashAck,
   handleBugReportCreate,
   handleBugReportSend,
@@ -1017,6 +1021,208 @@ describe('handleBugReportCreate — crash-dump opt-in', () => {
     } as unknown as Parameters<typeof handleBugReportCreate>[1]);
 
     expect(result).toEqual({ ok: false, error: 'invalid-request' });
+  });
+});
+
+describe('handleBugReportCreate — screenshot opt-in', () => {
+  // A PNG signature wrapping a would-be-redacted token: the screenshot must
+  // arrive byte-identical — images ride the `extra/` seam raw, never scrubbed.
+  const pngBytes = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.from('sk-ant-api03-abcdefghijklmnopqrstuvwx'),
+    Buffer.from([0x00, 0x1f, 0x8b]),
+  ]);
+
+  test('includeScreenshot stages the capture byte-for-byte at extra/screenshot.png', async () => {
+    const deps = makeDeps({ screenshotPngBytes: () => pngBytes });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeScreenshot: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(listZipEntries(result.zipPath)).toContain('extra/screenshot.png');
+    expect(readZipEntryBytes(result.zipPath, 'extra/screenshot.png').equals(pngBytes)).toBe(true);
+  });
+
+  test('without the opt-in no screenshot is included even when one was captured', async () => {
+    const deps = makeDeps({ screenshotPngBytes: () => pngBytes });
+
+    const result = await handleBugReportCreate(deps, { kind: 'create', level: 'standard' });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(listZipEntries(result.zipPath).some((e) => e.startsWith('extra/'))).toBe(false);
+  });
+
+  test('opting in with no captured screenshot still builds the bundle', async () => {
+    const deps = makeDeps({ screenshotPngBytes: () => null });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeScreenshot: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(listZipEntries(result.zipPath).some((e) => e.startsWith('extra/'))).toBe(false);
+  });
+
+  test('an opted-in screenshot and crash dump both land under extra/', async () => {
+    const dumpPath = join(makeTmpDir(), 'renderer-crash.dmp');
+    const dumpBytes = Buffer.from([0x4d, 0x44, 0x4d, 0x50, 0x00, 0xff]);
+    writeFileSync(dumpPath, dumpBytes);
+    const deps = makeDeps({
+      newestMinidumpPath: () => dumpPath,
+      screenshotPngBytes: () => pngBytes,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+      includeScreenshot: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    const entries = listZipEntries(result.zipPath);
+    expect(entries).toContain('extra/screenshot.png');
+    expect(entries).toContain('extra/renderer-crash.dmp');
+    expect(readZipEntryBytes(result.zipPath, 'extra/screenshot.png').equals(pngBytes)).toBe(true);
+    expect(readZipEntryBytes(result.zipPath, 'extra/renderer-crash.dmp').equals(dumpBytes)).toBe(
+      true,
+    );
+  });
+
+  test('a non-boolean includeScreenshot is refused as invalid-request', async () => {
+    const deps = makeDeps({ screenshotPngBytes: () => pngBytes });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeScreenshot: 'yes',
+    } as unknown as Parameters<typeof handleBugReportCreate>[1]);
+
+    expect(result).toEqual({ ok: false, error: 'invalid-request' });
+  });
+});
+
+describe('handleBugReportCaptureScreenshot', () => {
+  function fakeImage(spec: {
+    png: Buffer;
+    width: number;
+    height: number;
+    dataUrl?: string;
+  }): CapturableImage {
+    return {
+      toPNG: () => spec.png,
+      getSize: () => ({ width: spec.width, height: spec.height }),
+      resize: ({ width }) => fakeImage({ ...spec, width, dataUrl: `resized:${width}` }),
+      toDataURL: () => spec.dataUrl ?? `full:${spec.width}x${spec.height}`,
+    };
+  }
+
+  function makeCaptureDeps(overrides: Partial<CaptureScreenshotDeps> = {}): {
+    deps: CaptureScreenshotDeps;
+    store: Map<number, BugReportScreenshotEntry>;
+    registered: Array<() => void>;
+    unregistered: Array<() => void>;
+  } {
+    const store = new Map<number, BugReportScreenshotEntry>();
+    const registered: Array<() => void> = [];
+    const unregistered: Array<() => void> = [];
+    return {
+      store,
+      registered,
+      unregistered,
+      deps: {
+        store,
+        senderId: 7,
+        previewWidth: 720,
+        capturePage: async () =>
+          fakeImage({ png: Buffer.from([1, 2, 3]), width: 1000, height: 800 }),
+        registerCleanup: (cb) => registered.push(cb),
+        unregisterCleanup: (cb) => unregistered.push(cb),
+        ...overrides,
+      },
+    };
+  }
+
+  test('a successful capture stores full-res bytes, registers a reaper, and returns a downscaled preview', async () => {
+    const { deps, store, registered } = makeCaptureDeps();
+
+    const result = await handleBugReportCaptureScreenshot(deps);
+
+    // Wide capture (1000 > 720) downscales for the preview data-URL...
+    expect(result).toEqual({ dataUrl: 'resized:720', width: 1000, height: 800 });
+    // ...while the FULL-resolution bytes are what get stored for the bundle.
+    expect(store.get(7)?.png.equals(Buffer.from([1, 2, 3]))).toBe(true);
+    expect(registered).toHaveLength(1);
+  });
+
+  test('a capture no wider than the preview cap is not resized', async () => {
+    const { deps } = makeCaptureDeps({
+      capturePage: async () => fakeImage({ png: Buffer.from([9]), width: 640, height: 480 }),
+    });
+
+    expect(await handleBugReportCaptureScreenshot(deps)).toEqual({
+      dataUrl: 'full:640x480',
+      width: 640,
+      height: 480,
+    });
+  });
+
+  test('a zero-byte capture returns null and stores nothing', async () => {
+    const { deps, store } = makeCaptureDeps({
+      capturePage: async () => fakeImage({ png: Buffer.alloc(0), width: 800, height: 600 }),
+    });
+
+    expect(await handleBugReportCaptureScreenshot(deps)).toBeNull();
+    expect(store.has(7)).toBe(false);
+  });
+
+  test('re-capture on the same window unregisters the prior reaper before registering the next', async () => {
+    const { deps, store, registered, unregistered } = makeCaptureDeps();
+
+    await handleBugReportCaptureScreenshot(deps);
+    const firstReaper = registered[0];
+    await handleBugReportCaptureScreenshot(deps);
+
+    // The first capture's listener is removed, so repeated opens don't
+    // accumulate MaxListeners-worth of reapers on one WebContents.
+    expect(unregistered).toContain(firstReaper);
+    expect(registered).toHaveLength(2);
+    expect(store.size).toBe(1);
+  });
+
+  test('the registered reaper deletes the window entry on window close', async () => {
+    const { deps, store, registered } = makeCaptureDeps();
+
+    await handleBugReportCaptureScreenshot(deps);
+    expect(store.has(7)).toBe(true);
+    registered[0]?.(); // simulate the 'destroyed' event firing
+    expect(store.has(7)).toBe(false);
+  });
+
+  test('a capturePage rejection resolves to null, is logged, and never throws', async () => {
+    const warnings: Array<{ payload: Record<string, unknown>; message: string }> = [];
+    const { deps, store } = makeCaptureDeps({
+      capturePage: async () => {
+        throw new Error('offscreen surface');
+      },
+      logger: {
+        info: () => {},
+        warn: (payload, message) => {
+          warnings.push({ payload, message });
+        },
+      },
+    });
+
+    expect(await handleBugReportCaptureScreenshot(deps)).toBeNull();
+    expect(store.has(7)).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.payload.err).toContain('offscreen surface');
   });
 });
 

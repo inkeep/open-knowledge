@@ -27,6 +27,7 @@ import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
   OkFolderState,
@@ -1552,7 +1553,14 @@ export interface OkDesktopBridge {
    * labeled via `summary.systemWide`) under `~/.ok/bug-reports/`, folding in
    * the newest un-acked crash minidump only when `includeCrashDump` is set
    * (the crash invite's explicit opt-in — minidumps carry raw memory no text
-   * redaction can scrub); `send` uploads the reviewed zip to the private
+   * redaction can scrub) and the app screenshot (staged raw at
+   * `extra/screenshot.png`) only when `includeScreenshot` is set.
+   * `captureScreenshot` grabs the sender window's page as a downscaled preview
+   * and holds the full-resolution bytes in main for that later `create`; the
+   * report dialog calls it before it paints, so the picture is the app state
+   * underneath the dialog rather than the dialog itself, and returns `null`
+   * when capture is unavailable (non-desktop / capture failure). `send` uploads
+   * the reviewed zip to the private
    * intake endpoint when one is configured, otherwise resolving to the
    * prefilled email fallback (`fallback.mailtoUrl`) — `reason` discriminates
    * the designed no-intake email path (`'email-draft'`, no network attempted)
@@ -1571,7 +1579,9 @@ export interface OkDesktopBridge {
       level: ReportBundleLevel;
       note?: string;
       includeCrashDump?: boolean;
+      includeScreenshot?: boolean;
     }): Promise<OkBugReportCreateResult>;
+    captureScreenshot(): Promise<OkBugReportScreenshot | null>;
     send(request: {
       zipPath: string;
       metadata: OkBugReportSendMetadata;

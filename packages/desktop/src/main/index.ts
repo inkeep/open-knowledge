@@ -216,6 +216,8 @@ import { formatInstanceAppName, resolveInstanceLabel } from './instance-identity
 import { deriveInstanceUserDataDir } from './instance-isolation.ts';
 import { registerIntegrationsSettings } from './integrations-settings.ts';
 import {
+  type BugReportScreenshotEntry,
+  handleBugReportCaptureScreenshot,
   handleBugReportCrashAck,
   handleBugReportCreate,
   handleBugReportSend,
@@ -924,6 +926,24 @@ let mcpWiringHandle: RunMcpWiringHandle | null = null;
  * boot paths, which never prompt.
  */
 let crashDetection: CrashDetection | null = null;
+
+/**
+ * Full-resolution PNG bytes of the app screenshot captured when a window's
+ * report-a-bug dialog opened, keyed by the sender `webContents.id`. Held in
+ * main (never handed to the renderer as a path) until the matching `create`
+ * stages it into the bundle — mirrors the trust model of the crash minidump.
+ * The renderer only ever receives a downscaled data-URL preview. Each entry
+ * carries the PNG plus its `destroyed`-listener reaper (so re-capture can drop
+ * the stale listener). A capture is kept (not dropped on consume) so a
+ * re-create after "Back" reuses the same open-time screenshot the user
+ * previewed; it is overwritten by the next open's capture and deleted when the
+ * window's contents are destroyed, so at most one screenshot per live window
+ * sits in memory.
+ */
+const bugReportScreenshots = new Map<number, BugReportScreenshotEntry>();
+
+/** Max width (logical px) of the screenshot preview data-URL handed to the renderer. */
+const BUG_REPORT_SCREENSHOT_PREVIEW_WIDTH = 720;
 
 /**
  * Active-editor target snapshot pushed by the renderer via
@@ -3819,6 +3839,25 @@ function registerIpcHandlers() {
         request,
       );
     }
+    if (request.kind === 'capture-screenshot') {
+      // Captured before the report dialog paints (the gate awaits this reply
+      // before revealing the Radix overlay), so the picture is the app state
+      // underneath the dialog, not the dialog itself. The store/listener
+      // lifecycle lives in the unit-tested `handleBugReportCaptureScreenshot`;
+      // this arm only supplies the Electron seams.
+      const captureWin = BrowserWindow.fromWebContents(event.sender);
+      if (!captureWin) return null;
+      const sender = event.sender;
+      return handleBugReportCaptureScreenshot({
+        store: bugReportScreenshots,
+        senderId: sender.id,
+        capturePage: () => captureWin.webContents.capturePage(),
+        previewWidth: BUG_REPORT_SCREENSHOT_PREVIEW_WIDTH,
+        registerCleanup: (cleanup) => sender.once('destroyed', cleanup),
+        unregisterCleanup: (cleanup) => sender.removeListener('destroyed', cleanup),
+        logger: getLogger('bug-report'),
+      });
+    }
     const win = BrowserWindow.fromWebContents(event.sender);
     const ctx =
       win && wm ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike) : null;
@@ -3831,6 +3870,9 @@ function registerIpcHandlers() {
           channel: channelFromVersion(app.getVersion()),
         },
         newestMinidumpPath: () => crashDetection?.newestMinidumpPath() ?? null,
+        // Main-owned bytes captured for this exact window; `create` stages them
+        // only when the renderer opted in via `includeScreenshot`.
+        screenshotPngBytes: () => bugReportScreenshots.get(event.sender.id)?.png ?? null,
         logger: getLogger('bug-report'),
       },
       request,

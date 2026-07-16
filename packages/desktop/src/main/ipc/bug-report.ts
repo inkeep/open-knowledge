@@ -16,20 +16,24 @@
  * window-manager context; the renderer never passes a project path.
  */
 
-import { readFile, realpath, stat } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import {
   type BundleLogger,
   collectReportBundle,
   defaultBugReportZipPath,
   redactContent,
 } from '@inkeep/open-knowledge';
-import type {
-  OkBugReportCrashAckResult,
-  OkBugReportCreateResult,
-  OkBugReportSendMetadata,
-  OkBugReportSendResult,
-  ReportBundleLevel,
+import {
+  BUG_REPORT_SCREENSHOT_ZIP_NAME,
+  type OkBugReportCrashAckResult,
+  type OkBugReportCreateResult,
+  type OkBugReportScreenshot,
+  type OkBugReportSendMetadata,
+  type OkBugReportSendResult,
+  type ReportBundleLevel,
 } from '@inkeep/open-knowledge-core';
 import { logIpcError } from '../ipc-log.ts';
 import { isPathWithinProject } from '../path-containment.ts';
@@ -47,6 +51,18 @@ export interface OkBugReportCreateRequest {
    * dump — only the dialog's explicit checkbox sets this.
    */
   includeCrashDump?: boolean;
+  /**
+   * Screenshot opt-in (default on in the dialog): stage the app screenshot
+   * captured when the dialog opened into the bundle at `extra/screenshot.png`,
+   * raw. The picture is unredactable, but the dialog previews it before send so
+   * the user has already seen exactly what is included — absence still means no
+   * screenshot, and the bytes are main-owned (never a renderer-supplied path).
+   */
+  includeScreenshot?: boolean;
+}
+
+interface OkBugReportCaptureScreenshotRequest {
+  kind: 'capture-screenshot';
 }
 
 export interface OkBugReportSendRequest {
@@ -66,7 +82,8 @@ export interface OkBugReportCrashAckRequest {
 export type OkBugReportRequest =
   | OkBugReportCreateRequest
   | OkBugReportSendRequest
-  | OkBugReportCrashAckRequest;
+  | OkBugReportCrashAckRequest
+  | OkBugReportCaptureScreenshotRequest;
 
 /**
  * Host metadata handed to the bundle collector through its typed
@@ -99,6 +116,14 @@ export interface BugReportCreateDeps {
    */
   newestMinidumpPath?: () => string | null;
   /**
+   * Main-owned PNG bytes of the screenshot captured when the report dialog
+   * opened, consulted only when the renderer opted in via `includeScreenshot`.
+   * Returns `null` when no screenshot was captured for the sender window (capture
+   * failed, or a non-desktop caller). The bytes are staged to a temp file the
+   * handler owns and deletes — the renderer never supplies a path.
+   */
+  screenshotPngBytes?: () => Buffer | null;
+  /**
    * Sink for the collector's warnings — most importantly an opted-in crash
    * dump that could not be staged, which must be traceable rather than a
    * silent omission from the bundle.
@@ -130,7 +155,8 @@ function isCreateRequest(request: unknown): request is OkBugReportCreateRequest 
     r.kind === 'create' &&
     (r.level === 'standard' || r.level === 'full') &&
     isValidNote(r.note) &&
-    (r.includeCrashDump === undefined || typeof r.includeCrashDump === 'boolean')
+    (r.includeCrashDump === undefined || typeof r.includeCrashDump === 'boolean') &&
+    (r.includeScreenshot === undefined || typeof r.includeScreenshot === 'boolean')
   );
 }
 
@@ -154,7 +180,25 @@ export async function handleBugReportCreate(
   }
   const minidumpPath =
     request.includeCrashDump === true ? (deps.newestMinidumpPath?.() ?? null) : null;
+  const screenshotBytes =
+    request.includeScreenshot === true ? (deps.screenshotPngBytes?.() ?? null) : null;
+
+  // Both raw artifacts ride the same byte-for-byte `extra/` seam the collector
+  // never scrubs. The minidump comes in by path; the screenshot bytes are
+  // main-owned in-memory, so stage them to a temp file the `finally` deletes —
+  // a picture of the user's screen must not linger in tmp once it is zipped.
+  const extraFiles: { sourcePath: string; zipName?: string }[] = [];
+  if (minidumpPath !== null) extraFiles.push({ sourcePath: minidumpPath });
+  let screenshotTmpPath: string | null = null;
   try {
+    if (screenshotBytes !== null) {
+      screenshotTmpPath = join(tmpdir(), `ok-bugreport-screenshot-${randomUUID()}.png`);
+      // Owner-only: the file is a picture of the user's screen sitting in a
+      // world-readable tmp dir until the collector zips it, so keep it off
+      // other local accounts (matches the subsystem's sensitive-sidecar mode).
+      await writeFile(screenshotTmpPath, screenshotBytes, { mode: 0o600 });
+      extraFiles.push({ sourcePath: screenshotTmpPath, zipName: BUG_REPORT_SCREENSHOT_ZIP_NAME });
+    }
     const { zipPath, summary } = await collectReportBundle({
       level: request.level,
       projectDir: deps.projectDir ?? undefined,
@@ -163,7 +207,7 @@ export async function handleBugReportCreate(
       redact: true,
       outputPath: deps.outputPath ?? defaultBugReportZipPath(),
       userLogsDir: deps.userLogsDir,
-      extraFiles: minidumpPath === null ? undefined : [{ sourcePath: minidumpPath }],
+      extraFiles: extraFiles.length === 0 ? undefined : extraFiles,
       logger: deps.logger,
       readDesktopEnv: () => ({
         electronVersion: deps.desktopMeta.version,
@@ -185,6 +229,104 @@ export async function handleBugReportCreate(
       cause: err,
     });
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    if (screenshotTmpPath !== null) {
+      // A failed unlink leaves a screenshot of the user's screen in tmp, so
+      // make it traceable rather than silent — but never let cleanup failure
+      // change the create outcome.
+      await unlink(screenshotTmpPath).catch((err: unknown) => {
+        deps.logger?.warn(
+          { screenshotTmpPath, err: err instanceof Error ? err.message : String(err) },
+          'bug-report: failed to remove temp screenshot file',
+        );
+      });
+    }
+  }
+}
+
+/**
+ * Minimal shape of an Electron `NativeImage` the capture handler needs, so its
+ * store/listener lifecycle and zero-byte handling are unit-testable without an
+ * Electron stub. `main/index.ts` passes the real `NativeImage` (structurally
+ * compatible); tests pass a fake.
+ */
+export interface CapturableImage {
+  toPNG(): Buffer;
+  getSize(): { width: number; height: number };
+  resize(options: { width: number }): CapturableImage;
+  toDataURL(): string;
+}
+
+/** Store entry: the full-resolution PNG plus the `destroyed`-listener that reaps it. */
+export interface BugReportScreenshotEntry {
+  png: Buffer;
+  cleanup: () => void;
+}
+
+export interface CaptureScreenshotDeps {
+  /** Main-owned per-window store, keyed by `webContents.id`. */
+  store: Map<number, BugReportScreenshotEntry>;
+  /** Sender `webContents.id` — this window's store key. */
+  senderId: number;
+  /** Wraps `win.webContents.capturePage()`. May reject; the handler degrades to null. */
+  capturePage: () => Promise<CapturableImage>;
+  /** Max preview width (logical px); wider captures downscale for the data-URL. */
+  previewWidth: number;
+  /** Registers the one-shot `destroyed` reaper (wraps `sender.once('destroyed', cb)`). */
+  registerCleanup: (cleanup: () => void) => void;
+  /** Removes a previously-registered reaper (wraps `sender.removeListener('destroyed', cb)`). */
+  unregisterCleanup: (cleanup: () => void) => void;
+  logger?: BundleLogger;
+}
+
+/**
+ * Capture the sender window for the `capture-screenshot` operation: hold the
+ * full-resolution PNG in main (keyed by window) and return the renderer a
+ * downscaled data-URL preview. Never throws — a failed or empty capture
+ * resolves to `null` so the dialog simply omits the screenshot option.
+ *
+ * Re-capture on the same window replaces the prior entry AND unregisters its
+ * `destroyed` reaper first, so repeated dialog opens can't accumulate
+ * MaxListeners-worth of listeners on one `WebContents`.
+ */
+export async function handleBugReportCaptureScreenshot(
+  deps: CaptureScreenshotDeps,
+): Promise<OkBugReportScreenshot | null> {
+  const dropExisting = () => {
+    const existing = deps.store.get(deps.senderId);
+    if (existing !== undefined) {
+      deps.unregisterCleanup(existing.cleanup);
+      deps.store.delete(deps.senderId);
+    }
+  };
+  try {
+    const image = await deps.capturePage();
+    const png = image.toPNG();
+    // A zero-byte capture (offscreen, or not yet painted) is not a usable
+    // screenshot — omit the option rather than offer an empty picture.
+    if (png.length === 0) {
+      dropExisting();
+      return null;
+    }
+    // Replace any prior capture for this window, dropping its stale reaper.
+    dropExisting();
+    const cleanup = () => {
+      deps.store.delete(deps.senderId);
+    };
+    deps.store.set(deps.senderId, { png, cleanup });
+    deps.registerCleanup(cleanup);
+    const { width, height } = image.getSize();
+    // The renderer only needs a legible thumbnail; downscale wide captures to
+    // keep the data-URL small (the full-resolution bytes go in the bundle).
+    const preview = width > deps.previewWidth ? image.resize({ width: deps.previewWidth }) : image;
+    return { dataUrl: preview.toDataURL(), width, height };
+  } catch (err) {
+    dropExisting();
+    deps.logger?.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'bug-report: screenshot capture failed; dialog will omit the screenshot option',
+    );
+    return null;
   }
 }
 
