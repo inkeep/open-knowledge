@@ -1233,6 +1233,7 @@ export {
   findRecentProjectsForRepo,
   type HeadBranchInfo,
   InvalidShareUrlError,
+  isGitWorkingTree,
   type RecentProjectEntry,
   type ResolvedGitDirKind,
   selectCandidate,

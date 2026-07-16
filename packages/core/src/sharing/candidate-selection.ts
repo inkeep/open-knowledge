@@ -9,10 +9,11 @@
  * worktree only when no main checkout is available; returns miss when no
  * usable candidate exists.
  *
- * Pure module — no IPC, no React, no I/O, no node:*. Lives in core so both
- * the renderer (the share-receive dialog) and main (Electron's url-scheme
- * router) can call it with the same algorithm. Bridge surface comes through
- * `CandidateBridgeDeps` so tests stub the IPC reads via pure DI.
+ * Pure module — no IPC, no React, no I/O, no node:*. Lives in core alongside
+ * the rest of the share-receive decision primitives; main (Electron's
+ * url-scheme router) is the only production caller — the renderer consumes
+ * an already-resolved target rather than re-running selection. Bridge surface
+ * comes through `CandidateBridgeDeps` so tests stub the reads via pure DI.
  *
  * Selection rules:
  *  - Branch-match wins: the candidate whose `head.currentBranch ===
@@ -103,7 +104,7 @@ export interface Candidate {
   readonly recent: RecentProjectEntry | null;
   /** `.git/HEAD` read result. `{currentBranch:null, headSha:null, detached:false}` on graceful-fail. */
   readonly head: HeadBranchInfo;
-  /** `<path>/.git` classification. `'absent'` covers absent, malformed, inaccessible. */
+  /** `<path>/.git` classification, path-exact. See `isGitWorkingTree` for which kinds are dispatchable. */
   readonly gitDirKind: ResolvedGitDirKind;
   /** True iff `<path>/.ok/config.yml` exists as a regular file. */
   readonly hasOkConfig: boolean;
@@ -173,6 +174,21 @@ export type CandidateSelection =
   | { readonly kind: 'miss' };
 
 /**
+ * True iff `kind` classifies a real git working tree — a main checkout
+ * (`'directory'`) or a linked worktree (`'linked'`). A candidate that is not
+ * a working tree can never legitimately be a branch-match: "a branch is
+ * checked out here" is false for a path with no `.git` (`'absent'`), a
+ * malformed pointer, or an inaccessible `.git`.
+ *
+ * Only as strong as its producer: the guarantee holds iff `kind` came from a
+ * probe that classifies `<path>/.git` itself rather than the nearest
+ * ancestor's. Main's `readGitDirKind` is that probe.
+ */
+export function isGitWorkingTree(kind: ResolvedGitDirKind): kind is 'directory' | 'linked' {
+  return kind === 'directory' || kind === 'linked';
+}
+
+/**
  * Pick the best candidate for `payload` from Recents + worktree enumeration.
  * See module docstring for the selection rules.
  */
@@ -231,6 +247,11 @@ export async function selectCandidate(
   // and the all-null sentinel from a thrown `readHeadBranch`. With one
   // candidate the user has exactly one option so we cannot pick wrong;
   // with multiple candidates strict matching keeps the true match decisive.
+  // The soft-match still requires a real git working tree: `classifyBranchMatch`
+  // returns 'true' for a null HEAD (the "couldn't determine" sentinel — it
+  // fires on any `readHeadBranch` failure, including when there is no git repo
+  // at all), which would otherwise crown a directory with no `.git` at all —
+  // a branch-match must guarantee the candidate is an actual checkout.
   const strictMatches = candidates.filter(
     (c) => c.head.currentBranch !== null && c.head.currentBranch === payload.branch,
   );
@@ -238,7 +259,11 @@ export async function selectCandidate(
     strictMatches.length > 0
       ? strictMatches
       : candidates.length === 1
-        ? candidates.filter((c) => classifyBranchMatch(payload.branch, c.head) === 'true')
+        ? candidates.filter(
+            (c) =>
+              isGitWorkingTree(c.gitDirKind) &&
+              classifyBranchMatch(payload.branch, c.head) === 'true',
+          )
         : [];
   if (branchMatches.length > 0) {
     const chosen = pickByRecency(branchMatches);
@@ -265,12 +290,24 @@ export async function selectCandidate(
   // Only OK-initialized candidates can take the branch-switch dispatch path.
   const mains = candidates.filter((c) => c.gitDirKind === 'directory' && c.hasOkConfig);
   if (mains.length > 0) {
+    console.warn(
+      `[receive] selection=fallback reason=main-checkout candidates=${candidates.length}`,
+    );
     return { kind: 'fallback', anchor: pickByRecency(mains), reason: 'main-checkout' };
   }
   const linkedOk = candidates.filter((c) => c.gitDirKind === 'linked' && c.hasOkConfig);
   if (linkedOk.length > 0) {
+    console.warn(
+      `[receive] selection=fallback reason=only-worktrees candidates=${candidates.length}`,
+    );
     return { kind: 'fallback', anchor: pickByRecency(linkedOk), reason: 'only-worktrees' };
   }
+  // The counts (never paths — PII discipline) make a refused-candidate miss
+  // distinguishable from a no-recents miss in triage: candidates>0 here means
+  // every candidate was refused (non-checkout, or checkout without OK config).
+  console.warn(
+    `[receive] selection=miss reason=no-usable-candidate candidates=${candidates.length}`,
+  );
   return { kind: 'miss' };
 }
 

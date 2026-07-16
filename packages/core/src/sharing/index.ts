@@ -3,6 +3,7 @@ export {
   type CandidateBridgeDeps,
   type CandidateSelection,
   type CandidateSelectionPayload,
+  isGitWorkingTree,
   selectCandidate,
 } from './candidate-selection.ts';
 export {

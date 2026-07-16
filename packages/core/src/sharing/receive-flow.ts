@@ -1,10 +1,10 @@
 /**
  * Pure share-receive helpers + the shared types they read.
  *
- * Lives in core so both the renderer (the share-receive dialog) and main
- * (`url-scheme.ts`'s `routeShare`) can run the same selection algorithm
- * against the same data shapes — `packages/desktop` cannot import from
- * `packages/app`, so any code that has to run on both sides ends up here.
+ * Lives in core so the selection algorithm and the data shapes it reads stay
+ * in one place, independent of which process runs them. Main (`url-scheme.ts`'s
+ * `routeShare`) is the only production caller today — the renderer consumes an
+ * already-resolved share target rather than re-running selection.
  *
  * No IPC, no React, no I/O, no `node:*` — browser+Node pure. Tests stub the
  * bridge surface directly.
@@ -22,11 +22,20 @@ export interface HeadBranchInfo {
 }
 
 /**
- * Discriminator returned by `bridge.project.readGitDirKind(path)`:
- * `'directory'` is a real `.git/` (main checkout — safe to `git checkout`),
- * `'linked'` is a `.git` file pointing at a worktree's gitdir, `'absent'` is
- * no `.git`, `'malformed-pointer'` is a `.git` file that doesn't parse, and
- * `'inaccessible'` is a `.git` that exists but can't be read.
+ * Classification of `<path>/.git`. A producer MUST answer the path-exact
+ * question — "is a branch checked out at THIS path" — classifying `<path>/.git`
+ * itself and never an ancestor's, and never reporting a working tree it has not
+ * verified is one. Selection's guarantee that a branch-match is a real checkout
+ * holds only as far as that obligation does. Main's `readGitDirKind` is the
+ * reference implementation.
+ *
+ * `'directory'` is a real `.git/` (main checkout — safe to `git checkout`) and
+ * `'linked'` is a `.git` file pointing at a live worktree gitdir; these two are
+ * the working trees. `'absent'` means no working tree at this exact path: no
+ * `.git`, or a `.git` belonging only to an ancestor, or a `.git/` with no HEAD.
+ * `'malformed-pointer'` is a `.git` file that doesn't parse, or one that parses
+ * but whose target gitdir is gone. `'inaccessible'` is a `.git` that exists but
+ * can't be read.
  */
 export type ResolvedGitDirKind =
   | 'directory'

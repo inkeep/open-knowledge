@@ -496,6 +496,67 @@ describe('selectCandidate', () => {
     }
   });
 
+  test('legacy soft-match: sole candidate that is a linked worktree still silent-dispatches', async () => {
+    // The working-tree guard on the soft-match must admit BOTH working-tree
+    // kinds. Narrowing it to `'directory'` would silently miss every share
+    // whose only recent is a linked worktree — the multi-worktree users this
+    // flow exists to serve. Every other soft-match case here is 'directory',
+    // and multi-candidate cases bypass the soft-match entirely, so without
+    // this case that narrowing passes the whole suite.
+    const wt = recent({ path: '/wt/feat' });
+    const bridge = makeBridge({
+      recents: [wt],
+      headsByPath: { '/wt/feat': { currentBranch: null, headSha: null, detached: false } },
+      gitDirKindByPath: { '/wt/feat': 'linked' },
+      okProjectRoots: new Set(['/wt/feat']),
+    });
+    const result = await selectCandidate(PAYLOAD, bridge);
+    expect(result.kind).toBe('branch-match-ok');
+    if (result.kind === 'branch-match-ok') {
+      expect(result.candidate.path).toBe('/wt/feat');
+    }
+  });
+
+  test('sole ghost candidate (gitDirKind absent, no .ok/config.yml) is never crowned a branch-match', async () => {
+    // A recents entry pointing at a directory that exists on disk but is NOT
+    // a git checkout and NOT an OK project — only OK's own droppings remain
+    // (the folder was moved in Finder and the still-running server recreated
+    // the path to write logs). Its HEAD is unreadable (no .git →
+    // currentBranch null, the all-null sentinel), gitDirKind is 'absent', and
+    // .ok/config.yml is absent. The share carries a branch.
+    //
+    // Selection must not present a non-checkout as the share target with a
+    // "this branch is checked out here" claim: a branch-match-* result must
+    // guarantee the candidate is a real git working tree. With the ghost as
+    // the sole candidate the correct outcome is a miss, not a soft-match.
+    const ghost = recent({ path: '/moved-away/CollaborationUX' });
+    const bridge = makeBridge({
+      recents: [ghost],
+      // No headsByPath entry → default all-null sentinel (unreadable HEAD).
+      // No gitDirKindByPath entry → default 'absent' (no .git on disk).
+      // Empty okProjectRoots → hasOkConfig false (no .ok/config.yml).
+    });
+    const result = await selectCandidate(PAYLOAD, bridge);
+    expect(result).toEqual({ kind: 'miss' });
+  });
+
+  test('sole candidate with a malformed-pointer or inaccessible .git is never crowned a branch-match', async () => {
+    // Same contract as the absent-ghost case across the rest of the
+    // non-working-tree kind set: a corrupt .git pointer (stale linked-worktree
+    // pointer) and an unreadable .git (EACCES) are equally not dispatchable
+    // checkouts, so the soft-match must refuse them too.
+    for (const kind of ['malformed-pointer', 'inaccessible'] as const) {
+      const ghost = recent({ path: `/degraded/${kind}` });
+      const bridge = makeBridge({
+        recents: [ghost],
+        gitDirKindByPath: { [`/degraded/${kind}`]: kind },
+        // No headsByPath entry → all-null sentinel (unreadable HEAD).
+      });
+      const result = await selectCandidate(PAYLOAD, bridge);
+      expect(result).toEqual({ kind: 'miss' });
+    }
+  });
+
   test('prunable worktree-enum entry on the share branch is NOT selected', async () => {
     // A prunable worktree (stale gitdir pointer, dir still on disk) reports a
     // matching `branch` via porcelain and would strict-match the share

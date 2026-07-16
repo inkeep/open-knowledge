@@ -286,20 +286,6 @@ export interface HeadBranchInfo {
 }
 
 /**
- * Discriminator string returned by `bridge.project.readGitDirKind(path)`.
- * Mirrors `ResolvedGitDir.kind` from `@inkeep/open-knowledge-core/shadow-
- * repo-layout`. The candidate-selection algorithm cares about `'directory'`
- * (main checkout) and `'linked'` (worktree); the other three values
- * collapse to "skip in fallback partitioning."
- */
-export type ResolvedGitDirKind =
-  | 'directory'
-  | 'linked'
-  | 'absent'
-  | 'malformed-pointer'
-  | 'inaccessible';
-
-/**
  * Outcome of `bridge.project.checkTargetExists({projectPath, kind, path})`.
  * See the bridge method's JSDoc for the failure-mode contract.
  *

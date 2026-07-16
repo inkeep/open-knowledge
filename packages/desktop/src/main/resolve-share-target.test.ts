@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { RecentProjectEntry } from '@inkeep/open-knowledge-core';
-import { resolveShareTarget } from './resolve-share-target.ts';
+import { filterShareEligibleRecents, resolveShareTarget } from './resolve-share-target.ts';
+import { annotateMissing, emptyState } from './state-store.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -161,6 +162,129 @@ describe('resolveShareTarget — main-side adapter parity with the shared algori
     const selection = await resolveShareTarget(PAYLOAD, {
       listRecent: () => [recent(handle?.mainRepo ?? '')],
     });
+    expect(selection).toEqual({ kind: 'miss' });
+  });
+
+  test('a ghost most-recent entry does not poison the worktree-enumeration anchor', async () => {
+    // The behavior only the recents filter provides: it runs upstream of
+    // findRecentProjectsForRepo, so it is what keeps the ghost from becoming
+    // recentMatches[0] and rooting listGitWorktrees at a non-repo cwd. Drop
+    // the filter and this share lands on `fallback`/main-checkout — a
+    // branch-switch dialog — even though the branch is already checked out in
+    // a worktree. The downstream soft-match guard runs after the anchor is
+    // chosen and cannot rescue this.
+    handle = await makeRepoWithWorktrees(['feat-foo']);
+    const wtPath = handle.worktrees.get('feat-foo');
+    expect(wtPath).toBeDefined();
+    if (!wtPath) return;
+    seedOkProject(handle.mainRepo);
+    seedOkProject(wtPath);
+
+    const ghostPath = join(handle.root, 'CollaborationUX');
+    mkdirSync(join(ghostPath, '.ok', 'local', 'logs'), { recursive: true });
+    writeFileSync(join(ghostPath, '.ok', 'local', 'logs', 'server-current.jsonl'), '{}\n');
+
+    const selection = await resolveShareTarget(PAYLOAD, {
+      // Ghost is the most recently opened, so it would be the anchor.
+      listRecent: () => [recent(ghostPath), recent(handle?.mainRepo ?? '')],
+    });
+
+    expect(selection.kind).toBe('branch-match-ok');
+    if (selection.kind === 'branch-match-ok') {
+      expect(selection.candidate.path).toBe(wtPath);
+    }
+  });
+
+  test('filterShareEligibleRecents drops a ghost directory (no .git) but keeps a real git working tree', async () => {
+    // The share-admission predicate must refuse a moved-away directory that
+    // survives the bare-existence missing filter — it exists on disk but holds
+    // only OK's own droppings (no .git, no .ok/config.yml) — while still
+    // admitting a real checkout. Uses the real on-disk readGitDirKind against
+    // real fixtures.
+    handle = await makeRepoWithWorktrees([]);
+    const ghostRoot = realpathSync(mkdtempSync(join(tmpdir(), 'eligible-ghost-')));
+    try {
+      const ghostPath = join(ghostRoot, 'CollaborationUX');
+      mkdirSync(join(ghostPath, '.ok', 'local', 'logs'), { recursive: true });
+      writeFileSync(join(ghostPath, '.ok', 'local', 'logs', 'server-current.jsonl'), '{}\n');
+
+      const ghostEntry = recent(ghostPath);
+      const liveEntry = recent(handle.mainRepo);
+
+      const eligible = filterShareEligibleRecents([ghostEntry, liveEntry]);
+
+      expect(eligible.map((e) => e.path)).toEqual([handle.mainRepo]);
+    } finally {
+      rmSync(ghostRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('filterShareEligibleRecents drops a stale worktree pointer (.git file to a gone gitdir)', async () => {
+    // The moved-away-linked-worktree ghost shape: the directory still holds a
+    // `.git` FILE, but its pointer targets an admin gitdir that no longer
+    // exists. Not a dispatchable checkout — must be refused like the
+    // no-.git ghost.
+    handle = await makeRepoWithWorktrees([]);
+    const staleRoot = realpathSync(mkdtempSync(join(tmpdir(), 'eligible-stale-')));
+    try {
+      const stalePath = join(staleRoot, 'CollaborationUX');
+      mkdirSync(stalePath, { recursive: true });
+      writeFileSync(
+        join(stalePath, '.git'),
+        `gitdir: ${join(staleRoot, 'gone', '.git', 'worktrees', 'x')}\n`,
+      );
+
+      const staleEntry = recent(stalePath);
+      const liveEntry = recent(handle.mainRepo);
+
+      const eligible = filterShareEligibleRecents([staleEntry, liveEntry]);
+
+      expect(eligible.map((e) => e.path)).toEqual([handle.mainRepo]);
+    } finally {
+      rmSync(staleRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('ghost recents entry (exists, no .git, no .ok/config.yml) resolves to miss through the production annotateMissing wiring', async () => {
+    // Reproduces the full share-receive ghost scenario end to end: a recents
+    // entry still carries the repo's gitRemoteUrl from when the project was
+    // real at this path, but the path now holds only OK's own droppings (the
+    // folder was moved in Finder and the still-running server recreated it to
+    // write logs). The share carries a branch. A ghost directory that is
+    // neither a git checkout nor an OK project must never be presented as the
+    // share target with a "this branch is checked out here" claim — selection
+    // must return a miss.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'resolve-share-ghost-')));
+    handle = {
+      root,
+      mainRepo: root,
+      worktrees: new Map(),
+      cleanup: () => rmSync(root, { recursive: true, force: true }),
+    };
+    const ghostPath = join(root, 'CollaborationUX');
+    mkdirSync(join(ghostPath, '.ok', 'local', 'logs'), { recursive: true });
+    writeFileSync(join(ghostPath, '.ok', 'local', 'logs', 'server-current.jsonl'), '{}\n');
+
+    const state = {
+      ...emptyState(),
+      recentProjects: [
+        {
+          path: ghostPath,
+          name: 'CollaborationUX',
+          lastOpenedAt: '2026-07-15T00:00:00.000Z',
+          gitRemoteUrl: 'https://github.com/acme/widget.git',
+        },
+      ],
+    };
+
+    const selection = await resolveShareTarget(PAYLOAD, {
+      // Production wiring: the share path feeds selection the annotateMissing
+      // projection, which marks this ghost non-missing because the directory
+      // does exist — so it reaches the share-eligibility filter rather than
+      // being dropped upstream of it.
+      listRecent: () => annotateMissing(state),
+    });
+
     expect(selection).toEqual({ kind: 'miss' });
   });
 
