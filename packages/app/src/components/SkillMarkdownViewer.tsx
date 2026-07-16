@@ -21,6 +21,7 @@ import { stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ReadonlyPropertyPanel } from '@/components/ReadonlyPropertyPanel';
 import { sharedExtensions } from '@/editor/extensions/shared.ts';
 import { getSharedMarkdownManager } from '@/editor/utils/md-singleton';
 
@@ -88,6 +89,12 @@ export function SkillMarkdownViewer({ fileName, text }: { fileName: string; text
       data-skill-markdown-viewer-state="loaded"
     >
       <div className="editor-doc-scroll min-h-0 flex-1 overflow-auto">
+        {/* Frontmatter shows as a read-only Properties panel above the body —
+            the editable skill/document panel isn't reachable here (no CRDT
+            provider), so the file's metadata would otherwise be invisible.
+            `text` still carries the YAML region; the panel parses it and the
+            editor below renders the frontmatter-stripped body. */}
+        <ReadonlyPropertyPanel text={text} />
         {/* Mirror the editor's content-column grid so prose width + side rails
             match the real editor layout. */}
         <div className="tiptap-editor">

@@ -5990,6 +5990,7 @@ msgid "Project-level pages with no outgoing graph edges."
 msgstr "Project-level pages with no outgoing graph edges."
 
 #: src/components/PropertyPanel.tsx
+#: src/components/ReadonlyPropertyPanel.tsx
 #: src/components/TemplateProperties.tsx
 msgid "Properties"
 msgstr "Properties"
