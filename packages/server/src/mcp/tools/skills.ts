@@ -10,7 +10,7 @@
  * no raw `.ok/skills/...` paths). Read-only; mutation stays with the verb tools.
  */
 import { z } from 'zod';
-import { BUNDLE_SKILL_NAME } from '../../skill-bundles.ts';
+import { INTERNAL_BUNDLE_SKILL_NAMES, isInternalBundleSkillName } from '../../skill-bundles.ts';
 import {
   type ConfigOrResolver,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
@@ -35,16 +35,6 @@ import { resolveSkillFilePath, SkillScopeArg } from './verb-schemas.ts';
 function bundleFileKind(path: string): 'reference' | 'script' {
   return path.replace(/\\/g, '/').startsWith('scripts/') ? 'script' : 'reference';
 }
-
-/**
- * OK's own shipped bundle skills (`open-knowledge`, `open-knowledge-discovery`,
- * `open-knowledge-write-skill`) are runtime agent skills projected into editor
- * host dirs — they have no `.ok/skills` source and can never be authored as
- * content skills (the reserved-name gate blocks it), so this tool can never
- * READ them. They are addressed by `BUNDLE_SKILL_NAME` here so the set tracks
- * the canonical bundle list.
- */
-const INTERNAL_BUNDLE_SKILL_NAMES = new Set<string>(Object.values(BUNDLE_SKILL_NAME));
 
 /**
  * Teaching error for a READ aimed at one of OK's built-in skills. Without it,
@@ -194,9 +184,14 @@ export function register(server: ServerInstance, deps: SkillsToolDeps): void {
         const rawSkills = Array.isArray((data as { skills?: unknown }).skills)
           ? ((data as { skills: unknown[] }).skills as Array<Record<string, unknown>>)
           : [];
+        // Hide OK's own built-in `open-knowledge*` skills from the LIST: they now
+        // surface in `/api/skills` (managed, read-only) for the editor UI, but
+        // the agent already has them loaded (the READ short-circuit above teaches
+        // that), and LISTing them here would contradict it.
+        const authored = rawSkills.filter((s) => !isInternalBundleSkillName(String(s.name)));
         // Project to the tool shape — deliberately DROP `path`/`absolutePath`
         // so skills stay addressed by name+scope and `.ok/` is never surfaced.
-        const skills = rawSkills.map((s) => ({
+        const skills = authored.map((s) => ({
           name: s.name,
           scope: s.scope,
           ...(typeof s.description === 'string' ? { description: s.description } : {}),

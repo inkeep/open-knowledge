@@ -136,4 +136,30 @@ describe('SkillsManagerSection', () => {
     render(<SkillsManagerSection />);
     await waitFor(() => expect(screen.getByTestId('settings-skills-error')).toBeDefined());
   });
+
+  test('a managed built-in skill renders read-only: no Install, no actions menu, "Managed" label', async () => {
+    mockSkillsResponse({
+      skills: [
+        {
+          name: 'open-knowledge',
+          description: 'The OpenKnowledge project skill.',
+          scope: 'project',
+          path: '.claude/skills/open-knowledge/SKILL.md',
+          installed: true,
+          hosts: ['claude'],
+          managed: true,
+        },
+      ],
+      truncated: false,
+    });
+
+    render(<SkillsManagerSection />);
+
+    const row = await waitFor(() => screen.getByTestId('skill-row-open-knowledge'));
+    // Labeled as managed / read-only.
+    expect(row.textContent).toContain('Managed');
+    // No mutation affordances: no Install button, no 3-dot actions menu.
+    expect(screen.queryByTestId('skill-install-open-knowledge')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Actions for open-knowledge' })).toBeNull();
+  });
 });

@@ -29,6 +29,23 @@ export const BUNDLE_SKILL_NAME: Record<BundleId, string> = {
   'write-skill': 'open-knowledge-write-skill',
 };
 
+/**
+ * Every install-dir name OK's built-in bundles project into (`open-knowledge`,
+ * `open-knowledge-discovery`, `open-knowledge-write-skill`). These names are
+ * RESERVED: an authored content skill can't take one (the write API rejects it),
+ * the skills HTTP API refuses edit/rename/delete/install against them, and the
+ * MCP `skills` read tool hides them from its list + read. Derived from
+ * `BUNDLE_SKILL_NAME` so the reserved set can't drift from the shipped bundles.
+ */
+export const INTERNAL_BUNDLE_SKILL_NAMES: ReadonlySet<string> = new Set(
+  Object.values(BUNDLE_SKILL_NAME),
+);
+
+/** True when `name` is one of OK's built-in bundle skill names (`open-knowledge*`). */
+export function isInternalBundleSkillName(name: string): boolean {
+  return INTERNAL_BUNDLE_SKILL_NAMES.has(name);
+}
+
 /** Canonical ordered bundle id list (= the keys of `BUNDLE_SKILL_NAME`). */
 export const BUNDLE_IDS = Object.keys(BUNDLE_SKILL_NAME) as BundleId[];
 

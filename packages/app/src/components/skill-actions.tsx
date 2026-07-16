@@ -9,6 +9,7 @@ import {
   CopyPlus,
   DownloadCloud,
   FolderOpen,
+  Lock,
   Pencil,
   PencilLine,
   PowerOff,
@@ -28,6 +29,7 @@ import { SkillRenameDialog } from '@/components/SkillRenameDialog';
 import { SkillUpdateDialog } from '@/components/SkillUpdateDialog';
 import {
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -284,6 +286,49 @@ export function SkillContextMenuItems({
     } catch {
       toast.error(t`Couldn't copy path`);
     }
+  }
+
+  // OK's built-in `open-knowledge` skill is managed + read-only: offer only the
+  // non-mutating actions (reveal / open-in-agent / copy path). No Duplicate,
+  // Rename, Install, Uninstall, or Delete, since editing it isn't possible.
+  if (skill.managed) {
+    return (
+      <>
+        <DropdownMenuLabel className="flex items-center gap-1.5 text-muted-foreground">
+          <Lock className="size-3" aria-hidden />
+          <Trans>Managed by OpenKnowledge</Trans>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {bridge && absolutePath ? (
+          <DropdownMenuItem onSelect={() => void bridge.shell.showItemInFolder(absolutePath)}>
+            <FolderOpen aria-hidden />
+            <Trans>Reveal in Finder</Trans>
+          </DropdownMenuItem>
+        ) : null}
+        <OpenInAgentContextSubmenu
+          input={buildSkillHandoffInput({ skillName: skill.name, scope: skill.scope, workspace })}
+          installStates={installStates}
+          isElectronHost={bridge != null}
+          dispatch={dispatch}
+        />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <Copy aria-hidden />
+            <Trans>Copy Path</Trans>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            {absolutePath ? (
+              <DropdownMenuItem onSelect={() => void copy(absolutePath)}>
+                <Trans>Full Path</Trans>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem onSelect={() => void copy(skill.path)}>
+              <Trans>Relative Path</Trans>
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      </>
+    );
   }
 
   return (

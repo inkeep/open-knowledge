@@ -1,6 +1,6 @@
 import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { DownloadCloud, MoreVertical } from 'lucide-react';
+import { DownloadCloud, Lock, MoreVertical } from 'lucide-react';
 import { OpenInAgentMenu } from '@/components/handoff/OpenInAgentMenu';
 import { buildSkillHandoffInput } from '@/components/handoff/useHandoffDispatch';
 import { SkillStateBadge } from '@/components/SkillStateBadge';
@@ -66,7 +66,14 @@ export function SkillRow({
       >
         <span className="flex w-full items-center gap-2">
           <code className="truncate font-mono font-medium">{skill.name}</code>
-          <SkillStateBadge installed={skill.installed} className="text-2xs" />
+          {skill.managed ? (
+            <Badge variant="gray" className="gap-1 text-2xs" title={t`Managed by OpenKnowledge`}>
+              <Lock className="size-3" aria-hidden />
+              <Trans>Managed</Trans>
+            </Badge>
+          ) : (
+            <SkillStateBadge installed={skill.installed} className="text-2xs" />
+          )}
         </span>
         {skill.description ? (
           <span className="block w-full truncate text-sm text-muted-foreground">
@@ -93,39 +100,45 @@ export function SkillRow({
       <span className="shrink-0 self-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 data-[state=open]:opacity-100">
         <OpenInAgentMenu input={handoffInput} />
       </span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="shrink-0 self-center font-mono uppercase opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-        onClick={onInstall}
-        disabled={installing}
-        data-testid={`skill-install-${skill.name}`}
-      >
-        <DownloadCloud className="size-3.5" aria-hidden />
-        {skill.installed ? <Trans>Installed</Trans> : <Trans>Install</Trans>}
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      {/* A managed built-in skill is read-only: no Install button, no
+          edit/uninstall/delete menu. The row body still opens it to read. */}
+      {skill.managed ? null : (
+        <>
           <Button
+            type="button"
             variant="ghost"
-            size="icon"
-            className="size-7 shrink-0 self-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
-            aria-label={t`Actions for ${skill.name}`}
+            size="sm"
+            className="shrink-0 self-center font-mono uppercase opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+            onClick={onInstall}
+            disabled={installing}
+            data-testid={`skill-install-${skill.name}`}
           >
-            <MoreVertical className="size-4" aria-hidden />
+            <DownloadCloud className="size-3.5" aria-hidden />
+            {skill.installed ? <Trans>Installed</Trans> : <Trans>Install</Trans>}
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-52">
-          {/* Install stays a dedicated button on this row, so the menu omits it. */}
-          <SkillActionMenuItems
-            skill={skill}
-            onEdit={onEdit}
-            onUninstall={onUninstall}
-            onDelete={onDelete}
-          />
-        </DropdownMenuContent>
-      </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0 self-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                aria-label={t`Actions for ${skill.name}`}
+              >
+                <MoreVertical className="size-4" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-52">
+              {/* Install stays a dedicated button on this row, so the menu omits it. */}
+              <SkillActionMenuItems
+                skill={skill}
+                onEdit={onEdit}
+                onUninstall={onUninstall}
+                onDelete={onDelete}
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
     </li>
   );
 }

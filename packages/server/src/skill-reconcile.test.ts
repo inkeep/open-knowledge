@@ -340,4 +340,19 @@ describe('reconcileSkillInstalls', () => {
     // Still a real dir (copy), not a symlink.
     expect(lstatSync(bundle).isSymbolicLink()).toBe(false);
   });
+
+  test('leaves EVERY shipped bundle copy untouched, not just open-knowledge', async () => {
+    // The exclusion set is derived from the canonical bundle list, so all three
+    // built-in bundle names are covered. A foreign `open-knowledge-write-skill/`
+    // host dir must NOT be adopted into `.ok/skills/` — that reserved name would
+    // become an authored skill the write API forbids.
+    const bundle = makeEditorCopy('.claude/skills', 'open-knowledge-write-skill', '# Shipped');
+
+    const r = await reconcileSkillInstalls({ projectDir: root, skillsRoot });
+    const all = [...r.adopted, ...r.replaced, ...r.collided, ...r.healed];
+    expect(all.find((a) => a.name === 'open-knowledge-write-skill')).toBeUndefined();
+    // Never projected into .ok/skills, and left as a real dir (not symlinked).
+    expect(existsSync(join(skillsRoot, 'open-knowledge-write-skill'))).toBe(false);
+    expect(lstatSync(bundle).isSymbolicLink()).toBe(false);
+  });
 });

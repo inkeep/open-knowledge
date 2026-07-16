@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSkills } from '@/hooks/use-skills';
 import { skillLiveDocName } from '@/lib/managed-artifact-doc-name';
-import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
+import { openManagedArtifactTab, openSkillFileTab } from '@/lib/open-managed-artifact-tab';
 import { SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
 import { useSettingsRoute } from '@/lib/use-settings-route';
 
@@ -64,8 +64,14 @@ export function SkillsManagerSection() {
   // editing a skill is editing a document (the tab + sidebar + chrome are the
   // doc shell). Setting the artifact hash also closes Settings (it's hash-driven),
   // so the explicit close() is a belt-and-suspenders no-op once the hash flips.
-  function openSkillTab(scope: SkillScope, name: string) {
-    openManagedArtifactTab(skillLiveDocName(scope, name));
+  // A managed built-in skill (`open-knowledge`) has no editable content doc, so
+  // its `SKILL.md` opens in the read-only bundle-file viewer instead.
+  function openSkillTab(skill: Pick<SkillsListEntry, 'scope' | 'name' | 'managed'>) {
+    if (skill.managed) {
+      openSkillFileTab({ scope: skill.scope, name: skill.name, path: 'SKILL.md' });
+    } else {
+      openManagedArtifactTab(skillLiveDocName(skill.scope, skill.name));
+    }
     settingsRoute.close();
   }
 
@@ -131,7 +137,7 @@ export function SkillsManagerSection() {
               scope={scope}
               skills={skills}
               installingName={actions.installingName}
-              onEdit={(skill) => openSkillTab(skill.scope, skill.name)}
+              onEdit={(skill) => openSkillTab(skill)}
               onDelete={actions.requestDelete}
               onInstall={actions.install}
               onUninstall={actions.uninstall}
@@ -146,7 +152,7 @@ export function SkillsManagerSection() {
         defaultScope="project"
         open={newSkillOpen}
         onOpenChange={setNewSkillOpen}
-        onCreated={({ scope, name }) => openSkillTab(scope, name)}
+        onCreated={({ scope, name }) => openSkillTab({ scope, name })}
       />
     </section>
   );

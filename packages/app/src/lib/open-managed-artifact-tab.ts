@@ -1,4 +1,4 @@
-import { hashFromDocName } from '@/lib/doc-hash';
+import { hashFromDocName, hashFromSkillFile, type SkillFileHashTarget } from '@/lib/doc-hash';
 
 /**
  * Open a managed-artifact doc (skill/template) as the ACTIVE editor tab.
@@ -15,5 +15,18 @@ import { hashFromDocName } from '@/lib/doc-hash';
 export function openManagedArtifactTab(docName: string): void {
   if (typeof window === 'undefined') return;
   const hash = hashFromDocName(docName);
+  if (window.location.hash !== hash) window.location.hash = hash;
+}
+
+/**
+ * Open a skill bundle file (`SKILL.md` / `references/**` / `scripts/**`) in the
+ * READ-ONLY viewer, by the same hash-nav mechanism as {@link openManagedArtifactTab}.
+ * Used for OK's built-in `open-knowledge` skill (managed, read-only): it has no
+ * editable CRDT content doc, so its `SKILL.md` opens through the scope-aware
+ * `/api/skill-file` viewer rather than the editor.
+ */
+export function openSkillFileTab(target: SkillFileHashTarget): void {
+  if (typeof window === 'undefined') return;
+  const hash = hashFromSkillFile(target);
   if (window.location.hash !== hash) window.location.hash = hash;
 }

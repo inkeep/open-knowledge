@@ -4530,6 +4530,19 @@ msgstr "Manage hidden files in Settings → Ignore patterns."
 msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
 msgstr "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
 
+#: src/components/SkillRow.tsx
+msgid "Managed"
+msgstr "Managed"
+
+#: src/components/skill-actions.tsx
+#: src/components/SkillRow.tsx
+msgid "Managed by OpenKnowledge"
+msgstr "Managed by OpenKnowledge"
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Managed by OpenKnowledge (read-only)"
+msgstr "Managed by OpenKnowledge (read-only)"
+
 #: src/components/settings/AiToolsSection.tsx
 msgid "Managing AI tools is unavailable in this build."
 msgstr "Managing AI tools is unavailable in this build."

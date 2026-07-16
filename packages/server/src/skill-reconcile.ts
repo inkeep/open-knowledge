@@ -67,13 +67,20 @@ import {
 } from './fs-traced.ts';
 import { readInstalledSkills, recordSkillInstall } from './installed-skills-marker.ts';
 import { getLogger } from './logger.ts';
+import { INTERNAL_BUNDLE_SKILL_NAMES } from './skill-bundles.ts';
 import { isProjectSkillManaged } from './skill-management.ts';
 import { hostSkillsRootEscapes, validateSkillForInstall } from './skill-projection.ts';
 
 const logger = getLogger('skill-reconcile');
 
-/** OK's shipped bundles — copy-installed, excluded from the reconcile invariant. */
-const SHIPPED_BUNDLE_NAMES = new Set(['open-knowledge', 'open-knowledge-discovery']);
+/**
+ * OK's shipped bundle skills — copy-installed, excluded from the reconcile
+ * sweep. Derived from the canonical bundle list (not a hand-maintained literal)
+ * so it can't drift: a foreign editor-host dir named after a built-in bundle
+ * must never be adopted into `.ok/skills/`, where the reserved name would
+ * become an authored skill the write API forbids.
+ */
+const SHIPPED_BUNDLE_NAMES = INTERNAL_BUNDLE_SKILL_NAMES;
 
 /** Per-editor action recorded for one reconciled entry. */
 interface ReconcileAction {

@@ -5,6 +5,7 @@ import {
   FileCode,
   FileText,
   Hexagon,
+  Lock,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -239,7 +240,16 @@ function SkillFolderItem({
                   <RefreshCw className="size-3 text-primary" aria-label={t`Update available`} />
                 </span>
               ) : null}
-              <SkillStateBadge installed={skill.installed} subtle className="shrink-0" />
+              {skill.managed ? (
+                <span title={t`Managed by OpenKnowledge (read-only)`} className="flex items-center">
+                  <Lock
+                    className="size-3 text-muted-foreground"
+                    aria-label={t`Managed by OpenKnowledge (read-only)`}
+                  />
+                </span>
+              ) : (
+                <SkillStateBadge installed={skill.installed} subtle className="shrink-0" />
+              )}
             </span>
           </SidebarMenuButton>
         </CollapsibleTrigger>
@@ -332,13 +342,8 @@ function SkillFolderContents({ skill }: { skill: SkillsListEntry }) {
   // a global skill (its files live under `~/.ok/skills/`, outside the project),
   // so routing those through the asset path 404'd; the skill-file target reads
   // the right store per scope.
-  function openFile(filePath: string) {
-    const dot = filePath.lastIndexOf('.');
-    const ext = dot >= 0 ? filePath.slice(dot + 1).toLowerCase() : '';
-    if (skill.scope === 'project' && (ext === 'md' || ext === 'mdx')) {
-      openProjectDoc(projectSkillFilePath(skill.name, filePath.replace(/\.mdx?$/i, '')));
-      return;
-    }
+  // Open ANY skill file (incl. `SKILL.md`) in the read-only bundle-file viewer.
+  function openReadonlyFile(filePath: string) {
     const target = {
       kind: 'skill-file' as const,
       target: `${skill.scope}/${skill.name}/${filePath}`,
@@ -350,6 +355,22 @@ function SkillFolderContents({ skill }: { skill: SkillsListEntry }) {
     replaceHashWithoutNavigation(
       hashFromSkillFile({ scope: skill.scope, name: skill.name, path: filePath }),
     );
+  }
+
+  function openFile(filePath: string) {
+    // A managed built-in skill (`open-knowledge`) has no editable content doc, so
+    // every file, including `.md` references, opens read-only.
+    if (skill.managed) {
+      openReadonlyFile(filePath);
+      return;
+    }
+    const dot = filePath.lastIndexOf('.');
+    const ext = dot >= 0 ? filePath.slice(dot + 1).toLowerCase() : '';
+    if (skill.scope === 'project' && (ext === 'md' || ext === 'mdx')) {
+      openProjectDoc(projectSkillFilePath(skill.name, filePath.replace(/\.mdx?$/i, '')));
+      return;
+    }
+    openReadonlyFile(filePath);
   }
 
   useEffect(() => {
@@ -386,9 +407,11 @@ function SkillFolderContents({ skill }: { skill: SkillsListEntry }) {
         <SidebarMenuSubButton
           size="sm"
           onClick={() =>
-            skill.scope === 'project'
-              ? openProjectDoc(projectSkillContentDocName(skill.name))
-              : openManagedArtifactTab(skillLiveDocName(skill.scope, skill.name))
+            skill.managed
+              ? openReadonlyFile('SKILL.md')
+              : skill.scope === 'project'
+                ? openProjectDoc(projectSkillContentDocName(skill.name))
+                : openManagedArtifactTab(skillLiveDocName(skill.scope, skill.name))
           }
           className="text-[11px]"
         >

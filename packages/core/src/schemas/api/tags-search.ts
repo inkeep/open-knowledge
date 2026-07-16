@@ -395,6 +395,11 @@ export const SkillPayloadSchema = z
         }),
       )
       .optional(),
+    /** True for OpenKnowledge's own built-in `open-knowledge*` skills, served
+     *  from the on-disk editor projection (`.claude/skills/...`) READ-ONLY. The
+     *  UI labels these "Managed by OpenKnowledge" and disables edit/rename/delete;
+     *  the write/rename/delete APIs also refuse them (defense in depth). */
+    managed: z.boolean().optional(),
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillPayload = z.infer<typeof SkillPayloadSchema>;
@@ -440,6 +445,11 @@ export const SkillsListEntrySchema = z
     installedVersion: z.string().optional(),
     bundledVersion: z.string().optional(),
     updateAvailable: z.boolean().optional(),
+    /** True for OpenKnowledge's own built-in `open-knowledge*` skills (the ones
+     *  projected into editor host dirs, e.g. `.claude/skills/open-knowledge`).
+     *  They are READ-ONLY: surfaced so users can see what their agents load, but
+     *  edit/rename/delete/install are disabled in the UI and refused by the API. */
+    managed: z.boolean().optional(),
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillsListEntry = z.infer<typeof SkillsListEntrySchema>;

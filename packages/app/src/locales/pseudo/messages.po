@@ -4525,6 +4525,19 @@ msgstr ""
 msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
 msgstr ""
 
+#: src/components/SkillRow.tsx
+msgid "Managed"
+msgstr ""
+
+#: src/components/skill-actions.tsx
+#: src/components/SkillRow.tsx
+msgid "Managed by OpenKnowledge"
+msgstr ""
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Managed by OpenKnowledge (read-only)"
+msgstr ""
+
 #: src/components/settings/AiToolsSection.tsx
 msgid "Managing AI tools is unavailable in this build."
 msgstr ""

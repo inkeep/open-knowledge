@@ -76,6 +76,7 @@ import {
   DuplicatePathRequestSchema,
   DuplicatePathSuccessSchema,
   detectFmRegion,
+  EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
   EmbedDetectSuccessSchema,
   EmptyRequestSchema,
@@ -378,6 +379,7 @@ import {
   computeShareTargetStatus,
   SHARE_TARGET_STATUS_HANDLER_TAG,
 } from './share/target-status.ts';
+import { BUNDLE_SKILL_NAME, isInternalBundleSkillName } from './skill-bundles.ts';
 import { buildAndOpenSkill } from './skill-install.ts';
 import { readSkillManagement, writeSkillManagement } from './skill-management.ts';
 import {
@@ -14001,6 +14003,102 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       : resolve(contentDir, '.ok', 'skills');
   }
 
+  // OK's built-in project skill (`open-knowledge`) is NOT authored under
+  // `.ok/skills`; it is force-installed into the editor host dirs
+  // (`.claude/skills/open-knowledge/`, `.cursor/skills/...`, …). Surface it in
+  // the skills index READ-ONLY so users can see exactly what their agents load.
+  const BUILTIN_PROJECT_SKILL_NAME = BUNDLE_SKILL_NAME.project;
+
+  /**
+   * Resolve the on-disk installed copy of the built-in `open-knowledge` project
+   * skill across the editor host dirs, preferring Claude (the first entry in
+   * `PROJECT_SKILL_EDITOR_IDS`). Returns the chosen skill dir + its `SKILL.md` +
+   * every host id it is projected into + the project-relative path, or null when
+   * there is no project or no host copy exists yet.
+   */
+  function resolveBuiltinProjectSkillDir(): {
+    dir: string;
+    skillMd: string;
+    hosts: string[];
+    relPath: string;
+  } | null {
+    if (!projectDir) return null;
+    const hosts: string[] = [];
+    let chosenDir: string | null = null;
+    for (const editorId of PROJECT_SKILL_EDITOR_IDS) {
+      const root = EDITOR_PROJECT_SKILL_ROOT[editorId];
+      if (!root) continue;
+      const dir = resolve(projectDir, ...root.split('/'), BUILTIN_PROJECT_SKILL_NAME);
+      if (!existsSync(resolve(dir, 'SKILL.md'))) continue;
+      hosts.push(editorId);
+      if (chosenDir === null) chosenDir = dir;
+    }
+    if (chosenDir === null) return null;
+    const skillMd = resolve(chosenDir, 'SKILL.md');
+    return {
+      dir: chosenDir,
+      skillMd,
+      hosts,
+      relPath: relative(projectDir, skillMd).split(/[\\/]/).filter(Boolean).join('/'),
+    };
+  }
+
+  /**
+   * The managed, read-only skills-list entry for the built-in `open-knowledge`
+   * project skill, read from its on-disk projection. Returns null when it isn't
+   * installed (no host copy). Marked `managed: true` so the UI labels it and
+   * disables mutation; the write/rename/delete APIs refuse it independently.
+   */
+  function builtinProjectSkillListEntry(): {
+    name: string;
+    description?: string;
+    scope: 'project';
+    path: string;
+    absolutePath: string;
+    installed: boolean;
+    hosts: string[];
+    managed: true;
+  } | null {
+    const resolved = resolveBuiltinProjectSkillDir();
+    if (!resolved) return null;
+    let description: string | undefined;
+    try {
+      const { frontmatter } = parseFrontmatterDoc(readFileSync(resolved.skillMd, 'utf-8'));
+      if (typeof frontmatter.description === 'string') description = frontmatter.description;
+    } catch {
+      // Malformed SKILL.md: still list it (without a description) so it's visible.
+    }
+    return {
+      name: BUILTIN_PROJECT_SKILL_NAME,
+      ...(description !== undefined ? { description } : {}),
+      scope: 'project',
+      path: resolved.relPath,
+      absolutePath: resolved.skillMd,
+      installed: resolved.hosts.length > 0,
+      hosts: resolved.hosts,
+      managed: true,
+    };
+  }
+
+  /**
+   * Refuse a MUTATION (write / rename / delete / install / …) that targets one of
+   * OK's built-in bundle skills (`open-knowledge*`). They are managed by
+   * OpenKnowledge: read-only in both the UI and the API. Returns true (and
+   * writes the error) when `name` is reserved, so callers early-return; the UI
+   * already hides these controls, this is the defense-in-depth server gate.
+   */
+  function rejectReservedBuiltinSkill(name: string, res: ServerResponse, handler: string): boolean {
+    if (!isInternalBundleSkillName(name)) return false;
+    errorResponse(
+      res,
+      400,
+      'urn:ok:error:reserved-doc-name',
+      `"${name}" is a built-in skill managed by OpenKnowledge and can't be edited, renamed, or deleted.`,
+      { handler },
+    );
+    return true;
+  }
+
   /**
    * Build the folder-addressed `__template__/<folderRel>/<name>` CRDT doc name.
    * Each path segment is percent-encoded so `parseManagedArtifactName` decodes
@@ -14158,8 +14256,20 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             // an installed skill — the install handler also drops empty markers.
             return { ...skill, installed: hosts.length > 0, hosts, ...update };
           });
+        // Append OK's built-in `open-knowledge` project skill (read from its
+        // on-disk editor projection, e.g. `.claude/skills/open-knowledge/`) as a
+        // managed, read-only entry, unless the project already authors a real
+        // `.ok/skills/open-knowledge` (the reserved-name gate normally prevents
+        // this, but a pre-existing one wins to avoid a duplicate row).
+        const builtin = project.skills.some((s) => s.name === BUILTIN_PROJECT_SKILL_NAME)
+          ? null
+          : builtinProjectSkillListEntry();
         const enriched = {
-          skills: [...enrich(project, projectInstalled), ...enrich(globalSkills, globalInstalled)],
+          skills: [
+            ...enrich(project, projectInstalled),
+            ...enrich(globalSkills, globalInstalled),
+            ...(builtin ? [builtin] : []),
+          ],
           truncated: project.truncated || globalSkills.truncated,
         };
         successResponse(res, 200, SkillsListSuccessSchema, enriched, { handler: 'skills-list' });
@@ -14266,6 +14376,40 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         if (!validateSkillName(name, res, 'skill-get')) return;
         const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-get');
         if (scope === null) return;
+
+        // The built-in `open-knowledge` project skill lives in the editor host
+        // dirs, not `.ok/skills`, so serve its on-disk installed copy read-only
+        // so the Skills UI can open + display exactly what agents load.
+        if (name === BUILTIN_PROJECT_SKILL_NAME && scope === 'project') {
+          const builtin = resolveBuiltinProjectSkillDir();
+          if (builtin) {
+            const { frontmatter, body } = parseFrontmatterDoc(
+              await readFile(builtin.skillMd, 'utf-8'),
+            );
+            successResponse(
+              res,
+              200,
+              SkillGetSuccessSchema,
+              {
+                skill: {
+                  name,
+                  scope,
+                  path: builtin.relPath,
+                  frontmatter: {
+                    name: typeof frontmatter.name === 'string' ? frontmatter.name : name,
+                    description:
+                      typeof frontmatter.description === 'string' ? frontmatter.description : '',
+                  },
+                  body,
+                  files: readSkillBundledFiles(builtin.dir),
+                  managed: true,
+                },
+              },
+              { handler: 'skill-get' },
+            );
+            return;
+          }
+        }
         const skillsRoot = resolveSkillsRoot(scope);
 
         const skillMd = resolve(skillsRoot, name, 'SKILL.md');
@@ -14327,6 +14471,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
         if (!validateSkillName(body.name, res, 'skill-put')) return;
+        if (rejectReservedBuiltinSkill(body.name, res, 'skill-put')) return;
 
         // Compose + validate the SKILL.md bytes server-side (OK
         // builds name+description). The body itself is then written through the
@@ -14429,6 +14574,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const url = new URL(req.url ?? '', 'http://localhost');
         const name = url.searchParams.get('name') ?? '';
         if (!validateSkillName(name, res, 'skill-delete')) return;
+        if (rejectReservedBuiltinSkill(name, res, 'skill-delete')) return;
         const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-delete');
         if (scope === null) return;
         const skillsRoot = resolveSkillsRoot(scope);
@@ -14533,6 +14679,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         }
         if (!validateSkillName(body.fromName, res, 'skill-move')) return;
         if (!validateSkillName(body.toName, res, 'skill-move')) return;
+        if (rejectReservedBuiltinSkill(body.fromName, res, 'skill-move')) return;
+        if (rejectReservedBuiltinSkill(body.toName, res, 'skill-move')) return;
         const skillsRoot = resolveSkillsRoot(body.scope);
 
         // Tear down the live source skill doc (if open) BEFORE the git-mv
@@ -14836,7 +14984,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-file-get');
         if (scope === null) return;
         const rel = url.searchParams.get('path') ?? '';
-        const kind = classifySkillFilePath(rel);
+        // Built-in `open-knowledge` project skill: files come from the editor
+        // host dir, and its `SKILL.md` (skill-dir root) is allowed read-only here
+        // so the managed skill's entrypoint opens in the read-only viewer.
+        const builtin =
+          name === BUILTIN_PROJECT_SKILL_NAME && scope === 'project'
+            ? resolveBuiltinProjectSkillDir()
+            : null;
+        const kind = builtin && rel === 'SKILL.md' ? 'reference' : classifySkillFilePath(rel);
         if (kind === null) {
           errorResponse(
             res,
@@ -14847,8 +15002,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        const skillsRoot = resolveSkillsRoot(scope);
-        const skillDir = resolve(skillsRoot, name);
+        const skillDir = builtin ? builtin.dir : resolve(resolveSkillsRoot(scope), name);
         const abs = resolve(skillDir, rel);
         if (abs !== skillDir && !abs.startsWith(`${skillDir}${sep}`)) {
           errorResponse(
@@ -14937,6 +15091,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
         if (!validateSkillName(body.name, res, 'skill-file-put')) return;
+        if (rejectReservedBuiltinSkill(body.name, res, 'skill-file-put')) return;
         const kind = classifySkillFilePath(body.path);
         if (kind === null) {
           errorResponse(
@@ -15093,6 +15248,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const sp = url.searchParams;
         const name = sp.get('name') ?? '';
         if (!validateSkillName(name, res, 'skill-file-delete')) return;
+        if (rejectReservedBuiltinSkill(name, res, 'skill-file-delete')) return;
         const scope = parseSkillScope(sp.get('scope'), res, 'skill-file-delete');
         if (scope === null) return;
         const rel = (sp.get('path') ?? '').replace(/\\/g, '/');
@@ -15203,6 +15359,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       try {
         const skillsRoot = resolveSkillsRoot(body.scope);
         if (!validateSkillName(body.name, res, 'skill-install')) return;
+        if (rejectReservedBuiltinSkill(body.name, res, 'skill-install')) return;
 
         // Project skills install into the project's host dirs (require a
         // resolved project root); global skills install into the user-global
@@ -15339,6 +15496,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     async (_req, res, body) => {
       try {
         if (!validateSkillName(body.name, res, 'skill-uninstall')) return;
+        if (rejectReservedBuiltinSkill(body.name, res, 'skill-uninstall')) return;
         const base = skillInstallBase(body.scope);
         if (!base) {
           errorResponse(
@@ -15491,6 +15649,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
         if (!validateSkillName(body.name, res, 'skill-restore')) return;
+        if (rejectReservedBuiltinSkill(body.name, res, 'skill-restore')) return;
         // Global skills are unversioned — there's no prior version to restore.
         if (body.scope === 'global') {
           errorResponse(
@@ -15603,6 +15762,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
         if (!validateSkillName(body.name, res, 'skill-update')) return;
+        if (rejectReservedBuiltinSkill(body.name, res, 'skill-update')) return;
         // Only starter-pack skills have a bundled source to refresh from.
         if (!isPackSkillName(body.name)) {
           errorResponse(
