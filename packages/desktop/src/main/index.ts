@@ -292,6 +292,11 @@ import { removeGitFolder } from './remove-git-folder.ts';
 import { attachRendererConsoleCapture } from './renderer-console-capture.ts';
 import { resolveDetachedSpawnArgs } from './resolve-detached-spawn-args.ts';
 import { resolveShareTarget as resolveShareTargetMain } from './resolve-share-target.ts';
+import {
+  RESTORE_REVEAL_TIMEOUT_MS,
+  type RevealableWindow,
+  raiseMostRecentlyFocusedAfterRestore,
+} from './restore-focus.ts';
 import { handleRevealExternal } from './reveal-external.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
 import { handleShellOpenExternal } from './shell-allowlist.ts';
@@ -5430,29 +5435,35 @@ function bootPrimaryInstance(): void {
 
       if (decision.action === 'restore') {
         // Parallel opens — the snapshot is ordered least → most recently
-        // focused (see `pendingWindowRestore`), but each window shows only
-        // when its own theme gate releases, so completion order (and thus
-        // which window ends up focused) is nondeterministic. Raise the
-        // snapshot's LAST entry once every open settles AND its window is
-        // actually visible: `bringToFront` calls `show()`, so raising a
-        // still-gated window would bypass the dual-signal show gate and
-        // resurface the un-themed first paint.
+        // focused (see `pendingWindowRestore`), but each window's OS-level
+        // `show()` is deferred behind its own dual-signal show gate, which
+        // releases in nondeterministic order. `show()` steals key-window focus
+        // on macOS, so the raise must wait for EVERY restored window to reveal
+        // before raising the snapshot's last entry — otherwise a sibling window
+        // that shows later steals focus back (the reported "active window isn't
+        // the one I was working in" after a relaunch). Waiting for all reveals
+        // also keeps `bringToFront`'s `show()` from bypassing the target's own
+        // gate: the target is already shown by the time we raise it.
         const opens = decision.projects.map((projectPath) =>
           openProjectOrFallbackToNavigator(projectPath, 'recents'),
         );
-        const lastActiveProject = decision.projects[decision.projects.length - 1];
-        void Promise.allSettled(opens).then(() => {
-          if (lastActiveProject === undefined) return;
-          const ctx = wm?.getWindowFor(lastActiveProject);
-          // Absent context = the open failed and fell back to the Navigator;
-          // nothing to raise.
-          if (!ctx || ctx.window.isDestroyed?.() === true) return;
-          const raise = () => {
-            if (ctx.window.isDestroyed?.() !== true) wm?.focusWindowForProject(lastActiveProject);
-          };
-          if (ctx.window.isVisible?.() === true) raise();
-          else (ctx.window as unknown as BrowserWindow).once('show', raise);
-        });
+        void Promise.allSettled(opens).then(() =>
+          raiseMostRecentlyFocusedAfterRestore({
+            projects: decision.projects,
+            getWindow: (projectPath) => {
+              const ctx = wm?.getWindowFor(projectPath);
+              return ctx ? (ctx.window as unknown as RevealableWindow) : undefined;
+            },
+            raise: (projectPath) => {
+              wm?.focusWindowForProject(projectPath);
+            },
+            deps: {
+              setTimeout: (cb, ms) => setTimeout(cb, ms),
+              clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+              timeoutMs: RESTORE_REVEAL_TIMEOUT_MS,
+            },
+          }),
+        );
       } else if (decision.action === 'lastOpened') {
         void openProjectOrFallbackToNavigator(decision.project, 'recents');
       } else if (decision.action === 'navigator') {
