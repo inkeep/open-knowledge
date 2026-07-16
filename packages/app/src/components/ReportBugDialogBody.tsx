@@ -3,7 +3,7 @@
  *
  * One dialog hosts six phases: compose (optional note + detail level),
  * review (inspect the exact zip before consenting to send), sending, success
- * (report reference + public GitHub follow-up), email (the designed
+ * (report reference + support-email follow-up), email (the designed
  * no-intake default — nothing was uploaded, the prefilled draft is the
  * transport), and failure (the same email fallback framed as an error, for
  * uploads that were attempted and failed). The zip reviewed is byte-identical
@@ -52,7 +52,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 
-const GITHUB_NEW_ISSUE_URL = 'https://github.com/inkeep/open-knowledge/issues/new';
 const SUPPORT_EMAIL = 'support@inkeep.com';
 
 /** Bare mailto with a prefilled subject — used on the success screen, where the
@@ -349,16 +348,6 @@ function ReportBugDialog({
 
   function openExternal(url: string) {
     void window.okDesktop?.shell.openExternal(url);
-  }
-
-  function handleOpenGithubIssue(reference: string) {
-    const params = new URLSearchParams({
-      title: t`Bug report ${reference}`,
-      // The reference is the only private↔public correlation key; the bundle
-      // itself never leaves the private channel.
-      body: t`Report reference: ${reference}`,
-    });
-    openExternal(`${GITHUB_NEW_ISSUE_URL}?${params}`);
   }
 
   const uploadPct = Math.round(sentFraction * 100);
@@ -763,21 +752,14 @@ function ReportBugDialog({
                 </div>
                 <p className="text-sm text-muted-foreground">
                   <Trans>
-                    <span className="font-medium text-foreground">Want to follow along?</span> Open
-                    a GitHub issue and mention your reference. Or write to{' '}
-                    <SupportEmailLink href={supportMailtoUrl(t`Bug report ${phase.reference}`)} />
+                    <span className="font-medium text-foreground">Have more to add?</span> Write to{' '}
+                    <SupportEmailLink href={supportMailtoUrl(t`Bug report ${phase.reference}`)} />{' '}
+                    and mention your reference.
                   </Trans>
                 </p>
               </div>
             </DialogBody>
             <DialogFooter>
-              <Button
-                variant="outline"
-                className="font-mono uppercase"
-                onClick={() => handleOpenGithubIssue(phase.reference)}
-              >
-                <Trans>Open GitHub issue</Trans>
-              </Button>
               <Button onClick={() => handleOpenChange(false)}>
                 <Trans>Done</Trans>
               </Button>

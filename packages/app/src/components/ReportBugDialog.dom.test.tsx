@@ -313,7 +313,7 @@ describe('ReportBugDialog', () => {
     expect((noteBox as HTMLTextAreaElement).value).toBe('my draft note');
   });
 
-  test('sending uploads the reviewed zip and lands on the reference with copy and GitHub follow-up', async () => {
+  test('sending uploads the reviewed zip and lands on the reference with copy and support follow-up', async () => {
     const send = deferred<OkBugReportSendResult>();
     const log = installBridge({ send: () => send.promise });
     const { openChangeCalls } = await renderDialog();
@@ -357,15 +357,10 @@ describe('ReportBugDialog', () => {
     await screen.findByRole('button', { name: 'Copied!' });
     expect(log.clipboard).toEqual(['OK-8H3KQD']);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open GitHub issue' }));
-    expect(log.opened).toHaveLength(1);
-    expect(log.opened[0]).toContain('https://github.com/inkeep/open-knowledge/issues/new?');
-    expect(log.opened[0]).toContain('OK-8H3KQD');
-    // Privacy pin: the public GitHub prefill carries the reference in title
-    // and body only — no diagnostics, bundle-path, or attachment params may
-    // ever ride along.
-    const issueUrl = new URL(log.opened[0] ?? '');
-    expect([...issueUrl.searchParams.keys()].sort()).toEqual(['body', 'title']);
+    // The public GitHub follow-up is gone — no issue button, and support email
+    // is the only follow-up channel offered.
+    expect(screen.queryByRole('button', { name: 'Open GitHub issue' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'support@inkeep.com' })).not.toBeNull();
 
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(openChangeCalls).toEqual([false]);

@@ -719,9 +719,6 @@
     ],
     "FEqWFL": ["Guides your AI agents on how to work here."],
     "FEr96N": ["Theme"],
-    "FHSN1Z": [
-      "<0>Want to follow along?</0> Open a GitHub issue and mention your reference. Or write to <1/>"
-    ],
     "FNTx6u": ["Search \"", ["semanticSubmitQuery"], "\" by meaning"],
     "FOGD7m": ["Create something great."],
     "FRYB1Q": ["/api/config returned a malformed body"],
@@ -844,7 +841,6 @@
     "ICoNYz": ["You can also manage this in Settings."],
     "IFezUv": ["The audit could not be completed. Try again."],
     "IInnZo": ["Conflict"],
-    "IKkfn_": ["Report reference: ", ["reference"]],
     "IKoTAC": ["Keep disabled"],
     "IN4UX8": ["Search (", ["searchShortcut"], ")"],
     "IQPyrD": ["Missing page — click to create"],
@@ -1178,7 +1174,6 @@
     "PrJYSN": ["This folder isn't on GitHub yet. The link won't work until it's pushed."],
     "PrhzDE": ["Pan up"],
     "Pyp1NA": ["Restore to this point?"],
-    "PzUvDM": ["Bug report ", ["reference"]],
     "Q5fqMz": ["Connection error — try again"],
     "Q6hhn8": ["Preferences"],
     "Q7W-mC": ["Same folder as current file"],
@@ -1535,7 +1530,6 @@
     "YsEYYS": [
       ["behind", "plural", { "one": ["#", " commit behind"], "other": ["#", " commits behind"] }]
     ],
-    "Yu3KMH": ["Open GitHub issue"],
     "YwPUUP": ["This pack is already set up here."],
     "YyXtnN": ["Underline"],
     "Z1LF1M": ["Sharing a doc needs a GitHub repository. Create one for this project."],
@@ -1849,6 +1843,7 @@
     "fqSfXY": ["Replace"],
     "fuJZKk": ["Search branches"],
     "fwhX-N": ["Indent or outdent source"],
+    "fxJk_6": ["<0>Have more to add?</0> Write to <1/> and mention your reference."],
     "fxbCNQ": ["Synced. The link is up to date."],
     "g3UF2V": ["Accept"],
     "g4WlQK": ["Project AI tool management is only available in the OpenKnowledge desktop app."],

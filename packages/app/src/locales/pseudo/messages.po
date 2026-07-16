@@ -568,6 +568,10 @@ msgstr ""
 msgid "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
 msgstr ""
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "<0>Have more to add?</0> Write to <1/> and mention your reference."
+msgstr ""
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr ""
@@ -583,10 +587,6 @@ msgstr ""
 #. Warning shown when the user unchecks the PATH toggle — only external terminals degrade
 #: src/components/McpConsentDialogBody.tsx
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
-msgstr ""
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "<0>Want to follow along?</0> Open a GitHub issue and mention your reference. Or write to <1/>"
 msgstr ""
 
 #: src/components/PageHeaderWidgets.tsx
@@ -1283,10 +1283,6 @@ msgstr ""
 #. placeholder {0}: phase.reference
 #: src/components/ReportBugDialogBody.tsx
 msgid "Bug report {0}"
-msgstr ""
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Bug report {reference}"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -5429,10 +5425,6 @@ msgstr ""
 msgid "Open folder on disk"
 msgstr ""
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Open GitHub issue"
-msgstr ""
-
 #: src/components/CommandPalette.tsx
 msgid "Open graph"
 msgstr ""
@@ -6347,10 +6339,6 @@ msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Report reference"
-msgstr ""
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Report reference: {reference}"
 msgstr ""
 
 #: src/components/AppErrorBoundary.tsx

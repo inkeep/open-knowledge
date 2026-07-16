@@ -573,6 +573,10 @@ msgstr "<{descriptorLabel}> failed to render (likely a bad prop). Copy the sourc
 msgid "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
 msgstr "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "<0>Have more to add?</0> Write to <1/> and mention your reference."
+msgstr "<0>Have more to add?</0> Write to <1/> and mention your reference."
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
@@ -589,10 +593,6 @@ msgstr "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer availabl
 #: src/components/McpConsentDialogBody.tsx
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "<0>Want to follow along?</0> Open a GitHub issue and mention your reference. Or write to <1/>"
-msgstr "<0>Want to follow along?</0> Open a GitHub issue and mention your reference. Or write to <1/>"
 
 #: src/components/PageHeaderWidgets.tsx
 msgid "📝 or assets/icon.png"
@@ -1289,10 +1289,6 @@ msgstr "Browse your repos:"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Bug report {0}"
 msgstr "Bug report {0}"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Bug report {reference}"
-msgstr "Bug report {reference}"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Bug reporting needs the OpenKnowledge desktop app."
@@ -5434,10 +5430,6 @@ msgstr "Open folder"
 msgid "Open folder on disk"
 msgstr "Open folder on disk"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Open GitHub issue"
-msgstr "Open GitHub issue"
-
 #: src/components/CommandPalette.tsx
 msgid "Open graph"
 msgstr "Open graph"
@@ -6353,10 +6345,6 @@ msgstr "Report a bug"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Report reference"
 msgstr "Report reference"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Report reference: {reference}"
-msgstr "Report reference: {reference}"
 
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
