@@ -46,6 +46,8 @@ export default {
     'scripts/compute-next-beta.test.mjs': ['files'],
     'scripts/compute-stable-version.mjs': ['files'],
     'scripts/compute-stable-version.test.mjs': ['files'],
+    'scripts/aggregate-stable-changelog.mjs': ['files'],
+    'scripts/aggregate-stable-changelog.test.mjs': ['files'],
     'scripts/check-license-fields.test.mjs': ['files'],
     'scripts/check-gate-catches-build-errors.test.mjs': ['files'],
     'scripts/bun-install-ci.test.mjs': ['files'],

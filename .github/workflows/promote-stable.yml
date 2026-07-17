@@ -277,7 +277,6 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           STABLE_TAG: ${{ steps.ver.outputs.stable_tag }}
           BETA_SHA: ${{ steps.ver.outputs.beta_sha }}
-          STABLE_VERSION: ${{ steps.ver.outputs.stable_version }}
           # Pass the resolved beta tag via env to keep ${{ }} expression
           # interpolation out of the run: block — direct ${{ }} substitution
           # in shell is a script-injection foothold (a malicious tag value
@@ -311,40 +310,47 @@ jobs:
             BETA_TAGS_IN_RANGE=$(git tag --list 'v*-beta.*' --merged "$BETA_SHA" --sort=version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' || true)
           fi
 
-          # Under the zero-commit-bump cadence, beta release bodies are
-          # the source of truth — packages/*/CHANGELOG.md no longer
-          # accumulates per-beta entries (only per-stable, written by
-          # main-reset's `bun changeset version` at promotion time). Each
-          # beta body now carries ONLY the delta introduced in that beta
-          # (compute-next-beta.mjs filters against the prior beta's
-          # embedded consumed-set marker), so simple concatenation across
-          # the cycle's betas yields a clean cumulative changelog with no
-          # duplication.
+          # Under the zero-commit-bump cadence, beta release bodies are the
+          # source of truth — packages/*/CHANGELOG.md no longer accumulates
+          # per-beta entries (only per-stable, written by main-reset's
+          # `bun changeset version` at promotion time). Each beta body carries
+          # ONLY the delta introduced in that beta (compute-next-beta.mjs filters
+          # against the prior beta's embedded consumed-set marker), so the cycle's
+          # betas concatenated are a clean, duplication-free set of the changes
+          # this stable ships.
           #
-          # Stripped from each body before concatenation:
-          #   - `<!-- ok-consumed-set: ... -->` markers (internal bookkeeping)
-          #   - `Delta since previous beta (...) — N new changesets.`  header
-          #     (the per-beta subheading we emit here is the right framing)
-          {
-            printf '## %s\n\n' "$STABLE_VERSION"
-            printf 'Stable promotion of beta %s.\n\n' "$BETA_TAG_INPUT"
-            if [[ -n "$BETA_TAGS_IN_RANGE" ]]; then
-              printf 'Aggregated changes since previous stable:\n\n'
-              for tag in $BETA_TAGS_IN_RANGE; do
-                BETA_VER=${tag#v}
-                printf '### %s\n\n' "$BETA_VER"
-                if BODY=$(gh release view "$tag" --json body --jq .body 2>/dev/null) && [[ -n "$BODY" ]]; then
-                  printf '%s\n' "$BODY" \
-                    | sed -E -e '/^<!-- ok-consumed-set:.*-->$/d' \
-                             -e '/^(Delta since previous beta|First beta of the cycle).*$/d' \
-                    | awk 'NF{p=1} p'
-                else
-                  printf '_(release body unavailable for %s)_\n' "$tag"
-                fi
-                printf '\n'
-              done
+          # aggregate-stable-changelog.mjs regroups that concatenation into one
+          # section per bump level (Major/Minor/Patch, empty levels omitted) and
+          # emits no preamble of its own: the GitHub Release title already carries
+          # the version, and under delta versioning the promoted beta's name no
+          # longer equals the stable version, so the old "## X.Y.Z / Stable
+          # promotion of beta … / Aggregated changes since previous stable" header
+          # was both redundant and inaccurate. The script also drops the internal
+          # `<!-- ok-consumed-set: … -->` markers and the per-beta "Delta since
+          # previous beta" / "First beta of the cycle" lead lines.
+          RAW_BODIES=$(mktemp)
+          UNAVAILABLE=""
+          for tag in $BETA_TAGS_IN_RANGE; do
+            if BODY=$(gh release view "$tag" --json body --jq .body 2>/dev/null) && [[ -n "$BODY" ]]; then
+              printf '%s\n\n' "$BODY" >> "$RAW_BODIES"
+            else
+              UNAVAILABLE="${UNAVAILABLE:+$UNAVAILABLE, }${tag}"
             fi
-          } > "$BODY_FILE"
+          done
+
+          node scripts/aggregate-stable-changelog.mjs < "$RAW_BODIES" > "$BODY_FILE"
+
+          # A stable with no resolvable beta changelog (no betas in range, or
+          # every body empty/unavailable) still needs a non-empty release body.
+          if [[ ! -s "$BODY_FILE" ]]; then
+            printf 'No changelog entries.\n' > "$BODY_FILE"
+          fi
+
+          # Surface any beta whose body could not be fetched so its changes are
+          # not silently missing from the aggregated notes.
+          if [[ -n "$UNAVAILABLE" ]]; then
+            printf '\n_Release body unavailable for: %s — see the per-beta releases for those changes._\n' "$UNAVAILABLE" >> "$BODY_FILE"
+          fi
 
           # GitHub rejects release bodies over 125,000 chars with HTTP 422.
           # A long beta cycle (dozens of betas, each contributing its delta)
