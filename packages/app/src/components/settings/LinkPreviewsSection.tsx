@@ -1,9 +1,9 @@
 /**
- * Settings → Link previews — opt-in rich preview cards for external links in
- * the editor hover panel. Per-machine (project-local scope) because enabling it
- * sends the hovered URL to the destination site to fetch its metadata; each
- * teammate opts in deliberately on their own machine rather than inheriting one
- * collaborator's egress choice through git.
+ * Settings → Link previews — rich preview cards for external links in the
+ * editor hover panel. On by default; this section is the per-machine opt-out.
+ * Per-machine (project-local scope) because it controls outbound egress: each
+ * machine keeps its own choice rather than inheriting one collaborator's egress
+ * setting through git.
  *
  * The toggle reads the synchronous project-local CRDT preference (the same
  * pattern as the Search and Sync sections — never the server's resolved state,

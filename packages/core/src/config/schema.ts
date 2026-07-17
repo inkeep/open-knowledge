@@ -674,11 +674,17 @@ export const ConfigSchema = z.looseObject({
     })
     .default({ markdownlint: { enabled: false } }),
   // PROJECT-LOCAL scope: external link-hover previews send the hovered URL to
-  // the destination site to fetch its metadata (egress), so — like semantic
-  // search — each teammate opts in on their own machine rather than inheriting
-  // one collaborator's egress choice through git. Default OFF; the feature
-  // ships dark. Internal (document-to-document) link previews are read entirely
-  // from the local index with no network request and are NOT gated by this key.
+  // the destination site to fetch its metadata (egress). Read per-machine from
+  // the project-local layer, never a committed/shared config, so one clone's
+  // choice never sets another's egress and a Settings toggle applies to the next
+  // hover without a restart. Default ON: an absent key resolves to enabled here,
+  // and a user turns external previews off with an explicit `enabled: false`.
+  // This defaults ON even though its sibling egress knob `search.semantic.enabled`
+  // defaults OFF: semantic search streams corpus content to a third-party
+  // embeddings provider and needs an API key, whereas a preview sends only a URL
+  // to the site the link already points at, so on-by-default is the right posture.
+  // Internal (document-to-document) link previews are read entirely from the
+  // local index with no network request and are NOT gated by this key.
   linkPreviews: z
     .looseObject({
       enabled: z
@@ -688,11 +694,11 @@ export const ConfigSchema = z.looseObject({
           agentSettable: false,
           defaultScope: 'project-local',
           description:
-            "Show a rich preview card (site name, page title, description, favicon) when you hover an external link in the editor. When ON, hovering an external link sends that link's URL to the destination site to fetch its preview metadata — outbound egress, one request per previewed link. Default OFF. Per-machine (project-local) — not shared with collaborators. Previews of links to other documents in this project are read from the local index with no network request and are always on.",
+            "Show a rich preview card (site name, page title, description, favicon) when you hover an external link in the editor. When ON, hovering an external link sends that link's URL to the destination site to fetch its preview metadata — outbound egress, one request per previewed link. Default ON; set to false to turn external previews off. Per-machine (project-local) — not shared with collaborators. Previews of links to other documents in this project are read from the local index with no network request and are always on.",
         })
-        .default(false),
+        .default(true),
     })
-    .default({ enabled: false }),
+    .default({ enabled: true }),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

@@ -1,6 +1,6 @@
 /**
  * Tier-3 RTL mount tests for Settings → Link previews (external link-preview
- * egress opt-in).
+ * egress control; on by default, this section is the per-machine opt-out).
  *
  * Behavior is driven through the project-local ConfigContext (mocked binding +
  * preference) and asserted on user-visible output: the toggle state, the egress

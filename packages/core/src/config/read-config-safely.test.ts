@@ -27,6 +27,10 @@ describe('readConfigSafely', () => {
       expect(result.source).toBeUndefined();
       expect(result.value.content.dir).toBe('.');
       expect(result.value.autoSync.enabled).toBeNull();
+      // Pins the on-by-default egress posture at the read layer the server's
+      // readLinkPreviewsEnabled() relies on: a genuinely-absent project-local
+      // config resolves to external link previews enabled.
+      expect(result.value.linkPreviews.enabled).toBe(true);
     }
   });
 

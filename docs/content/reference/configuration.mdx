@@ -51,7 +51,7 @@ A key set in a file more specific than its scope (a user-scope key in `.ok/confi
 | `search.semantic.model` | string | `"text-embedding-3-small"` | project-local | Embeddings model id. Must be served by the provider at `baseUrl`. Changing it re-embeds the corpus. |
 | `search.semantic.dimensions` | number | (native) | project-local | Optional output vector size. Omit for the model's native size (1536 for `text-embedding-3-small`). Set a smaller value to shrink the on-disk cache, trading a little quality. |
 | `search.semantic.similarityFloor` | number | (unset) | project-local | Optional hard cutoff (0–1): drops semantic matches whose cosine similarity is below it. Retrieval is rank-based, so most setups leave it unset; set it only for a provider/model whose cosine scale you know. |
-| `linkPreviews.enabled` | boolean | `false` | project-local | Show a rich preview card (site name, page title, description, favicon) when you hover an external link in the editor. Default off. **When on, hovering an external link sends that link's URL to the destination site** to fetch its preview metadata — outbound egress, one request per previewed link. Previews of links to other documents in the project are read from the local index with no network request and are always on. See [Link previews](#link-previews) below. |
+| `linkPreviews.enabled` | boolean | `true` | project-local | Show a rich preview card (site name, page title, description, favicon) when you hover an external link in the editor. Default on (set to `false` to opt out). **When on, hovering an external link sends that link's URL to the destination site** to fetch its preview metadata — outbound egress, one request per previewed link. Previews of links to other documents in the project are read from the local index with no network request and are always on. See [Link previews](#link-previews) below. |
 
 If `.ok/config.yml` contains a key that has been removed from the schema, config load fails with an error naming the replacement — a stale key is never a silent no-op. `ok config migrate` (`--dry-run` to preview; `--scope project|user|both`) strips removed keys from your config files.
 
@@ -111,13 +111,17 @@ The first semantic search kicks off a background embed of the corpus (cents for 
 
 Hovering a link in the editor shows a preview card. For **internal links** (other documents in your project) the card — title, folder, tags, last-edited time, backlink count, and a short excerpt — is built entirely from the local index and file contents: always on, no configuration, and nothing leaves the machine.
 
-For **external links**, an opt-in card shows the destination's site name, page title, description, and favicon. It is **off by default**.
+For **external links**, a card shows the destination's site name, page title, description, and favicon. It is **on by default**; turn it off per machine in Settings.
+
+<Callout type="info">
+  **Desktop app:** external link previews are not yet available in the packaged desktop app (its `file://` renderer is rejected by the preview route's anti-proxy gate), so this default applies to the browser and `ok ui` surfaces. Internal document-to-document previews work everywhere.
+</Callout>
 
 <Callout type="warn">
   **URL egress.** When `linkPreviews.enabled` is on, hovering an external link sends that link's URL to the destination site — one metadata request per previewed link, from your machine, with no cookies or credentials attached. Responses are size- and time-capped, results are cached locally under `.ok/local/`, and requests that resolve to private or internal addresses are refused. Nothing else is sent: internal-link cards never touch the network.
 </Callout>
 
-To turn it on (per machine): the **Settings → This project → Link previews** toggle, which sets `linkPreviews.enabled: true` in project-local config (`<project>/.ok/local/config.yml`), picked up live by a running server. The opt-in is enforced by the local server, so with it off no external request is made. A preview that can't be fetched (offline, timeout, the site blocks it) quietly falls back to the plain URL pill. External previews are not currently available in the packaged desktop app — the toggle applies to the browser and `ok ui` surfaces.
+To turn it off (per machine): the **Settings → This project → Link previews** toggle, which sets `linkPreviews.enabled: false` in project-local config (`<project>/.ok/local/config.yml`), picked up live by a running server. The setting is enforced by the local server, so with it off no external request is made. A preview that can't be fetched (offline, timeout, the site blocks it) quietly falls back to the plain URL pill.
 
 ## Verifying changes
 

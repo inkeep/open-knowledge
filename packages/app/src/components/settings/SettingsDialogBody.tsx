@@ -273,11 +273,11 @@ export function SettingsDialogBody({
     return <PluginSection key={activeId} />;
   }
   if (activeId === 'link-previews') {
-    // Project-local external-link-preview egress opt-in. Reads its own
-    // project-local binding from ConfigContext, same as SearchSection. The
-    // nav item is hidden on the packaged file:// renderer, whose Origin:
-    // null requests the preview route's anti-proxy gate rejects (see the
-    // gating in SettingsDialogShell).
+    // Project-local external-link-preview egress control (on by default; this
+    // section is the per-machine opt-out). Reads its own project-local binding
+    // from ConfigContext, same as SearchSection. The nav item is hidden on the
+    // packaged file:// renderer, whose Origin: null requests the preview route's
+    // anti-proxy gate rejects (see the gating in SettingsDialogShell).
     return <LinkPreviewsSection />;
   }
   if (activeId === 'terminal') {

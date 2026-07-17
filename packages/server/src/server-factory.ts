@@ -633,18 +633,26 @@ export function createServer(options: ServerOptions): ServerInstance {
   }
 
   // Same project-local, fresh-read contract as `readSemanticSearchConfig`, for
-  // the link-preview egress opt-in: `linkPreviews.enabled` must never be honored
-  // from a committed/shared config layer (one collaborator must not switch on
-  // egress for everyone who clones), and a Settings toggle must apply to the
-  // next hover without a restart. An absent or invalid config reads as disabled
-  // (`readConfigSafely` degrades to schema defaults), keeping the route
-  // fail-closed.
+  // the link-preview egress setting: `linkPreviews.enabled` is read only from
+  // the project-local layer, never a committed/shared config (one clone's choice
+  // must not set another's egress), and a Settings toggle must apply to the next
+  // hover without a restart. External previews default ON, so a genuinely-absent
+  // config resolves to enabled. A DEGRADED read fails closed instead of
+  // inheriting the on default (see the `local.valid` guard below), so an
+  // explicit `linkPreviews.enabled: false` opt-out is never silently reverted
+  // by unrelated config corruption.
   function readLinkPreviewsEnabled(): boolean {
     const local = readConfigSafely({
       absPath: resolveConfigPath('project-local', projectDir, configHomedirOverride),
       sideline: false,
       warn: (message) => log.warn({ message }, '[config] could not read project-local config'),
     });
+    // Fail closed on a degraded read (unreadable / invalid YAML / schema-invalid
+    // / removed-key): only a genuinely-absent config resolves to the on-by-default
+    // schema value. Without this, an explicit `enabled: false` opt-out would
+    // silently revert to egress-ON the moment the project-local file became
+    // unparseable (concurrent writer, crash mid-write, a stale key elsewhere).
+    if (!local.valid) return false;
     return local.value.linkPreviews?.enabled === true;
   }
 

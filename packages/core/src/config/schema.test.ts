@@ -170,13 +170,19 @@ describe('appearance.sidebar view toggles', () => {
   });
 });
 
-describe('linkPreviews.enabled (external link-hover preview egress opt-in)', () => {
-  test('defaults to disabled when the block is absent', () => {
-    expect(ConfigSchema.parse({}).linkPreviews).toEqual({ enabled: false });
+describe('linkPreviews.enabled (external link-hover preview egress default)', () => {
+  test('defaults to enabled when the block is absent', () => {
+    expect(ConfigSchema.parse({}).linkPreviews).toEqual({ enabled: true });
   });
 
-  test('defaults enabled to false when linkPreviews is present but enabled is absent', () => {
-    expect(ConfigSchema.parse({ linkPreviews: {} }).linkPreviews.enabled).toBe(false);
+  test('defaults enabled to true when linkPreviews is present but enabled is absent', () => {
+    expect(ConfigSchema.parse({ linkPreviews: {} }).linkPreviews.enabled).toBe(true);
+  });
+
+  test('accepts an explicit opt-out', () => {
+    expect(ConfigSchema.parse({ linkPreviews: { enabled: false } }).linkPreviews.enabled).toBe(
+      false,
+    );
   });
 
   test('accepts an explicit opt-in', () => {
