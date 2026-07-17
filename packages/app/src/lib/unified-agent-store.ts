@@ -135,6 +135,14 @@ export function saveStickyAgent(id: HandoffTarget | string, storage?: StickyAgen
   }
 }
 
+/** Browser-local user choice wins over an installer-provided workspace default. */
+export function resolveInitialAgentPreference(
+  stickyId: string | null,
+  projectDefault: string | null | undefined,
+): string | null {
+  return stickyId ?? projectDefault ?? null;
+}
+
 /**
  * Resolve which app agent the composer should target, given live install state
  * and the sticky preference:

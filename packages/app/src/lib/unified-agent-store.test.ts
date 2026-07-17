@@ -14,6 +14,7 @@ import {
 import {
   loadStickyAgent,
   parseStickyCliId,
+  resolveInitialAgentPreference,
   resolveStickyAgent,
   saveStickyAgent,
   TERMINAL_CLI_ID,
@@ -49,6 +50,16 @@ function states(
     Object.entries(base).map(([id, installed]) => [id, { installed }]),
   ) as Record<HandoffTarget, InstallState>;
 }
+
+describe('resolveInitialAgentPreference', () => {
+  test('uses the project default when this machine has no local selection', () => {
+    expect(resolveInitialAgentPreference(null, 'terminal-cli:pi')).toBe('terminal-cli:pi');
+  });
+
+  test('keeps the local user selection over a project default', () => {
+    expect(resolveInitialAgentPreference('codex', 'terminal-cli:pi')).toBe('codex');
+  });
+});
 
 describe('unified-agent-store — load/save round-trip', () => {
   test('round-trips through the unified key', () => {
