@@ -995,6 +995,10 @@ msgstr ""
 msgid "Append-only log of what changed."
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Application"
+msgstr ""
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr ""
@@ -1375,12 +1379,20 @@ msgstr ""
 msgid "Cannot upload: no document is open"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Check for updates"
+msgstr ""
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Check out remote branch"
 msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "Check out worktree"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Check spelling while typing"
 msgstr ""
 
 #: src/components/PropertyWidgets.tsx
@@ -1581,6 +1593,10 @@ msgstr ""
 msgid "Close others"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Close tab"
+msgstr ""
+
 #: src/components/TerminalRefusalNotice.tsx
 msgid "Close terminal"
 msgstr ""
@@ -1638,6 +1654,7 @@ msgstr ""
 msgid "Collapse {keyName}"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Collapse all"
@@ -1933,6 +1950,7 @@ msgstr ""
 msgid "Copy command"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
 msgstr ""
@@ -1947,6 +1965,10 @@ msgstr ""
 
 #: src/components/skill-actions.tsx
 msgid "Copy Path"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Copy relative path"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -2844,6 +2866,7 @@ msgstr ""
 msgid "Drag item {0} to reorder"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FileTree.tsx
 #: src/components/skill-actions.tsx
 msgid "Duplicate"
@@ -3140,6 +3163,7 @@ msgstr ""
 msgid "Expand {keyName}"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Expand all"
@@ -3458,6 +3482,7 @@ msgstr ""
 msgid "Fetching"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
@@ -3861,6 +3886,10 @@ msgstr ""
 msgid "Hide advanced"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Hide document panel"
+msgstr ""
+
 #: src/components/GraphPanel.tsx
 msgid "Hide external URL nodes"
 msgstr ""
@@ -3903,6 +3932,14 @@ msgstr ""
 
 #: src/components/BottomComposer.tsx
 msgid "Hide selection preview"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Hide sidebar"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Hide Terminal"
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -4273,6 +4310,10 @@ msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Keyboard shortcuts available in the editor and workspace."
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Kill Terminal"
 msgstr ""
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -4704,6 +4745,10 @@ msgstr ""
 msgid "Move to the previous visual-editor find result."
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Move to Trash"
+msgstr ""
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Move up"
 msgstr ""
@@ -4860,6 +4905,7 @@ msgstr ""
 msgid "New folder"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "New from template"
@@ -4899,10 +4945,15 @@ msgstr ""
 msgid "New terminal"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "New Terminal"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "New terminal tab"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ProjectSwitcher.tsx
 msgid "New worktree"
@@ -5591,6 +5642,10 @@ msgstr ""
 msgid "OpenKnowledge is using this GitHub account."
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "OpenKnowledge on GitHub"
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "OpenKnowledge quit unexpectedly last time."
 msgstr ""
@@ -6255,6 +6310,7 @@ msgstr ""
 msgid "Removing"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FileTree.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillRenameDialog.tsx
@@ -6520,6 +6576,7 @@ msgstr ""
 msgid "Reveal in File Explorer, {hint}"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 #: src/components/ReportBugDialogBody.tsx
@@ -6879,6 +6936,10 @@ msgstr ""
 msgid "Set the auto-sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Set up OpenKnowledge integrations"
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Set up syncing"
 msgstr ""
@@ -6975,6 +7036,7 @@ msgstr ""
 msgid "Show"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FileSidebar.tsx
 msgid "Show .ok folders"
 msgstr ""
@@ -7001,6 +7063,10 @@ msgstr ""
 msgid "Show diagram"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Show document panel"
+msgstr ""
+
 #: src/components/GraphPanel.tsx
 msgid "Show external URL nodes"
 msgstr ""
@@ -7021,6 +7087,7 @@ msgstr ""
 msgid "Show Files ({sidebarShortcutLabel})"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Show hidden files"
@@ -7034,6 +7101,7 @@ msgstr ""
 msgid "Show less"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/FileSidebar.tsx
 msgid "Show only markdown files"
 msgstr ""
@@ -7066,6 +7134,11 @@ msgstr ""
 msgid "Show selection preview"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Show sidebar"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
 #: src/components/FileSidebar.tsx
 msgid "Show skills section"
 msgstr ""
@@ -7076,6 +7149,10 @@ msgstr ""
 
 #: src/components/TerminalRevealTab.tsx
 msgid "Show terminal"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Show Terminal"
 msgstr ""
 
 #: src/editor/components/Pdf.tsx
@@ -7377,6 +7454,10 @@ msgstr ""
 msgid "Switch to local-only refused"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Switch worktree"
+msgstr ""
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switching branches"
 msgstr ""
@@ -7576,6 +7657,7 @@ msgstr ""
 
 #. Group label above the shell-PATH row in Settings → AI tools & CLI
 #. Section label above the shell-PATH toggle in the first-launch dialog
+#: src/components/CommandPalette.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -8404,6 +8486,10 @@ msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "via {viaTags}"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "View"
 msgstr ""
 
 #: src/components/AssetPreview.tsx

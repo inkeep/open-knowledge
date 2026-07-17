@@ -13,14 +13,22 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { ReactNode } from 'react';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/core/macro', () => ({ t: renderLinguiTemplate }));
-mock.module('@lingui/react/macro', () => ({
+// Both lingui macro specifiers alias to ONE shim module under the vitest dom
+// config, so two mock registrations race for a single resolved module id and
+// only one factory survives. The factories must be the same superset object —
+// a specifier-shaped split (t on core, components on react) loses whichever
+// half the race drops (observed: useLingui vanishing when the core factory
+// won).
+const linguiMacroMock = {
+  t: renderLinguiTemplate,
   Trans: ({ children }: { children: ReactNode }) => children,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{(value === 1 ? one : other).replace('#', String(value))}</>
   ),
   useLingui: () => ({ t: renderLinguiTemplate }),
-}));
+};
+mock.module('@lingui/core/macro', () => linguiMacroMock);
+mock.module('@lingui/react/macro', () => linguiMacroMock);
 
 let auditCalls = 0;
 let runLintAuditImpl: () => Promise<LintAuditResponse | null> = async () => null;

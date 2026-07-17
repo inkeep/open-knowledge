@@ -11,16 +11,16 @@
 
 import { useEffect, useState } from 'react';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
-import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 
-export function ReportBugMenuTrigger({ bridge }: { bridge: OkDesktopBridge }) {
+export function ReportBugMenuTrigger() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    return bridge.onMenuAction((action) => {
+    return subscribeLocalMenuAction((action) => {
       if (action === 'report-bug') setOpen(true);
     });
-  }, [bridge]);
+  }, []);
 
   return <ReportBugDialog open={open} onOpenChange={setOpen} />;
 }

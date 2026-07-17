@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { type ReactNode, useLayoutEffect, useState } from 'react';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { hashFromAssetPath } from '@/lib/doc-hash';
+import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { assetTabId, docTabId, localTabSessionStorageKey } from './editor-tabs';
 
 let mockCollabUrl: string | null = null;
@@ -91,7 +92,6 @@ interface DeferredSessionBridgeStub {
 }
 
 function makeEditorBridgeStub(): EditorBridgeStub {
-  let captured: ((action: MenuActionLike) => void) | null = null;
   const bridge = {
     config: {
       mode: 'editor',
@@ -100,12 +100,7 @@ function makeEditorBridgeStub(): EditorBridgeStub {
       projectPath: '',
       projectName: 'Test Project',
     },
-    onMenuAction: (cb: (action: MenuActionLike) => void) => {
-      captured = cb;
-      return () => {
-        captured = null;
-      };
-    },
+    onMenuAction: () => () => {},
     project: {
       getSessionState: async () => ({
         openTabs: [],
@@ -120,8 +115,11 @@ function makeEditorBridgeStub(): EditorBridgeStub {
 
   return {
     bridge,
+    // The editor window's close-tab handler now listens on the renderer-local
+    // menu-action bus (a real menu click reaches it via the bus forwarder), so
+    // the test drives it with emitLocalMenuAction.
     fire: (action) => {
-      act(() => captured?.(action));
+      act(() => emitLocalMenuAction(action));
     },
   };
 }

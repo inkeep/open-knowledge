@@ -492,6 +492,10 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           signalReady: () => {},
           confirm: async () => ({ ok: true }),
           skip: async () => ({ ok: true }),
+          reconfigure: async () => false,
+        },
+        spellcheck: {
+          toggle: async () => false,
         },
         integrations: {
           status: async () => ({

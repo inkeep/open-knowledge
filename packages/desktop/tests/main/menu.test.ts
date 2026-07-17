@@ -346,14 +346,17 @@ describe('buildMenuTemplate', () => {
         expect(settingsIdx).toBeGreaterThan(checkIdx);
       });
 
-      test('macOS: also appears in Help menu (cross-platform discoverability)', () => {
+      test('macOS: NOT in the Help menu — exactly one entry, in the App menu', () => {
+        // De-duplicated: the Apple-HIG App-menu placement is the single macOS
+        // entry (mirroring the Settings platform-XOR). The Help entry is
+        // non-macOS only, so macOS must not render it twice.
         const onCheckForUpdates = mock(() => {});
         const deps = makeDeps({ onCheckForUpdates });
         const template = buildMenuTemplate(deps);
         const helpMenu = template.find((t) => t.label === 'Help');
         const sub = helpMenu?.submenu as MenuItemConstructorOptions[] | undefined;
         if (!sub) throw new Error('Help submenu missing');
-        expect(sub.find((i) => i.label === 'Check for updates…')).toBeDefined();
+        expect(sub.find((i) => i.label === 'Check for updates…')).toBeUndefined();
       });
     } else {
       test('non-mac: appears in Help menu only (no App menu on these platforms)', () => {

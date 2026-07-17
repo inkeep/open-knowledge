@@ -31,6 +31,7 @@ import {
   resolveErrorMessage,
   runWithErrorStatePure as runWithErrorStatePureBase,
 } from '@/lib/error-state';
+import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { seedClient } from '@/lib/seed-client';
 import { createCloneController } from '@/lib/share/clone-controller';
 import { ipcAuthQueryTransport } from '@/lib/transports/auth-query-transport';
@@ -204,12 +205,12 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   // Help → Report a Bug…, which here opens the report dialog scoped
   // system-wide (the Navigator has no project).
   useEffect(() => {
-    return bridge.onMenuAction((action) => {
+    return subscribeLocalMenuAction((action) => {
       if (action === 'new-project') setCreateDialogOpen(true);
       if (action === 'report-bug') setReportBugOpen(true);
       if (action === 'close-active-tab-or-window') window.close();
     });
-  }, [bridge]);
+  }, []);
 
   /**
    * Wrap any bridge call in a visible error state. Without this the IPC

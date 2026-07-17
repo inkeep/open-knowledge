@@ -40,6 +40,7 @@ import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
 import { getInitialDocPanelWidth, writeDocPanelWidth } from '@/lib/doc-panel-width-store';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { ProfilerBoundary } from '@/lib/perf';
 import {
   matchesShareReceiveMiss,
@@ -55,6 +56,7 @@ import {
 } from '@/lib/terminal-width-store';
 import { useSettingsRoute } from '@/lib/use-settings-route';
 import { cn } from '@/lib/utils';
+import { setViewMenuState } from '@/lib/view-menu-state-store';
 import { useSyncStatus } from '@/presence/use-sync-status';
 import { BottomComposer } from './BottomComposer';
 import { shouldShowBottomComposer, shouldShowFolderComposer } from './bottom-composer-gate';
@@ -660,13 +662,16 @@ function EditorAreaInner({
   }, [isCollapsed]);
 
   useEffect(() => {
+    // Mirror into the renderer store unconditionally (works on web) so the
+    // Cmd+K palette can show a state-reflecting "Show/Hide document panel"
+    // label. The bridge push below is desktop-only (drives the native menu).
+    setViewMenuState({ docPanelVisible: !isCollapsed });
     if (window.okDesktop == null) return;
     window.okDesktop.editor.notifyViewMenuStateChanged({ docPanelVisible: !isCollapsed });
   }, [isCollapsed]);
 
   useEffect(() => {
-    if (window.okDesktop == null) return;
-    return window.okDesktop.onMenuAction((action) => {
+    return subscribeLocalMenuAction((action) => {
       if (action === 'toggle-doc-panel') {
         togglePanel();
       }

@@ -579,6 +579,11 @@ const bridge: OkDesktopBridge = {
         skills: request.skills,
       }),
     skip: () => invoke('ok:mcp-wiring:skip'),
+    reconfigure: () => invoke('ok:mcp-wiring:reconfigure'),
+  },
+
+  spellcheck: {
+    toggle: () => invoke('ok:spellcheck:toggle'),
   },
 
   integrations: {

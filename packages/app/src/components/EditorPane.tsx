@@ -13,6 +13,7 @@ import { useWorktreeAutoSyncNotice } from '@/hooks/use-worktree-autosync-notice'
 import { useConfigContext } from '@/lib/config-provider';
 import { resolveDefaultCli } from '@/lib/default-cli-resolver';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import {
   getInitialTerminalDock,
   type TerminalDockPosition,
@@ -21,6 +22,7 @@ import {
 import { readPreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import { recordTerminalOpened } from '@/lib/terminal-telemetry';
 import { loadStickyAgent } from '@/lib/unified-agent-store';
+import { setViewMenuState } from '@/lib/view-menu-state-store';
 import { AuthModal } from './AuthModal';
 import { AutoSyncOnboardingDialog } from './AutoSyncOnboardingDialog';
 import { shouldShowAutoSyncOnboarding } from './auto-sync-onboarding-gate';
@@ -250,9 +252,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // With a selection, ⌘J sends it to the terminal (reusing the active tab)
   // instead of toggling.
   useEffect(() => {
-    const bridge = window.okDesktop;
-    if (bridge == null) return;
-    return bridge.onMenuAction((action) => {
+    return subscribeLocalMenuAction((action) => {
       if (action === 'toggle-terminal') {
         if (sendSelectionToTerminalEvent(false)) return;
         setTerminalVisible((visible) => !visible);
@@ -330,6 +330,14 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   useEffect(() => {
     if (window.okDesktop == null) return;
     if (!dockRestoreSettled) return;
+    // Mirror into the renderer store so the Cmd+K palette can show a
+    // state-reflecting "Show/Hide terminal" label (bridge push is main-only).
+    // Deliberately behind BOTH gates, unlike the unconditional sibling mirrors
+    // in FileSidebar / EditorArea: publishing the mount-initial `false` before
+    // the restore settles would flash a wrong palette label on a window whose
+    // dock is about to re-expand, and the web host has no terminal (and never
+    // settles the gate) so there is no state to mirror.
+    setViewMenuState({ terminalVisible });
     window.okDesktop.editor.notifyViewMenuStateChanged({ terminalVisible });
   }, [terminalVisible, dockRestoreSettled]);
 

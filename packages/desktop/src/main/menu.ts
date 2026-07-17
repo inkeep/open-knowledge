@@ -31,7 +31,11 @@
  * free of runtime electron bindings.
  */
 
-import { MENU_LABELS, SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
+import {
+  MENU_LABELS,
+  OPEN_KNOWLEDGE_GITHUB_URL,
+  SHOW_INSTALL_SKILL,
+} from '@inkeep/open-knowledge-core';
 import type { Dialog, MenuItemConstructorOptions } from 'electron';
 import type { EntryPoint } from '../shared/entry-point.ts';
 import type { EditorActiveTargetSnapshot } from '../shared/ipc-channels.ts';
@@ -366,7 +370,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
               ...(deps.onCheckForUpdates
                 ? ([
                     {
-                      label: 'Check for updates…',
+                      label: `${MENU_LABELS.checkForUpdates}\u2026`,
                       click: deps.onCheckForUpdates,
                     },
                     { type: 'separator' as const },
@@ -471,12 +475,12 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         // renderer surface. Disabled (not hidden) in the Navigator window and
         // in unit-test contexts, where the deps aren't wired.
         {
-          label: 'New worktree…',
+          label: `${MENU_LABELS.newWorktree}\u2026`,
           enabled: deps.onNewWorktree !== undefined,
           click: () => deps.onNewWorktree?.(),
         },
         {
-          label: 'Switch worktree…',
+          label: `${MENU_LABELS.switchWorktree}\u2026`,
           enabled: deps.onSwitchWorktree !== undefined,
           click: () => deps.onSwitchWorktree?.(),
         },
@@ -500,7 +504,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           click: () => deps.onRename?.(),
         },
         {
-          label: 'Move to Trash',
+          label: MENU_LABELS.moveToTrash,
           accelerator: 'CmdOrCtrl+Delete',
           enabled:
             deps.onMoveToTrash !== undefined &&
@@ -543,7 +547,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         ...(deps.reconfigureMcpWiring
           ? ([
               {
-                label: 'Set up OpenKnowledge integrations…',
+                label: `${MENU_LABELS.setUpIntegrations}\u2026`,
                 click: () => {
                   void deps.reconfigureMcpWiring?.();
                 },
@@ -566,7 +570,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           : []),
         isMac
           ? {
-              label: 'Close tab',
+              label: MENU_LABELS.closeTab,
               accelerator: 'CmdOrCtrl+W',
               enabled: deps.onCloseActiveTabOrWindow !== undefined,
               click: () => deps.onCloseActiveTabOrWindow?.(),
@@ -591,7 +595,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         // in-editor context menu) rebuilds the menu so the checkmark stays in
         // sync. No accelerator — macOS has no canonical one for this item.
         {
-          label: 'Check spelling while typing',
+          label: MENU_LABELS.checkSpelling,
           type: 'checkbox',
           checked: deps.spellCheckEnabled ?? true,
           enabled: deps.onToggleSpellCheck !== undefined,
@@ -721,7 +725,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           // Show/Hide Terminal toggle, and advertising the same key on two
           // items only mislabels this one — the OS does not guarantee which
           // item a duplicate accelerator dispatches to.
-          label: 'New Terminal',
+          label: MENU_LABELS.newTerminal,
           enabled: deps.onNewTerminal !== undefined,
           click: () => deps.onNewTerminal?.(),
         },
@@ -737,7 +741,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           // Closes the active tab — kills its shell (not just hide). Enabled
           // only when at least one session is live; a collapsed-but-alive
           // terminal still qualifies.
-          label: 'Kill Terminal',
+          label: MENU_LABELS.killTerminal,
           enabled: deps.onKillTerminal !== undefined && deps.terminalLive === true,
           click: () => deps.onKillTerminal?.(),
         },
@@ -771,23 +775,24 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
             ] satisfies MenuItemConstructorOptions[])
           : []),
         {
-          label: 'OpenKnowledge on GitHub',
-          click: () => deps.openExternalUrl('https://github.com/inkeep/open-knowledge'),
+          label: MENU_LABELS.openOnGithub,
+          click: () => deps.openExternalUrl(OPEN_KNOWLEDGE_GITHUB_URL),
         },
         {
           label: 'Report a Bug…',
           click: () => deps.onReportBug?.(),
         },
-        // Cross-platform "Check for updates…" — Windows/Linux convention
-        // is to place this in Help, since those platforms have no
-        // application menu. macOS users get the Apple-HIG-canonical
-        // placement under the App menu instead, but the Help entry is
-        // also kept for discoverability (mirrors VS Code, Slack, etc.).
-        ...(deps.onCheckForUpdates
+        // "Check for updates…" — non-macOS only. Windows/Linux have no
+        // application menu, so Help is the convention there. macOS gets the
+        // Apple-HIG-canonical placement under the App menu (above), so gating
+        // this on `!isMac` keeps exactly one entry per platform — mirroring the
+        // Settings XOR (App menu on macOS, File menu elsewhere). Without the
+        // guard macOS renders the item in BOTH menus.
+        ...(!isMac && deps.onCheckForUpdates
           ? ([
               { type: 'separator' as const },
               {
-                label: 'Check for updates…',
+                label: `${MENU_LABELS.checkForUpdates}\u2026`,
                 click: deps.onCheckForUpdates,
               },
             ] satisfies MenuItemConstructorOptions[])

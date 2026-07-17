@@ -86,6 +86,7 @@
     "0yL--g": ["Review conflicts"],
     "10g8I_": ["Turn off Only markdown files"],
     "12F9WL": ["(no id)"],
+    "151wvk": ["Show sidebar"],
     "16D5Zj": ["Are you sure you want to delete ", ["itemName"], "? This action cannot be undone."],
     "1AumWo": ["Push failed — check the server logs for details."],
     "1CalO6": ["Style"],
@@ -284,6 +285,7 @@
     "5Umg9i": ["Disable external link previews"],
     "5WDhAk": ["Link to a page or external URL."],
     "5ZB7XC": ["File drop zone"],
+    "5_j-DA": ["Kill Terminal"],
     "5e1Dri": ["The menu label agents pick this template by (required)."],
     "5gr_ev": [
       "Becomes the document's content when someone creates a doc from this template. Type <0>",
@@ -418,6 +420,7 @@
     "8PmoQF": ["Open the insert menu in an empty or active text position."],
     "8RtNI0": ["Failed to load documents"],
     "8TvlHF": ["Crash dump"],
+    "8Vq20-": ["Switch worktree"],
     "8XQRON": ["Loading repositories"],
     "8_brI5": ["Name is required"],
     "8cS0nH": ["Config sharing unavailable: ", ["0"], "."],
@@ -471,6 +474,7 @@
     "9oE4C3": ["Browse your repos:"],
     "9sBe85": ["Follow us on"],
     "9tJX8r": ["By meaning"],
+    "9xCnv8": ["Hide Terminal"],
     "9zb2WA": ["Connecting"],
     "A1taO8": ["Search"],
     "A50vr3": ["Use lowercase letters, digits, and <0>-</0> only."],
@@ -505,6 +509,7 @@
     "AddR83": ["Could not create project. Try again or pick a different location."],
     "AeHuzT": ["# One pattern per line.\n# Examples:\n#   drafts/\n#   *.draft.md\n#   !keep.md"],
     "AeXO77": ["Account"],
+    "AhoGwP": ["Set up OpenKnowledge integrations"],
     "AiNMQ7": [
       "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
     ],
@@ -775,6 +780,7 @@
     "GLxIKR": ["How to push manually"],
     "GN6L5F": ["Filename"],
     "GQDSBN": ["Layout options"],
+    "GSYWCm": ["Hide document panel"],
     "GUYwCr": ["Dismiss notice"],
     "GUqTzn": ["Competitor research"],
     "GXf9hG": ["Cloning ", ["repoName"], "..."],
@@ -861,6 +867,7 @@
       "Server-side cleanup failed for ",
       ["failedCount", "plural", { "one": ["#", " item"], "other": ["#", " items"] }]
     ],
+    "IrC12v": ["Application"],
     "IreQBq": ["Repository"],
     "It9ARY": ["Toggle the right document panel."],
     "Ix0K8o": ["Hide external URL nodes"],
@@ -963,6 +970,7 @@
     "Lcehxn": ["Save resolution"],
     "LdABLa": ["Could not open ", ["target"], ". Try opening it manually."],
     "LdKIHS": ["Draft a spec"],
+    "LeGeTf": ["OpenKnowledge on GitHub"],
     "LhQlGR": [
       "This project is running an older version of OpenKnowledge (v",
       ["0"],
@@ -1000,6 +1008,7 @@
     ],
     "M5_9s2": ["Sending report"],
     "M5mfAe": ["Add tag"],
+    "M6mvVi": ["Copy relative path"],
     "M9597s": ["Preparing share URL..."],
     "MCjC9A": ["Delete ", ["deleteDescriptorLabel"]],
     "MDZSJe": ["When the agent runs its scheduled work."],
@@ -1177,6 +1186,7 @@
     "PrJYSN": ["This folder isn't on GitHub yet. The link won't work until it's pushed."],
     "PrhzDE": ["Pan up"],
     "Pyp1NA": ["Restore to this point?"],
+    "Q1mtyd": ["Hide sidebar"],
     "Q5fqMz": ["Connection error — try again"],
     "Q6hhn8": ["Preferences"],
     "Q7W-mC": ["Same folder as current file"],
@@ -1421,6 +1431,7 @@
     "WHPvOb": ["All files are hidden by view filters."],
     "WJjviG": ["What to include"],
     "WL6puM": ["Path resolves outside project"],
+    "WMCwmR": ["Check for updates"],
     "WMIKXK": [
       "Are you sure you want to delete ",
       ["targetCount"],
@@ -1561,6 +1572,7 @@
       "). Other files and writers are unaffected."
     ],
     "ZBt4rI": ["Instruction for the AI"],
+    "ZBxvV3": ["New Terminal"],
     "ZI8uvA": ["No problems found."],
     "ZLQol-": ["You can turn this on later in <0>Settings → Sync</0>."],
     "ZNK2Tq": ["root"],
@@ -1582,6 +1594,7 @@
       "Take a piece of writing from a rough idea to a finished draft to something you're ready to share. Good for blog posts, essays, or anything you want to move through clear stages."
     ],
     "ZgGuA4": [["0", "plural", { "one": ["File"], "other": ["Files"] }]],
+    "ZgJVnp": ["Check spelling while typing"],
     "ZhhOwV": ["Quote"],
     "ZjtgI-": ["Command palette"],
     "ZoOlzR": [
@@ -1833,6 +1846,7 @@
     "fJgQHX": ["Failed to create file"],
     "fNr-MX": ["Disable semantic search"],
     "fR-Kdc": ["(project-level only)"],
+    "fSRzLo": ["Show document panel"],
     "fVcm9t": [["0", "plural", { "one": ["#", " doc"], "other": ["#", " docs"] }]],
     "fWi7pn": ["Initialize starter pack"],
     "fWsBTs": ["Something went wrong. Please try again."],
@@ -2036,6 +2050,7 @@
     "jhtG3I": [" Your selection has been restored."],
     "jjtmV_": ["First file name"],
     "jol95m": ["Failed to open Project Navigator."],
+    "jpctdh": ["View"],
     "jtg_8-": [
       "Build a knowledge wiki about the different types of flightless birds. Start with an overview page, then add cross-linked pages for each major group (ratites like ostriches, emus, and kiwis; penguins; and flightless rails), the regions they live in, and a timeline of how flightlessness evolved."
     ],
@@ -2337,6 +2352,7 @@
     "pvnfJD": ["Dark"],
     "pzutoc": ["Italic"],
     "q2kXMG": ["Inline Math"],
+    "q3TWG7": ["Move to Trash"],
     "q4YJl_": ["The terminal session ended (exit code ", ["0"], ")."],
     "q6-JVU": ["Loading pages"],
     "q7F5am": ["title"],
@@ -2378,6 +2394,7 @@
     "r2huLx": ["Undo, redo, or undo selection changes through CodeMirror history."],
     "r4R7AZ": ["Network error during cleanup"],
     "r51jLC": ["File saved & Claude Desktop App opened"],
+    "r6ncaO": ["Close tab"],
     "r871ed": [
       "Your knowledge base is now on GitHub at <0>",
       ["ownerLogin"],
@@ -2648,6 +2665,7 @@
     "xeXS4P": ["Or use a starter pack"],
     "xeiujy": ["Text"],
     "xhlFsx": ["Inherited — set a value here to replace it."],
+    "xi9KGG": ["Show Terminal"],
     "xiv-dW": ["No files yet."],
     "xloBjn": ["Relative Path"],
     "xnP32l": ["No description yet — add one so agents know when to use this skill."],

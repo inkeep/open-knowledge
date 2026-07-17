@@ -226,7 +226,11 @@ export {
 } from './constants/github.ts';
 export { isOrphanMode, ORPHAN_MODES, type OrphanMode } from './constants/graph.ts';
 export { GREP_MAX_RESULTS, MCP_SERVER_NAME, READ_DOCUMENT_HISTORY_DEPTH } from './constants/mcp.ts';
-export { MENU_LABELS, type MenuLabelKey } from './constants/menu-labels.ts';
+export {
+  MENU_LABELS,
+  type MenuLabelKey,
+  OPEN_KNOWLEDGE_GITHUB_URL,
+} from './constants/menu-labels.ts';
 export { LOCAL_DIR, OK_DIR, OK_PROJECT_MARKER } from './constants/ok-dir.ts';
 export {
   PREVIEW_EMBED_STARTERS,

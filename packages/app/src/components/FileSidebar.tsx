@@ -90,11 +90,13 @@ import {
   emitFileTreeMenuActionRename,
 } from '@/lib/file-tree-menu-action-events';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
+import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { ProfilerBoundary } from '@/lib/perf';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { buildFolderShareInput, runShareAction } from '@/lib/share/run-share-action';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
+import { setViewMenuState } from '@/lib/view-menu-state-store';
 
 interface FileSidebarProps {
   onOpenSearch: () => void;
@@ -479,8 +481,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // so every surface agrees on what counts as a no-op action.
   // `sidebarVisible` flips the View → Show/Hide Sidebar label main-side.
   useEffect(() => {
-    if (!bridge) return;
-    bridge.editor.notifyViewMenuStateChanged({
+    const snapshot = {
       showHiddenFiles,
       showOkFolders,
       showOnlyMarkdownFiles,
@@ -488,7 +489,13 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
       canExpandAll: showExpandAll,
       canCollapseAll: showCollapseAll,
       sidebarVisible: sidebarState === 'expanded',
-    });
+    };
+    // Mirror into the renderer store unconditionally (works on web) so the
+    // Cmd+K palette can render state-reflecting toggle labels. The bridge push
+    // below is desktop-only (drives the native View menu's Show/Hide labels).
+    setViewMenuState(snapshot);
+    if (!bridge) return;
+    bridge.editor.notifyViewMenuStateChanged(snapshot);
   }, [
     bridge,
     showHiddenFiles,
@@ -532,8 +539,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // without stale-closure bugs.
   // biome-ignore lint/correctness/useExhaustiveDependencies: patchSidebarVisibility is behaviorally stable — it reads only projectLocalBinding + t, both already deps; listing the helper itself would re-create the subscription every render (sibling pattern: CommandPalette's refreshSemanticStatus).
   useEffect(() => {
-    if (!bridge) return;
-    return bridge.onMenuAction((action) => {
+    return subscribeLocalMenuAction((action) => {
       // Revealed `.ok` targets are read-only: the mutating picks below
       // (rename / duplicate / move-to-trash) quietly no-op on them, mirroring
       // the row menu's suppressed affordances. The server's reserved-path

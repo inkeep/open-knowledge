@@ -30,7 +30,7 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 83 (ratchet cap 83). The 74→75 bump reconciled a merge collision:
+ * Count is 85 (ratchet cap 85). The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -49,8 +49,11 @@
  * operations widen its payload rather than adding channels). The 82→83 bump
  * added the terminal clickable-links out-of-project reveal
  * (`ok:shell:reveal-external`): a distinct trust boundary from `reveal-asset`
- * (uncontained + dialog-gated), so it could not fold onto it. Full rationale in
- * the ratchet test header.
+ * (uncontained + dialog-gated), so it could not fold onto it. The 83→85 bump
+ * added the two Cmd+K / native-menu command invokes: `ok:mcp-wiring:reconfigure`
+ * (File → "Set up OpenKnowledge integrations…") and `ok:spellcheck:toggle`
+ * (Edit → "Check spelling while typing"), each delegating to an existing
+ * main-side function. Full rationale in the ratchet test header.
  */
 
 import type {
@@ -1284,6 +1287,23 @@ export interface RequestChannels {
    * the renderer discards it.
    */
   'ok:mcp-wiring:renderer-ready': { args: []; result: undefined };
+
+  /**
+   * File → "Set up OpenKnowledge integrations…" and the Cmd+K command of the
+   * same name. Re-arms the MCP consent dialog (`armMcpWiring({forceShow:true})`)
+   * — the same body the menu dep runs. Resolves to `true` when the dialog was
+   * armed, `false` when the surface is unavailable (non-darwin / unpackaged /
+   * arming threw); callers may use the result to decide whether to surface
+   * feedback.
+   */
+  'ok:mcp-wiring:reconfigure': { args: []; result: boolean };
+  /**
+   * Edit → "Check spelling while typing" and the Cmd+K command of the same name.
+   * Toggles the app-wide spell-check flag via `setSpellCheckEnabledAppWide` and
+   * resolves to the new enabled state so the caller can reflect it. Distinct from
+   * the View-menu-state snapshot (spell-check is a bespoke app-wide setting).
+   */
+  'ok:spellcheck:toggle': { args: []; result: boolean };
 
   /**
    * Settings → AI tools. One consolidated discriminated channel — following

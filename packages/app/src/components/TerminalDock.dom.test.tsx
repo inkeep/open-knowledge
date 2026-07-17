@@ -21,7 +21,11 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event';
 import { useEffect, useRef, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
+import {
+  __resetLocalMenuActionBusForTests,
+  emitLocalMenuAction,
+} from '@/lib/local-menu-action-bus';
 import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 
@@ -156,7 +160,6 @@ const { TerminalSessionsHost } = await import('./TerminalSessionsHost');
 const { STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
 
 function makeBridge() {
-  const menuHandlers: Array<(action: string) => void> = [];
   const viewMenuPushes: Array<{ terminalLive?: boolean }> = [];
   // Hand each session a distinct PTY id (pty-1, pty-2, …) so a close can assert
   // exactly which session's PTY was reaped — the demux the dock owns.
@@ -170,13 +173,7 @@ function makeBridge() {
   // existing PTY (it opens its own tab), so tests assert `input` stays unused.
   const input = mock((_ptyId: string, _data: string) => {});
   const bridge = {
-    onMenuAction(cb: (action: string) => void) {
-      menuHandlers.push(cb);
-      return () => {
-        const index = menuHandlers.indexOf(cb);
-        if (index >= 0) menuHandlers.splice(index, 1);
-      };
-    },
+    onMenuAction: () => () => {},
     editor: {
       notifyViewMenuStateChanged(state: { terminalLive?: boolean }) {
         viewMenuPushes.push(state);
@@ -190,8 +187,11 @@ function makeBridge() {
     kill,
     input,
     viewMenuPushes,
-    dispatchMenuAction(action: string) {
-      for (const cb of menuHandlers) cb(action);
+    // TerminalSessionsHost now listens on the renderer-local menu-action bus
+    // (a real menu click reaches it via main → the bus forwarder), so the test
+    // drives it with emitLocalMenuAction.
+    dispatchMenuAction(action: OkMenuAction) {
+      emitLocalMenuAction(action);
     },
   };
 }
@@ -330,9 +330,11 @@ describe('TerminalDock multi-session', () => {
     panelHandle.expand.mockClear();
     sharedPanelRef.current = panelHandle;
     titleEmitters.clear();
+    __resetLocalMenuActionBusForTests();
   });
   afterEach(() => {
     cleanup();
+    __resetLocalMenuActionBusForTests();
   });
 
   test('tab strip exposes the dock-toggle + collapse buttons and no drag grip', () => {

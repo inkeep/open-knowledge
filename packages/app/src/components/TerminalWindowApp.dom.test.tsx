@@ -18,7 +18,11 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect, useRef } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
+import {
+  __resetLocalMenuActionBusForTests,
+  emitLocalMenuAction,
+} from '@/lib/local-menu-action-bus';
 
 mock.module('./TerminalGate', () => ({
   // biome-ignore lint/suspicious/noExplicitAny: test stub
@@ -52,7 +56,6 @@ const { TerminalWindowApp } = await import('./TerminalWindowApp');
 const { selectDesktopRootApp } = await import('./desktop-root-app');
 
 function makeBridge() {
-  const menuHandlers: Array<(action: string) => void> = [];
   const viewMenuPushes: Array<{ terminalLive?: boolean }> = [];
   let ptyCounter = 0;
   const create = mock(async () => {
@@ -62,13 +65,7 @@ function makeBridge() {
   const kill = mock(async (_id: string) => {});
   const bridge = {
     config: { mode: 'terminal' },
-    onMenuAction(cb: (action: string) => void) {
-      menuHandlers.push(cb);
-      return () => {
-        const index = menuHandlers.indexOf(cb);
-        if (index >= 0) menuHandlers.splice(index, 1);
-      };
-    },
+    onMenuAction: () => () => {},
     editor: {
       notifyViewMenuStateChanged(state: { terminalLive?: boolean }) {
         viewMenuPushes.push(state);
@@ -81,8 +78,11 @@ function makeBridge() {
     create,
     kill,
     viewMenuPushes,
-    dispatchMenuAction(action: string) {
-      for (const cb of menuHandlers) cb(action);
+    // TerminalSessionsHost now listens on the renderer-local menu-action bus
+    // (a real menu click reaches it via main → the bus forwarder), so the test
+    // drives it with emitLocalMenuAction.
+    dispatchMenuAction(action: OkMenuAction) {
+      emitLocalMenuAction(action);
     },
   };
 }
@@ -114,6 +114,7 @@ function activePanelId(): string | null {
 describe('TerminalWindowApp', () => {
   afterEach(() => {
     cleanup();
+    __resetLocalMenuActionBusForTests();
   });
 
   test('opens with exactly one shell tab on mount', () => {
@@ -299,6 +300,7 @@ describe('selectDesktopRootApp routing', () => {
   });
   afterEach(() => {
     cleanup();
+    __resetLocalMenuActionBusForTests();
   });
 
   test('mode=terminal selects the terminal window app', () => {

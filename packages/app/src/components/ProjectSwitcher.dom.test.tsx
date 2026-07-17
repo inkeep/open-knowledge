@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createContext, type ReactNode, use } from 'react';
+import {
+  __resetLocalMenuActionBusForTests,
+  emitLocalMenuAction,
+} from '@/lib/local-menu-action-bus';
 
 type MenuProps = {
   children?: ReactNode;
@@ -242,16 +246,9 @@ function createBridge() {
       list: mock(() => Promise.resolve({ ok: false as const, reason: 'no-git' as const })),
       create: mock(() => Promise.resolve({ ok: false as const, reason: 'no-git' as const })),
     },
-    onMenuAction: mock((cb: (action: string) => void) => {
-      menuActionCb = cb;
-      return () => {
-        menuActionCb = null;
-      };
-    }),
+    onMenuAction: mock(() => () => {}),
   };
 }
-
-let menuActionCb: ((action: string) => void) | null = null;
 
 async function openMenu() {
   fireEvent.click(screen.getByTestId('project-switcher-trigger'));
@@ -274,7 +271,7 @@ describe('ProjectSwitcher dropdown behavior', () => {
     keydownBubbleCount = 0;
     createDialogProps = [];
     newWorktreeProps = [];
-    menuActionCb = null;
+    __resetLocalMenuActionBusForTests();
     (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
   });
 
@@ -519,14 +516,13 @@ describe('ProjectSwitcher dropdown behavior', () => {
   test('File menu "new-worktree" action opens the New Worktree dialog; "switch-worktree" opens the dropdown', async () => {
     const bridge = createBridge();
     render(<ProjectSwitcher bridge={bridge as never} />);
-    expect(menuActionCb).not.toBeNull();
 
-    act(() => menuActionCb?.('new-worktree'));
+    act(() => emitLocalMenuAction('new-worktree'));
     await waitFor(() =>
       expect(screen.getByTestId('new-worktree-dialog').getAttribute('data-open')).toBe('true'),
     );
 
-    act(() => menuActionCb?.('switch-worktree'));
+    act(() => emitLocalMenuAction('switch-worktree'));
     await waitFor(() => {
       expect(screen.getByTestId('project-switcher-search')).not.toBeNull();
     });

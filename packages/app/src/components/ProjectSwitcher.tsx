@@ -33,6 +33,7 @@ import { useCurrentBranch } from '@/hooks/use-current-branch';
 import { useWorktrees } from '@/hooks/use-worktrees';
 import type { OkDesktopBridge, RecentProjectEntry } from '@/lib/desktop-bridge-types';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
+import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { cn } from '@/lib/utils';
 import { CreateProjectDialog } from './CreateProjectDialog';
 import { NewWorktreeDialog } from './NewWorktreeDialog';
@@ -153,7 +154,7 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
   // `new-worktree` opens the create dialog; `switch-worktree` opens this
   // dropdown (which lazy-loads the worktree list).
   useEffect(() => {
-    return bridge.onMenuAction((action) => {
+    return subscribeLocalMenuAction((action) => {
       if (action === 'new-worktree') {
         setOpen(false);
         setFlyoutPath(null);
@@ -163,7 +164,7 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
         setOpen(true);
       }
     });
-  }, [bridge]);
+  }, []);
 
   const onOpenFolder = () => {
     handleOpenChange(false);

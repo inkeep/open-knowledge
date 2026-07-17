@@ -8,29 +8,48 @@
  * bridge is available.
  */
 
-import { SHOW_INSTALL_SKILL, type WorktreeSelectorEntry } from '@inkeep/open-knowledge-core';
+import {
+  OPEN_KNOWLEDGE_GITHUB_URL,
+  SHOW_INSTALL_SKILL,
+  type WorktreeSelectorEntry,
+} from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
+  Blocks,
   Bug,
+  Check,
+  Copy,
   Download,
+  Eye,
   FilePlus2,
   FileText,
   Folder,
   FolderOpen,
   FolderPlus,
+  FoldVertical,
   GitBranch,
   Hash,
   LayoutGrid,
   Loader2,
   Network,
   Package,
+  PanelLeft,
+  PanelRight,
+  Pencil,
   Plus,
+  RefreshCw,
   Settings,
   Sparkles,
+  SpellCheck,
+  SquareTerminal,
+  Trash2,
+  UnfoldVertical,
+  X,
 } from 'lucide-react';
 import {
   type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type SetStateAction,
   useDeferredValue,
   useEffect,
@@ -69,7 +88,9 @@ import {
 import { requestDocPanelTab } from '@/components/doc-panel-events';
 import { FileEntryIcon } from '@/components/file-entry-icon';
 import { defaultInitialDir } from '@/components/file-tree-utils';
+import { GithubIcon } from '@/components/icons/github';
 import { NewItemDialog } from '@/components/NewItemDialog';
+import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import { usePageList } from '@/components/PageListContext';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { SeedDialog } from '@/components/SeedDialog';
@@ -87,15 +108,17 @@ import type { TagSummaryEntry } from '@/editor/extensions/tag-suggestion';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
 import { useWorktrees } from '@/hooks/use-worktrees';
-import type { OkDesktopBridge, RecentProjectEntry } from '@/lib/desktop-bridge-types';
+import type { OkDesktopBridge, OkMenuAction, RecentProjectEntry } from '@/lib/desktop-bridge-types';
 import { hashFromDocName } from '@/lib/doc-hash';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { formatShortcut, matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { SETTINGS_OPEN_HASH } from '@/lib/use-settings-route';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils.ts';
+import { useViewMenuState } from '@/lib/view-menu-state-store';
 import { refreshWorktrees } from '@/lib/worktree-store';
 import { buildHandoffInput, useHandoffDispatch } from './handoff/useHandoffDispatch';
 import { useInstalledAgents } from './handoff/useInstalledAgents';
@@ -127,6 +150,53 @@ interface CommandPaletteProps {
   bridge?: OkDesktopBridge | null;
   open: boolean;
   onOpenChange: Dispatch<SetStateAction<boolean>>;
+}
+
+/**
+ * A backfilled Cmd+K command. Rendered search-only so the empty-
+ * open state is unchanged. `run` dispatches through the smallest existing seam —
+ * the local menu-action bus (id-backed), a bridge invoke (main-side), or a
+ * direct renderer call — so no handler is re-implemented here.
+ */
+interface BackfillCommandRow {
+  testid: string;
+  label: string;
+  keywords: string[];
+  icon: ReactNode;
+  group: 'file' | 'view' | 'terminal' | 'app';
+  available: boolean;
+  /** Trailing check indicator for checkbox-style View toggles (state reflection). */
+  checked?: boolean;
+  /** Accelerator glyphs for commands whose native menu item carries one. */
+  shortcut?: string;
+  run: () => void;
+}
+
+/**
+ * Project the palette's 7-kind {@link ResolvedNavigationTarget} onto the 4-kind
+ * gating the native File menu uses for contextual commands: doc-like and folder
+ * allow every contextual command (folder still allows Duplicate); asset-like
+ * (asset / skill-file / large-file) disables Duplicate; a missing / absent
+ * target hides them all.
+ */
+type ContextualTargetKind = 'doc' | 'folder' | 'asset' | 'none';
+function projectContextualTargetKind(
+  target: ResolvedNavigationTarget | null,
+): ContextualTargetKind {
+  if (target === null) return 'none';
+  switch (target.kind) {
+    case 'doc':
+    case 'folder-index':
+      return 'doc';
+    case 'folder':
+      return 'folder';
+    case 'asset':
+    case 'skill-file':
+    case 'large-file':
+      return 'asset';
+    case 'missing':
+      return 'none';
+  }
 }
 
 function navigateToDocHash(docName: string): void {
@@ -895,6 +965,286 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const showTagDocsEmpty =
     paletteMode.kind === 'tag-docs' && tagDocsStatus === 'success' && tagDocs.length === 0;
 
+  // Backfilled Cmd+K commands. Rendered search-only (each row
+  // appears only under a matching query) so the empty-open state is unchanged.
+  // Dispatch via the smallest existing seam — the local menu-action bus
+  // (id-backed), a bridge invoke (main-side), or a direct renderer call — so no
+  // handler is re-implemented here. Host-agnostic rows (view/tree toggles,
+  // new-from-template, GitHub) stay available on the web host; desktop-only rows
+  // gate on `bridge !== null`.
+  const viewMenuState = useViewMenuState();
+  const contextualTargetKind = projectContextualTargetKind(activeTarget);
+  const contextualAvailable = bridge !== null && contextualTargetKind !== 'none';
+  const runMenuAction = (action: OkMenuAction) => {
+    onOpenChange(false);
+    emitLocalMenuAction(action);
+  };
+  const openExternalUrl = (url: string) => {
+    onOpenChange(false);
+    if (bridge) {
+      void bridge.shell.openExternal(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+  const backfillCommands: BackfillCommandRow[] = [
+    {
+      testid: 'command-palette-new-from-template',
+      label: t`New from template`,
+      keywords: ['template', 'create', 'new'],
+      icon: <FilePlus2 />,
+      group: 'file',
+      available: !singleFile,
+      run: () => runMenuAction('new-from-template'),
+    },
+    {
+      testid: 'command-palette-rename',
+      label: t`Rename`,
+      keywords: ['rename', 'file', 'folder'],
+      icon: <Pencil />,
+      group: 'file',
+      available: contextualAvailable,
+      run: () => runMenuAction('rename'),
+    },
+    {
+      testid: 'command-palette-duplicate',
+      label: t`Duplicate`,
+      keywords: ['duplicate', 'copy', 'file', 'folder'],
+      icon: <Copy />,
+      group: 'file',
+      available:
+        bridge !== null && (contextualTargetKind === 'doc' || contextualTargetKind === 'folder'),
+      shortcut: formatShortcut('file-tree-duplicate'),
+      run: () => runMenuAction('duplicate'),
+    },
+    {
+      testid: 'command-palette-move-to-trash',
+      label: t`Move to Trash`,
+      keywords: ['delete', 'trash', 'remove'],
+      icon: <Trash2 />,
+      group: 'file',
+      available: contextualAvailable,
+      shortcut: formatShortcut('file-tree-delete'),
+      run: () => runMenuAction('move-to-trash'),
+    },
+    {
+      testid: 'command-palette-reveal-in-finder',
+      label: t`Reveal in Finder`,
+      keywords: ['finder', 'reveal', 'show', 'file'],
+      icon: <FolderOpen />,
+      group: 'file',
+      available: contextualAvailable,
+      run: () => runMenuAction('reveal-in-finder'),
+    },
+    {
+      testid: 'command-palette-copy-full-path',
+      label: t`Copy full path`,
+      keywords: ['copy', 'path', 'absolute', 'full'],
+      icon: <Copy />,
+      group: 'file',
+      available: contextualAvailable,
+      run: () => runMenuAction('copy-full-path'),
+    },
+    {
+      testid: 'command-palette-copy-relative-path',
+      label: t`Copy relative path`,
+      keywords: ['copy', 'path', 'relative'],
+      icon: <Copy />,
+      group: 'file',
+      available: contextualAvailable,
+      run: () => runMenuAction('copy-relative-path'),
+    },
+    {
+      testid: 'command-palette-close-tab',
+      label: t`Close tab`,
+      keywords: ['close', 'tab', 'window'],
+      icon: <X />,
+      group: 'file',
+      available: bridge !== null,
+      run: () => runMenuAction('close-active-tab-or-window'),
+    },
+    {
+      testid: 'command-palette-new-worktree',
+      label: t`New worktree`,
+      keywords: ['worktree', 'branch', 'new'],
+      icon: <GitBranch />,
+      group: 'file',
+      available: bridge !== null,
+      run: () => runMenuAction('new-worktree'),
+    },
+    {
+      testid: 'command-palette-switch-worktree',
+      label: t`Switch worktree`,
+      keywords: ['worktree', 'switch', 'branch'],
+      icon: <GitBranch />,
+      group: 'file',
+      available: bridge !== null,
+      run: () => runMenuAction('switch-worktree'),
+    },
+    {
+      testid: 'command-palette-toggle-sidebar',
+      label: viewMenuState.sidebarVisible ? t`Hide sidebar` : t`Show sidebar`,
+      keywords: ['sidebar', 'files', 'panel', 'toggle'],
+      icon: <PanelLeft />,
+      group: 'view',
+      available: true,
+      shortcut: formatShortcut('toggle-files-sidebar'),
+      run: () => runMenuAction('toggle-sidebar'),
+    },
+    {
+      testid: 'command-palette-toggle-doc-panel',
+      label: viewMenuState.docPanelVisible ? t`Hide document panel` : t`Show document panel`,
+      keywords: ['document', 'panel', 'info', 'toggle'],
+      icon: <PanelRight />,
+      group: 'view',
+      available: true,
+      shortcut: formatShortcut('toggle-document-panel'),
+      run: () => runMenuAction('toggle-doc-panel'),
+    },
+    {
+      testid: 'command-palette-toggle-terminal',
+      label: viewMenuState.terminalVisible ? t`Hide Terminal` : t`Show Terminal`,
+      keywords: ['terminal', 'shell', 'console', 'toggle'],
+      icon: <SquareTerminal />,
+      group: 'view',
+      available: bridge !== null,
+      shortcut: formatShortcut('toggle-terminal-panel'),
+      run: () => runMenuAction('toggle-terminal'),
+    },
+    {
+      testid: 'command-palette-toggle-show-hidden-files',
+      label: t`Show hidden files`,
+      keywords: ['hidden', 'dotfiles', 'files', 'show'],
+      icon: <Eye />,
+      group: 'view',
+      available: true,
+      checked: viewMenuState.showHiddenFiles === true,
+      run: () => runMenuAction('toggle-show-hidden-files'),
+    },
+    {
+      testid: 'command-palette-toggle-show-ok-folders',
+      label: t`Show .ok folders`,
+      keywords: ['ok', 'folders', 'hidden', 'show'],
+      icon: <Folder />,
+      group: 'view',
+      available: true,
+      checked: viewMenuState.showOkFolders === true,
+      run: () => runMenuAction('toggle-show-ok-folders'),
+    },
+    {
+      testid: 'command-palette-toggle-show-only-markdown-files',
+      label: t`Show only markdown files`,
+      keywords: ['markdown', 'filter', 'files', 'only'],
+      icon: <FileText />,
+      group: 'view',
+      available: true,
+      checked: viewMenuState.showOnlyMarkdownFiles === true,
+      run: () => runMenuAction('toggle-show-only-markdown-files'),
+    },
+    {
+      testid: 'command-palette-toggle-show-skills-section',
+      label: t`Show skills section`,
+      keywords: ['skills', 'section', 'sidebar', 'show'],
+      icon: <Sparkles />,
+      group: 'view',
+      available: true,
+      checked: viewMenuState.showSkillsSection === true,
+      run: () => runMenuAction('toggle-show-skills-section'),
+    },
+    {
+      testid: 'command-palette-expand-all-tree',
+      label: t`Expand all`,
+      keywords: ['expand', 'tree', 'folders', 'all'],
+      icon: <UnfoldVertical />,
+      group: 'view',
+      // Mirror the native menu's smart-hide (visible: canExpandAll ?? true):
+      // suppress the row when the tree is already fully expanded, so searching
+      // "expand" doesn't surface a pure no-op. Unknown (web/pre-push) stays available.
+      available: viewMenuState.canExpandAll !== false,
+      run: () => runMenuAction('expand-all-tree'),
+    },
+    {
+      testid: 'command-palette-collapse-all-tree',
+      label: t`Collapse all`,
+      keywords: ['collapse', 'tree', 'folders', 'all'],
+      icon: <FoldVertical />,
+      group: 'view',
+      // Mirror the native menu's smart-hide (visible: canCollapseAll ?? true).
+      available: viewMenuState.canCollapseAll !== false,
+      run: () => runMenuAction('collapse-all-tree'),
+    },
+    {
+      testid: 'command-palette-new-terminal',
+      label: t`New Terminal`,
+      keywords: ['terminal', 'shell', 'new', 'tab'],
+      icon: <SquareTerminal />,
+      group: 'terminal',
+      available: bridge !== null,
+      run: () => runMenuAction('new-terminal'),
+    },
+    {
+      testid: 'command-palette-kill-terminal',
+      label: t`Kill Terminal`,
+      keywords: ['terminal', 'kill', 'close', 'session'],
+      icon: <SquareTerminal />,
+      group: 'terminal',
+      available: bridge !== null && viewMenuState.terminalLive === true,
+      run: () => runMenuAction('kill-terminal'),
+    },
+    {
+      testid: 'command-palette-check-for-updates',
+      label: t`Check for updates`,
+      keywords: ['update', 'upgrade', 'version', 'check'],
+      icon: <RefreshCw />,
+      group: 'app',
+      available: bridge !== null,
+      run: () =>
+        runAction(async () => {
+          await bridge?.update.checkNow();
+        }),
+    },
+    {
+      testid: 'command-palette-set-up-integrations',
+      label: t`Set up OpenKnowledge integrations`,
+      keywords: ['integrations', 'mcp', 'setup', 'claude', 'configure'],
+      icon: <Blocks />,
+      group: 'app',
+      available: bridge !== null,
+      run: () =>
+        runAction(async () => {
+          await bridge?.mcpWiring.reconfigure();
+        }),
+    },
+    {
+      testid: 'command-palette-toggle-spell-check',
+      label: t`Check spelling while typing`,
+      keywords: ['spell', 'spelling', 'check', 'typing'],
+      icon: <SpellCheck />,
+      group: 'app',
+      available: bridge !== null,
+      run: () =>
+        runAction(async () => {
+          await bridge?.spellcheck.toggle();
+        }),
+    },
+    {
+      testid: 'command-palette-open-github',
+      label: t`OpenKnowledge on GitHub`,
+      keywords: ['github', 'source', 'repository', 'code'],
+      icon: <GithubIcon />,
+      group: 'app',
+      available: true,
+      run: () => openExternalUrl(OPEN_KNOWLEDGE_GITHUB_URL),
+    },
+  ];
+  const visibleBackfillCommands = backfillCommands.filter(
+    (cmd) =>
+      cmd.available &&
+      trimmedDeferredQuery !== '' &&
+      matchesCommandQuery(cmd.label, deferredQuery, cmd.keywords),
+  );
+  const hasBackfillCommand = visibleBackfillCommands.length > 0;
+
   const hasAnyResults =
     inExclusiveMode ||
     showRecentNavigation ||
@@ -912,7 +1262,8 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     showInstallClaudeDesktop ||
     showReportBug ||
     showProjectRecents ||
-    showAgentGroup;
+    showAgentGroup ||
+    hasBackfillCommand;
 
   function navigateToTagDocs(tagName: string) {
     setQuery(`${TAG_QUERY_PREFIX}${tagName}`);
@@ -1673,6 +2024,38 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               ))}
             </CommandGroup>
           ) : null}
+
+          {(['file', 'view', 'terminal', 'app'] as const).map((groupKey) => {
+            const rows = visibleBackfillCommands.filter((cmd) => cmd.group === groupKey);
+            if (rows.length === 0) return null;
+            const heading =
+              groupKey === 'file'
+                ? t`File`
+                : groupKey === 'view'
+                  ? t`View`
+                  : groupKey === 'terminal'
+                    ? t`Terminal`
+                    : t`Application`;
+            return (
+              <CommandGroup key={groupKey} heading={heading}>
+                {rows.map((cmd) => (
+                  <CommandItem
+                    key={cmd.testid}
+                    value={`${cmd.label} ${cmd.keywords.join(' ')}`}
+                    onSelect={cmd.run}
+                    data-testid={cmd.testid}
+                  >
+                    {cmd.icon}
+                    <span>{cmd.label}</span>
+                    {cmd.checked ? (
+                      <Check className="ml-auto text-muted-foreground" aria-hidden="true" />
+                    ) : null}
+                    {cmd.shortcut ? <CommandShortcut>{cmd.shortcut}</CommandShortcut> : null}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            );
+          })}
 
           {showNavigation ? (
             <CommandGroup heading={t`Search`}>

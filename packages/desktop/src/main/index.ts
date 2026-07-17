@@ -2250,22 +2250,8 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // window that opens.
     reconfigureMcpWiring:
       process.platform === 'darwin' && app.isPackaged
-        ? async () => {
-            mcpWiringHandle?.destroy();
-            mcpWiringHandle = null;
-            try {
-              mcpWiringHandle = armMcpWiring({
-                forceShow: true,
-                immediateDispatchTarget: pickLoadedRendererForMcpDialog(),
-              });
-            } catch (err) {
-              const message = err instanceof Error ? err.message : String(err);
-              console.error('[main] reconfigureMcpWiring failed', { err: message });
-              dialog.showErrorBox(
-                'Set up OpenKnowledge integrations failed',
-                `OpenKnowledge couldn't re-arm the MCP consent dialog:\n\n${message}`,
-              );
-            }
+        ? () => {
+            reconfigureMcpWiringNow();
           }
         : undefined,
     // Help → Install in Claude Desktop… opens the skill install dialog in
@@ -2956,6 +2942,37 @@ function armMcpWiring(opts: ArmMcpWiringOpts = {}): RunMcpWiringHandle {
   return runMcpWiringOnFirstLaunch(createMcpWiringOpts(opts));
 }
 
+/**
+ * Re-arm the MCP consent dialog on demand — the shared body behind both the
+ * File → "Set up OpenKnowledge integrations…" menu dep and the Cmd+K command's
+ * `ok:mcp-wiring:reconfigure` invoke. Tears down any prior handle then arms a
+ * fresh one with `forceShow: true` so the marker-present gate is bypassed, and
+ * hands it an already-loaded window so the dialog opens immediately. Returns
+ * `false` when the surface is unavailable (non-darwin / unpackaged — same gate
+ * that hides the menu leaf) or when arming threw, so the palette can toast
+ * rather than silently no-op.
+ */
+function reconfigureMcpWiringNow(): boolean {
+  if (!(process.platform === 'darwin' && app.isPackaged)) return false;
+  mcpWiringHandle?.destroy();
+  mcpWiringHandle = null;
+  try {
+    mcpWiringHandle = armMcpWiring({
+      forceShow: true,
+      immediateDispatchTarget: pickLoadedRendererForMcpDialog(),
+    });
+    return true;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[main] reconfigureMcpWiring failed', { err: message });
+    dialog.showErrorBox(
+      'Set up OpenKnowledge integrations failed',
+      `OpenKnowledge couldn't re-arm the MCP consent dialog:\n\n${message}`,
+    );
+    return false;
+  }
+}
+
 function formatUnknownError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -3193,6 +3210,18 @@ const RECENT_GIT_ROOTS_CAP = 256;
 
 function registerIpcHandlers() {
   const handle = createHandler(ipcMain);
+
+  // File → "Set up OpenKnowledge integrations…" / Cmd+K command. Shares the
+  // exact body the menu dep runs; resolves false when the surface is
+  // unavailable so the palette can toast instead of no-op.
+  handle('ok:mcp-wiring:reconfigure', async (): Promise<boolean> => reconfigureMcpWiringNow());
+
+  // Edit → "Check spelling while typing" / Cmd+K command. Same single-source
+  // toggle the menu dep uses; returns the new app-wide enabled state.
+  handle('ok:spellcheck:toggle', async (): Promise<boolean> => {
+    setSpellCheckEnabledAppWide(!appState.spellCheckEnabled);
+    return appState.spellCheckEnabled;
+  });
 
   // Per-session membership set for `ok:fs:remove-git-folder`. Populated
   // by `ok:fs:find-enclosing-git-root` returns; read by the destructive

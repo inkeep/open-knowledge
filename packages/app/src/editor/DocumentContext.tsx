@@ -18,6 +18,7 @@ import {
   skillFileFromHash,
 } from '@/lib/doc-hash';
 import { emitBranchChanged, emitDocumentsChanged } from '@/lib/documents-events';
+import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { mark } from '@/lib/perf';
 import { refreshServerInfo } from '@/lib/server-info-refresh';
 import { useCollabUrl } from '@/lib/use-collab-url';
@@ -1428,14 +1429,12 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const bridge = getDesktopBridge();
-    if (!bridge) return;
-    return bridge.onMenuAction((action) => {
+    return subscribeLocalMenuAction((action) => {
       if (action !== 'close-active-tab-or-window') return;
       if (!closeActiveTabOrWindow()) window.close();
     });
   }, [
-    // biome-ignore lint/correctness/useExhaustiveDependencies: closeActiveTabOrWindow is render-bound; re-subscribing keeps the desktop menu handler fresh for current tab state.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: closeActiveTabOrWindow is render-bound; re-subscribing keeps the menu handler fresh for current tab state.
     closeActiveTabOrWindow,
   ]);
 

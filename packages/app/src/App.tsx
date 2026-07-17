@@ -505,7 +505,7 @@ function AppBody() {
         {desktopBridge ? <CreateProjectMenuTrigger bridge={desktopBridge} /> : null}
         {/* Help → Report a Bug… opens ReportBugDialog here — same
             desktop-only App-root trigger pattern as CreateProjectMenuTrigger. */}
-        {desktopBridge ? <ReportBugMenuTrigger bridge={desktopBridge} /> : null}
+        {desktopBridge ? <ReportBugMenuTrigger /> : null}
         {/* First-launch consent dialog — host-agnostic. Self-gates on
             the shared `mcpConsentStore` snapshot; renders nothing until
             main fires `ok:mcp-wiring:show`. Mounted identically in

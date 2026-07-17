@@ -16,6 +16,10 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import {
+  __resetLocalMenuActionBusForTests,
+  emitLocalMenuAction,
+} from '@/lib/local-menu-action-bus';
 
 // `next-themes` is consumed at the top of NavigatorApp; provide a stable
 // stub so the test mount doesn't require a ThemeProvider.
@@ -76,8 +80,6 @@ interface NavigatorBridgeStub {
  * callback; `fire(...)` invokes it the way main's menu dispatch would.
  */
 function makeNavigatorBridge(): NavigatorBridgeStub {
-  let captured: ((action: MenuActionLike) => void) | null = null;
-
   const bridge = {
     config: {
       collabUrl: '',
@@ -86,12 +88,7 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
       projectName: 'Project Navigator',
       mode: 'navigator',
     },
-    onMenuAction: (cb: (action: MenuActionLike) => void) => {
-      captured = cb;
-      return () => {
-        captured = null;
-      };
-    },
+    onMenuAction: () => () => {},
     project: {
       listRecent: async () => [],
       removeRecent: async () => undefined,
@@ -124,11 +121,9 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
   return {
     bridge,
     fire: (action) => {
-      if (captured) {
-        // Wrap in act so the resulting setOpen state flush is applied before
-        // assertions run (mirrors fireEvent's internal act wrapping).
-        act(() => captured?.(action));
-      }
+      // Wrap in act so the resulting setOpen state flush is applied before
+      // assertions run (mirrors fireEvent's internal act wrapping).
+      act(() => emitLocalMenuAction(action));
     },
   };
 }
@@ -147,6 +142,7 @@ describe('NavigatorApp new-project menu-action subscription', () => {
 
   afterEach(() => {
     cleanup();
+    __resetLocalMenuActionBusForTests();
     consoleWarnSpy.mockRestore();
     consoleErrorSpy.mockRestore();
   });

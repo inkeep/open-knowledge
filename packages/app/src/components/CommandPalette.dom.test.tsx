@@ -1,6 +1,15 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import {
+  PALETTE_COMMAND_IDS,
+  PRE_EXISTING_PALETTE_IDS,
+} from '@/lib/command-menu-parity.test-helper';
+import {
+  __resetLocalMenuActionBusForTests,
+  subscribeLocalMenuAction,
+} from '@/lib/local-menu-action-bus';
+import { __resetViewMenuStateForTests, setViewMenuState } from '@/lib/view-menu-state-store';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 type CommandDialogProps = {
@@ -23,7 +32,12 @@ type CommandItemProps = {
 };
 
 let activeDocName: string | null = 'docs/active';
-let activeTarget: { kind: 'doc'; docName: string } | null = { kind: 'doc', docName: 'docs/active' };
+// Loosely typed so parity tests can set folder / asset / missing targets to
+// exercise the contextual-command projection.
+let activeTarget: { kind: string; [key: string]: unknown } | null = {
+  kind: 'doc',
+  docName: 'docs/active',
+};
 let requestDocPanelTabCalls: string[] = [];
 let seedDialogProps: Array<{ open: boolean }> = [];
 let newItemDialogProps: Array<{ open: boolean; kind: string; initialDir: string }> = [];
@@ -240,6 +254,19 @@ function createBridge() {
           created: true,
         }),
       ),
+    },
+    // Surfaces the backfilled bridge-invoke commands reach.
+    update: {
+      checkNow: mock(() => Promise.resolve()),
+    },
+    mcpWiring: {
+      reconfigure: mock(() => Promise.resolve(true)),
+    },
+    spellcheck: {
+      toggle: mock(() => Promise.resolve(true)),
+    },
+    shell: {
+      openExternal: mock(() => Promise.resolve()),
     },
   };
 }
@@ -816,5 +843,292 @@ describe('NavigationItem path subtitle', () => {
     const folderRow = screen.getByTestId('command-palette-nav-folder-docs');
     expect(folderRow.querySelector('[data-file-entry-icon="folder"]')).not.toBeNull();
     expect(folderRow.querySelector('[data-testid="file-entry-extension-badge"]')).toBeNull();
+  });
+});
+
+// Ratchet C + acceptance criteria for the menu-parity backfill. Honest limit: cmdk and
+// the hooks are mocked, so these assert the registry-driven branch emits the row
+// and wires the dispatch under its declared enabling context — not cmdk's own
+// filtering (covered by the palette DOM tests above + a Playwright smoke).
+describe('Cmd+K menu-parity backfill', () => {
+  let busActions: string[];
+  let unsubscribeBus: (() => void) | null = null;
+
+  beforeEach(() => {
+    cleanup();
+    __resetLocalMenuActionBusForTests();
+    __resetViewMenuStateForTests();
+    activeDocName = 'docs/active';
+    activeTarget = { kind: 'doc', docName: 'docs/active' };
+    pageListLoading = false;
+    window.location.hash = '';
+    globalThis.fetch = mock(() =>
+      Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 })),
+    ) as never;
+    // Panels visible + a live terminal so the state-aware View toggles render
+    // their "Hide …" variant and Kill Terminal is enabled.
+    setViewMenuState({
+      sidebarVisible: true,
+      docPanelVisible: true,
+      terminalVisible: true,
+      terminalLive: true,
+    });
+    busActions = [];
+    unsubscribeBus = subscribeLocalMenuAction((action) => busActions.push(action));
+  });
+
+  afterEach(() => {
+    unsubscribeBus?.();
+    unsubscribeBus = null;
+    __resetLocalMenuActionBusForTests();
+    __resetViewMenuStateForTests();
+  });
+
+  // Each id-backed backfill row renders under a matching query and emits its
+  // OkMenuAction id on the bus when selected.
+  const ID_BACKED: Array<{ testid: string; query: string; id: string }> = [
+    {
+      testid: 'command-palette-new-from-template',
+      query: 'new from template',
+      id: 'new-from-template',
+    },
+    { testid: 'command-palette-toggle-sidebar', query: 'sidebar', id: 'toggle-sidebar' },
+    { testid: 'command-palette-toggle-doc-panel', query: 'document panel', id: 'toggle-doc-panel' },
+    { testid: 'command-palette-toggle-terminal', query: 'hide terminal', id: 'toggle-terminal' },
+    {
+      testid: 'command-palette-toggle-show-hidden-files',
+      query: 'hidden files',
+      id: 'toggle-show-hidden-files',
+    },
+    {
+      testid: 'command-palette-toggle-show-ok-folders',
+      query: 'ok folders',
+      id: 'toggle-show-ok-folders',
+    },
+    {
+      testid: 'command-palette-toggle-show-only-markdown-files',
+      query: 'only markdown',
+      id: 'toggle-show-only-markdown-files',
+    },
+    {
+      testid: 'command-palette-toggle-show-skills-section',
+      query: 'skills section',
+      id: 'toggle-show-skills-section',
+    },
+    { testid: 'command-palette-expand-all-tree', query: 'expand all', id: 'expand-all-tree' },
+    { testid: 'command-palette-collapse-all-tree', query: 'collapse all', id: 'collapse-all-tree' },
+    { testid: 'command-palette-new-terminal', query: 'new terminal', id: 'new-terminal' },
+    { testid: 'command-palette-kill-terminal', query: 'kill terminal', id: 'kill-terminal' },
+    { testid: 'command-palette-new-worktree', query: 'new worktree', id: 'new-worktree' },
+    { testid: 'command-palette-switch-worktree', query: 'switch worktree', id: 'switch-worktree' },
+    { testid: 'command-palette-close-tab', query: 'close tab', id: 'close-active-tab-or-window' },
+    { testid: 'command-palette-rename', query: 'rename', id: 'rename' },
+    { testid: 'command-palette-duplicate', query: 'duplicate', id: 'duplicate' },
+    { testid: 'command-palette-move-to-trash', query: 'move to trash', id: 'move-to-trash' },
+    {
+      testid: 'command-palette-reveal-in-finder',
+      query: 'reveal in finder',
+      id: 'reveal-in-finder',
+    },
+    { testid: 'command-palette-copy-full-path', query: 'copy full path', id: 'copy-full-path' },
+    {
+      testid: 'command-palette-copy-relative-path',
+      query: 'copy relative path',
+      id: 'copy-relative-path',
+    },
+  ];
+
+  for (const { testid, query, id } of ID_BACKED) {
+    test(`AC1: "${id}" renders on query and emits on the bus`, async () => {
+      await renderPalette({ bridge: createBridge() });
+      await setQuery(query);
+      const row = screen.getByTestId(testid);
+      expect(row).not.toBeNull();
+      fireEvent.click(row);
+      expect(busActions).toContain(id);
+    });
+  }
+
+  // Ratchet C completeness: every id classified as a palette command (shared with
+  // the id-classification ratchet via command-menu-parity.test-helper) must be
+  // covered by a rendered id-backed row above OR a pre-existing palette surface.
+  // A future id classified into PALETTE_COMMAND_IDS with no rendered row — which
+  // satisfies only Ratchets A/B — turns this red, closing the "classified but
+  // unreachable" gap that the id ratchets alone cannot see.
+  test('Ratchet C: every classified palette-command id renders a row or is a pre-existing surface', () => {
+    const rendered = new Set(ID_BACKED.map((row) => row.id));
+    const covered = new Set([...rendered, ...PRE_EXISTING_PALETTE_IDS]);
+    const missing = [...PALETTE_COMMAND_IDS].filter((id) => !covered.has(id));
+    expect(missing).toEqual([]);
+    // No ID_BACKED row tests an id that isn't classified (stale row test).
+    const staleRows = [...rendered].filter((id) => !PALETTE_COMMAND_IDS.has(id));
+    expect(staleRows).toEqual([]);
+    // The pre-existing escape hatch stays honest: every entry is still classified.
+    const stalePreExisting = [...PRE_EXISTING_PALETTE_IDS].filter(
+      (id) => !PALETTE_COMMAND_IDS.has(id),
+    );
+    expect(stalePreExisting).toEqual([]);
+  });
+
+  test('AC1: check-for-updates invokes bridge.update.checkNow', async () => {
+    const { bridge } = await renderPalette({ bridge: createBridge() });
+    await setQuery('check for updates');
+    fireEvent.click(screen.getByTestId('command-palette-check-for-updates'));
+    await waitFor(() => expect(bridge?.update.checkNow).toHaveBeenCalledTimes(1));
+  });
+
+  test('AC1: set-up-integrations invokes bridge.mcpWiring.reconfigure', async () => {
+    const { bridge } = await renderPalette({ bridge: createBridge() });
+    await setQuery('set up openknowledge integrations');
+    fireEvent.click(screen.getByTestId('command-palette-set-up-integrations'));
+    await waitFor(() => expect(bridge?.mcpWiring.reconfigure).toHaveBeenCalledTimes(1));
+  });
+
+  test('AC1: OpenKnowledge on GitHub opens the repository URL', async () => {
+    const { bridge } = await renderPalette({ bridge: createBridge() });
+    await setQuery('github');
+    fireEvent.click(screen.getByTestId('command-palette-open-github'));
+    expect(bridge?.shell.openExternal).toHaveBeenCalledWith(
+      'https://github.com/inkeep/open-knowledge',
+    );
+  });
+
+  test('AC1: OpenKnowledge on GitHub falls back to window.open on the web host', async () => {
+    const openSpy = mock(() => null);
+    const originalOpen = window.open;
+    window.open = openSpy as unknown as typeof window.open;
+    try {
+      await renderPalette({ bridge: null });
+      await setQuery('github');
+      fireEvent.click(screen.getByTestId('command-palette-open-github'));
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://github.com/inkeep/open-knowledge',
+        '_blank',
+        'noopener,noreferrer',
+      );
+    } finally {
+      window.open = originalOpen;
+    }
+  });
+
+  test('AC3: web host shows host-agnostic toggles but hides desktop-only commands', async () => {
+    await renderPalette({ bridge: null });
+
+    await setQuery('sidebar');
+    expect(screen.queryByTestId('command-palette-toggle-sidebar')).not.toBeNull();
+    await setQuery('expand all');
+    expect(screen.queryByTestId('command-palette-expand-all-tree')).not.toBeNull();
+
+    await setQuery('new terminal');
+    expect(screen.queryByTestId('command-palette-new-terminal')).toBeNull();
+    await setQuery('check for updates');
+    expect(screen.queryByTestId('command-palette-check-for-updates')).toBeNull();
+    await setQuery('rename');
+    expect(screen.queryByTestId('command-palette-rename')).toBeNull();
+  });
+
+  test('AC5: the sidebar toggle label reflects view-menu-state', async () => {
+    setViewMenuState({ sidebarVisible: true });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('sidebar');
+    expect(screen.getByTestId('command-palette-toggle-sidebar').textContent).toContain(
+      'Hide sidebar',
+    );
+
+    cleanup();
+    setViewMenuState({ sidebarVisible: false });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('sidebar');
+    expect(screen.getByTestId('command-palette-toggle-sidebar').textContent).toContain(
+      'Show sidebar',
+    );
+  });
+
+  test('AC5: doc-panel and terminal toggle labels reflect view-menu-state', async () => {
+    setViewMenuState({ docPanelVisible: true, terminalVisible: true });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('document panel');
+    expect(screen.getByTestId('command-palette-toggle-doc-panel').textContent).toContain(
+      'Hide document panel',
+    );
+    await setQuery('hide terminal');
+    expect(screen.getByTestId('command-palette-toggle-terminal').textContent).toContain(
+      'Hide Terminal',
+    );
+
+    cleanup();
+    setViewMenuState({ docPanelVisible: false, terminalVisible: false });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('document panel');
+    expect(screen.getByTestId('command-palette-toggle-doc-panel').textContent).toContain(
+      'Show document panel',
+    );
+    await setQuery('show terminal');
+    expect(screen.getByTestId('command-palette-toggle-terminal').textContent).toContain(
+      'Show Terminal',
+    );
+  });
+
+  test('AC5: kill-terminal is search-visible only when a terminal is live', async () => {
+    setViewMenuState({ terminalLive: true });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('kill terminal');
+    expect(screen.queryByTestId('command-palette-kill-terminal')).not.toBeNull();
+
+    cleanup();
+    setViewMenuState({ terminalLive: false });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('kill terminal');
+    expect(screen.queryByTestId('command-palette-kill-terminal')).toBeNull();
+  });
+
+  test('AC6: the spell-check row toggles via the bridge invoke, not view-menu-state', async () => {
+    const { bridge } = await renderPalette({ bridge: createBridge() });
+    await setQuery('check spelling while typing');
+    fireEvent.click(screen.getByTestId('command-palette-toggle-spell-check'));
+    await waitFor(() => expect(bridge?.spellcheck.toggle).toHaveBeenCalledTimes(1));
+  });
+
+  test('AC7: contextual commands gate on the active editor target', async () => {
+    // Missing target → no contextual rows.
+    await renderPalette({ bridge: createBridge(), docName: null });
+    await setQuery('rename');
+    expect(screen.queryByTestId('command-palette-rename')).toBeNull();
+    await setQuery('duplicate');
+    expect(screen.queryByTestId('command-palette-duplicate')).toBeNull();
+
+    // Doc target → rename + duplicate present.
+    cleanup();
+    await renderPalette({ bridge: createBridge(), docName: 'docs/thing' });
+    await setQuery('rename');
+    expect(screen.queryByTestId('command-palette-rename')).not.toBeNull();
+    await setQuery('duplicate');
+    expect(screen.queryByTestId('command-palette-duplicate')).not.toBeNull();
+
+    // Asset-like target → duplicate hidden, rename still present (target-kind projection).
+    // Clear the query first so re-typing 'duplicate' is a real value change that forces
+    // a re-render after the activeTarget mutation (a same-value setState would bail).
+    activeTarget = { kind: 'asset', assetPath: 'img.png' };
+    await setQuery('');
+    await setQuery('duplicate');
+    expect(screen.queryByTestId('command-palette-duplicate')).toBeNull();
+    await setQuery('rename');
+    expect(screen.queryByTestId('command-palette-rename')).not.toBeNull();
+
+    // Folder target → duplicate re-enabled (the doc-OR-folder availability
+    // clause), so narrowing the gate to doc-only turns this red.
+    activeTarget = { kind: 'folder', folderPath: 'docs/notes' };
+    await setQuery('');
+    await setQuery('duplicate');
+    expect(screen.queryByTestId('command-palette-duplicate')).not.toBeNull();
+  });
+
+  test('AC8: backfilled rows do not render on empty open', async () => {
+    await renderPalette({ bridge: createBridge() });
+    // No query typed — the backfill long-tail is search-only.
+    expect(screen.queryByTestId('command-palette-rename')).toBeNull();
+    expect(screen.queryByTestId('command-palette-toggle-sidebar')).toBeNull();
+    expect(screen.queryByTestId('command-palette-check-for-updates')).toBeNull();
+    expect(screen.queryByTestId('command-palette-new-terminal')).toBeNull();
   });
 });

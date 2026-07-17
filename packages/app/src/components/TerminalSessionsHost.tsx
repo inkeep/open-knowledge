@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { TabsContent } from '@/components/ui/tabs';
 import { resolveDefaultCli } from '@/lib/default-cli-resolver';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
 import {
   getInitialPreferBareTerminal,
@@ -12,6 +13,7 @@ import {
 } from '@/lib/terminal-new-tab-store';
 import { loadStickyAgent, saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
 import { cn } from '@/lib/utils';
+import { setViewMenuState } from '@/lib/view-menu-state-store';
 import type { TerminalLaunchIntent } from './EditorPane';
 import { visibleTerminalClis } from './handoff/terminal-cli-display';
 import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
@@ -577,13 +579,13 @@ export function TerminalSessionsHost({
   // editor window the doc tree owns ⌘W (DocumentContext closes the active doc
   // tab); handling it here too would double-close.
   useEffect(() => {
-    return bridge.onMenuAction((action) => {
+    return subscribeLocalMenuAction((action) => {
       if (action === 'new-terminal') openSessionRef.current(null);
       else if (action === 'kill-terminal') closeActiveRef.current();
       else if (action === 'close-active-tab-or-window' && variant === 'window')
         closeActiveRef.current();
     });
-  }, [bridge, variant]);
+  }, [variant]);
 
   // ⌘1–⌘9 jump straight to the Nth tab. Capture phase so a focused xterm can't
   // swallow the chord; scoped to focus inside the stable host div (which follows
@@ -654,7 +656,11 @@ export function TerminalSessionsHost({
   // enables only while at least one session is live. A collapsed-but-alive
   // terminal still counts: the session list tracks the latch, not visibility.
   useEffect(() => {
-    bridge.editor.notifyViewMenuStateChanged({ terminalLive: sessions.length > 0 });
+    const terminalLive = sessions.length > 0;
+    // Mirror into the renderer store so the Cmd+K palette can gate "Kill
+    // terminal" on a live session (the bridge push below is main-only).
+    setViewMenuState({ terminalLive });
+    bridge.editor.notifyViewMenuStateChanged({ terminalLive });
   }, [bridge, sessions.length]);
 
   useEffect(() => {

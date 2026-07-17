@@ -190,7 +190,10 @@ async function renderDialog(
   );
   // ReportBugDialog is lazy-loaded — wait for the body chunk to resolve and
   // mount before returning so callers' synchronous queries see the dialog.
-  await screen.findByRole('dialog');
+  // Generous deadline: the file's first render pays the chunk's cold
+  // transform+import cost, which can exceed findByRole's 1s default on a
+  // contended CI runner (only the failure path ever waits this long).
+  await screen.findByRole('dialog', {}, { timeout: 15_000 });
   return { openChangeCalls };
 }
 

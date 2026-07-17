@@ -1,25 +1,22 @@
 /**
  * DOM mount test for ReportBugMenuTrigger — the App-root surface that opens
- * ReportBugDialog when main fires the `report-bug` menu action
- * (Help → Report a Bug…).
+ * ReportBugDialog when the `report-bug` menu action fires (Help → Report a Bug…).
  *
  * Pins the user-visible contract: the dialog is closed until the menu action
- * fires, opens on `report-bug`, and ignores unrelated menu actions. The
- * trigger subscribes to `bridge.onMenuAction`; this test captures the
- * subscribed callback through a fake bridge and invokes it directly — the
- * same path main's `sendMenuActionToFocused('report-bug')` drives over IPC.
+ * fires, opens on `report-bug`, and ignores unrelated menu actions. The trigger
+ * now subscribes to the renderer-local menu-action bus (a real menu click
+ * reaches it via main → `ok:menu-action` → the bus forwarder), so this test
+ * drives it with `emitLocalMenuAction` — the same fan-out a menu click hits.
  *
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import {
+  __resetLocalMenuActionBusForTests,
+  emitLocalMenuAction,
+} from '@/lib/local-menu-action-bus';
 import { ReportBugMenuTrigger } from './ReportBugMenuTrigger';
-
-// `OkMenuAction` is module-private in desktop-bridge-types.ts; mirror just the
-// members this test fires. The trigger only branches on the literal
-// 'report-bug', so an exact union is unnecessary.
-type MenuActionLike = 'report-bug' | 'new-doc' | 'toggle-sidebar';
 
 // Radix UI primitives (shadcn Dialog) reach for DOM globals at mount. The
 // broadly-needed constructors (MutationObserver) live in the shared
@@ -47,65 +44,28 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 
 const ASYNC_TIMEOUT_MS = 2000;
 
-interface MenuActionBridgeStub {
-  bridge: OkDesktopBridge;
-  /** Invoke the most recently subscribed onMenuAction callback. */
-  fire(action: MenuActionLike): void;
-  readonly unsubscribeCalls: number;
-}
-
-/**
- * Fake bridge exposing just the surface ReportBugMenuTrigger touches:
- * `onMenuAction` (subscription). ReportBugDialog itself talks to
- * `window.okDesktop` only on user actions (create/send), which this test
- * never reaches — opening the compose phase needs no further bridge surface.
- */
-function makeMenuActionBridge(): MenuActionBridgeStub {
-  let captured: ((action: MenuActionLike) => void) | null = null;
-  let unsubscribeCalls = 0;
-
-  const bridge = {
-    onMenuAction: (cb: (action: MenuActionLike) => void) => {
-      captured = cb;
-      return () => {
-        unsubscribeCalls += 1;
-        captured = null;
-      };
-    },
-  } as unknown as OkDesktopBridge;
-
-  return {
-    bridge,
-    fire: (action) => {
-      if (captured) {
-        // Wrap in act so the resulting setOpen state flush is applied before
-        // assertions run (mirrors fireEvent's internal act wrapping).
-        act(() => captured?.(action));
-      }
-    },
-    get unsubscribeCalls() {
-      return unsubscribeCalls;
-    },
-  };
+// Wrap the bus emit in act so the resulting setOpen state flush is applied
+// before assertions run (mirrors fireEvent's internal act wrapping).
+function fireMenuAction(action: Parameters<typeof emitLocalMenuAction>[0]): void {
+  act(() => emitLocalMenuAction(action));
 }
 
 describe('ReportBugMenuTrigger', () => {
   afterEach(() => {
     cleanup();
+    __resetLocalMenuActionBusForTests();
   });
 
   test('dialog is closed until the report-bug menu action fires', () => {
-    const stub = makeMenuActionBridge();
-    render(<ReportBugMenuTrigger bridge={stub.bridge} />);
+    render(<ReportBugMenuTrigger />);
     // Radix Dialog renders nothing when closed — no portal, no dialog role.
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   test('report-bug menu action opens ReportBugDialog', async () => {
-    const stub = makeMenuActionBridge();
-    render(<ReportBugMenuTrigger bridge={stub.bridge} />);
+    render(<ReportBugMenuTrigger />);
 
-    stub.fire('report-bug');
+    fireMenuAction('report-bug');
 
     await waitFor(
       () => {
@@ -118,22 +78,23 @@ describe('ReportBugMenuTrigger', () => {
   });
 
   test('unrelated menu actions do not open the dialog', async () => {
-    const stub = makeMenuActionBridge();
-    render(<ReportBugMenuTrigger bridge={stub.bridge} />);
+    render(<ReportBugMenuTrigger />);
 
-    stub.fire('new-doc');
-    stub.fire('toggle-sidebar');
+    fireMenuAction('new-doc');
+    fireMenuAction('toggle-sidebar');
 
     // Give any erroneous open a chance to render before asserting absence.
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  test('unsubscribes from onMenuAction on unmount', () => {
-    const stub = makeMenuActionBridge();
-    const { unmount } = render(<ReportBugMenuTrigger bridge={stub.bridge} />);
-    expect(stub.unsubscribeCalls).toBe(0);
+  test('unsubscribes from the bus on unmount', async () => {
+    const { unmount } = render(<ReportBugMenuTrigger />);
     unmount();
-    expect(stub.unsubscribeCalls).toBe(1);
+
+    // After unmount the subscription is gone, so a later emit must not reopen.
+    fireMenuAction('report-bug');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

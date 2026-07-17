@@ -1493,6 +1493,21 @@ export interface OkDesktopBridge {
     confirm(request: OkMcpWiringConfirmRequest): Promise<OkMcpWiringResult>;
     /** User clicked Skip (or pressed ESC). */
     skip(): Promise<OkMcpWiringResult>;
+    /**
+     * Re-arm the consent dialog on demand (File → "Set up OpenKnowledge
+     * integrations…" and the Cmd+K command). Resolves `true` when armed,
+     * `false` when unavailable (non-darwin / unpackaged / arming threw).
+     */
+    reconfigure(): Promise<boolean>;
+  };
+
+  /**
+   * App-wide spell-check toggle (Edit → "Check spelling while typing" and the
+   * Cmd+K command). `toggle()` flips the flag and resolves to the new enabled
+   * state. Bespoke main-side setting; NOT part of the View-menu-state snapshot.
+   */
+  spellcheck: {
+    toggle(): Promise<boolean>;
   };
 
   /**

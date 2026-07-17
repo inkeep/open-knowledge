@@ -193,7 +193,7 @@ export interface OkDesktopConfig {
   readonly startupTraceparent?: string;
 }
 
-type OkMenuAction =
+export type OkMenuAction =
   | 'new-doc'
   | 'new-folder'
   // Opens the create-new-project dialog in the focused window (a whole new
@@ -709,7 +709,7 @@ type OkEditorActiveTargetSnapshot =
  * Sibling of `OkEditorActiveTargetSnapshot`. See canonical JSDoc in
  * `packages/desktop/src/shared/bridge-contract.ts`.
  */
-interface OkEditorViewMenuStateSnapshot {
+export interface OkEditorViewMenuStateSnapshot {
   readonly showHiddenFiles: boolean;
   readonly showOkFolders: boolean;
   readonly showOnlyMarkdownFiles: boolean;
@@ -1256,6 +1256,21 @@ export interface OkDesktopBridge {
     signalReady(): void;
     confirm(request: OkMcpWiringConfirmRequest): Promise<OkMcpWiringResult>;
     skip(): Promise<OkMcpWiringResult>;
+    /**
+     * Re-arm the MCP consent dialog (File → "Set up OpenKnowledge integrations…"
+     * and the Cmd+K command). Resolves `true` when armed, `false` when
+     * unavailable (non-darwin / unpackaged / arming threw). Mirror of the
+     * canonical `bridge-contract.ts` method.
+     */
+    reconfigure(): Promise<boolean>;
+  };
+  /**
+   * App-wide spell-check toggle (Edit → "Check spelling while typing" and the
+   * Cmd+K command). `toggle()` flips the flag and resolves to the new enabled
+   * state. Mirror of the canonical `bridge-contract.ts` method.
+   */
+  spellcheck: {
+    toggle(): Promise<boolean>;
   };
   /**
    * Settings → AI tools: live per-component install state + one-component

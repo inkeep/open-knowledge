@@ -340,8 +340,14 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * onto the containment-checked asset reveal would wear one channel over two
  * opposite security contracts. Single member; the typed-ipc migration remains the
  * committed end state, with the `ipc-channels.ts` header updated in lock-step.
+ *
+ * Bumped from 83 to 85 for the two Cmd+K / native-menu command invokes:
+ * `ok:mcp-wiring:reconfigure` (File → "Set up OpenKnowledge integrations…")
+ * and `ok:spellcheck:toggle` (Edit → "Check spelling while typing"). Each
+ * delegates to an existing main-side function; the typed-ipc migration remains
+ * the committed end state, with the `ipc-channels.ts` header in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 83;
+const REQUEST_CHANNEL_CAP = 85;
 
 /**
  * Extract the body of an interface block by name. Returns the substring
