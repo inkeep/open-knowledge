@@ -33,7 +33,11 @@ type PushPermissionUnknownError =
   | 'timeout'
   | 'rate-limit'
   | 'token-invalid'
-  | 'malformed-response';
+  | 'malformed-response'
+  // No credential resolved for a non-github.com host we cannot verify is
+  // GitHub (a GHES host or a self-hosted forge like Gitea/Forgejo). Push
+  // permission is genuinely unknown — see the anonymous branch in `runProbe`.
+  | 'host-unverified';
 
 /**
  * Outcome of a single push-permission probe.
@@ -211,15 +215,33 @@ async function runProbe(opts: CheckPushPermissionOptions): Promise<PushPermissio
     tokenStore,
   );
 
-  // No credential at all → no push, definitionally. Short-circuit to the
-  // denied posture WITHOUT a network call: an anonymous `GET /repos` returns
-  // 200 with no `permissions` field, which classifies as `unknown` and makes
-  // callers fall through to the doomed sync-onboarding + 403-push path. An
-  // anonymous receiver opening a public shared repo (read-only by nature) must
-  // instead land directly in the suppressed-onboarding, no-push UX.
+  // No credential resolved. What that means depends on the host.
+  //
+  // github.com: no push, definitionally. Short-circuit to `denied` WITHOUT a
+  // network call — an anonymous `GET /repos` returns 200 with no `permissions`
+  // field, which classifies as `unknown` and makes callers fall through to the
+  // doomed sync-onboarding + 403-push path. An anonymous receiver opening a
+  // public shared repo (read-only by nature) must instead land directly in the
+  // suppressed-onboarding, no-push UX.
+  //
+  // Any other host: it may be a GHES host OR a self-hosted forge (Gitea,
+  // Forgejo, …) whose arbitrary hostname is indistinguishable from GHES and so
+  // is presumed-GitHub upstream. Without a token we CANNOT assert the user
+  // can't push — a self-hosted forge is routinely pushed over SSH with a key
+  // that never involves an HTTP token. Denying here would hard-pause auto-sync
+  // for every self-hosted-forge user (regression from #597, which stopped
+  // ignoring non-github.com hosts). Return `unknown` so callers stay lenient
+  // and the real push attempt surfaces a real error only if it actually fails.
   if (tokenSource === 'anonymous') {
-    log.info({ host }, '[permissions] no credential resolved — denying push (read-only)');
-    return { kind: 'denied', reason: 'no-collaborator' };
+    if (host === 'github.com') {
+      log.info({ host }, '[permissions] no credential resolved — denying push (read-only)');
+      return { kind: 'denied', reason: 'no-collaborator' };
+    }
+    log.info(
+      { host },
+      '[permissions] no credential for unverified non-github.com host — deferring to push (unknown)',
+    );
+    return { kind: 'unknown', error: 'host-unverified' };
   }
 
   const url = `${githubApiBase(host)}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
@@ -309,7 +331,7 @@ let _outcomeCounter: Counter | null = null;
 function outcomeCounter(): Counter {
   _outcomeCounter ||= getMeter().createCounter('ok.permissions.probe.outcome_total', {
     description:
-      'Push-permission probe outcomes. Bounded labels: outcome ∈ {allowed,denied,unknown}; denied_reason ∈ {no-collaborator,private-no-access,repo-not-found,none}; error_class ∈ {network,timeout,rate-limit,token-invalid,malformed-response,none}.',
+      'Push-permission probe outcomes. Bounded labels: outcome ∈ {allowed,denied,unknown}; denied_reason ∈ {no-collaborator,private-no-access,repo-not-found,none}; error_class ∈ {network,timeout,rate-limit,token-invalid,malformed-response,host-unverified,none}.',
   });
   return _outcomeCounter;
 }

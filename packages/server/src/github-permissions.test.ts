@@ -299,6 +299,27 @@ describe('checkPushPermission — token resolution', () => {
     expect(calls).toHaveLength(0);
   });
 
+  test('anonymous on a non-github.com host → unknown/host-unverified with NO HTTP call', async () => {
+    // Self-hosted Gitea/Forgejo (arbitrary hostname, indistinguishable from a
+    // GHES host) with no resolvable gh/stored token. We cannot assert the user
+    // can't push — they may well push over SSH with a key that never involves
+    // an HTTP token. Denying here would hard-pause auto-sync for every
+    // self-hosted-forge user. `unknown` keeps callers lenient and lets the real
+    // push attempt surface any real error.
+    const { fetch, calls } = mockFetch(() => jsonResponse(200, {}));
+    const { store } = fakeStore(null);
+    const result = await checkPushPermission({
+      owner: 'example-org',
+      repo: 'notes',
+      host: 'git.example.com',
+      detectGh: ghUnavailable(),
+      tokenStore: store,
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({ kind: 'unknown', error: 'host-unverified' });
+    expect(calls).toHaveLength(0); // still no network call — the short-circuit holds
+  });
+
   test('gh detection is scoped to the requested host', async () => {
     const seenHosts: Array<string | undefined> = [];
     const detectGh: DetectGhFn = (host) => {

@@ -73,7 +73,14 @@ export const PushPermissionSchema = z.discriminatedUnion('checkStatus', [
     .object({
       checkStatus: z.literal('unknown'),
       unknownError: z
-        .enum(['network', 'timeout', 'rate-limit', 'token-invalid', 'malformed-response'])
+        .enum([
+          'network',
+          'timeout',
+          'rate-limit',
+          'token-invalid',
+          'malformed-response',
+          'host-unverified',
+        ])
         .optional(),
     })
     .loose(),

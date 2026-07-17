@@ -95,7 +95,13 @@ export type PushPermissionStatus =
     }
   | {
       checkStatus: 'unknown';
-      unknownError?: 'network' | 'timeout' | 'rate-limit' | 'token-invalid' | 'malformed-response';
+      unknownError?:
+        | 'network'
+        | 'timeout'
+        | 'rate-limit'
+        | 'token-invalid'
+        | 'malformed-response'
+        | 'host-unverified';
     };
 
 /** Flatten the tagged `PushPermission` from `github-permissions.ts` to wire shape. */
