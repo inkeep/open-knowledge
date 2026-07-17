@@ -80,6 +80,7 @@
     "y-indexeddb@9.0.12": "patches/y-indexeddb@9.0.12.patch",
     "react-medium-image-zoom@5.4.3": "patches/react-medium-image-zoom@5.4.3.patch",
     "@tiptap/extension-drag-handle@3.22.3": "patches/@tiptap%2Fextension-drag-handle@3.22.3.patch",
-    "@pierre/trees@1.0.0-beta.4": "patches/@pierre%2Ftrees@1.0.0-beta.4.patch"
+    "@pierre/trees@1.0.0-beta.4": "patches/@pierre%2Ftrees@1.0.0-beta.4.patch",
+    "@inkeep/mermaid-wysiwyg-dom@0.1.0": "patches/@inkeep%2Fmermaid-wysiwyg-dom@0.1.0.patch"
   }
 }

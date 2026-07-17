@@ -52,7 +52,7 @@
     {
       "name": "all JS chunks combined (gzipped)",
       "path": "dist/assets/*.js",
-      "limit": "3.17 MB",
+      "limit": "3.2 MB",
       "gzip": true,
       "running": false
     },
@@ -96,6 +96,8 @@
     "@lezer/markdown": "^1.6.3",
     "@lingui/core": "^6.0.1",
     "@lingui/react": "^6.0.1",
+    "@inkeep/mermaid-wysiwyg-core": "^0.1.0",
+    "@inkeep/mermaid-wysiwyg-dom": "^0.1.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.204.0",
     "@opentelemetry/instrumentation": "^0.204.0",

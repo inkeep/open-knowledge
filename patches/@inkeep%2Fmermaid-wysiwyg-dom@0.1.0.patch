@@ -1,0 +1,33 @@
+diff --git a/dist/index.js b/dist/index.js
+index 7bb142de61632addf365b5ad2416957f29a38016..516af0a3d480b0171f2bc99b5f0e28929e35f90a 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1317,13 +1317,17 @@ var MermaidCanvasView = class {
+   findTextTarget(anchor, current) {
+     const isLeafText = (el) => (el.tagName === "text" || el.tagName === "SPAN" || el.tagName === "P" || el.tagName === "DIV" || el.tagName === "tspan") && (el.children.length === 0 || el.tagName === "text") && (el.textContent?.trim().length ?? 0) > 0;
+     if (isLeafText(anchor)) return anchor;
+-    const leaves = [...anchor.querySelectorAll("text, tspan, span, p, div")].filter(isLeafText);
++    let leaves = [...anchor.querySelectorAll("text, tspan, span, p, div")].filter(isLeafText);
++    if (!leaves.length && anchor.parentElement) {
++      leaves = [...anchor.parentElement.querySelectorAll("text, tspan, span, p, div")].filter(isLeafText);
++    }
+     return leaves.find((el) => el.textContent?.trim() === current.trim()) ?? leaves.find((el) => current.trim().startsWith(el.textContent?.trim() ?? "\0")) ?? leaves[0] ?? anchor;
+   }
+   openOverlayEditor(anchor, current, commitValue) {
+     anchor = this.findTextTarget(anchor, current);
+     const box = this.hostRect(anchor);
+-    const cs = window.getComputedStyle(anchor);
++    const paintSource = anchor.querySelector("tspan") ?? anchor;
++    const cs = window.getComputedStyle(paintSource);
+     const div = document.createElement("div");
+     div.className = "mw-inplace-editor";
+     div.contentEditable = "true";
+@@ -1339,7 +1343,7 @@ var MermaidCanvasView = class {
+     div.style.fontWeight = cs.fontWeight;
+     div.style.fontSize = cs.fontSize;
+     div.style.fontFamily = cs.fontFamily;
+-    const fill = cs.fill && cs.fill !== "none" && anchor instanceof SVGElement ? cs.fill : cs.color;
++    const fill = cs.fill && cs.fill !== "none" && paintSource instanceof SVGElement ? cs.fill : cs.color;
+     div.style.color = fill || "inherit";
+     this.overlayHost.appendChild(div);
+     this.inlineInput = div;

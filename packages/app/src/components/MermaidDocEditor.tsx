@@ -158,7 +158,6 @@ export function MermaidDocEditor({
 
   const editBinding: MermaidSourceBinding = {
     canEdit: true,
-    getChart: () => ytext.toString(),
     commitChart: (next) => replaceYText(ytext, next, MERMAID_DIAGRAM_EDIT_ORIGIN),
   };
 

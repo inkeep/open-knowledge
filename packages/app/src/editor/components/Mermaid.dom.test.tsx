@@ -79,7 +79,7 @@ mock.module('@panzoom/panzoom', () => ({
   default: createPanzoom,
 }));
 
-const { MermaidView, flashLinkedLabels, collectLinkedLabelTargets } = await import('./Mermaid');
+const { MermaidView } = await import('./Mermaid');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
 
 function renderMermaidView(chart: string) {
@@ -295,7 +295,6 @@ describe('MermaidView editBinding (standalone .mmd path)', () => {
           chart="graph TD; A-->B;"
           editBinding={{
             canEdit: true,
-            getChart: () => 'graph TD; A-->B;',
             commitChart: (next) => {
               committed = next;
             },
@@ -307,65 +306,5 @@ describe('MermaidView editBinding (standalone .mmd path)', () => {
     expect(screen.getByRole('toolbar')).toBeDefined();
     // No label interaction happened, so the binding was not invoked.
     expect(committed).toBeNull();
-  });
-});
-
-describe('flashLinkedLabels', () => {
-  test('flashes every occurrence when a label appears 2+ times (linked)', () => {
-    const c = document.createElement('div');
-    c.innerHTML =
-      '<svg><text class="actor">Test123</text></svg>' +
-      '<svg><text class="actor">Test123</text></svg>' +
-      '<span class="nodeLabel">Untouched</span>';
-    expect(flashLinkedLabels(c, 'Test123')).toBe(2);
-    expect(c.querySelectorAll('.mermaid-label-flash').length).toBe(2);
-    // Non-matching label is left alone.
-    expect(c.querySelector('.nodeLabel')?.classList.contains('mermaid-label-flash')).toBe(false);
-  });
-
-  test('stays quiet for a lone occurrence (no related text to signal)', () => {
-    const c = document.createElement('div');
-    c.innerHTML = '<span class="nodeLabel">Solo</span><span class="nodeLabel">Other</span>';
-    expect(flashLinkedLabels(c, 'Solo')).toBe(0);
-    expect(c.querySelector('.mermaid-label-flash')).toBeNull();
-  });
-
-  test('matches trimmed text and ignores blank values', () => {
-    const c = document.createElement('div');
-    c.innerHTML = '<text class="messageText">  Ping  </text><text class="messageText">Ping</text>';
-    expect(flashLinkedLabels(c, 'Ping')).toBe(2);
-    const blank = document.createElement('div');
-    blank.innerHTML = '<text class="actor"> </text><text class="actor"> </text>';
-    expect(flashLinkedLabels(blank, '   ')).toBe(0);
-  });
-});
-
-describe('collectLinkedLabelTargets (live-preview matching)', () => {
-  test('returns the other occurrences of the token, excluding the edited one', () => {
-    const c = document.createElement('div');
-    c.innerHTML =
-      '<text class="actor" id="top">Alice</text>' +
-      '<text class="actor" id="bottom">Alice</text>' +
-      '<text class="messageText">Alice waves</text>'; // different text: not a match
-    const edited = c.querySelector('#top') as Element;
-    const targets = collectLinkedLabelTargets(c, 'Alice', [edited]);
-    expect(targets.length).toBe(1);
-    expect((targets[0] as Element).id).toBe('bottom');
-  });
-
-  test('excludes nested/ancestor elements of an excluded node (either direction)', () => {
-    const c = document.createElement('div');
-    // The edited node's own text nests a matching span; excluding the outer
-    // must also drop the inner (and vice versa) so we never preview onto the
-    // element being typed into.
-    c.innerHTML = '<span class="nodeLabel"><span class="nodeLabel">Foo</span></span>';
-    const outer = c.querySelector('.nodeLabel') as Element;
-    expect(collectLinkedLabelTargets(c, 'Foo', [outer])).toEqual([]);
-  });
-
-  test('empty needle matches nothing', () => {
-    const c = document.createElement('div');
-    c.innerHTML = '<text class="actor"> </text><text class="actor"> </text>';
-    expect(collectLinkedLabelTargets(c, '   ')).toEqual([]);
   });
 });

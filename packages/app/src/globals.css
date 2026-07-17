@@ -846,46 +846,6 @@
   padding-bottom: var(--ask-composer-height, 0px);
 }
 
-/* Mermaid label flash — the "this text just changed too" cue when a WYSIWYG
-   label edit propagates to linked occurrences (e.g. a renamed sequence
-   participant appears in its top AND bottom actor boxes). Same accent family
-   as the agent flash (`--color-agent`), but a `filter` glow rather than the
-   box-shadow/background agent-flash keyframes use — filter renders on SVG
-   `<text>` (sequence actors/messages) as well as HTML label spans (flowchart
-   nodes), where box-shadow/background do not. */
-@keyframes mermaid-label-flash {
-  0%,
-  100% {
-    /* Unset paint at the ends so the element returns to its own base
-       fill/color when the animation finishes. */
-    filter: none;
-  }
-  25% {
-    /* Pulse the glyph paint itself to the agent accent — `fill` colors SVG
-       `<tspan>` glyphs, `color` colors HTML labels (`.nodeLabel`/`.edgeLabel`).
-       This is the loud, UNCLIPPED cue: an SVG `filter` drop-shadow on small
-       `<text>` gets clipped by the default filter region and reads as nothing.
-       The small glow is a bonus for HTML labels, where `filter` isn't clipped. */
-    fill: var(--color-agent);
-    color: var(--color-agent);
-    filter: drop-shadow(0 0 4px var(--color-agent));
-  }
-}
-.mermaid-label-flash {
-  /* Two quick pulses (~1s total) read unmistakably as "this changed too",
-     where a single slow fade went unnoticed. No `forwards` — the animation
-     ends on its natural 100% (base paint), restoring the label. */
-  animation: mermaid-label-flash 0.5s var(--ease-out-strong) 2;
-}
-@media (prefers-reduced-motion: reduce) {
-  .mermaid-label-flash {
-    /* Reduced cue: one slower color pulse — no repeated flashing, but
-       reduce-motion users still get the "this changed too" signal (a color
-       fade, not vestibular motion). */
-    animation: mermaid-label-flash 0.9s var(--ease-out-strong) 1;
-  }
-}
-
 /* Conflict-mode DiffView scroller: same composer inset so the last hunks (and
    their inline Accept/Reject controls) can scroll clear of the floating
    composer. The content-side padding rule lives next to the
@@ -5383,4 +5343,70 @@ html.electron-mode [data-slot="sidebar-inner"] {
 
 .inline-code {
   @apply font-mono bg-muted text-inherit border border-border rounded-md px-1 py-0.5 text-sm;
+}
+
+/* Mermaid WYSIWYG canvas (`mermaid-wysiwyg` package). The package injects its
+   own `<style data-mw>` at runtime with `--mw-*` custom-property hooks for all
+   interaction chrome (selection glow, popovers, in-place editors, plus-menus).
+   Map those hooks onto OK's design tokens, and pin the SVG host back to the
+   exact pre-package layout (centered, filling, non-selectable) so the rendered
+   diagram is pixel-identical to the previous DIY renderer. Selectors ride on
+   `.ok-mermaid-svg.mw-canvas` — two classes out-specify every single-class
+   rule in the runtime-injected sheet regardless of load order. */
+.ok-mermaid-svg.mw-canvas {
+  --mw-accent: var(--ring);
+  --mw-chrome-bg: var(--popover);
+  --mw-chrome-border: var(--border);
+  --mw-chrome-hover: var(--accent);
+  --mw-chrome-fg: var(--popover-foreground);
+  --mw-chrome-dim: var(--muted-foreground);
+  --mw-editor-bg: var(--background);
+  /* Package default is `overflow: auto`; OK pans/zooms the SVG in place. */
+  overflow: hidden;
+}
+.ok-mermaid-svg.mw-canvas .mw-svg-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.ok-mermaid-svg.mw-canvas .mw-svg-host > svg {
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* Mid-edit parse failures keep the last good diagram on canvas; restyle the
+   package's red badge to OK's destructive banner language. */
+.ok-mermaid-svg.mw-canvas .mw-error-badge {
+  background: var(--background);
+  color: var(--destructive);
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
+  box-shadow: none;
+}
+/* Selection / hover / connect chrome: the package defaults to a stacked
+   drop-shadow bloom, which with OK's near-white `--ring` accent reads as a
+   blown-out halo on dark canvases (and puts a glow on text glyphs while
+   editing). Replace with a single tight edge tint. `!important` is required
+   to beat the package's own `!important` on `.mw-selected`. */
+.ok-mermaid-svg.mw-canvas [data-mw-entity]:hover {
+  filter: drop-shadow(0 0 1px color-mix(in srgb, var(--mw-accent) 55%, transparent));
+}
+.ok-mermaid-svg.mw-canvas .mw-selected,
+.ok-mermaid-svg.mw-canvas .mw-connect-source {
+  /* biome-ignore lint/complexity/noImportantStyles: the package's injected `.mw-selected` rule is itself `!important`; matching importance is the only way to replace its stacked-bloom filter. */
+  filter: drop-shadow(0 0 1.25px var(--mw-accent)) !important;
+}
+/* In-place label editing shows the caret only — no outline, no underline, no
+   backdrop — matching how the previous inline editor read as "the label just
+   became typeable". */
+.ok-mermaid-svg.mw-canvas [contenteditable="true"] {
+  outline: none;
+  box-shadow: none;
+}
+.ok-mermaid-svg.mw-canvas .mw-inplace-editor {
+  box-shadow: none;
+  background: transparent;
 }

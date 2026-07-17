@@ -245,6 +245,17 @@ function readNoticeText(pkgDir) {
  * Keep this list small and audited — every entry should cite the LICENSE
  * file path that proved the override at the time of inclusion.
  */
+/**
+ * Inkeep first-party packages consumed from npm rather than the workspace.
+ * They ship under the same GPL-3.0-or-later license as OpenKnowledge itself,
+ * so they are not third-party audit surface — list them in their own section
+ * instead of the fail-closed audit bucket.
+ */
+const FIRST_PARTY_GPL_PACKAGES = new Set([
+  '@inkeep/mermaid-wysiwyg-core',
+  '@inkeep/mermaid-wysiwyg-dom',
+]);
+
 const SPDX_OVERRIDES = {
   // khroma's package.json has no `license` field, but `node_modules/khroma/license`
   // contains the MIT permission notice ("The MIT License (MIT) ...").
@@ -695,7 +706,7 @@ function build() {
     if (seenKeys.has(key)) continue;
     seenKeys.add(key);
     const spdx = normalizeSpdx(pkg.license || pkg.licenses, pkg.name);
-    const category = categorize(spdx);
+    const category = FIRST_PARTY_GPL_PACKAGES.has(pkg.name) ? 'FIRST_PARTY_GPL' : categorize(spdx);
     const entry = {
       pkg,
       dir,
@@ -904,6 +915,19 @@ function build() {
       '',
     );
     for (const e of grouped.get('Python-2.0')) {
+      push(shortEntry(e), '');
+    }
+    hr();
+  }
+
+  // Inkeep first-party packages (same license as this repository).
+  if (grouped.has('FIRST_PARTY_GPL')) {
+    push('## Inkeep first-party packages (GPL-3.0-or-later)', '');
+    push(
+      'The packages below are authored and published by Inkeep and are licensed under GPL-3.0-or-later, the same license as OpenKnowledge itself (see the repository LICENSE for the full text). They are listed for completeness; they are not third-party material.',
+      '',
+    );
+    for (const e of grouped.get('FIRST_PARTY_GPL')) {
       push(shortEntry(e), '');
     }
     hr();
