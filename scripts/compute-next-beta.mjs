@@ -200,9 +200,11 @@ export function extractDeltaSection(content) {
 
 export function parseSection(section) {
   // Parse a CHANGELOG-section body into { 'Patch Changes': [{hash, body}, ...], ... }.
-  // Entries are bullets opened by `- ` at column 0; continuation lines start
-  // with two spaces of indentation. The Changesets renderer prefixes each
-  // direct entry with the short commit hash (`- 67028e1: foo...`).
+  // Entries are bullets opened by `- ` at column 0; continuation lines are
+  // 2-space-indented (or blank). The Changesets renderer prefixes each direct
+  // entry with the short commit hash (`- 67028e1: foo...`). Inside an open
+  // entry, only a `### ` group heading or a new top-level `- ` bullet ends it —
+  // every other line is continuation, even at column 0 (see below).
   const groups = {};
   let currentGroup = null;
   let currentEntry = null;
@@ -223,9 +225,18 @@ export function parseSection(section) {
       const m = /^- (?:([a-f0-9]{6,}): )?([\s\S]*)$/.exec(line);
       currentEntry = { hash: m?.[1] ?? null, body: m?.[2] ?? line.slice(2) };
       groups[currentGroup].push(currentEntry);
-    } else if (currentEntry && (line.startsWith('  ') || line === '')) {
-      currentEntry.body += `\n${line.startsWith('  ') ? line.slice(2) : ''}`;
+    } else if (currentEntry) {
+      // Continuation of the open entry. Strip one list-indent level from the
+      // canonical 2-space form so renderNotes can re-apply it uniformly; keep a
+      // column-0 line verbatim. A column-0 non-blank line reaches here only
+      // when prettier — which `changeset version` runs over CHANGELOG.md —
+      // de-indented the second physical line of an inline code span that a
+      // changeset wrapped across a hard line break. Folding it into the entry
+      // instead of terminating on it keeps that line, and everything after it,
+      // from being dropped from the release notes.
+      currentEntry.body += `\n${line.startsWith('  ') ? line.slice(2) : line}`;
     } else {
+      // A stray line before any bullet is opened: nothing to attach it to.
       commit();
     }
   }

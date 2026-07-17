@@ -114,6 +114,22 @@ describe('parseSection', () => {
     expect(groups['Patch Changes'][0].hash).toBeNull();
     expect(groups['Patch Changes'][0].body.startsWith('Updated dependencies')).toBe(true);
   });
+
+  test('keeps a de-indented continuation line without truncating the entry', () => {
+    // When a changeset wraps an inline code span across a hard line break,
+    // prettier (run by `changeset version` over CHANGELOG.md) de-indents the
+    // second physical line to column 0. It is still part of the bullet, not a
+    // new entry — dropping it silently truncated a shipped release note.
+    const section = `### Patch Changes
+
+- abc1234: intro sentence with a wrapped span \`ok diagnose
+--redact\` and a tail sentence that must survive.
+`;
+    const groups = parseSection(section);
+    expect(groups['Patch Changes']).toHaveLength(1);
+    const body = groups['Patch Changes'][0].body;
+    expect(body).toContain('--redact` and a tail sentence that must survive.');
+  });
 });
 
 describe('renderNotes', () => {
@@ -314,6 +330,45 @@ describe('round-trip: extractDeltaSection → parseSection → renderNotes', () 
     expect(notes).not.toContain('Updated dependencies');
     // Marker at end.
     expect(notes).toMatch(/<!-- ok-consumed-set:.*-->$/);
+  });
+
+  test('does not truncate an entry whose body has a prettier-de-indented code-span wrap', () => {
+    // Reproduces the shape that truncated the v0.34.0 release note: a changeset
+    // wrapped an inline code span across a hard line break, and prettier — which
+    // `changeset version` runs over CHANGELOG.md — emitted the span's second
+    // line flush-left (column 0) while the surrounding lines stayed 2-space
+    // indented. The whole tail of the entry (and anything after it) was dropped.
+    const cliChangelog = `# @inkeep/open-knowledge
+
+## 0.34.0
+
+### Patch Changes
+
+- abc1234: Migrate the toolchain from Bun to pnpm 10 and Vitest 4.
+
+  Two small behavioral deltas ride along with the swap: \`ok diagnose
+--redact\` bundles now derive doc-name tokens with sha256 instead of BLAKE2b-256;
+  and the file-copy API now returns HTTP 409 (previously an unhandled 500).
+
+## 0.33.0
+
+### Patch Changes
+
+- old: prior beta entry
+`;
+    const notes = renderNotes({
+      packageDeltas: { cli: extractDeltaSection(cliChangelog) },
+      newConsumedSet: ['remove-bun-toolchain-migration'],
+      prevBetaTag: 'v0.33.0-beta.12',
+      newCount: 1,
+    });
+    // Everything after the wrapped span must survive to the release notes.
+    expect(notes).toContain('`ok diagnose');
+    expect(notes).toContain('--redact` bundles now derive');
+    expect(notes).toContain('HTTP 409');
+    expect(notes).toContain('unhandled 500');
+    // Prior-version content across the second ## heading must NOT leak in.
+    expect(notes).not.toContain('prior beta entry');
   });
 });
 
