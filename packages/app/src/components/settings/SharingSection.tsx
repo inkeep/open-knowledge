@@ -76,7 +76,14 @@ function SharingSectionBody() {
       // renders (the toast already surfaced the real error). A later refresh
       // failure keeps the last good status rather than clobbering it.
       setStatus(
-        (prev) => prev ?? { kind: 'status', mode: 'no-git', excluded: [], trackedUpstream: [] },
+        (prev) =>
+          prev ?? {
+            kind: 'status',
+            mode: 'no-git',
+            excluded: [],
+            trackedUpstream: [],
+            skillsShared: false,
+          },
       );
     }
   }
@@ -127,6 +134,43 @@ function SharingSectionBody() {
           : t`Config sharing is now shared. Commit the OK files to share with your team.`,
       );
     }
+    await refresh();
+  }
+
+  // Undo the local-only skills carve-out (`.ok/skills` back to hidden). Only
+  // offered when the project is in the carve state; mirrors onSelect's
+  // capture-error-after-await shape (no try/finally — React Compiler can't
+  // lower a finalizer).
+  async function onUndoSkillsShare() {
+    const bridge = window.okDesktop?.sharing;
+    if (!bridge || status === null || busy) return;
+    setBusy(true);
+    let result: Awaited<ReturnType<typeof bridge.setSkillsShared>> | null = null;
+    let err: unknown = null;
+    try {
+      result = await bridge.setSkillsShared(false);
+    } catch (caught) {
+      err = caught;
+    }
+    setBusy(false);
+    if (err !== null) {
+      toast.error(err instanceof Error ? err.message : t`Couldn't update skills sharing`);
+      return;
+    }
+    if (result === null) return;
+    if (result.kind === 'no-exclude') {
+      // Inspect the result like onSelect does — a `no-exclude` outcome (git
+      // config unavailable / exclude file unwritable) is a failure, not success.
+      const detail =
+        result.reason === 'no-git'
+          ? t`no git repository here`
+          : result.reason === 'inaccessible'
+            ? t`the git exclude file isn't writable`
+            : t`git configuration is unavailable`;
+      toast.warning(t`Couldn't update skills sharing — ${detail}.`);
+      return;
+    }
+    toast.success(t`.ok/skills is back to local-only.`);
     await refresh();
   }
 
@@ -214,6 +258,33 @@ function SharingSectionBody() {
           </label>
         </RadioGroup>
       )}
+
+      {status.mode === 'local-only' && status.skillsShared ? (
+        <div
+          className="flex items-start justify-between gap-2 rounded-md border border-muted-foreground/30 bg-muted/40 p-3 text-sm"
+          data-testid="settings-sharing-skills-exception"
+        >
+          <span>
+            <span className="font-medium">
+              <Trans>Exception: skills are shared</Trans>
+            </span>
+            <span className="block text-1sm text-muted-foreground">
+              <Trans>
+                .ok/skills is committable so your team gets your skills; the rest of .ok/ stays on
+                this computer.
+              </Trans>
+            </span>
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => void onUndoSkillsShare()}
+          >
+            <Trans>Undo</Trans>
+          </Button>
+        </div>
+      ) : null}
 
       {refusal !== null ? (
         <div

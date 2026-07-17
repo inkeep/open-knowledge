@@ -234,6 +234,7 @@
     "4buZWd": ["Inherited from ", ["path"]],
     "4c_a6S": ["Nothing set yet."],
     "4g19V6": ["Failed to update property"],
+    "4h3e0H": ["Couldn't update skills sharing — ", ["detail"], "."],
     "4hJhzz": ["Table"],
     "4ieVh2": ["Pick “Custom” above to use this palette."],
     "4jDd0j": ["Anyone can see"],
@@ -474,6 +475,7 @@
     "9oE4C3": ["Browse your repos:"],
     "9sBe85": ["Follow us on"],
     "9tJX8r": ["By meaning"],
+    "9uI_rE": ["Undo"],
     "9xCnv8": ["Hide Terminal"],
     "9zb2WA": ["Connecting"],
     "A1taO8": ["Search"],
@@ -552,6 +554,9 @@
     "Bdha5y": ["Publishing..."],
     "BeWTQy": ["Loading starter packs"],
     "BgV29F": ["Visual editor find input focused"],
+    "Bh9671": [
+      "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
+    ],
     "Bn9-El": ["default"],
     "Bv5a9_": ["Selection statistics"],
     "Bx4EXG": ["Actions for ", ["label"]],
@@ -655,6 +660,7 @@
     ],
     "E7BhZn": ["Blank note"],
     "E9bKSA": ["Creating"],
+    "EARn6h": ["Couldn't share skills — ", ["detail"], "."],
     "EBVbtP": ["Could not duplicate item"],
     "EDl9kS": ["Subscribe"],
     "EDm3wJ": ["Loading diff renderer"],
@@ -902,8 +908,12 @@
     "Jw6EC4": ["Branch switch failed — try opening the ", ["targetNoun"], " manually."],
     "K-a33w": ["Start writing to create this page"],
     "K-h9cT": ["Couldn't save the resolution for ", ["filePath"], "."],
+    "K0FgsP": [
+      ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
+    ],
     "K0N7zS": ["Config sharing status read failed"],
     "K1ckLX": ["Failed to create folder"],
+    "K2v7QF": ["Couldn't share skills"],
     "K6MQQk": ["Sync is failing. See the sync status for details."],
     "K6jjWB": [["packName"], " was already set up. Nothing to do."],
     "K6jxcj": ["Add a key"],
@@ -939,6 +949,7 @@
       "> isn't a known component. Copy the source to use it elsewhere, or delete the block."
     ],
     "Khxcyu": ["Terminal access isn't enabled for this project."],
+    "Kiytqd": ["Exception: skills are shared"],
     "KkEAud": ["Create a file from the current document or folder context."],
     "KmydK6": ["Bold"],
     "KnoB--": ["Will be saved as <0>", ["sanitized"], "</0>."],
@@ -1180,6 +1191,7 @@
     "PiH3UR": ["Copied!"],
     "PkeYXL": ["Expanded graph mode"],
     "Pkw7J9": ["This folder is empty."],
+    "PlGC6r": ["the git exclude file isn't writable"],
     "PqYWiC": [
       "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
     ],
@@ -1190,6 +1202,7 @@
     "Q5fqMz": ["Connection error — try again"],
     "Q6hhn8": ["Preferences"],
     "Q7W-mC": ["Same folder as current file"],
+    "Q7cNKe": ["Skills are now shared. Commit .ok/skills to share them with your team."],
     "Q8A-U_": ["Connected to"],
     "QAi7Q9": [
       "Branch <0>",
@@ -1305,6 +1318,7 @@
     "TJnkyf": ["ok ui responded but server.lock has no port yet"],
     "TKQ7K-": ["Install"],
     "TLIO3j": ["Toggle italic formatting."],
+    "TUzThQ": ["Share skills"],
     "T_R-Qz": ["Primary"],
     "T_wG4n": ["We couldn't check your GitHub connection."],
     "Ta25TG": ["No history yet"],
@@ -1504,6 +1518,7 @@
     "XvPJaT": ["Diff layout"],
     "Xv_ijG": ["https://github.com/owner/repo or owner/repo"],
     "Xw_maT": ["Type a query, then press ↵ to search your pages by meaning."],
+    "Xwump4": ["no git repository here"],
     "XyOUTJ": ["Exit merge"],
     "Xzy0s0": ["Remove ", ["fullLabel"], " from context"],
     "Y-Urt2": ["Block math equation rendered with KaTeX from a LaTeX source string."],
@@ -2310,6 +2325,7 @@
     "ogAuyr": ["Back to document view"],
     "ohUJJM": ["Plugins"],
     "omXJcU": ["Close others"],
+    "onTlRk": ["Couldn't update skills sharing"],
     "optX0N": [["0"], "h ago"],
     "oqB2ez": ["Previous match"],
     "osRqlv": ["Open delete confirmation for the selected file-tree items."],
@@ -2329,6 +2345,7 @@
     "pEQFsW": ["No matching projects."],
     "pFagOn": ["Source editing"],
     "pHYP6v": ["Open <0>Customize</0> in the sidebar <1/> <2>Skills</2>."],
+    "pQf2Ux": [".ok/skills is back to local-only."],
     "pRc-Im": ["Undone all edits on ", ["docName"]],
     "pTPqMK": ["Toggle a fenced code block."],
     "pWT04I": ["Checking..."],
@@ -2372,6 +2389,7 @@
     "qSKu2v": ["Source navigation and selection"],
     "qSxaOz": ["Accept their deletion"],
     "qUB_o_": ["Auto-sync is off — your edits stay local until you commit and push manually."],
+    "qXN416": ["Couldn't share skills: internal error. Please restart the app."],
     "qXg5W9": ["File saves to <0>~/Downloads/openknowledge.skill</0>."],
     "qXsafh": ["Publish to GitHub"],
     "qZv5ZR": ["Config sharing toggle failed"],
@@ -2762,6 +2780,7 @@
       "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
     ],
     "zbymaY": [["0"], "m ago"],
+    "zcmYx4": ["git configuration is unavailable"],
     "zd00pH": ["Copy Path"],
     "zgSFyG": ["External link"],
     "zkz0Fg": ["Set up syncing"],

@@ -10,7 +10,9 @@ import {
   getOkArtifactPaths,
   probeTrackedOkPaths,
   readSharingMode,
+  readSkillsShared,
   removeOkPathsFromGitExclude,
+  setSkillsShared,
 } from './git-exclude.ts';
 
 function uniqueDir(prefix: string): string {
@@ -570,5 +572,103 @@ describe('formatTrackedRemediation', () => {
   it('warns about the teammate-side-effect of `git rm --cached`', () => {
     const out = formatTrackedRemediation(['.mcp.json']);
     expect(out).toContain('your teammates will see a deletion on their next pull');
+  });
+});
+
+describe('setSkillsShared / readSkillsShared (skills carve-out)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = uniqueDir('skills-carve-test');
+    initGitRepo(dir);
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Untracked-file set as git sees it (respects .git/info/exclude). */
+  function untracked(): string[] {
+    return execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {
+      cwd: dir,
+      encoding: 'utf-8',
+    })
+      .split('\n')
+      .filter((l) => l.startsWith('??'))
+      .map((l) => l.slice(3).trim());
+  }
+
+  it('rewrites blanket .ok/ into the carve spelling and reports skills-shared', () => {
+    writeExclude(dir, '.ok/\n.okignore\n');
+    const result = setSkillsShared(dir, true);
+    expect(result.kind).toBe('updated');
+    const content = readExclude(dir);
+    expect(content).not.toMatch(/^\.ok\/$/m); // blanket line gone
+    expect(content).toContain('**/.ok/*');
+    expect(content).toContain('!**/.ok/skills/');
+    expect(content).toContain('.okignore'); // unrelated artifact preserved
+    expect(readSkillsShared(dir)).toBe(true);
+    // Still local-only for the rest of .ok/.
+    expect(readSharingMode(dir)).toBe('local-only');
+  });
+
+  it('actually makes .ok/skills/ visible to git while the rest of .ok/ stays hidden', () => {
+    // The crux: git refuses to re-include under an excluded parent dir, so the
+    // carve MUST use the children-exclude spelling to work at all.
+    mkdirSync(join(dir, '.ok', 'skills', 'my-skill'), { recursive: true });
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    writeFileSync(join(dir, '.ok', 'skills', 'my-skill', 'SKILL.md'), '# s\n');
+    writeFileSync(join(dir, '.ok', 'local', 'state.json'), '{}\n');
+    writeFileSync(join(dir, '.ok', 'config.yml'), 'x: 1\n');
+
+    writeExclude(dir, '.ok/\n');
+    // Blanket: everything under .ok/ hidden.
+    expect(untracked().some((f) => f.startsWith('.ok/'))).toBe(false);
+
+    setSkillsShared(dir, true);
+    const files = untracked();
+    expect(files).toContain('.ok/skills/my-skill/SKILL.md');
+    expect(files).not.toContain('.ok/local/state.json');
+    expect(files).not.toContain('.ok/config.yml');
+  });
+
+  it('reverts the carve back to blanket .ok/ when skills sharing is turned off', () => {
+    writeExclude(dir, '.okignore\n**/.ok/*\n!**/.ok/skills/\n');
+    expect(readSkillsShared(dir)).toBe(true);
+    setSkillsShared(dir, false);
+    const content = readExclude(dir);
+    expect(content).toMatch(/^\.ok\/$/m);
+    expect(content).not.toContain('**/.ok/*');
+    expect(content).not.toContain('!**/.ok/skills/');
+    expect(readSkillsShared(dir)).toBe(false);
+    expect(readSharingMode(dir)).toBe('local-only');
+  });
+
+  it('readSharingMode reports local-only from the carve lines alone', () => {
+    writeExclude(dir, '**/.ok/*\n!**/.ok/skills/\n');
+    expect(readSharingMode(dir)).toBe('local-only');
+    expect(readSkillsShared(dir)).toBe(true);
+  });
+
+  it('removeOkPaths (share) strips the carve lines so nothing is left excluding .ok/', () => {
+    writeExclude(dir, '**/.ok/*\n!**/.ok/skills/\n.okignore\n');
+    removeOkPathsFromGitExclude(dir, getOkArtifactPaths(dir));
+    const content = readExclude(dir);
+    expect(content).not.toContain('**/.ok/*');
+    expect(content).not.toContain('!**/.ok/skills/');
+    expect(readSharingMode(dir)).toBe('shared');
+    expect(readSkillsShared(dir)).toBe(false);
+  });
+
+  it('round-trips: local-only -> skills-shared -> off -> shared leaves no OK .ok lines', () => {
+    writeExclude(dir, '');
+    addOkPathsToGitExclude(dir, getOkArtifactPaths(dir));
+    expect(readSharingMode(dir)).toBe('local-only');
+    setSkillsShared(dir, true);
+    expect(readSkillsShared(dir)).toBe(true);
+    setSkillsShared(dir, false);
+    expect(readSkillsShared(dir)).toBe(false);
+    removeOkPathsFromGitExclude(dir, getOkArtifactPaths(dir));
+    expect(readSharingMode(dir)).toBe('shared');
+    const content = readExclude(dir);
+    expect(content).not.toContain('.ok/');
   });
 });

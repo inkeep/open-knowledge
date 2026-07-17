@@ -146,7 +146,9 @@ export {
   getOkArtifactPaths,
   probeTrackedOkPaths,
   readSharingMode,
+  readSkillsShared,
   removeOkPathsFromGitExclude,
   type SharingMode,
+  setSkillsShared,
   type TrackedRefusal,
 } from './sharing/git-exclude.ts';

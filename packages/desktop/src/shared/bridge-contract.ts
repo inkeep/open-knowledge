@@ -535,6 +535,8 @@ export interface OkSharingStatusResult {
   readonly mode: 'shared' | 'local-only' | 'no-git';
   readonly excluded: readonly string[];
   readonly trackedUpstream: readonly string[];
+  /** True when local-only but `.ok/skills/` is carved back out as shareable. */
+  readonly skillsShared: boolean;
 }
 
 export type OkSharingSetModeResult =
@@ -1531,6 +1533,8 @@ export interface OkDesktopBridge {
   sharing: {
     status(): Promise<OkSharingStatusResult>;
     setMode(mode: 'shared' | 'local-only'): Promise<OkSharingSetModeResult>;
+    /** Toggle `.ok/skills/` shareability within local-only mode. */
+    setSkillsShared(shared: boolean): Promise<OkSharingSetModeResult>;
   };
 
   /**

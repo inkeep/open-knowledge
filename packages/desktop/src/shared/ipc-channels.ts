@@ -109,6 +109,8 @@ export interface OkSharingStatusResult {
   readonly mode: 'shared' | 'local-only' | 'no-git';
   readonly excluded: readonly string[];
   readonly trackedUpstream: readonly string[];
+  /** True when local-only but `.ok/skills/` is carved back out as shareable. */
+  readonly skillsShared: boolean;
 }
 
 export type OkSharingSetModeResult =
@@ -795,16 +797,21 @@ export interface RequestChannels {
   'ok:project:get-info': { args: []; result: OkDesktopConfig };
 
   /**
-   * Single-channel discriminated surface
-   * for both the read (`status`) and write (`set-mode`) operations. Folded
-   * into one channel to stay under the hand-rolled-channel scale-match
-   * cap; the discriminated args/result keeps the per-operation typing
-   * crisp at the call sites (preload + handler). Internally main dispatches
-   * on `request.kind`. The renderer's `bridge.sharing.{status,setMode}`
-   * surface keeps the ergonomic split.
+   * Single-channel discriminated surface for the read (`status`) and the two
+   * writes (`set-mode`, `set-skills-shared`). Folded into one channel to stay
+   * under the hand-rolled-channel scale-match cap; the discriminated
+   * args/result keeps the per-operation typing crisp at the call sites (preload
+   * + handler). Internally main dispatches on `request.kind`. The renderer's
+   * `bridge.sharing.{status,setMode,setSkillsShared}` surface keeps the
+   * ergonomic split.
    */
   'ok:sharing:dispatch': {
-    args: [request: { kind: 'status' } | { kind: 'set-mode'; mode: 'shared' | 'local-only' }];
+    args: [
+      request:
+        | { kind: 'status' }
+        | { kind: 'set-mode'; mode: 'shared' | 'local-only' }
+        | { kind: 'set-skills-shared'; shared: boolean },
+    ];
     result: OkSharingResult;
   };
   /**

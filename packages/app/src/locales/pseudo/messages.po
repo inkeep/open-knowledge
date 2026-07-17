@@ -29,6 +29,14 @@ msgstr ""
 msgid ".ok folders"
 msgstr ""
 
+#: src/components/settings/SharingSection.tsx
+msgid ".ok/skills is back to local-only."
+msgstr ""
+
+#: src/components/settings/SharingSection.tsx
+msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
+msgstr ""
+
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(result.hosts)
 #: src/components/skill-actions.tsx
@@ -2318,6 +2326,18 @@ msgstr ""
 msgid "Couldn't send your prompt — please try again."
 msgstr ""
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't share skills"
+msgstr ""
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't share skills — {detail}."
+msgstr ""
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't share skills: internal error. Please restart the app."
+msgstr ""
+
 #. placeholder {0}: result.error
 #: src/components/skill-actions.tsx
 msgid "Couldn't uninstall skill: {0}"
@@ -2331,6 +2351,14 @@ msgstr ""
 #. placeholder {0}: result.error
 #: src/components/SkillUpdateDialog.tsx
 msgid "Couldn't update skill: {0}"
+msgstr ""
+
+#: src/components/settings/SharingSection.tsx
+msgid "Couldn't update skills sharing"
+msgstr ""
+
+#: src/components/settings/SharingSection.tsx
+msgid "Couldn't update skills sharing — {detail}."
 msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
@@ -3146,6 +3174,10 @@ msgstr ""
 msgid "Error:"
 msgstr ""
 
+#: src/components/settings/SharingSection.tsx
+msgid "Exception: skills are shared"
+msgstr ""
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr ""
@@ -3723,6 +3755,11 @@ msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Git auto-sync"
+msgstr ""
+
+#: src/components/settings/SharingSection.tsx
+#: src/components/SkillsSidebarSection.tsx
+msgid "git configuration is unavailable"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -5033,6 +5070,11 @@ msgstr ""
 
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
+msgstr ""
+
+#: src/components/settings/SharingSection.tsx
+#: src/components/SkillsSidebarSection.tsx
+msgid "no git repository here"
 msgstr ""
 
 #: src/components/settings/SkillsManagerSection.tsx
@@ -6998,6 +7040,10 @@ msgstr ""
 msgid "Share folder"
 msgstr ""
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "Share skills"
+msgstr ""
+
 #: src/components/SharingModeField.tsx
 msgid "Share this setup with your team?"
 msgstr ""
@@ -7225,6 +7271,10 @@ msgstr ""
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills"
+msgstr ""
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr ""
 
 #: src/components/settings/SkillsManagerSection.tsx
@@ -7772,6 +7822,11 @@ msgstr ""
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr ""
 
+#: src/components/settings/SharingSection.tsx
+#: src/components/SkillsSidebarSection.tsx
+msgid "the git exclude file isn't writable"
+msgstr ""
+
 #: src/components/TemplateProperties.tsx
 msgid "The menu label agents pick this template by (required)."
 msgstr ""
@@ -7982,6 +8037,10 @@ msgstr ""
 
 #: src/components/settings/SharingSection.tsx
 msgid "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
+msgstr ""
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
 msgstr ""
 
 #. placeholder {0}: info.appRuntime
@@ -8219,6 +8278,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Underline"
+msgstr ""
+
+#: src/components/settings/SharingSection.tsx
+msgid "Undo"
 msgstr ""
 
 #: src/components/ActivityPanelFileRow.tsx

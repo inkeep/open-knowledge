@@ -439,10 +439,15 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
               mode: 'shared' as const,
               excluded: [],
               trackedUpstream: [],
+              skillsShared: false as const,
             }) satisfies import('@/lib/desktop-bridge-types').OkSharingStatusResult,
           setMode: async () => ({
             kind: 'applied' as const,
             mode: 'shared' as const,
+          }),
+          setSkillsShared: async () => ({
+            kind: 'applied' as const,
+            mode: 'local-only' as const,
           }),
         },
         bugReport: {

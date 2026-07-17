@@ -31,6 +31,7 @@ import {
   OK_DIR,
   parseInstalledSkills,
   RESERVED_PROJECT_SKILL_NAME,
+  SKILL_CONTENT_ROOT,
 } from '@inkeep/open-knowledge-core';
 // `resolveGitDirDetailed` is in the `node:fs`-importing subpath of core —
 // the barrel deliberately omits it to keep the main entry browser-safe
@@ -52,6 +53,22 @@ const CLAUDE_LAUNCH_JSON = '.claude/launch.json';
  * depth — both covered by the unanchored entry in `getOkArtifactPaths`.
  */
 const OK_IGNORE_FILENAME = '.okignore';
+
+/** `.ok/` blanket exclude — the default local-only spelling for the whole
+ *  `.ok/` tree (unanchored, matches every `.ok/` at any depth). Emitted as
+ *  the first entry of `getOkArtifactPaths`. */
+const OK_BLANKET = `${OK_DIR}/`;
+
+// Skills carve-out spelling. `.ok/skills/` is shareable content (skills-as-
+// content), NOT machine-local config, yet OK_BLANKET hides it along with the
+// rest of `.ok/` in local-only mode. Git refuses to re-include a path whose
+// parent directory is excluded, so the carve cannot be a `!` line appended
+// after `.ok/` — it REPLACES the blanket with a children-exclude plus a skills
+// re-include. Both are `**/`-prefixed so they stay content.dir-independent and
+// reach folder-nested `.ok/` dirs, matching OK_BLANKET's reach. A plain
+// `!.ok/skills/` after `.ok/` does NOT re-include (git prunes the excluded dir).
+const OK_CARVE_CHILDREN = `**/${OK_DIR}/*`;
+const OK_CARVE_SKILLS_REINCLUDE = `!**/${SKILL_CONTENT_ROOT}/`;
 
 /**
  * Result of an `addOkPathsToGitExclude` / `removeOkPathsFromGitExclude` call
@@ -264,6 +281,12 @@ export function removeOkPathsFromGitExclude(
   for (const set of variantsByPath) {
     for (const v of set) allVariants.add(v);
   }
+  // Also strip the skills carve-out spelling so a local-only(+skills-shared)
+  // -> shared transition fully cleans up; otherwise the orphaned
+  // `**/.ok/*` line would keep excluding non-skills `.ok/` content after
+  // "share". These are OK-managed lines, safe to remove unconditionally.
+  allVariants.add(OK_CARVE_CHILDREN);
+  allVariants.add(OK_CARVE_SKILLS_REINCLUDE);
 
   let before: string;
   try {
@@ -345,6 +368,10 @@ export function readSharingMode(projectRoot: string): SharingMode {
   for (const p of artifacts) {
     if (hasAnyVariant(present, p)) return 'local-only';
   }
+  // Carve state: the blanket `.ok/` line is gone (replaced by the children-
+  // exclude), but the project is still local-only. Recognize it so the mode
+  // stays correct even if every other artifact line were manually removed.
+  if (present.has(OK_CARVE_CHILDREN)) return 'local-only';
   return 'shared';
 }
 
@@ -371,6 +398,82 @@ export function getExcludedOkPaths(projectRoot: string): readonly string[] {
   }
   const present = collectPresentVariants(content);
   return getOkArtifactPaths(projectRoot).filter((p) => hasAnyVariant(present, p));
+}
+
+/**
+ * True iff `.git/info/exclude` currently carves `.ok/skills/` OUT of a
+ * local-only `.ok/` exclusion — the project is local-only, but skills stay
+ * shareable. Detected by the presence of BOTH carve lines. Pure read — never
+ * throws, never writes.
+ *
+ * Independent of `readSharingMode` (which reports `local-only` for both the
+ * blanket and the carve state); this predicate distinguishes the two so the
+ * Skills UI can render the toggle's current position.
+ */
+export function readSkillsShared(projectRoot: string): boolean {
+  const resolved = resolveExcludePath(projectRoot);
+  if (resolved.kind !== 'ok' || !existsSync(resolved.path)) return false;
+  let content: string;
+  try {
+    content = readFileSync(resolved.path, 'utf-8');
+  } catch {
+    return false;
+  }
+  const present = collectPresentVariants(content);
+  return present.has(OK_CARVE_CHILDREN) && present.has(OK_CARVE_SKILLS_REINCLUDE);
+}
+
+/**
+ * Toggle whether `.ok/skills/` stays shareable while the rest of `.ok/`
+ * remains local-only. Swaps the `.ok/` representation in `.git/info/exclude`
+ * between the blanket spelling (`OK_BLANKET`, skills hidden) and the carve
+ * spelling (`OK_CARVE_CHILDREN` + `OK_CARVE_SKILLS_REINCLUDE`, skills visible).
+ * Every OTHER OK-artifact exclude line is left untouched, so the local-only
+ * posture for config / MCP / editor bundles is preserved.
+ *
+ * Mechanical — callers gate WHEN it is offered (the desktop Skills UI shows it
+ * only in local-only mode). `shared: true` on a project that is NOT local-only
+ * would create a partial exclusion; don't call it there.
+ *
+ * No tracked-files probe: turning skills sharing ON only REMOVES exclusion
+ * (never hides a tracked file); turning it OFF re-adds the blanket, which is
+ * inert against already-tracked skills — the same no-op the main
+ * `shared -> local-only` refusal already documents.
+ */
+export function setSkillsShared(projectRoot: string, shared: boolean): ExcludeWriteResult {
+  const resolved = resolveExcludePath(projectRoot);
+  if (resolved.kind !== 'ok') return resolved.result;
+
+  let existing = '';
+  if (existsSync(resolved.path)) {
+    try {
+      existing = readFileSync(resolved.path, 'utf-8');
+    } catch {
+      return { kind: 'no-exclude', reason: 'inaccessible' };
+    }
+  }
+
+  // Drop every managed `.ok/` representation line (blanket variants + both
+  // carve lines), then append the target spelling. Non-`.ok` lines pass
+  // through untouched, preserving the rest of the local-only artifact set.
+  const managed = new Set<string>([
+    ...buildVariants(OK_BLANKET),
+    OK_CARVE_CHILDREN,
+    OK_CARVE_SKILLS_REINCLUDE,
+  ]);
+  const kept = existing.split('\n').filter((line) => !managed.has(line.trim()));
+  const additions = shared ? [OK_CARVE_CHILDREN, OK_CARVE_SKILLS_REINCLUDE] : [OK_BLANKET];
+
+  const body = kept.join('\n');
+  const separator = body.length === 0 || body.endsWith('\n') ? '' : '\n';
+  const next = `${body}${separator}${additions.join('\n')}\n`;
+
+  try {
+    writeFileSync(resolved.path, next, 'utf-8');
+  } catch {
+    return { kind: 'no-exclude', reason: 'inaccessible' };
+  }
+  return { kind: 'updated', appended: additions, alreadyPresent: [], removed: [] };
 }
 
 /**
