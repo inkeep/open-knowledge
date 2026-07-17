@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
@@ -7,6 +8,7 @@ mock.module('@inkeep/open-knowledge-core', () => ({
 }));
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useLingui: () => ({
     t: (strings: TemplateStringsArray | string, ...values: unknown[]) => {

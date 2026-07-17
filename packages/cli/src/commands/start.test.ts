@@ -1412,6 +1412,11 @@ describe('bootStartServer — no auto git-init from ok start (US-004)', () => {
         skipAutoInit: false,
         skipUiAutoSpawn: true,
       });
+      // The shadow-repo init runs in async boot (`initAsync`); `degraded` is only
+      // stable after `ready` resolves. Await it while PATH is still narrowed so
+      // the git spawn fails inside the window rather than after the finally
+      // restores PATH (an unawaited read races the async init).
+      await booted.ready;
       // shadow-repo init fails (no git binary) but server boots in degraded mode
       expect(booted.degraded).toContain('shadow-repo');
     } finally {

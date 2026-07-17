@@ -46,9 +46,9 @@
  * cell-loop structure.
  */
 
-import { markerFor } from '../lib/doc-markers';
-import { installLongtaskObserver } from '../lib/longtask-observer';
-import { defineScenario } from '../lib/scenario';
+import { markerFor } from '../lib/doc-markers.ts';
+import { installLongtaskObserver } from '../lib/longtask-observer.ts';
+import { defineScenario } from '../lib/scenario.ts';
 
 const DEFAULT_THRESHOLDS = [
   Number.MAX_SAFE_INTEGER, // ≈ no-defer-mount (gate.isLarge always false)

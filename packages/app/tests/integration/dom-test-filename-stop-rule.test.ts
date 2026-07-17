@@ -34,7 +34,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { Glob } from 'bun';
 
 const PACKAGE_APP_ROOT = resolve(import.meta.dir, '../..');
 const SCAN_ROOTS = ['src', 'tests'] as const;
@@ -51,7 +50,7 @@ function listTestTsxFiles(): string[] {
   const results: string[] = [];
   for (const root of SCAN_ROOTS) {
     const rootAbsolute = resolve(PACKAGE_APP_ROOT, root);
-    for (const path of new Glob('**/*.test.tsx').scanSync({
+    for (const path of new Bun.Glob('**/*.test.tsx').scanSync({
       cwd: rootAbsolute,
       absolute: true,
     })) {

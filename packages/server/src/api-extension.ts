@@ -1013,7 +1013,7 @@ async function findDuplicateAsset(
   let entries: string[];
   try {
     // Async `readdir` so the directory walk doesn't block the event
-    // loop during uploads — bun's loop is shared with WebSocket sync
+    // loop during uploads — Node's event loop is shared with WebSocket sync
     // and CRDT updates, and a 1k-entry walk is observable on bursty
     // upload traffic. The MAX_DEDUP_SCAN_CANDIDATES cap
     // bounds the worst case at 1000 same-size siblings, but the
@@ -2132,7 +2132,17 @@ class DuplicateNameExhaustedError extends Error {
 
 function isAlreadyExistsError(err: unknown): boolean {
   const code = (err as NodeJS.ErrnoException).code;
-  return code === 'EEXIST' || code === 'ERR_FS_CP_EEXIST';
+  // Node's cpSync distinguishes the destination-occupied cases by the type
+  // mismatch: a same-type collision surfaces as ERR_FS_CP_EEXIST, but copying a
+  // directory onto an existing file (or a file onto an existing directory)
+  // surfaces as ERR_FS_CP_DIR_TO_NON_DIR / ERR_FS_CP_NON_DIR_TO_DIR. All three
+  // mean the destination path is already taken and must map to 409.
+  return (
+    code === 'EEXIST' ||
+    code === 'ERR_FS_CP_EEXIST' ||
+    code === 'ERR_FS_CP_DIR_TO_NON_DIR' ||
+    code === 'ERR_FS_CP_NON_DIR_TO_DIR'
+  );
 }
 
 type DuplicatePathFilesystemProblem = {
@@ -2666,7 +2676,7 @@ export interface ApiExtensionOptions {
    * Pass [process.execPath, process.argv[1]] from the CLI start command to use
    * the exact runtime that started this server.
    *
-   * Example: ['bun', '/path/to/packages/cli/src/cli.ts'] in dev,
+   * Example: [process.execPath, '/path/to/packages/cli/src/cli.ts'] in dev,
    *          ['open-knowledge'] in production.
    */
   localOpCliArgs?: string[];

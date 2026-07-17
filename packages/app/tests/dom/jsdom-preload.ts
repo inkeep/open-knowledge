@@ -1,84 +1,38 @@
 /**
- * jsdom preload for the React-runtime test substrate.
+ * jsdom setup for the React-runtime (Tier-3) test substrate.
  *
- * Installs DOM globals onto `globalThis` BEFORE any test module is evaluated.
- * Attached invocation-scoped via `bun test --preload ./tests/dom/jsdom-preload.ts`
- * (the `test:dom` script in `packages/app/package.json`). The bunfig.toml
- * preload chain is intentionally NOT mutated — the unit-tier substrate stays
- * no-DOM so production `typeof document === 'undefined'` short-circuits
- * keep their contract.
+ * Carried as a per-project `setupFiles` entry by `vitest.dom.config.ts`, which
+ * runs the `*.dom.test.tsx` suite under `environment: 'jsdom'`. Vitest's jsdom
+ * environment installs `window`/`document`/`navigator` and the DOM constructor
+ * globals; this file only backfills the handful of globals jsdom omits but the
+ * app's React components reach for at mount. Scoped to the DOM project alone, so
+ * the node-env unit/integration substrate keeps `typeof document === 'undefined'`
+ * short-circuits honest — no global bleed.
  */
-import { JSDOM } from 'jsdom';
 
-const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
-  url: 'http://localhost:5173',
-  pretendToBeVisual: true,
-});
+import { cleanup } from '@testing-library/react';
+import { afterEach } from 'vitest';
 
 // React's test path checks this global before installing act warnings.
+// @testing-library/react also sets it, but assert it early so the flag is live
+// before the first render in a file that renders outside RTL's act wrapper.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const win = dom.window as unknown as Window & typeof globalThis;
-
-// Install only the globals React 19 + DOM APIs structurally require. Order
-// matters where browsers have constructors that close over `window` — copy
-// the constructor refs first, then the document.
-Object.assign(globalThis, {
-  window: win,
-  document: win.document,
-  navigator: win.navigator,
-  location: win.location,
-  history: win.history,
-  localStorage: win.localStorage,
-  sessionStorage: win.sessionStorage,
-  HTMLElement: win.HTMLElement,
-  HTMLDivElement: win.HTMLDivElement,
-  HTMLSpanElement: win.HTMLSpanElement,
-  HTMLButtonElement: win.HTMLButtonElement,
-  HTMLInputElement: win.HTMLInputElement,
-  HTMLAnchorElement: win.HTMLAnchorElement,
-  Element: win.Element,
-  Node: win.Node,
-  NodeList: win.NodeList,
-  // React 19's act-compat path walks the DOM during fireEvent dispatch and
-  // reads `NodeFilter` from globalThis (used internally by some traversal
-  // helpers). Without this, any `fireEvent.*` call from
-  // `@testing-library/react` inside a dom-tier test throws
-  // `ReferenceError: NodeFilter is not defined`.
-  NodeFilter: win.NodeFilter,
-  // Radix's Select/Popper reads `DocumentFragment` from globalThis during mount
-  // (portal/collection plumbing); without it a Select-bearing dom test throws
-  // `ReferenceError: DocumentFragment is not defined`.
-
-  DocumentFragment: win.DocumentFragment,
-  DOMRect: win.DOMRect,
-  Event: win.Event,
-  CustomEvent: win.CustomEvent,
-  EventTarget: win.EventTarget,
-  MouseEvent: win.MouseEvent,
-  KeyboardEvent: win.KeyboardEvent,
-  InputEvent: win.InputEvent,
-  FocusEvent: win.FocusEvent,
-  PointerEvent: win.PointerEvent,
-  DataTransfer: win.DataTransfer,
-  // Radix's `react-focus-scope` (used inside DropdownMenu, Dialog, Popover) reads
-  // `MutationObserver` from globalThis on mount; without this attach, any DOM-tier
-  // test that opens a Radix focus-trap throws `ReferenceError`.
-  MutationObserver: win.MutationObserver,
-  ResizeObserver: class MinimalResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  },
-  getComputedStyle: win.getComputedStyle.bind(win),
-  requestAnimationFrame: win.requestAnimationFrame.bind(win),
-  cancelAnimationFrame: win.cancelAnimationFrame.bind(win),
+// Unmount rendered trees after every test. @testing-library/react auto-registers
+// this only when a test-runner `afterEach` global is present; bun exposes one, so
+// the bun DOM tier got auto-cleanup for free. Vitest runs with `globals: false`
+// here, so register it explicitly to match — without it, a component re-rendered
+// across tests accumulates duplicate DOM ("found multiple elements").
+afterEach(() => {
+  cleanup();
 });
 
+const domWindow = globalThis.window as (Window & typeof globalThis) | undefined;
+
 // jsdom doesn't ship `matchMedia`; hooks like `useThemeBridge` call it for
-// `(prefers-reduced-transparency: reduce)`. Install on `globalThis`, the
-// `win` proxy, AND `window` so both `window.matchMedia(...)` and bare
-// `matchMedia(...)` paths resolve.
+// `(prefers-reduced-transparency: reduce)`. Install on `globalThis` and the
+// `window` proxy so both `window.matchMedia(...)` and bare `matchMedia(...)`
+// paths resolve.
 const matchMediaStub = (query: string): MediaQueryList =>
   ({
     matches: false,
@@ -92,12 +46,28 @@ const matchMediaStub = (query: string): MediaQueryList =>
   }) as unknown as MediaQueryList;
 
 (globalThis as { matchMedia?: typeof matchMediaStub }).matchMedia = matchMediaStub;
-(win as { matchMedia?: typeof matchMediaStub }).matchMedia = matchMediaStub;
+if (domWindow) {
+  (domWindow as { matchMedia?: typeof matchMediaStub }).matchMedia = matchMediaStub;
+}
 
-win.HTMLElement.prototype.scrollIntoView ||= () => {};
+// jsdom doesn't ship `ResizeObserver`; Radix's Select/Popper collections read it
+// from globalThis on mount.
+class MinimalResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= MinimalResizeObserver;
 
-// jsdom doesn't ship MessageChannel by default; React 19's scheduler uses
-// it for postTask scheduling. Polyfill if absent.
+// jsdom's `scrollIntoView` throws "not implemented"; Radix/CodeMirror call it on
+// focus. Stub it if jsdom left the prototype method absent or non-functional.
+if (domWindow?.HTMLElement) {
+  domWindow.HTMLElement.prototype.scrollIntoView ||= () => {};
+}
+
+// jsdom doesn't ship MessageChannel; React 19's scheduler uses it for postTask
+// scheduling. Node 24 provides it globally, but guard for jsdom builds that
+// shadow it as undefined.
 if (typeof (globalThis as { MessageChannel?: unknown }).MessageChannel === 'undefined') {
   // Minimal MessageChannel — synchronous, sufficient for scheduler smoke.
   class MinimalMessagePort {

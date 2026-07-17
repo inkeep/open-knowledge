@@ -175,7 +175,7 @@ interface WorkerReadyPayload {
 }
 
 /**
- * Spawn the lock-worker as a real bun child process. The worker acquires both
+ * Spawn the lock-worker as a real node child process. The worker acquires both
  * locks for `lockDir`, prints a `READY {...}` line on stdout, then idles
  * waiting for SIGTERM. We resolve when the READY line lands, so the parent
  * test sees a fully-acquired lock state before it asserts.
@@ -187,8 +187,8 @@ function spawnLockWorker(
 ): Promise<WorkerHandle> {
   return new Promise((resolveSpawn, reject) => {
     const proc = nativeSpawn(
-      'bun',
-      ['run', LOCK_WORKER_PATH, lockDir, String(serverPort), String(uiPort)],
+      'node',
+      ['--import', 'tsx', LOCK_WORKER_PATH, lockDir, String(serverPort), String(uiPort)],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
     if (proc.pid === undefined || !proc.stdout || !proc.stderr) {
@@ -355,9 +355,13 @@ function stopLockWorker(handle: WorkerHandle): Promise<void> {
       // A second worker against the SAME lockDir must fail to acquire — the
       // holder is alive and on the same host, so acquireProcessLock throws
       // ProcessLockCollisionError. The worker exits non-zero; we await that.
-      const colliderProc = nativeSpawn('bun', ['run', LOCK_WORKER_PATH, lockDir, '52201', '3201'], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      const colliderProc = nativeSpawn(
+        'node',
+        ['--import', 'tsx', LOCK_WORKER_PATH, lockDir, '52201', '3201'],
+        {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
       let colliderStderr = '';
       colliderProc.stderr?.on('data', (chunk) => {
         colliderStderr += chunk.toString('utf-8');

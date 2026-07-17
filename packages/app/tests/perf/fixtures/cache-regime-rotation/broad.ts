@@ -9,9 +9,9 @@
  * Size mix: 10 small / 30 medium / 20 large = 60 docs.
  */
 
-import { buildCorpus } from './generator';
-import type { SizeMix, WorkloadFixture } from './types';
-import { vault } from './vault';
+import { buildCorpus } from './generator.ts';
+import type { SizeMix, WorkloadFixture } from './types.ts';
+import { vault } from './vault.ts';
 
 const BROAD_MIX = {
   small: 10,

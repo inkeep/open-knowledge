@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createContext, type ReactNode, use } from 'react';
-import { ProjectSwitcher } from './ProjectSwitcher';
 
 type MenuProps = {
   children?: ReactNode;
@@ -263,6 +262,10 @@ async function openMenu() {
     expect(screen.getByTestId('project-switcher-search')).not.toBeNull();
   });
 }
+
+// Import the component AFTER the mocks above register so its transitive
+// dependencies bind to the stubs rather than the real modules.
+const { ProjectSwitcher } = await import('./ProjectSwitcher');
 
 describe('ProjectSwitcher dropdown behavior', () => {
   beforeEach(() => {

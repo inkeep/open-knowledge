@@ -4,7 +4,7 @@
  *
  *   1. Doc-name hashing — values keyed by `doc.name` (OTLP attribute-pair shape
  *      `{key, value:{stringValue}}` and Pino-flat `{ "doc.name": "..." }`)
- *      become `doc:<8 hex>`, derived from BLAKE2b-256(value) truncated to
+ *      become `doc:<8 hex>`, derived from sha256(value) truncated to
  *      8 hex chars.
  *
  *   2. Content-dir prefix substitution — the absolute content-dir path,
@@ -64,12 +64,13 @@ interface RedactCtx {
 }
 
 function hashDocName(value: string): string {
-  // BLAKE2b-256 via OpenSSL's blake2b512 algorithm with outputLength=32 bytes
-  // — Bun + Node both honor the `outputLength` option for BLAKE2 variants,
-  // producing BLAKE2b-256 truncated to 8 hex chars. 32 bits of
-  // hash space is enough for the per-bundle uniqueness contract (typical
-  // workspaces carry <1k doc names; collision risk negligible at this scale).
-  const digest = createHash('blake2b512', { outputLength: 32 }).update(value).digest('hex');
+  // sha256 truncated to 8 hex (32 bits). The token is ephemeral: its inverse
+  // map ships inside the same bundle, so only per-bundle determinism and low
+  // collision probability matter (typical workspaces carry <1k doc names), not
+  // a specific algorithm or byte layout. A fixed-length digest is required
+  // because Node's OpenSSL rejects a BLAKE2 `outputLength` option
+  // (ERR_OSSL_EVP_NOT_XOF_OR_INVALID_LENGTH), which the published Node CLI hits.
+  const digest = createHash('sha256').update(value).digest('hex');
   return `${HASH_PREFIX}${digest.slice(0, HASH_HEX_LEN)}`;
 }
 

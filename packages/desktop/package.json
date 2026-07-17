@@ -13,16 +13,16 @@
     "dev": "turbo run dev:electron --filter=@inkeep/open-knowledge-desktop",
     "dev:electron": "electron-vite dev --watch",
     "build:desktop": "electron-vite build",
-    "build:dir": "bun run build:desktop && electron-builder --dir --publish never",
-    "build:mac": "bun run build:desktop && node scripts/prepare-universal.mjs && electron-builder --mac --publish never",
-    "build:mac:unsigned": "bun run build:desktop && node scripts/prepare-universal.mjs && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never -c.mac.identity=null",
+    "build:dir": "pnpm run build:desktop && electron-builder --dir --publish never",
+    "build:mac": "pnpm run build:desktop && node scripts/prepare-universal.mjs && electron-builder --mac --publish never",
+    "build:mac:unsigned": "pnpm run build:desktop && node scripts/prepare-universal.mjs && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never -c.mac.identity=null",
     "prepare:universal": "node scripts/prepare-universal.mjs",
     "postinstall": "node scripts/postinstall.mjs",
     "rebuild:native": "electron-builder install-app-deps",
     "smoke:mock-update": "OK_UPDATER_FORCE_DEV=1 node scripts/smoke-mock-update.mjs",
     "instances": "node scripts/launch-instances.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --timeout 30000"
+    "test": "vitest run"
   },
   "dependencies": {
     "@inkeep/open-knowledge": "workspace:*",
@@ -48,6 +48,7 @@
     "@types/semver": "^7.5.8",
     "@vitejs/plugin-react": "^6.0.1",
     "babel-plugin-react-compiler": "0.0.0-experimental-a8e64ef-20260402",
+    "culori": "^4.0.2",
     "electron": "41.2.1",
     "electron-builder": "^26.9.0",
     "electron-vite": "^6.0.0-beta.1",

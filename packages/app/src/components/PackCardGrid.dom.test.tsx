@@ -10,7 +10,10 @@ let listPacksImpl: () => Promise<OkSeedListPacksResult> = async () => ({
 });
 const listPacksCalls: string[] = [];
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@lingui/core/macro', () => ({
+  ...actualLinguiMacro,
   plural: (count: number, forms: { one: string; other: string }) =>
     (count === 1 ? forms.one : forms.other).replace('#', String(count)),
   t: (strings: TemplateStringsArray, ...values: unknown[]) =>
@@ -18,6 +21,7 @@ mock.module('@lingui/core/macro', () => ({
 }));
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>

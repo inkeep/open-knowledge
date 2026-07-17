@@ -15,8 +15,8 @@ name: Select beta to promote
 # is lost. The descent stops at the first already-shipped beta (its commit is
 # contained in the latest stable), so it never reaches back across a shipped
 # boundary. This selection logic lives in
-# .github/scripts/select-beta-to-promote.mjs (unit-tested under `bun test --cwd
-# .github/scripts`), not inline bash — it is the sole safety gate for automated
+# .github/scripts/select-beta-to-promote.mjs (unit-tested under `vitest run`,
+# `.github/scripts`), not inline bash — it is the sole safety gate for automated
 # selection (see NOTE below), so it is fail-loud and test-covered.
 #
 # This workflow does NOT reimplement promotion. It dispatches promote-stable.yml

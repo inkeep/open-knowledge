@@ -4,11 +4,13 @@
  * test is scoped to the badge's presence + click wiring next to the stats.
  */
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { DocumentStats } from '@/lib/document-stats';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{value === 1 ? one : other}</>

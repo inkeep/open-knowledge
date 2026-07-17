@@ -74,11 +74,11 @@ export const mdManager = new MarkdownManager({ extensions: sharedExtensions });
 export const schema = getSchema(sharedExtensions);
 
 /**
- * Boot budget for `beforeAll` hooks that await harness boot. Hooks without an
- * explicit second argument ride the *invocation's* budget (Bun default: 5s,
- * undocumented — pinned by tests/meta/hook-timeout-semantics.test.ts), so a
- * loaded host kills slow boots on any flag-less `bun test` path. 30s matches
- * the suite's `--timeout 30000` ceiling and the existing per-hook precedent
+ * Boot budget for `beforeAll` hooks that await harness boot. An explicit
+ * per-hook timeout keeps the boot budget invocation-independent instead of
+ * riding whatever default hook timeout the runner supplies, so a loaded host
+ * cannot kill a slow boot under a shorter default. 30s matches the shared
+ * Vitest config's hookTimeout and the existing per-hook precedent
  * (document-list-depth1); presence at every site is enforced by
  * tests/integration/hook-timeout-stop-rules.test.ts.
  */

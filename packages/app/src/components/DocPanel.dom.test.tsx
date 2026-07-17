@@ -34,8 +34,11 @@ if (g.ResizeObserver === undefined) {
   g.ResizeObserver = NoopResizeObserver;
 }
 
-mock.module('@lingui/core/macro', () => ({ t: renderLinguiTemplate }));
+import * as actualLinguiMacro from '@lingui/react/macro';
+
+mock.module('@lingui/core/macro', () => ({ ...actualLinguiMacro, t: renderLinguiTemplate }));
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => children,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));

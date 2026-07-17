@@ -27,6 +27,7 @@ import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
 
 // __dirname → packages/app/tests/lint-plugins/. OK subtree root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
@@ -37,12 +38,12 @@ const CATALOG_SOURCE_ABS = join(REPO_ROOT, 'packages/core/src/bridge/normalize.t
 
 describe('no-inline-tolerance-class GritQL plugin', () => {
   test('fires on exactly 8 inline fidelity-class literals (and on no negative case)', () => {
-    const result = spawnSync('bunx', ['biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
     // Surface a spawn failure explicitly: without this, `status` is null on a
-    // `bunx` spawn error and the `not.toBe(0)` below passes vacuously, masking
+    // `pnpm exec` spawn error and the `not.toBe(0)` below passes vacuously, masking
     // the failure as "0 diagnostics".
     expect(result.error).toBeUndefined();
     // biome check exits non-zero when any diagnostic (incl. plugin) fires.
@@ -61,7 +62,7 @@ describe('no-inline-tolerance-class GritQL plugin', () => {
   });
 
   test('plugin is registered as an override scoped to the public test surface (not workspace-wide)', () => {
-    const config = require(join(REPO_ROOT, 'biome.jsonc'));
+    const config = readBiomeConfig(REPO_ROOT);
     // NOT at root plugins[] — a workspace-wide promotion would fire on the
     // excluded clusters (where the catalog legitimately lives) and on the
     // catalog source itself, turning `bun run lint` red.

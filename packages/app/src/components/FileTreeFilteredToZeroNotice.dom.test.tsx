@@ -8,10 +8,12 @@
  * Runs under `bun run test:dom` (jsdom substrate per precedent #43).
  */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 

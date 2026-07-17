@@ -5,11 +5,10 @@
  *
  * Why: boot-bearing `beforeAll` hooks (canonical shape:
  * `beforeAll(async () => { server = await createTestServer(); });`) otherwise
- * ride whatever budget the *invocation* supplies. Bun's undocumented default
- * is 5s, and it governs `beforeAll` (empirically pinned). Any invocation path that
- * omits `--timeout` (direct `bun test tests/integration/<file>.test.ts`, the
- * `test:conversion` script) reverts hooks to the 5s default; under host load
- * a killed boot hook leaves `server` undefined and the unconditional
+ * ride whatever hook-timeout budget the runner's config supplies rather than an
+ * explicit per-hook value. A path whose config sets a short hook timeout (or a
+ * flag-less script such as `test:conversion`) can kill a slow boot; under host
+ * load a killed boot hook leaves `server` undefined and the unconditional
  * `afterAll` cleanup converts the failure into a misleading
  * `TypeError: undefined is not an object (evaluating 'server.cleanup')`.
  *
@@ -145,8 +144,8 @@ describe('hook-timeout STOP rule — beforeAll must carry an explicit timeout', 
     if (violations.length > 0) {
       throw new Error(
         `${violations.length} beforeAll site(s) without an explicit timeout argument. ` +
-          `Hooks without one ride the invocation's budget (Bun default: 5s) — direct ` +
-          `\`bun test <file>\` runs and the flag-less test:conversion script kill slow boots ` +
+          `Hooks without one ride the invocation's budget — direct ` +
+          `flag-less runs and the test:conversion script can kill slow boots ` +
           `and surface a misleading 'server.cleanup' TypeError from afterAll. ` +
           `Add a second argument, preferably the shared constant: ` +
           `\`beforeAll(async () => { ... }, HARNESS_BOOT_TIMEOUT_MS);\` ` +

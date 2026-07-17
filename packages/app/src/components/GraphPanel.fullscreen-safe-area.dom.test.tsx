@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -9,11 +10,10 @@ import {
   expectVisualClassTokensAbsent,
 } from '@/test-utils/visual-contract';
 
-mock.module('@lingui/core/macro', () => ({
-  t: renderLinguiTemplate,
-}));
+mock.module('@lingui/core/macro', () => ({ ...actualLinguiMacro, t: renderLinguiTemplate }));
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Plural: ({ one }: { one: string }) => <>{one}</>,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),

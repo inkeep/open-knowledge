@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { NavigatorApp } from './NavigatorApp';
 
 let createDialogProps: Array<{
   open: boolean;
@@ -147,6 +146,10 @@ async function renderNavigator(bridge: ReturnType<typeof createBridge>) {
   render(<NavigatorApp bridge={bridge as never} />);
   await waitFor(() => expect(bridge.project.listRecent).toHaveBeenCalledTimes(1));
 }
+
+// Import the component AFTER the mocks above register so its transitive
+// dependencies bind to the stubs rather than the real modules.
+const { NavigatorApp } = await import('./NavigatorApp');
 
 describe('NavigatorApp first-run packs-forward launcher', () => {
   beforeEach(() => {

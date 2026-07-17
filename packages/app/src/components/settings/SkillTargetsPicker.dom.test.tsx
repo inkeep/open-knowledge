@@ -7,10 +7,12 @@
  */
 
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => children,
   useLingui: () => ({
     t: (strings: TemplateStringsArray | string, ...values: unknown[]) => {

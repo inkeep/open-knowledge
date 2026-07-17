@@ -32,6 +32,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import * as Y from 'yjs';
+import { fetchWithHostHeader } from './host-header-request.test-helper';
 import { createTestClient, createTestServer, pollUntil, wait } from './test-harness';
 
 /** Make a throwaway "user directory" with the given files (relativePath → contents). */
@@ -279,8 +280,9 @@ describe('single-file mode — /api host gate (DNS-rebinding defense)', () => {
   // DNS-rebound page (loopback TCP peer, attacker-controlled Host header) could
   // otherwise read sibling files through any of them. The ephemeral `/api/*`
   // gate must refuse a non-loopback Host BEFORE the read — across every read
-  // route, not one. Bun's fetch honors a `Host` override (same mechanism the
-  // workspace-endpoint host-gate test uses).
+  // route, not one. The forged `Host` is sent via node:http (undici's fetch
+  // drops a caller-set Host), the same mechanism the workspace-endpoint
+  // host-gate test uses.
   const REBIND_HOST = 'attacker.example.com';
 
   test('a rebound Host is refused on /api/document, /api/asset-text, /api/asset (403 host-not-allowed)', async () => {
@@ -304,9 +306,10 @@ describe('single-file mode — /api host gate (DNS-rebinding defense)', () => {
         '/api/asset-text?path=secret.txt',
         '/api/asset?path=secret.png',
       ]) {
-        const res = await fetch(`http://127.0.0.1:${server.port}${path}`, {
-          headers: { Host: REBIND_HOST },
-        });
+        const res = await fetchWithHostHeader(
+          `http://127.0.0.1:${server.port}${path}`,
+          REBIND_HOST,
+        );
         expect(res.status).toBe(403);
         expect((await res.json()).type).toBe('urn:ok:error:host-not-allowed');
       }
@@ -339,9 +342,10 @@ describe('single-file mode — /api host gate (DNS-rebinding defense)', () => {
     const contentDir = ephemeralContentDir({ 'notes.md': '# Notes\n' });
     const server = await createTestServer({ contentDir, keepContentDir: true });
     try {
-      const res = await fetch(`http://127.0.0.1:${server.port}/api/document?docName=notes`, {
-        headers: { Host: REBIND_HOST },
-      });
+      const res = await fetchWithHostHeader(
+        `http://127.0.0.1:${server.port}/api/document?docName=notes`,
+        REBIND_HOST,
+      );
       expect(res.status).not.toBe(403);
     } finally {
       await server.cleanup();

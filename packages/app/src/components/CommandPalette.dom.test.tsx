@@ -45,7 +45,10 @@ let pageListLoading = false;
 // assert that a stopped poll fires no further requests.
 const COMMAND_PALETTE_POLL_GRACE_MS = 1400;
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{(value === 1 ? one : other).replace('#', String(value))}</>

@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ProblemDetailsSchema, WorkspaceSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
+import { fetchWithHostHeader } from '../host-header-request.test-helper';
 import { createTestServer, type TestServer } from '../test-harness';
 
 let server: TestServer;
@@ -36,9 +37,10 @@ describe('workspace envelope (RFC 9457)', () => {
   });
 
   test('non-loopback Host header emits problem+json host-not-allowed', async () => {
-    const res = await fetch(`http://127.0.0.1:${server.port}/api/workspace`, {
-      headers: { Host: 'attacker.example.com' },
-    });
+    const res = await fetchWithHostHeader(
+      `http://127.0.0.1:${server.port}/api/workspace`,
+      'attacker.example.com',
+    );
     expect(res.status).toBe(403);
     expect(res.headers.get('content-type')).toBe('application/problem+json');
     const body = await res.json();

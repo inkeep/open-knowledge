@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 /**
  * Lock-holder worker — used by `multi-project-locks.test.ts` to exercise
  * cross-process lock isolation.

@@ -38,6 +38,11 @@ function makeProvider(docName: string): HocuspocusProvider {
   return new HocuspocusProvider({
     url: DUMMY_WS,
     name: docName,
+    // Never open a real socket. The tests drive `synced`/`close` by emitting on
+    // the provider directly; on Node the undici WebSocket to the dead dummy URL
+    // otherwise fires an async close that races (and outlives) the test. bun
+    // never established the connection, so this restores that behavior.
+    autoConnect: false,
   });
 }
 

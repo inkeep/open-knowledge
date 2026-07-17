@@ -16,8 +16,6 @@ import type { NodeViewProps } from '@tiptap/core';
 import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
 import { subscribeToActiveTerminalInput } from '@/components/handoff/terminal-input-events';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
-import { CodeBlockView } from './CodeBlockView';
-import { setEditorDocName } from './doc-context';
 
 // The Ask AI click handler routes through `serializeWysiwygSelection`, which
 // runs the full markdown pipeline against the selected slice. Testing that
@@ -26,6 +24,11 @@ import { setEditorDocName } from './doc-context';
 mock.module('../edit-with-ai-selection', () => ({
   serializeWysiwygSelection: () => '```json\n{ "name": "sample" }\n```',
 }));
+
+// Import the NodeView AFTER the mock registers so its `../edit-with-ai-selection`
+// import binds to the stub serializer rather than the real markdown pipeline.
+const { CodeBlockView } = await import('./CodeBlockView');
+const { setEditorDocName } = await import('./doc-context');
 
 function makeConfigValue(merged: Config | null): ConfigContextValue {
   return {
@@ -390,10 +393,24 @@ describe('CodeBlockView Ask AI dispatch', () => {
       '[data-testid="ok-codeblock-ask-ai-btn"]',
     ) as HTMLButtonElement | null;
     expect(askBtn).toBeTruthy();
-    // React attaches synthetic handlers; a throw from the handler bubbles
-    // through fireEvent as a plain Error. Assert on the message so the guard
-    // is proven to only class-catch RangeError, not shallow every throw.
-    expect(() => fireEvent.click(askBtn as HTMLButtonElement)).toThrow(/unrelated failure/);
+    // A throw from a React 19 event handler is not caught by RTL's fireEvent
+    // under jsdom; the runtime reports the uncaught error to the window 'error'
+    // event instead of rethrowing synchronously. Capture it (preventDefault so
+    // the report does not fail the test) and assert the message, proving the
+    // guard only class-catches RangeError and lets a real bug escape rather than
+    // swallowing every throw.
+    const uncaught: string[] = [];
+    const onError = (event: ErrorEvent) => {
+      event.preventDefault();
+      uncaught.push(event.message);
+    };
+    window.addEventListener('error', onError);
+    try {
+      fireEvent.click(askBtn as HTMLButtonElement);
+    } finally {
+      window.removeEventListener('error', onError);
+    }
+    expect(uncaught.some((message) => /unrelated failure/.test(message))).toBe(true);
   });
 
   test('click with getPos absent (unrenderable NodeView) is a no-op', async () => {

@@ -1,22 +1,41 @@
-import { describe as _bunDescribe, afterEach, beforeEach, expect, it, spyOn } from 'bun:test';
+import {
+  describe as _bunDescribe,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  it,
+  mock,
+  spyOn,
+  vi,
+} from 'bun:test';
 
 // Skip-on-CI gate (oven-sh/bun#11892): subprocess or git child spawns; Bun fails to reap children on ubuntu-latest GHA runners (oven-sh/bun#11892).
 // Tests run normally locally; follow-up will narrow the leak surface.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
-import * as cp from 'node:child_process';
-import { openBrowser } from './open-browser.ts';
+// The SUT does a named `import { execFile }`, which is a live ESM binding that
+// cannot be reassigned by spying on the module namespace. Mock the module and
+// dynamic-import the SUT afterwards so its `execFile` resolves to the mock.
+const execFileMock = vi.fn();
+let openBrowser: typeof import('./open-browser.ts')['openBrowser'];
+
+beforeAll(async () => {
+  await mock.module('node:child_process', async () => {
+    const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+    return { ...actual, execFile: (...args: unknown[]) => execFileMock(...args) };
+  });
+  ({ openBrowser } = await import('./open-browser.ts'));
+});
 
 describe('openBrowser', () => {
-  let execFileSpy: ReturnType<typeof spyOn>;
   const originalPlatform = process.platform;
 
   beforeEach(() => {
-    execFileSpy = spyOn(cp, 'execFile').mockImplementation((() => {}) as never);
+    execFileMock.mockReset().mockImplementation(() => {});
   });
 
   afterEach(() => {
-    execFileSpy.mockRestore();
     Object.defineProperty(process, 'platform', { value: originalPlatform });
   });
 
@@ -24,8 +43,8 @@ describe('openBrowser', () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' });
     openBrowser('http://localhost:3000');
 
-    expect(execFileSpy).toHaveBeenCalledTimes(1);
-    const [cmd, args] = execFileSpy.mock.calls[0] as [string, string[]];
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+    const [cmd, args] = execFileMock.mock.calls[0] as [string, string[]];
     expect(cmd).toBe('open');
     expect(args).toEqual(['http://localhost:3000']);
   });
@@ -34,8 +53,8 @@ describe('openBrowser', () => {
     Object.defineProperty(process, 'platform', { value: 'linux' });
     openBrowser('http://localhost:3000');
 
-    expect(execFileSpy).toHaveBeenCalledTimes(1);
-    const [cmd, args] = execFileSpy.mock.calls[0] as [string, string[]];
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+    const [cmd, args] = execFileMock.mock.calls[0] as [string, string[]];
     expect(cmd).toBe('xdg-open');
     expect(args).toEqual(['http://localhost:3000']);
   });
@@ -44,8 +63,8 @@ describe('openBrowser', () => {
     Object.defineProperty(process, 'platform', { value: 'win32' });
     openBrowser('http://localhost:3000');
 
-    expect(execFileSpy).toHaveBeenCalledTimes(1);
-    const [cmd, args] = execFileSpy.mock.calls[0] as [string, string[]];
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+    const [cmd, args] = execFileMock.mock.calls[0] as [string, string[]];
     expect(cmd).toBe('cmd');
     expect(args).toEqual(['/c', 'start', '', 'http://localhost:3000']);
   });
@@ -54,7 +73,7 @@ describe('openBrowser', () => {
     Object.defineProperty(process, 'platform', { value: 'linux' });
     const consoleSpy = spyOn(console, 'warn').mockImplementation(() => {});
 
-    execFileSpy.mockImplementation(((
+    execFileMock.mockImplementation(((
       _cmd: string,
       _args: string[],
       _opts: unknown,
@@ -78,15 +97,13 @@ describe('openBrowser', () => {
 // this block at the top level using `_bunDescribe` directly so a regression
 // that weakens the URL allowlist is caught by the automated pipeline.
 _bunDescribe('openBrowser URL validation', () => {
-  let execFileSpy: ReturnType<typeof spyOn>;
   const originalPlatform = process.platform;
 
   beforeEach(() => {
-    execFileSpy = spyOn(cp, 'execFile').mockImplementation((() => {}) as never);
+    execFileMock.mockReset().mockImplementation(() => {});
   });
 
   afterEach(() => {
-    execFileSpy.mockRestore();
     Object.defineProperty(process, 'platform', { value: originalPlatform });
   });
 
@@ -118,7 +135,7 @@ _bunDescribe('openBrowser URL validation', () => {
 
       openBrowser(url);
 
-      expect(execFileSpy).not.toHaveBeenCalled();
+      expect(execFileMock).not.toHaveBeenCalled();
       expect(consoleSpy).toHaveBeenCalledTimes(1);
       const [warned] = consoleSpy.mock.calls[0] as [string];
       expect(warned).toContain('Could not auto-open browser');
@@ -136,7 +153,7 @@ _bunDescribe('openBrowser URL validation', () => {
     openBrowser('vbscript:msgbox(1)');
     openBrowser('data:text/html,<script>alert(1)</script>');
 
-    expect(execFileSpy).not.toHaveBeenCalled();
+    expect(execFileMock).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledTimes(4);
     for (const call of consoleSpy.mock.calls) {
       expect(call[0] as string).toContain('unsupported scheme');
@@ -150,7 +167,7 @@ _bunDescribe('openBrowser URL validation', () => {
 
     openBrowser('not a url');
 
-    expect(execFileSpy).not.toHaveBeenCalled();
+    expect(execFileMock).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledTimes(1);
     expect(consoleSpy.mock.calls[0][0] as string).toContain('invalid URL');
     consoleSpy.mockRestore();
@@ -159,6 +176,6 @@ _bunDescribe('openBrowser URL validation', () => {
   it('accepts a normal https URL', () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' });
     openBrowser('https://example.com:8443/path');
-    expect(execFileSpy).toHaveBeenCalledTimes(1);
+    expect(execFileMock).toHaveBeenCalledTimes(1);
   });
 });

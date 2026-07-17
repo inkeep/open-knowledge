@@ -82,7 +82,10 @@ const toastMock = {
   success: mock(() => {}),
 };
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));

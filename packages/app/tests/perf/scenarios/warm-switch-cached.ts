@@ -19,9 +19,9 @@
  * post-integration measurement.
  */
 
-import { markerFor } from '../lib/doc-markers';
-import { installLongtaskObserver } from '../lib/longtask-observer';
-import { defineScenario } from '../lib/scenario';
+import { markerFor } from '../lib/doc-markers.ts';
+import { installLongtaskObserver } from '../lib/longtask-observer.ts';
+import { defineScenario } from '../lib/scenario.ts';
 
 const DOC_A = process.env.OK_PERF_DOC_A ?? 'README';
 const DOC_B = process.env.OK_PERF_DOC_B ?? 'AGENTS';

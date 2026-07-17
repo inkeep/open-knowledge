@@ -132,14 +132,21 @@ jobs:
         with:
           node-version: "24"
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
-          bun-version-file: ".bun-version"
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ok-pnpm-store-
 
       - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: .turbo
-          key: ${{ runner.os }}-turbo-desktop-release-${{ hashFiles('bun.lock') }}
+          key: ${{ runner.os }}-turbo-desktop-release-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-turbo-desktop-release-
             ${{ runner.os }}-turbo-desktop-
@@ -149,7 +156,7 @@ jobs:
           # Rebuild native modules against Electron's Node ABI — same as
           # desktop-build.yml.
           ELECTRON_SKIP_REBUILD: "0"
-        run: bash scripts/bun-install-ci.sh
+        run: pnpm install --frozen-lockfile
 
       # electron-builder.yml's `extraResources` rule copies from
       # `packages/cli/dist/public/`, which the CLI's `build:assets` populates
@@ -163,8 +170,8 @@ jobs:
       # before app), and run the two filters in sequence to enforce
       # app → cli ordering.
       #
-      # `bun run --filter=...` was the previous approach; it does not
-      # honor turbo's dep graph (only runs the named package's `build`
+      # A bare per-package `--filter` run was the previous approach; it does
+      # not honor turbo's dep graph (only runs the named package's `build`
       # script in isolation). After the workspace started shipping
       # `.mjs` builds for `@inkeep/open-knowledge-server` and
       # `@inkeep/open-knowledge-core` (specs/2026-04-24-desktop-packaging-
@@ -238,7 +245,7 @@ jobs:
       # lines 7-10), workspace package.json files on disk at the tagged SHA
       # always lag the release tag — agents-private mirrors a cycle-base
       # version (e.g. `0.5.0-beta.5`) that `release.yml` overrides
-      # transiently via `jq` before `bun changeset publish`. The Desktop
+      # transiently via `jq` before `pnpm exec changeset publish`. The Desktop
       # pipeline needs the same primitive: `tsdown` inlines
       # `import pkgJson from "../package.json"` into
       # `packages/cli/dist/constants-*.mjs` at Build time, and
@@ -272,8 +279,8 @@ jobs:
 
       - name: Build workspace (produces packages/cli/dist/public for extraResources)
         run: |
-          bunx turbo run build --filter=@inkeep/open-knowledge-app
-          bunx turbo run build --filter=@inkeep/open-knowledge
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge-app
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge
 
       - name: Detect signing mode
         id: signmode
@@ -325,7 +332,7 @@ jobs:
           echo "::notice::APPLE_API_KEY materialized to $KEY_PATH"
 
       # Force-install both darwin-arm64 and darwin-x64 prebuilt binaries for
-      # @napi-rs/keyring before electron-builder's universal merge runs. Bun
+      # @napi-rs/keyring before electron-builder's universal merge runs. pnpm
       # under workspace conditions only installs the host-arch optionalDependency
       # (cpu constraint), so the darwin-x64 binary is missing on an arm64
       # runner. @electron/universal's lipo merge then either errors or hangs
@@ -422,7 +429,7 @@ jobs:
             # `pipefail` (set above) makes the `if` see the electron-builder exit
             # code through `tee`; tee mirrors output to the CI log AND captures it
             # for the transient-vs-real classification below.
-            if { bun run build:desktop && bunx electron-builder --mac --publish always \
+            if { pnpm run build:desktop && pnpm exec electron-builder --mac --publish always \
               --config.extraMetadata.version=${{ steps.channel.outputs.version }} \
               --config.publish.channel=${{ steps.channel.outputs.channel }} \
               --config.publish.releaseType=${{ steps.channel.outputs.release_type }} ; } 2>&1 | tee "${attempt_log}"; then

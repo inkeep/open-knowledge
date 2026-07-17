@@ -15,8 +15,8 @@
  * The test:
  *   1. mkdtemp a project dir + seed .ok/{config.yml,.gitignore} so
  *      `bootServer`'s pre-listen MissingOkConfigError check passes.
- *   2. Spawn a fresh `bun` subprocess via `Bun.spawnSync` that imports
- *      `bootServer` + the typed errors and invokes `bootServer({})` with
+ *   2. Spawn a fresh `node --import tsx` subprocess via `Bun.spawnSync` that
+ *      imports `bootServer` + the typed errors and invokes `bootServer({})` with
  *      a forced-failure `gitPreflight`. The inline driver mirrors the
  *      CLI wrapper's catch handler: catch the typed error, exit 78.
  *   3. Assert the subprocess EXIT CODE is 78 and its STDERR contains the
@@ -127,7 +127,7 @@ describe('bootServer() preflight survives the subprocess boundary (FR6 / US-005)
       `;
 
       const result = Bun.spawnSync({
-        cmd: ['bun', '--conditions=development', '-e', inlineDriver],
+        cmd: ['node', '--import', 'tsx', '--conditions=development', '-e', inlineDriver],
         cwd: SERVER_PACKAGE_ROOT,
         env: {
           ...process.env,
@@ -216,7 +216,7 @@ describe('bootServer() preflight survives the subprocess boundary (FR6 / US-005)
       `;
 
       const result = Bun.spawnSync({
-        cmd: ['bun', '--conditions=development', '-e', inlineDriver],
+        cmd: ['node', '--import', 'tsx', '--conditions=development', '-e', inlineDriver],
         cwd: SERVER_PACKAGE_ROOT,
         env: {
           ...process.env,

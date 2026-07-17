@@ -1,9 +1,35 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn, vi } from 'bun:test';
 
 import type { SpawnSyncReturns } from 'node:child_process';
-import * as cp from 'node:child_process';
-import * as fs from 'node:fs';
-import { discoverLockDirs, findOkProcessPids, pidCwd } from './process-scan.ts';
+
+// The SUT imports spawnSync/existsSync/readdirSync/lstatSync as named bindings
+// and calls them directly. Vitest cannot redefine a live ESM namespace binding
+// the way bun's spyOn did, so the modules are mocked and the SUT is imported
+// after. Each mock defaults to the real implementation (matching the prior
+// call-through spyOn); individual tests override per case.
+const spawnSyncMock = vi.fn();
+const existsSyncMock = vi.fn();
+const readdirSyncMock = vi.fn();
+const lstatSyncMock = vi.fn();
+
+let discoverLockDirs: typeof import('./process-scan.ts').discoverLockDirs;
+let findOkProcessPids: typeof import('./process-scan.ts').findOkProcessPids;
+let pidCwd: typeof import('./process-scan.ts').pidCwd;
+let realCp: typeof import('node:child_process');
+let realFs: typeof import('node:fs');
+
+beforeAll(async () => {
+  realCp = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+  realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
+  mock.module('node:child_process', () => ({ ...realCp, spawnSync: spawnSyncMock }));
+  mock.module('node:fs', () => ({
+    ...realFs,
+    existsSync: existsSyncMock,
+    readdirSync: readdirSyncMock,
+    lstatSync: lstatSyncMock,
+  }));
+  ({ discoverLockDirs, findOkProcessPids, pidCwd } = await import('./process-scan.ts'));
+});
 
 // Helpers to build a minimal SpawnSyncReturns-shaped object
 function makeSpawnResult(overrides: Partial<SpawnSyncReturns<string>>): SpawnSyncReturns<string> {
@@ -20,14 +46,15 @@ function makeSpawnResult(overrides: Partial<SpawnSyncReturns<string>>): SpawnSyn
 }
 
 describe('findOkProcessPids', () => {
-  let spawnSyncSpy: ReturnType<typeof spyOn>;
+  let spawnSyncSpy: typeof spawnSyncMock;
 
   beforeEach(() => {
-    spawnSyncSpy = spyOn(cp, 'spawnSync');
+    spawnSyncMock.mockReset().mockImplementation(realCp.spawnSync);
+    spawnSyncSpy = spawnSyncMock;
   });
 
   afterEach(() => {
-    spawnSyncSpy.mockRestore();
+    spawnSyncMock.mockReset();
   });
 
   it('returns PIDs parsed from pgrep output when pgrep is available', async () => {
@@ -179,14 +206,15 @@ describe('findOkProcessPids', () => {
 });
 
 describe('pidCwd', () => {
-  let spawnSyncSpy: ReturnType<typeof spyOn>;
+  let spawnSyncSpy: typeof spawnSyncMock;
 
   beforeEach(() => {
-    spawnSyncSpy = spyOn(cp, 'spawnSync');
+    spawnSyncMock.mockReset().mockImplementation(realCp.spawnSync);
+    spawnSyncSpy = spawnSyncMock;
   });
 
   afterEach(() => {
-    spawnSyncSpy.mockRestore();
+    spawnSyncMock.mockReset();
   });
 
   it('returns the CWD from lsof -Fn output', async () => {
@@ -226,24 +254,29 @@ describe('pidCwd', () => {
 });
 
 describe('discoverLockDirs', () => {
-  let spawnSyncSpy: ReturnType<typeof spyOn>;
-  let existsSyncSpy: ReturnType<typeof spyOn>;
-  let readdirSyncSpy: ReturnType<typeof spyOn>;
-  let lstatSyncSpy: ReturnType<typeof spyOn>;
+  let spawnSyncSpy: typeof spawnSyncMock;
+  let existsSyncSpy: typeof existsSyncMock;
+  let readdirSyncSpy: typeof readdirSyncMock;
+  let lstatSyncSpy: typeof lstatSyncMock;
 
   beforeEach(() => {
-    spawnSyncSpy = spyOn(cp, 'spawnSync');
-    existsSyncSpy = spyOn(fs, 'existsSync');
-    readdirSyncSpy = spyOn(fs, 'readdirSync');
-    lstatSyncSpy = spyOn(fs, 'lstatSync');
-    readdirSyncSpy.mockImplementation(() => [] as unknown as ReturnType<typeof fs.readdirSync>);
+    spawnSyncMock.mockReset().mockImplementation(realCp.spawnSync);
+    existsSyncMock.mockReset().mockImplementation(realFs.existsSync);
+    lstatSyncMock.mockReset().mockImplementation(realFs.lstatSync);
+    readdirSyncMock
+      .mockReset()
+      .mockImplementation(() => [] as unknown as ReturnType<typeof realFs.readdirSync>);
+    spawnSyncSpy = spawnSyncMock;
+    existsSyncSpy = existsSyncMock;
+    readdirSyncSpy = readdirSyncMock;
+    lstatSyncSpy = lstatSyncMock;
   });
 
   afterEach(() => {
-    spawnSyncSpy.mockRestore();
-    existsSyncSpy.mockRestore();
-    readdirSyncSpy.mockRestore();
-    lstatSyncSpy.mockRestore();
+    spawnSyncMock.mockReset();
+    existsSyncMock.mockReset();
+    readdirSyncMock.mockReset();
+    lstatSyncMock.mockReset();
   });
 
   it('returns deduped lock dirs when multiple discovery routes find the same path', async () => {

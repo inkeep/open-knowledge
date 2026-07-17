@@ -8,9 +8,9 @@ import {
   computeMedianRotationDistance,
   computeSizeDistributionPct,
   loadTraces,
-} from './calibrate';
-import { tightFixture } from './tight';
-import { SIZE_ENVELOPES } from './types';
+} from './calibrate.ts';
+import { tightFixture } from './tight.ts';
+import { SIZE_ENVELOPES } from './types.ts';
 
 describe('classifyContentBytes', () => {
   test('places envelope boundaries in the expected class', () => {

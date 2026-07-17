@@ -20,7 +20,7 @@ import {
   type SweepCellResult,
   type VerdictMeasurement,
   type WorkloadFixtureRef,
-} from './sweep-runner';
+} from './sweep-runner.ts';
 
 const HOST: HostClassFingerprint = {
   cpuModel: 'Apple M2',

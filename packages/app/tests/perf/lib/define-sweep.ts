@@ -39,7 +39,7 @@
  * directly. This primitive shoulders the common case.
  */
 
-import { defineScenario, type ScenarioCtx, type ScenarioDefinition } from './scenario';
+import { defineScenario, type ScenarioCtx, type ScenarioDefinition } from './scenario.ts';
 
 /** A single cell's input — the (key → value) tuple for this point in the sweep. */
 export type AxesValues<TAxes extends Record<string, readonly unknown[]>> = {

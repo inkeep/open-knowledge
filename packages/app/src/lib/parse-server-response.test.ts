@@ -82,7 +82,9 @@ describe('parseServerResponse', () => {
     // style endpoint) is a success — not an error. Pin the contract:
     // a regression that misclassifies 204 as `{ok: false}` would show
     // spurious error toasts on every successful delete.
-    const res = new Response('', { status: 204 });
+    // 204 is a null-body status; Node's undici Response rejects a non-null body
+    // for it (bun tolerated `''`). `null` is what a real no-content response is.
+    const res = new Response(null, { status: 204 });
     const result = await parseServerResponse(res, 'unused');
     expect(result.ok).toBe(true);
     if (result.ok) {

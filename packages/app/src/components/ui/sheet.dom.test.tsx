@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import {
@@ -7,6 +8,7 @@ import {
 } from '@/test-utils/visual-contract';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 

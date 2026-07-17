@@ -9,7 +9,7 @@
 // promotions share one source of version truth.
 //
 // Extracted here (rather than inline bash) so the release-critical selection is
-// unit-tested under `bun test --cwd .github/scripts` (the OK `check` gate),
+// unit-tested under `vitest run --config vitest.scripts.config.ts` (the OK `check` gate),
 // mirroring the scripts/compute-next-beta.mjs precedent. The pure core
 // (parseBetaTags, selectPromotion) takes its git/GitHub boundary as injected
 // dependencies so tests need no live repo or API.

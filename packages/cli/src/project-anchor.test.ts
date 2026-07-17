@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -142,7 +143,9 @@ describe('resolveProjectAnchor — real filesystem walk', () => {
 function spawnCli(args: string[]): { exitCode: number | null; stdout: string; stderr: string } {
   const result = Bun.spawnSync({
     cmd: [
-      'bun',
+      'node',
+      '--import',
+      'tsx',
       '--conditions=development',
       '-e',
       `
@@ -221,7 +224,7 @@ describe('CLI preAction project anchoring (cold spawn)', () => {
     const targetDir = join(sub, 'target');
     mkdirSync(join(targetDir, '.ok', 'local'), { recursive: true });
 
-    const sleeper = Bun.spawn(['sleep', '60']);
+    const sleeper = spawn('sleep', ['60'], { stdio: 'ignore' });
     try {
       writeFileSync(
         join(targetDir, '.ok', 'local', 'server.lock'),

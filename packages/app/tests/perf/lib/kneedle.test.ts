@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findKnee, isotonicSmooth } from './kneedle';
+import { findKnee, isotonicSmooth } from './kneedle.ts';
 
 describe('findKnee', () => {
   describe('shape + degenerate inputs', () => {

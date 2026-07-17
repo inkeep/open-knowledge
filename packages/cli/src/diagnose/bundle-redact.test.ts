@@ -3,7 +3,7 @@
  *
  * The redactor walks staged JSONL + JSON files under a bundle's staging dir
  * and produces:
- *   - doc.name attribute values replaced by `doc:<8 hex>` BLAKE2b-256 hashes
+ *   - doc.name attribute values replaced by `doc:<8 hex>` sha256 hashes
  *   - the absolute content-dir prefix replaced with the literal `<CONTENT_DIR>`
  *   - a stable per-bundle inverse map (`hashed → original`) for `manifest.json`
  *
@@ -430,7 +430,7 @@ describe('redactStagedBundle — contentDir substitution', () => {
 describe('hashOrLookup — collision detection', () => {
   test('first occurrence of a hash claims the inverse-map entry; subsequent distinct collisions go to docNameCollisions', () => {
     // We exercise the internal recordHash helper directly because finding
-    // two distinct doc names that produce the same BLAKE2b-256 8-hex prefix
+    // two distinct doc names that produce the same sha256 8-hex prefix
     // is infeasible. The unit test pins the *behavior* a real collision
     // would trigger — first value wins the docNameMap slot; later distinct
     // colliding values are surfaced separately so the user does not silently

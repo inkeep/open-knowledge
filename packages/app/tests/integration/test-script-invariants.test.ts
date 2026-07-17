@@ -1,111 +1,120 @@
 /**
  * Substrate-additive contract pinning for the Tier-3 test runner.
  *
- * The two-script substrate split documented in Precedent #43
- * only holds if `packages/app/package.json`'s `test` and `test:dom`
- * scripts maintain specific invocation flags. The "wrong-runner
- * failure mode" coverage was BLOCKED on behavioral reproduction
- * (the failure is structurally prevented by the `--path-ignore-patterns`
- * flag — to behaviorally observe it, one would have to mutate the script
- * temporarily, which pollutes the working tree). This meta-test converts
- * that blocked coverage into structural enforcement: when the package.json
- * scripts drift away from the contract, the test fails loudly with a
- * pointer at the broken invariant.
+ * The two-project substrate split only holds if the `test` and `test:dom`
+ * scripts (and the vitest configs they name) maintain specific invariants. This
+ * meta-test converts that into structural enforcement: when the package.json
+ * scripts or the dom project config drift away from the contract, the test
+ * fails loudly with a pointer at the broken invariant.
  *
  * Invariants pinned:
  *
- *   1. Unit-tier `test` script
- *        - MUST pass `--conditions development` (workspace package
- *          resolution for `workspace:*` source imports).
- *        - MUST pass `--path-ignore-patterns='**\/*.dom.test.tsx'` (Bun's
- *          default discovery would otherwise pull in Tier-3 files without
- *          the jsdom preload, causing `document is undefined` at first DOM
- *          access).
- *        - MUST NOT pass `--preload` for jsdom (the unit substrate stays
- *          no-DOM so production `typeof document === 'undefined'`
- *          short-circuits keep their contract).
+ *   1. Unit-tier `test` script + its vitest config
+ *        - The script MUST run vitest with `vitest.config.ts` (the config
+ *          that carries the substrate contract below).
+ *        - The config MUST pin the `development` export condition
+ *          (`ssr.resolve.conditions`) so `workspace:*` imports resolve to
+ *          source, not stale dist.
+ *        - The config MUST exclude `**\/*.dom.test.tsx` so Tier-3 files stay
+ *          out of the unit run (they belong to the dedicated jsdom project).
+ *        - The config MUST run in the `node` environment so the unit
+ *          substrate stays no-DOM and production
+ *          `typeof document === 'undefined'` short-circuits keep their
+ *          contract.
  *
- *   2. Tier-3 `test:dom` script
- *        - MUST delegate to `bash scripts/run-test-dom.sh` (the wrapper
- *          handles "exit 0 when no Tier-3 tests exist" + the substring
- *          discovery filter, which inline `bun test` cannot).
- *
- *   3. `run-test-dom.sh` wrapper
- *        - MUST pass `--preload ./tests/dom/jsdom-preload.ts` (the
- *          invocation-scoped jsdom attachment).
- *        - MUST pass `--conditions development` (parity with unit tier).
- *        - MUST filter to `.dom.test.tsx` (the routing suffix).
- *        - MUST pass `--isolate` (mock.module file-scope; oven-sh/bun#12823).
+ *   2. Tier-3 `test:dom` script + its dedicated jsdom project config
+ *        - The script MUST run vitest with `vitest.dom.config.ts`.
+ *        - The config MUST use the `jsdom` environment (declarative DOM
+ *          globals, replacing the retired invocation-scoped preload chain).
+ *        - The config MUST carry `tests/dom/jsdom-preload.ts` as a per-project
+ *          setupFile (the DOM-global backfill jsdom omits).
+ *        - The config MUST pin the `development` export condition (parity with
+ *          the unit tier).
+ *        - The config MUST scope its `include` to `**\/*.dom.test.tsx` (the
+ *          routing suffix).
+ *        - The config MUST set `isolate: true` so each file runs in a fresh
+ *          module registry — the parity-critical property the retired
+ *          `bun test --isolate` flag provided (oven-sh/bun#12823).
  */
 
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { appVitestConfig } from '../../vitest.config.ts';
+import { appDomVitestConfig } from '../../vitest.dom.config.ts';
 
 const PACKAGE_APP_ROOT = resolve(import.meta.dir, '../..');
 const PACKAGE_JSON_PATH = resolve(PACKAGE_APP_ROOT, 'package.json');
-const RUN_TEST_DOM_PATH = resolve(PACKAGE_APP_ROOT, 'scripts/run-test-dom.sh');
 
 interface PackageJson {
   scripts?: Record<string, string>;
 }
 
 const packageJson: PackageJson = JSON.parse(readFileSync(PACKAGE_JSON_PATH, 'utf-8'));
-const runTestDomSource = readFileSync(RUN_TEST_DOM_PATH, 'utf-8');
 
-describe('Tier-3 substrate-additive contract — package.json + run-test-dom.sh invariants', () => {
-  test('unit-tier `test` script passes --conditions development', () => {
+describe('Tier-3 substrate-additive contract — package.json + vitest config invariants', () => {
+  test('unit-tier `test` script runs vitest with the config pinning development conditions', () => {
     const testScript = packageJson.scripts?.test;
     expect(testScript).toBeDefined();
-    expect(testScript).toContain('--conditions development');
+    expect(testScript).toContain('vitest run');
+    expect(testScript).toContain('vitest.config.ts');
+    // The `--conditions development` workspace-src resolution moved from a bun
+    // CLI flag onto the shared vitest base (`ssr.resolve.conditions`), which the
+    // app config spreads.
+    expect(appVitestConfig.ssr.resolve.conditions).toContain('development');
   });
 
-  test("unit-tier `test` script passes --path-ignore-patterns='**/*.dom.test.tsx'", () => {
-    const testScript = packageJson.scripts?.test;
-    expect(testScript).toBeDefined();
-    // Match either single-quote or double-quote arg quoting and both
-    // `--flag=value` and `--flag value` forms; the invariant is the flag +
-    // suffix glob, not the shell-quoting style.
-    expect(testScript).toMatch(/--path-ignore-patterns[=\s]['"]\*\*\/\*\.dom\.test\.tsx['"]/);
+  test('unit-tier vitest config excludes **/*.dom.test.tsx (Tier-3 stays out of the unit run)', () => {
+    // The bun `--path-ignore-patterns='**/*.dom.test.tsx'` flag is now the
+    // config `test.exclude` glob; the dom tier runs in its own jsdom project.
+    expect(appVitestConfig.test.exclude).toContain('**/*.dom.test.tsx');
   });
 
-  test('unit-tier `test` script does NOT pass --preload (no jsdom in unit substrate)', () => {
-    const testScript = packageJson.scripts?.test;
-    expect(testScript).toBeDefined();
-    expect(testScript).not.toContain('--preload');
+  test('unit-tier vitest config runs in the node environment (no jsdom in the unit substrate)', () => {
+    // Keeps production `typeof document === 'undefined'` short-circuits honest —
+    // the unit tier must not carry jsdom globals.
+    expect(appVitestConfig.test.environment).toBe('node');
+    // Runtime no-bleed proof: this meta-test itself runs in a non-dom project
+    // (the integration tier is node-env). The jsdom project's `environment:
+    // 'jsdom'` is scoped per project, so no DOM global leaks into node-env
+    // projects — `document` is genuinely absent here even though 1833 dom-tier
+    // tests render against jsdom's `document` in their own project.
+    expect(typeof document).toBe('undefined');
+    expect(typeof window).toBe('undefined');
   });
 
-  test('`test:dom` script delegates to bash scripts/run-test-dom.sh', () => {
+  test('`test:dom` script runs vitest with the dedicated jsdom project config', () => {
     const testDomScript = packageJson.scripts?.['test:dom'];
     expect(testDomScript).toBeDefined();
-    expect(testDomScript).toContain('bash scripts/run-test-dom.sh');
+    expect(testDomScript).toContain('vitest run');
+    expect(testDomScript).toContain('vitest.dom.config.ts');
   });
 
-  test('run-test-dom.sh passes --preload ./tests/dom/jsdom-preload.ts (invocation-scoped jsdom)', () => {
-    // Match the preload-flag with either inline-array or back-to-back
-    // arg form; what matters is the path resolves to the jsdom-preload
-    // module relative to packages/app/.
-    expect(runTestDomSource).toMatch(/--preload\s+[.'"\s]*\.?\/?tests\/dom\/jsdom-preload\.ts/);
+  test('dom project runs the jsdom environment with the per-project jsdom setup file', () => {
+    // Declarative replacement for the retired `--preload ./tests/dom/jsdom-preload.ts`
+    // invocation flag: the jsdom environment installs DOM globals per project and
+    // the setupFile backfills the handful jsdom omits.
+    expect(appDomVitestConfig.test.environment).toBe('jsdom');
+    const setupFiles = appDomVitestConfig.test.setupFiles as string[];
+    expect(setupFiles.some((path) => path.endsWith('tests/dom/jsdom-preload.ts'))).toBe(true);
   });
 
-  test('run-test-dom.sh passes --conditions development (parity with unit tier)', () => {
-    expect(runTestDomSource).toContain('--conditions development');
+  test('dom project pins the development export condition (parity with the unit tier)', () => {
+    expect(appDomVitestConfig.ssr.resolve.conditions).toContain('development');
   });
 
-  test('run-test-dom.sh filters discovery to the .dom.test.tsx suffix (D18 routing)', () => {
-    expect(runTestDomSource).toContain('.dom.test.tsx');
+  test('dom project scopes include to the .dom.test.tsx routing suffix', () => {
+    expect(appDomVitestConfig.test.include).toEqual(['**/*.dom.test.tsx']);
   });
 
-  test('run-test-dom.sh passes --isolate (mock.module file-scope under oven-sh/bun#12823)', () => {
-    // Bun's mock.module is in-place: a mock declared at module level in
-    // one .dom.test.tsx file persists into sibling files when bun test
-    // iterates them in one invocation. Linux CI's filesystem iteration
-    // ordered config-provider.dom.test.tsx (which mocks
-    // '@/hooks/use-theme-bridge' to a no-op) BEFORE
-    // use-theme-bridge.dom.test.tsx, replacing the real hook globally and
-    // producing the Received: 0 mode the substrate hit on PR #853.
-    // --isolate gives each file a fresh global object so module patches
-    // don't bleed. Removing this flag would re-open the leak class.
-    expect(runTestDomSource).toContain('--isolate');
+  test('dom project sets isolate:true (per-file fresh module registry, oven-sh/bun#12823)', () => {
+    // Bun's mock.module is in-place: a mock declared at module level in one
+    // .dom.test.tsx file persists into sibling files run in one invocation. Linux
+    // CI's filesystem iteration ordered config-provider.dom.test.tsx (which mocks
+    // '@/hooks/use-theme-bridge' to a no-op) BEFORE use-theme-bridge.dom.test.tsx,
+    // replacing the real hook globally and producing the Received: 0 mode the
+    // substrate hit on PR #853. `isolate: true` gives each file a fresh module
+    // registry so mocks don't bleed. Removing it would re-open the leak class.
+    expect(appDomVitestConfig.test.isolate).toBe(true);
   });
 });

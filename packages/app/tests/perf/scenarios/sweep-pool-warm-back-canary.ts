@@ -13,7 +13,7 @@
  * Per cell: cold-load README + warm-back twice + sample histogram.
  */
 
-import { defineSweep } from '../lib/define-sweep';
+import { defineSweep } from '../lib/define-sweep.ts';
 
 interface CellResult {
   fixture: 'tight' | 'broad';

@@ -57,7 +57,16 @@ describe('buildPiExtensionSource', () => {
     // Throws on a syntax error — an interpolation regression (unescaped
     // backtick / ${ in the template) fails here rather than inside Pi.
     expect(() => transpiler.transformSync(buildPiExtensionSource())).not.toThrow();
-    expect(() => transpiler.transformSync(buildPiExtensionSource({ mode: 'dev' }))).not.toThrow();
+    // Dev-mode source resolves the local dist launcher from argv[1]; the test
+    // runner's argv[1] is its own worker, so stub a CLI-shaped path (as the
+    // sibling dev-mode test does) to let repo-root inference succeed.
+    const originalArgv1 = process.argv[1];
+    process.argv[1] = '/repo/packages/cli/src/cli.ts';
+    try {
+      expect(() => transpiler.transformSync(buildPiExtensionSource({ mode: 'dev' }))).not.toThrow();
+    } finally {
+      process.argv[1] = originalArgv1;
+    }
   });
 
   it('registers under the ok_ prefix so OK tools never shadow Pi built-ins', () => {
@@ -221,8 +230,10 @@ rl.on("line", (line) => {
       expect(result?.content).toEqual([{ type: 'text', text: 'ran: ls' }]);
       expect(result?.details).toEqual({ echoed: 'ls' });
 
-      // MCP isError results surface as a throw — Pi's error signal.
-      expect(tools.get('ok_boom')?.execute('t2', {}, undefined)).rejects.toThrow('it broke');
+      // MCP isError results surface as a throw — Pi's error signal. Await the
+      // rejection so it settles before the finally-block shutdown closes the
+      // client (an un-awaited assertion races the teardown under vitest).
+      await expect(tools.get('ok_boom')?.execute('t2', {}, undefined)).rejects.toThrow('it broke');
     } finally {
       await handlers.get('session_shutdown')?.({}, {});
     }

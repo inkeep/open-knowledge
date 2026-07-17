@@ -87,10 +87,14 @@
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Browser, Page } from '@playwright/test';
-import { asymmetricFixture, broadFixture, tightFixture } from '../fixtures/cache-regime-rotation';
-import type { WorkloadFixture } from '../fixtures/cache-regime-rotation/types';
-import { type CellMeasurement, measureCell, type WorkloadDriver } from '../lib/cell-measurement';
-import { defineScenario, type ScenarioCtx } from '../lib/scenario';
+import {
+  asymmetricFixture,
+  broadFixture,
+  tightFixture,
+} from '../fixtures/cache-regime-rotation/index.ts';
+import type { WorkloadFixture } from '../fixtures/cache-regime-rotation/types.ts';
+import { type CellMeasurement, measureCell, type WorkloadDriver } from '../lib/cell-measurement.ts';
+import { defineScenario, type ScenarioCtx } from '../lib/scenario.ts';
 import {
   type BootstrapConfidenceInterval,
   type CampaignVerdict,
@@ -103,7 +107,7 @@ import {
   type SweepStage,
   type VerdictMeasurement,
   type WorkloadFixtureRef,
-} from '../lib/sweep-runner';
+} from '../lib/sweep-runner.ts';
 
 export const SCENARIO_NAME = 'sweep-cache-regime';
 export const BASELINE_KEY = 'sweep-cache-regime';

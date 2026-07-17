@@ -271,7 +271,7 @@ describe('initContent', () => {
 // the tree the test is running in legitimately has no committed copy
 // to drift against.
 function findCommittedDogfoodFile(relativePath: string): string | null {
-  let dir = dirname(import.meta.path);
+  let dir = import.meta.dirname;
   while (dir !== '/' && !existsSync(join(dir, relativePath))) {
     dir = dirname(dir);
   }
@@ -283,7 +283,7 @@ const COMMITTED_OKIGNORE = findCommittedDogfoodFile('.okignore');
 
 // Drift guard: the committed `.ok/.gitignore` in this repo MUST stay
 // in sync with what `ok init` writes.
-describe.if(COMMITTED_OK_GITIGNORE !== null)(
+describe.runIf(COMMITTED_OK_GITIGNORE !== null)(
   'committed .ok/.gitignore matches scaffold output',
   () => {
     it('matches OK_GITIGNORE_CONTENT byte-for-byte', () => {
@@ -306,7 +306,7 @@ describe.if(COMMITTED_OK_GITIGNORE !== null)(
 
 // Drift guard: the committed project-root `.okignore` in this repo MUST stay
 // in sync with `OK_OKIGNORE_TEMPLATE`.
-describe.if(COMMITTED_OKIGNORE !== null)('committed .okignore matches scaffold output', () => {
+describe.runIf(COMMITTED_OKIGNORE !== null)('committed .okignore matches scaffold output', () => {
   it('matches OK_OKIGNORE_TEMPLATE byte-for-byte', () => {
     const tmp = resolve(
       tmpdir(),

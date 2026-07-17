@@ -13,7 +13,7 @@
 #   `<parent>/public/open-knowledge/.husky/` — clobbering whatever the
 #   parent had configured. After that, every `git push` from anywhere in
 #   agents-private fires OK's standalone-clone hook
-#   (`bun run format && bun run lint && bun run check`) instead of the
+#   (`pnpm run format && pnpm run lint && pnpm run check`) instead of the
 #   parent's intended `pnpm check:monorepo-traps && pnpm check:pre-push`.
 #   Developers then either install node_modules in every subtree or skip
 #   hooks with `--no-verify` (forbidden by the repo's Git Safety Protocol).
@@ -25,7 +25,7 @@
 #   `.git` is at the OK root (standalone-clone shape) but the Copybara
 #   manifest does NOT include `.husky/pre-commit` or `.husky/pre-push` in
 #   the mirror output. A fresh public clone therefore has no hook files
-#   for husky to register. Running `bunx husky` would only create empty
+#   for husky to register. Running `pnpm exec husky` would only create empty
 #   `_/` scaffolding and the chmod would silently no-op, leaving cruft.
 #   The second guard skips husky entirely in that case.
 #
@@ -55,5 +55,5 @@ if [ ! -f .husky/pre-commit ] && [ ! -f .husky/pre-push ]; then
   exit 0
 fi
 
-bunx husky
+pnpm exec husky
 chmod +x .husky/pre-commit .husky/pre-push 2>/dev/null || true

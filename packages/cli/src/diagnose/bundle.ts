@@ -169,7 +169,7 @@ export interface CollectBundleOpts {
   processDir?: string;
   /**
    * Apply `--redact` to the staged copies: hash `doc.name` attribute values
-   * with BLAKE2b-256(value).slice(0,8), replace the absolute content-dir
+   * with sha256(value).slice(0,8), replace the absolute content-dir
    * prefix in any string field with the literal `<CONTENT_DIR>` token, and
    * record the inverse map in `manifest.redaction.docNameMap`. The original
    * on-disk files under `<contentDir>/.ok/local/{telemetry,logs}/` are

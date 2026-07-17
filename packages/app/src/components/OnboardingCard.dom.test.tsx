@@ -12,7 +12,10 @@ import {
   type OnboardingCardStorage,
   type OnboardingCardStore,
 } from '@/lib/onboarding-card-store';
-import { OnboardingCard } from './OnboardingCard';
+
+// Import the component AFTER the mock above registers, so its transitive
+// `@/components/OkBlob` import binds to the stub rather than the real mascot.
+const { OnboardingCard } = await import('./OnboardingCard');
 
 function freshStore(): OnboardingCardStore {
   const map = new Map<string, string>();

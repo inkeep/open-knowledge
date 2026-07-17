@@ -651,6 +651,14 @@ test.describe('non-embedded UA', () => {
     page,
     api,
   }) => {
+    // @tiptap/core's isMacOS() (which drives the spoken-accelerator aria-label)
+    // reads navigator.platform, which the describe-level userAgent spoof does
+    // NOT set. Force it to macOS so the mac accelerator form renders regardless
+    // of the CI runner OS or the bundled Chromium's UA-derived platform (newer
+    // Chromium stopped deriving navigator.platform from a spoofed Mac UA).
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel', configurable: true });
+    });
     await seedDoc(api, 'qa-037');
     await page.setViewportSize(WIDE);
     await page.goto('/#/qa-037');

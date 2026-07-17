@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 /**
  * `bun run tests/perf/profile.ts --scenario=<name>` — scenario driver.
  *
@@ -38,8 +38,8 @@ import { hostname, platform } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Browser, chromium, type Page, type Request, type Response } from '@playwright/test';
-import type { PerfCollector, ProfilerRenderEvent } from '../../src/lib/perf/types';
-import { traceEnd, traceStart } from './lib/cdp-tracer';
+import type { PerfCollector, ProfilerRenderEvent } from '../../src/lib/perf/types.ts';
+import { traceEnd, traceStart } from './lib/cdp-tracer.ts';
 import type {
   NetworkRequestRecord,
   PerfMarkRecord,
@@ -49,7 +49,7 @@ import type {
   ScenarioResult,
   ScenarioResultMetadata,
   WebVitalRecord,
-} from './lib/scenario';
+} from './lib/scenario.ts';
 
 // ─────────────────────────── Constants ─────────────────────────────────────
 

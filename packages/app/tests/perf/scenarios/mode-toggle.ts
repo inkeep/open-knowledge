@@ -21,9 +21,9 @@
  * architecturally-bounded.
  */
 
-import { markerFor } from '../lib/doc-markers';
-import { installLongtaskObserver } from '../lib/longtask-observer';
-import { defineScenario } from '../lib/scenario';
+import { markerFor } from '../lib/doc-markers.ts';
+import { installLongtaskObserver } from '../lib/longtask-observer.ts';
+import { defineScenario } from '../lib/scenario.ts';
 
 const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'PROJECT';
 const WAIT_CONTENT_MS = 90_000;

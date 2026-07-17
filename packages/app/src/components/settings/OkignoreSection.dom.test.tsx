@@ -38,7 +38,10 @@ function installLocalStorage() {
   });
 }
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{(value === 1 ? one : other).replace('#', String(value))}</>
   ),

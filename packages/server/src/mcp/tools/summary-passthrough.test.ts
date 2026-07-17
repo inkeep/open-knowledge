@@ -30,6 +30,7 @@ import type { z } from 'zod';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import { register as registerEdit } from './edit.ts';
+import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { register as registerMove } from './move.ts';
 import { register as registerRestoreVersion } from './restore-version.ts';
 import type { ServerInstance } from './shared.ts';
@@ -84,12 +85,12 @@ function createCaptureServer() {
 let recordedRequest: { url: string; body: Record<string, unknown> } | undefined;
 let mockResponse: Record<string, unknown> = { ok: true };
 
-let testServer: ReturnType<typeof Bun.serve>;
+let testServer: FetchTestServer;
 let baseUrl: string;
 let tmpDir: string;
 
-beforeAll(() => {
-  testServer = Bun.serve({
+beforeAll(async () => {
+  testServer = await startFetchTestServer({
     port: 0,
     hostname: '127.0.0.1',
     async fetch(req) {

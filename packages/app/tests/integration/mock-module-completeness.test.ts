@@ -27,7 +27,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { Glob } from 'bun';
 
 const APP_ROOT = join(import.meta.dir, '..', '..');
 
@@ -78,7 +77,7 @@ function factoryHasActualSpread(factory: string): boolean {
 
 describe('mock.module factory completeness (process-global leak guard)', () => {
   test('every plain-test factory spreads the real module or is allowlisted', async () => {
-    const glob = new Glob('src/**/*.test.{ts,tsx}');
+    const glob = new Bun.Glob('src/**/*.test.{ts,tsx}');
     const violations: string[] = [];
     for await (const file of glob.scan(APP_ROOT)) {
       if (file.includes('.dom.test.')) continue;

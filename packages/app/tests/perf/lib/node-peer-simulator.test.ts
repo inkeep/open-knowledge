@@ -17,7 +17,7 @@
  */
 
 import { afterEach, describe, expect, test } from 'bun:test';
-import { createNodePeerSimulator, type NodePeerSimulatorHandle } from './node-peer-simulator';
+import { createNodePeerSimulator, type NodePeerSimulatorHandle } from './node-peer-simulator.ts';
 
 const DUMMY_PORT = 1;
 

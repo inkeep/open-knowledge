@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -42,6 +43,43 @@ const parcelPkgDir = resolve(okRoot, 'node_modules', '@parcel', 'watcher');
 const HEADERS_ONLY_DEPS = new Set(['node-addon-api']);
 
 /**
+ * Resolve a dependency's package directory the way Node's runtime `require()`
+ * does from `fromPkgDir`. pnpm's isolated layout does not nest a package's
+ * deps under its own `node_modules/` nor hoist them to the workspace root, so
+ * path-guessing misses the transitive tree entirely — Node's own resolver is
+ * the only reliable oracle for where the wrapper's `require()` will land.
+ */
+function resolveDepPkgDir(
+  requireFrom: ReturnType<typeof createRequire>,
+  depName: string,
+): string | undefined {
+  // Direct package.json resolve — works whenever the dep has no `exports`
+  // restriction (true across @parcel/watcher's runtime tree).
+  try {
+    return dirname(requireFrom.resolve(`${depName}/package.json`));
+  } catch {
+    // exports-restricted: fall through to the main-entry walk-up.
+  }
+  try {
+    let dir = dirname(requireFrom.resolve(depName));
+    for (let hops = 0; hops < 12; hops++) {
+      const pj = resolve(dir, 'package.json');
+      if (existsSync(pj)) {
+        const name = (JSON.parse(readFileSync(pj, 'utf8')) as { name?: string }).name;
+        if (name === depName) return dir;
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  } catch {
+    // Genuinely unresolvable (e.g. an optional dep absent on this platform) —
+    // skip; the per-dep coverage assertions never see it, same as before.
+  }
+  return undefined;
+}
+
+/**
  * Collect direct + transitive `dependencies` of @parcel/watcher whose
  * runtime presence the wrapper actually needs. Optional / platform-specific
  * native packages (`@parcel/watcher-*`) are covered by the separate
@@ -58,20 +96,16 @@ function collectRuntimeDeps(rootPkgDir: string): Set<string> {
     const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as {
       dependencies?: Record<string, string>;
     };
+    const requireFromPkg = createRequire(pkgJsonPath);
     for (const depName of Object.keys(pkg.dependencies ?? {})) {
       if (HEADERS_ONLY_DEPS.has(depName)) continue;
       if (seen.has(depName)) continue;
       seen.add(depName);
-      // Bun may hoist to the workspace root or nest under the parent pkg.
-      // Either resolves the same way Node does at runtime, so both are
-      // valid sources of the dep's transitive tree.
-      const nestedPath = resolve(pkgDir, 'node_modules', depName);
-      const hoistedPath = resolve(okRoot, 'node_modules', depName);
-      if (existsSync(nestedPath)) {
-        queue.push(nestedPath);
-      } else if (existsSync(hoistedPath)) {
-        queue.push(hoistedPath);
-      }
+      // Resolve via Node so the walk descends pnpm's `.pnpm/`-isolated tree
+      // (path-guessing at `node_modules/<dep>` silently stops at the direct
+      // deps under pnpm and leaves transitive deps unverified).
+      const depDir = resolveDepPkgDir(requireFromPkg, depName);
+      if (depDir !== undefined) queue.push(depDir);
     }
   }
   return seen;

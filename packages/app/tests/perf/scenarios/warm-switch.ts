@@ -20,9 +20,9 @@
  * E2E tests `docs-open.e2e.ts` which aren't re-run here, just not regressed).
  */
 
-import { markerFor } from '../lib/doc-markers';
-import { installLongtaskObserver } from '../lib/longtask-observer';
-import { defineScenario } from '../lib/scenario';
+import { markerFor } from '../lib/doc-markers.ts';
+import { installLongtaskObserver } from '../lib/longtask-observer.ts';
+import { defineScenario } from '../lib/scenario.ts';
 
 const SMALL_DOC = process.env.OK_PERF_SMALL_DOC ?? 'README';
 const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'PROJECT';

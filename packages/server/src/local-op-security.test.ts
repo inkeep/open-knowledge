@@ -1,19 +1,64 @@
-import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, mock, test, vi } from 'bun:test';
 import { EventEmitter } from 'node:events';
-import * as fs from 'node:fs';
+import type * as fs from 'node:fs';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  checkLocalOpSecurity,
-  createConcurrencyGuard,
-  hasValidLocalOpOrigin,
-  isAllowedGitUrl,
-  isLoopbackRequest,
-  isPathWithinHome,
-  isSafeLocalPath,
-} from './local-op-security.ts';
+
+// node:fs is mocked so realpathSync/lstatSync can be redirected per test: vitest
+// cannot redefine a live ESM namespace binding the way bun's spyOn did. The SUT
+// is imported after the mock; each fs mock defaults to the real implementation.
+// The top-level `realpathSync` import above stays real — doMock does not
+// retro-patch already-evaluated bindings — so test fixtures still resolve paths.
+const realpathSyncMock = vi.fn();
+const lstatSyncMock = vi.fn();
+let realFs: typeof import('node:fs');
+let checkLocalOpSecurity: typeof import('./local-op-security.ts').checkLocalOpSecurity;
+let createConcurrencyGuard: typeof import('./local-op-security.ts').createConcurrencyGuard;
+let hasValidLocalOpOrigin: typeof import('./local-op-security.ts').hasValidLocalOpOrigin;
+let isAllowedGitUrl: typeof import('./local-op-security.ts').isAllowedGitUrl;
+let isLoopbackRequest: typeof import('./local-op-security.ts').isLoopbackRequest;
+let isPathWithinHome: typeof import('./local-op-security.ts').isPathWithinHome;
+let isSafeLocalPath: typeof import('./local-op-security.ts').isSafeLocalPath;
+
+beforeAll(async () => {
+  realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
+  realpathSyncMock.mockImplementation(realFs.realpathSync as (...args: never[]) => unknown);
+  lstatSyncMock.mockImplementation(realFs.lstatSync as (...args: never[]) => unknown);
+  mock.module('node:fs', () => ({
+    ...realFs,
+    realpathSync: realpathSyncMock,
+    lstatSync: lstatSyncMock,
+  }));
+  ({
+    checkLocalOpSecurity,
+    createConcurrencyGuard,
+    hasValidLocalOpOrigin,
+    isAllowedGitUrl,
+    isLoopbackRequest,
+    isPathWithinHome,
+    isSafeLocalPath,
+  } = await import('./local-op-security.ts'));
+});
+
+function overrideRealpathSync(impl: typeof fs.realpathSync): { mockRestore: () => void } {
+  realpathSyncMock.mockImplementation(impl as (...args: never[]) => unknown);
+  return {
+    mockRestore: () => {
+      realpathSyncMock.mockImplementation(realFs.realpathSync as (...args: never[]) => unknown);
+    },
+  };
+}
+
+function overrideLstatSync(impl: typeof fs.lstatSync): { mockRestore: () => void } {
+  lstatSyncMock.mockImplementation(impl as (...args: never[]) => unknown);
+  return {
+    mockRestore: () => {
+      lstatSyncMock.mockImplementation(realFs.lstatSync as (...args: never[]) => unknown);
+    },
+  };
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -286,11 +331,8 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
   });
 
   function spyEpermOn(targetPath: string): { mockRestore: () => void } {
-    const original = fs.realpathSync;
-    return spyOn(fs, 'realpathSync').mockImplementation(((
-      p: fs.PathLike,
-      options?: unknown,
-    ): string => {
+    const original = realFs.realpathSync;
+    return overrideRealpathSync(((p: fs.PathLike, options?: unknown): string => {
       if (String(p) === targetPath) {
         const err = new Error(
           `EPERM: operation not permitted, lstat '${targetPath}'`,
@@ -341,11 +383,8 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
     // narrowing to EPERM-only is caught.
     const protectedLeaf = join(fakeHome, 'protected-leaf-eacces-dir');
     mkdirSync(protectedLeaf);
-    const original = fs.realpathSync;
-    const spy = spyOn(fs, 'realpathSync').mockImplementation(((
-      p: fs.PathLike,
-      options?: unknown,
-    ): string => {
+    const original = realFs.realpathSync;
+    const spy = overrideRealpathSync(((p: fs.PathLike, options?: unknown): string => {
       if (String(p) === protectedLeaf) {
         const err = new Error(
           `EACCES: permission denied, lstat '${protectedLeaf}'`,
@@ -390,8 +429,8 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
     // relax it into a `treat-EPERM-as-ENOENT-and-walk-up` bypass.
     const blocked = join(fakeHome, 'lstat-blocked-dir');
     mkdirSync(blocked);
-    const originalLstat = fs.lstatSync;
-    const spy = spyOn(fs, 'lstatSync').mockImplementation(((p: fs.PathLike, options?: unknown) => {
+    const originalLstat = realFs.lstatSync;
+    const spy = overrideLstatSync(((p: fs.PathLike, options?: unknown) => {
       if (String(p) === blocked) {
         const err = new Error(
           `EPERM: operation not permitted, lstat '${blocked}'`,
@@ -463,11 +502,8 @@ describe('isPathWithinHome — realpath syscall failure on non-symlink', () => {
       symlinkSync(tmpOutside, escapeLink);
       mkdirSync(join(tmpOutside, 'real-child'));
       const realChildThroughLink = join(escapeLink, 'real-child');
-      const original = fs.realpathSync;
-      const spy = spyOn(fs, 'realpathSync').mockImplementation(((
-        p: fs.PathLike,
-        options?: unknown,
-      ): string => {
+      const original = realFs.realpathSync;
+      const spy = overrideRealpathSync(((p: fs.PathLike, options?: unknown): string => {
         if (String(p) === realChildThroughLink) {
           const err = new Error(
             `EACCES: permission denied, lstat '${realChildThroughLink}'`,
@@ -520,11 +556,8 @@ describe('isPathWithinHome — fail-closed defensive guards', () => {
     method: 'realpathSync' | 'lstatSync',
   ): { mockRestore: () => void } {
     if (method === 'realpathSync') {
-      const original = fs.realpathSync;
-      return spyOn(fs, 'realpathSync').mockImplementation(((
-        p: fs.PathLike,
-        options?: unknown,
-      ): string => {
+      const original = realFs.realpathSync;
+      return overrideRealpathSync(((p: fs.PathLike, options?: unknown): string => {
         if (String(p) === targetPath) {
           const err = new Error(
             `${code}: simulated, lstat '${targetPath}'`,
@@ -537,11 +570,8 @@ describe('isPathWithinHome — fail-closed defensive guards', () => {
         return original(p as never, options as never) as string;
       }) as typeof fs.realpathSync);
     }
-    const original = fs.lstatSync;
-    return spyOn(fs, 'lstatSync').mockImplementation(((
-      p: fs.PathLike,
-      options?: unknown,
-    ): fs.Stats => {
+    const original = realFs.lstatSync;
+    return overrideLstatSync(((p: fs.PathLike, options?: unknown): fs.Stats => {
       if (String(p) === targetPath) {
         const err = new Error(`${code}: simulated, lstat '${targetPath}'`) as NodeJS.ErrnoException;
         err.code = code;

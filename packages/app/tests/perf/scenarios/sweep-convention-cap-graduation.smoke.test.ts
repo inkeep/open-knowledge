@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import type { TempoQueryResult } from '../lib/tempo-client';
+import type { TempoQueryResult } from '../lib/tempo-client.ts';
 import {
   analyzeCalibration,
   buildFullCellResults,
@@ -38,7 +38,7 @@ import {
   SCENARIO_NAME,
   TEMPO_PROFILE_ABORT_THRESHOLD,
   type TempoQueryFn,
-} from './sweep-convention-cap-graduation';
+} from './sweep-convention-cap-graduation.ts';
 
 // ---------------------------------------------------------------------------
 // LATENCY_PROFILES — well-formedness
@@ -751,7 +751,7 @@ import {
   SYNC_METHODOLOGY_SAFETY_MARGIN_RANGE,
   SYNC_REJECT_RATE_TIER_1_THRESHOLD,
   SYNC_REJECT_RATE_TIER_2_THRESHOLD,
-} from './sweep-convention-cap-graduation';
+} from './sweep-convention-cap-graduation.ts';
 
 describe('projectRejectRateAtCap', () => {
   test('zero rate when samples are empty', () => {
@@ -961,7 +961,7 @@ import {
   buildMountTimeCdf,
   computeMountMethodology,
   DEFAULT_MOUNT_METHODOLOGY_LEVERS,
-} from './sweep-convention-cap-graduation';
+} from './sweep-convention-cap-graduation.ts';
 
 describe('buildMountTimeCdf', () => {
   test('returns empty array on empty samples', () => {
@@ -1193,7 +1193,7 @@ import {
   DEPLOYMENT_TOPOLOGY_FAIL_THRESHOLD,
   detectHostFingerprint,
   MOUNT_VS_SYNC_TAIL_INDEPENDENCE_FAIL_THRESHOLD,
-} from './sweep-convention-cap-graduation';
+} from './sweep-convention-cap-graduation.ts';
 
 describe('computeDifferentials', () => {
   function makePerProfile(

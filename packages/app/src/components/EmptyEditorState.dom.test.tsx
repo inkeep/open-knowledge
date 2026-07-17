@@ -10,10 +10,12 @@
  * pin exactly the branch this component owns.
  */
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
     t: (input: TemplateStringsArray | string, ...values: unknown[]) =>
@@ -58,9 +60,11 @@ mock.module('@/lib/documents-fetch', () => ({
   }),
 }));
 
-import { EmptyEditorState } from './EmptyEditorState';
-
 afterEach(cleanup);
+
+// Import the component AFTER the mocks above register so its transitive
+// dependencies bind to the stubs rather than the real modules.
+const { EmptyEditorState } = await import('./EmptyEditorState');
 
 describe('EmptyEditorState terminal-aware collapse', () => {
   test('no terminal: renders the full view (composer surface present)', async () => {

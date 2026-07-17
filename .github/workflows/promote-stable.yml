@@ -125,7 +125,7 @@ jobs:
           # main HEAD.
           token: ${{ steps.app-token.outputs.token }}
           # We need to operate on the beta tag's SHA for the package.json
-          # override + bun changeset publish. We resolve and check it out
+          # override + pnpm exec changeset publish. We resolve and check it out
           # explicitly below; default-branch checkout above is just so the
           # workflow scripts (this file) live next to a writable working
           # tree.
@@ -313,7 +313,7 @@ jobs:
           # Under the zero-commit-bump cadence, beta release bodies are the
           # source of truth — packages/*/CHANGELOG.md no longer accumulates
           # per-beta entries (only per-stable, written by main-reset's
-          # `bun changeset version` at promotion time). Each beta body carries
+          # `pnpm exec changeset version` at promotion time). Each beta body carries
           # ONLY the delta introduced in that beta (compute-next-beta.mjs filters
           # against the prior beta's embedded consumed-set marker), so the cycle's
           # betas concatenated are a clean, duplication-free set of the changes
@@ -415,7 +415,7 @@ jobs:
         # Same-repo repository_dispatch into release.yml. release.yml
         # listens for event_type=publish-stable, checks out the stable
         # tag, applies the transient package.json#version override, and
-        # runs `bun changeset publish --tag latest --provenance` via
+        # runs `pnpm exec changeset publish --tag latest --provenance` via
         # npm Trusted Publishing OIDC.
         #
         # Why we delegate to release.yml instead of publishing here:

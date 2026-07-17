@@ -57,7 +57,10 @@ const sensorCalls: Array<{ sensor: unknown; options: unknown }> = [];
 const sortableContextProps: Array<{ items: string[]; strategy: unknown }> = [];
 const sortableOptions: Array<{ id: string; disabled?: boolean }> = [];
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));

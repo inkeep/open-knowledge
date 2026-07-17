@@ -17,8 +17,8 @@
  *   3. Compute the delta: IDs in current pile NOT in prior consumed set.
  *      Empty delta → skip dispatch.
  *   4. Transiently rewrite `pre.json#changesets` to the prior consumed set so
- *      `bun changeset version` consumes ONLY the delta when it runs.
- *   5. Run `bun changeset version` — produces per-package CHANGELOG.md prepends
+ *      `pnpm exec changeset version` consumes ONLY the delta when it runs.
+ *   5. Run `pnpm exec changeset version` — produces per-package CHANGELOG.md prepends
  *      whose top section is the canonical Changesets rendering of the delta.
  *   6. Diff each package's CHANGELOG.md (before vs after) and harvest the new
  *      top section. Union across packages, dedupe by commit hash, drop the
@@ -169,7 +169,7 @@ function readChangelogs() {
 }
 
 export function extractDeltaSection(content) {
-  // CHANGELOG.md shape after `bun changeset version`:
+  // CHANGELOG.md shape after `pnpm exec changeset version`:
   //   # @inkeep/foo
   //
   //   ## NEW-VERSION
@@ -348,18 +348,18 @@ function main() {
 
   // Transient pre.json mutation: tell Changesets "these IDs are already
   // consumed in this pre-cycle." It then consumes only the delta when
-  // `bun changeset version` runs below. The mutation lives only on disk for
+  // `pnpm exec changeset version` runs below. The mutation lives only on disk for
   // this run — the workflow's `git restore .` cleanup discards it.
   writeFileSync(
     PRE_PATH,
     `${JSON.stringify({ ...pre, changesets: priorConsumed }, null, 2)}\n`,
   );
 
-  const versionRes = spawnSync('bun', ['changeset', 'version'], {
+  const versionRes = spawnSync('pnpm', ['exec', 'changeset', 'version'], {
     stdio: ['ignore', 2, 2],
   });
   if (versionRes.status !== 0) {
-    throw new Error(`bun changeset version exited ${versionRes.status}`);
+    throw new Error(`pnpm exec changeset version exited ${versionRes.status}`);
   }
 
   const changelogsAfter = readChangelogs();

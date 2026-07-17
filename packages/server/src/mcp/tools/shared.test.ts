@@ -5,7 +5,7 @@
  * No CI-skip gate is applied here: this file imports nothing from `simple-git`
  * or any spawn-based fixture (the oven-sh/bun#11892 unreaped-children class of
  * failure that motivated CI-skips on `exec.test.ts` and similar MCP tool tests).
- * All tests in this file use the local `Bun.serve` test server or pure
+ * All tests in this file use a local `node:http` test server or pure
  * functions, so they're safe to run in CI. Critical: `normalizeResponse` is
  * the boundary canonicalizer that translates RFC 9457 problem+json → flat
  * `{ ok: false, error }` for 18 MCP tool consumers; silently disabling its
@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import { type Config, ConfigSchema } from '../../config/schema.ts';
+import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import {
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
@@ -373,11 +374,11 @@ describe('resolveProjectServerContext', () => {
 
 // ── HTTP helpers — test against a local test server ──
 
-let testServer: ReturnType<typeof Bun.serve>;
+let testServer: FetchTestServer;
 let baseUrl: string;
 
-beforeAll(() => {
-  testServer = Bun.serve({
+beforeAll(async () => {
+  testServer = await startFetchTestServer({
     port: 0, // random available port
     hostname: '127.0.0.1',
     fetch(req) {
@@ -702,7 +703,7 @@ describe('normalizeResponse — RFC 9457 + flat success', () => {
     // Pin the deepest fallback. Body has no `error`, no `message`, no
     // `title` — consumers still get a non-undefined string they can
     // interpolate.
-    const stripeServer = Bun.serve({
+    const stripeServer = await startFetchTestServer({
       port: 0,
       hostname: '127.0.0.1',
       fetch: () => Response.json({ unrelated: true }, { status: 503 }),
@@ -719,7 +720,7 @@ describe('normalizeResponse — RFC 9457 + flat success', () => {
 
   test('non-RFC-9457 4xx with body.error string → `error` ← body.error', async () => {
     // Body's own `error` field wins over `message` (priority 1 of 3).
-    const stubServer = Bun.serve({
+    const stubServer = await startFetchTestServer({
       port: 0,
       hostname: '127.0.0.1',
       fetch: () => Response.json({ error: 'rate limited', message: 'try again' }, { status: 429 }),

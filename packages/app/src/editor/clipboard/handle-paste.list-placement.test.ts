@@ -23,7 +23,6 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 import * as actualSonner from 'sonner';
 import { installDomGlobals } from '../walk-currency-test-harness';
-import { createHandlePaste } from './handle-paste';
 import { createClipboardTextSerializer } from './serialize';
 
 // The dispatcher pulls the degrade-path toast (sonner) into its import graph;
@@ -32,11 +31,17 @@ mock.module('sonner', () => ({ ...actualSonner, toast: { error: mock(() => {}) }
 
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });
 
+// Bind the dispatcher after the sonner mock is registered so its transitive
+// sonner import resolves to the stub (the mock facade only rewrites imports
+// resolved after the doMock call).
+let createHandlePaste: typeof import('./handle-paste').createHandlePaste;
+
 let restoreDomGlobals: (() => void) | null = null;
 const editors: Editor[] = [];
 
-beforeAll(() => {
+beforeAll(async () => {
   restoreDomGlobals = installDomGlobals();
+  ({ createHandlePaste } = await import('./handle-paste'));
 });
 
 afterAll(() => {

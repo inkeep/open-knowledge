@@ -6,7 +6,9 @@ describe('CLI argv parsing', () => {
   test('uses node argv slicing when launched by Electron as Node', () => {
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '--conditions=development',
         '-e',
         `
@@ -46,7 +48,9 @@ describe('CLI --version notice', () => {
     // would pass version-notice.test.ts but fail here.
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '--conditions=development',
         '-e',
         `

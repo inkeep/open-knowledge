@@ -401,12 +401,21 @@ describe('applyProjectIntegrations', () => {
   });
 
   test('passes install options through to mcpConfigWriter (dev mode)', () => {
-    const outcomes = applyProjectIntegrations(projectDir, ['claude'], { mode: 'dev' });
+    // Dev mode infers the local CLI dist from argv[1]; the test runner's argv[1]
+    // is its own worker, so stub a CLI-shaped path to let repo-root inference
+    // succeed (matches the sibling pi-extension dev-mode tests).
+    const originalArgv1 = process.argv[1];
+    process.argv[1] = '/repo/packages/cli/src/cli.ts';
+    try {
+      const outcomes = applyProjectIntegrations(projectDir, ['claude'], { mode: 'dev' });
 
-    const mcpOutcome = outcomes.find((o) => o.integration === 'mcp-config');
-    expect(mcpOutcome?.action).toBe('written');
-    const written = JSON.parse(readFileSync(join(projectDir, '.mcp.json'), 'utf-8'));
-    // dev mode resolves the local CLI dist; the command becomes 'node'.
-    expect(written.mcpServers['open-knowledge'].command).toBe('node');
+      const mcpOutcome = outcomes.find((o) => o.integration === 'mcp-config');
+      expect(mcpOutcome?.action).toBe('written');
+      const written = JSON.parse(readFileSync(join(projectDir, '.mcp.json'), 'utf-8'));
+      // dev mode resolves the local CLI dist; the command becomes 'node'.
+      expect(written.mcpServers['open-knowledge'].command).toBe('node');
+    } finally {
+      process.argv[1] = originalArgv1;
+    }
   });
 });

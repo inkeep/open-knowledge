@@ -6,7 +6,7 @@
  *
  * Per precedent #42, GritQL plugins are the canonical custom-enforcement
  * mechanism. This test mirrors the shape codified in precedent #42's
- * authoring template: shell out to `bunx biome check` on a fixture file
+ * authoring template: shell out to `pnpm exec biome check` on a fixture file
  * with deliberate violations + clean usage; assert exact diagnostic count.
  *
  * Exact-equality assertion (`toBe(3)`) catches BOTH directions of drift:
@@ -25,6 +25,7 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper.ts';
 
 // __dirname → packages/desktop/tests/integration/. Repo root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
@@ -32,7 +33,7 @@ const FIXTURE_REL = 'biome-plugins/__fixtures__/no-resolved-value-theme-source.f
 
 describe('1-way theme contract — no-resolved-value-theme-source GritQL plugin', () => {
   test('fires on exactly 3 positive cases (and on no negative case)', () => {
-    const result = spawnSync('bunx', ['biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
@@ -50,7 +51,7 @@ describe('1-way theme contract — no-resolved-value-theme-source GritQL plugin'
   });
 
   test('plugin is registered in biome.jsonc', () => {
-    const config = require(join(REPO_ROOT, 'biome.jsonc'));
+    const config = readBiomeConfig(REPO_ROOT);
     const plugins = config.plugins ?? [];
     expect(plugins).toContain('./biome-plugins/no-resolved-value-theme-source.grit');
   });

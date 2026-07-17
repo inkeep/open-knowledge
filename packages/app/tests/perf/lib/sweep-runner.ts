@@ -67,9 +67,9 @@
  *     UX axis Poor OR memory FAIL OR server FAIL).
  */
 
-import type { CapRegime, WorkloadFixtureRef } from '../fixtures/cache-regime-rotation/types';
-import { findKnee } from './kneedle';
-import { withCheckpoint } from './with-checkpoint';
+import type { CapRegime, WorkloadFixtureRef } from '../fixtures/cache-regime-rotation/types.ts';
+import { findKnee } from './kneedle.ts';
+import { withCheckpoint } from './with-checkpoint.ts';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Public types

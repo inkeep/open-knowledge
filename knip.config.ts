@@ -14,8 +14,19 @@ export default {
     '@lingui/format-po',
     'micromark',
   ],
-  ignoreBinaries: ['printf'],
+  ignoreBinaries: [
+    'printf',
+    'ps', // process listing — diagnose.ts, process-scan.ts
+    'lsof', // open-file listing — diagnose.ts, process-scan.ts
+    'pgrep', // process lookup — process-scan.ts
+    'where', // Windows binary lookup — git-preflight.ts
+    'sw_vers', // macOS version query — bug-report.ts
+    'mkfifo', // named-pipe creation — keepalive-orphan-reaping.test.ts
+    'xcrun', // macOS notarization tool — desktop afterSign.mjs
+    'xdg-mime', // Linux default-app query — desktop ipc-handlers.ts
+  ],
   ignoreIssues: {
+    'test-support/vitest.base.ts': ['exports'],
     'packages/app/src/locales/**': ['files'],
     'packages/app/src/components/ui/*': ['exports'],
     'docs/src/components/ui/*': ['exports'],
@@ -43,44 +54,8 @@ export default {
     '.{agents,codex}/skills/**': ['files'],
     'biome-plugins/__fixtures__/**': ['files'],
     'scripts/compute-next-beta.mjs': ['files'],
-    'scripts/compute-next-beta.test.mjs': ['files'],
-    'scripts/compute-stable-version.mjs': ['files'],
-    'scripts/compute-stable-version.test.mjs': ['files'],
-    'scripts/aggregate-stable-changelog.mjs': ['files'],
-    'scripts/aggregate-stable-changelog.test.mjs': ['files'],
-    'scripts/check-license-fields.test.mjs': ['files'],
-    'scripts/check-gate-catches-build-errors.test.mjs': ['files'],
-    'scripts/bun-install-ci.test.mjs': ['files'],
-    'scripts/measure-scripts-contract.test.mjs': ['files'],
-    'scripts/promote-stable-token.test.mjs': ['files'],
     'scripts/assert-smoke-not-vacuous.mjs': ['files'],
-    'scripts/assert-smoke-not-vacuous.test.mjs': ['files'],
-    'scripts/check-no-ci-skip-in-e2e.test.mjs': ['files'],
-    'scripts/comment-identity.mjs': ['files'],
-    'scripts/git-clean-env.mjs': ['files'],
-    'scripts/comment-identity.test.mjs': ['files'],
-    'scripts/comment-inventory.mjs': ['files'],
-    'scripts/comment-inventory.test.mjs': ['files'],
-    'scripts/comment-leak-check.mjs': ['files'],
-    'scripts/comment-leak-check.test.mjs': ['files'],
-    'scripts/comment-protected-regions.mjs': ['files'],
-    'scripts/comment-protected-regions.test.mjs': ['files'],
-    'scripts/comment-fidelity.mjs': ['files'],
-    'scripts/comment-fidelity.test.mjs': ['files'],
-    'scripts/bridge-canary.mjs': ['files'],
-    'scripts/bridge-canary.test.mjs': ['files'],
-    'scripts/cluster-strict-gate.mjs': ['files'],
-    'scripts/cluster-strict-gate.test.mjs': ['files'],
-    'scripts/comment-recall-sample.mjs': ['files'],
-    'scripts/comment-recall-sample.test.mjs': ['files'],
-    'scripts/harvest-aggregate.mjs': ['files'],
-    'scripts/harvest-aggregate.test.mjs': ['files'],
     'scripts/assert-app-built.mjs': ['files'],
-    'scripts/assert-app-built.test.mjs': ['files'],
-    '.github/scripts/cla-gate.test.mjs': ['files'],
-    '.github/scripts/cla-gate.mjs': ['exports'],
-    '.github/scripts/bridge-public-pr-to-monorepo.test.mjs': ['files'],
-    '.github/scripts/select-beta-to-promote.test.mjs': ['files'],
     'docs/src/lib/share-splash.ts': ['exports', 'types'],
     'packages/app/src/components/PublishToGitHubDialog.tsx': ['types'],
     'packages/app/src/components/ShareButton.tsx': ['types'],
@@ -116,7 +91,6 @@ export default {
       ],
       project: 'src/**',
       ignoreDependencies: [
-        '@tiptap/extension-collaboration-cursor', // transitive dependency for `y-prosemirror@1.3.7` patch
         'fuzzysort', // installed for workspace omnibar search ahead of the consumer wire-up
         '@testing-library/jest-dom', // side-effect import (`import '@testing-library/jest-dom'`) registers matchers
         'highlight.js', // lowlight's peer dependency — never imported here directly, but lowlight's grammar registrations resolve through it
@@ -132,13 +106,20 @@ export default {
         'scripts/*.ts',
       ],
       project: 'src/**',
+      ignoreDependencies: [
+        '@tiptap/y-tiptap',
+        'y-prosemirror',
+        'mdast-util-mdx-expression',
+        'mdast-util-mdx-jsx',
+      ],
     },
     docs: {
-      entry: ['source.config.ts', 'src/**/*.test.{ts,tsx}'],
+      entry: ['src/**/*.test.{ts,tsx}'],
     },
     'packages/server': {
       entry: ['src/**/*.test.ts'],
       project: 'src/**',
+      ignoreDependencies: ['@types/shell-quote'],
     },
     'packages/cli': {
       entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts'],
@@ -147,19 +128,8 @@ export default {
       ],
     },
     'packages/desktop': {
-      entry: [
-        'src/main/index.ts',
-        'src/preload/index.ts',
-        'src/utility/server-entry.ts',
-        'src/utility/pty-host.ts',
-        'src/**/*.test.ts',
-        'electron.vite.config.ts',
-        'scripts/*.mjs',
-        'tests/**/*.test.ts',
-        'tests/**/*.test.mjs',
-      ],
-      ignoreUnresolved: [/utility\/pty-host\.js$/],
-      ignoreDependencies: ['@inkeep/open-knowledge-native-config'],
+      entry: ['src/**/*.test.ts', 'scripts/*.mjs', 'tests/**/*.test.ts', 'tests/**/*.test.mjs'],
+      ignoreDependencies: ['@inkeep/open-knowledge-native-config', 'culori'],
       project: 'src/**',
     },
   },

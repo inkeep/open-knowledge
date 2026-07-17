@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { bcaConfidenceInterval } from './bootstrap';
+import { bcaConfidenceInterval } from './bootstrap.ts';
 
 /**
  * Mulberry32 PRNG — same generator the cache-regime-rotation fixtures use

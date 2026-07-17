@@ -31,7 +31,9 @@ describe('NO_COLOR env var suppresses ANSI codes', () => {
   test('NO_COLOR=1 produces zero ANSI escape codes', async () => {
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '-e',
         `
         process.env.NO_COLOR = '1';
@@ -60,7 +62,9 @@ describe('FORCE_COLOR env var enables colors', () => {
   test('FORCE_COLOR=1 produces ANSI escape codes', async () => {
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '-e',
         `
         process.env.FORCE_COLOR = '1';
@@ -83,7 +87,9 @@ describe('--no-color argv detection', () => {
   test('--no-color sets NO_COLOR and deletes FORCE_COLOR', async () => {
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '-e',
         `
         // Simulate --no-color in argv
@@ -116,7 +122,9 @@ describe('--no-color argv detection', () => {
   test('--color sets FORCE_COLOR and deletes NO_COLOR', async () => {
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '-e',
         `
         process.argv.push('--color');
@@ -147,7 +155,9 @@ describe('--no-color argv detection', () => {
   test('--no-color overrides FORCE_COLOR in env', async () => {
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '-e',
         `
         process.argv.push('--no-color');
@@ -177,7 +187,9 @@ describe('--no-color argv detection', () => {
   test('--no-color wins when both --no-color and --color are present', async () => {
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '-e',
         `
         process.argv.push('--no-color', '--color');
@@ -213,7 +225,9 @@ describe('link() OSC 8 hyperlinks', () => {
   test('link() produces OSC 8 escape sequence when colors enabled', () => {
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '-e',
         `
         process.env.FORCE_COLOR = '1';
@@ -236,7 +250,9 @@ describe('link() OSC 8 hyperlinks', () => {
   test('link() returns plain text when NO_COLOR is set', () => {
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '-e',
         `
         process.env.NO_COLOR = '1';

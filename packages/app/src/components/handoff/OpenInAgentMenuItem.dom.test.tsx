@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -6,11 +7,13 @@ import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu
 import { KNOWN_TARGETS } from '@/lib/handoff/targets';
 
 mock.module('@lingui/core/macro', () => ({
+  ...actualLinguiMacro,
   t: (strings: TemplateStringsArray, ...values: unknown[]) =>
     strings.reduce((acc, part, index) => `${acc}${part}${values[index] ?? ''}`, ''),
 }));
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>

@@ -49,7 +49,10 @@ function shiftJKeydownInit(): KeyboardEventInit {
   return init;
 }
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{(value === 1 ? one : other).replace('#', String(value))}</>

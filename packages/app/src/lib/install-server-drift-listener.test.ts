@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { beforeAll, describe, expect, mock, test } from 'bun:test';
 import * as actualSonner from 'sonner';
 import type {
   OkDesktopBridge,
@@ -28,14 +28,26 @@ mock.module('sonner', () => ({
   ),
 }));
 
-import {
-  driftToastBody,
-  installServerDriftListener,
-  reclaimNoticeMessage,
-  restartDisruptionWarning,
-  restartFailureMessage,
-  restartSuccessMessage,
-} from '@/lib/install-server-drift-listener';
+// The listener imports the mocked `sonner`; bind the module after the mock is
+// registered so `toast.custom` is the captured stub (the mock facade only
+// rewrites imports resolved after the doMock call).
+type DriftModule = typeof import('@/lib/install-server-drift-listener');
+let driftToastBody: DriftModule['driftToastBody'];
+let installServerDriftListener: DriftModule['installServerDriftListener'];
+let reclaimNoticeMessage: DriftModule['reclaimNoticeMessage'];
+let restartDisruptionWarning: DriftModule['restartDisruptionWarning'];
+let restartFailureMessage: DriftModule['restartFailureMessage'];
+let restartSuccessMessage: DriftModule['restartSuccessMessage'];
+beforeAll(async () => {
+  ({
+    driftToastBody,
+    installServerDriftListener,
+    reclaimNoticeMessage,
+    restartDisruptionWarning,
+    restartFailureMessage,
+    restartSuccessMessage,
+  } = await import('@/lib/install-server-drift-listener'));
+});
 
 const olderInfo: OkServerVersionDriftInfo = {
   relation: 'older',

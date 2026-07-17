@@ -95,7 +95,7 @@ async function buildSeedOnce(key: string): Promise<void> {
   // local run reading a half-built seed would be worse than a cold boot.
   const buildDir = mkdtempSync(join(APP_PACKAGE_ROOT, 'node_modules', '.vite-e2e-seed-building-'));
   const log = openServerLog('warm-cache');
-  const proc = spawn('bun', ['run', '--silent', 'dev', '--host', '127.0.0.1'], {
+  const proc = spawn('pnpm', ['run', 'dev', '--host', '127.0.0.1'], {
     cwd: APP_PACKAGE_ROOT,
     env: {
       ...process.env,

@@ -18,7 +18,7 @@ import {
   LONG_TASK_THRESHOLD_MS,
   type MinimalCdpClient,
   TRACE_CATEGORIES,
-} from './cdp-tracer';
+} from './cdp-tracer.ts';
 
 /**
  * Hand-rolled mock CDP client that scripts a sequence of `Performance.getMetrics`

@@ -3,6 +3,7 @@ import { getSchema } from '@tiptap/core';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
+import { MarkdownManager } from '../markdown/index.ts';
 import { ListItemNode, ListNode } from './list.ts';
 
 const extensions = [Document, Paragraph, Text, ListNode, ListItemNode];
@@ -154,9 +155,6 @@ describe('list pipeline round-trip (via new MarkdownManager)', () => {
   // The MarkdownManager from packages/core/src/markdown builds against
   // whatever extensions are provided — when list.ts is registered, it
   // uses the unified `list` + `listItem` path.
-
-  // Import the new MarkdownManager
-  const { MarkdownManager } = require('../markdown/index.ts');
 
   const mdManager = new MarkdownManager({ extensions });
 

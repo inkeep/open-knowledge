@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 /**
  * Engineer-local realism check for the cache-regime rotation fixtures.
  *
@@ -30,11 +30,11 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { asymmetricFixture } from './asymmetric';
-import { broadFixture } from './broad';
-import { tightFixture } from './tight';
-import type { DocSpec, WorkloadFixture, WorkloadFixtureRef } from './types';
-import { SIZE_ENVELOPES } from './types';
+import { asymmetricFixture } from './asymmetric.ts';
+import { broadFixture } from './broad.ts';
+import { tightFixture } from './tight.ts';
+import type { DocSpec, WorkloadFixture, WorkloadFixtureRef } from './types.ts';
+import { SIZE_ENVELOPES } from './types.ts';
 
 const DEFAULT_TRACE_SUBPATH = '.ok/perf-traces';
 const SIZE_DRIFT_PCT_THRESHOLD = 15;

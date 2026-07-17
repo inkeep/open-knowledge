@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test, vi } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -582,28 +582,38 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     // well within the CI-tolerant 1000ms ceiling on typical hardware. This
     // assertion is the only one that catches a shape revert.
     const sha = await commit('# Hello\n', 'a.md', 'WIP: a');
-    // Use spyOn rather than direct property reassignment — node:child_process
-    // exports `spawn` as a readonly binding under Bun's ESM loader, so a
-    // raw assignment throws TypeError. spyOn installs a per-test interceptor
-    // and `mockRestore()` reverts cleanly.
-    const cp = await import('node:child_process');
-    const { spyOn } = await import('bun:test');
-    const spy = spyOn(cp, 'spawn');
+    // Count git subprocess spawns by mocking node:child_process and importing a
+    // fresh SUT graph bound to the mock: vitest cannot redefine the live `spawn`
+    // ESM binding the way bun's spyOn did. The mock records each call and calls
+    // through to the real spawn so the cat-file probe still runs.
+    const { spawn: realSpawn, ...realCp } =
+      await vi.importActual<typeof import('node:child_process')>('node:child_process');
+    const spawnCalls: unknown[][] = [];
+    mock.module('node:child_process', () => ({
+      ...realCp,
+      spawn: (...args: Parameters<typeof realSpawn>) => {
+        spawnCalls.push(args);
+        return realSpawn(...args);
+      },
+    }));
+    vi.resetModules();
+    const { batchCheckExistence: batchCheckExistenceMocked } = await import('./rename-log.ts');
     try {
       const probes = Array.from({ length: 50 }, (_, i) => ({
         sha,
         path: i === 0 ? 'content/a.md' : `content/missing-${i}.md`,
       }));
-      const result = await batchCheckExistence(shadow, probes);
+      const result = await batchCheckExistenceMocked(shadow, probes);
       expect(result).toHaveLength(50);
       expect(result[0]).toBe(true);
       expect(result.slice(1).every((b) => b === false)).toBe(true);
-      const gitInvocations = spy.mock.calls.filter(
+      const gitInvocations = spawnCalls.filter(
         (call) => typeof call[0] === 'string' && call[0] === 'git',
       );
       expect(gitInvocations).toHaveLength(1);
     } finally {
-      spy.mockRestore();
+      vi.doUnmock('node:child_process');
+      vi.resetModules();
     }
   });
 

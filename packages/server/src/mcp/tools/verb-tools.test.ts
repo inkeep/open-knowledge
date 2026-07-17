@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register as registerDelete } from './delete.ts';
 import { register as registerEdit } from './edit.ts';
+import { startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import type { ServerInstance } from './shared.ts';
 import { register as registerWrite } from './write.ts';
 
@@ -187,7 +188,7 @@ describe('edit({ template }) — fence trailing whitespace (fm-delimiter hazard)
     );
 
     let putPayload: Record<string, unknown> | undefined;
-    const stub = Bun.serve({
+    const stub = await startFetchTestServer({
       port: 0,
       async fetch(req) {
         if (req.method === 'PUT' && new URL(req.url).pathname === '/api/template') {
@@ -233,8 +234,8 @@ describe('write({ document }) — template-availability nudge on create', () => 
   // memory without an `exec ls` first. So a create into a folder that ships a
   // template, with no `template` passed, surfaces the folder's menu — without
   // blocking the write that already landed.
-  function withWriteStub(cwd: string, run: (handler: Handler) => Promise<void>) {
-    const stub = Bun.serve({
+  async function withWriteStub(cwd: string, run: (handler: Handler) => Promise<void>) {
+    const stub = await startFetchTestServer({
       port: 0,
       async fetch(req) {
         if (req.method === 'POST' && new URL(req.url).pathname === '/api/agent-write-md') {
@@ -260,13 +261,11 @@ describe('write({ document }) — template-availability nudge on create', () => 
       resolveCwd: async () => cwd,
     } as unknown as Parameters<typeof registerWrite>[1]);
     if (!handler) throw new Error('tool did not register');
-    return (async () => {
-      try {
-        await run(handler);
-      } finally {
-        stub.stop(true);
-      }
-    })();
+    try {
+      await run(handler);
+    } finally {
+      stub.stop(true);
+    }
   }
 
   function seedNoteTemplate(cwd: string) {

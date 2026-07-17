@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { correlateLongtasksWithMarks } from './correlate-longtasks';
+import { correlateLongtasksWithMarks } from './correlate-longtasks.ts';
 
 describe('correlateLongtasksWithMarks', () => {
   test('both inputs empty → returns empty array', () => {

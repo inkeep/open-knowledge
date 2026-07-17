@@ -19,6 +19,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
+import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { register, type ShareLinkDeps } from './share-link.ts';
 import type { ServerInstance } from './shared.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
@@ -73,7 +74,7 @@ function successBody() {
   };
 }
 
-let testServer: ReturnType<typeof Bun.serve>;
+let testServer: FetchTestServer;
 let baseUrl: string;
 let tmpDir: string;
 const seenRequests: Array<{ pathname: string; body: Record<string, unknown> }> = [];
@@ -86,8 +87,8 @@ let mockResponse: { status: number; body: Record<string, unknown> } = {
 // `beforeEach` clears it so leakage between cases stays impossible.
 let mockRawResponse: Response | null = null;
 
-beforeAll(() => {
-  testServer = Bun.serve({
+beforeAll(async () => {
+  testServer = await startFetchTestServer({
     port: 0,
     hostname: '127.0.0.1',
     async fetch(req) {

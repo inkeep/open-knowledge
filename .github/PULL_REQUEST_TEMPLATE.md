@@ -4,12 +4,12 @@
 
 ## How this was verified
 
-<!-- How you tested: `bun run check` output, manual steps, before/after screenshots for UI changes. -->
+<!-- How you tested: `pnpm check` output, manual steps, before/after screenshots for UI changes. -->
 
 ## Checklist
 
-- [ ] Ran `bun run check` (lint, typecheck, tests) locally
-- [ ] Added a changeset (`bun run changeset`) if this changes behavior
+- [ ] Ran `pnpm check` (lint, typecheck, tests) locally
+- [ ] Added a changeset (`pnpm changeset`) if this changes behavior
 - [ ] Updated docs if this changes a user-facing surface
 - [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md) and agree to license my contribution under the project's terms (CLA)
 

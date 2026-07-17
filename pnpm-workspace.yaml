@@ -1,0 +1,181 @@
+packages:
+  - 'packages/*'
+  - 'docs'
+
+# Supply-chain cooldown (admission-time): refuse npm versions published less
+# than 3 days ago, to dodge freshly-published malware. Unit = MINUTES
+# (4320 = 3 days). Own-org packages (@inkeep/*) are exempt. This replaces the
+# retired bunfig.toml posture (which expressed the same window in seconds:
+# minimumReleaseAge = 259200). Emergency reproduction escape hatch (bypass the
+# cooldown for a single install): `pnpm install --config.minimum-release-age=0`.
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - '@inkeep/*'
+
+# Patch application failures fail the install CLOSED (never silently skipped) —
+# the markdown pipeline depends on the pinned/patched remark-prosemirror hunks.
+ignorePatchFailures: false
+
+# Dependency build scripts are blocked by default under pnpm; only these run.
+# electron downloads its platform binary in a postinstall. The napi native addon
+# (@inkeep/open-knowledge-native-config) builds via its own turbo `napi build`
+# task, not a dependency install script, so it needs no entry here. node-pty ships
+# prebuilds for darwin + win32 only — no Linux prebuild — so on Linux its install
+# script must run to compile pty.node from source, or the Node-runtime pty tests
+# can't load the native module (darwin/win32 resolve the shipped prebuild, no build).
+onlyBuiltDependencies:
+  - electron
+  - node-pty
+
+overrides:
+  mdast-util-mdx-jsx: 3.2.0
+  # Dedup @types/node to a single major so a frozen install resolves node's
+  # ambient types consistently. Workspace packages declare @types/node at both
+  # ^24.7.0 and ^25.6.0; a fresh frozen resolution otherwise lands a skew where
+  # ChildProcess and its EventEmitter base come from different @types/node
+  # versions and don't merge, so `child.on(...)` fails to typecheck in the
+  # server src the app checks via the `development` condition (green under bun's
+  # flat dedup, red under pnpm's strict tree). Pin to the 24.x line the CLI ships.
+  "@types/node": ^24.7.0
+  # Editor stack pinned to the versions the bun lockfile resolved. The app
+  # declares the TipTap suite at `^3.22.3`; a fresh pnpm resolution floats the
+  # whole suite to 3.27.3 (and its bundled ProseMirror to model 1.25.11 / view
+  # 1.42.1), and the newer `@tiptap/extension-list-keymap` join logic changes
+  # editor merge behavior (regresses list-boundary-merge and sibling suites).
+  # This toolchain cutover must be behavior-preserving, so the runtime editor
+  # graph is held at the bun baseline. Revisit as a deliberate, separately-tested
+  # upgrade — not as a side effect of the package-manager swap.
+  prosemirror-model: 1.25.4
+  prosemirror-view: 1.41.8
+  # CodeMirror is the source-mode editor core, held at the same bun baseline as
+  # the ProseMirror/TipTap graph above; a fresh pnpm resolution otherwise floats
+  # it within the app's `^6.6.0`/`^6.43.3` carets (view 6.43.6 / state 6.7.1).
+  '@codemirror/state': 6.6.0
+  '@codemirror/view': 6.43.3
+  # React + the lite-YouTube facade also floated past the bun baseline; the
+  # newer React patch shifts effect/polling scheduling (breaking timing-sensitive
+  # DOM tests) and lite-youtube 3.6 changed its eager-iframe fallback heuristic.
+  react: 19.2.5
+  react-dom: 19.2.5
+  react-lite-youtube-embed: 3.5.1
+  '@tiptap/core': 3.22.3
+  '@tiptap/pm': 3.22.4
+  '@tiptap/react': 3.22.3
+  '@tiptap/starter-kit': 3.22.3
+  '@tiptap/suggestion': 3.22.3
+  '@tiptap/extensions': 3.22.3
+  '@tiptap/extension-blockquote': 3.22.3
+  '@tiptap/extension-bold': 3.22.3
+  '@tiptap/extension-bubble-menu': 3.22.3
+  '@tiptap/extension-bullet-list': 3.22.3
+  '@tiptap/extension-code': 3.22.3
+  '@tiptap/extension-code-block': 3.22.3
+  '@tiptap/extension-collaboration': 3.22.3
+  '@tiptap/extension-document': 3.22.3
+  '@tiptap/extension-drag-handle': 3.22.3
+  '@tiptap/extension-dropcursor': 3.22.3
+  '@tiptap/extension-file-handler': 3.22.3
+  '@tiptap/extension-floating-menu': 3.22.3
+  '@tiptap/extension-gapcursor': 3.22.3
+  '@tiptap/extension-hard-break': 3.22.3
+  '@tiptap/extension-heading': 3.22.3
+  '@tiptap/extension-highlight': 3.22.3
+  '@tiptap/extension-horizontal-rule': 3.22.3
+  '@tiptap/extension-image': 3.22.3
+  '@tiptap/extension-italic': 3.22.3
+  '@tiptap/extension-link': 3.22.3
+  '@tiptap/extension-list': 3.22.3
+  '@tiptap/extension-list-item': 3.22.3
+  '@tiptap/extension-list-keymap': 3.22.3
+  '@tiptap/extension-node-range': 3.22.3
+  '@tiptap/extension-ordered-list': 3.22.3
+  '@tiptap/extension-paragraph': 3.22.3
+  '@tiptap/extension-placeholder': 3.22.3
+  '@tiptap/extension-strike': 3.22.3
+  '@tiptap/extension-table': 3.22.3
+  '@tiptap/extension-text': 3.22.3
+  '@tiptap/extension-text-style': 3.22.3
+  '@tiptap/extension-underline': 3.22.3
+  # Radix UI graph pinned to the versions the bun lockfile resolved. A fresh
+  # pnpm resolution floats the whole @radix-ui/* + floating-ui graph past the
+  # bun baseline (e.g. react-dialog 1.1.15 -> 1.1.19, react-presence 1.1.6 ->
+  # 1.1.7, react-primitive 2.1.6 -> 2.1.7); the newer dialog/presence/
+  # dismissable-layer stack shifts effect + timer flush ordering enough to break
+  # timing-sensitive DOM tests (ShareBranchSwitchDialog toast, CreateProjectDialog
+  # polling). This toolchain cutover must be behavior-preserving, so the runtime
+  # Radix graph is held at the bun baseline. Revisit as a deliberate, separately
+  # tested upgrade -- not as a side effect of the package-manager swap.
+  '@floating-ui/core': 1.7.5
+  '@floating-ui/dom': 1.7.6
+  '@floating-ui/react-dom': 2.1.8
+  '@floating-ui/utils': 0.2.11
+  '@radix-ui/number': 1.1.1
+  '@radix-ui/primitive': 1.1.4
+  '@radix-ui/react-accessible-icon': 1.1.7
+  '@radix-ui/react-accordion': 1.2.12
+  '@radix-ui/react-alert-dialog': 1.1.15
+  '@radix-ui/react-arrow': 1.1.10
+  '@radix-ui/react-aspect-ratio': 1.1.7
+  '@radix-ui/react-avatar': 1.1.10
+  '@radix-ui/react-checkbox': 1.3.3
+  '@radix-ui/react-collapsible': 1.1.12
+  '@radix-ui/react-collection': 1.1.7
+  '@radix-ui/react-compose-refs': 1.1.3
+  '@radix-ui/react-context': 1.1.4
+  '@radix-ui/react-context-menu': 2.2.16
+  '@radix-ui/react-dialog': 1.1.15
+  '@radix-ui/react-direction': 1.1.1
+  '@radix-ui/react-dismissable-layer': 1.1.13
+  '@radix-ui/react-dropdown-menu': 2.1.16
+  '@radix-ui/react-focus-guards': 1.1.4
+  '@radix-ui/react-focus-scope': 1.1.10
+  '@radix-ui/react-form': 0.1.8
+  '@radix-ui/react-hover-card': 1.1.15
+  '@radix-ui/react-id': 1.1.2
+  '@radix-ui/react-label': 2.1.7
+  '@radix-ui/react-menu': 2.1.16
+  '@radix-ui/react-menubar': 1.1.16
+  '@radix-ui/react-navigation-menu': 1.2.14
+  '@radix-ui/react-one-time-password-field': 0.1.8
+  '@radix-ui/react-password-toggle-field': 0.1.3
+  '@radix-ui/react-popover': 1.1.17
+  '@radix-ui/react-popper': 1.3.1
+  '@radix-ui/react-portal': 1.1.12
+  '@radix-ui/react-presence': 1.1.6
+  '@radix-ui/react-primitive': 2.1.6
+  '@radix-ui/react-progress': 1.1.7
+  '@radix-ui/react-radio-group': 1.3.8
+  '@radix-ui/react-roving-focus': 1.1.11
+  '@radix-ui/react-scroll-area': 1.2.10
+  '@radix-ui/react-select': 2.2.6
+  '@radix-ui/react-separator': 1.1.7
+  '@radix-ui/react-slider': 1.3.6
+  '@radix-ui/react-slot': 1.3.0
+  '@radix-ui/react-switch': 1.2.6
+  '@radix-ui/react-tabs': 1.1.13
+  '@radix-ui/react-toast': 1.2.15
+  '@radix-ui/react-toggle': 1.1.10
+  '@radix-ui/react-toggle-group': 1.1.11
+  '@radix-ui/react-toolbar': 1.1.11
+  '@radix-ui/react-tooltip': 1.2.8
+  '@radix-ui/react-use-callback-ref': 1.1.2
+  '@radix-ui/react-use-controllable-state': 1.2.3
+  '@radix-ui/react-use-effect-event': 0.0.3
+  '@radix-ui/react-use-escape-keydown': 1.1.2
+  '@radix-ui/react-use-is-hydrated': 0.1.0
+  '@radix-ui/react-use-layout-effect': 1.1.2
+  '@radix-ui/react-use-previous': 1.1.1
+  '@radix-ui/react-use-rect': 1.1.2
+  '@radix-ui/react-use-size': 1.1.2
+  '@radix-ui/react-visually-hidden': 1.2.3
+  '@radix-ui/rect': 1.1.2
+  'radix-ui': 1.4.3
+patchedDependencies:
+  '@handlewithcare/remark-prosemirror@0.1.5': patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch
+  'y-prosemirror@1.3.7': patches/y-prosemirror@1.3.7.patch
+  '@tiptap/y-tiptap@3.0.3': patches/@tiptap%2Fy-tiptap@3.0.3.patch
+  'y-indexeddb@9.0.12': patches/y-indexeddb@9.0.12.patch
+  'react-medium-image-zoom@5.4.3': patches/react-medium-image-zoom@5.4.3.patch
+  '@tiptap/extension-drag-handle@3.22.3': patches/@tiptap%2Fextension-drag-handle@3.22.3.patch
+  '@pierre/trees@1.0.0-beta.4': patches/@pierre%2Ftrees@1.0.0-beta.4.patch
+  '@inkeep/mermaid-wysiwyg-dom@0.1.0': patches/@inkeep%2Fmermaid-wysiwyg-dom@0.1.0.patch

@@ -1,18 +1,21 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test, vi } from 'bun:test';
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 
 let testDir: string;
-let fakeHome: string;
+// Seed a real default so the loader's transitive homedir() call at import time
+// (the server file-logger builds `<home>/.ok/logs` as a module side effect)
+// never sees undefined before beforeEach runs; beforeEach overrides it per test.
+let fakeHome: string = resolve(tmpdir(), '__ok_home_default__');
 
 // Stub node:os.homedir() before importing the loader so Layer 1 (user-global
 // config) doesn't read the real `~/.ok/global.yml` and pollute
 // every test that asserts on `sources`. Bun caches the resolved homedir on
 // first call, so mutating `process.env.HOME` in beforeEach is too late.
-await mock.module('node:os', () => {
-  const actual = require('node:os');
+await mock.module('node:os', async () => {
+  const actual = await vi.importActual<typeof import('node:os')>('node:os');
   return {
     ...actual,
     homedir: () => fakeHome,

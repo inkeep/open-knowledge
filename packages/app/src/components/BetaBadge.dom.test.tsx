@@ -5,7 +5,10 @@ import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 let channel: 'beta' | 'latest' | null = null;
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));

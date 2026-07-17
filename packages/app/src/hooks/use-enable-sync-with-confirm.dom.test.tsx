@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   useLingui: () => ({
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>
       strings.reduce((acc, part, index) => `${acc}${part}${values[index] ?? ''}`, ''),

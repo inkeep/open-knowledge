@@ -540,8 +540,7 @@ msgid "/api/config returned HTTP {code}"
 msgstr ""
 
 #: src/components/settings/OkignoreSection.tsx
-msgid ""
-"# One pattern per line.\n"
+msgid "# One pattern per line.\n"
 "# Examples:\n"
 "#   drafts/\n"
 "#   *.draft.md\n"

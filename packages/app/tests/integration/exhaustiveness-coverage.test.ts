@@ -22,7 +22,6 @@
 import { describe, expect, test } from 'bun:test';
 import { join, relative, resolve } from 'node:path';
 import { ProblemTypeSchema } from '@inkeep/open-knowledge-core';
-import { Glob } from 'bun';
 import {
   type Expression,
   type Node,
@@ -116,7 +115,7 @@ function isExcludedPath(absPath: string): boolean {
 
 function* enumerateSourceFiles(): Generator<string> {
   for (const root of SCAN_ROOTS) {
-    const glob = new Glob('**/*.{ts,tsx}');
+    const glob = new Bun.Glob('**/*.{ts,tsx}');
     for (const rel of glob.scanSync({ cwd: root })) {
       const abs = join(root, rel);
       if (isExcludedPath(abs)) continue;

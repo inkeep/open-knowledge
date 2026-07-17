@@ -23,18 +23,19 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper.ts';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const FIXTURE_REL = 'biome-plugins/__fixtures__/require-windowshide-on-spawn.fixture.tsx';
 
 describe('require-windowshide-on-spawn GritQL plugin', () => {
   test('fires exactly 7 times — one per spawn that hides neither way', () => {
-    const result = spawnSync('bunx', ['biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
       windowsHide: true,
     });
-    // Guard against a vacuous pass if `bunx` itself fails to spawn (missing
+    // Guard against a vacuous pass if `pnpm exec biome` itself fails to spawn (missing
     // binary / PATH) — `result.status` would be null and `not.toBe(0)` would
     // pass while asserting nothing about biome's output.
     expect(result.error).toBeUndefined();
@@ -52,10 +53,7 @@ describe('require-windowshide-on-spawn GritQL plugin', () => {
   });
 
   test('plugin is registered in biome.jsonc via overrides (not root plugins)', () => {
-    const config = require(join(REPO_ROOT, 'biome.jsonc')) as {
-      plugins?: string[];
-      overrides?: Array<{ includes?: string[]; plugins?: string[] }>;
-    };
+    const config = readBiomeConfig(REPO_ROOT);
 
     const rootPlugins = config.plugins ?? [];
     expect(rootPlugins).not.toContain('./biome-plugins/require-windowshide-on-spawn.grit');

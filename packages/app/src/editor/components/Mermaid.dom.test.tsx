@@ -33,6 +33,8 @@ const renderMermaid = mock(async (_id: string, _chart: string) => ({
 }));
 const initializeMermaid = mock(() => {});
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('mermaid', () => ({
   default: {
     initialize: initializeMermaid,
@@ -41,6 +43,7 @@ mock.module('mermaid', () => ({
 }));
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));

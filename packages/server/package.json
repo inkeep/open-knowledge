@@ -31,7 +31,7 @@
     "@opentelemetry/semantic-conventions": "^1.30.0",
     "@tiptap/core": "^3.22.3",
     "@tiptap/pm": "^3.22.4",
-    "@tiptap/y-tiptap": "^3.0.3",
+    "@tiptap/y-tiptap": "3.0.3",
     "@types/busboy": "^1.5.4",
     "busboy": "^1.6.0",
     "chokidar": "^5.0.0",
@@ -60,10 +60,10 @@
     "@parcel/watcher": "^2.5.6"
   },
   "scripts": {
-    "build": "tsdown && bun run build:skill-bundles",
-    "build:skill-bundles": "bun scripts/build-skill-bundles.ts",
+    "build": "tsdown && pnpm run build:skill-bundles",
+    "build:skill-bundles": "tsx scripts/build-skill-bundles.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --timeout 30000"
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/mdast": "^4.0.4",

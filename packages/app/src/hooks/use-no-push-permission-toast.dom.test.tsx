@@ -17,6 +17,9 @@ import { useState } from 'react';
 // Spy on the toast surface. Pre-import-mock — sets up before the hook
 // module evaluates its `import { toast } from 'sonner'`.
 const toastInfoCalls: string[] = [];
+
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('sonner', () => ({
   toast: {
     info: (msg: string) => {
@@ -33,6 +36,7 @@ mock.module('sonner', () => ({
 // (the macro normally compiles the template into a `t(...)` call wrapping
 // the source string + a hash; the stub keeps things readable in assertions).
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   useLingui: () => ({
     t: (strings: TemplateStringsArray) => strings.join(''),
   }),

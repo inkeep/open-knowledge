@@ -79,13 +79,15 @@ describe('Keepalive-WS close cleanup (US-011)', () => {
 
     expect(server.instance.sessionManager.hasSession(docName, connectionId)).toBe(true);
 
-    // Open and close first connection (starts grace timer).
+    // Open and close first connection, then wait for the close to COMPLETE so
+    // the server has processed it and started the grace timer before the
+    // reconnect below. Resolving on `open` (right after calling close) lets the
+    // server observe ws2's open before ws1's close, orphaning a grace timer
+    // that the reconnect can no longer cancel.
     const ws1 = openKeepalive(server.port, connectionId);
     await new Promise<void>((resolve) => {
-      ws1.addEventListener('open', () => {
-        ws1.close();
-        resolve();
-      });
+      ws1.addEventListener('open', () => ws1.close());
+      ws1.addEventListener('close', () => resolve());
       ws1.addEventListener('error', () => resolve());
     });
 

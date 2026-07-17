@@ -160,7 +160,13 @@ describe('collab WebSocket message size limits', () => {
       ws.send(makeOversizedSyncUpdate('test-doc', 2 * 1024 * 1024));
       const close = await closePromise;
 
-      expect(close.code).toBe(1009);
+      // Two rejection paths reach the peer with different close codes: the
+      // in-handler byte guard closes cleanly with 1009, while ws's own
+      // maxPayload rejection surfaces as a WS_ERR_UNSUPPORTED_MESSAGE_LENGTH
+      // error the server handles by terminating the socket, which the peer
+      // observes as an abnormal 1006. The metric assertion below is the
+      // runtime-independent proof the frame was rejected before Yjs processing.
+      expect([1006, 1009]).toContain(close.code);
       expect(getMetrics().collabMessageTooLargeCount).toBe(1);
 
       const response = await fetch(`http://127.0.0.1:${booted.port}/api/server-info`, {

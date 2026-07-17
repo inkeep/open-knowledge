@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, waitFor } from '@testing-library/react';
-import { useWorktreeAutoSyncNotice } from './use-worktree-autosync-notice';
 
 const toast = mock((_node: unknown) => {});
 mock.module('sonner', () => ({ toast }));
@@ -11,6 +10,10 @@ let ctx: {
   projectLocalBinding: { patch: ReturnType<typeof mock> } | null;
 };
 mock.module('@/lib/config-provider', () => ({ useConfigContext: () => ctx }));
+
+// Import the hook AFTER the mocks register so it binds to the mocked
+// config-provider / sonner rather than the real modules.
+const { useWorktreeAutoSyncNotice } = await import('./use-worktree-autosync-notice');
 
 function Probe() {
   useWorktreeAutoSyncNotice();

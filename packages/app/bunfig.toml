@@ -1,2 +1,0 @@
-[test]
-preload = ["./tests/integration/idb-preload.ts", "./tests/lingui-macro-preload.ts"]

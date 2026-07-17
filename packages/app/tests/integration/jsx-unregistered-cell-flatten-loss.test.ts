@@ -37,16 +37,20 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, tes
 import { sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor, type JSONContent } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { createHandlePaste } from '../../src/editor/clipboard/handle-paste';
 import { CellInsertionGate } from '../../src/editor/extensions/cell-insertion-gate';
 import { installDomGlobals } from '../../src/editor/walk-currency-test-harness';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { mdManager, schema } from './test-harness';
 
 // The paste dispatcher pulls the degrade-path toast (sonner) into its import
-// graph; stub it so module load stays inert in the jsdom env. The gate's no-op
-// path never degrades, so the stub is never invoked.
+// graph; stub it so module load stays inert. The gate's no-op path never
+// degrades, so the stub is never invoked. The dispatcher factory is
+// dynamic-imported in beforeAll so the stub is registered before its module
+// graph evaluates.
 mock.module('sonner', () => ({ toast: { error: mock(() => {}) } }));
+
+// Bound by the beforeAll dynamic import, after the sonner stub is registered.
+let createHandlePaste: typeof import('../../src/editor/clipboard/handle-paste.ts').createHandlePaste;
 
 /** The structured diagnostic `flattenCellBlocks` emits for a content-losing drop. */
 const DROP_EVENT = 'table-cell-flatten-dropped-block';
@@ -185,8 +189,9 @@ function firstDataCellCaret(editor: Editor): number {
 }
 
 let origWarn: typeof console.warn;
-beforeAll(() => {
+beforeAll(async () => {
   restoreDomGlobals = installDomGlobals();
+  ({ createHandlePaste } = await import('../../src/editor/clipboard/handle-paste.ts'));
 }, HARNESS_BOOT_TIMEOUT_MS);
 afterAll(() => {
   restoreDomGlobals?.();

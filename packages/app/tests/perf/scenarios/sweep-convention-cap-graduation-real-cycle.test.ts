@@ -25,7 +25,7 @@ import {
   buildProductionCycleDriver,
   type CycleOutcome,
   getLatencyProfile,
-} from './sweep-convention-cap-graduation';
+} from './sweep-convention-cap-graduation.ts';
 
 const INTEGRATION_GATE = process.env.OK_SWEEP_INTEGRATION === '1';
 const DEFAULT_TARGET = process.env.OK_SWEEP_INTEGRATION_TARGET ?? 'http://localhost:5173';

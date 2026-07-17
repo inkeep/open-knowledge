@@ -14,7 +14,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { MarkdownManager, OK_DIR, sharedExtensions } from '@inkeep/open-knowledge-core';
-import { generateFixture } from './generate-view-count-fixtures';
+import { generateFixture } from './generate-view-count-fixtures.ts';
 
 interface PmJson {
   type?: string;

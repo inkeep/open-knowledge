@@ -12,7 +12,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { parseArgs } from './profile';
+import { parseArgs } from './profile.ts';
 
 describe('parseArgs — launch-mode defaults', () => {
   // process.env mutations leak across tests within a file unless reset.

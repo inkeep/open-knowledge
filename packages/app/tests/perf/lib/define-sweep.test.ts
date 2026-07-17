@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { cartesian, defineSweep } from './define-sweep';
-import type { ScenarioCtx } from './scenario';
+import { cartesian, defineSweep } from './define-sweep.ts';
+import type { ScenarioCtx } from './scenario.ts';
 
 interface FakeMetricsCtx {
   ctx: ScenarioCtx;

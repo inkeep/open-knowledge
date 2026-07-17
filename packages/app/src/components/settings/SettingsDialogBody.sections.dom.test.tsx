@@ -47,12 +47,15 @@ let claudeSkillInstalled = false;
 
 const actualCore = await import('@inkeep/open-knowledge-core');
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@inkeep/open-knowledge-core', () => ({
   ...actualCore,
   SHOW_INSTALL_SKILL: true,
 }));
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{(value === 1 ? one : other).replace('#', String(value))}</>
   ),
@@ -61,6 +64,7 @@ mock.module('@lingui/react/macro', () => ({
 }));
 
 mock.module('@lingui/core/macro', () => ({
+  ...actualLinguiMacro,
   msg: renderLinguiTemplate,
   plural: (value: number, options: { one: string; other: string }) =>
     (value === 1 ? options.one : options.other).replace('#', String(value)),

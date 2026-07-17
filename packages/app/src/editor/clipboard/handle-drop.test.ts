@@ -14,11 +14,9 @@
  * `dataTransfer.files.length > 0` so that path takes over.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as actualCore from '@inkeep/open-knowledge-core';
 import * as actualSonner from 'sonner';
-
-import { createHandleDrop } from './handle-paste.ts';
 
 mock.module('@inkeep/open-knowledge-core', () => {
   return {
@@ -29,6 +27,14 @@ mock.module('@inkeep/open-knowledge-core', () => {
 });
 
 mock.module('sonner', () => ({ ...actualSonner, toast: { error: mock(() => {}) } }));
+
+// The dispatcher imports the mocked `@inkeep/open-knowledge-core`; bind it after
+// the mock is registered so the stubbed htmlToMdast/mdastToMarkdown take effect
+// (the mock facade only rewrites imports resolved after the doMock call).
+let createHandleDrop: typeof import('./handle-paste.ts').createHandleDrop;
+beforeAll(async () => {
+  ({ createHandleDrop } = await import('./handle-paste.ts'));
+});
 
 interface FakeDropOptions {
   data: Record<string, string>;

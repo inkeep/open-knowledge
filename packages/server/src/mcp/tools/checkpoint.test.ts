@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { type CheckpointDeps, DESCRIPTION, register } from './checkpoint.ts';
+import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import type { ServerInstance } from './shared.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
 
@@ -50,13 +51,13 @@ function makeDeps(serverUrl: string | undefined, cwdDir: string): CheckpointDeps
   return { serverUrl, config: BASE_CONFIG, resolveCwd: async () => cwdDir };
 }
 
-let testServer: ReturnType<typeof Bun.serve>;
+let testServer: FetchTestServer;
 let baseUrl: string;
 let tmpDir: string;
 const seenBodies: Array<Record<string, unknown>> = [];
 
-beforeAll(() => {
-  testServer = Bun.serve({
+beforeAll(async () => {
+  testServer = await startFetchTestServer({
     port: 0,
     hostname: '127.0.0.1',
     async fetch(req) {

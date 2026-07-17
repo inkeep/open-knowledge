@@ -53,24 +53,34 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 /**
  * A 200 whose body never arrives until the request's own AbortSignal fires,
- * at which point the body read rejects with a DOMException named
- * 'AbortError' — Chromium streaming-fetch semantics for an abort landing
- * after headers, mid-body-read.
+ * at which point the body read rejects with an error named 'AbortError' —
+ * Chromium streaming-fetch semantics for an abort landing after headers,
+ * mid-body-read.
  */
 function abortableBodyResponse(signal: AbortSignal | null | undefined): Response {
-  const stream = new ReadableStream({
-    start(controller) {
-      const failWithAbort = () =>
-        controller.error(new DOMException('The operation was aborted.', 'AbortError'));
-      if (!signal) return;
-      if (signal.aborted) failWithAbort();
-      else signal.addEventListener('abort', failWithAbort, { once: true });
-    },
-  });
-  return new Response(stream, {
+  const res = new Response(null, {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
+  // A real undici/browser `fetch` aborted mid-body-read rejects the body promise
+  // with an abort error that is `instanceof Error` with `name === 'AbortError'`
+  // (a real `DOMException`, which extends `Error` in those runtimes). jsdom's
+  // global `DOMException` does NOT extend `Error`, so constructing one here would
+  // slip past the src's `err instanceof Error && err.name === 'AbortError'` abort
+  // guard and launder the cancel into the terminal shape error. Reject with a
+  // plain `Error` carrying the abort name to reproduce the production shape.
+  Object.defineProperty(res, 'json', {
+    configurable: true,
+    value: () =>
+      new Promise<never>((_resolve, reject) => {
+        const failWithAbort = () =>
+          reject(Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }));
+        if (!signal) return;
+        if (signal.aborted) failWithAbort();
+        else signal.addEventListener('abort', failWithAbort, { once: true });
+      }),
+  });
+  return res;
 }
 
 /**

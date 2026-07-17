@@ -33,7 +33,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { argv, exit } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { getSchema } from '@tiptap/core';
@@ -43,8 +43,6 @@ import { ACTIVE_MDAST_PLUGINS } from '../src/markdown/pipeline.ts';
 const SCRIPT_URL = import.meta.url;
 const SCRIPT_PATH = fileURLToPath(SCRIPT_URL);
 const DEFAULT_OUT = new URL('../schema-snapshot.json', SCRIPT_URL).pathname;
-
-const require = createRequire(SCRIPT_URL);
 
 interface AttrSnapshot {
   hasDefault: boolean;
@@ -164,16 +162,29 @@ function captureSchema(): {
 
 function getPluginVersion(packageName: string): string | null {
   // Local plugins (e.g., callout-transformer, image-promoter) do not have
-  // installable npm packages — `${name}/package.json` won't resolve and
-  // require throws. Return null in that case so the snapshot records the
-  // plugin's identity without a phantom version.
+  // installable npm packages — resolution throws. Return null in that case so
+  // the snapshot records the plugin's identity without a phantom version.
+  //
+  // Read the version by resolving the package's entry and walking up to the
+  // nearest package.json whose `name` matches. A direct
+  // `require('<pkg>/package.json')` is not portable: packages that restrict
+  // their `exports` map (remark-parse, remark-gfm, …) do not expose
+  // `./package.json`, so the subpath does not resolve under Node's resolver.
   try {
-    const pkg = require(`${packageName}/package.json`) as unknown;
-    if (pkg && typeof pkg === 'object' && 'version' in pkg) {
-      const ver = (pkg as { version: unknown }).version;
-      return typeof ver === 'string' ? ver : null;
+    let dir = dirname(fileURLToPath(import.meta.resolve(packageName)));
+    for (;;) {
+      const pkgPath = join(dir, 'package.json');
+      if (existsSync(pkgPath)) {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as unknown;
+        if (pkg && typeof pkg === 'object' && (pkg as { name?: unknown }).name === packageName) {
+          const ver = (pkg as { version?: unknown }).version;
+          return typeof ver === 'string' ? ver : null;
+        }
+      }
+      const parent = dirname(dir);
+      if (parent === dir) return null;
+      dir = parent;
     }
-    return null;
   } catch {
     return null;
   }

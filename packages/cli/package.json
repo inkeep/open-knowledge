@@ -33,18 +33,18 @@
   "scripts": {
     "build:cli": "tsdown",
     "build:app": "cp -r ../app/dist dist/public",
-    "build:skill-asset": "bun ../server/scripts/build-skill-bundles.ts && mkdir -p dist/assets/skills && cp -R ../server/dist/assets/skills/. dist/assets/skills/",
+    "build:skill-asset": "tsx ../server/scripts/build-skill-bundles.ts && mkdir -p dist/assets/skills && cp -R ../server/dist/assets/skills/. dist/assets/skills/",
     "build:notices": "mkdir -p dist && cp ../../THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md",
     "build:license": "mkdir -p dist && cp ../../LICENSE dist/LICENSE",
     "build:native": "mkdir -p dist/native && cp ../native-config/index.js ../native-config/index.d.ts ../native-config/package.json dist/native/ && (cp ../native-config/*.node dist/native/ 2>/dev/null || true)",
-    "build:schema": "bun --conditions=development scripts/build-config-schema.mjs",
-    "build:assets": "bun run build:app && bun run build:skill-asset && bun run build:notices && bun run build:license && bun run build:native && bun run build:schema",
-    "build": "bun run build:cli && bun run build:assets",
+    "build:schema": "node --import tsx --conditions=development scripts/build-config-schema.mjs",
+    "build:assets": "pnpm run build:app && pnpm run build:skill-asset && pnpm run build:notices && pnpm run build:license && pnpm run build:native && pnpm run build:schema",
+    "build": "pnpm run build:cli && pnpm run build:assets",
     "postinstall": "node scripts/postinstall.mjs",
-    "test": "bun run build:schema && bun test --timeout 30000",
-    "test:e2e:cli": "bun test ./tests/e2e/cli-linux-e2e.ts",
+    "test": "pnpm run build:schema && vitest run",
+    "test:e2e:cli": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bash ../../scripts/check-notices-clean.sh && bun run build"
+    "prepublishOnly": "bash ../../scripts/check-notices-clean.sh && pnpm run build"
   },
   "dependencies": {
     "@inquirer/checkbox": "^5.0.11",

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
@@ -25,7 +25,13 @@ const TEST_CONFIG = ConfigSchema.parse({});
 let tmpDir: string;
 
 beforeEach(async () => {
-  tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-git-preflight-boot-'));
+  // realpath so contentDir is canonical (/private/var/... on macOS, not the
+  // /var/... symlink). When @parcel/watcher falls back to chokidar on CI, the
+  // watcher realpaths its root and feeds /private/var paths to the ignore
+  // filter; without this, relative(contentDir, ...) yields a ".."-prefixed
+  // string that the `ignore` library rejects with a RangeError. Matches the
+  // realpath precedent in file-watcher.test.ts + file-watcher-allfiles.test.ts.
+  tmpDir = await realpath(await mkdtemp(resolve(tmpdir(), 'ok-git-preflight-boot-')));
 });
 
 afterEach(async () => {

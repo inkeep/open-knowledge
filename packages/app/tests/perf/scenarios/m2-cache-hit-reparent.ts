@@ -59,9 +59,9 @@
  * `tests/perf/fixtures/views-{25,50,100,200,400}/FIXTURE.md`.
  */
 
-import { markerFor } from '../lib/doc-markers';
-import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer';
-import { defineScenario } from '../lib/scenario';
+import { markerFor } from '../lib/doc-markers.ts';
+import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer.ts';
+import { defineScenario } from '../lib/scenario.ts';
 
 const TARGET_DOC = process.env.OK_PERF_M2_DOC ?? 'PROJECT';
 const MARKER_KEY = process.env.OK_PERF_M2_MARKER_KEY ?? TARGET_DOC;

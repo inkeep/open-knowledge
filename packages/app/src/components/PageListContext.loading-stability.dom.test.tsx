@@ -66,8 +66,6 @@ mock.module('@/editor/page-list-cache', () => ({
   setPageListCache: setPageListCacheMock,
 }));
 
-import { PageListProvider, usePageList } from './PageListContext';
-
 interface PagesResponseBody {
   pages: {
     docName: string;
@@ -180,6 +178,10 @@ function AddPageProbe() {
     </div>
   );
 }
+
+// Import the component AFTER the mocks above register so its transitive
+// dependencies bind to the stubs rather than the real modules.
+const { PageListProvider, usePageList } = await import('./PageListContext');
 
 describe('PageListContext loading stability', () => {
   test('PRD-6649: a background refetch (window focus) never re-shows the cold-load skeleton or remounts the view', async () => {

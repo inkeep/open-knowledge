@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import type { CapRegime, WorkloadFixtureRef } from './cell-measurement';
+import type { CapRegime, WorkloadFixtureRef } from './cell-measurement.ts';
 import {
   bootstrapCi,
   type CellMeasurement,
@@ -9,7 +9,7 @@ import {
   measureCell,
   readHeapMb,
   type WorkloadDriver,
-} from './cell-measurement';
+} from './cell-measurement.ts';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Test-only mocks for the Playwright/CDP surface

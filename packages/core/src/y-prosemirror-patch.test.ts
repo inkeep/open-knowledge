@@ -179,18 +179,25 @@ function resolvePatchedBundlePath(bundle: (typeof PATCHED_BUNDLES)[number]): str
 }
 
 describe('R13 patch verification (y-prosemirror + @tiptap/y-tiptap)', () => {
-  test('both patches are registered in root package.json patchedDependencies', () => {
-    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'));
-    const patched = pkg.patchedDependencies as Record<string, string> | undefined;
-    expect(patched).toBeDefined();
+  test('both patches are registered in pnpm-workspace.yaml patchedDependencies', () => {
+    // pnpm declares patches in pnpm-workspace.yaml (not package.json, where Bun
+    // kept them). Parse the block with a line matcher to avoid a YAML dependency.
+    const workspaceYaml = readFileSync(join(REPO_ROOT, 'pnpm-workspace.yaml'), 'utf8');
+    const block = workspaceYaml.match(/^patchedDependencies:\n((?:[ \t]+\S.*\n?)+)/m);
+    expect(block).not.toBeNull();
+    const patched: Record<string, string> = {};
+    for (const line of (block?.[1] ?? '').split('\n')) {
+      const entry = line.match(/^\s+(['"]?)(.+?)\1:\s+(\S+)\s*$/);
+      if (entry) patched[entry[2]] = entry[3];
+    }
 
-    expect(patched?.['y-prosemirror@1.3.7']).toBeDefined();
-    expect(patched?.['y-prosemirror@1.3.7']).toContain('patches/');
-    expect(patched?.['y-prosemirror@1.3.7']).toContain('y-prosemirror');
+    expect(patched['y-prosemirror@1.3.7']).toBeDefined();
+    expect(patched['y-prosemirror@1.3.7']).toContain('patches/');
+    expect(patched['y-prosemirror@1.3.7']).toContain('y-prosemirror');
 
-    expect(patched?.['@tiptap/y-tiptap@3.0.3']).toBeDefined();
-    expect(patched?.['@tiptap/y-tiptap@3.0.3']).toContain('patches/');
-    expect(patched?.['@tiptap/y-tiptap@3.0.3']).toContain('y-tiptap');
+    expect(patched['@tiptap/y-tiptap@3.0.3']).toBeDefined();
+    expect(patched['@tiptap/y-tiptap@3.0.3']).toContain('patches/');
+    expect(patched['@tiptap/y-tiptap@3.0.3']).toContain('y-tiptap');
   });
 
   for (const bundle of PATCHED_BUNDLES) {

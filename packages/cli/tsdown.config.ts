@@ -41,6 +41,29 @@ export default defineConfig({
         return id === 'jsonc-parser' ? jsoncParserEsmEntry : null;
       },
     },
+    {
+      // pino stays value-bundled (see `deps.alwaysBundle` — the packaged DMG
+      // cannot resolve it as a bare specifier). Its VALUE inlines fine, but its
+      // TYPES cannot be inlined into cli's .d.mts: pino ships `export = pino`
+      // with the public API surfacing `pino.Logger` / `pino.LoggerOptions`, and
+      // rolldown-plugin-dts's declaration bundler fails to extract those
+      // namespace members from pino's .d.ts under pnpm's isolated node_modules
+      // (aborts with MISSING_EXPORT). Externalize pino ONLY in the declaration
+      // pass (importer is a generated `.d.ts`), leaving `import('pino')`
+      // references that consumers resolve from their own pino dependency
+      // (e.g. the desktop app declares pino).
+      name: 'externalize-pino-in-dts',
+      resolveId(id, importer) {
+        if (
+          (id === 'pino' || id.startsWith('pino/')) &&
+          importer &&
+          /\.d\.[cm]?ts$/.test(importer)
+        ) {
+          return { id, external: true };
+        }
+        return null;
+      },
+    },
   ],
   inputOptions: (options) => {
     // Filter known false-positive warnings. Each branch documents WHY the

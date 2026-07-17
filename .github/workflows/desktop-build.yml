@@ -70,7 +70,7 @@ jobs:
     # `build/okglass.icon` into `Assets.car` via Apple's `actool`, which only
     # ships with Xcode 26+.
     runs-on: macos-26
-    # 45 min budget. Local `bun run build:mac:unsigned` baseline on M3 Max
+    # 45 min budget. Local `pnpm run build:mac:unsigned` baseline on M3 Max
     # is ~3-4 min wall-clock; CI runners are ~2× slower; signing +
     # notarization adds 2-5 min of Apple round-trip on top. 45 min leaves
     # headroom for cold cache and notary-service queue spikes.
@@ -85,18 +85,25 @@ jobs:
         with:
           node-version: "24"
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
-          bun-version-file: ".bun-version"
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ok-pnpm-store-
 
-      # Turbo cache keeps `build` fast across runs. Keying on bun.lock
+      # Turbo cache keeps `build` fast across runs. Keying on pnpm-lock.yaml
       # warm-caches across commits that don't change dependencies — cold
       # cache only when the lockfile actually moves. `github.sha` in the
       # restore-keys fallback still picks up same-commit re-runs.
       - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: .turbo
-          key: ${{ runner.os }}-turbo-desktop-${{ hashFiles('bun.lock') }}
+          key: ${{ runner.os }}-turbo-desktop-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-turbo-desktop-
 
@@ -106,7 +113,7 @@ jobs:
         # modules rebuilt against Electron's Node ABI for a packaged build.
         env:
           ELECTRON_SKIP_REBUILD: "0"
-        run: bash scripts/bun-install-ci.sh
+        run: pnpm install --frozen-lockfile
 
       # electron-builder.yml's `extraResources` rule copies from
       # `packages/cli/dist/public/`, which the CLI's `build:assets` populates
@@ -120,8 +127,8 @@ jobs:
       # before app), and run the two filters in sequence to enforce
       # app → cli ordering.
       #
-      # `bun run --filter=...` was the previous approach; it does not
-      # honor turbo's dep graph (only runs the named package's `build`
+      # A bare per-package `--filter` run was the previous approach; it does
+      # not honor turbo's dep graph (only runs the named package's `build`
       # script in isolation). After the workspace started shipping
       # `.mjs` builds for `@inkeep/open-knowledge-server` and
       # `@inkeep/open-knowledge-core` (specs/2026-04-24-desktop-packaging-
@@ -131,8 +138,8 @@ jobs:
       # resolve entry for package @inkeep/open-knowledge-server".
       - name: Build workspace (produces packages/cli/dist/public for extraResources)
         run: |
-          bunx turbo run build --filter=@inkeep/open-knowledge-app
-          bunx turbo run build --filter=@inkeep/open-knowledge
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge-app
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge
 
       # Decide signed-vs-unsigned path BEFORE invoking electron-builder so
       # the artifact can be named to match. We key off CSC_LINK alone: it's
@@ -197,10 +204,10 @@ jobs:
       # for signed and unsigned modes.
       - name: Build electron-vite bundles
         working-directory: packages/desktop
-        run: bun run build:desktop
+        run: pnpm run build:desktop
 
       # Force-install both darwin-arm64 and darwin-x64 prebuilt binaries for
-      # @napi-rs/keyring before electron-builder's universal merge runs. Bun
+      # @napi-rs/keyring before electron-builder's universal merge runs. pnpm
       # under workspace conditions only installs the host-arch optionalDependency
       # (cpu constraint), so the darwin-x64 binary is missing on an arm64
       # runner. @electron/universal's lipo merge then either errors or hangs
@@ -215,20 +222,17 @@ jobs:
         working-directory: packages/desktop
         run: node scripts/prepare-universal.mjs
 
-      # Step B: package via electron-builder. Split from step A across
-      # separate runner steps (rather than chained via && in a single shell)
-      # because empirically — verified across runs 24920389870 (combined,
-      # broken) and 24923907843 (split, correct) — chaining `bun run build:desktop
-      # && electron-builder ...` in one shell produces an asar containing a
-      # stale workspace-dep `package.json` (the pre-`exports.development` /
-      # pre-`files: ["dist", "src"]` snapshot) and omits `dist/`. Same
-      # commands as separate workflow steps produce a correct asar with the
-      # current `package.json` + the built `dist/`. Root cause not fully
-      # characterized — most likely bun.run's workspace-state caching across
-      # the `&&` boundary, or electron-builder's bun-mode walker reading from
-      # a snapshot taken when bun's wrapper opened the script. Specs/2026-04-24-
-      # desktop-packaging-first-boot/ §10 OQ4 captures the open question;
-      # the empirical fix (separate steps) is sufficient for shipping.
+      # Step B: package via electron-builder. Kept as a separate runner step
+      # from step A (rather than chained via && in a single shell). The split
+      # was originally forced by a packaging bug in the previous script runner:
+      # chaining the build and electron-builder in one shell produced an asar
+      # containing a stale workspace-dep `package.json` (the pre-`exports.development`
+      # / pre-`files: ["dist", "src"]` snapshot) and omitted `dist/`, while the
+      # same commands as separate workflow steps produced a correct asar with the
+      # current `package.json` + the built `dist/`. That runner is gone, but the
+      # separate-steps structure is preserved defensively — it is free and the
+      # failure mode was expensive to diagnose. Specs/2026-04-24-desktop-packaging-
+      # first-boot/ §10 OQ4 captured the original open question.
       - name: Package DMG (${{ steps.signmode.outputs.mode }})
         env:
           CSC_LINK: ${{ steps.signmode.outputs.mode == 'signed' && secrets.CSC_LINK || '' }}
@@ -249,9 +253,9 @@ jobs:
         working-directory: packages/desktop
         run: |
           if [[ "${{ steps.signmode.outputs.mode }}" == "unsigned" ]]; then
-            bunx electron-builder --mac --publish never -c.mac.identity=null
+            pnpm exec electron-builder --mac --publish never -c.mac.identity=null
           else
-            bunx electron-builder --mac --publish never
+            pnpm exec electron-builder --mac --publish never
           fi
 
       # Gate on success() — on build failure, there is no DMG, so running

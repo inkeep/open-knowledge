@@ -21,7 +21,7 @@ import {
   readPressureLevel,
   readPressureSample,
   samplePressureDuring,
-} from './macos-pressure';
+} from './macos-pressure.ts';
 
 const onMacOs = process.platform === 'darwin';
 

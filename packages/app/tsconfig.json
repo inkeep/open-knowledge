@@ -2,6 +2,15 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
+    // The app is a private, non-published frontend (consumed by the CLI as built
+    // assets, never as .d.ts). It emits no declarations, so the base config's
+    // declaration/declarationMap only trigger .d.ts portability checks (TS4058/
+    // TS2742) with no output benefit — and pnpm's isolated node_modules encodes
+    // peer-resolved dependency realpaths under .pnpm/ that those checks reject as
+    // "not portable". Turning declarations off scopes those checks to the packages
+    // that actually publish types; full --noEmit type checking still runs.
+    "declaration": false,
+    "declarationMap": false,
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "paths": {

@@ -17,7 +17,7 @@
  * yields a byte-identical file.
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { argv, exit } from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -105,14 +105,22 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-// Derive patched dependencies from the canonical `package.json#patchedDependencies`
-// rather than hardcoding. Bumping a Bun patch in `package.json` would otherwise
-// drift silently from this script's view of the patches — a hand-mirrored list
-// that the drift check could never catch (regenerated file would still be
-// byte-identical to the committed file).
+// Derive patched dependencies from the canonical pnpm `patchedDependencies`
+// map rather than hardcoding. Bumping a patch would otherwise drift silently
+// from this script's view of the patches — a hand-mirrored list the drift check
+// could never catch. pnpm declares patches in `pnpm-workspace.yaml` (not
+// `package.json`, where Bun kept them); it is a small, stable block, parsed here
+// with a line matcher to avoid pulling a YAML dependency into this script.
 function loadPatchedDeps() {
-  const rootPkg = readJson(join(REPO_ROOT, 'package.json'));
-  const patches = rootPkg.patchedDependencies || {};
+  const workspaceYaml = readFileSync(join(REPO_ROOT, 'pnpm-workspace.yaml'), 'utf8');
+  const block = workspaceYaml.match(/^patchedDependencies:\n((?:[ \t]+\S.*\n?)+)/m);
+  const patches = {};
+  if (block) {
+    for (const line of block[1].split('\n')) {
+      const entry = line.match(/^\s+(['"]?)(.+?)\1:\s+(\S+)\s*$/);
+      if (entry) patches[entry[2]] = entry[3];
+    }
+  }
   return Object.entries(patches)
     .map(([nameVersion, patchFile]) => {
       const at = nameVersion.lastIndexOf('@');
@@ -127,14 +135,23 @@ function loadPatchedDeps() {
 
 /**
  * Mimic Node's resolution by walking up from `fromDir`, looking for
- * node_modules/<name>/package.json. Bun's hoisting puts most packages at the
- * repo-root node_modules; nested ones are found by walking up.
+ * node_modules/<name>/package.json.
+ *
+ * The resolved directory is canonicalized with `realpathSync`. Under pnpm's
+ * isolated node_modules a dependency symlink (e.g.
+ * `packages/cli/node_modules/commander`) points into the virtual store at
+ * `node_modules/.pnpm/commander@<ver>/node_modules/commander`, whose own
+ * dependencies live as siblings under `.pnpm/commander@<ver>/node_modules/`.
+ * Returning the symlink path would make the recursive walk climb the consumer's
+ * tree and miss those transitive production deps; returning the realpath lets
+ * the next walk climb the virtual-store tree and find them. It also de-dupes a
+ * package reached through different consumers to one canonical dir.
  */
 function resolvePackageDir(name, fromDir) {
   let dir = fromDir;
   while (dir.length >= REPO_ROOT.length) {
     const candidate = join(dir, 'node_modules', name);
-    if (existsSync(join(candidate, 'package.json'))) return candidate;
+    if (existsSync(join(candidate, 'package.json'))) return realpathSync(candidate);
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -696,7 +713,7 @@ function bundledRustCratesSection() {
 function build() {
   const collected = collectClosure();
 
-  // Dedupe by name@version — Bun's nested resolution can surface the same
+  // Dedupe by name@version — pnpm's nested resolution can surface the same
   // package multiple times under different node_modules dirs.
   const seenKeys = new Set();
   const grouped = new Map();
@@ -732,7 +749,7 @@ function build() {
     '',
   );
   push(
-    'This file is generated. **Do not edit by hand.** Regenerate with `bun run notices` from the repo root, then commit the result.',
+    'This file is generated. **Do not edit by hand.** Regenerate with `pnpm run notices` from the repo root, then commit the result.',
     '',
   );
   hr();
@@ -936,7 +953,7 @@ function build() {
   // Patched deps
   push('## Patched dependencies', '');
   push(
-    "The following MIT-licensed packages are patched in this repository via Bun's `patchedDependencies` mechanism. Modifications are released under the same MIT license as the upstream package. Patch files live under `patches/` in the source repo; the bundled output of every shipped artifact incorporates the patched code.",
+    "The following MIT-licensed packages are patched in this repository via pnpm's `patchedDependencies` mechanism. Modifications are released under the same MIT license as the upstream package. Patch files live under `patches/` in the source repo; the bundled output of every shipped artifact incorporates the patched code.",
     '',
   );
   push('| Package | Patch file |');
@@ -976,7 +993,7 @@ function build() {
   build.lastAuditCount = filteredCallouts.length;
 
   push(
-    '_Regenerate with `bun run notices`. The generator at `scripts/generate-third-party-notices.mjs` walks the production-dep closure of `packages/{cli,server,core,app,desktop}` and emits attribution for every package that ends up bundled into a shipped artifact._',
+    '_Regenerate with `pnpm run notices`. The generator at `scripts/generate-third-party-notices.mjs` walks the production-dep closure of `packages/{cli,server,core,app,desktop}` and emits attribution for every package that ends up bundled into a shipped artifact._',
     '',
   );
 
@@ -1002,7 +1019,7 @@ function computeHeaderDiff(existing, fresh) {
 if (CHECK_MODE) {
   if (!existsSync(OUT_PATH)) {
     console.error(`THIRD_PARTY_NOTICES.md not found at ${OUT_PATH}`);
-    console.error('Run `bun run notices` to regenerate.');
+    console.error('Run `pnpm run notices` to regenerate.');
     exit(1);
   }
   const existing = readFileSync(OUT_PATH, 'utf8');
@@ -1030,7 +1047,7 @@ if (CHECK_MODE) {
       );
       console.error('');
     }
-    console.error('Run `bun run notices` to regenerate, then commit the result.');
+    console.error('Run `pnpm run notices` to regenerate, then commit the result.');
     exit(1);
   }
   console.log(`${relative(REPO_ROOT, OUT_PATH)} is up to date.`);

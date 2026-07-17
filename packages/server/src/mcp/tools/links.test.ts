@@ -11,6 +11,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
+import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { DESCRIPTION, type LinksDeps, register } from './links.ts';
 import { bindTestUiLock } from './preview-url-test-helpers.ts';
 import type { ServerInstance } from './shared.ts';
@@ -81,13 +82,13 @@ function makeDeps(serverUrl: string | undefined, cwdDir: string): LinksDeps {
   };
 }
 
-let testServer: ReturnType<typeof Bun.serve>;
+let testServer: FetchTestServer;
 let baseUrl: string;
 let tmpDir: string;
 const seenRequests: string[] = [];
 
-beforeAll(() => {
-  testServer = Bun.serve({
+beforeAll(async () => {
+  testServer = await startFetchTestServer({
     port: 0,
     hostname: '127.0.0.1',
     fetch(req) {

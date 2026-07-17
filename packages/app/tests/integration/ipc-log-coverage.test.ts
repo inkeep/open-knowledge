@@ -35,7 +35,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { Glob } from 'bun';
 import {
   type Expression,
   type Node,
@@ -74,7 +73,7 @@ function isExcludedPath(absPath: string): boolean {
 }
 
 function* enumerateMainSourceFiles(): Generator<string> {
-  const glob = new Glob('**/*.ts');
+  const glob = new Bun.Glob('**/*.ts');
   for (const rel of glob.scanSync({ cwd: MAIN_ROOT })) {
     const abs = join(MAIN_ROOT, rel);
     if (isExcludedPath(abs)) continue;

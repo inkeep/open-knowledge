@@ -42,14 +42,14 @@
  *              fr3bVerified, nonMountedFireCounts}, ...]}
  */
 
-import { markerFor } from '../lib/doc-markers';
-import { installLongtaskObserver } from '../lib/longtask-observer';
+import { markerFor } from '../lib/doc-markers.ts';
+import { installLongtaskObserver } from '../lib/longtask-observer.ts';
 import {
   createNodePeerSimulator,
   type NodePeerSimulatorHandle,
   type TypingProfile,
-} from '../lib/node-peer-simulator';
-import { defineScenario } from '../lib/scenario';
+} from '../lib/node-peer-simulator.ts';
+import { defineScenario } from '../lib/scenario.ts';
 
 const ACTIVITY_MOUNT_LIMITS = [1, 3, 5, 10, 20] as const;
 const PEER_COUNTS = [0, 1, 3, 5] as const;

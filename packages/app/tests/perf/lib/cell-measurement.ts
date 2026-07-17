@@ -54,9 +54,9 @@
  */
 
 import type { CDPSession, Page } from '@playwright/test';
-import type { CapRegime, WorkloadFixtureRef } from '../fixtures/cache-regime-rotation/types';
-import { bcaConfidenceInterval } from './bootstrap';
-import { type PressureLevel, samplePressureDuring } from './macos-pressure';
+import type { CapRegime, WorkloadFixtureRef } from '../fixtures/cache-regime-rotation/types.ts';
+import { bcaConfidenceInterval } from './bootstrap.ts';
+import { type PressureLevel, samplePressureDuring } from './macos-pressure.ts';
 
 // Re-export the canonical types so existing consumers (downstream sweep
 // runner, sweep scenario, tests) continue to compile against the prior

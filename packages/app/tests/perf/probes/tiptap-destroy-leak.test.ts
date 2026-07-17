@@ -43,13 +43,13 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { computeLeakRateMbPerCycle } from '../lib/cell-measurement';
+import { computeLeakRateMbPerCycle } from '../lib/cell-measurement.ts';
 import {
   type ProbeOptions,
   type ProbeResult,
   parseCliArgs,
   writeProbeResults,
-} from './tiptap-destroy-leak';
+} from './tiptap-destroy-leak.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // HERE is packages/app/tests/perf/probes; needs 5 `..` to reach the OK

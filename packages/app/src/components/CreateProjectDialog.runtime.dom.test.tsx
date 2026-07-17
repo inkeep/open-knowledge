@@ -18,7 +18,6 @@ import type {
   OkMcpWiringEditorId,
   OkSeedPackInfo,
 } from '@/lib/desktop-bridge-types';
-import { CreateProjectDialog } from './CreateProjectDialog';
 
 // Two packs to look up `initialPackId`'s display metadata. Folder counts differ
 // so the read-only description's "N folders" phrasing is distinguishable per pack.
@@ -171,6 +170,10 @@ async function waitForSubmitEnabled() {
     { timeout: 2000 },
   );
 }
+
+// Import the component AFTER the mocks above register so its transitive
+// dependencies bind to the stubs rather than the real modules.
+const { CreateProjectDialog } = await import('./CreateProjectDialog');
 
 describe('CreateProjectDialog runtime wiring', () => {
   beforeEach(() => {

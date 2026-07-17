@@ -23,8 +23,8 @@
  */
 
 import type { Browser, BrowserContext, CDPSession, Page } from '@playwright/test';
-import type { ProfilerRenderEvent } from '../../../src/lib/perf/types';
-import type { TraceSummary } from './cdp-tracer';
+import type { ProfilerRenderEvent } from '../../../src/lib/perf/types.ts';
+import type { TraceSummary } from './cdp-tracer.ts';
 
 // ─────────────────────────── Scenario-facing types ────────────────────────
 

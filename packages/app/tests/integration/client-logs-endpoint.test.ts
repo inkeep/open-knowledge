@@ -13,6 +13,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { RENDERER_LOG_MAX_ENTRIES } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
+import { fetchWithHostHeader } from './host-header-request.test-helper';
 import { createTestServer, type TestServer } from './test-harness';
 
 let server: TestServer;
@@ -84,7 +85,15 @@ describe('POST /api/client-logs', () => {
   });
 
   test('rejects a DNS-rebinding Host header with 403 even from a loopback peer', async () => {
-    const res = await postLogs({ entries: [] }, { Host: 'attacker.example.com' });
+    const res = await fetchWithHostHeader(
+      `http://127.0.0.1:${server.port}/api/client-logs`,
+      'attacker.example.com',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ entries: [] }),
+      },
+    );
     expect(res.status).toBe(403);
     const body = (await res.json()) as { type: string; status: number };
     expect(body.type).toBe('urn:ok:error:host-not-allowed');

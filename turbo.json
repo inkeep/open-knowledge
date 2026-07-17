@@ -40,7 +40,8 @@
         "src/**/*.tsx",
         "tests/dom/**/*.ts",
         "tests/dom/**/*.tsx",
-        "scripts/run-test-dom.sh",
+        "vitest.dom.config.ts",
+        "vitest.config.ts",
         "../core/src/**/*.ts",
         "../server/src/**/*.ts"
       ]

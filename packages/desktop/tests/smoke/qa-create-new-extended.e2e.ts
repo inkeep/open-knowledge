@@ -345,6 +345,13 @@ test.describe('QA extended create-new-project', () => {
       }),
     );
 
+    // closeAppBounded SIGKILLs app1 (it never sends app.quit(), so app1 never
+    // reaches `will-quit` and markCleanQuit() never clears the dirty-shutdown
+    // sentinel). That kill is a harness teardown artifact, not a real crash;
+    // leaving the sentinel makes app2's boot crash-detection open a crash-invite
+    // dialog that stacks over the create dialog and intercepts clicks on its controls.
+    rmSync(join(userDataDir, 'bug-report-dirty-shutdown.json'), { force: true });
+
     // Second launch: relaunch. Location prefills from lastUsedProjectParent;
     // the Name input resets to empty; editor checkboxes reset to checked.
     const app2 = await launchApp(tmpHome);

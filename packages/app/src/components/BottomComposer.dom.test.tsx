@@ -15,6 +15,7 @@
  * instruction + mentions through so we can assert they survive to dispatch.
  */
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -34,6 +35,7 @@ import {
 } from '@/lib/unified-agent-store';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>

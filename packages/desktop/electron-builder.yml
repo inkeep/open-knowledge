@@ -2,9 +2,8 @@ appId: com.inkeep.open-knowledge
 productName: OpenKnowledge
 copyright: Copyright © 2026 Inkeep
 
-# Pin the Electron version explicitly — bun's workspace hoisting puts
-# node_modules/electron at repo root (not in packages/desktop/node_modules),
-# and electron-builder's auto-version-detection walks the package manifest
+# Pin the Electron version explicitly — under pnpm's isolated node_modules
+# layout electron-builder's auto-version-detection walks the package manifest
 # tree and refuses to infer from a caret range. electron-userland/electron-
 # builder#3984 is the canonical reference. Keep this byte-identical to the
 # "electron" devDep in packages/desktop/package.json — that devDep is
@@ -88,9 +87,11 @@ extraResources:
   # `createTokenStore` throws ERR_MODULE_NOT_FOUND and auth silently downgrades
   # to the plaintext `~/.ok/auth.yml` file backend. Ship the wrapper + the arm64
   # platform binary into `cli/node_modules/` so the CLI resolves the keychain.
-  # Sourced from the Bun-hoisted workspace root (`../../node_modules`). arm64
-  # only: matches the arm64-only DMG (`mac.target`) and avoids the
-  # @electron/universal lipo-merge collision documented under `mac:`.
+  # Sourced from the workspace-root `node_modules` — pnpm isolates packages
+  # under `.pnpm/` by default, so `.npmrc` surgically hoists `@napi-rs/keyring*`
+  # to the public root (`public-hoist-pattern`) to keep this copy source
+  # resolvable. arm64 only: matches the arm64-only DMG (`mac.target`) and avoids
+  # the @electron/universal lipo-merge collision documented under `mac:`.
   # Coverage: tests/unit/electron-builder-cli-native-deps.test.ts.
   - from: "../../node_modules/@napi-rs/keyring"
     to: "cli/node_modules/@napi-rs/keyring"

@@ -6,7 +6,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'heading-increment',
     aliases: ['heading-increment'],
     name: 'Heading levels should only increment by one level at a time',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md001.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md001.md',
     tags: ['headings'],
     options: [
       {
@@ -22,7 +22,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'heading-style',
     aliases: ['heading-style'],
     name: 'Heading style',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md003.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md003.md',
     tags: ['headings'],
     options: [
       {
@@ -46,7 +46,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'ul-style',
     aliases: ['ul-style'],
     name: 'Unordered list style',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md004.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md004.md',
     tags: ['bullet', 'ul'],
     options: [
       {
@@ -63,7 +63,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'list-indent',
     aliases: ['list-indent'],
     name: 'Inconsistent indentation for list items at the same level',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md005.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md005.md',
     tags: ['bullet', 'ul', 'indentation'],
     options: [],
   },
@@ -72,7 +72,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'ul-indent',
     aliases: ['ul-indent'],
     name: 'Unordered list indentation',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md007.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md007.md',
     tags: ['bullet', 'ul', 'indentation'],
     options: [
       { key: 'indent', type: 'integer', description: 'Spaces for indent', default: 2, minimum: 1 },
@@ -96,7 +96,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-trailing-spaces',
     aliases: ['no-trailing-spaces'],
     name: 'Trailing spaces',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md009.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md009.md',
     tags: ['whitespace'],
     options: [
       {
@@ -121,7 +121,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-hard-tabs',
     aliases: ['no-hard-tabs'],
     name: 'Hard tabs',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md010.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md010.md',
     tags: ['whitespace', 'hard_tab'],
     options: [
       { key: 'code_blocks', type: 'boolean', description: 'Include code blocks', default: true },
@@ -145,7 +145,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-reversed-links',
     aliases: ['no-reversed-links'],
     name: 'Reversed link syntax',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md011.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md011.md',
     tags: ['links'],
     options: [],
   },
@@ -154,7 +154,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-multiple-blanks',
     aliases: ['no-multiple-blanks'],
     name: 'Multiple consecutive blank lines',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md012.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md012.md',
     tags: ['whitespace', 'blank_lines'],
     options: [
       {
@@ -171,7 +171,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'line-length',
     aliases: ['line-length'],
     name: 'Line length',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md013.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md013.md',
     tags: ['line_length'],
     options: [
       {
@@ -207,7 +207,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'commands-show-output',
     aliases: ['commands-show-output'],
     name: 'Dollar signs used before commands without showing output',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md014.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md014.md',
     tags: ['code'],
     options: [],
   },
@@ -216,7 +216,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-missing-space-atx',
     aliases: ['no-missing-space-atx'],
     name: 'No space after hash on atx style heading',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md018.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md018.md',
     tags: ['headings', 'atx', 'spaces'],
     options: [],
   },
@@ -225,7 +225,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-multiple-space-atx',
     aliases: ['no-multiple-space-atx'],
     name: 'Multiple spaces after hash on atx style heading',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md019.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md019.md',
     tags: ['headings', 'atx', 'spaces'],
     options: [],
   },
@@ -234,7 +234,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-missing-space-closed-atx',
     aliases: ['no-missing-space-closed-atx'],
     name: 'No space inside hashes on closed atx style heading',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md020.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md020.md',
     tags: ['headings', 'spaces', 'atx_closed'],
     options: [],
   },
@@ -243,7 +243,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-multiple-space-closed-atx',
     aliases: ['no-multiple-space-closed-atx'],
     name: 'Multiple spaces inside hashes on closed atx style heading',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md021.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md021.md',
     tags: ['headings', 'spaces', 'atx_closed'],
     options: [],
   },
@@ -252,7 +252,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'blanks-around-headings',
     aliases: ['blanks-around-headings'],
     name: 'Headings should be surrounded by blank lines',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md022.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md022.md',
     tags: ['headings', 'blank_lines'],
     options: [
       {
@@ -280,7 +280,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'heading-start-left',
     aliases: ['heading-start-left'],
     name: 'Headings must start at the beginning of the line',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md023.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md023.md',
     tags: ['headings', 'spaces'],
     options: [],
   },
@@ -289,7 +289,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-duplicate-heading',
     aliases: ['no-duplicate-heading'],
     name: 'Multiple headings with the same content',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md024.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md024.md',
     tags: ['headings'],
     options: [
       {
@@ -305,7 +305,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'single-title',
     aliases: ['single-title', 'single-h1'],
     name: 'Multiple top-level headings in the same document',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md025.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md025.md',
     tags: ['headings'],
     options: [
       {
@@ -329,7 +329,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-trailing-punctuation',
     aliases: ['no-trailing-punctuation'],
     name: 'Trailing punctuation in heading',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md026.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md026.md',
     tags: ['headings'],
     options: [
       {
@@ -345,7 +345,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-multiple-space-blockquote',
     aliases: ['no-multiple-space-blockquote'],
     name: 'Multiple spaces after blockquote symbol',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md027.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md027.md',
     tags: ['indentation', 'whitespace', 'blockquote'],
     options: [
       { key: 'list_items', type: 'boolean', description: 'Include list items', default: true },
@@ -356,7 +356,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-blanks-blockquote',
     aliases: ['no-blanks-blockquote'],
     name: 'Blank line inside blockquote',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md028.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md028.md',
     tags: ['whitespace', 'blockquote'],
     options: [],
   },
@@ -365,7 +365,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'ol-prefix',
     aliases: ['ol-prefix'],
     name: 'Ordered list item prefix',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md029.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md029.md',
     tags: ['ol'],
     options: [
       {
@@ -382,7 +382,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'list-marker-space',
     aliases: ['list-marker-space'],
     name: 'Spaces after list markers',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md030.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md030.md',
     tags: ['ul', 'whitespace', 'ol'],
     options: [
       {
@@ -420,7 +420,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'blanks-around-fences',
     aliases: ['blanks-around-fences'],
     name: 'Fenced code blocks should be surrounded by blank lines',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md031.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md031.md',
     tags: ['blank_lines', 'code'],
     options: [
       { key: 'list_items', type: 'boolean', description: 'Include list items', default: true },
@@ -431,7 +431,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'blanks-around-lists',
     aliases: ['blanks-around-lists'],
     name: 'Lists should be surrounded by blank lines',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md032.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md032.md',
     tags: ['bullet', 'ul', 'blank_lines', 'ol'],
     options: [],
   },
@@ -440,7 +440,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-inline-html',
     aliases: ['no-inline-html'],
     name: 'Inline HTML',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md033.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md033.md',
     tags: ['html'],
     options: [
       {
@@ -462,7 +462,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-bare-urls',
     aliases: ['no-bare-urls'],
     name: 'Bare URL used',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md034.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md034.md',
     tags: ['links', 'url'],
     options: [],
   },
@@ -471,7 +471,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'hr-style',
     aliases: ['hr-style'],
     name: 'Horizontal rule style',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md035.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md035.md',
     tags: ['hr'],
     options: [
       { key: 'style', type: 'string', description: 'Horizontal rule style', default: 'consistent' },
@@ -482,7 +482,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-emphasis-as-heading',
     aliases: ['no-emphasis-as-heading'],
     name: 'Emphasis used instead of a heading',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md036.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md036.md',
     tags: ['headings', 'emphasis'],
     options: [
       {
@@ -498,7 +498,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-space-in-emphasis',
     aliases: ['no-space-in-emphasis'],
     name: 'Spaces inside emphasis markers',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md037.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md037.md',
     tags: ['whitespace', 'emphasis'],
     options: [],
   },
@@ -507,7 +507,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-space-in-code',
     aliases: ['no-space-in-code'],
     name: 'Spaces inside code span elements',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md038.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md038.md',
     tags: ['whitespace', 'code'],
     options: [],
   },
@@ -516,7 +516,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-space-in-links',
     aliases: ['no-space-in-links'],
     name: 'Spaces inside link text',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md039.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md039.md',
     tags: ['whitespace', 'links'],
     options: [],
   },
@@ -525,7 +525,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'fenced-code-language',
     aliases: ['fenced-code-language'],
     name: 'Fenced code blocks should have a language specified',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md040.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md040.md',
     tags: ['code', 'language'],
     options: [
       {
@@ -547,7 +547,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'first-line-heading',
     aliases: ['first-line-heading', 'first-line-h1'],
     name: 'First line in a file should be a top-level heading',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md041.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md041.md',
     tags: ['headings'],
     options: [
       {
@@ -577,7 +577,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-empty-links',
     aliases: ['no-empty-links'],
     name: 'No empty links',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md042.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md042.md',
     tags: ['links'],
     options: [],
   },
@@ -586,7 +586,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'required-headings',
     aliases: ['required-headings'],
     name: 'Required heading structure',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md043.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md043.md',
     tags: ['headings'],
     options: [
       { key: 'headings', type: 'string-array', description: 'List of headings', default: [] },
@@ -598,7 +598,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'proper-names',
     aliases: ['proper-names'],
     name: 'Proper names should have the correct capitalization',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md044.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md044.md',
     tags: ['spelling'],
     options: [
       { key: 'names', type: 'string-array', description: 'List of proper names', default: [] },
@@ -616,7 +616,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'no-alt-text',
     aliases: ['no-alt-text'],
     name: 'Images should have alternate text (alt text)',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md045.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md045.md',
     tags: ['accessibility', 'images'],
     options: [],
   },
@@ -625,7 +625,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'code-block-style',
     aliases: ['code-block-style'],
     name: 'Code block style',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md046.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md046.md',
     tags: ['code'],
     options: [
       {
@@ -642,7 +642,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'single-trailing-newline',
     aliases: ['single-trailing-newline'],
     name: 'Files should end with a single newline character',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md047.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md047.md',
     tags: ['blank_lines'],
     options: [],
   },
@@ -651,7 +651,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'code-fence-style',
     aliases: ['code-fence-style'],
     name: 'Code fence style',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md048.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md048.md',
     tags: ['code'],
     options: [
       {
@@ -668,7 +668,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'emphasis-style',
     aliases: ['emphasis-style'],
     name: 'Emphasis style',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md049.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md049.md',
     tags: ['emphasis'],
     options: [
       {
@@ -685,7 +685,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'strong-style',
     aliases: ['strong-style'],
     name: 'Strong style',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md050.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md050.md',
     tags: ['emphasis'],
     options: [
       {
@@ -702,7 +702,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'link-fragments',
     aliases: ['link-fragments'],
     name: 'Link fragments should be valid',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md051.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md051.md',
     tags: ['links'],
     options: [
       {
@@ -724,7 +724,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'reference-links-images',
     aliases: ['reference-links-images'],
     name: 'Reference links and images should use a label that is defined',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md052.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md052.md',
     tags: ['links', 'images'],
     options: [
       {
@@ -746,7 +746,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'link-image-reference-definitions',
     aliases: ['link-image-reference-definitions'],
     name: 'Link and image reference definitions should be needed',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md053.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md053.md',
     tags: ['links', 'images'],
     options: [
       {
@@ -762,7 +762,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'link-image-style',
     aliases: ['link-image-style'],
     name: 'Link and image style',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md054.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md054.md',
     tags: ['links', 'images'],
     options: [
       { key: 'autolink', type: 'boolean', description: 'Allow autolinks', default: true },
@@ -803,7 +803,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'table-pipe-style',
     aliases: ['table-pipe-style'],
     name: 'Table pipe style',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md055.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md055.md',
     tags: ['table'],
     options: [
       {
@@ -826,7 +826,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'table-column-count',
     aliases: ['table-column-count'],
     name: 'Table column count',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md056.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md056.md',
     tags: ['table'],
     options: [],
   },
@@ -835,7 +835,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'blanks-around-tables',
     aliases: ['blanks-around-tables'],
     name: 'Tables should be surrounded by blank lines',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md058.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md058.md',
     tags: ['table'],
     options: [],
   },
@@ -844,7 +844,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'descriptive-link-text',
     aliases: ['descriptive-link-text'],
     name: 'Link text should be descriptive',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md059.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md059.md',
     tags: ['links', 'accessibility'],
     options: [
       {
@@ -860,7 +860,7 @@ export const MARKDOWNLINT_RULE_CATALOG: readonly RuleCatalogEntry[] = [
     alias: 'table-column-style',
     aliases: ['table-column-style'],
     name: 'Table column style',
-    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.0/doc/md060.md',
+    docUrl: 'https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md060.md',
     tags: ['table'],
     options: [
       {

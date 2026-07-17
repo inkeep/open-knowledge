@@ -20,12 +20,14 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { CreateScenario, InstallState } from '@inkeep/open-knowledge-core';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { JSONContent } from '@tiptap/core';
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
 import { __resetComposerDraftForTests } from './composer-draft-store';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>

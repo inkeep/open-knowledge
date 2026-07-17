@@ -8,9 +8,9 @@ import {
   pickFrontmatterDensity,
   pickImageCount,
   sampleIntInRange,
-} from './generator';
-import type { SizeMix } from './types';
-import { SIZE_ENVELOPES, totalDocsInMix } from './types';
+} from './generator.ts';
+import type { SizeMix } from './types.ts';
+import { SIZE_ENVELOPES, totalDocsInMix } from './types.ts';
 
 describe('makePrng', () => {
   test('same seed produces same sequence', () => {

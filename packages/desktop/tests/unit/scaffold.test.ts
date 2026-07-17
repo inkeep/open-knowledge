@@ -24,25 +24,26 @@ describe('desktop scaffold', () => {
   });
 
   /**
-   * Desktop tests MUST resolve workspace deps to their built `dist/` bundle, not
-   * the `development`-condition `src` barrel. With `--conditions=development`,
-   * `@inkeep/open-knowledge-server` resolves to its large multi-file
-   * `src/index.ts` re-export barrel, and Bun's loader intermittently fails to
-   * link all of those re-exports under `bun test` — throwing
-   * `SyntaxError: Export named '<x>' not found in module '.../src/index.ts'` and
-   * reddening the whole tier, a flake that clears on re-run (a known Bun barrel
-   * re-export resolution bug class, e.g. oven-sh/bun#7384). The bundled
-   * single-entry `dist/index.mjs` (guaranteed built by turbo's `^build`
-   * dependency of the `test` task) has no such barrel to re-link. The desktop
-   * `test` script therefore omits `--conditions=development`; this guard fails
-   * loudly if that flag is ever restored.
+   * Desktop tests resolve workspace deps to their `development`-condition
+   * `src/index.ts` barrel, matching the shared vitest base config's
+   * `ssr.resolve.conditions`. Running the suite against source (not a built
+   * `dist/`) keeps it honest: an edit to a workspace dep is exercised
+   * immediately, with no stale build in between.
+   *
+   * This package historically pinned `dist/` instead, to sidestep an
+   * intermittent barrel re-export link failure in the old test runner
+   * (`SyntaxError: Export named '<x>' not found in module '.../src/index.ts'`,
+   * a known runner bug class, e.g. oven-sh/bun#7384). Vite's resolver links the
+   * multi-file `src/index.ts` re-export barrel cleanly — the "server package is
+   * importable" case above proves it — so the workaround is no longer needed.
+   * This guard fails loudly if resolution ever silently flips back to `dist/`.
    */
-  test('workspace deps resolve to built dist, not the src barrel', () => {
+  test('workspace deps resolve to the development src barrel', () => {
     // Anchor to the package entry tail: an absolute repo path can itself
-    // contain `/src/` (e.g. a `~/src/` checkout), so match only the resolved
-    // module's own `dist/<entry>.mjs` suffix, never the `src/<entry>.ts` barrel.
-    expect(import.meta.resolve('@inkeep/open-knowledge-server')).toMatch(/\/dist\/index\.mjs$/);
-    expect(import.meta.resolve('@inkeep/open-knowledge-core')).toMatch(/\/dist\/index\.mjs$/);
+    // contain `/dist/` somewhere, so match only the resolved module's own
+    // `src/index.ts` suffix.
+    expect(import.meta.resolve('@inkeep/open-knowledge-server')).toMatch(/\/src\/index\.ts$/);
+    expect(import.meta.resolve('@inkeep/open-knowledge-core')).toMatch(/\/src\/index\.ts$/);
   });
 });
 

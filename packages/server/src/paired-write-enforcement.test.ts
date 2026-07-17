@@ -19,7 +19,6 @@
  */
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { join, relative } from 'node:path';
-import { Glob } from 'bun';
 import {
   type CallExpression,
   type Expression,
@@ -155,7 +154,7 @@ function loadServerSourceFiles(): ReadonlyArray<readonly [string, SourceFile]> {
     },
   });
   const out: Array<readonly [string, SourceFile]> = [];
-  const glob = new Glob('**/*.ts');
+  const glob = new Bun.Glob('**/*.ts');
   for (const rel of glob.scanSync({ cwd: SERVER_SRC_DIR, absolute: false, onlyFiles: true })) {
     if (rel.endsWith('.test.ts') || rel.endsWith('.d.ts')) continue;
     const abs = join(SERVER_SRC_DIR, rel);

@@ -13,8 +13,8 @@
  * committing to a multi-hour campaign.
  */
 
-import type { DocSpec, SizeMix } from './types';
-import { SIZE_ENVELOPES, totalDocsInMix } from './types';
+import type { DocSpec, SizeMix } from './types.ts';
+import { SIZE_ENVELOPES, totalDocsInMix } from './types.ts';
 
 /**
  * `mulberry32` — a 32-bit PRNG with full 2^32 period. Tiny, deterministic,

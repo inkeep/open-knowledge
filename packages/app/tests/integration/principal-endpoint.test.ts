@@ -24,6 +24,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PrincipalSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
+import { fetchWithHostHeader } from './host-header-request.test-helper';
 import { createTestServer, type TestServer } from './test-harness';
 
 let server: TestServer;
@@ -51,9 +52,10 @@ describe('GET /api/principal', () => {
   });
 
   test('rejects DNS-rebinding Host header with 403 host-not-allowed', async () => {
-    const res = await fetch(`http://127.0.0.1:${server.port}/api/principal`, {
-      headers: { Host: 'attacker.example.com' },
-    });
+    const res = await fetchWithHostHeader(
+      `http://127.0.0.1:${server.port}/api/principal`,
+      'attacker.example.com',
+    );
     expect(res.status).toBe(403);
     expect(res.headers.get('content-type')).toContain('application/problem+json');
     const body = (await res.json()) as { type: string; status: number };
@@ -66,13 +68,15 @@ describe('GET /api/principal', () => {
     // returned 405 instead, the endpoint would leak "I exist, I expect GET" to
     // cross-origin callers. Both GET and POST from the same bad Host must produce
     // the same 403 with the same problem-type token.
-    const getRes = await fetch(`http://127.0.0.1:${server.port}/api/principal`, {
-      headers: { Host: 'attacker.example.com' },
-    });
-    const postRes = await fetch(`http://127.0.0.1:${server.port}/api/principal`, {
-      method: 'POST',
-      headers: { Host: 'attacker.example.com' },
-    });
+    const getRes = await fetchWithHostHeader(
+      `http://127.0.0.1:${server.port}/api/principal`,
+      'attacker.example.com',
+    );
+    const postRes = await fetchWithHostHeader(
+      `http://127.0.0.1:${server.port}/api/principal`,
+      'attacker.example.com',
+      { method: 'POST' },
+    );
     expect(getRes.status).toBe(403);
     expect(postRes.status).toBe(403);
     const getBody = (await getRes.json()) as { type: string };

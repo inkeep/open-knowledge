@@ -12,8 +12,8 @@
  * perf:profile --scenario=cold-load-big-doc`).
  */
 
-import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer';
-import { defineScenario } from '../lib/scenario';
+import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer.ts';
+import { defineScenario } from '../lib/scenario.ts';
 
 const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'PROJECT';
 

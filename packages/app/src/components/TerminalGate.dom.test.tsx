@@ -22,7 +22,10 @@ let writerImpl: Writer = null;
 const writerCalls: boolean[] = [];
 const toastErrors: string[] = [];
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>

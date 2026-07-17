@@ -20,7 +20,10 @@ import { DocumentBoundary } from './DocumentBoundary';
 const DUMMY_WS = 'ws://localhost:1/collab';
 
 function makeProvider(docName: string): HocuspocusProvider {
-  return new HocuspocusProvider({ url: DUMMY_WS, name: docName });
+  // Never open a real socket: on Node the undici WebSocket to the dead dummy URL
+  // fires an async close that rejects the syncPromise as an unhandled
+  // PreSyncDisconnectError after the test ends. bun never connected here.
+  return new HocuspocusProvider({ url: DUMMY_WS, name: docName, autoConnect: false });
 }
 
 let providers: HocuspocusProvider[] = [];

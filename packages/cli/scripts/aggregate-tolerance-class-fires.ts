@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 /**
  * Aggregate tolerance-class fire-rate data from the JSONL telemetry log
  * produced by OK_BRIDGE_TOLERANCE_TELEMETRY=1.

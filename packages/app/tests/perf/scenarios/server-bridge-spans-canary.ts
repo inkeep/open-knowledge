@@ -16,7 +16,7 @@
  * (`docker compose up otel-dev`) to actually capture spans.
  */
 
-import { defineScenario } from '../lib/scenario';
+import { defineScenario } from '../lib/scenario.ts';
 
 export default defineScenario({
   name: 'server-bridge-spans-canary',

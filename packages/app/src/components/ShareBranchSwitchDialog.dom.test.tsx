@@ -45,7 +45,10 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 // Lingui macros: not transformed in this test substrate. Stub to identity
 // renderers so Trans/Plural pass children through and useLingui returns a
 // passthrough `t` template tag.
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => children,
   useLingui: () => ({
     t: (strings: TemplateStringsArray | string, ...values: unknown[]) => {

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 /**
  * TipTap destroy-leak memlab probe — identifies the leak source by mounting
  * + destroying a PROJECT-class editor and capturing CDP heap snapshots
@@ -56,8 +56,8 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Browser, type CDPSession, chromium, type Page } from '@playwright/test';
-import { computeLeakRateMbPerCycle, forceGc, readHeapMb } from '../lib/cell-measurement';
-import { markerFor } from '../lib/doc-markers';
+import { computeLeakRateMbPerCycle, forceGc, readHeapMb } from '../lib/cell-measurement.ts';
+import { markerFor } from '../lib/doc-markers.ts';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Defaults + constants

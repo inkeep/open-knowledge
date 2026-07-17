@@ -10,7 +10,7 @@
 # finds the parent's `.git`, and writes core.hooksPath there with a path
 # pointing back at OK's `.husky/`. That clobbers the parent's intended
 # `.husky/` setup and makes `git push` from anywhere in agents-private
-# fire OK's hook (`bun run format && bun run lint && bun run check`)
+# fire OK's hook (`pnpm run format && pnpm run lint && pnpm run check`)
 # instead of the parent's intended `pnpm check:monorepo-traps && pnpm check:pre-push`.
 #
 # The fix: a guard at the start of OK's prepare script that detects
@@ -39,16 +39,16 @@ fi
 TEST_TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_TMPDIR"' EXIT
 
-# Stub `bunx` so the guard's `bunx husky` call is observable without
+# Stub `pnpm` so the guard's `pnpm exec husky` call is observable without
 # requiring a real husky binary. The stub records each invocation to
 # the file pointed to by $TEST_INVOCATION_LOG (set by each scenario).
 STUB_DIR="$TEST_TMPDIR/stub-bin"
 mkdir -p "$STUB_DIR"
-cat > "$STUB_DIR/bunx" <<'EOF'
+cat > "$STUB_DIR/pnpm" <<'EOF'
 #!/usr/bin/env bash
-echo "bunx invoked: $*" >> "$TEST_INVOCATION_LOG"
+echo "pnpm invoked: $*" >> "$TEST_INVOCATION_LOG"
 EOF
-chmod +x "$STUB_DIR/bunx"
+chmod +x "$STUB_DIR/pnpm"
 
 PASSED=0
 FAILED=0
@@ -79,8 +79,8 @@ run_scenario() {
     echo "FAIL: $label — script crashed (exit $rc) instead of exiting 0 cleanly"
     FAILED=$((FAILED + 1))
   elif [ "$should_invoke" = "yes" ] && [ "$rc" -ne 0 ]; then
-    # Invoke-husky case: bunx was called but the script still exited non-zero,
-    # meaning something after bunx crashed (e.g., chmod under set -euo pipefail).
+    # Invoke-husky case: pnpm was called but the script still exited non-zero,
+    # meaning something after pnpm crashed (e.g., chmod under set -euo pipefail).
     echo "FAIL: $label — script crashed (exit $rc) despite invoking husky"
     FAILED=$((FAILED + 1))
   else

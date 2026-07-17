@@ -11,6 +11,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
+import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { DESCRIPTION, type RestoreVersionDeps, register } from './restore-version.ts';
 import type { ServerInstance } from './shared.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
@@ -56,15 +57,15 @@ function makeDeps(serverUrl: string | undefined, cwdDir: string): RestoreVersion
   return { serverUrl, config: BASE_CONFIG, resolveCwd: async () => cwdDir };
 }
 
-let testServer: ReturnType<typeof Bun.serve>;
+let testServer: FetchTestServer;
 let baseUrl: string;
 let tmpDir: string;
 const seenRequests: string[] = [];
 const seenBodies: Array<Record<string, unknown>> = [];
 let mockRollbackWarning: Record<string, unknown> | undefined;
 
-beforeAll(() => {
-  testServer = Bun.serve({
+beforeAll(async () => {
+  testServer = await startFetchTestServer({
     port: 0,
     hostname: '127.0.0.1',
     async fetch(req) {

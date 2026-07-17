@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { NewWorktreeDialog } from './NewWorktreeDialog';
 
 const refreshWorktrees = mock(() => {});
 mock.module('@/lib/worktree-store', () => ({ refreshWorktrees }));
@@ -13,6 +12,10 @@ function createBridge(createResult: unknown) {
 }
 
 const noop = () => {};
+
+// Import the component AFTER the mocks above register so its transitive
+// dependencies bind to the stubs rather than the real modules.
+const { NewWorktreeDialog } = await import('./NewWorktreeDialog');
 
 describe('NewWorktreeDialog', () => {
   beforeEach(() => {

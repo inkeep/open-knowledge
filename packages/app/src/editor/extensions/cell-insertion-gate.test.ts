@@ -21,7 +21,6 @@ import { Fragment, type Node as ProseMirrorNode, Slice } from '@tiptap/pm/model'
 import { dropPoint, ReplaceAroundStep } from '@tiptap/pm/transform';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import * as actualSonner from 'sonner';
-import { createHandlePaste } from '../clipboard/handle-paste';
 import { installDomGlobals } from '../walk-currency-test-harness';
 import { CellInsertionGate } from './cell-insertion-gate';
 
@@ -31,6 +30,11 @@ import { CellInsertionGate } from './cell-insertion-gate';
 mock.module('sonner', () => ({ ...actualSonner, toast: { error: mock(() => {}) } }));
 
 const mdManager = new MarkdownManager({ extensions: coreExtensions });
+
+// Bind the dispatcher after the sonner mock is registered so its transitive
+// sonner import resolves to the stub (the mock facade only rewrites imports
+// resolved after the doMock call).
+let createHandlePaste: typeof import('../clipboard/handle-paste').createHandlePaste;
 
 /** A ClipboardEvent whose clipboardData serves the given MIME map. */
 function fakeDT(data: Record<string, string>): ClipboardEvent {
@@ -52,8 +56,9 @@ const CELL_NODES = new Set(['tableCell', 'tableHeader']);
 let restoreDomGlobals: (() => void) | null = null;
 const editors: Editor[] = [];
 
-beforeAll(() => {
+beforeAll(async () => {
   restoreDomGlobals = installDomGlobals();
+  ({ createHandlePaste } = await import('../clipboard/handle-paste'));
 });
 
 afterAll(() => {

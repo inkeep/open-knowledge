@@ -15,8 +15,8 @@
  * answer "how many requests in THIS 30s window".
  */
 
-import { installLongtaskObserver } from '../lib/longtask-observer';
-import { defineScenario } from '../lib/scenario';
+import { installLongtaskObserver } from '../lib/longtask-observer.ts';
+import { defineScenario } from '../lib/scenario.ts';
 
 const DOC = 'README';
 const IDLE_MS = 30_000;

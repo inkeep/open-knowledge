@@ -1,6 +1,5 @@
 node_modules/
 dist/
-packages/*/bun.lock
 packages/desktop/out/
 packages/desktop/dist-desktop/
 packages/desktop/dev-app-update.yml
@@ -11,7 +10,6 @@ tmp/
 .next/
 .source/
 .idea/
-.bun/
 *.tsbuildinfo
 .vercel/
 packages/content/

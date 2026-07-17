@@ -156,7 +156,9 @@ describe('banner NO_COLOR behavior', () => {
   test('NO_COLOR=1 produces banner without ANSI codes', () => {
     const result = Bun.spawnSync({
       cmd: [
-        'bun',
+        'node',
+        '--import',
+        'tsx',
         '-e',
         `
         process.env.NO_COLOR = '1';

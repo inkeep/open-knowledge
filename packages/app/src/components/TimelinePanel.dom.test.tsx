@@ -20,7 +20,10 @@ mock.module('next-themes', () => ({
 
 import type { TimelineEntry } from '@inkeep/open-knowledge-core';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { TimelineContent } from './TimelinePanel';
+
+// Import the component AFTER the next-themes mock registers so its transitive
+// `useTheme` import binds to the stub rather than the real provider.
+const { TimelineContent } = await import('./TimelinePanel');
 
 function wipEntry(sha: string, author: string): TimelineEntry {
   return {

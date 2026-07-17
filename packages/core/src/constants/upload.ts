@@ -703,7 +703,7 @@ export function isMermaidDocFile(path: string): boolean {
 // (which maps the same canonical IDs to CodeMirror language packs).
 // Re-exporting here keeps the existing dispatch import surface (one
 // `mediaKindForSidebarAssetExtension` call site) unchanged.
-import { CODE_FILE_EXTENSIONS } from './code-languages';
+import { CODE_FILE_EXTENSIONS } from './code-languages.ts';
 
 export { CODE_FILE_EXTENSIONS };
 

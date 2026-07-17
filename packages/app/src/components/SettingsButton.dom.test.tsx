@@ -5,7 +5,10 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 
 const preloadCalls: string[] = [];
 
+import * as actualLinguiMacro from '@lingui/react/macro';
+
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 

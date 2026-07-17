@@ -420,6 +420,32 @@ describe('isLocalWebHost — capability-tier Host detection (D47)', () => {
   });
 });
 
+// Node's fetch (undici) silently drops a user-supplied Host header and sends the
+// real target host, so the remote-web cases forge Host via a raw node:http
+// request instead — the server's isLocalWebHost gate reads exactly that header.
+async function getWithHostHeader(
+  port: number,
+  path: string,
+  host: string,
+): Promise<{ status: number; json: () => Promise<unknown> }> {
+  const { request } = await import('node:http');
+  return new Promise((resolve, reject) => {
+    const req = request(
+      { host: '127.0.0.1', port, path, method: 'GET', headers: { Host: host } },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8');
+          resolve({ status: res.statusCode ?? 0, json: async () => JSON.parse(body) });
+        });
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 describe('GET /api/installed-agents (integration — real HTTP + real createApiExtension)', () => {
   let tmpDir: string;
   let contentDir: string;
@@ -547,13 +573,9 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   // loopback; these tests simulate it directly with a forged Host header.
 
   test('remote-web (Host: example.com) → all-true and probe NOT called', async () => {
-    const res = await fetch(`http://127.0.0.1:${port}/api/installed-agents`, {
-      headers: {
-        // Cross-origin Origin is rejected by checkLocalOpSecurity, so only
-        // the Host header carries the remote-web signal here.
-        Host: 'example.com:5173',
-      },
-    });
+    // Cross-origin Origin is rejected by checkLocalOpSecurity, so only the Host
+    // header carries the remote-web signal here.
+    const res = await getWithHostHeader(port, '/api/installed-agents', 'example.com:5173');
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ claude: true, codex: true, cursor: true });
@@ -563,9 +585,7 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   });
 
   test('remote-web (Host: 192.168.1.100) → all-true (LAN-bound dev server case)', async () => {
-    const res = await fetch(`http://127.0.0.1:${port}/api/installed-agents`, {
-      headers: { Host: '192.168.1.100:5173' },
-    });
+    const res = await getWithHostHeader(port, '/api/installed-agents', '192.168.1.100:5173');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ claude: true, codex: true, cursor: true });
     expect(probeCalls).toEqual({});
@@ -583,9 +603,7 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   test('remote-web requests are NOT cached against later local-web requests', async () => {
     // Capability-tier short-circuits without populating the cache, so a
     // following local-web request still triggers the real probe.
-    const remote = await fetch(`http://127.0.0.1:${port}/api/installed-agents`, {
-      headers: { Host: 'example.com:5173' },
-    });
+    const remote = await getWithHostHeader(port, '/api/installed-agents', 'example.com:5173');
     expect(await remote.json()).toEqual({ claude: true, codex: true, cursor: true });
     expect(probeCalls).toEqual({});
 

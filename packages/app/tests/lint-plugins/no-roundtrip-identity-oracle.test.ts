@@ -25,6 +25,7 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
 
 // __dirname → packages/app/tests/lint-plugins/. Repo root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
@@ -33,12 +34,12 @@ const PLUGIN_REL = './biome-plugins/no-roundtrip-identity-oracle.grit';
 
 describe('no-roundtrip-identity-oracle GritQL plugin', () => {
   test('fires on exactly 10 byte-identity oracle assertions (and on no negative case)', () => {
-    const result = spawnSync('bunx', ['biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
     // Surface a spawn failure explicitly: without this, `status` is null on a
-    // `bunx` spawn error and the `not.toBe(0)` below passes vacuously, masking
+    // `pnpm exec` spawn error and the `not.toBe(0)` below passes vacuously, masking
     // the failure as "0 diagnostics".
     expect(result.error).toBeUndefined();
     // biome check exits non-zero when any diagnostic (incl. plugin) fires.
@@ -56,7 +57,7 @@ describe('no-roundtrip-identity-oracle GritQL plugin', () => {
   });
 
   test('plugin is registered as an override scoped to the public test surface (not workspace-wide)', () => {
-    const config = require(join(REPO_ROOT, 'biome.jsonc'));
+    const config = readBiomeConfig(REPO_ROOT);
     // NOT at root plugins[] — a workspace-wide promotion would fire on
     // excluded internal test suites (where the identity oracle legitimately
     // lives) and turn `bun run lint` red.

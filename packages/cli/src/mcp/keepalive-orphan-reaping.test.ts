@@ -49,8 +49,11 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-// packages/cli/src/mcp -> packages/cli/src/cli.ts (run from source via bun).
-const CLI_ENTRY = join(HERE, '..', 'cli.ts');
+// packages/cli/src/mcp -> packages/cli/dist/cli.mjs. The built entry (required
+// by this suite, see header) boots under plain node, matching how the packaged
+// CLI launches `mcp`; running the raw cli.ts graph through a loader is too slow
+// to come up inside the readiness window.
+const CLI_ENTRY = join(HERE, '..', '..', 'dist', 'cli.mjs');
 
 function isAlive(pid: number): boolean {
   try {
@@ -139,7 +142,8 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
         'const [cliEntry, fifoPath, errPath] = process.argv.slice(2);',
         'const rfd = openSync(fifoPath, "r");',
         'const efd = openSync(errPath, "a");',
-        'const child = spawn(process.execPath, [cliEntry, "mcp"], {',
+        // cliEntry is the built cli.mjs, so plain node runs it directly.
+        'const child = spawn("node", [cliEntry, "mcp"], {',
         '  cwd: process.cwd(),',
         '  stdio: [rfd, "ignore", efd],',
         // OK_BUNDLE_PROXY=0 so we exercise THIS worktree's cli, not the

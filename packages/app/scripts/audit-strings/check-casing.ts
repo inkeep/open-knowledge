@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 // Reads tmp/strings-audit/catalog.json and flags strings that look like title-case
 // violations of the sentence-case rule. Allowlists brand, product names, and acronyms.
 // Outputs casing-violations.json + a readable console report.

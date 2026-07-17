@@ -17,9 +17,9 @@
  * Size mix: 5 small / 0 medium / 1 large = 6 docs.
  */
 
-import { buildCorpus } from './generator';
-import type { SizeMix, WorkloadFixture } from './types';
-import { vault } from './vault';
+import { buildCorpus } from './generator.ts';
+import type { SizeMix, WorkloadFixture } from './types.ts';
+import { vault } from './vault.ts';
 
 const ASYMMETRIC_MIX = {
   small: 5,

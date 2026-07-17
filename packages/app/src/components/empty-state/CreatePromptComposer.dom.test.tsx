@@ -11,12 +11,14 @@
 
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { CreateScenario, InstallState } from '@inkeep/open-knowledge-core';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode, type Ref, useImperativeHandle, useRef } from 'react';
 import type { HandoffDispatchInput } from '@/components/handoff/useHandoffDispatch';
 import type { Workspace } from '@/lib/workspace-paths';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>

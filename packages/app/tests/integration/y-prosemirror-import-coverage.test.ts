@@ -31,7 +31,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { Glob } from 'bun';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../..');
 const RENDERER_ROOT = join(REPO_ROOT, 'packages/app/src');
@@ -102,7 +101,7 @@ function lineOf(content: string, index: number): number {
 function scanRenderer(): ScanResult {
   const violations: Violation[] = [];
   let filesScanned = 0;
-  const glob = new Glob('**/*.{ts,tsx}');
+  const glob = new Bun.Glob('**/*.{ts,tsx}');
   for (const rel of glob.scanSync({ cwd: RENDERER_ROOT })) {
     const abs = join(RENDERER_ROOT, rel);
     if (isExcludedPath(abs)) continue;

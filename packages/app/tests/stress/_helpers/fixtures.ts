@@ -424,11 +424,11 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // old 'ignore' black hole.
       const serverLog = openServerLog(`w${workerInfo.workerIndex}`);
 
-      // `--silent` suppresses bun's own banner + post-exit diagnostics
-      // (e.g. `error: script "dev" exited with code 143` when teardown
-      // SIGTERMs the dev server). The underlying script's stderr still
-      // passes through, so real Vite errors continue to surface.
-      const proc = spawn('bun', ['run', '--silent', 'dev', '--host', '127.0.0.1'], {
+      // `pnpm run dev` runs the `predev` hook then forwards `--host 127.0.0.1`
+      // to Vite. The underlying script's stderr still passes through, so real
+      // Vite errors continue to surface; banner noise is kept down via NO_COLOR
+      // (below) rather than a silence flag.
+      const proc = spawn('pnpm', ['run', 'dev', '--host', '127.0.0.1'], {
         cwd: APP_PACKAGE_ROOT,
         env: {
           ...process.env,
@@ -446,7 +446,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           // /api/save-version work. Mirrors the integration harness's
           // gitEnabled:true path (test-harness.ts).
           OK_TEST_GIT_ENABLED: '1',
-          // Silence the default `bun run dev` banner noise; most of it is
+          // Silence the default `pnpm run dev` banner noise; most of it is
           // duplicated across 4 workers and clutters CI logs.
           NO_COLOR: process.env.NO_COLOR ?? '1',
         },

@@ -15,7 +15,7 @@ import {
   queryTempoByMountId,
   type TempoSearchOptions,
   type TempoSearchResponse,
-} from './tempo-client';
+} from './tempo-client.ts';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 

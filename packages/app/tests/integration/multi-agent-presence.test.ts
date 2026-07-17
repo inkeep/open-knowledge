@@ -25,6 +25,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 // the server ever changes the prefix, this test follows automatically.
 import { toBroadcasterKey } from '@inkeep/open-knowledge-server';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
+import { fetchWithHostHeader } from './host-header-request.test-helper';
 import { agentWriteMd, createTestServer, type TestServer } from './test-harness';
 
 let server: TestServer;
@@ -180,9 +181,10 @@ describe('multi-agent presence — Tier 1 regression gate (FR-8)', () => {
     // Host header names an attacker-controlled domain. The host-allowlist
     // must refuse even though the peer passes the loopback check — matches
     // the ASVS DNS-rebinding mitigation used by /api/workspace.
-    const res = await fetch(`http://127.0.0.1:${server.port}/api/metrics/agent-presence`, {
-      headers: { Host: 'attacker.example.com' },
-    });
+    const res = await fetchWithHostHeader(
+      `http://127.0.0.1:${server.port}/api/metrics/agent-presence`,
+      'attacker.example.com',
+    );
     expect(res.status).toBe(403);
     expect(res.headers.get('content-type')).toBe('application/problem+json');
     const body = (await res.json()) as Record<string, unknown>;

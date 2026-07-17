@@ -35,7 +35,7 @@ import { join } from 'node:path';
 // upgrade, re-validate that both import paths still resolve.
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
-import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv.js';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register as registerConfig } from './config.ts';
 import { registerAllTools } from './index.ts';

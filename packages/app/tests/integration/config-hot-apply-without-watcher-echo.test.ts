@@ -117,51 +117,43 @@ describe('PRD-7260 — persisted config change reaches in-process consumers with
     await srv?.cleanup();
   });
 
-  test(
-    'sync engine hot-applies autoSync.enabled from a client patch',
-    async () => {
-      const configPath = join(srv.contentDir, '.ok', 'local', 'config.yml');
-      expect(srv.instance.syncEngine?.getStatus().syncEnabled).toBe(false);
+  test('sync engine hot-applies autoSync.enabled from a client patch', async () => {
+    const configPath = join(srv.contentDir, '.ok', 'local', 'config.yml');
+    expect(srv.instance.syncEngine?.getStatus().syncEnabled).toBe(false);
 
-      const result = binding.patch({ autoSync: { enabled: true } });
-      expect(result.ok).toBe(true);
+    const result = binding.patch({ autoSync: { enabled: true } });
+    expect(result.ok).toBe(true);
 
-      // Persistence leg is healthy on every platform — the disk reflects the
-      // patch. This is the last thing that provably works today.
-      await pollUntil(
-        () => existsSync(configPath) && /enabled:\s*true/.test(readFileSync(configPath, 'utf-8')),
-        15_000,
-      );
+    // Persistence leg is healthy on every platform — the disk reflects the
+    // patch. This is the last thing that provably works today.
+    await pollUntil(
+      () => existsSync(configPath) && /enabled:\s*true/.test(readFileSync(configPath, 'utf-8')),
+      15_000,
+    );
 
-      // Contract: the live sync engine must observe the persisted value even
-      // though the watcher echo never fired.
-      await pollUntil(() => srv.instance.syncEngine?.getStatus().syncEnabled === true, 15_000);
-    },
-    { timeout: 90_000 },
-  );
+    // Contract: the live sync engine must observe the persisted value even
+    // though the watcher echo never fired.
+    await pollUntil(() => srv.instance.syncEngine?.getStatus().syncEnabled === true, 15_000);
+  }, 90_000);
 
-  test(
-    'semantic search hot-applies search.semantic.enabled from a client patch',
-    async () => {
-      const statusUrl = `http://127.0.0.1:${srv.port}/api/semantic-status`;
+  test('semantic search hot-applies search.semantic.enabled from a client patch', async () => {
+    const statusUrl = `http://127.0.0.1:${srv.port}/api/semantic-status`;
 
-      const before = await (await fetch(statusUrl)).json();
-      expect(before.enabled).toBe(false);
+    const before = await (await fetch(statusUrl)).json();
+    expect(before.enabled).toBe(false);
 
-      const result = binding.patch({ search: { semantic: { enabled: true } } });
-      expect(result.ok).toBe(true);
+    const result = binding.patch({ search: { semantic: { enabled: true } } });
+    expect(result.ok).toBe(true);
 
-      // Contract: the semantic-search service must observe the persisted value
-      // even though the watcher echo never fired. Observed through the existing
-      // read-only /api/semantic-status surface.
-      await pollUntil(async () => {
-        const res = await fetch(statusUrl);
-        const body = await res.json();
-        return body.enabled === true;
-      }, 15_000);
-    },
-    { timeout: 90_000 },
-  );
+    // Contract: the semantic-search service must observe the persisted value
+    // even though the watcher echo never fired. Observed through the existing
+    // read-only /api/semantic-status surface.
+    await pollUntil(async () => {
+      const res = await fetch(statusUrl);
+      const body = await res.json();
+      return body.enabled === true;
+    }, 15_000);
+  }, 90_000);
 });
 
 /**
@@ -216,48 +208,44 @@ describe('PRD-7260 — reconciled config change reaches in-process consumers wit
     await srv?.cleanup();
   });
 
-  test(
-    'sync engine hot-applies the reconciled (disk) autoSync.enabled after a client patch',
-    async () => {
-      const configPath = join(srv.contentDir, '.ok', 'local', 'config.yml');
-      expect(srv.instance.syncEngine?.getStatus().syncEnabled).toBe(false);
+  test('sync engine hot-applies the reconciled (disk) autoSync.enabled after a client patch', async () => {
+    const configPath = join(srv.contentDir, '.ok', 'local', 'config.yml');
+    expect(srv.instance.syncEngine?.getStatus().syncEnabled).toBe(false);
 
-      // An external / cross-process writer lands `autoSync.enabled: true` on the
-      // shared project-local config file. With the chokidar echo swallowed the
-      // server never imports it, so at the next store the on-disk content
-      // diverges from LKG — the `'reconciled'` precondition.
-      mkdirSync(dirname(configPath), { recursive: true });
-      writeFileSync(configPath, 'autoSync:\n  enabled: true\n', 'utf-8');
+    // An external / cross-process writer lands `autoSync.enabled: true` on the
+    // shared project-local config file. With the chokidar echo swallowed the
+    // server never imports it, so at the next store the on-disk content
+    // diverges from LKG — the `'reconciled'` precondition.
+    mkdirSync(dirname(configPath), { recursive: true });
+    writeFileSync(configPath, 'autoSync:\n  enabled: true\n', 'utf-8');
 
-      // Client patches the OPPOSITE value. At store time `storeConfigDoc` sees
-      // disk (`true`) diverge from LKG, validates it, imports the disk content
-      // into Y.Text, and returns `'reconciled'` — the client's `false` is
-      // dropped in favor of the external writer's `true`.
-      const result = binding.patch({ autoSync: { enabled: false } });
-      expect(result.ok).toBe(true);
+    // Client patches the OPPOSITE value. At store time `storeConfigDoc` sees
+    // disk (`true`) diverge from LKG, validates it, imports the disk content
+    // into Y.Text, and returns `'reconciled'` — the client's `false` is
+    // dropped in favor of the external writer's `true`.
+    const result = binding.patch({ autoSync: { enabled: false } });
+    expect(result.ok).toBe(true);
 
-      // Reconciliation imports disk into Y.Text but does NOT write disk — the
-      // client's `false` never reaches the file. Disk still shows the external
-      // writer's `true`, proving the reconcile path (not the persist path) ran.
-      await pollUntil(
-        () =>
-          existsSync(configPath) &&
-          /enabled:\s*true/.test(readFileSync(configPath, 'utf-8')) &&
-          !/enabled:\s*false/.test(readFileSync(configPath, 'utf-8')),
-        15_000,
-      );
+    // Reconciliation imports disk into Y.Text but does NOT write disk — the
+    // client's `false` never reaches the file. Disk still shows the external
+    // writer's `true`, proving the reconcile path (not the persist path) ran.
+    await pollUntil(
+      () =>
+        existsSync(configPath) &&
+        /enabled:\s*true/.test(readFileSync(configPath, 'utf-8')) &&
+        !/enabled:\s*false/.test(readFileSync(configPath, 'utf-8')),
+      15_000,
+    );
 
-      // Reconciliation imports the disk content back into Y.Text, which syncs to
-      // the client — so the client's own view flips from its patched `false` to
-      // the reconciled `true`. This distinguishes a genuine `'reconciled'`
-      // outcome from a no-op (a no-op would leave the client at `false`), and
-      // holds today, independent of the consumer-propagation fix.
-      await pollUntil(() => binding.current().autoSync?.enabled === true, 15_000);
+    // Reconciliation imports the disk content back into Y.Text, which syncs to
+    // the client — so the client's own view flips from its patched `false` to
+    // the reconciled `true`. This distinguishes a genuine `'reconciled'`
+    // outcome from a no-op (a no-op would leave the client at `false`), and
+    // holds today, independent of the consumer-propagation fix.
+    await pollUntil(() => binding.current().autoSync?.enabled === true, 15_000);
 
-      // Contract: the live sync engine must observe the reconciled DISK value
-      // (`true`) even though the watcher echo never fired.
-      await pollUntil(() => srv.instance.syncEngine?.getStatus().syncEnabled === true, 15_000);
-    },
-    { timeout: 90_000 },
-  );
+    // Contract: the live sync engine must observe the reconciled DISK value
+    // (`true`) even though the watcher echo never fired.
+    await pollUntil(() => srv.instance.syncEngine?.getStatus().syncEnabled === true, 15_000);
+  }, 90_000);
 });

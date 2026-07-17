@@ -8,10 +8,12 @@
  */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { Config } from '@inkeep/open-knowledge-core';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 

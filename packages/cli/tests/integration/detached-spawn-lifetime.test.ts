@@ -10,7 +10,7 @@
  * parent-lifetime dependency, so the kill cannot propagate.
  *
  * Test strategy (no published CLI required):
- *   1. Parent test spawns an "MCP-surrogate" bun child that in turn spawns
+ *   1. Parent test spawns an "MCP-surrogate" node child that in turn spawns
  *      an "ok-start-surrogate" grandchild detached + unref.
  *   2. The grandchild binds `http.createServer` on a kernel port, writes its
  *      pid + port to a tempfile, then idles serving requests with a unique
@@ -27,7 +27,7 @@
  *      structurally — but 5s keeps CI fast while still demonstrating the
  *      grandchild is genuinely independent of the parent's lifecycle.
  */
-import { describe as _bunDescribe, afterEach, beforeEach, expect, it } from 'bun:test';
+import { describe as _describe, afterEach, beforeEach, expect, it } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
@@ -35,10 +35,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 
-// Skip-on-CI gate (oven-sh/bun#11892): detached grandchild `bun` + SIGTERM cleanup
-// can strand processes on Linux GHA; `bun test` may not exit after the summary.
-// Tests run locally; follow-up will narrow the leak or use a subprocess wrapper.
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
+// Skip-on-CI gate: a detached grandchild plus SIGTERM cleanup can strand
+// processes on Linux GHA runners. Tests run locally; a follow-up will narrow
+// the leak or use a subprocess wrapper so this can run in CI too.
+const describe = process.env.CI ? _describe.skip : _describe;
 
 function isProcessAlive(pid: number): boolean {
   try {
@@ -89,9 +89,9 @@ describe('detached spawn lifetime (A3 / D-003)', () => {
   });
 
   it('grandchild survives parent exit AND keeps serving HTTP for ≥5s', async () => {
-    const grandchildScript = join(testDir, 'grandchild.ts');
+    const grandchildScript = join(testDir, 'grandchild.mjs');
     const stateFile = join(testDir, 'grandchild.state.json');
-    const mcpSurrogateScript = join(testDir, 'mcp-surrogate.ts');
+    const mcpSurrogateScript = join(testDir, 'mcp-surrogate.mjs');
 
     // Grandchild: bind http.Server on a kernel port, write {pid, port} to
     // disk, then serve requests with a unique marker body until killed.
@@ -127,7 +127,7 @@ await wait(30_000);
       mcpSurrogateScript,
       `
 import { spawn } from 'node:child_process';
-const child = spawn('bun', [${JSON.stringify(grandchildScript)}], {
+const child = spawn('node', [${JSON.stringify(grandchildScript)}], {
   detached: true,
   stdio: ['ignore', 'ignore', 'ignore'],
 });
@@ -137,7 +137,7 @@ setTimeout(() => process.exit(0), 300);
       'utf-8',
     );
 
-    const mcp = spawn('bun', [mcpSurrogateScript], { stdio: 'ignore' });
+    const mcp = spawn('node', [mcpSurrogateScript], { stdio: 'ignore' });
     const mcpPid = mcp.pid;
     expect(mcpPid).toBeGreaterThan(0);
 
@@ -195,5 +195,5 @@ setTimeout(() => process.exit(0), 300);
         // already gone — fine
       }
     }
-  }, 20_000); // bun test timeout: 5s sleep + setup + safety margin
+  }, 20_000); // test timeout: 5s sleep + setup + safety margin
 });

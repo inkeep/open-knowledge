@@ -18,7 +18,7 @@
 
 import { afterEach, describe, expect, test } from 'bun:test';
 import { EditorView } from '@codemirror/view';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { CodePreviewEditModal } from './CodePreviewEditModal';
 
@@ -43,8 +43,10 @@ if (typeof window !== 'undefined' && !(globalThis as { Window?: unknown }).Windo
 }
 
 afterEach(() => {
-  // jsdom doesn't auto-cleanup between tests under Bun's test runtime; do it
-  // explicitly so the next render starts from a fresh document.
+  // Unmount RTL's roots before wiping the document, so the dedicated jsdom
+  // project's own post-test cleanup doesn't try to remove nodes that this wipe
+  // already detached. Wiping the body afterward keeps the next render fresh.
+  cleanup();
   document.body.innerHTML = '';
 });
 

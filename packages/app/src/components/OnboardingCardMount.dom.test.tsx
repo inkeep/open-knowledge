@@ -6,7 +6,9 @@ mock.module('@/hooks/use-onboarding-card-visible', () => ({
   useOnboardingCardVisible: () => mockVisible,
 }));
 
-import { OnboardingCardMount } from './OnboardingCard';
+// Import the component AFTER the mock above registers, so its transitive
+// `use-onboarding-card-visible` import binds to the stub.
+const { OnboardingCardMount } = await import('./OnboardingCard');
 
 let originalFetch: typeof globalThis.fetch;
 beforeEach(() => {

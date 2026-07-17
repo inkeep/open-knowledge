@@ -3,39 +3,35 @@
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.3.13",
+  "packageManager": "pnpm@10.33.0",
   "engines": {
-    "bun": ">=1.3.13",
     "node": ">=24"
   },
-  "workspaces": [
-    "packages/*",
-    "docs"
-  ],
   "scripts": {
     "knip": "turbo run build --filter=@inkeep/open-knowledge-server --filter=@inkeep/open-knowledge-core --output-logs=errors-only && knip",
-    "notices": "bun scripts/generate-third-party-notices.mjs",
-    "schema:dump": "bun packages/core/scripts/dump-schema.ts",
+    "notices": "node scripts/generate-third-party-notices.mjs",
+    "schema:dump": "tsx packages/core/scripts/dump-schema.ts",
     "build": "turbo run build",
     "build:desktop": "turbo run build:desktop",
     "build:desktop:dir": "turbo run build:desktop:dir",
     "check:desktop": "turbo run lint typecheck test --filter=@inkeep/open-knowledge-desktop",
-    "check:fast": "bun run typecheck",
-    "check:doc-links": "bun run --cwd docs validate-link",
-    "check:drift": "bash scripts/check-husky-prepare-guard.sh && bash scripts/check-knip-clean.sh && bash scripts/check-notices-clean.sh && bash scripts/check-schema-snapshot-clean.sh && bash scripts/check-i18n-drift.sh && bash scripts/check-no-major-changeset.sh && bun test scripts/",
+    "check:fast": "pnpm run typecheck",
+    "check:doc-links": "pnpm --dir docs run validate-link",
+    "check:drift": "bash scripts/check-husky-prepare-guard.sh && bash scripts/check-knip-clean.sh && bash scripts/check-notices-clean.sh && bash scripts/check-schema-snapshot-clean.sh && bash scripts/check-i18n-drift.sh && bash scripts/check-no-major-changeset.sh && vitest run --config vitest.scripts.config.ts",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "lint": "bun lint:biome && bun lint:oxlint",
+    "test:vitest-selftest": "vitest run",
+    "lint": "pnpm run lint:biome && pnpm run lint:oxlint",
     "lint:biome": "biome check packages docs *.json *.jsonc *.ts --error-on-warnings",
     "lint:oxlint": "oxlint --max-warnings 0 .",
-    "format": "bun run lint:biome --write --unsafe",
-    "check": "bun run lint && turbo run build typecheck test",
-    "check:full:parallel": "bash scripts/check-husky-prepare-guard.sh && bash scripts/check-knip-clean.sh && bash scripts/check-notices-clean.sh && bash scripts/check-schema-snapshot-clean.sh && bash scripts/check-i18n-drift.sh && bash scripts/check-no-major-changeset.sh && bun run lint && bun run check:doc-links && bun test scripts/ && bun test --cwd .github/scripts && turbo run build typecheck test test:dom test:integration test:conversion test:perf:regression:unit test:health:unit test:health test:e2e test:visual test:perf test:a11y --concurrency=100% --output-logs=errors-only",
-    "tier1": "bun run check",
-    "tier2": "bun run tier1 && turbo run test:perf:regression:unit test:health:unit test:health test:e2e",
-    "tier3": "STRESS_FIDELITY=1 bun run tier2",
-    "measure:fuzz": "cd packages/app && bun run measure:fuzz",
-    "measure:stress": "cd packages/app && bun run measure:stress",
+    "format": "pnpm run lint:biome --write --unsafe",
+    "check": "pnpm run lint && pnpm exec turbo run build typecheck test",
+    "check:full:parallel": "bash scripts/check-husky-prepare-guard.sh && bash scripts/check-knip-clean.sh && bash scripts/check-notices-clean.sh && bash scripts/check-schema-snapshot-clean.sh && bash scripts/check-i18n-drift.sh && bash scripts/check-no-major-changeset.sh && pnpm run lint && pnpm run check:doc-links && vitest run --config vitest.scripts.config.ts && turbo run build typecheck test test:dom test:integration test:conversion test:perf:regression:unit test:health:unit test:health test:e2e test:visual test:perf test:a11y --concurrency=100% --output-logs=errors-only",
+    "tier1": "pnpm run check",
+    "tier2": "pnpm run tier1 && turbo run test:perf:regression:unit test:health:unit test:health test:e2e",
+    "tier3": "STRESS_FIDELITY=1 pnpm run tier2",
+    "measure:fuzz": "cd packages/app && pnpm run measure:fuzz",
+    "measure:stress": "cd packages/app && pnpm run measure:stress",
 
     "prepare": "bash scripts/husky-prepare.sh",
     "changeset": "changeset",
@@ -54,33 +50,22 @@
     ]
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.15",
+    "@biomejs/biome": "2.4.15",
     "@changesets/cli": "^2.29.7",
     "bun-types": "^1.3.13",
     "husky": "^9.1.7",
-    "knip": "^6.14.1",
+    "knip": "^6.26.0",
     "lint-staged": "^16.4.0",
-    "oxlint": "^1.66.0",
+    "oxlint": "1.66.0",
     "oxlint-plugin-eslint": "^1.66.0",
     "oxlint-tsgolint": "^0.23.0",
-    "turbo": "^2.7.0"
-  },
-  "overrides": {
-    "mdast-util-mdx-jsx": "3.2.0",
-    "@codemirror/state": "6.6.0",
-    "@codemirror/view": "6.43.3"
+    "smol-toml": "^1.6.1",
+    "ts-morph": "^28.0.0",
+    "tsx": "^4.20.0",
+    "turbo": "^2.7.0",
+    "vitest": "^4.1.0"
   },
   "puppeteer": {
     "skipDownload": true
-  },
-  "patchedDependencies": {
-    "@handlewithcare/remark-prosemirror@0.1.5": "patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch",
-    "y-prosemirror@1.3.7": "patches/y-prosemirror@1.3.7.patch",
-    "@tiptap/y-tiptap@3.0.3": "patches/@tiptap%2Fy-tiptap@3.0.3.patch",
-    "y-indexeddb@9.0.12": "patches/y-indexeddb@9.0.12.patch",
-    "react-medium-image-zoom@5.4.3": "patches/react-medium-image-zoom@5.4.3.patch",
-    "@tiptap/extension-drag-handle@3.22.3": "patches/@tiptap%2Fextension-drag-handle@3.22.3.patch",
-    "@pierre/trees@1.0.0-beta.4": "patches/@pierre%2Ftrees@1.0.0-beta.4.patch",
-    "@inkeep/mermaid-wysiwyg-dom@0.1.0": "patches/@inkeep%2Fmermaid-wysiwyg-dom@0.1.0.patch"
   }
 }

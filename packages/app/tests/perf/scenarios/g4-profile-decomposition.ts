@@ -36,10 +36,10 @@ import {
   capturePerfMetricsWindow,
   enablePerformanceMetrics,
   type MinimalCdpClient,
-} from '../lib/cdp-tracer';
-import { correlateLongtasksWithMarks } from '../lib/correlate-longtasks';
-import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer';
-import { defineScenario } from '../lib/scenario';
+} from '../lib/cdp-tracer.ts';
+import { correlateLongtasksWithMarks } from '../lib/correlate-longtasks.ts';
+import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer.ts';
+import { defineScenario } from '../lib/scenario.ts';
 
 const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'PROJECT';
 const PM_READY_CHARS = 500;

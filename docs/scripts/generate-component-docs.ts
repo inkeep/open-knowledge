@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 /**
  * Generate one MDX page per canonical OpenKnowledge JSX component under
  * `content/reference/components/`. Reads `builtInComponents` from

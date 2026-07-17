@@ -50,11 +50,11 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Browser, BrowserContext, CDPSession, Page } from '@playwright/test';
-import { type BootstrapConfidenceInterval, bcaConfidenceInterval } from '../lib/bootstrap';
-import { findKnee } from '../lib/kneedle';
-import { defineScenario, type ScenarioCtx } from '../lib/scenario';
-import { queryTempoByMountId, type TempoQueryResult } from '../lib/tempo-client';
-import { withCheckpoint } from '../lib/with-checkpoint';
+import { type BootstrapConfidenceInterval, bcaConfidenceInterval } from '../lib/bootstrap.ts';
+import { findKnee } from '../lib/kneedle.ts';
+import { defineScenario, type ScenarioCtx } from '../lib/scenario.ts';
+import { queryTempoByMountId, type TempoQueryResult } from '../lib/tempo-client.ts';
+import { withCheckpoint } from '../lib/with-checkpoint.ts';
 
 // ---------------------------------------------------------------------------
 // Latency profiles (5 RTT-bound bands)

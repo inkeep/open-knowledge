@@ -47,7 +47,7 @@ interface WorkerOutcome {
 
 function spawnConfigWriter(configPath: string, serverKey: string): Promise<WorkerOutcome> {
   return new Promise((resolveSpawn, rejectSpawn) => {
-    const proc = nativeSpawn('bun', ['run', WORKER_PATH, configPath, serverKey], {
+    const proc = nativeSpawn('node', ['--import', 'tsx', WORKER_PATH, configPath, serverKey], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stderr = '';

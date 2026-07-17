@@ -35,6 +35,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 
 /**
  * Versions the nested-box copy behavior was verified working at. A resolved
@@ -44,8 +45,7 @@ import { createRequire } from 'node:module';
  */
 // The floor equals the exact resolved versions, so it has zero headroom: an
 // unrelated transitive-dep bump can trip it with no direct-dep fix (re-run the
-// browser probe to re-baseline). Uses Bun-lenient require.resolve of a package
-// subpath (Node would throw ERR_PACKAGE_PATH_NOT_EXPORTED) — fine in this Bun subtree.
+// browser probe to re-baseline).
 const VERIFIED_FLOOR = {
   'prosemirror-view': '1.41.8',
   '@codemirror/view': '6.41.0',
@@ -54,9 +54,25 @@ const VERIFIED_FLOOR = {
 const require_ = createRequire(import.meta.url);
 
 function resolvedVersion(pkg: string): string {
-  const pkgJsonPath = require_.resolve(`${pkg}/package.json`);
-  const parsed = JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as { version: string };
-  return parsed.version;
+  // Node's strict exports resolver rejects a bare `<pkg>/package.json` subpath
+  // unless the package lists it in `exports` (bun resolves it leniently).
+  // Resolve the package's main entry (always exported) and walk up to the
+  // owning package.json instead.
+  let dir = dirname(require_.resolve(pkg));
+  for (;;) {
+    try {
+      const parsed = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+        name?: string;
+        version?: string;
+      };
+      if (parsed.name === pkg && parsed.version) return parsed.version;
+    } catch {
+      // no package.json here (or a nested one without the matching name) — walk up
+    }
+    const parent = dirname(dir);
+    if (parent === dir) throw new Error(`could not resolve package.json for ${pkg}`);
+    dir = parent;
+  }
 }
 
 /** Return true when `actual` is >= `floor` by numeric major.minor.patch order. */

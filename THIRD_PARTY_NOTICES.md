@@ -2,7 +2,7 @@
 
 `@inkeep/open-knowledge` (npm CLI) and `@inkeep/open-knowledge-desktop` (Electron app) bundle source code from the third-party packages listed below. Each package is redistributed under its own license; the relevant copyright notice and license text are reproduced here as required.
 
-This file is generated. **Do not edit by hand.** Regenerate with `bun run notices` from the repo root, then commit the result.
+This file is generated. **Do not edit by hand.** Regenerate with `pnpm run notices` from the repo root, then commit the result.
 
 ---
 
@@ -594,28 +594,8 @@ Apache License
    limitations under the License.
 ```
 
-### `@chevrotain/cst-dts-gen@12.0.0`
-Homepage: https://github.com/Chevrotain/chevrotain
-
-_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
-
-### `@chevrotain/gast@12.0.0`
-Homepage: https://github.com/Chevrotain/chevrotain
-
-_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
-
-### `@chevrotain/regexp-to-ast@12.0.0`
-Homepage: https://github.com/Chevrotain/chevrotain
-
-_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
-
-### `@chevrotain/types@12.0.0`
+### `@chevrotain/types@11.1.2`
 Homepage: https://chevrotain.io/documentation/
-
-_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
-
-### `@chevrotain/utils@12.0.0`
-Homepage: https://github.com/Chevrotain/chevrotain
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
@@ -634,12 +614,12 @@ Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimen
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `@opentelemetry/context-async-hooks@2.7.0`
+### `@opentelemetry/context-async-hooks@2.9.0`
 Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-context-async-hooks
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `@opentelemetry/core@2.7.0`
+### `@opentelemetry/core@2.9.0`
 Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-core
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -689,7 +669,7 @@ Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimen
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `@opentelemetry/resources@2.7.0`
+### `@opentelemetry/resources@2.9.0`
 Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-resources
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -704,7 +684,7 @@ Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimen
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `@opentelemetry/sdk-metrics@2.7.0`
+### `@opentelemetry/sdk-metrics@2.9.0`
 Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/sdk-metrics
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -714,7 +694,12 @@ Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `@opentelemetry/sdk-trace-base@2.7.0`
+### `@opentelemetry/sdk-trace@2.9.0`
+Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/sdk-trace
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
+### `@opentelemetry/sdk-trace-base@2.9.0`
 Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-sdk-trace-base
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -724,7 +709,7 @@ Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `@opentelemetry/sdk-trace-web@2.7.0`
+### `@opentelemetry/sdk-trace-web@2.9.0`
 Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-sdk-trace-web
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -734,7 +719,7 @@ Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `@opentelemetry/semantic-conventions@1.40.0`
+### `@opentelemetry/semantic-conventions@1.43.0`
 Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/semantic-conventions
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -788,7 +773,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 ```
 
-### `baseline-browser-mapping@2.10.17`
+### `baseline-browser-mapping@2.10.43`
 Homepage: https://github.com/web-platform-dx/baseline-browser-mapping
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -797,11 +782,6 @@ _(LICENSE template present but no copyright line filled in; refer to the package
 Homepage: https://github.com/gr2m/before-after-hook
 
 Copyright 2018 Gregor Martynus and other contributors.
-
-### `chevrotain@12.0.0`
-Homepage: https://chevrotain.io/docs/
-
-_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
 ### `class-variance-authority@0.7.1`
 Homepage: https://github.com/joe-bell/cva#readme
@@ -818,10 +798,10 @@ Homepage: https://github.com/JackuB/diff-match-patch
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `dompurify@3.3.3`
+### `dompurify@3.4.12`
 Homepage: https://github.com/cure53/DOMPurify
 
-Copyright 2025 Dr.-Ing. Mario Heiderich, Cure53
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
 ### `human-signals@8.0.1`
 Homepage: https://www.github.com/ehmicky/human-signals
@@ -995,12 +975,12 @@ Homepage: https://github.com/antfu/install-pkg#readme
 
 Copyright (c) 2021 Anthony Fu <https://github.com/antfu>
 
-### `@babel/code-frame@7.29.0`
+### `@babel/code-frame@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-code-frame
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/compat-data@7.29.0`
+### `@babel/compat-data@7.29.7`
 Homepage: https://github.com/babel/babel
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
@@ -1010,127 +990,127 @@ Homepage: https://babel.dev/docs/en/next/babel-core
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/generator@7.29.1`
+### `@babel/generator@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-generator
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-annotate-as-pure@7.27.3`
+### `@babel/helper-annotate-as-pure@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-helper-annotate-as-pure
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-compilation-targets@7.28.6`
+### `@babel/helper-compilation-targets@7.29.7`
 Homepage: https://github.com/babel/babel
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-create-class-features-plugin@7.28.6`
+### `@babel/helper-create-class-features-plugin@7.29.7`
 Homepage: https://github.com/babel/babel
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-globals@7.28.0`
+### `@babel/helper-globals@7.29.7`
 Homepage: https://github.com/babel/babel
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-member-expression-to-functions@7.28.5`
+### `@babel/helper-member-expression-to-functions@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-helper-member-expression-to-functions
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-module-imports@7.28.6`
+### `@babel/helper-module-imports@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-helper-module-imports
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-module-transforms@7.28.6`
+### `@babel/helper-module-transforms@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-helper-module-transforms
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-optimise-call-expression@7.27.1`
+### `@babel/helper-optimise-call-expression@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-helper-optimise-call-expression
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-plugin-utils@7.28.6`
+### `@babel/helper-plugin-utils@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-helper-plugin-utils
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-replace-supers@7.28.6`
+### `@babel/helper-replace-supers@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-helper-replace-supers
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-skip-transparent-expression-wrappers@7.27.1`
+### `@babel/helper-skip-transparent-expression-wrappers@7.29.7`
 Homepage: https://github.com/babel/babel
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-string-parser@7.27.1`
+### `@babel/helper-string-parser@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-helper-string-parser
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-validator-identifier@7.28.5`
+### `@babel/helper-validator-identifier@7.29.7`
 Homepage: https://github.com/babel/babel
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helper-validator-option@7.27.1`
+### `@babel/helper-validator-option@7.29.7`
 Homepage: https://github.com/babel/babel
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/helpers@7.29.2`
+### `@babel/helpers@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-helpers
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors Copyright (c) 2014-present, Facebook, Inc. (ONLY ./src/helpers/regenerator* files)
 
-### `@babel/parser@7.29.2`
+### `@babel/parser@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-parser
 
 Copyright (C) 2012-2014 by various contributors (see AUTHORS)
 
-### `@babel/plugin-syntax-jsx@7.28.6`
+### `@babel/plugin-syntax-jsx@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-plugin-syntax-jsx
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/plugin-syntax-typescript@7.28.6`
+### `@babel/plugin-syntax-typescript@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-plugin-syntax-typescript
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/plugin-transform-modules-commonjs@7.28.6`
+### `@babel/plugin-transform-modules-commonjs@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-plugin-transform-modules-commonjs
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/plugin-transform-typescript@7.28.6`
+### `@babel/plugin-transform-typescript@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-plugin-transform-typescript
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/preset-typescript@7.28.5`
+### `@babel/preset-typescript@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-preset-typescript
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/template@7.28.6`
+### `@babel/template@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-template
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/traverse@7.29.0`
+### `@babel/traverse@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-traverse
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/types@7.29.0`
+### `@babel/types@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-types
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
@@ -1145,13 +1125,13 @@ Homepage: https://github.com/braintree/sanitize-url#readme
 
 Copyright (c) 2017 Braintree
 
-### `@codemirror/autocomplete@6.20.1`
-Homepage: https://github.com/codemirror/autocomplete
+### `@codemirror/autocomplete@6.20.3`
+Homepage: https://code.haverbeke.berlin/codemirror/autocomplete
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@codemirror/commands@6.10.3`
-Homepage: https://github.com/codemirror/commands
+### `@codemirror/commands@6.10.4`
+Homepage: https://code.haverbeke.berlin/codemirror/commands
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
@@ -1195,13 +1175,13 @@ Homepage: https://github.com/codemirror/lang-yaml
 
 Copyright (C) 2024 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@codemirror/language@6.12.3`
-Homepage: https://github.com/codemirror/language
+### `@codemirror/language@6.12.4`
+Homepage: https://code.haverbeke.berlin/codemirror/language
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@codemirror/legacy-modes@6.5.2`
-Homepage: https://github.com/codemirror/legacy-modes
+### `@codemirror/legacy-modes@6.5.3`
+Homepage: https://code.haverbeke.berlin/codemirror/legacy-modes
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
@@ -1210,18 +1190,13 @@ Homepage: https://code.haverbeke.berlin/codemirror/lint
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@codemirror/lint@6.9.5`
-Homepage: https://github.com/codemirror/lint
-
-Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
-
-### `@codemirror/merge@6.12.1`
-Homepage: https://github.com/codemirror/merge
+### `@codemirror/merge@6.12.2`
+Homepage: https://code.haverbeke.berlin/codemirror/merge
 
 Copyright (C) 2018-2022 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@codemirror/search@6.6.0`
-Homepage: https://github.com/codemirror/search
+### `@codemirror/search@6.7.1`
+Homepage: https://code.haverbeke.berlin/codemirror/search
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
@@ -1235,8 +1210,8 @@ Homepage: https://code.haverbeke.berlin/codemirror/view
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@date-fns/tz@1.4.1`
-Homepage: https://github.com/date-fns/tz#readme
+### `@date-fns/tz@1.5.0`
+Homepage: https://github.com/date-fns/date-fns#readme
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
@@ -1259,11 +1234,6 @@ Copyright (c) 2021, Claudéric Demers
 Homepage: https://github.com/clauderic/dnd-kit
 
 Copyright (c) 2021, Claudéric Demers
-
-### `@ecies/ciphers@0.2.6`
-Homepage: https://github.com/ecies/js-ciphers
-
-Copyright (c) 2019-2026 Weiliang Li
 
 ### `@floating-ui/core@1.7.5`
 Homepage: https://floating-ui.com
@@ -1290,7 +1260,7 @@ Homepage: https://github.com/handlewithcarecollective/remark-prosemirror
 
 Copyright (c) 2024 Handle with Care Collective
 
-### `@hocuspocus/common@4.0.0-rc.2`
+### `@hocuspocus/common@4.3.0`
 Homepage: https://hocuspocus.dev
 
 Copyright (c) 2023, Tiptap GmbH
@@ -1305,7 +1275,7 @@ Homepage: https://hocuspocus.dev
 
 Copyright (c) 2023, Tiptap GmbH
 
-### `@hono/node-server@1.19.13`
+### `@hono/node-server@1.19.14`
 Homepage: https://github.com/honojs/node-server
 
 Copyright (c) 2022 - present, Yusuke Wada and Hono contributors
@@ -1320,7 +1290,7 @@ Homepage: https://github.com/iconify/iconify
 
 Copyright (c) 2021 - 2022 Vjacheslav Trushkin / Iconify OÜ
 
-### `@iconify/utils@3.1.0`
+### `@iconify/utils@3.1.4`
 Homepage: https://iconify.design/docs/libraries/utils/
 
 Copyright (c) 2021-PRESENT Vjacheslav Trushkin
@@ -1330,18 +1300,8 @@ Homepage: https://github.com/SBoudrias/Inquirer.js/blob/main/packages/ansi/READM
 
 Copyright (c) 2025 Simon Boudrias
 
-### `@inquirer/ansi@1.0.2`
-Homepage: https://github.com/SBoudrias/Inquirer.js/blob/main/packages/ansi/README.md
-
-Copyright (c) 2025 Simon Boudrias
-
 ### `@inquirer/checkbox@5.2.1`
 Homepage: https://github.com/SBoudrias/Inquirer.js/blob/main/packages/checkbox/README.md
-
-Copyright (c) 2025 Simon Boudrias
-
-### `@inquirer/confirm@5.1.21`
-Homepage: https://github.com/SBoudrias/Inquirer.js/blob/main/packages/confirm/README.md
 
 Copyright (c) 2025 Simon Boudrias
 
@@ -1350,17 +1310,7 @@ Homepage: https://github.com/SBoudrias/Inquirer.js/blob/main/packages/core/READM
 
 Copyright (c) 2025 Simon Boudrias
 
-### `@inquirer/core@10.3.2`
-Homepage: https://github.com/SBoudrias/Inquirer.js/blob/main/packages/core/README.md
-
-Copyright (c) 2025 Simon Boudrias
-
 ### `@inquirer/figures@2.0.7`
-Homepage: https://github.com/SBoudrias/Inquirer.js
-
-Copyright (c) 2025 Simon Boudrias
-
-### `@inquirer/figures@1.0.15`
 Homepage: https://github.com/SBoudrias/Inquirer.js
 
 Copyright (c) 2025 Simon Boudrias
@@ -1376,11 +1326,6 @@ Homepage: https://github.com/SBoudrias/Inquirer.js/blob/main/packages/select/REA
 Copyright (c) 2025 Simon Boudrias
 
 ### `@inquirer/type@4.0.7`
-Homepage: https://github.com/SBoudrias/Inquirer.js
-
-Copyright (c) 2025 Simon Boudrias
-
-### `@inquirer/type@3.0.10`
 Homepage: https://github.com/SBoudrias/Inquirer.js
 
 Copyright (c) 2025 Simon Boudrias
@@ -1460,8 +1405,8 @@ Homepage: https://github.com/lezer-parser/common
 
 Copyright (C) 2018 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@lezer/css@1.3.3`
-Homepage: https://github.com/lezer-parser/css
+### `@lezer/css@1.3.4`
+Homepage: https://code.haverbeke.berlin/lezer/css
 
 Copyright (C) 2018 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
@@ -1485,18 +1430,18 @@ Homepage: https://github.com/lezer-parser/json
 
 Copyright (C) 2020 by Marijn Haverbeke <marijn@haverbeke.berlin>, Arun Srinivasan <rulfzid@gmail.com>, and others
 
-### `@lezer/lr@1.4.8`
-Homepage: https://github.com/lezer-parser/lr
+### `@lezer/lr@1.4.10`
+Homepage: https://code.haverbeke.berlin/lezer/lr
 
 Copyright (C) 2018 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@lezer/markdown@1.6.3`
-Homepage: https://github.com/lezer-parser/markdown
+### `@lezer/markdown@1.7.1`
+Homepage: https://code.haverbeke.berlin/lezer/markdown
 
 Copyright (C) 2020 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@lezer/python@1.1.18`
-Homepage: https://github.com/lezer-parser/python
+### `@lezer/python@1.1.19`
+Homepage: https://code.haverbeke.berlin/lezer/python
 
 Copyright (C) 2020 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
@@ -1515,37 +1460,37 @@ Homepage: https://github.com/lifeomic/attempt#readme
 
 Copyright 2018 LifeOmic
 
-### `@lingui/babel-plugin-lingui-macro@6.0.1`
+### `@lingui/babel-plugin-lingui-macro@6.5.0`
 Homepage: https://lingui.dev
 
 Copyright (c) 2017-2022 Tomáš Ehrlich, (c) 2022-2023 Crowdin.
 
-### `@lingui/conf@6.0.1`
+### `@lingui/conf@6.5.0`
 Homepage: https://lingui.dev
 
 Copyright (c) 2017-2022 Tomáš Ehrlich, (c) 2022-2023 Crowdin.
 
-### `@lingui/core@6.0.1`
+### `@lingui/core@6.5.0`
 Homepage: https://lingui.dev
 
 Copyright (c) 2017-2022 Tomáš Ehrlich, (c) 2022-2023 Crowdin.
 
-### `@lingui/message-utils@6.0.1`
+### `@lingui/message-utils@6.5.0`
 Homepage: https://lingui.dev
 
 Copyright (c) 2017-2022 Tomáš Ehrlich, (c) 2022-2023 Crowdin.
 
-### `@lingui/react@6.0.1`
+### `@lingui/react@6.5.0`
 Homepage: https://lingui.dev
 
 Copyright (c) 2017-2022 Tomáš Ehrlich, (c) 2022-2023 Crowdin.
 
-### `@marijn/find-cluster-break@1.0.2`
-Homepage: https://github.com/marijnh/find-cluster-break#readme
+### `@marijn/find-cluster-break@1.0.3`
+Homepage: https://code.haverbeke.berlin/marijn/find-cluster-break
 
 Copyright (C) 2024 by Marijn Haverbeke <marijn@haverbeke.berlin>
 
-### `@mermaid-js/parser@1.1.0`
+### `@mermaid-js/parser@1.2.0`
 Homepage: https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme
 
 Copyright (c) 2023 Yokozuna59
@@ -1565,11 +1510,6 @@ Homepage: https://modelcontextprotocol.io
 
 Copyright (c) 2024 Anthropic, PBC
 
-### `@mswjs/interceptors@0.41.3`
-Homepage: https://github.com/mswjs/interceptors
-
-Copyright (c) 2018–present Artem Zakharchenko
-
 ### `@napi-rs/canvas@0.1.100`
 Homepage: https://github.com/Brooooooklyn/canvas
 
@@ -1579,21 +1519,6 @@ Copyright (c) 2020 lynweklm@gmail.com
 Homepage: https://github.com/Brooooooklyn/keyring-node
 
 Copyright (c) 2020 N-API for Rust
-
-### `@noble/ciphers@1.3.0`
-Homepage: https://paulmillr.com/noble/
-
-Copyright (c) 2022 Paul Miller (https://paulmillr.com) Copyright (c) 2016 Thomas Pornin <pornin@bolet.org>
-
-### `@noble/curves@1.9.7`
-Homepage: https://paulmillr.com/noble/
-
-Copyright (c) 2022 Paul Miller (https://paulmillr.com)
-
-### `@noble/hashes@1.8.0`
-Homepage: https://paulmillr.com/noble/
-
-Copyright (c) 2022 Paul Miller (https://paulmillr.com)
 
 ### `@nodable/entities@2.2.0`
 Homepage: https://github.com/nodable/val-parsers
@@ -1670,7 +1595,7 @@ Homepage: https://github.com/octokit/plugin-rest-endpoint-methods.js
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
-### `@octokit/request@10.0.8`
+### `@octokit/request@10.0.11`
 Homepage: https://github.com/octokit/request.js
 
 Copyright (c) 2018 Octokit contributors
@@ -1689,21 +1614,6 @@ Copyright (c) 2012 Cloud9 IDE, Inc. (Mike de Boer) Copyright (c) 2017-2018 Octok
 Homepage: https://github.com/octokit/types.ts
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
-
-### `@open-draft/deferred-promise@2.2.0`
-Homepage: https://github.com/open-draft/deferred-promise
-
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
-
-### `@open-draft/logger@0.3.0`
-Homepage: https://github.com/open-draft/logger
-
-Copyright (c) 2023—present Artem Zakharchenko
-
-### `@open-draft/until@2.1.0`
-Homepage: https://github.com/open-draft/until
-
-Copyright (c) 2021 Artem Zakharchenko
 
 ### `@panzoom/panzoom@4.6.2`
 Homepage: https://github.com/timmywil/panzoom
@@ -1730,7 +1640,7 @@ Homepage: https://radix-ui.com/primitives
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
-### `@radix-ui/primitive@1.1.3`
+### `@radix-ui/primitive@1.1.4`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
@@ -1750,7 +1660,7 @@ Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-arrow@1.1.7`
+### `@radix-ui/react-arrow@1.1.10`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
@@ -1780,15 +1690,15 @@ Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-compose-refs@1.1.2`
+### `@radix-ui/react-compose-refs@1.1.3`
 Homepage: https://radix-ui.com/primitives
 
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-context@1.1.2`
+### `@radix-ui/react-context@1.1.4`
 Homepage: https://radix-ui.com/primitives
 
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+Copyright (c) 2022 WorkOS
 
 ### `@radix-ui/react-context-menu@2.2.16`
 Homepage: https://radix-ui.com/primitives
@@ -1805,7 +1715,7 @@ Homepage: https://radix-ui.com/primitives
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
-### `@radix-ui/react-dismissable-layer@1.1.11`
+### `@radix-ui/react-dismissable-layer@1.1.13`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
@@ -1815,12 +1725,12 @@ Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-focus-guards@1.1.3`
+### `@radix-ui/react-focus-guards@1.1.4`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-focus-scope@1.1.7`
+### `@radix-ui/react-focus-scope@1.1.10`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
@@ -1835,10 +1745,10 @@ Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-id@1.1.1`
+### `@radix-ui/react-id@1.1.2`
 Homepage: https://radix-ui.com/primitives
 
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+Copyright (c) 2022 WorkOS
 
 ### `@radix-ui/react-label@2.1.7`
 Homepage: https://radix-ui.com/primitives
@@ -1870,27 +1780,27 @@ Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-popover@1.1.15`
+### `@radix-ui/react-popover@1.1.17`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-popper@1.2.8`
+### `@radix-ui/react-popper@1.3.1`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-portal@1.1.9`
+### `@radix-ui/react-portal@1.1.12`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-presence@1.1.5`
+### `@radix-ui/react-presence@1.1.6`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-primitive@2.1.3`
+### `@radix-ui/react-primitive@2.1.6`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
@@ -1930,7 +1840,7 @@ Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-slot@1.2.3`
+### `@radix-ui/react-slot@1.3.0`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
@@ -1970,65 +1880,60 @@ Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-use-callback-ref@1.1.1`
-Homepage: https://radix-ui.com/primitives
-
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
-
-### `@radix-ui/react-use-controllable-state@1.2.2`
+### `@radix-ui/react-use-callback-ref@1.1.2`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-use-effect-event@0.0.2`
+### `@radix-ui/react-use-controllable-state@1.2.3`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-use-escape-keydown@1.1.1`
+### `@radix-ui/react-use-effect-event@0.0.3`
 Homepage: https://radix-ui.com/primitives
 
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+Copyright (c) 2022 WorkOS
+
+### `@radix-ui/react-use-escape-keydown@1.1.2`
+Homepage: https://radix-ui.com/primitives
+
+Copyright (c) 2022 WorkOS
 
 ### `@radix-ui/react-use-is-hydrated@0.1.0`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-use-layout-effect@1.1.1`
+### `@radix-ui/react-use-layout-effect@1.1.2`
 Homepage: https://radix-ui.com/primitives
 
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+Copyright (c) 2022 WorkOS
 
 ### `@radix-ui/react-use-previous@1.1.1`
 Homepage: https://radix-ui.com/primitives
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
-### `@radix-ui/react-use-rect@1.1.1`
+### `@radix-ui/react-use-rect@1.1.2`
 Homepage: https://radix-ui.com/primitives
 
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+Copyright (c) 2022 WorkOS
 
-### `@radix-ui/react-use-size@1.1.1`
+### `@radix-ui/react-use-size@1.1.2`
 Homepage: https://radix-ui.com/primitives
 
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+Copyright (c) 2022 WorkOS
 
 ### `@radix-ui/react-visually-hidden@1.2.3`
 Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `@radix-ui/rect@1.1.1`
+### `@radix-ui/rect@1.1.2`
 Homepage: https://radix-ui.com/primitives
 
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
-
-### `@remirror/core-constants@3.0.0`
-Homepage: https://github.com/remirror/remirror/tree/HEAD/packages/remirror__core-constants
-
-Copyright (c) 2019-2022, Remirror Contributors
+Copyright (c) 2022 WorkOS
 
 ### `@sec-ant/readable-stream@0.4.1`
 Homepage: https://github.com/Sec-ant/readable-stream
@@ -2064,12 +1969,12 @@ Copyright (c) 2024 Fabian Hiller
 
 Copyright (c) 2023 Tabby FZ-LLC
 
-### `@tanstack/query-core@5.99.0`
+### `@tanstack/query-core@5.101.2`
 Homepage: https://tanstack.com/query
 
 Copyright (c) 2021-present Tanner Linsley
 
-### `@tanstack/react-query@5.99.0`
+### `@tanstack/react-query@5.101.2`
 Homepage: https://tanstack.com/query
 
 Copyright (c) 2021-present Tanner Linsley
@@ -2244,11 +2149,6 @@ Homepage: https://tiptap.dev
 
 Copyright (c) 2025, Tiptap GmbH
 
-### `@tiptap/pm@3.22.3`
-Homepage: https://tiptap.dev
-
-Copyright (c) 2025, Tiptap GmbH
-
 ### `@tiptap/react@3.22.3`
 Homepage: https://tiptap.dev
 
@@ -2399,7 +2299,7 @@ Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d
 
 Copyright (c) Microsoft Corporation.
 
-### `@types/d3-random@3.0.3`
+### `@types/d3-random@3.0.4`
 Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-random
 
 Copyright (c) Microsoft Corporation.
@@ -2454,7 +2354,7 @@ Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d
 
 Copyright (c) Microsoft Corporation.
 
-### `@types/estree@1.0.8`
+### `@types/estree@1.0.9`
 Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/estree
 
 Copyright (c) Microsoft Corporation.
@@ -2469,7 +2369,7 @@ Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/g
 
 Copyright (c) Microsoft Corporation.
 
-### `@types/hast@3.0.4`
+### `@types/hast@3.0.5`
 Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/hast
 
 Copyright (c) Microsoft Corporation.
@@ -2494,23 +2394,8 @@ Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/k
 
 Copyright (c) Microsoft Corporation.
 
-### `@types/linkify-it@5.0.0`
-Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/linkify-it
-
-Copyright (c) Microsoft Corporation.
-
-### `@types/markdown-it@14.1.2`
-Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/markdown-it
-
-Copyright (c) Microsoft Corporation.
-
 ### `@types/mdast@4.0.4`
 Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/mdast
-
-Copyright (c) Microsoft Corporation.
-
-### `@types/mdurl@2.0.0`
-Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/mdurl
 
 Copyright (c) Microsoft Corporation.
 
@@ -2519,12 +2404,7 @@ Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/m
 
 Copyright (c) Microsoft Corporation.
 
-### `@types/node@24.12.2`
-Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node
-
-Copyright (c) Microsoft Corporation.
-
-### `@types/node@25.6.0`
+### `@types/node@24.13.3`
 Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node
 
 Copyright (c) Microsoft Corporation.
@@ -2534,13 +2414,8 @@ Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/p
 
 Copyright (c) Microsoft Corporation.
 
-### `@types/react@19.2.14`
+### `@types/react@19.2.17`
 Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react
-
-Copyright (c) Microsoft Corporation.
-
-### `@types/statuses@2.0.6`
-Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/statuses
 
 Copyright (c) Microsoft Corporation.
 
@@ -2599,12 +2474,12 @@ Homepage: https://github.com/u-wave/react-vimeo#readme
 
 Copyright (c) 2016 Renée Kooi
 
-### `@uiw/codemirror-theme-basic@4.25.9`
+### `@uiw/codemirror-theme-basic@4.25.11`
 Homepage: https://uiwjs.github.io/react-codemirror/#/theme/data/basic/light
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
-### `@uiw/codemirror-themes@4.25.9`
+### `@uiw/codemirror-themes@4.25.11`
 Homepage: https://uiwjs.github.io/react-codemirror/#/theme/doc
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
@@ -2654,7 +2529,7 @@ Homepage: https://github.com/vasturiano/accessor-fn
 
 Copyright (c) 2017 Vasco Asturiano
 
-### `acorn@8.16.0`
+### `acorn@8.17.0`
 Homepage: https://github.com/acornjs/acorn
 
 Copyright (C) 2012-2022 by various contributors (see AUTHORS)
@@ -2664,12 +2539,7 @@ Homepage: https://github.com/xtuc/acorn-import-attributes
 
 Copyright (c) 2023 Sven Sauleau
 
-### `agent-base@7.1.4`
-Homepage: https://github.com/TooTallNate/proxy-agents
-
-Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>
-
-### `ajv@8.18.0`
+### `ajv@8.20.0`
 Homepage: https://ajv.js.org
 
 Copyright (c) 2015-2021 Evgeny Poberezkin
@@ -2678,6 +2548,16 @@ Copyright (c) 2015-2021 Evgeny Poberezkin
 Homepage: https://github.com/ajv-validator/ajv-formats#readme
 
 Copyright (c) 2020 Evgeny Poberezkin
+
+### `ajv-formats@2.1.1`
+Homepage: https://github.com/ajv-validator/ajv-formats#readme
+
+Copyright (c) 2020 Evgeny Poberezkin
+
+### `ansi-colors@4.1.3`
+Homepage: https://github.com/doowb/ansi-colors
+
+Copyright (c) 2015-present, Brian Woodward.
 
 ### `ansi-regex@6.2.2`
 Homepage: https://github.com/chalk/ansi-regex
@@ -2729,6 +2609,11 @@ Homepage: https://github.com/davidmarkclements/atomic-sleep#readme
 
 Copyright (c) 2020 David Mark Clements
 
+### `atomically@1.7.0`
+Homepage: https://github.com/fabiospampinato/atomically
+
+Copyright (c) 2020-present Fabio Spampinato
+
 ### `bail@2.0.2`
 Homepage: https://github.com/wooorm/bail
 
@@ -2754,12 +2639,12 @@ Homepage: https://github.com/rvagg/bl
 
 Copyright (c) 2013-2019 bl contributors ----------------------------------
 
-### `body-parser@2.2.2`
+### `body-parser@2.3.0`
 Homepage: https://github.com/expressjs/body-parser
 
 Copyright (c) 2014 Jonathan Ong <me@jongleberry.com> Copyright (c) 2014-2015 Douglas Christopher Wilson <doug@somethingdoug.com>
 
-### `brace-expansion@5.0.5`
+### `brace-expansion@5.0.7`
 Homepage: https://github.com/juliangruber/brace-expansion
 
 Copyright Julian Gruber <julian@juliangruber.com>
@@ -2769,7 +2654,7 @@ Homepage: https://github.com/micromatch/braces
 
 Copyright (c) 2014-present, Jon Schlinkert.
 
-### `browserslist@4.28.2`
+### `browserslist@4.28.6`
 Homepage: https://github.com/browserslist/browserslist
 
 Copyright 2014 Andrey Sitnik <andrey@sitnik.es> and other contributors
@@ -2868,11 +2753,6 @@ Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>
 Homepage: https://github.com/wooorm/character-reference-invalid
 
 Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>
-
-### `chevrotain-allstar@0.4.1`
-Homepage: https://github.com/langium/chevrotain-allstar
-
-Copyright 2022 TypeFox GmbH
 
 ### `chokidar@5.0.0`
 Homepage: https://github.com/paulmillr/chokidar
@@ -2974,13 +2854,10 @@ Homepage: https://github.com/tj/commander.js
 
 Copyright (c) 2011 TJ Holowaychuk <tj@vision-media.ca>
 
-### `confbox@0.1.8`
-Homepage: https://github.com/unjs/confbox
+### `conf@10.2.0`
+Homepage: https://github.com/sindresorhus/conf
 
-Copyright (c) Pooya Parsa <pooya@pi0.io>
-Copyright (C) 2011-2015 by Vitaly Puzrin
-Copyright (c) Squirrel Chat et al., All rights reserved.
-Copyright (c) Microsoft
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
 ### `content-disposition@1.1.0`
 Homepage: https://github.com/jshttp/content-disposition
@@ -2992,17 +2869,17 @@ Homepage: https://github.com/jshttp/content-type
 
 Copyright (c) 2015 Douglas Christopher Wilson
 
+### `content-type@2.0.0`
+Homepage: https://github.com/jshttp/content-type
+
+Copyright (c) 2015 Douglas Christopher Wilson
+
 ### `convert-source-map@2.0.0`
 Homepage: https://github.com/thlorenz/convert-source-map
 
 Copyright 2013 Thorsten Lorenz.
 
 ### `cookie@0.7.2`
-Homepage: https://github.com/jshttp/cookie
-
-Copyright (c) 2012-2014 Roman Shtylman <shtylman@gmail.com> Copyright (c) 2015 Douglas Christopher Wilson <doug@somethingdoug.com>
-
-### `cookie@1.1.1`
 Homepage: https://github.com/jshttp/cookie
 
 Copyright (c) 2012-2014 Roman Shtylman <shtylman@gmail.com> Copyright (c) 2015 Douglas Christopher Wilson <doug@somethingdoug.com>
@@ -3027,13 +2904,13 @@ Homepage: https://github.com/iVis-at-Bilkent/cose-base#readme
 
 Copyright (c) 2019 - present, iVis@Bilkent.
 
-### `cosmiconfig@9.0.1`
+### `cosmiconfig@9.0.2`
 Homepage: https://github.com/cosmiconfig/cosmiconfig#readme
 
 Copyright (c) 2015 David Clark
 
-### `crelt@1.0.6`
-Homepage: https://github.com/marijnh/crelt#readme
+### `crelt@1.0.7`
+Homepage: https://code.haverbeke.berlin/marijn/crelt
 
 Copyright (C) 2020 by Marijn Haverbeke <marijn@haverbeke.berlin>
 
@@ -3042,7 +2919,7 @@ Homepage: https://github.com/moxystudio/node-cross-spawn
 
 Copyright (c) 2018 Made With MOXY Lda <hello@moxy.studio>
 
-### `crossws@0.4.4`
+### `crossws@0.4.10`
 Homepage: https://crossws.h3.dev
 
 Copyright (c) Pooya Parsa <pooya@pi0.io>
@@ -3058,7 +2935,7 @@ Homepage: https://github.com/frenic/csstype
 
 Copyright (c) 2017-2018 Fredrik Nicol
 
-### `cytoscape@3.33.2`
+### `cytoscape@3.34.0`
 Homepage: http://js.cytoscape.org
 
 Copyright (c) 2016-2026, The Cytoscape Consortium.
@@ -3093,12 +2970,7 @@ Homepage: https://github.com/tbo47/dagre-es
 
 Copyright (c) 2022-2024 Thibaut Lassalle, David Newell, Alois Klink, Sidharth Vinod and dagre-es contributors
 
-### `data-uri-to-buffer@4.0.1`
-Homepage: https://github.com/TooTallNate/node-data-uri-to-buffer
-
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
-
-### `date-fns@4.1.0`
+### `date-fns@4.4.0`
 Homepage: https://github.com/date-fns/date-fns
 
 Copyright (c) 2021 Sasha Koss and Lesha Koss https://kossnocorp.mit-license.org
@@ -3113,10 +2985,15 @@ Homepage: https://github.com/felixge/node-dateformat
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
-### `dayjs@1.11.20`
+### `dayjs@1.11.21`
 Homepage: https://day.js.org
 
 Copyright (c) 2018-present, iamkun
+
+### `debounce-fn@4.0.0`
+Homepage: https://github.com/sindresorhus/debounce-fn
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
 ### `debug@4.4.3`
 Homepage: https://github.com/debug-js/debug
@@ -3163,6 +3040,11 @@ Homepage: https://github.com/sindresorhus/define-lazy-prop
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
+### `define-lazy-prop@2.0.0`
+Homepage: https://github.com/sindresorhus/define-lazy-prop
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+
 ### `depd@2.0.0`
 Homepage: https://github.com/dougwilson/nodejs-depd
 
@@ -3183,15 +3065,15 @@ Homepage: https://github.com/wooorm/devlop
 
 Copyright (c) 2023 Titus Wormer <tituswormer@gmail.com>
 
+### `dot-prop@6.0.1`
+Homepage: https://github.com/sindresorhus/dot-prop
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+
 ### `dunder-proto@1.0.1`
 Homepage: https://github.com/es-shims/dunder-proto#readme
 
 Copyright (c) 2024 ECMAScript Shims
-
-### `eciesjs@0.4.18`
-Homepage: https://github.com/ecies/js
-
-Copyright (c) 2019-2026 Weiliang Li
 
 ### `ee-first@1.1.1`
 Homepage: https://github.com/jonathanong/ee-first
@@ -3208,11 +3090,6 @@ Homepage: https://mths.be/emoji-regex
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
-### `emoji-regex@8.0.0`
-Homepage: https://mths.be/emoji-regex
-
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
-
 ### `encodeurl@2.0.0`
 Homepage: https://github.com/pillarjs/encodeurl
 
@@ -3222,6 +3099,11 @@ Copyright (c) 2016 Douglas Christopher Wilson
 Homepage: https://github.com/mafintosh/end-of-stream
 
 Copyright (c) 2014 Mathias Buus
+
+### `enquirer@2.4.1`
+Homepage: https://github.com/enquirer/enquirer
+
+Copyright (c) 2016-present, Jon Schlinkert.
 
 ### `env-paths@2.2.1`
 Homepage: https://github.com/sindresorhus/env-paths
@@ -3243,10 +3125,15 @@ Homepage: https://github.com/ljharb/es-errors#readme
 
 Copyright (c) 2024 Jordan Harband
 
-### `es-object-atoms@1.1.1`
+### `es-object-atoms@1.1.2`
 Homepage: https://github.com/ljharb/es-object-atoms#readme
 
 Copyright (c) 2024 Jordan Harband
+
+### `es-toolkit@1.49.0`
+Homepage: https://es-toolkit.dev
+
+Copyright (c) 2024 Viva Republica, Inc.
 
 ### `escalade@3.2.0`
 Homepage: https://github.com/lukeed/escalade
@@ -3259,11 +3146,6 @@ Homepage: https://github.com/component/escape-html
 Copyright (c) 2012-2013 TJ Holowaychuk Copyright (c) 2015 Andreas Lubbe Copyright (c) 2015 Tiancheng "Timothy" Gu
 
 ### `escape-string-regexp@5.0.0`
-Homepage: https://github.com/sindresorhus/escape-string-regexp
-
-Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
-
-### `escape-string-regexp@4.0.0`
 Homepage: https://github.com/sindresorhus/escape-string-regexp
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
@@ -3288,10 +3170,10 @@ Homepage: https://github.com/EventSource/eventsource#readme
 
 Copyright (c) EventSource GitHub organisation
 
-### `eventsource-parser@3.0.6`
+### `eventsource-parser@3.1.0`
 Homepage: https://github.com/rexxars/eventsource-parser#readme
 
-Copyright (c) 2025 Espen Hovlandsdal <espen@hovlandsdal.com>
+Copyright (c) 2026 Espen Hovlandsdal <espen@hovlandsdal.com>
 
 ### `execa@9.6.1`
 Homepage: https://github.com/sindresorhus/execa
@@ -3313,7 +3195,7 @@ Homepage: https://expressjs.com/
 
 Copyright (c) 2009-2014 TJ Holowaychuk <tj@vision-media.ca> Copyright (c) 2013-2014 Roman Shtylman <shtylman+expressjs@gmail.com> Copyright (c) 2014-2015 Douglas Christopher Wilson <doug@somethingdoug.com>
 
-### `express-rate-limit@8.3.2`
+### `express-rate-limit@8.5.2`
 Homepage: https://github.com/express-rate-limit/express-rate-limit
 
 Copyright 2023 Nathan Friedly, Vedant K
@@ -3323,12 +3205,7 @@ Homepage: https://github.com/justmoon/node-extend
 
 Copyright (c) 2014 Stefan Thomas
 
-### `fast-content-type-parse@3.0.0`
-Homepage: https://github.com/fastify/fast-content-type-parse#readme
-
-Copyright (c) 2023 The Fastify Team
-
-### `fast-copy@4.0.2`
+### `fast-copy@4.0.4`
 Homepage: https://github.com/planttheidea/fast-copy#readme
 
 Copyright (c) 2025 Tony Quetano
@@ -3338,7 +3215,7 @@ Homepage: https://github.com/epoberezkin/fast-deep-equal#readme
 
 Copyright (c) 2017 Evgeny Poberezkin
 
-### `fast-equals@5.4.0`
+### `fast-equals@5.4.1`
 Homepage: https://github.com/planttheidea/fast-equals#readme
 
 Copyright (c) 2025 Tony Quetano
@@ -3363,18 +3240,18 @@ Homepage: https://github.com/fabiospampinato/fast-string-width
 
 Copyright (c) 2024-present Fabio Spampinato
 
-### `fast-wrap-ansi@0.2.0`
+### `fast-wrap-ansi@0.2.2`
 Homepage: https://github.com/43081j/fast-wrap-ansi#readme
 
 Copyright (c) 2025 James Garbutt
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `fast-xml-builder@1.2.0`
+### `fast-xml-builder@1.3.0`
 Homepage: https://github.com/NaturalIntelligence/fast-xml-builder
 
 Copyright (c) 2026 Natural Intelligence
 
-### `fast-xml-parser@5.9.3`
+### `fast-xml-parser@5.10.0`
 Homepage: https://github.com/NaturalIntelligence/fast-xml-parser
 
 Copyright (c) 2017 Amit Kumar Gupta
@@ -3388,11 +3265,6 @@ Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>
 Homepage: https://github.com/thecodrr/fdir#readme
 
 Copyright 2023 Abdullah Atta
-
-### `fetch-blob@3.2.0`
-Homepage: https://github.com/node-fetch/fetch-blob#readme
-
-Copyright (c) 2019 David Frank
 
 ### `figures@6.1.0`
 Homepage: https://github.com/sindresorhus/figures
@@ -3419,12 +3291,17 @@ Homepage: https://github.com/pillarjs/finalhandler
 
 Copyright (c) 2014-2022 Douglas Christopher Wilson <doug@somethingdoug.com>
 
+### `find-up@3.0.0`
+Homepage: https://github.com/sindresorhus/find-up
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+
 ### `float-tooltip@1.7.5`
 Homepage: https://github.com/vasturiano/float-tooltip
 
 Copyright (c) 2022 Vasco Asturiano
 
-### `force-graph@1.51.2`
+### `force-graph@1.51.4`
 Homepage: https://github.com/vasturiano/force-graph
 
 Copyright (c) 2018 Vasco Asturiano
@@ -3433,11 +3310,6 @@ Copyright (c) 2018 Vasco Asturiano
 Homepage: http://samhuri.net/proj/format
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
-
-### `formdata-polyfill@4.0.10`
-Homepage: https://github.com/jimmywarting/FormData#readme
-
-Copyright (c) 2016 Jimmy Karl Roland Wärting
 
 ### `forwarded@0.2.0`
 Homepage: https://github.com/jshttp/forwarded
@@ -3459,7 +3331,7 @@ Homepage: https://github.com/mafintosh/fs-constants
 
 Copyright (c) 2018 Mathias Buus
 
-### `fs-extra@11.3.4`
+### `fs-extra@11.3.6`
 Homepage: https://github.com/jprichardson/node-fs-extra
 
 Copyright (c) 2011-2024 JP Richardson
@@ -3484,7 +3356,7 @@ Homepage: https://github.com/loganfsmyth/gensync
 
 Copyright 2018 Logan Smyth <loganfsmyth@gmail.com>
 
-### `get-east-asian-width@1.5.0`
+### `get-east-asian-width@1.6.0`
 Homepage: https://github.com/sindresorhus/get-east-asian-width
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
@@ -3534,17 +3406,12 @@ Homepage: https://github.com/ljharb/gopd#readme
 
 Copyright (c) 2022 Jordan Harband
 
-### `graphql@16.13.2`
-Homepage: https://github.com/graphql/graphql-js
-
-Copyright (c) GraphQL Contributors
-
 ### `hachure-fill@0.5.2`
 Homepage: https://github.com/pshihn/hachure-fill#readme
 
 Copyright (c) 2023 Preet Shihn
 
-### `happy-dom@20.10.2`
+### `happy-dom@20.10.6`
 Homepage: https://github.com/capricorn86/happy-dom
 
 Copyright (c) 2019 David Ortner (capricorn86)
@@ -3559,7 +3426,7 @@ Homepage: https://github.com/ljharb/has-symbols#readme
 
 Copyright (c) 2016 Jordan Harband
 
-### `hasown@2.0.2`
+### `hasown@2.0.4`
 Homepage: https://github.com/inspect-js/hasOwn#readme
 
 Copyright (c) Jordan Harband and contributors
@@ -3634,17 +3501,12 @@ Homepage: https://github.com/syntax-tree/hastscript
 
 Copyright (c) Titus Wormer <tituswormer@gmail.com>
 
-### `headers-polyfill@4.0.3`
-Homepage: https://github.com/mswjs/headers-polyfill
-
-Copyright (c) 2020–present Artem Zakharchenko
-
 ### `help-me@5.0.0`
 Homepage: https://github.com/mcollina/help-me
 
 Copyright (c) 2014-2022 Matteo Collina
 
-### `hono@4.12.12`
+### `hono@4.12.29`
 Homepage: https://hono.dev
 
 Copyright (c) 2021 - present, Yusuke Wada and Hono contributors
@@ -3659,12 +3521,7 @@ Homepage: https://github.com/jshttp/http-errors
 
 Copyright (c) 2014 Jonathan Ong me@jongleberry.com Copyright (c) 2016 Douglas Christopher Wilson doug@somethingdoug.com
 
-### `https-proxy-agent@7.0.6`
-Homepage: https://github.com/TooTallNate/proxy-agents
-
-Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>
-
-### `iconv-lite@0.7.2`
+### `iconv-lite@0.7.3`
 Homepage: https://github.com/pillarjs/iconv-lite
 
 Copyright (c) 2011 Alexander Shtuchkin
@@ -3684,12 +3541,19 @@ Homepage: https://github.com/sindresorhus/import-fresh
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
+### `import-meta-resolve@4.2.0`
+Homepage: https://github.com/wooorm/import-meta-resolve
+
+Copyright (c) Titus Wormer <mailto:tituswormer@gmail.com>
+Copyright Node.js contributors. All rights reserved.
+Copyright Joyent, Inc. and other Node contributors. All rights reserved.
+
 ### `index-array-by@1.4.2`
 Homepage: https://github.com/vasturiano/index-array-by
 
 Copyright (c) 2018 Vasco Asturiano
 
-### `ip-address@10.1.0`
+### `ip-address@10.2.0`
 Homepage: https://github.com/beaugunderson/ip-address
 
 Copyright (C) 2011 by Beau Gunderson
@@ -3719,7 +3583,7 @@ Homepage: https://github.com/qix-/node-is-arrayish
 
 Copyright (c) 2015 JD Ballard
 
-### `is-core-module@2.16.1`
+### `is-core-module@2.16.2`
 Homepage: https://github.com/inspect-js/is-core-module
 
 Copyright (c) 2014 Dave Justice
@@ -3728,6 +3592,11 @@ Copyright (c) 2014 Dave Justice
 Homepage: https://github.com/wooorm/is-decimal
 
 Copyright (c) 2016 Titus Wormer <tituswormer@gmail.com>
+
+### `is-docker@2.2.1`
+Homepage: https://github.com/sindresorhus/is-docker
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
 ### `is-docker@3.0.0`
 Homepage: https://github.com/sindresorhus/is-docker
@@ -3738,11 +3607,6 @@ Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 Homepage: https://github.com/jonschlinkert/is-extglob
 
 Copyright (c) 2014-2016, Jon Schlinkert
-
-### `is-fullwidth-code-point@3.0.0`
-Homepage: https://github.com/sindresorhus/is-fullwidth-code-point
-
-Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
 ### `is-glob@4.0.3`
 Homepage: https://github.com/micromatch/is-glob
@@ -3769,11 +3633,6 @@ Homepage: https://github.com/sindresorhus/is-interactive
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `is-node-process@1.2.0`
-Homepage: https://github.com/mswjs/is-node-process
-
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
-
 ### `is-number@7.0.0`
 Homepage: https://github.com/jonschlinkert/is-number
 
@@ -3783,6 +3642,11 @@ Copyright (c) 2014-present, Jon Schlinkert.
 Homepage: https://github.com/sindresorhus/is-obj
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+
+### `is-obj@2.0.0`
+Homepage: https://github.com/sindresorhus/is-obj
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
 ### `is-plain-obj@4.1.0`
 Homepage: https://github.com/sindresorhus/is-plain-obj
@@ -3819,10 +3683,15 @@ Homepage: https://github.com/sindresorhus/is-unicode-supported
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `is-unsafe@1.0.1`
+### `is-unsafe@2.0.0`
 Homepage: https://github.com/NaturalIntelligence/is-unsafe
 
 Copyright (c) 2026 Natural Intelligence
+
+### `is-wsl@2.2.0`
+Homepage: https://github.com/sindresorhus/is-wsl
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
 ### `is-wsl@3.1.1`
 Homepage: https://github.com/sindresorhus/is-wsl
@@ -3849,12 +3718,12 @@ Homepage: https://github.com/jestjs/jest
 
 Copyright (c) Meta Platforms, Inc. and affiliates.
 
-### `jiti@2.6.1`
+### `jiti@2.7.0`
 Homepage: https://github.com/unjs/jiti
 
 Copyright (c) Pooya Parsa <pooya@pi0.io>
 
-### `jose@6.2.2`
+### `jose@6.2.3`
 Homepage: https://github.com/panva/jose
 
 Copyright (c) 2018 Filip Skokan
@@ -3874,7 +3743,7 @@ Homepage: https://github.com/lydell/js-tokens
 
 Copyright (c) 2014, 2015, 2016, 2017, 2018 Simon Lydell
 
-### `js-yaml@4.1.1`
+### `js-yaml@4.3.0`
 Homepage: https://github.com/nodeca/js-yaml
 
 Copyright (C) 2011-2015 by Vitaly Puzrin
@@ -3894,7 +3763,7 @@ Homepage: https://github.com/epoberezkin/json-schema-traverse#readme
 
 Copyright (c) 2017 Evgeny Poberezkin
 
-### `json-with-bigint@3.5.8`
+### `json-with-bigint@3.5.10`
 Homepage: https://github.com/Ivan-Korolenko/json-with-bigint
 
 Copyright (c) 2023 Ivan Korolenko
@@ -3909,7 +3778,7 @@ Homepage: https://github.com/microsoft/node-jsonc-parser
 
 Copyright (c) Microsoft
 
-### `jsonfile@6.2.0`
+### `jsonfile@6.2.1`
 Homepage: https://github.com/jprichardson/node-jsonfile
 
 Copyright (c) 2012-2015, JP Richardson <jprichardson@gmail.com>
@@ -3919,7 +3788,7 @@ Homepage: https://github.com/vasturiano/kapsule
 
 Copyright (c) 2017 Vasco Asturiano
 
-### `katex@0.16.45`
+### `katex@0.16.47`
 Homepage: https://katex.org
 
 Copyright (c) 2013-2020 Khan Academy and other contributors
@@ -3938,11 +3807,6 @@ Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
 Homepage: https://github.com/lukeed/kleur
 
 Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
-
-### `langium@4.2.2`
-Homepage: https://langium.org
-
-Copyright 2021 TypeFox GmbH
 
 ### `layout-base@1.0.2`
 Homepage: https://github.com/iVis-at-Bilkent/layout-base#readme
@@ -3979,15 +3843,15 @@ Homepage: https://github.com/eventualbuddha/lines-and-columns#readme
 
 Copyright (c) 2015 Brian Donovan
 
-### `linkify-it@5.0.0`
-Homepage: https://github.com/markdown-it/linkify-it
-
-Copyright (c) 2015 Vitaly Puzrin.
-
-### `linkifyjs@4.3.2`
+### `linkifyjs@4.3.3`
 Homepage: https://linkify.js.org
 
 Copyright (c) 2024 Nick Frasser
+
+### `locate-path@3.0.0`
+Homepage: https://github.com/sindresorhus/locate-path
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
 ### `lodash@4.18.1`
 Homepage: https://lodash.com/
@@ -4029,17 +3893,12 @@ Homepage: https://github.com/wooorm/lowlight
 
 Copyright (c) Titus Wormer <tituswormer@gmail.com>
 
-### `markdown-it@14.1.1`
-Homepage: https://github.com/markdown-it/markdown-it
-
-Copyright (c) 2014 Vitaly Puzrin, Alex Kocharin.
-
 ### `markdown-table@3.0.4`
 Homepage: https://github.com/wooorm/markdown-table
 
 Copyright (c) Titus Wormer <tituswormer@gmail.com>
 
-### `markdownlint@0.41.0`
+### `markdownlint@0.41.1`
 Homepage: https://github.com/DavidAnson/markdownlint
 
 Copyright (c) David Anson
@@ -4144,12 +4003,6 @@ Homepage: https://github.com/syntax-tree/mdast-util-to-string
 
 Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>
 
-### `mdurl@2.0.0`
-Homepage: https://github.com/markdown-it/mdurl
-
-Copyright (c) 2015 Vitaly Puzrin, Alex Kocharin.
-Copyright Joyent, Inc. and other Node contributors. All rights reserved.
-
 ### `media-typer@1.1.0`
 Homepage: https://github.com/jshttp/media-typer
 
@@ -4170,7 +4023,7 @@ Homepage: https://github.com/teambition/merge2
 
 Copyright (c) 2014-2020 Teambition
 
-### `mermaid@11.14.0`
+### `mermaid@11.16.0`
 Homepage: https://github.com/mermaid-js/mermaid
 
 Copyright (c) 2014 - 2022 Knut Sveidqvist
@@ -4375,6 +4228,11 @@ Homepage: https://github.com/jshttp/mime-types
 
 Copyright (c) 2014 Jonathan Ong <me@jongleberry.com> Copyright (c) 2015 Douglas Christopher Wilson <doug@somethingdoug.com>
 
+### `mimic-fn@3.1.0`
+Homepage: https://github.com/sindresorhus/mimic-fn
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+
 ### `mimic-fn@2.1.0`
 Homepage: https://github.com/sindresorhus/mimic-fn
 
@@ -4400,11 +4258,6 @@ Homepage: https://github.com/mafintosh/mkdirp-classic
 
 Copyright (c) 2020 James Halliday (mail@substack.net) and Mathias Buus
 
-### `mlly@1.8.2`
-Homepage: https://github.com/unjs/mlly
-
-Copyright (c) Pooya Parsa <pooya@pi0.io>
-
 ### `modern-tar@0.7.6`
 Homepage: https://github.com/ayuhito/modern-tar
 
@@ -4425,12 +4278,7 @@ Homepage: https://github.com/vercel/ms
 
 Copyright (c) 2020 Vercel, Inc.
 
-### `msw@2.13.2`
-Homepage: https://mswjs.io
-
-Copyright (c) 2018–present Artem Zakharchenko
-
-### `nanoid@3.3.11`
+### `nanoid@3.3.16`
 Homepage: https://github.com/ai/nanoid
 
 Copyright 2017 Andrey Sitnik <andrey@sitnik.ru>
@@ -4455,7 +4303,7 @@ Homepage: https://github.com/pacocoursey/next-themes
 
 Copyright (c) 2022 Paco Coursey
 
-### `node-abi@3.89.0`
+### `node-abi@3.94.0`
 Homepage: https://github.com/electron/node-abi#readme
 
 Copyright (c) 2016 Lukas Geiger
@@ -4465,25 +4313,15 @@ Homepage: https://github.com/nodejs/node-addon-api
 
 Copyright (c) 2017 [Node.js API collaborators](https://github.com/nodejs/node-addon-api#collaborators)
 
-### `node-addon-api@8.7.0`
+### `node-addon-api@8.9.0`
 Homepage: https://github.com/nodejs/node-addon-api
 
 Copyright (c) 2017 [Node.js API collaborators](https://github.com/nodejs/node-addon-api#collaborators)
 
-### `node-diff3@3.2.0`
+### `node-diff3@3.2.1`
 Homepage: https://github.com/bhousel/node-diff3
 
-Copyright (c) 2006, 2008 Tony Garnock-Jones &lt;tonyg@lshift.net&gt;<br/> Copyright (c) 2006, 2008 LShift Ltd. &lt;query@lshift.net&gt;<br/> Copyright (c) 2019-2025 Bryan Housel &lt;bhousel@gmail.com&gt;<br/>
-
-### `node-domexception@1.0.0`
-Homepage: https://github.com/jimmywarting/node-domexception#readme
-
-Copyright (c) 2021 Jimmy Wärting
-
-### `node-fetch@3.3.2`
-Homepage: https://github.com/node-fetch/node-fetch
-
-Copyright (c) 2016 - 2020 Node Fetch Team
+Copyright (c) 2006, 2008 Tony Garnock-Jones &lt;tonyg@lshift.net&gt;<br/> Copyright (c) 2006, 2008 LShift Ltd. &lt;query@lshift.net&gt;<br/> Copyright (c) 2019-2026 Bryan Housel &lt;bhousel@gmail.com&gt;<br/>
 
 ### `node-gyp-build@4.8.4`
 Homepage: https://github.com/prebuild/node-gyp-build
@@ -4497,7 +4335,7 @@ Copyright (c) 2012-2015, Christopher Jeffrey (https://github.com/chjj/)
 Copyright (c) 2016, Daniel Imms (http://www.growingwiththeweb.com)
 Copyright (c) 2018 - present Microsoft Corporation
 
-### `node-releases@2.0.37`
+### `node-releases@2.0.51`
 Homepage: https://github.com/chicoxyzzy/node-releases
 
 Copyright (c) 2017 Sergey Rubanov (https://github.com/chicoxyzzy)
@@ -4557,6 +4395,11 @@ Homepage: https://github.com/sindresorhus/open
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
+### `open@8.4.2`
+Homepage: https://github.com/sindresorhus/open
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+
 ### `ora@8.2.0`
 Homepage: https://github.com/sindresorhus/ora
 
@@ -4567,17 +4410,27 @@ Homepage: https://github.com/marijnh/orderedmap#readme
 
 Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `outvariant@1.4.3`
-Homepage: https://github.com/open-draft/outvariant
+### `p-limit@2.3.0`
+Homepage: https://github.com/sindresorhus/p-limit
 
-Copyright (c) 2021–present Artem Zakharchenko
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
-### `package-manager-detector@1.6.0`
+### `p-locate@3.0.0`
+Homepage: https://github.com/sindresorhus/p-locate
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+
+### `p-try@2.2.0`
+Homepage: https://github.com/sindresorhus/p-try
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+
+### `package-manager-detector@1.7.0`
 Homepage: https://github.com/antfu-collective/package-manager-detector#readme
 
 Copyright (c) 2020-PRESENT Anthony Fu <https://github.com/antfu>
 
-### `papaparse@5.5.3`
+### `papaparse@5.5.4`
 Homepage: https://www.papaparse.com/
 
 Copyright (c) 2015 Matthew Holt
@@ -4622,7 +4475,12 @@ Homepage: https://github.com/pshihn/path-data-parser#readme
 
 Copyright (c) 2020 Preet Shihn
 
-### `path-expression-matcher@1.5.0`
+### `path-exists@3.0.0`
+Homepage: https://github.com/sindresorhus/path-exists
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+
+### `path-expression-matcher@1.6.2`
 Homepage: https://github.com/NaturalIntelligence/path-expression-matcher#readme
 
 Copyright (c) 2024
@@ -4642,24 +4500,12 @@ Homepage: https://github.com/jbgutierrez/path-parse#readme
 
 Copyright (c) 2015 Javier Blanco
 
-### `path-to-regexp@6.3.0`
-Homepage: https://github.com/pillarjs/path-to-regexp
-
-Copyright (c) 2014 Blake Embrey (hello@blakeembrey.com)
-
 ### `path-to-regexp@8.4.2`
 Homepage: https://github.com/pillarjs/path-to-regexp
 
 Copyright (c) 2014 Blake Embrey (hello@blakeembrey.com)
 
-### `pathe@2.0.3`
-Homepage: https://github.com/unjs/pathe
-
-Copyright (c) Pooya Parsa <pooya@pi0.io> - Daniel Roe <daniel@roe.dev>
-Copyright Joyent, Inc. and other Node contributors.
-Copyright (c) 2023-present Fabio Spampinato
-
-### `picomatch@4.0.4`
+### `picomatch@4.0.5`
 Homepage: https://github.com/micromatch/picomatch
 
 Copyright (c) 2017-present, Jon Schlinkert.
@@ -4694,11 +4540,10 @@ Homepage: https://github.com/crouchcd/pkce-challenge#readme
 
 Copyright (c) 2019
 
-### `pkg-types@1.3.1`
-Homepage: https://github.com/unjs/pkg-types
+### `pkg-up@3.1.0`
+Homepage: https://github.com/sindresorhus/pkg-up
 
-Copyright (c) Pooya Parsa <pooya@pi0.io> - Daniel Roe <daniel@roe.dev>
-Copyright Joyent, Inc. and other Node contributors.
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
 ### `points-on-curve@0.2.0`
 Homepage: https://github.com/pshihn/bezier-points#readme
@@ -4710,12 +4555,12 @@ Homepage: https://github.com/pshihn/points-on-path#readme
 
 Copyright (c) 2020 Preet
 
-### `postcss@8.5.9`
+### `postcss@8.5.17`
 Homepage: https://postcss.org/
 
 Copyright 2013 Andrey Sitnik <andrey@sitnik.es>
 
-### `postcss-selector-parser@7.1.1`
+### `postcss-selector-parser@7.1.4`
 Homepage: https://github.com/postcss/postcss-selector-parser
 
 Copyright (c) Ben Briggs <beneb.info@gmail.com> (http://beneb.info)
@@ -4730,7 +4575,7 @@ Homepage: https://preactjs.com
 
 Copyright (c) 2015-present Jason Miller
 
-### `preact@10.29.1`
+### `preact@10.29.7`
 Homepage: https://preactjs.com
 
 Copyright (c) 2015-present Jason Miller
@@ -4775,28 +4620,23 @@ Homepage: https://facebook.github.io/react/
 
 Copyright (c) 2013-present, Facebook, Inc.
 
-### `property-information@7.1.0`
+### `property-information@7.2.0`
 Homepage: https://github.com/wooorm/property-information
 
 Copyright (c) Titus Wormer <mailto:tituswormer@gmail.com>
 
-### `prosemirror-changeset@2.4.0`
-Homepage: https://github.com/prosemirror/prosemirror-changeset
+### `prosemirror-changeset@2.4.1`
+Homepage: https://code.haverbeke.berlin/prosemirror/prosemirror-changeset
 
 Copyright (C) 2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
-
-### `prosemirror-collab@1.3.1`
-Homepage: https://github.com/prosemirror/prosemirror-collab
-
-Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
 ### `prosemirror-commands@1.7.1`
 Homepage: https://github.com/prosemirror/prosemirror-commands
 
 Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `prosemirror-dropcursor@1.8.2`
-Homepage: https://github.com/prosemirror/prosemirror-dropcursor
+### `prosemirror-dropcursor@1.8.3`
+Homepage: https://code.haverbeke.berlin/prosemirror/prosemirror-dropcursor
 
 Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
@@ -4810,33 +4650,13 @@ Homepage: https://github.com/prosemirror/prosemirror-history
 
 Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `prosemirror-inputrules@1.5.1`
-Homepage: https://github.com/prosemirror/prosemirror-inputrules
-
-Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
-
 ### `prosemirror-keymap@1.2.3`
 Homepage: https://github.com/prosemirror/prosemirror-keymap
 
 Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `prosemirror-markdown@1.13.4`
-Homepage: https://github.com/prosemirror/prosemirror-markdown
-
-Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
-
-### `prosemirror-menu@1.3.0`
-Homepage: https://github.com/prosemirror/prosemirror-menu
-
-Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
-
 ### `prosemirror-model@1.25.4`
 Homepage: https://github.com/prosemirror/prosemirror-model
-
-Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
-
-### `prosemirror-schema-basic@1.2.4`
-Homepage: https://github.com/prosemirror/prosemirror-schema-basic
 
 Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
@@ -4854,11 +4674,6 @@ Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 Homepage: https://github.com/ProseMirror/prosemirror-tables
 
 Copyright (C) 2015-2016 by Marijn Haverbeke <marijnh@gmail.com> and others
-
-### `prosemirror-trailing-node@3.0.0`
-Homepage: https://github.com/remirror/remirror/tree/HEAD/packages/prosemirror-trailing-node
-
-Copyright (c) 2019-2022, Remirror Contributors
 
 ### `prosemirror-transform@1.12.0`
 Homepage: https://github.com/prosemirror/prosemirror-transform
@@ -4879,11 +4694,6 @@ Copyright (c) 2014-2016 Douglas Christopher Wilson
 Homepage: https://github.com/mafintosh/pump
 
 Copyright (c) 2014 Mathias Buus
-
-### `punycode.js@2.3.1`
-Homepage: https://mths.be/punycode
-
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
 ### `queue-microtask@1.2.3`
 Homepage: https://github.com/feross/queue-microtask
@@ -4910,7 +4720,7 @@ Homepage: https://radix-ui.com/primitives
 
 Copyright (c) 2022 WorkOS
 
-### `range-parser@1.2.1`
+### `range-parser@1.3.0`
 Homepage: https://github.com/jshttp/range-parser
 
 Copyright (c) 2012-2014 TJ Holowaychuk <tj@vision-media.ca> Copyright (c) 2015-2016 Douglas Christopher Wilson <doug@somethingdoug.com
@@ -4920,7 +4730,7 @@ Homepage: https://github.com/stream-utils/raw-body
 
 Copyright (c) 2013-2014 Jonathan Ong <me@jongleberry.com> Copyright (c) 2014-2022 Douglas Christopher Wilson <doug@somethingdoug.com>
 
-### `re2js@1.4.0`
+### `re2js@1.3.3`
 Homepage: https://github.com/le0pard/re2js#readme
 
 Copyright (c) 2023 Alexey Vasiliev
@@ -4945,7 +4755,7 @@ Homepage: https://react.dev/
 
 Copyright (c) Meta Platforms, Inc. and affiliates.
 
-### `react-error-boundary@6.1.1`
+### `react-error-boundary@6.1.2`
 Homepage: https://react-error-boundary-lib.vercel.app/
 
 Copyright (c) 2020 Brian Vaughn
@@ -4955,7 +4765,7 @@ Homepage: https://github.com/vasturiano/react-force-graph
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
-### `react-hook-form@7.80.0`
+### `react-hook-form@7.81.0`
 Homepage: https://react-hook-form.com
 
 Copyright (c) 2019-present Beier(Bill) Luo
@@ -4970,7 +4780,7 @@ Homepage: https://reactjs.org/
 
 Copyright (c) Facebook, Inc. and its affiliates.
 
-### `react-kapsule@2.5.7`
+### `react-kapsule@2.6.0`
 Homepage: https://github.com/vasturiano/react-kapsule
 
 Copyright (c) 2017 Vasco Asturiano
@@ -4990,7 +4800,7 @@ Homepage: https://github.com/theKashey/react-remove-scroll-bar
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
-### `react-resizable-panels@4.9.0`
+### `react-resizable-panels@4.12.1`
 Homepage: https://react-resizable-panels.vercel.app/
 
 Copyright (c) 2018 Brian Vaughn
@@ -5016,7 +4826,12 @@ Homepage: https://github.com/pinojs/real-require
 
 Copyright (c) 2021 Paolo Insogna and the real-require contributors
 
-### `recast@0.23.11`
+### `real-require@1.0.0`
+Homepage: https://github.com/pinojs/real-require
+
+Copyright (c) 2021 Paolo Insogna and the real-require contributors
+
+### `recast@0.23.12`
 Homepage: http://github.com/benjamn/recast
 
 Copyright (c) 2012 Ben Newman <bn@cs.stanford.edu>
@@ -5076,11 +4891,6 @@ Homepage: https://remark.js.org
 
 Copyright (c) 2014 Titus Wormer <tituswormer@gmail.com>
 
-### `require-directory@2.1.1`
-Homepage: https://github.com/troygoode/node-require-directory/
-
-Copyright (c) 2011 Troy Goode <troygoode@gmail.com>
-
 ### `require-from-string@2.0.2`
 Homepage: https://github.com/floatdrop/require-from-string
 
@@ -5105,11 +4915,6 @@ Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 Homepage: https://github.com/sindresorhus/restore-cursor
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
-
-### `rettime@0.10.1`
-Homepage: https://github.com/kettanaito/rettime
-
-Copyright (c) 2024—present Artem Zakharchenko
 
 ### `reusify@1.1.0`
 Homepage: https://github.com/mcollina/reusify#readme
@@ -5176,7 +4981,7 @@ Homepage: https://github.com/expressjs/serve-static
 
 Copyright (c) 2010 Sencha Inc. Copyright (c) 2011 LearnBoost Copyright (c) 2011 TJ Holowaychuk Copyright (c) 2014-2016 Douglas Christopher Wilson
 
-### `shadcn@4.2.0`
+### `shadcn@4.13.0`
 Homepage: https://github.com/shadcn-ui/ui
 
 Copyright (c) 2023 shadcn
@@ -5196,12 +5001,12 @@ Homepage: https://github.com/sindresorhus/shebang-regex
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
-### `shell-quote@1.8.3`
+### `shell-quote@1.10.0`
 Homepage: https://github.com/ljharb/shell-quote
 
 Copyright (c) 2013 James Halliday (mail@substack.net)
 
-### `side-channel@1.1.0`
+### `side-channel@1.1.1`
 Homepage: https://github.com/ljharb/side-channel#readme
 
 Copyright (c) 2019 Jordan Harband
@@ -5282,11 +5087,6 @@ Homepage: http://github.com/mscdex/streamsearch
 
 Copyright Brian White. All rights reserved.
 
-### `strict-event-emitter@0.5.1`
-Homepage: https://github.com/open-draft/strict-event-emitter
-
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
-
 ### `string-width@8.2.1`
 Homepage: https://github.com/sindresorhus/string-width
 
@@ -5296,11 +5096,6 @@ Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 Homepage: https://github.com/sindresorhus/string-width
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
-
-### `string-width@4.2.3`
-Homepage: https://github.com/sindresorhus/string-width
-
-Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
 ### `string_decoder@1.3.0`
 Homepage: https://github.com/nodejs/string_decoder
@@ -5363,7 +5158,7 @@ Homepage: https://github.com/marijnh/style-mod
 
 Copyright (C) 2018 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `stylis@4.3.6`
+### `stylis@4.4.0`
 Homepage: https://github.com/thysultan/stylis.js
 
 Copyright (c) 2016-present Sultan Tarimo
@@ -5378,17 +5173,7 @@ Homepage: https://github.com/inspect-js/node-supports-preserve-symlinks-flag#rea
 
 Copyright (c) 2022 Inspect JS
 
-### `tagged-tag@1.0.0`
-Homepage: https://github.com/sindresorhus/tagged-tag
-
-Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
-
 ### `tailwind-merge@3.6.0`
-Homepage: https://github.com/dcastil/tailwind-merge
-
-Copyright (c) 2021 Dany Castillo
-
-### `tailwind-merge@3.5.0`
 Homepage: https://github.com/dcastil/tailwind-merge
 
 Copyright (c) 2021 Dany Castillo
@@ -5398,12 +5183,12 @@ Homepage: https://github.com/adoxography/tailwind-scrollbar
 
 Copyright (c) Graham Still <gstill92@gmail.com>
 
-### `tailwindcss@4.2.2`
+### `tailwindcss@4.3.2`
 Homepage: https://tailwindcss.com
 
 Copyright (c) Tailwind Labs, Inc.
 
-### `tar-fs@2.1.4`
+### `tar-fs@2.1.5`
 Homepage: https://github.com/mafintosh/tar-fs
 
 Copyright (c) 2014 Mathias Buus
@@ -5413,7 +5198,7 @@ Homepage: https://github.com/mafintosh/tar-stream
 
 Copyright (c) 2014 Mathias Buus
 
-### `thread-stream@4.0.0`
+### `thread-stream@4.2.0`
 Homepage: https://github.com/mcollina/thread-stream#readme
 
 Copyright (c) 2021 Matteo Collina
@@ -5433,20 +5218,10 @@ Homepage: https://github.com/bgrins/TinyColor
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
-### `tinyexec@1.1.1`
+### `tinyexec@1.2.4`
 Homepage: https://github.com/tinylibs/tinyexec#readme
 
 Copyright (c) 2024 Tinylibs
-
-### `tldts@7.0.28`
-Homepage: https://github.com/remusao/tldts#readme
-
-Copyright (c) 2017 Thomas Parisot, 2018 Rémi Berson
-
-### `tldts-core@7.0.28`
-Homepage: https://github.com/remusao/tldts#readme
-
-Copyright (c) 2017 Thomas Parisot, 2018 Rémi Berson
 
 ### `to-regex-range@5.0.1`
 Homepage: https://github.com/micromatch/to-regex-range
@@ -5483,7 +5258,7 @@ Homepage: https://github.com/wooorm/trough
 
 Copyright (c) 2016 Titus Wormer <tituswormer@gmail.com>
 
-### `ts-dedent@2.2.0`
+### `ts-dedent@2.3.0`
 Homepage: https://github.com/tamino-martinius/node-ts-dedent
 
 Copyright (c) 2018 Tamino Martinius
@@ -5508,37 +5283,22 @@ Homepage: https://github.com/Wombosvideo/tw-animate-css#readme
 
 Copyright (c) 2025 Wombosvideo
 
-### `type-fest@5.5.0`
-Homepage: https://github.com/sindresorhus/type-fest
-
-Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
-
-### `type-is@2.0.1`
+### `type-is@2.1.0`
 Homepage: https://github.com/jshttp/type-is
 
 Copyright (c) 2014 Jonathan Ong <me@jongleberry.com> Copyright (c) 2014-2015 Douglas Christopher Wilson <doug@somethingdoug.com>
-
-### `uc.micro@2.1.0`
-Homepage: https://github.com/markdown-it/uc.micro
-
-Copyright Mathias Bynens <https://mathiasbynens.be/>
-
-### `ufo@1.6.3`
-Homepage: https://github.com/unjs/ufo
-
-Copyright (c) Pooya Parsa <pooya@pi0.io>
 
 ### `uint8array-extras@1.5.0`
 Homepage: https://github.com/sindresorhus/uint8array-extras
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `undici-types@7.16.0`
+### `undici@7.28.0`
 Homepage: https://undici.nodejs.org
 
 Copyright (c) Matteo Collina and Undici contributors
 
-### `undici-types@7.19.2`
+### `undici-types@7.18.2`
 Homepage: https://undici.nodejs.org
 
 Copyright (c) Matteo Collina and Undici contributors
@@ -5603,11 +5363,6 @@ Homepage: https://github.com/stream-utils/unpipe
 
 Copyright (c) 2015 Douglas Christopher Wilson <doug@somethingdoug.com>
 
-### `until-async@3.0.2`
-Homepage: https://github.com/kettanaito/until-async
-
-Copyright (c) 2021 Artem Zakharchenko
-
 ### `update-browserslist-db@1.2.3`
 Homepage: https://github.com/browserslist/update-db
 
@@ -5633,7 +5388,7 @@ Homepage: https://github.com/TooTallNate/util-deprecate
 
 Copyright (c) 2014 Nathan Rajlich <nathan@tootallnate.net>
 
-### `uuid@11.1.0`
+### `uuid@14.0.1`
 Homepage: https://github.com/uuidjs/uuid
 
 Copyright (c) 2010-2020 Robert Kieffer and other contributors
@@ -5658,36 +5413,6 @@ Homepage: https://github.com/vfile/vfile-message
 
 Copyright (c) Titus Wormer <tituswormer@gmail.com>
 
-### `vscode-jsonrpc@8.2.0`
-Homepage: https://github.com/Microsoft/vscode-languageserver-node
-
-Copyright (c) Microsoft Corporation
-
-### `vscode-languageserver@9.0.1`
-Homepage: https://github.com/Microsoft/vscode-languageserver-node
-
-Copyright (c) Microsoft Corporation
-
-### `vscode-languageserver-protocol@3.17.5`
-Homepage: https://github.com/Microsoft/vscode-languageserver-node
-
-Copyright (c) Microsoft Corporation
-
-### `vscode-languageserver-textdocument@1.0.12`
-Homepage: https://github.com/Microsoft/vscode-languageserver-node
-
-Copyright (c) Microsoft Corporation
-
-### `vscode-languageserver-types@3.17.5`
-Homepage: https://github.com/Microsoft/vscode-languageserver-node
-
-Copyright (c) Microsoft Corporation
-
-### `vscode-uri@3.1.0`
-Homepage: https://github.com/microsoft/vscode-uri#readme
-
-Copyright (c) Microsoft
-
 ### `w3c-keyname@2.2.8`
 Homepage: https://github.com/marijnh/w3c-keyname#readme
 
@@ -5708,32 +5433,12 @@ Homepage: https://github.com/wooorm/web-namespaces
 
 Copyright (c) 2016 Titus Wormer <tituswormer@gmail.com>
 
-### `web-streams-polyfill@3.3.3`
-Homepage: https://github.com/MattiasBuelens/web-streams-polyfill#readme
-
-Copyright (c) 2024 Mattias Buelens Copyright (c) 2016 Diwank Singh Tomer
-
 ### `whatwg-mimetype@3.0.0`
 Homepage: https://github.com/jsdom/whatwg-mimetype
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
-### `wrap-ansi@6.2.0`
-Homepage: https://github.com/chalk/wrap-ansi
-
-Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
-
-### `wrap-ansi@7.0.0`
-Homepage: https://github.com/chalk/wrap-ansi
-
-Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
-
 ### `ws@8.21.0`
-Homepage: https://github.com/websockets/ws
-
-Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com> Copyright (c) 2013 Arnout Kazemier and contributors Copyright (c) 2016 Luigi Pinca and contributors
-
-### `ws@8.20.0`
 Homepage: https://github.com/websockets/ws
 
 Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com> Copyright (c) 2013 Arnout Kazemier and contributors Copyright (c) 2016 Luigi Pinca and contributors
@@ -5743,10 +5448,10 @@ Homepage: https://github.com/sindresorhus/wsl-utils
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `xml-naming@0.1.0`
+### `xml-naming@0.3.0`
 Homepage: https://github.com/NaturalIntelligence/xml-naming
 
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+Copyright (c) 2026 Natural Intelligence
 
 ### `y-codemirror.next@0.3.5`
 Homepage: https://github.com/yjs/y-codemirror.next#readme
@@ -5763,22 +5468,17 @@ Homepage: https://github.com/yjs/y-protocols#readme
 
 Copyright (c) 2019 Kevin Jahns <kevin.jahns@protonmail.com>.
 
-### `yargs@17.7.2`
-Homepage: https://yargs.js.org/
-
-Copyright 2010 James Halliday (mail@substack.net); Modified work Copyright 2014 Contributors (ben@npmjs.com)
-
 ### `yazl@3.3.1`
 Homepage: https://github.com/thejoshwolfe/yazl
 
 Copyright (c) 2014 Josh Wolfe
 
-### `yjs@13.6.30`
+### `yjs@13.6.31`
 Homepage: https://docs.yjs.dev
 
 Copyright (c) 2023 - Kevin Jahns <kevin.jahns@protonmail.com>. - Chair of Computer Science 5 (Databases & Information Systems), RWTH Aachen University, Germany
 
-### `yocto-spinner@1.1.0`
+### `yocto-spinner@1.2.1`
 Homepage: https://github.com/sindresorhus/yocto-spinner
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
@@ -5788,12 +5488,7 @@ Homepage: https://github.com/sindresorhus/yoctocolors
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `yoctocolors-cjs@2.1.3`
-Homepage: https://github.com/sindresorhus/yoctocolors
-
-Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
-
-### `zod@4.3.6`
+### `zod@4.4.3`
 Homepage: https://zod.dev
 
 Copyright (c) 2025 Colin McDonnell
@@ -5830,7 +5525,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### `@ungap/structured-clone@1.3.0`
+### `@ungap/structured-clone@1.3.3`
 Homepage: https://github.com/ungap/structured-clone#readme
 
 Copyright (c) 2021, Andrea Giammarchi, @WebReflection
@@ -5844,11 +5539,6 @@ Copyright (c) Isaac Z. Schlueter and Contributors
 Homepage: https://github.com/knownasilya/cli-width
 
 Copyright (c) 2015, Ilya Radchenko <knownasilya@gmail.com>
-
-### `cliui@8.0.1`
-Homepage: https://github.com/yargs/cliui
-
-Copyright (c) 2015, Contributors
 
 ### `d3@7.9.0`
 Homepage: https://d3js.org
@@ -6007,7 +5697,7 @@ Homepage: https://github.com/mapbox/delaunator
 
 Copyright (c) 2026, Mapbox
 
-### `electron-to-chromium@1.5.334`
+### `electron-to-chromium@1.5.389`
 Homepage: https://github.com/Kilian/electron-to-chromium
 
 Copyright 2018 Kilian Valkhof
@@ -6016,11 +5706,6 @@ Copyright 2018 Kilian Valkhof
 Homepage: https://github.com/mcollina/fastq#readme
 
 Copyright (c) 2015-2020, Matteo Collina <matteo.collina@gmail.com>
-
-### `get-caller-file@2.0.5`
-Homepage: https://github.com/stefanpenner/get-caller-file#readme
-
-Copyright 2018 Stefan Penner
 
 ### `glob-parent@5.1.2`
 Homepage: https://github.com/gulpjs/glob-parent
@@ -6047,6 +5732,11 @@ Homepage: https://github.com/isaacs/ini
 
 Copyright (c) Isaac Z. Schlueter and Contributors
 
+### `internmap@2.0.3`
+Homepage: https://github.com/mbostock/internmap/
+
+Copyright 2021 Mike Bostock
+
 ### `internmap@1.0.1`
 Homepage: https://github.com/mbostock/internmap/
 
@@ -6062,18 +5752,13 @@ Homepage: https://github.com/isaacs/node-lru-cache
 
 Copyright (c) Isaac Z. Schlueter and Contributors
 
-### `lucide-react@1.8.0`
+### `lucide-react@1.24.0`
 Homepage: https://lucide.dev
 
 Copyright (c) 2026 Lucide Icons and Contributors
 Copyright (c) 2013-present Cole Bemis
 
 ### `mute-stream@3.0.0`
-Homepage: https://github.com/npm/mute-stream
-
-Copyright (c) Isaac Z. Schlueter and Contributors
-
-### `mute-stream@2.0.0`
 Homepage: https://github.com/npm/mute-stream
 
 Copyright (c) Isaac Z. Schlueter and Contributors
@@ -6148,11 +5833,6 @@ Homepage: https://github.com/npm/wrappy
 
 Copyright (c) Isaac Z. Schlueter and Contributors
 
-### `y18n@5.0.8`
-Homepage: https://github.com/yargs/y18n
-
-Copyright (c) 2015, Contributors
-
 ### `yallist@3.1.1`
 Homepage: https://github.com/isaacs/yallist
 
@@ -6162,11 +5842,6 @@ Copyright (c) Isaac Z. Schlueter and Contributors
 Homepage: https://eemeli.org/yaml/
 
 Copyright Eemeli Aro <eemeli@gmail.com>
-
-### `yargs-parser@21.1.1`
-Homepage: https://github.com/yargs/yargs-parser
-
-Copyright (c) 2016, Contributors
 
 ### `zod-to-json-schema@3.25.2`
 Homepage: https://github.com/StefanTerdell/zod-to-json-schema
@@ -6209,7 +5884,12 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### `@dotenvx/dotenvx@1.61.0`
+### `@dotenvx/dotenvx@1.75.1`
+Homepage: https://github.com/dotenvx/dotenvx
+
+Copyright (c) 2024, Scott Motte
+
+### `@dotenvx/primitives@0.8.0`
 Homepage: https://github.com/dotenvx/dotenvx
 
 Copyright (c) 2024, Scott Motte
@@ -6224,27 +5904,22 @@ Homepage: https://github.com/dcodeIO/protobuf.js
 
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
-### `@protobufjs/codegen@2.0.4`
+### `@protobufjs/codegen@2.0.5`
 Homepage: https://github.com/dcodeIO/protobuf.js
 
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
-### `@protobufjs/eventemitter@1.1.0`
+### `@protobufjs/eventemitter@1.1.1`
 Homepage: https://github.com/dcodeIO/protobuf.js
 
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
-### `@protobufjs/fetch@1.1.0`
+### `@protobufjs/fetch@1.1.1`
 Homepage: https://github.com/dcodeIO/protobuf.js
 
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
 ### `@protobufjs/float@1.0.2`
-Homepage: https://github.com/dcodeIO/protobuf.js
-
-Copyright (c) 2016, Daniel Wirtz  All rights reserved.
-
-### `@protobufjs/inquire@1.1.0`
 Homepage: https://github.com/dcodeIO/protobuf.js
 
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
@@ -6259,8 +5934,8 @@ Homepage: https://github.com/dcodeIO/protobuf.js
 
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
-### `@protobufjs/utf8@1.1.0`
-Homepage: https://github.com/dcodeIO/protobuf.js
+### `@protobufjs/utf8@1.1.2`
+Homepage: https://github.com/protobufjs/protobuf.js
 
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
@@ -6294,10 +5969,10 @@ Homepage: https://github.com/kpdecker/jsdiff
 
 Copyright (c) 2009-2015, Kevin Decker <kpdecker@gmail.com>
 
-### `fast-uri@3.1.0`
+### `fast-uri@3.1.3`
 Homepage: https://github.com/fastify/fast-uri
 
-Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae Copyright (c) 2021-present The Fastify team
+Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae Copyright (c) 2021-present The Fastify team <https://github.com/fastify/fastify#team>
 
 ### `highlight.js@11.11.1`
 Homepage: https://highlightjs.org/
@@ -6314,12 +5989,12 @@ Homepage: https://github.com/tjvr/moo
 
 Copyright (c) 2017, Tim Radvan (tjvr)
 
-### `protobufjs@7.5.5`
+### `protobufjs@7.6.5`
 Homepage: https://protobufjs.github.io/protobuf.js/
 
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
-### `qs@6.15.1`
+### `qs@6.15.3`
 Homepage: https://github.com/ljharb/qs
 
 Copyright (c) 2014, Nathan LaFreniere and other [contributors](https://github.com/ljharb/qs/graphs/contributors)
@@ -6339,7 +6014,7 @@ Homepage: https://github.com/fastify/secure-json-parse#readme
 
 Copyright (c) 2019, Sideway Inc, and project contributors Copyright (c) 2019-present The Fastify team
 
-### `smol-toml@1.6.1`
+### `smol-toml@1.7.0`
 Homepage: https://github.com/squirrelchat/smol-toml
 
 Copyright (c) Squirrel Chat et al., All rights reserved.
@@ -6358,11 +6033,6 @@ Copyright (c) 2009-2011, Mozilla Foundation and contributors
 Homepage: https://github.com/alexei/sprintf.js
 
 Copyright (c) 2007-present, Alexandru Mărășteanu <hello@alexei.ro>
-
-### `tough-cookie@6.0.1`
-Homepage: https://github.com/salesforce/tough-cookie
-
-Copyright (c) 2015, Salesforce.com, Inc.
 
 ---
 
@@ -6401,7 +6071,7 @@ Homepage: https://github.com/mixmark-io/domino
 
 Copyright (c) 2011 The Mozilla Foundation.
 
-### `dotenv@17.4.1`
+### `dotenv@17.4.2`
 Homepage: https://github.com/motdotla/dotenv#readme
 
 Copyright (c) 2015, Scott Motte
@@ -6416,11 +6086,6 @@ Homepage: https://github.com/fb55/entities
 
 Copyright (c) Felix Böhm
 
-### `entities@4.5.0`
-Homepage: https://github.com/fb55/entities
-
-Copyright (c) Felix Böhm
-
 ### `esprima@4.0.1`
 Homepage: http://esprima.org
 
@@ -6430,6 +6095,11 @@ _(No LICENSE file in package; SPDX identifier in `package.json` is the sole decl
 Homepage: https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+
+### `json-schema-typed@7.0.3`
+Homepage: https://github.com/typeslick/json-schema-typed
+
+Copyright (c) 2018 IETF Trust, Austin Wright, Henry Andrews, Geraint Luff,
 
 ### `rc@1.2.8`
 Homepage: https://github.com/dominictarr/rc
@@ -6459,7 +6129,7 @@ The following packages are under licenses that do not require attribution (BlueO
 
 The data files below are licensed under CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/legalcode). Each entry preserves its copyright and license URI per §3(a)(1). Note: CC-BY-4.0 §5 disclaims warranties; the licensor offers the work as-is.
 
-### `caniuse-lite@1.0.30001787`
+### `caniuse-lite@1.0.30001805`
 Homepage: https://github.com/browserslist/caniuse-lite
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
@@ -6495,7 +6165,7 @@ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
 
 ## Patched dependencies
 
-The following MIT-licensed packages are patched in this repository via Bun's `patchedDependencies` mechanism. Modifications are released under the same MIT license as the upstream package. Patch files live under `patches/` in the source repo; the bundled output of every shipped artifact incorporates the patched code.
+The following MIT-licensed packages are patched in this repository via pnpm's `patchedDependencies` mechanism. Modifications are released under the same MIT license as the upstream package. Patch files live under `patches/` in the source repo; the bundled output of every shipped artifact incorporates the patched code.
 
 | Package | Patch file |
 | --- | --- |
@@ -6510,4 +6180,4 @@ The following MIT-licensed packages are patched in this repository via Bun's `pa
 
 ---
 
-_Regenerate with `bun run notices`. The generator at `scripts/generate-third-party-notices.mjs` walks the production-dep closure of `packages/{cli,server,core,app,desktop}` and emits attribution for every package that ends up bundled into a shipped artifact._
+_Regenerate with `pnpm run notices`. The generator at `scripts/generate-third-party-notices.mjs` walks the production-dep closure of `packages/{cli,server,core,app,desktop}` and emits attribution for every package that ends up bundled into a shipped artifact._

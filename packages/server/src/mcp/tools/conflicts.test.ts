@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register } from './conflicts.ts';
+import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import type { ServerInstance } from './shared.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
 
@@ -32,12 +33,12 @@ function capture(serverUrl: string | undefined, cwd: string): Handler {
   return handler;
 }
 
-let testServer: ReturnType<typeof Bun.serve>;
+let testServer: FetchTestServer;
 let baseUrl: string;
 const cwd = mkdtempSync(join(tmpdir(), 'ok-conflicts-test-'));
 
-beforeAll(() => {
-  testServer = Bun.serve({
+beforeAll(async () => {
+  testServer = await startFetchTestServer({
     port: 0,
     hostname: '127.0.0.1',
     fetch(req) {

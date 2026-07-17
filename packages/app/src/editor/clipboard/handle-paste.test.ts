@@ -34,7 +34,6 @@ import * as actualSonner from 'sonner';
 
 import { GfmAutolink } from '../gfm-autolink-plugin.ts';
 import { flushMicrotasksAndTimers, installDomGlobals } from '../walk-currency-test-harness.ts';
-import { createHandlePaste } from './handle-paste.ts';
 
 // Mock the shared pipeline so tests don't exercise the full rehype stack.
 mock.module('@inkeep/open-knowledge-core', () => {
@@ -47,6 +46,14 @@ mock.module('@inkeep/open-knowledge-core', () => {
 
 // Mock sonner to no-op toasts — we don't assert on them here.
 mock.module('sonner', () => ({ ...actualSonner, toast: { error: mock(() => {}) } }));
+
+// The dispatcher imports the mocked `@inkeep/open-knowledge-core`; bind it after
+// the mock is registered so the stubbed htmlToMdast/mdastToMarkdown take effect
+// (the mock facade only rewrites imports resolved after the doMock call).
+let createHandlePaste: typeof import('./handle-paste.ts').createHandlePaste;
+beforeAll(async () => {
+  ({ createHandlePaste } = await import('./handle-paste.ts'));
+});
 
 function fakeDT(data: Record<string, string>): ClipboardEvent {
   const evt = {

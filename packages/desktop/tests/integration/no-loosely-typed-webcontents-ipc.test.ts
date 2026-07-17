@@ -21,6 +21,7 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper.ts';
 
 // __dirname → packages/desktop/tests/integration/. Repo root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
@@ -28,7 +29,7 @@ const FIXTURE_REL = 'biome-plugins/__fixtures__/no-loosely-typed-webcontents-ipc
 
 describe('no-loosely-typed-webcontents-ipc GritQL plugin', () => {
   test('fires on exactly 6 banned primitives (and on no negative case)', () => {
-    const result = spawnSync('bunx', ['biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
@@ -46,7 +47,7 @@ describe('no-loosely-typed-webcontents-ipc GritQL plugin', () => {
   });
 
   test('plugin is registered in biome.jsonc', () => {
-    const config = require(join(REPO_ROOT, 'biome.jsonc'));
+    const config = readBiomeConfig(REPO_ROOT);
     const plugins = config.plugins ?? [];
     expect(plugins).toContain('./biome-plugins/no-loosely-typed-webcontents-ipc.grit');
   });

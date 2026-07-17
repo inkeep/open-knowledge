@@ -317,13 +317,18 @@ describe('newest un-acked minidump lookup', () => {
 
 describe('process-level invariants', () => {
   test('crash detection registers no userland uncaughtException handler', () => {
+    // Assert crash detection adds no NET uncaughtException listener rather than an
+    // absolute count of zero: the test runner installs its own handler, so the
+    // baseline is nonzero and only the delta attributable to createCrashDetection
+    // is meaningful.
+    const before = process.listenerCount('uncaughtException');
     const rig = makeRig();
     const detection = createCrashDetection(rig.deps);
     detection.detectBootCrash();
     detection.handleRenderProcessGone({ reason: 'crashed' });
     detection.notifyRendererReady();
 
-    expect(process.listenerCount('uncaughtException')).toBe(0);
+    expect(process.listenerCount('uncaughtException')).toBe(before);
   });
 
   test('the crash reporter starts local-only, with upload disabled', () => {

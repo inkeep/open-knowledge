@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Emit per-scope JSON Schemas from `ConfigSchema` for IDE intellisense.
  *

@@ -11,8 +11,8 @@
  * on the rotation cap-vector under test.
  */
 
-import { buildCorpus } from './generator';
-import type { DocSpec, SizeMix } from './types';
+import { buildCorpus } from './generator.ts';
+import type { DocSpec, SizeMix } from './types.ts';
 
 /** Vault size-mix (15 small + 60 medium + 25 large = 100 docs). */
 export const VAULT_MIX = {

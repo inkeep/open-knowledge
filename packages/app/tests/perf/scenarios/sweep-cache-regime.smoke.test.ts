@@ -25,15 +25,15 @@ import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import type { ScenarioCtx, ScenarioOptions } from '../lib/scenario';
+import type { ScenarioCtx, ScenarioOptions } from '../lib/scenario.ts';
 import type {
   HostClassFingerprint,
   RunCellFn,
   SweepCellInput,
   SweepCellResult,
   VerdictMeasurement,
-} from '../lib/sweep-runner';
-import { classifyCellVerdict, runCapGraduationCampaign } from '../lib/sweep-runner';
+} from '../lib/sweep-runner.ts';
+import { classifyCellVerdict, runCapGraduationCampaign } from '../lib/sweep-runner.ts';
 import scenario, {
   ALL_FIXTURES,
   ALL_STAGES,
@@ -43,7 +43,7 @@ import scenario, {
   parseSweepRunOptions,
   runSweepCampaign,
   SCENARIO_NAME,
-} from './sweep-cache-regime';
+} from './sweep-cache-regime.ts';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Helpers — synthetic measurement + runCell + ctx

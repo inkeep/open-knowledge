@@ -17,7 +17,7 @@
  * the published artifact is current + ajv-compilable. If it goes stale,
  * `bun run --filter=@inkeep/open-knowledge build:schema` regenerates it.
  */
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, test, vi } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,13 +33,14 @@ const VERSIONED_USER_PATH = resolve(VERSIONED_DIR, 'config.user.schema.json');
 const ALIAS_PROJECT_PATH = resolve(DIST, 'config.project.schema.json');
 const ALIAS_USER_PATH = resolve(DIST, 'config.user.schema.json');
 
-let schemaBuildNonce = 0;
-
 async function ensurePublishedSchemas(): Promise<void> {
   // Turbo may run package build/test tasks in the same CI step; rebuild here so
-  // assertions don't depend on a concurrently cleaned dist/ directory.
-  schemaBuildNonce += 1;
-  await import(`../../scripts/build-config-schema.mjs?test=${schemaBuildNonce}`);
+  // assertions don't depend on a concurrently cleaned dist/ directory. Reset the
+  // module registry so the side-effecting build script re-executes on each
+  // dynamic import (a `?query` cache-buster is a bun idiom the vitest/rolldown
+  // transform rejects as an unknown-variable dynamic import).
+  vi.resetModules();
+  await import('../../scripts/build-config-schema.mjs');
 }
 
 describe('published dist/config-schema.json', () => {

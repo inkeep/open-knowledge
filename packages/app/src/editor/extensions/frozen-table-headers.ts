@@ -52,7 +52,7 @@
  */
 
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from 'prosemirror-state';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 
 // EditorToolbar is absolutely positioned at the top of the scroll container,
 // 3.5rem tall. Frozen headers must clear it. One of the four load-bearing

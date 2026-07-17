@@ -22,6 +22,7 @@ import {
   ProblemDetailsSchema,
 } from '@inkeep/open-knowledge-core';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
+import { fetchWithHostHeader } from '../host-header-request.test-helper';
 import { createTestServer, type TestServer } from '../test-harness';
 
 let server: TestServer;
@@ -46,10 +47,11 @@ describe('metrics-agent-presence envelope (RFC 9457)', () => {
   });
 
   test('DNS-rebinding Host emits 403 urn:ok:error:host-not-allowed BEFORE method check', async () => {
-    const res = await fetch(`http://127.0.0.1:${server.port}/api/metrics/agent-presence`, {
-      method: 'POST',
-      headers: { Host: 'evil.example.com' },
-    });
+    const res = await fetchWithHostHeader(
+      `http://127.0.0.1:${server.port}/api/metrics/agent-presence`,
+      'evil.example.com',
+      { method: 'POST' },
+    );
     // Auth-before-method-dispatch ordering: bad Host → 403, NOT 405.
     expect(res.status).toBe(403);
     expect(res.headers.get('content-type')).toBe('application/problem+json');

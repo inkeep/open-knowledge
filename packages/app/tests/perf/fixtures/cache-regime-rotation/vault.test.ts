@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { buildCorpus } from './generator';
-import { SIZE_ENVELOPES, totalDocsInMix } from './types';
-import { VAULT_MIX, VAULT_NAME_PREFIX, VAULT_SEED, vault } from './vault';
+import { buildCorpus } from './generator.ts';
+import { SIZE_ENVELOPES, totalDocsInMix } from './types.ts';
+import { VAULT_MIX, VAULT_NAME_PREFIX, VAULT_SEED, vault } from './vault.ts';
 
 function sha256OfCorpus(docs: ReadonlyArray<unknown>): string {
   // Stable serialization: explicit key order so the digest doesn't drift

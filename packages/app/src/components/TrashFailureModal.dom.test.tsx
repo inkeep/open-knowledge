@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -7,6 +8,7 @@ import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 import type { TrashFailedTarget } from './TrashFailureModal';
 
 mock.module('@lingui/core/macro', () => ({
+  ...actualLinguiMacro,
   plural: (
     count: number,
     forms: {
@@ -18,6 +20,7 @@ mock.module('@lingui/core/macro', () => ({
 }));
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 

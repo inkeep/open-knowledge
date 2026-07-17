@@ -3,7 +3,6 @@ import type { WorktreeSelectorModel } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createContext, type ReactNode, use, useState } from 'react';
 import type { RecentProjectEntry } from '@/lib/desktop-bridge-types';
-import { RecentProjectsMenu } from './RecentProjectsMenu';
 
 type ItemProps = {
   children?: ReactNode;
@@ -249,6 +248,10 @@ function renderMenu(
   );
   return { bridge, closeMenu, openNewWorktreeWith };
 }
+
+// Import the component AFTER the mocks above register so its transitive
+// dependencies bind to the stubs rather than the real modules.
+const { RecentProjectsMenu } = await import('./RecentProjectsMenu');
 
 describe('RecentProjectsMenu — grouped browse (no query)', () => {
   beforeEach(cleanup);

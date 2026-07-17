@@ -9,9 +9,9 @@
  * Size mix: 2 small / 4 medium / 2 large = 8 docs.
  */
 
-import { buildCorpus } from './generator';
-import type { SizeMix, WorkloadFixture } from './types';
-import { vault } from './vault';
+import { buildCorpus } from './generator.ts';
+import type { SizeMix, WorkloadFixture } from './types.ts';
+import { vault } from './vault.ts';
 
 const TIGHT_MIX = {
   small: 2,

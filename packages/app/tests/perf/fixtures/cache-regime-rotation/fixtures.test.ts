@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { ASYMMETRIC_CYCLE_DURATION_MS, asymmetricFixture } from './asymmetric';
-import { BROAD_CYCLE_DURATION_MS, broadFixture } from './broad';
-import { TIGHT_CYCLE_DURATION_MS, tightFixture } from './tight';
-import type { WorkloadFixture } from './types';
-import { SIZE_ENVELOPES } from './types';
-import { vault } from './vault';
+import { ASYMMETRIC_CYCLE_DURATION_MS, asymmetricFixture } from './asymmetric.ts';
+import { BROAD_CYCLE_DURATION_MS, broadFixture } from './broad.ts';
+import { TIGHT_CYCLE_DURATION_MS, tightFixture } from './tight.ts';
+import type { WorkloadFixture } from './types.ts';
+import { SIZE_ENVELOPES } from './types.ts';
+import { vault } from './vault.ts';
 
 const ALL_FIXTURES: ReadonlyArray<WorkloadFixture> = [
   tightFixture,
@@ -95,7 +95,7 @@ describe('cycleDurationMs envelopes per D20 LOCKED', () => {
 
 describe('determinism — fixture seeds reproduce', () => {
   test('rotationDocs are deeply-equal across module re-imports (cached singletons)', async () => {
-    const reimport = await import('./tight');
+    const reimport = await import('./tight.ts');
     expect(reimport.tightFixture.rotationDocs).toEqual([...tightFixture.rotationDocs]);
   });
 });

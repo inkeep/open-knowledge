@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Run `bun run knip` and fail if it mutated the working tree.
+# Run `pnpm run knip` and fail if it mutated the working tree.
 #
 # As of Phase B (#500), the `knip` script no longer passes
 # `--fix-type exports --fix-type types`, so knip should not modify
@@ -10,7 +10,7 @@
 # reintroduced in the future: auto-fixes in CI sandboxes never
 # reach main, but they DO produce code biome rejects (e.g. `export
 # { X } from 'foo'` → bare `;`, see PR #283), which then fails
-# the subsequent `bun run lint`.
+# the subsequent `pnpm run lint`.
 #
 # Compares `git diff` before/after, exits non-zero if knip added new
 # modifications. Developer WIP changes are preserved — only NEW
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 before_diff=$(git diff)
-bun run knip
+pnpm run knip
 after_diff=$(git diff)
 
 if [ "$before_diff" != "$after_diff" ]; then

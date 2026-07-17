@@ -22,6 +22,7 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
 
 // __dirname → packages/app/tests/lint-plugins/. Repo root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
@@ -30,7 +31,7 @@ const PLUGIN_REL = './biome-plugins/playwright-prefer-to-have-count.grit';
 
 describe('playwright-prefer-to-have-count GritQL plugin', () => {
   test('fires on exactly 3 one-shot count reads (and on no negative case)', () => {
-    const result = spawnSync('bunx', ['biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
@@ -49,7 +50,7 @@ describe('playwright-prefer-to-have-count GritQL plugin', () => {
   });
 
   test('plugin is registered as an override scoped to the e2e suites (not workspace-wide)', () => {
-    const config = require(join(REPO_ROOT, 'biome.jsonc'));
+    const config = readBiomeConfig(REPO_ROOT);
     // NOT at root plugins[] — an accidental promotion to workspace-wide
     // would fire on non-Playwright `.count()` methods and over-report.
     const rootPlugins: string[] = config.plugins ?? [];

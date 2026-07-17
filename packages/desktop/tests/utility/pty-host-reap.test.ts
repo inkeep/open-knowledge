@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { spawn as nodeSpawn } from 'node:child_process';
+import { once } from 'node:events';
+import { Readable } from 'node:stream';
 import { isProcessAlive } from '@inkeep/open-knowledge-server';
 
 /**
@@ -51,7 +54,14 @@ async function waitForReaped(pid: number, timeoutMs: number): Promise<boolean> {
 }
 
 async function assertNoOrphan(killSignal: 'SIGTERM' | 'SIGKILL'): Promise<void> {
-  const proc = Bun.spawn([NODE as string, HARNESS], { stdout: 'pipe', stderr: 'pipe' });
+  const child = nodeSpawn(NODE as string, [HARNESS], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const childStdout = child.stdout;
+  if (!childStdout) throw new Error('spawned harness has no stdout pipe');
+  const proc = {
+    stdout: Readable.toWeb(childStdout) as ReadableStream<Uint8Array>,
+    kill: (signal: NodeJS.Signals) => child.kill(signal),
+    exited: once(child, 'exit'),
+  };
   let shellPid: number | null = null;
   try {
     shellPid = await readShellPid(proc.stdout, 20_000);

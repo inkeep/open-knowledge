@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -6,11 +7,13 @@ import type { OkScaffoldPlan, OkSeedPackInfo } from '@/lib/desktop-bridge-types'
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 mock.module('@lingui/react/macro', () => ({
+  ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
 mock.module('@lingui/core/macro', () => ({
+  ...actualLinguiMacro,
   t: renderLinguiTemplate,
   plural: (value: number, options: { one: string; other: string }) =>
     (value === 1 ? options.one : options.other).replace('#', String(value)),
