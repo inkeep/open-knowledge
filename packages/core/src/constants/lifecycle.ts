@@ -39,3 +39,17 @@ export const DEFAULT_SIGTERM_POLL_MS = 200;
  * to change if the convention ever moves.
  */
 export const SPAWN_ERROR_LOG = 'last-spawn-error.log';
+
+/**
+ * Filename under `<projectRoot>/.ok/local/` where the desktop host records why
+ * the server process last exited — the exit `code` plus Electron's
+ * process-gone `reason` (`clean-exit` / `abnormal-exit` / `killed` / `crashed`
+ * / `oom`). Written by the desktop main process (which observes the child's
+ * death even when the child could not report it) and collected into a
+ * bug-report bundle's `state/` dir beside `server.lock`.
+ *
+ * This closes a diagnostic gap: without it, a bundle can't tell a server that
+ * crashed or was OS-killed from one that shut down cleanly — the liveness
+ * probe only reports "unreachable" either way.
+ */
+export const SERVER_EXIT_LOG = 'last-server-exit.json';

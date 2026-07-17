@@ -298,6 +298,7 @@ import {
   raiseMostRecentlyFocusedAfterRestore,
 } from './restore-focus.ts';
 import { handleRevealExternal } from './reveal-external.ts';
+import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
 import { handleShellOpenExternal } from './shell-allowlist.ts';
 import { createShowGateRegistry, type ShowGateRegistry } from './show-gate.ts';
@@ -935,6 +936,23 @@ let mcpWiringHandle: RunMcpWiringHandle | null = null;
 let crashDetection: CrashDetection | null = null;
 
 /**
+ * Records the server's last exit (code + Electron process-gone reason) to
+ * `<lockDir>/last-server-exit.json` for bug-report diagnosis. Lazy singleton so
+ * the window-manager fork path and the `child-process-gone` listener — which
+ * initialize on different boot paths — share one correlator.
+ */
+let serverExitRecorder: ServerExitRecorder | null = null;
+function getServerExitRecorder(): ServerExitRecorder {
+  if (serverExitRecorder === null) {
+    serverExitRecorder = createServerExitRecorder({
+      now: () => new Date(),
+      logger: getLogger('server-exit'),
+    });
+  }
+  return serverExitRecorder;
+}
+
+/**
  * Full-resolution PNG bytes of the app screenshot captured when a window's
  * report-a-bug dialog opened, keyed by the sender `webContents.id`. Held in
  * main (never handed to the renderer as a path) until the matching `create`
@@ -1389,6 +1407,7 @@ function ensureWindowManager() {
     onUtilityExit: (utility) => {
       ensureDebugIpc().cancelPendingForUtility(utility);
     },
+    recordServerExit: (info) => getServerExitRecorder().recordExit(info),
     // Presence-invisible keepalive WS — registers the desktop as an active
     // `/collab*` upgrade for as long as a project window is open, so a brief
     // MCP disconnect does not trip the server's idle-shutdown timer. The
@@ -5078,6 +5097,12 @@ function bootPrimaryInstance(): void {
   });
   crashDetection.detectBootCrash();
   app.on('child-process-gone', (_event, details) => {
+    // Feed the server-exit recorder every Utility death (not just the crash
+    // reasons the invitation pipeline acts on) so the bundle can distinguish a
+    // `killed` / `oom` / `crashed` exit from a `clean-exit`.
+    if (details.type === 'Utility') {
+      getServerExitRecorder().noteGoneReason(details.reason);
+    }
     crashDetection?.handleChildProcessGone(details);
   });
 

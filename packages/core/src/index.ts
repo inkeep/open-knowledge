@@ -1139,6 +1139,7 @@ export {
 export {
   DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS,
+  SERVER_EXIT_LOG,
   SPAWN_ERROR_LOG,
 } from './constants/lifecycle.ts';
 export {

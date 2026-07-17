@@ -345,6 +345,28 @@ describe('collectBundle — state files', () => {
     collected.cleanup();
   });
 
+  test('last-server-exit.json is staged when the desktop host wrote one', async () => {
+    const contentDir = makeTmpDir();
+    const body = `${JSON.stringify(
+      { at: '2026-07-16T21:02:24.000Z', pid: 51502, code: null, reason: 'killed' },
+      null,
+      2,
+    )}\n`;
+    writeAt(contentDir, '.ok/local/last-server-exit.json', body);
+    const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
+    expect(
+      readFileSync(join(collected.stagingDir, 'state', 'last-server-exit.json'), 'utf-8'),
+    ).toBe(body);
+    collected.cleanup();
+  });
+
+  test('last-server-exit.json is omitted when the host never recorded an exit', async () => {
+    const contentDir = makeTmpDir();
+    const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
+    expect(existsSync(join(collected.stagingDir, 'state', 'last-server-exit.json'))).toBe(false);
+    collected.cleanup();
+  });
+
   test('runtime.json carries ok, host blocks; desktop is null by default', async () => {
     const contentDir = makeTmpDir();
     const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });

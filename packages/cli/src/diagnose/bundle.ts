@@ -29,6 +29,7 @@ import {
 import { arch as osArch, platform as osPlatform, tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { BundleRedaction as SecretScrubEntry } from '@inkeep/open-knowledge-core';
+import { SERVER_EXIT_LOG } from '@inkeep/open-knowledge-core';
 import {
   DEFAULT_LOGS_MAX_BYTES,
   DEFAULT_SPANS_MAX_BYTES,
@@ -633,6 +634,11 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       join(lockDir, 'last-spawn-error.log'),
       join(stagingDir, 'state', 'last-spawn-error.log'),
     );
+
+    // last-server-exit.json — why the server process last exited (code +
+    // Electron process-gone reason). Lets a bundle tell a crash / OS-kill from
+    // a managed shutdown, which `server-status.txt: not-running` alone cannot.
+    stageFileIfPresent(join(lockDir, SERVER_EXIT_LOG), join(stagingDir, 'state', SERVER_EXIT_LOG));
 
     // Runtime + desktop block.
     const runtime = readRuntime();

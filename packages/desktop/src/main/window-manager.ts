@@ -680,6 +680,12 @@ export interface WindowManagerDeps {
    */
   onUtilityExit?(utility: UtilityProcessLike): void;
   /**
+   * Record why the server just exited to `<lockDir>/last-server-exit.json`, so
+   * a later bug-report bundle can tell an unexpected death from a managed
+   * shutdown. No-op when omitted (tests, web). See `server-exit-record.ts`.
+   */
+  recordServerExit?(info: { lockDir: string; pid: number | null; code: number | null }): void;
+  /**
    * Startup-instrumentation hooks (desktop launch waterfall). All optional and
    * no-op when omitted (tests, web). Wired by `index.ts` only for the FIRST
    * project window opened at launch; later windows leave them unset so the
@@ -1698,6 +1704,10 @@ export class WindowManager {
     // independently.
     utility.on('exit', (code) => {
       this.deps.log?.info({ pid: utility.pid, code }, 'utility exited');
+      // Persist the exit for bug-report diagnosis before any teardown — the
+      // main process observes this death even when the server (SIGKILL'd /
+      // OOM-killed) could not report it itself.
+      this.deps.recordServerExit?.({ lockDir, pid: utility.pid ?? null, code });
       this.windowsByPath.delete(canonicalKey);
       // Reject any in-flight debug-IPC requests bound to this utility so
       // pending entries don't linger for the full timeout window after a
