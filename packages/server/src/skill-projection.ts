@@ -26,7 +26,15 @@
  * in lock-step.
  */
 
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  statSync,
+} from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
   containsXmlTag,
@@ -229,10 +237,35 @@ function skillLinkTarget(cwd: string, hostRoot: string, skillDir: string): strin
 }
 
 /**
+ * Inspect one projection destination without following a link. Only an absent
+ * path or an exact existing link to this source is safe: a real directory,
+ * file, dangling link, or link to another source belongs to a user or another
+ * installer and must never be replaced implicitly.
+ */
+function projectionStatus(dest: string, skillDir: string): 'absent' | 'owned' {
+  try {
+    const stat = lstatSync(dest);
+    if (!stat.isSymbolicLink()) {
+      throw new Error(`skill projection destination is occupied by a non-link: ${dest}`);
+    }
+    const target = resolve(dirname(dest), readlinkSync(dest));
+    if (target !== resolve(skillDir)) {
+      throw new Error(`skill projection destination points at a different source: ${dest}`);
+    }
+    return 'owned';
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return 'absent';
+    throw error;
+  }
+}
+
+/**
  * Install a skill source dir into each target editor's host dir by SYMLINK.
- * Removes any existing entry first (authoritative replace — a stale/broken
- * link or a legacy real-dir copy is dropped before the link is made). Returns
- * the editor ids actually written (skipping editors with no skill surface).
+ * Every destination is preflighted before the first write. An existing exact
+ * projection is idempotent; every foreign destination is refused untouched,
+ * so callers never get a partial multi-editor install or a silent overwrite.
+ * Returns the editor ids with a valid projection (created or already owned).
  */
 export function projectSkill(
   skillDir: string,
@@ -240,17 +273,28 @@ export function projectSkill(
   cwd: string,
   targets: readonly EditorId[],
 ): EditorId[] {
-  const written: EditorId[] = [];
+  const candidates: Array<{
+    editor: EditorId;
+    dest: string;
+    hostRoot: string;
+    status: 'absent' | 'owned';
+  }> = [];
   for (const editor of targets) {
     const dest = skillHostDir(cwd, editor, name);
     if (dest === null) continue;
     const hostRoot = dirname(dest);
     // Refuse to write through a host root that symlink-escapes the project.
     if (hostSkillsRootEscapes(cwd, hostRoot)) continue;
-    tracedRmSync(dest, { recursive: true, force: true });
-    tracedMkdirSync(hostRoot, { recursive: true });
-    tracedSymlinkSync(skillLinkTarget(cwd, hostRoot, skillDir), dest, 'dir');
-    written.push(editor);
+    candidates.push({ editor, dest, hostRoot, status: projectionStatus(dest, skillDir) });
+  }
+
+  const written: EditorId[] = [];
+  for (const candidate of candidates) {
+    if (candidate.status === 'absent') {
+      tracedMkdirSync(candidate.hostRoot, { recursive: true });
+      tracedSymlinkSync(skillLinkTarget(cwd, candidate.hostRoot, skillDir), candidate.dest, 'dir');
+    }
+    written.push(candidate.editor);
   }
   return written;
 }

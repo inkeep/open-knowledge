@@ -149,19 +149,37 @@ describe('projectSkill / reverseProjectSkill', () => {
     }
   });
 
-  test('install is authoritative — replaces a legacy real-dir copy with a symlink', () => {
+  test('refuses a foreign real-dir collision without mutating it', () => {
     const dir = makeSkill('s', '# v1');
     const dest = skillHostDir(root, 'claude', 's') as string;
-    // Simulate a legacy copy-install: a real directory at the host path.
+    // A legacy copy may contain user edits; projection cannot prove ownership.
     mkdirSync(dest, { recursive: true });
     writeFileSync(join(dest, 'stale.md'), 'leftover', 'utf-8');
     expect(lstatSync(dest).isSymbolicLink()).toBe(false);
 
-    projectSkill(dir, 's', root, ['claude']);
-    // Now a symlink to the source; the stale real-dir contents are gone.
-    expect(lstatSync(dest).isSymbolicLink()).toBe(true);
-    expect(existsSync(join(dest, 'stale.md'))).toBe(false);
-    expect(existsSync(join(dest, 'SKILL.md'))).toBe(true);
+    expect(() => projectSkill(dir, 's', root, ['claude'])).toThrow('occupied by a non-link');
+    expect(lstatSync(dest).isSymbolicLink()).toBe(false);
+    expect(existsSync(join(dest, 'stale.md'))).toBe(true);
+  });
+
+  test('preflights every target before creating any projection', () => {
+    const dir = makeSkill('atomic', '# v1');
+    const foreign = skillHostDir(root, 'cursor', 'atomic') as string;
+    mkdirSync(foreign, { recursive: true });
+    writeFileSync(join(foreign, 'keep.md'), 'user-owned', 'utf-8');
+
+    expect(() => projectSkill(dir, 'atomic', root, ['claude', 'cursor'])).toThrow(
+      'occupied by a non-link',
+    );
+    expect(existsSync(skillHostDir(root, 'claude', 'atomic') as string)).toBe(false);
+    expect(existsSync(join(foreign, 'keep.md'))).toBe(true);
+  });
+
+  test('keeps an exact existing projection idempotently', () => {
+    const dir = makeSkill('stable', '# v1');
+    expect(projectSkill(dir, 'stable', root, ['codex'])).toEqual(['codex']);
+    expect(projectSkill(dir, 'stable', root, ['codex'])).toEqual(['codex']);
+    expect(lstatSync(skillHostDir(root, 'codex', 'stable') as string).isSymbolicLink()).toBe(true);
   });
 
   test('skillHostDir returns null for claude-desktop', () => {
