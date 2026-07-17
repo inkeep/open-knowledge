@@ -33,6 +33,7 @@ import {
   type HandoffScope,
   type HandoffTarget,
   OK_TERMINAL_SURFACE_PREAMBLE,
+  type PromptTransport,
   type SkillScope,
   type TargetData,
   TERMINAL_CLIS,
@@ -721,6 +722,7 @@ function composeContextToAssembleInput(
   compose: ComposeContext,
   target: HandoffTarget,
   autoOpen: boolean,
+  transport: PromptTransport,
 ): AssembleHandoffPromptInput {
   if (compose.scope === 'doc') {
     const base = {
@@ -730,6 +732,7 @@ function composeContextToAssembleInput(
       mentions: compose.mentions,
       target,
       autoOpen,
+      transport,
     };
     return compose.selection !== undefined ? { ...base, selection: compose.selection } : base;
   }
@@ -741,6 +744,7 @@ function composeContextToAssembleInput(
       mentions: compose.mentions,
       target,
       autoOpen,
+      transport,
     };
   }
   return {
@@ -749,6 +753,7 @@ function composeContextToAssembleInput(
     mentions: compose.mentions,
     target,
     autoOpen,
+    transport,
   };
 }
 
@@ -756,13 +761,21 @@ function composeContextToAssembleInput(
  * Pick the scope-specific prompt that matches the input's scope. Exported for
  * direct unit assertions; `runHandoffDispatch` is the only production caller.
  *
- *   - `compose` set     → compose scope     → assembleHandoffPrompt(scope + instruction + mentions[] + selection?, target)
- *   - `selection` set   → selection scope   → composeSelectionPrompt(..., target)
- *   - `ask` set         → ask scope         → composeAskPrompt(relativePath, instruction, autoOpen, target)
- *   - `docContext` set  → file scope        → composeFilePrompt(relativePath, autoOpen, instruction)
- *   - `folderRelativePath` truthy → folder scope → composeFolderPrompt(..., autoOpen, instruction)
- *   - `createDescription` set → create scope → composeCreatePrompt(..., autoOpen)
- *   - none of the above → empty-space scope → composeEmptySpacePrompt(autoOpen, instruction)
+ *   - `compose` set     → compose scope     → assembleHandoffPrompt(scope + instruction + mentions[] + selection?, target, transport)
+ *   - `selection` set   → selection scope   → composeSelectionPrompt(..., target, transport)
+ *   - `skill` set       → skill scope       → composeSkillPrompt(name, scope, autoOpen)
+ *   - `ask` set         → ask scope         → composeAskPrompt(relativePath, instruction, autoOpen, target, transport)
+ *   - `docContext` set  → file scope        → composeFilePrompt(relativePath, autoOpen, instruction, transport)
+ *   - `folderRelativePath` truthy → folder scope → composeFolderPrompt(..., autoOpen, instruction, transport)
+ *   - `createDescription` set → create scope → composeCreatePrompt(..., autoOpen, ..., transport)
+ *   - none of the above → empty-space scope → composeEmptySpacePrompt(autoOpen, instruction, transport)
+ *
+ * `transport` is REQUIRED: a prompt budget is a property of the transport the
+ * prompt travels over, and this funnel is the single point that knows which
+ * one is in use. `'url'` fits to the per-target encoded deep-link budget;
+ * `'terminal'` fits to the PTY argv quoted-byte budget (see `PromptTransport`
+ * in core's `prompt-composer.ts`). `composeTerminalLaunchPrompt` passes
+ * `'terminal'`; the web dispatch (`runHandoffDispatch`) passes `'url'`.
  *
  * `input.instruction` (the toolbar "Open with AI" prompt box) is threaded into
  * the file / folder / project directive composers; it is `undefined` for every
@@ -788,7 +801,7 @@ function composeContextToAssembleInput(
  * `folderRelativePath` only; `buildProjectScopedHandoffInput` none). The ordering
  * is defensive — a caller that hand-constructs the shape with several fields
  * lands on the most specific scope, matching the implicit
- * "compose > selection > ask > file > folder > project" specificity ordering.
+ * "compose > selection > skill > ask > file > folder > project" specificity ordering.
  *
  * `autoOpen` mirrors the user's `appearance.preview.autoOpen` preference and
  * controls whether each directive composer emits the trailing "Open the OK
@@ -800,24 +813,34 @@ export function selectScopedPrompt(
   input: HandoffDispatchInput,
   target: HandoffTarget,
   autoOpen: boolean,
+  transport: PromptTransport,
 ): string {
   if (input.compose) {
-    return assembleHandoffPrompt(composeContextToAssembleInput(input.compose, target, autoOpen));
+    return assembleHandoffPrompt(
+      composeContextToAssembleInput(input.compose, target, autoOpen, transport),
+    );
   }
   // Selection is excluded from the skill pointer: it already ends with an
   // explicit "read the passage via the OK MCP server" directive and is the most
   // URL-budget-constrained prompt (see `composeSelectionPrompt`).
   if (input.selection) {
-    return composeSelectionPrompt({ ...input.selection, target });
+    return composeSelectionPrompt({ ...input.selection, target, transport });
   }
   // Skill scope (author-with-AI) carries its own `open-knowledge-write-skill`
   // directive, so it is excluded from the standing project skill pointer just
-  // like selection scope.
+  // like selection scope. It carries no free-text to fit, so it takes no
+  // transport.
   if (input.skill) {
     return composeSkillPrompt(input.skill.name, input.skill.scope, autoOpen);
   }
   if (input.ask) {
-    return composeAskPrompt(input.ask.relativePath, input.ask.instruction, autoOpen, target);
+    return composeAskPrompt(
+      input.ask.relativePath,
+      input.ask.instruction,
+      autoOpen,
+      target,
+      transport,
+    );
   }
   // Every directive launch scope gets the standing skill pointer, applied once
   // here so the composers stay pure and the wording lives in one place. The
@@ -825,17 +848,18 @@ export function selectScopedPrompt(
   // composers; create scope carries its own free-text and ignores it.
   const directive =
     input.docContext !== null
-      ? composeFilePrompt(input.docContext.relativePath, autoOpen, input.instruction)
+      ? composeFilePrompt(input.docContext.relativePath, autoOpen, input.instruction, transport)
       : input.folderRelativePath
-        ? composeFolderPrompt(input.folderRelativePath, autoOpen, input.instruction)
+        ? composeFolderPrompt(input.folderRelativePath, autoOpen, input.instruction, transport)
         : input.createDescription !== undefined
           ? composeCreatePrompt(
               input.createDescription,
               autoOpen,
               input.createScenario ?? 'new-project',
               input.createMentions ?? [],
+              transport,
             )
-          : composeEmptySpacePrompt(autoOpen, input.instruction);
+          : composeEmptySpacePrompt(autoOpen, input.instruction, transport);
   return withSkillPointer(directive);
 }
 
@@ -857,9 +881,10 @@ export function selectScopedPrompt(
  *     `input.instruction`), or the empty-state "Create with <CLI>" brief. These
  *     carry explicit user intent, so they keep the directive composers via
  *     `selectScopedPrompt`, composed against the CLI's handoff target
- *     (`TERMINAL_CLIS[cli].handoffTarget` — `claude→'claude-code'`,
- *     `codex→'codex'`, `cursor→'cursor'`) so the instruction / brief threads
- *     through identically to that target's deep-link. The preview trailer stays
+ *     (`TERMINAL_CLIS[cli].handoffTarget`) on the `'terminal'` transport, so
+ *     the instruction / brief keeps the deep-link prompt SHAPE but is fitted
+ *     to the PTY argv byte budget rather than the far smaller URL budget (a
+ *     long typed instruction survives the terminal launch in full). The preview trailer stays
  *     suppressed (`autoOpen: false`): the terminal launches alongside an
  *     already-open OK editor, so the "Open the OK editor in web view." directive
  *     would point the agent at a surface the user is already looking at. The web
@@ -882,7 +907,7 @@ export function composeTerminalLaunchPrompt(input: HandoffDispatchInput, cli: Te
     // surface preamble so the launch reads as the same OK handoff the bare
     // bootstrap establishes — context first, then the user's actual ask. The
     // bare branch's "Then stop." tail is replaced by that ask.
-    return `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, TERMINAL_CLIS[cli].handoffTarget, false)}`;
+    return `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, TERMINAL_CLIS[cli].handoffTarget, false, 'terminal')}`;
   }
   return composeTerminalBareLaunchPrompt(input.docContext?.relativePath ?? null);
 }
@@ -955,7 +980,7 @@ export async function runHandoffDispatch(
     // user's `appearance.preview.autoOpen` value, read fresh by the hook at
     // click time and threaded into directive composers so the receiving
     // agent's first turn honors the preference.
-    prompt: selectScopedPrompt(input, target, deps.autoOpen),
+    prompt: selectScopedPrompt(input, target, deps.autoOpen, 'url'),
   };
 
   const outcome = await deps.dispatchHandoff(payload);

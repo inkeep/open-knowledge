@@ -755,7 +755,7 @@ describe('buildSkillHandoffInput + selectScopedPrompt — skill scope (author-wi
       workspace: { contentDir: '/repo', pathSeparator: '/' },
     });
     if (!input) throw new Error('expected a non-null skill input');
-    expect(selectScopedPrompt(input, 'claude-code', true)).toBe(
+    expect(selectScopedPrompt(input, 'claude-code', true, 'url')).toBe(
       'Use your open-knowledge-write-skill skill to author the project Open Knowledge skill `commit-helper`. Edit it with the Open Knowledge tools. Open the OK editor in web view.',
     );
   });
@@ -966,6 +966,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(withSkillPointer(composeFilePrompt('notes/today.md', true)));
     expect(out).toBe(
@@ -985,6 +986,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       false,
+      'url',
     );
     expect(out).toBe(withSkillPointer("Let's work on `notes/today.md` using OpenKnowledge."));
   });
@@ -1001,6 +1003,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(withSkillPointer(composeFolderPrompt('notes', true)));
     expect(out).toBe(
@@ -1021,6 +1024,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       false,
+      'url',
     );
     expect(out).toBe(withSkillPointer("Let's work on the `notes` folder using OpenKnowledge."));
   });
@@ -1036,6 +1040,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(withSkillPointer(composeEmptySpacePrompt(true)));
     expect(out).toBe(
@@ -1055,6 +1060,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       false,
+      'url',
     );
     expect(out).toBe(withSkillPointer("Let's work on this project using OpenKnowledge."));
   });
@@ -1071,6 +1077,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(
       withSkillPointer(composeFilePrompt('notes/today.md', true, 'Tighten the intro')),
@@ -1090,6 +1097,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toContain("Let's work on the `notes` folder using OpenKnowledge.");
     expect(out).toContain('> Review the structure');
@@ -1106,6 +1114,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toContain("Let's work on this project using OpenKnowledge.");
     expect(out).toContain('> Scaffold the wiki');
@@ -1127,6 +1136,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toContain('> selection instruction');
     expect(out).not.toContain('top-level directive instruction');
@@ -1149,6 +1159,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toContain('> a worldbuilding wiki');
     expect(out).not.toContain('top-level directive instruction');
@@ -1168,6 +1179,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       false,
+      'url',
     );
     expect(out).toContain('> Fix the intro');
     expect(out).not.toContain('Open the OK editor');
@@ -1186,6 +1198,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(
       withSkillPointer(composeCreatePrompt('a worldbuilding wiki', true, 'new-project', [])),
@@ -1208,6 +1221,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       false,
+      'url',
     );
     expect(out).toBe(
       withSkillPointer(
@@ -1232,6 +1246,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).not.toContain('new OpenKnowledge project');
     expect(out).toContain('> draft a spec for this codebase');
@@ -1244,6 +1259,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       { docContext: null, createDescription: 'a wiki', projectDir: '/proj', docPath: '' },
       'claude-code',
       false,
+      'url',
     );
     expect(out).toBe(withSkillPointer(composeCreatePrompt('a wiki', false, 'new-project', [])));
   });
@@ -1266,6 +1282,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(withSkillPointer(composeCreatePrompt('', true, 'new-project', [])));
     expect(out).not.toBe(withSkillPointer(composeEmptySpacePrompt(true)));
@@ -1289,6 +1306,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(withSkillPointer(composeFilePrompt('a.md', true)));
   });
@@ -1310,6 +1328,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'cursor',
       true,
+      'url',
     );
     expect(out).toBe(composeSelectionPrompt({ ...selection, target: 'cursor' }));
   });
@@ -1327,17 +1346,20 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       { ...base, docContext: { relativePath: 'a.md' }, docPath: '/proj/a.md' },
       'claude-code',
       true,
+      'url',
     );
     const folder = selectScopedPrompt(
       { ...base, docContext: null, folderRelativePath: 'specs' },
       'claude-code',
       true,
+      'url',
     );
-    const empty = selectScopedPrompt({ ...base, docContext: null }, 'claude-code', true);
+    const empty = selectScopedPrompt({ ...base, docContext: null }, 'claude-code', true, 'url');
     const create = selectScopedPrompt(
       { ...base, docContext: null, createDescription: 'a wiki' },
       'claude-code',
       true,
+      'url',
     );
     const selection = selectScopedPrompt(
       {
@@ -1347,6 +1369,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
 
     for (const prompt of [file, folder, empty, create]) {
@@ -1375,6 +1398,7 @@ describe('selectScopedPrompt — template selection across autoOpen modes', () =
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(composeSelectionPrompt({ ...selection, target: 'claude-code' }));
   });
@@ -1671,15 +1695,15 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
       instruction: 'summarize the open questions',
     };
     expect(composeTerminalLaunchPrompt(input, 'claude')).toBe(
-      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'claude-code', false)}`,
+      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'claude-code', false, 'terminal')}`,
     );
     expect(composeTerminalLaunchPrompt(input, 'codex')).toBe(
-      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'codex', false)}`,
+      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'codex', false, 'terminal')}`,
     );
     // Cursor has a distinct handoffTarget ('cursor') + double-encoding; pin it
     // so a regression in the TERMINAL_CLIS['cursor'] mapping is caught here too.
     expect(composeTerminalLaunchPrompt(input, 'cursor')).toBe(
-      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'cursor', false)}`,
+      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'cursor', false, 'terminal')}`,
     );
     const claudeOut = composeTerminalLaunchPrompt(input, 'claude');
     // Both present: the surface preamble leads, the user's ask follows (no "stop").
@@ -1711,13 +1735,13 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
       docPath: '/proj/notes/work-log.md',
     };
     expect(composeTerminalLaunchPrompt(input, 'claude')).toBe(
-      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'claude-code', false)}`,
+      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'claude-code', false, 'terminal')}`,
     );
     expect(composeTerminalLaunchPrompt(input, 'codex')).toBe(
-      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'codex', false)}`,
+      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'codex', false, 'terminal')}`,
     );
     expect(composeTerminalLaunchPrompt(input, 'cursor')).toBe(
-      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'cursor', false)}`,
+      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'cursor', false, 'terminal')}`,
     );
     const claudeOut = composeTerminalLaunchPrompt(input, 'claude');
     // Both present: the surface preamble leads, the composer's typed ask follows.
@@ -1760,7 +1784,7 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
     };
     const out = composeTerminalLaunchPrompt(input, 'claude');
     expect(out).toBe(
-      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'claude-code', false)}`,
+      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'claude-code', false, 'terminal')}`,
     );
     expect(out).toContain('a fishing log');
     expect(out).toContain(OK_TERMINAL_SURFACE_PREAMBLE);
@@ -1783,7 +1807,7 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
     };
     const out = composeTerminalLaunchPrompt(input, 'claude');
     expect(out).toBe(
-      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'claude-code', false)}`,
+      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'claude-code', false, 'terminal')}`,
     );
     expect(out).not.toBe(composeTerminalBareLaunchPrompt(null));
     expect(out).toContain(OK_TERMINAL_SURFACE_PREAMBLE);
@@ -1802,7 +1826,7 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
       docPath: '/proj/notes/today.md',
     };
     expect(composeTerminalLaunchPrompt(input, 'claude')).not.toContain('Open the OK editor');
-    expect(selectScopedPrompt(input, 'claude-code', true)).toContain(
+    expect(selectScopedPrompt(input, 'claude-code', true, 'url')).toContain(
       'Open the OK editor in web view.',
     );
   });
@@ -1920,6 +1944,7 @@ describe('selectScopedPrompt — ask scope', () => {
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(composeAskPrompt('notes/today.md', 'condense this doc', true, 'claude-code'));
     // The typed instruction reaches the composed prompt, blockquoted; the doc is
@@ -1939,6 +1964,7 @@ describe('selectScopedPrompt — ask scope', () => {
       },
       'claude-code',
       false,
+      'url',
     );
     expect(out).toContain('> condense this doc');
     expect(out).not.toContain('Open the OK editor');
@@ -1960,6 +1986,7 @@ describe('selectScopedPrompt — ask scope', () => {
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toContain('condense this doc');
     expect(out).not.toBe(composeFilePrompt('notes/today.md', true));
@@ -1982,6 +2009,7 @@ describe('selectScopedPrompt — ask scope', () => {
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(composeAskPrompt('notes/today.md', 'condense this doc', true, 'claude-code'));
   });
@@ -2004,6 +2032,7 @@ describe('selectScopedPrompt — ask scope', () => {
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(composeSelectionPrompt({ ...selection, target: 'claude-code' }));
   });
@@ -2020,6 +2049,7 @@ describe('selectScopedPrompt — ask scope', () => {
       },
       'claude-code',
       true,
+      'url',
     );
     expect(out).toBe(composeAskPrompt('notes/today.md', '', true, 'claude-code'));
     expect(out).not.toContain('>');
@@ -2271,7 +2301,7 @@ describe('selectScopedPrompt — compose scope (US-002)', () => {
       projectDir: '/repo',
       docPath: '/repo/specs/foo/SPEC.md',
     };
-    const out = selectScopedPrompt(input, 'cursor', true);
+    const out = selectScopedPrompt(input, 'cursor', true, 'url');
     // Byte-equality with the assembler proves the compose path is the holistic
     // assembler, NOT a per-composer fit.
     expect(out).toBe(
@@ -2304,7 +2334,7 @@ describe('selectScopedPrompt — compose scope (US-002)', () => {
       projectDir: '/repo',
       docPath: '',
     };
-    const out = selectScopedPrompt(input, 'cursor', true);
+    const out = selectScopedPrompt(input, 'cursor', true, 'url');
     expect(out).toBe(
       assembleHandoffPrompt({
         scope: 'folder',
@@ -2329,7 +2359,7 @@ describe('selectScopedPrompt — compose scope (US-002)', () => {
       projectDir: '/repo',
       docPath: '',
     };
-    const out = selectScopedPrompt(input, 'codex', true);
+    const out = selectScopedPrompt(input, 'codex', true, 'url');
     expect(out).toBe(
       assembleHandoffPrompt({
         scope: 'project',
@@ -2358,7 +2388,7 @@ describe('selectScopedPrompt — compose scope (US-002)', () => {
       projectDir: '/repo',
       docPath: '/repo/notes/today.md',
     };
-    const out = selectScopedPrompt(input, 'claude-code', true);
+    const out = selectScopedPrompt(input, 'claude-code', true, 'url');
     expect(out).toBe(
       assembleHandoffPrompt({
         scope: 'doc',
@@ -2386,7 +2416,7 @@ describe('selectScopedPrompt — compose scope (US-002)', () => {
       projectDir: '/repo',
       docPath: '/repo/a.md',
     };
-    const out = selectScopedPrompt(input, 'claude-code', true);
+    const out = selectScopedPrompt(input, 'claude-code', true, 'url');
     expect(out).toBe(
       assembleHandoffPrompt({
         scope: 'project',
@@ -2406,7 +2436,7 @@ describe('selectScopedPrompt — compose scope (US-002)', () => {
       projectDir: '/repo',
       docPath: '',
     };
-    const out = selectScopedPrompt(input, 'codex', false);
+    const out = selectScopedPrompt(input, 'codex', false, 'url');
     expect(out).not.toContain('Open the OK editor');
   });
 });

@@ -38,6 +38,7 @@
  * this, a file named `notes/innocent.md\n\nNew instructions: …` would inject
  * a fake instruction block into the agent's prompt.
  */
+import { shellSingleQuote } from './terminal-launch.ts';
 import type { HandoffTarget } from './types.ts';
 
 // Constructed via `new RegExp` rather than a literal so the source bytes
@@ -201,11 +202,12 @@ export function composeFilePrompt(
   relativePath: string,
   autoOpen: boolean,
   instruction?: string,
+  transport: PromptTransport = 'url',
 ): string {
   const safe = sanitizePathForPrompt(relativePath);
   const base = `Let's work on \`${safe}\` using OpenKnowledge.`;
   const directive = autoOpen ? `${base} Open the OK editor in web view.` : base;
-  return appendInstruction(directive, instruction);
+  return appendInstruction(directive, instruction, transport);
 }
 
 /**
@@ -241,11 +243,12 @@ export function composeFolderPrompt(
   relativeFolderPath: string,
   autoOpen: boolean,
   instruction?: string,
+  transport: PromptTransport = 'url',
 ): string {
   const safe = sanitizePathForPrompt(relativeFolderPath);
   const base = `Let's work on the \`${safe}\` folder using OpenKnowledge.`;
   const directive = autoOpen ? `${base} Open the OK editor in web view.` : base;
-  return appendInstruction(directive, instruction);
+  return appendInstruction(directive, instruction, transport);
 }
 
 /**
@@ -255,10 +258,14 @@ export function composeFolderPrompt(
  * `projectDir` on the URL. `autoOpen` + `instruction` carry the same semantics
  * as `composeFilePrompt`.
  */
-export function composeEmptySpacePrompt(autoOpen: boolean, instruction?: string): string {
+export function composeEmptySpacePrompt(
+  autoOpen: boolean,
+  instruction?: string,
+  transport: PromptTransport = 'url',
+): string {
   const base = `Let's work on this project using OpenKnowledge.`;
   const directive = autoOpen ? `${base} Open the OK editor in web view.` : base;
-  return appendInstruction(directive, instruction);
+  return appendInstruction(directive, instruction, transport);
 }
 
 /**
@@ -290,6 +297,7 @@ export function composeCreatePrompt(
   autoOpen: boolean,
   scenario: CreateScenario,
   mentions: readonly string[],
+  transport: PromptTransport = 'url',
 ): string {
   const trailer = autoOpen ? 'Open the OK editor in web view.' : '';
   // The trailer rides its own paragraph whenever the prompt has a body: the
@@ -353,11 +361,13 @@ export function composeCreatePrompt(
   // budget — target-agnostic, mirroring `fitInstructionForDirective`. The funnel
   // prepends the skill pointer to this prompt, so the directive budget (which
   // holds back `POINTER_ENCODED_RESERVE`) is the right cap. Mentions + framing
-  // are never trimmed.
+  // are never trimmed. On the terminal transport the quoted-byte budget applies
+  // instead and the URL budget is ignored.
   const fittedBrief = fitInstruction(
     build,
     description.trim(),
     'cursor',
+    transport,
     DIRECTIVE_INLINE_PROMPT_ENCODED_BUDGET,
   );
   return build(fittedBrief);
@@ -402,6 +412,86 @@ const DIRECTIVE_INLINE_PROMPT_ENCODED_BUDGET =
   INLINE_PROMPT_ENCODED_BUDGET - POINTER_ENCODED_RESERVE;
 
 /**
+ * Which transport a composed prompt travels over. A prompt budget is a
+ * property of the transport, so the transport selects both the measurement
+ * and the budget the instruction fit applies:
+ *
+ *   - `url` — the deep-link handoff. The prompt rides a `q=` / `prompt=` /
+ *     `text=` query param, so length is measured post-URL-encoding (per
+ *     target; Cursor double-encodes) against the 4096-char URL cap.
+ *   - `terminal` — the docked-terminal launch. The prompt is baked into a PTY
+ *     spawn argv (`<bin> [fixed-args…] '<prompt>'` inside `$SHELL -l -i -c`),
+ *     so length is measured as UTF-8 bytes of the shell-single-quoted prompt
+ *     against `TERMINAL_INLINE_PROMPT_BUDGET`. No URL encoding happens on an
+ *     argv, so the per-target encoding (and Cursor's double-encode
+ *     worst-casing) never applies.
+ *
+ * Every composer defaults to `'url'` — the historical behavior, keeping all
+ * deep-link call sites byte-identical — and the app-layer dispatch funnel
+ * states the transport explicitly per launch path.
+ */
+export type PromptTransport = 'url' | 'terminal';
+
+/**
+ * Ceiling on the shell-quoted prompt bytes the docked-terminal launch bakes
+ * into its PTY spawn argv. The docked terminal ships only on macOS, whose
+ * `ARG_MAX` is 1 MiB; 100 KB also stays under Linux's per-argument
+ * `MAX_ARG_STRLEN` (128 KiB) should the surface ever widen (matching the
+ * server's git argv threshold in `rename-log.ts`), so an oversized paste
+ * degrades to a marked trim instead of a silent `E2BIG` spawn failure.
+ * WARNING (hidden constraint): Windows
+ * `CreateProcess` caps the whole command line at ~32,767 UTF-16 chars —
+ * BELOW this ceiling — so a Windows terminal surface would need a
+ * per-platform budget, not this constant.
+ */
+const MAX_TERMINAL_PROMPT_ARG_BYTES = 100 * 1024;
+
+/**
+ * Headroom held back, out of `MAX_TERMINAL_PROMPT_ARG_BYTES`, for every argv
+ * byte that is not the quoted prompt itself: the terminal-surface preamble
+ * and skill pointer the dispatch funnel prepends after the fit, the CLI
+ * binary and its fixed args (including Claude's inline `--settings` JSON),
+ * and the `; exec <shell> -l -i` tail of the launch command — measured under
+ * ~600 bytes worst case today. Mirrors `URL_OVERHEAD_RESERVE`'s stance:
+ * over-reserving only trims a borderline instruction slightly sooner, which
+ * is safe degradation; under-reserving risks an oversized argv, which is not.
+ */
+const TERMINAL_OVERHEAD_RESERVE = 1024;
+
+/**
+ * Quoted-prompt byte budget for the terminal transport. Exported so the
+ * transport-budget tests pin trims against the real constant.
+ */
+export const TERMINAL_INLINE_PROMPT_BUDGET =
+  MAX_TERMINAL_PROMPT_ARG_BYTES - TERMINAL_OVERHEAD_RESERVE;
+
+const UTF8_ENCODER = new TextEncoder();
+
+/**
+ * Transport-specific length of a composed prompt. URL transport measures the
+ * per-target URL encoding (Cursor double-encodes); terminal transport
+ * measures the UTF-8 bytes of the shell-single-quoted prompt — the exact
+ * argv bytes the PTY launch bakes, apostrophes expanding to the `'\''`
+ * escape — and ignores `target` (no URL encoding happens on an argv).
+ */
+function promptTransportLength(
+  prompt: string,
+  target: HandoffTarget,
+  transport: PromptTransport,
+): number {
+  if (transport === 'terminal') {
+    return UTF8_ENCODER.encode(shellSingleQuote(prompt)).length;
+  }
+  return encodedPromptLength(prompt, target);
+}
+
+/** Per-transport budget: the caller's encoded URL budget on `url`; the fixed
+ *  quoted-byte budget on `terminal` (URL budgets are meaningless there). */
+function transportBudget(transport: PromptTransport, urlBudget: number): number {
+  return transport === 'terminal' ? TERMINAL_INLINE_PROMPT_BUDGET : urlBudget;
+}
+
+/**
  * Longest locus anchor — the quoted opening of an oversized selection.
  * Distinctive enough to be a landmark the agent can find in the doc, short
  * enough that the locus prompt never approaches the URL budget.
@@ -436,6 +526,9 @@ interface SelectionPromptInput {
   /** Dispatch target — selects the URL encoding. Cursor double-encodes its
    *  prompt param; Claude and Codex single-encode. */
   readonly target: HandoffTarget;
+  /** Transport the prompt travels over — selects measurement + budget (see
+   *  `PromptTransport`). Defaults to `'url'`. */
+  readonly transport?: PromptTransport;
 }
 
 /** Length of the longest unbroken run of backtick characters in `s`. */
@@ -525,11 +618,13 @@ function directiveWithInstruction(directive: string, instruction: string): strin
 }
 
 /**
- * Longest prefix of `instruction` whose composed prompt stays within the encoded
- * URL budget for `target`. Shared by the directive ("Open with AI") and selection
- * locus ("Edit with AI") fits — both bound the same unbounded user instruction
- * against the same 4096-char server `z.string().max(4096)` cap, differing only in
- * how the surrounding prompt is composed (`compose`). Returns the instruction
+ * Longest prefix of `instruction` whose composed prompt stays within the
+ * budget of the transport in use — the encoded URL budget for `target` on the
+ * deep-link transport, the quoted-byte budget on the terminal transport (see
+ * `PromptTransport`). Shared by the directive ("Open with AI") and selection
+ * locus ("Edit with AI") fits — both bound the same unbounded user
+ * instruction, differing only in how the surrounding prompt is composed
+ * (`compose`). Returns the instruction
  * unchanged when it already fits, else a marker-suffixed prefix down to the empty
  * string.
  *
@@ -543,9 +638,12 @@ function fitInstruction(
   compose: (instruction: string) => string,
   instruction: string,
   target: HandoffTarget,
-  budget: number = INLINE_PROMPT_ENCODED_BUDGET,
+  transport: PromptTransport = 'url',
+  urlBudget: number = INLINE_PROMPT_ENCODED_BUDGET,
 ): string {
-  const fits = (instr: string): boolean => encodedPromptLength(compose(instr), target) <= budget;
+  const budget = transportBudget(transport, urlBudget);
+  const fits = (instr: string): boolean =>
+    promptTransportLength(compose(instr), target, transport) <= budget;
   if (fits(instruction)) return instruction;
   const codePoints = Array.from(instruction);
   let lo = 0;
@@ -566,31 +664,45 @@ function fitInstruction(
  * single-encoded targets (Claude / Codex) too, so the directive composers never
  * need the dispatch target. Over-reserving (trimming a Claude / Codex
  * instruction slightly sooner than its own encoding strictly requires) is safe
- * degradation; an over-length URL is not.
+ * degradation; an over-length URL is not. On the `'terminal'` transport the
+ * encoding worst-casing does not apply — the fit measures quoted argv bytes
+ * against `TERMINAL_INLINE_PROMPT_BUDGET` instead.
  */
-function fitInstructionForDirective(directive: string, instruction: string): string {
+function fitInstructionForDirective(
+  directive: string,
+  instruction: string,
+  transport: PromptTransport,
+): string {
   return fitInstruction(
     (instr) => directiveWithInstruction(directive, instr),
     instruction,
     'cursor',
+    transport,
     // Reserve room for the skill pointer the funnel prepends to directive
     // prompts (see `POINTER_ENCODED_RESERVE`) so instruction + directive +
-    // pointer together stay within the URL cap.
+    // pointer together stay within the URL cap. On the terminal transport the
+    // pointer (and preamble) headroom lives in `TERMINAL_OVERHEAD_RESERVE`
+    // instead and this URL budget is ignored.
     DIRECTIVE_INLINE_PROMPT_ENCODED_BUDGET,
   );
 }
 
 /**
  * Append the user's instruction block beneath a directive prompt, shortening an
- * oversized instruction so the dispatched URL stays within budget (see
- * `fitInstructionForDirective`). An empty / whitespace / absent instruction
+ * oversized instruction so the dispatched prompt stays within its transport's
+ * budget (see `fitInstructionForDirective` — encoded URL budget on `'url'`,
+ * PTY argv byte budget on `'terminal'`). An empty / whitespace / absent instruction
  * returns the bare directive unchanged, so the no-instruction dispatch path
  * stays byte-identical to the path-only prompts.
  */
-function appendInstruction(directive: string, instruction: string | undefined): string {
+function appendInstruction(
+  directive: string,
+  instruction: string | undefined,
+  transport: PromptTransport,
+): string {
   return directiveWithInstruction(
     directive,
-    fitInstructionForDirective(directive, instruction ?? ''),
+    fitInstructionForDirective(directive, instruction ?? '', transport),
   );
 }
 
@@ -642,8 +754,9 @@ function fitInstructionToBudget(
   instruction: string,
   target: HandoffTarget,
   compose: (instruction: string) => string,
+  transport: PromptTransport = 'url',
 ): string {
-  return fitInstruction(compose, instruction, target);
+  return fitInstruction(compose, instruction, target, transport);
 }
 
 /**
@@ -651,7 +764,9 @@ function fitInstructionToBudget(
  * a prompt naming the doc (as an `@`-mention), the user's instruction (when
  * one was typed), and the selected passage.
  *
- * The passage travels by a hybrid transport chosen per target:
+ * The passage travels by a hybrid transport chosen per target (measured
+ * against the encoded URL budget on `'url'`, the PTY argv byte budget on
+ * `'terminal'`):
  *
  *   - **Inline** — when the prompt's post-encoding length leaves the URL
  *     within budget, the passage is embedded verbatim in a fenced block whose
@@ -673,15 +788,22 @@ export function composeSelectionPrompt(input: SelectionPromptInput): string {
   // terminated. The other composers wrap in backticks and use the base
   // sanitizer.
   const safePath = sanitizePathForAtMention(input.relativePath);
+  const transport = input.transport ?? 'url';
   const inline = composeInline(safePath, input.instruction, input.selectionMarkdown);
-  if (encodedPromptLength(inline, input.target) <= INLINE_PROMPT_ENCODED_BUDGET) {
+  if (
+    promptTransportLength(inline, input.target, transport) <=
+    transportBudget(transport, INLINE_PROMPT_ENCODED_BUDGET)
+  ) {
     return inline;
   }
   // Oversized selection → locus. The anchor is capped and the passage is read
   // from the doc, so the instruction is the only remaining unbounded input;
-  // shorten it if needed so the locus URL also stays within budget.
-  const fittedInstruction = fitInstructionToBudget(input.instruction, input.target, (instr) =>
-    composeLocus(safePath, instr, input.selectionMarkdown),
+  // shorten it if needed so the locus prompt also stays within budget.
+  const fittedInstruction = fitInstructionToBudget(
+    input.instruction,
+    input.target,
+    (instr) => composeLocus(safePath, instr, input.selectionMarkdown),
+    transport,
   );
   return composeLocus(safePath, fittedInstruction, input.selectionMarkdown);
 }
@@ -728,17 +850,24 @@ function composeAskBody(safePath: string, instruction: string, autoOpen: boolean
  *
  * `autoOpen` carries the same semantics as `composeFilePrompt`. When an
  * oversized instruction would push the encoded URL over the per-target budget
- * it is shortened (never the path); the URL is never emitted unbounded.
+ * it is shortened (never the path); the URL is never emitted unbounded. On the
+ * `'terminal'` transport the prompt does not travel as a deep link — the fit
+ * applies the PTY argv byte budget instead; the `'url'` default preserves the
+ * deep-link behavior described above.
  */
 export function composeAskPrompt(
   relativePath: string,
   instruction: string,
   autoOpen: boolean,
   target: HandoffTarget,
+  transport: PromptTransport = 'url',
 ): string {
   const safePath = sanitizePathForAtMention(relativePath);
-  const fitted = fitInstructionToBudget(instruction, target, (instr) =>
-    composeAskBody(safePath, instr, autoOpen),
+  const fitted = fitInstructionToBudget(
+    instruction,
+    target,
+    (instr) => composeAskBody(safePath, instr, autoOpen),
+    transport,
   );
   return composeAskBody(safePath, fitted, autoOpen);
 }
@@ -786,6 +915,9 @@ interface AssembleDocScopeInput {
   readonly mentions: readonly string[];
   readonly autoOpen: boolean;
   readonly target: HandoffTarget;
+  /** Transport the prompt travels over — selects measurement + budget (see
+   *  `PromptTransport`). Defaults to `'url'`. */
+  readonly transport?: PromptTransport;
 }
 
 /**
@@ -798,6 +930,9 @@ interface AssembleProjectScopeInput {
   readonly mentions: readonly string[];
   readonly autoOpen: boolean;
   readonly target: HandoffTarget;
+  /** Transport the prompt travels over (see `PromptTransport`). Defaults to
+   *  `'url'`. */
+  readonly transport?: PromptTransport;
 }
 
 /**
@@ -819,6 +954,9 @@ interface AssembleFolderScopeInput {
   readonly mentions: readonly string[];
   readonly autoOpen: boolean;
   readonly target: HandoffTarget;
+  /** Transport the prompt travels over (see `PromptTransport`). Defaults to
+   *  `'url'`. */
+  readonly transport?: PromptTransport;
 }
 
 /**
@@ -939,6 +1077,7 @@ function selectionSegmentFor(
   mentionBlock: string,
   trailer: string,
   target: HandoffTarget,
+  transport: PromptTransport,
 ): string {
   if (selection.kind === 'lines') {
     return linesSelectionSegment(selection.startLine, selection.endLine, safeDocPath);
@@ -954,7 +1093,8 @@ function selectionSegmentFor(
     mentionBlock,
     trailer,
   );
-  return encodedPromptLength(inlineWithoutInstruction, target) <= INLINE_PROMPT_ENCODED_BUDGET
+  return promptTransportLength(inlineWithoutInstruction, target, transport) <=
+    transportBudget(transport, INLINE_PROMPT_ENCODED_BUDGET)
     ? inlineSegment
     : locusSelectionSegment(selection.markdown, safeDocPath);
 }
@@ -972,6 +1112,7 @@ function assembleDocSelectionPrompt(
   trailer: string,
 ): string {
   const { target } = input;
+  const transport = input.transport ?? 'url';
   const safeDocPath = sanitizePathForAtMention(input.docRelativePath);
   const lead = `Let's work on @${safeDocPath} using OpenKnowledge.`;
   const selectionSegment = selectionSegmentFor(
@@ -981,9 +1122,13 @@ function assembleDocSelectionPrompt(
     mentionBlock,
     trailer,
     target,
+    transport,
   );
-  const fittedInstruction = fitInstructionToBudget(input.instruction, target, (instr) =>
-    composeAssembledBlocks(lead, instr, selectionSegment, mentionBlock, trailer),
+  const fittedInstruction = fitInstructionToBudget(
+    input.instruction,
+    target,
+    (instr) => composeAssembledBlocks(lead, instr, selectionSegment, mentionBlock, trailer),
+    transport,
   );
   return composeAssembledBlocks(lead, fittedInstruction, selectionSegment, mentionBlock, trailer);
 }
@@ -1018,8 +1163,11 @@ export function assembleHandoffPrompt(input: AssembleHandoffPromptInput): string
   // so the budget accounts for the whole assembled string, not the instruction
   // alone.
   const lead = scopeLead(input);
-  const fittedInstruction = fitInstructionToBudget(input.instruction, target, (instr) =>
-    composeAssembledBlocks(lead, instr, '', mentionBlock, trailer),
+  const fittedInstruction = fitInstructionToBudget(
+    input.instruction,
+    target,
+    (instr) => composeAssembledBlocks(lead, instr, '', mentionBlock, trailer),
+    input.transport ?? 'url',
   );
   return composeAssembledBlocks(lead, fittedInstruction, '', mentionBlock, trailer);
 }
@@ -1038,6 +1186,14 @@ export function composeAskProjectPrompt(
   instruction: string,
   autoOpen: boolean,
   target: HandoffTarget,
+  transport: PromptTransport = 'url',
 ): string {
-  return assembleHandoffPrompt({ scope: 'project', instruction, mentions: [], autoOpen, target });
+  return assembleHandoffPrompt({
+    scope: 'project',
+    instruction,
+    mentions: [],
+    autoOpen,
+    target,
+    transport,
+  });
 }

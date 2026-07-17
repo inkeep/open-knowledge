@@ -25,6 +25,8 @@ export {
   composeTerminalBareLaunchPrompt,
   OK_PROJECT_SKILL_POINTER,
   OK_TERMINAL_SURFACE_PREAMBLE,
+  type PromptTransport,
+  TERMINAL_INLINE_PROMPT_BUDGET,
   withSkillPointer,
 } from './prompt-composer.ts';
 export {

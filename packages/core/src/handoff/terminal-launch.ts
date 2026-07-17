@@ -2,11 +2,13 @@
  * In-app-terminal twin of the Claude Desktop deep-link handoff.
  *
  * The deep-link path puts the scope-specific prompt in the `q=` URL param and
- * opens the target's desktop app. The docked-terminal path takes the SAME
- * prompt string and launches one of the supported agent CLIs (`claude`,
- * `codex`, `cursor-agent`) with it inside OK's bottom terminal, so the two
- * surfaces stay in lockstep — the prompt is composed once by the dispatch hook
- * (`selectScopedPrompt`) and threaded into either transport.
+ * opens the target's desktop app. The docked-terminal path launches one of the
+ * supported agent CLIs (see `TERMINAL_CLIS`) inside OK's bottom
+ * terminal with the same scope-specific prompt shape, so the two surfaces stay
+ * in lockstep — the prompt is composed once by the dispatch hook
+ * (`selectScopedPrompt`), budgeted per transport (URL-encoded budget for the
+ * deep link, quoted-argv-byte budget for the PTY — see `PromptTransport` in
+ * `prompt-composer.ts`), and threaded into either transport.
  *
  * This module owns the shell-injection-safe wrapping. The terminal write is a
  * FIXED `<bin> [<fixed-args>…] '<prompt>'` shape — never an arbitrary command.

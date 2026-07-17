@@ -15,8 +15,10 @@ import {
   composeTerminalBareLaunchPrompt,
   OK_PROJECT_SKILL_POINTER,
   OK_TERMINAL_SURFACE_PREAMBLE,
+  TERMINAL_INLINE_PROMPT_BUDGET,
   withSkillPointer,
 } from './prompt-composer.ts';
+import { shellSingleQuote } from './terminal-launch.ts';
 import type { HandoffPayload, HandoffTarget } from './types.ts';
 
 // The three composers emit scope-specific directives the receiving agent reads
@@ -1426,4 +1428,165 @@ test('assembleHandoffPrompt renders an anchor selection as the locus reference',
   expect(prompt).toContain('First line of the passage');
   // Only the opening line is embedded as the landmark, not the whole passage.
   expect(prompt).not.toContain('and more');
+});
+
+// --- terminal transport ------------------------------------------------------
+//
+// A prompt budget is a property of the TRANSPORT: the deep-link URL cap must
+// not bind prompts that travel as PTY argv bytes. These pin the terminal
+// transport directly at the core composers — measurement is UTF-8 bytes of the
+// shell-single-quoted prompt, budget is TERMINAL_INLINE_PROMPT_BUDGET — while
+// every unparameterized call keeps the historical URL-budget behavior (pinned
+// by the rest of this file).
+
+/** The exact argv-byte measure the terminal fit applies. */
+function quotedByteLength(prompt: string): number {
+  return new TextEncoder().encode(shellSingleQuote(prompt)).length;
+}
+
+/** Realistic single-line prose (no newlines, no apostrophes, no `…`) so
+ *  full-retention assertions can be simple substring checks. */
+function terminalProse(chars: number): string {
+  const unit = 'Restructure the migration plan, keep the rollback steps, and cite owners. ';
+  return unit
+    .repeat(Math.ceil(chars / unit.length))
+    .slice(0, chars)
+    .trimEnd();
+}
+
+test('assembleHandoffPrompt on the terminal transport carries a 40,000-char instruction in full', () => {
+  const instruction = terminalProse(40_000);
+  const out = assembleHandoffPrompt({
+    scope: 'doc',
+    docRelativePath: 'plans/migration.md',
+    instruction,
+    mentions: [],
+    autoOpen: false,
+    target: 'claude-code',
+    transport: 'terminal',
+  });
+  expect(out).toContain(instruction);
+  expect(out).not.toContain(' …');
+  expect(quotedByteLength(out)).toBeLessThanOrEqual(TERMINAL_INLINE_PROMPT_BUDGET);
+});
+
+test('composeFilePrompt on the terminal transport carries a 40,000-char instruction in full', () => {
+  // The directive fit worst-cases Cursor double-encoding on the URL transport;
+  // the terminal transport measures raw quoted bytes, so no encoding
+  // conservatism applies and the instruction survives untouched.
+  const instruction = terminalProse(40_000);
+  const out = composeFilePrompt('plans/migration.md', false, instruction, 'terminal');
+  expect(out).toContain(instruction);
+  expect(out).not.toContain(' …');
+});
+
+test('composeFolderPrompt on the terminal transport carries a 40,000-char instruction in full', () => {
+  const instruction = terminalProse(40_000);
+  const out = composeFolderPrompt('specs/notes', false, instruction, 'terminal');
+  expect(out).toContain(instruction);
+  expect(out).not.toContain(' …');
+});
+
+test('composeEmptySpacePrompt on the terminal transport carries a 40,000-char instruction in full', () => {
+  const instruction = terminalProse(40_000);
+  const out = composeEmptySpacePrompt(false, instruction, 'terminal');
+  expect(out).toContain(instruction);
+  expect(out).not.toContain(' …');
+});
+
+test('composeAskPrompt on the terminal transport carries a 40,000-char instruction in full', () => {
+  const instruction = terminalProse(40_000);
+  const out = composeAskPrompt('plans/migration.md', instruction, false, 'claude-code', 'terminal');
+  expect(out).toContain(instruction);
+  expect(out).not.toContain(' …');
+});
+
+test('composeCreatePrompt on the terminal transport carries a 32,768-char brief in full', () => {
+  const brief = terminalProse(32_768);
+  const out = composeCreatePrompt(brief, false, 'new-project', [], 'terminal');
+  expect(out).toContain(brief);
+  expect(out).not.toContain(' …');
+});
+
+test('terminal transport trims a just-over-budget instruction at TERMINAL_INLINE_PROMPT_BUDGET with the marker', () => {
+  const instruction = terminalProse(TERMINAL_INLINE_PROMPT_BUDGET + 5_000);
+  const out = assembleHandoffPrompt({
+    scope: 'doc',
+    docRelativePath: 'plans/migration.md',
+    instruction,
+    mentions: [],
+    autoOpen: false,
+    target: 'claude-code',
+    transport: 'terminal',
+  });
+  expect(out).not.toContain(instruction);
+  expect(out).toContain(' …');
+  expect(quotedByteLength(out)).toBeLessThanOrEqual(TERMINAL_INLINE_PROMPT_BUDGET);
+  // The trim lands at the terminal budget, not the ~3 KB URL budget: nearly
+  // the whole budget's worth of instruction is retained (the composed shell
+  // overhead around the instruction is far under 2,000 bytes).
+  expect(out.length).toBeGreaterThan(TERMINAL_INLINE_PROMPT_BUDGET - 2_000);
+});
+
+test('terminal transport measures shell-quoted BYTES — an apostrophe-dense instruction trims by its expanded byte length, not its char count', () => {
+  // Each apostrophe in the prompt expands to the 4-byte `'\''` escape once
+  // shell-single-quoted. 60,000 chars with 30,000 apostrophes quote to
+  // ~150,000 bytes: within the budget by char count, over it by argv bytes.
+  // Only the quoted-byte measure catches it.
+  const instruction = "y'".repeat(30_000);
+  expect(instruction.length).toBeLessThan(TERMINAL_INLINE_PROMPT_BUDGET);
+  expect(quotedByteLength(instruction)).toBeGreaterThan(TERMINAL_INLINE_PROMPT_BUDGET);
+  const out = assembleHandoffPrompt({
+    scope: 'doc',
+    docRelativePath: 'plans/migration.md',
+    instruction,
+    mentions: [],
+    autoOpen: false,
+    target: 'claude-code',
+    transport: 'terminal',
+  });
+  expect(out).not.toContain(instruction);
+  expect(out).toContain(' …');
+  expect(quotedByteLength(out)).toBeLessThanOrEqual(TERMINAL_INLINE_PROMPT_BUDGET);
+});
+
+test('an inline selection between the URL and terminal budgets ships inline on terminal, degrades to locus on url', () => {
+  const passage = terminalProse(10_000);
+  const base = {
+    scope: 'doc',
+    docRelativePath: 'plans/migration.md',
+    selection: { kind: 'inline', markdown: passage },
+    instruction: 'tighten this',
+    mentions: [],
+    autoOpen: false,
+    target: 'claude-code',
+  } as const;
+  const terminal = assembleHandoffPrompt({ ...base, transport: 'terminal' });
+  expect(terminal).toContain('Here is the passage:');
+  expect(terminal).toContain(passage);
+  expect(terminal).toContain('tighten this');
+  const url = assembleHandoffPrompt(base);
+  expect(url).toContain('The passage begins:');
+  expect(url).not.toContain(passage);
+});
+
+test('an anchor-kind selection stays locus on BOTH transports — the passage is re-read via MCP, never inlined', () => {
+  const passage = `${terminalProse(60)}\n${terminalProse(10_000)}`;
+  const base = {
+    scope: 'doc',
+    docRelativePath: 'plans/migration.md',
+    selection: { kind: 'anchor', markdown: passage },
+    instruction: 'tighten this',
+    mentions: [],
+    autoOpen: false,
+    target: 'claude-code',
+  } as const;
+  for (const out of [
+    assembleHandoffPrompt({ ...base, transport: 'terminal' }),
+    assembleHandoffPrompt(base),
+  ]) {
+    expect(out).toContain('The passage begins:');
+    expect(out).toContain('Read the full passage from @plans/migration.md');
+    expect(out).not.toContain(passage);
+  }
 });
