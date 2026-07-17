@@ -46,7 +46,6 @@ import {
 import { __iconNode as botIcon } from 'lucide-react/dist/esm/icons/bot';
 import { __iconNode as link2Icon } from 'lucide-react/dist/esm/icons/link-2';
 import { useTheme } from 'next-themes';
-import { importTemplate } from '@/lib/folder-config-api';
 import {
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
@@ -197,6 +196,7 @@ import {
   subscribeToFileTreeMenuActionDuplicate,
   subscribeToFileTreeMenuActionRename,
 } from '@/lib/file-tree-menu-action-events';
+import { importTemplate } from '@/lib/folder-config-api';
 import { parseServerResponse, parseSuccessOrWarn } from '@/lib/parse-server-response';
 import { createRefreshScheduler } from '@/lib/refresh-scheduler';
 import { getRelaunchInFlightSnapshot, useRelaunchInFlight } from '@/lib/relaunch-store';
@@ -2215,8 +2215,8 @@ export function FileTree({
       await applyDeleteAftermath([target], [target.path], []);
       // Optimistically remove from view if deleted, standard watcher sweeps later
       setDocuments((current) => {
-        const next = current.filter(entry => 
-          !(isDocumentEntry(entry) && entry.docName === target.path)
+        const next = current.filter(
+          (entry) => !(isDocumentEntry(entry) && entry.docName === target.path),
         );
         resetModelToDocuments(next);
         markNextDocumentsAsApplied(next);

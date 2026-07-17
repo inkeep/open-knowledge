@@ -11,6 +11,7 @@
     "-3ois8": ["Hard break"],
     "-5jISU": [["0", "plural", { "one": ["#", " template"], "other": ["#", " templates"] }]],
     "-8PP0T": ["Match case"],
+    "-FeyRg": ["Keep original file"],
     "-K0AvT": ["Disconnect"],
     "-LHLx7": ["edited template"],
     "-QCLWk": ["Templates available"],
@@ -549,6 +550,7 @@
     "BQu9Pg": ["Symlink"],
     "BUyQnq": ["Couldn't restart the server. Try `ok start` in this folder."],
     "BY-g4_": ["Add pattern"],
+    "Ba4D2x": ["Template imported"],
     "Bdha5y": ["Publishing..."],
     "BeWTQy": ["Loading starter packs"],
     "BgV29F": ["Visual editor find input focused"],
@@ -1168,6 +1170,7 @@
     "PR9FSv": ["Move to the next visual-editor find result."],
     "PRnH8G": ["of ", ["0"]],
     "PVUn_c": ["Open folder"],
+    "PYmp-0": ["Import as template"],
     "PZtgO0": ["Opening worktree"],
     "P_bX4O": ["How to set up"],
     "Pck6eI": [
@@ -1783,6 +1786,7 @@
     "dOHMA0": ["Failed to move"],
     "dOxPd4": ["Footnote"],
     "dPOFid": ["Show or hide terminal"],
+    "dQHSCs": ["Convert (delete original)"],
     "dTaauv": ["Reason: ", ["reason"]],
     "dUCQo4": ["Renamed to \"", ["trimmed"], "\""],
     "dUQ7_J": [
@@ -2406,6 +2410,7 @@
     "rD-woT": [
       "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
     ],
+    "rDOuNw": ["Failed to import template"],
     "rFmBG3": ["Color theme"],
     "rFw02Q": ["Uploading ", ["keyName"]],
     "rJVoVX": ["Source find results"],

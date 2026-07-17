@@ -174,7 +174,9 @@ export async function importTemplate(input: {
   name?: string;
   title?: string;
   deleteSource?: boolean;
-}): Promise<{ ok: true; path: string; created: boolean; warnings: string[] } | { ok: false; error: string }> {
+}): Promise<
+  { ok: true; path: string; created: boolean; warnings: string[] } | { ok: false; error: string }
+> {
   try {
     const res = await fetch('/api/template/import', {
       method: 'POST',
@@ -200,4 +202,3 @@ export async function importTemplate(input: {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
-

@@ -130,6 +130,13 @@ const EXEMPT_HANDLERS = new Set([
   // other read handlers below.
   'handleLintDoc',
   'handleLintAudit',
+  // `/api/template/import` — imports an existing doc as a template. Same
+  // project-config posture as `handleTemplate`; it DOES thread
+  // `extractActorIdentity` (folder timeline) + `extractAgentIdentity` (template
+  // write session), but is exempt from the identity-required sweep because the
+  // single-file-mode guard emits before identity extraction — same rationale as
+  // the sibling template handlers.
+  'handleTemplateImport',
   // `/api/templates` — project-wide flat enumeration of every template
   // (read-only). Returns the union of all `<folder>/.ok/templates/*.md`;
   // same rationale as `handleTagsList` — read path, no agent identity.

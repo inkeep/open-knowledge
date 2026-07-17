@@ -217,12 +217,12 @@ import {
   TagsListSuccessSchema,
   TemplateDeleteSuccessSchema,
   TemplateGetSuccessSchema,
+  TemplateImportRequestSchema,
+  TemplateImportSuccessSchema,
   TemplateMoveRequestSchema,
   TemplateMoveSuccessSchema,
   TemplatePutRequestSchema,
   TemplatePutSuccessSchema,
-  TemplateImportRequestSchema,
-  TemplateImportSuccessSchema,
   TemplatesListSuccessSchema,
   TestFlushGitSuccessSchema,
   TestRescanBacklinksSuccessSchema,
@@ -13358,7 +13358,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   function checkTemplateConflictGate(
     folder: string,
     name: string,
-    handler: 'template-put' | 'template-delete' | 'template-move',
+    handler: 'template-put' | 'template-delete' | 'template-move' | 'template-import',
     res: ServerResponse,
   ): boolean {
     if (!name) return false;
@@ -13946,6 +13946,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           cause: e,
         });
       }
+    },
+    { handler: 'template-move', method: 'POST' },
   );
 
   const handleTemplateImport = withValidation(
@@ -13996,9 +13998,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
         const sourceFilePath = resolveContentEntryPath(contentDir, 'file', sourceDocName);
         if (!existsSync(sourceFilePath)) {
-          errorResponse(res, 404, 'urn:ok:error:doc-not-found', `Source document not found: ${sourceDocName}.`, {
-            handler: 'template-import',
-          });
+          errorResponse(
+            res,
+            404,
+            'urn:ok:error:doc-not-found',
+            `Source document not found: ${sourceDocName}.`,
+            {
+              handler: 'template-import',
+            },
+          );
           return;
         }
 
@@ -14011,7 +14019,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           const conflictedByLifecycle = existing !== undefined && isDocInConflict(existing);
           const conflictedByStore = deleteTrackedFiles.has(sourcePath);
           if (conflictedByLifecycle || conflictedByStore) {
-            respondDocInConflict(res, new DocInConflictError({ file: sourcePath }), 'template-import');
+            respondDocInConflict(
+              res,
+              new DocInConflictError({ file: sourcePath }),
+              'template-import',
+            );
             return;
           }
         }
@@ -14025,9 +14037,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           try {
             const document = dc.document;
             if (!document) {
-              errorResponse(res, 500, 'urn:ok:error:doc-not-available', 'Source document is not available.', {
-                handler: 'template-import',
-              });
+              errorResponse(
+                res,
+                500,
+                'urn:ok:error:doc-not-available',
+                'Source document is not available.',
+                {
+                  handler: 'template-import',
+                },
+              );
               return;
             }
             sourceContent = document.getText('source').toString();
@@ -14043,9 +14061,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           const nameWithoutExt = basename.replace(/\.(md|mdx)$/i, '');
           name = nameWithoutExt.replace(/[^A-Za-z0-9_-]/g, '-').toLowerCase();
           name = name.replace(/^[-_]+|[-_]+$/g, '');
-          if (!name) {
-            name = 'imported-template';
-          }
+          name ||= 'imported-template';
         }
 
         if (!validateTemplateName(name, res, 'template-import')) return;
@@ -14063,11 +14079,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           if (cleanFmText.trim()) {
             sourceFmObj = parseYaml(cleanFmText) as Record<string, unknown>;
           }
-        } catch (e) {
-          // ignore parsing error, treat as empty
+        } catch {
+          // Malformed frontmatter — treat the source as having none.
         }
 
-        const templateTitle = body.title || (sourceFmObj?.title as string) || extractPageTitle(sourceContent, name);
+        const templateTitle =
+          body.title || (sourceFmObj?.title as string) || extractPageTitle(sourceContent, name);
         const templateDescription = (sourceFmObj?.description as string) || '';
         const templateTags = Array.isArray(sourceFmObj?.tags) ? (sourceFmObj.tags as string[]) : [];
 
@@ -14173,10 +14190,16 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { handler: 'template-import' },
         );
       } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to import template.', {
-          handler: 'template-import',
-          cause: e,
-        });
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to import template.',
+          {
+            handler: 'template-import',
+            cause: e,
+          },
+        );
       }
     },
     { handler: 'template-import', method: 'POST' },

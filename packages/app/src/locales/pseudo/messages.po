@@ -1887,6 +1887,10 @@ msgstr ""
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr ""
 
+#: src/components/FileTree.tsx
+msgid "Convert (delete original)"
+msgstr ""
+
 #: src/editor/bubble-menu/FootnoteBubbleButton.tsx
 msgid "Convert selection to footnote"
 msgstr ""
@@ -3282,6 +3286,10 @@ msgstr ""
 msgid "Failed to enable sync — {detail}"
 msgstr ""
 
+#: src/components/FileTree.tsx
+msgid "Failed to import template"
+msgstr ""
+
 #: src/components/ActivityModeContent.tsx
 msgid "Failed to load activity"
 msgstr ""
@@ -4042,6 +4050,10 @@ msgstr ""
 msgid "Import"
 msgstr ""
 
+#: src/components/FileTree.tsx
+msgid "Import as template"
+msgstr ""
+
 #: src/components/SeedDialog.tsx
 msgid "In a subfolder"
 msgstr ""
@@ -4298,6 +4310,10 @@ msgstr ""
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Keep my version"
+msgstr ""
+
+#: src/components/FileTree.tsx
+msgid "Keep original file"
 msgstr ""
 
 #: src/components/SeedDialog.tsx
@@ -7632,6 +7648,10 @@ msgstr ""
 
 #: src/components/TemplateForm.tsx
 msgid "Template \"{trimmedTitle}\" created"
+msgstr ""
+
+#: src/components/FileTree.tsx
+msgid "Template imported"
 msgstr ""
 
 #: src/components/empty-state/CreateView.tsx

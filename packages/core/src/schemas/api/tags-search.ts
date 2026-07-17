@@ -285,7 +285,6 @@ export const TemplateImportSuccessSchema = z
   .strict() satisfies StandardSchemaV1;
 export type TemplateImportSuccess = z.infer<typeof TemplateImportSuccessSchema>;
 
-
 /**
  * Success body for `DELETE /api/template?name=<n>&folder=<f>`. `existed` is
  * `true` when the file was deleted; `false` when the operation was a no-op
