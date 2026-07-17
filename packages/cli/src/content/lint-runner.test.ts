@@ -45,6 +45,16 @@ function run(opts: Partial<Parameters<typeof runLint>[0]> = {}) {
 }
 
 describe('runLint — walk + lint', () => {
+  test('the walk skips hidden segments; an explicit hidden file target still lints', async () => {
+    write('visible.md', '# A\n\ntext with a\ttab\n');
+    write('.ok/skills/pack/SKILL.md', '# S\n\ntext with a\ttab\n');
+    const swept = await run();
+    expect(swept.files.map((f) => f.file)).toEqual(['visible.md']);
+    // Naming the hidden file bypasses the walk — linter-CLI convention.
+    const explicit = await run({ targetPath: join(root, '.ok/skills/pack/SKILL.md') });
+    expect(explicit.files.map((f) => f.file)).toEqual(['.ok/skills/pack/SKILL.md']);
+  });
+
   test('lints every in-scope doc and counts problems', async () => {
     write('a.md', '# A\n\ntext with a\ttab\n');
     write('b.md', '# B\n\n#bad heading\n');

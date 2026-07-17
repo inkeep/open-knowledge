@@ -11,6 +11,8 @@ import {
   type LintConfigResponse,
   LintConfigResponseSchema,
   type LinterConfig,
+  type LintFixResult,
+  LintFixResultSchema,
   type MarkdownlintRuleWriteValue,
 } from '@inkeep/open-knowledge-core';
 import { useEffect, useState } from 'react';
@@ -78,6 +80,43 @@ export async function runLintAudit(targetPath?: string): Promise<LintAuditRespon
     return parsed.data;
   } catch {
     return null;
+  }
+}
+
+/**
+ * POST a whole-doc auto-fix. The body carries no agent identity on purpose:
+ * a UI-initiated deterministic fix is the principal's write (the human
+ * clicked the button), and the server resolves a bare body to the loaded
+ * principal. Used per-file by the project-scope Fix all sweep.
+ */
+export async function fixLintDoc(
+  docName: string,
+): Promise<{ ok: true; result: LintFixResult } | { ok: false; errorDetail: string | null }> {
+  try {
+    const res = await fetch('/api/lint/fix', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ docName }),
+    });
+    if (!res.ok) {
+      const errBody = (await res.json().catch(() => null)) as { title?: unknown } | null;
+      return {
+        ok: false,
+        errorDetail: typeof errBody?.title === 'string' ? errBody.title : null,
+      };
+    }
+    const body = await res.json().catch(() => null);
+    const parsed = LintFixResultSchema.safeParse(body);
+    if (!parsed.success) {
+      // Mirror the sibling fetchLintConfig/runLintAudit logging so a
+      // client/server schema drift leaves a diagnostic trail instead of a
+      // silent failure.
+      console.warn('[lint] fix response failed schema validation', parsed.error.issues);
+      return { ok: false, errorDetail: null };
+    }
+    return { ok: true, result: parsed.data };
+  } catch {
+    return { ok: false, errorDetail: null };
   }
 }
 

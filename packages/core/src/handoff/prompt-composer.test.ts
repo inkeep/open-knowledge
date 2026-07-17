@@ -10,6 +10,7 @@ import {
   composeEmptySpacePrompt,
   composeFilePrompt,
   composeFolderPrompt,
+  composeLintFixPrompt,
   composeSelectionPrompt,
   composeSkillPrompt,
   composeTerminalBareLaunchPrompt,
@@ -1589,4 +1590,80 @@ test('an anchor-kind selection stays locus on BOTH transports — the passage is
     expect(out).toContain('Read the full passage from @plans/migration.md');
     expect(out).not.toContain(passage);
   }
+});
+
+// --- composeLintFixPrompt ----------------------------------------------------
+
+test('composeLintFixPrompt names the doc, locates the rule, and quotes the material', () => {
+  const prompt = composeLintFixPrompt({
+    relativePath: 'guides/setup.md',
+    source: 'markdownlint',
+    code: 'MD010',
+    ruleAlias: 'no-hard-tabs',
+    message: 'Hard tabs',
+    line: 12,
+    column: 3,
+    lineText: '\tindented with a tab',
+  });
+  expect(prompt).toContain('Fix this lint problem in @guides/setup.md using OpenKnowledge.');
+  expect(prompt).toContain('Problem: markdownlint/MD010 (no-hard-tabs) at line 12, column 3:');
+  expect(prompt).toContain('> Hard tabs');
+  expect(prompt).toContain('Line 12 reads:');
+  expect(prompt).toContain('\tindented with a tab');
+  expect(prompt).toContain(
+    'Edit @guides/setup.md via the OpenKnowledge MCP server, then re-lint it to confirm the problem is resolved.',
+  );
+});
+
+test('composeLintFixPrompt omits the alias parens and line block when absent', () => {
+  const prompt = composeLintFixPrompt({
+    relativePath: 'notes.md',
+    source: 'markdownlint',
+    code: 'MD025',
+    message: 'Multiple top-level headings',
+    line: 5,
+    column: 1,
+  });
+  expect(prompt).toContain('Problem: markdownlint/MD025 at line 5, column 1:');
+  expect(prompt).not.toContain('(');
+  expect(prompt).not.toContain('reads:');
+});
+
+test('composeLintFixPrompt blockquotes every line of a multi-line message', () => {
+  const prompt = composeLintFixPrompt({
+    relativePath: 'notes.md',
+    source: 'markdownlint',
+    code: 'MD013',
+    message: 'Line too long\nExpected: 80; Actual: 120',
+    line: 2,
+    column: 81,
+  });
+  expect(prompt).toContain('> Line too long\n> Expected: 80; Actual: 120');
+});
+
+test('composeLintFixPrompt fences the offending line past its own backtick runs', () => {
+  const prompt = composeLintFixPrompt({
+    relativePath: 'notes.md',
+    source: 'markdownlint',
+    code: 'MD038',
+    message: 'Spaces inside code span',
+    line: 3,
+    column: 1,
+    lineText: 'a ``` b `code` c',
+  });
+  // The wrapping fence must outlast the 3-backtick run inside the line.
+  expect(prompt).toContain('````\na ``` b `code` c\n````');
+});
+
+test('composeLintFixPrompt sanitizes the @-mention path like the selection composer', () => {
+  const prompt = composeLintFixPrompt({
+    relativePath: 'my docs/note​.md',
+    source: 'markdownlint',
+    code: 'MD010',
+    message: 'Hard tabs',
+    line: 1,
+    column: 1,
+  });
+  // Whitespace + zero-width bytes collapse so the mention stays one token.
+  expect(prompt).toContain('@my_docs/note_.md');
 });

@@ -1197,3 +1197,59 @@ export function composeAskProjectPrompt(
     transport,
   });
 }
+
+/** Inputs to `composeLintFixPrompt` — one lint diagnostic, fully located. */
+export interface LintFixPromptInput {
+  /** Doc's path relative to the OK content dir, forward-slash normalized with
+   *  the `.md` suffix. Sanitized before interpolation as an `@`-mention. */
+  readonly relativePath: string;
+  /** Diagnostic origin plugin id, e.g. `markdownlint`. */
+  readonly source: string;
+  /** Rule code, e.g. `MD010`. */
+  readonly code: string;
+  /** Primary rule alias, e.g. `no-hard-tabs`; omitted when unknown. */
+  readonly ruleAlias?: string;
+  /** The diagnostic message. May quote doc content — blockquoted so the agent
+   *  reads it as material, not instructions. */
+  readonly message: string;
+  /** 1-based line of the problem in the doc source (frontmatter included). */
+  readonly line: number;
+  /** 1-based column. */
+  readonly column: number;
+  /** The offending source line, verbatim; omitted when unavailable. Fenced
+   *  like a selection passage (fence outlasts any backtick run inside). */
+  readonly lineText?: string;
+}
+
+/**
+ * Lint-fix composer for the Problems panel's "Ask AI" affordance. Produces a
+ * terminal paste (no URL budget, no autoOpen trailer — the user is already
+ * looking at the doc) that names the doc as an `@`-mention, locates one
+ * diagnostic precisely, and directs the agent to fix it via OK MCP and
+ * re-lint. Quoting posture matches `composeSelectionPrompt`: doc-derived text
+ * (message, offending line) travels blockquoted / fenced as material.
+ */
+export function composeLintFixPrompt(input: LintFixPromptInput): string {
+  const safePath = sanitizePathForAtMention(input.relativePath);
+  const rule =
+    input.ruleAlias === undefined
+      ? `${input.source}/${input.code}`
+      : `${input.source}/${input.code} (${input.ruleAlias})`;
+  const lines: string[] = [
+    `Fix this lint problem in @${safePath} using OpenKnowledge.`,
+    '',
+    `Problem: ${rule} at line ${input.line}, column ${input.column}:`,
+    '',
+    blockquote(input.message.trim()),
+  ];
+  const lineText = input.lineText ?? '';
+  if (lineText.trim() !== '') {
+    const fence = fenceFor(lineText);
+    lines.push('', `Line ${input.line} reads:`, '', fence, lineText, fence);
+  }
+  lines.push(
+    '',
+    `Edit @${safePath} via the OpenKnowledge MCP server, then re-lint it to confirm the problem is resolved.`,
+  );
+  return lines.join('\n');
+}

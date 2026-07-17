@@ -32,13 +32,22 @@ mock.module('@lingui/react/macro', () => linguiMacroMock);
 
 let auditCalls = 0;
 let runLintAuditImpl: () => Promise<LintAuditResponse | null> = async () => null;
+let fixLintDocCalls: string[] = [];
+let fixLintDocImpl: (docName: string) => Promise<{ ok: boolean; errorDetail?: string | null }> =
+  async () => ({ ok: true });
+const toastError = mock((_message: string) => {});
 
+mock.module('sonner', () => ({ toast: { error: toastError } }));
 mock.module('@/editor/lint-config-client', () => ({
   emitLintConfigChanged: () => {},
   subscribeToLintConfigChanged: () => () => {},
   runLintAudit: () => {
     auditCalls += 1;
     return runLintAuditImpl();
+  },
+  fixLintDoc: (docName: string) => {
+    fixLintDocCalls.push(docName);
+    return fixLintDocImpl(docName);
   },
   useDocLintConfig: () => ({ data: null }),
   useProjectLintConfig: () => ({ data: null }),
@@ -76,6 +85,9 @@ function auditResult(over: Partial<LintAuditResponse> = {}): LintAuditResponse {
 beforeEach(() => {
   auditCalls = 0;
   runLintAuditImpl = async () => null;
+  fixLintDocCalls = [];
+  fixLintDocImpl = async () => ({ ok: true });
+  toastError.mockClear();
 });
 
 afterEach(() => {
@@ -124,6 +136,82 @@ describe('ProblemsPanel', () => {
     });
     render(<ProblemsPanel docName="notes" diagnostics={[fixable]} />);
     expect(screen.queryByRole('button', { name: /Fix markdownlint/ })).toBeNull();
+  });
+
+  test('doc-scope Fix all renders when onFixAll is provided and calls it on click', () => {
+    const fixable = diag({
+      code: 'MD010',
+      fixes: [
+        {
+          range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+          newText: '  ',
+        },
+      ],
+    });
+    const unfixable = diag({ line: 5, code: 'MD025', message: 'Multiple H1' });
+    const onFixAll = mock(() => {});
+    render(
+      <ProblemsPanel docName="notes" diagnostics={[fixable, unfixable]} onFixAll={onFixAll} />,
+    );
+    const button = screen.getByTestId('problems-fix-all') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    // The label sizes the click before it happens: only the fixable diagnostic
+    // counts, not the total problem count.
+    expect(button.textContent).toContain('(1)');
+    button.click();
+    expect(onFixAll).toHaveBeenCalledTimes(1);
+  });
+
+  test('Ask AI renders on fixable AND unfixable rows only when onAskAi is provided', () => {
+    const fixable = diag({
+      line: 3,
+      code: 'MD010',
+      fixes: [
+        {
+          range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+          newText: '  ',
+        },
+      ],
+    });
+    const unfixable = diag({ line: 5, code: 'MD025', message: 'Multiple H1' });
+    const onAskAi = mock(() => {});
+    const { unmount } = render(
+      <ProblemsPanel docName="notes" diagnostics={[fixable, unfixable]} onAskAi={onAskAi} />,
+    );
+    const askButtons = screen.getAllByTestId('problems-ask-ai');
+    // One per row — the unfixable row gets it too (AI matters most where no
+    // deterministic fix exists).
+    expect(askButtons).toHaveLength(2);
+    askButtons[1]?.click();
+    expect(onAskAi).toHaveBeenCalledTimes(1);
+    expect((onAskAi.mock.calls[0] as unknown[])[0]).toMatchObject({ code: 'MD025' });
+    unmount();
+
+    render(<ProblemsPanel docName="notes" diagnostics={[fixable, unfixable]} />);
+    expect(screen.queryByTestId('problems-ask-ai')).toBeNull();
+  });
+
+  test('doc-scope Fix all is disabled when no diagnostic is fixable', () => {
+    const onFixAll = mock(() => {});
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[diag({ code: 'MD025', message: 'Multiple H1' })]}
+        onFixAll={onFixAll}
+      />,
+    );
+    const disabledButton = screen.getByTestId('problems-fix-all') as HTMLButtonElement;
+    expect(disabledButton.disabled).toBe(true);
+    expect(disabledButton.textContent).toContain('(0)');
+  });
+
+  test('doc-scope Fix all is absent without onFixAll or without diagnostics', () => {
+    const { unmount } = render(<ProblemsPanel docName="notes" diagnostics={[diag({})]} />);
+    expect(screen.queryByTestId('problems-fix-all')).toBeNull();
+    unmount();
+    // Empty state renders no action row at all.
+    render(<ProblemsPanel docName="notes" diagnostics={[]} onFixAll={mock(() => {})} />);
+    expect(screen.queryByTestId('problems-fix-all')).toBeNull();
   });
 
   test('renders a row per diagnostic, sorted by line', () => {
@@ -330,6 +418,95 @@ describe('ProblemsPanel — project scope', () => {
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);
     }
+  });
+
+  test('project Fix all sweeps only fixable files, re-audits, and stays quiet on success', async () => {
+    const fixableEdit = {
+      range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+      newText: '  ',
+    };
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [
+          { file: 'a.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+          { file: 'b.md', diagnostics: [diag({ code: 'MD025', message: 'Multiple H1' })] },
+          { file: 'nested/c.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+        ],
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('a.md')).toBeTruthy());
+
+    // Counts fixable problems across the audit (a.md + nested/c.md), not files
+    // and not the unfixable b.md diagnostic.
+    expect(screen.getByTestId('problems-fix-all').textContent).toContain('(2)');
+    fireEvent.click(screen.getByTestId('problems-fix-all'));
+    // Only the two files carrying fixable diagnostics are swept, extension-less.
+    await waitFor(() => expect(fixLintDocCalls).toEqual(['a', 'nested/c']));
+    // The sweep ends in a fresh audit fetch (initial activation + re-audit).
+    await waitFor(() => expect(auditCalls).toBe(2));
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test('project Fix all continues past per-file failures and surfaces one error toast', async () => {
+    const fixableEdit = {
+      range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+      newText: '  ',
+    };
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [
+          { file: 'bad.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+          { file: 'good.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+        ],
+      });
+    fixLintDocImpl = async (docName) =>
+      docName === 'bad' ? { ok: false, errorDetail: 'conflict' } : { ok: true };
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('bad.md')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('problems-fix-all'));
+    // The failed file does not stop the sweep.
+    await waitFor(() => expect(fixLintDocCalls).toEqual(['bad', 'good']));
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+    expect(String(toastError.mock.calls[0]?.[0])).toContain('1 of 2');
+    // The toast names the first casualty and the server's reason.
+    const options = toastError.mock.calls[0]?.[1] as { description?: string } | undefined;
+    expect(options?.description).toBe('bad.md — conflict');
+  });
+
+  test('failure toast omits the dash-suffix when the server gives no error detail', async () => {
+    const fixableEdit = {
+      range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+      newText: '  ',
+    };
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'bad.md', diagnostics: [diag({ fixes: [fixableEdit] })] }] });
+    fixLintDocImpl = async () => ({ ok: false, errorDetail: null });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('bad.md')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('problems-fix-all'));
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+    // Null detail → just the filename, no ` — ` suffix.
+    const options = toastError.mock.calls[0]?.[1] as { description?: string } | undefined;
+    expect(options?.description).toBe('bad.md');
+  });
+
+  test('project Fix all is disabled while loading and when nothing is fixable', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [{ file: 'plain.md', diagnostics: [diag({ code: 'MD025' })] }],
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('plain.md')).toBeTruthy());
+    // Loaded audit with zero fixable files keeps the button disabled.
+    expect((screen.getByTestId('problems-fix-all') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId('problems-fix-all'));
+    expect(fixLintDocCalls).toEqual([]);
   });
 
   test('doc-scope content and count stay doc-scoped while project scope is active', async () => {

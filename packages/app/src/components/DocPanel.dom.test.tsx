@@ -50,14 +50,20 @@ mock.module('@/lib/single-file-mode', () => ({ useSingleFileMode: () => singleFi
 // Lint plumbing — DocPanel computes live diagnostics to drive the Problems
 // badge. Stub the source so the test controls the count without a provider/fetch.
 let diagnosticsValue: Array<{ severity: string }> = [];
+let activeProviderValue: unknown = null;
 mock.module('@/editor/DocumentContext', () => ({
-  useDocumentContext: () => ({ activeProvider: null, activeDocName: 'notes' }),
+  useDocumentContext: () => ({ activeProvider: activeProviderValue, activeDocName: 'notes' }),
 }));
 mock.module('@/editor/lint-config-client', () => ({
   useDocLintConfig: () => ({ data: null }),
 }));
 mock.module('@/editor/useDocDiagnostics', () => ({
   useDocDiagnostics: () => diagnosticsValue,
+}));
+// Terminal availability drives the Ask-AI gate — null mirrors the web host.
+let terminalLaunchValue: unknown = null;
+mock.module('@/components/handoff/TerminalLaunchContext', () => ({
+  useTerminalLaunch: () => terminalLaunchValue,
 }));
 
 // Stub the heavy panel children so the test stays focused on tab visibility.
@@ -70,8 +76,12 @@ mock.module('@/components/LinksPanel', () => ({
 mock.module('@/components/TimelinePanel', () => ({
   TimelineContent: () => <div data-testid="timeline-panel" />,
 }));
+let lastProblemsProps: Record<string, unknown> | null = null;
 mock.module('@/components/ProblemsPanel', () => ({
-  ProblemsPanel: () => <div data-testid="problems-panel" />,
+  ProblemsPanel: (props: Record<string, unknown>) => {
+    lastProblemsProps = props;
+    return <div data-testid="problems-panel" />;
+  },
 }));
 
 const { DocPanel } = await import('./DocPanel');
@@ -96,6 +106,9 @@ afterEach(() => {
   cleanup();
   singleFileValue = false;
   diagnosticsValue = [];
+  activeProviderValue = null;
+  terminalLaunchValue = null;
+  lastProblemsProps = null;
 });
 
 describe('DocPanel — tab gating', () => {
@@ -118,6 +131,36 @@ describe('DocPanel — tab gating', () => {
   test('renders the Problems panel when its tab is active', () => {
     renderPanel('problems');
     expect(screen.getByTestId('problems-panel')).toBeTruthy();
+  });
+});
+
+describe('DocPanel — Problems fix/ask-ai wiring', () => {
+  const fakeProvider = { document: { getText: () => ({ toString: () => '' }) } };
+
+  test('web host (no terminal launch context) withholds onAskAi but keeps the fix handlers', () => {
+    activeProviderValue = fakeProvider;
+    terminalLaunchValue = null;
+    renderPanel('problems');
+    expect(lastProblemsProps?.onAskAi).toBeUndefined();
+    expect(typeof lastProblemsProps?.onFix).toBe('function');
+    expect(typeof lastProblemsProps?.onFixAll).toBe('function');
+  });
+
+  test('desktop host (terminal launch available) passes onAskAi alongside the fix handlers', () => {
+    activeProviderValue = fakeProvider;
+    terminalLaunchValue = { launchInTerminal: () => {}, installedClis: {} };
+    renderPanel('problems');
+    expect(typeof lastProblemsProps?.onAskAi).toBe('function');
+    expect(typeof lastProblemsProps?.onFixAll).toBe('function');
+  });
+
+  test('without a matching provider every fix/ask handler is withheld', () => {
+    activeProviderValue = null;
+    terminalLaunchValue = { launchInTerminal: () => {}, installedClis: {} };
+    renderPanel('problems');
+    expect(lastProblemsProps?.onFix).toBeUndefined();
+    expect(lastProblemsProps?.onFixAll).toBeUndefined();
+    expect(lastProblemsProps?.onAskAi).toBeUndefined();
   });
 });
 

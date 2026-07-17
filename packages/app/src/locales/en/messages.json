@@ -286,6 +286,7 @@
     "5Umg9i": ["Disable external link previews"],
     "5WDhAk": ["Link to a page or external URL."],
     "5ZB7XC": ["File drop zone"],
+    "5_8TCr": ["Fix all (", ["count"], ")"],
     "5_j-DA": ["Kill Terminal"],
     "5e1Dri": ["The menu label agents pick this template by (required)."],
     "5gr_ev": [
@@ -878,6 +879,7 @@
     "It9ARY": ["Toggle the right document panel."],
     "Ix0K8o": ["Hide external URL nodes"],
     "IxyZXD": ["Screenshot"],
+    "Izb10l": ["Fix all ", ["count"], " fixable problems"],
     "J2MgzQ": ["Undo all edits on ", ["docName"]],
     "J2Mv98": ["Name (e.g. ", ["login"], ")"],
     "J2eKUI": ["File"],
@@ -1284,6 +1286,7 @@
     "S34Vju": ["Have something else in mind?"],
     "S6l5dv": ["Could not start creating a new item"],
     "S9Vnum": ["Remove ", ["patternText"]],
+    "S9t1PI": ["Fixing ", ["0"], "/", ["1"]],
     "SCoBBH": ["Tag suggestions"],
     "SCzAbA": [["phase"], " — ", ["pct"], "%"],
     "SEYWYq": ["Undo all edits on this file?"],
@@ -1879,6 +1882,7 @@
     "fnlBN4": ["Auto-approve settings not yet loaded — try again in a moment"],
     "fo0VXg": ["Uninstall"],
     "fqSfXY": ["Replace"],
+    "fru3T7": ["Could not fix ", ["0"], " of ", ["1"], " files."],
     "fuJZKk": ["Search branches"],
     "fwhX-N": ["Indent or outdent source"],
     "fxJk_6": ["<0>Have more to add?</0> Write to <1/> and mention your reference."],
@@ -1909,6 +1913,7 @@
       "Pick a starter pack to scaffold your project with ready-made folders and templates."
     ],
     "gYz2ep": ["Expires in ", ["timeLabel"]],
+    "gZElfU": ["Fixing ", ["0"], " of ", ["1"], " files"],
     "gbHcbI": ["Failed to delete property"],
     "gfdqcY": ["Couldn't apply the change: ", ["0"]],
     "gfohmY": ["Connect tools"],
@@ -1974,6 +1979,7 @@
     "haHgQj": ["Copied relative path"],
     "habOU_": ["Failed to update the auto-approve setting — ", ["detail"]],
     "he3ygx": ["Copy"],
+    "hh4mVC": ["Ask AI to fix ", ["flatId"]],
     "hjO0Mq": ["Add tab"],
     "hmYd9H": [
       "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."

@@ -55,6 +55,12 @@ export function collectFixes(diagnostics: readonly LintDiagnostic[]): LintTextEd
  * Offsets are resolved against the pre-fix source, then applied high→low so an
  * earlier edit never shifts a later one's coordinates (matches how CodeMirror
  * composes a lint fix's change set). Returns false when there is nothing to do.
+ *
+ * Edits from DIFFERENT diagnostics may duplicate or overlap (e.g. a whole-line
+ * delete swallowing another rule's same-line replace). Upstream markdownlint's
+ * `applyFixes` skips such fixes rather than compounding them; mirror that:
+ * exact duplicates apply once, and an edit overlapping an already-applied one
+ * is dropped — it resurfaces as a live diagnostic on the post-fix re-lint.
  */
 export function applyLintFixes(
   provider: SourceWriteProvider,
@@ -69,11 +75,24 @@ export function applyLintFixes(
       to: offsetOf(source, fix.range.end),
       insert: fix.newText,
     }))
-    .sort((a, b) => b.from - a.from);
+    // End-desc so a containing edit (whole-line delete) orders before edits
+    // inside it — the container applies, the swallowed edit skips. For
+    // non-overlapping edits this is the same high→low order as from-desc.
+    .sort((a, b) => b.to - a.to || b.from - a.from || a.insert.localeCompare(b.insert));
   provider.document.transact(() => {
+    let lowestAppliedFrom = Number.POSITIVE_INFINITY;
+    let previous: (typeof edits)[number] | undefined;
     for (const edit of edits) {
+      const isDuplicate =
+        previous !== undefined &&
+        edit.from === previous.from &&
+        edit.to === previous.to &&
+        edit.insert === previous.insert;
+      previous = edit;
+      if (isDuplicate || edit.to > lowestAppliedFrom) continue;
       if (edit.to > edit.from) ytext.delete(edit.from, edit.to - edit.from);
       if (edit.insert.length > 0) ytext.insert(edit.from, edit.insert);
+      lowestAppliedFrom = edit.from;
     }
   }, LINT_FIX_ORIGIN);
   // Nudge any mounted WYSIWYG lint decoration to re-lint — a source-only fix

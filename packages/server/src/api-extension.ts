@@ -17845,6 +17845,20 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'markdownlint-config', method: 'POST' },
   );
 
+  /**
+   * Live CRDT source for a currently-loaded doc, else null. Lint reads must
+   * see the same bytes the editor and `/api/lint/fix` operate on: the disk
+   * file lags the CRDT behind the persistence debounce, and if a flush is
+   * ever lost the two diverge durably — a disk-only audit then reports
+   * problems the live doc no longer has and the Fix all sweep no-ops forever.
+   * Unloaded docs have no live copy; disk is authoritative for them.
+   */
+  const liveLintSourceFor = (docRelPath: string): string | null => {
+    const docName = docRelPath.replace(/\.(md|mdx)$/i, '');
+    const doc = hocuspocus.documents.get(docName);
+    return doc === undefined ? null : doc.getText('source').toString();
+  };
+
   const handleLintDoc = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -17870,6 +17884,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           contentDir,
           baseConfig,
           docRelPath,
+          liveSourceFor: liveLintSourceFor,
         });
         successResponse(res, 200, LintDocResultSchema, result, { handler: 'lint' });
       } catch (e) {
@@ -17910,6 +17925,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           contentDir,
           baseConfig,
           targetPath: target,
+          liveSourceFor: liveLintSourceFor,
         });
         successResponse(res, 200, LintAuditResponseSchema, result, { handler: 'lint-audit' });
       } catch (e) {
@@ -17930,8 +17946,28 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         if (effectiveDocName === null) return;
         const resolvedDocName = resolveAlias(effectiveDocName);
 
-        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
-          extractAgentIdentity(body);
+        // A deterministic auto-fix is attributed to whoever asked for it: an
+        // agent caller (MCP `lint fix:true` always sends agentId) keeps agent
+        // attribution; a bare UI body lands as the principal — the human
+        // clicked the button, no agent was involved. `principal-*` ids are
+        // filtered at the presence-broadcaster boundary, so the structurally
+        // enforced setPresence/touchMode shape below stays valid without
+        // badging the user as their own agent. No principal loaded → neutral
+        // anonymous writer with no contributor record (mirrors rename).
+        const actor = extractActorIdentity(
+          body as unknown as Record<string, unknown>,
+          getPrincipal,
+        );
+        if (actor.kind === 'invalid-summary') {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
+            handler: 'lint-fix',
+          });
+          return;
+        }
+        const agentId = actor.kind === 'anonymous' ? 'principal-anonymous' : actor.writerId;
+        const agentName = actor.kind === 'anonymous' ? 'Anonymous' : actor.displayName;
+        const colorSeed = actor.kind === 'anonymous' ? agentId : actor.colorSeed;
+        const clientName = actor.kind === 'agent' ? actor.clientName : undefined;
 
         if (isSystemDoc(resolvedDocName) || isConfigDoc(resolvedDocName)) {
           errorResponse(
@@ -17959,7 +17995,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         assertNoSymlinkEscape(resolve(contentDir, docRelPath), contentDir);
 
         const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
-        const { stored: storedSummary } = summaryResponseFields(normalizeSummary(body.summary));
+        const { stored: storedSummary } = summaryResponseFields(actor.summary);
         const session = await sessionManager.getSession(resolvedDocName, agentId, {
           displayName: agentName,
           colorSeed,
@@ -18010,15 +18046,23 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               );
             }, session.origin);
 
-            recordContributor(
-              resolvedDocName,
-              agentId,
-              agentName,
-              colorSeed,
-              undefined,
-              buildAgentActor({ clientName, clientVersion, label }),
-              storedSummary,
-            );
+            if (actor.kind !== 'anonymous') {
+              recordContributor(
+                resolvedDocName,
+                agentId,
+                agentName,
+                colorSeed,
+                undefined,
+                actor.kind === 'agent'
+                  ? buildAgentActor({
+                      clientName: actor.clientName,
+                      clientVersion: actor.clientVersion,
+                      label: actor.label,
+                    })
+                  : actor.actor,
+                storedSummary,
+              );
+            }
           } finally {
             agentPresenceBroadcaster?.touchMode(agentId, 'idle');
           }

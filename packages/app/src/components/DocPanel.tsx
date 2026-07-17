@@ -3,6 +3,9 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, Clock, Link2, ListTree, Network } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import type { DiffLayout } from '@/components/DiffView';
+import { composeLintFixTerminalPaste } from '@/components/handoff/compose-lint-fix-prompt';
+import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
+import { requestActiveTerminalInput } from '@/components/handoff/terminal-input-events';
 import { LinksPanel } from '@/components/LinksPanel';
 import { OutlinePanel } from '@/components/OutlinePanel';
 import { ProblemsPanel } from '@/components/ProblemsPanel';
@@ -10,7 +13,7 @@ import { TimelineContent } from '@/components/TimelinePanel';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { applyLintFixes } from '@/editor/apply-lint-fix';
+import { applyLintFixes, collectFixes } from '@/editor/apply-lint-fix';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { useDocLintConfig } from '@/editor/lint-config-client';
 import { useDocDiagnostics } from '@/editor/useDocDiagnostics';
@@ -94,6 +97,22 @@ export function DocPanel({
     if (lintProvider !== null && diagnostic.fixes && diagnostic.fixes.length > 0) {
       applyLintFixes(lintProvider, diagnostic.fixes);
     }
+  };
+  const handleFixAll = () => {
+    if (lintProvider !== null) {
+      applyLintFixes(lintProvider, collectFixes(diagnostics));
+    }
+  };
+  // Hand one diagnostic to the docked terminal's agent as a grounded prompt
+  // (live TUI reuse or a fresh Claude launch — the host decides). Desktop-only:
+  // on web nothing subscribes to the terminal-input event, so the button is
+  // withheld entirely by not passing `onAskAi`.
+  const terminalLaunch = useTerminalLaunch();
+  const handleAskAi = (diagnostic: (typeof diagnostics)[number]) => {
+    if (lintProvider === null) return;
+    const source = lintProvider.document.getText('source').toString();
+    const lineText = source.split('\n')[diagnostic.range.start.line];
+    requestActiveTerminalInput(composeLintFixTerminalPaste(docName, diagnostic, lineText));
   };
   // Single-file `ok <file>` keeps only the Outline + Problems tabs. Links/Graph
   // need a multi-doc knowledge base, and Timeline is git history — all empty or
@@ -198,6 +217,8 @@ export function DocPanel({
               docName={docName}
               diagnostics={diagnostics}
               onFix={lintProvider !== null ? handleFix : undefined}
+              onFixAll={lintProvider !== null ? handleFixAll : undefined}
+              onAskAi={lintProvider !== null && terminalLaunch !== null ? handleAskAi : undefined}
             />
           )}
         </div>

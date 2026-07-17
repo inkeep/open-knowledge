@@ -103,6 +103,11 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
       return;
     }
     for (const entry of entries) {
+      // Hidden segments (.ok/, .git/, .obsidian/, dotfiles) are OK state, not
+      // authored content — same skip the server audit applies. An explicitly
+      // named hidden file (`ok lint .ok/foo.md`) still lints: the file-scope
+      // branch above bypasses the walk, matching linter-CLI convention.
+      if (entry.name.startsWith('.')) continue;
       const full = join(absDir, entry.name);
       const rel = relative(contentDir, full);
       if (entry.isDirectory()) {

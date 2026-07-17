@@ -38,18 +38,34 @@ export interface AuditOptions {
   projectDir: string;
   contentDir: string;
   baseConfig: LinterConfig;
+  /**
+   * Live CRDT source for a currently-loaded doc, else null. When provided,
+   * loaded docs lint against the bytes the editor and the fix endpoint see —
+   * not the disk file, which lags the CRDT behind the persistence debounce
+   * (and lies outright if a flush was lost). Without this overlay a
+   * disk/CRDT divergence wedges the Fix all sweep: the audit keeps reporting
+   * problems the live doc no longer has, and every "fix" is a clean no-op.
+   */
+  liveSourceFor?: (docRelPath: string) => string | null;
 }
 
-/** Lint a single document (read from disk) with its per-doc effective config. */
+/** Lint a single document (live CRDT source when loaded, else disk) with its
+ *  per-doc effective config. */
 export async function lintDoc(
   opts: AuditOptions & { docRelPath: string; onConfigProblem?: (problem: string) => void },
 ): Promise<FileLintResult> {
-  const { contentDir, baseConfig, docRelPath, onConfigProblem } = opts;
-  // Symlinks inside the content dir are supported (realpath-based identity),
-  // but an escape must be refused before the read: lint diagnostics echo
-  // source text, so linting an escaped symlink is an arbitrary-file read.
-  const canonical = resolveCanonicalDocPath(join(contentDir, docRelPath), contentDir);
-  const text = readFileSync(canonical, 'utf-8');
+  const { contentDir, baseConfig, docRelPath, onConfigProblem, liveSourceFor } = opts;
+  const live = liveSourceFor?.(docRelPath) ?? null;
+  let text: string;
+  if (live !== null) {
+    text = live;
+  } else {
+    // Symlinks inside the content dir are supported (realpath-based identity),
+    // but an escape must be refused before the read: lint diagnostics echo
+    // source text, so linting an escaped symlink is an arbitrary-file read.
+    const canonical = resolveCanonicalDocPath(join(contentDir, docRelPath), contentDir);
+    text = readFileSync(canonical, 'utf-8');
+  }
   const cfg = resolveEffectiveLinterConfig(contentDir, baseConfig, {
     docName: docRelPath,
     onProblem: onConfigProblem,
@@ -105,6 +121,13 @@ export async function auditProject(
     warnings.push(`refusing audit scope outside the content directory: ${targetPath ?? ''}`);
     return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings };
   }
+  // Same hidden-segment rule the walk applies per entry: a scope like
+  // `.ok/skills` names docs the write path cannot address, so auditing it
+  // would produce unfixable, unnavigable rows.
+  if (scopeRel.split('/').some((segment) => segment.startsWith('.'))) {
+    warnings.push(`refusing audit scope under a hidden path segment: ${targetPath ?? ''}`);
+    return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings };
+  }
   try {
     if (!isWithinContentDir(realpathSync(scope.path), realpathSync(contentDir))) {
       warnings.push(`symlink-escape: audit scope resolves outside the content directory`);
@@ -128,6 +151,12 @@ export async function auditProject(
       return;
     }
     for (const entry of entries) {
+      // Hidden segments (.ok/, .git/, .obsidian/, dotfiles) are not
+      // addressable as docNames (see `validateDocName`), so a diagnostic here
+      // could be neither navigated to nor auto-fixed — the fix endpoint
+      // rejects the docName outright. Skip them so the audit's scope stays
+      // symmetric with the write path's addressability (precedent #55).
+      if (entry.name.startsWith('.')) continue;
       const full = join(absDir, entry.name);
       const rel = relative(contentDir, full);
       if (entry.isDirectory()) {
@@ -162,6 +191,7 @@ export async function auditProject(
         baseConfig,
         docRelPath: rel,
         onConfigProblem,
+        liveSourceFor: opts.liveSourceFor,
       });
     } catch (e) {
       warnings.push(`could not lint ${rel}: ${errMsg(e)}`);

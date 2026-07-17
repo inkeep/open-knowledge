@@ -89,6 +89,45 @@ describe('applyLintFixes', () => {
     expect(doc.getText('source').toString()).toBe('# Title\n\npara\n\nextra blank\n');
   });
 
+  test('applies an exact duplicate edit only once', () => {
+    // Two diagnostics (e.g. two rules flagging the same run) can carry
+    // byte-identical fixes; compounding them would delete twice.
+    const doc = docWith('a\tb\n');
+    applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, '  '), edit(0, 1, 0, 2, '  ')]);
+    expect(doc.getText('source').toString()).toBe('a  b\n');
+  });
+
+  test('skips an edit swallowed by an already-applied whole-line delete', () => {
+    // A whole-line delete (MD012 shape) containing another diagnostic's
+    // same-line replace: applying both would delete bytes twice. Upstream
+    // applyFixes skips the overlapped fix; the skipped issue re-surfaces on
+    // the post-fix re-lint.
+    const doc = docWith('keep\nx\ty\nkeep\n');
+    applyLintFixes({ document: doc }, [
+      edit(1, 0, 2, 0, ''), // delete line 1 entirely
+      edit(1, 1, 1, 2, '  '), // replace the tab inside line 1
+    ]);
+    expect(doc.getText('source').toString()).toBe('keep\nkeep\n');
+  });
+
+  test('applies touching (end-exclusive adjacent) edits from different diagnostics', () => {
+    // [2,3) and [1,2) touch at offset 2 but do not overlap — both must land.
+    const doc = docWith('a\t\tb\n');
+    applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, ' '), edit(0, 2, 0, 3, ' ')]);
+    expect(doc.getText('source').toString()).toBe('a  b\n');
+  });
+
+  test('multi-diagnostic combination applies all non-conflicting fixes', () => {
+    const doc = docWith('a\tb   \n\n\npara');
+    applyLintFixes({ document: doc }, [
+      edit(0, 1, 0, 2, '  '), // MD010 hard tab
+      edit(0, 3, 0, 6, ''), // MD009 trailing spaces
+      edit(2, 0, 3, 0, ''), // MD012 extra blank line
+      edit(3, 4, 3, 4, '\n'), // MD047 trailing newline
+    ]);
+    expect(doc.getText('source').toString()).toBe('a  b\n\npara\n');
+  });
+
   test('fires LINT_SOURCE_FIXED_EVENT once after a non-empty fix', () => {
     let fired = 0;
     withWindowStub((win) => {

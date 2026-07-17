@@ -1052,6 +1052,7 @@ msgstr "Ask {0} CLI"
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
 #: src/components/OnboardingCard.tsx
+#: src/components/ProblemsPanel.tsx
 #: src/editor/bubble-menu/EditWithAiBubbleButton.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Ask AI"
@@ -1064,6 +1065,10 @@ msgstr "Ask AI (from selection)"
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Ask AI about this code block"
 msgstr "Ask AI about this code block"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Ask AI to fix {flatId}"
+msgstr "Ask AI to fix {flatId}"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -2050,6 +2055,12 @@ msgstr "Could not fetch branch. Check your connection."
 #: src/components/CreateProjectDialog.tsx
 msgid "Could not finalize project setup. Try again."
 msgstr "Could not finalize project setup. Try again."
+
+#. placeholder {0}: failures.length
+#. placeholder {1}: projectFixableFiles.length
+#: src/components/ProblemsPanel.tsx
+msgid "Could not fix {0} of {1} files."
+msgstr "Could not fix {0} of {1} files."
 
 #. placeholder {0}: seed.candidatePath
 #: src/components/ShareReceiveDialog.tsx
@@ -3632,9 +3643,29 @@ msgstr "Fix"
 msgid "Fix {flatId}"
 msgstr "Fix {flatId}"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Fix all ({count})"
+msgstr "Fix all ({count})"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Fix all {count} fixable problems"
+msgstr "Fix all {count} fixable problems"
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Fixed folder in content root"
 msgstr "Fixed folder in content root"
+
+#. placeholder {0}: fixing.done
+#. placeholder {1}: fixing.total
+#: src/components/ProblemsPanel.tsx
+msgid "Fixing {0} of {1} files"
+msgstr "Fixing {0} of {1} files"
+
+#. placeholder {0}: fixing.done
+#. placeholder {1}: fixing.total
+#: src/components/ProblemsPanel.tsx
+msgid "Fixing {0}/{1}"
+msgstr "Fixing {0}/{1}"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Flag common markdown issues in the editor. Powered by <0>markdownlint<1/></0>."

@@ -135,6 +135,56 @@ describe('auditProject', () => {
     ]);
   });
 
+  test('skips hidden path segments — docs there are not addressable to fix or navigate', async () => {
+    // A dirty SKILL.md under .ok/ used to surface in the audit and then fail
+    // the project Fix all sweep: the fix endpoint refuses docNames with
+    // hidden segments (validateDocName), so the audit must not admit them.
+    write('.ok/skills/pack/SKILL.md', DOC_WITH_TAB);
+    write('.hidden-notes.md', DOC_WITH_TAB);
+    write('visible.md', DOC_WITH_TAB);
+    const audit = await auditProject({
+      projectDir: root,
+      contentDir: root,
+      baseConfig: base,
+    });
+    expect(audit.files.map((f) => f.file)).toEqual(['visible.md']);
+  });
+
+  test('refuses a targetPath under a hidden segment', async () => {
+    write('.ok/skills/pack/SKILL.md', DOC_WITH_TAB);
+    const audit = await auditProject({
+      projectDir: root,
+      contentDir: root,
+      baseConfig: base,
+      targetPath: '.ok/skills',
+    });
+    expect(audit.files).toEqual([]);
+    expect(audit.warnings).toEqual([
+      expect.stringContaining('refusing audit scope under a hidden path segment'),
+    ]);
+  });
+
+  test('liveSourceFor overrides disk for loaded docs; null falls back to disk', async () => {
+    // The disk/CRDT divergence wedge: disk still carries the violation while
+    // the live doc is already clean. The audit must lint what the editor and
+    // the fix endpoint see, or a Fix all sweep no-ops forever against
+    // problems only the stale disk copy has.
+    write('loaded-clean.md', DOC_WITH_TAB);
+    write('loaded-dirty.md', CLEAN_DOC);
+    write('unloaded.md', DOC_WITH_TAB);
+    const audit = await auditProject({
+      projectDir: root,
+      contentDir: root,
+      baseConfig: base,
+      liveSourceFor: (rel) => {
+        if (rel === 'loaded-clean.md') return CLEAN_DOC;
+        if (rel === 'loaded-dirty.md') return DOC_WITH_TAB;
+        return null;
+      },
+    });
+    expect(audit.files.map((f) => f.file).sort()).toEqual(['loaded-dirty.md', 'unloaded.md']);
+  });
+
   test('returns nothing when linting is disabled', async () => {
     write('dirty.md', DOC_WITH_TAB);
     const audit = await auditProject({

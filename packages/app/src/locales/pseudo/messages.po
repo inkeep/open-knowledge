@@ -1048,6 +1048,7 @@ msgstr ""
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
 #: src/components/OnboardingCard.tsx
+#: src/components/ProblemsPanel.tsx
 #: src/editor/bubble-menu/EditWithAiBubbleButton.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Ask AI"
@@ -1059,6 +1060,10 @@ msgstr ""
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Ask AI about this code block"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Ask AI to fix {flatId}"
 msgstr ""
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -2045,6 +2050,12 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Could not finalize project setup. Try again."
+msgstr ""
+
+#. placeholder {0}: failures.length
+#. placeholder {1}: projectFixableFiles.length
+#: src/components/ProblemsPanel.tsx
+msgid "Could not fix {0} of {1} files."
 msgstr ""
 
 #. placeholder {0}: seed.candidatePath
@@ -3628,8 +3639,28 @@ msgstr ""
 msgid "Fix {flatId}"
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "Fix all ({count})"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Fix all {count} fixable problems"
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Fixed folder in content root"
+msgstr ""
+
+#. placeholder {0}: fixing.done
+#. placeholder {1}: fixing.total
+#: src/components/ProblemsPanel.tsx
+msgid "Fixing {0} of {1} files"
+msgstr ""
+
+#. placeholder {0}: fixing.done
+#. placeholder {1}: fixing.total
+#: src/components/ProblemsPanel.tsx
+msgid "Fixing {0}/{1}"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx

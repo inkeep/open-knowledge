@@ -161,6 +161,42 @@ describe('POST /api/lint/fix', () => {
     const res = await postFix(`no-such-doc-${crypto.randomUUID().slice(0, 8)}`);
     expect(res.status).toBe(404);
   });
+
+  test('a bare body (no agentId) fixes as the principal and surfaces no agent presence', async () => {
+    const folder = join(server.contentDir, 'lint-fix-principal');
+    mkdirSync(folder, { recursive: true });
+    const file = join(folder, 'tabbed.md');
+    writeFileSync(file, '# Doc\n\n\tindented with a hard tab\n', 'utf-8');
+    try {
+      const res = await fetch(api('/api/lint/fix'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ docName: 'lint-fix-principal/tabbed' }),
+      });
+      expect(res.status).toBe(200);
+      const body = LintFixResultSchema.parse(await res.json());
+      expect(body.fixedCount).toBeGreaterThanOrEqual(1);
+      expect(readFileSync(file, 'utf-8')).not.toContain('\t');
+      // The write is the principal's (or the neutral anonymous writer's) —
+      // either way a `principal-*` id, filtered at the presence-broadcaster
+      // boundary. No phantom agent badge may appear for a UI-initiated fix.
+      const presence = await fetch(api('/api/metrics/agent-presence'));
+      const map = (await presence.json()) as { agents?: Record<string, unknown> };
+      const ids = Object.keys(map.agents ?? map);
+      expect(ids.some((id) => id.startsWith('principal-'))).toBe(false);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  test('a non-string summary is a 400', async () => {
+    const res = await fetch(api('/api/lint/fix'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ docName: 'anything', summary: 123 }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('POST /api/lint/markdownlint-config', () => {
