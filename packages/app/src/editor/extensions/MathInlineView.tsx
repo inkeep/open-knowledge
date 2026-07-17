@@ -36,10 +36,11 @@
 import { incrementJsxRenderFailure } from '@inkeep/open-knowledge-core';
 import { Trans } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
-import { NodeSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { NodeViewWrapper } from '@tiptap/react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
+import { Button } from '../../components/ui/button.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 import { PropPanel } from '../components/PropPanel.tsx';
 import type { JsxComponentDescriptor } from '../registry/types.ts';
@@ -256,7 +257,7 @@ export function MathInlineView({ node, selected, getPos, editor }: NodeViewProps
           </span>
         </PopoverTrigger>
         <PopoverContent
-          className="z-[60] w-72 p-0"
+          className="z-[60] w-72 p-3"
           side="bottom"
           align="start"
           // Keep the content inside the editor's React tree so PM
@@ -274,11 +275,31 @@ export function MathInlineView({ node, selected, getPos, editor }: NodeViewProps
             // target. `e.preventDefault()` blocks Radix's default focus
             // restore (which would target the trigger span and leave PM
             // unfocused on Escape / outside-click).
+            //
+            // Then drop the caret right AFTER the atom so the author can
+            // just keep typing — leaving the NodeSelection intact
+            // would swallow the next keystroke into a select-and-replace
+            // gesture instead. Guard against a shifted position: the atom
+            // may have been deleted or replaced by a remote peer between
+            // popover open and close.
             e.preventDefault();
+            const p = typeof getPos === 'function' ? getPos() : undefined;
+            if (typeof p === 'number') {
+              const state = editor.state;
+              const atomNode = state.doc.nodeAt(p);
+              if (atomNode?.type.name === 'mathInline') {
+                const after = p + atomNode.nodeSize;
+                if (after <= state.doc.content.size) {
+                  editor.view.dispatch(
+                    state.tr.setSelection(TextSelection.create(state.doc, after)),
+                  );
+                }
+              }
+            }
             editor.view.focus();
           }}
         >
-          <div className="text-xs font-medium text-muted-foreground px-3 pt-2">
+          <div className="text-xs font-medium text-muted-foreground mb-2">
             <Trans>Inline Math Properties</Trans>
           </div>
           <PropPanel
@@ -308,7 +329,28 @@ export function MathInlineView({ node, selected, getPos, editor }: NodeViewProps
               tr.setSelection(NodeSelection.create(tr.doc, p));
               editor.view.dispatch(tr);
             }}
+            // Enter in the single-line formula input closes the popover —
+            // PropPanel already auto-saves on every keystroke, so Enter is
+            // pure acknowledgement (same contract as every block-descriptor
+            // PropPanel). Mirrors `JsxComponentView` for pattern parity.
+            onDismiss={() => setPopoverOpen(false)}
           />
+          {/* Explicit confirmation affordance mirroring
+              `JsxComponentView`'s Done button. PropPanel auto-saves on
+              every keystroke; this button is closure UX, not a save gate.
+              Click closes the popover; `onCloseAutoFocus` above hands
+              focus back to the editor view. */}
+          <div className="mt-3 flex justify-end border-t border-border pt-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setPopoverOpen(false)}
+              className="h-7 px-3 text-xs"
+            >
+              <Trans>Done</Trans>
+            </Button>
+          </div>
         </PopoverContent>
       </Popover>
     </NodeViewWrapper>

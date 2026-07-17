@@ -2863,6 +2863,7 @@ msgstr ""
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/editor/extensions/MathInlineView.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Done"
 msgstr ""

@@ -2867,6 +2867,7 @@ msgstr "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code 
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/editor/extensions/MathInlineView.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Done"
 msgstr "Done"

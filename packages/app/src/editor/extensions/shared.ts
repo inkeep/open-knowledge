@@ -11,6 +11,7 @@ import { TiptapFindReplace } from '../find-replace/tiptap-find-replace-extension
 import { GfmAutolink } from '../gfm-autolink-plugin';
 import { uploadAndInsert } from '../image-upload/index.ts';
 import { InlineLinkInputRule } from '../inline-link-input-rule';
+import { MathInputRule } from '../math-input-rule';
 import { getComponentItems, getInlineComponentItems } from '../slash-command/component-items';
 import { getEmbedStarterItems } from '../slash-command/embed-starter-items';
 import { getSlashCommandItems } from '../slash-command/items';
@@ -164,6 +165,10 @@ export const sharedExtensions = [
   // client-side, foreground-only surface as GfmAutolink; keeps its own undo
   // step so one Cmd+Z restores the literal.
   InlineLinkInputRule,
+  // Typed `$$…$$` / `$…$` → mathInline atom on the closing delimiter. Same
+  // client-side, foreground-only, own-undo-step contract as
+  // InlineLinkInputRule; single-dollar rule is currency-safe.
+  MathInputRule,
   KeyboardNav,
   // Selection layer — must come after BridgeIdPlugin so ancestor-chain
   // lookups resolve stable IDs. Order is load-bearing only wrt BridgeId;
