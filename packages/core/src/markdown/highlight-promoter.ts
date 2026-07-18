@@ -41,6 +41,24 @@ function getLastChar(node: PhrasingContent): string | null {
   return null;
 }
 
+interface EntityRefSpan {
+  offset: number;
+  length: number;
+  raw: string;
+}
+
+function sliceTextNode(source: Text, from: number, to: number): Text {
+  const out: Text = { type: 'text', value: source.value.slice(from, to) };
+  const spans = (source.data as { entityRefSpans?: EntityRefSpan[] } | undefined)?.entityRefSpans;
+  if (spans?.length) {
+    const inside = spans
+      .filter((s) => s.offset >= from && s.offset + s.length <= to)
+      .map((s) => ({ ...s, offset: s.offset - from }));
+    if (inside.length > 0) out.data = { entityRefSpans: inside } as Text['data'];
+  }
+  return out;
+}
+
 function promoteCrossChildren(parent: Parent): void {
   const children = parent.children as PhrasingContent[];
   let outerI = 0;
@@ -146,9 +164,11 @@ function promoteCrossChildren(parent: Parent): void {
     const tailValue = closeChild.value.slice(closePos + 2);
 
     const bodyChildren: PhrasingContent[] = [];
-    if (openTrailing.length > 0) bodyChildren.push({ type: 'text', value: openTrailing });
+    if (openTrailing.length > 0) {
+      bodyChildren.push(sliceTextNode(openChild, openPos + 2, openValue.length));
+    }
     for (let k = outerI + 1; k < closeChildIdx; k++) bodyChildren.push(children[k]);
-    if (closeLeading.length > 0) bodyChildren.push({ type: 'text', value: closeLeading });
+    if (closeLeading.length > 0) bodyChildren.push(sliceTextNode(closeChild, 0, closePos));
 
     if (!bodyCrossesInline) {
       outerI++;
@@ -161,9 +181,11 @@ function promoteCrossChildren(parent: Parent): void {
     };
 
     const replacement: PhrasingContent[] = [];
-    if (leadValue.length > 0) replacement.push({ type: 'text', value: leadValue });
+    if (leadValue.length > 0) replacement.push(sliceTextNode(openChild, 0, openPos));
     replacement.push(markNode as unknown as PhrasingContent);
-    if (tailValue.length > 0) replacement.push({ type: 'text', value: tailValue });
+    if (tailValue.length > 0) {
+      replacement.push(sliceTextNode(closeChild, closePos + 2, closeChild.value.length));
+    }
 
     children.splice(outerI, closeChildIdx - outerI + 1, ...replacement);
     outerI += (leadValue.length > 0 ? 1 : 0) + 1;
@@ -203,12 +225,12 @@ export function highlightPromoterPlugin() {
         const start = match.index;
         const end = start + match[0].length;
         if (start > cursor) {
-          const lead: Text = { type: 'text', value: value.slice(cursor, start) };
+          const lead = sliceTextNode(node, cursor, start);
           const pos = deriveFragmentPosition(source, node, cursor, start);
           if (pos) lead.position = pos;
           replacements.push(lead);
         }
-        const innerText: Text = { type: 'text', value: match[1] };
+        const innerText = sliceTextNode(node, start + 2, end - 2);
         const innerPos = deriveFragmentPosition(source, node, start + 2, end - 2);
         if (innerPos) innerText.position = innerPos;
         const markNode: MarkMdast = {
@@ -221,7 +243,7 @@ export function highlightPromoterPlugin() {
         cursor = end;
       }
       if (cursor < value.length) {
-        const tail: Text = { type: 'text', value: value.slice(cursor) };
+        const tail = sliceTextNode(node, cursor, value.length);
         const pos = deriveFragmentPosition(source, node, cursor, value.length);
         if (pos) tail.position = pos;
         replacements.push(tail);

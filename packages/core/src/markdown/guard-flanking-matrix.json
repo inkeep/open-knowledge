@@ -150,7 +150,7 @@
       "delimiter": "==",
       "witness": "==.y.==&#x41;b",
       "side": "after-close",
-      "roundTrip": "==.y.==\\&#x41;b\n"
+      "roundTrip": "==.y.==&#x41;b\n"
     },
     {
       "alphabet": "entity-ref",
@@ -195,7 +195,7 @@
       "delimiter": "==",
       "witness": "a&#x41;==.y.==",
       "side": "before-open",
-      "roundTrip": "a\\&#x41;==.y.==\n"
+      "roundTrip": "a&#x41;==.y.==\n"
     },
     {
       "alphabet": "r23",

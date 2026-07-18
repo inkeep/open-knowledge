@@ -4,6 +4,7 @@ import type { Handle, Info, State } from 'mdast-util-to-markdown';
 import { classifyCharacter } from 'micromark-util-classify-character';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
 import { TO_MARKDOWN_EXT } from './remark-mdx-agnostic.ts';
+import { isInlineWhitespaceNumericCharRef } from './whitespace-char-ref.ts';
 
 declare module 'mdast-util-to-markdown' {
   interface ConstructNameMap {
@@ -826,6 +827,16 @@ function isWhitespaceNumericCharRef(body: string): boolean {
   );
 }
 
+const TYPED_WS_REF_PUA = '';
+
+const NUMERIC_CHAR_REF_TOKEN_RE = /&#(?:x[0-9A-Fa-f]+|X[0-9A-Fa-f]+|[0-9]+);/g;
+
+function markTypedInlineWhitespaceRefs(value: string): string {
+  return value.replace(NUMERIC_CHAR_REF_TOKEN_RE, (ref) =>
+    isInlineWhitespaceNumericCharRef(ref) ? TYPED_WS_REF_PUA + ref.slice(1) : ref,
+  );
+}
+
 function safeText(state: State, value: string, info: Info): string {
   const originalUnsafe = state.unsafe;
   state.unsafe = originalUnsafe.filter((u) => {
@@ -867,10 +878,11 @@ function safeText(state: State, value: string, info: Info): string {
   });
   let result: string;
   try {
-    result = state.safe(value, info);
+    result = state.safe(markTypedInlineWhitespaceRefs(value), info);
   } finally {
     state.unsafe = originalUnsafe;
   }
+  result = result.replaceAll(TYPED_WS_REF_PUA, '\\&');
   return escapeEntityAmpersands(escapeActiveDelimiterRuns(result, info));
 }
 
