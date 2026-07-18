@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import {
   applyPatchWithConflictDetection,
   bridgeCommitSubject,
@@ -365,8 +366,12 @@ describe('createClaGateGh', () => {
 // genuine non-apply stays 'failed' (fail-closed). Exercises the bridge's REAL
 // command, not a mock.
 
+// gitCleanEnv: git hooks export GIT_DIR (absolute in a linked worktree), which
+// overrides `-C` repo discovery — without the scrub, every "temp repo" command
+// below actually targets the HOOK'S repo and corrupts its shared .git/config
+// (core.bare=true + this suite's canary identity).
 const git = (dir, ...args) =>
-  execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+  execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: gitCleanEnv() }).trim();
 
 // Build a real temp git repo: BASE = the comment-stripped public version (so the
 // patch's base blob is reachable for the 3-way), a patch = the contributor's
