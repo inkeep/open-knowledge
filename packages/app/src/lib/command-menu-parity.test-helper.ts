@@ -8,35 +8,17 @@
  * suite red instead of silently satisfying only the id-classification ratchets.
  */
 
-// Ids reachable from Cmd+K after Phase 1 (backfilled or already present).
-// `send-to-ai` is palette-present via the per-target Open-with-AI group.
+import { PALETTE_COMMANDS } from '@/components/command-palette-commands';
+
+// Ids reachable from Cmd+K — derived from the palette's command registry
+// (every descriptor that declares a `menuActionId`), not a parallel
+// hand-maintained list, so a registry row automatically classifies its id.
+// `send-to-ai` is the one addition the registry cannot carry: it is
+// palette-present via the bespoke per-target Open-with-AI group, which is not a
+// fixed command row.
 export const PALETTE_COMMAND_IDS = new Set<string>([
-  'new-doc',
-  'new-folder',
-  'new-project',
-  'new-from-template',
-  'rename',
-  'duplicate',
-  'move-to-trash',
-  'reveal-in-finder',
+  ...PALETTE_COMMANDS.flatMap((cmd) => (cmd.menuActionId ? [cmd.menuActionId] : [])),
   'send-to-ai',
-  'copy-full-path',
-  'copy-relative-path',
-  'toggle-sidebar',
-  'toggle-show-hidden-files',
-  'toggle-show-ok-folders',
-  'toggle-show-only-markdown-files',
-  'toggle-show-skills-section',
-  'expand-all-tree',
-  'collapse-all-tree',
-  'toggle-doc-panel',
-  'toggle-terminal',
-  'new-terminal',
-  'kill-terminal',
-  'new-worktree',
-  'switch-worktree',
-  'close-active-tab-or-window',
-  'report-bug',
 ]);
 
 // Ids deliberately NOT palette rows — each with a stated reason.
@@ -49,15 +31,15 @@ export const APP_RESERVED_IDS = new Map<string, string>([
   ['focus-command-palette', 'focus-routing id; self-referential inside the palette'],
 ]);
 
-// Palette-command ids that reach Cmd+K through a PRE-EXISTING surface rather than
-// a backfilled id-backed row, so they carry no `ID_BACKED` entry in the DOM
-// suite. Each has its own rendered palette row/group (verified below), so Ratchet
-// C treats them as covered:
-//   new-doc     → the pre-existing "New file" row (testid command-palette-new-file)
-//   new-folder  → the pre-existing "New folder" row
-//   new-project → the pre-existing "New project" row
-//   send-to-ai  → the per-target "Open with AI" group
-//   report-bug  → the pre-existing "Report a Bug" row
+// Palette-command ids that reach Cmd+K through a surface other than a
+// bus-dispatched registry row, so they carry no `ID_BACKED` entry in the DOM
+// suite. Each has its own rendered palette row/group (verified there), so
+// Ratchet C treats them as covered:
+//   new-doc     → the registry "New file" row (opens NewItemDialog)
+//   new-folder  → the registry "New folder" row (opens NewItemDialog)
+//   new-project → the registry "New project" row (opens CreateProjectDialog)
+//   send-to-ai  → the bespoke per-target "Open with AI" group
+//   report-bug  → the registry "Report a bug" row (opens ReportBugDialog)
 export const PRE_EXISTING_PALETTE_IDS = new Set<string>([
   'new-doc',
   'new-folder',

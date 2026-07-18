@@ -18,6 +18,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { PALETTE_COMMANDS } from '@/components/command-palette-commands';
 import { APP_RESERVED_IDS, PALETTE_COMMAND_IDS } from '@/lib/command-menu-parity.test-helper';
 import { formatShortcut, type KeyboardShortcutId } from '@/lib/keyboard-shortcuts';
 import { OK_MENU_ACTIONS } from '@/lib/ok-menu-actions';
@@ -237,6 +238,19 @@ describe('command-menu parity ratchet', () => {
     expect(stale).toEqual([]);
   });
 
+  // The classification derives from the registry, so a duplicate row id (two
+  // rows fighting over one testid) or a duplicate menuActionId (two rows
+  // claiming to cover the same menu action) would silently collapse in the
+  // derived Set. Pin uniqueness here instead.
+  test('registry invariants: command ids and menu-action ids are unique', () => {
+    const ids = PALETTE_COMMANDS.map((cmd) => cmd.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const menuActionIds = PALETTE_COMMANDS.flatMap((cmd) =>
+      cmd.menuActionId ? [cmd.menuActionId] : [],
+    );
+    expect(new Set(menuActionIds).size).toBe(menuActionIds.length);
+  });
+
   test('Ratchet B: every actionable menu leaf is classified across both platforms', () => {
     const leaves = [...collectLeavesForPlatform('darwin'), ...collectLeavesForPlatform('win32')];
     const untracked = leaves.filter((leaf) => {
@@ -245,6 +259,29 @@ describe('command-menu parity ratchet', () => {
       return !PALETTE_COMMAND_LABELS.has(label) && !APP_RESERVED_LABELS.has(label);
     });
     expect(untracked.map((l) => l.role ?? normalizeLabel(l.label))).toEqual([]);
+  });
+
+  // A hand-authored menu can place the same command in two sections of the same
+  // platform's menu bar (the macOS App-menu + Help-menu "Check for updates…"
+  // dupe was the live case, fixed via platform-XOR). Fail structurally when a
+  // non-role leaf label appears more than once in one platform's template, so
+  // the class cannot recur. A future deliberate multi-placement earns an entry
+  // in the allowlist below with its reason.
+  const DECLARED_MULTI_PLACEMENT = new Set<string>([]);
+
+  test('Ratchet B: no menu leaf label appears twice in the same platform menu', () => {
+    for (const platform of ['darwin', 'win32'] as const) {
+      const counts = new Map<string, number>();
+      for (const leaf of collectLeavesForPlatform(platform)) {
+        if (leaf.role) continue;
+        const label = normalizeLabel(leaf.label);
+        counts.set(label, (counts.get(label) ?? 0) + 1);
+      }
+      const dupes = [...counts]
+        .filter(([label, count]) => count > 1 && !DECLARED_MULTI_PLACEMENT.has(label))
+        .map(([label]) => label);
+      expect({ platform, dupes }).toEqual({ platform, dupes: [] });
+    }
   });
 
   test('Ratchet B sanity: the sweep actually found the backfilled leaves', () => {

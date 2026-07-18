@@ -8,48 +8,12 @@
  * bridge is available.
  */
 
-import {
-  OPEN_KNOWLEDGE_GITHUB_URL,
-  SHOW_INSTALL_SKILL,
-  type WorktreeSelectorEntry,
-} from '@inkeep/open-knowledge-core';
+import type { WorktreeSelectorEntry } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import {
-  Blocks,
-  Bug,
-  Check,
-  Copy,
-  Download,
-  Eye,
-  FilePlus2,
-  FileText,
-  Folder,
-  FolderOpen,
-  FolderPlus,
-  FoldVertical,
-  GitBranch,
-  Hash,
-  LayoutGrid,
-  Loader2,
-  Network,
-  Package,
-  PanelLeft,
-  PanelRight,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Settings,
-  Sparkles,
-  SpellCheck,
-  SquareTerminal,
-  Trash2,
-  UnfoldVertical,
-  X,
-} from 'lucide-react';
+import { Check, FileText, Folder, GitBranch, Hash, Loader2, Sparkles } from 'lucide-react';
 import {
   type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
   type SetStateAction,
   useDeferredValue,
   useEffect,
@@ -57,6 +21,12 @@ import {
   useState,
 } from 'react';
 import { CreateProjectDialog } from '@/components/CreateProjectDialog';
+import {
+  PALETTE_COMMANDS,
+  type PaletteCommandContext,
+  type PaletteCommandGroup,
+  projectContextualTargetKind,
+} from '@/components/command-palette-commands';
 import {
   filterOmnibarRecents,
   loadOmnibarRecents,
@@ -85,12 +55,9 @@ import {
   TAG_QUERY_PREFIX,
   type TagDocEntry,
 } from '@/components/command-palette-tag-search';
-import { requestDocPanelTab } from '@/components/doc-panel-events';
 import { FileEntryIcon } from '@/components/file-entry-icon';
 import { defaultInitialDir } from '@/components/file-tree-utils';
-import { GithubIcon } from '@/components/icons/github';
 import { NewItemDialog } from '@/components/NewItemDialog';
-import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import { usePageList } from '@/components/PageListContext';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { SeedDialog } from '@/components/SeedDialog';
@@ -111,11 +78,11 @@ import { useWorktrees } from '@/hooks/use-worktrees';
 import type { OkDesktopBridge, OkMenuAction, RecentProjectEntry } from '@/lib/desktop-bridge-types';
 import { hashFromDocName } from '@/lib/doc-hash';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
+import { openExternalUrl as openExternalUrlViaHost } from '@/lib/external-link';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { formatShortcut, matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { useSingleFileMode } from '@/lib/single-file-mode';
-import { SETTINGS_OPEN_HASH } from '@/lib/use-settings-route';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils.ts';
 import { useViewMenuState } from '@/lib/view-menu-state-store';
@@ -150,53 +117,6 @@ interface CommandPaletteProps {
   bridge?: OkDesktopBridge | null;
   open: boolean;
   onOpenChange: Dispatch<SetStateAction<boolean>>;
-}
-
-/**
- * A backfilled Cmd+K command. Rendered search-only so the empty-
- * open state is unchanged. `run` dispatches through the smallest existing seam —
- * the local menu-action bus (id-backed), a bridge invoke (main-side), or a
- * direct renderer call — so no handler is re-implemented here.
- */
-interface BackfillCommandRow {
-  testid: string;
-  label: string;
-  keywords: string[];
-  icon: ReactNode;
-  group: 'file' | 'view' | 'terminal' | 'app';
-  available: boolean;
-  /** Trailing check indicator for checkbox-style View toggles (state reflection). */
-  checked?: boolean;
-  /** Accelerator glyphs for commands whose native menu item carries one. */
-  shortcut?: string;
-  run: () => void;
-}
-
-/**
- * Project the palette's 7-kind {@link ResolvedNavigationTarget} onto the 4-kind
- * gating the native File menu uses for contextual commands: doc-like and folder
- * allow every contextual command (folder still allows Duplicate); asset-like
- * (asset / skill-file / large-file) disables Duplicate; a missing / absent
- * target hides them all.
- */
-type ContextualTargetKind = 'doc' | 'folder' | 'asset' | 'none';
-function projectContextualTargetKind(
-  target: ResolvedNavigationTarget | null,
-): ContextualTargetKind {
-  if (target === null) return 'none';
-  switch (target.kind) {
-    case 'doc':
-    case 'folder-index':
-      return 'doc';
-    case 'folder':
-      return 'folder';
-    case 'asset':
-    case 'skill-file':
-    case 'large-file':
-      return 'asset';
-    case 'missing':
-      return 'none';
-  }
 }
 
 function navigateToDocHash(docName: string): void {
@@ -881,55 +801,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     searchStatus === 'loading' &&
     !showNavigation &&
     !showSearchPreparing;
-  const showCreateFile =
-    !inExclusiveMode && matchesCommandQuery(t`New file`, deferredQuery, ['create file']);
-  const showCreateFolder =
-    !inExclusiveMode && matchesCommandQuery(t`New folder`, deferredQuery, ['create folder']);
-  const showGraphCommand =
-    !inExclusiveMode &&
-    activeDocName !== null &&
-    matchesCommandQuery(t`Open graph`, deferredQuery, ['graph panel network']);
-  const showInitializeStarterPack =
-    !inExclusiveMode &&
-    matchesCommandQuery(t`Initialize starter pack`, deferredQuery, [
-      'scaffold',
-      'seed',
-      'pack',
-      'starter',
-    ]);
-  // Desktop-only — opens the same CreateProjectDialog the File → Create New
-  // Project… menu action and the ProjectSwitcher dropdown reach. Gated on
-  // `bridge !== null` so the web host never surfaces it.
-  const showCreateProject =
-    !inExclusiveMode &&
-    bridge !== null &&
-    matchesCommandQuery(t`New project`, deferredQuery, ['create new project scaffold']);
-  const showProjectOpenFolder =
-    !inExclusiveMode &&
-    bridge !== null &&
-    matchesCommandQuery(t`Open folder on disk`, deferredQuery, ['project']);
-  const showProjectSwitch =
-    !inExclusiveMode &&
-    !singleFile &&
-    bridge !== null &&
-    matchesCommandQuery(t`Switch project`, deferredQuery, ['switch project navigator projects']);
-  const showSettings =
-    !inExclusiveMode &&
-    !singleFile &&
-    matchesCommandQuery(t`Settings`, deferredQuery, ['preferences config']);
-  const showInstallClaudeDesktop =
-    SHOW_INSTALL_SKILL &&
-    !inExclusiveMode &&
-    matchesCommandQuery(t`Install for Claude Chat & Cowork (Desktop App)`, deferredQuery, [
-      'claude desktop install cowork',
-    ]);
-  // Desktop-only (bundle creation runs over the Electron bridge). Not gated
-  // on `singleFile`: with no project open the report degrades to the
-  // system-wide bundle, so the command stays available.
-  const showReportBug =
-    !inExclusiveMode &&
-    bridge !== null &&
-    matchesCommandQuery(t`Report a bug`, deferredQuery, ['bug report issue feedback problem']);
   const showProjectRecents =
     !inExclusiveMode &&
     bridge !== null &&
@@ -965,285 +836,102 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const showTagDocsEmpty =
     paletteMode.kind === 'tag-docs' && tagDocsStatus === 'success' && tagDocs.length === 0;
 
-  // Backfilled Cmd+K commands. Rendered search-only (each row
-  // appears only under a matching query) so the empty-open state is unchanged.
-  // Dispatch via the smallest existing seam — the local menu-action bus
-  // (id-backed), a bridge invoke (main-side), or a direct renderer call — so no
-  // handler is re-implemented here. Host-agnostic rows (view/tree toggles,
-  // new-from-template, GitHub) stay available on the web host; desktop-only rows
-  // gate on `bridge !== null`.
+  // The palette's fixed command rows render from the PALETTE_COMMANDS registry;
+  // this context carries the availability inputs plus the dispatch seams
+  // (menu-action bus, toast-wrapped bridge calls, dialog launchers) each
+  // descriptor needs. Populations that are query/state-driven (search, tags,
+  // semantic, recents, worktrees, the Open-with-AI group) stay bespoke below.
   const viewMenuState = useViewMenuState();
-  const contextualTargetKind = projectContextualTargetKind(activeTarget);
-  const contextualAvailable = bridge !== null && contextualTargetKind !== 'none';
   const runMenuAction = (action: OkMenuAction) => {
     onOpenChange(false);
     emitLocalMenuAction(action);
   };
+  // Route through the shared opener (scheme gate + caught bridge rejection)
+  // rather than an inline bridge/window.open fork. Always pass the `okDesktop`
+  // key (the prop bridge, or an explicit `undefined`) so the open path is a pure
+  // function of the prop: a null bridge takes the web `window.open` fallback and
+  // never reaches through to the ambient `window.okDesktop` global.
   const openExternalUrl = (url: string) => {
     onOpenChange(false);
-    if (bridge) {
-      void bridge.shell.openExternal(url);
-    } else {
-      window.open(url, '_blank', 'noopener,noreferrer');
+    openExternalUrlViaHost(
+      url,
+      bridge ? { okDesktop: { shell: bridge.shell } } : { okDesktop: undefined },
+    );
+  };
+  const paletteCtx: PaletteCommandContext = {
+    bridge,
+    singleFile,
+    activeDocName,
+    contextualTargetKind: projectContextualTargetKind(activeTarget),
+    viewMenuState,
+    emitMenuAction: runMenuAction,
+    runAction,
+    openExternalUrl,
+    closePalette: () => onOpenChange(false),
+    openNewItemDialog: (kind) => setCreateDialogKind(kind),
+    openSeedDialog: () => setSeedDialogOpen(true),
+    openCreateProjectDialog: () => setCreateProjectOpen(true),
+    openReportBugDialog: () => setReportBugOpen(true),
+  };
+  const visibleFixedCommands = inExclusiveMode
+    ? []
+    : PALETTE_COMMANDS.flatMap((cmd) => {
+        if (!cmd.available(paletteCtx)) return [];
+        // The search-only tier keeps the empty-open state lean; `always` rows
+        // are still query-filtered once the user types.
+        if (cmd.visibility === 'search-only' && trimmedDeferredQuery === '') return [];
+        const label = cmd.label(paletteCtx);
+        return matchesCommandQuery(label, deferredQuery, cmd.keywords) ? [{ cmd, label }] : [];
+      });
+  const hasVisibleFixedCommand = visibleFixedCommands.length > 0;
+  // A function (not an eagerly-built record) so a heading's i18n lookup only
+  // runs for groups that actually render — matching the pre-registry inline
+  // `heading={t`…`}` evaluation.
+  const commandGroupHeading = (group: PaletteCommandGroup): string => {
+    switch (group) {
+      case 'commands':
+        return t`Commands`;
+      case 'project':
+        return t`Project`;
+      case 'file':
+        return t`File`;
+      case 'view':
+        return t`View`;
+      case 'terminal':
+        return t`Terminal`;
+      case 'app':
+        return t`Application`;
     }
   };
-  const backfillCommands: BackfillCommandRow[] = [
-    {
-      testid: 'command-palette-new-from-template',
-      label: t`New from template`,
-      keywords: ['template', 'create', 'new'],
-      icon: <FilePlus2 />,
-      group: 'file',
-      available: !singleFile,
-      run: () => runMenuAction('new-from-template'),
-    },
-    {
-      testid: 'command-palette-rename',
-      label: t`Rename`,
-      keywords: ['rename', 'file', 'folder'],
-      icon: <Pencil />,
-      group: 'file',
-      available: contextualAvailable,
-      run: () => runMenuAction('rename'),
-    },
-    {
-      testid: 'command-palette-duplicate',
-      label: t`Duplicate`,
-      keywords: ['duplicate', 'copy', 'file', 'folder'],
-      icon: <Copy />,
-      group: 'file',
-      available:
-        bridge !== null && (contextualTargetKind === 'doc' || contextualTargetKind === 'folder'),
-      shortcut: formatShortcut('file-tree-duplicate'),
-      run: () => runMenuAction('duplicate'),
-    },
-    {
-      testid: 'command-palette-move-to-trash',
-      label: t`Move to Trash`,
-      keywords: ['delete', 'trash', 'remove'],
-      icon: <Trash2 />,
-      group: 'file',
-      available: contextualAvailable,
-      shortcut: formatShortcut('file-tree-delete'),
-      run: () => runMenuAction('move-to-trash'),
-    },
-    {
-      testid: 'command-palette-reveal-in-finder',
-      label: t`Reveal in Finder`,
-      keywords: ['finder', 'reveal', 'show', 'file'],
-      icon: <FolderOpen />,
-      group: 'file',
-      available: contextualAvailable,
-      run: () => runMenuAction('reveal-in-finder'),
-    },
-    {
-      testid: 'command-palette-copy-full-path',
-      label: t`Copy full path`,
-      keywords: ['copy', 'path', 'absolute', 'full'],
-      icon: <Copy />,
-      group: 'file',
-      available: contextualAvailable,
-      run: () => runMenuAction('copy-full-path'),
-    },
-    {
-      testid: 'command-palette-copy-relative-path',
-      label: t`Copy relative path`,
-      keywords: ['copy', 'path', 'relative'],
-      icon: <Copy />,
-      group: 'file',
-      available: contextualAvailable,
-      run: () => runMenuAction('copy-relative-path'),
-    },
-    {
-      testid: 'command-palette-close-tab',
-      label: t`Close tab`,
-      keywords: ['close', 'tab', 'window'],
-      icon: <X />,
-      group: 'file',
-      available: bridge !== null,
-      run: () => runMenuAction('close-active-tab-or-window'),
-    },
-    {
-      testid: 'command-palette-new-worktree',
-      label: t`New worktree`,
-      keywords: ['worktree', 'branch', 'new'],
-      icon: <GitBranch />,
-      group: 'file',
-      available: bridge !== null,
-      run: () => runMenuAction('new-worktree'),
-    },
-    {
-      testid: 'command-palette-switch-worktree',
-      label: t`Switch worktree`,
-      keywords: ['worktree', 'switch', 'branch'],
-      icon: <GitBranch />,
-      group: 'file',
-      available: bridge !== null,
-      run: () => runMenuAction('switch-worktree'),
-    },
-    {
-      testid: 'command-palette-toggle-sidebar',
-      label: viewMenuState.sidebarVisible ? t`Hide sidebar` : t`Show sidebar`,
-      keywords: ['sidebar', 'files', 'panel', 'toggle'],
-      icon: <PanelLeft />,
-      group: 'view',
-      available: true,
-      shortcut: formatShortcut('toggle-files-sidebar'),
-      run: () => runMenuAction('toggle-sidebar'),
-    },
-    {
-      testid: 'command-palette-toggle-doc-panel',
-      label: viewMenuState.docPanelVisible ? t`Hide document panel` : t`Show document panel`,
-      keywords: ['document', 'panel', 'info', 'toggle'],
-      icon: <PanelRight />,
-      group: 'view',
-      available: true,
-      shortcut: formatShortcut('toggle-document-panel'),
-      run: () => runMenuAction('toggle-doc-panel'),
-    },
-    {
-      testid: 'command-palette-toggle-terminal',
-      label: viewMenuState.terminalVisible ? t`Hide Terminal` : t`Show Terminal`,
-      keywords: ['terminal', 'shell', 'console', 'toggle'],
-      icon: <SquareTerminal />,
-      group: 'view',
-      available: bridge !== null,
-      shortcut: formatShortcut('toggle-terminal-panel'),
-      run: () => runMenuAction('toggle-terminal'),
-    },
-    {
-      testid: 'command-palette-toggle-show-hidden-files',
-      label: t`Show hidden files`,
-      keywords: ['hidden', 'dotfiles', 'files', 'show'],
-      icon: <Eye />,
-      group: 'view',
-      available: true,
-      checked: viewMenuState.showHiddenFiles === true,
-      run: () => runMenuAction('toggle-show-hidden-files'),
-    },
-    {
-      testid: 'command-palette-toggle-show-ok-folders',
-      label: t`Show .ok folders`,
-      keywords: ['ok', 'folders', 'hidden', 'show'],
-      icon: <Folder />,
-      group: 'view',
-      available: true,
-      checked: viewMenuState.showOkFolders === true,
-      run: () => runMenuAction('toggle-show-ok-folders'),
-    },
-    {
-      testid: 'command-palette-toggle-show-only-markdown-files',
-      label: t`Show only markdown files`,
-      keywords: ['markdown', 'filter', 'files', 'only'],
-      icon: <FileText />,
-      group: 'view',
-      available: true,
-      checked: viewMenuState.showOnlyMarkdownFiles === true,
-      run: () => runMenuAction('toggle-show-only-markdown-files'),
-    },
-    {
-      testid: 'command-palette-toggle-show-skills-section',
-      label: t`Show skills section`,
-      keywords: ['skills', 'section', 'sidebar', 'show'],
-      icon: <Sparkles />,
-      group: 'view',
-      available: true,
-      checked: viewMenuState.showSkillsSection === true,
-      run: () => runMenuAction('toggle-show-skills-section'),
-    },
-    {
-      testid: 'command-palette-expand-all-tree',
-      label: t`Expand all`,
-      keywords: ['expand', 'tree', 'folders', 'all'],
-      icon: <UnfoldVertical />,
-      group: 'view',
-      // Mirror the native menu's smart-hide (visible: canExpandAll ?? true):
-      // suppress the row when the tree is already fully expanded, so searching
-      // "expand" doesn't surface a pure no-op. Unknown (web/pre-push) stays available.
-      available: viewMenuState.canExpandAll !== false,
-      run: () => runMenuAction('expand-all-tree'),
-    },
-    {
-      testid: 'command-palette-collapse-all-tree',
-      label: t`Collapse all`,
-      keywords: ['collapse', 'tree', 'folders', 'all'],
-      icon: <FoldVertical />,
-      group: 'view',
-      // Mirror the native menu's smart-hide (visible: canCollapseAll ?? true).
-      available: viewMenuState.canCollapseAll !== false,
-      run: () => runMenuAction('collapse-all-tree'),
-    },
-    {
-      testid: 'command-palette-new-terminal',
-      label: t`New Terminal`,
-      keywords: ['terminal', 'shell', 'new', 'tab'],
-      icon: <SquareTerminal />,
-      group: 'terminal',
-      available: bridge !== null,
-      run: () => runMenuAction('new-terminal'),
-    },
-    {
-      testid: 'command-palette-kill-terminal',
-      label: t`Kill Terminal`,
-      keywords: ['terminal', 'kill', 'close', 'session'],
-      icon: <SquareTerminal />,
-      group: 'terminal',
-      available: bridge !== null && viewMenuState.terminalLive === true,
-      run: () => runMenuAction('kill-terminal'),
-    },
-    {
-      testid: 'command-palette-check-for-updates',
-      label: t`Check for updates`,
-      keywords: ['update', 'upgrade', 'version', 'check'],
-      icon: <RefreshCw />,
-      group: 'app',
-      available: bridge !== null,
-      run: () =>
-        runAction(async () => {
-          await bridge?.update.checkNow();
-        }),
-    },
-    {
-      testid: 'command-palette-set-up-integrations',
-      label: t`Set up OpenKnowledge integrations`,
-      keywords: ['integrations', 'mcp', 'setup', 'claude', 'configure'],
-      icon: <Blocks />,
-      group: 'app',
-      available: bridge !== null,
-      run: () =>
-        runAction(async () => {
-          await bridge?.mcpWiring.reconfigure();
-        }),
-    },
-    {
-      testid: 'command-palette-toggle-spell-check',
-      label: t`Check spelling while typing`,
-      keywords: ['spell', 'spelling', 'check', 'typing'],
-      icon: <SpellCheck />,
-      group: 'app',
-      available: bridge !== null,
-      run: () =>
-        runAction(async () => {
-          await bridge?.spellcheck.toggle();
-        }),
-    },
-    {
-      testid: 'command-palette-open-github',
-      label: t`OpenKnowledge on GitHub`,
-      keywords: ['github', 'source', 'repository', 'code'],
-      icon: <GithubIcon />,
-      group: 'app',
-      available: true,
-      run: () => openExternalUrl(OPEN_KNOWLEDGE_GITHUB_URL),
-    },
-  ];
-  const visibleBackfillCommands = backfillCommands.filter(
-    (cmd) =>
-      cmd.available &&
-      trimmedDeferredQuery !== '' &&
-      matchesCommandQuery(cmd.label, deferredQuery, cmd.keywords),
-  );
-  const hasBackfillCommand = visibleBackfillCommands.length > 0;
+  const renderCommandGroup = (group: PaletteCommandGroup) => {
+    const rows = visibleFixedCommands.filter((row) => row.cmd.group === group);
+    if (rows.length === 0) return null;
+    return (
+      <CommandGroup key={group} heading={commandGroupHeading(group)}>
+        {rows.map(({ cmd, label }) => {
+          const shortcut =
+            cmd.shortcutId !== undefined && (cmd.shortcutDesktopOnly !== true || bridge !== null)
+              ? formatShortcut(cmd.shortcutId)
+              : null;
+          return (
+            <CommandItem
+              key={cmd.id}
+              value={`${label} ${cmd.keywords.join(' ')}`}
+              onSelect={() => cmd.dispatch(paletteCtx)}
+              data-testid={`command-palette-${cmd.id}`}
+            >
+              <cmd.icon />
+              <span>{label}</span>
+              {cmd.checked?.(paletteCtx) ? (
+                <Check className="ml-auto text-muted-foreground" aria-hidden="true" />
+              ) : null}
+              {shortcut ? <CommandShortcut>{shortcut}</CommandShortcut> : null}
+            </CommandItem>
+          );
+        })}
+      </CommandGroup>
+    );
+  };
 
   const hasAnyResults =
     inExclusiveMode ||
@@ -1251,19 +939,9 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     showNavigation ||
     showSearchLoading ||
     showSearchPreparing ||
-    showCreateFile ||
-    showCreateFolder ||
-    showGraphCommand ||
-    showInitializeStarterPack ||
-    showCreateProject ||
-    showProjectOpenFolder ||
-    showProjectSwitch ||
-    showSettings ||
-    showInstallClaudeDesktop ||
-    showReportBug ||
     showProjectRecents ||
     showAgentGroup ||
-    hasBackfillCommand;
+    hasVisibleFixedCommand;
 
   function navigateToTagDocs(tagName: string) {
     setQuery(`${TAG_QUERY_PREFIX}${tagName}`);
@@ -1696,75 +1374,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             </CommandGroup>
           ) : null}
 
-          {showCreateFile || showCreateFolder || showGraphCommand || showInitializeStarterPack ? (
-            <CommandGroup heading={t`Commands`}>
-              {showCreateFile ? (
-                <CommandItem
-                  value="new file create file"
-                  onSelect={() => {
-                    onOpenChange(false);
-                    setCreateDialogKind('file');
-                  }}
-                  data-testid="command-palette-new-file"
-                >
-                  <FilePlus2 />
-                  <span>
-                    <Trans>New file</Trans>
-                  </span>
-                  <CommandShortcut>{formatShortcut('new-item')}</CommandShortcut>
-                </CommandItem>
-              ) : null}
-              {showCreateFolder ? (
-                <CommandItem
-                  value="new folder create folder"
-                  onSelect={() => {
-                    onOpenChange(false);
-                    setCreateDialogKind('folder');
-                  }}
-                  data-testid="command-palette-new-folder"
-                >
-                  <FolderPlus />
-                  <span>
-                    <Trans>New folder</Trans>
-                  </span>
-                  {bridge ? (
-                    <CommandShortcut>{formatShortcut('new-folder')}</CommandShortcut>
-                  ) : null}
-                </CommandItem>
-              ) : null}
-              {showGraphCommand ? (
-                <CommandItem
-                  value="open graph graph panel network"
-                  onSelect={() => {
-                    if (!activeDocName) return;
-                    onOpenChange(false);
-                    requestDocPanelTab('graph');
-                  }}
-                  data-testid="command-palette-open-graph"
-                >
-                  <Network />
-                  <span>
-                    <Trans>Open graph</Trans>
-                  </span>
-                </CommandItem>
-              ) : null}
-              {showInitializeStarterPack ? (
-                <CommandItem
-                  value="initialize starter pack scaffold seed"
-                  onSelect={() => {
-                    onOpenChange(false);
-                    setSeedDialogOpen(true);
-                  }}
-                  data-testid="command-palette-initialize-starter-pack"
-                >
-                  <Package />
-                  <span>
-                    <Trans>Initialize starter pack</Trans>
-                  </span>
-                </CommandItem>
-              ) : null}
-            </CommandGroup>
-          ) : null}
+          {renderCommandGroup('commands')}
 
           {showAgentGroup ? (
             <CommandGroup heading={t`Open with AI`}>
@@ -1831,116 +1441,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             </CommandGroup>
           ) : null}
 
-          {showCreateProject ||
-          showProjectOpenFolder ||
-          showProjectSwitch ||
-          showSettings ||
-          showInstallClaudeDesktop ||
-          showReportBug ? (
-            <CommandGroup heading={t`Project`}>
-              {showCreateProject && bridge ? (
-                <CommandItem
-                  value="new project create scaffold"
-                  onSelect={() => {
-                    onOpenChange(false);
-                    setCreateProjectOpen(true);
-                  }}
-                  data-testid="command-palette-new-project"
-                >
-                  <Plus />
-                  <span>
-                    <Trans>New project</Trans>
-                  </span>
-                </CommandItem>
-              ) : null}
-              {showProjectOpenFolder && bridge ? (
-                <CommandItem
-                  value="open folder on disk project"
-                  onSelect={() =>
-                    runAction(async () => {
-                      const path = await bridge.dialog.openFolder();
-                      if (!path) return;
-                      await bridge.project.open({
-                        path,
-                        target: 'new-window',
-                        entryPoint: 'pick-existing',
-                      });
-                    })
-                  }
-                  data-testid="command-palette-open-folder"
-                >
-                  <FolderOpen />
-                  <span>
-                    <Trans>Open folder on disk</Trans>
-                  </span>
-                  <CommandShortcut>{formatShortcut('open-folder')}</CommandShortcut>
-                </CommandItem>
-              ) : null}
-              {showProjectSwitch && bridge ? (
-                <CommandItem
-                  value="switch-project navigator projects"
-                  onSelect={() =>
-                    runAction(() => bridge.navigator.open(), t`Failed to open Project Navigator.`)
-                  }
-                  data-testid="command-palette-switch-project"
-                >
-                  <LayoutGrid />
-                  <span>
-                    <Trans>Switch project</Trans>
-                  </span>
-                  <CommandShortcut>{formatShortcut('switch-project')}</CommandShortcut>
-                </CommandItem>
-              ) : null}
-              {showSettings ? (
-                <CommandItem
-                  value="settings preferences config"
-                  onSelect={() => {
-                    onOpenChange(false);
-                    if (window.location.hash !== SETTINGS_OPEN_HASH) {
-                      window.location.hash = SETTINGS_OPEN_HASH;
-                    }
-                  }}
-                  data-testid="command-palette-settings"
-                >
-                  <Settings />
-                  <span>
-                    <Trans>Settings</Trans>
-                  </span>
-                  <CommandShortcut>{formatShortcut('settings')}</CommandShortcut>
-                </CommandItem>
-              ) : null}
-              {showInstallClaudeDesktop ? (
-                <CommandItem
-                  value="install claude desktop cowork app"
-                  onSelect={() => {
-                    onOpenChange(false);
-                    window.location.hash = '#install-claude-desktop';
-                  }}
-                  data-testid="command-palette-install-claude-desktop"
-                >
-                  <Download />
-                  <span>
-                    <Trans>Install for Claude Chat & Cowork (Desktop App)</Trans>
-                  </span>
-                </CommandItem>
-              ) : null}
-              {showReportBug ? (
-                <CommandItem
-                  value="report a bug issue feedback"
-                  onSelect={() => {
-                    onOpenChange(false);
-                    setReportBugOpen(true);
-                  }}
-                  data-testid="command-palette-report-bug"
-                >
-                  <Bug />
-                  <span>
-                    <Trans>Report a bug</Trans>
-                  </span>
-                </CommandItem>
-              ) : null}
-            </CommandGroup>
-          ) : null}
+          {renderCommandGroup('project')}
 
           {showProjectRecents && bridge ? (
             <CommandGroup heading={t`Open recent project`}>
@@ -2025,37 +1526,9 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             </CommandGroup>
           ) : null}
 
-          {(['file', 'view', 'terminal', 'app'] as const).map((groupKey) => {
-            const rows = visibleBackfillCommands.filter((cmd) => cmd.group === groupKey);
-            if (rows.length === 0) return null;
-            const heading =
-              groupKey === 'file'
-                ? t`File`
-                : groupKey === 'view'
-                  ? t`View`
-                  : groupKey === 'terminal'
-                    ? t`Terminal`
-                    : t`Application`;
-            return (
-              <CommandGroup key={groupKey} heading={heading}>
-                {rows.map((cmd) => (
-                  <CommandItem
-                    key={cmd.testid}
-                    value={`${cmd.label} ${cmd.keywords.join(' ')}`}
-                    onSelect={cmd.run}
-                    data-testid={cmd.testid}
-                  >
-                    {cmd.icon}
-                    <span>{cmd.label}</span>
-                    {cmd.checked ? (
-                      <Check className="ml-auto text-muted-foreground" aria-hidden="true" />
-                    ) : null}
-                    {cmd.shortcut ? <CommandShortcut>{cmd.shortcut}</CommandShortcut> : null}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            );
-          })}
+          {(['file', 'view', 'terminal', 'app'] as const).map((groupKey) =>
+            renderCommandGroup(groupKey),
+          )}
 
           {showNavigation ? (
             <CommandGroup heading={t`Search`}>
@@ -2103,8 +1576,8 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         initialDir={initialCreateDir}
       />
       <SeedDialog open={seedDialogOpen} onOpenChange={setSeedDialogOpen} />
-      {/* Desktop-only — `showCreateProject` gates the launching command on
-          `bridge !== null`, so the dialog only mounts when the bridge exists. */}
+      {/* Desktop-only — the registry gates the launching "New project" command
+          on `bridge !== null`, so the dialog only mounts when the bridge exists. */}
       {bridge ? (
         <CreateProjectDialog
           open={createProjectOpen}
@@ -2112,8 +1585,8 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           bridge={bridge}
         />
       ) : null}
-      {/* Desktop-only — `showReportBug` gates the launching command on
-          `bridge !== null`, so the dialog only mounts when the bridge exists. */}
+      {/* Desktop-only — the registry gates the launching "Report a bug" command
+          on `bridge !== null`, so the dialog only mounts when the bridge exists. */}
       {bridge ? <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} /> : null}
     </>
   );

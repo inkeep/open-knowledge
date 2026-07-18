@@ -11,6 +11,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
+import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import {
   AUDIT_FILE_CAP,
   AUDIT_FILE_DIAGNOSTIC_CAP,
@@ -75,7 +76,7 @@ function makeDeps(serverUrl: string | undefined, cwdDir: string): LintDeps {
   return { serverUrl, config: BASE_CONFIG, resolveCwd: async () => cwdDir };
 }
 
-let testServer: ReturnType<typeof Bun.serve>;
+let testServer: FetchTestServer;
 let baseUrl: string;
 let tmpDir: string;
 const seenRequests: string[] = [];
@@ -105,8 +106,8 @@ function auditPayloadOf(fileCount: number, diagnosticsPerFile: number) {
   };
 }
 
-beforeAll(() => {
-  testServer = Bun.serve({
+beforeAll(async () => {
+  testServer = await startFetchTestServer({
     port: 0,
     hostname: '127.0.0.1',
     fetch(req) {

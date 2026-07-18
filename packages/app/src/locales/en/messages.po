@@ -1396,7 +1396,7 @@ msgstr "Cancelled"
 msgid "Cannot upload: no document is open"
 msgstr "Cannot upload: no document is open"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "Check for updates"
 
@@ -1408,7 +1408,7 @@ msgstr "Check out remote branch"
 msgid "Check out worktree"
 msgstr "Check out worktree"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Check spelling while typing"
 msgstr "Check spelling while typing"
 
@@ -1610,7 +1610,7 @@ msgstr "Close new tab"
 msgid "Close others"
 msgstr "Close others"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Close tab"
 msgstr "Close tab"
 
@@ -1671,7 +1671,7 @@ msgstr "Collapse {docName}"
 msgid "Collapse {keyName}"
 msgstr "Collapse {keyName}"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Collapse all"
@@ -1967,7 +1967,7 @@ msgstr "Copy code {userCode}"
 msgid "Copy command"
 msgstr "Copy command"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
 msgstr "Copy full path"
@@ -1984,7 +1984,7 @@ msgstr "Copy path"
 msgid "Copy Path"
 msgstr "Copy Path"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Copy relative path"
 msgstr "Copy relative path"
 
@@ -2910,7 +2910,7 @@ msgstr "Drag {patternText} to reorder"
 msgid "Drag item {0} to reorder"
 msgstr "Drag item {0} to reorder"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileTree.tsx
 #: src/components/skill-actions.tsx
 msgid "Duplicate"
@@ -3211,7 +3211,7 @@ msgstr "Expand {docName}"
 msgid "Expand {keyName}"
 msgstr "Expand {keyName}"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Expand all"
@@ -3423,7 +3423,7 @@ msgstr "Failed to open cloned project."
 msgid "Failed to open folder."
 msgstr "Failed to open folder."
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/ProjectSwitcher.tsx
 msgid "Failed to open Project Navigator."
 msgstr "Failed to open Project Navigator."
@@ -3959,7 +3959,7 @@ msgstr "Hide"
 msgid "Hide advanced"
 msgstr "Hide advanced"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Hide document panel"
 msgstr "Hide document panel"
 
@@ -4007,11 +4007,11 @@ msgstr "Hide replace"
 msgid "Hide selection preview"
 msgstr "Hide selection preview"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
 msgstr "Hide sidebar"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Hide Terminal"
 
@@ -4187,7 +4187,7 @@ msgstr "Initialize and open"
 msgid "Initialize failed: {errorDetail}"
 msgstr "Initialize failed: {errorDetail}"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Initialize starter pack"
 msgstr "Initialize starter pack"
 
@@ -4256,7 +4256,7 @@ msgstr "Install an AI agent to create with AI"
 msgid "Install for Claude Chat & Cowork"
 msgstr "Install for Claude Chat & Cowork"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Install for Claude Chat & Cowork (Desktop App)"
 msgstr "Install for Claude Chat & Cowork (Desktop App)"
 
@@ -4385,7 +4385,7 @@ msgstr "Key ending in {keyHint}"
 msgid "Keyboard shortcuts available in the editor and workspace."
 msgstr "Keyboard shortcuts available in the editor and workspace."
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Kill Terminal"
 msgstr "Kill Terminal"
 
@@ -4818,7 +4818,7 @@ msgstr "Move to the next visual-editor find result."
 msgid "Move to the previous visual-editor find result."
 msgstr "Move to the previous visual-editor find result."
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Move to Trash"
 msgstr "Move to Trash"
 
@@ -4954,7 +4954,7 @@ msgstr "New branch <0>{trimmed}</0> will be created from the current commit, in 
 msgid "New chat"
 msgstr "New chat"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 #: src/components/NewItemDialog.tsx
@@ -4970,7 +4970,7 @@ msgstr "New file from template \"{displayTitle}\" ({fileName}) in {targetLabel}"
 msgid "New file from template \"{displayTitle}\" ({fileName}) in the project root"
 msgstr "New file from template \"{displayTitle}\" ({fileName}) in the project root"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 #: src/components/NewItemDialog.tsx
@@ -4978,7 +4978,7 @@ msgstr "New file from template \"{displayTitle}\" ({fileName}) in the project ro
 msgid "New folder"
 msgstr "New folder"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "New from template"
@@ -4988,7 +4988,7 @@ msgstr "New from template"
 msgid "New ignore pattern"
 msgstr "New ignore pattern"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/ProjectSwitcher.tsx
 msgid "New project"
 msgstr "New project"
@@ -5018,7 +5018,7 @@ msgstr "New template"
 msgid "New terminal"
 msgstr "New terminal"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "New Terminal"
 msgstr "New Terminal"
 
@@ -5026,7 +5026,7 @@ msgstr "New Terminal"
 msgid "New terminal tab"
 msgstr "New terminal tab"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ProjectSwitcher.tsx
 msgid "New worktree"
@@ -5560,12 +5560,12 @@ msgstr "Open file"
 msgid "Open folder"
 msgstr "Open folder"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/NavigatorApp.tsx
 msgid "Open folder on disk"
 msgstr "Open folder on disk"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Open graph"
 msgstr "Open graph"
 
@@ -5720,7 +5720,7 @@ msgstr "OpenKnowledge is using a GitHub account provided by the gh CLI. There's 
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge is using this GitHub account."
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr "OpenKnowledge on GitHub"
 
@@ -6388,7 +6388,7 @@ msgstr "Removes this skill from your editors."
 msgid "Removing"
 msgstr "Removing"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileTree.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillRenameDialog.tsx
@@ -6477,7 +6477,7 @@ msgstr "Replace key"
 msgid "Replace the active match from the replace field."
 msgstr "Replace the active match from the replace field."
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
 msgid "Report a bug"
@@ -6654,7 +6654,7 @@ msgstr "Reveal in File Explorer"
 msgid "Reveal in File Explorer, {hint}"
 msgstr "Reveal in File Explorer, {hint}"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 #: src/components/ReportBugDialogBody.tsx
@@ -7014,7 +7014,7 @@ msgstr "Set identity"
 msgid "Set the auto-sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr "Set the auto-sync default for users opening this project for the first time. This setting is committed to your repository."
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "Set up OpenKnowledge integrations"
 
@@ -7030,7 +7030,7 @@ msgstr "Set where pasted and dropped files are stored for this project."
 msgid "Setting up"
 msgstr "Setting up"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SettingsButton.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -7118,7 +7118,7 @@ msgstr "Sharing a doc needs a GitHub repository. Create one for this project."
 msgid "Show"
 msgstr "Show"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Show .ok folders"
 msgstr "Show .ok folders"
@@ -7145,7 +7145,7 @@ msgstr "Show advanced"
 msgid "Show diagram"
 msgstr "Show diagram"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Show document panel"
 msgstr "Show document panel"
 
@@ -7169,7 +7169,7 @@ msgstr "Show Files ({sidebarShortcut})"
 msgid "Show Files ({sidebarShortcutLabel})"
 msgstr "Show Files ({sidebarShortcutLabel})"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Show hidden files"
@@ -7183,7 +7183,7 @@ msgstr "Show HTML preview"
 msgid "Show less"
 msgstr "Show less"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Show only markdown files"
 msgstr "Show only markdown files"
@@ -7216,11 +7216,11 @@ msgstr "Show replace"
 msgid "Show selection preview"
 msgstr "Show selection preview"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr "Show sidebar"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Show skills section"
 msgstr "Show skills section"
@@ -7233,7 +7233,7 @@ msgstr "Show source"
 msgid "Show terminal"
 msgstr "Show terminal"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr "Show Terminal"
 
@@ -7530,7 +7530,7 @@ msgstr "Switch and update branch"
 msgid "Switch branch"
 msgstr "Switch branch"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/ProjectSwitcher.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Switch project"
@@ -7540,7 +7540,7 @@ msgstr "Switch project"
 msgid "Switch to local-only refused"
 msgstr "Switch to local-only refused"
 
-#: src/components/CommandPalette.tsx
+#: src/components/command-palette-commands.ts
 msgid "Switch worktree"
 msgstr "Switch worktree"
 

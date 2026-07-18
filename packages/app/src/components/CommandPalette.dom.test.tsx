@@ -2,10 +2,6 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import {
-  PALETTE_COMMAND_IDS,
-  PRE_EXISTING_PALETTE_IDS,
-} from '@/lib/command-menu-parity.test-helper';
-import {
   __resetLocalMenuActionBusForTests,
   subscribeLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
@@ -384,6 +380,30 @@ describe('CommandPalette DOM behavior', () => {
     expect(screen.getByTestId('command-palette-new-folder').textContent).not.toMatch(
       /⇧⌘ N|Ctrl Shift N/,
     );
+  });
+
+  test('new-file command closes the palette and opens the New Item dialog with kind file', async () => {
+    const { onOpenChange } = await renderPalette({ bridge: null });
+
+    fireEvent.click(screen.getByTestId('command-palette-new-file'));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    const dialogKind = (kind: 'file' | 'folder') =>
+      screen.getAllByTestId('new-item-dialog').find((el) => el.getAttribute('data-kind') === kind);
+    await waitFor(() => expect(dialogKind('file')?.getAttribute('data-open')).toBe('true'));
+    expect(dialogKind('folder')?.getAttribute('data-open')).toBe('false');
+  });
+
+  test('new-folder command closes the palette and opens the New Item dialog with kind folder', async () => {
+    const { onOpenChange } = await renderPalette({ bridge: null });
+
+    fireEvent.click(screen.getByTestId('command-palette-new-folder'));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    const dialogKind = (kind: 'file' | 'folder') =>
+      screen.getAllByTestId('new-item-dialog').find((el) => el.getAttribute('data-kind') === kind);
+    await waitFor(() => expect(dialogKind('folder')?.getAttribute('data-open')).toBe('true'));
+    expect(dialogKind('file')?.getAttribute('data-open')).toBe('false');
   });
 
   test('settings command is searchable by preferences/config, closes the palette, and routes through the canonical hash', async () => {
@@ -955,7 +975,14 @@ describe('Cmd+K menu-parity backfill', () => {
   // A future id classified into PALETTE_COMMAND_IDS with no rendered row — which
   // satisfies only Ratchets A/B — turns this red, closing the "classified but
   // unreachable" gap that the id ratchets alone cannot see.
-  test('Ratchet C: every classified palette-command id renders a row or is a pre-existing surface', () => {
+  test('Ratchet C: every classified palette-command id renders a row or is a pre-existing surface', async () => {
+    // Imported dynamically: the helper pulls in the command registry, and a
+    // static import would evaluate the registry before the `mock.module`
+    // calls above register — freezing real module bindings (e.g.
+    // doc-panel-events) into it for every test in this file.
+    const { PALETTE_COMMAND_IDS, PRE_EXISTING_PALETTE_IDS } = await import(
+      '@/lib/command-menu-parity.test-helper'
+    );
     const rendered = new Set(ID_BACKED.map((row) => row.id));
     const covered = new Set([...rendered, ...PRE_EXISTING_PALETTE_IDS]);
     const missing = [...PALETTE_COMMAND_IDS].filter((id) => !covered.has(id));
@@ -1008,6 +1035,34 @@ describe('Cmd+K menu-parity backfill', () => {
       );
     } finally {
       window.open = originalOpen;
+    }
+  });
+
+  test('AC1: with no prop bridge, GitHub takes the web fallback and never the ambient window.okDesktop', async () => {
+    // The palette's external-URL open is a pure function of the `bridge` prop:
+    // a null prop bridge must take the web `window.open` path and must not
+    // reach through to an ambient `window.okDesktop` global. Guards the
+    // injected-bridge seam the shared opener relies on.
+    const openSpy = mock(() => null);
+    const ambientOpenExternal = mock(() => Promise.resolve());
+    const originalOpen = window.open;
+    window.open = openSpy as unknown as typeof window.open;
+    (window as { okDesktop?: unknown }).okDesktop = {
+      shell: { openExternal: ambientOpenExternal },
+    };
+    try {
+      await renderPalette({ bridge: null });
+      await setQuery('github');
+      fireEvent.click(screen.getByTestId('command-palette-open-github'));
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://github.com/inkeep/open-knowledge',
+        '_blank',
+        'noopener,noreferrer',
+      );
+      expect(ambientOpenExternal).not.toHaveBeenCalled();
+    } finally {
+      window.open = originalOpen;
+      delete (window as { okDesktop?: unknown }).okDesktop;
     }
   });
 
