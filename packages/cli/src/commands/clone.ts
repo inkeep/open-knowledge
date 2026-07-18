@@ -15,7 +15,7 @@ import {
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import simpleGit, { type SimpleGitOptions } from 'simple-git';
-import { resolveAuth } from '../auth/resolve-auth.ts';
+import { type ResolvedAuth, resolveAuth } from '../auth/resolve-auth.ts';
 import { makeLazyTokenStore, type TokenStore } from '../auth/token-store.ts';
 import { OK_DIR } from '../constants.ts';
 import { parseGitUrl } from '../github/url.ts';
@@ -56,13 +56,14 @@ function emit(json: boolean, obj: Record<string, unknown>): void {
  * Build the environment for the spawned clone git process.
  *
  * Inherits the caller's full environment: clone is a foreground command in the
- * user's own shell context, so the Tier-A `gh` credential helper needs the real
- * PATH (to find `gh`, often Homebrew-only at /opt/homebrew/bin) and HOME (so
- * `gh` and git locate their config). simple-git's `.env()` REPLACES the child
- * env, so we must spread the source env rather than pass a bare object — the
- * earlier `{ GIT_TERMINAL_PROMPT: '0' }`-only form silently stripped both,
- * masking Tier A on stock installs (it only appeared to work where a leftover
- * osxkeychain credential answered first).
+ * user's own shell context, so git needs the real PATH (to resolve its transport
+ * subprocesses and, for an SSH remote, `ssh`) and HOME (so git and SSH locate
+ * `~/.gitconfig` / `~/.ssh`, and so the self-referential credential helper —
+ * re-invoked as `[execPath, cliEntry]`, with `ELECTRON_RUN_AS_NODE` carried
+ * through this spread — reaches its HOME-based token store). simple-git's
+ * `.env()` REPLACES the child env, so we must spread the source env rather than
+ * pass a bare object — the earlier `{ GIT_TERMINAL_PROMPT: '0' }`-only form
+ * silently stripped both, breaking auth on stock installs.
  *
  * Overrides applied after the spread: `GIT_TERMINAL_PROMPT=0` so a credential
  * miss fails fast instead of hanging on a TTY-less prompt, and `LANG`/`LC_ALL=C`
@@ -80,6 +81,48 @@ export function buildCloneEnv(sourceEnv: NodeJS.ProcessEnv = process.env): Recor
   env.LANG = 'C';
   env.LC_ALL = 'C';
   return env;
+}
+
+/**
+ * Compose the full clone git env: `buildCloneEnv` plus the gh-token relay for
+ * Tier A. When a gh token was resolved, relay it to the self-referential
+ * credential helper via env (the helper reads OK_GH_TOKEN first) rather than
+ * making git shell out to `gh`, which may not be on the git subprocess PATH.
+ * Without a relay token, any OK_GH_TOKEN inherited from the parent env is
+ * STRIPPED — a stale exported token would otherwise shadow the token store
+ * inside the helper, and only this process's own resolution may speak for
+ * which credential the clone uses.
+ */
+export function buildCloneAuthEnv(
+  resolved: Pick<ResolvedAuth, 'relayToken'>,
+  sourceEnv: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const env = buildCloneEnv(sourceEnv);
+  if (resolved.relayToken) {
+    env.OK_GH_TOKEN = resolved.relayToken.token;
+    env.OK_GH_TOKEN_HOST = resolved.relayToken.host;
+  } else {
+    delete env.OK_GH_TOKEN;
+    delete env.OK_GH_TOKEN_HOST;
+  }
+  return env;
+}
+
+/**
+ * The argv that re-execs THIS CLI, used to build the self-referential git
+ * credential helper (`!<argv> auth git-credential`). `[execPath, cliEntry]`:
+ * under the packaged `ok.sh` wrapper this resolves to `[<Electron>, <cli.mjs>]`
+ * with `ELECTRON_RUN_AS_NODE=1` inherited via `buildCloneEnv` — the same
+ * Electron-as-Node re-invocation the sync path uses — so git can actually run
+ * the helper, unlike a bare `open-knowledge` that isn't on its subprocess PATH.
+ * `argv` / `execPath` are injectable for tests.
+ */
+export function resolveSelfCliArgs(
+  argv: readonly string[] = process.argv,
+  execPath: string = process.execPath,
+): string[] {
+  const entry = argv[1];
+  return entry ? [execPath, entry] : [execPath];
 }
 
 /**
@@ -292,18 +335,17 @@ export async function runClone(
   // there's no point paying the up-to-5s network round-trip just to discard the result.
   const shouldProbe = parsed.protocol === 'https' && parsed.hostname === 'github.com';
   const isPublic = shouldProbe ? await isGitHubRepoPublic(parsed.owner, parsed.name) : false;
-  const resolved = shouldSkipAuthForPublicRepo(parsed.protocol, parsed.hostname, isPublic)
-    ? { tier: 'none' as const, credentialArgs: [] as string[] }
-    : await resolveAuth(parsed.hostname, tokenStore, {});
+  const resolved: ResolvedAuth = shouldSkipAuthForPublicRepo(
+    parsed.protocol,
+    parsed.hostname,
+    isPublic,
+  )
+    ? { tier: 'none', gitConfig: [] }
+    : await resolveAuth(parsed.hostname, tokenStore, { selfCliArgs: resolveSelfCliArgs() });
 
-  // Inherit the user's env (PATH/HOME for the gh helper) with our fixed
-  // overrides — see buildCloneEnv for the env-replacement rationale.
-  const env = buildCloneEnv();
+  const env = buildCloneAuthEnv(resolved);
 
-  // Build -c credential.helper config if needed
-  const gitConfig = resolved.credentialArgs.length >= 2 ? [resolved.credentialArgs[1]] : [];
-
-  const gitOptions = buildCloneGitOptions(cwd, gitConfig);
+  const gitOptions = buildCloneGitOptions(cwd, resolved.gitConfig);
   const git = simpleGit(gitOptions as Partial<SimpleGitOptions>).env(env);
 
   let lastPct = -1;

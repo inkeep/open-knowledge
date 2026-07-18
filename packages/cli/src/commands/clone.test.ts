@@ -9,6 +9,7 @@ import type { TokenStore } from '../auth/token-store.ts';
 import { OK_DIR } from '../constants.ts';
 import {
   buildCloneArgs,
+  buildCloneAuthEnv,
   buildCloneEnv,
   buildCloneGitOptions,
   cloneWithBranchFallback,
@@ -19,9 +20,29 @@ import {
   isBranchNotFoundError,
   resolveClonePrincipal,
   resolveCloneUrl,
+  resolveSelfCliArgs,
   runClone,
   shouldSkipAuthForPublicRepo,
 } from './clone.ts';
+
+describe('resolveSelfCliArgs', () => {
+  it('returns [execPath, cliEntry] from argv', () => {
+    expect(resolveSelfCliArgs(['/usr/bin/node', '/app/cli.mjs', 'clone'], '/usr/bin/node')).toEqual(
+      ['/usr/bin/node', '/app/cli.mjs'],
+    );
+  });
+
+  it('falls back to [execPath] when argv has no entry script', () => {
+    expect(resolveSelfCliArgs(['/usr/bin/node'], '/usr/bin/node')).toEqual(['/usr/bin/node']);
+  });
+
+  // A truthiness check (not `!== undefined`) is load-bearing: an empty-string
+  // argv[1] would otherwise quote into `!'/usr/bin/node' '' auth …` — a broken
+  // shell invocation. Electron startup shapes can produce odd argv.
+  it('treats an empty-string argv[1] as absent and falls back to [execPath]', () => {
+    expect(resolveSelfCliArgs(['/usr/bin/node', ''], '/usr/bin/node')).toEqual(['/usr/bin/node']);
+  });
+});
 
 describe('resolveClonePrincipal', () => {
   const storeReturning = (entry: { login: string; token: string } | null): TokenStore =>
@@ -150,10 +171,10 @@ describe('handleCloneFailure', () => {
 });
 
 describe('buildCloneEnv', () => {
-  // Regression guard: clone must INHERIT the caller's env (so the Tier-A `gh`
-  // credential helper can find `gh` on PATH + its config via HOME), not replace
-  // it — simple-git's `.env()` replaces wholesale. A revert to a bare object
-  // would silently re-break Tier A on stock (e.g. Homebrew) installs.
+  // Regression guard: clone must INHERIT the caller's env (git's transport
+  // subprocesses + SSH need PATH; the re-invoked credential helper + SSH keys
+  // reach their stores via HOME), not replace it — simple-git's `.env()`
+  // replaces wholesale. A revert to a bare object silently re-breaks auth.
   test('inherits PATH and HOME from the source env', () => {
     const env = buildCloneEnv({ PATH: '/opt/homebrew/bin:/usr/bin', HOME: '/Users/me' });
     expect(env.PATH).toBe('/opt/homebrew/bin:/usr/bin');
@@ -170,6 +191,57 @@ describe('buildCloneEnv', () => {
   test('drops undefined entries (no `undefined` strings reach the child env)', () => {
     const env = buildCloneEnv({ PATH: '/usr/bin', SOME_UNSET: undefined });
     expect('SOME_UNSET' in env).toBe(false);
+  });
+
+  // In the packaged desktop app the credential helper re-execs the Electron
+  // binary; without ELECTRON_RUN_AS_NODE=1 that exec boots the GUI app instead
+  // of running the CLI script, so this var surviving the spread is what keeps
+  // the helper a helper. A switch to a curated env allowlist (as the sync
+  // path uses) must carry it explicitly.
+  test('inherits ELECTRON_RUN_AS_NODE so the packaged helper re-execs as Node', () => {
+    const env = buildCloneEnv({ PATH: '/usr/bin', ELECTRON_RUN_AS_NODE: '1' });
+    expect(env.ELECTRON_RUN_AS_NODE).toBe('1');
+  });
+});
+
+describe('buildCloneAuthEnv', () => {
+  // The relay is the Tier-A mechanism: the token resolved in-process must reach
+  // the spawned credential helper via git's env under exactly these keys
+  // (handleCredentialGet reads OK_GH_TOKEN / OK_GH_TOKEN_HOST first).
+  test('sets OK_GH_TOKEN and OK_GH_TOKEN_HOST when a relay token is present', () => {
+    const env = buildCloneAuthEnv(
+      { relayToken: { token: 'ghs_relay', host: 'github.com' } },
+      { PATH: '/usr/bin' },
+    );
+    expect(env.OK_GH_TOKEN).toBe('ghs_relay');
+    expect(env.OK_GH_TOKEN_HOST).toBe('github.com');
+  });
+
+  test('sets no relay vars when relayToken is absent (Tier B/C/none)', () => {
+    const env = buildCloneAuthEnv({}, { PATH: '/usr/bin' });
+    expect('OK_GH_TOKEN' in env).toBe(false);
+    expect('OK_GH_TOKEN_HOST' in env).toBe(false);
+  });
+
+  // A stale token exported in the parent shell must not shadow the token
+  // store inside the helper: without a relay decision from THIS resolution,
+  // inherited relay vars are stripped, not passed through.
+  test('strips an inherited OK_GH_TOKEN when no relay token was resolved', () => {
+    const env = buildCloneAuthEnv(
+      {},
+      { PATH: '/usr/bin', OK_GH_TOKEN: 'ghs_stale', OK_GH_TOKEN_HOST: 'github.com' },
+    );
+    expect('OK_GH_TOKEN' in env).toBe(false);
+    expect('OK_GH_TOKEN_HOST' in env).toBe(false);
+  });
+
+  test('a resolved relay token overrides an inherited stale one', () => {
+    const env = buildCloneAuthEnv(
+      { relayToken: { token: 'ghs_fresh', host: 'ghes.acme.test' } },
+      { PATH: '/usr/bin', OK_GH_TOKEN: 'ghs_stale', OK_GH_TOKEN_HOST: 'github.com' },
+    );
+    expect(env.OK_GH_TOKEN).toBe('ghs_fresh');
+    expect(env.OK_GH_TOKEN_HOST).toBe('ghes.acme.test');
   });
 });
 

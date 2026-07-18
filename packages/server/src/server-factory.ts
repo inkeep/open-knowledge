@@ -396,6 +396,16 @@ const PARK_SNAPSHOT_ORIGIN = (() => {
  * fails to exec, the helper returns no credentials, and git falls back to an
  * interactive username prompt with no TTY ("could not read Username … Device
  * not configured"). `shellEscape` per argv element is the fix.
+ *
+ * Deliberately NO empty `credential.helper=` reset here, unlike the clone
+ * path's `resolveAuth` (cli/src/auth/resolve-auth.ts), which prepends one to
+ * neutralize stale ambient helpers. Sync's helper is append-only: ambient
+ * helpers (a broken `!gh` from a past `gh auth setup-git`, osxkeychain) run
+ * first and can add stderr noise or answer with a stale credential before
+ * ours does — long-standing behavior that background sync's retry/degrade
+ * handling already absorbs. Clone is a one-shot user-facing action with no
+ * retry, so it needs the determinism; adding the reset HERE changes every
+ * user's sync credential order and needs its own change with its own soak.
  */
 export function buildSyncCredentialArgs(localOpCliArgs?: string[]): string[] {
   const argv = localOpCliArgs && localOpCliArgs.length > 0 ? localOpCliArgs : ['open-knowledge'];
