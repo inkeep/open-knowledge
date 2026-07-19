@@ -111,20 +111,45 @@ describe('CC1 broadcast — L1 integration', () => {
     const { provider, signals, destroy } = connectSystemDoc(server.port);
     try {
       await waitForSync(provider);
-      await wait(100);
+      // Settle before baselining: the server fires a deliberate all-channel
+      // defense-in-depth nudge at the end of initAsync (debounced 100 ms), and
+      // a client that connects inside that window — exactly what happens when
+      // this test runs in isolation right after boot — receives a ch:files
+      // signal caused by no test write. 300 ms (3x the CC1 debounce) absorbs
+      // it into the baseline; all count assertions below are deltas.
+      await wait(300);
+      const baseline = signals.length;
 
       for (let i = 0; i < 10; i++) {
         const fileName = `cc1-mono-${i}-${crypto.randomUUID()}.md`;
         writeFileSync(join(server.contentDir, fileName), `# file ${i}\n`, 'utf-8');
-        await wait(200);
+        // Await THIS create's debounced broadcast before the next write.
+        // Event-driven pacing keeps the creates "spaced" by construction: the
+        // next watcher event can never land inside the previous create's
+        // 100 ms trailing-debounce window, so signals cannot coalesce no
+        // matter how much delivery jitter the platform watcher introduces.
+        const expected = baseline + i + 1;
+        try {
+          await pollUntil(() => signals.length >= expected, 5000, 20);
+        } catch {
+          throw new Error(
+            `create ${i}: ch:files signal ${expected - baseline} never arrived ` +
+              `(have ${signals.length - baseline} test signals) — watcher event lost?`,
+          );
+        }
+        // Equality (not >=) pins "exactly one ch:files signal per create".
+        expect(signals.length).toBe(expected);
       }
 
-      // Wait for final debounce
+      // Trailing settle (3x debounce): a duplicate or straggler broadcast
+      // after the final create must fail the equality below, matching the
+      // over-emission coverage the pre-rewrite fixed-wait version had.
       await wait(300);
+      expect(signals.length).toBe(baseline + 10);
 
-      expect(signals.length).toBe(10);
-      for (let i = 1; i < signals.length; i++) {
-        expect(signals[i].seq).toBeGreaterThan(signals[i - 1].seq);
+      const testSignals = signals.slice(baseline);
+      for (let i = 1; i < testSignals.length; i++) {
+        expect(testSignals[i].seq).toBeGreaterThan(testSignals[i - 1].seq);
       }
     } finally {
       destroy();
@@ -135,7 +160,11 @@ describe('CC1 broadcast — L1 integration', () => {
     const { provider, signals, destroy } = connectSystemDoc(server.port);
     try {
       await waitForSync(provider);
-      await wait(100);
+      // Same baseline-delta discipline as the spaced-creates test above: in
+      // isolated execution the boot nudge's ch:files signal would otherwise
+      // count against the <=5 band.
+      await wait(300);
+      const baseline = signals.length;
 
       for (let i = 0; i < 50; i++) {
         const fileName = `cc1-burst-${i}-${crypto.randomUUID()}.md`;
@@ -147,8 +176,9 @@ describe('CC1 broadcast — L1 integration', () => {
 
       // Expect a small number of signals (debounce collapses the burst)
       // The exact number depends on watcher batching, but should be much less than 50
-      expect(signals.length).toBeLessThanOrEqual(5);
-      expect(signals.length).toBeGreaterThanOrEqual(1);
+      const burstSignals = signals.length - baseline;
+      expect(burstSignals).toBeLessThanOrEqual(5);
+      expect(burstSignals).toBeGreaterThanOrEqual(1);
     } finally {
       destroy();
     }
@@ -416,29 +446,32 @@ describe('CC1 broadcast — L1 integration', () => {
     });
     try {
       await waitForSync(provider);
-      await wait(100);
+      // Boot-nudge settle + baseline snapshot: pair only signals caused by
+      // THIS test's writes, or the all-channel init nudge displaces the
+      // arrival indices (same failure class as the spaced-creates fix above).
+      await wait(300);
+      const arrivalBaseline = arrivals.length;
 
       const sendTimes: number[] = [];
 
-      // 20 spaced writes at 200ms intervals (outside 100ms debounce window)
+      // 20 spaced writes, event-driven pacing: wait for each write's signal
+      // to arrive before the next write, so watcher jitter cannot compress
+      // gaps into the debounce window and mispair arrivals to sendTimes.
       const N = 20;
       for (let i = 0; i < N; i++) {
         const fileName = `cc1-latency-${i}-${crypto.randomUUID()}.md`;
         const sendAt = performance.now();
         writeFileSync(join(server.contentDir, fileName), `# ${i}\n`, 'utf-8');
         sendTimes.push(sendAt);
-        await wait(200);
+        await pollUntil(() => arrivals.length >= arrivalBaseline + i + 1, 5000, 20);
       }
 
-      // Wait for final debounce
-      await wait(500);
-
-      // Pair writes to arrivals in order — if fewer arrivals than writes (OS coalesced),
-      // pair only what we have.
-      const paired = Math.min(sendTimes.length, arrivals.length);
+      // Pair each write to its own arrival (post-baseline slice).
+      const testArrivals = arrivals.slice(arrivalBaseline);
+      const paired = Math.min(sendTimes.length, testArrivals.length);
       const latencies: number[] = [];
       for (let i = 0; i < paired; i++) {
-        latencies.push(arrivals[i].at - sendTimes[i]);
+        latencies.push(testArrivals[i].at - sendTimes[i]);
       }
 
       if (latencies.length === 0) {
