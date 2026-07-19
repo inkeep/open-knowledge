@@ -388,7 +388,13 @@ async function applyOp(
     }
     case 'agent-patch': {
       try {
-        await agentPatch(server.port, op.find, op.replace, docName);
+        // agentPatch does NOT throw on non-2xx — a server refusal (409
+        // doc-in-conflict, find-not-found) comes back as { ok: false }.
+        // Route it into the not-applied path like every other refused
+        // content op, so oracle bookkeeping never counts a patch the doc
+        // never received.
+        const result = await agentPatch(server.port, op.find, op.replace, docName);
+        if (!result.ok) return false;
       } catch {
         return false;
       }
@@ -592,6 +598,26 @@ function snapshotClients(clients: TestClient[]): Array<{ ytext: string; fragment
   }));
 }
 
+/**
+ * Map a thrown per-seed error to the oracle (or harness stage) that produced
+ * it, keyed on a distinctive substring of each throw site's message. Carried
+ * into the RESULT line (`failClasses=[<seed>:<class>,...]`) so the JSONL
+ * trend record can classify failures (content loss vs convergence stall vs
+ * invariant vs origin vs byte budget) without a manual seed replay.
+ * Pre-setup failures bypass this function — the setup catch and guard push
+ * the `setup` class directly.
+ */
+function classifyFailure(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('Convergence failed after')) return 'convergence-stalled';
+  if (msg.includes('O1 byte-budget violated')) return 'byte-budget';
+  if (msg.includes('Content preservation violated')) return 'content-preservation';
+  if (msg.includes('Oracle (e) content-set violation')) return 'oracle-e';
+  if (msg.includes('Bridge invariant violated')) return 'bridge-invariant';
+  if (msg.includes('Origin probe:')) return 'origin';
+  return 'other';
+}
+
 // ─── Op-kind enumeration (coverage gate) ───
 
 const ALL_OP_KINDS = [
@@ -726,6 +752,8 @@ describe('bridge-convergence fuzzer (FR-17)', () => {
   // Seeds that exhausted the convergence budget but settled within
   // tolerance (counted in `passed`; listed separately as a perf signal).
   const fuzzConvergedLate: number[] = [];
+  // One `<seed>:<class>` entry per failing seed (see classifyFailure).
+  const fuzzFailClasses: string[] = [];
 
   beforeAll(async () => {
     server = await createTestServer();
@@ -740,11 +768,11 @@ describe('bridge-convergence fuzzer (FR-17)', () => {
     // emission unconditional on cleanup outcome. Cleanup itself is wrapped in
     // try/catch so a cleanup failure surfaces as a warn but does not destroy
     // the observability signal we just wrote.
-    // `convergedLate*` fields are appended AFTER the original shape —
-    // measure-fuzz.sh's extraction regex is prefix-anchored, so older
-    // script versions parse the line unchanged.
+    // `convergedLate*` and `failClasses` fields are appended AFTER the
+    // original shape — measure-fuzz.sh's extraction regex is prefix-anchored,
+    // so older script versions parse the line unchanged.
     process.stdout.write(
-      `[fuzz] RESULT seeds=${fuzzPassed.length + fuzzFailed.length} passed=${fuzzPassed.length} failed=${fuzzFailed.length} failingSeeds=[${fuzzFailed.join(',')}] convergedLate=${fuzzConvergedLate.length} convergedLateSeeds=[${fuzzConvergedLate.join(',')}]\n`,
+      `[fuzz] RESULT seeds=${fuzzPassed.length + fuzzFailed.length} passed=${fuzzPassed.length} failed=${fuzzFailed.length} failingSeeds=[${fuzzFailed.join(',')}] convergedLate=${fuzzConvergedLate.length} convergedLateSeeds=[${fuzzConvergedLate.join(',')}] failClasses=[${fuzzFailClasses.join(',')}]\n`,
     );
     try {
       await server?.cleanup();
@@ -799,12 +827,14 @@ describe('bridge-convergence fuzzer (FR-17)', () => {
         // the end of the try-block (below, around the main oracle) records
         // post-setup failures; this catch records pre-setup failures.
         fuzzFailed.push(seed);
+        fuzzFailClasses.push(`${seed}:setup`);
         throw err;
       }
       // Guard against any unexpected control-flow — if we somehow reached
       // here with setupOk=false without the catch having run, fail loud.
       if (!setupOk) {
         fuzzFailed.push(seed);
+        fuzzFailClasses.push(`${seed}:setup`);
         throw new Error(`bridge-convergence fuzz setup invariant violated for seed ${seed}`);
       }
 
@@ -844,76 +874,14 @@ describe('bridge-convergence fuzzer (FR-17)', () => {
       // external-change invalidates all prior markers (wholesale body replace).
       const livePrefixes = new Set<string>();
 
-      // ────────────── Oracle (e): full-body content equality ────────────
-      // Tracks the EXPECTED markdown body after every op by mirroring server
-      // semantics (applyAgentMarkdownWrite / applyExternalChange / Observer A
-      // serialize behaviour). Compared against each client's ytext at
-      // convergence under `normalizeBridge` — catches the convergent-but-content-lost class PLUS content
-      // corruption that preserves marker prefixes (e.g., DMP mis-merge,
-      // Unicode boundary split, canonicalization drift).
+      // Oracle (e)'s expectations (full marker-line set membership) are built
+      // AFTER the op loop via `buildOracleEExpectations(ops, notAppliedOpIndices)`
+      // — see the oracle (e) block below.
       //
-      // Always-on: set-membership is CRDT-safe (independent of paragraph
-      // ordering). The env var BRIDGE_FUZZ_STRICT_ORACLE=1 is retained only
-      // for toggling the full-EQUALITY comparison (see below) which requires
-      // deterministic ordering not guaranteed by CRDT concurrent inserts.
-      let expectedBody = 'seed paragraph'; // post-seed, pre-op initial state
       // Byte budget: cumulative authored payload bytes (an over-count past
       // replaces/clears, which only widens the budget — no false positives).
       // Unbounded growth past a small multiple of this is the unbounded-growth amplifier.
       let authoredBytes = Buffer.byteLength('seed paragraph');
-      const updateExpectedBody = (op: Op): void => {
-        switch (op.kind) {
-          case 'wysiwyg-type':
-          case 'type-chars':
-          case 'source-type':
-            // Observer A (wysiwyg) / Observer B (source) serializes the new
-            // paragraph with a double-newline separator after the existing body.
-            expectedBody = expectedBody.length > 0 ? `${expectedBody}\n\n${op.marker}` : op.marker;
-            break;
-          case 'agent-write': {
-            // Mirrors packages/server/src/agent-sessions.ts applyAgentMarkdownWrite.
-            switch (op.position) {
-              case 'replace':
-                expectedBody = op.marker;
-                break;
-              case 'prepend':
-                expectedBody =
-                  expectedBody.length > 0 ? `${op.marker}\n\n${expectedBody}` : op.marker;
-                break;
-              case 'append':
-                expectedBody =
-                  expectedBody.trim().length > 0 ? `${expectedBody}\n\n${op.marker}` : op.marker;
-                break;
-            }
-            break;
-          }
-          case 'agent-patch': {
-            // Server uses body.indexOf(find) → first-match only. Mirror that.
-            const pos = expectedBody.indexOf(op.find);
-            if (pos !== -1) {
-              expectedBody =
-                expectedBody.slice(0, pos) + op.replace + expectedBody.slice(pos + op.find.length);
-            }
-            break;
-          }
-          case 'external-change':
-            // applyExternalChange on server writes both fragment and ytext to
-            // the provided content (parse-serialize canonicalized).
-            expectedBody = op.newContent.replace(/\n+$/, '');
-            break;
-          case 'agent-undo':
-            // applyAgentUndo reverses the last tracked agent write — content
-            // oracle conservatively treats this as a full reset (like external-
-            // change) since the undo may remove any prior agent-write content.
-            expectedBody = '';
-            break;
-          case 'sync-pause':
-          case 'sync-resume':
-          case 'wait':
-            // No content change.
-            break;
-        }
-      };
 
       try {
         const ops = generateOps(rng, clientCount, opCount);
@@ -933,8 +901,8 @@ describe('bridge-convergence fuzzer (FR-17)', () => {
         // harness fits its budget at the calibrated 200-seed coverage
         // and nightly's 10000-seed run completes faster. (precedent #13(b): prefer structural gates over wall-clock waits.)
         // Ops the server legitimately refused / that failed to apply. Oracle
-        // bookkeeping (d, e, and the expected-body tracker) must all agree on
-        // which ops count — a refused write never touched the doc.
+        // bookkeeping (d and e) must agree on which ops count — a refused
+        // write never touched the doc.
         const notAppliedOpIndices = new Set<number>();
         for (const [opIdx, op] of ops.entries()) {
           const applied = await applyOp(op, clients, server, docName);
@@ -960,9 +928,6 @@ describe('bridge-convergence fuzzer (FR-17)', () => {
             // exactly which without replaying the undo stack.
             livePrefixes.clear();
           }
-
-          // Update full-body expectation (oracle e).
-          updateExpectedBody(op);
 
           // O1 byte budget: accumulate authored payload bytes (cumulative).
           if ('text' in op) authoredBytes += Buffer.byteLength(op.text);
@@ -1095,12 +1060,13 @@ describe('bridge-convergence fuzzer (FR-17)', () => {
         // XmlFragment at patch time may contain concurrent paragraphs whose
         // Y.js RGA position places them BEFORE the intended patch target.
         // When that happens, the first `find` occurrence that `indexOf`
-        // returns lands on a DIFFERENT marker than the tracker predicted.
+        // returns lands on a DIFFERENT marker than a generation-time
+        // prediction would pick.
         //
         // This is semantically correct: the patch replaced exactly one
-        // `find` with one `replace`, preserving all other content. But the
-        // expectedBody tracker's simple indexOf model froze at tracker-time
-        // and picked a different target. No bridge merge bug occurred.
+        // `find` with one `replace`, preserving all other content. A simple
+        // generation-time indexOf model just froze on a different target.
+        // No bridge merge bug occurred.
         //
         // Resolution: for markers whose ORIGINAL form contained any patch's
         // `find`, accept EITHER the pre-patch or the post-patch line as a
@@ -1112,8 +1078,8 @@ describe('bridge-convergence fuzzer (FR-17)', () => {
         //     producing marker (wysiwyg, source-type, agent-write; external-
         //     change resets).
         //   patches       — every agent-patch's (find, replace) pair.
-        // We don't reuse expectedBody (which interleaves patches) because we
-        // need each marker's ORIGINAL form to build the acceptable-line set.
+        // Each marker's ORIGINAL (pre-patch) form is what seeds the
+        // acceptable-line set; patches are then applied combinatorially.
         const { preMarkerLines, patches } = buildOracleEExpectations(ops, notAppliedOpIndices);
 
         if (preMarkerLines.size > 0) {
@@ -1236,6 +1202,7 @@ describe('bridge-convergence fuzzer (FR-17)', () => {
           clientStates: snapshotClients(clients),
         });
         fuzzFailed.push(seed);
+        fuzzFailClasses.push(`${seed}:${classifyFailure(err)}`);
         throw err;
       } finally {
         for (const p of agentProbes) {

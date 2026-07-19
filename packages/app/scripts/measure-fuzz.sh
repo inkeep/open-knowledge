@@ -60,8 +60,9 @@
 #     "durationMs":  8912000,
 #     "host":        "local-macos",
 #     "bunVersion":  "1.3.11",
-#     "extra":       { "outcome": "pass" }     // "pass" | "fail"
-#   }
+#     "extra":       { "outcome": "pass",      // "pass" | "fail"
+#                      "failClasses": [] }     // per-failing-seed oracle class
+#   }                                          //   [{seed, class}, ...]
 #
 # outcome field (in extra)
 # ------------------------
@@ -205,8 +206,23 @@ DURATION_MS=$(( END_MS - START_MS ))
 # Optional appended field (newer harness): converged-late count — seeds that
 # exhausted the convergence budget but settled within tolerance. Counted as
 # passes by the harness; recorded here as a perf signal.
-CONVERGED_LATE="$(grep -oE '^\[fuzz\] RESULT [^\n]*convergedLate=[0-9]+' "$OUT_FILE" | grep -oE 'convergedLate=[0-9]+' | tail -1 | cut -d= -f2 || true)"
+# (`.*` not `[^\n]*`: grep is line-oriented so `.` cannot cross a newline,
+# and in POSIX ERE `[^\n]` is a bracket expression excluding literal `\`/`n`
+# — it stops at the `n` in `failingSeeds` and the anchor never reaches the
+# appended fields on GNU grep.)
+CONVERGED_LATE="$(grep -oE '^\[fuzz\] RESULT .*convergedLate=[0-9]+' "$OUT_FILE" | grep -oE 'convergedLate=[0-9]+' | tail -1 | cut -d= -f2 || true)"
 CONVERGED_LATE="${CONVERGED_LATE:-0}"
+
+# Optional appended field (newer harness): per-failing-seed oracle class —
+# `failClasses=[<seed>:<class>,...]` where class is one of the harness's
+# failure classes (content-preservation | oracle-e | convergence-stalled
+# | bridge-invariant | byte-budget | origin | setup | other). Parsed into
+# extra.failClasses so trend-record readers can attribute each failure to an
+# oracle without a manual seed replay. Empty (or absent, on an older harness)
+# parses to [].
+FAIL_CLASSES_RAW="$(grep -oE '^\[fuzz\] RESULT .*failClasses=\[[0-9a-z:,-]*\]' "$OUT_FILE" | grep -oE 'failClasses=\[[0-9a-z:,-]*\]' | tail -1 | sed -E 's/^failClasses=\[//; s/\]$//' || true)"
+FAIL_CLASSES_JSON="$(jq -c -n --arg raw "$FAIL_CLASSES_RAW" \
+  '[ $raw | select(length > 0) | split(",")[] | split(":") | { seed: (.[0] | tonumber), class: (.[1] // "unknown") } ]')"
 
 FUZZ_RESULT_LINE="$(grep -oE '^\[fuzz\] RESULT seeds=[0-9]+ passed=[0-9]+ failed=[0-9]+ failingSeeds=\[[0-9,]*\]' "$OUT_FILE" | tail -1 || true)"
 
@@ -278,7 +294,8 @@ fi
 # `outcome` parallels measure-stress.sh so `jq 'select(.extra.outcome=="fail")'`
 # works uniformly across both producers. Per SCHEMA.md, extending `extra`
 # does not require a schema version bump — readers ignore unknown keys.
-EXTRA_JSON="$(jq -c -n --arg outcome "$OUTCOME" '{ outcome: $outcome }')"
+EXTRA_JSON="$(jq -c -n --arg outcome "$OUTCOME" --argjson failClasses "$FAIL_CLASSES_JSON" \
+  '{ outcome: $outcome, failClasses: $failClasses }')"
 
 # ── Compose JSONL record ───────────────────────────────────────────────────
 RECORD="$(jq -c -n \
