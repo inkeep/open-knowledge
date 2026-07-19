@@ -14,13 +14,20 @@ export function diffLinesFast(oldStr: string, newStr: string): DiffChange[] {
   const { chars1, chars2, lineArray } = dmp.diff_linesToChars_(oldStr, newStr);
   const diffs = dmp.diff_main(chars1, chars2, false);
   dmp.diff_charsToLines_(diffs, lineArray);
-  dmp.diff_cleanupSemantic(diffs);
 
   const result: DiffChange[] = [];
   for (const [op, text] of diffs) {
-    if (op === DiffMatchPatch.DIFF_DELETE) {
+    if (text.length === 0) continue;
+    const prev = result[result.length - 1];
+    const removed = op === DiffMatchPatch.DIFF_DELETE;
+    const added = op === DiffMatchPatch.DIFF_INSERT;
+    if (prev && Boolean(prev.removed) === removed && Boolean(prev.added) === added) {
+      prev.value += text;
+      continue;
+    }
+    if (removed) {
       result.push({ value: text, removed: true });
-    } else if (op === DiffMatchPatch.DIFF_INSERT) {
+    } else if (added) {
       result.push({ value: text, added: true });
     } else {
       result.push({ value: text });

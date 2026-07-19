@@ -4,13 +4,14 @@
  * name is the contract.
  *
  *   - `composeAndWriteRawBody` — file-watcher + agent-write: parse → ytext-
- *     first `applyFastDiff` → fragment derive. Character-level DMP preserves
- *     unrelated Y.Text Items + their origins.
+ *     first `applyFastDiff` → fragment derive. Line-aligned diff preserves
+ *     unrelated whole-line Y.Text Items + their origins; changed lines land
+ *     as fresh contiguous runs (stale-anchor interleave safety).
  *   - `replaceRawBody` — rollback: parse → ytext-first FULL OVERWRITE
  *     (delete(0, len) + insert(0, raw)) → fragment derive. The non-
  *     incremental replacement is the load-bearing signal to Y.UndoManager
- *     that "this is a rollback, not an edit"; DMP-based diff would over-
- *     preserve Items the user explicitly rolled back.
+ *     that "this is a rollback, not an edit"; diff-based application would
+ *     over-preserve Items the user explicitly rolled back.
  *   - `deriveFragmentFromYtext` — agent-undo: `Y.UndoManager.undo()` has
  *     already mutated ytext to the post-undo state; this primitive ONLY
  *     derives the fragment from `parse(ytext.toString())`. Writes zero
@@ -93,7 +94,7 @@ function buildParseOpts(embedResolver: EmbedResolverArg):
 }
 
 /**
- * Apply raw composed bytes to Y.Text via incremental DMP diff and derive
+ * Apply raw composed bytes to Y.Text via an incremental line-aligned diff and derive
  * XmlFragment via parse.
  *
  * MUST be called inside an outer `doc.transact(..., origin)` block
@@ -102,7 +103,8 @@ function buildParseOpts(embedResolver: EmbedResolverArg):
  *
  * Bytes flow:
  *   - `ytext` receives `rawContent` verbatim via `applyFastDiff`
- *     (character-level DMP, item-preserving) — NO canonicalization. Run
+ *     (line-aligned diff, item-preserving for unchanged lines) — NO
+ *     canonicalization. Run
  *     FIRST per the file-level write-order rationale.
  *   - `xmlFragment` receives `parse(body-without-FM)` via
  *     `updateYFragment` (item-preservation aware structural diff,
@@ -184,9 +186,9 @@ export function composeAndWriteRawBody(
       // bytes, silently reverting the write.
       //
       // Both writes happen inside the caller's outer transact for atomicity and
-      // to share one origin object. applyFastDiff is character-level DMP that
-      // preserves unrelated Y.Text Items + their origins; updateYFragment is
-      // item-preservation aware (precedent #11(a)).
+      // to share one origin object. applyFastDiff is a line-aligned diff that
+      // preserves unrelated whole-line Y.Text Items + their origins; updateYFragment
+      // is item-preservation aware (precedent #11(a)).
       if (currentYText !== rawContent) {
         applyFastDiff(ytext, currentYText, rawContent);
       }
@@ -201,11 +203,11 @@ export function composeAndWriteRawBody(
  * Replace the entire Y.Text contents with `rawContent` via delete/insert
  * and derive XmlFragment via parse — the atomic-overwrite semantics.
  *
- * The full overwrite (vs `applyFastDiff`'s incremental DMP) is the load-
- * bearing signal to `Y.UndoManager` that this is a non-incremental
- * replacement: the caller discards the user's recent edits, so DMP-based
- * Item preservation would defeat the contract by re-using Items the
- * writer explicitly overwrote.
+ * The full overwrite (vs `applyFastDiff`'s incremental line-aligned diff)
+ * is the load-bearing signal to `Y.UndoManager` that this is a
+ * non-incremental replacement: the caller discards the user's recent
+ * edits, so diff-based Item preservation would defeat the contract by
+ * re-using Items the writer explicitly overwrote.
  *
  * Callers:
  *   - `handleRollback` under `ROLLBACK_ORIGIN` — restore a historical version.

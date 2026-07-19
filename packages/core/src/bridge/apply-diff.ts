@@ -1,9 +1,5 @@
-import DiffMatchPatch from 'diff-match-patch';
 import type * as Y from 'yjs';
 import { diffLinesFast } from './diff-lines.ts';
-
-const dmpDiff = new DiffMatchPatch();
-dmpDiff.Diff_Timeout = 0.25;
 
 const APPLY_FAST_DIFF_MAX_BYTES = 256 * 1024;
 
@@ -46,17 +42,16 @@ export function applyFastDiff(ytext: Y.Text, currentText: string, newText: strin
     applyByPrefixSuffixMiddleReplace(ytext, currentText, newText);
     return;
   }
-  const diffs = dmpDiff.diff_main(currentText, newText);
-  dmpDiff.diff_cleanupSemantic(diffs);
+  const changes = diffLinesFast(currentText, newText);
   let offset = 0;
-  for (const [type, text] of diffs) {
-    if (type === 0) {
-      offset += text.length;
-    } else if (type === -1) {
-      ytext.delete(offset, text.length);
-    } else if (type === 1) {
-      ytext.insert(offset, text);
-      offset += text.length;
+  for (const change of changes) {
+    if (change.removed) {
+      ytext.delete(offset, change.value.length);
+    } else if (change.added) {
+      ytext.insert(offset, change.value);
+      offset += change.value.length;
+    } else {
+      offset += change.value.length;
     }
   }
 }
@@ -74,6 +69,9 @@ function applyByPrefixSuffixMiddleReplace(
   ) {
     prefixLen++;
   }
+  if (prefixLen > 0) {
+    prefixLen = currentText.lastIndexOf('\n', prefixLen - 1) + 1;
+  }
 
   let suffixLen = 0;
   while (
@@ -82,6 +80,16 @@ function applyByPrefixSuffixMiddleReplace(
       newText.charCodeAt(newText.length - 1 - suffixLen)
   ) {
     suffixLen++;
+  }
+  if (suffixLen > 0) {
+    const curStart = currentText.length - suffixLen;
+    const newStart = newText.length - suffixLen;
+    const curAligned = curStart === 0 || currentText.charCodeAt(curStart - 1) === 10;
+    const newAligned = newStart === 0 || newText.charCodeAt(newStart - 1) === 10;
+    if (!(curAligned && newAligned)) {
+      const firstNewline = currentText.indexOf('\n', curStart);
+      suffixLen = firstNewline === -1 ? 0 : currentText.length - (firstNewline + 1);
+    }
   }
 
   const deleteLen = currentText.length - prefixLen - suffixLen;

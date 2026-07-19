@@ -891,17 +891,20 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
     const session = await manager.getSession('doc-patch-incremental.md', 'agent-patch-inc');
     const ytext = session.dc.document.getText('source');
 
-    const seed = 'aaaa bbbb cccc\n';
+    const seed = 'head line\n\naaaa bbbb cccc\n\ntail line\n';
     session.dc.document.transact(() => {
       applyAgentMarkdownWrite(session.dc.document, seed, 'replace');
     }, session.origin);
     expect(ytext.toString()).toBe(seed);
 
-    // A `patch` whose recomposed body shares prefix/suffix with the prior
-    // content must emit a MINIMAL DMP delta (the differing middle only) — the
+    // A `patch` whose recomposed body shares lines with the prior content
+    // must emit a minimal LINE-ALIGNED delta (the changed line only) — the
     // opposite of the atomic `replace` pin. This is the contract
-    // edit_document depends on: a surgical find/replace stays item-preserving
-    // instead of churning the whole doc through replaceRawBody.
+    // edit_document depends on: a surgical find/replace preserves the
+    // untouched lines' Items instead of churning the whole doc through
+    // replaceRawBody. (Granularity is line-level, not character-level:
+    // sub-line Item reuse inside changed content creates stale-anchor
+    // interleave seams — see applyFastDiff.)
     let insertCharCount = 0;
     let deleteCharCount = 0;
     const observer = (event: Y.YTextEvent): void => {
@@ -913,16 +916,19 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
       }
     };
     ytext.observe(observer);
-    const patchedBody = 'aaaa XXXX cccc\n';
+    const patchedBody = 'head line\n\naaaa XXXX cccc\n\ntail line\n';
     session.dc.document.transact(() => {
       applyAgentMarkdownWrite(session.dc.document, patchedBody, 'patch');
     }, session.origin);
     ytext.unobserve(observer);
 
     expect(ytext.toString()).toBe(patchedBody);
-    // Minimal delta: only the differing middle is touched, not the whole doc.
+    // Minimal line-aligned delta: only the changed line is touched, not the
+    // whole doc.
     expect(deleteCharCount).toBeLessThan(seed.length);
     expect(insertCharCount).toBeLessThan(patchedBody.length);
+    expect(deleteCharCount).toBeLessThanOrEqual('aaaa bbbb cccc\n'.length);
+    expect(insertCharCount).toBeLessThanOrEqual('aaaa XXXX cccc\n'.length);
 
     // An empty-body `patch` CLEARS the doc — it is deliberately excluded from
     // the append/prepend empty-payload no-op guard, so it behaves like an

@@ -252,14 +252,18 @@ describe('POST /api/agent-patch — surgical/incremental write shape', () => {
       // primitive. Under the atomic primitive (replaceRawBody) the patch is
       // delete(0,len)+insert(0,whole) — deleteCharCount === wholeDocLen and
       // insertCharCount === newDocLen, both RED here. Under the incremental
-      // primitive (composeAndWriteRawBody → applyFastDiff) only the matched
-      // span is touched.
+      // primitive (composeAndWriteRawBody → applyFastDiff) only the changed
+      // LINE is touched (line-aligned granularity: sub-line Item reuse inside
+      // changed content creates stale-anchor interleave seams — see
+      // applyFastDiff).
       expect(deleteCharCount).toBeLessThan(wholeDocLen);
       expect(insertCharCount).toBeLessThan(newDocLen);
-      // Sanity: the delta is on the order of the edited token, not the
-      // document. Generous ceiling absorbs diff_cleanupSemantic boundary jitter.
-      expect(deleteCharCount).toBeLessThan(64);
-      expect(insertCharCount).toBeLessThan(64);
+      // Sanity: the delta is on the order of the edited line, not the
+      // document.
+      const changedLineOld = 'Beta paragraph two with the TARGET token buried in the middle.\n';
+      const changedLineNew = changedLineOld.replace('TARGET', 'REPLACED-TOKEN');
+      expect(deleteCharCount).toBeLessThanOrEqual(changedLineOld.length);
+      expect(insertCharCount).toBeLessThanOrEqual(changedLineNew.length);
     } finally {
       await sessionManager.closeAll();
       rmSync(projectDir, { recursive: true, force: true });
