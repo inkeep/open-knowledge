@@ -155,6 +155,7 @@ import {
 import { acquireServerLock, markServerLockDraining, releaseServerLock } from './server-lock.ts';
 import { createServerObserverExtension } from './server-observer-extension.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
+import { shadowOpGateFor } from './shadow-op-gate.ts';
 import {
   commitUpstreamImport,
   destroyShadowRepo,
@@ -3872,11 +3873,15 @@ export function createServer(options: ServerOptions): ServerInstance {
                   await sg.raw('for-each-ref', `refs/wip/${info.oldBranch}/`, '--format=%(refname)')
                 ).trim();
                 if (refs) {
-                  for (const ref of refs.split('\n')) {
-                    if (ref) {
-                      await sg.raw('update-ref', '-d', ref);
+                  // Ref deletion is a shadow mutation — take the op gate so it
+                  // cannot interleave with a maintenance gc run.
+                  await shadowOpGateFor(shadowRef.current).withMutator(async () => {
+                    for (const ref of refs.split('\n')) {
+                      if (ref) {
+                        await sg.raw('update-ref', '-d', ref);
+                      }
                     }
-                  }
+                  });
                   log.info(
                     { context: info.oldBranch },
                     `[branch-switch] cleaned up detached context ${info.oldBranch}`,

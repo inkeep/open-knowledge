@@ -46,6 +46,7 @@ import { tracedMkdirSync, tracedRenameSync, tracedWriteFileSync } from './fs-tra
 import { listTreeLongEntries } from './git-paths.ts';
 import { incrementShadowMigrationLegacyRefsDeleted } from './metrics.ts';
 import { acquireLock, releaseLock } from './shadow-lock.ts';
+import { releaseShadowOpGate, shadowOpGateFor } from './shadow-op-gate.ts';
 import { withSpan } from './telemetry.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -272,6 +273,7 @@ export async function initShadowRepo(projectRoot: string): Promise<ShadowHandle>
  */
 export function destroyShadowRepo(shadow: ShadowHandle): void {
   releaseLock(shadow.gitDir);
+  releaseShadowOpGate(shadow.gitDir);
 }
 
 /**
@@ -328,15 +330,17 @@ export async function sweepLegacyShadowRefs(shadow: ShadowHandle): Promise<numbe
 
   if (toDelete.length === 0) return 0;
 
-  for (const ref of toDelete) {
-    try {
-      await sg.raw('update-ref', '-d', ref);
-    } catch (e) {
-      console.warn(`[shadow-migration] failed to delete legacy ref ${ref}:`, e);
+  let deleted = 0;
+  await shadowOpGateFor(shadow).withMutator(async () => {
+    for (const ref of toDelete) {
+      try {
+        await sg.raw('update-ref', '-d', ref);
+        deleted++;
+      } catch (e) {
+        console.warn(`[shadow-migration] failed to delete legacy ref ${ref}:`, e);
+      }
     }
-  }
-
-  const deleted = toDelete.length;
+  });
   incrementShadowMigrationLegacyRefsDeleted(deleted);
   console.warn(
     `[shadow-migration] deleted ${deleted} legacy refs: server=${breakdown.server} human-=${breakdown['human-']} upstream=${breakdown.upstream}`,
@@ -383,7 +387,10 @@ export async function commitWip(
         'shadow.branch': branch,
       },
     },
-    async () => commitWipInner(shadow, writer, contentRoot, message, branch, opts?.date),
+    async () =>
+      shadowOpGateFor(shadow).withMutator(() =>
+        commitWipInner(shadow, writer, contentRoot, message, branch, opts?.date),
+      ),
   );
 }
 
@@ -502,6 +509,16 @@ function sweepOrphanedTmpIndexFiles(shadow: ShadowHandle): number {
 }
 
 export async function buildWipTree(shadow: ShadowHandle, contentRoot: string): Promise<string> {
+  // The returned tree is dangling until a later commitWipFromTree references
+  // it, and that call takes a SEPARATE gate hold — a gc can interleave between
+  // the two. Safe today because gc.pruneExpire is left at git's 2-week default,
+  // so a milliseconds-old dangling tree is far inside the prune grace window.
+  // If prune config is ever tightened toward `now`, the flush fan-out must
+  // instead span tree-build + per-writer commits under ONE mutator hold.
+  return shadowOpGateFor(shadow).withMutator(() => buildWipTreeInner(shadow, contentRoot));
+}
+
+async function buildWipTreeInner(shadow: ShadowHandle, contentRoot: string): Promise<string> {
   const tmpIndex = resolve(shadow.gitDir, `index-wip-fanout-${randomUUID()}`);
   const sg = shadowGit(shadow);
   const gitPathspec = contentRoot || '.';
@@ -546,7 +563,10 @@ export async function commitWipFromTree(
         'shadow.tree': treeSha.slice(0, 8),
       },
     },
-    async () => commitWipFromTreeInner(shadow, writer, treeSha, message, branch),
+    async () =>
+      shadowOpGateFor(shadow).withMutator(() =>
+        commitWipFromTreeInner(shadow, writer, treeSha, message, branch),
+      ),
   );
 }
 
@@ -787,6 +807,16 @@ export type InMemoryCheckpointParams =
  * @returns the commit sha (which also appears in the ref name).
  */
 export async function saveInMemoryCheckpoint(
+  shadow: ShadowHandle,
+  contentRoot: string,
+  params: InMemoryCheckpointParams,
+): Promise<string> {
+  return shadowOpGateFor(shadow).withMutator(() =>
+    saveInMemoryCheckpointInner(shadow, contentRoot, params),
+  );
+}
+
+async function saveInMemoryCheckpointInner(
   shadow: ShadowHandle,
   contentRoot: string,
   params: InMemoryCheckpointParams,
@@ -1083,6 +1113,14 @@ export async function gcCheckpointRefs(
   branch = 'main',
   policy: CheckpointRetentionPolicy = DEFAULT_CHECKPOINT_RETENTION,
 ): Promise<CheckpointGcResult> {
+  return shadowOpGateFor(shadow).withMutator(() => gcCheckpointRefsInner(shadow, branch, policy));
+}
+
+async function gcCheckpointRefsInner(
+  shadow: ShadowHandle,
+  branch = 'main',
+  policy: CheckpointRetentionPolicy = DEFAULT_CHECKPOINT_RETENTION,
+): Promise<CheckpointGcResult> {
   const result: CheckpointGcResult = {
     scanned: 0,
     deletedBridgeMergeLoss: 0,
@@ -1285,7 +1323,10 @@ export async function parkBranch(
         'shadow.doc_count': documents.length,
       },
     },
-    async () => parkBranchInner(shadow, branch, writerId, documents, newBranch),
+    async () =>
+      shadowOpGateFor(shadow).withMutator(() =>
+        parkBranchInner(shadow, branch, writerId, documents, newBranch),
+      ),
   );
 }
 
@@ -1490,7 +1531,10 @@ export async function saveVersion(
         'shadow.checkpoint_kind': options?.checkpointKind ? 'auto-consolidation' : 'user',
       },
     },
-    async () => saveVersionInner(shadow, contentRoot, writers, branch, summary, options),
+    async () =>
+      shadowOpGateFor(shadow).withMutator(() =>
+        saveVersionInner(shadow, contentRoot, writers, branch, summary, options),
+      ),
   );
 }
 

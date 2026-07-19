@@ -140,6 +140,38 @@ describe('MaintenanceCoordinator.runGc (PRD-6972 FR4)', () => {
     expect(head).toBe(concurrentSha);
   }, 60_000);
 
+  // A1 amplification: object creation stays active across gc's ENTIRE window
+  // (a stream of commits, not one). Pre-fix this raced `git add`'s loose-object
+  // writes against gc's object-dir deletion at high probability; post-fix the
+  // shadow op gate serializes the stream against the exclusive gc leg.
+  test('A2: gc is safe against a sustained stream of concurrent commits', async () => {
+    await seedReachableLooseObjects(1500);
+    const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
+
+    const shas: string[] = [];
+    const [gcResult] = await Promise.all([
+      coord.runGc('test'),
+      (async () => {
+        for (let i = 0; i < 20; i++) {
+          writeFileSync(resolve(contentDir, 'intro.md'), `# concurrent edit ${i}\n`);
+          shas.push(await commitWip(shadow, human, 'content/docs', `WIP: during gc ${i}`));
+        }
+      })(),
+    ]);
+
+    expect(gcResult.ran).toBe(true);
+
+    const sg = shadowGit(shadow);
+    const fsck = await sg.raw('fsck', '--full', '--strict');
+    expect(fsck).not.toContain('error');
+    expect(fsck).not.toContain('missing');
+
+    // Every commit in the stream survived; the ref lands on the last one.
+    const head = (await sg.raw('rev-parse', 'refs/wip/main/human-ada')).trim();
+    expect(shas).toHaveLength(20);
+    expect(head).toBe(shas[shas.length - 1]);
+  }, 60_000);
+
   test('detects + surfaces a gc.log latch', async () => {
     // Simulate a prior gc failure: a recent gc.log makes `git gc --auto` decline
     // to run and leaves the latch in place.

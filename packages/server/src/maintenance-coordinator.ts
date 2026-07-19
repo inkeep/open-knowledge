@@ -20,6 +20,7 @@ import {
   recordGcLatch,
   recordMaintenanceRun,
 } from './shadow-maintenance-telemetry.ts';
+import { shadowOpGateFor } from './shadow-op-gate.ts';
 import type { ShadowHandle, WriterIdentity } from './shadow-repo.ts';
 import {
   enumerateWipChains,
@@ -380,6 +381,18 @@ export class MaintenanceCoordinator {
     const shadow = this.deps.getShadow();
     if (!shadow) return { ran: false, skipped: 'no-shadow' };
 
+    // `git gc` deletes newly-packed loose objects and their emptied fan-out
+    // directories, which races concurrent object writes (`git add` /
+    // `hash-object -w`) into transient failures. Take the shadow op gate
+    // EXCLUSIVELY: wait for in-flight shadow mutators to drain, and hold new
+    // ones until gc completes. The coordinator's `running` flag serializes
+    // maintenance ops against each other; this gate serializes gc against the
+    // write path (see shadow-op-gate.ts).
+    return shadowOpGateFor(shadow).withExclusive(() => this.gcRun(trigger, shadow));
+  }
+
+  /** The actual gc run (caller holds the exclusive shadow-op-gate hold). */
+  private async gcRun(trigger: string, shadow: ShadowHandle): Promise<GcRunResult> {
     const start = performance.now();
     try {
       const before = await countShadowObjects(shadow);
