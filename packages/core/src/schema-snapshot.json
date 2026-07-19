@@ -228,6 +228,9 @@
         "sourceClosingFenceLength": {
           "hasDefault": true
         },
+        "sourceUnclosedFence": {
+          "hasDefault": true
+        },
         "sourceFenceIndent": {
           "hasDefault": true
         },

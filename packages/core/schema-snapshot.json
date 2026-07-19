@@ -54,6 +54,10 @@
         "sourceStyle": {
           "hasDefault": true,
           "default": "fenced"
+        },
+        "sourceUnclosedFence": {
+          "hasDefault": true,
+          "default": false
         }
       },
       "content": "text*",

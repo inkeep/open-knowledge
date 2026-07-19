@@ -257,7 +257,7 @@ export const toMarkdownHandlers = {
     return '  \n';
   },
 
-  code(node) {
+  code(node, parent) {
     const value = node.value ?? '';
     if (node.data?.sourceStyle === 'indented') {
       const lines = value.split('\n');
@@ -293,6 +293,18 @@ export const toMarkdownHandlers = {
     const lang = node.lang ?? '';
     const langGap = lang && typeof infoGap === 'number' && infoGap >= 1 ? ' '.repeat(infoGap) : '';
     const meta = node.meta ? ` ${node.meta}` : '';
+    if (
+      node.data?.sourceUnclosedFence === true &&
+      parent?.type === 'root' &&
+      parent.children[parent.children.length - 1] === node
+    ) {
+      const open = `${fence}${langGap}${lang}${meta}${value.length > 0 ? `\n${value}` : ''}`;
+      if (!indent) return open;
+      return open
+        .split('\n')
+        .map((l) => (l.length > 0 ? `${indent}${l}` : l))
+        .join('\n');
+    }
     const body = `${fence}${langGap}${lang}${meta}\n${value}\n${char.repeat(closeLen)}`;
     if (!indent) return body;
     return body

@@ -157,7 +157,10 @@ export function normalizeBridge(s: string): string {
       .replace(/^\n+/, '')
       .replace(/^[*-]{3,}(?=\n|$)/, '---')
       .replace(/(\n)([#>+-]|\d+[.)]|`{3,}|~{3,})/g, '\n\n$2')
-      .replace(/^([#>+-].*|\d+[.)].*|`{3,}.*|~{3,}.*)\n([^\n])/gm, '$1\n\n$2')
+      .replace(
+        /^([#>+-].*|\d+[.)].*|`{3,}.*|~{3,}.*|<\/[A-Z][A-Za-z0-9]*>[ \t]*)\n([^\n])/gm,
+        '$1\n\n$2',
+      )
       .split('\n'),
   );
   const tableRowLines = findTableRowLines(lines);
@@ -257,7 +260,8 @@ export function detectAppliedToleranceClasses(left: string, right: string): Brid
   }
 
   const blockSepBeforeRe = /\n\n([#>+-]|\d+[.)]|`{3,}|~{3,})/;
-  const blockSepAfterRe = /^([#>+-].*|\d+[.)].*|`{3,}.*|~{3,}.*)\n\n[^\n]/m;
+  const blockSepAfterRe =
+    /^([#>+-].*|\d+[.)].*|`{3,}.*|~{3,}.*|<\/[A-Z][A-Za-z0-9]*>[ \t]*)\n\n[^\n]/m;
   const beforeLeft = blockSepBeforeRe.test(leftNoBom);
   const beforeRight = blockSepBeforeRe.test(rightNoBom);
   const afterLeft = blockSepAfterRe.test(leftNoBom);

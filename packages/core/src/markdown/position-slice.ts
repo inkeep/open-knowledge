@@ -291,6 +291,13 @@ export function applyPositionSliceToNode(
         if (closing && closing[1].length > count) {
           node.data.sourceClosingFenceLength = closing[1].length;
         }
+
+        if (parent?.type === 'root') {
+          const closerRe = new RegExp(`\\n {0,3}\\${ch}{${count},}[ \\t]*$`);
+          if (!closerRe.test(fenceSlice)) {
+            node.data.sourceUnclosedFence = true;
+          }
+        }
       } else {
         node.data.sourceStyle = 'indented';
         if (parent?.type === 'root') {

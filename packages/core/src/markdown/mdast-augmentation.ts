@@ -153,6 +153,7 @@ declare module 'mdast' {
     sourceFenceChar?: string;
     sourceFenceLength?: number;
     sourceClosingFenceLength?: number;
+    sourceUnclosedFence?: true;
     sourceFenceIndent?: number;
     sourceInfoPadding?: number;
     sourceStyle?: 'indented' | 'fenced';

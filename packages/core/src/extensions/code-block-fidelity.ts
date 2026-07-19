@@ -34,6 +34,11 @@ export const CodeBlockFidelity = CodeBlock.extend({
       // between the fence and the info string. Captured at parse time;
       // null = canonical form (mirror opener / flush-left / no gap).
       sourceClosingFenceLength: { default: null, rendered: false },
+      // True when the source fence was EOF-truncated (no closing fence,
+      // CommonMark §4.5 auto-close). The serializer omits the closing
+      // fence while the block stays the document's last block, keeping
+      // serialize(parse(x)) a fixed point; else canonical closed form.
+      sourceUnclosedFence: { default: false, rendered: false },
       sourceFenceIndent: { default: null, rendered: false },
       sourceInfoPadding: { default: null, rendered: false },
       // Per-line leading indent bytes of an indented (§4.4) block, captured
