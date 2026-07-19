@@ -33,7 +33,7 @@ import { mermaidPromoterPlugin } from './mermaid-promoter.ts';
 import { positionAwareBlankLineJoin } from './position-aware-join.ts';
 import { remarkMdxAgnostic } from './remark-mdx-agnostic.ts';
 import { singleDollarMathPromoterPlugin } from './single-dollar-math-promoter.ts';
-import { stripTrailingHardBreaks } from './strip-trailing-hard-break.ts';
+import { stripTrailingEdge } from './strip-trailing-edge.ts';
 import { remarkTags } from './tag-to-markdown.ts';
 import { voidBrPromoterPlugin } from './void-br-promoter.ts';
 import { remarkWikiLink } from './wiki-link-micromark.ts';
@@ -269,7 +269,7 @@ export function serializeMd(doc: PmNode, processor: Processor, opts: SerializeMd
     markHandlers: opts.pmMarkHandlers,
   });
 
-  stripTrailingHardBreaks(mdast);
+  stripTrailingEdge(mdast);
 
   const boundary = readDocBoundary(doc.attrs?.sourceDocBoundary);
   const gaps = boundary?.gapBlankLines;
