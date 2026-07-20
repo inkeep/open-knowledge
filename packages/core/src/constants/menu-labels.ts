@@ -1,7 +1,11 @@
 /**
- * Canonical sentence-case labels for file/tree actions that appear in BOTH the
- * native Electron menu bar (`packages/desktop/src/main/menu.ts`) and the in-app
- * renderer menus (`FileTree.tsx` / `FileSidebar.tsx`).
+ * Canonical sentence-case labels the shared command registry
+ * (`@inkeep/open-knowledge-core/commands`) points its `labelKey` at. Most
+ * surface in BOTH the native Electron menu bar (`packages/desktop/src/main/menu.ts`)
+ * and the in-app renderer (`FileTree.tsx` / `FileSidebar.tsx` and the Cmd+K
+ * palette); a few (e.g. `openGraph`, `initializeStarterPack`, the Show/Hide
+ * toggle variants) are palette-only, kept here so the label-parity test guards
+ * them and the registry keeps a single label source.
  *
  * Why a shared constant: the same action surfaces twice and the two copies
  * must read identically. The native menu has no i18n runtime, so it imports
@@ -16,8 +20,8 @@
  * (`packages/app/scripts/audit-strings/check-casing.ts`). Proper nouns keep
  * their capitals (Finder, Terminal, AI). Native menu items that open a new
  * surface append the platform ellipsis (…) per the Apple HIG — that suffix is
- * native-only and is added at the menu.ts call site, not stored here (same
- * split as `SWITCH_PROJECT_LABEL_WITH_ELLIPSIS` in the desktop package).
+ * native-only and is added at the menu render site (the command registry's
+ * per-placement `ellipsis` flag), not stored here.
  */
 export const MENU_LABELS = {
   newFile: 'New file',
@@ -58,7 +62,34 @@ export const MENU_LABELS = {
   killTerminal: 'Kill Terminal',
   checkSpelling: 'Check spelling while typing',
   openOnGithub: 'OpenKnowledge on GitHub',
-} as const;
+  // Additional shared command labels the registry references. Each string is
+  // rendered identically by the palette, so the parity test stays green. The
+  // native menu appends the … ellipsis at its call site where the command opens
+  // a new surface (Switch project…, Settings…).
+  switchProject: 'Switch project',
+  settings: 'Settings',
+  // Open folder's palette row is the descriptive "Open folder on disk"; the
+  // native File menu renders the terser "Open folder…" via `openFolder` above.
+  openFolderOnDisk: 'Open folder on disk',
+  // Palette-only commands (no native-menu leaf); shared here so the label-parity
+  // test guards them and the registry keeps a single label source.
+  openGraph: 'Open graph',
+  initializeStarterPack: 'Initialize starter pack',
+  // State-aware Show/Hide toggles — both surfaces render both variants; the
+  // native menu is a single row whose label flips on the pushed view-menu-state.
+  sidebarShow: 'Show sidebar',
+  sidebarHide: 'Hide sidebar',
+  docPanelShow: 'Show document panel',
+  docPanelHide: 'Hide document panel',
+  terminalShow: 'Show Terminal',
+  terminalHide: 'Hide Terminal',
+  // Palette forms for the two commands whose native-menu leaf renders a
+  // different literal via the placement's `menuLabelText` ("Report a Bug" keeps
+  // its capital B; the install leaf renders "…(desktop app)" lowercase), so only
+  // these palette strings participate in the shared-label parity contract.
+  reportBug: 'Report a bug',
+  installClaudeDesktop: 'Install for Claude Chat & Cowork (Desktop App)',
+} as const satisfies Record<string, string>;
 
 export type MenuLabelKey = keyof typeof MENU_LABELS;
 

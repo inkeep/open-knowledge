@@ -18,11 +18,16 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { COMMAND_IDENTITIES, type MenuPlatform } from '@inkeep/open-knowledge-core';
 import { PALETTE_COMMANDS } from '@/components/command-palette-commands';
 import { APP_RESERVED_IDS, PALETTE_COMMAND_IDS } from '@/lib/command-menu-parity.test-helper';
 import { formatShortcut, type KeyboardShortcutId } from '@/lib/keyboard-shortcuts';
 import { OK_MENU_ACTIONS } from '@/lib/ok-menu-actions';
-import { buildMenuTemplate, type MenuDeps } from '../../../desktop/src/main/menu.ts';
+import {
+  buildMenuTemplate,
+  MENU_BINDING_IDS,
+  type MenuDeps,
+} from '../../../desktop/src/main/menu.ts';
 
 // Derive the menu-item type from buildMenuTemplate itself, so the ratchet does
 // not take a direct `electron` dependency (the app package has none).
@@ -177,10 +182,19 @@ interface Leaf {
   label: string;
   role?: string;
   accelerator?: string;
+  // State-dependent output the registry now drives generically. Captured so the
+  // state-rendering tests below can pin the Show/Hide variant, smart-hide
+  // `visible`, and checkbox `type`/`checked`: a condition inversion in that
+  // generic code would otherwise stay green under the all-enabled sweep snapshot.
+  visible?: boolean;
+  itemType?: string;
+  checked?: boolean;
 }
 
 /** Recurse the template, collecting actionable leaves (skip separators, disabled
- *  placeholders, and submenu parents — which contribute their children). */
+ *  placeholders, and submenu parents — which contribute their children). A
+ *  smart-hidden leaf (`visible: false`, still enabled) is retained so its
+ *  `visible` state can be asserted. */
 function collectLeaves(items: readonly MenuTemplateItem[], out: Leaf[]): void {
   for (const item of items) {
     if (item.type === 'separator') continue;
@@ -191,16 +205,19 @@ function collectLeaves(items: readonly MenuTemplateItem[], out: Leaf[]): void {
     }
     if (item.enabled === false) continue; // disabled placeholder (e.g. "No recent projects")
     const accelerator = typeof item.accelerator === 'string' ? item.accelerator : undefined;
+    const visible = typeof item.visible === 'boolean' ? item.visible : undefined;
+    const checked = typeof item.checked === 'boolean' ? item.checked : undefined;
     if (item.role) {
       out.push({
         label: typeof item.label === 'string' ? item.label : '',
         role: item.role,
         accelerator,
+        visible,
       });
       continue;
     }
     if (typeof item.label === 'string') {
-      out.push({ label: item.label, accelerator });
+      out.push({ label: item.label, accelerator, visible, itemType: item.type, checked });
     }
   }
 }
@@ -210,12 +227,15 @@ function normalizeLabel(label: string): string {
   return label.replace(/…$/, '').trim();
 }
 
-function collectLeavesForPlatform(platform: NodeJS.Platform): Leaf[] {
+function collectLeavesForPlatform(
+  platform: NodeJS.Platform,
+  deps: MenuDeps = makeFullDeps(),
+): Leaf[] {
   const original = process.platform;
   Object.defineProperty(process, 'platform', { value: platform, configurable: true });
   try {
     const leaves: Leaf[] = [];
-    collectLeaves(buildMenuTemplate(makeFullDeps()), leaves);
+    collectLeaves(buildMenuTemplate(deps), leaves);
     return leaves;
   } finally {
     Object.defineProperty(process, 'platform', { value: original, configurable: true });
@@ -396,5 +416,212 @@ describe('command-menu parity ratchet', () => {
     };
     walk(appSrc);
     expect(callSites.sort()).toEqual(['lib/local-menu-action-bus.ts']);
+  });
+});
+
+// ─── Phase 2b: registry drives both surfaces ────────────────────────────────
+// The native menu now renders its command leaves from the same core registry
+// (`COMMAND_IDENTITIES`) the palette does. These guard the registry itself, now
+// that it is the single declaration point across menu + palette.
+describe('command identity registry (Phase 2b)', () => {
+  const OK_MENU_ACTION_SET = new Set<string>(OK_MENU_ACTIONS);
+
+  test('every registry menuActionId is a real OkMenuAction', () => {
+    const bad = COMMAND_IDENTITIES.flatMap((cmd) =>
+      cmd.menuActionId && !OK_MENU_ACTION_SET.has(cmd.menuActionId) ? [cmd.id] : [],
+    );
+    expect(bad).toEqual([]);
+  });
+
+  test('every palette command without an override dispatch has a menuActionId to emit', () => {
+    // Bus-dispatched palette rows derive their dispatch from the id; a palette
+    // command that neither overrides dispatch nor carries a menuActionId would
+    // have nothing to emit. The known override ids are the dialog / bridge /
+    // renderer commands.
+    const OVERRIDES = new Set<string>([
+      'new-file',
+      'new-folder',
+      'open-graph',
+      'initialize-starter-pack',
+      'new-project',
+      'open-folder',
+      'switch-project',
+      'settings',
+      'install-claude-desktop',
+      'report-bug',
+      'check-for-updates',
+      'set-up-integrations',
+      'toggle-spell-check',
+      'open-github',
+    ]);
+    const missing = COMMAND_IDENTITIES.flatMap((cmd) =>
+      cmd.palette && !OVERRIDES.has(cmd.id) && cmd.menuActionId === undefined ? [cmd.id] : [],
+    );
+    expect(missing).toEqual([]);
+  });
+
+  test('every registry shortcutId resolves in the keyboard-shortcut registry', () => {
+    const bad = COMMAND_IDENTITIES.flatMap((cmd) => {
+      if (cmd.shortcutId === undefined) return [];
+      try {
+        formatShortcut(cmd.shortcutId as KeyboardShortcutId, 'mac');
+        return [];
+      } catch {
+        return [cmd.id];
+      }
+    });
+    expect(bad).toEqual([]);
+  });
+
+  // Ratchet B, structural cure: with placement now DECLARED in the registry, a
+  // command that lists two placements resolving to the same platform is the
+  // hand-duplication class the "Check for updates" App+Help dupe belonged to.
+  // Flag it at the declaration level — earlier than the rendered-output dupe
+  // check above. A deliberate multi-placement earns an allowlist entry.
+  const DECLARED_MULTI_PLACEMENT = new Set<string>([]);
+
+  test('Ratchet B (declared): no command has two same-platform menu placements', () => {
+    const resolvesTo = (platform: 'mac' | 'other', p: MenuPlatform): boolean =>
+      p === 'all' || p === platform;
+    const offenders = COMMAND_IDENTITIES.flatMap((cmd) => {
+      if (DECLARED_MULTI_PLACEMENT.has(cmd.id)) return [];
+      const placements = cmd.menu ?? [];
+      const macCount = placements.filter((p) => resolvesTo('mac', p.platform ?? 'all')).length;
+      const otherCount = placements.filter((p) => resolvesTo('other', p.platform ?? 'all')).length;
+      return macCount > 1 || otherCount > 1 ? [cmd.id] : [];
+    });
+    expect(offenders).toEqual([]);
+  });
+
+  // The registry-driven menu decouples identity (core) from the desktop binding
+  // (click / enabled / presence / checkbox). A menu-placed command with no
+  // binding renders a leaf with no click handler, enabled by default — a silent
+  // no-op the optional-chained `MENU_BINDINGS[cmd.id]` lookup would not flag.
+  test('every menu-placed command has a MENU_BINDINGS entry', () => {
+    const missing = COMMAND_IDENTITIES.flatMap((cmd) =>
+      cmd.menu && cmd.menu.length > 0 && !MENU_BINDING_IDS.has(cmd.id) ? [cmd.id] : [],
+    );
+    expect(missing).toEqual([]);
+  });
+
+  test('every MENU_BINDINGS entry maps to a menu-placed command (no stale bindings)', () => {
+    const menuPlaced = new Set(
+      COMMAND_IDENTITIES.flatMap((cmd) => (cmd.menu && cmd.menu.length > 0 ? [cmd.id] : [])),
+    );
+    const stale = [...MENU_BINDING_IDS].filter((id) => !menuPlaced.has(id));
+    expect(stale).toEqual([]);
+  });
+});
+
+// ─── Menu state-dependent rendering ─────────────────────────────────────────
+// The registry drives the Show/Hide toggle label, the smart-hide `visible`
+// flag, the checkbox `type`/`checked` state, and presence-gated absence through
+// generic code in `buildCommandLeaves` / `menuLeafLabel`. The classification
+// sweeps above run a single all-enabled `makeFullDeps` snapshot, so a condition
+// inversion in that generic code (a flipped Show/Hide, availability mapped to
+// `enabled` instead of `visible`, an inverted `checked`, a dropped presence
+// gate) would render a user-visible menu regression while staying green. These
+// pin each branch by building the template with the triggering state.
+describe('menu state-dependent rendering', () => {
+  const findLeaf = (leaves: Leaf[], label: string): Leaf | undefined =>
+    leaves.find((leaf) => normalizeLabel(leaf.label) === label);
+
+  test('Show/Hide toggles render the Show variant when the panel is hidden', () => {
+    const leaves = collectLeavesForPlatform('darwin', {
+      ...makeFullDeps(),
+      sidebarVisible: false,
+      docPanelVisible: false,
+      terminalVisible: false,
+    });
+    const labels = new Set(leaves.map((leaf) => normalizeLabel(leaf.label)));
+    expect(labels.has('Show sidebar')).toBe(true);
+    expect(labels.has('Show document panel')).toBe(true);
+    expect(labels.has('Show Terminal')).toBe(true);
+    // A flipped `visible ? hideKey : showKey` would leave the Hide variants here.
+    expect(labels.has('Hide sidebar')).toBe(false);
+    expect(labels.has('Hide document panel')).toBe(false);
+    expect(labels.has('Hide Terminal')).toBe(false);
+  });
+
+  test('Show/Hide toggles render the Hide variant when the panel is visible', () => {
+    const leaves = collectLeavesForPlatform('darwin', {
+      ...makeFullDeps(),
+      sidebarVisible: true,
+      docPanelVisible: true,
+      terminalVisible: true,
+    });
+    const labels = new Set(leaves.map((leaf) => normalizeLabel(leaf.label)));
+    expect(labels.has('Hide sidebar')).toBe(true);
+    expect(labels.has('Show sidebar')).toBe(false);
+  });
+
+  test('smart-hide maps availability to `visible` (not `enabled`) for Expand/Collapse all', () => {
+    // canExpandAll:false → the Expand all leaf renders `visible:false` while
+    // staying enabled (its click dep is wired). Mapping availability to `enabled`
+    // instead would drop the leaf from the collected set (disabled-item filter),
+    // which the `toBeDefined` assertion catches.
+    const collapsedTree = collectLeavesForPlatform('darwin', {
+      ...makeFullDeps(),
+      canExpandAll: false,
+      canCollapseAll: true,
+    });
+    const expandAll = findLeaf(collapsedTree, 'Expand all');
+    expect(expandAll).toBeDefined();
+    expect(expandAll?.visible).toBe(false);
+    expect(findLeaf(collapsedTree, 'Collapse all')?.visible).toBe(true);
+
+    const expandedTree = collectLeavesForPlatform('darwin', {
+      ...makeFullDeps(),
+      canExpandAll: true,
+      canCollapseAll: false,
+    });
+    expect(findLeaf(expandedTree, 'Expand all')?.visible).toBe(true);
+    expect(findLeaf(expandedTree, 'Collapse all')?.visible).toBe(false);
+  });
+
+  test('checkbox items carry `type: checkbox` and track the checked state', () => {
+    const checkedLeaf = findLeaf(
+      collectLeavesForPlatform('darwin', { ...makeFullDeps(), showHiddenFilesChecked: true }),
+      'Show hidden files',
+    );
+    expect(checkedLeaf?.itemType).toBe('checkbox');
+    expect(checkedLeaf?.checked).toBe(true);
+
+    const uncheckedLeaf = findLeaf(
+      collectLeavesForPlatform('darwin', { ...makeFullDeps(), showHiddenFilesChecked: false }),
+      'Show hidden files',
+    );
+    expect(uncheckedLeaf?.itemType).toBe('checkbox');
+    expect(uncheckedLeaf?.checked).toBe(false);
+  });
+
+  test('presence-gated leaves disappear when their dep is unwired', () => {
+    // `check-for-updates` is presence-gated on `onCheckForUpdates`; dropping the
+    // dep removes the leaf entirely (not render it disabled) on both the macOS
+    // App-menu and the Windows/Linux Help-menu placement.
+    for (const platform of ['darwin', 'win32'] as const) {
+      expect(
+        findLeaf(collectLeavesForPlatform(platform, makeFullDeps()), 'Check for updates'),
+      ).toBeDefined();
+      const withoutDep = collectLeavesForPlatform(platform, {
+        ...makeFullDeps(),
+        onCheckForUpdates: undefined,
+      });
+      expect(findLeaf(withoutDep, 'Check for updates')).toBeUndefined();
+    }
+    // `set-up-integrations` is presence-gated on `reconfigureMcpWiring`: unwiring
+    // it must remove the File-menu leaf, not render a non-functional MCP entry.
+    expect(
+      findLeaf(
+        collectLeavesForPlatform('darwin', makeFullDeps()),
+        'Set up OpenKnowledge integrations',
+      ),
+    ).toBeDefined();
+    expect(
+      findLeaf(
+        collectLeavesForPlatform('darwin', { ...makeFullDeps(), reconfigureMcpWiring: undefined }),
+        'Set up OpenKnowledge integrations',
+      ),
+    ).toBeUndefined();
   });
 });

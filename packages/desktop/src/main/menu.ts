@@ -32,14 +32,20 @@
  */
 
 import {
+  COMMAND_IDENTITIES,
+  type CommandContext,
+  type CommandIdentity,
+  type CommandMenuPlacement,
+  type ContextualTargetKind,
+  evaluateCommandAvailability,
   MENU_LABELS,
+  type MenuSection,
   OPEN_KNOWLEDGE_GITHUB_URL,
   SHOW_INSTALL_SKILL,
 } from '@inkeep/open-knowledge-core';
 import type { Dialog, MenuItemConstructorOptions } from 'electron';
 import type { EntryPoint } from '../shared/entry-point.ts';
 import type { EditorActiveTargetSnapshot } from '../shared/ipc-channels.ts';
-import { SWITCH_PROJECT_LABEL_WITH_ELLIPSIS } from '../shared/labels.ts';
 import { promptForExistingFolder } from './dialog-helpers.ts';
 
 export interface MenuDeps {
@@ -331,10 +337,300 @@ export async function installApplicationMenu(deps: MenuDeps): Promise<void> {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-/** Exported for unit testing — pure function over deps. */
+/**
+ * Desktop-side binding for each command identity: how the native menu derives a
+ * leaf's click / enabled / presence / checkbox state from the injected
+ * `MenuDeps`. This is the "click handlers stay wired by id" layer — a leaf's
+ * label, accelerator, placement, and availability all come from the shared
+ * registry (`@inkeep/open-knowledge-core`), and only this desktop glue lives
+ * here.
+ *
+ * `enabled` is the dep-presence gate ANDed with the registry availability (an
+ * unwired dep disables the leaf — the unit-test-safe behavior the menu has
+ * always had; in production every dep is wired, so availability drives it).
+ * `present` omits the leaf entirely — capability/flag-gated items that render as
+ * absence, not disabled. Both default to "always".
+ */
+interface MenuCommandBinding {
+  click?(deps: MenuDeps): MenuItemConstructorOptions['click'];
+  enabled?(deps: MenuDeps): boolean;
+  present?(deps: MenuDeps): boolean;
+  checked?(deps: MenuDeps): boolean;
+}
+
+const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
+  'new-file': { click: (d) => () => d.onNewFile?.(), enabled: (d) => d.onNewFile !== undefined },
+  'new-folder': {
+    click: (d) => () => d.onNewFolder?.(),
+    enabled: (d) => d.onNewFolder !== undefined,
+  },
+  'new-from-template': {
+    click: (d) => () => d.onNewFromTemplate?.(),
+    enabled: (d) => d.onNewFromTemplate !== undefined,
+  },
+  'new-project': {
+    click: (d) => () => d.onNewProject?.(),
+    enabled: (d) => d.onNewProject !== undefined,
+  },
+  // Switch project / Open folder are always enabled — their deps are required.
+  'switch-project': { click: (d) => () => d.openNavigator() },
+  'open-folder': {
+    click: (d) => async () => {
+      // Shared with the `ok:dialog:open-folder` IPC handler so both call sites
+      // agree on dialog options forever — see dialog-helpers.
+      const picked = await promptForExistingFolder(d.dialog);
+      if (picked) {
+        await d.openProject(picked, 'pick-existing');
+      }
+    },
+  },
+  'new-worktree': {
+    click: (d) => () => d.onNewWorktree?.(),
+    enabled: (d) => d.onNewWorktree !== undefined,
+  },
+  'switch-worktree': {
+    click: (d) => () => d.onSwitchWorktree?.(),
+    enabled: (d) => d.onSwitchWorktree !== undefined,
+  },
+  duplicate: { click: (d) => () => d.onDuplicate?.(), enabled: (d) => d.onDuplicate !== undefined },
+  rename: { click: (d) => () => d.onRename?.(), enabled: (d) => d.onRename !== undefined },
+  'move-to-trash': {
+    click: (d) => () => d.onMoveToTrash?.(),
+    enabled: (d) => d.onMoveToTrash !== undefined,
+  },
+  'reveal-in-finder': {
+    click: (d) => () => d.onRevealInFinder?.(),
+    enabled: (d) => d.onRevealInFinder !== undefined,
+  },
+  'send-to-ai': {
+    click: (d) => () => d.onSendToAi?.(),
+    enabled: (d) => d.onSendToAi !== undefined,
+  },
+  'copy-full-path': {
+    click: (d) => () => d.onCopyFullPath?.(),
+    enabled: (d) => d.onCopyFullPath !== undefined,
+  },
+  'copy-relative-path': {
+    click: (d) => () => d.onCopyRelativePath?.(),
+    enabled: (d) => d.onCopyRelativePath !== undefined,
+  },
+  // Re-trigger first-launch MCP consent. Presence-gated: non-macOS / non-packaged
+  // contexts (where MCP wiring no-ops anyway) plumb `undefined` and hide the row.
+  'set-up-integrations': {
+    click: (d) => () => {
+      void d.reconfigureMcpWiring?.();
+    },
+    present: (d) => d.reconfigureMcpWiring !== undefined,
+  },
+  settings: { click: (d) => () => d.openSettings?.() },
+  'close-tab': {
+    click: (d) => () => d.onCloseActiveTabOrWindow?.(),
+    enabled: (d) => d.onCloseActiveTabOrWindow !== undefined,
+  },
+  // Presence-gated on the booted updater handle; a bare click reference matches
+  // the runtime shape Electron invokes for a shortcut-less item.
+  'check-for-updates': {
+    click: (d) => d.onCheckForUpdates,
+    present: (d) => d.onCheckForUpdates !== undefined,
+  },
+  uninstall: { click: (d) => () => d.onUninstall?.(), present: (d) => d.onUninstall !== undefined },
+  'new-terminal': {
+    click: (d) => () => d.onNewTerminal?.(),
+    enabled: (d) => d.onNewTerminal !== undefined,
+  },
+  'new-terminal-window': {
+    click: (d) => () => d.onNewTerminalWindow?.(),
+    enabled: (d) => d.onNewTerminalWindow !== undefined,
+  },
+  'kill-terminal': {
+    click: (d) => () => d.onKillTerminal?.(),
+    enabled: (d) => d.onKillTerminal !== undefined,
+  },
+  'toggle-spell-check': {
+    click: (d) => () => d.onToggleSpellCheck?.(),
+    enabled: (d) => d.onToggleSpellCheck !== undefined,
+    checked: (d) => d.spellCheckEnabled ?? true,
+  },
+  'toggle-sidebar': {
+    click: (d) => () => d.onToggleSidebar?.(),
+    enabled: (d) => d.onToggleSidebar !== undefined,
+  },
+  'toggle-doc-panel': {
+    click: (d) => () => d.onToggleDocPanel?.(),
+    enabled: (d) => d.onToggleDocPanel !== undefined,
+  },
+  'toggle-terminal': {
+    click: (d) => () => d.onToggleTerminal?.(),
+    enabled: (d) => d.onToggleTerminal !== undefined,
+  },
+  'toggle-show-hidden-files': {
+    click: (d) => () => d.onToggleShowHiddenFiles?.(),
+    enabled: (d) => d.onToggleShowHiddenFiles !== undefined,
+    checked: (d) => d.showHiddenFilesChecked ?? false,
+  },
+  'toggle-show-ok-folders': {
+    click: (d) => () => d.onToggleShowOkFolders?.(),
+    enabled: (d) => d.onToggleShowOkFolders !== undefined,
+    checked: (d) => d.showOkFoldersChecked ?? false,
+  },
+  'toggle-show-only-markdown-files': {
+    click: (d) => () => d.onToggleShowOnlyMarkdownFiles?.(),
+    enabled: (d) => d.onToggleShowOnlyMarkdownFiles !== undefined,
+    checked: (d) => d.showOnlyMarkdownFilesChecked ?? false,
+  },
+  'toggle-show-skills-section': {
+    click: (d) => () => d.onToggleShowSkillsSection?.(),
+    enabled: (d) => d.onToggleShowSkillsSection !== undefined,
+    // Skills section is default-on, so the unwired checkbox reads checked.
+    checked: (d) => d.showSkillsSectionChecked ?? true,
+  },
+  'expand-all-tree': {
+    click: (d) => () => d.onExpandAll?.(),
+    enabled: (d) => d.onExpandAll !== undefined,
+  },
+  'collapse-all-tree': {
+    click: (d) => () => d.onCollapseAll?.(),
+    enabled: (d) => d.onCollapseAll !== undefined,
+  },
+  'open-github': { click: (d) => () => d.openExternalUrl(OPEN_KNOWLEDGE_GITHUB_URL) },
+  // Report a Bug always renders + is enabled; the click no-ops when unwired.
+  'report-bug': { click: (d) => () => d.onReportBug?.() },
+  'install-claude-desktop': {
+    click: (d) => () => d.openInstallSkillDialog?.(),
+    present: () => SHOW_INSTALL_SKILL,
+  },
+};
+
+/**
+ * The command ids that carry a desktop binding. Exported so the parity ratchet
+ * can assert every menu-placed registry command has one: a command with a `menu`
+ * placement but no binding would render a leaf with no click handler, enabled by
+ * default — a silent no-op the optional-chained lookup in `buildCommandLeaves`
+ * would not catch.
+ */
+export const MENU_BINDING_IDS: ReadonlySet<string> = new Set(Object.keys(MENU_BINDINGS));
+
+/** Project the pushed active-target snapshot onto the shared gating kind. The
+ *  menu maps project scope (and the pre-first-push `undefined`) to `project`:
+ *  contentDir is still an actionable target, so reveal / copy-path stay enabled
+ *  there, while rename / duplicate / trash (which require a real file) do not. */
+function menuTargetKind(target: EditorActiveTargetSnapshot | undefined): ContextualTargetKind {
+  if (target === undefined || target.kind === null) return 'project';
+  return target.kind;
+}
+
+function menuCommandContext(deps: MenuDeps): CommandContext {
+  return {
+    host: 'desktop',
+    activeTargetKind: menuTargetKind(deps.activeTarget),
+    // The native menu has no single-file concept; those commands never gate here.
+    singleFile: false,
+    terminalLive: deps.terminalLive === true,
+    canExpandAll: deps.canExpandAll ?? true,
+    canCollapseAll: deps.canCollapseAll ?? true,
+    // No Open-graph leaf in the menu; the field is palette-only.
+    hasActiveDoc: false,
+    showInstallSkill: SHOW_INSTALL_SKILL,
+  };
+}
+
+/** Resolve a menu leaf's plain-string label: an explicit literal, the Show/Hide
+ *  toggle variant driven by the pushed view-menu-state, a per-placement key
+ *  override (Copy path's children), or the command's own `labelKey`. */
+function menuLeafLabel(
+  cmd: CommandIdentity,
+  placement: CommandMenuPlacement,
+  deps: MenuDeps,
+): string {
+  if (placement.menuLabelText !== undefined) return placement.menuLabelText;
+  if (cmd.stateToggle) {
+    const { stateField, defaultVisible, showKey, hideKey } = cmd.stateToggle;
+    const visible = deps[stateField] ?? defaultVisible;
+    return MENU_LABELS[visible ? hideKey : showKey];
+  }
+  const key = placement.menuLabelKey ?? cmd.labelKey;
+  if (key === undefined) {
+    throw new Error(`command ${cmd.id} menu leaf has no resolvable label`);
+  }
+  return MENU_LABELS[key];
+}
+
+/** Generate the actionable command leaves for the current platform, grouped by
+ *  their declared menu section. `buildMenuTemplate` slots each group into the
+ *  declarative scaffolding (roles / separators / submenu parents / recents). */
+function buildCommandLeaves(
+  deps: MenuDeps,
+  isMac: boolean,
+): Map<MenuSection, MenuItemConstructorOptions[]> {
+  const platform = isMac ? 'mac' : 'other';
+  const ctx = menuCommandContext(deps);
+  const staged = new Map<MenuSection, Array<{ order: number; item: MenuItemConstructorOptions }>>();
+  for (const cmd of COMMAND_IDENTITIES) {
+    if (!cmd.menu) continue;
+    const binding = MENU_BINDINGS[cmd.id];
+    for (const placement of cmd.menu) {
+      const plat = placement.platform ?? 'all';
+      if (plat !== 'all' && plat !== platform) continue;
+      if (binding?.present && !binding.present(deps)) continue;
+      const available = evaluateCommandAvailability(cmd.availability, ctx);
+      const depWired = binding?.enabled ? binding.enabled(deps) : true;
+      const label = menuLeafLabel(cmd, placement, deps);
+      const item: MenuItemConstructorOptions = {
+        label: placement.ellipsis ? `${label}…` : label,
+      };
+      const click = binding?.click?.(deps);
+      if (click !== undefined) item.click = click;
+      if (placement.accelerator !== undefined) item.accelerator = placement.accelerator;
+      if (placement.checkbox === true) {
+        item.type = 'checkbox';
+        item.checked = binding?.checked ? binding.checked(deps) : false;
+      }
+      if (placement.smartHide === true) {
+        // Smart-hide (Expand/Collapse all): availability maps to `visible`, so a
+        // fully-expanded tree hides the no-op affordance rather than disabling it.
+        item.visible = available;
+        item.enabled = depWired;
+      } else {
+        item.enabled = available && depWired;
+      }
+      const list = staged.get(placement.section) ?? [];
+      list.push({ order: placement.order, item });
+      staged.set(placement.section, list);
+    }
+  }
+  const result = new Map<MenuSection, MenuItemConstructorOptions[]>();
+  for (const [section, entries] of staged) {
+    entries.sort((a, b) => a.order - b.order);
+    result.set(
+      section,
+      entries.map((e) => e.item),
+    );
+  }
+  return result;
+}
+
+/** Append a trailing separator iff the section rendered any leaves (so a
+ *  presence-gated section contributes neither leaf nor stray separator). */
+function withTrailingSep(items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] {
+  return items.length > 0 ? [...items, { type: 'separator' as const }] : [];
+}
+
+/** Prepend a leading separator iff the section rendered any leaves. */
+function withLeadingSep(items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] {
+  return items.length > 0 ? [{ type: 'separator' as const }, ...items] : [];
+}
+
+/**
+ * Exported for unit testing — pure function over deps. The actionable command
+ * leaves are generated from the shared registry (`buildCommandLeaves`); the
+ * roles, separators, submenu parents (Recent project, Copy path), the dynamic
+ * recents rows, and the `isMac` platform branches stay declarative here.
+ */
 export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] {
   const isMac = process.platform === 'darwin';
   const recents = deps.getRecentProjects();
+  const leaves = buildCommandLeaves(deps, isMac);
+  const leafOf = (section: MenuSection): MenuItemConstructorOptions[] => leaves.get(section) ?? [];
 
   const recentSubmenu: MenuItemConstructorOptions[] =
     recents.length === 0
@@ -363,28 +659,14 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
             submenu: [
               { role: 'about' as const },
               { type: 'separator' as const },
-              // Apple HIG canonical placement: "Check for updates…"
-              // immediately under About in the application menu. Hidden
-              // when the updater handle isn't available (dev mode, boot
-              // failure) — see MenuDeps.onCheckForUpdates rationale.
-              ...(deps.onCheckForUpdates
-                ? ([
-                    {
-                      label: `${MENU_LABELS.checkForUpdates}\u2026`,
-                      click: deps.onCheckForUpdates,
-                    },
-                    { type: 'separator' as const },
-                  ] satisfies MenuItemConstructorOptions[])
-                : []),
-              // Apple HIG places "Settings…" / "Preferences…" immediately
-              // before the services group. The CmdOrCtrl+, accelerator is
-              // OS-captured: Electron routes the keypress to this menu
-              // item before it reaches the renderer's keydown handler.
-              {
-                label: 'Settings…',
-                accelerator: 'CmdOrCtrl+,',
-                click: () => deps.openSettings?.(),
-              },
+              // Apple HIG: "Check for updates…" under About, then "Settings…".
+              // Both are platform-conditional placements in the shared registry
+              // (the App-menu placement is `mac`-only; each has a mirror `other`
+              // placement in the File / Help menu), so the leaf renders exactly
+              // once per platform — the previously hand-branched dedupe, now
+              // expressed as data.
+              ...withTrailingSep(leafOf('app-updates')),
+              ...leafOf('app-settings'),
               { type: 'separator' as const },
               { role: 'services' as const },
               { type: 'separator' as const },
@@ -392,15 +674,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
               { role: 'hideOthers' as const },
               { role: 'unhide' as const },
               { type: 'separator' as const },
-              ...(deps.onUninstall
-                ? ([
-                    {
-                      label: 'Uninstall OpenKnowledge…',
-                      click: () => deps.onUninstall?.(),
-                    },
-                    { type: 'separator' as const },
-                  ] satisfies MenuItemConstructorOptions[])
-                : []),
+              ...withTrailingSep(leafOf('app-uninstall')),
               { role: 'quit' as const },
             ],
           },
@@ -410,172 +684,36 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     {
       label: 'File',
       submenu: [
-        // Creation items head the File menu (New file / New folder / New from
-        // template), then the project section, then the item-management actions
-        // (Duplicate / Rename / Move to Trash). Each item-management action is
-        // enable/disabled per `activeTarget` so a project-scope window doesn't
-        // surface Rename / Duplicate / Move to Trash with no target; asset scope
-        // enables Rename / Move to Trash but keeps Duplicate disabled.
-        {
-          label: MENU_LABELS.newFile,
-          accelerator: 'CmdOrCtrl+N',
-          enabled: deps.onNewFile !== undefined,
-          click: () => deps.onNewFile?.(),
-        },
-        {
-          label: MENU_LABELS.newFolder,
-          accelerator: 'CmdOrCtrl+Shift+N',
-          enabled: deps.onNewFolder !== undefined,
-          click: () => deps.onNewFolder?.(),
-        },
-        {
-          label: `${MENU_LABELS.newFromTemplate}\u2026`,
-          enabled: deps.onNewFromTemplate !== undefined,
-          click: () => deps.onNewFromTemplate?.(),
-        },
+        // Creation items head the File menu; then the project section (mirrors
+        // the in-app ProjectSwitcher order: Recent → New project → Switch →
+        // Open folder); then worktrees; then the activeTarget-gated
+        // item-management actions; then reveal / AI / copy-path. Every command
+        // leaf comes from the registry — the separators, the Recent-project
+        // submenu, and the Copy-path submenu parent stay declarative here.
+        ...leafOf('file-create'),
         { type: 'separator' },
-        // Project section — order mirrors the in-app ProjectSwitcher
-        // (packages/app/src/components/ProjectSwitcher.tsx) so the native menu
-        // and the sidebar footer read identically. The recents submenu and the
-        // create / switch / open wiring are unchanged; only position, order,
-        // and labels moved here.
         {
           label: 'Recent project',
           submenu: recentSubmenu,
         },
-        {
-          // Scaffolds a brand-new project (opens the create-new-project dialog).
-          // No `activeTarget` gate — creating a project doesn't depend on scope.
-          label: `${MENU_LABELS.newProject}\u2026`,
-          enabled: deps.onNewProject !== undefined,
-          click: () => deps.onNewProject?.(),
-        },
-        {
-          label: SWITCH_PROJECT_LABEL_WITH_ELLIPSIS,
-          // Rebound from Cmd+Shift+N (now New folder) to Cmd+Shift+P per macOS
-          // HIG for navigation/palette-style commands.
-          accelerator: 'CmdOrCtrl+Shift+P',
-          click: () => deps.openNavigator(),
-        },
-        {
-          label: `${MENU_LABELS.openFolder}\u2026`,
-          accelerator: 'CmdOrCtrl+O',
-          click: async () => {
-            // Shared with the `ok:dialog:open-folder` IPC handler so both call
-            // sites agree on dialog options forever — see dialog-helpers.
-            const picked = await promptForExistingFolder(deps.dialog);
-            if (picked) {
-              await deps.openProject(picked, 'pick-existing');
-            }
-          },
-        },
+        ...leafOf('file-project'),
         { type: 'separator' },
-        // Worktree selector (worktree = window). Mirrors the sidebar
-        // ProjectSwitcher's worktree section — both delegate to the same
-        // renderer surface. Disabled (not hidden) in the Navigator window and
-        // in unit-test contexts, where the deps aren't wired.
-        {
-          label: `${MENU_LABELS.newWorktree}\u2026`,
-          enabled: deps.onNewWorktree !== undefined,
-          click: () => deps.onNewWorktree?.(),
-        },
-        {
-          label: `${MENU_LABELS.switchWorktree}\u2026`,
-          enabled: deps.onSwitchWorktree !== undefined,
-          click: () => deps.onSwitchWorktree?.(),
-        },
+        ...leafOf('file-worktree'),
         { type: 'separator' },
-        {
-          label: MENU_LABELS.duplicate,
-          accelerator: 'CmdOrCtrl+D',
-          enabled:
-            deps.onDuplicate !== undefined &&
-            deps.activeTarget !== undefined &&
-            (deps.activeTarget.kind === 'doc' || deps.activeTarget.kind === 'folder'),
-          click: () => deps.onDuplicate?.(),
-        },
-        {
-          label: MENU_LABELS.rename,
-          // Project scope (kind === null) has no target to rename \u2192 disabled.
-          enabled:
-            deps.onRename !== undefined &&
-            deps.activeTarget !== undefined &&
-            deps.activeTarget.kind !== null,
-          click: () => deps.onRename?.(),
-        },
-        {
-          label: MENU_LABELS.moveToTrash,
-          accelerator: 'CmdOrCtrl+Delete',
-          enabled:
-            deps.onMoveToTrash !== undefined &&
-            deps.activeTarget !== undefined &&
-            deps.activeTarget.kind !== null,
-          click: () => deps.onMoveToTrash?.(),
-        },
+        ...leafOf('file-item'),
         { type: 'separator' },
-        {
-          label: MENU_LABELS.revealInFinder,
-          enabled: deps.onRevealInFinder !== undefined,
-          click: () => deps.onRevealInFinder?.(),
-        },
-        {
-          label: MENU_LABELS.openWithAi,
-          enabled: deps.onSendToAi !== undefined && deps.activeTarget?.kind !== 'asset',
-          click: () => deps.onSendToAi?.(),
-        },
+        ...leafOf('file-reveal'),
         {
           label: MENU_LABELS.copyPath,
           enabled: deps.onCopyFullPath !== undefined || deps.onCopyRelativePath !== undefined,
-          submenu: [
-            {
-              label: MENU_LABELS.fullPath,
-              enabled: deps.onCopyFullPath !== undefined,
-              click: () => deps.onCopyFullPath?.(),
-            },
-            {
-              label: MENU_LABELS.relativePath,
-              enabled: deps.onCopyRelativePath !== undefined,
-              click: () => deps.onCopyRelativePath?.(),
-            },
-          ],
+          submenu: leafOf('file-copy-path'),
         },
         { type: 'separator' },
-        // Re-trigger first-launch MCP consent. The dep is optional so
-        // non-macOS / non-packaged contexts (where MCP wiring no-ops
-        // anyway) hide the row. `deps`
-        // plumbs `undefined` when the runtime has nothing to offer.
-        ...(deps.reconfigureMcpWiring
-          ? ([
-              {
-                label: `${MENU_LABELS.setUpIntegrations}\u2026`,
-                click: () => {
-                  void deps.reconfigureMcpWiring?.();
-                },
-              },
-              { type: 'separator' as const },
-            ] satisfies MenuItemConstructorOptions[])
-          : []),
-        // On Windows/Linux Settings… belongs in the File menu (Apple
-        // HIG only governs macOS; on macOS the Settings entry lives in the
-        // App menu above). Placed above the trailing close/quit role.
-        ...(!isMac
-          ? ([
-              {
-                label: 'Settings…',
-                accelerator: 'CmdOrCtrl+,',
-                click: () => deps.openSettings?.(),
-              },
-              { type: 'separator' as const },
-            ] satisfies MenuItemConstructorOptions[])
-          : []),
-        isMac
-          ? {
-              label: MENU_LABELS.closeTab,
-              accelerator: 'CmdOrCtrl+W',
-              enabled: deps.onCloseActiveTabOrWindow !== undefined,
-              click: () => deps.onCloseActiveTabOrWindow?.(),
-            }
-          : { role: 'quit' },
+        ...withTrailingSep(leafOf('file-integrations')),
+        // On Windows/Linux Settings… belongs in the File menu (macOS renders it
+        // in the App menu above); its registry placement is `other`-only.
+        ...withTrailingSep(leafOf('file-settings')),
+        ...(isMac ? leafOf('file-close') : [{ role: 'quit' as const }]),
       ],
     },
 
@@ -590,120 +728,26 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         { role: 'paste' },
         { role: 'selectAll' },
         { type: 'separator' },
-        // macOS Edit-menu spell-check toggle. `checked` is derived from the
-        // persisted app-wide flag at build time; toggling (here or from the
-        // in-editor context menu) rebuilds the menu so the checkmark stays in
-        // sync. No accelerator — macOS has no canonical one for this item.
-        {
-          label: MENU_LABELS.checkSpelling,
-          type: 'checkbox',
-          checked: deps.spellCheckEnabled ?? true,
-          enabled: deps.onToggleSpellCheck !== undefined,
-          click: () => deps.onToggleSpellCheck?.(),
-        },
+        ...leafOf('edit-spell'),
       ],
     },
 
     {
       label: 'View',
       submenu: [
-        // Reload / Force Reload ship on every channel — a page-level recovery
-        // affordance for stable users (parity with Electron apps like Claude
-        // Code Desktop), not a dev-only tool. Toggle Developer Tools stays
-        // gated on `showDevToolsMenu` (dev + beta), so stable doesn't expose
-        // the raw web inspector.
+        // Reload / Force Reload ship on every channel; Toggle Developer Tools is
+        // gated on `showDevToolsMenu` (dev + beta) — Electron built-in roles.
         { role: 'reload' as const },
         { role: 'forceReload' as const },
         ...(deps.showDevToolsMenu
           ? ([{ role: 'toggleDevTools' as const }] satisfies MenuItemConstructorOptions[])
           : []),
         { type: 'separator' as const },
-        // Sidebar visibility toggle. Apple HIG convention: a single row whose
-        // label flips between "Show sidebar" / "Hide sidebar" based on the
-        // current state (Finder's pattern), rather than a checkbox row. ⌥⌘S
-        // is Apple's canonical accelerator for sidebar toggle — ⌘B is Bold in
-        // the TipTap editor, and ⌘\ is non-standard. Spelled `CmdOrCtrl+Alt+S`
-        // (not `Option+Cmd+S`): Electron renders `Alt` as ⌥ and `CmdOrCtrl` as
-        // ⌘ on macOS, so this is the identical ⌥⌘S here while staying the
-        // cross-platform-safe form the sibling accelerators use. The accelerator
-        // is OS-captured: Electron routes the keypress to this menu item before
-        // it reaches the renderer's keydown handler, so the renderer's
-        // shadcn sidebar primitive does NOT also bind a window keydown.
-        {
-          label: deps.sidebarVisible === false ? 'Show sidebar' : 'Hide sidebar',
-          accelerator: 'CmdOrCtrl+Alt+S',
-          enabled: deps.onToggleSidebar !== undefined,
-          click: () => deps.onToggleSidebar?.(),
-        },
-        {
-          label: deps.docPanelVisible === false ? 'Show document panel' : 'Hide document panel',
-          accelerator: 'CmdOrCtrl+Alt+B',
-          enabled: deps.onToggleDocPanel !== undefined,
-          click: () => deps.onToggleDocPanel?.(),
-        },
-        {
-          // Terminal starts hidden, so falsy/undefined reads "Show Terminal".
-          // ⌘J / Ctrl+J is OS-captured (fires before the renderer), so a
-          // focused xterm can't swallow it — same model as the sidebar item.
-          label: deps.terminalVisible ? 'Hide Terminal' : 'Show Terminal',
-          accelerator: 'CmdOrCtrl+J',
-          enabled: deps.onToggleTerminal !== undefined,
-          click: () => deps.onToggleTerminal?.(),
-        },
+        ...leafOf('view-panels'),
         { type: 'separator' },
-        // Sidebar visibility toggles. Checkbox state mirrors the sidebar's
-        // tree-options popover + empty-space context menu, in the same order.
-        // Toggling any of them flips the projectLocalBinding flag via the
-        // renderer's menu-action handler; the resulting CRDT write propagates
-        // back through merged config so every surface stays in sync. The
-        // unwired `checked` fallbacks match the renderer's resolved config
-        // defaults (hidden files + .ok folders + only-markdown off, skills
-        // section on).
-        {
-          label: MENU_LABELS.showHiddenFiles,
-          accelerator: 'CmdOrCtrl+Shift+.',
-          type: 'checkbox',
-          checked: deps.showHiddenFilesChecked ?? false,
-          enabled: deps.onToggleShowHiddenFiles !== undefined,
-          click: () => deps.onToggleShowHiddenFiles?.(),
-        },
-        {
-          label: MENU_LABELS.showOkFolders,
-          type: 'checkbox',
-          checked: deps.showOkFoldersChecked ?? false,
-          enabled: deps.onToggleShowOkFolders !== undefined,
-          click: () => deps.onToggleShowOkFolders?.(),
-        },
-        {
-          label: MENU_LABELS.showOnlyMarkdownFiles,
-          type: 'checkbox',
-          checked: deps.showOnlyMarkdownFilesChecked ?? false,
-          enabled: deps.onToggleShowOnlyMarkdownFiles !== undefined,
-          click: () => deps.onToggleShowOnlyMarkdownFiles?.(),
-        },
-        {
-          label: MENU_LABELS.showSkillsSection,
-          type: 'checkbox',
-          checked: deps.showSkillsSectionChecked ?? true,
-          enabled: deps.onToggleShowSkillsSection !== undefined,
-          click: () => deps.onToggleShowSkillsSection?.(),
-        },
+        ...leafOf('view-visibility'),
         { type: 'separator' },
-        // Tree-scoped Expand/Collapse all. Smart-hide via `visible: false`
-        // (rather than `enabled: false`) so a fully-expanded tree doesn't
-        // render a useless enabled-with-no-op Expand all affordance.
-        {
-          label: MENU_LABELS.expandAll,
-          visible: deps.canExpandAll ?? true,
-          enabled: deps.onExpandAll !== undefined,
-          click: () => deps.onExpandAll?.(),
-        },
-        {
-          label: MENU_LABELS.collapseAll,
-          visible: deps.canCollapseAll ?? true,
-          enabled: deps.onCollapseAll !== undefined,
-          click: () => deps.onCollapseAll?.(),
-        },
+        ...leafOf('view-tree'),
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
@@ -715,37 +759,8 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
 
     {
       // Top-level Terminal menu (VS Code placement, between View and Window).
-      // The discoverable home for terminal actions; the View → Show/Hide
-      // Terminal toggle stays as-is to keep the established ⌘J muscle memory.
       label: 'Terminal',
-      submenu: [
-        {
-          // Opens a new terminal tab each click (revealing the dock if hidden;
-          // never hides). No accelerator here: ⌘J belongs to the View →
-          // Show/Hide Terminal toggle, and advertising the same key on two
-          // items only mislabels this one — the OS does not guarantee which
-          // item a duplicate accelerator dispatches to.
-          label: MENU_LABELS.newTerminal,
-          enabled: deps.onNewTerminal !== undefined,
-          click: () => deps.onNewTerminal?.(),
-        },
-        {
-          // Opens a dedicated terminal window (1:1 with VS Code's "New Terminal
-          // Window"). No accelerator — VS Code ships the command unbound, and
-          // ⌘J stays the docked Show/Hide Terminal toggle.
-          label: 'New Terminal Window',
-          enabled: deps.onNewTerminalWindow !== undefined,
-          click: () => deps.onNewTerminalWindow?.(),
-        },
-        {
-          // Closes the active tab — kills its shell (not just hide). Enabled
-          // only when at least one session is live; a collapsed-but-alive
-          // terminal still qualifies.
-          label: MENU_LABELS.killTerminal,
-          enabled: deps.onKillTerminal !== undefined && deps.terminalLive === true,
-          click: () => deps.onKillTerminal?.(),
-        },
-      ],
+      submenu: leafOf('terminal'),
     },
 
     {
@@ -765,38 +780,11 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     {
       label: 'Help',
       submenu: [
-        ...(SHOW_INSTALL_SKILL
-          ? ([
-              {
-                label: 'Install for Claude Chat & Cowork (desktop app)…',
-                click: () => deps.openInstallSkillDialog?.(),
-              },
-              { type: 'separator' as const },
-            ] satisfies MenuItemConstructorOptions[])
-          : []),
-        {
-          label: MENU_LABELS.openOnGithub,
-          click: () => deps.openExternalUrl(OPEN_KNOWLEDGE_GITHUB_URL),
-        },
-        {
-          label: 'Report a Bug…',
-          click: () => deps.onReportBug?.(),
-        },
-        // "Check for updates…" — non-macOS only. Windows/Linux have no
-        // application menu, so Help is the convention there. macOS gets the
-        // Apple-HIG-canonical placement under the App menu (above), so gating
-        // this on `!isMac` keeps exactly one entry per platform — mirroring the
-        // Settings XOR (App menu on macOS, File menu elsewhere). Without the
-        // guard macOS renders the item in BOTH menus.
-        ...(!isMac && deps.onCheckForUpdates
-          ? ([
-              { type: 'separator' as const },
-              {
-                label: `${MENU_LABELS.checkForUpdates}\u2026`,
-                click: deps.onCheckForUpdates,
-              },
-            ] satisfies MenuItemConstructorOptions[])
-          : []),
+        ...withTrailingSep(leafOf('help-install')),
+        ...leafOf('help-links'),
+        // macOS gets the Apple-HIG App-menu placement above; Windows/Linux have
+        // no application menu, so Help is the convention there (leading sep).
+        ...withLeadingSep(leafOf('help-updates')),
       ],
     },
   ];

@@ -62,6 +62,24 @@ export { PROTOCOL_VERSION } from './protocol-version.ts';
 // Re-export VFileMessage for Observer B's error classification (instanceof check
 // instead of fragile constructor.name string comparison).
 export { VFileMessage } from 'vfile-message';
+// Shared command identity — the single declaration point the native menu and
+// the Cmd+K palette both render from. Plain data + a pure evaluator.
+export {
+  COMMAND_IDENTITIES,
+  type CommandAvailabilitySpec,
+  type CommandCheckField,
+  type CommandContext,
+  type CommandGroup,
+  type CommandHostScope,
+  type CommandIdentity,
+  type CommandMenuPlacement,
+  type CommandPalettePresence,
+  type CommandStateToggle,
+  type ContextualTargetKind,
+  evaluateCommandAvailability,
+  type MenuPlatform,
+  type MenuSection,
+} from './commands/command-identity.ts';
 // Headless config writers + UI ConfigBinding.
 // Browser+node compatible — no Node deps; structural ConfigDocProvider type
 // keeps `@hocuspocus/provider` out of core's runtime deps.

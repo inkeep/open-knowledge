@@ -1,19 +1,29 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MENU_LABELS } from '@inkeep/open-knowledge-core';
+import { COMMAND_IDENTITIES, MENU_LABELS } from '@inkeep/open-knowledge-core';
+import {
+  PALETTE_COMMAND_LABELS,
+  type PaletteLabelKey,
+} from '@/components/command-palette-commands';
+import { i18n } from '@/lib/i18n';
 
 /**
- * Parity guard for the file/tree labels that appear in BOTH the native Electron
- * menu and the in-app renderer menus.
+ * Parity guard for the labels that appear in BOTH the native Electron menu and
+ * the in-app renderer (the Cmd+K palette).
  *
  * The native menu (`packages/desktop/src/main/menu.ts`) reads `MENU_LABELS`
- * directly. The renderer wraps the SAME strings in Lingui `<Trans>` / t``
- * macros — which require string literals, so the renderer can't import the
- * constants — and those macros compile into this catalog. If a renderer label
- * drifts from a shared constant (e.g. a casing change on one surface only), its
- * value disappears from the catalog and this test fails, catching a divergence
- * the native menu can't observe at runtime (it has no i18n).
+ * directly (via each command's registry `labelKey`). The palette maps the SAME
+ * `labelKey` to a Lingui `msg` descriptor in `PALETTE_COMMAND_LABELS` — the
+ * macro requires a string literal, so the renderer can't import the constants —
+ * and those descriptors compile into this catalog. This file asserts three
+ * things, so a drift the native menu can't observe at runtime (it has no i18n)
+ * turns the suite red:
+ *   1. every `MENU_LABELS` value is in the compiled catalog (the original guard);
+ *   2. every registry command's palette `labelKey` (and Show/Hide toggle keys)
+ *      has a descriptor in `PALETTE_COMMAND_LABELS` (completeness);
+ *   3. every palette descriptor resolves to a string that is in the catalog and,
+ *      where the key is also a `MENU_LABELS` key, equals the menu string.
  */
 function collectStrings(node: unknown, out: Set<string>): void {
   if (typeof node === 'string') {
@@ -43,4 +53,41 @@ describe('shared menu labels stay in sync between the native menu and the render
       expect(catalogStrings.has(label)).toBe(true);
     });
   }
+});
+
+describe('palette label map covers every registry labelKey (Phase 2b)', () => {
+  for (const cmd of COMMAND_IDENTITIES) {
+    if (!cmd.palette) continue;
+    const keys = cmd.stateToggle
+      ? [cmd.stateToggle.showKey, cmd.stateToggle.hideKey]
+      : cmd.labelKey !== undefined
+        ? [cmd.labelKey]
+        : [];
+    for (const key of keys) {
+      it(`palette command "${cmd.id}" label key "${key}" has a descriptor`, () => {
+        expect(key in PALETTE_COMMAND_LABELS).toBe(true);
+      });
+    }
+  }
+});
+
+describe('every palette descriptor is in the catalog and agrees with MENU_LABELS', () => {
+  for (const [key, descriptor] of Object.entries(PALETTE_COMMAND_LABELS)) {
+    const paletteString = i18n._(descriptor);
+    it(`palette label "${key}" resolves to a catalog string`, () => {
+      expect(catalogStrings.has(paletteString)).toBe(true);
+    });
+    if (key in MENU_LABELS) {
+      it(`palette label "${key}" equals MENU_LABELS.${key}`, () => {
+        expect(paletteString).toBe(MENU_LABELS[key as keyof typeof MENU_LABELS]);
+      });
+    }
+  }
+
+  it('every palette label key is a MENU_LABELS key (no orphan palette labels)', () => {
+    const orphans = (Object.keys(PALETTE_COMMAND_LABELS) as PaletteLabelKey[]).filter(
+      (key) => !(key in MENU_LABELS),
+    );
+    expect(orphans).toEqual([]);
+  });
 });
