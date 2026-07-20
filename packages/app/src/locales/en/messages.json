@@ -11,6 +11,7 @@
     "-3ois8": ["Hard break"],
     "-5jISU": [["0", "plural", { "one": ["#", " template"], "other": ["#", " templates"] }]],
     "-8PP0T": ["Match case"],
+    "-FeyRg": ["Keep original file"],
     "-K0AvT": ["Disconnect"],
     "-LHLx7": ["edited template"],
     "-QCLWk": ["Templates available"],
@@ -553,6 +554,7 @@
     "BQu9Pg": ["Symlink"],
     "BUyQnq": ["Couldn't restart the server. Try `ok start` in this folder."],
     "BY-g4_": ["Add pattern"],
+    "Ba4D2x": ["Template imported"],
     "Bdha5y": ["Publishing..."],
     "BeWTQy": ["Loading starter packs"],
     "BgV29F": ["Visual editor find input focused"],
@@ -1190,6 +1192,7 @@
     "PR9FSv": ["Move to the next visual-editor find result."],
     "PRnH8G": ["of ", ["0"]],
     "PVUn_c": ["Open folder"],
+    "PYmp-0": ["Import as template"],
     "PZtgO0": ["Opening worktree"],
     "P_bX4O": ["How to set up"],
     "Pck6eI": [
@@ -1260,6 +1263,9 @@
     "RGCCrg": ["Copy share link"],
     "RGkNeJ": ["Initialize a starter pack"],
     "RJ3a8Z": ["Looking for <0>", ["lookingForUrl"], "</0>."],
+    "RMQe3p": [
+      "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
+    ],
     "RN62Q8": [
       "We'll build <0>openknowledge.skill</0>, save it to <1>~/Downloads</1>, and open the Claude Desktop App for you."
     ],
@@ -1804,6 +1810,7 @@
     "dOHMA0": ["Failed to move"],
     "dOxPd4": ["Footnote"],
     "dPOFid": ["Show or hide terminal"],
+    "dQHSCs": ["Convert (delete original)"],
     "dTaauv": ["Reason: ", ["reason"]],
     "dUCQo4": ["Renamed to \"", ["trimmed"], "\""],
     "dUQ7_J": [
@@ -1958,6 +1965,7 @@
     "hHMv6l": ["Delete block"],
     "hIQkLb": ["New chat"],
     "hItdtk": ["Browse folder"],
+    "hLod4_": ["Convert to template"],
     "hLy8b1": ["Updated to Version ", ["version"]],
     "hQXiDc": ["Search branches..."],
     "hSBIG-": ["A title, description, tags — anything that describes this folder."],
@@ -1979,6 +1987,7 @@
     "hnq8fP": ["Remove ", ["label"], " from context"],
     "hpDtUm": ["External wiki link"],
     "hpzRlK": ["Reopen closed tab"],
+    "hvZwVx": ["Convert"],
     "hwFOFD": ["Settings failed to load"],
     "hxBHxQ": ["A line with a footnote<0><1>[1]</1></0> and a definition shown below."],
     "hxEUVJ": ["Initialize ", ["selectedPackName"]],
@@ -2434,6 +2443,7 @@
     "rD-woT": [
       "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
     ],
+    "rDOuNw": ["Failed to import template"],
     "rFmBG3": ["Color theme"],
     "rFw02Q": ["Uploading ", ["keyName"]],
     "rJVoVX": ["Source find results"],
@@ -2583,6 +2593,7 @@
       ]
     ],
     "uksqrP": ["Repository not found. It may have been renamed, deleted, or moved."],
+    "ul1Atu": ["Converting..."],
     "un8kBM": ["Creating page: ", ["linkTitle"], "."],
     "ur2XSb": ["Visual editor"],
     "uuoHOU": ["Command failed."],

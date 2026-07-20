@@ -1038,6 +1038,10 @@ msgid "Applying your change"
 msgstr ""
 
 #: src/components/FileTree.tsx
+msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
+msgstr ""
+
+#: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 msgstr ""
 
@@ -1916,12 +1920,28 @@ msgstr ""
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr ""
 
+#: src/components/FileTree.tsx
+msgid "Convert"
+msgstr ""
+
+#: src/components/FileTree.tsx
+msgid "Convert (delete original)"
+msgstr ""
+
 #: src/editor/bubble-menu/FootnoteBubbleButton.tsx
 msgid "Convert selection to footnote"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Convert the current block to a paragraph."
+msgstr ""
+
+#: src/components/FileTree.tsx
+msgid "Convert to template"
+msgstr ""
+
+#: src/components/FileTree.tsx
+msgid "Converting..."
 msgstr ""
 
 #: src/components/empty-state/CopyablePromptList.tsx
@@ -3340,6 +3360,10 @@ msgstr ""
 msgid "Failed to enable sync — {detail}"
 msgstr ""
 
+#: src/components/FileTree.tsx
+msgid "Failed to import template"
+msgstr ""
+
 #: src/components/ActivityModeContent.tsx
 msgid "Failed to load activity"
 msgstr ""
@@ -4126,6 +4150,10 @@ msgstr ""
 msgid "Import"
 msgstr ""
 
+#: src/components/FileTree.tsx
+msgid "Import as template"
+msgstr ""
+
 #: src/components/SeedDialog.tsx
 msgid "In a subfolder"
 msgstr ""
@@ -4382,6 +4410,10 @@ msgstr ""
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Keep my version"
+msgstr ""
+
+#: src/components/FileTree.tsx
+msgid "Keep original file"
 msgstr ""
 
 #: src/components/SeedDialog.tsx
@@ -7778,6 +7810,10 @@ msgstr ""
 
 #: src/components/TemplateForm.tsx
 msgid "Template \"{trimmedTitle}\" created"
+msgstr ""
+
+#: src/components/FileTree.tsx
+msgid "Template imported"
 msgstr ""
 
 #: src/components/empty-state/CreateView.tsx

@@ -255,6 +255,37 @@ export const TemplatePutSuccessSchema = z
 export type TemplatePutSuccess = z.infer<typeof TemplatePutSuccessSchema>;
 
 /**
+ * Request body for `POST /api/template/import`. `sourcePath` is the relative
+ * path to the source markdown document, `targetFolder` is the folder where the
+ * template should be saved, `name` is the optional template name, and `title`
+ * is the optional template title. `deleteSource` is optional to support move-instead-of-copy.
+ */
+export const TemplateImportRequestSchema = z
+  .object({
+    sourcePath: z.string().min(1),
+    targetFolder: z.string(),
+    name: z.string().optional(),
+    title: z.string().optional(),
+    deleteSource: z.boolean().optional(),
+    ...agentIdentityFields,
+    summary: summaryField,
+  })
+  .strict() satisfies StandardSchemaV1;
+export type TemplateImportRequest = z.infer<typeof TemplateImportRequestSchema>;
+
+/**
+ * Success body for `POST /api/template/import`.
+ */
+export const TemplateImportSuccessSchema = z
+  .object({
+    path: z.string().min(1),
+    created: z.boolean(),
+    warnings: z.array(z.string()),
+  })
+  .strict() satisfies StandardSchemaV1;
+export type TemplateImportSuccess = z.infer<typeof TemplateImportSuccessSchema>;
+
+/**
  * Success body for `DELETE /api/template?name=<n>&folder=<f>`. `existed` is
  * `true` when the file was deleted; `false` when the operation was a no-op
  * (template wasn't on disk). `path` is the contentDir-relative path the

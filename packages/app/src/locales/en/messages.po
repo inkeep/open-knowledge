@@ -1042,6 +1042,10 @@ msgid "Applying your change"
 msgstr "Applying your change"
 
 #: src/components/FileTree.tsx
+msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
+msgstr "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
+
+#: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 msgstr "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 
@@ -1920,6 +1924,14 @@ msgstr "Content root"
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "Content rules not yet loaded — try again in a moment"
 
+#: src/components/FileTree.tsx
+msgid "Convert"
+msgstr "Convert"
+
+#: src/components/FileTree.tsx
+msgid "Convert (delete original)"
+msgstr "Convert (delete original)"
+
 #: src/editor/bubble-menu/FootnoteBubbleButton.tsx
 msgid "Convert selection to footnote"
 msgstr "Convert selection to footnote"
@@ -1927,6 +1939,14 @@ msgstr "Convert selection to footnote"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Convert the current block to a paragraph."
 msgstr "Convert the current block to a paragraph."
+
+#: src/components/FileTree.tsx
+msgid "Convert to template"
+msgstr "Convert to template"
+
+#: src/components/FileTree.tsx
+msgid "Converting..."
+msgstr "Converting..."
 
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -3344,6 +3364,10 @@ msgstr "Failed to enable semantic search — {detail}"
 msgid "Failed to enable sync — {detail}"
 msgstr "Failed to enable sync — {detail}"
 
+#: src/components/FileTree.tsx
+msgid "Failed to import template"
+msgstr "Failed to import template"
+
 #: src/components/ActivityModeContent.tsx
 msgid "Failed to load activity"
 msgstr "Failed to load activity"
@@ -4130,6 +4154,10 @@ msgstr "Ignore patterns (raw text)"
 msgid "Import"
 msgstr "Import"
 
+#: src/components/FileTree.tsx
+msgid "Import as template"
+msgstr "Import as template"
+
 #: src/components/SeedDialog.tsx
 msgid "In a subfolder"
 msgstr "In a subfolder"
@@ -4387,6 +4415,10 @@ msgstr "Keep file deleted"
 #: src/components/DiffViewBoundary.tsx
 msgid "Keep my version"
 msgstr "Keep my version"
+
+#: src/components/FileTree.tsx
+msgid "Keep original file"
+msgstr "Keep original file"
 
 #: src/components/SeedDialog.tsx
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
@@ -7783,6 +7815,10 @@ msgstr "template \"{name}\""
 #: src/components/TemplateForm.tsx
 msgid "Template \"{trimmedTitle}\" created"
 msgstr "Template \"{trimmedTitle}\" created"
+
+#: src/components/FileTree.tsx
+msgid "Template imported"
+msgstr "Template imported"
 
 #: src/components/empty-state/CreateView.tsx
 msgid "Template list"

@@ -217,6 +217,8 @@ import {
   TagsListSuccessSchema,
   TemplateDeleteSuccessSchema,
   TemplateGetSuccessSchema,
+  TemplateImportRequestSchema,
+  TemplateImportSuccessSchema,
   TemplateMoveRequestSchema,
   TemplateMoveSuccessSchema,
   TemplatePutRequestSchema,
@@ -247,7 +249,7 @@ import {
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import busboy from 'busboy';
 import { fileTypeFromBuffer } from 'file-type';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import { captureEffect } from './activity-log.ts';
 import { listAgentActivity, synthesizeVersionDiff } from './agent-activity.ts';
@@ -13376,7 +13378,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   function checkTemplateConflictGate(
     folder: string,
     name: string,
-    handler: 'template-put' | 'template-delete' | 'template-move',
+    handler: 'template-put' | 'template-delete' | 'template-move' | 'template-import',
     res: ServerResponse,
   ): boolean {
     if (!name) return false;
@@ -13966,6 +13968,262 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'template-move', method: 'POST' },
+  );
+
+  const handleTemplateImport = withValidation(
+    TemplateImportRequestSchema,
+    async (_req, res, body) => {
+      try {
+        if (ephemeral) {
+          errorResponse(
+            res,
+            403,
+            'urn:ok:error:single-file-mode',
+            'Templates are not available in single-file mode.',
+            { handler: 'template-import' },
+          );
+          return;
+        }
+
+        const actor = extractActorIdentity(
+          body as unknown as Record<string, unknown>,
+          getPrincipal,
+        );
+        if (actor.kind === 'invalid-summary') {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
+            handler: 'template-import',
+          });
+          return;
+        }
+
+        const sourcePath = body.sourcePath;
+        if (!isSafeDocName(sourcePath)) {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid sourcePath.', {
+            handler: 'template-import',
+          });
+          return;
+        }
+
+        const sourceDocName = resolveAlias(sourcePath);
+        if (isSystemDoc(sourceDocName) || isConfigDoc(sourceDocName)) {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:reserved-doc-name',
+            `'${sourceDocName}' is a reserved document name.`,
+            { handler: 'template-import' },
+          );
+          return;
+        }
+
+        const sourceFilePath = resolveContentEntryPath(contentDir, 'file', sourceDocName);
+        if (!existsSync(sourceFilePath)) {
+          errorResponse(
+            res,
+            404,
+            'urn:ok:error:doc-not-found',
+            `Source document not found: ${sourceDocName}.`,
+            {
+              handler: 'template-import',
+            },
+          );
+          return;
+        }
+
+        const existing = hocuspocus.documents.get(sourceDocName);
+        if (body.deleteSource) {
+          const deleteEngine = getSyncEngine?.();
+          const deleteTrackedFiles = new Set(
+            deleteEngine ? deleteEngine.getConflicts().map((c) => c.file) : [],
+          );
+          const conflictedByLifecycle = existing !== undefined && isDocInConflict(existing);
+          const conflictedByStore = deleteTrackedFiles.has(sourcePath);
+          if (conflictedByLifecycle || conflictedByStore) {
+            respondDocInConflict(
+              res,
+              new DocInConflictError({ file: sourcePath }),
+              'template-import',
+            );
+            return;
+          }
+        }
+
+        // Read source content
+        let sourceContent = '';
+        if (existing) {
+          sourceContent = existing.getText('source').toString();
+        } else {
+          const dc = await hocuspocus.openDirectConnection(sourceDocName);
+          try {
+            const document = dc.document;
+            if (!document) {
+              errorResponse(
+                res,
+                500,
+                'urn:ok:error:doc-not-available',
+                'Source document is not available.',
+                {
+                  handler: 'template-import',
+                },
+              );
+              return;
+            }
+            sourceContent = document.getText('source').toString();
+          } finally {
+            await dc.disconnect();
+          }
+        }
+
+        // Determine target template name
+        let name = body.name;
+        if (!name) {
+          const { basename } = splitContentPath(sourcePath);
+          const nameWithoutExt = basename.replace(/\.(md|mdx)$/i, '');
+          name = nameWithoutExt.replace(/[^A-Za-z0-9_-]/g, '-').toLowerCase();
+          name = name.replace(/^[-_]+|[-_]+$/g, '');
+          name ||= 'imported-template';
+        }
+
+        if (!validateTemplateName(name, res, 'template-import')) return;
+
+        const validated = validateFolderRel(body.targetFolder, res, 'folder', 'template-import');
+        if (!validated) return;
+
+        if (checkTemplateConflictGate(validated.folderRel, name, 'template-import', res)) return;
+
+        // Parse existing frontmatter of the source file to extract the title/description/tags
+        const { frontmatter: sourceFmText, body: sourceBody } = stripFrontmatter(sourceContent);
+        const cleanFmText = unwrapFrontmatterFences(sourceFmText);
+        let sourceFmObj: Record<string, unknown> = {};
+        try {
+          if (cleanFmText.trim()) {
+            sourceFmObj = parseYaml(cleanFmText) as Record<string, unknown>;
+          }
+        } catch {
+          // Malformed frontmatter — treat the source as having none.
+        }
+
+        const templateTitle =
+          body.title || (sourceFmObj?.title as string) || extractPageTitle(sourceContent, name);
+        const templateDescription = (sourceFmObj?.description as string) || '';
+        const templateTags = Array.isArray(sourceFmObj?.tags) ? (sourceFmObj.tags as string[]) : [];
+
+        // For the starter content, we can use the original document frontmatter but remove `template:`
+        // if it somehow got there. Keep other fields. We also drop `title` so it doesn't get baked into every instance.
+        const starterFmObj = { ...sourceFmObj };
+        delete starterFmObj.template;
+        delete starterFmObj.title;
+
+        let starterContent = '';
+        if (Object.keys(starterFmObj).length > 0) {
+          const fmYaml = stringifyYaml(starterFmObj);
+          starterContent = fmYaml.trim() + '\n';
+        }
+        starterContent = starterContent ? `---\n${starterContent}---\n${sourceBody}` : sourceBody;
+
+        const composed = composeTemplateContent({
+          name,
+          body: starterContent,
+          frontmatter: {
+            title: templateTitle,
+            description: templateDescription,
+            tags: templateTags,
+          },
+        });
+
+        if (!composed.ok) {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid template request.', {
+            handler: 'template-import',
+            detail: composed.error.code,
+            cause: new Error(composed.error.message),
+          });
+          return;
+        }
+
+        const templateFilePath = resolve(
+          validated.resolvedContentDir,
+          validated.folderRel,
+          '.ok',
+          'templates',
+          `${name}.md`,
+        );
+        const templateCreated = !existsSync(templateFilePath);
+        const templateRelPath = relative(validated.resolvedContentDir, templateFilePath)
+          .split(/[\\/]/)
+          .filter(Boolean)
+          .join('/');
+        const templateDocName = templateDocNameFor(validated.folderRel, name);
+
+        const { agentId, agentName, colorSeed, clientName } = extractAgentIdentity(
+          body as unknown as Record<string, unknown>,
+        );
+        const templateSession = await sessionManager.getSession(templateDocName, agentId, {
+          displayName: agentName,
+          colorSeed,
+          clientName,
+        });
+        templateSession.dc.document.transact(() => {
+          composeAndWriteRawBody(templateSession.dc.document, composed.content, 'agent');
+        }, templateSession.origin);
+
+        const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
+        if (templateFlush?.kind === 'failure') {
+          respondPersistenceFailure(res, templateFlush.failure, 'template-import');
+          return;
+        }
+        if (templateFlush?.kind === 'divergence') {
+          respondDiskDivergence(res, 'template-import');
+          return;
+        }
+
+        attributeOkArtifactWrite(
+          actor,
+          okArtifactKey('template', validated.folderRel, name),
+          `template-import: ${templateRelPath}`,
+        );
+
+        if (body.deleteSource) {
+          const deletedDocNames = [sourceDocName];
+          await captureAndCloseDocuments(deletedDocNames, 'deleted-upstream');
+          if (recentlyRemovedDocs) {
+            recentlyRemovedDocs.setDeleted(sourceDocName);
+          }
+          tracedUnlinkSync(sourceFilePath);
+          mutateFileIndex?.({
+            kind: 'delete',
+            path: sourceFilePath,
+            docName: sourceDocName,
+          });
+        }
+
+        await commitOkArtifactWrite('template-import');
+        signalChannel?.('files');
+
+        successResponse(
+          res,
+          200,
+          TemplateImportSuccessSchema,
+          {
+            path: templateRelPath,
+            created: templateCreated,
+            warnings: composed.warnings,
+          },
+          { handler: 'template-import' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to import template.',
+          {
+            handler: 'template-import',
+            cause: e,
+          },
+        );
+      }
+    },
+    { handler: 'template-import', method: 'POST' },
   );
 
   // ─── Skills (`/api/skill`, `/api/skills`) ──────────────────────
@@ -18335,6 +18593,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/pages': handlePages,
     '/api/folder-config': handleFolderConfig,
     '/api/template': handleTemplate,
+    '/api/template/import': handleTemplateImport,
     '/api/templates': handleTemplatesList,
     '/api/skill': handleSkill,
     '/api/skill-file': handleSkillFile,
@@ -18451,6 +18710,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/install-skill',
     '/api/folder-config',
     '/api/template',
+    '/api/template/import',
     '/api/skill',
     '/api/skill-file',
     '/api/skill/install',

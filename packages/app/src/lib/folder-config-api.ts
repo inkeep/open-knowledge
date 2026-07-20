@@ -164,3 +164,41 @@ export async function moveTemplate(input: {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
+
+/**
+ * POST `/api/template/import` — import an existing markdown document as a template.
+ */
+export async function importTemplate(input: {
+  sourcePath: string;
+  targetFolder: string;
+  name?: string;
+  title?: string;
+  deleteSource?: boolean;
+}): Promise<
+  { ok: true; path: string; created: boolean; warnings: string[] } | { ok: false; error: string }
+> {
+  try {
+    const res = await fetch('/api/template/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      return { ok: false, error: await readErrorBody(res) };
+    }
+    const payload = (await res.json().catch(() => null)) as {
+      path?: string;
+      created?: boolean;
+      warnings?: string[];
+    } | null;
+    emitTemplatesChanged();
+    return {
+      ok: true,
+      path: payload?.path ?? '',
+      created: payload?.created ?? false,
+      warnings: payload?.warnings ?? [],
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}

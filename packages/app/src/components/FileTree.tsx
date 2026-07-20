@@ -29,6 +29,7 @@ import {
   Copy,
   CopyPlus,
   EyeOff,
+  FileKey,
   FilePlus,
   FolderOpen,
   FolderPlus,
@@ -195,6 +196,7 @@ import {
   subscribeToFileTreeMenuActionDuplicate,
   subscribeToFileTreeMenuActionRename,
 } from '@/lib/file-tree-menu-action-events';
+import { importTemplate } from '@/lib/folder-config-api';
 import { parseServerResponse, parseSuccessOrWarn } from '@/lib/parse-server-response';
 import { createRefreshScheduler } from '@/lib/refresh-scheduler';
 import { getRelaunchInFlightSnapshot, useRelaunchInFlight } from '@/lib/relaunch-store';
@@ -572,6 +574,7 @@ interface FileTreeMenuProps {
    *  Drives the folder menu's "New from template" hover submenu. */
   onCreateFromTemplate: (parentDir: string, templateName: string) => void;
   onDuplicate: (target: FileTreeTarget) => void;
+  onImportTemplate: (target: FileTreeTarget, deleteSource: boolean) => void;
   onDelete: (targets: FileTreeTarget[]) => void;
   onExpandSubtree: (treePath: string) => void;
   onCollapseSubtree: (treePath: string) => void;
@@ -755,6 +758,7 @@ function FileTreeMenu({
   onStartCreating,
   onCreateFromTemplate,
   onDuplicate,
+  onImportTemplate,
   onDelete,
   onExpandSubtree,
   onCollapseSubtree,
@@ -1134,16 +1138,44 @@ function FileTreeMenu({
               <>
                 <DropdownMenuSeparator />
                 {!isAsset ? (
-                  <DropdownMenuItem
-                    disabled={anyActionBusy}
-                    onSelect={() => {
-                      close();
-                      onDuplicate(target);
-                    }}
-                  >
-                    <CopyPlus aria-hidden="true" />
-                    <Trans>Duplicate</Trans>
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger disabled={anyActionBusy}>
+                        <FileKey aria-hidden="true" />
+                        <Trans>Import as template</Trans>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem
+                          disabled={anyActionBusy}
+                          onSelect={() => {
+                            close();
+                            onImportTemplate(target, false);
+                          }}
+                        >
+                          <Trans>Keep original file</Trans>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={anyActionBusy}
+                          onSelect={() => {
+                            close();
+                            onImportTemplate(target, true);
+                          }}
+                        >
+                          <Trans>Convert (delete original)</Trans>
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuItem
+                      disabled={anyActionBusy}
+                      onSelect={() => {
+                        close();
+                        onDuplicate(target);
+                      }}
+                    >
+                      <CopyPlus aria-hidden="true" />
+                      <Trans>Duplicate</Trans>
+                    </DropdownMenuItem>
+                  </>
                 ) : null}
                 <DropdownMenuItem
                   disabled={anyActionBusy}
@@ -1397,6 +1429,7 @@ export function FileTree({
   const [unfilteredRootEntryCount, setUnfilteredRootEntryCount] = useState(0);
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<FileTreeDeleteRequest | null>(null);
+  const [templateConvertRequest, setTemplateConvertRequest] = useState<FileTreeTarget | null>(null);
   /**
    * Set when `shell.trashItem` returns `{ ok: false }` for one or more
    * targets during the Step 1 trash flow. Drives the rendering of
@@ -2151,6 +2184,62 @@ export function FileTree({
   useEffect(() => {
     handleDuplicateTargetRef.current = handleDuplicateTarget;
   });
+
+  async function handleImportTemplate(target: FileTreeTarget, deleteSource: boolean) {
+    if (target.kind !== 'file') return;
+    if (deleteSource) {
+      setTemplateConvertRequest(target);
+      return;
+    }
+    await executeImportTemplate(target, false);
+  }
+
+  async function executeImportTemplate(target: FileTreeTarget, deleteSource: boolean) {
+    if (busyPathRef.current !== null) return;
+    const clearBusyState = () => {
+      setBusyPath(null);
+      busyPathRef.current = null;
+      setTemplateConvertRequest(null);
+    };
+    busyPathRef.current = target.path;
+    setBusyPath(target.path);
+    setError(null);
+
+    const appPath = target.path;
+    const slash = appPath.lastIndexOf('/');
+    const targetFolder = slash === -1 ? '' : appPath.slice(0, slash);
+
+    const res = await importTemplate({
+      sourcePath: target.path,
+      targetFolder,
+      deleteSource,
+    });
+
+    if (!res.ok) {
+      toast.error(t`Failed to import template`, { description: res.error });
+      clearBusyState();
+      return;
+    }
+
+    if (deleteSource) {
+      await applyDeleteAftermath([target], [target.path], []);
+      // Optimistically remove from view if deleted, standard watcher sweeps later
+      setDocuments((current) => {
+        const next = current.filter(
+          (entry) => !(isDocumentEntry(entry) && entry.docName === target.path),
+        );
+        resetModelToDocuments(next);
+        markNextDocumentsAsApplied(next);
+        return next;
+      });
+      emitDocumentsChanged(['files', 'backlinks', 'graph']);
+    }
+
+    toast.success(t`Template imported`, {
+      description: res.path,
+    });
+    clearBusyState();
+  }
 
   function recoverMarkdownRenameConflict(message: string): boolean {
     const bareDestinationPath = parseAlreadyExistsRenamePath(message);
@@ -4446,6 +4535,7 @@ export function FileTree({
                 startCreating('file', parentDir, { template: templateName })
               }
               onDuplicate={handleDuplicateTarget}
+              onImportTemplate={handleImportTemplate}
               onDelete={(targets) => setDeleteRequest({ targets })}
               onExpandSubtree={expandSubtree}
               onCollapseSubtree={collapseSubtree}
@@ -4511,6 +4601,29 @@ export function FileTree({
             })()}
             isSubmitting={busyPath !== null}
             onDelete={() => handleDeleteTargets(deleteRequest.targets)}
+          />
+        )}
+      </Dialog>
+      <Dialog
+        open={!!templateConvertRequest}
+        onOpenChange={(open) => {
+          if (!open && !busyPath) setTemplateConvertRequest(null);
+        }}
+      >
+        {templateConvertRequest && (
+          <DeleteConfirmationDialog
+            itemName={
+              templateConvertRequest.name +
+              (templateConvertRequest.kind === 'file'
+                ? (templateConvertRequest.docExt ?? '.md')
+                : '.md')
+            }
+            customTitle={t`Convert to template`}
+            customDescription={t`Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone.`}
+            customConfirmLabel={t`Convert`}
+            customConfirmLabelBusy={t`Converting...`}
+            isSubmitting={busyPath !== null}
+            onDelete={() => executeImportTemplate(templateConvertRequest, true)}
           />
         )}
       </Dialog>

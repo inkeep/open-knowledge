@@ -51,6 +51,10 @@ const REQUIRED_HANDLERS = [
   'handleTemplatePut',
   'handleTemplateDelete',
   'handleTemplateMove',
+  // `/api/template/import` — copies a source doc into `.ok/templates/` and,
+  // when `deleteSource`, removes the source. The source-delete branch gates via
+  // `respondDocInConflict`; the template target gates via `checkTemplateConflictGate`.
+  'handleTemplateImport',
   // Skill CONTENT-doc writers (skills-as-content): a PROJECT `SKILL.md` and its
   // `.md` references are real CRDT content docs, so their CRDT paired-write
   // path must refuse a mid-conflict doc via `checkSkillDocConflictGate`. The
