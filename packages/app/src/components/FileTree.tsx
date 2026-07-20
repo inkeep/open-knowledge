@@ -43,8 +43,6 @@ import {
   TriangleAlert,
   UnfoldVertical,
 } from 'lucide-react';
-import { __iconNode as botIcon } from 'lucide-react/dist/esm/icons/bot';
-import { __iconNode as link2Icon } from 'lucide-react/dist/esm/icons/link-2';
 import { useTheme } from 'next-themes';
 import {
   type DragEvent as ReactDragEvent,
@@ -61,10 +59,7 @@ import {
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
 import { FileTreeFilteredToZeroNotice } from '@/components/FileTreeFilteredToZeroNotice';
-import {
-  MARKDOWN_FILE_ICON_PATH_D,
-  MARKDOWN_FILE_ICON_VIEWBOX,
-} from '@/components/file-entry-icon';
+import { MARKDOWN_FILE_ICON_VIEWBOX } from '@/components/file-entry-icon';
 import {
   appendSidebarUploadFields,
   collectTreeFolderPathsFromDocuments,
@@ -101,6 +96,12 @@ import {
   applyExtensionBadges,
   FILE_TREE_EXT_BADGE_CSS,
 } from '@/components/file-tree-extension-badge';
+import {
+  AGENT_DECORATION_ICON_ID,
+  FILE_TREE_DECORATION_SPRITE_SHEET,
+  LINK_DECORATION_ICON_ID,
+  MARKDOWN_FILE_ICON_ID,
+} from '@/components/file-tree-icon-sprite';
 import { buildOkignorePatternFromTarget } from '@/components/file-tree-okignore';
 import {
   applyDeleteToDocuments,
@@ -116,6 +117,20 @@ import {
   type RenamedFolderMapping,
   remapActiveDocName,
 } from '@/components/file-tree-operations';
+import {
+  alternateMarkdownTreePath,
+  buildRowDecorationIndex,
+  collectTabsToCloseForDelete,
+  deleteTargetCoversPendingCreate,
+  hasSameStemMarkdownSiblingTreePath,
+  isAgentTreePath,
+  isEditableKeyboardTarget,
+  markdownTreeExtension,
+  parseAlreadyExistsRenamePath,
+  resolveDuplicableKeyboardTarget,
+  resolveKeyboardDeleteTargets,
+  selectedTreePathsToDeleteTargets,
+} from '@/components/file-tree-path-helpers';
 import {
   applyRenameInputAffordance,
   FILE_TREE_RENAME_INPUT_CSS,
@@ -135,7 +150,6 @@ import {
   classifyEmptyTree,
   type DocumentEntry,
   type FileEntry,
-  type FolderEntry,
   filterVisibleEntries,
   hasOkPathSegment,
   isAssetEntry,
@@ -228,18 +242,6 @@ import { useInstalledAgents } from './handoff/useInstalledAgents';
 import { cancelHoverPrewarm, scheduleHoverPrewarm } from './sidebar-hover-prewarm';
 import { useSidebar } from './ui/sidebar';
 
-const MARKDOWN_TREE_EXTENSION_PATTERN = /\.(md|mdx)$/i;
-
-function parseAlreadyExistsRenamePath(message: string): string | null {
-  const match = message.match(/^"(.+)" already exists\.$/);
-  return match ? match[1] : null;
-}
-
-function markdownTreeExtension(path: string): string | null {
-  const match = path.match(MARKDOWN_TREE_EXTENSION_PATTERN);
-  return match ? match[0] : null;
-}
-
 function focusEditorAfterRename(docName: string): void {
   window.requestAnimationFrame(() => {
     const editor = getEditorForDoc(docName);
@@ -299,43 +301,6 @@ async function copyToClipboard(text: string, kind: 'full' | 'relative'): Promise
     toast.error(kind === 'full' ? t`Could not copy full path` : t`Could not copy relative path`);
   }
 }
-
-const AGENT_FILE_NAMES = new Set(['agents', 'agent', 'claude', 'skill']);
-const LINK_DECORATION_ICON_ID = 'ok-file-tree-link-decoration';
-const AGENT_DECORATION_ICON_ID = 'ok-file-tree-agent-decoration';
-const MARKDOWN_FILE_ICON_ID = 'ok-file-tree-markdown';
-// Custom Markdown file glyph (document with an "MD" label) overriding Pierre's
-// built-in `complete`-set markdown glyph. `fill="currentColor"` lets
-// `--trees-file-icon-color-markdown` (set in createFileTreeStyle, see
-// file-tree-density.ts) color it.
-const MARKDOWN_FILE_ICON_SYMBOL = `<symbol id="${MARKDOWN_FILE_ICON_ID}" viewBox="${MARKDOWN_FILE_ICON_VIEWBOX}" fill="currentColor"><path d="${MARKDOWN_FILE_ICON_PATH_D}"/></symbol>`;
-
-type IconNode = [string, Record<string, string>][];
-
-function iconNodeToSvg(iconNode: IconNode): string {
-  return (
-    iconNode
-      // remove React key
-      .map(([tag, { key: _, ...attrs }]) => {
-        const attrString = Object.entries(attrs)
-          .map(([k, v]) => `${k}="${v}"`)
-          .join(' ');
-        return `<${tag} ${attrString} />`;
-      })
-      .join('')
-  );
-}
-
-function createLucideSpriteSymbol(id: string, iconNode: IconNode): string {
-  const symbolContent = iconNodeToSvg(iconNode);
-  return `<symbol id="${id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${symbolContent}</symbol>`;
-}
-
-const FILE_TREE_DECORATION_SPRITE_SHEET = `<svg data-icon-sprite aria-hidden="true" width="0" height="0">
-  ${createLucideSpriteSymbol(LINK_DECORATION_ICON_ID, link2Icon)}
-  ${createLucideSpriteSymbol(AGENT_DECORATION_ICON_ID, botIcon)}
-  ${MARKDOWN_FILE_ICON_SYMBOL}
-</svg>`;
 
 // Drop-to-root affordance. The patched `@pierre/trees` sets
 // `data-file-tree-root-drag-target="true"` on the virtualized root while an
@@ -431,11 +396,6 @@ const FILE_TREE_CREATION_CLEARED_CSS = `
 // alongside the badge-injection processor in file-tree-extension-badge.ts so the
 // CSS + DOM-mutation contract stays in one place.
 const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}`;
-
-function isAgentTreePath(treePath: string): boolean {
-  const name = treePath.split('/').pop()?.replace(/\.md$/i, '').toLowerCase();
-  return !!name && AGENT_FILE_NAMES.has(name);
-}
 
 interface PendingCreate {
   kind: 'file' | 'folder';
@@ -590,161 +550,6 @@ interface FileTreeMenuProps {
   /** Authoritative document list — sourced for `docExt` when Pierre's tree
    *  path has lost its extension after a basename-only commit. See `treeItemToTarget`. */
   documents: readonly FileEntry[];
-}
-
-function treePathToTarget(treePath: string, documents: readonly FileEntry[]): FileTreeTarget {
-  return treeItemToTarget(
-    {
-      kind: treePath.endsWith('/') ? 'directory' : 'file',
-      name: treePath,
-      path: treePath,
-    },
-    documents,
-  );
-}
-
-function alternateMarkdownTreePath(treePath: string): string | null {
-  const match = treePath.match(/\.(md|mdx)$/i);
-  if (!match) return null;
-  const ext = match[0].toLowerCase();
-  const alternateExt = ext === '.md' ? '.mdx' : '.md';
-  return `${treePath.slice(0, -match[0].length)}${alternateExt}`;
-}
-
-function hasSameStemMarkdownSiblingTreePath(
-  treePath: string,
-  treePaths: readonly string[],
-): boolean {
-  const alternate = alternateMarkdownTreePath(treePath);
-  if (!alternate) return false;
-  return treePaths.includes(alternate);
-}
-
-function isTreePathInsideFolder(treePath: string, folderTreePath: string): boolean {
-  return treePath !== folderTreePath && treePath.startsWith(folderTreePath);
-}
-
-function selectedTreePathsToDeleteTargets(
-  selectedTreePaths: readonly string[],
-  documents: readonly FileEntry[],
-): FileTreeTarget[] {
-  // Revealed `.ok` rows are read-only OK-managed state — they never become
-  // delete targets, even when swept into a multi-selection beside deletable
-  // rows (this also keeps the confirm dialog's item count honest).
-  const uniqueDeletablePaths = [...new Set(selectedTreePaths)].filter(
-    (treePath) => !hasOkPathSegment(treePath),
-  );
-  const selectedFolderPaths = uniqueDeletablePaths.filter((treePath) => treePath.endsWith('/'));
-  return uniqueDeletablePaths
-    .filter(
-      (treePath) =>
-        !selectedFolderPaths.some((folderPath) => isTreePathInsideFolder(treePath, folderPath)),
-    )
-    .map((treePath) => treePathToTarget(treePath, documents));
-}
-
-function normalizeTreePathFromModel(model: PierreFileTreeModel, treePath: string): string {
-  const selectedItem =
-    model.getItem(treePath) ?? model.getItem(folderPathToTreeDirectoryPath(treePath));
-  return selectedItem?.isDirectory()
-    ? folderPathToTreeDirectoryPath(treeDirectoryPathToFolderPath(selectedItem.getPath()))
-    : treePath;
-}
-
-function focusedOrFirstSelectedTreePath(model: PierreFileTreeModel): string | null {
-  const selectedPath = model.getFocusedPath() ?? model.getSelectedPaths()[0] ?? null;
-  return selectedPath ? normalizeTreePathFromModel(model, selectedPath) : null;
-}
-
-function resolveDuplicableKeyboardTarget(
-  model: PierreFileTreeModel,
-  documents: readonly FileEntry[],
-  assetTreePaths: ReadonlySet<string>,
-): FileTreeTarget | null {
-  const selectedPath = focusedOrFirstSelectedTreePath(model);
-  // Revealed `.ok` rows are read-only OK-managed state — no keyboard
-  // copy/paste/duplicate, matching their menu's suppressed affordances.
-  if (!selectedPath || assetTreePaths.has(selectedPath) || hasOkPathSegment(selectedPath)) {
-    return null;
-  }
-  return treePathToTarget(selectedPath, documents);
-}
-
-function resolveKeyboardDeleteTargets(
-  model: PierreFileTreeModel,
-  documents: readonly FileEntry[],
-): FileTreeTarget[] {
-  const selectedPaths = model.getSelectedPaths();
-  const focusedPath = focusedOrFirstSelectedTreePath(model);
-  const paths =
-    selectedPaths.length > 0
-      ? selectedPaths.map((treePath) => normalizeTreePathFromModel(model, treePath))
-      : focusedPath
-        ? [focusedPath]
-        : [];
-  return selectedTreePathsToDeleteTargets(paths, documents);
-}
-
-function isPathAtOrInsideFolder(path: string, folderPath: string): boolean {
-  return path === folderPath || path.startsWith(`${folderPath}/`);
-}
-
-function isEditableKeyboardTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tagName = target.tagName;
-  return (
-    tagName === 'INPUT' ||
-    tagName === 'TEXTAREA' ||
-    tagName === 'SELECT' ||
-    target.isContentEditable ||
-    target.closest('[contenteditable="true"]') !== null
-  );
-}
-
-function collectTabsToCloseForDelete(
-  targets: readonly FileTreeTarget[],
-  documents: readonly FileEntry[],
-  folderTreePaths: readonly string[],
-): { docNames: Set<string>; folderPaths: Set<string>; assetPaths: Set<string> } {
-  const docNames = new Set<string>();
-  const folderPaths = new Set<string>();
-  const assetPaths = new Set<string>();
-
-  for (const target of targets) {
-    if (target.kind === 'file') {
-      docNames.add(target.path);
-      continue;
-    }
-    if (target.kind === 'asset') {
-      assetPaths.add(target.path);
-      continue;
-    }
-
-    folderPaths.add(target.path);
-    for (const entry of documents) {
-      if (isDocumentEntry(entry) && entry.docName.startsWith(`${target.path}/`)) {
-        docNames.add(entry.docName);
-      } else if (isAssetEntry(entry) && entry.path.startsWith(`${target.path}/`)) {
-        assetPaths.add(entry.path);
-      }
-    }
-    for (const treePath of folderTreePaths) {
-      const folderPath = treeDirectoryPathToFolderPath(treePath);
-      if (isPathAtOrInsideFolder(folderPath, target.path)) {
-        folderPaths.add(folderPath);
-      }
-    }
-  }
-
-  return { docNames, folderPaths, assetPaths };
-}
-
-function deleteTargetCoversPendingCreate(target: FileTreeTarget, pending: PendingCreate): boolean {
-  if (target.kind === 'file') {
-    return pending.kind === 'file' && target.path === pending.createdPath;
-  }
-  if (target.kind === 'asset') return false;
-  return isPathAtOrInsideFolder(pending.createdPath, target.path);
 }
 
 function FileTreeMenu({
@@ -1386,25 +1191,6 @@ export function FileTree({
       }
     );
   }
-  function navigateToWithPulse(
-    targetPath: string,
-    size?: number,
-    options?: { registerPage?: boolean },
-  ) {
-    if (options?.registerPage) addPage(targetPath);
-    openTarget(navigationTargetForDocument(targetPath, size), { tabBehavior: 'replace-active' });
-    replaceHashWithoutNavigation(hashFromDocName(targetPath));
-    notifySidebarFileSelected();
-  }
-  function navigateToFolderWithPulse(folderPath: string) {
-    const nextHash = hashFromFolderPath(folderPath);
-    openTarget(
-      { kind: 'folder', target: folderPath, folderPath },
-      { tabBehavior: 'replace-active' },
-    );
-    replaceHashWithoutNavigation(nextHash);
-    notifySidebarFileSelected();
-  }
   const [documents, setDocuments] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1467,6 +1253,45 @@ export function FileTree({
   const documentsRef = useRef(documents);
   const pageMetaRef = useRef(pageMeta);
   const pendingExactFileSelectionRef = useRef<string | null>(null);
+  // Single navigation path for tree-initiated opens: resolve the target per
+  // kind, open it in the active tab, sync the hash, and pulse the sidebar.
+  function navigateWithPulse(
+    target:
+      | { kind: 'doc'; docName: string; size?: number; registerPage?: boolean }
+      | { kind: 'folder'; folderPath: string }
+      | { kind: 'asset'; assetPath: string; entries?: readonly FileEntry[] },
+  ) {
+    if (target.kind === 'doc') {
+      if (target.registerPage) addPage(target.docName);
+      openTarget(navigationTargetForDocument(target.docName, target.size), {
+        tabBehavior: 'replace-active',
+      });
+      replaceHashWithoutNavigation(hashFromDocName(target.docName));
+    } else if (target.kind === 'folder') {
+      openTarget(
+        { kind: 'folder', target: target.folderPath, folderPath: target.folderPath },
+        { tabBehavior: 'replace-active' },
+      );
+      replaceHashWithoutNavigation(hashFromFolderPath(target.folderPath));
+    } else {
+      const currentEntries = target.entries ?? documentsRef.current;
+      const entry = currentEntries.find(
+        (item): item is Extract<FileEntry, { kind: 'asset' }> =>
+          isAssetEntry(item) && item.path === target.assetPath,
+      );
+      openTarget(
+        {
+          kind: 'asset',
+          target: target.assetPath,
+          assetPath: target.assetPath,
+          mediaKind: entry?.mediaKind ?? null,
+        },
+        { tabBehavior: 'replace-active' },
+      );
+      replaceHashWithoutNavigation(hashFromAssetPath(target.assetPath));
+    }
+    notifySidebarFileSelected();
+  }
   function activateTreePath(treePath: string, entries: readonly FileEntry[] = documents) {
     const action = resolveFileTreeSelectionAction(treePath, entries);
     if (action.kind === 'none') {
@@ -1491,7 +1316,7 @@ export function FileTree({
       return;
     }
     if (action.kind === 'folder') {
-      navigateToFolderWithPulse(action.path);
+      navigateWithPulse({ kind: 'folder', folderPath: action.path });
       return;
     }
     const docEntry = entries.find(
@@ -1513,36 +1338,23 @@ export function FileTree({
       return;
     }
     if (okTarget?.kind === 'doc') {
-      navigateToWithPulse(okTarget.docName);
+      navigateWithPulse({ kind: 'doc', docName: okTarget.docName });
       return;
     }
-    navigateToWithPulse(action.path, docEntry?.size, {
+    navigateWithPulse({
+      kind: 'doc',
+      docName: action.path,
+      size: docEntry?.size,
       registerPage: hasSupportedDocumentExtension(action.path),
     });
-  }
-  function navigateToAssetWithPulse(assetPath: string, entries?: readonly FileEntry[]) {
-    const currentEntries = entries ?? documentsRef.current;
-    const entry = currentEntries.find(
-      (item): item is Extract<FileEntry, { kind: 'asset' }> =>
-        isAssetEntry(item) && item.path === assetPath,
-    );
-    openTarget(
-      {
-        kind: 'asset',
-        target: assetPath,
-        assetPath,
-        mediaKind: entry?.mediaKind ?? null,
-      },
-      { tabBehavior: 'replace-active' },
-    );
-    replaceHashWithoutNavigation(hashFromAssetPath(assetPath));
-    notifySidebarFileSelected();
   }
   const activeDocNameRef = useRef(activeDocName);
   const assetTreePaths = new Set(
     documents.filter(isAssetEntry).map((entry) => fileEntryToTreePath(entry)),
   );
   const assetTreePathsRef = useRef(assetTreePaths);
+  const rowDecorationIndex = buildRowDecorationIndex(documents);
+  const rowDecorationIndexRef = useRef(rowDecorationIndex);
   const activeAncestorTreePathsRef = useRef<string[]>([]);
   const pendingCreateRef = useRef<PendingCreate | null>(null);
   const cleanupPendingCreateRef = useRef<
@@ -1854,10 +1666,7 @@ export function FileTree({
     onSelectionChange: (selectedPaths) => handleSelectionChangeRef.current(selectedPaths),
     renderRowDecoration: ({ item }) => {
       if (item.kind === 'file') {
-        const doc = documentsRef.current.find(
-          (entry): entry is DocumentEntry =>
-            isDocumentEntry(entry) && docNameToTreePath(entry.docName, entry.docExt) === item.path,
-        );
+        const doc = rowDecorationIndexRef.current.docsByTreePath.get(item.path);
         if (doc?.isSymlink) {
           const targetPath = doc.targetPath;
           return {
@@ -1876,10 +1685,8 @@ export function FileTree({
       // Symlinked directories carry isSymlink on their FolderEntry. Badge the
       // alias folder itself (Finder-style — its contents are not separately
       // marked, since they live behind the one symlink).
-      const folder = documentsRef.current.find(
-        (entry): entry is FolderEntry =>
-          isFolderEntry(entry) &&
-          folderPathToTreeDirectoryPath(entry.path) === folderPathToTreeDirectoryPath(item.path),
+      const folder = rowDecorationIndexRef.current.foldersByTreeDirectoryPath.get(
+        folderPathToTreeDirectoryPath(item.path),
       );
       if (folder?.isSymlink) {
         const targetPath = folder.targetPath;
@@ -2162,9 +1969,9 @@ export function FileTree({
 
       if (success.path !== target.path) {
         if (success.kind === 'folder') {
-          navigateToFolderWithPulse(success.path);
+          navigateWithPulse({ kind: 'folder', folderPath: success.path });
         } else {
-          navigateToWithPulse(success.path);
+          navigateWithPulse({ kind: 'doc', docName: success.path });
         }
       }
       toast.success(success.kind === 'folder' ? t`Folder duplicated` : t`File duplicated`, {
@@ -2830,15 +2637,19 @@ export function FileTree({
       nextActiveFolderPath &&
       nextActiveFolderPath !== currentActiveFolderPath
     ) {
-      navigateToFolderWithPulse(nextActiveFolderPath);
+      navigateWithPulse({ kind: 'folder', folderPath: nextActiveFolderPath });
     } else if (nextActiveDocName && nextActiveDocName !== currentActiveDocName) {
-      navigateToWithPulse(nextActiveDocName);
+      navigateWithPulse({ kind: 'doc', docName: nextActiveDocName });
       focusEditorAfterRename(nextActiveDocName);
     } else if (
       nextActiveAssetPath &&
       (activeDocToAssetPath || nextActiveAssetPath !== currentActiveAssetPath)
     ) {
-      navigateToAssetWithPulse(nextActiveAssetPath, nextDocumentsForRename ?? documentsRef.current);
+      navigateWithPulse({
+        kind: 'asset',
+        assetPath: nextActiveAssetPath,
+        entries: nextDocumentsForRename ?? documentsRef.current,
+      });
     }
     emitDocumentsChanged(['files', 'backlinks', 'graph']);
   };
@@ -3279,7 +3090,7 @@ export function FileTree({
           return next;
         });
         emitDocumentsChanged(['files', 'backlinks', 'graph']);
-        navigateToWithPulse(docName);
+        navigateWithPulse({ kind: 'doc', docName });
       } else {
         const folderPath = treeDirectoryPathToFolderPath(placeholder.addPath);
         const res = await fetch('/api/create-folder', {
@@ -3319,7 +3130,7 @@ export function FileTree({
           return next;
         });
         emitDocumentsChanged(['files']);
-        navigateToFolderWithPulse(createdPath);
+        navigateWithPulse({ kind: 'folder', folderPath: createdPath });
       }
 
       let disposed = false;
@@ -3403,6 +3214,7 @@ export function FileTree({
 
   useLayoutEffect(() => {
     documentsRef.current = documents;
+    rowDecorationIndexRef.current = rowDecorationIndex;
     pageMetaRef.current = pageMeta;
     activeDocNameRef.current = activeDocName;
     activeTargetRef.current = activeTarget;
@@ -4350,7 +4162,7 @@ export function FileTree({
         event.preventDefault();
         event.stopPropagation();
         if (folderItem && !folderItem.isExpanded()) folderItem.expand();
-        queueMicrotask(() => navigateToFolderWithPulse(folderPath));
+        queueMicrotask(() => navigateWithPulse({ kind: 'folder', folderPath }));
         return;
       }
       if (model.getSelectedPaths().length !== 1) return;
@@ -4358,7 +4170,7 @@ export function FileTree({
       event.preventDefault();
       event.stopPropagation();
       if (folderItem && !folderItem.isExpanded()) folderItem.expand();
-      queueMicrotask(() => navigateToFolderWithPulse(folderPath));
+      queueMicrotask(() => navigateWithPulse({ kind: 'folder', folderPath }));
       return;
     }
 
@@ -4372,7 +4184,7 @@ export function FileTree({
         pendingExactFileSelectionRef.current = path;
         // Let handleSelectionChange's microtask consume the exact file selection
         // before navigation commits the extension-qualified URL.
-        setTimeout(() => navigateToWithPulse(path, undefined, { registerPage: true }), 0);
+        setTimeout(() => navigateWithPulse({ kind: 'doc', docName: path, registerPage: true }), 0);
         return;
       }
       queueMicrotask(() => activateTreePath(path));
