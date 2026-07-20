@@ -36,6 +36,7 @@ const crashEvent: OkBugReportCrashDetectedEvent = {
   eventId: 'crash:render:1751871600000:0',
   kind: 'render-process-gone',
   context: { reason: 'crashed', exitCode: 5 },
+  minidumpAvailable: false,
 };
 
 describe('createCrashInviteStore — install', () => {

@@ -523,9 +523,10 @@ describe('ReportBugDialog', () => {
     eventId: 'boot:1751871600000',
     kind: 'boot',
     context: { dirtyShutdown: true, newMinidumps: 1 },
+    minidumpAvailable: true,
   };
 
-  test('a crash invite reskins compose: banner, crash note label, pre-checked diagnostics, off-by-default dump, Not now', async () => {
+  test('a crash invite reskins compose: banner, crash note label, pre-checked diagnostics, on-by-default dump, Not now', async () => {
     installBridge();
     await renderDialog({ crashInvite: BOOT_INVITE });
 
@@ -549,8 +550,8 @@ describe('ReportBugDialog', () => {
     ).toBe('true');
 
     const dumpBox = screen.getByRole('checkbox', { name: 'Crash dump' });
-    expect(dumpBox.getAttribute('aria-checked')).toBe('false');
-    expect(screen.getByText(/a memory snapshot from the crash\./i)).not.toBeNull();
+    expect(dumpBox.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText(/a memory snapshot from the crash/i)).not.toBeNull();
     expect(screen.getByText(/can't be redacted/i)).not.toBeNull();
 
     expect(screen.getByRole('button', { name: 'Not now' })).not.toBeNull();
@@ -560,7 +561,7 @@ describe('ReportBugDialog', () => {
     expect(screen.queryByText(/secrets like api keys and tokens are redacted/i)).toBeNull();
   });
 
-  test('crash-invite create folds the crash details in and leaves the dump out unless opted in', async () => {
+  test('crash-invite create folds the crash details in and includes the dump by default', async () => {
     const log = installBridge();
     await renderDialog({ crashInvite: BOOT_INVITE });
 
@@ -571,12 +572,12 @@ describe('ReportBugDialog', () => {
       {
         level: 'full',
         note: 'Crash source: previous session ended without a clean quit\nCrash event: boot:1751871600000',
-        includeCrashDump: false,
+        includeCrashDump: true,
       },
     ]);
   });
 
-  test('checking Crash dump opts the minidump into create', async () => {
+  test('unchecking Crash dump excludes the minidump from create', async () => {
     const log = installBridge();
     await renderDialog({ crashInvite: BOOT_INVITE });
 
@@ -584,7 +585,29 @@ describe('ReportBugDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
 
-    expect(log.createCalls[0]?.includeCrashDump).toBe(true);
+    expect(log.createCalls[0]?.includeCrashDump).toBe(false);
+  });
+
+  test('a crash invite with no available minidump shows no dump row and sends no flag', async () => {
+    const log = installBridge();
+    await renderDialog({
+      crashInvite: {
+        eventId: 'boot:1751871600001',
+        kind: 'boot',
+        context: { dirtyShutdown: true, newMinidumps: 0 },
+        minidumpAvailable: false,
+      },
+    });
+
+    // A dirty shutdown that left no native crash dump: the invite still opens,
+    // but there is nothing to include, so no dead checkbox is offered.
+    expect(screen.queryByRole('checkbox', { name: 'Crash dump' })).toBeNull();
+    expect(screen.getByText('OpenKnowledge quit unexpectedly last time.')).not.toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    expect(log.createCalls[0]).not.toHaveProperty('includeCrashDump');
   });
 
   test('the plain compose never renders the crash-dump opt-in and never sends the flag', async () => {
@@ -611,7 +634,7 @@ describe('ReportBugDialog', () => {
     });
     await renderDialog({ crashInvite: BOOT_INVITE });
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Crash dump' }));
+    // The dump rides in by default for a crash invite, so no click is needed.
     await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
 

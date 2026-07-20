@@ -168,23 +168,34 @@ export type OkBugReportSendResult =
  *
  * Lives in core for the same reason as the sibling bug-report types: the
  * desktop bridge contract's per-package copies must all name one type.
+ *
+ * `minidumpAvailable` is main's authoritative answer (only main can stat the
+ * crash-dumps dir) to "is there a crash minidump to include for this event?".
+ * The report dialog renders the crash-dump opt-in only when it is true — an
+ * invite with no dump (e.g. a dirty shutdown that left none) offers no dead
+ * checkbox. Advisory for UI gating only: the actual attach still re-checks the
+ * dump on disk at bundle time, so a dump that vanished by then is simply
+ * omitted.
  */
 export type OkBugReportCrashDetectedEvent =
   | {
       eventId: string;
       kind: 'render-process-gone';
       context: { reason: string; exitCode?: number };
+      minidumpAvailable: boolean;
     }
   | {
       eventId: string;
       kind: 'child-process-gone';
       context: { reason: string; processType: string; name?: string; exitCode?: number };
+      minidumpAvailable: boolean;
     }
   | {
       eventId: string;
       /** Boot-time detection: the previous session left a dirty-shutdown sentinel or fresh minidumps. */
       kind: 'boot';
       context: { dirtyShutdown: boolean; newMinidumps: number };
+      minidumpAvailable: boolean;
     };
 
 /**

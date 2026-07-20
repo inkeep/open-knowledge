@@ -113,8 +113,9 @@ export interface CrashDetection {
    * crash the user is currently invited to report. Null when the un-acked
    * crash left no dump (e.g. dirty shutdown without a native crash) or every
    * dump is already acked. Minidumps carry raw process memory that text
-   * redaction cannot scrub, so bundle inclusion must stay behind the report
-   * dialog's explicit opt-in that calls this.
+   * redaction cannot scrub, so bundle inclusion stays behind the report
+   * dialog's crash-dump checkbox (pre-checked for a crash invite, opt-out)
+   * plus the review-before-send step that calls this — never a silent attach.
    */
   newestMinidumpPath(): string | null;
 }
@@ -250,6 +251,23 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     return true;
   }
 
+  /**
+   * Newest minidump strictly newer than the ack baseline, or null. Shared by
+   * the report-time path lookup and the per-event availability signal so both
+   * answer from the same baseline-filtered scan of the crash-dumps dir.
+   */
+  function newestMinidumpEntry(): MinidumpEntry | null {
+    const entries: MinidumpEntry[] = [];
+    collectMinidumpEntries(deps.crashDumpsDir, MINIDUMP_SCAN_DEPTH, entries);
+    const baselineMs = Date.parse(store.minidumpBaselineAt);
+    let newest: MinidumpEntry | null = null;
+    for (const entry of entries) {
+      if (entry.mtimeMs <= baselineMs) continue;
+      if (newest === null || entry.mtimeMs > newest.mtimeMs) newest = entry;
+    }
+    return newest;
+  }
+
   return {
     detectBootCrash(): OkBugReportCrashDetectedEvent | null {
       const detectedAt = deps.now();
@@ -294,6 +312,9 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             eventId,
             kind: 'boot',
             context: { dirtyShutdown: sentinelPresent, newMinidumps: newDumps.length },
+            // A prior-session dump is already on disk, so the freshness scan
+            // that produced newDumps is the authoritative availability answer.
+            minidumpAvailable: newDumps.length > 0,
           };
           if (armInvite(event)) {
             armed = event;
@@ -366,6 +387,10 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             reason: details.reason,
             ...(details.exitCode !== undefined ? { exitCode: details.exitCode } : {}),
           },
+          // Best-effort: Crashpad may still be flushing the dump when this
+          // signal fires. A dump that lands just after reads as unavailable
+          // here (no checkbox); the boot-time path is the reliable one.
+          minidumpAvailable: newestMinidumpEntry() !== null,
         })
       ) {
         tryDeliver();
@@ -393,6 +418,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             ...(details.name !== undefined ? { name: details.name } : {}),
             ...(details.exitCode !== undefined ? { exitCode: details.exitCode } : {}),
           },
+          minidumpAvailable: newestMinidumpEntry() !== null,
         })
       ) {
         tryDeliver();
@@ -420,15 +446,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     },
 
     newestMinidumpPath(): string | null {
-      const entries: MinidumpEntry[] = [];
-      collectMinidumpEntries(deps.crashDumpsDir, MINIDUMP_SCAN_DEPTH, entries);
-      const baselineMs = Date.parse(store.minidumpBaselineAt);
-      let newest: MinidumpEntry | null = null;
-      for (const entry of entries) {
-        if (entry.mtimeMs <= baselineMs) continue;
-        if (newest === null || entry.mtimeMs > newest.mtimeMs) newest = entry;
-      }
-      return newest === null ? null : newest.path;
+      return newestMinidumpEntry()?.path ?? null;
     },
   };
 }

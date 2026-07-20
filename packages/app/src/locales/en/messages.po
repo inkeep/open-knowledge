@@ -633,8 +633,8 @@ msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "A memory snapshot from the crash. It can contain document content and can't be redacted, so leave it off unless you're comfortable sharing it."
-msgstr "A memory snapshot from the crash. It can contain document content and can't be redacted, so leave it off unless you're comfortable sharing it."
+msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
+msgstr "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "A network problem or GitHub outage interrupted the clone."

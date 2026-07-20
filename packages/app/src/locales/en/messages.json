@@ -1539,9 +1539,6 @@
     "YEIS9T": ["Edits apply live. Light or dark is chosen from the background."],
     "YEP3X2": ["Delete a table when the active table cell selection covers the full table."],
     "YGIi_c": ["Reinstall"],
-    "YIp4R0": [
-      "A memory snapshot from the crash. It can contain document content and can't be redacted, so leave it off unless you're comfortable sharing it."
-    ],
     "YJ1BTp": ["A skill with that name already exists."],
     "YKLP_-": ["Template renamed"],
     "YLMBSd": ["e.g. The editor froze after I pasted a large table"],
@@ -2070,6 +2067,9 @@
     "jerqF0": ["Loading branch state"],
     "jhtG3I": [" Your selection has been restored."],
     "jjtmV_": ["First file name"],
+    "jnCROW": [
+      "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
+    ],
     "jol95m": ["Failed to open Project Navigator."],
     "jpctdh": ["View"],
     "jtg_8-": [

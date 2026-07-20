@@ -179,8 +179,9 @@ export interface ReportBugDialogProps {
    * Present when a crash-detected invitation opened the dialog
    * (`ReportBugCrashInviteTrigger`). Switches compose to the crash-invite
    * variant: banner, "What were you doing?" note label, detailed diagnostics
-   * pre-checked, the crash-dump opt-in row (default off), and a "Not now"
-   * dismiss. The event's kind and id fold into the report's note.
+   * pre-checked, the crash-dump row (only when the event's `minidumpAvailable`
+   * is true; default on, opt-out), and a "Not now" dismiss. The event's kind
+   * and id fold into the report's note.
    */
   crashInvite?: OkBugReportCrashDetectedEvent;
   /**
@@ -206,7 +207,16 @@ function ReportBugDialog({
   const [phase, setPhase] = useState<Phase>(COMPOSE_IDLE);
   const [note, setNote] = useState('');
   const [detailed, setDetailed] = useState(crashContext !== undefined || crashInvite !== undefined);
-  const [includeDump, setIncludeDump] = useState(false);
+  // The crash-dump opt-in only exists when main confirmed a minidump is on
+  // disk for this event; a dump-less invite (e.g. a dirty shutdown that left
+  // no native crash) offers no dead checkbox.
+  const crashDumpAvailable = crashInvite?.minidumpAvailable === true;
+  // Default ON when a dump is available: the crash is the whole reason for the
+  // report, and its minidump is the artifact triage most needs. Consent is
+  // preserved without a silent send — the row stays visible and uncheckable,
+  // its hint states the memory is unredactable, and the review step flags
+  // "crash dump not redacted" before the user sends.
+  const [includeDump, setIncludeDump] = useState(crashDumpAvailable);
   // Default-on per the spec: when a screenshot was captured it rides along
   // unless the user unchecks it. Only ever sent to `create` when one exists.
   const [includeScreenshot, setIncludeScreenshot] = useState(true);
@@ -261,7 +271,7 @@ function ReportBugDialog({
       if (phase.step === 'success' || phase.step === 'email' || phase.step === 'failure') {
         setNote('');
         setDetailed(crashContext !== undefined || crashInvite !== undefined);
-        setIncludeDump(false);
+        setIncludeDump(crashDumpAvailable);
         // Re-default the screenshot to on so the next open (which captures a
         // fresh screenshot) starts checked, matching the compose default.
         setIncludeScreenshot(true);
@@ -286,9 +296,9 @@ function ReportBugDialog({
     const result = await bugReport.create({
       level: detailed ? 'full' : 'standard',
       note: composeNote(note, noteContextLines),
-      // Only the crash invite ever asks for the dump — the plain compose has
-      // no opt-in surface, so it must not even send the flag.
-      ...(crashInvite !== undefined ? { includeCrashDump: includeDump } : {}),
+      // Only a crash invite with an available dump exposes the opt-in, so only
+      // then is the flag sent — plain compose and dump-less invites omit it.
+      ...(crashDumpAvailable ? { includeCrashDump: includeDump } : {}),
       // Only send the flag when a screenshot was actually captured — absent
       // means main has nothing staged, so it must not claim an inclusion.
       ...(screenshot !== null ? { includeScreenshot } : {}),
@@ -561,7 +571,7 @@ function ReportBugDialog({
                     </div>
                   </div>
                 )}
-                {crashInvite !== undefined && (
+                {crashDumpAvailable && (
                   <div className="flex items-start gap-2.5">
                     <Checkbox
                       id={dumpId}
@@ -577,8 +587,9 @@ function ReportBugDialog({
                       </label>
                       <p id={dumpHintId} className="text-1sm text-muted-foreground">
                         <Trans>
-                          A memory snapshot from the crash. It can contain document content and
-                          can't be redacted, so leave it off unless you're comfortable sharing it.
+                          A memory snapshot from the crash, and the artifact that helps us most. It
+                          can contain document content and can't be redacted, so uncheck it if you'd
+                          rather not share it.
                         </Trans>
                       </p>
                     </div>

@@ -46,6 +46,7 @@ const INVITE: OkBugReportCrashDetectedEvent = {
   eventId: 'boot:1751871600000',
   kind: 'boot',
   context: { dirtyShutdown: true, newMinidumps: 0 },
+  minidumpAvailable: false,
 };
 
 interface CrashBridgeStub {

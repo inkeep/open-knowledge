@@ -105,6 +105,18 @@ describe('runtime process-gone invitations', () => {
       expect(event.context.reason).toBe('crashed');
       expect(event.context.exitCode).toBe(5);
     }
+    // No dump on disk for this crash, so the invite offers no dump option.
+    expect(event?.minidumpAvailable).toBe(false);
+  });
+
+  test('a renderer crash with a fresh minidump on disk reports it as available', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    seedMinidump(rig, 'completed/renderer.dmp', rig.tick());
+
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+
+    expect(rig.emitted[0]?.minidumpAvailable).toBe(true);
   });
 
   test('routine process teardown never invites', () => {
@@ -182,6 +194,8 @@ describe('boot-time detection', () => {
     if (armed?.kind === 'boot') {
       expect(armed.context.dirtyShutdown).toBe(true);
       expect(armed.context.newMinidumps).toBe(0);
+      // A dirty shutdown that left no native dump offers no dump option.
+      expect(armed.minidumpAvailable).toBe(false);
     }
 
     // Boot events wait for the first ready renderer instead of racing window load.
@@ -246,6 +260,7 @@ describe('boot-time detection', () => {
     if (armed?.kind === 'boot') {
       expect(armed.context.dirtyShutdown).toBe(false);
       expect(armed.context.newMinidumps).toBe(1);
+      expect(armed.minidumpAvailable).toBe(true);
     }
     if (!armed) throw new Error('expected a minidump-driven boot invitation');
     sessionB.ack(armed.eventId);
