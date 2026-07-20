@@ -1,0 +1,174 @@
+name: Linear Release
+
+# Stamp Linear issues with the Open Knowledge release they ship in.
+#
+# WHAT THIS DOES
+#   On every OK release cut (beta cadence + stable promotion) this attaches
+#   the Linear issues referenced in the release's commits to a release in the
+#   Linear "OpenKnowledge" scheduled pipeline, and advances that release's
+#   stage: `Beta` on a beta cut, `Stable` + complete on a stable promotion.
+#   Each attached issue then shows which release it shipped in, in its Linear
+#   sidebar. Uses Linear's first-party CLI via linear/linear-release-action.
+#
+# HOW IT'S TRIGGERED (no edits to the delicate publish path)
+#   release.yml (beta) and promote-stable.yml (stable) BOTH already fire a
+#   repository_dispatch event_type=desktop-release with
+#   client_payload.{release_tag, ref} right after cutting the tag + draft
+#   Release. We piggyback on that same event rather than adding a new dispatch,
+#   so release.yml / promote-stable.yml stay byte-untouched. We cannot use
+#   `release: published`: GitHub suppresses cascades from GITHUB_TOKEN-authored
+#   release events, and repository_dispatch is the documented exemption (which
+#   is exactly why the desktop-release cascade uses it).
+#
+#   Channel is derived from the tag shape: a `-beta.N` suffix => Beta stage,
+#   a bare vX.Y.Z => Stable stage.
+#
+# RELEASE IDENTITY (why betas accumulate into one release)
+#   The Linear release is keyed by the STABLE base version (vX.Y.Z with any
+#   `-beta.N` stripped), so every beta of a cycle syncs its issues into the
+#   SAME release object, and the stable promotion flips that same release to
+#   Stable + complete. Caveat: if a higher bump level lands mid-cycle the base
+#   version shifts; that is rare, and Linear releases can be renamed/merged.
+#
+# COMMIT SCAN RANGE
+#   The scan lower bound (base_ref) is the previous tag in history, so each cut
+#   only scans its own new commits (`<prev-tag>..<this-tag>`) — bounded even on
+#   the first run. sync is idempotent: re-attaching an already-attached issue
+#   is a no-op, so a near-empty stable range simply re-affirms the accumulated
+#   set before the stage flip.
+#
+# ONE-TIME SETUP
+#   1. A Linear SCHEDULED pipeline "OpenKnowledge" (team Product) with started
+#      stages named exactly `Beta` and `Stable`. [done]
+#   2. The pipeline access key (Linear -> Settings -> Releases -> pipeline)
+#      added as the repo secret LINEAR_ACCESS_KEY on inkeep/open-knowledge.
+#      A pipeline access key is REQUIRED — a personal Linear API key will not
+#      work. Until the secret exists this workflow no-ops (see the guard).
+#   3. Optional: a Linear status automation — when a release reaches Stable /
+#      completes, move its issues to a Done status.
+#   4. Coverage: issues are attached by scanning commit text for Linear
+#      identifiers (e.g. PRD-1234). A ticketed fix whose PR title lacks the
+#      identifier will not be attached — put PRD-#### in the PR title.
+#
+# VALIDATION
+#   After adding the secret, dry-run against a recent tag before trusting it:
+#   run this workflow via workflow_dispatch with a real release_tag and read
+#   the CLI output. (linear-release-action also supports dry_run for the CLI.)
+#
+# SAFETY
+#   Fully decoupled from the release/publish path — a failure here can never
+#   break a release. The job no-ops cleanly when LINEAR_ACCESS_KEY is absent.
+
+on:
+  repository_dispatch:
+    # Fired by release.yml (beta) and promote-stable.yml (stable) after each
+    # tag + draft Release. Carries client_payload.{release_tag, ref}.
+    types: [desktop-release]
+  # Manual re-stamp / backfill for a specific tag.
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to stamp in Linear (e.g. v0.35.0 or v0.35.0-beta.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize per release line so a beta and its stable promotion don't race
+  # on the same Linear release object.
+  group: linear-release-${{ github.event.client_payload.release_tag || inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  stamp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Secrets are unavailable in step/job `if` on some event types, so map
+      # presence to a plain string once and gate steps on that.
+      HAS_KEY: ${{ secrets.LINEAR_ACCESS_KEY != '' }}
+      RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+    steps:
+      - name: Skip when access key is not configured
+        if: env.HAS_KEY != 'true'
+        run: |
+          echo "::notice::LINEAR_ACCESS_KEY is not set on this repo — skipping Linear release stamping. Add the OpenKnowledge pipeline access key as a repo secret to enable."
+
+      - name: Checkout at the release tag
+        if: env.HAS_KEY == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.client_payload.ref || inputs.release_tag }}
+          # Full history + tags so the commit scan and previous-tag lookup work.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Derive channel, version, and scan range
+        if: env.HAS_KEY == 'true'
+        id: derive
+        run: |
+          set -euo pipefail
+          TAG="${RELEASE_TAG}"
+          if [[ -z "$TAG" ]]; then
+            echo "::error::No release tag (neither client_payload.release_tag nor inputs.release_tag)."
+            exit 1
+          fi
+          # Stable base version: strip leading `v` and any `-beta.N` suffix.
+          V="${TAG#v}"; V="${V%%-beta.*}"
+          if [[ ! "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Could not derive X.Y.Z from tag '${TAG}'."
+            exit 1
+          fi
+          if [[ "$TAG" == *-beta.* ]]; then
+            CHANNEL=beta; STAGE=Beta
+          else
+            CHANNEL=stable; STAGE=Stable
+          fi
+          # Exclusive lower bound for sync's commit scan = the previous tag in
+          # history. Empty on the very first tag ever; the action then falls
+          # back to its own default lower bound.
+          BASE_REF="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          {
+            echo "channel=${CHANNEL}"
+            echo "stage=${STAGE}"
+            echo "version=${V}"
+            echo "name=v${V}"
+            echo "base_ref=${BASE_REF}"
+          } >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG} channel=${CHANNEL} version=${V} stage=${STAGE} base_ref=${BASE_REF:-<none>}"
+
+      # Create/find the release keyed by the stable version, name it vX.Y.Z,
+      # and attach the Linear issues referenced in <base_ref>..HEAD. Runs on
+      # both channels; idempotent.
+      - name: Sync issues into the Linear release
+        if: env.HAS_KEY == 'true'
+        uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0
+        with:
+          access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
+          command: sync
+          version: ${{ steps.derive.outputs.version }}
+          name: ${{ steps.derive.outputs.name }}
+          base_ref: ${{ steps.derive.outputs.base_ref }}
+
+      # Advance the release to Beta (beta cut) or Stable (stable promotion).
+      - name: Advance release stage
+        if: env.HAS_KEY == 'true'
+        uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0
+        with:
+          access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
+          command: update
+          version: ${{ steps.derive.outputs.version }}
+          stage: ${{ steps.derive.outputs.stage }}
+
+      # Stable only: mark shipped-to-customers, moving the release to the
+      # pipeline's completed stage (`Released`) and firing any completion-based
+      # Linear status automations.
+      - name: Complete the release (stable only)
+        if: env.HAS_KEY == 'true' && steps.derive.outputs.channel == 'stable'
+        uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0
+        with:
+          access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
+          command: complete
+          version: ${{ steps.derive.outputs.version }}
