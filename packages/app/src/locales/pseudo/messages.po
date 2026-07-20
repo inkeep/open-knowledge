@@ -7491,10 +7491,6 @@ msgstr ""
 msgid "Start writing to create this page"
 msgstr ""
 
-#: src/lib/install-server-drift-listener.ts
-msgid "Started a fresh OpenKnowledge server (v{appRuntime}) for this dev session — the server already running for this project was terminated. Connected agents (Claude Code, Codex, Cursor) just lost their OpenKnowledge MCP connection; restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect."
-msgstr ""
-
 #: src/components/TemplateBody.tsx
 msgid "Starter content"
 msgstr ""

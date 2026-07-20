@@ -567,8 +567,8 @@ export interface WindowManagerDeps {
    * `electron-vite dev` against a project that still has a server from a prior
    * packaged-app run (or a CLI / another instance) actually exercises their
    * working-tree server + core code instead of silently attaching to the stale
-   * build. Act-then-inform: the freshly-spawned window fires `ok:server-
-   * reclaimed` so the renderer can surface the dropped-MCP side effect.
+   * build. The reclaim terminates + respawns silently — the routine per-rebuild
+   * restart is not worth a notice.
    *
    * Wired from `!app.isPackaged` in `index.ts`; never set in packaged builds
    * (a packaged user attaching to a live server is the intended shared-server
@@ -576,6 +576,26 @@ export interface WindowManagerDeps {
    * exactly as before.
    */
   reclaimForeignServerInDev?: boolean;
+  /**
+   * Packaged-path upgrade reconcile: `true` iff THIS launch is the first run
+   * after the app's version changed (an auto-update installed a new build).
+   * When set, the attach path treats a version-mismatched server it would
+   * otherwise attach to as a pre-upgrade survivor — the pre-install teardown
+   * (`stopAllOwnedServers`) only reaps servers this desktop spawned, so a
+   * CLI-spawned or teardown-timed-out server outlives the swap — and
+   * terminates it, spawning the app's own version in its place rather than
+   * attaching to the stale build and prompting the user to restart. Any drift
+   * direction qualifies: the trigger is "we just upgraded", not the version
+   * ordering.
+   *
+   * A stable per-session snapshot, NOT a live read: `index.ts` captures it at
+   * bootstrap from `appState.lastSeenVersion` BEFORE the auto-updater advances
+   * that marker, so it stays true for every project opened this run. A live
+   * read would flip false once the updater advances mid-session and miss a
+   * second project opened later. Omitted (test harnesses, dev) → the attach
+   * path never auto-terminates on version mismatch.
+   */
+  isFirstLaunchAfterUpgrade?(): boolean;
   /** Schedule a one-shot timer (test injection for the post-exit liveness probe). */
   setTimeout(cb: () => void, ms: number): unknown;
   /** `process.kill(pid, signal)` — used in the post-exit liveness probe. */
@@ -1419,15 +1439,26 @@ export class WindowManager {
     const candidate = this.tryAttachExistingServer(lockDir);
     const attached =
       candidate !== null && (await this.probeAttachableLock(candidate)) ? candidate : null;
-    // Dev-only reclaim: when the attachable server is foreign (not one this
-    // session spawned), terminate it and fall through to a fresh own-build
-    // spawn instead of attaching. `spawnedDetachedPids` is empty under the dev
-    // utility-fork path, so the pid guard reads as "always foreign" there — but
-    // it stays load-bearing if a future build wires detached spawn in dev (then
-    // a same-session reopen would re-attach to our OWN server, which we must
-    // NOT kill). On termination failure we fall back to attaching, never
-    // leaving the project window-less.
-    let pendingServerReclaimedToast = false;
+    // Two reasons to terminate an attachable foreign server and spawn our own
+    // instead of attaching. Both are SILENT (no toast) and both fall through to
+    // the `runClean` + fresh-spawn sequence below; on termination failure both
+    // fall back to attaching, so a project is never left window-less.
+    //
+    //   1. Dev-only reclaim (`reclaimForeignServerInDev`): a dev session runs
+    //      its working-tree build against a project even when a prior packaged
+    //      run / CLI / another instance left a server behind. The routine
+    //      restart of a rebuild is not worth a notice.
+    //   2. Packaged upgrade reconcile (`isFirstLaunchAfterUpgrade`): the first
+    //      launch after an app update, where a version-mismatched server that
+    //      survived the pre-install teardown is a stale build. We restart it to
+    //      the app's version rather than attaching to the stale build and
+    //      prompting. No toast — the "Updated to Version X" whats-new notice
+    //      already tells the user the app updated.
+    //
+    // `spawnedDetachedPids` is empty under the dev utility-fork path, so the
+    // foreign guard reads as "always foreign" there — but it stays load-bearing
+    // for the packaged path (a same-session reopen re-attaches to OUR OWN
+    // server, which must NOT be reclaimed).
     if (attached) {
       const isForeign = this.spawnedDetachedPids.get(canonicalKey) !== attached.pid;
       let reclaimed = false;
@@ -1457,6 +1488,48 @@ export class WindowManager {
           );
         }
       }
+      // Packaged upgrade reconcile — only if the dev path didn't already handle
+      // it, and only when the survivor is a genuinely different build. Gating on
+      // a real drift (any direction) means a same-version server we'd share is
+      // left untouched, so we never needlessly bounce a project on upgrade.
+      if (!reclaimed && this.deps.isFirstLaunchAfterUpgrade?.() === true && isForeign) {
+        const selfProtocol = this.deps.selfProtocolVersion;
+        const selfRuntime = this.deps.selfRuntimeVersion;
+        if (selfProtocol !== undefined && selfRuntime !== undefined) {
+          const drift = classifyServerVersion(
+            { protocolVersion: attached.protocolVersion, runtimeVersion: attached.runtimeVersion },
+            { protocolVersion: selfProtocol, runtimeVersion: selfRuntime },
+          );
+          if (drift.relation === 'older' || drift.relation === 'newer') {
+            const term = await this.terminateServerByPid(lockDir, attached.pid);
+            if (term.ok) {
+              this.deps.log?.info(
+                {
+                  event: 'desktop-upgrade-reconcile',
+                  outcome: 'terminated',
+                  escalated: term.escalated,
+                  relation: drift.relation,
+                  pid: attached.pid,
+                  projectPath,
+                },
+                '[window-manager] first launch after upgrade — auto-terminated pre-upgrade server; spawning fresh own-version server',
+              );
+              reclaimed = true;
+            } else {
+              this.deps.log?.warn(
+                {
+                  event: 'desktop-upgrade-reconcile',
+                  outcome: term.reason,
+                  relation: drift.relation,
+                  pid: attached.pid,
+                  projectPath,
+                },
+                '[window-manager] upgrade auto-terminate failed; attaching to the pre-upgrade server (the manual version-drift prompt still offers a restart)',
+              );
+            }
+          }
+        }
+      }
       if (!reclaimed) {
         return this.attachToExistingServer({
           projectPath,
@@ -1475,7 +1548,6 @@ export class WindowManager {
       // Reclaimed: the terminated server's (possibly stale) lock is cleared by
       // the `runClean` step below before the fresh spawn — same sequence the
       // user-initiated `restartAttachedServer` path relies on.
-      pendingServerReclaimedToast = true;
     }
 
     if (this.deps.runClean) {
@@ -1793,20 +1865,10 @@ export class WindowManager {
       });
     }
 
-    // Dev-reclaim notice. This is the SOLE delivery site: reclaim is gated to
-    // `!app.isPackaged`, where the spawn always takes this utility-fork branch
-    // (detached spawn is wired only in packaged builds), so the flag can only
-    // ever be truthy here. Fire on `did-finish-load` so the sonner subscriber
-    // is mounted, same as the restarted/onboarding toasts. `appVersion` is
-    // always present, so the inform fires unconditionally.
-    if (pendingServerReclaimedToast) {
-      registerPendingDelivery(
-        window.webContents,
-        'ok:server-reclaimed',
-        { appRuntime: this.deps.appVersion },
-        { event: 'did-finish-load' },
-      );
-    }
+    // (The dev reclaim path used to deliver a "started a fresh server" notice
+    // here; both it and the packaged upgrade reconcile now terminate + respawn
+    // silently, so no server-lifecycle toast is delivered on this dev/test-only
+    // utility-fork branch.)
 
     // Defer OS-level window display until both first-paint AND chrome-theme
     // signals arrive — `show: false` in DEFAULT_WIN_OPTS hides the native

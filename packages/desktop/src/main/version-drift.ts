@@ -84,3 +84,23 @@ export function classifyServerVersion(
   if (cmp > 0) return { relation: 'newer', dimension: 'runtime' };
   return { relation: 'same', dimension: null };
 }
+
+/**
+ * Decide whether THIS launch is the first run after the app version changed —
+ * the signal the packaged upgrade reconcile gates on. `lastSeenVersion` is the
+ * version persisted on the previous launch (`null` on a fresh install). A fresh
+ * install is NOT an upgrade — there is no prior version to have drifted from —
+ * so it returns false; only a real version transition (either direction)
+ * returns true.
+ *
+ * Pure — no Electron, no fs — so the three cases (null / same / changed) are
+ * exhaustively unit-testable. `index.ts` captures the result once at bootstrap,
+ * BEFORE the auto-updater advances `lastSeenVersion`, and holds it for the
+ * session (a live re-read would flip false once the updater advances).
+ */
+export function computeFirstLaunchAfterUpgrade(
+  lastSeenVersion: string | null,
+  currentVersion: string,
+): boolean {
+  return lastSeenVersion !== null && lastSeenVersion !== currentVersion;
+}

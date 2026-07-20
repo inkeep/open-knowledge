@@ -22,7 +22,6 @@ import type {
   OkMenuAction,
   OkPtyData,
   OkPtyExit,
-  OkServerReclaimedInfo,
   OkServerRestartedInfo,
   OkServerVersionDriftInfo,
   OkShareReceivedPayload,
@@ -259,14 +258,6 @@ export interface EventChannels {
    * app. Delivered via the same `did-finish-load` path as `ok:onboarding:toast`.
    */
   'ok:server-restarted': { payload: OkServerRestartedInfo };
-  /**
-   * Main → renderer on a freshly-spawned window after a dev session auto-
-   * terminated a foreign server on the project's contentDir and started its
-   * own (act-then-inform). Renderer surfaces a disruption notice naming the
-   * dropped-MCP side effect. Delivered via the same `did-finish-load` path as
-   * `ok:server-restarted`.
-   */
-  'ok:server-reclaimed': { payload: OkServerReclaimedInfo };
 
   /**
    * Main → renderer coalesced PTY output. Main batches the utilityProcess's

@@ -375,7 +375,6 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         onShareReceived: () => () => {},
         onServerVersionDrift: () => () => {},
         onServerRestarted: () => () => {},
-        onServerReclaimed: () => () => {},
         restartServer: async () => ({ ok: true as const }),
         // Theme bridge is invoked on first ConfigProvider render via
         // useThemeBridge — must not throw or the ConfigProvider subtree

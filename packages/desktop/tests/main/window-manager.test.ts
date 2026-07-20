@@ -945,7 +945,7 @@ describe('WindowManager', () => {
       expect(env.windows.length).toBe(1);
     });
 
-    test('reclaimForeignServerInDev terminates a foreign server and spawns fresh via utility-fork, firing ok:server-reclaimed on did-finish-load', async () => {
+    test('reclaimForeignServerInDev terminates a foreign server and spawns fresh via utility-fork, SILENTLY (no notice)', async () => {
       env.deps.reclaimForeignServerInDev = true;
       let killed = false;
       const killProbe = mock((_pid: number, signal: string) => {
@@ -977,23 +977,18 @@ describe('WindowManager', () => {
 
       const w = env.windows[0];
       if (!w) throw new Error('no window created');
-      const reclaimSends = () =>
-        (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
-          (c: unknown[]) => c[0] === 'ok:server-reclaimed',
-        );
-      // Must arrive on did-finish-load (sonner mounted), NOT dom-ready — a
-      // regression dropping `{ event: 'did-finish-load' }` would deliver before
-      // the toast subscriber mounts and silently lose the notice. Mirror the
-      // drift-test ordering: dom-ready → still 0, did-finish-load → 1.
-      expect(reclaimSends().length).toBe(0);
+      // The dev reclaim is a routine per-rebuild event — it must NOT pop a
+      // toast. Fire both lifecycle edges and assert no restart confirmation
+      // reaches the renderer (the "started a fresh server" notice is gone).
       w.fireDomReady();
-      expect(reclaimSends().length).toBe(0);
       w.fireDidFinishLoad();
-      expect(reclaimSends().length).toBe(1);
-      expect((reclaimSends()[0] as unknown[])[1]).toEqual({ appRuntime: '9.9.9-test' });
+      const lifecycleSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+        (c: unknown[]) => c[0] === 'ok:server-restarted',
+      );
+      expect(lifecycleSends.length).toBe(0);
     });
 
-    test('without reclaimForeignServerInDev (production default), a foreign server is attached — no termination, no reclaim notice', async () => {
+    test('without reclaimForeignServerInDev (production default), a foreign server is attached — no termination, no notice', async () => {
       const killProbe = mock(() => {});
       env.deps.killProbe = killProbe;
       enableAttachProbe();
@@ -1006,10 +1001,183 @@ describe('WindowManager', () => {
       const w = env.windows[0];
       if (!w) throw new Error('no window created');
       w.fireDidFinishLoad();
-      const reclaimSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
-        (c: unknown[]) => c[0] === 'ok:server-reclaimed',
+      const lifecycleSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+        (c: unknown[]) => c[0] === 'ok:server-restarted',
       );
-      expect(reclaimSends.length).toBe(0);
+      expect(lifecycleSends.length).toBe(0);
+    });
+
+    test('first launch after upgrade auto-terminates a drifted survivor and respawns SILENTLY (no toast, no prompt)', async () => {
+      // Packaged path: detached spawn → attach. The attach path finds a lock
+      // from a build that outlived the update teardown; because this is the
+      // first launch after the version changed, terminate it and spawn our
+      // own version instead of attaching + prompting. No toast — the whats-new
+      // "Updated to Version X" notice already covers the upgrade.
+      env.deps.selfProtocolVersion = 1;
+      env.deps.selfRuntimeVersion = '0.8.2';
+      env.deps.isFirstLaunchAfterUpgrade = () => true;
+      let killed = false;
+      let spawned = false;
+      const survivorLock = { ...liveLock, pid: 5555, protocolVersion: 1, runtimeVersion: '0.8.0' };
+      const freshLock = {
+        ...liveLock,
+        pid: 6666,
+        port: 60000,
+        protocolVersion: 1,
+        runtimeVersion: '0.8.2',
+      };
+      const killProbe = mock((_pid: number, signal: string) => {
+        if (signal === 'SIGTERM') killed = true;
+      });
+      enableAttachProbe({
+        readServerLock: () => (spawned ? freshLock : killed ? null : survivorLock),
+        isProcessAlive: (pid) => (pid === 5555 ? !killed : true),
+      });
+      env.deps.killProbe = killProbe;
+      env.deps.spawnDetachedServer = async () => {
+        spawned = true;
+        return { pid: 6666 };
+      };
+
+      const wm = new WindowManager(env.deps);
+      const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+
+      // Terminated the survivor and respawned our own version — not an attach.
+      expect(killProbe).toHaveBeenCalledWith(5555, 'SIGTERM');
+      expect(ctx.port).toBe(60000);
+      expect(env.windows.length).toBe(1);
+
+      const w = env.windows[0];
+      if (!w) throw new Error('no window created');
+      // Reconciled → neither the manual version-drift prompt nor a restart
+      // toast fires (the reconcile is silent).
+      w.fireDomReady();
+      expect(driftSends(w).length).toBe(0);
+      w.fireDidFinishLoad();
+      const restartedSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+        (c: unknown[]) => c[0] === 'ok:server-restarted',
+      );
+      expect(restartedSends.length).toBe(0);
+    });
+
+    test('upgrade reconcile also fires for a NEWER survivor (any drift direction qualifies)', async () => {
+      // Trigger is "we just upgraded", not the version ordering — a survivor
+      // newer than the app (e.g. a rollback scenario) is reconciled too.
+      env.deps.selfProtocolVersion = 1;
+      env.deps.selfRuntimeVersion = '0.8.2';
+      env.deps.isFirstLaunchAfterUpgrade = () => true;
+      let killed = false;
+      let spawned = false;
+      const survivorLock = { ...liveLock, pid: 5555, protocolVersion: 1, runtimeVersion: '0.9.0' };
+      const freshLock = {
+        ...liveLock,
+        pid: 6666,
+        port: 60000,
+        protocolVersion: 1,
+        runtimeVersion: '0.8.2',
+      };
+      const killProbe = mock((_pid: number, signal: string) => {
+        if (signal === 'SIGTERM') killed = true;
+      });
+      enableAttachProbe({
+        readServerLock: () => (spawned ? freshLock : killed ? null : survivorLock),
+        isProcessAlive: (pid) => (pid === 5555 ? !killed : true),
+      });
+      env.deps.killProbe = killProbe;
+      env.deps.spawnDetachedServer = async () => {
+        spawned = true;
+        return { pid: 6666 };
+      };
+      const wm = new WindowManager(env.deps);
+      const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      expect(killProbe).toHaveBeenCalledWith(5555, 'SIGTERM');
+      expect(ctx.port).toBe(60000);
+    });
+
+    test('upgrade reconcile leaves a SAME-version server untouched (never needlessly bounced)', async () => {
+      // A same-version server we would share is left attached even on the first
+      // launch after an upgrade — the reconcile only fires on a real drift.
+      env.deps.selfProtocolVersion = 1;
+      env.deps.selfRuntimeVersion = '0.8.2';
+      env.deps.isFirstLaunchAfterUpgrade = () => true;
+      const killProbe = mock(() => {});
+      env.deps.killProbe = killProbe;
+      enableAttachProbe({
+        readServerLock: () => ({ ...liveLock, protocolVersion: 1, runtimeVersion: '0.8.2' }),
+      });
+      const wm = new WindowManager(env.deps);
+      const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      expect(ctx.ownsServer).toBe(false); // attached, not respawned
+      expect(ctx.port).toBe(59534);
+      expect(killProbe).not.toHaveBeenCalled();
+      expect(env.utilities.length).toBe(0);
+      const w = env.windows[0];
+      if (!w) throw new Error('no window created');
+      w.fireDomReady();
+      // Same version → no drift prompt either.
+      expect(driftSends(w).length).toBe(0);
+    });
+
+    test('a drifted server is left attached (manual prompt) when NOT the first launch after upgrade', async () => {
+      // Same drift as the reconcile test, but no upgrade this launch → attach +
+      // fire the manual version-drift prompt, never auto-terminate.
+      env.deps.selfProtocolVersion = 1;
+      env.deps.selfRuntimeVersion = '0.8.2';
+      // isFirstLaunchAfterUpgrade left unset (undefined).
+      const killProbe = mock(() => {});
+      env.deps.killProbe = killProbe;
+      enableAttachProbe({
+        readServerLock: () => ({ ...liveLock, protocolVersion: 1, runtimeVersion: '0.8.0' }),
+      });
+      const wm = new WindowManager(env.deps);
+      const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      expect(ctx.ownsServer).toBe(false);
+      expect(env.utilities.length).toBe(0);
+      expect(killProbe).not.toHaveBeenCalled();
+      const w = env.windows[0];
+      if (!w) throw new Error('no window created');
+      w.fireDomReady();
+      // The manual version-drift prompt fires; no auto-restart confirmation.
+      expect(driftSends(w).length).toBe(1);
+      w.fireDidFinishLoad();
+      const restartedSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+        (c: unknown[]) => c[0] === 'ok:server-restarted',
+      );
+      expect(restartedSends.length).toBe(0);
+    });
+
+    test('upgrade reconcile falls back to attaching (with the manual prompt) when terminating the survivor fails', async () => {
+      // First launch after upgrade, but the survivor can't be killed (EPERM —
+      // another account owns it). Rather than leave the project window-less, we
+      // attach to the stale build; the manual version-drift prompt still offers
+      // a restart, exactly as before this feature.
+      env.deps.selfProtocolVersion = 1;
+      env.deps.selfRuntimeVersion = '0.8.2';
+      env.deps.isFirstLaunchAfterUpgrade = () => true;
+      env.deps.killProbe = mock(() => {
+        const err = new Error('operation not permitted') as NodeJS.ErrnoException;
+        err.code = 'EPERM';
+        throw err;
+      });
+      enableAttachProbe({
+        readServerLock: () => ({ ...liveLock, protocolVersion: 1, runtimeVersion: '0.8.0' }),
+      });
+      const wm = new WindowManager(env.deps);
+      const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      // Fell back to attaching the survivor, not a fresh spawn.
+      expect(ctx.ownsServer).toBe(false);
+      expect(ctx.port).toBe(59534);
+      expect(env.utilities.length).toBe(0);
+      const w = env.windows[0];
+      if (!w) throw new Error('no window created');
+      w.fireDomReady();
+      // The manual version-drift prompt is the fallback remedy.
+      expect(driftSends(w).length).toBe(1);
+      w.fireDidFinishLoad();
+      const restartedSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+        (c: unknown[]) => c[0] === 'ok:server-restarted',
+      );
+      expect(restartedSends.length).toBe(0);
     });
 
     test('reclaim does NOT terminate a server THIS session spawned (own-pid guard)', async () => {
@@ -1061,10 +1229,10 @@ describe('WindowManager', () => {
       const w = env.windows[0];
       if (!w) throw new Error('no window created');
       w.fireDidFinishLoad();
-      const reclaimSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
-        (c: unknown[]) => c[0] === 'ok:server-reclaimed',
+      const restartedSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+        (c: unknown[]) => c[0] === 'ok:server-restarted',
       );
-      expect(reclaimSends.length).toBe(0);
+      expect(restartedSends.length).toBe(0);
     });
 
     test('stale lock (pid dead) falls through to spawn mode', async () => {

@@ -45,7 +45,6 @@ import type {
   OkOnboardingShowPayload,
   OkPtyData,
   OkPtyExit,
-  OkServerReclaimedInfo,
   OkServerRestartedInfo,
   OkServerVersionDriftInfo,
   OkShareReceivedPayload,
@@ -364,13 +363,6 @@ const bridge: OkDesktopBridge = {
     // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:server-restarted', listener);
     return () => ipcRenderer.removeListener('ok:server-restarted', listener);
-  },
-
-  onServerReclaimed(cb: (info: OkServerReclaimedInfo) => void) {
-    const listener = (_event: IpcRendererEvent, info: OkServerReclaimedInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
-    ipcRenderer.on('ok:server-reclaimed', listener);
-    return () => ipcRenderer.removeListener('ok:server-reclaimed', listener);
   },
 
   restartServer: (projectPath: string) => invoke('ok:project:restart-server', projectPath),

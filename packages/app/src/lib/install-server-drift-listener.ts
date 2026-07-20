@@ -9,10 +9,10 @@
  * confirmation arrives on the NEW window via `ok:server-restarted` and only a
  * failure resolves back here (showing the branched remedy).
  *
- * On `ok:server-reclaimed` (a dev-only session auto-terminated a foreign server
- * on this project's contentDir and spawned its own — see the window-manager
- * reclaim branch), surface a transient warning naming the dropped-MCP side
- * effect. No user action initiated it, so it informs rather than confirms.
+ * The packaged upgrade reconcile (main auto-restarts a pre-upgrade survivor
+ * server on the first launch after an update) is intentionally silent here —
+ * the existing "Updated to Version X" whats-new notice already tells the user
+ * the app updated, so no extra toast fires.
  *
  * Registered imperatively during `main.tsx` module init (not in a React
  * effect) so the listeners are in place before main fires the events on
@@ -62,21 +62,9 @@ export function driftToastBody(info: OkServerVersionDriftInfo): string {
     : t`This project's server (v${info.serverRuntime}) is newer than this app (v${info.appRuntime}).`;
 }
 
-/** Success confirmation shown on the recreated window. Pure — exported for tests. */
+/** Success confirmation shown on the recreated window after a manual restart. Pure — exported for tests. */
 export function restartSuccessMessage(appRuntime: string): string {
   return t`Restarted — now running v${appRuntime}.`;
-}
-
-/**
- * Disruption notice shown on the freshly-spawned window after a dev session
- * auto-reclaimed a foreign server (act-then-inform — no user action initiated
- * it, so this informs rather than confirms). Names the dropped-MCP side effect
- * with the same remedy as {@link restartDisruptionWarning} so a dev who sees
- * their agents disconnect understands they caused it by launching this build.
- * Pure — exported for tests.
- */
-export function reclaimNoticeMessage(appRuntime: string): string {
-  return t`Started a fresh OpenKnowledge server (v${appRuntime}) for this dev session — the server already running for this project was terminated. Connected agents (Claude Code, Codex, Cursor) just lost their OpenKnowledge MCP connection; restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect.`;
 }
 
 /**
@@ -150,18 +138,8 @@ export function installServerDriftListener(opts: {
     toast.success(restartSuccessMessage(info.appRuntime));
   });
 
-  // Dev-only: main auto-reclaimed a foreign server and spawned its own. Inform
-  // (don't confirm) — `warning`, and a generous-but-finite duration so the
-  // multi-sentence side-effect copy is readable without piling up on repeat
-  // dev launches. Fires only when a reclaim actually happened (a leftover
-  // server was present), not on every launch.
-  const unsubscribeReclaimed = bridge.onServerReclaimed((info) => {
-    toast.warning(reclaimNoticeMessage(info.appRuntime), { duration: 15_000 });
-  });
-
   return () => {
     unsubscribeDrift();
     unsubscribeRestarted();
-    unsubscribeReclaimed();
   };
 }

@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { CLIENT_RUNTIME_VERSION_FALLBACK } from '@inkeep/open-knowledge-core';
-import { classifyServerVersion, type DesktopVersion } from './version-drift.ts';
+import {
+  classifyServerVersion,
+  computeFirstLaunchAfterUpgrade,
+  type DesktopVersion,
+} from './version-drift.ts';
 
 const SELF: DesktopVersion = { protocolVersion: 1, runtimeVersion: '0.8.2' };
 
@@ -105,5 +109,25 @@ describe('classifyServerVersion', () => {
         SELF,
       ),
     ).toEqual({ relation: 'older', dimension: 'protocol' });
+  });
+});
+
+describe('computeFirstLaunchAfterUpgrade', () => {
+  test('fresh install (lastSeenVersion === null) → false, not an upgrade', () => {
+    expect(computeFirstLaunchAfterUpgrade(null, '0.8.2')).toBe(false);
+  });
+
+  test('same version as last launch → false', () => {
+    expect(computeFirstLaunchAfterUpgrade('0.8.2', '0.8.2')).toBe(false);
+  });
+
+  test('version changed since last launch → true (upgrade)', () => {
+    expect(computeFirstLaunchAfterUpgrade('0.8.1', '0.8.2')).toBe(true);
+  });
+
+  test('version changed downward (rollback) also counts → true', () => {
+    // The signal is "the version differs from last launch", not a direction —
+    // a rollback is still a first launch on a different build.
+    expect(computeFirstLaunchAfterUpgrade('0.9.0', '0.8.2')).toBe(true);
   });
 });

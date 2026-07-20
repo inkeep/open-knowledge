@@ -882,8 +882,6 @@ export interface OkDesktopBridge {
   onServerVersionDrift(cb: (info: OkServerVersionDriftInfo) => void): OkUnsubscribe;
   /** Subscribe to `ok:server-restarted`. Canonical JSDoc in `bridge-contract.ts`. */
   onServerRestarted(cb: (info: { readonly appRuntime: string }) => void): OkUnsubscribe;
-  /** Subscribe to `ok:server-reclaimed`. Canonical JSDoc in `bridge-contract.ts`. */
-  onServerReclaimed(cb: (info: { readonly appRuntime: string }) => void): OkUnsubscribe;
   /** Restart the project's server to match this app's version. Canonical JSDoc in `bridge-contract.ts`. */
   restartServer(projectPath: string): Promise<OkServerRestartOutcome>;
   /**

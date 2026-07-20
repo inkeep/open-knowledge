@@ -369,6 +369,7 @@ import {
 } from './url-scheme.ts';
 import { migrateLegacyUserDataDir } from './userdata-migration.ts';
 import { buildUtilityForkEnv } from './utility-fork-env.ts';
+import { computeFirstLaunchAfterUpgrade } from './version-drift.ts';
 import {
   buildViewMenuStateDeps,
   createDefaultEditorViewMenuState,
@@ -704,6 +705,17 @@ let pendingSchemaIncompatibility: SchemaIncompatibilityDiagnostic | null = null;
 export function getPendingSchemaIncompatibility(): SchemaIncompatibilityDiagnostic | null {
   return pendingSchemaIncompatibility;
 }
+/**
+ * True iff THIS launch is the first run after the app version changed — an
+ * auto-update installed a new build. A per-session snapshot captured at
+ * bootstrap from `appState.lastSeenVersion` BEFORE the auto-updater advances
+ * that marker (boot step 6, after the first project window opens at step 4), so
+ * it stays true for every project opened this run. The window-manager reads it
+ * (via the `isFirstLaunchAfterUpgrade` dep) to auto-restart a pre-upgrade
+ * survivor server instead of prompting. `lastSeenVersion === null` is a fresh
+ * install, not an upgrade → false.
+ */
+let firstLaunchAfterUpgrade = false;
 /**
  * Drop the pending diagnostic so subsequent `ok:state:query` calls return
  * `null` for `schemaIncompatibility`. Called from the refuse-downgrade UX's
@@ -1393,6 +1405,11 @@ function ensureWindowManager() {
     // rather than silently attaching to the stale one. Off in packaged builds,
     // where attaching to a live server is the intended shared-server behavior.
     reclaimForeignServerInDev: !app.isPackaged,
+    // Packaged upgrade reconcile: on the first launch after an app update,
+    // auto-restart a pre-upgrade survivor server the attach path would
+    // otherwise attach to (+ prompt). Reads the bootstrap snapshot, not live
+    // state, so it holds for the whole session. See `firstLaunchAfterUpgrade`.
+    isFirstLaunchAfterUpgrade: () => firstLaunchAfterUpgrade,
     setTimeout: (cb, ms) => setTimeout(cb, ms),
     killProbe: (pid, signal) => {
       process.kill(pid, signal as NodeJS.Signals | 0);
@@ -1416,6 +1433,13 @@ function ensureWindowManager() {
     onUtilityExit: (utility) => {
       ensureDebugIpc().cancelPendingForUtility(utility);
     },
+    // The window-manager's `log` dep is optional; an unwired `this.deps.log`
+    // makes every `log?.info/warn` in window-manager.ts a silent no-op. Wire it
+    // to the 'window-manager' subsystem logger (same pattern keepalive /
+    // server-exit use) so its diagnostics — server spawn/attach, dev reclaim,
+    // the `desktop-upgrade-reconcile` upgrade signal, restart — reach
+    // `~/.ok/logs/`.
+    log: getLogger('window-manager'),
     recordServerExit: (info) => getServerExitRecorder().recordExit(info),
     // Presence-invisible keepalive WS — registers the desktop as an active
     // `/collab*` upgrade for as long as a project window is open, so a brief
@@ -5362,6 +5386,15 @@ function bootPrimaryInstance(): void {
       });
       appState = result.appState;
       pendingSchemaIncompatibility = result.pendingSchemaIncompatibility;
+      // Snapshot the post-upgrade signal BEFORE step 6 (`bootAutoUpdater`)
+      // advances `lastSeenVersion` — this bootstrap runs at step 2, the first
+      // project window opens at step 4, and the updater consumes the marker at
+      // step 6. Captured once so it stays true for every project opened this
+      // run (a live re-read would flip false after the updater advances).
+      firstLaunchAfterUpgrade = computeFirstLaunchAfterUpgrade(
+        appState.lastSeenVersion,
+        app.getVersion(),
+      );
       // Startup instrumentation: bootstrap (IPC handlers, menu, dock, state)
       // is complete; the next launch phase is the project-window open + spawn.
       startupWaterfall.mark('bootstrapDone');

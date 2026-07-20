@@ -850,16 +850,6 @@ export interface OkServerRestartedInfo {
 }
 
 /**
- * Payload for `onServerReclaimed` — fired on the freshly-spawned window after a
- * dev session auto-terminated a foreign server it found on the project's
- * contentDir and started its own in its place. `appRuntime` is the app version
- * the fresh server runs (always present — sourced from `app.getVersion()`).
- */
-export interface OkServerReclaimedInfo {
-  readonly appRuntime: string;
-}
-
-/**
  * Result of `restartServer`. Only the failure case reaches the originating
  * renderer — on success the window is recreated, so its invoke promise never
  * resolves (by design); the success toast fires on the new window instead.
@@ -1066,16 +1056,6 @@ export interface OkDesktopBridge {
    * server now matches the app.
    */
   onServerRestarted(cb: (info: OkServerRestartedInfo) => void): OkUnsubscribe;
-  /**
-   * Subscribe to `ok:server-reclaimed` — fired on a freshly-spawned window when
-   * this (dev-only) session auto-terminated a foreign server already running on
-   * the project's contentDir and started its own in its place. The renderer
-   * surfaces an informational notice naming the side effect: connected agents'
-   * OpenKnowledge MCP connections were dropped. No user action initiated this
-   * (act-then-inform), so unlike `onServerRestarted` it is not a success
-   * confirmation but a disruption notice.
-   */
-  onServerReclaimed(cb: (info: OkServerReclaimedInfo) => void): OkUnsubscribe;
   /**
    * Restart the project's server to match this app's version: terminate the
    * attached (not-owned) server and recreate the window against a fresh

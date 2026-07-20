@@ -267,11 +267,6 @@
     "5AzM72": ["This setting is per-machine and isn't shared with collaborators."],
     "5ClEAu": ["Inline hashtag for cross-doc grouping."],
     "5D3Ior": ["Hide folder"],
-    "5DFPDh": [
-      "Started a fresh OpenKnowledge server (v",
-      ["appRuntime"],
-      ") for this dev session — the server already running for this project was terminated. Connected agents (Claude Code, Codex, Cursor) just lost their OpenKnowledge MCP connection; restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect."
-    ],
     "5F5HYj": [["ahead"], " ahead, ", ["behind"], " behind"],
     "5GKMSz": ["Indent or outdent the current list item."],
     "5GRxoA": ["Search files, folders, and commands for the current workspace."],
