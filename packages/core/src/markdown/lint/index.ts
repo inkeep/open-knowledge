@@ -29,6 +29,7 @@ export function fixDocument(text: string, config: LinterConfig): string {
   return out;
 }
 
+export { isMarkdownlintJsonConfig } from './config-files.ts';
 export {
   type LintAuditResponse,
   LintAuditResponseSchema,

@@ -322,13 +322,16 @@ async function filterEntriesByChain<E extends { sha: string }>(
  * each entry the doc blob OID is resolved by probing every chain step whose
  * cycle bound the entry's SHA satisfies (reusing `predecessorAncestors`) and
  * taking the first that resolves — the same path-resolution shape as
- * `filterEntriesByChain`. Walking oldest→newest, a non-checkpoint entry is
- * dropped when its OID equals the nearest older non-checkpoint entry's OID.
- * Checkpoints are landmarks: never dropped, and skipped as the byte baseline
- * (mirroring the `parentSha` walk). The oldest of a run of identical versions is
- * kept — it is the commit that introduced that content — and a later revert back
- * to earlier content is a real change (different from its immediate predecessor)
- * so it survives.
+ * `filterEntriesByChain`. Walking oldest→newest, a non-landmark entry is
+ * dropped when its OID equals the nearest older non-landmark entry's OID.
+ * Landmarks — checkpoints AND managed-rename commits — are never dropped and
+ * are skipped as the byte baseline (mirroring the `parentSha` walk). A managed
+ * rename changes the doc's PATH, not its bytes, so a rename commit's blob is
+ * byte-identical to the pre-rename version; it must survive as a name-epoch
+ * marker so the timeline still spans the rename (the rename-history invariant).
+ * The oldest of a run of identical versions is kept — it is the commit that
+ * introduced that content — and a later revert back to earlier content is a
+ * real change (different from its immediate predecessor) so it survives.
  *
  * One exception overrides "keep the oldest": within a run of identical bytes an
  * authored row always beats an `upstream` import row. The import is a mechanical
@@ -350,12 +353,22 @@ async function dropByteIdenticalRows(
 ): Promise<ParsedEntry[]> {
   if (entries.length < 2 || chain.length === 0) return entries;
 
+  // Landmarks are never dropped and never serve as a byte baseline: checkpoints
+  // (restore-point landmarks) and managed-rename commits (name-epoch markers).
+  // A rename commit's blob for the doc is byte-identical to the pre-rename
+  // version — it only moved the path — so without this exemption the no-op
+  // filter would drop it and the timeline would no longer span the rename.
+  const renameCommitShas = new Set(
+    chain.map((step) => step.renameCommit).filter((sha): sha is string => sha !== null),
+  );
+  const isLandmark = (entry: ParsedEntry): boolean =>
+    entry.type === 'checkpoint' || renameCommitShas.has(entry.sha);
+
   type Probe = { entryIdx: number; sha: string; path: string };
   const probes: Probe[] = [];
   for (let entryIdx = 0; entryIdx < entries.length; entryIdx++) {
-    // Checkpoints are never dropped and never serve as a baseline — skip them
-    // entirely so we don't spend probes resolving their blobs.
-    if (entries[entryIdx].type === 'checkpoint') continue;
+    // Skip landmarks entirely so we don't spend probes resolving their blobs.
+    if (isLandmark(entries[entryIdx])) continue;
     for (let chainIdx = 0; chainIdx < chain.length; chainIdx++) {
       const ancestors = predecessorAncestors[chainIdx];
       if (ancestors !== null && !ancestors.has(entries[entryIdx].sha)) continue;
@@ -381,7 +394,7 @@ async function dropByteIdenticalRows(
   let baselineOid: string | null = null;
   let baselineIdx = -1;
   for (let i = entries.length - 1; i >= 0; i--) {
-    if (entries[i].type === 'checkpoint') continue;
+    if (isLandmark(entries[i])) continue;
     const oid = oidByEntry[i];
     if (oid === null) continue; // unresolved: keep, and don't move the baseline
     if (baselineOid !== null && oid === baselineOid) {

@@ -6800,6 +6800,14 @@ msgstr ""
 msgid "root"
 msgstr ""
 
+#: src/components/LintConfigEditor.tsx
+msgid "Rule editing is available for the project's root markdownlint config"
+msgstr ""
+
+#: src/components/LintConfigEditor.tsx
+msgid "Rules"
+msgstr ""
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr ""
@@ -7475,6 +7483,7 @@ msgid "Something went wrong. Please try again."
 msgstr ""
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/LintConfigEditor.tsx
 #: src/components/MermaidFileViewer.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Source"

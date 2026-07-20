@@ -1,4 +1,7 @@
-import { detectEmbeddedHostFromBrowser } from '@inkeep/open-knowledge-core';
+import {
+  detectEmbeddedHostFromBrowser,
+  isMarkdownlintJsonConfig,
+} from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useTheme } from 'next-themes';
 import {
@@ -23,6 +26,7 @@ import { EditorSkeleton } from '@/components/EditorSkeleton';
 import { EmptyEditorState } from '@/components/EmptyEditorState';
 import { FolderOverview } from '@/components/FolderOverview';
 import { LargeFileEditorState } from '@/components/LargeFileEditorState';
+import { LintConfigEditor } from '@/components/LintConfigEditor';
 import { MountStalledAffordance } from '@/components/MountStalledAffordance';
 import { PropertyProvider, useProperties } from '@/components/PropertyContext';
 import { ShareReceiveMissPanel } from '@/components/ShareReceiveMissPanel';
@@ -879,6 +883,18 @@ function EditorAreaInner({
         </>
       );
     }
+  } else if (
+    activeTarget?.kind === 'asset' &&
+    isMarkdownlintJsonConfig(activeTarget.assetPath.split('/').pop() ?? activeTarget.assetPath)
+  ) {
+    // A markdownlint JSON config file opens in the dedicated config editor (a
+    // Source/Rules toggle) instead of the read-only asset preview. Like the
+    // skill-file branch below it's a plain REST-backed sibling — NOT
+    // DocumentBoundary-wrapped: the config is served over HTTP, not a pooled
+    // CRDT doc. Keyed by path so navigating between configs remounts + resets.
+    viewContent = (
+      <LintConfigEditor key={activeTarget.assetPath} assetPath={activeTarget.assetPath} />
+    );
   } else if (activeTarget?.kind === 'asset') {
     // `key={assetPath}` forces a fresh `AssetPreview` instance on every asset
     // navigation so the in-pane `forceText` toggle (from the "View as text"

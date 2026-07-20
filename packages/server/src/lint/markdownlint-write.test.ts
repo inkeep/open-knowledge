@@ -5,7 +5,6 @@
  * prune-to-empty file deletion. Round-trips are asserted via the discovery read.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   chmodSync,
   existsSync,
@@ -18,6 +17,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_MARKDOWNLINT_CONFIG } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { discoverMarkdownlintConfig, readOwnNativeRules } from './markdownlint-discovery.ts';
 import { writeMarkdownlintRule } from './markdownlint-write.ts';
@@ -122,7 +122,7 @@ describe('writeMarkdownlintRule', () => {
 
   // Root reads any file regardless of mode, so the permission probe only
   // proves the abort when the process isn't privileged.
-  test.if(process.getuid?.() !== 0)(
+  test.runIf(process.getuid?.() !== 0)(
     'a transient read failure ABORTS the write — the hand-tuned file is untouched',
     () => {
       const original = JSON.stringify({ MD013: false, MD041: { level: 2 } });
@@ -243,6 +243,42 @@ describe('JSONC comment preservation', () => {
     const res = writeMarkdownlintRule(dir, 'MD013', null);
     expect(res.action).toBe('deleted');
     expect(existsSync(join(dir, '.markdownlint.jsonc'))).toBe(false);
+  });
+});
+
+describe('JSONC format-preserving round-trip', () => {
+  // Every construct a naive re-serialization to strict JSON would destroy, in
+  // one hand-authored file: a leading comment, an `extends` reference, a
+  // trailing comma on the last entry, and a rule disabled with `false`.
+  const HAND_AUTHORED = [
+    '// hand-tuned markdownlint rules',
+    '{',
+    '  "extends": "./shared.markdownlint.json",',
+    '  "MD007": { "indent": 4 },',
+    '  "MD013": false,',
+    '}',
+    '',
+  ].join('\n');
+
+  test('writing one rule keeps the comment, extends, trailing comma, and default:false intact', () => {
+    writeFileSync(join(dir, '.markdownlint.jsonc'), HAND_AUTHORED, 'utf-8');
+
+    const res = writeMarkdownlintRule(dir, 'MD007', { indent: 2 });
+    expect(res).toEqual({ action: 'written', file: '.markdownlint.jsonc' });
+
+    const raw = readFileSync(join(dir, '.markdownlint.jsonc'), 'utf-8');
+    expect(raw).toContain('// hand-tuned markdownlint rules');
+    expect(raw).toContain('"extends": "./shared.markdownlint.json"');
+    expect(raw).toContain('"MD013": false');
+    // A comma still sits before the closing brace — the trailing comma survived.
+    expect(raw).toMatch(/,\s*}\s*$/);
+
+    // The edit landed on its own keys without materializing the extends base.
+    expect(readOwnNativeRules(dir)?.rules).toEqual({
+      extends: './shared.markdownlint.json',
+      MD007: { indent: 2 },
+      MD013: false,
+    });
   });
 });
 

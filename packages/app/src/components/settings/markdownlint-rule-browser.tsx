@@ -43,7 +43,18 @@ import { RuleOptionField, type RuleOptionValue } from './rule-option-field';
 
 type RuleValues = Record<string, MarkdownlintRuleSetting>;
 
-export function MarkdownlintRuleBrowser() {
+interface MarkdownlintRuleBrowserProps {
+  /**
+   * Hide the "these rules come from <file>" source note. The lint-config editor
+   * sets this: the user is already looking at the file, so the note is redundant
+   * there. The Settings dialog (no file context) leaves it on.
+   */
+  hideConfigSourceNote?: boolean;
+}
+
+export function MarkdownlintRuleBrowser({
+  hideConfigSourceNote = false,
+}: MarkdownlintRuleBrowserProps = {}) {
   const { t } = useLingui();
   const { data } = useProjectLintConfig();
   const ready = data !== null;
@@ -77,57 +88,61 @@ export function MarkdownlintRuleBrowser() {
 
   return (
     <div className="space-y-3" data-testid="settings-linting-markdownlint-rules">
-      {!ready ? (
-        // Stable placeholder while the project config loads. Rendering either the
-        // has-file or no-file copy before we know which one is correct causes a
-        // visible reflow when the fetch resolves (the no-file state is a taller
-        // two-paragraph + callout block); the skeleton reserves height instead.
-        <div
-          className="space-y-2"
-          aria-busy="true"
-          data-testid="markdownlint-rule-browser-config-loading"
-        >
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-2/3" />
-        </div>
-      ) : configFile ? (
-        <p className="text-sm text-muted-foreground">
-          <Trans>
-            These rules come from your project's{' '}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{configFile}</code>{' '}
-            file, which fully governs linting for this project. Turn rules on or off and edit their
-            options here; changes write back to the file.
-          </Trans>
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
+      {!hideConfigSourceNote &&
+        (!ready ? (
+          // Stable placeholder while the project config loads. Rendering either the
+          // has-file or no-file copy before we know which one is correct causes a
+          // visible reflow when the fetch resolves (the no-file state is a taller
+          // two-paragraph + callout block); the skeleton reserves height instead.
+          <div
+            className="space-y-2"
+            aria-busy="true"
+            data-testid="markdownlint-rule-browser-config-loading"
+          >
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+        ) : configFile ? (
+          <p
+            className="text-sm text-muted-foreground"
+            data-testid="markdownlint-config-source-note"
+          >
             <Trans>
-              No{' '}
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                .markdownlint.*
-              </code>{' '}
-              file yet — every rule runs on the same defaults as the VS Code markdownlint extension:
-              all on, except line length.
+              These rules come from your project's{' '}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{configFile}</code>{' '}
+              file, which fully governs linting for this project. Turn rules on or off and edit
+              their options here; changes write back to the file.
             </Trans>
           </p>
-          <p
-            className="flex items-start gap-1.5 rounded-md border border-dashed p-2.5 text-sm text-muted-foreground"
-            data-testid="markdownlint-no-file-disclaimer"
-          >
-            <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
-            <span>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
               <Trans>
-                Heads up: editing any rule or option here creates a{' '}
+                No{' '}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                  .markdownlint.json
+                  .markdownlint.*
                 </code>{' '}
-                file in your project to save your changes.
+                file yet — every rule runs on the same defaults as the VS Code markdownlint
+                extension: all on, except line length.
               </Trans>
-            </span>
-          </p>
-        </div>
-      )}
+            </p>
+            <p
+              className="flex items-start gap-1.5 rounded-md border border-dashed p-2.5 text-sm text-muted-foreground"
+              data-testid="markdownlint-no-file-disclaimer"
+            >
+              <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <span>
+                <Trans>
+                  Heads up: editing any rule or option here creates a{' '}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                    .markdownlint.json
+                  </code>{' '}
+                  file in your project to save your changes.
+                </Trans>
+              </span>
+            </p>
+          </div>
+        ))}
 
       <p className="text-sm text-muted-foreground" data-testid="markdownlint-rule-browser-legend">
         <Trans>

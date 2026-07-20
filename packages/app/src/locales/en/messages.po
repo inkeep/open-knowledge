@@ -6804,6 +6804,14 @@ msgstr "Role"
 msgid "root"
 msgstr "root"
 
+#: src/components/LintConfigEditor.tsx
+msgid "Rule editing is available for the project's root markdownlint config"
+msgstr "Rule editing is available for the project's root markdownlint config"
+
+#: src/components/LintConfigEditor.tsx
+msgid "Rules"
+msgstr "Rules"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "Run a project audit from the Problems panel."
@@ -7479,6 +7487,7 @@ msgid "Something went wrong. Please try again."
 msgstr "Something went wrong. Please try again."
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/LintConfigEditor.tsx
 #: src/components/MermaidFileViewer.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Source"

@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -6,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { formatOkActor, type OkActorEntry } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   appendRenameLogEntry,
   createEmptyIndex,
@@ -633,6 +633,44 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     expect(shas).toContain(aWipSha); // pre-rename
     expect(shas).toContain(renameSha); // rename event
     expect(shas).toContain(bWipSha); // post-rename
+  });
+
+  test('byte-preserving rename a → b: the rename commit survives the no-op row filter', async () => {
+    // A managed rename changes the doc's PATH, not its bytes — so the rename
+    // commit's blob for `b.md` is byte-identical to the pre-rename `a.md` blob.
+    // The byte-identical no-op filter must treat the rename commit as a
+    // name-epoch landmark (like a checkpoint) and keep it; otherwise the
+    // timeline silently loses the rename event and no longer spans the rename.
+    // The sibling 'rename a → b' test above changes the bytes at rename time
+    // (`# A v1` → `# B v1`), so it never exercises this byte-identical path —
+    // exactly the gap that let the no-op filter regress the rename invariant.
+    const { contentDir, shadow } = await setup();
+    const { cw, sv } = datedCommits(shadow);
+
+    // Cycle 1: write `a.md`, save → checkpoint (so its tree has a.md).
+    writeFileSync(resolve(contentDir, 'a.md'), '# A v1\n');
+    const aWipSha = await cw('WIP: a v1');
+    await sv();
+
+    // Cycle 2: byte-preserving rename a → b — SAME bytes at the new path.
+    rmSync(resolve(contentDir, 'a.md'));
+    writeFileSync(resolve(contentDir, 'b.md'), '# A v1\n');
+    const renameSha = await cw('rename: a -> b');
+    await sv();
+
+    // Cycle 3: a real edit at b so the post-rename row differs and survives.
+    writeFileSync(resolve(contentDir, 'b.md'), '# A v2\n');
+    const bWipSha = await cw('WIP: b v2');
+
+    const index = createEmptyIndex();
+    appendRenameLogEntry(shadow.gitDir, entry({ from: 'a', to: 'b', commitSha: renameSha }), index);
+    setRenameLogIndex(shadow.gitDir, index);
+
+    const result = await getDocumentHistory(shadow, { docName: 'b' }, 'content/docs');
+    const shas = result.entries.map((e) => e.sha);
+    expect(shas).toContain(aWipSha); // pre-rename content
+    expect(shas).toContain(renameSha); // rename event — byte-identical, but a landmark
+    expect(shas).toContain(bWipSha); // post-rename edit
   });
 
   test('FR2: un-renamed doc → empty rename log → identical results to pre-spec behavior', async () => {

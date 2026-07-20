@@ -8,13 +8,13 @@
  * resets, and expanded-row option edits write through the lint-config client.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import {
   DEFAULT_MARKDOWNLINT_CONFIG,
   MARKDOWNLINT_RULE_CATALOG,
 } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 // Radix primitives reach for DOM globals the jsdom preload doesn't expose;
@@ -56,7 +56,7 @@ function lintData(rules: Record<string, unknown>, configFile?: string): unknown 
   };
 }
 
-mock.module('@/editor/lint-config-client', () => ({
+vi.doMock('@/editor/lint-config-client', () => ({
   emitLintConfigChanged: () => {},
   subscribeToLintConfigChanged: () => () => {},
   runLintAudit: async () => null,
@@ -69,7 +69,7 @@ mock.module('@/editor/lint-config-client', () => ({
   },
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     error: (msg: string) => {
       toastErrors.push(msg);
@@ -80,10 +80,10 @@ mock.module('sonner', () => ({
 
 const { MarkdownlintRuleBrowser } = await import('./markdownlint-rule-browser');
 
-function renderBrowser() {
+function renderBrowser(props?: { hideConfigSourceNote?: boolean }) {
   return render(
     <TooltipProvider>
-      <MarkdownlintRuleBrowser />
+      <MarkdownlintRuleBrowser {...props} />
     </TooltipProvider>,
   );
 }
@@ -113,6 +113,23 @@ describe('MarkdownlintRuleBrowser — no-file disclaimer', () => {
     mockProjectLintData = lintData({ default: true }, '.markdownlint.json');
     renderBrowser();
     expect(screen.queryByTestId('markdownlint-no-file-disclaimer')).toBeNull();
+  });
+});
+
+describe('MarkdownlintRuleBrowser — config source note', () => {
+  test('shows the source note by default but hides it when hideConfigSourceNote is set', () => {
+    mockProjectLintData = lintData({ default: true }, '.markdownlint.json');
+
+    renderBrowser();
+    expect(screen.getByTestId('markdownlint-config-source-note')).toBeDefined();
+    cleanup();
+
+    // The lint-config editor mounts with the note suppressed — the user is
+    // already looking at the file, so the "these rules come from <file>" note
+    // is redundant. The Modified-badge legend stays.
+    renderBrowser({ hideConfigSourceNote: true });
+    expect(screen.queryByTestId('markdownlint-config-source-note')).toBeNull();
+    expect(screen.getByTestId('markdownlint-rule-browser-legend')).toBeDefined();
   });
 });
 

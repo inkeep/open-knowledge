@@ -448,6 +448,7 @@ export {
   findRuleConfigEntry,
   fixDocument,
   fixMarkdownText,
+  isMarkdownlintJsonConfig,
   LINT_PLUGINS,
   type LintAuditResponse,
   LintAuditResponseSchema,

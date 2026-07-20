@@ -29,6 +29,8 @@ The rules live in your project's own native markdownlint file — `.markdownlint
 
 **Settings ▸ Plugins ▸ markdownlint** (markdownlint appears there once the plugin is enabled) lists the full catalog — all 53 rules, generated from the installed engine's own config schema, so it always matches what actually runs. Search by id, alias, or name; browse by category (Headings, Lists, Whitespace, Code, Links & images, Style); or check **Only modified** to see just the rules your config changes. Expanding a rule reveals a link to its upstream documentation and typed editors for each of its options.
 
+The same browser also opens **directly on the config file**. Open your project's root `.markdownlint.json` or `.markdownlint.jsonc` in the editor (reveal hidden files to find it) and use the **Source / Rules** toggle: **Source** — the default — shows the raw file read-only, and **Rules** is the same no-code browser. Because rule edits target the project's governing root config, **Rules** is enabled only for that root file; open a nested or otherwise non-governing `.markdownlint.*` and **Rules** is disabled with a tooltip while **Source** still shows the file. Your Source/Rules choice is remembered separately from the document editor's own Visual/Markdown mode.
+
 Every edit writes back to your native `.markdownlint.*` file, preserving what you wrote: JSON and JSONC files get minimal text edits (comments and formatting survive), and a rule you configured under an alias stays under that alias. Severity strings are shown as a read-only badge. If the project has no file yet, the first change creates a `.markdownlint.json` seeded with the defaults — from then on that file is the whole story for OK and every other markdownlint tool.
 
 ## Auto-fix and severities
