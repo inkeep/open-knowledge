@@ -39,6 +39,8 @@ import { ClaudeIcon } from '@/components/icons/claude';
 import { CodexBrandIcon } from '@/components/icons/codex';
 import { CopilotIcon } from '@/components/icons/copilot';
 import { CursorIcon } from '@/components/icons/cursor';
+import { HermesIcon } from '@/components/icons/hermes';
+import { OpenClawIcon } from '@/components/icons/openclaw';
 import { OpenCodeIcon } from '@/components/icons/opencode';
 import { PiIcon } from '@/components/icons/pi';
 import {
@@ -72,10 +74,13 @@ const TARGET_ICON_KEY: Record<TargetData['id'], string> = {
   cursor: 'cursor',
   copilot: 'github',
   // No `AGENT_ICON_COLORS` entry → renders monochrome (inherits the row's text
-  // color), which suits OpenCode's, Pi's, and Antigravity's monochrome brand marks.
+  // color), which suits OpenCode's, Pi's, Antigravity's, OpenClaw's, and Hermes'
+  // monochrome brand marks.
   opencode: 'opencode',
   pi: 'pi',
   antigravity: 'antigravity',
+  openclaw: 'openclaw',
+  hermes: 'hermes',
 };
 
 export function TargetIcon({
@@ -113,6 +118,9 @@ export function TargetIcon({
   if (id === 'pi') return <PiIcon style={mergedStyle} className={mergedClass} {...props} />;
   if (id === 'antigravity')
     return <AntigravityIcon style={mergedStyle} className={mergedClass} {...props} />;
+  if (id === 'openclaw')
+    return <OpenClawIcon style={mergedStyle} className={mergedClass} {...props} />;
+  if (id === 'hermes') return <HermesIcon style={mergedStyle} className={mergedClass} {...props} />;
   return null;
 }
 

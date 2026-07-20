@@ -312,6 +312,8 @@ describe('resolveCliInstalledMap', () => {
       cursor: 0,
       pi: 127,
       antigravity: 0,
+      openclaw: 0,
+      hermes: 127,
     };
     expect(await resolveCliInstalledMap({ probe: (cli) => Promise.resolve(codes[cli]) })).toEqual({
       claude: true,
@@ -321,6 +323,8 @@ describe('resolveCliInstalledMap', () => {
       cursor: true,
       pi: false,
       antigravity: true,
+      openclaw: true,
+      hermes: false,
     });
   });
 
@@ -336,6 +340,8 @@ describe('resolveCliInstalledMap', () => {
       cursor: true,
       pi: true,
       antigravity: true,
+      openclaw: true,
+      hermes: true,
     });
   });
 

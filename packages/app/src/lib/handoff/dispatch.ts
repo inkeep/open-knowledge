@@ -148,6 +148,20 @@ export async function dispatchHandoff(
         reason: 'invalid-payload',
         detail: 'antigravity is terminal-only; launch via requestTerminalLaunch',
       };
+    case 'openclaw':
+      // Terminal-only target (`openclaw chat` CLI), same carve-out as above.
+      return {
+        ok: false,
+        reason: 'invalid-payload',
+        detail: 'openclaw is terminal-only; launch via requestTerminalLaunch',
+      };
+    case 'hermes':
+      // Terminal-only target (`hermes chat` CLI), same carve-out as above.
+      return {
+        ok: false,
+        reason: 'invalid-payload',
+        detail: 'hermes is terminal-only; launch via requestTerminalLaunch',
+      };
     default: {
       const _exhaustive: never = payload.target;
       return {

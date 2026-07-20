@@ -40,11 +40,18 @@ export function shellSingleQuote(s: string): string {
 }
 
 /**
- * The agent CLIs the docked terminal can launch. Each starts an interactive
- * session with the prompt as a single positional argument — the exact
- * `<bin> '<prompt>'` parity of `claude '<prompt>'` (NOT the non-interactive
- * one-shot variants: `codex exec` and `cursor-agent -p` both run-and-exit, so
- * the session wouldn't stay open for the user to continue in).
+ * The agent CLIs the docked terminal can launch. Each starts an INTERACTIVE
+ * session that stays open with the composed prompt threaded in — NOT the
+ * non-interactive one-shot variants (`codex exec`, `cursor-agent -p`,
+ * `hermes -q`/`-z`) which run-and-exit before the user can continue.
+ *
+ * The prompt reaches the CLI three ways, per {@link TerminalCliInfo}:
+ *   - positional (`claude '<prompt>'`) — the default (no `promptFlag`);
+ *   - a flag (`opencode --prompt '<prompt>'`, `openclaw chat --message '<prompt>'`)
+ *     for CLIs whose positional isn't the prompt (`promptFlag`);
+ *   - post-launch PTY paste (`hermes`) for CLIs with NO starting-prompt argument
+ *     at all — the promptless `<bin>` is spawned and the prompt is bracketed-paste
+ *     injected once its TUI is ready (`startupInjection`).
  */
 export type TerminalCli =
   | 'claude'
@@ -53,7 +60,9 @@ export type TerminalCli =
   | 'cursor'
   | 'opencode'
   | 'pi'
-  | 'antigravity';
+  | 'antigravity'
+  | 'openclaw'
+  | 'hermes';
 
 export interface TerminalCliInfo {
   /** PATH binary launched in the PTY. Interpolated (alongside any opted-in
@@ -75,12 +84,46 @@ export interface TerminalCliInfo {
    *  the deep-link path) and brand-icon rendering. Single source of truth so
    *  the renderer doesn't re-declare a parallel `cli → HandoffTarget` map. */
   readonly handoffTarget: HandoffTarget;
+  /** Fixed subcommand token inserted immediately after `<bin>`, present in BOTH
+   *  the prompted and promptless shapes (unlike {@link TerminalCliInfo.promptFlag},
+   *  which is dropped when there is no prompt). For CLIs whose interactive session
+   *  lives under a verb rather than the bare binary — `openclaw chat` /
+   *  `hermes chat` (bare `openclaw`/`hermes` is the gateway/other entry point, not
+   *  the interactive TUI). Registry-fixed, never user input. */
+  readonly subcommand?: string;
   /** Flag that carries the starting prompt for CLIs whose POSITIONAL argument is
-   *  NOT the prompt. OpenCode's positional is the project directory, so its
-   *  prompt must be passed as `--prompt '<text>'`; claude/codex/cursor take the
+   *  NOT the prompt. OpenCode's positional is the project directory (`--prompt`),
+   *  OpenClaw's initial message rides on `--message`; claude/codex/cursor take the
    *  prompt positionally (omit this). When set, {@link buildCliLaunchArgString}
-   *  inserts it immediately before the quoted prompt. */
+   *  inserts it immediately before the quoted prompt. Mutually exclusive with
+   *  {@link TerminalCliInfo.startupInjection} (a CLI either takes an argv prompt or
+   *  is injected, never both). */
   readonly promptFlag?: string;
+  /** Marks a CLI that accepts NO starting-prompt argument at all: its interactive
+   *  TUI must be launched promptless and the composed prompt delivered afterward as
+   *  a bracketed-paste PTY write (see {@link buildStartupInjectionBytes}). When set,
+   *  {@link buildCliLaunchArgString} omits the prompt from the argv.
+   *
+   *  Fields:
+   *  - `submit`: byte(s) written after the paste to send it (`'\r'`).
+   *  - `readyMarker`: exact byte sequence in the PTY output that signals the input
+   *    widget is live and ready to receive a paste. Hermes emits `\x1b[?2004h`
+   *    (bracketed-paste enable) when its prompt mounts — verified on a real Hermes
+   *    at ~940ms warm-boot. Keying on the DEC-2004 escape (not UI prose) is
+   *    language- and version-stable, and it is the exact precondition for the paste
+   *    to be honored (no `?2004h` → bracketed paste wouldn't apply anyway). Omit to
+   *    fall back to a pure timer.
+   *  - `settleMs`: debounce AFTER the marker before injecting (or, when no
+   *    `readyMarker`, a fixed beat from spawn).
+   *  - `capMs`: hard cap — inject anyway this long after spawn if the marker never
+   *    appears (a future TUI that changed its ready signal), so a launch never
+   *    silently drops the prompt. */
+  readonly startupInjection?: {
+    readonly submit: string;
+    readonly readyMarker?: string;
+    readonly settleMs: number;
+    readonly capMs: number;
+  };
 }
 
 /**
@@ -160,6 +203,32 @@ function buildClaudeSettingsArg(opts: BuildCliLaunchOptions): string {
 }
 
 /**
+ * xterm bracketed-paste framing (DEC private mode 2004). A TUI in bracketed-paste
+ * mode treats bytes between these sentinels as literal pasted text — it does NOT
+ * run them through its key handler, so newlines don't submit early, a leading `/`
+ * doesn't open a slash-command menu, and `@`/`#` don't trigger mention pickers.
+ * That is exactly what a multi-line composed prompt needs; the submit byte
+ * ({@link TerminalCliInfo.startupInjection}.submit) is sent AFTER the closing
+ * sentinel to send the now-complete input.
+ */
+const ESC = '\x1b';
+const BRACKETED_PASTE_START = `${ESC}[200~`;
+const BRACKETED_PASTE_END = `${ESC}[201~`;
+
+/**
+ * Hermes injection timing. Rather than a blind fixed beat, the launcher waits for
+ * Hermes' input widget to signal ready by emitting `\x1b[?2004h` (bracketed-paste
+ * enable), then debounces {@link HERMES_INJECT_DEBOUNCE_MS} before pasting. On a
+ * real Hermes this marker lands ~940ms after `hermes chat` (warm) and the widget
+ * accepts a bracketed paste cleanly right after. {@link HERMES_INJECT_CAP_MS} is
+ * the hard fallback: inject anyway if the marker never appears (e.g. a future
+ * Hermes that changed its ready signal), so the prompt is never silently dropped.
+ */
+const HERMES_READY_MARKER = '\x1b[?2004h';
+const HERMES_INJECT_DEBOUNCE_MS = 300;
+const HERMES_INJECT_CAP_MS = 4000;
+
+/**
  * Static registry for each launchable CLI. Cursor's agent CLI binary is
  * `cursor-agent` (the `cursor` command opens the GUI editor, not the agent).
  */
@@ -227,6 +296,41 @@ export const TERMINAL_CLIS = {
     handoffTarget: 'antigravity',
     promptFlag: '--prompt-interactive',
   },
+  openclaw: {
+    // OpenClaw's interactive TUI is `openclaw chat` (an alias for `tui --local`,
+    // the local embedded agent runtime — no separate gateway process needed). Its
+    // starting prompt is NOT positional: it rides on `--message <text>` ("Send an
+    // initial message after connecting"), so the launch is
+    // `openclaw chat --message '<prompt>'`. Bare `openclaw` is the gateway CLI, not
+    // a chat — hence the fixed `chat` subcommand on both the prompted and
+    // promptless (New chat) shapes.
+    bin: 'openclaw',
+    subcommand: 'chat',
+    displayName: 'OpenClaw',
+    docsUrl: 'https://docs.openclaw.ai/cli/tui',
+    handoffTarget: 'openclaw',
+    promptFlag: '--message',
+  },
+  hermes: {
+    // Hermes (Nous Research) has NO interactive-with-starting-prompt argument: its
+    // only prompt-carrying modes (`hermes chat -q`, `hermes -z`) are one-shots that
+    // run-and-exit, and bare `hermes chat` opens the TUI with no way to seed it. So
+    // OK launches `hermes chat` promptless and delivers the composed prompt as a
+    // bracketed-paste PTY write once the TUI is ready (`startupInjection`). Bare
+    // `hermes` can drop into provider setup on first run — `chat` is the stable
+    // interactive entry point.
+    bin: 'hermes',
+    subcommand: 'chat',
+    displayName: 'Hermes',
+    docsUrl: 'https://hermes-agent.nousresearch.com/docs/user-guide/cli',
+    handoffTarget: 'hermes',
+    startupInjection: {
+      submit: '\r',
+      readyMarker: HERMES_READY_MARKER,
+      settleMs: HERMES_INJECT_DEBOUNCE_MS,
+      capMs: HERMES_INJECT_CAP_MS,
+    },
+  },
 } as const satisfies Record<TerminalCli, TerminalCliInfo>;
 
 /**
@@ -244,6 +348,8 @@ export const TERMINAL_CLI_IDS = [
   'copilot',
   'pi',
   'antigravity',
+  'openclaw',
+  'hermes',
 ] as const satisfies readonly TerminalCli[];
 
 export interface BuildCliLaunchOptions {
@@ -306,15 +412,21 @@ export function buildCliLaunchArgString(
         ? info.autoApproveArg
         : '';
   const fixedPrefix = fixedArgs ? `${fixedArgs} ` : '';
-  // Promptless: emit a bare `<bin>` (plus any opted-in fixed args). `fixedPrefix`
-  // carries its own trailing separator space, redundant with nothing after it.
-  if (prompt == null || prompt.length === 0) {
-    return `${info.bin} ${fixedPrefix}`.trimEnd();
+  // Fixed subcommand (e.g. `openclaw chat` / `hermes chat`), present in both the
+  // prompted and promptless shapes.
+  const sub = info.subcommand ? `${info.subcommand} ` : '';
+  // Promptless — a bare `<bin> [subcommand] [fixed args]` (the "New chat" path) —
+  // OR a `startupInjection` CLI, whose prompt is delivered by a post-launch PTY
+  // paste (see buildStartupInjectionBytes), never the argv. `fixedPrefix`/`sub`
+  // carry their own trailing separator space, redundant with nothing after them.
+  if (info.startupInjection != null || prompt == null || prompt.length === 0) {
+    return `${info.bin} ${sub}${fixedPrefix}`.trimEnd();
   }
   // CLIs whose positional arg isn't the prompt (e.g. OpenCode, whose positional
-  // is the project dir) carry it via a flag instead.
+  // is the project dir; OpenClaw, whose initial message is `--message`) carry it
+  // via a flag instead.
   const promptFlag = info.promptFlag ? `${info.promptFlag} ` : '';
-  return `${info.bin} ${fixedPrefix}${promptFlag}${shellSingleQuote(prompt)}`;
+  return `${info.bin} ${sub}${fixedPrefix}${promptFlag}${shellSingleQuote(prompt)}`;
 }
 
 /**
@@ -341,4 +453,44 @@ export function buildCliLaunchCommand(
  */
 export function buildClaudeLaunchCommand(prompt: string, opts: BuildCliLaunchOptions = {}): string {
   return buildCliLaunchCommand('claude', prompt, opts);
+}
+
+/**
+ * Bytes to write into a freshly-launched {@link TerminalCliInfo.startupInjection}
+ * CLI's PTY to deliver the starting prompt it cannot take on its argv (Hermes).
+ * The prompt is wrapped in bracketed-paste sentinels — so the TUI treats it as
+ * literal pasted text, keeping a multi-line prompt intact and inert to key
+ * handling — then the registry submit byte is appended to send it.
+ *
+ * Returns `null` when the CLI has no `startupInjection` (its prompt rode on the
+ * argv, nothing to inject) or the prompt is empty (a promptless New-chat launch).
+ *
+ * Any ESC byte (0x1b) in the prompt is stripped first: a text prompt never
+ * legitimately contains one, and leaving it in would let the content terminate
+ * the bracketed-paste frame early (a literal `ESC[201~`) or smuggle its own
+ * control sequence into the TUI — the paste-time analogue of shell injection.
+ * This is the only user-influenced portion; everything around it is registry-fixed.
+ */
+/**
+ * The startup-injection descriptor for a CLI, or `undefined` when it delivers its
+ * prompt on the argv. A typed accessor so consumers don't cast around the
+ * `as const satisfies` registry's per-entry literal types (which drop optional
+ * fields from members that don't set them).
+ */
+export function startupInjectionFor(cli: TerminalCli): TerminalCliInfo['startupInjection'] {
+  const info: TerminalCliInfo = TERMINAL_CLIS[cli];
+  return info.startupInjection;
+}
+
+export function buildStartupInjectionBytes(
+  cli: TerminalCli,
+  prompt: string | null | undefined,
+): string | null {
+  const injection = startupInjectionFor(cli);
+  if (injection == null || prompt == null || prompt.length === 0) return null;
+  // Strip ESC (0x1b) — the byte that would let the prompt terminate the paste
+  // frame early or smuggle in a control sequence. A plain-string `replaceAll`
+  // (not a regex) keeps the control char out of a RegExp literal.
+  const safe = prompt.replaceAll(ESC, '');
+  return `${BRACKETED_PASTE_START}${safe}${BRACKETED_PASTE_END}${injection.submit}`;
 }

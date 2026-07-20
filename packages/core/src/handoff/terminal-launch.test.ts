@@ -4,8 +4,10 @@ import {
   buildClaudeLaunchCommand,
   buildCliLaunchArgString,
   buildCliLaunchCommand,
+  buildStartupInjectionBytes,
   OK_GATED_TOOL_NAMES,
   shellSingleQuote,
+  startupInjectionFor,
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
 } from './terminal-launch.ts';
@@ -18,7 +20,7 @@ const OK_ALLOW = `["mcp__${MCP_SERVER_NAME}","Bash(ok open:*)"]`;
 const OK_DENY = `["mcp__${MCP_SERVER_NAME}__delete","mcp__${MCP_SERVER_NAME}__move","mcp__${MCP_SERVER_NAME}__share_link","mcp__${MCP_SERVER_NAME}__install"]`;
 
 describe('TERMINAL_CLI_IDS', () => {
-  it('lists the CLIs in auto-pick priority order (claude > codex > opencode > cursor > copilot > pi > antigravity)', () => {
+  it('lists the CLIs in auto-pick priority order (claude > codex > opencode > cursor > copilot > pi > antigravity > openclaw > hermes)', () => {
     // The single constant drives both the visible launch-row order and the
     // default-CLI auto-pick, so display and defaulting can never disagree.
     expect([...TERMINAL_CLI_IDS]).toEqual([
@@ -29,6 +31,8 @@ describe('TERMINAL_CLI_IDS', () => {
       'copilot',
       'pi',
       'antigravity',
+      'openclaw',
+      'hermes',
     ]);
   });
 });
@@ -131,10 +135,21 @@ describe('buildCliLaunchCommand', () => {
     // Antigravity's CLI binary is `agy`; it has no positional prompt, so the
     // prompt rides on --prompt-interactive (keeps the session interactive).
     expect(buildCliLaunchCommand('antigravity', 'hi')).toBe("agy --prompt-interactive 'hi'\r");
+    // OpenClaw's interactive TUI is `openclaw chat`; its initial message rides on
+    // `--message` (the positional isn't the prompt).
+    expect(buildCliLaunchCommand('openclaw', 'hi')).toBe("openclaw chat --message 'hi'\r");
+    // Hermes takes NO starting-prompt argument — `hermes chat` launches promptless
+    // and the prompt is PTY-injected (see buildStartupInjectionBytes), so the argv
+    // never carries it regardless of the prompt passed.
+    expect(buildCliLaunchCommand('hermes', 'hi')).toBe('hermes chat\r');
   });
 
-  it('escapes the prompt identically for every CLI regardless of fixed args', () => {
+  it('escapes the prompt identically for every argv-prompt CLI regardless of fixed args', () => {
     for (const cli of TERMINAL_CLI_IDS) {
+      // Injection CLIs (Hermes) deliver the prompt out-of-band, not on the argv —
+      // their command is the promptless `<bin> <subcommand>`, so the "prompt is the
+      // final escaped arg" invariant doesn't apply. Covered by the injection tests.
+      if (startupInjectionFor(cli) != null) continue;
       const cmd = buildCliLaunchCommand(cli, "'; rm -rf / #", { mcpPreApprove: true });
       // Whatever fixed args precede it, the prompt is the final, escaped arg.
       expect(cmd.startsWith(`${TERMINAL_CLIS[cli].bin} `)).toBe(true);
@@ -169,6 +184,11 @@ describe('buildCliLaunchArgString', () => {
     expect(buildCliLaunchArgString('opencode', 'hi')).toBe("opencode --prompt 'hi'");
     expect(buildCliLaunchArgString('pi', 'hi')).toBe("pi 'hi'");
     expect(buildCliLaunchArgString('antigravity', 'hi')).toBe("agy --prompt-interactive 'hi'");
+    // OpenClaw: fixed `chat` subcommand + `--message` prompt flag.
+    expect(buildCliLaunchArgString('openclaw', 'hi')).toBe("openclaw chat --message 'hi'");
+    // Hermes: injection CLI — the prompt is dropped from the argv (delivered by a
+    // post-launch PTY paste), leaving the promptless `hermes chat` shape.
+    expect(buildCliLaunchArgString('hermes', 'hi')).toBe('hermes chat');
   });
 
   it('keeps an injection payload inert and contained in the prompt arg', () => {
@@ -188,6 +208,10 @@ describe('buildCliLaunchArgString promptless (New chat)', () => {
       // OpenCode carries a prompt on `--prompt`; with no prompt the flag is
       // dropped entirely so the bare TUI opens (positional stays the cwd).
       expect(buildCliLaunchArgString('opencode', emptyPrompt)).toBe('opencode');
+      // The fixed `chat` subcommand survives a promptless launch (bare `openclaw`/
+      // `hermes` isn't the interactive TUI); only the `--message` flag is dropped.
+      expect(buildCliLaunchArgString('openclaw', emptyPrompt)).toBe('openclaw chat');
+      expect(buildCliLaunchArgString('hermes', emptyPrompt)).toBe('hermes chat');
     }
   });
 
@@ -228,6 +252,61 @@ describe('buildCliLaunchArgString promptless (New chat)', () => {
       `claude ${CLAUDE_PREAPPROVE} 'hi'`,
     );
     expect(buildCliLaunchArgString('opencode', 'hi')).toBe("opencode --prompt 'hi'");
+  });
+});
+
+describe('buildStartupInjectionBytes', () => {
+  const START = '\x1b[200~';
+  const END = '\x1b[201~';
+
+  it('returns null for CLIs that carry the prompt on the argv (nothing to inject)', () => {
+    for (const cli of TERMINAL_CLI_IDS) {
+      if (startupInjectionFor(cli) != null) continue;
+      expect(buildStartupInjectionBytes(cli, 'hi')).toBeNull();
+    }
+  });
+
+  it('frames a Hermes prompt in bracketed paste + the registry submit byte', () => {
+    // Bracketed paste (DEC 2004) makes the TUI treat the bytes as literal pasted
+    // text, then `\r` submits the now-complete input.
+    expect(buildStartupInjectionBytes('hermes', 'do the thing')).toBe(
+      `${START}do the thing${END}\r`,
+    );
+  });
+
+  it('keeps a multi-line prompt intact inside the paste frame (no early submit)', () => {
+    // A bare newline in a TUI input box normally submits; inside bracketed paste it
+    // is preserved, so the whole multi-line prompt lands as one input.
+    const multi = 'line one\nline two\nline three';
+    expect(buildStartupInjectionBytes('hermes', multi)).toBe(`${START}${multi}${END}\r`);
+  });
+
+  it('strips ESC so the prompt cannot terminate the paste frame or inject a sequence', () => {
+    // A literal END sentinel (or any ESC) in the prompt would break out of the
+    // paste; every ESC byte is removed, neutralizing the break-out.
+    const hostile = `abc${END}rm -rf /\x1b[2J`;
+    const bytes = buildStartupInjectionBytes('hermes', hostile);
+    // Exactly one START and one END remain — the frame we added, not the payload's.
+    expect(bytes).toBe(`${START}abc[201~rm -rf /[2J${END}\r`);
+    expect(bytes?.split(START).length).toBe(2);
+    expect(bytes?.split(END).length).toBe(2);
+  });
+
+  it('returns null for an empty/absent prompt (a promptless New-chat launch)', () => {
+    for (const emptyPrompt of [null, undefined, ''] as const) {
+      expect(buildStartupInjectionBytes('hermes', emptyPrompt)).toBeNull();
+    }
+  });
+
+  it('Hermes waits on the DEC-2004 bracketed-paste-enable marker, with a cap beyond the debounce', () => {
+    const cfg = startupInjectionFor('hermes');
+    // Keying on the terminal-protocol escape (not UI prose) is what makes the
+    // ready detection language- and version-stable; it's also the exact
+    // precondition for the paste to be honored.
+    expect(cfg?.readyMarker).toBe('\x1b[?2004h');
+    // The cap fallback must sit strictly after the post-marker debounce so the
+    // marker path wins on a normal boot and the cap only catches a missing marker.
+    expect(cfg && cfg.capMs > cfg.settleMs).toBe(true);
   });
 });
 

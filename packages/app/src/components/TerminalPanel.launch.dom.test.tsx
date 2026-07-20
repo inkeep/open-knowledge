@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import { buildStartupInjectionBytes, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
@@ -247,6 +247,55 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     });
     expect(terminal.input.mock.calls.every((c) => !(c[1] as string).includes('\r'))).toBe(true);
   });
+
+  test('a Hermes launch bakes promptless `hermes chat` and injects the prompt only after the ready marker (ESC[?2004h)', async () => {
+    const { bridge, terminal, pushData } = makeBridge();
+    const prompt = 'summarize @notes.md\nthen link the people';
+    render(<TerminalPanel bridge={bridge} launch={{ prompt, cli: 'hermes', nonce: 1 }} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    // Hermes takes no argv prompt, so the bake is the bare interactive TUI — the
+    // prompt is NOT on the command line.
+    expect(bakedLaunch(terminal.create)).toBe('hermes chat');
+    expect(bakedLaunch(terminal.create)).not.toContain(prompt);
+
+    // Nothing is injected while the TUI is still booting — the paste waits for the
+    // input widget to signal ready, so a slow boot can't drop bytes into a
+    // not-yet-listening reader.
+    await new Promise((r) => setTimeout(r, 80));
+    expect(terminal.input).not.toHaveBeenCalled();
+
+    // Hermes emits ESC[?2004h (bracketed-paste enable) when its prompt mounts.
+    pushData({ ptyId: 'pty-1', data: '\x1b[?2004h' });
+
+    // Now the composed prompt lands via `input`, wrapped in bracketed paste
+    // (multi-line-safe) and followed by the submit byte. Derived from core so the
+    // escape framing can't rot into a hand-copied literal.
+    const expectedBytes = buildStartupInjectionBytes('hermes', prompt);
+    expect(expectedBytes).not.toBeNull();
+    await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', expectedBytes), {
+      timeout: 2_000,
+    });
+    // The multi-line prompt survives intact inside the paste frame (no early submit
+    // on the interior newline): exactly one submit `\r`, at the very end.
+    expect(expectedBytes?.endsWith('\r')).toBe(true);
+    expect(expectedBytes?.slice(0, -1).includes('\r')).toBe(false);
+  }, 10_000);
+
+  test('a Hermes launch injects via the cap fallback even if the ready marker never arrives', async () => {
+    const { bridge, terminal } = makeBridge();
+    const prompt = 'do the thing';
+    render(<TerminalPanel bridge={bridge} launch={{ prompt, cli: 'hermes', nonce: 1 }} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    // No marker is ever pushed. The prompt must still be delivered (the cap
+    // fallback), so a future Hermes that changed its ready signal never silently
+    // drops it.
+    const expectedBytes = buildStartupInjectionBytes('hermes', prompt);
+    await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', expectedBytes), {
+      timeout: 6_000,
+    });
+  }, 10_000);
 
   test('stagePaste is DROPPED when the bake was suppressed — staged text in the bare-shell fallback would execute', async () => {
     const { bridge, terminal } = makeBridge({ claude: 'not-found', mcp: 'needs-rewire' });

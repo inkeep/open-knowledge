@@ -3,10 +3,10 @@
  * pure type surface consumable from Electron main, renderer, and server.
  */
 
-// `copilot`, `opencode`, `pi`, and `antigravity` are TERMINAL-ONLY targets: OK
-// reaches them via their CLIs, not a URL scheme / GUI app, so they
-// are carved out of the deep-link dispatch path (no `RECIPES` recipe, no
-// `dispatch.ts` URL case, excluded from `VISIBLE_TARGETS`). They are members of
+// `copilot`, `opencode`, `pi`, `antigravity`, `openclaw`, and `hermes` are
+// TERMINAL-ONLY targets: OK reaches them via their CLIs, not a URL scheme / GUI
+// app, so they are carved out of the deep-link dispatch path (no `RECIPES` recipe,
+// no `dispatch.ts` URL case, excluded from `VISIBLE_TARGETS`). They are members of
 // the union only so they can reuse the shared brand-icon + display-name
 // metadata that the terminal-CLI launch rows render. Reached exclusively via
 // `requestTerminalLaunch` / `TERMINAL_CLIS`, never `dispatchHandoff`.
@@ -18,7 +18,9 @@ export type HandoffTarget =
   | 'cursor'
   | 'opencode'
   | 'pi'
-  | 'antigravity';
+  | 'antigravity'
+  | 'openclaw'
+  | 'hermes';
 
 /**
  * Data carried from the UI to the URL builder. Minimal by construction: only

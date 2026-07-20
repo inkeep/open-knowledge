@@ -89,6 +89,24 @@ export const KNOWN_TARGETS = [
     installUrl: 'https://antigravity.google',
     tagline: "Google's agentic IDE + `agy` terminal agent.",
   },
+  {
+    // Terminal-only target, same carve-out as above. Reached via the
+    // `openclaw chat` CLI launch row; the gateway/app are not deep-link targets.
+    id: 'openclaw',
+    displayName: 'OpenClaw',
+    schemes: [],
+    installUrl: 'https://openclaw.ai',
+    tagline: 'Open-source agent gateway; runs agents against your MCP servers.',
+  },
+  {
+    // Terminal-only target, same carve-out as above. Reached via the
+    // `hermes chat` CLI launch row.
+    id: 'hermes',
+    displayName: 'Hermes',
+    schemes: [],
+    installUrl: 'https://hermes-agent.nousresearch.com',
+    tagline: "Nous Research's terminal coding agent.",
+  },
 ] as const satisfies ReadonlyArray<TargetData>;
 
 // UI-visibility allow-list. `claude-cowork` is intentionally absent: dispatch
@@ -98,13 +116,15 @@ export const KNOWN_TARGETS = [
 // group, and the empty-state "Create with <agent>" composer.
 export const VISIBLE_TARGETS: ReadonlyArray<TargetData> = KNOWN_TARGETS.filter(
   // `claude-cowork`: dispatch-by-ID only, no render surface.
-  // `copilot` / `opencode` / `pi` / `antigravity`: terminal-only — surfaced via the
-  // terminal-CLI rows, not the GUI deep-link target list, so they must not
-  // appear as dispatchable rows.
+  // `copilot` / `opencode` / `pi` / `antigravity` / `openclaw` / `hermes`:
+  // terminal-only — surfaced via the terminal-CLI rows, not the GUI deep-link
+  // target list, so they must not appear as dispatchable rows.
   (target) =>
     target.id !== 'claude-cowork' &&
     target.id !== 'copilot' &&
     target.id !== 'opencode' &&
     target.id !== 'pi' &&
-    target.id !== 'antigravity',
+    target.id !== 'antigravity' &&
+    target.id !== 'openclaw' &&
+    target.id !== 'hermes',
 );

@@ -140,21 +140,24 @@ const RECIPES = {
     binaryName: 'cursor',
     urlScheme: 'cursor:',
   },
-  // `copilot`, `opencode`, `pi`, and `antigravity` are intentionally absent:
-  // terminal-only targets with no URL scheme, dispatched via the terminal-CLI
-  // path (`requestTerminalLaunch`), never this deep-link endpoint.
+  // `copilot`, `opencode`, `pi`, `antigravity`, `openclaw`, and `hermes` are
+  // intentionally absent: terminal-only targets with no URL scheme, dispatched via
+  // the terminal-CLI path (`requestTerminalLaunch`), never this deep-link endpoint.
 } as const satisfies Record<
-  Exclude<HandoffTarget, 'copilot' | 'opencode' | 'pi' | 'antigravity'>,
+  Exclude<HandoffTarget, 'copilot' | 'opencode' | 'pi' | 'antigravity' | 'openclaw' | 'hermes'>,
   Recipe
 >;
 
 // Narrowed to the URL-dispatchable subset: `RECIPES` omits the terminal-only
-// `copilot` / `opencode` / `pi` / `antigravity` targets, so its keys (and the
-// parsed `target`) exclude them, keeping the `RECIPES[target]` lookup below
-// exhaustive at the type level.
+// `copilot` / `opencode` / `pi` / `antigravity` / `openclaw` / `hermes` targets,
+// so its keys (and the parsed `target`) exclude them, keeping the `RECIPES[target]`
+// lookup below exhaustive at the type level.
 const TARGET_VALUES = Object.keys(RECIPES) as [
-  Exclude<HandoffTarget, 'copilot' | 'opencode' | 'pi' | 'antigravity'>,
-  ...Exclude<HandoffTarget, 'copilot' | 'opencode' | 'pi' | 'antigravity'>[],
+  Exclude<HandoffTarget, 'copilot' | 'opencode' | 'pi' | 'antigravity' | 'openclaw' | 'hermes'>,
+  ...Exclude<
+    HandoffTarget,
+    'copilot' | 'opencode' | 'pi' | 'antigravity' | 'openclaw' | 'hermes'
+  >[],
 ];
 const HandoffRequestSchema = z.object({
   target: z.enum(TARGET_VALUES),

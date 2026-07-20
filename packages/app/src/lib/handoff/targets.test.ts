@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { KNOWN_TARGETS, VISIBLE_TARGETS } from './targets.ts';
 
 describe('KNOWN_TARGETS', () => {
-  test('has exactly eight targets (four GUI + terminal-only Copilot, OpenCode, Pi, Antigravity)', () => {
-    expect(KNOWN_TARGETS.length).toBe(8);
+  test('has exactly ten targets (four GUI + terminal-only Copilot, OpenCode, Pi, Antigravity, OpenClaw, Hermes)', () => {
+    expect(KNOWN_TARGETS.length).toBe(10);
   });
 
   test('ids cover the full HandoffTarget union', () => {
@@ -18,19 +18,16 @@ describe('KNOWN_TARGETS', () => {
         'opencode',
         'pi',
         'antigravity',
+        'openclaw',
+        'hermes',
       ]),
     );
   });
 
-  test('copilot, opencode, pi, and antigravity are terminal-only — no URL scheme', () => {
-    const copilot = KNOWN_TARGETS.find((t) => t.id === 'copilot');
-    expect(copilot?.schemes).toEqual([]);
-    const opencode = KNOWN_TARGETS.find((t) => t.id === 'opencode');
-    expect(opencode?.schemes).toEqual([]);
-    const pi = KNOWN_TARGETS.find((t) => t.id === 'pi');
-    expect(pi?.schemes).toEqual([]);
-    const antigravity = KNOWN_TARGETS.find((t) => t.id === 'antigravity');
-    expect(antigravity?.schemes).toEqual([]);
+  test('copilot, opencode, pi, antigravity, openclaw, and hermes are terminal-only — no URL scheme', () => {
+    for (const id of ['copilot', 'opencode', 'pi', 'antigravity', 'openclaw', 'hermes'] as const) {
+      expect(KNOWN_TARGETS.find((t) => t.id === id)?.schemes).toEqual([]);
+    }
   });
 
   test('claude-cowork + claude-code share the claude: scheme (single install state)', () => {
@@ -63,6 +60,8 @@ describe('KNOWN_TARGETS', () => {
     expect(byId.get('opencode')).toBe('OpenCode');
     expect(byId.get('pi')).toBe('Pi');
     expect(byId.get('antigravity')).toBe('Antigravity');
+    expect(byId.get('openclaw')).toBe('OpenClaw');
+    expect(byId.get('hermes')).toBe('Hermes');
   });
 });
 
@@ -77,15 +76,13 @@ describe('VISIBLE_TARGETS (UI render allow-list)', () => {
     expect(ids.has('claude-cowork')).toBe(false);
   });
 
-  test('hides the terminal-only copilot + opencode + pi + antigravity targets from the GUI deep-link list', () => {
-    // Copilot, OpenCode, Pi, and Antigravity surface as terminal-CLI launch rows
-    // (TERMINAL_CLI_IDS), not GUI deep-link targets, so they must not appear in
-    // VISIBLE_TARGETS.
+  test('hides every terminal-only target (copilot/opencode/pi/antigravity/openclaw/hermes) from the GUI deep-link list', () => {
+    // These surface as terminal-CLI launch rows (TERMINAL_CLI_IDS), not GUI
+    // deep-link targets, so they must not appear in VISIBLE_TARGETS.
     const ids = new Set(VISIBLE_TARGETS.map((t) => t.id));
-    expect(ids.has('copilot')).toBe(false);
-    expect(ids.has('opencode')).toBe(false);
-    expect(ids.has('pi')).toBe(false);
-    expect(ids.has('antigravity')).toBe(false);
+    for (const id of ['copilot', 'opencode', 'pi', 'antigravity', 'openclaw', 'hermes'] as const) {
+      expect(ids.has(id)).toBe(false);
+    }
   });
 
   test('keeps the remaining three targets visible', () => {

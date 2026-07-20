@@ -2,7 +2,9 @@ import '@xterm/xterm/css/xterm.css';
 
 import {
   buildCliLaunchArgString,
+  buildStartupInjectionBytes,
   shellSingleQuote,
+  startupInjectionFor,
   type TerminalCli,
 } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
@@ -230,6 +232,13 @@ function TerminalSession({
     let ptyId: string | null = null;
     let unsubData: (() => void) | undefined;
     let unsubExit: (() => void) | undefined;
+    // Startup-injection readiness: for a `startupInjection` CLI (Hermes), this
+    // scans the PTY output for the CLI's ready marker so the prompt is pasted the
+    // instant the input widget is live. Fed from attachSession's onData; armed by
+    // the post-attach launch block. `injectCapTimer` is the marker-never-appears
+    // fallback. Both are torn down on unmount alongside `stagePasteTimer`.
+    let readinessScan: ((data: string) => void) | undefined;
+    let injectCapTimer: ReturnType<typeof setTimeout> | undefined;
     let titleDisposable: { dispose(): void } | undefined;
     let linkProviderDisposable: { dispose(): void } | undefined;
     let observer: ResizeObserver | undefined;
@@ -599,6 +608,8 @@ function TerminalSession({
         // Ack consumed code units only once xterm has processed the chunk, so
         // the main-side backpressure window tracks real consumption.
         term.write(msg.data, () => bridge.terminal.drain(msg.ptyId, msg.data.length));
+        // Watch for a startup-injection CLI's ready marker (no-op unless armed).
+        readinessScan?.(msg.data);
       });
 
       unsubExit = bridge.terminal.onExit((msg) => {
@@ -837,7 +848,62 @@ function TerminalSession({
       // beat lets the TUI's stdin reader attach (a write at raw PTY-live can
       // race it); unmount cancels the timer.
       const staged = launch?.stagePaste;
-      if (launch != null && launch.prompt != null && staged != null) {
+      // Hermes-class CLIs take no starting-prompt argument, so their `chat` TUI is
+      // launched promptless (`launchCommand` = `hermes chat`) and the composed
+      // prompt is delivered HERE as a bracketed-paste PTY write once the TUI's
+      // stdin reader has attached — the same `bridge.terminal.input` channel as
+      // stagePaste, but framed (multi-line-safe) and submitted. Non-null only for
+      // a `startupInjection` CLI with a non-empty prompt AND a confirmed bake
+      // (preflight put the CLI on PATH); a suppressed launchCommand means a bare
+      // shell, where injecting would mangle, so it stays null. `settleMs` is the
+      // known-fragile knob — if it proves unreliable the fallback is clipboard +
+      // a paste hint, not a longer guess.
+      const injectionBytes =
+        launch != null && launchCommand !== undefined && launch.prompt != null
+          ? buildStartupInjectionBytes(launch.cli, launch.prompt)
+          : null;
+      if (injectionBytes != null && launch != null) {
+        const cfg = startupInjectionFor(launch.cli);
+        const settleMs = cfg?.settleMs ?? STAGE_PASTE_SETTLE_MS;
+        const marker = cfg?.readyMarker;
+        const bytes = injectionBytes;
+        let fired = false;
+        const inject = () => {
+          if (fired) return;
+          fired = true;
+          readinessScan = undefined;
+          if (stagePasteTimer !== undefined) clearTimeout(stagePasteTimer);
+          if (injectCapTimer !== undefined) clearTimeout(injectCapTimer);
+          if (cancelled || ptyIdRef.current === null) return;
+          bridge.terminal.input(ptyIdRef.current, bytes);
+          term.focus();
+        };
+        // Cap fallback: inject even if the marker never appears, so a future TUI
+        // that changed its ready signal never silently drops the prompt.
+        injectCapTimer = setTimeout(inject, cfg?.capMs ?? settleMs);
+        if (marker != null) {
+          // Inject once the input widget signals ready (Hermes: bracketed-paste
+          // enable), then a short debounce — pasting the instant it's live instead
+          // of guessing a fixed boot time.
+          let acc = '';
+          readinessScan = (data) => {
+            if (fired || stagePasteTimer !== undefined) return;
+            acc += data;
+            if (acc.includes(marker)) {
+              readinessScan = undefined;
+              stagePasteTimer = setTimeout(inject, settleMs);
+              return;
+            }
+            // Bound the buffer, keeping enough tail to catch a marker split across
+            // chunks. Trim only after a non-match so an early-in-a-big-chunk marker
+            // is never sliced away before the includes() check above.
+            if (acc.length > marker.length + 256) acc = acc.slice(-(marker.length + 256));
+          };
+        } else {
+          // No marker configured — a fixed beat from spawn (legacy behavior).
+          stagePasteTimer = setTimeout(inject, settleMs);
+        }
+      } else if (launch != null && launch.prompt != null && staged != null) {
         // `prompt` and `stagePaste` are mutually exclusive by the intent's
         // contract (the type doesn't forbid it — single producer today). A
         // future producer setting both would double-dispatch: the prompt
@@ -859,6 +925,8 @@ function TerminalSession({
     return () => {
       cancelled = true;
       if (stagePasteTimer !== undefined) clearTimeout(stagePasteTimer);
+      if (injectCapTimer !== undefined) clearTimeout(injectCapTimer);
+      readinessScan = undefined;
       ptyIdRef.current = null;
       // This session no longer has a live PTY — clear it from the host's reuse
       // map so an "Ask AI" launch never writes into a torn-down shell.
