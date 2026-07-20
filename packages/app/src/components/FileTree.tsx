@@ -1429,6 +1429,7 @@ export function FileTree({
   const [unfilteredRootEntryCount, setUnfilteredRootEntryCount] = useState(0);
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<FileTreeDeleteRequest | null>(null);
+  const [templateConvertRequest, setTemplateConvertRequest] = useState<FileTreeTarget | null>(null);
   /**
    * Set when `shell.trashItem` returns `{ ok: false }` for one or more
    * targets during the Step 1 trash flow. Drives the rendering of
@@ -2186,10 +2187,19 @@ export function FileTree({
 
   async function handleImportTemplate(target: FileTreeTarget, deleteSource: boolean) {
     if (target.kind !== 'file') return;
+    if (deleteSource) {
+      setTemplateConvertRequest(target);
+      return;
+    }
+    await executeImportTemplate(target, false);
+  }
+
+  async function executeImportTemplate(target: FileTreeTarget, deleteSource: boolean) {
     if (busyPathRef.current !== null) return;
     const clearBusyState = () => {
       setBusyPath(null);
       busyPathRef.current = null;
+      setTemplateConvertRequest(null);
     };
     busyPathRef.current = target.path;
     setBusyPath(target.path);
@@ -4591,6 +4601,24 @@ export function FileTree({
             })()}
             isSubmitting={busyPath !== null}
             onDelete={() => handleDeleteTargets(deleteRequest.targets)}
+          />
+        )}
+      </Dialog>
+      <Dialog
+        open={!!templateConvertRequest}
+        onOpenChange={(open) => {
+          if (!open && !busyPath) setTemplateConvertRequest(null);
+        }}
+      >
+        {templateConvertRequest && (
+          <DeleteConfirmationDialog
+            itemName={templateConvertRequest.name + (templateConvertRequest.kind === 'file' ? templateConvertRequest.docExt ?? '.md' : '.md')}
+            customTitle={t`Convert to template`}
+            customDescription={t`Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone.`}
+            customConfirmLabel={t`Convert`}
+            customConfirmLabelBusy={t`Converting...`}
+            isSubmitting={busyPath !== null}
+            onDelete={() => executeImportTemplate(templateConvertRequest, true)}
           />
         )}
       </Dialog>

@@ -14089,9 +14089,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const templateTags = Array.isArray(sourceFmObj?.tags) ? (sourceFmObj.tags as string[]) : [];
 
         // For the starter content, we can use the original document frontmatter but remove `template:`
-        // if it somehow got there. Keep other fields.
+        // if it somehow got there. Keep other fields. We also drop `title` so it doesn't get baked into every instance.
         const starterFmObj = { ...sourceFmObj };
         delete starterFmObj.template;
+        delete starterFmObj.title;
 
         let starterContent = '';
         if (Object.keys(starterFmObj).length > 0) {
