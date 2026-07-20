@@ -56,6 +56,7 @@ export default {
     'scripts/compute-next-beta.mjs': ['files'],
     'scripts/assert-smoke-not-vacuous.mjs': ['files'],
     'scripts/assert-app-built.mjs': ['files'],
+    'scripts/check-no-new-bun-test-imports.mjs': ['files'],
     'docs/src/lib/share-splash.ts': ['exports', 'types'],
     'packages/app/src/components/PublishToGitHubDialog.tsx': ['types'],
     'packages/app/src/components/ShareButton.tsx': ['types'],
