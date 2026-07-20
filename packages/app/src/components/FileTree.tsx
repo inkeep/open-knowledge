@@ -4612,7 +4612,12 @@ export function FileTree({
       >
         {templateConvertRequest && (
           <DeleteConfirmationDialog
-            itemName={templateConvertRequest.name + (templateConvertRequest.kind === 'file' ? templateConvertRequest.docExt ?? '.md' : '.md')}
+            itemName={
+              templateConvertRequest.name +
+              (templateConvertRequest.kind === 'file'
+                ? (templateConvertRequest.docExt ?? '.md')
+                : '.md')
+            }
             customTitle={t`Convert to template`}
             customDescription={t`Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone.`}
             customConfirmLabel={t`Convert`}

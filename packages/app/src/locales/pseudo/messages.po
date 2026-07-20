@@ -1012,6 +1012,10 @@ msgid "Applying your change"
 msgstr ""
 
 #: src/components/FileTree.tsx
+msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
+msgstr ""
+
+#: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 msgstr ""
 
@@ -1888,6 +1892,10 @@ msgid "Content rules not yet loaded — try again in a moment"
 msgstr ""
 
 #: src/components/FileTree.tsx
+msgid "Convert"
+msgstr ""
+
+#: src/components/FileTree.tsx
 msgid "Convert (delete original)"
 msgstr ""
 
@@ -1897,6 +1905,14 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Convert the current block to a paragraph."
+msgstr ""
+
+#: src/components/FileTree.tsx
+msgid "Convert to template"
+msgstr ""
+
+#: src/components/FileTree.tsx
+msgid "Converting..."
 msgstr ""
 
 #: src/components/empty-state/CopyablePromptList.tsx

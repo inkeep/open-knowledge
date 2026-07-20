@@ -1016,6 +1016,10 @@ msgid "Applying your change"
 msgstr "Applying your change"
 
 #: src/components/FileTree.tsx
+msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
+msgstr "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
+
+#: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 msgstr "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 
@@ -1892,6 +1896,10 @@ msgid "Content rules not yet loaded — try again in a moment"
 msgstr "Content rules not yet loaded — try again in a moment"
 
 #: src/components/FileTree.tsx
+msgid "Convert"
+msgstr "Convert"
+
+#: src/components/FileTree.tsx
 msgid "Convert (delete original)"
 msgstr "Convert (delete original)"
 
@@ -1902,6 +1910,14 @@ msgstr "Convert selection to footnote"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Convert the current block to a paragraph."
 msgstr "Convert the current block to a paragraph."
+
+#: src/components/FileTree.tsx
+msgid "Convert to template"
+msgstr "Convert to template"
+
+#: src/components/FileTree.tsx
+msgid "Converting..."
+msgstr "Converting..."
 
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
