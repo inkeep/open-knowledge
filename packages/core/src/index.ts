@@ -1189,6 +1189,7 @@ export {
   fieldErrorsFromError,
   toFrontmatterIssue,
 } from './frontmatter/errors.ts';
+export { parseFrontmatterRecord } from './frontmatter/record.ts';
 export {
   FRONTMATTER_TYPES,
   type FrontmatterMap,

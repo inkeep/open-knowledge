@@ -143,6 +143,7 @@ import {
   type Principal,
   PrincipalSuccessSchema,
   type ProblemType,
+  parseFrontmatterRecord,
   parseTemplateFile,
   prependFrontmatter,
   projectSkillContentDocName,
@@ -13572,19 +13573,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const parseFrontmatterDoc = (
     raw: string,
   ): { frontmatter: Record<string, unknown>; body: string } => {
-    const { frontmatter: fenced, body } = stripFrontmatter(raw);
-    let frontmatter: Record<string, unknown> = {};
-    if (fenced !== '') {
-      try {
-        const parsed = parseYaml(unwrapFrontmatterFences(fenced));
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          frontmatter = parsed as Record<string, unknown>;
-        }
-      } catch {
-        // Malformed YAML — return the FM-stripped body, frontmatter empty.
-      }
-    }
-    return { frontmatter, body };
+    const { body } = stripFrontmatter(raw);
+    // Malformed / missing / non-mapping frontmatter degrades to an empty
+    // record — callers still get the FM-stripped body.
+    return { frontmatter: parseFrontmatterRecord(raw) ?? {}, body };
   };
 
   const handleTemplateGet = withValidation(

@@ -15,33 +15,13 @@
 import type { Dirent } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, relative, resolve } from 'node:path';
-import { OK_DIR, stripFrontmatter, unwrapFrontmatterFences } from '@inkeep/open-knowledge-core';
-import { parse as parseYaml } from 'yaml';
+import { OK_DIR, parseFrontmatterRecord } from '@inkeep/open-knowledge-core';
 import { resolveWithinRoot } from '../mcp/tools/path-safety.ts';
 import { httpGet } from '../mcp/tools/shared.ts';
 import { readFolderFrontmatter } from './nested-folder-rules.ts';
 import { type GitCommit, type ProjectHistorySource, readProjectGitLog } from './project-log.ts';
 import { type HistorySource, readShadowLog, type ShadowCommit } from './shadow-log.ts';
 import { resolveTemplatesAvailable, type TemplateEntry } from './templates-resolver.ts';
-
-// Inline frontmatter parser — keeps server-side parsing self-contained
-// (no cli-package import). Returns the raw YAML object verbatim so the
-// open-shape merge sees every key the file declared. Type narrowing
-// for well-known scalars happens downstream. Fence recognition is core's
-// contract via stripFrontmatter/unwrapFrontmatterFences.
-function parseFrontmatterRaw(content: string): Record<string, unknown> | null {
-  const { frontmatter } = stripFrontmatter(content);
-  if (frontmatter === '') return null;
-  try {
-    const parsed = parseYaml(unwrapFrontmatterFences(frontmatter));
-    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    // Invalid YAML — degrade gracefully to "no frontmatter".
-  }
-  return null;
-}
 
 /** Bound on recursive directory scan when computing `DirectoryMeta`. */
 const DIRECTORY_SCAN_CAP = 1000;
@@ -293,7 +273,9 @@ const fmReadWarnedPaths = new Set<string>();
 async function readFrontmatter(absPath: string): Promise<Record<string, unknown> | null> {
   try {
     const content = await readFile(absPath, 'utf-8');
-    const fm = parseFrontmatterRaw(content);
+    // Raw record on purpose (not `parseFrontmatterYaml`): the open-shape
+    // merge must see every key/value the file declared, verbatim.
+    const fm = parseFrontmatterRecord(content);
     return fm ?? {};
   } catch (err) {
     // ENOENT is expected (caller is enriching paths from a stale listing or a
