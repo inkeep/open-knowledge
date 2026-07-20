@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createRealOpenDeps, type OpenDeps, runOpen, scrubElectronRunAsNode } from './open.ts';
+import { createRealOpenDeps, type OpenDeps, runOpen } from './open.ts';
 
 function makeDeps(overrides: Partial<OpenDeps> = {}): {
   deps: OpenDeps;
@@ -222,19 +222,5 @@ describe('createRealOpenDeps wiring', () => {
       bundlePath: '/Applications/OpenKnowledge.app',
     }));
     expect(deps.detectBundlePath()).toBe('/Applications/OpenKnowledge.app');
-  });
-});
-
-describe('scrubElectronRunAsNode', () => {
-  test('removes ELECTRON_RUN_AS_NODE so the spawned target does not inherit it', () => {
-    const scrubbed = scrubElectronRunAsNode({ ELECTRON_RUN_AS_NODE: '1', PATH: '/usr/bin' });
-    expect(scrubbed.ELECTRON_RUN_AS_NODE).toBeUndefined();
-    expect(scrubbed.PATH).toBe('/usr/bin');
-  });
-
-  test('does not mutate the input env', () => {
-    const input = { ELECTRON_RUN_AS_NODE: '1' };
-    scrubElectronRunAsNode(input);
-    expect(input.ELECTRON_RUN_AS_NODE).toBe('1');
   });
 });

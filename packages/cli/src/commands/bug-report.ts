@@ -1,9 +1,8 @@
-import { spawn as childSpawn } from 'node:child_process';
 import { platform } from 'node:os';
-import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { getCliLogger } from '../cli.ts';
 import { collectReportBundle } from '../report-bundle.ts';
+import { spawnDetachedScrubbed } from '../utils/detached-spawn.ts';
 import { defaultBugReportZipPath } from './bug-report-bundle.ts';
 
 export function bugReportCommand(): Command {
@@ -31,11 +30,7 @@ export function bugReportCommand(): Command {
 
         if (opts.reveal && platform() === 'darwin') {
           try {
-            childSpawn(
-              '/usr/bin/open',
-              ['-R', zipPath],
-              withHiddenWindowsConsole({ detached: true, stdio: 'ignore' as const }),
-            ).unref();
+            spawnDetachedScrubbed('/usr/bin/open', ['-R', zipPath]);
           } catch {}
         }
       } catch (err) {

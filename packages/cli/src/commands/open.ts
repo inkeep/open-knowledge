@@ -27,7 +27,6 @@
  * non-TTY/headless invocations (an agent shelling out). The verb spawns its own
  * `open "<url>"` (LaunchServices) rather than `launchDesktop`.
  */
-import { spawn as nodeSpawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { MANAGED_ARTIFACT_SCOPES, type SkillScope } from '@inkeep/open-knowledge-core';
@@ -37,9 +36,9 @@ import {
   encodeSkillRoute,
   resolveLockDir,
   resolveUiInfo,
-  withHiddenWindowsConsole,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
+import { spawnDetachedScrubbed } from '../utils/detached-spawn.ts';
 import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
 
 export interface OpenOptions {
@@ -73,19 +72,6 @@ export interface OpenDeps {
 }
 
 /**
- * Copy `process.env` minus `ELECTRON_RUN_AS_NODE`. The CLI wrapper sets that
- * var so the bundled Electron binary runs as a Node host; if the
- * LaunchServices-spawned target (the desktop app for `openknowledge://`, or the
- * browser for http) inherited it, it would start as a headless Node host with
- * no script and exit immediately. Mirrors `launchDesktop`.
- */
-export function scrubElectronRunAsNode(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const next = { ...env };
-  delete next.ELECTRON_RUN_AS_NODE;
-  return next;
-}
-
-/**
  * Build the real side-effect surface. `detect` is injectable so the
  * `bundlePath ?? null` collapse can be unit-tested without a real macOS /
  * desktop install.
@@ -116,16 +102,7 @@ export function createRealOpenDeps(
       }
     },
     openTarget: (target) => {
-      const child = nodeSpawn(
-        'open',
-        [target],
-        withHiddenWindowsConsole({
-          detached: true,
-          stdio: 'ignore' as const,
-          env: scrubElectronRunAsNode(process.env),
-        }),
-      );
-      child.unref();
+      spawnDetachedScrubbed('open', [target]);
     },
     log: (message) => process.stdout.write(`${message}\n`),
     error: (message) => process.stderr.write(`${message}\n`),

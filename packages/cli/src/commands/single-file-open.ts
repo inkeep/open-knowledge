@@ -13,7 +13,6 @@
  *     a tab, and removes the temp projectDir on teardown.
  */
 
-import { spawn as nodeSpawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -24,8 +23,8 @@ import {
   SingleFileNotFoundError,
   SingleFileNotMarkdownError,
   type SingleFileOpenPlan,
-  withHiddenWindowsConsole,
 } from '@inkeep/open-knowledge-server';
+import { spawnDetachedScrubbed } from '../utils/detached-spawn.ts';
 import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
 import { createRealOpenDeps, runOpen } from './open.ts';
 
@@ -53,18 +52,6 @@ export interface SingleFileOpenDeps {
   error: (message: string) => void;
 }
 
-/**
- * Copy `process.env` minus `ELECTRON_RUN_AS_NODE` — mirrors `ok open`. The CLI
- * wrapper sets that var so the bundled Electron binary runs as a Node host;
- * leaking it to the LaunchServices-spawned target would start it headless and
- * exit immediately.
- */
-function scrubElectronRunAsNode(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const next = { ...env };
-  delete next.ELECTRON_RUN_AS_NODE;
-  return next;
-}
-
 export function createRealSingleFileOpenDeps(
   detect: () => DetectResult = () => detectDesktop(createRealDetectDeps()),
 ): SingleFileOpenDeps {
@@ -72,16 +59,7 @@ export function createRealSingleFileOpenDeps(
     prepare: prepareSingleFileOpen,
     detectBundlePath: () => detect().bundlePath ?? null,
     openTarget: (target) => {
-      const child = nodeSpawn(
-        'open',
-        [target],
-        withHiddenWindowsConsole({
-          detached: true,
-          stdio: 'ignore' as const,
-          env: scrubElectronRunAsNode(process.env),
-        }),
-      );
-      child.unref();
+      spawnDetachedScrubbed('open', [target]);
     },
     runProjectOpen: (docName, projectRoot) =>
       runOpen(docName, { project: projectRoot }, createRealOpenDeps()),

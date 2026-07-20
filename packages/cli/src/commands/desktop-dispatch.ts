@@ -10,10 +10,11 @@
  * and the caller falls through to the existing `ok start` flow.
  */
 
-import type { spawn as NativeSpawn, SpawnOptions } from 'node:child_process';
+import type { spawn as NativeSpawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { spawnDetachedScrubbed } from '../utils/detached-spawn.ts';
 
 /**
  * macOS bundle identifier for the desktop app. Reused for protocol
@@ -222,21 +223,7 @@ export function launchDesktop(deps: LaunchDeps): void {
   log(
     'Launching OpenKnowledge desktop (use `ok start` for the browser server, or `OK_FORCE_BROWSER=1` to always skip)',
   );
-  // Scrub `ELECTRON_RUN_AS_NODE` from the spawned `open`'s env. The CLI
-  // wrapper (`Contents/Resources/cli/bin/ok.sh`) sets it to 1 so the bundled
-  // Electron binary acts as a Node host; LaunchServices propagates the
-  // caller's env into the desktop process it spawns, and the desktop
-  // Electron main process sees `ELECTRON_RUN_AS_NODE=1`, runs as a headless
-  // Node host with no script, and exits immediately. Symptom: the
-  // "Launching OpenKnowledge desktop" line prints but no GUI appears.
-  const env = { ...process.env };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const child = deps.spawn('open', ['-b', DESKTOP_BUNDLE_ID], {
-    detached: true,
-    stdio: 'ignore',
-    env,
-  } satisfies SpawnOptions);
-  child.unref();
+  spawnDetachedScrubbed('open', ['-b', DESKTOP_BUNDLE_ID], { spawn: deps.spawn });
 }
 
 /**
