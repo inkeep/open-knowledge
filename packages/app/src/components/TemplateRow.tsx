@@ -69,7 +69,12 @@ export function TemplateRow({ template, onEdit, onDelete, onCreate, badge }: Tem
           <Trans>Create</Trans>
         </Button>
       ) : null}
-      <DropdownMenu>
+      {/* modal={false}: this menu's Delete item opens a modal Dialog. A modal
+          dropdown + modal dialog stack two body pointer-events locks; when the
+          post-delete refresh unmounts the still-open dialog, Radix strands the
+          lock and the whole UI becomes unclickable. Matches FileTree /
+          ProjectSwitcher. */}
+      <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
