@@ -3243,6 +3243,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    * L2 (disk → git): chained after L1 resolves to guarantee disk content is
    * up-to-date before the shadow-repo commit.
    *
+   * Reserved for rare, semantically anchored actions (rename, rollback, undo)
+   * whose commit must land promptly — a rename's log entries stay unanchored
+   * until its shadow commit exists. High-frequency agent write handlers use
+   * {@link flushDocToDisk} instead so their L2 commits coalesce on the
+   * persistence debounce rather than paying a whole-corpus tree build per
+   * write; `handleHistory` drains any pending commit before reading, so
+   * history reads still observe every completed write.
+   *
    * The returned promise is intentionally not awaited by callers — the HTTP
    * response fires immediately after the CRDT transaction; persistence is
    * best-effort background work.
@@ -3254,6 +3262,21 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       : Promise.resolve();
     l1.then(() => flushGitCommit?.()).catch((err: unknown) => {
       log.warn({ err }, `[${label}] post-write flush failed`);
+    });
+  }
+
+  /**
+   * Fire-and-forget L1-only flush: force the per-document disk store without
+   * forcing the L2 shadow commit. The store path always arms the L2 debounce
+   * timer, so the commit still lands — coalesced with every other write in the
+   * window instead of one full tree build per agent write. No-op when the
+   * handler already awaited `flushDiskAndDetectOutcome` (nothing debounced).
+   */
+  function flushDocToDisk(docName: string, label: string): void {
+    const debounceId = `onStoreDocument-${docName}`;
+    if (!hocuspocus.debouncer.isDebounced(debounceId)) return;
+    hocuspocus.debouncer.executeNow(debounceId).catch((err: unknown) => {
+      log.warn({ err }, `[${label}] post-write disk flush failed`);
     });
   }
 
@@ -5123,7 +5146,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           respondDiskDivergence(res, 'agent-write');
           return;
         }
-        flushDocToGit(docName, 'agent-write');
+        flushDocToDisk(docName, 'agent-write');
         onAgentWrite?.();
 
         // Success body is flat — no `{ ok: true }` wrapper. Clients
@@ -5332,7 +5355,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
 
-        flushDocToGit(resolvedDocName, 'agent-write-md');
+        flushDocToDisk(resolvedDocName, 'agent-write-md');
 
         // Focus (attribution) on __system__ awareness. Focus drives browser
         // push-navigation to the doc the agent just wrote (writeKind); presence
@@ -5704,7 +5727,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               return;
             }
           }
-          flushDocToGit(resolvedDocName, 'frontmatter-patch');
+          flushDocToDisk(resolvedDocName, 'frontmatter-patch');
         }
 
         agentFocusBroadcaster?.setFocus(agentId, {
@@ -7148,7 +7171,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
 
-        flushDocToGit(docName, 'agent-patch');
+        flushDocToDisk(docName, 'agent-patch');
 
         // Focus (attribution) on __system__ awareness. Presence is separately
         // maintained via setPresence/touchMode pairs above.
@@ -7603,15 +7626,16 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   /**
    * POST /api/test-flush-git — await the L2 git-commit pipeline to settle.
    *
-   * Agent-write handlers fire `flushDocToGit` FIRE-AND-FORGET, so a test
-   * that needs the WIP commit durable can only poll the timeline against a
-   * wall-clock budget — and under CI load the serial git-subprocess chain
-   * (global one-commit-in-flight mutex in persistence.ts) blows any fixed
-   * budget. This route lets tests AWAIT the
-   * actual commit completion instead of racing it: it drains the pending
-   * L2 debounce timer and any in-flight commit before responding. Callers
-   * should flush-then-check inside their poll loop — the fire-and-forget
-   * chain may not have scheduled L2 yet on the first iteration.
+   * Agent-write handlers fire `flushDocToDisk` FIRE-AND-FORGET and leave the
+   * L2 shadow commit to the persistence debounce, so a test that needs the
+   * WIP commit durable can only poll the timeline against a wall-clock
+   * budget — and under CI load the serial git-subprocess chain (global
+   * one-commit-in-flight mutex in persistence.ts) blows any fixed budget.
+   * This route lets tests AWAIT the actual commit completion instead of
+   * racing it: it drains the pending L2 debounce timer and any in-flight
+   * commit before responding. Callers should flush-then-check inside their
+   * poll loop — the fire-and-forget chain may not have scheduled L2 yet on
+   * the first iteration.
    */
   const handleTestFlushGit = withValidation(
     EmptyRequestSchema,
@@ -8015,6 +8039,22 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { handler: 'history' },
         );
         return;
+      }
+
+      // Read-your-writes: agent write handlers no longer force an L2 shadow
+      // commit per write (they ride the persistence debounce), so drain any
+      // pending commit before querying — a `history` call issued right after a
+      // write must list that write. No-op when nothing is pending. The flush
+      // blocks the response, so surface slow (cold-index) drains in the logs.
+      try {
+        const flushStart = performance.now();
+        await flushGitCommit?.();
+        const flushMs = performance.now() - flushStart;
+        if (flushMs > 1000) {
+          log.warn({ durationMs: Math.round(flushMs) }, '[history] pre-read commit flush slow');
+        }
+      } catch (err) {
+        log.warn({ err }, '[history] pre-read commit flush failed');
       }
 
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
@@ -8469,10 +8509,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
         // Force-flush L1 (onStoreDocument debounce) then L2 (git commit) so the
         // restored version + attribution appear in the timeline within ~100ms
-        // rather than waiting for the natural ~4s L1+L2 debounce stack. Uses
-        // the shared `flushDocToGit` helper (same pattern as the three
-        // agent-write handlers) rather than a raw `flushGitCommit()` which
-        // no-ops when no L2 timer is set yet.
+        // rather than waiting for the natural ~4s L1+L2 debounce stack.
+        // Rollback intentionally keeps the prompt `flushDocToGit` helper —
+        // unlike the high-frequency agent-write handlers, which use
+        // `flushDocToDisk` and let the commit ride the debounce — rather than
+        // a raw `flushGitCommit()` which no-ops when no L2 timer is set yet.
         // Await the L1 disk store so a swallowed persistence failure surfaces
         // as an error instead of a false success. Mirrors agent-write-md.
         const flushOutcome = await flushDiskAndDetectOutcome(docName);
@@ -18449,7 +18490,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             respondDiskDivergence(res, 'lint-fix');
             return;
           }
-          flushDocToGit(resolvedDocName, 'lint-fix');
+          flushDocToDisk(resolvedDocName, 'lint-fix');
 
           // Remaining problems: re-lint the ACTUAL post-write source (bridge
           // normalization can shift bytes vs `fixed`), reusing the resolved cfg.

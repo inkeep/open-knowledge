@@ -1005,18 +1005,18 @@ export async function awaitBacklinkIndexed(
  * return their shas (newest-first, as `/api/history` orders them — so the oldest
  * is `shas[shas.length - 1]`).
  *
- * Agent-write handlers fire the L1 store → L2 git-commit chain FIRE-AND-FORGET
- * (`flushDocToGit` in api-extension.ts: the HTTP response returns before the
- * commit is durable). A bare `pollUntil` on `/api/history` therefore RACES the
- * commit against a wall-clock budget — and under merge-queue contention the
- * serial git-subprocess chain (global one-commit-in-flight mutex) blows any fixed
- * budget. This helper AWAITS the commit instead: each iteration POSTs
- * `/api/test-flush-git` (drains the pending L2 debounce timer + any in-flight
- * commit), then checks. Flush every iteration — the first call can land before
- * the fire-and-forget chain has even scheduled L2. The budget is a generous
- * ceiling, not the thing being raced. Mirrors `rename-history.test.ts`'s
- * `awaitWipCommit`; both close the same flake class (the version-rollback case
- * is #1596).
+ * Agent-write handlers leave the L2 git commit to the persistence debounce
+ * (the HTTP response returns before any commit is durable; rename/rollback/
+ * undo additionally fire `flushDocToGit` fire-and-forget). A bare `pollUntil`
+ * on `/api/history` therefore RACES the commit against a wall-clock budget —
+ * and under merge-queue contention the serial git-subprocess chain (global
+ * one-commit-in-flight mutex) blows any fixed budget. This helper AWAITS the
+ * commit instead: each iteration POSTs `/api/test-flush-git` (drains the
+ * pending L2 debounce timer + any in-flight commit), then checks. Flush every
+ * iteration — the first call can land before the store path has even armed the
+ * L2 timer. The budget is a generous ceiling, not the thing being raced.
+ * Mirrors `rename-history.test.ts`'s `awaitWipCommit`; both close the same
+ * flake class (the version-rollback case is #1596).
  */
 export async function awaitWipCommits(
   server: TestServer,

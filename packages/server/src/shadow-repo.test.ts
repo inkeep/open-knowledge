@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,6 +9,7 @@ import {
   parseOkActor,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   buildWipTree,
   commitUpstreamImport,
@@ -145,7 +145,7 @@ describe('initShadowRepo', () => {
     writeFileSync(resolve(legacyDir, 'LEGACY_SENTINEL'), 'legacy');
     writeFileSync(resolve(newDir, 'NEW_SENTINEL'), 'new');
 
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       await initShadowRepo(projectRoot);
 
@@ -182,6 +182,104 @@ describe('buildWipTree contentRoot pathspec', () => {
     const shadow = await initShadowRepo(projectRoot);
 
     expect(buildWipTree(shadow, 'content')).rejects.toThrow(/pathspec 'content'/);
+  });
+});
+
+describe('buildWipTree persistent fan-out index', () => {
+  let projectRoot: string;
+  let shadow: ShadowHandle;
+  let contentDir: string;
+
+  beforeEach(async () => {
+    projectRoot = resolve(tmpDir, 'project');
+    contentDir = resolve(projectRoot, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    const git = simpleGit(projectRoot);
+    await git.init();
+    shadow = await initShadowRepo(projectRoot);
+  });
+
+  test('reused index tracks modify, add, and delete across successive builds', async () => {
+    writeFileSync(resolve(contentDir, 'a.md'), '# A v1\n');
+    writeFileSync(resolve(contentDir, 'b.md'), '# B v1\n');
+    const tree1 = await buildWipTree(shadow, 'content');
+    // Index survives the call — this is the reuse the stat cache depends on.
+    expect(existsSync(resolve(shadow.gitDir, 'index-wip-fanout'))).toBe(true);
+
+    writeFileSync(resolve(contentDir, 'a.md'), '# A v2\n');
+    rmSync(resolve(contentDir, 'b.md'));
+    writeFileSync(resolve(contentDir, 'c.md'), '# C v1\n');
+    const tree2 = await buildWipTree(shadow, 'content');
+    expect(tree2).not.toBe(tree1);
+
+    const sg = shadowGit(shadow);
+    const listing = await sg.raw('ls-tree', '-r', '--name-only', tree2);
+    const paths = listing.trim().split('\n').sort();
+    expect(paths).toEqual(['content/a.md', 'content/c.md']);
+    expect((await sg.raw('cat-file', '-p', `${tree2}:content/a.md`)).trim()).toBe('# A v2');
+  });
+
+  test('reused index produces the same tree a fresh index would', async () => {
+    writeFileSync(resolve(contentDir, 'a.md'), '# A v1\n');
+    await buildWipTree(shadow, 'content');
+    writeFileSync(resolve(contentDir, 'a.md'), '# A v2\n');
+    const warmTree = await buildWipTree(shadow, 'content');
+
+    // Fresh-index reference build of the same working tree state.
+    rmSync(resolve(shadow.gitDir, 'index-wip-fanout'));
+    const freshTree = await buildWipTree(shadow, 'content');
+    expect(warmTree).toBe(freshTree);
+  });
+
+  test('corrupt persistent index falls back to a fresh rebuild', async () => {
+    writeFileSync(resolve(contentDir, 'a.md'), '# A v1\n');
+    const tree1 = await buildWipTree(shadow, 'content');
+
+    writeFileSync(resolve(shadow.gitDir, 'index-wip-fanout'), 'not a git index');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const tree2 = await buildWipTree(shadow, 'content');
+      expect(tree2).toBe(tree1);
+      const warnings = warnSpy.mock.calls.map((call) => String(call[0] ?? ''));
+      expect(warnings.some((w) => w.includes('persistent fan-out index failed'))).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+    // Corrupt cache was dropped so the next cycle starts clean.
+    expect(existsSync(resolve(shadow.gitDir, 'index-wip-fanout'))).toBe(false);
+  });
+
+  test('stale index.lock from a killed add falls back and is cleared', async () => {
+    writeFileSync(resolve(contentDir, 'a.md'), '# A v1\n');
+    const tree1 = await buildWipTree(shadow, 'content');
+
+    writeFileSync(resolve(shadow.gitDir, 'index-wip-fanout.lock'), '');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const tree2 = await buildWipTree(shadow, 'content');
+      expect(tree2).toBe(tree1);
+      const warnings = warnSpy.mock.calls.map((call) => String(call[0] ?? ''));
+      expect(warnings.some((w) => w.includes('persistent fan-out index failed'))).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+    expect(existsSync(resolve(shadow.gitDir, 'index-wip-fanout.lock'))).toBe(false);
+  });
+
+  test('boot sweep removes throwaway indices, stale lock, and orphaned park blob dirs but keeps the cache', async () => {
+    writeFileSync(resolve(shadow.gitDir, 'index-wip-fanout-deadbeef'), '');
+    writeFileSync(resolve(shadow.gitDir, 'index-wip-fanout.lock'), '');
+    writeFileSync(resolve(shadow.gitDir, 'index-wip-fanout'), '');
+    const orphanParkDir = resolve(shadow.gitDir, 'tmp-park-blobs-deadbeef');
+    mkdirSync(orphanParkDir, { recursive: true });
+    writeFileSync(resolve(orphanParkDir, '0-state'), '# orphaned park blob\n');
+
+    // Re-init on the same project runs the sweep again.
+    const reinit = await initShadowRepo(projectRoot);
+    expect(existsSync(resolve(reinit.gitDir, 'index-wip-fanout-deadbeef'))).toBe(false);
+    expect(existsSync(resolve(reinit.gitDir, 'index-wip-fanout.lock'))).toBe(false);
+    expect(existsSync(orphanParkDir)).toBe(false);
+    expect(existsSync(resolve(reinit.gitDir, 'index-wip-fanout'))).toBe(true);
   });
 });
 
@@ -524,6 +622,28 @@ describe('parkBranch', () => {
     const guideContent = (await sg.raw('show', `${sha}:guide`)).trim();
     expect(introContent).toBe('# Intro');
     expect(guideContent).toBe('# Guide');
+  });
+
+  test('parks enough documents to span multiple hash/stage batches', async () => {
+    // 120 docs → 240 blobs/index entries, crossing the 200-entry chunk
+    // boundary so both the multi-chunk hash-object and update-index legs run.
+    const docs: ParkableDoc[] = Array.from({ length: 120 }, (_, i) => ({
+      docName: `notes/doc-${i}`,
+      markdown: `# Doc ${i} memory\n`,
+      diskSnapshot: `# Doc ${i} disk\n`,
+    }));
+
+    const sha = await parkBranch(shadow, 'main', SERVICE_WRITER.id, docs);
+    expect(sha).toHaveLength(40);
+
+    const sg = shadowGit(shadow);
+    // Spot-check first, chunk-straddling, and last entries on both tree sides.
+    for (const i of [0, 99, 100, 119]) {
+      const content = (await sg.raw('show', `${sha}:notes/doc-${i}`)).trim();
+      expect(content).toBe(`# Doc ${i} memory`);
+      const base = (await sg.raw('show', `${sha}:.park-base/notes/doc-${i}`)).trim();
+      expect(base).toBe(`# Doc ${i} disk`);
+    }
   });
 
   test('isPairedWriteOrigin(PARK_SNAPSHOT_ORIGIN) returns true (US-017)', () => {

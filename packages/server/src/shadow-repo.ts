@@ -257,9 +257,9 @@ export async function initShadowRepo(projectRoot: string): Promise<ShadowHandle>
   // Idempotent — no-op once all legacy refs are gone.
   await sweepLegacyShadowRefs(handle);
 
-  // Sweep orphaned temp-index files left behind by crashed `buildWipTree`
-  // calls from a prior process. Idempotent — no-op on a clean shutdown.
-  sweepOrphanedTmpIndexFiles(handle);
+  // Sweep orphaned scratch state (temp indices, park blob dirs) left behind
+  // by a crashed prior process. Idempotent — no-op on a clean shutdown.
+  sweepOrphanedScratchState(handle);
 
   // Acquire exclusive writer lock
   acquireLock(shadowDir, projectRoot);
@@ -478,25 +478,37 @@ async function commitWipInner(
 // ─── Per-writer fan-out helpers ────────────────────────────────────────────
 
 /**
- * Stage the content directory and return a git tree SHA.
- * Used by the per-writer L2 fan-out so all writers share the same tree.
- * Uses a fresh index (no seeding from any ref) so the tree reflects
- * current filesystem state of contentRoot.
+ * Stable filename of the reusable fan-out index inside the shadow gitDir.
+ * Reusing one index across drain cycles lets git's stat cache elide re-reading
+ * and re-hashing unchanged files, so the per-drain cost of `buildWipTree` is a
+ * stat walk instead of a whole-corpus re-hash. The name deliberately does NOT
+ * match the `index-wip-fanout-<uuid>` throwaway pattern the boot sweep deletes:
+ * the cache is valid across restarts (git re-validates every entry by stat).
  */
+const FANOUT_INDEX_NAME = 'index-wip-fanout';
+
 /**
- * Sweep orphaned `index-wip-fanout-*` files left in the shadow gitDir by a
- * crashed `buildWipTree` call from a prior process. Each entry is a transient
- * index scratch file; the owning process is always gone by the time we run
- * (initShadowRepo acquires an exclusive writer lock immediately after), so
- * unconditional deletion is safe.
+ * Sweep transient scratch state left in the shadow gitDir by a crashed
+ * process: `index-wip-fanout-<uuid>` throwaway scratch files, a stale
+ * `index-wip-fanout.lock` from a `git add` killed mid-write (git would refuse
+ * to reuse the persistent fan-out index while the lock exists), and
+ * `tmp-park-blobs-<uuid>` blob scratch directories from a park killed before
+ * its `finally` cleanup ran. The owning process is always gone by the time we
+ * run (initShadowRepo acquires an exclusive writer lock immediately after),
+ * so unconditional deletion is safe. The persistent `index-wip-fanout` file
+ * itself is kept — it is a pure stat cache whose entries git re-validates on
+ * every use.
  */
-function sweepOrphanedTmpIndexFiles(shadow: ShadowHandle): number {
+function sweepOrphanedScratchState(shadow: ShadowHandle): number {
   let deleted = 0;
   try {
     for (const name of readdirSync(shadow.gitDir)) {
-      if (!name.startsWith('index-wip-fanout-')) continue;
+      const isThrowaway = name.startsWith(`${FANOUT_INDEX_NAME}-`);
+      const isStaleLock = name === `${FANOUT_INDEX_NAME}.lock`;
+      const isParkScratchDir = name.startsWith('tmp-park-blobs-');
+      if (!isThrowaway && !isStaleLock && !isParkScratchDir) continue;
       try {
-        rmSync(resolve(shadow.gitDir, name));
+        rmSync(resolve(shadow.gitDir, name), { recursive: true, force: true });
         deleted++;
       } catch {
         // best effort — next startup will retry
@@ -518,27 +530,72 @@ export async function buildWipTree(shadow: ShadowHandle, contentRoot: string): P
   return shadowOpGateFor(shadow).withMutator(() => buildWipTreeInner(shadow, contentRoot));
 }
 
-async function buildWipTreeInner(shadow: ShadowHandle, contentRoot: string): Promise<string> {
-  const tmpIndex = resolve(shadow.gitDir, `index-wip-fanout-${randomUUID()}`);
+/**
+ * Stage the content directory into `indexFile` and return a git tree SHA.
+ * Never seeded from any ref: a directory-pathspec `git add` fully syncs the
+ * index subtree to the working tree (additions, modifications, AND deletions),
+ * so the resulting tree always reflects current filesystem state of
+ * contentRoot regardless of what the index held before.
+ */
+async function buildWipTreeWithIndex(
+  shadow: ShadowHandle,
+  contentRoot: string,
+  indexFile: string,
+): Promise<string> {
   const sg = shadowGit(shadow);
   const gitPathspec = contentRoot || '.';
+  await sg
+    .env({
+      GIT_DIR: shadow.gitDir,
+      GIT_WORK_TREE: shadow.workTree,
+      GIT_INDEX_FILE: indexFile,
+    })
+    .raw('add', gitPathspec);
+  return (
+    await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: indexFile }).raw('write-tree')
+  ).trim();
+}
 
+/**
+ * Stage the content directory and return a git tree SHA.
+ * Used by the per-writer L2 fan-out so all writers share the same tree.
+ *
+ * Fast path: reuse the persistent fan-out index so unchanged files hit git's
+ * stat cache instead of being re-read and re-hashed every cycle (the previous
+ * throwaway-index design made every drain O(total corpus bytes)). Safe to
+ * share a single index because the L2 commit path is serialized (one commit
+ * in flight per server; one server per contentDir via the writer lock).
+ *
+ * Fallback: on ANY failure (stale `index.lock` from a timed-out add, corrupt
+ * index file, …) drop the persistent index and rebuild from a fresh throwaway
+ * index — the pre-optimization behavior. Recorded history is identical either
+ * way; only the caching differs.
+ */
+async function buildWipTreeInner(shadow: ShadowHandle, contentRoot: string): Promise<string> {
+  const persistentIndex = resolve(shadow.gitDir, FANOUT_INDEX_NAME);
   try {
-    await sg
-      .env({
-        GIT_DIR: shadow.gitDir,
-        GIT_WORK_TREE: shadow.workTree,
-        GIT_INDEX_FILE: tmpIndex,
-      })
-      .raw('add', gitPathspec);
-    return (
-      await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex }).raw('write-tree')
-    ).trim();
-  } finally {
+    return await buildWipTreeWithIndex(shadow, contentRoot, persistentIndex);
+  } catch (e) {
+    console.warn(
+      '[shadow-repo] persistent fan-out index failed — rebuilding from a fresh index:',
+      e,
+    );
+    for (const stale of [persistentIndex, `${persistentIndex}.lock`]) {
+      try {
+        rmSync(stale);
+      } catch {
+        // ignore cleanup failure
+      }
+    }
+    const tmpIndex = resolve(shadow.gitDir, `${FANOUT_INDEX_NAME}-${randomUUID()}`);
     try {
-      rmSync(tmpIndex);
-    } catch {
-      // ignore cleanup failure
+      return await buildWipTreeWithIndex(shadow, contentRoot, tmpIndex);
+    } finally {
+      try {
+        rmSync(tmpIndex);
+      } catch {
+        // ignore cleanup failure
+      }
     }
   }
 }
@@ -1330,6 +1387,13 @@ export async function parkBranch(
   );
 }
 
+/**
+ * Max blob/index entries per git invocation in the park batch. Keeps argv
+ * comfortably under platform limits (200 absolute paths or `--cacheinfo`
+ * tuples is a few tens of KB vs. the ~1 MB macOS/Linux ARG_MAX floor).
+ */
+const PARK_BATCH_CHUNK = 200;
+
 async function parkBranchInner(
   shadow: ShadowHandle,
   branch: string,
@@ -1341,31 +1405,58 @@ async function parkBranchInner(
   const tmpIndex = resolve(shadow.gitDir, `index-park-${branch.replace(/\//g, '-')}`);
   const ref = `refs/wip/${branch}/${writerId}`;
 
-  const tmpBlobFile = resolve(shadow.gitDir, 'tmp-park-blob');
+  const tmpBlobDir = resolve(shadow.gitDir, `tmp-park-blobs-${randomUUID()}`);
   try {
-    // Build a tree with both Y.Doc state and disk snapshots
-    for (const doc of documents) {
-      // Store Y.Doc state at the doc's path
-      tracedWriteFileSync(tmpBlobFile, doc.markdown, 'utf-8');
-      const blobSha = (
-        await sg
-          .env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex })
-          .raw('hash-object', '-w', tmpBlobFile)
-      ).trim();
-      await sg
-        .env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex })
-        .raw('update-index', '--add', '--cacheinfo', `100644,${blobSha},${doc.docName}`);
+    // Build a tree with both Y.Doc state and disk snapshots. Write every blob
+    // to a scratch dir first, then hash and stage them in chunked batches:
+    // park runs `await`-ed on the branch-switch critical path with all writes
+    // gated, and the previous per-doc form (2× hash-object + 2× update-index,
+    // sequentially awaited) cost 4 git spawns per open doc — ~15s for a
+    // 100-doc park. Batching collapses the spawn count to ~2 per 100 docs.
+    tracedMkdirSync(tmpBlobDir, { recursive: true });
+    const blobFiles: string[] = [];
+    const treePaths: string[] = [];
+    for (let i = 0; i < documents.length; i++) {
+      const doc = documents[i];
+      if (!doc) continue;
+      const stateFile = resolve(tmpBlobDir, `${i}-state`);
+      tracedWriteFileSync(stateFile, doc.markdown, 'utf-8');
+      blobFiles.push(stateFile);
+      treePaths.push(doc.docName);
+      const baseFile = resolve(tmpBlobDir, `${i}-base`);
+      tracedWriteFileSync(baseFile, doc.diskSnapshot, 'utf-8');
+      blobFiles.push(baseFile);
+      treePaths.push(`.park-base/${doc.docName}`);
+    }
 
-      // Store disk snapshot at .park-base/<docName>
-      tracedWriteFileSync(tmpBlobFile, doc.diskSnapshot, 'utf-8');
-      const baseSha = (
-        await sg
-          .env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex })
-          .raw('hash-object', '-w', tmpBlobFile)
-      ).trim();
+    // `git hash-object -w` accepts multiple files and prints one object id per
+    // line in argument order, so blobShas[i] pairs with treePaths[i].
+    const blobShas: string[] = [];
+    for (let i = 0; i < blobFiles.length; i += PARK_BATCH_CHUNK) {
+      const chunk = blobFiles.slice(i, i + PARK_BATCH_CHUNK);
+      const out = await sg.env({ GIT_DIR: shadow.gitDir }).raw('hash-object', '-w', '--', ...chunk);
+      const shas = out
+        .trim()
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (shas.length !== chunk.length || shas.some((s) => !/^[0-9a-f]{40}$/.test(s))) {
+        throw new Error(
+          `[shadow] park hash-object returned ${shas.length} ids for ${chunk.length} blobs`,
+        );
+      }
+      blobShas.push(...shas);
+    }
+
+    for (let i = 0; i < treePaths.length; i += PARK_BATCH_CHUNK) {
+      const cacheinfoArgs: string[] = [];
+      const end = Math.min(i + PARK_BATCH_CHUNK, treePaths.length);
+      for (let j = i; j < end; j++) {
+        cacheinfoArgs.push('--cacheinfo', `100644,${blobShas[j]},${treePaths[j]}`);
+      }
       await sg
         .env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex })
-        .raw('update-index', '--add', '--cacheinfo', `100644,${baseSha},.park-base/${doc.docName}`);
+        .raw('update-index', '--add', ...cacheinfoArgs);
     }
 
     const treeSha = (
@@ -1418,7 +1509,7 @@ async function parkBranchInner(
       // ignore cleanup failure
     }
     try {
-      rmSync(tmpBlobFile);
+      rmSync(tmpBlobDir, { recursive: true, force: true });
     } catch {
       // ignore cleanup failure
     }
