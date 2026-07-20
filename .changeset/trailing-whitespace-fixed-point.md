@@ -1,5 +1,0 @@
----
-"@inkeep/open-knowledge": patch
----
-
-Trailing spaces or tabs at the end of a paragraph, heading, or table cell no longer round-trip through an unstable intermediate form. Typing a trailing space in the editor used to serialize the space byte, which the next parse silently discarded — an avoidable divergence between the WYSIWYG view and the stored source that cost an extra canonicalization cycle on every save/load. The serializer now strips insignificant line-final whitespace up front (the exact canonicalization the parser already applies to files on disk), so the first emission is a stable fixed point. Significant whitespace is untouched: boundary spaces inside bold/italic/strike/highlight still mint their `&#x20;` character references, mid-paragraph hard breaks of both markdown styles stay byte-exact, non-breaking spaces survive, and whitespace-only paragraphs keep their minted character reference. A new editor-construct fixed-point sweep now guards this whole class: every editor-constructible document shape must serialize to bytes that are their own re-parse fixed point, with an explicit fail-closed allowlist for documented benign canonicalizations.
