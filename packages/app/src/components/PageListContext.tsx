@@ -10,7 +10,24 @@ import { subscribeToDocumentsChanged } from '@/lib/documents-events';
 import { fetchDocumentListShared } from '@/lib/documents-fetch';
 import { parseApiError } from '@/lib/parse-api-error';
 import { pageListReady } from '@/lib/perf/startup-marks';
+import { createRefreshScheduler } from '@/lib/refresh-scheduler';
 import { deriveKnownFolderPaths } from './navigation-targets';
+
+/**
+ * Trailing coalescing window for CC1 `files`-push refetches. A bulk agent
+ * write can drive `files` pushes at up to ~10×/sec (one per the server's
+ * 100 ms per-channel CC1 debounce window); each would otherwise refire the
+ * full `/api/pages` + `/api/documents` walk and rebuild every derived index.
+ * The refetch already flows through `createRefreshScheduler` (at most one
+ * fetch pair in flight), but the scheduler fires its first request eagerly —
+ * so under a storm the scheduler alone still refetches as fast as each fetch
+ * pair completes. This window sits in front of it: the first push in a quiet
+ * period arms one timer; pushes landing while it is armed are absorbed by the
+ * already-scheduled flush (no reset, so a sustained storm refreshes at the
+ * window cadence instead of starving until the storm ends). Exported for
+ * tests only.
+ */
+export const PUSH_REFRESH_COALESCE_MS = 300;
 
 export interface PageMeta {
   size: number;
@@ -213,7 +230,7 @@ export function PageListProvider({ children }: { children: ReactNode }) {
     // page list is unchanged. The initial `useState(true)` covers the cold
     // load; background refetches keep serving the last-good `pages` and
     // reconcile in place when the fresh response lands.
-    void Promise.all([
+    return Promise.all([
       loadPages(),
       loadDocumentListSummary().catch((err) => {
         logLoadAssetsError(err);
@@ -278,20 +295,38 @@ export function PageListProvider({ children }: { children: ReactNode }) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: run only on mount
   useEffect(() => {
-    void refetch();
+    // In-flight coalescing via `createRefreshScheduler`: at most one fetch
+    // pair runs at a time, a request arriving mid-run collapses into a single
+    // trailing re-run. Mount and focus/visibility call `request()` directly;
+    // `files` pushes go through the arm-once timer below first (unlike
+    // FileTree, which forwards every push straight to the scheduler). No abort
+    // hook — the requestId latest-wins guard in `refetch` already discards
+    // superseded responses, and `/api/documents` rides a shared single-flight
+    // other consumers depend on.
+    const scheduler = createRefreshScheduler(refetch);
+    // Initial mount load fires immediately — only push-triggered refreshes
+    // go through the coalescing timer below.
+    scheduler.request();
+    let pushFlushTimer: ReturnType<typeof setTimeout> | null = null;
     const handleResume = () => {
       if (document.visibilityState === 'visible') {
-        refetch();
+        scheduler.request();
       }
     };
     window.addEventListener('focus', handleResume);
     window.addEventListener('visibilitychange', handleResume);
     const unsubscribe = subscribeToDocumentsChanged((channels) => {
-      if (channels.includes('files')) {
-        refetch();
-      }
+      if (!channels.includes('files')) return;
+      // Pushes landing while a flush is armed are covered by that flush.
+      if (pushFlushTimer !== null) return;
+      pushFlushTimer = setTimeout(() => {
+        pushFlushTimer = null;
+        scheduler.request();
+      }, PUSH_REFRESH_COALESCE_MS);
     });
     return () => {
+      if (pushFlushTimer !== null) clearTimeout(pushFlushTimer);
+      scheduler.dispose();
       window.removeEventListener('focus', handleResume);
       window.removeEventListener('visibilitychange', handleResume);
       unsubscribe();
