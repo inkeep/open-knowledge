@@ -541,54 +541,61 @@ export function withIdleShutdownProcessExit(
   };
 }
 
-export function buildIdleShutdownHandler(
-  input: BuildIdleShutdownHandlerInput,
-): () => Promise<void> {
+export async function teardownUiSibling(
+  input: Omit<BuildIdleShutdownHandlerInput, 'destroy'> & { reason?: string },
+): Promise<void> {
   const graceMs = input.sigtermGraceMs ?? DEFAULT_SIGTERM_GRACE_MS;
   const pollMs = input.sigtermPollIntervalMs ?? DEFAULT_SIGTERM_POLL_MS;
   const sleep = input.sleep ?? ((ms: number) => wait(ms));
+  const reason = input.reason ?? 'teardown';
 
-  return async () => {
-    try {
-      const lock = input.readUiLock();
-      if (lock && input.isAlive(lock.pid)) {
-        try {
-          input.killPid(lock.pid, 'SIGTERM');
-          input.log?.info({ pid: lock.pid, port: lock.port }, 'idle-shutdown: SIGTERM UI sibling');
-          // Wait up to graceMs for the UI process to exit under SIGTERM.
-          const deadline = Date.now() + graceMs;
-          while (Date.now() < deadline) {
-            if (!input.isAlive(lock.pid)) break;
-            await sleep(pollMs);
-          }
-          if (input.isAlive(lock.pid)) {
-            // Grace expired — escalate to SIGKILL. Operators see this at WARN.
-            try {
-              input.killPid(lock.pid, 'SIGKILL');
-              input.log?.warn(
-                { pid: lock.pid, graceMs },
-                'idle-shutdown: SIGTERM grace expired — escalated to SIGKILL',
-              );
-            } catch (err) {
-              input.log?.error(
-                { pid: lock.pid, err: err instanceof Error ? err.message : String(err) },
-                'idle-shutdown: SIGKILL failed',
-              );
-            }
-          }
-        } catch (err) {
-          input.log?.warn(
-            { pid: lock.pid, err: err instanceof Error ? err.message : String(err) },
-            'idle-shutdown: failed to SIGTERM UI sibling',
-          );
+  try {
+    const lock = input.readUiLock();
+    if (lock && input.isAlive(lock.pid)) {
+      try {
+        input.killPid(lock.pid, 'SIGTERM');
+        input.log?.info({ pid: lock.pid, port: lock.port }, `${reason}: SIGTERM UI sibling`);
+        // Wait up to graceMs for the UI process to exit under SIGTERM.
+        const deadline = Date.now() + graceMs;
+        while (Date.now() < deadline) {
+          if (!input.isAlive(lock.pid)) break;
+          await sleep(pollMs);
         }
+        if (input.isAlive(lock.pid)) {
+          // Grace expired — escalate to SIGKILL. Operators see this at WARN.
+          try {
+            input.killPid(lock.pid, 'SIGKILL');
+            input.log?.warn(
+              { pid: lock.pid, graceMs },
+              `${reason}: SIGTERM grace expired — escalated to SIGKILL`,
+            );
+          } catch (err) {
+            input.log?.error(
+              { pid: lock.pid, err: err instanceof Error ? err.message : String(err) },
+              `${reason}: SIGKILL failed`,
+            );
+          }
+        }
+      } catch (err) {
+        input.log?.warn(
+          { pid: lock.pid, err: err instanceof Error ? err.message : String(err) },
+          `${reason}: failed to SIGTERM UI sibling`,
+        );
       }
-    } catch (err) {
-      input.log?.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        'idle-shutdown: UI lookup failed; proceeding with destroy',
-      );
     }
+  } catch (err) {
+    input.log?.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      `${reason}: UI lookup failed; proceeding`,
+    );
+  }
+}
+
+export function buildIdleShutdownHandler(
+  input: BuildIdleShutdownHandlerInput,
+): () => Promise<void> {
+  return async () => {
+    await teardownUiSibling({ ...input, reason: 'idle-shutdown' });
     await input.destroy();
   };
 }
@@ -1349,6 +1356,23 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     for (const line of details) {
       console.log(dim(`  ${line}`));
     }
+
+    if (booted.uiSpawnDecision?.action === 'spawn') {
+      try {
+        const { readUiLock, isProcessAlive } = await import('@inkeep/open-knowledge-server');
+        const { wait } = await import('@inkeep/open-knowledge-core');
+        await teardownUiSibling({
+          readUiLock: () => readUiLock(booted.lockDir),
+          isAlive: isProcessAlive,
+          killPid: (pid, sig) => process.kill(pid, sig),
+          sleep: (ms) => wait(ms),
+          reason: 'shutdown',
+        });
+      } catch (err) {
+        // Best-effort teardown
+      }
+    }
+
     try {
       await booted.destroy();
     } catch (err) {
