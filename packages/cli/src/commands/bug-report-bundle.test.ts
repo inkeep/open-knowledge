@@ -88,6 +88,23 @@ describe('collectStandardBundle — project bundle', () => {
     expect(typeof sysinfo.platform).toBe('string');
   });
 
+  test('last-server-crash.json is packaged from the lock dir when the server recorded a crash', async () => {
+    const projectDir = makeProjectDir();
+    const body = '{"origin":"uncaughtException","error":{"name":"Error","message":"boom"}}\n';
+    writeAt(projectDir, '.ok/local/last-server-crash.json', body);
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+    });
+
+    const entries = listZipEntries(zipPath);
+    expect(entries).toContain('lockdir/last-server-crash.json');
+    expect(readZipEntry(zipPath, 'lockdir/last-server-crash.json')).toBe(body);
+  });
+
   test('MANIFEST.json mirrors the returned summary', async () => {
     const projectDir = makeProjectDir();
     writeAt(projectDir, '.ok/local/server.lock', '{"pid":1}\n');

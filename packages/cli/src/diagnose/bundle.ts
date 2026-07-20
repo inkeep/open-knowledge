@@ -29,7 +29,7 @@ import {
 import { arch as osArch, platform as osPlatform, tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { BundleRedaction as SecretScrubEntry } from '@inkeep/open-knowledge-core';
-import { SERVER_EXIT_LOG } from '@inkeep/open-knowledge-core';
+import { SERVER_CRASH_LOG, SERVER_EXIT_LOG } from '@inkeep/open-knowledge-core';
 import {
   DEFAULT_LOGS_MAX_BYTES,
   DEFAULT_SPANS_MAX_BYTES,
@@ -715,6 +715,14 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
     // Electron process-gone reason). Lets a bundle tell a crash / OS-kill from
     // a managed shutdown, which `server-status.txt: not-running` alone cannot.
     stageFileIfPresent(join(lockDir, SERVER_EXIT_LOG), join(stagingDir, 'state', SERVER_EXIT_LOG));
+
+    // last-server-crash.json — the server's own fatal-crash record (error name/
+    // message/stack written synchronously by the crash monitor). The inside
+    // view complementing SERVER_EXIT_LOG's outside view.
+    stageFileIfPresent(
+      join(lockDir, SERVER_CRASH_LOG),
+      join(stagingDir, 'state', SERVER_CRASH_LOG),
+    );
 
     // Runtime + desktop block.
     const runtime = readRuntime();

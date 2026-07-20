@@ -41,6 +41,7 @@ import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { bootElapsedMs, recordBootPhase, startBootTimings } from './boot-timings.ts';
 import type { Config } from './config/schema.ts';
 import { ConflictStore } from './conflict-storage.ts';
+import { installCrashCapture } from './crash-capture.ts';
 import { stripDocExtension } from './doc-extensions.ts';
 import { normalizeFsPath } from './fs-traced.ts';
 import { listNames } from './git-paths.ts';
@@ -458,28 +459,57 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
   // (CLI `ok start`, tests, push-disabled), `ok.boot` stays a root span exactly
   // as before. The propagator is registered by `initTelemetry` above; when OTel
   // is disabled the extract is a cheap no-op over a no-op tracer.
+  // Arm fatal-crash capture before the boot sequence proper: an uncaught
+  // exception anywhere from here on (boot phase or steady state) leaves a
+  // synchronous `last-server-crash.json` + log-sink line behind. Observe-only —
+  // Node's default crash handling (stderr stack, non-zero exit) is untouched.
+  const crashCapture = installCrashCapture(sinkProjectDir);
+
   const startupTraceparent = process.env.OK_STARTUP_TRACEPARENT;
   const bootSpan = () =>
     withSpan('ok.boot', { attributes: spanAttributes }, async () => bootServerInner(opts));
-  if (startupTraceparent) {
-    try {
-      const parentCtx = propagation.extract(context.active(), { traceparent: startupTraceparent });
-      return context.with(parentCtx, bootSpan);
-    } catch (err) {
-      // A malformed `OK_STARTUP_TRACEPARENT` must never break boot. The
-      // registered W3C propagator degrades to an unparented context rather than
-      // throwing, so this catch is belt-and-suspenders for a future non-standard
-      // propagator — fall through to the unparented boot exactly as the
-      // no-env-var path does. Warn so that disconnect is diagnosable: the
-      // server's `ok.boot` would otherwise become a detached root in Tempo with
-      // nothing in the logs to correlate against the missing join.
-      getLogger('boot').warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        'ok.boot trace-join failed — starting unparented boot',
-      );
+  const runBoot = (): Promise<BootedServer> => {
+    if (startupTraceparent) {
+      try {
+        const parentCtx = propagation.extract(context.active(), {
+          traceparent: startupTraceparent,
+        });
+        return context.with(parentCtx, bootSpan);
+      } catch (err) {
+        // A malformed `OK_STARTUP_TRACEPARENT` must never break boot. The
+        // registered W3C propagator degrades to an unparented context rather than
+        // throwing, so this catch is belt-and-suspenders for a future non-standard
+        // propagator — fall through to the unparented boot exactly as the
+        // no-env-var path does. Warn so that disconnect is diagnosable: the
+        // server's `ok.boot` would otherwise become a detached root in Tempo with
+        // nothing in the logs to correlate against the missing join.
+        getLogger('boot').warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          'ok.boot trace-join failed — starting unparented boot',
+        );
+      }
     }
+    return bootSpan();
+  };
+  let booted: BootedServer;
+  try {
+    booted = await runBoot();
+  } catch (err) {
+    // Boot refused (config missing, lock collision, git preflight): the
+    // caller decides the exit path, so detach rather than leave a dead
+    // registry entry behind (tests boot-fail repeatedly in one process).
+    crashCapture.uninstall();
+    throw err;
   }
-  return bootSpan();
+  const innerDestroy = booted.destroy;
+  booted.destroy = async () => {
+    try {
+      await innerDestroy();
+    } finally {
+      crashCapture.uninstall();
+    }
+  };
+  return booted;
 }
 
 async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {

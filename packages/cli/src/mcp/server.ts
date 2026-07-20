@@ -58,6 +58,7 @@ import {
 import { type HostLivenessWatchHandle, startHostLivenessWatch } from './host-liveness.ts';
 import { attachLifecycleLogging } from './lifecycle-logging.ts';
 import { parseSpawnTimeoutEnv, resolveMcpHttpUrl, resolveMcpKeepaliveWsUrl } from './shim.ts';
+import { createMcpStderrMirror } from './stderr-mirror.ts';
 
 /**
  * Stable in-bundle anchor used by the periodic bundle-identity self-check.
@@ -247,7 +248,17 @@ const CWD_REQUIRED_MESSAGE =
 export async function startGlobalMcpServer(
   opts: StartGlobalMcpServerOptions,
 ): Promise<StartGlobalMcpServerHandle> {
-  const stderr = process.stderr;
+  // Every `[mcp]` diagnostic in this function writes through this binding, so
+  // wrapping it here mirrors all of them to `~/.ok/logs/mcp.<date>.log` for
+  // bug-report bundles while keeping the host-visible stderr bytes identical.
+  // Mirror first: a destroyed stderr (host gone) must not lose the file copy.
+  const mirror = createMcpStderrMirror();
+  const stderr = {
+    write: (chunk: string): boolean => {
+      mirror.write(chunk);
+      return process.stderr.write(chunk);
+    },
+  };
   const spawnTimeoutMs =
     opts.spawnTimeoutMs ?? parseSpawnTimeoutEnv(process.env.OK_MCP_SPAWN_TIMEOUT_MS);
   const envAutoStart = opts.envAutoStart ?? process.env.OK_MCP_AUTOSTART;

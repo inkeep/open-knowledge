@@ -433,6 +433,34 @@ describe('collectBundle — state files', () => {
     collected.cleanup();
   });
 
+  test('last-server-crash.json is staged when the server recorded a fatal crash', async () => {
+    const contentDir = makeTmpDir();
+    const body = `${JSON.stringify(
+      {
+        timestamp: '2026-07-18T09:00:00.000Z',
+        origin: 'uncaughtException',
+        error: { name: 'TypeError', message: 'boom', stack: 'TypeError: boom\n    at x' },
+        pid: 51502,
+        uptimeSec: 12.5,
+      },
+      null,
+      2,
+    )}\n`;
+    writeAt(contentDir, '.ok/local/last-server-crash.json', body);
+    const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
+    expect(
+      readFileSync(join(collected.stagingDir, 'state', 'last-server-crash.json'), 'utf-8'),
+    ).toBe(body);
+    collected.cleanup();
+  });
+
+  test('last-server-crash.json is omitted when the server never crashed', async () => {
+    const contentDir = makeTmpDir();
+    const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
+    expect(existsSync(join(collected.stagingDir, 'state', 'last-server-crash.json'))).toBe(false);
+    collected.cleanup();
+  });
+
   test('runtime.json carries ok, host blocks; desktop is null by default', async () => {
     const contentDir = makeTmpDir();
     const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });

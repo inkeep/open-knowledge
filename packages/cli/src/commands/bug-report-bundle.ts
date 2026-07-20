@@ -15,7 +15,11 @@ import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { freemem, homedir, type as osType, platform, release, totalmem, uptime } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import type { BundleManifest, BundleRedaction } from '@inkeep/open-knowledge-core';
+import {
+  type BundleManifest,
+  type BundleRedaction,
+  SERVER_CRASH_LOG,
+} from '@inkeep/open-knowledge-core';
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import type { ZipFile } from 'yazl';
 // Keep this import type-only: `diagnose/bundle.ts` imports from this module
@@ -179,7 +183,7 @@ function collectLockDir(cwd: string): { files: string[] } {
   const lockDir = join(cwd, '.ok', 'local');
   if (!existsSync(lockDir)) return { files: [] };
 
-  const candidates = ['server.lock', 'last-spawn-error.log'];
+  const candidates = ['server.lock', 'last-spawn-error.log', SERVER_CRASH_LOG];
   const found = candidates.map((f) => join(lockDir, f)).filter((f) => existsSync(f));
 
   return { files: found };

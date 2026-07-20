@@ -53,3 +53,18 @@ export const SPAWN_ERROR_LOG = 'last-spawn-error.log';
  * probe only reports "unreachable" either way.
  */
 export const SERVER_EXIT_LOG = 'last-server-exit.json';
+
+/**
+ * Filename under `<projectRoot>/.ok/local/` where the server process itself
+ * records a fatal crash (uncaught exception / unhandled rejection) on its way
+ * down — timestamp, error name/message/stack, pid, uptime. Written by the
+ * server's crash-capture monitor (`packages/server/src/crash-capture.ts`)
+ * with synchronous fs so the record survives the hard exit that loses the
+ * async log sink's unwritten tail. Collected into bug-report bundles beside
+ * `SERVER_EXIT_LOG`.
+ *
+ * Complements `SERVER_EXIT_LOG`: the desktop host records *that* the child
+ * died (exit code + reason) from the outside; this file records *why* from
+ * the inside — the stack no other artifact reliably captures.
+ */
+export const SERVER_CRASH_LOG = 'last-server-crash.json';
