@@ -375,6 +375,17 @@ export const ConfigSchema = z.looseObject({
   // config paths are a user-facing `~/.ok/global.yml` contract and hard to rename.
   agents: z
     .looseObject({
+      // A workspace-provided initial handoff preference. It is intentionally a
+      // PROJECT field so an installer can select the runtime that owns this
+      // knowledge base without modifying a user's browser-local last-used
+      // choice. The app uses it only when no local preference exists.
+      defaultAgent: z.enum(['codex', 'pi', 'terminal-cli:pi']).optional().register(fieldRegistry, {
+        scope: 'project',
+        agentSettable: false,
+        defaultScope: 'project',
+        description:
+          'Initial agent for this workspace when this machine has no locally remembered choice. Allowed values are codex, pi, and terminal-cli:pi. A local user selection always takes precedence.',
+      }),
       autoApproveOkTools: z
         .boolean()
         .register(fieldRegistry, {

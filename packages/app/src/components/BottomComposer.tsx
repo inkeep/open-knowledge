@@ -54,6 +54,7 @@ import {
 } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
 import { useSelectionContext } from '@/hooks/use-selection-context';
+import { useConfigContextOptional } from '@/lib/config-context';
 import { resolveDefaultCli } from '@/lib/default-cli-resolver';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
@@ -61,6 +62,7 @@ import { recordOnboardingAskedAi } from '@/lib/onboarding-signals';
 import {
   loadStickyAgent,
   parseStickyCliId,
+  resolveInitialAgentPreference,
   resolveStickyAgent,
   saveStickyAgent,
   terminalCliId,
@@ -199,6 +201,7 @@ export function BottomComposer({
   const effectiveSurface: EditorSurface = surface ?? 'wysiwyg';
   const reduced = useReducedMotion();
   const workspace = useWorkspace();
+  const projectDefaultAgent = useConfigContextOptional()?.projectConfig?.agents?.defaultAgent;
   const { pageMeta } = usePageList();
   const { states } = useInstalledAgents();
   const { dispatch } = useHandoffDispatch();
@@ -465,7 +468,7 @@ export function BottomComposer({
   // sentinel (`terminal-cli:<cli>`) only resolves to terminal mode when the
   // launcher is available, so a sticky CLI pick degrades to the first app target
   // on the web host.
-  const effectiveId = selectedId ?? stickyId;
+  const effectiveId = selectedId ?? resolveInitialAgentPreference(stickyId, projectDefaultAgent);
   // An explicit CLI pick (sticky or this session) launches that CLI regardless of
   // install state — a missing binary just prints "command not found".
   const explicitCli: TerminalCli | null =
