@@ -207,7 +207,7 @@
     "ts-morph": "^28.0.0",
     "typescript": "^5.9.3",
     "unified": "^11.0.5",
-    "vite": "^8.0.0",
+    "vite": "^8.0.16",
     "web-vitals": "^5.0.0",
     "y-protocols": "^1.0.7"
   }
