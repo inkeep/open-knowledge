@@ -8,7 +8,7 @@ import {
   applyPatchWithConflictDetection,
   bridgeCommitSubject,
   buildCommitAttribution,
-  buildPublicComment,
+  buildWelcomePublicComment,
   checkOrgMembership,
   commitIndicatesConflicts,
   createClaGateGh,
@@ -488,25 +488,16 @@ describe('applyPatchWithConflictDetection (graceful conflict routing canary)', (
     }
   });
 
-  test('conflict and failure comments give accurate guidance and never advise a rebase', () => {
-    const publicPr = {
-      user: { login: 'octocat' },
-      base: { repo: { full_name: 'inkeep/open-knowledge' } },
-    };
-    const conflicts = buildPublicComment({ publicPr, status: 'conflicts' });
-    const failed = buildPublicComment({
-      publicPr,
-      status: 'failed',
-      details: 'The diff could not be applied to the internal monorepo.',
-    });
-    for (const body of [conflicts, failed]) {
-      expect(body.toLowerCase()).not.toContain('rebase');
-    }
-    expect(conflicts).toContain('No action is needed from you');
-    expect(conflicts).toContain('@octocat');
-    // upsertIssueComment finds+updates the existing comment by this marker; if the
-    // conflicts branch dropped it, every metadata re-sync would post a duplicate.
-    expect(conflicts).toContain('<!-- monorepo-pr-bridge -->');
+  test('welcome comment sets contributor expectations without implementation details', () => {
+    const body = buildWelcomePublicComment();
+
+    expect(body).toContain('Thanks for the contribution!');
+    expect(body).toContain('A maintainer will review your PR.');
+    expect(body).toContain('internal mirror');
+    expect(body).toContain('authorship is preserved');
+    expect(body).not.toContain('Copybara');
+    expect(body).not.toContain('rebase');
+    expect(body).not.toContain('<!-- monorepo-pr-bridge -->');
   });
 });
 
@@ -535,11 +526,11 @@ describe('commitIndicatesConflicts (metadata-re-sync conflict-hold guard)', () =
 // On a metadata-only re-sync (e.g. a contributor editing their PR body)
 // syncPublicPr skips the apply block, so hasConflicts must be re-derived from
 // the internal PR's head-commit marker; otherwise a conflict-carrying DRAFT PR
-// is silently un-drafted (markPullRequestReadyForReview) and its comment flips
-// to 'synced'. Per-predicate unit tests (canary, predicate, forceDraft) cannot
+// is silently un-drafted (markPullRequestReadyForReview). Per-predicate unit
+// tests (canary, predicate, forceDraft) cannot
 // reach this wiring. This runs the REAL syncPublicPr metadata path (zero git
 // ops) with the GitHub API faked at the true external boundary, asserting the
-// observable draft/comment OUTCOME, not call counts.
+// observable draft outcome, not call counts.
 
 const CONFLICT_HEAD =
   'sync(oss): mirror inkeep/open-knowledge#310 (with conflicts; needs manual resolution)';
@@ -600,7 +591,6 @@ async function runMetadataSync({ headCommitMessage, internalPrStartsDraft }) {
       return json({ data: {} });
     }
     if (method === 'POST' && url.includes('/statuses/')) return json({});
-    if (method === 'GET' && url.includes('/issues/310/comments')) return json([]);
     if (method === 'POST' && url.includes('/issues/310/comments')) {
       recorded.comment = JSON.parse(init.body).body;
       return json({ html_url: 'https://github.com/x/comments/1' });
@@ -636,7 +626,7 @@ async function runMetadataSync({ headCommitMessage, internalPrStartsDraft }) {
 }
 
 describe('syncPublicPr metadata-event composition (conflict-hold fail-open guard)', () => {
-  test("a metadata event on a DRAFT conflict PR keeps it draft and posts 'conflicts' (not un-draft + 'synced')", async () => {
+  test('a metadata event on a DRAFT conflict PR keeps it draft and posts no public comment', async () => {
     const r = await runMetadataSync({
       headCommitMessage: CONFLICT_HEAD,
       internalPrStartsDraft: true,
@@ -645,18 +635,16 @@ describe('syncPublicPr metadata-event composition (conflict-hold fail-open guard
     // markPullRequestReadyForReview. Correct: the conflict hold is re-derived
     // true -> shouldBeDraft true -> already draft -> NO transition fires.
     expect(r.draftMutation).toBeNull();
-    expect(r.comment).toContain('No action is needed from you');
-    expect(r.comment.toLowerCase()).not.toContain('rebase');
-    expect(r.comment).not.toContain('review and merge your PR'); // not the 'synced' body
+    expect(r.comment).toBeNull();
   });
 
-  test("a metadata event on a clean PR readies it and posts 'synced'", async () => {
+  test('a metadata event on a clean PR readies it and posts no public comment', async () => {
     const r = await runMetadataSync({ headCommitMessage: CLEAN_HEAD, internalPrStartsDraft: true });
     expect(r.draftMutation).toBe('to-ready');
-    expect(r.comment).toContain('review and merge your PR'); // the 'synced' body
+    expect(r.comment).toBeNull();
   });
 
-  test('a metadata event on a non-draft PR whose head now carries conflicts re-drafts it', async () => {
+  test('a metadata event on a non-draft PR whose head now carries conflicts re-drafts it without a public comment', async () => {
     const r = await runMetadataSync({
       headCommitMessage: CONFLICT_HEAD,
       internalPrStartsDraft: false,
@@ -664,6 +652,6 @@ describe('syncPublicPr metadata-event composition (conflict-hold fail-open guard
     // Symmetric to the draft case: the conflict hold is re-derived true ->
     // shouldBeDraft true -> PR is currently ready -> convertPullRequestToDraft fires.
     expect(r.draftMutation).toBe('to-draft');
-    expect(r.comment).toContain('No action is needed from you');
+    expect(r.comment).toBeNull();
   });
 });
