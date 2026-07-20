@@ -18,8 +18,9 @@ import { parseOpenKnowledgeFileUrl, registerProtocolHandler } from '../../src/ma
  * stub.
  */
 
-type AppEvent = 'open-url' | 'second-instance' | 'before-quit' | 'continue-activity';
+type AppEvent = 'open-url' | 'open-file' | 'second-instance' | 'before-quit' | 'continue-activity';
 type OpenUrlListener = (event: { preventDefault: () => void }, url: string) => void;
+type OpenFileListener = (event: { preventDefault: () => void }, path: string) => void;
 type SecondInstanceListener = (event: unknown, argv: readonly string[]) => void;
 type BeforeQuitListener = () => void;
 type ContinueActivityListener = (
@@ -30,6 +31,7 @@ type ContinueActivityListener = (
 ) => void;
 type AppListener =
   | OpenUrlListener
+  | OpenFileListener
   | SecondInstanceListener
   | BeforeQuitListener
   | ContinueActivityListener;
@@ -41,6 +43,7 @@ interface FakeApp {
   setAsDefaultProtocolClient: ReturnType<typeof mock>;
   removeAsDefaultProtocolClient: ReturnType<typeof mock>;
   fireOpenUrl: (url: string) => void;
+  fireOpenFile: (path: string) => { preventDefault: ReturnType<typeof mock> };
   fireSecondInstance: (argv: readonly string[]) => void;
   fireBeforeQuit: () => void;
   fireContinueActivity: (
@@ -72,6 +75,13 @@ function makeFakeApp(opts?: { isPackaged?: boolean }): FakeApp {
       if (!cb) throw new Error('open-url listener not registered');
       const event = { preventDefault: mock(() => {}) };
       cb(event, url);
+    },
+    fireOpenFile: (path) => {
+      const cb = listeners.get('open-file') as OpenFileListener | undefined;
+      if (!cb) throw new Error('open-file listener not registered');
+      const event = { preventDefault: mock(() => {}) };
+      cb(event, path);
+      return event;
     },
     fireSecondInstance: (argv) => {
       const cb = listeners.get('second-instance') as SecondInstanceListener | undefined;
@@ -2434,5 +2444,89 @@ describe('registerProtocolHandler — single-file open (file=)', () => {
     ).not.toThrow();
     await flushPromises();
     expect(env.openProject).not.toHaveBeenCalled();
+  });
+});
+
+// Finder "Open With → OpenKnowledge" (and double-click on a handled type)
+// delivers the picked file via the macOS `open-file` Apple Event. The handler
+// synthesizes the same `open?file=` URL as `ok <file>` and routes it through
+// the shared queue-then-flush spine, so a warm open lands immediately and a
+// cold-launch open queues until whenReady — parity with the deep-link path.
+describe('registerProtocolHandler — open-file Apple event (Finder Open With)', () => {
+  let env: TestEnv;
+
+  beforeEach(() => {
+    env = makeEnv();
+  });
+
+  test('a warm open-file event routes to openEphemeralFile with the raw path + calls preventDefault', async () => {
+    env.readyWindow = { id: 'pre-existing' };
+    registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      openEphemeralFile: env.openEphemeralFile,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+    });
+    env.app.resolveReady();
+    await flushPromises();
+
+    const event = env.app.fireOpenFile('/Users/me/notes/todo.md');
+    await flushPromises();
+
+    // preventDefault silences Electron's default stderr log + signals handled.
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(env.openEphemeralFile).toHaveBeenCalledWith('/Users/me/notes/todo.md');
+    expect(env.openProject).not.toHaveBeenCalled();
+  });
+
+  test('a path with spaces/special chars round-trips through the synthesized file= URL', async () => {
+    env.readyWindow = { id: 'pre-existing' };
+    registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      openEphemeralFile: env.openEphemeralFile,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+    });
+    env.app.resolveReady();
+    await flushPromises();
+
+    // A `#`/space/`&` path would corrupt an un-encoded URL; the handler's
+    // encodeURIComponent + `searchParams` decode must hand back the exact path.
+    const messy = '/Users/me/My Notes/draft #1 & more.md';
+    env.app.fireOpenFile(messy);
+    await flushPromises();
+
+    expect(env.openEphemeralFile).toHaveBeenCalledWith(messy);
+  });
+
+  test('a cold-launch open-file (before whenReady) queues, then drains to openEphemeralFile', async () => {
+    // No ready window yet — a Finder cold launch fires open-file before the
+    // first window paints; the event must queue and route once ready.
+    registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      openEphemeralFile: env.openEphemeralFile,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+    });
+
+    env.app.fireOpenFile('/Users/me/notes/todo.md');
+    // Not flushed yet — routing is deferred until whenReady drains the queue.
+    expect(env.openEphemeralFile).not.toHaveBeenCalled();
+
+    env.readyWindow = { id: 'pre-existing' };
+    env.app.resolveReady();
+    await flushPromises();
+    await flushPromises();
+
+    expect(env.openEphemeralFile).toHaveBeenCalledWith('/Users/me/notes/todo.md');
   });
 });

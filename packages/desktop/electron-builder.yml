@@ -324,6 +324,18 @@ protocols:
     schemes: [openknowledge]
     role: Editor
 
+# Finder "Open With → OpenKnowledge" for loose markdown files. `role: Editor`
+# advertises us as an editor of these types; `rank: Alternate` means we do NOT
+# steal the user's default handler (their existing editor keeps the
+# double-click) — we only appear in the Open With list. macOS delivers the pick
+# via the `open-file` Apple Event, which `registerProtocolHandler` routes
+# through the same queue-then-flush spine as `ok <file>` (see main/url-scheme.ts).
+fileAssociations:
+  - ext: [md, mdx]
+    name: Markdown Document
+    role: Editor
+    rank: Alternate
+
 publish:
   - provider: github
     owner: inkeep

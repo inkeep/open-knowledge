@@ -411,6 +411,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           }),
           setSessionState: async () => {},
           open: async () => {},
+          openFile: async () => {},
           createNew: async () => {},
           recordCreateNewBannerShown: async () => {},
           checkTargetExists: async () => 'unreadable' as const,

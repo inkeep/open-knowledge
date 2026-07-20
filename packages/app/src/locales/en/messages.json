@@ -439,6 +439,7 @@
     "8uAWix": [
       "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
     ],
+    "8vCZcs": ["Failed to open file."],
     "8vETh9": ["Show"],
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "96G6Re": ["New folder"],
@@ -815,6 +816,7 @@
     "Gx0VS1": ["e.g. drafts/ or *.draft.md"],
     "GzPQ2f": ["Stay in the loop"],
     "H-vDm3": ["Relaunching to install the update…"],
+    "H08D2X": ["Open a single markdown file in a temporary session, without project setup."],
     "H0WlWQ": ["Grid of rows and columns with a header row."],
     "H86f9p": ["Collapse"],
     "HAvRAI": [["skillCount", "plural", { "one": ["skill"], "other": ["skills"] }]],
@@ -1913,6 +1915,7 @@
     ],
     "gJR87V": ["Could not create the project folder. Pick a different folder."],
     "gKi-a_": ["New project"],
+    "gOD68k": ["Open a single markdown file — no project setup."],
     "gQV-9w": [
       "Branch switched but the ",
       ["targetNoun"],
@@ -2130,6 +2133,7 @@
     ],
     "k_pade": ["Config sharing is now shared. Commit the OK files to share with your team."],
     "k_yIIc": ["Will be created at: <0>", ["targetPreview"], "</0>"],
+    "ka6Eke": ["Open file on disk"],
     "kdzzOK": ["Off — search ranks by keyword only. No content leaves this computer."],
     "keNFEd": ["Set identity"],
     "khCa4M": ["Teaches coding agents in this project to read and write through OpenKnowledge."],

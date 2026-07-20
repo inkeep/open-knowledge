@@ -235,6 +235,7 @@ function createBridge() {
         ]),
       ),
       open: mock(() => Promise.resolve()),
+      openFile: mock(() => Promise.resolve()),
     },
     dialog: {
       openFolder: mock(() => Promise.resolve('/chosen/folder')),
@@ -298,6 +299,7 @@ describe('ProjectSwitcher dropdown behavior', () => {
       'project-switcher-new-project',
       'project-switcher-switch-project',
       'project-switcher-open-folder',
+      'project-switcher-open-file',
     ]) {
       expect(screen.getByTestId(testId).querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     }
@@ -313,6 +315,10 @@ describe('ProjectSwitcher dropdown behavior', () => {
         entryPoint: 'pick-existing',
       });
     });
+
+    // Open file delegates to main (picker + ephemeral open); a single bridge hop.
+    fireEvent.click(screen.getByTestId('project-switcher-open-file'));
+    await waitFor(() => expect(bridge.project.openFile).toHaveBeenCalledTimes(1));
 
     // Recents render through RecentProjectsMenu; a non-git recent opens with the
     // `recents` entry point.

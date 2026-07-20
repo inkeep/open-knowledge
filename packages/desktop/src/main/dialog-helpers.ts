@@ -22,10 +22,12 @@ interface DialogLike {
       | 'showHiddenFiles'
     )[];
     defaultPath?: string;
+    filters?: { name: string; extensions: string[] }[];
   }): Promise<{ canceled: boolean; filePaths: string[] }>;
 }
 
-interface PromptForFolderOpts {
+/** Options shared by the folder + markdown-file pickers below. */
+interface PromptForPickerOpts {
   /** Initial directory shown in the picker. Pass the project root so the user
    *  doesn't have to navigate to it. */
   defaultPath?: string;
@@ -115,12 +117,37 @@ function readTestPickedPath(): string | null {
  */
 export async function promptForExistingFolder(
   dialogModule: DialogLike,
-  opts: PromptForFolderOpts = {},
+  opts: PromptForPickerOpts = {},
 ): Promise<string | null> {
   const testSeam = readTestPickedPath();
   if (testSeam !== null) return testSeam;
   const result = await dialogModule.showOpenDialog({
     properties: ['openDirectory', 'createDirectory', 'showHiddenFiles'],
+    ...(opts.defaultPath !== undefined ? { defaultPath: opts.defaultPath } : {}),
+  });
+  if (result.canceled) return null;
+  return result.filePaths[0] ?? null;
+}
+
+/**
+ * Prompt for a single existing markdown file (File → Open file… and the
+ * `ok:project:open-file-picker` IPC both call this). Filtered to `.md`/`.mdx`
+ * so the picker steers users to markdown, but the filter is advisory: the
+ * receiver (`openEphemeralFile`) re-validates the pick and renders a native
+ * error for a non-markdown / missing file. Colocated with `promptForExistingFolder`
+ * so the two Open-… affordances share one definition of their dialog options.
+ * Routes through the same E2E test seam so smoke tests can drive the picked
+ * path without an OS dialog.
+ */
+export async function promptForExistingMarkdownFile(
+  dialogModule: DialogLike,
+  opts: PromptForPickerOpts = {},
+): Promise<string | null> {
+  const testSeam = readTestPickedPath();
+  if (testSeam !== null) return testSeam;
+  const result = await dialogModule.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Markdown', extensions: ['md', 'mdx'] }],
     ...(opts.defaultPath !== undefined ? { defaultPath: opts.defaultPath } : {}),
   });
   if (result.canceled) return null;

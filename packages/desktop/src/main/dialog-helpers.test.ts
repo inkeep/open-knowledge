@@ -5,7 +5,11 @@
  * bypass the real picker.
  */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { promptForExistingFolder, resolvePickedPathForIndex } from './dialog-helpers.ts';
+import {
+  promptForExistingFolder,
+  promptForExistingMarkdownFile,
+  resolvePickedPathForIndex,
+} from './dialog-helpers.ts';
 
 const ORIGINAL_SMOKE = process.env.OK_DESKTOP_E2E_SMOKE;
 const ORIGINAL_PICKED = process.env.OK_DESKTOP_TEST_PICKED_PATH;
@@ -119,5 +123,50 @@ describe('resolvePickedPathForIndex', () => {
   test('a space-only segment is a valid path and is preserved (length filter, not trim)', () => {
     expect(resolvePickedPathForIndex(' \x1f/real', 0)).toBe(' ');
     expect(resolvePickedPathForIndex(' \x1f/real', 1)).toBe('/real');
+  });
+});
+
+describe('promptForExistingMarkdownFile', () => {
+  beforeEach(() => {
+    delete process.env.OK_DESKTOP_E2E_SMOKE;
+    delete process.env.OK_DESKTOP_TEST_PICKED_PATH;
+  });
+
+  test('OS picker uses openFile + a md/mdx filter', async () => {
+    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/notes/x.md'] }));
+    const result = await promptForExistingMarkdownFile({ showOpenDialog });
+    expect(result).toBe('/notes/x.md');
+    expect(showOpenDialog).toHaveBeenCalledWith({
+      properties: ['openFile'],
+      filters: [{ name: 'Markdown', extensions: ['md', 'mdx'] }],
+    });
+  });
+
+  test('OS picker returns null on cancel', async () => {
+    const showOpenDialog = mock(async () => ({ canceled: true, filePaths: [] }));
+    expect(await promptForExistingMarkdownFile({ showOpenDialog })).toBe(null);
+  });
+
+  test('OS picker returns null on empty filePaths', async () => {
+    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: [] }));
+    expect(await promptForExistingMarkdownFile({ showOpenDialog })).toBe(null);
+  });
+
+  test('test seam returns env path when both gates set, never calls OS picker', async () => {
+    process.env.OK_DESKTOP_E2E_SMOKE = '1';
+    process.env.OK_DESKTOP_TEST_PICKED_PATH = '/tmp/seam.md';
+    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/never/used.md'] }));
+    expect(await promptForExistingMarkdownFile({ showOpenDialog })).toBe('/tmp/seam.md');
+    expect(showOpenDialog).not.toHaveBeenCalled();
+  });
+
+  test('defaultPath threads through to showOpenDialog', async () => {
+    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/notes/x.md'] }));
+    await promptForExistingMarkdownFile({ showOpenDialog }, { defaultPath: '/notes' });
+    expect(showOpenDialog).toHaveBeenCalledWith({
+      properties: ['openFile'],
+      filters: [{ name: 'Markdown', extensions: ['md', 'mdx'] }],
+      defaultPath: '/notes',
+    });
   });
 });

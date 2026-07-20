@@ -1042,6 +1042,14 @@ export interface OkDesktopBridge {
       };
     }): Promise<void>;
     /**
+     * File → Open file… — show the native md/mdx picker and open the pick in a
+     * temporary single-file session (the desktop side of `ok <file>`). Picker +
+     * open both run main-side; the picked path never crosses back to the
+     * renderer. See canonical JSDoc in
+     * `packages/desktop/src/shared/bridge-contract.ts`.
+     */
+    openFile(): Promise<void>;
+    /**
      * Atomically scaffold a new project under `parent/name` with the
      * user-chosen `editors` set. `editors` is the renderer's exact selection
      * (default-all unless the user unchecked entries); main never widens or

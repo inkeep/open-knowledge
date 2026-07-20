@@ -497,6 +497,10 @@ interface ProtocolHandlerDeps {
   /** `electron.app` subset — the listeners + setters we touch. */
   app: {
     on(event: 'open-url', cb: (event: { preventDefault: () => void }, url: string) => void): void;
+    // macOS Finder "Open With → OpenKnowledge" (and double-click on a handled
+    // file type). Fires only on darwin; can arrive before `whenReady` on a cold
+    // launch, so the listener is wired synchronously alongside `open-url`.
+    on(event: 'open-file', cb: (event: { preventDefault: () => void }, path: string) => void): void;
     on(event: 'second-instance', cb: (event: unknown, argv: readonly string[]) => void): void;
     on(event: 'before-quit', cb: () => void): void;
     // macOS Handoff / Universal Links: `details.webpageURL` carries the
@@ -1293,6 +1297,19 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
   deps.app.on('open-url', (event, url) => {
     event.preventDefault();
     enqueueOrRoute(url);
+  });
+
+  // `open-file` — macOS Apple Event fired when the user opens a `.md`/`.mdx`
+  // via Finder ("Open With → OpenKnowledge", or a double-click on a file type
+  // we handle). Synthesize the same `openknowledge://open?file=<abs>` URL the
+  // CLI emits for `ok <file>` and route it through the identical queue-then-
+  // flush + launch-claim spine, so a cold-launch Finder open suppresses the
+  // boot-restore window exactly like `ok <file>` does. macOS-only — the event
+  // never fires on other platforms. `encodeURIComponent` matches the CLI's
+  // construction (`parseOpenKnowledgeFileUrl` decodes once via `searchParams`).
+  deps.app.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    enqueueOrRoute(`openknowledge://open?file=${encodeURIComponent(filePath)}`);
   });
 
   // `continue-activity` — macOS Handoff path for Universal Links. Fires when

@@ -207,7 +207,7 @@ import {
   resolveDesktopUninstallProjectSelection,
   runDesktopUninstallCleanup,
 } from './desktop-uninstall.ts';
-import { promptForExistingFolder } from './dialog-helpers.ts';
+import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 import {
   type DriverUtilityLike,
   isDriverBootSmokeMode,
@@ -2257,6 +2257,10 @@ async function runApplicationMenuRefresh(): Promise<void> {
     dialog,
     openNavigator,
     openProject: (path, entryPoint) => openProjectOrFallbackToNavigator(path, entryPoint),
+    // File → Open file… — the picker runs in the menu binding (menu.ts), which
+    // hands the absolute path here. `openEphemeralFile` re-derives project-vs-
+    // ephemeral (a file inside a project opens that project, not a temp session).
+    openEphemeralFile: (filePath) => openEphemeralFile(filePath),
     getRecentProjects: () => appState.recentProjects,
     clearRecentProjects: () => {
       appState = { ...appState, recentProjects: [] };
@@ -3474,6 +3478,16 @@ function registerIpcHandlers() {
 
   handle('ok:dialog:open-folder', async (_event, opts) => {
     return promptForExistingFolder(dialog, opts);
+  });
+
+  // File → Open file… (palette / Navigator entry). Picker + ephemeral open both
+  // run main-side, mirroring the native-menu binding in menu.ts; the picked path
+  // never crosses back to the renderer. Shares `promptForExistingMarkdownFile`
+  // with the menu binding so both agree on the picker's filters.
+  handle('ok:project:open-file-picker', async () => {
+    const picked = await promptForExistingMarkdownFile(dialog);
+    if (picked) await openEphemeralFile(picked);
+    return undefined;
   });
 
   const shellOpenExternal = handleShellOpenExternal({

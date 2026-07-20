@@ -17,7 +17,15 @@
  */
 
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ChevronsUpDown, FolderOpen, GitBranch, LayoutGrid, Plus, Search } from 'lucide-react';
+import {
+  ChevronsUpDown,
+  FileText,
+  FolderOpen,
+  GitBranch,
+  LayoutGrid,
+  Plus,
+  Search,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
   DropdownMenu,
@@ -173,6 +181,13 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
       if (!path) return;
       await bridge.project.open({ path, target: 'new-window', entryPoint: 'pick-existing' });
     }, t`Failed to open folder.`);
+  };
+
+  // Open a loose markdown file in a temporary single-file session (no project
+  // setup). Picker + open both run main-side; nothing crosses back here.
+  const onOpenFile = () => {
+    handleOpenChange(false);
+    void runWithToast(() => bridge.project.openFile(), t`Failed to open file.`);
   };
 
   const onSwitchProject = () => {
@@ -381,6 +396,16 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
           >
             <FolderOpen aria-hidden="true" className="text-muted-foreground" />
             <Trans>Open folder</Trans>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              if (guardStaleSelect(e)) return;
+              onOpenFile();
+            }}
+            data-testid="project-switcher-open-file"
+          >
+            <FileText aria-hidden="true" className="text-muted-foreground" />
+            <Trans>Open file</Trans>
           </DropdownMenuItem>
           {/* "New worktree" sits at the bottom of the project-selection menu:
             the per-project worktree flyouts are the primary worktree affordance

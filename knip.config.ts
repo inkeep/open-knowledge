@@ -119,9 +119,7 @@ export default {
     'packages/server': {
       entry: ['src/**/*.test.ts'],
       project: 'src/**',
-      ignoreDependencies: [
-        '@types/shell-quote',
-      ],
+      ignoreDependencies: ['@types/shell-quote'],
     },
     'packages/cli': {
       entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts'],

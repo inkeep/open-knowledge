@@ -166,6 +166,7 @@ const PALETTE_COMMAND_LABELS = {
   initializeStarterPack: msg`Initialize starter pack`,
   newProject: msg`New project`,
   openFolderOnDisk: msg`Open folder on disk`,
+  openFileOnDisk: msg`Open file on disk`,
   switchProject: msg`Switch project`,
   settings: msg`Settings`,
   installClaudeDesktop: msg`Install for Claude Chat & Cowork (Desktop App)`,
@@ -214,6 +215,7 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'initialize-starter-pack': Package,
   'new-project': Plus,
   'open-folder': FolderOpen,
+  'open-file': FileText,
   'switch-project': LayoutGrid,
   settings: Settings,
   'install-claude-desktop': Download,
@@ -279,6 +281,14 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
       if (!path) return;
       await bridge.project.open({ path, target: 'new-window', entryPoint: 'pick-existing' });
     });
+  },
+  'open-file': (ctx) => {
+    const bridge = ctx.bridge;
+    if (!bridge) return;
+    // The picker + ephemeral open both live main-side (`openEphemeralFile` owns
+    // the temp server/dir lifecycle), so this is a single fire-and-forget hop —
+    // no picked path crosses back to the renderer.
+    ctx.runAction(() => bridge.project.openFile());
   },
   'switch-project': (ctx) => {
     const bridge = ctx.bridge;

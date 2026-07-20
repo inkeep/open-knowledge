@@ -30,7 +30,7 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 85 (ratchet cap 85). The 74→75 bump reconciled a merge collision:
+ * Count is 86 (ratchet cap 86). The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -53,7 +53,11 @@
  * added the two Cmd+K / native-menu command invokes: `ok:mcp-wiring:reconfigure`
  * (File → "Set up OpenKnowledge integrations…") and `ok:spellcheck:toggle`
  * (Edit → "Check spelling while typing"), each delegating to an existing
- * main-side function. Full rationale in the ratchet test header.
+ * main-side function. The 85→86 bump added File → "Open file…"
+ * (`ok:project:open-file-picker`): the palette / Navigator entry point to the
+ * temporary single-file session, delegating to the existing main-side picker +
+ * `openEphemeralFile` (the desktop side of `ok <file>`). Full rationale in the
+ * ratchet test header.
  */
 
 import type {
@@ -854,6 +858,13 @@ export interface RequestChannels {
   'ok:project:set-session-state': { args: [state: ProjectSessionState]; result: undefined };
   /** Request main to open a project (always spawns a new editor window). */
   'ok:project:open': { args: [request: ProjectOpenRequest]; result: undefined };
+  /**
+   * File → Open file… palette / Navigator entry: show the native md/mdx picker
+   * and open the pick in a temporary single-file session (the desktop side of
+   * `ok <file>`). Picker + `openEphemeralFile` both run main-side, so no picked
+   * path crosses back to the renderer — the channel is a void fire-and-forget.
+   */
+  'ok:project:open-file-picker': { args: []; result: undefined };
   /**
    * Probe `<projectPath>/<path>` and classify it against the share target's
    * `kind` — a regular-file hit for `doc`, a directory hit for `folder` —

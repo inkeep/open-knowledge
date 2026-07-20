@@ -299,6 +299,14 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     bindings: [{ mac: '⌘ O', windowsLinux: 'Ctrl O' }],
   },
   {
+    id: 'open-file',
+    category: 'workspace',
+    title: msg`Open file`,
+    description: msg`Open a single markdown file in a temporary session, without project setup.`,
+    scope: msg`OK Desktop`,
+    bindings: [{ mac: '⇧⌘ O', windowsLinux: 'Ctrl Shift O' }],
+  },
+  {
     id: 'switch-project',
     category: 'workspace',
     title: msg`Switch project`,

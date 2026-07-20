@@ -421,6 +421,7 @@ const bridge: OkDesktopBridge = {
     getSessionState: () => invoke('ok:project:get-session-state'),
     setSessionState: (state) => invoke('ok:project:set-session-state', state),
     open: (request) => invoke('ok:project:open', request),
+    openFile: () => invoke('ok:project:open-file-picker'),
     createNew: (args) => invoke('ok:project:create-new', args),
     recordCreateNewBannerShown: (banner) =>
       invoke('ok:project:record-create-new-banner-shown', banner),

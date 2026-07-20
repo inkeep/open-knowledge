@@ -270,7 +270,7 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
   {
     id: 'open-folder',
     labelKey: 'openFolderOnDisk',
-    keywords: ['project'],
+    keywords: ['project', 'folder', 'disk'],
     shortcutId: 'open-folder',
     availability: { host: 'desktop' },
     palette: { group: 'project', visibility: 'always' },
@@ -281,6 +281,28 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
         accelerator: 'CmdOrCtrl+O',
         ellipsis: true,
         menuLabelKey: 'openFolder',
+      },
+    ],
+  },
+  {
+    // Open a loose markdown file in a temporary single-file session (the desktop
+    // side of `ok <file>`): no project setup, never writes `.ok` to the file's
+    // folder. Sits right after Open folder in the File menu; the receiver
+    // (`openEphemeralFile`) re-derives project-vs-ephemeral, so a file that
+    // happens to live inside a project opens that project instead.
+    id: 'open-file',
+    labelKey: 'openFileOnDisk',
+    keywords: ['file', 'markdown', 'single', 'standalone', 'temporary'],
+    shortcutId: 'open-file',
+    availability: { host: 'desktop' },
+    palette: { group: 'project', visibility: 'always' },
+    menu: [
+      {
+        section: 'file-project',
+        order: 3,
+        accelerator: 'CmdOrCtrl+Shift+O',
+        ellipsis: true,
+        menuLabelKey: 'openFile',
       },
     ],
   },

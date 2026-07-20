@@ -103,6 +103,7 @@ function createBridge() {
       getSessionState: mock(() => Promise.resolve({})),
       setSessionState: mock(() => Promise.resolve()),
       open: mock(() => Promise.resolve()),
+      openFile: mock(() => Promise.resolve()),
       createNew: mock(() => Promise.resolve()),
       recordCreateNewBannerShown: mock(() => Promise.resolve()),
       close: mock(() => Promise.resolve()),
@@ -170,6 +171,11 @@ describe('NavigatorApp launcher runtime behavior', () => {
         entryPoint: 'pick-existing',
       });
     });
+
+    // Open file on disk → temporary single-file session; a single main-side hop
+    // (picker + ephemeral open both live in main).
+    fireEvent.click(screen.getByTestId('nav-open-file'));
+    await waitFor(() => expect(bridge.project.openFile).toHaveBeenCalledTimes(1));
 
     fireEvent.click(await screen.findByText('Recent Project'));
     await waitFor(() => {

@@ -235,6 +235,7 @@ function createBridge() {
         ]),
       ),
       open: mock(() => Promise.resolve()),
+      openFile: mock(() => Promise.resolve()),
     },
     dialog: {
       openFolder: mock(() => Promise.resolve('/chosen/folder')),
@@ -343,6 +344,9 @@ describe('CommandPalette DOM behavior', () => {
       /⇧⌘ N|Ctrl Shift N/,
     );
     expect(screen.getByTestId('command-palette-open-folder').textContent).toMatch(/⌘ O|Ctrl O/);
+    expect(screen.getByTestId('command-palette-open-file').textContent).toMatch(
+      /⇧⌘ O|Ctrl Shift O/,
+    );
 
     fireEvent.click(switchProject);
     await waitFor(() => expect(bridge.navigator.open).toHaveBeenCalledTimes(1));
@@ -355,6 +359,11 @@ describe('CommandPalette DOM behavior', () => {
         entryPoint: 'pick-existing',
       });
     });
+
+    // Open file delegates entirely to main (picker + ephemeral open); the
+    // renderer just fires the single bridge hop.
+    fireEvent.click(screen.getByTestId('command-palette-open-file'));
+    await waitFor(() => expect(bridge.project.openFile).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByTestId('command-palette-recent-/projects/alpha'));
     await waitFor(() => {

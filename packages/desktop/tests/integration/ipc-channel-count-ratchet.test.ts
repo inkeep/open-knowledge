@@ -346,8 +346,14 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * and `ok:spellcheck:toggle` (Edit → "Check spelling while typing"). Each
  * delegates to an existing main-side function; the typed-ipc migration remains
  * the committed end state, with the `ipc-channels.ts` header in lock-step.
+ *
+ * Bumped from 85 to 86 for File → "Open file…" (`ok:project:open-file-picker`):
+ * the palette / Navigator entry point to the temporary single-file session,
+ * delegating to the existing main-side picker + `openEphemeralFile` (the
+ * desktop side of `ok <file>`). Single member; the typed-ipc migration remains
+ * the committed end state, with the `ipc-channels.ts` header in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 85;
+const REQUEST_CHANNEL_CAP = 86;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

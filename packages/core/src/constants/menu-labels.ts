@@ -29,6 +29,7 @@ export const MENU_LABELS = {
   newFromTemplate: 'New from template',
   newProject: 'New project',
   openFolder: 'Open folder',
+  openFile: 'Open file',
   duplicate: 'Duplicate',
   rename: 'Rename',
   revealInFinder: 'Reveal in Finder',
@@ -71,6 +72,11 @@ export const MENU_LABELS = {
   // Open folder's palette row is the descriptive "Open folder on disk"; the
   // native File menu renders the terser "Open folder…" via `openFolder` above.
   openFolderOnDisk: 'Open folder on disk',
+  // Open file's palette + Navigator row is the descriptive "Open file on disk";
+  // the native File menu renders the terser "Open file…" via `openFile` above.
+  // Opens a loose markdown file in a temporary single-file session (no project
+  // setup, no `.ok` written to its folder) — the desktop side of `ok <file>`.
+  openFileOnDisk: 'Open file on disk',
   // Palette-only commands (no native-menu leaf); shared here so the label-parity
   // test guards them and the registry keeps a single label source.
   openGraph: 'Open graph',

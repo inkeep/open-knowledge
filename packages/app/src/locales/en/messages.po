@@ -3458,6 +3458,11 @@ msgstr "Failed to open cloned project."
 
 #: src/components/NavigatorApp.tsx
 #: src/components/ProjectSwitcher.tsx
+msgid "Failed to open file."
+msgstr "Failed to open file."
+
+#: src/components/NavigatorApp.tsx
+#: src/components/ProjectSwitcher.tsx
 msgid "Failed to open folder."
 msgstr "Failed to open folder."
 
@@ -5537,6 +5542,14 @@ msgstr "Open a project to edit."
 msgid "Open a project to manage its AI tool connections."
 msgstr "Open a project to manage its AI tool connections."
 
+#: src/components/NavigatorApp.tsx
+msgid "Open a single markdown file — no project setup."
+msgstr "Open a single markdown file — no project setup."
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Open a single markdown file in a temporary session, without project setup."
+msgstr "Open a single markdown file in a temporary session, without project setup."
+
 #: src/presence/PresenceBar.tsx
 msgid "Open activity panel for {tooltipName}"
 msgstr "Open activity panel for {tooltipName}"
@@ -5606,9 +5619,17 @@ msgid "Open emoji picker for {keyName}"
 msgstr "Open emoji picker for {keyName}"
 
 #: src/components/AssetPreview.tsx
+#: src/components/NavigatorApp.tsx
+#: src/components/ProjectSwitcher.tsx
 #: src/components/ViewerStatusPane.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Open file"
 msgstr "Open file"
+
+#: src/components/command-palette-commands.ts
+#: src/components/NavigatorApp.tsx
+msgid "Open file on disk"
+msgstr "Open file on disk"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/ProjectSwitcher.tsx

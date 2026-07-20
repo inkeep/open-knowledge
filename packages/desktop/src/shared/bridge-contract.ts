@@ -1320,6 +1320,15 @@ export interface OkDesktopBridge {
       };
     }): Promise<void>;
     /**
+     * File → Open file… — show the native md/mdx picker and open the pick in a
+     * temporary single-file session (the desktop side of `ok <file>`; no project
+     * setup, never writes `.ok` to the file's folder). Picker + open both run
+     * main-side (`openEphemeralFile` owns the temp server/dir lifecycle), so
+     * this takes no args and returns nothing — the picked path never crosses
+     * back to the renderer. A cancelled picker resolves as a no-op.
+     */
+    openFile(): Promise<void>;
+    /**
      * Atomically scaffold a new project under `parent/name` with the
      * user-chosen `editors` set. `editors` is the renderer's exact selection
      * (default-all unless the user unchecked entries); main never widens or

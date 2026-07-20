@@ -3,11 +3,13 @@
  * boots without a `lastOpenedProject`, OR when the user holds Option at
  * launch.
  *
- * Three primary cards (Clone from GitHub, Open folder on disk, Create new
- * project) above a Recent list. Every project pick spawns a NEW editor
- * window via `ok:project:open` IPC — no switch-in-place. Navigator window
- * stays open. Create new project opens an in-app `CreateProjectDialog`
- * inside the Navigator window rather than dispatching to a separate flow.
+ * Four primary cards (Create new project, Open folder on disk, Open file on
+ * disk, Clone from GitHub) above a Recent list. Every project pick spawns a
+ * NEW editor window via `ok:project:open` IPC — no switch-in-place. Navigator
+ * window stays open. Create new project opens an in-app `CreateProjectDialog`
+ * inside the Navigator window rather than dispatching to a separate flow. Open
+ * file on disk opens a loose markdown file in a temporary single-file session
+ * (`ok:project:open-file-picker`), never writing a `.ok` folder to its parent.
  *
  * Web / CLI distribution never reaches this component — it only renders
  * when `window.okDesktop?.config.mode === 'navigator'` (gated in
@@ -15,7 +17,15 @@
  */
 
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Folder, FolderOpenIcon, GitBranch, Loader2Icon, PlusIcon, XIcon } from 'lucide-react';
+import {
+  FileText,
+  Folder,
+  FolderOpenIcon,
+  GitBranch,
+  Loader2Icon,
+  PlusIcon,
+  XIcon,
+} from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
@@ -250,6 +260,13 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
 
   const onCreate = () => setCreateDialogOpen(true);
 
+  // Open a loose markdown file in a temporary single-file session (no project
+  // setup, never writes `.ok` to the file's folder). Picker + open both run
+  // main-side; no window-manager focus dance is needed here (the ephemeral
+  // window is its own).
+  const onOpenFile = () =>
+    runWithErrorState(() => bridge.project.openFile(), t`Failed to open file.`);
+
   // First-run pack pick → open the create dialog with the pack pre-selected
   // and the full pack list so the dialog's Select can switch in-place.
   const onPackSelect = (packId: OkPackId, packs: OkSeedPackInfo[]) => {
@@ -352,11 +369,12 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
             <FirstRunPacksView
               onPackSelect={onPackSelect}
               onOpenFolder={onOpenFolder}
+              onOpenFile={onOpenFile}
               onClone={onClone}
               onCreate={onCreate}
             />
           ) : (
-            <section className="grid shrink-0 sm:grid-cols-3 gap-3">
+            <section className="grid shrink-0 sm:grid-cols-2 gap-3">
               <NavigatorCard
                 title={t`Create new project`}
                 description={t`Start a new OpenKnowledge project.`}
@@ -370,6 +388,13 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
                 onClick={onOpenFolder}
                 dataTestId="nav-open"
                 Icon={FolderOpenIcon}
+              />
+              <NavigatorCard
+                title={t`Open file on disk`}
+                description={t`Open a single markdown file — no project setup.`}
+                onClick={onOpenFile}
+                dataTestId="nav-open-file"
+                Icon={FileText}
               />
               <NavigatorCard
                 title={t`Clone from GitHub`}
@@ -579,11 +604,13 @@ function NavigatorCard({ title, description, onClick, dataTestId, Icon }: Naviga
 function FirstRunPacksView({
   onPackSelect,
   onOpenFolder,
+  onOpenFile,
   onClone,
   onCreate,
 }: {
   onPackSelect: (packId: OkPackId, packs: OkSeedPackInfo[]) => void;
   onOpenFolder: () => void;
+  onOpenFile: () => void;
   onClone: () => void;
   onCreate: () => void;
 }) {
@@ -657,6 +684,16 @@ function FirstRunPacksView({
           >
             <FolderOpenIcon aria-hidden="true" className="size-3.5" />
             <Trans>Open folder</Trans>
+          </Button>
+          <Button
+            type="button"
+            variant="link-muted"
+            size="sm"
+            onClick={onOpenFile}
+            data-testid="nav-first-run-open-file"
+          >
+            <FileText aria-hidden="true" className="size-3.5" />
+            <Trans>Open file</Trans>
           </Button>
           <Button
             type="button"

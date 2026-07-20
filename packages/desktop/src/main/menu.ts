@@ -46,7 +46,7 @@ import {
 import type { Dialog, MenuItemConstructorOptions } from 'electron';
 import type { EntryPoint } from '../shared/entry-point.ts';
 import type { EditorActiveTargetSnapshot } from '../shared/ipc-channels.ts';
-import { promptForExistingFolder } from './dialog-helpers.ts';
+import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 
 export interface MenuDeps {
   /** `app.name` — the running app's name, used for the macOS App menu label. */
@@ -69,6 +69,15 @@ export interface MenuDeps {
    * can branch on user intent.
    */
   openProject(projectPath: string, entryPoint: EntryPoint): Promise<void>;
+  /**
+   * File → Open file… click handler target — open a loose markdown file in a
+   * temporary single-file session (`openEphemeralFile`, the desktop side of
+   * `ok <file>`). The menu binding shows the native md/mdx picker via
+   * `promptForExistingMarkdownFile(d.dialog)` first, so this receives an
+   * absolute path. Optional because the menu is also built in deps-unwired unit
+   * tests; production `index.ts` always wires it.
+   */
+  openEphemeralFile?(filePath: string): Promise<void>;
   /** Current recent-projects list (top-of-LRU first). Used to build Recent project submenu. */
   getRecentProjects(): ReadonlyArray<{ path: string; name: string }>;
   /** Clear the recent-projects list (File → Recent project → Clear menu). */
@@ -373,6 +382,8 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     enabled: (d) => d.onNewProject !== undefined,
   },
   // Switch project / Open folder are always enabled — their deps are required.
+  // Open file (below) is the exception: it gates on `openEphemeralFile`, which is
+  // optional so deps-unwired unit tests can build the menu (always wired in production).
   'switch-project': { click: (d) => () => d.openNavigator() },
   'open-folder': {
     click: (d) => async () => {
@@ -383,6 +394,18 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
         await d.openProject(picked, 'pick-existing');
       }
     },
+  },
+  'open-file': {
+    click: (d) => async () => {
+      // Shared picker options with the `ok:project:open-file-picker` IPC handler
+      // (see dialog-helpers). `openEphemeralFile` re-derives project-vs-ephemeral,
+      // so a file inside a project opens that project rather than a temp session.
+      const picked = await promptForExistingMarkdownFile(d.dialog);
+      if (picked) {
+        await d.openEphemeralFile?.(picked);
+      }
+    },
+    enabled: (d) => d.openEphemeralFile !== undefined,
   },
   'new-worktree': {
     click: (d) => () => d.onNewWorktree?.(),
