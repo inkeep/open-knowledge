@@ -1,9 +1,9 @@
 /**
  * ActivityPanelDiffView — the single inline-diff renderer for the document
  * panel side pane. Built on `react-diff-view` and used by both:
- *   - the Agent Activity Panel — per-burst diffs lazy-fetched from
- *     `GET /api/agent-burst-diff?agentId=<>&docName=<>&stackIndex=<>`
- *     (server synthesizes via `synthesizeStackItemDiffText`).
+ *   - the Agent Activity Panel — per-version diffs lazy-fetched from
+ *     `GET /api/agent-burst-diff?agentId=<>&docName=<>&keptCount=<>`
+ *     (server synthesizes via `synthesizeVersionDiff`).
  *   - the Timeline tab — per-entry diffs computed client-side in
  *     `useTimelineEntryDiff` via `diff.createPatch` against the live
  *     Y.Text, so the user's unsaved WIP is part of the comparison.

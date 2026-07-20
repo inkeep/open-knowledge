@@ -13,25 +13,18 @@
  * visible (the server walks their ancestry), so dropping the checkpoint rows
  * loses no edit history.
  *
- * Per-row UX (shape parity with AgentActivityPanel's burst rows):
- *   - Click anywhere on a row except the Restore icon → toggle inline expand.
- *     Expanded rows render <ActivityPanelDiffView> below the header showing
- *     the diff between that commit and the live Y.Text. Multi-expand is
- *     supported; the displayed diff is a snapshot at expand time. Expansion
- *     state is lifted to TimelineContent (Set<sha>), so a successful restore
- *     can collapse every row in one place — no per-row signal counter, no
- *     late-mount no-op effects.
- *   - The per-row Restore icon (lucide Undo2, ghost variant, hover-destructive
- *     on the icon) sits in the row header and is always visible — both
- *     collapsed and expanded states. Click → shadcn Dialog confirmation →
- *     POST /api/rollback. Cancel aborts the in-flight fetch via
- *     AbortController so a mid-confirm cancel is honored. On success the row
- *     collapses and any other expanded rows from this mount also collapse —
- *     their cached `current` baseline is now stale.
- *   - The diff renderer is loaded lazily under React.Suspense so the
- *     react-diff-view bundle + CSS only land in the editor route once a user
- *     actually expands a Timeline entry — matching the AgentActivityPanel
- *     burst-row precedent.
+ * Per-row UX:
+ *   - Click a row → open the version's "what changed" diff in the main editor
+ *     pane (full-pane overlay, `TimelineDiffPane`), driven by `timeline-diff-store`.
+ *     The active row is highlighted while its diff is open. There is no inline
+ *     expand and no mode toggle — a version always shows what it changed vs the
+ *     previous version.
+ *   - The per-row Restore icon (lucide Undo2, ghost variant, hover-destructive)
+ *     sits in the row header. Restore rolls back to that version via
+ *     POST /api/rollback; the confirm dialog names how many later edits it
+ *     undoes (`laterEdits` = the row's index). For the latest version
+ *     (`laterEdits === 0`) there is nothing to roll back, so restore is instant
+ *     with no confirm. Cancel aborts the in-flight fetch via AbortController.
  */
 import {
   AGENT_ICON_COLORS,
@@ -42,31 +35,24 @@ import {
   type TimelineEntry,
 } from '@inkeep/open-knowledge-core';
 import { plural, t } from '@lingui/core/macro';
-import { Trans, useLingui } from '@lingui/react/macro';
-import type { LucideProps } from 'lucide-react';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
   ArrowDownToLine,
+  ArrowLeftRight,
   ChevronDown,
   ChevronRight,
-  Columns2,
   GitBranch,
   HardDrive,
   Loader2,
-  Rows2,
+  RotateCcw,
   Sparkles,
   Undo2,
   User,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { lazy, Suspense, type SVGProps, useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import type { DiffLayout } from '@/components/DiffView';
-import { ClaudeIcon } from '@/components/icons/claude';
-import { ClineIcon } from '@/components/icons/cline';
-import { CodexIcon } from '@/components/icons/codex';
-import { CopilotIcon } from '@/components/icons/copilot';
-import { CursorIcon } from '@/components/icons/cursor';
-import { WindsurfIcon } from '@/components/icons/windsurf';
+import { AgentIcon } from '@/components/icons/AgentIcon';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -78,19 +64,14 @@ import {
 } from '@/components/ui/dialog';
 import { PanelHeader, PanelTitle } from '@/components/ui/panel';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { LruStringCache } from '@/lib/lru-string-cache';
+import { closeAgentDiff } from '@/lib/agent-diff-store';
 import { createSelfSchedulingPoll, type PollOutcome } from '@/lib/self-scheduling-poll';
 import {
-  HISTORICAL_CONTENT_CACHE_LIMIT,
-  useTimelineEntryDiff,
-} from '@/lib/use-timeline-entry-diff';
-
-const LazyActivityPanelDiffView = lazy(async () => {
-  const mod = await import('@/components/ActivityPanelDiffView');
-  return { default: mod.ActivityPanelDiffView };
-});
+  closeTimelineDiff,
+  openTimelineDiff,
+  useTimelineDiffView,
+} from '@/lib/timeline-diff-store';
 
 // History poll cadence. The loop is SELF-SCHEDULING: the
 // next poll is armed only after the previous one settles, so a slow query on a
@@ -151,8 +132,6 @@ async function pollHistoryOnce(
 
 interface TimelineContentProps {
   docName: string;
-  diffLayout: DiffLayout;
-  onDiffLayoutChange: (layout: DiffLayout) => void;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -188,8 +167,34 @@ function formatAbsoluteTime(isoString: string): string {
   });
 }
 
-function shortSha(sha: string): string {
-  return sha.slice(0, 7);
+/**
+ * Classify a timeline entry from its commit subject into a friendly descriptor,
+ * so the row shows "Restored to the version from …" / "Renamed …" instead of the
+ * raw `rollback: doc to a1b2c3d` / `rename: a -> b` subject. `edit` is the
+ * default — those rows fall back to the agent summary / doc list as before.
+ */
+type EntryDescriptor =
+  | { kind: 'restore'; targetSha7: string }
+  | { kind: 'rename'; from: string; to: string }
+  | { kind: 'reconcile' }
+  | { kind: 'upstream' }
+  | { kind: 'edit' };
+
+function classifyEntry(entry: TimelineEntry): EntryDescriptor {
+  if (entry.type === 'upstream') return { kind: 'upstream' };
+  const msg = entry.message;
+  const rollback = /^rollback: .+ to ([0-9a-f]{7,40})$/.exec(msg);
+  if (rollback) return { kind: 'restore', targetSha7: rollback[1].slice(0, 7) };
+  const rename = /^rename: (.+) -> (.+)$/.exec(msg);
+  if (rename) return { kind: 'rename', from: rename[1], to: rename[2] };
+  if (msg.startsWith('reconcile: ')) return { kind: 'reconcile' };
+  if (msg.startsWith('import: ')) return { kind: 'upstream' };
+  return { kind: 'edit' };
+}
+
+/** Basename of a doc path, for compact rename labels. */
+function docLeaf(path: string): string {
+  return path.split('/').pop() ?? path;
 }
 
 /** Map internal author names to user-friendly display names. Uses structured contributors when available. */
@@ -200,16 +205,6 @@ function displayAuthor(entry: TimelineEntry): string {
   // Pre-attribution fallback
   if (entry.author === 'openknowledge-server' || entry.author === 'server') return t`Auto-save`;
   return entry.author;
-}
-
-function AgentBrandIcon({ icon, ...props }: { icon?: string } & SVGProps<SVGSVGElement>) {
-  if (icon === 'claude') return <ClaudeIcon {...props} />;
-  if (icon === 'cursor') return <CursorIcon {...props} />;
-  if (icon === 'windsurf') return <WindsurfIcon {...props} />;
-  if (icon === 'openai') return <CodexIcon {...props} />;
-  if (icon === 'cline') return <ClineIcon {...props} />;
-  if (icon === 'github') return <CopilotIcon {...props} />;
-  return <Sparkles strokeWidth={1.5} {...(props as LucideProps)} />;
 }
 
 /** Icon for a timeline entry contributor. Brand icons for agents, lucide icons for system writers. */
@@ -230,7 +225,7 @@ function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: bool
     // Known agent brand → brand icon with brand color (dark override when available)
     if (icon !== 'bot') {
       return (
-        <AgentBrandIcon icon={icon} width={14} height={14} className="shrink-0" style={{ color }} />
+        <AgentIcon icon={icon} width={14} height={14} className="shrink-0" style={{ color }} />
       );
     }
 
@@ -354,90 +349,131 @@ function SummaryBullets({ summaries }: SummaryBulletsProps) {
   );
 }
 
-// ─── Inline diff panel ───────────────────────────────────────────────────────
-
-interface EntryDiffPanelProps {
-  sha: string;
-  docName: string;
-  cache: LruStringCache;
-  diffLayout: DiffLayout;
-  panelId: string;
-}
+// ─── Entry row ────────────────────────────────────────────────────────────────
 
 /**
- * Renders only when its parent expanded the row. Splitting this out from
- * EntryRow keeps the `useTimelineEntryDiff` subscription off collapsed rows
- * — no `useDocumentContext` subscription, no effect on activeProvider
- * churn. The lazy-loaded diff renderer also lives inside this gated subtree
- * so the react-diff-view bundle never lands for users who don't expand
- * Timeline rows.
+ * Row-2 detail line, chosen by the entry's classified kind. A restore renders
+ * "Restored to the version from <date>" and — when the target version is on the
+ * loaded page — links to it (click scrolls + flashes that row). Other kinds get
+ * a friendly label instead of the raw commit subject; ordinary edits fall back
+ * to the doc list.
  */
-function EntryDiffPanel({ sha, docName, cache, diffLayout, panelId }: EntryDiffPanelProps) {
-  const result = useTimelineEntryDiff(sha, docName, cache);
+function EntryDetail({
+  descriptor,
+  allDocs,
+  versionBySha7,
+  onJumpToVersion,
+}: {
+  descriptor: EntryDescriptor;
+  allDocs: string[];
+  versionBySha7: Map<string, TimelineEntry>;
+  onJumpToVersion: (sha7: string) => void;
+}) {
+  const { t } = useLingui();
 
-  return (
-    <div id={panelId} className="px-3 pb-2" data-testid="timeline-entry-diff">
-      {result.status === 'loading' && (
-        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3 animate-spin" />
-          <Trans>Loading diff</Trans>
-        </div>
-      )}
-      {result.status === 'error' && (
-        <p className="py-2 text-xs text-destructive">
-          <Trans>Diff unavailable</Trans>
-        </p>
-      )}
-      {result.status === 'ready' && (
-        <Suspense
-          fallback={
-            <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" />
-              <Trans>Loading diff renderer</Trans>
-            </div>
-          }
-        >
-          <LazyActivityPanelDiffView diff={result.diff} viewType={diffLayout} />
-        </Suspense>
-      )}
-    </div>
-  );
+  if (descriptor.kind === 'restore') {
+    const target = versionBySha7.get(descriptor.targetSha7);
+    const label = target
+      ? t`Restored to the version from ${formatAbsoluteTime(target.timestamp)}`
+      : t`Restored an earlier version (${descriptor.targetSha7})`;
+    return (
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <RotateCcw className="size-3 shrink-0" aria-hidden />
+        {target ? (
+          <button
+            type="button"
+            className="truncate text-left underline-offset-2 hover:text-foreground hover:underline"
+            title={label}
+            onClick={(e) => {
+              e.stopPropagation();
+              onJumpToVersion(descriptor.targetSha7);
+            }}
+          >
+            {label}
+          </button>
+        ) : (
+          <span className="truncate" title={label}>
+            {label}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (descriptor.kind === 'rename') {
+    return (
+      <p
+        className="flex items-center gap-1 truncate text-xs text-muted-foreground"
+        title={`${descriptor.from} → ${descriptor.to}`}
+      >
+        <ArrowLeftRight className="size-3 shrink-0" aria-hidden />
+        <span className="truncate">
+          {t`Renamed ${docLeaf(descriptor.from)} → ${docLeaf(descriptor.to)}`}
+        </span>
+      </p>
+    );
+  }
+
+  if (descriptor.kind === 'reconcile') {
+    return <p className="truncate text-xs text-muted-foreground">{t`Synced from disk`}</p>;
+  }
+
+  if (allDocs.length > 0) {
+    return (
+      <p className="truncate text-xs text-muted-foreground" title={allDocs.join(', ')}>
+        {allDocs.join(', ')}
+      </p>
+    );
+  }
+
+  // Upstream syncs already say "Upstream sync" on the author line (displayAuthor)
+  // — a detail line would just repeat it, so render none.
+  if (descriptor.kind === 'upstream') return null;
+
+  return <p className="truncate text-xs text-muted-foreground">{t`Edited`}</p>;
 }
-
-// ─── Entry row ────────────────────────────────────────────────────────────────
 
 interface EntryRowProps {
   entry: TimelineEntry;
   isDark: boolean;
-  diffLayout: DiffLayout;
-  cache: LruStringCache;
   docName: string;
-  expanded: boolean;
-  onToggleExpanded: (sha: string) => void;
+  /** Number of newer versions above this row — what a restore rolls back. */
+  laterEdits: number;
   onRestoreSuccess: () => void;
+  /** Resolve a 7-char SHA to the version it points at (for restore-row labels). */
+  versionBySha7: Map<string, TimelineEntry>;
+  /** Scroll to + flash the version a restore row points at. */
+  onJumpToVersion: (sha7: string) => void;
+  /** Register this row's element so a jump can scroll it into view. */
+  registerRowRef: (el: HTMLDivElement | null) => void;
+  /** True while this row is the flash target of a just-clicked jump. */
+  flashing: boolean;
 }
 
 function EntryRow({
   entry,
   isDark,
-  diffLayout,
-  cache,
   docName,
-  expanded,
-  onToggleExpanded,
+  laterEdits,
   onRestoreSuccess,
+  versionBySha7,
+  onJumpToVersion,
+  registerRowRef,
+  flashing,
 }: EntryRowProps) {
   const { t } = useLingui();
   const relative = formatRelativeTime(entry.timestamp);
   const authorName = displayAuthor(entry);
   const absoluteTime = formatAbsoluteTime(entry.timestamp);
-  const entrySha = shortSha(entry.sha);
   const allDocs = entry.contributors.flatMap((c) => c.docs);
   const allSummaries = allSummariesFor(entry);
+  const descriptor = classifyEntry(entry);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const diffPanelId = useId();
+  // Highlight the row whose diff is currently open in the main pane.
+  const activeDiff = useTimelineDiffView();
+  const isActive = activeDiff?.docName === docName && activeDiff.sha === entry.sha;
 
   // Aborting an in-flight restore on unmount avoids state writes on a
   // disposed component if the response lands after the user navigated away.
@@ -445,7 +481,21 @@ function EntryRow({
     return () => abortRef.current?.abort();
   }, []);
 
-  const handleActivate = () => onToggleExpanded(entry.sha);
+  // Open the full-pane "what changed" diff in the main editor pane. The two
+  // full-pane diffs share one overlay slot — close the agent diff so they
+  // can't both paint.
+  const handleActivate = () => {
+    closeAgentDiff();
+    openTimelineDiff({
+      docName,
+      sha: entry.sha,
+      parentSha: entry.parentSha ?? null,
+      laterEdits,
+      authorName,
+      relativeTime: relative,
+      absoluteTime,
+    });
+  };
 
   function handleCancelDialog() {
     // Cancel honors the user's intent: any in-flight rollback is aborted so
@@ -516,17 +566,22 @@ function EntryRow({
 
   return (
     <>
-      <div className="flex flex-col rounded-lg">
+      <div
+        ref={registerRowRef}
+        className={[
+          'flex flex-col rounded-lg transition-shadow',
+          flashing ? 'ring-2 ring-ring ring-offset-1 ring-offset-background' : '',
+        ].join(' ')}
+      >
         {/* biome-ignore lint/a11y/useSemanticElements: row contains a nested SummaryBullets expander and a Restore <button>; native nested buttons inside a <button> are invalid HTML, so the row uses div[role=button] to preserve keyboard activation while allowing the nested interactive children. */}
         <div
           role="button"
           tabIndex={0}
-          aria-expanded={expanded}
-          aria-controls={expanded ? diffPanelId : undefined}
-          data-testid="timeline-entry-expand"
+          aria-pressed={isActive}
+          data-testid="timeline-entry-open"
           className={[
             'group flex w-full items-start gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            expanded ? 'bg-muted' : 'hover:bg-muted/80',
+            isActive ? 'bg-muted' : 'hover:bg-muted/80',
           ].join(' ')}
           onClick={handleActivate}
           onKeyDown={(e) => {
@@ -564,7 +619,8 @@ function EntryRow({
                     disabled={restoring}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setDialogOpen(true);
+                      if (laterEdits > 0) setDialogOpen(true);
+                      else handleRestore();
                     }}
                   >
                     {restoring ? (
@@ -580,27 +636,14 @@ function EntryRow({
 
             {/* Row 2: details, aligned with title start */}
             {allSummaries.length > 0 && <SummaryBullets summaries={allSummaries} />}
-            {allDocs.length > 0 ? (
-              <p className="truncate text-xs text-muted-foreground" title={allDocs.join(', ')}>
-                {allDocs.join(', ')}
-              </p>
-            ) : (
-              <p className="truncate text-xs text-muted-foreground" title={entry.message}>
-                {entry.message}
-              </p>
-            )}
+            <EntryDetail
+              descriptor={descriptor}
+              allDocs={allDocs}
+              versionBySha7={versionBySha7}
+              onJumpToVersion={onJumpToVersion}
+            />
           </div>
         </div>
-
-        {expanded && (
-          <EntryDiffPanel
-            sha={entry.sha}
-            docName={docName}
-            cache={cache}
-            diffLayout={diffLayout}
-            panelId={diffPanelId}
-          />
-        )}
       </div>
 
       <Dialog
@@ -612,16 +655,14 @@ function EntryRow({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t`Restore to this point?`}</DialogTitle>
+            <DialogTitle>{t`Restore to this version?`}</DialogTitle>
             <DialogDescription>
-              <Trans>
-                This will replace the current document content with the version from{' '}
-                <span className="font-medium text-foreground">
-                  {relative} ({absoluteTime}, {entrySha})
-                </span>{' '}
-                by <span className="font-medium text-foreground">{authorName}</span>. Your current
-                content is already saved in the timeline — you can restore it anytime.
-              </Trans>
+              <Plural
+                value={laterEdits}
+                one="Rolls back # later edit."
+                other="Rolls back # later edits."
+              />{' '}
+              <Trans>Your current version is saved first, so this is reversible.</Trans>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -650,36 +691,39 @@ function EntryRow({
 
 // ─── Main content (no Sheet wrapper) ─────────────────────────────────────────
 
-export function TimelineContent({ docName, diffLayout, onDiffLayoutChange }: TimelineContentProps) {
+export function TimelineContent({ docName }: TimelineContentProps) {
   const { t } = useLingui();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cache] = useState(() => new LruStringCache(HISTORICAL_CONTENT_CACHE_LIMIT));
-  const [expandedShas, setExpandedShas] = useState<Set<string>>(() => new Set());
+  // Row elements keyed by full SHA, so a restore row can scroll its target into
+  // view; `flashSha` briefly rings that target after the jump.
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const [flashSha, setFlashSha] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Reset expansion + cache on doc nav. The parent intentionally does not key
-  // <TimelineContent> on docName (it would force a re-mount on every nav and
-  // throw away the polling timer), so we clear locally.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: cache is a stable useState-initialized instance — including it in deps would not change behavior but reads as a noisier signal of "this effect depends on the cache" when in fact it depends only on the active doc.
-  useEffect(() => {
-    setExpandedShas(new Set());
-    cache.clear();
-  }, [docName]);
+  // 7-char SHA → version, so a `rollback: … to <sha7>` row can name and link the
+  // version it restored (only versions on the loaded page resolve).
+  const versionBySha7 = new Map<string, TimelineEntry>();
+  for (const e of entries) versionBySha7.set(e.sha.slice(0, 7), e);
 
-  function toggleExpanded(sha: string) {
-    setExpandedShas((prev) => {
-      const next = new Set(prev);
-      if (next.has(sha)) next.delete(sha);
-      else next.add(sha);
-      return next;
-    });
+  useEffect(() => () => clearTimeout(flashTimer.current ?? undefined), []);
+
+  function handleJumpToVersion(sha7: string) {
+    const target = versionBySha7.get(sha7);
+    if (!target) return;
+    rowRefs.current.get(target.sha)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFlashSha(target.sha);
+    clearTimeout(flashTimer.current ?? undefined);
+    flashTimer.current = setTimeout(() => setFlashSha(null), 1600);
   }
 
   function handleRestoreSuccess() {
-    setExpandedShas(new Set());
+    // A restore made the open diff's baseline stale — close the pane. (Doc nav
+    // is handled by EditorArea, which closes the diff when the open doc changes.)
+    closeTimelineDiff();
   }
 
   useEffect(() => {
@@ -717,51 +761,14 @@ export function TimelineContent({ docName, diffLayout, onDiffLayoutChange }: Tim
     };
   }, [docName, t]);
 
-  const hasEntries = !loading && !error && entries.length > 0;
-
   return (
     <div className="flex h-full flex-col">
-      {/* Panel header — uses the shared PanelHeader primitive for parity with
-          GraphPanel/LinksPanel (justify-between puts the title left, the
-          diff-layout toggle right). The toggle only renders once there are
-          entries to diff. */}
+      {/* Panel header. The diff layout (unified/split) toggle moved to the
+          full-pane diff view, where the diff actually renders. */}
       <PanelHeader>
         <PanelTitle>
           <Trans>Timeline</Trans>
         </PanelTitle>
-
-        {hasEntries && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToggleGroup
-                type="single"
-                value={diffLayout}
-                onValueChange={(v) => {
-                  if (v) onDiffLayoutChange(v as DiffLayout);
-                }}
-                aria-label={t`Diff layout`}
-                variant="segmented"
-                size="sm"
-                spacing={1}
-                className="bg-muted dark:bg-background p-0.5 rounded-md shrink-0"
-              >
-                <ToggleGroupItem
-                  value="unified"
-                  aria-label={t`Unified diff`}
-                  className="size-6 px-0"
-                >
-                  <Rows2 className="size-3.5" />
-                </ToggleGroupItem>
-                <ToggleGroupItem value="split" aria-label={t`Split diff`} className="size-6 px-0">
-                  <Columns2 className="size-3.5" />
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </TooltipTrigger>
-            <TooltipContent>
-              {diffLayout === 'unified' ? <Trans>Unified diff</Trans> : <Trans>Split diff</Trans>}
-            </TooltipContent>
-          </Tooltip>
-        )}
       </PanelHeader>
       {/* Scrollable entry list */}
       <div className="flex-1 overflow-y-auto subtle-scrollbar scroll-fade-mask">
@@ -804,17 +811,21 @@ export function TimelineContent({ docName, diffLayout, onDiffLayoutChange }: Tim
         {/* Flat reverse-chronological list of actor/system commits. */}
         {!loading && !error && entries.length > 0 && (
           <div className="flex flex-col gap-1 p-2">
-            {entries.map((entry) => (
+            {entries.map((entry, index) => (
               <EntryRow
                 key={entry.sha}
                 entry={entry}
                 isDark={isDark}
-                diffLayout={diffLayout}
-                cache={cache}
                 docName={docName}
-                expanded={expandedShas.has(entry.sha)}
-                onToggleExpanded={toggleExpanded}
+                laterEdits={index}
                 onRestoreSuccess={handleRestoreSuccess}
+                versionBySha7={versionBySha7}
+                onJumpToVersion={handleJumpToVersion}
+                registerRowRef={(el) => {
+                  if (el) rowRefs.current.set(entry.sha, el);
+                  else rowRefs.current.delete(entry.sha);
+                }}
+                flashing={flashSha === entry.sha}
               />
             ))}
           </div>

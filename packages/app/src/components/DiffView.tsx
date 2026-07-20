@@ -43,7 +43,7 @@ const conflictMergeControlTheme = EditorView.theme({
   },
 });
 
-export type DiffLayout = 'unified' | 'split';
+type DiffLayout = 'unified' | 'split';
 
 interface MergeControlPortal {
   id: number;

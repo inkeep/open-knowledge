@@ -7,7 +7,7 @@
  *      and re-fetch after a 500 ms trailing-edge debounce.
  *   3. Subscribe to `__system__` awareness for `agentPresence` and expose a
  *      `writingDocs` set so file rows can show a "writing…" indicator.
- *   4. Provide `fetchBurstDiff(docName, stackIndex)` — lazy per-burst diff
+ *   4. Provide `fetchBurstDiff(docName, keptCount)` — lazy per-version diff
  *      fetch with a component-scoped cache so re-expand doesn't re-fetch.
  *   5. Cancelled-flag semantics: an in-flight fetch that completes AFTER the
  *      connectionId swapped or the component unmounted must NOT update state.
@@ -60,12 +60,14 @@ interface UseActivityPanelResult {
   /** Trigger a re-fetch of `/api/agent-activity`. No-op when inert. */
   reload: () => void;
   /**
-   * Lazy-fetch the unified-diff text for a single burst.
+   * Lazy-fetch the unified-diff text for a file version. `keptCount` is the
+   * edits-to-keep count the `agent-burst-diff` endpoint expects (0 = original,
+   * `bursts.length` = now); for a given burst pass `burst.stackIndex + 1`.
    * Returns the cached diff when available. Re-fetches on cache miss.
    * Throws on network / server failure — callers surface the error in the
    * burst row's expanded state.
    */
-  fetchBurstDiff: (docName: string, stackIndex: number) => Promise<string>;
+  fetchBurstDiff: (docName: string, keptCount: number) => Promise<string>;
 }
 
 const REFETCH_DEBOUNCE_MS = 500;
@@ -75,7 +77,7 @@ const REFETCH_DEBOUNCE_MS = 500;
  * files) don't grow renderer memory unboundedly. Sized to match the
  * `ProviderPool` precedent (`MAX_POOL = 10`) × ~6 bursts typical for a mid-
  * sized file = 60; rounded up. Beyond the cap, LRU eviction drops the
- * least-recently-fetched entry. Cache keys are `${docName}\0${stackIndex}`.
+ * least-recently-fetched entry. Cache keys are `${docName}\0${keptCount}`.
  */
 const BURST_DIFF_CACHE_LIMIT = 64;
 
@@ -119,14 +121,22 @@ async function fetchAgentActivity(connectionId: string): Promise<{
   return success.data;
 }
 
-async function fetchBurstDiffHttp(
+/**
+ * Fetch a single agent burst version: the unified-diff text plus the
+ * frontmatter-stripped `before`/`after` bodies (for the WYSIWYG diff). Exported
+ * so the full-pane `AgentDiffPane` (painted in EditorArea, outside this hook's
+ * subtree) can fetch the same version the panel shows without duplicating the
+ * request/parse contract. The panel's `fetchBurstDiff` wraps this with an LRU
+ * cache; the pane keeps its own small cache.
+ */
+export async function fetchAgentBurstDiff(
   connectionId: string,
   docName: string,
-  stackIndex: number,
-): Promise<string> {
+  keptCount: number,
+): Promise<{ diff: string; before: string; after: string }> {
   const url = `/api/agent-burst-diff?agentId=${encodeURIComponent(
     connectionId,
-  )}&docName=${encodeURIComponent(docName)}&stackIndex=${stackIndex}`;
+  )}&docName=${encodeURIComponent(docName)}&keptCount=${keptCount}`;
   const res = await fetch(url);
   let body: unknown;
   try {
@@ -154,7 +164,8 @@ async function fetchBurstDiffHttp(
       { cause: success.error, status: res.status },
     );
   }
-  return success.data.diff;
+  const { diff, before, after } = success.data;
+  return { diff, before, after };
 }
 
 // ---------------------------------------------------------------
@@ -167,7 +178,7 @@ export function useActivityPanel(connectionId: string | null): UseActivityPanelR
   const [status, setStatus] = useState<ActivityPanelStatus>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  // Burst-diff cache — keyed by `${docName}\0${stackIndex}`. LRU-bounded at
+  // Burst-diff cache — keyed by `${docName}\0${keptCount}`. LRU-bounded at
   // BURST_DIFF_CACHE_LIMIT so long-lived agent sessions can't exhaust
   // renderer memory. Cleared when connectionId changes so stale entries
   // from the previous agent's session can never leak into the new view.
@@ -264,13 +275,15 @@ export function useActivityPanel(connectionId: string | null): UseActivityPanelR
     };
   }, [connectionId, systemProvider]);
 
-  // (4) Lazy burst-diff fetch with cache.
-  const fetchBurstDiff = async (docName: string, stackIndex: number): Promise<string> => {
+  // (4) Lazy burst-diff fetch with cache. `keptCount` is the version index the
+  // endpoint expects (edits-to-keep), NOT a 0-based burst stackIndex.
+  const fetchBurstDiff = async (docName: string, keptCount: number): Promise<string> => {
     if (!connectionId) return '';
-    const key = `${docName}\0${stackIndex}`;
+    const key = `${docName}\0${keptCount}`;
     const cached = diffCacheRef.current.get(key);
     if (cached !== undefined) return cached;
-    const diff = await fetchBurstDiffHttp(connectionId, docName, stackIndex);
+    // Inline burst rows show Source only, so keep just the unified diff here.
+    const { diff } = await fetchAgentBurstDiff(connectionId, docName, keptCount);
     diffCacheRef.current.set(key, diff);
     return diff;
   };

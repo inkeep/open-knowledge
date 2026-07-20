@@ -1,8 +1,7 @@
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, Clock, Link2, ListTree, Network } from 'lucide-react';
-import { lazy, Suspense, useState } from 'react';
-import type { DiffLayout } from '@/components/DiffView';
+import { lazy, Suspense } from 'react';
 import { composeLintFixTerminalPaste } from '@/components/handoff/compose-lint-fix-prompt';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
 import { requestActiveTerminalInput } from '@/components/handoff/terminal-input-events';
@@ -79,10 +78,7 @@ export function DocPanel({
   onActiveTabChange,
   mode,
 }: DocPanelProps) {
-  // Lifted from TimelineContent so the choice survives sub-tab switches —
-  // TimelineContent unmounts when activeTab leaves 'timeline'.
   const { t } = useLingui();
-  const [diffLayout, setDiffLayout] = useState<DiffLayout>('unified');
   // Live, mode-agnostic lint diagnostics for the active doc — drives both the
   // Problems tab badge and the panel itself. Reads `Y.Text('source')`, so it
   // works in WYSIWYG mode too. Gated to the matching provider during nav.
@@ -205,13 +201,7 @@ export function DocPanel({
               <LazyGraphPanel activeDocName={docName} />
             </Suspense>
           )}
-          {effectiveTab === 'timeline' && (
-            <TimelineContent
-              docName={docName}
-              diffLayout={diffLayout}
-              onDiffLayoutChange={setDiffLayout}
-            />
-          )}
+          {effectiveTab === 'timeline' && <TimelineContent docName={docName} />}
           {effectiveTab === 'problems' && (
             <ProblemsPanel
               docName={docName}

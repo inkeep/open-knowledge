@@ -85,15 +85,30 @@ export type AgentPatchRequest = z.infer<typeof AgentPatchRequestSchema>;
  * `'last'`; `'file'` is a legacy alias for `'session'` (drains the entire
  * stack in one call) — the handler collapses `'file'` to `'session'` in
  * the response.
+ *
+ * `'count'` pops the `count` newest stack frames atomically — the scoped
+ * "undo to edit N" range the Activity panel's undo timeline commits (drop the
+ * N newest edits, keep the rest). `count` is required with this scope; the
+ * server clamps it to the live stack depth.
  */
 export const AgentUndoRequestSchema = z
   .object({
     docName: safeDocNameField,
     connectionId: z.string().min(1),
-    scope: z.enum(['last', 'session', 'file']).optional(),
+    scope: z.enum(['last', 'session', 'file', 'count']).optional(),
+    /** Number of newest stack frames to pop — only read when `scope === 'count'`. */
+    count: z.number().int().positive().optional(),
     ...agentIdentityFields,
   })
-  .loose() satisfies StandardSchemaV1;
+  .loose()
+  // `scope: 'count'` REQUIRES `count`. Without this the server clamps a missing
+  // count to 0 frames → a silent no-op that still returns success, masking a
+  // client bug. Reject at the boundary instead (the doc above says count is
+  // required with this scope). Other scopes ignore count.
+  .refine((body) => body.scope !== 'count' || body.count !== undefined, {
+    message: "count is required when scope is 'count'",
+    path: ['count'],
+  }) satisfies StandardSchemaV1;
 export type AgentUndoRequest = z.infer<typeof AgentUndoRequestSchema>;
 
 /**
@@ -410,13 +425,13 @@ export type AgentPatchSuccess = z.infer<typeof AgentPatchSuccessSchema>;
 
 /**
  * Success body for `POST /api/agent-undo`. `scope` reflects the resolved
- * scope after collapsing `'file'` → `'session'`. `undone` is `false` when
- * the UM stack was empty (a no-op undo).
+ * scope after collapsing `'file'` → `'session'` (`'count'` passes through).
+ * `undone` is `false` when the UM stack was empty (a no-op undo).
  */
 export const AgentUndoSuccessSchema = z
   .object({
     docName: z.string().min(1),
-    scope: z.enum(['last', 'session']),
+    scope: z.enum(['last', 'session', 'count']),
     undone: z.boolean(),
   })
   .loose() satisfies StandardSchemaV1;

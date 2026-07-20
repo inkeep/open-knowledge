@@ -9,7 +9,8 @@ import * as Y from 'yjs';
 import {
   listAgentActivity,
   synthesizeStackItemDiff,
-  synthesizeStackItemDiffText,
+  synthesizeVersionDiff,
+  synthesizeVersionDiffText,
 } from './agent-activity.ts';
 import type { AgentSessionManager } from './agent-sessions.ts';
 
@@ -132,34 +133,92 @@ describe('synthesizeStackItemDiff', () => {
 // synthesizeStackItemDiffText
 // ---------------------------------------------------------------------------
 
-describe('synthesizeStackItemDiffText', () => {
-  test('returns empty string when before === after', () => {
+describe('synthesizeVersionDiffText', () => {
+  test('version 0 (original) is an empty diff', () => {
     const doc = new Y.Doc();
     const text = doc.getText('source');
-    const dummyStackItem = {
-      insertions: Y.createDeleteSet(),
-      deletions: Y.createDeleteSet(),
-      meta: new Map(),
-      // biome-ignore lint/suspicious/noExplicitAny: structural cast for test dummy
-    } as any;
-    const result = synthesizeStackItemDiffText(dummyStackItem, text, 'doc.md');
-    expect(result).toBe('');
+    const { origin, um } = makeUMPair(doc, text);
+    doc.transact(() => text.insert(0, 'new line\n'), origin);
+
+    // keptCount 0 → original vs original → empty (the pre-edit file).
+    // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
+    expect(synthesizeVersionDiffText(um.undoStack as any, 0, text, 'doc.md')).toBe('');
   });
 
-  test('returns unified diff with + lines for an insertion', () => {
+  test('version N shows the whole file with the edits as additions', () => {
+    const doc = new Y.Doc();
+    const text = doc.getText('source');
+    const { origin, um } = makeUMPair(doc, text);
+    doc.transact(() => text.insert(0, 'new line\n'), origin);
+
+    // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
+    const diff = synthesizeVersionDiffText(um.undoStack as any, 1, text, 'doc.md');
+    expect(diff).toContain('+');
+    expect(diff).toContain('new line');
+  });
+
+  test('is cumulative: each version shows the whole file as of that version', () => {
     const doc = new Y.Doc();
     const text = doc.getText('source');
     const { origin, um } = makeUMPair(doc, text);
 
-    doc.transact(() => {
-      text.insert(0, 'new line\n');
-    }, origin);
+    doc.transact(() => text.insert(0, 'one\n'), origin);
+    um.stopCapturing();
+    doc.transact(() => text.insert(text.length, 'two\n'), origin);
+    um.stopCapturing();
+    doc.transact(() => text.insert(text.length, 'three\n'), origin);
+    expect(um.undoStack.length).toBe(3);
 
-    const stackItem = um.undoStack[0];
-    const diff = synthesizeStackItemDiffText(stackItem, text, 'doc.md');
+    // Version 1: whole file at edit 1 = just "one" (no later lines).
+    // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
+    const v1 = synthesizeVersionDiffText(um.undoStack as any, 1, text, 'doc.md');
+    expect(v1).toContain('+one');
+    expect(v1).not.toContain('two');
+    expect(v1).not.toContain('three');
 
-    expect(diff).toContain('+');
-    expect(diff).toContain('new line');
+    // Version 2: whole file at edit 2 = "one" + "two", not "three".
+    // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
+    const v2 = synthesizeVersionDiffText(um.undoStack as any, 2, text, 'doc.md');
+    expect(v2).toContain('+one');
+    expect(v2).toContain('+two');
+    expect(v2).not.toContain('three');
+
+    // Version 3 (now): the whole current document.
+    // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
+    const v3 = synthesizeVersionDiffText(um.undoStack as any, 3, text, 'doc.md');
+    expect(v3).toContain('+one');
+    expect(v3).toContain('+two');
+    expect(v3).toContain('+three');
+  });
+});
+
+describe('synthesizeVersionDiff (bodies for the WYSIWYG diff)', () => {
+  test('returns frontmatter-stripped before/after bodies alongside the diff', () => {
+    const doc = new Y.Doc();
+    const text = doc.getText('source');
+    const { origin, um } = makeUMPair(doc, text);
+    doc.transact(() => text.insert(0, '---\ntitle: T\n---\nbody line\n'), origin);
+
+    // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
+    const v1 = synthesizeVersionDiff(um.undoStack as any, 1, text, 'doc.md');
+    // Frontmatter is stripped from the rendered bodies; body content remains.
+    expect(v1.after).toContain('body line');
+    expect(v1.after).not.toContain('title: T');
+    expect(v1.before).toBe('');
+    // Source `diff` still carries full content (unchanged behavior).
+    expect(v1.diff).toContain('body line');
+  });
+
+  test('version 0 → empty diff and equal (empty) bodies', () => {
+    const doc = new Y.Doc();
+    const text = doc.getText('source');
+    const { origin, um } = makeUMPair(doc, text);
+    doc.transact(() => text.insert(0, 'new line\n'), origin);
+
+    // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
+    const v0 = synthesizeVersionDiff(um.undoStack as any, 0, text, 'doc.md');
+    expect(v0.diff).toBe('');
+    expect(v0.before).toBe(v0.after);
   });
 });
 

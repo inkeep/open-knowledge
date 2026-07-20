@@ -186,6 +186,15 @@ msgstr ""
 msgid "{0, plural, one {No problems across # document.} other {No problems across # documents.}}"
 msgstr ""
 
+#. placeholder {0}: result.additions
+#. placeholder {0}: stat.additions
+#. placeholder {1}: result.deletions
+#. placeholder {1}: stat.deletions
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "{0} added, {1} removed"
+msgstr ""
+
 #. placeholder {0}: labels[key]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{0} hex value"
@@ -417,6 +426,15 @@ msgstr ""
 #. placeholder {0}: diagnostics.length
 #: src/components/DocPanel.tsx
 msgid "{label} ({0})"
+msgstr ""
+
+#: src/components/ActivityPanelBurstRow.tsx
+msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
+msgstr ""
+
+#: src/components/TimelineDiffPane.tsx
+#: src/components/TimelinePanel.tsx
+msgid "{laterEdits, plural, one {Rolls back # later edit.} other {Rolls back # later edits.}}"
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -1353,7 +1371,7 @@ msgstr ""
 msgid "Can't safely edit this tool's config"
 msgstr ""
 
-#: src/components/ActivityPanelFileRow.tsx
+#: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
 #: src/components/ConsentDialogBody.tsx
@@ -1376,6 +1394,7 @@ msgstr ""
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillUpdateDialog.tsx
+#: src/components/TimelineDiffPane.tsx
 #: src/components/TimelinePanel.tsx
 #: src/components/TrashFailureModal.tsx
 #: src/editor/components/CodePreviewEditModal.tsx
@@ -1594,6 +1613,11 @@ msgstr ""
 msgid "Close all unpinned"
 msgstr ""
 
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "Close diff"
+msgstr ""
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Close find"
 msgstr ""
@@ -1658,10 +1682,6 @@ msgstr ""
 msgid "Collapse"
 msgstr ""
 
-#: src/components/ActivityPanelFileRow.tsx
-msgid "Collapse {docName}"
-msgstr ""
-
 #: src/components/ArrayOfObjectsWidget.tsx
 #: src/components/ObjectWidget.tsx
 msgid "Collapse {keyName}"
@@ -1675,10 +1695,6 @@ msgstr ""
 
 #: src/components/BottomComposer.tsx
 msgid "Collapse Ask AI"
-msgstr ""
-
-#: src/components/ActivityPanelBurstRow.tsx
-msgid "Collapse burst {burstNumber} diff"
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -2724,11 +2740,13 @@ msgstr ""
 msgid "Diagram view mode"
 msgstr ""
 
-#: src/components/TimelinePanel.tsx
-msgid "Diff layout"
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "Diff render mode"
 msgstr ""
 
-#: src/components/TimelinePanel.tsx
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
 msgid "Diff unavailable"
 msgstr ""
 
@@ -3002,6 +3020,10 @@ msgstr ""
 msgid "Edit with AI"
 msgstr ""
 
+#: src/components/TimelinePanel.tsx
+msgid "Edited"
+msgstr ""
+
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "Edited {editedAgo}"
 msgstr ""
@@ -3198,10 +3220,6 @@ msgstr ""
 msgid "Exit merge"
 msgstr ""
 
-#: src/components/ActivityPanelFileRow.tsx
-msgid "Expand {docName}"
-msgstr ""
-
 #: src/components/ArrayOfObjectsWidget.tsx
 #: src/components/ObjectWidget.tsx
 msgid "Expand {keyName}"
@@ -3211,10 +3229,6 @@ msgstr ""
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Expand all"
-msgstr ""
-
-#: src/components/ActivityPanelBurstRow.tsx
-msgid "Expand burst {burstNumber} diff"
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -3508,10 +3522,6 @@ msgstr ""
 
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
-msgstr ""
-
-#: src/components/ActivityPanelBurstRow.tsx
-msgid "Failed: {loadError}"
 msgstr ""
 
 #: src/editor/slash-command/items.tsx
@@ -3987,6 +3997,11 @@ msgstr ""
 msgid "Hide HTML preview"
 msgstr ""
 
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "Hide panel"
+msgstr ""
+
 #: src/components/EditorToolbar.tsx
 msgid "Hide panel ({panelShortcut})"
 msgstr ""
@@ -4397,6 +4412,10 @@ msgstr ""
 msgid "Last sync"
 msgstr ""
 
+#: src/components/ActivityPanelBurstRow.tsx
+msgid "Latest edit"
+msgstr ""
+
 #: src/editor/components/Pdf.tsx
 msgid "Layout"
 msgstr ""
@@ -4509,12 +4528,13 @@ msgstr ""
 msgid "Loading conflict for {filePath}"
 msgstr ""
 
-#: src/components/ActivityPanelBurstRow.tsx
-#: src/components/TimelinePanel.tsx
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
 msgid "Loading diff"
 msgstr ""
 
-#: src/components/TimelinePanel.tsx
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
 msgid "Loading diff renderer"
 msgstr ""
 
@@ -5028,6 +5048,10 @@ msgstr ""
 msgid "New worktree"
 msgstr ""
 
+#: src/components/TimelineDiffPane.tsx
+msgid "Next change"
+msgstr ""
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Next match"
 msgstr ""
@@ -5056,12 +5080,16 @@ msgstr ""
 msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
 msgstr ""
 
-#: src/components/SkillRow.tsx
-msgid "No description yet — add one so agents know when to use this skill."
+#: src/components/AgentDiffPane.tsx
+msgid "No content changes at this version."
 msgstr ""
 
-#: src/components/ActivityPanelBurstRow.tsx
-msgid "No diff."
+#: src/components/TimelineDiffPane.tsx
+msgid "No content changes in this version"
+msgstr ""
+
+#: src/components/SkillRow.tsx
+msgid "No description yet — add one so agents know when to use this skill."
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -5329,10 +5357,6 @@ msgstr ""
 
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
-msgstr ""
-
-#: src/components/ActivityPanelFileRow.tsx
-msgid "Nothing to undo on this file"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -5769,6 +5793,10 @@ msgstr ""
 msgid "Organize specs"
 msgstr ""
 
+#: src/components/AgentDiffPane.tsx
+msgid "Original file — before this agent's edits."
+msgstr ""
+
 #: src/components/GraphPanel.tsx
 msgid "Orphan mode"
 msgstr ""
@@ -6016,6 +6044,10 @@ msgstr ""
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Previews of links to other documents in this project are always on and read from the local index — nothing leaves your computer for those."
+msgstr ""
+
+#: src/components/TimelineDiffPane.tsx
+msgid "Previous change"
 msgstr ""
 
 #: src/editor/find-replace/FindReplaceBar.tsx
@@ -6416,6 +6448,12 @@ msgstr ""
 msgid "Rename succeeded but the tabstrip may be out of date — refresh to resync"
 msgstr ""
 
+#. placeholder {0}: docLeaf(descriptor.from)
+#. placeholder {1}: docLeaf(descriptor.to)
+#: src/components/TimelinePanel.tsx
+msgid "Renamed {0} → {1}"
+msgstr ""
+
 #: src/components/SkillRenameDialog.tsx
 msgid "Renamed to \"{trimmed}\""
 msgstr ""
@@ -6430,6 +6468,11 @@ msgstr ""
 
 #: src/components/TemplateForm.tsx
 msgid "Renaming changes the file on disk and the id agents use to pick this template."
+msgstr ""
+
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "Rendered"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -6594,28 +6637,50 @@ msgstr ""
 msgid "Restarting the server…"
 msgstr ""
 
+#: src/components/TimelineDiffPane.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Restore"
 msgstr ""
 
+#: src/components/TimelineDiffPane.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Restore failed"
 msgstr ""
 
+#: src/components/TimelineDiffPane.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Restore failed — document unchanged"
+msgstr ""
+
+#: src/components/ActivityPanelBurstRow.tsx
+msgid "Restore to edit {burstNumber} of {docName}"
+msgstr ""
+
+#: src/components/ActivityPanelBurstRow.tsx
+msgid "Restore to this edit"
 msgstr ""
 
 #: src/components/TimelinePanel.tsx
 msgid "Restore to this point"
 msgstr ""
 
+#: src/components/TimelineDiffPane.tsx
 #: src/components/TimelinePanel.tsx
-msgid "Restore to this point?"
+msgid "Restore to this version?"
 msgstr ""
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Restore with remote changes"
+msgstr ""
+
+#. placeholder {0}: descriptor.targetSha7
+#: src/components/TimelinePanel.tsx
+msgid "Restored an earlier version ({0})"
+msgstr ""
+
+#. placeholder {0}: formatAbsoluteTime(target.timestamp)
+#: src/components/TimelinePanel.tsx
+msgid "Restored to the version from {0}"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -6664,10 +6729,6 @@ msgstr ""
 
 #: src/components/FileSidebar.tsx
 msgid "Reveal in Finder, No workspace"
-msgstr ""
-
-#: src/components/ActivityPanelFileRow.tsx
-msgid "Reverts every change this agent made to <0>{docName}</0> this session ({burstCount, plural, one {# burst} other {# bursts}}). Other files and writers are unaffected."
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -6994,7 +7055,7 @@ msgstr ""
 msgid "Session ended"
 msgstr ""
 
-#: src/components/ActivityPanelFileRow.tsx
+#: src/components/ActivityPanelBurstRow.tsx
 msgid "Session ended — undo unavailable"
 msgstr ""
 
@@ -7196,6 +7257,11 @@ msgstr ""
 msgid "Show or hide terminal"
 msgstr ""
 
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "Show panel"
+msgstr ""
+
 #: src/components/EditorToolbar.tsx
 msgid "Show panel ({panelShortcut})"
 msgstr ""
@@ -7355,7 +7421,9 @@ msgstr ""
 msgid "Something went wrong. Please try again."
 msgstr ""
 
+#: src/components/AgentDiffPane.tsx
 #: src/components/MermaidFileViewer.tsx
+#: src/components/TimelineDiffPane.tsx
 msgid "Source"
 msgstr ""
 
@@ -7393,10 +7461,6 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Source undo or redo"
-msgstr ""
-
-#: src/components/TimelinePanel.tsx
-msgid "Split diff"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -7628,6 +7692,10 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Synced"
+msgstr ""
+
+#: src/components/TimelinePanel.tsx
+msgid "Synced from disk"
 msgstr ""
 
 #: src/components/ShareFreshnessWarning.tsx
@@ -8140,10 +8208,6 @@ msgstr ""
 msgid "This usually means one of:"
 msgstr ""
 
-#: src/components/TimelinePanel.tsx
-msgid "This will replace the current document content with the version from <0>{relative} ({absoluteTime}, {entrySha})</0> by <1>{authorName}</1>. Your current content is already saved in the timeline — you can restore it anytime."
-msgstr ""
-
 #: src/components/DocPanel.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Timeline"
@@ -8312,28 +8376,17 @@ msgstr ""
 msgid "Underline"
 msgstr ""
 
-#: src/components/settings/SharingSection.tsx
-msgid "Undo"
-msgstr ""
-
-#: src/components/ActivityPanelFileRow.tsx
-msgid "Undo all"
-msgstr ""
-
-#: src/components/ActivityPanelFileRow.tsx
-msgid "Undo all edits"
-msgstr ""
-
-#: src/components/ActivityPanelFileRow.tsx
-msgid "Undo all edits on {docName}"
-msgstr ""
-
-#: src/components/ActivityPanelFileRow.tsx
-msgid "Undo all edits on this file?"
+#: src/components/ActivityModeContent.tsx
+msgid "Undid {dropCount} edits on {docName}"
 msgstr ""
 
 #: src/components/ActivityModeContent.tsx
-msgid "Undo all failed: {message}"
+msgid "Undid the last edit on {docName}"
+msgstr ""
+
+#: src/components/ActivityPanelBurstRow.tsx
+#: src/components/settings/SharingSection.tsx
+msgid "Undo"
 msgstr ""
 
 #: src/components/ActivityModeContent.tsx
@@ -8344,14 +8397,6 @@ msgstr ""
 msgid "Undo failed: {message}"
 msgstr ""
 
-#: src/components/ActivityPanelFileRow.tsx
-msgid "Undo last edit"
-msgstr ""
-
-#: src/components/ActivityPanelFileRow.tsx
-msgid "Undo last edit on {docName}"
-msgstr ""
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Undo or redo"
 msgstr ""
@@ -8360,16 +8405,12 @@ msgstr ""
 msgid "Undo or redo visual-editor changes through TipTap collaboration history."
 msgstr ""
 
+#: src/components/ActivityPanelBurstRow.tsx
+msgid "Undo to this edit?"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Undo, redo, or undo selection changes through CodeMirror history."
-msgstr ""
-
-#: src/components/ActivityModeContent.tsx
-msgid "Undone all edits on {docName}"
-msgstr ""
-
-#: src/components/TimelinePanel.tsx
-msgid "Unified diff"
 msgstr ""
 
 #: src/components/skill-actions.tsx
@@ -8589,6 +8630,10 @@ msgstr ""
 
 #: src/components/AssetPreview.tsx
 msgid "View as text"
+msgstr ""
+
+#: src/components/ActivityPanelBurstRow.tsx
+msgid "View diff for edit {burstNumber} of {docName}"
 msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
@@ -8899,6 +8944,11 @@ msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Your copy of branch <0>{shareBranch}</0> has changes that aren't on GitHub. The {targetNoun} will appear once the branch syncs."
+msgstr ""
+
+#: src/components/TimelineDiffPane.tsx
+#: src/components/TimelinePanel.tsx
+msgid "Your current version is saved first, so this is reversible."
 msgstr ""
 
 #: src/components/settings/EmbeddingsKeySection.tsx

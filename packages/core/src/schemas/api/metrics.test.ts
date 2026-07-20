@@ -159,22 +159,36 @@ describe('AgentBurstDiffSuccessSchema', () => {
     expect(
       AgentBurstDiffSuccessSchema.safeParse({
         diff: '@@ -1 +1 @@\n-old\n+new\n',
+        before: 'old',
+        after: 'new',
         generatedAt: 1714512345000,
       }).success,
     ).toBe(true);
   });
-  test('parses an empty diff string', () => {
+  test('parses an empty diff string with empty bodies', () => {
+    expect(
+      AgentBurstDiffSuccessSchema.safeParse({
+        diff: '',
+        before: '',
+        after: '',
+        generatedAt: 0,
+      }).success,
+    ).toBe(true);
+  });
+  test('rejects a missing before/after body', () => {
     expect(
       AgentBurstDiffSuccessSchema.safeParse({
         diff: '',
         generatedAt: 0,
       }).success,
-    ).toBe(true);
+    ).toBe(false);
   });
   test('rejects negative generatedAt', () => {
     expect(
       AgentBurstDiffSuccessSchema.safeParse({
         diff: '',
+        before: '',
+        after: '',
         generatedAt: -1,
       }).success,
     ).toBe(false);

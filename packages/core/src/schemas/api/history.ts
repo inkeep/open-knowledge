@@ -98,6 +98,7 @@ export const HistoryEntrySchema = z
     message: z.string(),
     contributors: z.array(HistoryShadowContributorSchema),
     checkpoint: z.unknown().nullable(),
+    parentSha: z.string().nullable().optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type HistoryEntry = z.infer<typeof HistoryEntrySchema>;

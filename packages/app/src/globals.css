@@ -5345,6 +5345,52 @@ html.electron-mode [data-slot="sidebar-inner"] {
   @apply font-mono bg-muted text-inherit border border-border rounded-md px-1 py-0.5 text-sm;
 }
 
+/* Rendered (WYSIWYG) Timeline diff — inline track-changes decorations.
+   Scoped under .ProseMirror so they render inside the read-only diff editor's
+   content DOM (RenderedDiffView). `ins`/`del` are decoration classes, not real
+   nodes — see lib/rendered-diff/diff-decorations.ts. */
+.ProseMirror .ok-diff-ins {
+  background-color: color-mix(in srgb, var(--color-emerald-500) 18%, transparent);
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* Whole added block (node decoration on the `<li>`/`<p>`/`<h2>` itself). */
+.ProseMirror .ok-diff-ins-block {
+  background-color: color-mix(in srgb, var(--color-emerald-500) 14%, transparent);
+  border-radius: 2px;
+  padding-inline: 0.25rem;
+  border-left: 2px solid var(--color-emerald-500);
+}
+
+.ProseMirror .ok-diff-del {
+  color: var(--color-red-600);
+  text-decoration: line-through;
+  background-color: color-mix(in srgb, var(--color-red-500) 10%, transparent);
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+.dark .ProseMirror .ok-diff-del {
+  color: var(--color-red-400);
+}
+
+/* Whole-block deletions render as a struck-through block (removed heading /
+   list / code) rather than an inline run. */
+.ProseMirror .ok-diff-del-block {
+  display: block;
+  margin-block: 0.15em;
+  padding-inline: 0.25rem;
+  border-left: 2px solid var(--color-red-500);
+}
+
+/* Removed content is chrome, not editable document — never show a text caret. */
+.ProseMirror .ok-diff-del,
+.ProseMirror .ok-diff-del * {
+  cursor: default;
+}
+
 /* Mermaid WYSIWYG canvas (`mermaid-wysiwyg` package). The package injects its
    own `<style data-mw>` at runtime with `--mw-*` custom-property hooks for all
    interaction chrome (selection glow, popovers, in-place editors, plus-menus).

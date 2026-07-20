@@ -93,7 +93,7 @@ function mockHistory(entries: TimelineEntry[]) {
 function renderTimeline() {
   return render(
     <TooltipProvider>
-      <TimelineContent docName="notes" diffLayout="unified" onDiffLayoutChange={() => {}} />
+      <TimelineContent docName="notes" />
     </TooltipProvider>,
   );
 }
@@ -110,7 +110,7 @@ describe('TimelineContent — actor/system commits only', () => {
 
     // Two WIP rows render; the interleaved checkpoint row is dropped.
     await waitFor(() => {
-      expect(screen.getAllByTestId('timeline-entry-expand')).toHaveLength(2);
+      expect(screen.getAllByTestId('timeline-entry-open')).toHaveLength(2);
     });
     expect(screen.getByText('Alice')).toBeTruthy();
     expect(screen.getByText('Bob')).toBeTruthy();
@@ -128,7 +128,7 @@ describe('TimelineContent — actor/system commits only', () => {
     renderTimeline();
 
     await waitFor(() => {
-      expect(screen.getAllByTestId('timeline-entry-expand')).toHaveLength(2);
+      expect(screen.getAllByTestId('timeline-entry-open')).toHaveLength(2);
     });
     expect(screen.getByText('Alice')).toBeTruthy();
     expect(screen.getByText('Upstream sync')).toBeTruthy();
@@ -142,7 +142,7 @@ describe('TimelineContent — actor/system commits only', () => {
     await waitFor(() => {
       expect(screen.getByText('No history yet')).toBeTruthy();
     });
-    expect(screen.queryAllByTestId('timeline-entry-expand')).toHaveLength(0);
+    expect(screen.queryAllByTestId('timeline-entry-open')).toHaveLength(0);
   });
 
   test('the panel header has no Save Version control', async () => {

@@ -3,10 +3,10 @@
  *
  *
  * Asserts the canonical RFC 9457 wire shape for
- * `GET /api/agent-burst-diff?agentId=...&docName=...&stackIndex=...`:
+ * `GET /api/agent-burst-diff?agentId=...&docName=...&keptCount=...`:
  *   - missing agentId / docName → 400 `urn:ok:error:invalid-request`.
  *   - reserved docname → 400 `urn:ok:error:reserved-doc-name`.
- *   - non-numeric / negative stackIndex → 400 `urn:ok:error:invalid-request`.
+ *   - non-numeric / negative keptCount → 400 `urn:ok:error:invalid-request`.
  *   - no active session → 404 `urn:ok:error:no-active-session`.
  *   - method-not-allowed on POST → 405 `urn:ok:error:method-not-allowed`.
  *
@@ -34,7 +34,7 @@ afterAll(async () => {
 describe('agent-burst-diff envelope (RFC 9457)', () => {
   test('missing agentId emits 400 urn:ok:error:invalid-request', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${server.port}/api/agent-burst-diff?docName=foo&stackIndex=0`,
+      `http://127.0.0.1:${server.port}/api/agent-burst-diff?docName=foo&keptCount=0`,
     );
     expect(res.status).toBe(400);
     expect(res.headers.get('content-type')).toBe('application/problem+json');
@@ -49,7 +49,7 @@ describe('agent-burst-diff envelope (RFC 9457)', () => {
 
   test('missing docName emits 400 urn:ok:error:invalid-request', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${server.port}/api/agent-burst-diff?agentId=agent-x&stackIndex=0`,
+      `http://127.0.0.1:${server.port}/api/agent-burst-diff?agentId=agent-x&keptCount=0`,
     );
     expect(res.status).toBe(400);
 
@@ -63,7 +63,7 @@ describe('agent-burst-diff envelope (RFC 9457)', () => {
 
   test('reserved docname emits 400 urn:ok:error:reserved-doc-name', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${server.port}/api/agent-burst-diff?agentId=agent-x&docName=__system__&stackIndex=0`,
+      `http://127.0.0.1:${server.port}/api/agent-burst-diff?agentId=agent-x&docName=__system__&keptCount=0`,
     );
     expect(res.status).toBe(400);
 
@@ -74,9 +74,9 @@ describe('agent-burst-diff envelope (RFC 9457)', () => {
     }
   });
 
-  test('negative stackIndex emits 400 urn:ok:error:invalid-request', async () => {
+  test('negative keptCount emits 400 urn:ok:error:invalid-request', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${server.port}/api/agent-burst-diff?agentId=agent-x&docName=foo&stackIndex=-1`,
+      `http://127.0.0.1:${server.port}/api/agent-burst-diff?agentId=agent-x&docName=foo&keptCount=-1`,
     );
     expect(res.status).toBe(400);
 
@@ -90,7 +90,7 @@ describe('agent-burst-diff envelope (RFC 9457)', () => {
 
   test('no active session emits 404 urn:ok:error:no-active-session', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${server.port}/api/agent-burst-diff?agentId=agent-x&docName=does-not-exist-${crypto.randomUUID().slice(0, 8)}&stackIndex=0`,
+      `http://127.0.0.1:${server.port}/api/agent-burst-diff?agentId=agent-x&docName=does-not-exist-${crypto.randomUUID().slice(0, 8)}&keptCount=0`,
     );
     expect(res.status).toBe(404);
 

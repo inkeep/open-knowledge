@@ -12,8 +12,10 @@
  *     `'doc'` mode. Tooltip copy is verified.
  *   - click a filename in the activity list → main editor navigates;
  *     panel stays in `'agent'` mode.
- *   - Undo last dispatch does not move the main editor's
- *     active doc and does not exit the activity view.
+ *   - click an edit row → opens that version's agent-diff pane; the pane
+ *     paints over the editor, so the main editor follows to the agent's doc
+ *     while the activity view stays open (supersedes the original AC-P7
+ *     "active doc unchanged on undo" — the agent-diff pane now drives nav).
  *
  * Behaviour deliberately NOT tested here, with rationale:
  *   - live CC1 update (700 ms arrival budget) — the Playwright
@@ -30,8 +32,8 @@
  *   [data-testid="docpanel-exit-agent-mode"]         — back-arrow button
  *   [data-testid="activity-panel-file-row"]          — one file entry
  *   [data-testid="activity-panel-file-row-filename"] — filename link
- *   [data-testid="activity-panel-file-row-carrot"]   — expand toggle
- *   [data-testid="activity-panel-undo-last"]         — undo-last button
+ *   [data-testid="activity-panel-burst-open"]        — one edit row (opens its diff)
+ *   [data-testid="activity-panel-burst-restore"]     — per-edit restore action
  */
 
 import { expect, test, waitForActiveProviderSynced as waitForProvider } from './_helpers';
@@ -237,7 +239,10 @@ test.describe('Activity mode (DocPanel) — avatar drill-in, back-arrow exit', (
     await expect(panel).toBeVisible();
   });
 
-  test('AC-P4 (carryover): undo does not move main editor active doc', async ({ page, api }) => {
+  test('clicking an edit row opens the version diff and the editor follows to the agent doc', async ({
+    page,
+    api,
+  }) => {
     const docView = 'panel-t7-view';
     const docAgent = 'panel-t7-agent';
     await api.seedDocs([
@@ -266,18 +271,24 @@ test.describe('Activity mode (DocPanel) — avatar drill-in, back-arrow exit', (
     const panel = page.locator('[data-testid="activity-panel"]');
     await expect(panel).toBeVisible({ timeout: 5_000 });
 
-    // Expand the file row, then click Undo last.
+    // Edits are always expanded now — click the edit row to open its diff.
     const row = panel.locator('[data-testid="activity-panel-file-row"]').first();
-    await row.locator('[data-testid="activity-panel-file-row-carrot"]').click();
-    const undoLast = panel.locator('[data-testid="activity-panel-undo-last"]');
-    await expect(undoLast).toBeVisible({ timeout: 5_000 });
-    await undoLast.click();
+    const burst = row.locator('[data-testid="activity-panel-burst-open"]').first();
+    await expect(burst).toBeVisible({ timeout: 5_000 });
+    await burst.click();
 
-    // After undo dispatch, the URL hash (active doc) stays on docView.
+    // Clicking the edit opens the agent-diff pane. The pane paints over the
+    // editor slot, so EditorArea navigates the main editor to the agent's doc
+    // — the URL hash moves off docView onto docAgent.
     await expect
-      .poll(async () => page.url(), { timeout: 2_000, intervals: [100, 250, 500] })
-      .toBe(urlBefore);
-    // DocPanel stays in agent mode across undo.
+      .poll(async () => page.url(), { timeout: 5_000, intervals: [100, 250, 500] })
+      .not.toBe(urlBefore);
+    await expect
+      .poll(async () => page.url(), { timeout: 5_000, intervals: [100, 250, 500] })
+      .toContain(`/#/${docAgent}`);
+    // The staged version's diff is now painting over the editor.
+    await expect(page.locator('[data-testid="agent-diff-pane"]')).toBeVisible({ timeout: 5_000 });
+    // DocPanel stays in agent mode across the version-diff open.
     const backButton = page.locator('[data-testid="docpanel-exit-agent-mode"]');
     await expect(backButton).toBeVisible();
   });

@@ -19,10 +19,22 @@
  * + `Item.right` — both are publicly typed in `node_modules/yjs/dist/src/**`
  * and are the documented way to walk a Y.Text's Item chain.
  */
-import { AGENT_ICON_COLORS, colorFromSeed, iconFromClientName } from '@inkeep/open-knowledge-core';
+import {
+  AGENT_ICON_COLORS,
+  colorFromSeed,
+  iconFromClientName,
+  stripFrontmatter,
+} from '@inkeep/open-knowledge-core';
 import { createPatch } from 'diff';
 import type * as Y from 'yjs';
-import { ContentString, Item, iterateDeletedStructs } from 'yjs';
+import {
+  ContentString,
+  createID,
+  Item,
+  isDeleted,
+  iterateDeletedStructs,
+  mergeDeleteSets,
+} from 'yjs';
 import type { AgentSessionManager } from './agent-sessions.ts';
 
 // ------------------------------------------------------------------
@@ -172,19 +184,95 @@ export function synthesizeStackItemDiff(
 }
 
 /**
- * Produce a unified-diff string for a single StackItem using the `diff`
- * package's `createPatch` (±3 context lines). Returns an empty string when
- * `before === after` so callers can render a placeholder rather than an
- * empty hunk.
+ * Reconstruct the document body as it stood after the first `keptCount` bursts
+ * — i.e. with every burst at index >= `keptCount` rolled back. Walks the live
+ * Y.Text item chain and, treating those later bursts as "the future", excludes
+ * the text they inserted and restores the text they deleted. `keptCount === 0`
+ * yields the pre-agent original; `keptCount === undoStack.length` yields the
+ * current document.
+ *
+ * Point-in-time reconstruction is what lets the undo timeline scrub: sliding to
+ * edit K shows the file as it actually was at edit K, not edit K's change
+ * highlighted inside today's document.
+ *
+ * Tombstone content is readable because `Y.UndoManager.keepItem` is set at
+ * capture for every StackItem still on the stack (all of which we read here).
  */
-export function synthesizeStackItemDiffText(
-  stackItem: YjsStackItemShape,
+function reconstructStateAsOf(
+  undoStack: YjsStackItemShape[],
+  keptCount: number,
+  ytext: Y.Text,
+): string {
+  // Merge the insert/delete ranges of every "future" burst (index >= keptCount)
+  // into two DeleteSets. Classification is by clock ID range, NOT Item identity:
+  // yjs merges adjacent same-client items (even across bursts), so the live item
+  // chain no longer maps 1:1 to the Items a StackItem referenced — a merged item
+  // can straddle a burst boundary. Per-character clock lookup handles that split.
+  const future = undoStack.slice(keptCount);
+  const futureInserts = mergeDeleteSets(
+    future.map((s) => s.insertions) as unknown as Parameters<typeof mergeDeleteSets>[0],
+  );
+  const futureDeletes = mergeDeleteSets(
+    future.map((s) => s.deletions) as unknown as Parameters<typeof mergeDeleteSets>[0],
+  );
+
+  let out = '';
+  for (const item of walkYTextItems(ytext)) {
+    if (!(item.content instanceof ContentString)) continue;
+    const str = item.content.str;
+    const { client, clock } = item.id;
+    for (let j = 0; j < str.length; j++) {
+      const id = createID(client, clock + j);
+      // Present at this point iff a later burst did not insert this char, and it
+      // is either still live or was only deleted by a later burst.
+      const insertedLater = isDeleted(futureInserts, id);
+      const deletedLater = isDeleted(futureDeletes, id);
+      if (!insertedLater && (!item.deleted || deletedLater)) out += str[j];
+    }
+  }
+  return out;
+}
+
+/**
+ * Produce a whole-page unified-diff string for a file *version* — the document
+ * with the first `keptCount` edits applied (`after`) vs. the pre-agent original
+ * (`before`), both point-in-time (see `reconstructStateAsOf`). So version 0 is
+ * the empty/original file (empty diff), and version N (all edits) is the whole
+ * current document. This is what the undo timeline scrubs: each stop shows the
+ * entire file as it stood at that version, not one edit's isolated change.
+ *
+ * Returns an empty string when `before === after` (e.g. version 0, or a
+ * frontmatter-only edit) so callers can render a placeholder. Whole-file context
+ * so `AgentDiffPane` shows the entire page (mirrors `computeTimelineDiff`).
+ */
+export function synthesizeVersionDiff(
+  undoStack: YjsStackItemShape[],
+  keptCount: number,
+  ytext: Y.Text,
+  docName: string,
+): { diff: string; before: string; after: string } {
+  const beforeRaw = reconstructStateAsOf(undoStack, 0, ytext);
+  const afterRaw = reconstructStateAsOf(undoStack, keptCount, ytext);
+  const diff =
+    beforeRaw === afterRaw
+      ? ''
+      : createPatch(docName, beforeRaw, afterRaw, undefined, undefined, {
+          context: Math.max(beforeRaw.split('\n').length, afterRaw.split('\n').length),
+        });
+  // Frontmatter-stripped bodies for the client's WYSIWYG diff — parity with the
+  // Timeline path (`useTimelineEntryDiff`), which strips before rendering. The
+  // unified `diff` above keeps full content, so Source mode is unchanged.
+  return { diff, before: stripFrontmatter(beforeRaw).body, after: stripFrontmatter(afterRaw).body };
+}
+
+/** Back-compat: the unified-diff string alone (the pre-WYSIWYG callers + tests). */
+export function synthesizeVersionDiffText(
+  undoStack: YjsStackItemShape[],
+  keptCount: number,
   ytext: Y.Text,
   docName: string,
 ): string {
-  const { before, after } = synthesizeStackItemDiff(stackItem, ytext);
-  if (before === after) return '';
-  return createPatch(docName, before, after, undefined, undefined, { context: 3 });
+  return synthesizeVersionDiff(undoStack, keptCount, ytext, docName).diff;
 }
 
 // ------------------------------------------------------------------

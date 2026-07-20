@@ -383,6 +383,8 @@ function applyAgentMarkdownWriteInner(
  *
  * scope 'last': undo one UM stack item.
  * scope 'session': undo entire UM stack.
+ * scope 'count': undo the `count` newest UM stack items (clamped to depth) —
+ *   the scoped "undo to edit N" range. `count` is required for this scope.
  *
  * Returns `true` when at least one UM frame was popped (i.e., the undo had
  * an observable effect), `false` when the stack was already empty. Callers
@@ -418,7 +420,7 @@ function applyAgentMarkdownWriteInner(
  */
 export function applyAgentUndo(
   session: SessionRecord,
-  scope: 'last' | 'session',
+  scope: 'last' | 'session' | 'count',
   /**
    * Embed-resolver context for `mdManager.parseWithFallback` — same shape
    * `applyAgentMarkdownWrite` accepts. Required for parity: the post-undo
@@ -431,6 +433,8 @@ export function applyAgentUndo(
     resolveEmbed: (basename: string, sourcePath: string) => string | null;
     sourcePath: string;
   },
+  /** Frames to pop when `scope === 'count'` (clamped to stack depth). */
+  count?: number,
 ): boolean {
   // Conflict-aware write gate — symmetric with `applyAgentMarkdownWrite`.
   // Undo is also a mutation: it pops a UM frame and rewrites Y.Text. The
@@ -450,7 +454,7 @@ export function applyAgentUndo(
       },
     },
     () => {
-      const undone = applyAgentUndoInner(session, scope, embedResolver);
+      const undone = applyAgentUndoInner(session, scope, embedResolver, count);
       setActiveSpanAttributes({ 'agent.undo_effective': undone });
       return undone;
     },
@@ -459,31 +463,36 @@ export function applyAgentUndo(
 
 function applyAgentUndoInner(
   session: SessionRecord,
-  scope: 'last' | 'session',
+  scope: 'last' | 'session' | 'count',
   embedResolver?: {
     resolveEmbed: (basename: string, sourcePath: string) => string | null;
     sourcePath: string;
   },
+  count?: number,
 ): boolean {
   const { dc, um, undoOrigin } = session;
   const document = dc.document;
+
+  // 'count' pops the N newest frames — clamp to the live depth so an
+  // over-large request (the timeline's list can lag a just-landed burst) is a
+  // full drain, not an error. A non-positive count is a no-op.
+  const framesToPop =
+    scope === 'last'
+      ? 1
+      : scope === 'count'
+        ? Math.min(Math.max(0, count ?? 0), um.undoStack.length)
+        : um.undoStack.length;
 
   let undone = false;
   // Wrap undo + composition in one outer transact under undoOrigin.
   // Y.js merges um.undo()'s nested transact into this outer → fires under undoOrigin.
   // isPairedWriteOrigin(undoOrigin) === true → Observer A/B short-circuit on settle.
   document.transact(() => {
-    if (scope === 'last') {
-      if (um.undoStack.length === 0) return;
+    for (let i = 0; i < framesToPop && um.undoStack.length > 0; i++) {
       um.undo();
       undone = true;
-    } else {
-      while (um.undoStack.length > 0) {
-        um.undo();
-        undone = true;
-      }
     }
-    deriveFragmentFromYtext(document, embedResolver);
+    if (undone) deriveFragmentFromYtext(document, embedResolver);
   }, undoOrigin);
 
   return undone;

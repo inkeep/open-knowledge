@@ -36,6 +36,7 @@ import { syncPromiseHasResolved } from '@/editor/sync-promise';
 import { useDocumentStats } from '@/hooks/use-document-stats';
 import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
 import { useSelectionStats } from '@/hooks/use-selection-stats';
+import { closeAgentDiff, useAgentDiffView } from '@/lib/agent-diff-store';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
 import { getInitialDocPanelWidth, writeDocPanelWidth } from '@/lib/doc-panel-width-store';
@@ -54,6 +55,7 @@ import {
   MIN_TERMINAL_WIDTH,
   writeTerminalWidth,
 } from '@/lib/terminal-width-store';
+import { closeTimelineDiff, useTimelineDiffView } from '@/lib/timeline-diff-store';
 import { useSettingsRoute } from '@/lib/use-settings-route';
 import { cn } from '@/lib/utils';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
@@ -73,6 +75,20 @@ import { useLiveXtermTheme } from './use-live-xterm-theme';
 const LazyActivityModeContent = lazy(async () => {
   const mod = await import('@/components/ActivityModeContent');
   return { default: mod.ActivityModeContent };
+});
+
+// The full-pane version diffs are overlays that only paint on user action (open
+// a Timeline/agent diff), so they're code-split off the eager editor bundle —
+// this keeps the rendered-diff engine + `prosemirror-recreate-transform` out of
+// the main chunk (size-limit budget). Their sync `computeRenderedDiff` stays
+// intact inside the lazily-loaded pane.
+const LazyTimelineDiffPane = lazy(async () => {
+  const mod = await import('@/components/TimelineDiffPane');
+  return { default: mod.TimelineDiffPane };
+});
+const LazyAgentDiffPane = lazy(async () => {
+  const mod = await import('@/components/AgentDiffPane');
+  return { default: mod.AgentDiffPane };
 });
 
 // Shared doc-panel sizing — referenced by both the live `id="doc-panel"` and the
@@ -247,6 +263,55 @@ function EditorAreaInner({
   const isNewDoc = activeTarget?.kind === 'missing';
   const showStats = !!activeDocName && activeTarget?.kind !== 'folder';
   const editorPlaceholder = isNewDoc ? t`Start writing to create this page` : undefined;
+  // Full-pane version diff (opened from the Timeline panel). Painted as an
+  // overlay over the editor below; closed when the open doc changes since a
+  // version belongs to one doc and must never paint over an unrelated one.
+  const timelineDiff = useTimelineDiffView();
+  useEffect(() => {
+    if (timelineDiff && timelineDiff.docName !== activeDocName) closeTimelineDiff();
+  }, [activeDocName, timelineDiff]);
+  // Full-pane agent-edit diff (opened from the Agent Activity panel). Same
+  // overlay slot as the timeline diff. Unlike the timeline (always the open
+  // doc), the agent's edits can span other files and the pane steps through
+  // them, so EditorArea drives navigation: whenever the current edit's doc
+  // changes (open or step), navigate the editor to it. `agentDiffNavTargetRef`
+  // holds that in-flight target so the close-on-nav-away effect keeps the pane
+  // through the transition, then closes it only on a genuine navigation away.
+  const agentDiff = useAgentDiffView();
+  const agentDiffDoc = agentDiff?.docName ?? null;
+  const agentDiffNavTargetRef = useRef<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally keyed only on the target doc; activeDocName/openDocumentTransition are read fresh, not tracked, so this fires only when the current edit's doc changes and never fights a manual nav-away
+  useEffect(() => {
+    if (agentDiffDoc == null) {
+      agentDiffNavTargetRef.current = null;
+      return;
+    }
+    agentDiffNavTargetRef.current = agentDiffDoc;
+    if (agentDiffDoc !== activeDocName) {
+      const nextHash = hashFromDocName(agentDiffDoc);
+      if (window.location.hash === nextHash) openDocumentTransition(agentDiffDoc);
+      else window.location.hash = nextHash;
+    }
+  }, [agentDiffDoc]);
+  useEffect(() => {
+    if (agentDiffDoc == null) return;
+    if (agentDiffDoc === activeDocName) {
+      agentDiffNavTargetRef.current = null; // arrived — nav settled
+      return;
+    }
+    // Still navigating toward the current edit's doc — keep the pane mounted.
+    if (agentDiffNavTargetRef.current === agentDiffDoc) return;
+    closeAgentDiff();
+  }, [activeDocName, agentDiffDoc]);
+  // The full-pane agent diff only makes sense while the Agent Activity panel is
+  // open. When the panel is exited — "Back to document view" flips docPanelMode
+  // to 'doc', or the agent is deselected — dismiss the overlay so the editor
+  // returns to the plain document instead of stranding the reader in the diff.
+  // Covers every exit path, not just the back button (mode toggle, deselect).
+  useEffect(() => {
+    const agentPanelOpen = docPanelMode === 'agent' && docPanelAgentId !== null;
+    if (!agentPanelOpen) closeAgentDiff();
+  }, [docPanelMode, docPanelAgentId]);
   // A share-receive navigation that resolved to a missing target renders an
   // honest verdict panel instead of the create-mode editor, so a receiver can't
   // silently fork the doc at the shared path. A plain missing target — an
@@ -929,11 +994,17 @@ function EditorAreaInner({
     // own instance under shouldShowFolderComposer. Positioning and the
     // --ask-composer-height scroll inset are documented at the render site
     // below.
-    const showBottomComposer = shouldShowBottomComposer({
-      terminalVisible,
-      isEmbedded,
-      activeDocName,
-    });
+    const showBottomComposer =
+      shouldShowBottomComposer({
+        terminalVisible,
+        isEmbedded,
+        activeDocName,
+      }) &&
+      // Hide the "Ask AI" composer while a full-pane diff is open (timeline or
+      // agent edit) — it would float over the diff's bottom, and it's a
+      // live-edit affordance that doesn't apply to a read-only diff.
+      !(timelineDiff && timelineDiff.docName === activeDocName) &&
+      !(agentDiff && agentDiffDoc === activeDocName);
     const editorContent = (
       <div className="relative flex h-full flex-col">
         <div className="relative min-h-0 flex-1">
@@ -1007,6 +1078,29 @@ function EditorAreaInner({
                   fast mount never sees the affordance. */}
                 {activeDocName !== null ? <MountStalledAffordance docName={activeDocName} /> : null}
               </div>
+            ) : null}
+            {/* Full-pane version diff overlay — paints over the pool (like the
+                skeleton above) without unmounting it, so the provider stays live
+                for the vs-live comparison and closing returns instantly. */}
+            {timelineDiff && timelineDiff.docName === activeDocName ? (
+              <Suspense fallback={null}>
+                <LazyTimelineDiffPane
+                  view={timelineDiff}
+                  isPanelCollapsed={isCollapsed}
+                  onTogglePanel={togglePanel}
+                />
+              </Suspense>
+            ) : null}
+            {/* Agent-edit diff overlay — same slot + rationale as the timeline
+                pane above. Painted only for the current edit's own doc. */}
+            {agentDiff && agentDiffDoc === activeDocName ? (
+              <Suspense fallback={null}>
+                <LazyAgentDiffPane
+                  view={agentDiff}
+                  isPanelCollapsed={isCollapsed}
+                  onTogglePanel={togglePanel}
+                />
+              </Suspense>
             ) : null}
           </div>
           {!isConflict && (

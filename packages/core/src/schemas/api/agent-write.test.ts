@@ -210,6 +210,23 @@ describe('AgentUndoRequestSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  test("parses scope 'count' with a positive count", () => {
+    const result = AgentUndoRequestSchema.safeParse({
+      connectionId: 'agent-abc',
+      scope: 'count',
+      count: 3,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("rejects scope 'count' without a count (would silently no-op server-side)", () => {
+    const result = AgentUndoRequestSchema.safeParse({
+      connectionId: 'agent-abc',
+      scope: 'count',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('SummaryResponseFieldSchema', () => {

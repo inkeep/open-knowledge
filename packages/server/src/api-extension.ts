@@ -250,7 +250,7 @@ import { fileTypeFromBuffer } from 'file-type';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { captureEffect } from './activity-log.ts';
-import { listAgentActivity, synthesizeStackItemDiffText } from './agent-activity.ts';
+import { listAgentActivity, synthesizeVersionDiff } from './agent-activity.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
 import { type AgentPresenceBroadcaster, BROADCASTER_EVICTION_MS } from './agent-presence.ts';
 import {
@@ -7269,9 +7269,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   /**
    * POST /api/agent-undo — agent undo via per-session Y.UndoManager.
    *
-   * Body: { docName?: string, connectionId: string, scope?: 'last' | 'session' }
+   * Body: { docName?, connectionId, scope?: 'last' | 'session' | 'file' | 'count', count? }
    *   connectionId — the session's agentId (matches sessionManager key)
-   *   scope — 'last' undoes the top UM stack item; 'session' undoes all items.
+   *   scope — 'last' undoes the top UM stack item; 'session'/'file' undoes all;
+   *           'count' pops the `count` newest items (scoped "undo to edit N").
    *
    * Fires applyAgentUndo under session.undoOrigin (paired: true) — Observer
    * A/B short-circuit; XmlFragment-authoritative composition updates both CRDTs.
@@ -7306,9 +7307,19 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
         const { connectionId } = body;
 
-        // 'file' scope is a thin alias for 'session' (all bursts on this file's session).
-        const scope: 'last' | 'session' =
-          body.scope === 'session' || body.scope === 'file' ? 'session' : 'last';
+        // 'file' scope is a thin alias for 'session' (all bursts on this file's
+        // session). 'count' pops the N newest frames — the undo-timeline's
+        // scoped "undo to edit N" range; `count` rides through to applyAgentUndo.
+        let scope: 'last' | 'session' | 'count';
+        let count: number | undefined;
+        if (body.scope === 'count') {
+          scope = 'count';
+          count = body.count;
+        } else if (body.scope === 'session' || body.scope === 'file') {
+          scope = 'session';
+        } else {
+          scope = 'last';
+        }
 
         if (!sessionManager.hasSession(docName, connectionId)) {
           errorResponse(
@@ -7351,6 +7362,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             options.resolveEmbed
               ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
               : undefined,
+            count,
           );
           // Record attribution for the undo write so the shadow-repo L2 drain
           // fans it out under this session's writer-id. Skip when the UM stack
@@ -7458,8 +7470,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   );
 
   /**
-   * GET /api/agent-burst-diff?agentId=<connId>&docName=<path>&stackIndex=<n>
-   * Returns unified-diff text for one StackItem in a given session.
+   * GET /api/agent-burst-diff?agentId=<connId>&docName=<path>&keptCount=<n>
+   * Returns whole-page unified-diff text for a file *version* — the original
+   * (pre-agent) doc vs. the doc with the first `keptCount` edits applied. So
+   * keptCount 0 is the empty/original file and keptCount N is the current doc.
    * Exempt from extractAgentIdentity — read-only, no CRDT mutation.
    */
   const handleAgentBurstDiff = withValidation(
@@ -7469,7 +7483,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
         const agentId = validateAgentId(url.searchParams.get('agentId'));
         const rawDocName = url.searchParams.get('docName');
-        const stackIndexStr = url.searchParams.get('stackIndex');
+        const keptCountStr = url.searchParams.get('keptCount');
 
         if (agentId === null) {
           errorResponse(
@@ -7506,19 +7520,19 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        if (!stackIndexStr || Number.isNaN(Number(stackIndexStr))) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'StackIndex must be a number.', {
+        if (!keptCountStr || Number.isNaN(Number(keptCountStr))) {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'keptCount must be a number.', {
             handler: 'agent-burst-diff',
           });
           return;
         }
-        const stackIndex = Number(stackIndexStr);
-        if (!Number.isInteger(stackIndex) || stackIndex < 0) {
+        const keptCount = Number(keptCountStr);
+        if (!Number.isInteger(keptCount) || keptCount < 0) {
           errorResponse(
             res,
             400,
             'urn:ok:error:invalid-request',
-            'stackIndex must be a non-negative integer.',
+            'keptCount must be a non-negative integer.',
             { handler: 'agent-burst-diff' },
           );
           return;
@@ -7538,30 +7552,36 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         }
 
         const um = session.um;
-        if (stackIndex >= um.undoStack.length) {
+        // keptCount ranges 0 (original) .. undoStack.length (now, all edits).
+        if (keptCount > um.undoStack.length) {
           errorResponse(
             res,
             404,
             'urn:ok:error:not-found',
-            `stackIndex ${stackIndex} out of range (stack has ${um.undoStack.length} items).`,
+            `keptCount ${keptCount} out of range (stack has ${um.undoStack.length} items).`,
             { handler: 'agent-burst-diff' },
           );
           return;
         }
 
-        // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs — structural shape matches YjsStackItemShape in agent-activity.ts
-        const stackItem = um.undoStack[stackIndex] as any;
         const ytext = session.dc.document.getText('source');
-        const diff = synthesizeStackItemDiffText(stackItem, ytext, docName);
+        const { diff, before, after } = synthesizeVersionDiff(
+          // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs — structural shape matches YjsStackItemShape in agent-activity.ts
+          um.undoStack as any,
+          keptCount,
+          ytext,
+          docName,
+        );
         // `generatedAt` is the server's wall clock at response time (used for
         // client-side cache staleness). The StackItem's capture timestamp is
         // already carried in `/api/agent-activity`'s `bursts[].ts` — no need
-        // to duplicate it here.
+        // to duplicate it here. `before`/`after` are the frontmatter-stripped
+        // bodies for the client's WYSIWYG diff (Source mode uses `diff`).
         successResponse(
           res,
           200,
           AgentBurstDiffSuccessSchema,
-          { diff, generatedAt: Date.now() },
+          { diff, before, after, generatedAt: Date.now() },
           { handler: 'agent-burst-diff' },
         );
       } catch (e) {

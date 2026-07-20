@@ -599,6 +599,17 @@ Homepage: https://chevrotain.io/documentation/
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
+### `@fellow/prosemirror-recreate-transform@1.2.3`
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
+NOTICE:
+
+```
+prosemirror-recreate-steps
+Copyright 2018 Atypon Systems, LLC.
+```
+
 ### `@mongodb-js/zstd@7.0.0`
 Homepage: https://github.com/mongodb-js/zstd
 
@@ -4921,6 +4932,11 @@ Homepage: https://github.com/mcollina/reusify#readme
 
 Copyright (c) 2015-2024 Matteo Collina
 
+### `rfc6902@5.2.0`
+Homepage: https://github.com/chbrown/rfc6902
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
 ### `rope-sequence@1.3.4`
 Homepage: https://github.com/marijnh/rope-sequence
 
@@ -5965,6 +5981,11 @@ Homepage: https://d3js.org/d3-shape/
 Copyright 2010-2015 Mike Bostock
 
 ### `diff@8.0.4`
+Homepage: https://github.com/kpdecker/jsdiff
+
+Copyright (c) 2009-2015, Kevin Decker <kpdecker@gmail.com>
+
+### `diff@5.2.2`
 Homepage: https://github.com/kpdecker/jsdiff
 
 Copyright (c) 2009-2015, Kevin Decker <kpdecker@gmail.com>

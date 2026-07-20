@@ -17,9 +17,10 @@
     "-Qw-1t": ["GitHub authentication failed. Try signing in again."],
     "-WFFG2": ["Default properties"],
     "-YV1Uo": ["Pattern ", ["patternNumber"]],
+    "-bFGPF": ["Next change"],
+    "-dNlfM": ["Undid the last edit on ", ["docName"]],
     "-g6KIS": ["Unrecognized link"],
     "-gdcIo": ["Auto-sync is on — your commits push and remote changes pull on intervals."],
-    "-i7ik4": ["Collapse burst ", ["burstNumber"], " diff"],
     "-kbIAr": ["Links & images"],
     "-lCAuQ": ["Loading graph"],
     "-o5XAG": [
@@ -75,6 +76,7 @@
     ],
     "0jD-Gn": ["A team knowledge base, a personal wiki, project docs..."],
     "0kTAXe": ["Open source: ", ["mirrorSrc"]],
+    "0qyKG6": ["Synced from disk"],
     "0rwwOn": ["By tag"],
     "0s8-e8": [
       "Select, enter, or leave block components and fallback source blocks from keyboard boundaries."
@@ -88,6 +90,7 @@
     "12F9WL": ["(no id)"],
     "151wvk": ["Show sidebar"],
     "16D5Zj": ["Are you sure you want to delete ", ["itemName"], "? This action cannot be undone."],
+    "170Js2": ["Hide panel"],
     "1AumWo": ["Push failed — check the server logs for details."],
     "1CalO6": ["Style"],
     "1EcCom": [["keyName"], " value"],
@@ -140,7 +143,6 @@
     "2YOwme": ["Restarted — now running v", ["appRuntime"], "."],
     "2YZwPB": ["Forward-links response did not match expected shape."],
     "2bVHbB": ["Available in every project on this computer."],
-    "2fkdnR": ["Nothing to undo on this file"],
     "2hYmUH": ["my@email.com"],
     "2hpdRq": ["Hide panel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Enter a valid URL (for example https://api.openai.com/v1)."],
@@ -160,7 +162,6 @@
     "34qyH5": ["Could not reach server"],
     "36WXSC": ["Couldn't delete template: ", ["error"]],
     "36aWJD": ["Join us on Discord"],
-    "379t2h": ["Unified diff"],
     "38foVZ": ["Loading diff"],
     "3BnyYc": ["This doc isn't on GitHub yet. The link won't work until it's pushed."],
     "3DJEEt": [
@@ -185,6 +186,7 @@
     "3TCafD": ["Stored on this machine."],
     "3VbwPp": ["Open ", ["keyName"], " in browser"],
     "3VsNTI": ["Loading document"],
+    "3YWddZ": ["No content changes in this version"],
     "3YvS-c": ["New tab"],
     "3_6U6f": ["Connect to GitHub"],
     "3__SjS": ["breadcrumb"],
@@ -252,6 +254,7 @@
       ". Change it in Settings → Sync."
     ],
     "4zGlN_": ["Paste image URL or click upload"],
+    "4z_1j2": ["Rendered"],
     "5-FeN2": ["Share URL"],
     "5-o4kO": ["Only markdown files"],
     "50ORFs": ["Reset ", ["0"], " to default"],
@@ -286,6 +289,7 @@
     "5Umg9i": ["Disable external link previews"],
     "5WDhAk": ["Link to a page or external URL."],
     "5ZB7XC": ["File drop zone"],
+    "5ZbJFS": ["Your current version is saved first, so this is reversible."],
     "5_8TCr": ["Fix all (", ["count"], ")"],
     "5_j-DA": ["Kill Terminal"],
     "5e1Dri": ["The menu label agents pick this template by (required)."],
@@ -320,6 +324,7 @@
     "6-wLTJ": [["behind"], " behind origin"],
     "60vpJN": ["What were you doing?"],
     "62Pc08": ["Install for Claude Chat & Cowork (Desktop App)"],
+    "62bOuM": ["Latest edit"],
     "636K3K": ["Delete adjacent chip"],
     "67f-3g": ["Duplicate succeeded but the sidebar may be out of date — refresh to resync"],
     "6Aih4U": ["Offline"],
@@ -350,6 +355,7 @@
     "6gRgw8": ["Retry"],
     "6h4zVU": ["What would you like to create?"],
     "6hfDJr": ["Server error: ", ["status"]],
+    "6iDEWA": ["Show panel"],
     "6ibbCg": ["Create your first file"],
     "6ki7F2": [["0", "plural", { "one": ["#", " item"], "other": ["#", " items"] }]],
     "6lGV3K": ["Show less"],
@@ -371,7 +377,6 @@
     "7Fkcej": ["+ Add ", ["addChildName"]],
     "7H4UHD": ["Documents tagged <0>#", ["tagName"], "</0>"],
     "7JtSLi": ["Failed to delete path"],
-    "7KeV5F": ["Undo all failed: ", ["message"]],
     "7OhaRy": ["Source search"],
     "7Ongq0": ["Condense my AGENTS.md file to less than 40k characters"],
     "7OwvEL": ["Show HTML preview"],
@@ -431,6 +436,7 @@
     "8eW0WQ": ["No matching repositories."],
     "8fRyLo": ["Invalid patch payload"],
     "8fc_3j": ["Protected branch — cannot push"],
+    "8lwQlE": [["0"], " added, ", ["1"], " removed"],
     "8m8diM": ["No location selected. Use Browse to choose a folder."],
     "8nWu1k": ["Empty diagram"],
     "8tjQCz": ["Explore"],
@@ -518,9 +524,9 @@
     ],
     "Aif3E7": ["Enable semantic search"],
     "Am78jY": ["Drag ", ["keyName"], " to reorder"],
+    "ApeA0n": ["Undid ", ["dropCount"], " edits on ", ["docName"]],
     "Aq-O0x": ["status"],
     "AqnqMJ": ["API key set"],
-    "ArBWJf": ["Undo last edit"],
     "AsqRE_": ["Default location for new attachments"],
     "AtBdnD": ["Couldn't delete skill: ", ["error"]],
     "B11p-O": ["Edit markdown link"],
@@ -691,7 +697,6 @@
     "EcM3k7": ["Failed to clean up pending ", ["kind"]],
     "EcR0fl": ["Checking for installed agents"],
     "EdQY6l": ["None"],
-    "EeRZnZ": ["Expand burst ", ["burstNumber"], " diff"],
     "Ef7StM": ["Unknown"],
     "EhDLBx": ["You modified <0>", ["filePath"], "</0> locally, but it was deleted upstream."],
     "Ehkru0": ["Open, navigate, accept, or dismiss CodeMirror completion suggestions."],
@@ -802,6 +807,7 @@
     "GemPfn": ["Failed to parse forward-links error response (HTTP ", ["status"], ")"],
     "Gfr4fu": ["Server can't open documents"],
     "GhjUB_": ["Reconnected"],
+    "GkYV_4": ["Renamed ", ["0"], " → ", ["1"]],
     "Gp_twO": ["Local path"],
     "GsBUCk": ["Loading settings"],
     "Gt4gOO": ["This folder has unpushed changes. Recipients will see the last pushed version."],
@@ -822,7 +828,6 @@
     "HPTPGr": ["Create a new spec file for my user story"],
     "HSh8u_": ["Folders"],
     "HTW0Zw": ["One more step: run <0>claude</0> in this project and approve OpenKnowledge once."],
-    "HXFyWD": ["Split diff"],
     "HdkSiO": ["New file"],
     "HfI1dR": ["I already have it locally →"],
     "HjNrT0": [["0", "plural", { "one": ["#", " backlink"], "other": ["#", " backlinks"] }]],
@@ -880,7 +885,6 @@
     "Ix0K8o": ["Hide external URL nodes"],
     "IxyZXD": ["Screenshot"],
     "Izb10l": ["Fix all ", ["count"], " fixable problems"],
-    "J2MgzQ": ["Undo all edits on ", ["docName"]],
     "J2Mv98": ["Name (e.g. ", ["login"], ")"],
     "J2eKUI": ["File"],
     "J3HzPL": ["Collapse ", ["keyName"]],
@@ -973,6 +977,16 @@
     "LCUy_N": ["Session ended"],
     "LDuM35": ["Replace current match from field"],
     "LE7t79": ["Clone to a new folder"],
+    "LKIPzv": [
+      [
+        "laterEdits",
+        "plural",
+        {
+          "one": ["Removes ", "#", " newer edit on this file."],
+          "other": ["Removes ", "#", " newer edits on this file."]
+        }
+      ]
+    ],
     "LKOLNn": ["No AI agents installed"],
     "LNum6A": [["minutes"], " min ago"],
     "LRgZAt": [["owner"], "/", ["name"], " already exists"],
@@ -1032,12 +1046,12 @@
     "MJqRO6": ["Your report is being sent."],
     "MKOVhz": ["Enable git auto-sync"],
     "MQIM_Y": ["Couldn't copy. Select the URL above to copy it manually."],
+    "MRZxAn": ["Edited"],
     "MTs6g3": ["Couldn't reconnect after server restart"],
     "MUBR8r": ["Rename succeeded but the tabstrip may be out of date — refresh to resync"],
     "MUrVEo": ["No recent projects."],
     "MV-Dkb": ["Found ", ["countDisplay"], " markdown files"],
     "MVxpbf": ["Find and replace"],
-    "MWrUEd": ["Undo all"],
     "MZSBsh": [
       "No templates yet. Add one to give new docs in this folder a ready-made starting point."
     ],
@@ -1199,7 +1213,6 @@
     ],
     "PrJYSN": ["This folder isn't on GitHub yet. The link won't work until it's pushed."],
     "PrhzDE": ["Pan up"],
-    "Pyp1NA": ["Restore to this point?"],
     "Q1mtyd": ["Hide sidebar"],
     "Q5fqMz": ["Connection error — try again"],
     "Q6hhn8": ["Preferences"],
@@ -1289,8 +1302,8 @@
     "S9t1PI": ["Fixing ", ["0"], "/", ["1"]],
     "SCoBBH": ["Tag suggestions"],
     "SCzAbA": [["phase"], " — ", ["pct"], "%"],
-    "SEYWYq": ["Undo all edits on this file?"],
     "SFN6dN": ["Heading 3"],
+    "SOPwPh": ["Restore to this edit"],
     "STTOnz": [["keyName"], " type: complex value (nested; read-only)"],
     "SUOoXn": ["Failed to open project."],
     "SVLPt5": [["formatted"], " GitHub stars"],
@@ -1518,7 +1531,6 @@
     "XuQzrk": [
       "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
     ],
-    "XvPJaT": ["Diff layout"],
     "Xv_ijG": ["https://github.com/owner/repo or owner/repo"],
     "Xw_maT": ["Type a query, then press ↵ to search your pages by meaning."],
     "Xwump4": ["no git repository here"],
@@ -1571,6 +1583,7 @@
     "Z6rrjc": [
       "No <0>.markdownlint.*</0> file yet — every rule runs on the same defaults as the VS Code markdownlint extension: all on, except line length."
     ],
+    "Z79bnE": ["View diff for edit ", ["burstNumber"], " of ", ["docName"]],
     "Z7x_Zh": [
       "Git needs ",
       ["tool"],
@@ -1579,13 +1592,6 @@
     "Z8KDox": ["Enter a folder name (e.g. brain)."],
     "Z8lGw6": ["Share"],
     "ZARuZJ": ["Couldn't load files"],
-    "ZBYKxv": [
-      "Reverts every change this agent made to <0>",
-      ["docName"],
-      "</0> this session (",
-      ["burstCount", "plural", { "one": ["#", " burst"], "other": ["#", " bursts"] }],
-      "). Other files and writers are unaffected."
-    ],
     "ZBt4rI": ["Instruction for the AI"],
     "ZBxvV3": ["New Terminal"],
     "ZI8uvA": ["No problems found."],
@@ -1594,6 +1600,7 @@
     "ZQJ1IV": ["Activate the last editor tab."],
     "ZQLDTl": ["created folder"],
     "ZU8VV_": ["Remove failed: ", ["error"]],
+    "ZW3mlR": ["Diff render mode"],
     "ZWgr0b": ["In a subfolder"],
     "ZWolSV": [
       "You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want."
@@ -1610,6 +1617,7 @@
     ],
     "ZgGuA4": [["0", "plural", { "one": ["File"], "other": ["Files"] }]],
     "ZgJVnp": ["Check spelling while typing"],
+    "Zhe80e": ["Restore to edit ", ["burstNumber"], " of ", ["docName"]],
     "ZhhOwV": ["Quote"],
     "ZjtgI-": ["Command palette"],
     "ZoOlzR": [
@@ -1657,6 +1665,7 @@
     "_ayOfA": [
       "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
     ],
+    "_azghp": ["Previous change"],
     "_bth6g": ["Claude Code is installed, but OpenKnowledge tools aren't connected to it yet."],
     "_eguJc": ["Uploading"],
     "_gkGSK": ["deleted template"],
@@ -1668,6 +1677,7 @@
     "_tjopj": ["Paste duplicate"],
     "a-cKXz": ["Select all source"],
     "a3H_MR": ["Open and focus the Ask AI composer for the current editor selection."],
+    "a4FRQv": ["Undo to this edit?"],
     "a5Gha5": ["Local changes blocked the merge"],
     "a5W0q0": [
       "Are you sure you want to delete ",
@@ -1696,6 +1706,7 @@
     "arUUsK": ["Product updates"],
     "ax9kie": ["Link preview settings not yet loaded — try again in a moment"],
     "az8lvo": ["Off"],
+    "b18t0_": ["Close diff"],
     "b3Thhd": ["Upload failed"],
     "b4AQFK": ["Open activity panel for ", ["tooltipName"], ", editing ", ["realCurrentDoc"]],
     "b4VvP-": [
@@ -1939,17 +1950,6 @@
       ["shareBranch"],
       " already exists. Open its worktree from the switcher instead."
     ],
-    "h6EvY-": [
-      "This will replace the current document content with the version from <0>",
-      ["relative"],
-      " (",
-      ["absoluteTime"],
-      ", ",
-      ["entrySha"],
-      ")</0> by <1>",
-      ["authorName"],
-      "</1>. Your current content is already saved in the timeline — you can restore it anytime."
-    ],
     "h7FzJC": ["Link-graph response did not match expected shape."],
     "h9QFb9": ["Skill \"", ["0"], "\" deleted"],
     "hBMK4W": ["Project templates"],
@@ -1990,6 +1990,7 @@
     "hyCxJY": ["Open that worktree instead"],
     "hynz2K": ["Download started"],
     "i-ShMB": ["Diagram"],
+    "i09An-": ["Restored an earlier version (", ["0"], ")"],
     "i1flq_": ["Wiki link suggestions"],
     "i3f2kh": ["No matching commands."],
     "i92eAT": ["We'll create a repository and start syncing — no terminal needed."],
@@ -2013,7 +2014,6 @@
     "iKSP5j": ["Word wrap"],
     "iKZkk1": ["Property value"],
     "iMkWoF": ["Turn on"],
-    "iNFKkm": ["No diff."],
     "iO8V-7": ["Create worktree"],
     "iOHg1t": ["Open embedded URL in new tab"],
     "iRdfLr": ["Dev instance: ", ["label"]],
@@ -2090,6 +2090,7 @@
     "k4CuuV": [
       "Ready-made folders and templates to get you started quickly. Select a pack to preview what gets created, then add it to your project."
     ],
+    "k7Hoig": ["No content changes at this version."],
     "kCNU4q": [
       "Indexing your pages — ",
       ["semanticIndexedCount"],
@@ -2130,6 +2131,7 @@
     "khCa4M": ["Teaches coding agents in this project to read and write through OpenKnowledge."],
     "kj9pAE": ["Creating page"],
     "kknhfj": ["No changes"],
+    "klPS-L": ["Original file — before this agent's edits."],
     "kmKqZg": ["Clusters"],
     "knjOzA": ["Tag value"],
     "kolRU1": ["Do you want to permanently delete instead?"],
@@ -2183,7 +2185,6 @@
     "lzwo7p": ["Could not open GitHub sign-in. Please try again."],
     "m16xKo": ["Add"],
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
-    "m4v3XT": ["Undo last edit on ", ["docName"]],
     "m6YGpY": ["Active panel content for the selected tab shows here."],
     "mBltnd": ["Path suggestions"],
     "mGaZwZ": ["See the full install guide"],
@@ -2191,7 +2192,6 @@
     "mLAjyL": [
       "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
     ],
-    "mNY1G6": ["Undo all edits"],
     "mPneVR": ["Updated \"", ["display"], "\" to ", ["0"], "."],
     "mPy9lS": [
       "Organize my existing specs into a linked index grouped by area, and flag any that have drifted out of sync with the current code."
@@ -2231,6 +2231,7 @@
     "mwMF9u": ["Open CodeMirror search in source editor mode."],
     "mxY24F": ["Duplicate the focused file-tree item when focus is in the Files sidebar."],
     "n2lRue": ["Commit or stash changes to switch:"],
+    "n3wx1q": ["Restore to this version?"],
     "n5n_vi": ["Private repository"],
     "n6hXUm": [
       "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
@@ -2264,6 +2265,16 @@
     "ndeI89": ["Use Cmd/Ctrl+C to copy the link below, or open OK in the desktop app."],
     "ndwmea": ["unavailable on this platform"],
     "neRy3o": ["Split list item"],
+    "nfPccR": [
+      [
+        "laterEdits",
+        "plural",
+        {
+          "one": ["Rolls back ", "#", " later edit."],
+          "other": ["Rolls back ", "#", " later edits."]
+        }
+      ]
+    ],
     "nfoduq": ["create worktree"],
     "nft48x": [
       "Stored at <0>.ok/templates/</0> in this project. Available in every folder (folder-scoped templates can override by filename)."
@@ -2352,7 +2363,6 @@
     "pFagOn": ["Source editing"],
     "pHYP6v": ["Open <0>Customize</0> in the sidebar <1/> <2>Skills</2>."],
     "pQf2Ux": [".ok/skills is back to local-only."],
-    "pRc-Im": ["Undone all edits on ", ["docName"]],
     "pTPqMK": ["Toggle a fenced code block."],
     "pWT04I": ["Checking..."],
     "pWbsW6": ["Loading docs"],
@@ -2365,7 +2375,6 @@
     "phM8Kh": ["Found the repo but could not open the project. Please try again."],
     "pha01Y": ["Project-level pages with no incoming graph edges."],
     "pkAft1": ["Search failed."],
-    "pmKdif": ["Failed: ", ["loadError"]],
     "pmOGtg": [
       "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
     ],
@@ -2440,7 +2449,6 @@
     "rVJpLz": [
       "On — hovering an external link sends its URL to the destination site to fetch a preview."
     ],
-    "rVgSRB": ["Collapse ", ["docName"]],
     "rVxu1k": ["No pages link here yet."],
     "rXz97P": ["Numbered list of items."],
     "rZ9HZq": ["To do"],
@@ -2474,6 +2482,7 @@
     "sER-bs": ["Files"],
     "sFhaTJ": ["Disambiguates similarly-named templates in the menu."],
     "sHrqDx": ["Couldn't rename skill: ", ["0"]],
+    "sICrVf": ["Restored to the version from ", ["0"]],
     "sIGbBZ": ["Convert selection to footnote"],
     "sIxSSP": ["Resolve conflict in your terminal"],
     "sJK6pq": ["Permission denied"],
@@ -2524,7 +2533,6 @@
     "tHKQ6j": ["Renaming"],
     "tP5DDk": ["Apply link"],
     "tUvUfp": ["Use a folder you already have."],
-    "tW_yvQ": ["Expand ", ["docName"]],
     "t_YqKh": ["Remove"],
     "teD0H9": ["Couldn't open a worktree for that branch."],
     "tfDRzk": ["Save"],

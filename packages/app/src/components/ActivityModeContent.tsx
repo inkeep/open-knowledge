@@ -22,11 +22,14 @@
 import { t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { withLargeFileOpenGuard } from '@/components/navigation-targets';
 import { usePageList } from '@/components/PageListContext';
 import { useDocumentContext, useDocumentTransition } from '@/editor/DocumentContext';
+import { openAgentDiff, setAgentDiffMax } from '@/lib/agent-diff-store';
+import { closeTimelineDiff } from '@/lib/timeline-diff-store';
+import type { FileData } from '@/lib/use-activity-panel';
 import { useActivityPanel } from '@/lib/use-activity-panel';
 import { ActivityPanelFileRow } from './ActivityPanelFileRow';
 import { AgentIcon } from './icons/AgentIcon';
@@ -40,7 +43,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 async function postAgentUndo(body: {
   connectionId: string;
   docName: string;
-  scope: 'last' | 'file';
+  scope: 'last' | 'file' | 'count';
+  /** Required when scope is `'count'` — the number of newest edits to drop. */
+  count?: number;
   agentName?: string;
 }): Promise<void> {
   const res = await fetch('/api/agent-undo', {
@@ -247,11 +252,10 @@ interface ActivityModeBodyProps {
   status: ReturnType<typeof useActivityPanel>['status'];
   error: ReturnType<typeof useActivityPanel>['error'];
   reload: () => void;
-  fetchBurstDiff: (docName: string, stackIndex: number) => Promise<string>;
   onExit: () => void;
   onNavigate: (docName: string) => void;
-  onUndoLast: (docName: string) => Promise<void>;
-  onUndoAll: (docName: string) => Promise<void>;
+  onUndoDrop: (docName: string, dropCount: number) => Promise<void>;
+  onSetVersion: (file: FileData, keptCount: number) => void;
   showBackButton: boolean;
 }
 
@@ -260,11 +264,10 @@ function ActivityModeBody({
   status,
   error,
   reload,
-  fetchBurstDiff,
   onExit,
   onNavigate,
-  onUndoLast,
-  onUndoAll,
+  onUndoDrop,
+  onSetVersion,
   showBackButton,
 }: ActivityModeBodyProps): React.JSX.Element {
   const { t } = useLingui();
@@ -337,9 +340,8 @@ function ActivityModeBody({
                   sessionAlive={data.sessionAlive}
                   isWriting={data.writingDocs.has(file.docName)}
                   onNavigate={onNavigate}
-                  onUndoLast={onUndoLast}
-                  onUndoAll={onUndoAll}
-                  fetchBurstDiff={fetchBurstDiff}
+                  onUndoDrop={onUndoDrop}
+                  onSetVersion={(keptCount) => onSetVersion(file, keptCount)}
                 />
               ))
             )}
@@ -363,7 +365,19 @@ export function ActivityModeContent({
   const { docPanelAgentId, closeActivityPanel } = useDocumentContext();
   const { openTargetTransition } = useDocumentTransition();
   const { pageMeta } = usePageList();
-  const { data, status, error, reload, fetchBurstDiff } = useActivityPanel(docPanelAgentId);
+  const { data, status, error, reload } = useActivityPanel(docPanelAgentId);
+
+  // Keep an open diff pane's version ceiling in sync with live activity — the
+  // panel re-fetches on the CC1 `session-activity` signal, so pushing the fresh
+  // edit count into the store lets a new burst extend the pane's version range
+  // (and follow "now") without reopening. Placed before the early return below
+  // so hook order stays stable. No-op unless a diff for the open file is up.
+  useEffect(() => {
+    if (!data || docPanelAgentId === null) return;
+    for (const file of data.files) {
+      setAgentDiffMax(docPanelAgentId, file.docName, file.bursts.length);
+    }
+  }, [data, docPanelAgentId]);
 
   // When mode is `'agent'` but no agent is scoped (edge case: user flipped
   // mode without ever clicking an avatar), render a discoverable hint rather
@@ -380,40 +394,50 @@ export function ActivityModeContent({
     navigateToDoc(docName);
   };
 
-  const onUndoLast = async (docName: string): Promise<void> => {
+  // Show a file version in the main pane. `keptCount` selects the version
+  // (0 = original, file.bursts.length = now). Drives the pane from the file
+  // row's undo slider, its header icons, and burst-row clicks. EditorArea
+  // navigates the editor to the file's doc and paints the pane once nav settles.
+  const onSetVersion = (file: FileData, keptCount: number): void => {
+    if (!data?.agent || docPanelAgentId === null) return;
+    // The two full-pane diffs share one overlay slot — close the timeline diff
+    // so they can't both paint.
+    closeTimelineDiff();
+    const max = file.bursts.length;
+    openAgentDiff({
+      agentId: docPanelAgentId,
+      agentName: data.agent.displayName,
+      agentColor: data.agent.color,
+      agentIcon: data.agent.icon,
+      docName: file.docName,
+      keptCount: Math.max(0, Math.min(keptCount, max)),
+      maxVersions: max,
+    });
+  };
+
+  // Scoped undo from the file-row timeline: drop the `dropCount` newest edits.
+  // The timeline already surfaced the range (and the doomed-edit preview), so
+  // this just commits it and re-fetches ground truth.
+  const onUndoDrop = async (docName: string, dropCount: number): Promise<void> => {
+    if (dropCount <= 0) return;
     try {
       await postAgentUndo({
         connectionId: docPanelAgentId,
         docName,
-        scope: 'last',
+        scope: 'count',
+        count: dropCount,
         agentName: data?.agent?.displayName,
       });
+      toast.success(
+        dropCount === 1
+          ? t`Undid the last edit on ${docName}`
+          : t`Undid ${dropCount} edits on ${docName}`,
+      );
       reload();
     } catch (err) {
-      // Surface the failure — `Undo all` has a confirmation dialog, but
-      // `Undo last` is inline. Either silently failing is user-hostile.
       const message = err instanceof Error ? err.message : String(err);
       toast.error(t`Undo failed: ${message}`);
       // Non-fatal — re-fetch to recover ground truth.
-      reload();
-    }
-  };
-
-  const onUndoAll = async (docName: string): Promise<void> => {
-    try {
-      await postAgentUndo({
-        connectionId: docPanelAgentId,
-        docName,
-        scope: 'file',
-        agentName: data?.agent?.displayName,
-      });
-      // `Undo all` has a confirmation dialog — the blast-radius asymmetry
-      // applies to feedback too.
-      toast.success(t`Undone all edits on ${docName}`);
-      reload();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      toast.error(t`Undo all failed: ${message}`);
       reload();
     }
   };
@@ -424,11 +448,10 @@ export function ActivityModeContent({
       status={status}
       error={error}
       reload={reload}
-      fetchBurstDiff={fetchBurstDiff}
       onExit={closeActivityPanel}
       onNavigate={onNavigate}
-      onUndoLast={onUndoLast}
-      onUndoAll={onUndoAll}
+      onUndoDrop={onUndoDrop}
+      onSetVersion={onSetVersion}
       showBackButton={showBackButton}
     />
   );

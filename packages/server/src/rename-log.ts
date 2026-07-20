@@ -901,6 +901,102 @@ export function batchCheckExistence(
 }
 
 /**
+ * One-shot batched `git cat-file --batch-check` stream that resolves each
+ * `(sha, path)` probe to the blob OID of the object at `<sha>:<path>`. Same
+ * single-child-process + `OK_GIT_TIMEOUT_MS` contract as `batchCheckExistence`;
+ * returns `(string | null)[]` aligned with `probes` — the 40-hex blob OID when
+ * the path resolves in the commit's tree, `null` when it is missing.
+ *
+ * Two commits whose blob OID for the same doc is identical have byte-identical
+ * content (git content-addresses blobs), so callers can compare returned OIDs
+ * to detect a commit that did not change a document's bytes. On timeout or
+ * batch failure every probe resolves to `null` (the safe choice: a `null` makes
+ * the caller keep the entry rather than drop a live row).
+ */
+export function batchResolveBlobOids(
+  shadow: ShadowHandle,
+  probes: Array<{ sha: string; path: string }>,
+): Promise<Array<string | null>> {
+  if (probes.length === 0) return Promise.resolve([]);
+
+  const timeoutMs = parseGitTimeoutMs();
+
+  return new Promise<Array<string | null>>((resolvePromise) => {
+    const child = spawn(
+      'git',
+      ['cat-file', '--batch-check', '--buffer'],
+      withHiddenWindowsConsole({
+        ...GIT_BATCH_CHECK_STDIO_OPTIONS,
+        env: { ...process.env, GIT_DIR: shadow.gitDir, GIT_WORK_TREE: shadow.workTree },
+      }),
+    );
+
+    const stdoutChunks: Buffer[] = [];
+    child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
+
+    const allNull = (): Array<string | null> => probes.map(() => null);
+
+    let settled = false;
+    const settle = (result: Array<string | null>) => {
+      if (settled) return;
+      settled = true;
+      resolvePromise(result);
+    };
+
+    const timer = setTimeout(() => {
+      console.warn(
+        `[rename-log] WARN: batchResolveBlobOids timed out after ${timeoutMs}ms (${probes.length} probes); returning all-null`,
+      );
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // child may already be dead
+      }
+      settle(allNull());
+    }, timeoutMs);
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      console.warn(`[rename-log] WARN: batchResolveBlobOids spawn error: ${err.message}`);
+      settle(allNull());
+    });
+
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      if ((code !== null && code !== 0) || (signal && !settled)) {
+        console.warn(
+          `[rename-log] WARN: batchResolveBlobOids exited code=${code} signal=${signal ?? 'none'}; returning all-null`,
+        );
+        settle(allNull());
+        return;
+      }
+      const stdout = Buffer.concat(stdoutChunks).toString('utf-8');
+      const lines = stdout.split('\n').filter((l) => l.length > 0);
+      // Present: `<oid> <type> <size>` (first token is the resolved blob OID).
+      // Missing: `<sha>:<path> missing`. Output order matches input order.
+      const result: Array<string | null> = probes.map((_, i) => {
+        const line = lines[i];
+        if (!line || line.endsWith(' missing')) return null;
+        const oid = line.slice(0, line.indexOf(' '));
+        return oid.length === 40 ? oid : null;
+      });
+      settle(result);
+    });
+
+    const stdin = probes.map((p) => `${p.sha}:${p.path}`).join('\n');
+    try {
+      child.stdin.end(`${stdin}\n`);
+    } catch (err) {
+      clearTimeout(timer);
+      console.warn(
+        `[rename-log] WARN: batchResolveBlobOids stdin write failed: ${(err as Error).message}`,
+      );
+      settle(allNull());
+    }
+  });
+}
+
+/**
  * Atomically rewrite `<shadowDir>/renames.jsonl` from the in-memory index.
  * tmp+rename for POSIX atomicity. Empty index → file is truncated to zero
  * bytes (next load returns the empty index). Server lock guarantees no

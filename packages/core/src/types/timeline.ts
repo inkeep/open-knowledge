@@ -23,4 +23,15 @@ export interface TimelineEntry {
    * any checkpoint whose body line is missing or malformed.
    */
   checkpoint: ParsedCheckpoint | null;
+  /**
+   * SHA of the previous VISIBLE timeline entry for this doc — list-adjacency in
+   * the assembled, ok-actor-filtered, timestamp-sorted result (`filtered[idx+1]`),
+   * NOT `git <sha>^`. The timeline is a multi-ref merge, so the git parent is
+   * usually another writer's commit or a filtered checkpoint; list-adjacency is
+   * the "previous version a reader saw." `null` for the doc's first version or an
+   * entry whose parent fell outside the depth-bounded walk. Baseline for the
+   * vs-parent ("changes in this version") diff. Populated only in the per-doc
+   * history path; absent on folder-timeline entries.
+   */
+  parentSha?: string | null;
 }

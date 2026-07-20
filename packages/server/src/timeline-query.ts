@@ -28,6 +28,7 @@ import { managedArtifactTimelinePaths } from './managed-artifact-persistence.ts'
 import {
   type AncestorShaSetCache,
   batchCheckExistence,
+  batchResolveBlobOids,
   buildAncestorShaSet,
   buildSeeds,
   createAncestorShaSetCache,
@@ -309,6 +310,102 @@ async function filterEntriesByChain<E extends { sha: string }>(
     if (results[i]) keep.add(probes[i].entryIdx);
   }
   return entries.filter((_, i) => keep.has(i));
+}
+
+/**
+ * Drop timeline rows whose document blob is byte-identical to the adjacent-older
+ * visible version of the same document — commits that appear in the doc's
+ * history (they passed the git-log pathspec + OkActor filters) but did not
+ * change its bytes.
+ *
+ * `entries` is newest-first (the doc-timeline order used for `parentSha`). For
+ * each entry the doc blob OID is resolved by probing every chain step whose
+ * cycle bound the entry's SHA satisfies (reusing `predecessorAncestors`) and
+ * taking the first that resolves — the same path-resolution shape as
+ * `filterEntriesByChain`. Walking oldest→newest, a non-checkpoint entry is
+ * dropped when its OID equals the nearest older non-checkpoint entry's OID.
+ * Checkpoints are landmarks: never dropped, and skipped as the byte baseline
+ * (mirroring the `parentSha` walk). The oldest of a run of identical versions is
+ * kept — it is the commit that introduced that content — and a later revert back
+ * to earlier content is a real change (different from its immediate predecessor)
+ * so it survives.
+ *
+ * One exception overrides "keep the oldest": within a run of identical bytes an
+ * authored row always beats an `upstream` import row. The import is a mechanical
+ * re-encoding of content authored elsewhere, and it can share a one-second date
+ * with the reconcile commit that attributes the real author — so keeping the
+ * positionally-oldest would non-deterministically drop the author in favor of
+ * "Git (upstream)". The authored row is kept regardless of order.
+ *
+ * Unresolvable OIDs (`null` — a batch failure/timeout, or a path that no longer
+ * resolves) never trigger a drop: the entry is kept and does not update the
+ * baseline. Same single-child-process cost as the sibling filters.
+ */
+async function dropByteIdenticalRows(
+  shadow: ShadowHandle,
+  entries: ParsedEntry[],
+  chain: Array<{ path: string; renameCommit: string | null }>,
+  predecessorAncestors: Array<Set<string> | null>,
+  pathFor: (name: string) => string,
+): Promise<ParsedEntry[]> {
+  if (entries.length < 2 || chain.length === 0) return entries;
+
+  type Probe = { entryIdx: number; sha: string; path: string };
+  const probes: Probe[] = [];
+  for (let entryIdx = 0; entryIdx < entries.length; entryIdx++) {
+    // Checkpoints are never dropped and never serve as a baseline — skip them
+    // entirely so we don't spend probes resolving their blobs.
+    if (entries[entryIdx].type === 'checkpoint') continue;
+    for (let chainIdx = 0; chainIdx < chain.length; chainIdx++) {
+      const ancestors = predecessorAncestors[chainIdx];
+      if (ancestors !== null && !ancestors.has(entries[entryIdx].sha)) continue;
+      probes.push({ entryIdx, sha: entries[entryIdx].sha, path: pathFor(chain[chainIdx].path) });
+    }
+  }
+  if (probes.length === 0) return entries;
+
+  const resolved = await batchResolveBlobOids(
+    shadow,
+    probes.map((p) => ({ sha: p.sha, path: p.path })),
+  );
+
+  // First resolved OID per entry (probe order follows chain order, so the first
+  // non-null hit is the highest-priority path that exists in that entry's tree).
+  const oidByEntry: Array<string | null> = entries.map(() => null);
+  for (let i = 0; i < probes.length; i++) {
+    const idx = probes[i].entryIdx;
+    if (oidByEntry[idx] === null && resolved[i] !== null) oidByEntry[idx] = resolved[i];
+  }
+
+  const drop = new Set<number>();
+  let baselineOid: string | null = null;
+  let baselineIdx = -1;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (entries[i].type === 'checkpoint') continue;
+    const oid = oidByEntry[i];
+    if (oid === null) continue; // unresolved: keep, and don't move the baseline
+    if (baselineOid !== null && oid === baselineOid) {
+      // Byte-identical to the retained baseline. Normally the newer row is the
+      // duplicate and is dropped. Exception: an `upstream` import row is a
+      // mechanical re-encoding of content authored elsewhere, so when an
+      // authored (non-`upstream`) row carries the same bytes it — not the
+      // import — is the meaningful version: drop the `upstream` baseline and
+      // promote this row instead. Position alone can't decide this: an import
+      // and its reconcile commit share a one-second-granular date, so their
+      // sort order is non-deterministic and would otherwise drop the author.
+      if (entries[i].type !== 'upstream' && entries[baselineIdx].type === 'upstream') {
+        drop.add(baselineIdx);
+        baselineIdx = i; // OID unchanged; the authored row becomes the baseline
+      } else {
+        drop.add(i);
+      }
+      continue;
+    }
+    baselineOid = oid;
+    baselineIdx = i;
+  }
+  if (drop.size === 0) return entries;
+  return entries.filter((_, i) => !drop.has(i));
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -739,8 +836,12 @@ export async function getDocumentHistory(
     // checkpoint commits declare `docs: []` and hit the `touchedNames.size
     // === 0` early-return for the same reason.
     let postFiltered = unique;
+    // Cycle-bound ancestor set per chain step (null = current name, unbounded).
+    // Hoisted so the byte-identity de-dup below reuses the same sets to resolve
+    // which historical path applies to each entry.
+    let filterAncestors: Array<Set<string> | null> = [];
     if (unique.length > 0 && chain.length > 0) {
-      const filterAncestors: Array<Set<string> | null> = await Promise.all(
+      filterAncestors = await Promise.all(
         chain.map(async (step) => {
           if (step.renameCommit === null) return null;
           const seeds = await buildSeeds(shadow, step.renameCommit, branch, seedsCache);
@@ -772,6 +873,20 @@ export async function getDocumentHistory(
       filtered = filtered.filter((e) => e.checkpoint?.kind !== 'auto-consolidation');
     }
 
+    // Drop no-op rows: a WIP/upstream commit whose blob for this doc is
+    // byte-identical to the adjacent-older visible version didn't change the
+    // document — it is multi-writer fan-out noise (a commit built from the whole
+    // contentRoot that carries another writer's file) or an upstream import that
+    // touched other files. Both would otherwise render as a "No changes" row.
+    // Checkpoints are restore-point landmarks and are never dropped here (and,
+    // as with `parentSha`, they don't serve as the byte baseline). Gated on a
+    // single-doc query (`docPath`) so we know which blob to compare; the
+    // OkActor pre-filter already removed most fan-out noise, but imports that
+    // declare `docs: []` and any residual fan-out survive to here.
+    if (docPath && filtered.length > 1) {
+      filtered = await dropByteIdenticalRows(shadow, filtered, chain, filterAncestors, pathFor);
+    }
+
     if (typeFilter.length > 0) {
       filtered = filtered.filter((e) => typeFilter.includes(e.type));
     }
@@ -784,8 +899,27 @@ export async function getDocumentHistory(
       filtered = filtered.filter((e) => !matchesAuthor(e, excludeAuthorFilter));
     }
 
+    // Assign `parentSha` as list-adjacency over the FULL sorted result (before
+    // pagination) so a page-edge row still gets the correct parent even though
+    // that parent row isn't in the returned slice. This is NOT `git <sha>^`:
+    // the timeline is a multi-ref merge, so the git parent is usually an
+    // unrelated writer's commit or a filtered checkpoint. The adjacent older
+    // VISIBLE entry is the "previous version a reader saw."
+    //
+    // Skip `checkpoint` entries as parents: they are restore-point landmarks,
+    // not edit history, and the Timeline panel filters them out of the rendered
+    // list — so a WIP row's parent must be the previous WIP/upstream version the
+    // user actually sees, not an interleaved checkpoint. Walk oldest→newest
+    // carrying the nearest older non-checkpoint SHA.
+    let prevNonCheckpointSha: string | null = null;
+    for (let i = filtered.length - 1; i >= 0; i--) {
+      filtered[i].parentSha = prevNonCheckpointSha;
+      if (filtered[i].type !== 'checkpoint') prevNonCheckpointSha = filtered[i].sha;
+    }
+
     const total = filtered.length;
     const page = filtered.slice(offset, offset + limit);
+
     // Strip the internal `rawBody` before returning to API consumers.
     const stripped: TimelineEntry[] = page.map(({ rawBody: _rawBody, ...rest }) => rest);
     finishMetric(allStartRefs.length, unique.length);

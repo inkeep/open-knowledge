@@ -409,6 +409,47 @@ describe('applyAgentUndo — scope drain semantics (V0-14)', () => {
     expect(session.um.undoStack.length).toBe(1);
   });
 
+  test("scope='count' pops the N newest frames and keeps the rest", async () => {
+    const session = await manager.getSession('doc-count.md', 'agent-count');
+    const ytext = session.dc.document.getText('source');
+
+    // Four separate frames (a, b, c, d) — oldest → newest.
+    for (const ch of ['a', 'b', 'c', 'd']) {
+      session.dc.document.transact(() => ytext.insert(0, ch), session.origin);
+      session.um.stopCapturing();
+    }
+    expect(session.um.undoStack.length).toBe(4);
+
+    // Drop the 2 newest (keep the 2 oldest) in one atomic call.
+    const undone = applyAgentUndo(session, 'count', undefined, 2);
+    expect(undone).toBe(true);
+    expect(session.um.undoStack.length).toBe(2);
+  });
+
+  test("scope='count' clamps an over-large count to a full drain", async () => {
+    const session = await manager.getSession('doc-count-clamp.md', 'agent-count-clamp');
+    const ytext = session.dc.document.getText('source');
+
+    session.dc.document.transact(() => ytext.insert(0, 'x'), session.origin);
+    session.um.stopCapturing();
+    session.dc.document.transact(() => ytext.insert(0, 'y'), session.origin);
+    expect(session.um.undoStack.length).toBe(2);
+
+    // count larger than the stack → drains everything, no error.
+    expect(applyAgentUndo(session, 'count', undefined, 99)).toBe(true);
+    expect(session.um.undoStack.length).toBe(0);
+  });
+
+  test("scope='count' with a non-positive count is a no-op", async () => {
+    const session = await manager.getSession('doc-count-zero.md', 'agent-count-zero');
+    const ytext = session.dc.document.getText('source');
+    session.dc.document.transact(() => ytext.insert(0, 'z'), session.origin);
+    expect(session.um.undoStack.length).toBe(1);
+
+    expect(applyAgentUndo(session, 'count', undefined, 0)).toBe(false);
+    expect(session.um.undoStack.length).toBe(1);
+  });
+
   test("scope='session' returns false on an empty stack (no-op)", async () => {
     const session = await manager.getSession('doc-empty.md', 'agent-empty');
     expect(session.um.undoStack.length).toBe(0);

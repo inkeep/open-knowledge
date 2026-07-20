@@ -25,6 +25,9 @@ import { z } from 'zod';
 /** One unified-diff burst entry on `AgentActivitySuccessSchema.files[].bursts[]`. */
 export const ActivityBurstSchema = z
   .object({
+    // 0-based position of this burst in the undo stack. NOTE: this is NOT the
+    // `agent-burst-diff` wire parameter — that endpoint takes `keptCount`
+    // (edits-to-keep, 1-based), which for this burst is `stackIndex + 1`.
     stackIndex: z.number().int().min(0),
     ts: z.number().int().min(0),
     additions: z.number().int().min(0),
@@ -76,16 +79,20 @@ export type AgentActivitySuccess = z.infer<typeof AgentActivitySuccessSchema>;
 
 /**
  * Success response for
- * `GET /api/agent-burst-diff?agentId=<connId>&docName=<path>&stackIndex=<n>`.
+ * `GET /api/agent-burst-diff?agentId=<connId>&docName=<path>&keptCount=<n>`.
  *
  * `diff` is unified-diff text (CommonMark-style — empty string when the
- * StackItem produces a no-op diff). `generatedAt` is the server's wall
- * clock at response-emit time; clients use it for staleness detection
- * against `bursts[].ts` (already returned by `/api/agent-activity`).
+ * StackItem produces a no-op diff). `before`/`after` are the frontmatter-
+ * stripped bodies of the two versions the diff compares, so the client can
+ * render a WYSIWYG diff (via `buildRenderedDiff`) without recomputing them.
+ * `generatedAt` is the server's wall clock at response-emit time; clients use
+ * it for staleness detection against `bursts[].ts` (from `/api/agent-activity`).
  */
 export const AgentBurstDiffSuccessSchema = z
   .object({
     diff: z.string(),
+    before: z.string(),
+    after: z.string(),
     generatedAt: z.number().int().min(0),
   })
   .loose() satisfies StandardSchemaV1;

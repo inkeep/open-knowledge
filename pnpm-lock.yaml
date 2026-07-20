@@ -362,6 +362,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.5)
+      '@fellow/prosemirror-recreate-transform':
+        specifier: ^1.2.3
+        version: 1.2.3
       '@floating-ui/dom':
         specifier: 1.7.6
         version: 1.7.6
@@ -2296,6 +2299,10 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
+
+  '@fellow/prosemirror-recreate-transform@1.2.3':
+    resolution: {integrity: sha512-LdvMirDXtZWNv2DSpUVh1L7OxV/8PopzCwL4XJdd8UW4MMXywlcnCUzOz2TuNTMoTNnbOPBQ2JJlaAG/hg6sdQ==}
+    engines: {node: '>=10.0.0'}
 
   '@floating-ui/core@1.7.5':
     resolution: {integrity: sha512-1Ih4WTWyw0+lKyFMcBHGbb5U5FtuHJuujoyyr5zTaWS5EYMeT6Jb2AuDeftsCsEuchO+mM2ij5+q9crhydzLhQ==}
@@ -7212,6 +7219,10 @@ packages:
   diff-match-patch@1.0.5:
     resolution: {integrity: sha512-IayShXAgj/QMXgB0IWmKx+rOPuGMhqm5w6jvFxmVenXKIzRqTAAsbBPT3kWQeGANj3jGgvcvv4yK6SxqYmikgw==}
 
+  diff@5.2.2:
+    resolution: {integrity: sha512-vtcDfH3TOjP8UekytvnHH1o1P4FcUdt4eQ1Y+Abap1tk/OB2MWQvcwS2ClCd1zuIhc3JKOx6p3kod8Vfys3E+A==}
+    engines: {node: '>=0.3.1'}
+
   diff@8.0.4:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
@@ -10145,6 +10156,9 @@ packages:
     resolution: {integrity: sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==}
     engines: {iojs: '>=1.0.0', node: '>=0.10.0'}
 
+  rfc6902@5.2.0:
+    resolution: {integrity: sha512-ZNQpVnWsdLMTCcLZcUY9ZBhxWuj7/H13EM7NL2gvbAMBXfLeN3iOLi3TWT1+8Or7OTLYXRDCy7sTEStk3j4KBA==}
+
   rfdc@1.4.1:
     resolution: {integrity: sha512-q1b3N5QkRUWUl7iyylaaj3kOpIT0N2i9MqIEQXP73GVsN9cw3fdx8X63cEmWhJGi2PPCF23Ijp7ktmd39rawIA==}
 
@@ -12450,6 +12464,13 @@ snapshots:
   '@exodus/bytes@1.15.1(@noble/hashes@2.2.0)':
     optionalDependencies:
       '@noble/hashes': 2.2.0
+
+  '@fellow/prosemirror-recreate-transform@1.2.3':
+    dependencies:
+      diff: 5.2.2
+      prosemirror-model: 1.25.4
+      prosemirror-transform: 1.12.0
+      rfc6902: 5.2.0
 
   '@floating-ui/core@1.7.5':
     dependencies:
@@ -17289,6 +17310,8 @@ snapshots:
 
   diff-match-patch@1.0.5: {}
 
+  diff@5.2.2: {}
+
   diff@8.0.4: {}
 
   dir-compare@4.2.0:
@@ -21296,6 +21319,8 @@ snapshots:
   retry@0.12.0: {}
 
   reusify@1.1.0: {}
+
+  rfc6902@5.2.0: {}
 
   rfdc@1.4.1: {}
 

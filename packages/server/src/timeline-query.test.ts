@@ -477,6 +477,112 @@ describe('getDocumentHistory', () => {
   });
 });
 
+describe('getDocumentHistory — byte-identical no-op row filtering', () => {
+  // Distinct, strictly-increasing author dates so the newest-first sort is
+  // deterministic (git committer dates are 1-second-granular).
+  function dates() {
+    let t = Date.parse('2026-06-01T12:00:00.000Z');
+    return () => {
+      t += 1000;
+      return new Date(t).toISOString();
+    };
+  }
+
+  test('drops a fan-out commit whose doc blob is byte-identical to the adjacent-older version', async () => {
+    const { contentDir, shadow } = await setup();
+    const next = dates();
+
+    // Human writes V1 then V2 on their own WIP ref.
+    writeFileSync(resolve(contentDir, 'intro.md'), '# V1\n');
+    const h1 = await commitWip(shadow, human, 'content/docs', 'WIP: v1', 'main', {
+      date: next(),
+    });
+    writeFileSync(resolve(contentDir, 'intro.md'), '# V2\n');
+    const h2 = await commitWip(shadow, human, 'content/docs', 'WIP: v2', 'main', {
+      date: next(),
+    });
+
+    // A second writer commits WITHOUT changing intro.md. Its WIP ref is a
+    // separate chain (parentless first commit), so `buildWipTree` re-adds
+    // intro.md at the current bytes (V2) — the multi-writer fan-out that makes
+    // a byte-identical commit reach the timeline through the multi-ref merge.
+    const g1 = await commitWip(shadow, agent, 'content/docs', 'WIP: agent no-op', 'main', {
+      date: next(),
+    });
+
+    const result = await getDocumentHistory(shadow, { docName: 'intro' }, 'content/docs');
+    const shas = result.entries.map((e) => e.sha);
+
+    // The agent's commit changed nothing about intro (V2 === V2) → dropped.
+    expect(shas).not.toContain(g1);
+    // The real edits survive, newest-first.
+    expect(shas).toEqual([h2, h1]);
+    expect(result.total).toBe(2);
+  });
+
+  test('keeps a frontmatter-only edit (whole-file blob differs)', async () => {
+    const { contentDir, shadow } = await setup();
+    const next = dates();
+
+    writeFileSync(resolve(contentDir, 'intro.md'), '---\ntitle: A\n---\n# Body\n');
+    const h1 = await commitWip(shadow, human, 'content/docs', 'WIP: fm A', 'main', {
+      date: next(),
+    });
+    // Only the frontmatter changes; the body is identical. The blob still
+    // differs, so this is a real edit and must NOT be dropped.
+    writeFileSync(resolve(contentDir, 'intro.md'), '---\ntitle: B\n---\n# Body\n');
+    const h2 = await commitWip(shadow, human, 'content/docs', 'WIP: fm B', 'main', {
+      date: next(),
+    });
+
+    const result = await getDocumentHistory(shadow, { docName: 'intro' }, 'content/docs');
+    expect(result.entries.map((e) => e.sha)).toEqual([h2, h1]);
+  });
+
+  test('never drops a checkpoint even when its doc bytes are unchanged', async () => {
+    const { contentDir, shadow } = await setup();
+
+    writeFileSync(resolve(contentDir, 'intro.md'), '# V1\n');
+    const h1 = await commitWip(shadow, human, 'content/docs', 'WIP: v1');
+    // Checkpoint snapshots the same bytes → byte-identical to h1, but it is a
+    // restore-point landmark and must survive the no-op filter.
+    const { checkpointRef } = await saveVersion(shadow, 'content/docs', [human]);
+    const cp = checkpointRef.split('/').at(-1) as string;
+
+    const result = await getDocumentHistory(shadow, { docName: 'intro' }, 'content/docs');
+    const shas = result.entries.map((e) => e.sha);
+    expect(shas).toContain(cp);
+    expect(shas).toContain(h1);
+    expect(result.entries.find((e) => e.sha === cp)?.type).toBe('checkpoint');
+  });
+
+  test('a byte-identical upstream import loses to the authored row (keeps the author)', async () => {
+    const { contentDir, shadow } = await setup();
+
+    // An upstream import brings intro.md at content V; the reconcile commit that
+    // attributes the real author carries the SAME bytes. Both can share a
+    // one-second commit date, so "keep the oldest" would non-deterministically
+    // drop the author in favor of "Git (upstream)". Force the harder ordering:
+    // date the authored commit AFTER the import's real-now date so the import is
+    // the positionally-older row — the case the old keep-oldest rule got wrong.
+    writeFileSync(resolve(contentDir, 'intro.md'), '# V\n');
+    const imp = await commitUpstreamImport(shadow, 'content/docs', 'old', 'new', 'main');
+    const authored = await commitWip(shadow, human, 'content/docs', 'reconcile: intro', 'main', {
+      date: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const result = await getDocumentHistory(shadow, { docName: 'intro' }, 'content/docs');
+    const shas = result.entries.map((e) => e.sha);
+
+    // The authored row survives the byte-identical tie; the mechanical import is
+    // the dropped duplicate — regardless of which sorted older. No `upstream`
+    // row remains to shadow the author.
+    expect(shas).toContain(authored);
+    expect(shas).not.toContain(imp);
+    expect(result.entries.map((e) => e.type)).not.toContain('upstream');
+  });
+});
+
 describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
   afterEach(() => {
     resetRenameLogIndexCache();
