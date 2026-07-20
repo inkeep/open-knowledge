@@ -22,6 +22,7 @@
  */
 
 import { closeSync, openSync, statSync, unlinkSync } from 'node:fs';
+import { sleep } from '../utils/sleep.ts';
 
 export interface WithFileLockOptions {
   /** Total acquire-retry budget. Default 5_000ms. */
@@ -47,11 +48,6 @@ export class FileLockTimeoutError extends Error {
     this.timeoutMs = timeoutMs;
   }
 }
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 
 /**
  * Acquire `lockPath`, run `fn`, release. The lockfile is unlinked on

@@ -14,8 +14,9 @@
  *     fixtures using `get-port` + `cross-spawn` (no precedent for per-worker
  *     among Hocuspocus consumers — this migration is a new position).
  *   - Port allocation: kernel-assigned random port via `net.createServer(0)`
- *     (collision-free; matches the Tier 1 integration harness's
- *     `getFreePort()` primitive at `packages/app/tests/integration/test-harness.ts:62-70`).
+ *     (collision-free; the shared `getFreePort()` primitive at
+ *     `packages/app/tests/free-port.test-helper.ts`, also used by the Tier 1
+ *     integration harness).
  *   - Content dir: `mkdtempSync` keyed by `workerInfo.workerIndex` so each
  *     worker gets its own filesystem; pre-seeds `test-doc.md` +
  *     `sidebar-folder/nested-doc.md` which `reveal-on-activate.e2e.ts`

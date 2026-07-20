@@ -19,7 +19,7 @@
 
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
-import { type AddressInfo, createServer as createNetServer, type Socket } from 'node:net';
+import { createServer as createNetServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -66,6 +66,7 @@ import {
 import type { ProviderPool } from '../../src/editor/provider-pool';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
 import { createSyncedReconnectGate, refreshServerInfo } from '../../src/lib/server-info-refresh';
+import { getFreePort } from '../free-port.test-helper.ts';
 import { ControllableWebSocket } from './network-control';
 
 // ─── Shared instances (created once, reused across all tests) ───
@@ -83,28 +84,6 @@ export const schema = getSchema(sharedExtensions);
  * tests/integration/hook-timeout-stop-rules.test.ts.
  */
 export const HARNESS_BOOT_TIMEOUT_MS = 30_000;
-
-// ─── Port allocation ───
-
-// Probe AND serve on explicit v4 loopback. A bare `listen(0)`/`listen(port)`
-// binds dual-stack `::`, which succeeds on the v6 side even when an
-// unrelated long-lived process (an `ok ui` proxy, a dev server, a sibling
-// parallel test task) already holds 127.0.0.1:<same port> — and clients
-// dialing `localhost` coin-flip the address family, intermittently landing
-// on the foreign v4 listener (observed as a collab-server-not-running 503
-// hijacking a test rig; the same mechanism is a candidate explanation for
-// the passes-isolated/flakes-under-parallel-load integration class in CI).
-// Probing and binding the same explicit family removes the race; harness
-// URLs use 127.0.0.1 to match.
-async function getFreePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const s = createNetServer();
-    s.listen(0, '127.0.0.1', () => {
-      const port = (s.address() as AddressInfo).port;
-      s.close(() => resolve(port));
-    });
-  });
-}
 
 // ─── Server factory ───
 

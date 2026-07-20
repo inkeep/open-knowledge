@@ -25,7 +25,6 @@ import {
   openSync,
   readFileSync,
 } from 'node:fs';
-import { type AddressInfo, createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -169,23 +168,7 @@ export async function checkCollabSync(
   }
 }
 
-/**
- * Probe the SAME loopback family the caller will bind: `127.0.0.1:p` and
- * `[::1]:p` are independent kernel slots, so a port verified free on one
- * family carries no guarantee about the other.
- */
-export async function getFreePort(
-  loopbackHost: '127.0.0.1' | '::1' = '127.0.0.1',
-): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const s = createNetServer();
-    s.once('error', reject);
-    s.listen(0, loopbackHost === '::1' ? '::1' : '127.0.0.1', () => {
-      const port = (s.address() as AddressInfo).port;
-      s.close(() => resolve(port));
-    });
-  });
-}
+export { getFreePort } from '../../free-port.test-helper.ts';
 
 export async function waitForHttpReady(baseURL: string, timeoutMs: number): Promise<void> {
   const start = Date.now();

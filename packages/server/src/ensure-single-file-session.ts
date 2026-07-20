@@ -23,6 +23,7 @@ import { type SpawnOptions, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { realpath as fsRealpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { sleep as defaultSleep } from '@inkeep/open-knowledge-core';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { isSupportedDocFile } from './doc-extensions.ts';
 import { createOffCwdResolverDeps, resolveOffCwdTarget } from './off-cwd-resolver.ts';
@@ -73,7 +74,7 @@ export function ensureSingleFileSession(
   absFile: string,
   deps: EnsureSingleFileDeps,
 ): Promise<boolean> {
-  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const sleep = deps.sleep ?? defaultSleep;
   const now = deps.now ?? (() => Date.now());
   const pollMs = deps.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;

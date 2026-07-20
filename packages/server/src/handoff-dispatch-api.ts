@@ -55,7 +55,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { HandoffTarget } from '@inkeep/open-knowledge-core';
+import { sleep as defaultSleep, type HandoffTarget } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { createOsProbe, type InstalledAgentScheme } from './handoff-api.ts';
 import { errorResponse } from './http/error-response.ts';
@@ -202,10 +202,6 @@ export interface HandleHandoffDispatchDeps {
  * wire boundary via HTTP status; this is the in-process internal shape.
  */
 export type { SpawnDetachedOutcome as SpawnOutcome } from './spawn-detached.ts';
-
-function defaultSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export async function handleHandoffDispatch(
   req: IncomingMessage,

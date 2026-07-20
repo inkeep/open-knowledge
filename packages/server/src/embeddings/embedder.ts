@@ -16,7 +16,7 @@
  * zero egress. A null return means "no key → degrade to lexical search".
  */
 
-import { checkEmbeddingsBaseUrl } from '@inkeep/open-knowledge-core';
+import { checkEmbeddingsBaseUrl, sleep as defaultSleep } from '@inkeep/open-knowledge-core';
 import {
   type EmbeddingErrorReason,
   recordEmbeddingProviderError,
@@ -210,10 +210,6 @@ function assertSafeEmbeddingsBaseUrl(baseUrl: string): void {
 }
 
 const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
-
-function defaultSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
  * Build the OpenAI-compatible embedder. Pure construction — makes NO network

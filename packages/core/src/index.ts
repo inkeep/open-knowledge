@@ -1369,6 +1369,7 @@ export {
 export { type BasenameIndex, createBasenameIndex } from './utils/path-resolve.ts';
 export { type ResolvedInternalHref, resolveInternalHref } from './utils/resolve-internal-href.ts';
 export { sanitizeFolderName } from './utils/sanitize-folder-name.ts';
+export { sleep } from './utils/sleep.ts';
 export {
   disambiguateSlug,
   getHeadingSlug,

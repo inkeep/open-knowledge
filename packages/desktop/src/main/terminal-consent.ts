@@ -22,6 +22,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { sleep } from '@inkeep/open-knowledge-core';
 import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { parse as parseYaml } from 'yaml';
 import { getLogger } from './desktop-logger.ts';
@@ -56,8 +57,6 @@ export function isTerminalConsented(projectDir: string): boolean {
   if (!isObject(terminal)) return true;
   return terminal.enabled !== false;
 }
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Default grace budget for {@link isTerminalConsentedWithGrace}.

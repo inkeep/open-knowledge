@@ -39,10 +39,10 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { withTempDir } from '../../temp-dir.test-helper.ts';
 import { computeLeakRateMbPerCycle } from '../lib/cell-measurement.ts';
 import {
   type ProbeOptions,
@@ -255,13 +255,12 @@ describe('tiptap-destroy-leak probe CLI shape', () => {
     expect(computeLeakRateMbPerCycle([42])).toBe(0);
   });
 
-  test('writeProbeResults refuses --update-baseline on a degraded run', () => {
+  test('writeProbeResults refuses --update-baseline on a degraded run', async () => {
     // A run where most cycles failed produces an empty cycleHeapsMb, which
     // makes computeLeakRateMbPerCycle return 0. Writing that as a baseline
     // labelled 'post-fix-W14' would silently mask future regressions of
     // 5+ MB/cycle. The gate refuses if observedCycles/cycles < 0.5.
-    const outDir = mkdtempSync(join(tmpdir(), 'tiptap-leak-baseline-degraded-'));
-    try {
+    await withTempDir('tiptap-leak-baseline-degraded-', (outDir) => {
       const degraded: ProbeResult = {
         schemaVersion: 1,
         measuredAt: new Date().toISOString(),
@@ -280,14 +279,11 @@ describe('tiptap-destroy-leak probe CLI shape', () => {
       // Refused baselines must not leave a baseline.json on disk — the
       // engineer sees the error AND the absence of a stale baseline.
       expect(existsSync(resolve(outDir, 'tiptap-leak-probe-baseline.json'))).toBe(false);
-    } finally {
-      rmSync(outDir, { recursive: true, force: true });
-    }
+    });
   });
 
-  test('writeProbeResults accepts --update-baseline at >=50% success rate', () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'tiptap-leak-baseline-ok-'));
-    try {
+  test('writeProbeResults accepts --update-baseline at >=50% success rate', async () => {
+    await withTempDir('tiptap-leak-baseline-ok-', (outDir) => {
       const cycleHeaps = [100, 102, 104, 106, 108]; // 5 of 10 cycles ⇒ 50%
       const ok: ProbeResult = {
         schemaVersion: 1,
@@ -313,9 +309,7 @@ describe('tiptap-destroy-leak probe CLI shape', () => {
       };
       expect(baseline.observedCycles).toBe(5);
       expect(baseline.successRate).toBe(0.5);
-    } finally {
-      rmSync(outDir, { recursive: true, force: true });
-    }
+    });
   });
 
   test('ProbeOptions + ProbeResult types are exported (compile-time check)', () => {
