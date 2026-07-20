@@ -89,6 +89,15 @@ export interface InitTelemetryOptions {
  * JSONL form of aggregated time-series has low marginal signal for
  * bug-report debugging).
  *
+ * Sampling: the standard `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG`
+ * env vars are honored by `BasicTracerProvider` itself (no sampler is passed
+ * here, so its constructor builds one from env; unset defaults to
+ * `parentbased_always_on`, i.e. sample-all). Sampling happens at span
+ * creation, BEFORE any processor runs — a ratio sampler therefore also thins
+ * the local file sink that `ok diagnose bundle` harvests. Leave the vars
+ * unset (the default) when complete bug-bundle span capture matters; the
+ * sampler-env contract is pinned by telemetry.test.ts.
+ *
  * Idempotent — calling twice returns the same providers.
  *
  * Failure modes branch on which subsystem threw:

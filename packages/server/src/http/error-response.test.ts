@@ -518,3 +518,49 @@ describe('createStreamingErrorWriter — writableEnded guard', () => {
     expect(writeCalls.length).toBe(1);
   });
 });
+
+describe('errorResponse — trace correlation (ok.error.instance span attribute)', () => {
+  test('stamps the minted instance UUID on the active span', async () => {
+    // Requires a real context manager: setActiveSpanAttributes reads
+    // trace.getSpan(context.active()), which the default no-op context
+    // manager never populates.
+    const { context: apiContext, trace } = await import('@opentelemetry/api');
+    const { AsyncLocalStorageContextManager } = await import('@opentelemetry/context-async-hooks');
+    const { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } = await import(
+      '@opentelemetry/sdk-trace-base'
+    );
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    trace.setGlobalTracerProvider(provider);
+    apiContext.setGlobalContextManager(new AsyncLocalStorageContextManager());
+    try {
+      const { res, endCalls } = makeMockRes();
+      trace.getTracer('test').startActiveSpan('request-span', (span) => {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Boom.');
+        span.end();
+      });
+      const spans = exporter.getFinishedSpans();
+      expect(spans).toHaveLength(1);
+      const stamped = spans[0].attributes['ok.error.instance'];
+      expect(typeof stamped).toBe('string');
+      // The stamped value must be the SAME correlation ID the client
+      // received in the problem+json body — that equality is what makes
+      // trace ↔ client-report joins possible.
+      const body = JSON.parse(endCalls[0]);
+      expect(stamped).toBe(body.instance);
+    } finally {
+      await provider.shutdown();
+      trace.disable();
+      apiContext.disable();
+    }
+  });
+
+  test('is a no-op without an active span (no throw, response unchanged)', () => {
+    const { res, writeHeadCalls, endCalls } = makeMockRes();
+    expect(() => errorResponse(res, 404, 'urn:ok:error:not-found', 'Missing.')).not.toThrow();
+    expect(writeHeadCalls.length).toBe(1);
+    expect(JSON.parse(endCalls[0]).title).toBe('Missing.');
+  });
+});

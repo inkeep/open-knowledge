@@ -79,6 +79,7 @@ import {
   incrementServerObserverError,
   incrementServerObserverFire,
 } from './metrics.ts';
+import { registerBridgeDirtyProbe } from './server-workload-telemetry.ts';
 import { type ShadowHandle, saveInMemoryCheckpoint } from './shadow-repo.ts';
 import { setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
 
@@ -2039,6 +2040,9 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   xmlFragment.observeDeep(observerA);
   ytext.observe(observerB);
   doc.on('afterAllTransactions', afterAll);
+  // Pull-based backlog probe for the workload gauges: sampled only at
+  // metric-export time, so the observer hot path stays untouched.
+  const unregisterDirtyProbe = registerBridgeDirtyProbe(() => xmlDirty || textDirty);
   // Quiescence tracking lives in its own module to avoid `Date.now()` /
   // `setTimeout` here (precedent #13(b) — bridge-no-wallclock guard).
   // `attachQuiescenceTracker` hooks `afterTransaction` + `afterAllTransactions`
@@ -2047,6 +2051,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
 
   // ─── Cleanup ───────────────────────────────────────────────
   return () => {
+    unregisterDirtyProbe();
     detachQuiescence();
     doc.off('afterAllTransactions', afterAll);
     xmlFragment.unobserveDeep(observerA);

@@ -577,6 +577,19 @@ function toStoreFailure(err: unknown): StoreFailure {
   return { code, message };
 }
 
+/**
+ * Read-only snapshot of a persistence instance's pending-store depths, sampled
+ * by the workload observable gauges at metric-export time. Owned here (the
+ * domain module that owns those queues) rather than by the telemetry module
+ * that consumes it, so telemetry depends on persistence and not the reverse.
+ */
+export interface PersistenceQueueDepths {
+  /** Stores parked during a branch operation, awaiting replay. */
+  readonly branchDeferred: number;
+  /** Docs whose store cycle is currently deferring on the quiescence gate. */
+  readonly quiescenceDeferred: number;
+}
+
 export interface PersistenceHandle {
   extension: Extension;
   flushDeferredStores: (mode?: 'within-branch' | 'discard-stale') => Promise<void>;
@@ -617,6 +630,12 @@ export interface PersistenceHandle {
    */
   flushContributors: () => Promise<void>;
   waitForPendingCommits: () => Promise<void>;
+  /**
+   * Read-only snapshot of this instance's pending-store depths, for the
+   * workload observable gauges. Sampled at metric-export time only; never
+   * mutates state.
+   */
+  getQueueDepths: () => PersistenceQueueDepths;
   /**
    * Config-doc persistence context. Exposed so the file-watcher
    * orchestration in `server-factory.ts` can call `applyExternalConfigChange`
@@ -2355,6 +2374,13 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     agentWriteStores.add(documentName);
   }
 
+  function getQueueDepths(): PersistenceQueueDepths {
+    return {
+      branchDeferred: deferredStores.size,
+      quiescenceDeferred: persistenceDeferCounts.size,
+    };
+  }
+
   return {
     extension,
     flushDeferredStores,
@@ -2364,6 +2390,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     takeStoreFailure,
     takeStoreDivergence,
     markAgentWriteStore,
+    getQueueDepths,
     configPersistenceCtx,
     managedArtifactCtx,
   };

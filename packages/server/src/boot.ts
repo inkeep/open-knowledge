@@ -58,7 +58,7 @@ import { createMcpHttpHandler } from './mcp-http.ts';
 import { mountMcpAndApi } from './mcp-mount.ts';
 import { MissingOkConfigError } from './missing-ok-config-error.ts';
 import { createServer, type ServerInstance, type ServerOptions } from './server-factory.ts';
-import { installServerMemoryGauge } from './server-memory-telemetry.ts';
+import { installServerMemoryGauge, installServerRuntimeGauges } from './server-memory-telemetry.ts';
 import { reconcileSkillInstalls } from './skill-reconcile.ts';
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
 import {
@@ -436,6 +436,7 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
   // `.ok/local/` runtime-state root as the span/log sinks.
   initToleranceTelemetryWriter(sinkProjectDir);
   installServerMemoryGauge();
+  installServerRuntimeGauges();
 
   // Wrap the orchestration in an `ok.boot` span so telemetry can slice
   // boot-failure rates by worktree kind. Computed here (not inside

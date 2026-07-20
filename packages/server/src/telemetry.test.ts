@@ -514,4 +514,81 @@ describe('Telemetry', () => {
       }
     });
   });
+
+  describe('Sampler env contract (OTEL_TRACES_SAMPLER)', () => {
+    // BasicTracerProvider builds its sampler from the standard env vars when
+    // initTelemetry passes none (unset → parentbased_always_on, sample-all).
+    // These tests pin that contract so an SDK bump that drops env-config
+    // sampling — the 2.x line moved it into a shim layer — fails loudly
+    // instead of silently changing sampling behavior.
+    const SAMPLER_ENV_KEYS = ['OTEL_TRACES_SAMPLER', 'OTEL_TRACES_SAMPLER_ARG'] as const;
+
+    function withSamplerEnv(
+      env: Partial<Record<(typeof SAMPLER_ENV_KEYS)[number], string>>,
+      fn: () => void,
+    ): void {
+      const saved = SAMPLER_ENV_KEYS.map((k) => [k, process.env[k]] as const);
+      for (const k of SAMPLER_ENV_KEYS) delete process.env[k];
+      for (const [k, v] of Object.entries(env)) process.env[k] = v;
+      try {
+        fn();
+      } finally {
+        for (const [k, v] of saved) {
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        }
+      }
+    }
+
+    it('samples everything by default (env unset) — spans record and reach the file sink', () => {
+      withSamplerEnv({}, () => {
+        initTelemetry({ localSink: makeLocalSinkOpts(tmp) });
+        const span = getTracer().startSpan('sampler-default-span');
+        expect(span.isRecording()).toBe(true);
+        span.end();
+      });
+    });
+
+    it('honors OTEL_TRACES_SAMPLER=always_off — spans become non-recording and skip the file sink', async () => {
+      withSamplerEnv({ OTEL_TRACES_SAMPLER: 'always_off' }, () => {
+        initTelemetry({ localSink: makeLocalSinkOpts(tmp) });
+        const span = getTracer().startSpan('sampler-off-span');
+        expect(span.isRecording()).toBe(false);
+        span.end();
+      });
+      // Sampling runs at span creation, before any processor — a dropped
+      // span never reaches the ScrubbingSpanProcessor → file-sink chain, so
+      // nothing lands on disk. This is the bug-bundle implication the
+      // initTelemetry docstring documents.
+      await shutdownTelemetry();
+      const spansFile = spansCurrentPath(tmp);
+      if (existsSync(spansFile)) {
+        expect(readFileSync(spansFile, 'utf-8').trim()).toBe('');
+      }
+    });
+
+    it('honors OTEL_TRACES_SAMPLER=parentbased_traceidratio with ARG=0 (root spans dropped)', () => {
+      withSamplerEnv(
+        { OTEL_TRACES_SAMPLER: 'parentbased_traceidratio', OTEL_TRACES_SAMPLER_ARG: '0' },
+        () => {
+          initTelemetry({ localSink: makeLocalSinkOpts(tmp) });
+          const span = getTracer().startSpan('sampler-ratio-zero-span');
+          expect(span.isRecording()).toBe(false);
+          span.end();
+        },
+      );
+    });
+
+    it('honors OTEL_TRACES_SAMPLER=parentbased_traceidratio with ARG=1 (all root spans kept)', () => {
+      withSamplerEnv(
+        { OTEL_TRACES_SAMPLER: 'parentbased_traceidratio', OTEL_TRACES_SAMPLER_ARG: '1' },
+        () => {
+          initTelemetry({ localSink: makeLocalSinkOpts(tmp) });
+          const span = getTracer().startSpan('sampler-ratio-one-span');
+          expect(span.isRecording()).toBe(true);
+          span.end();
+        },
+      );
+    });
+  });
 });

@@ -155,6 +155,11 @@ import {
 import { acquireServerLock, markServerLockDraining, releaseServerLock } from './server-lock.ts';
 import { createServerObserverExtension } from './server-observer-extension.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
+import {
+  installServerWorkloadGauges,
+  registerLoadedDocsProvider,
+  registerPersistenceQueueDepthProvider,
+} from './server-workload-telemetry.ts';
 import { shadowOpGateFor } from './shadow-op-gate.ts';
 import {
   commitUpstreamImport,
@@ -883,6 +888,10 @@ export function createServer(options: ServerOptions): ServerInstance {
   let loadedPrincipal: Principal | null = null;
   const forceUnloadSet = new Set<Document>();
   let shutdownAllowsUnload = false;
+  // Unregister hooks for the pull-based workload gauge providers registered
+  // in the init `try` below; called from destroy() so a torn-down instance
+  // stops contributing to (and being retained by) the process-wide gauges.
+  const unregisterWorkloadProviders: Array<() => void> = [];
   // Assigned synchronously in the init `try` immediately after `new Hocuspocus` (before the try
   // completes or awaits). Call sites (disk reconcile, API extension) only run after boot returns.
   let forceUnloadDocument!: (document: Document) => Promise<void>;
@@ -1204,6 +1213,18 @@ export function createServer(options: ServerOptions): ServerInstance {
       maxDebounce,
       extensions: [persistence.extension],
     });
+
+    // Workload observable gauges (loaded docs, persistence queue depths,
+    // bridge drain backlog). Providers are sampled only at metric-export
+    // time; registering them is a Set add and safe when OTel is disabled.
+    // Installed here (not just boot.ts) because the dev-plugin path enters
+    // createServer directly; install is idempotent.
+    const hp = hocuspocus;
+    unregisterWorkloadProviders.push(
+      registerLoadedDocsProvider(() => hp.documents.size),
+      registerPersistenceQueueDepthProvider(() => persistence.getQueueDepths()),
+    );
+    installServerWorkloadGauges();
 
     // Hocuspocus unloads documents as soon as the last WebSocket disconnects.
     // That is unsafe with client-side y-indexeddb: a browser refresh leaves a
@@ -1667,6 +1688,15 @@ export function createServer(options: ServerOptions): ServerInstance {
       }),
     );
   } catch (err) {
+    // Init failed after the workload providers may have registered. The caller
+    // never receives an instance to call destroy() on, so drain the providers
+    // here too — otherwise their closures (capturing `hocuspocus`/`persistence`)
+    // leak into the process-global registries and keep summing off a
+    // half-torn-down object. Idempotent via splice(0), so destroy()'s later
+    // drain stays a no-op.
+    for (const unregister of unregisterWorkloadProviders.splice(0)) {
+      unregister();
+    }
     releaseServerLock(lockDir);
     throw err;
   }
@@ -2398,6 +2428,13 @@ export function createServer(options: ServerOptions): ServerInstance {
       const t0 = Date.now();
       const phaseErrors: Array<{ phase: string; error: string }> = [];
       shutdownAllowsUnload = true;
+
+      // Stop contributing to the process-wide workload gauges before any
+      // teardown phase runs — a mid-destroy sample would otherwise read
+      // half-dismantled structures.
+      for (const unregister of unregisterWorkloadProviders.splice(0)) {
+        unregister();
+      }
 
       // Advertise teardown FIRST — before any flush work. Readers (MCP
       // discovery, desktop attach, spawners) see `draining: true` and stop

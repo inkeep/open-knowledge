@@ -47,7 +47,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type { Counter } from '@opentelemetry/api';
 import { getLogger } from '../logger.ts';
-import { getMeter } from '../telemetry.ts';
+import { getMeter, setActiveSpanAttributes } from '../telemetry.ts';
 
 // Lazy logger accessor — `loggerFactory.configure()` (used by capture-logger
 // tests in `server-factory.test.ts` and `logger.test.ts`) clears the
@@ -166,6 +166,12 @@ export function errorResponse(
   // log-grep workflows still pattern-match a flat string.
   // `ProblemDetailsSchema.instance` in core validates the prefix shape.
   const instance = options.instance ?? `urn:uuid:${randomUUID()}`;
+  // Mirror the correlation ID onto the active request span so a trace found
+  // in Tempo can be joined against the `instance` a client reported (and
+  // vice versa). No-op when no span is active or OTel is disabled. A UUID is
+  // a sanctioned span attribute — the cardinality STOP rule governs metric
+  // labels, and `ok.api.error.count` below stays UUID-free.
+  setActiveSpanAttributes({ 'ok.error.instance': instance });
 
   // Defense-in-depth: if a handler has already started writing (async race,
   // programming error at any of the ~286 call sites), `res.writeHead()`
