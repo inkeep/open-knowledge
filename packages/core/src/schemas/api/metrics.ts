@@ -1,10 +1,11 @@
 /**
  * metrics + agent activity + test handlers.
  *
- * Eight handlers — `handleAgentActivity`, `handleAgentBurstDiff`,
+ * Nine handlers — `handleAgentActivity`, `handleAgentBurstDiff`,
  * `handleTestReset`, `handleTestRescanBacklinks`,
  * `handleMetricsReconciliation`, `handleMetricsParseHealth`,
- * `handleMetricsAgentPresence`, `handleInstalledAgentsRoute`. No new URN
+ * `handleMetricsAgentPresence`, `handleMetricsAgentEffects`,
+ * `handleInstalledAgentsRoute`. No new URN
  * tokens — every error path reuses existing tokens (`invalid-request`,
  * `reserved-doc-name`, `no-active-session`, `not-found`, `loopback-required`,
  * `host-not-allowed`, `invalid-origin`, `method-not-allowed`,
@@ -165,6 +166,51 @@ export const MetricsAgentPresenceSuccessSchema = z
   })
   .loose() satisfies StandardSchemaV1;
 export type MetricsAgentPresenceSuccess = z.infer<typeof MetricsAgentPresenceSuccessSchema>;
+
+/**
+ * One summarized agent-effects ring-buffer entry on
+ * `MetricsAgentEffectsSuccessSchema.effects[].entries`. Deltas are reduced to
+ * character counts — the diagnostic signal is who wrote how much to which doc
+ * and when; the raw delta text (user content) never leaves the live doc via
+ * this endpoint.
+ */
+export const AgentEffectEntrySchema = z
+  .object({
+    sessionId: z.string().min(1),
+    agentType: z.string().min(1),
+    ts: z.number().int().min(0),
+    insertedChars: z.number().int().min(0),
+    deletedChars: z.number().int().min(0),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type AgentEffectEntryWire = z.infer<typeof AgentEffectEntrySchema>;
+
+/**
+ * One per-doc block on `MetricsAgentEffectsSuccessSchema.effects`. The doc
+ * name is carried under the literal key `doc.name` — the same key the
+ * diagnostics-bundle redactor hashes — so a staged copy of this response is
+ * anonymized by the existing pass without a redactor change.
+ */
+export const AgentEffectsDocSchema = z
+  .object({
+    'doc.name': z.string().min(1),
+    entries: z.array(AgentEffectEntrySchema),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type AgentEffectsDocWire = z.infer<typeof AgentEffectsDocSchema>;
+
+/**
+ * Success response for `GET /api/metrics/agent-effects`. Aggregates the
+ * bounded per-doc `agent-effects` ring buffers across currently-loaded docs
+ * (never force-loads unloaded ones). Loopback + Host-allowlist gated like
+ * `/api/metrics/agent-presence`.
+ */
+export const MetricsAgentEffectsSuccessSchema = z
+  .object({
+    effects: z.array(AgentEffectsDocSchema),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type MetricsAgentEffectsSuccess = z.infer<typeof MetricsAgentEffectsSuccessSchema>;
 
 /**
  * Success response for `GET /api/installed-agents`. Returns a flat boolean

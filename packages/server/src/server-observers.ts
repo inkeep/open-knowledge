@@ -60,6 +60,7 @@ import {
 } from './bridge-watchdog.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
+import { getLogger } from './logger.ts';
 import { computeMapDrivenBodySplice } from './map-driven-splice.ts';
 import {
   incrementBridgeMergeCheckpointCreated,
@@ -80,6 +81,14 @@ import {
 } from './metrics.ts';
 import { type ShadowHandle, saveInMemoryCheckpoint } from './shadow-repo.ts';
 import { setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
+
+/**
+ * Pino line for checkpoint-write failures, alongside the existing
+ * console.warn: a failed checkpoint means the recovery snapshot for a
+ * detected content-loss event was NOT persisted, and the pino sink is what
+ * reaches the local log files (and, through them, diagnostics bundles).
+ */
+const checkpointLog = getLogger('server-observers');
 
 // ─────────────────────────────────────────────────────────────
 // Origin constant
@@ -675,6 +684,10 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             message: err.message,
             stack: err.stack?.split('\n').slice(0, 4).join('\n'),
           });
+          checkpointLog.warn(
+            { err, 'doc.name': opts.docName ?? null, branch, kind: 'bridge-merge-loss' },
+            'checkpoint write failed',
+          );
         });
     });
   };
@@ -759,6 +772,10 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             message: e.message,
             stack: e.stack?.split('\n').slice(0, 4).join('\n'),
           });
+          checkpointLog.warn(
+            { err: e, 'doc.name': docName, branch, kind: 'observer-a-duplication' },
+            'checkpoint write failed',
+          );
         });
     });
   };
@@ -1100,6 +1117,10 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             message: e.message,
             stack: e.stack?.split('\n').slice(0, 4).join('\n'),
           });
+          checkpointLog.warn(
+            { err: e, 'doc.name': docName, branch, kind: 'producer-guard-loss' },
+            'checkpoint write failed',
+          );
         });
     });
   };

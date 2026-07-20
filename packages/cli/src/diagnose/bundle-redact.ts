@@ -31,8 +31,12 @@ const HASH_HEX_LEN = 8;
 // Keys whose values are treated as doc-name-shaped. The OTLP attribute pair
 // form sets `key` to one of these and stores the value under `value.stringValue`;
 // the Pino flat form sets the key directly on the log record. Single source
-// for both shapes — extending DOC_NAME_KEYS covers both at once.
-const DOC_NAME_KEYS = new Set(['doc.name']);
+// for both shapes — extending DOC_NAME_KEYS covers both at once. `currentDoc`
+// is the workspace-relative doc path carried by `agent-presence.json` entries;
+// hashing it keeps a redacted presence artifact from leaking the doc a human
+// was editing (same anonymization guarantee the `doc.name`-keyed effects
+// artifact already gets).
+const DOC_NAME_KEYS = new Set(['doc.name', 'currentDoc']);
 
 export interface RedactStagedBundleOpts {
   /** Absolute path to the staging dir (contains telemetry/, logs/, state/). */
@@ -263,10 +267,10 @@ function walkDirFiles(dir: string): string[] {
   }
 }
 
-// State files that are JSON-shaped get a full walker pass (agent-presence may
-// carry per-agent doc.name fields; runtime.json may carry the contentDir).
-// Other state files get substring-only substitution.
-const STATE_JSON_FILES = new Set(['agent-presence.json', 'runtime.json']);
+// State files that are JSON-shaped get a full walker pass (agent-presence and
+// agent-effects may carry per-doc `doc.name` fields; runtime.json may carry
+// the contentDir). Other state files get substring-only substitution.
+const STATE_JSON_FILES = new Set(['agent-presence.json', 'agent-effects.json', 'runtime.json']);
 
 export function redactStagedBundle(opts: RedactStagedBundleOpts): RedactStagedBundleResult {
   const ctx: RedactCtx = {

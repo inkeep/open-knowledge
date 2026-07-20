@@ -203,11 +203,27 @@ export interface CollectBundleDeps {
    */
   fetchAgentPresence?: (port: number) => Promise<string | null>;
   /**
+   * Fetch the running server's `GET /api/metrics/agent-effects` response
+   * (per-doc agent activity ring-buffer summaries), within the 1s budget.
+   * Returns the response body string on 2xx, or `null` on any failure.
+   * Best-effort like agent-presence; a `null` never affects `serverStatus`.
+   */
+  fetchAgentEffects?: (port: number) => Promise<string | null>;
+  /**
    * Read the last 50 entries of the shadow repo log at
    * `<contentDir>/.git/ok/`. Returns the stdout string or `null` if the
    * shadow repo is missing or git fails.
    */
   readShadowHead?: (contentDir: string) => string | null;
+  /**
+   * List the most recent `refs/checkpoints/*` refs of the shadow repo at
+   * `<contentDir>/.git/ok/` — the content-loss / rescue recovery snapshots.
+   * One tab-separated line per ref: ref name, creation date, commit subject
+   * (the subject is a content-free label; the commit BODY, which can carry
+   * doc names and lost content, is deliberately not read). Returns the
+   * listing string or `null` if the shadow repo is missing or git fails.
+   */
+  readCheckpointRefs?: (contentDir: string) => string | null;
   /** Returns the current timestamp. Override in tests for determinism. */
   now?: () => Date;
   /** Returns the OK CLI's package version. */
@@ -322,6 +338,7 @@ export const _pathHelpersForTests = {
 
 const AGENT_PRESENCE_TIMEOUT_MS = 1000;
 const SHADOW_GIT_LOG_LIMIT = 50;
+const CHECKPOINT_REF_LIMIT = 50;
 
 async function defaultFetchAgentPresence(port: number): Promise<string | null> {
   try {
@@ -338,12 +355,52 @@ async function defaultFetchAgentPresence(port: number): Promise<string | null> {
   }
 }
 
+async function defaultFetchAgentEffects(port: number): Promise<string | null> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/metrics/agent-effects`, {
+      signal: AbortSignal.timeout(AGENT_PRESENCE_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    return await response.text();
+  } catch {
+    // Same all-failures-collapse-to-null posture as agent-presence — a
+    // server without the endpoint (older version) or not running must not
+    // fail the bundle.
+    return null;
+  }
+}
+
 function defaultReadShadowHead(contentDir: string): string | null {
   const shadowDir = join(contentDir, '.git', 'ok');
   if (!existsSync(shadowDir)) return null;
   const result = spawnSync(
     'git',
     ['-C', shadowDir, 'log', '--oneline', `-${SHADOW_GIT_LOG_LIMIT}`],
+    withHiddenWindowsConsole({ encoding: 'utf-8', timeout: 2000 }),
+  );
+  if (result.error || result.status !== 0) return null;
+  return result.stdout ?? '';
+}
+
+function defaultReadCheckpointRefs(contentDir: string): string | null {
+  const shadowDir = join(contentDir, '.git', 'ok');
+  if (!existsSync(shadowDir)) return null;
+  // `%(contents:subject)` only: checkpoint commit bodies carry an
+  // `ok-checkpoint-v1` JSON line with the doc name and (for merge-loss
+  // checkpoints) lost-content substrings — the subject is a content-free
+  // label, so restricting the format keeps the artifact safe to stage as
+  // plain text under the same redaction rules as shadow-head.txt.
+  const result = spawnSync(
+    'git',
+    [
+      '-C',
+      shadowDir,
+      'for-each-ref',
+      '--sort=-creatordate',
+      `--count=${CHECKPOINT_REF_LIMIT}`,
+      '--format=%(refname)%09%(creatordate:iso-strict)%09%(contents:subject)',
+      'refs/checkpoints/',
+    ],
     withHiddenWindowsConsole({ encoding: 'utf-8', timeout: 2000 }),
   );
   if (result.error || result.status !== 0) return null;
@@ -569,7 +626,9 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
   const projectDir = resolve(opts.projectDir ?? opts.contentDir);
   const deps = opts.deps ?? {};
   const fetchAgentPresence = deps.fetchAgentPresence ?? defaultFetchAgentPresence;
+  const fetchAgentEffects = deps.fetchAgentEffects ?? defaultFetchAgentEffects;
   const readShadowHead = deps.readShadowHead ?? defaultReadShadowHead;
+  const readCheckpointRefs = deps.readCheckpointRefs ?? defaultReadCheckpointRefs;
   const now = deps.now ?? (() => new Date());
   const okVersion = deps.okVersion ?? (() => PACKAGE_VERSION);
   const readDesktopEnv = deps.readDesktopEnv ?? defaultReadDesktopEnv;
@@ -621,12 +680,29 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       } else {
         serverStatusReason = `agent-presence endpoint at :${lockPort} unreachable`;
       }
+      // Agent-effects ring-buffer summaries — best effort, never affects
+      // serverStatus (presence remains the liveness probe; an older server
+      // without this endpoint is still "running").
+      const agentEffects = await fetchAgentEffects(lockPort);
+      if (agentEffects !== null) {
+        writeFileSync(join(stagingDir, 'state', 'agent-effects.json'), agentEffects);
+      }
     }
 
     // Shadow-repo head — best effort.
     const shadowHead = readShadowHead(contentDir);
     if (shadowHead !== null) {
       writeFileSync(join(stagingDir, 'state', 'shadow-head.txt'), shadowHead);
+    }
+
+    // Recovery-checkpoint refs (`refs/checkpoints/*`) — best effort. The
+    // default-branch shadow log above never shows these one-shot refs, yet
+    // they are the primary artifact for the content-loss bug class: their
+    // presence, kind-bearing subjects, and timestamps tell the recipient
+    // whether (and when) the bridge detected potential loss.
+    const checkpointRefs = readCheckpointRefs(contentDir);
+    if (checkpointRefs !== null) {
+      writeFileSync(join(stagingDir, 'state', 'checkpoint-refs.txt'), checkpointRefs);
     }
 
     // last-spawn-error.log (Electron host writes this when a spawn fails).

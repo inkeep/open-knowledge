@@ -358,6 +358,78 @@ describe('redactStagedBundle — contentDir substitution', () => {
     expect(Object.values(result.docNameMap)).toContain('live-doc');
   });
 
+  test('hashes the real `currentDoc` field the presence endpoint emits', () => {
+    // The live `/api/metrics/agent-presence` wire body carries the doc path
+    // under `currentDoc`, not `doc.name`. The walker must hash that exact key
+    // so a staged presence artifact never leaks the doc a human is editing.
+    const stagingDir = makeStagingDir();
+    const contentDir = '/Users/test/notes';
+    writeStaged(
+      stagingDir,
+      'state/agent-presence.json',
+      `${JSON.stringify({
+        presence: {
+          'agent-a1': {
+            displayName: 'Claude',
+            icon: 'claude',
+            color: '#abc',
+            currentDoc: 'meetings/secret-standup',
+            mode: 'writing',
+            ts: 1,
+          },
+        },
+      })}`,
+    );
+
+    const result = redactStagedBundle({ stagingDir, contentDir });
+
+    const after = JSON.parse(readStaged(stagingDir, 'state/agent-presence.json'));
+    expect(after.presence['agent-a1'].currentDoc).toMatch(/^doc:[a-f0-9]{8}$/);
+    expect(JSON.stringify(after)).not.toContain('meetings/secret-standup');
+    expect(Object.values(result.docNameMap)).toContain('meetings/secret-standup');
+  });
+
+  test('leaves a null `currentDoc` untouched (only strings hash)', () => {
+    const stagingDir = makeStagingDir();
+    const contentDir = '/Users/test/notes';
+    writeStaged(
+      stagingDir,
+      'state/agent-presence.json',
+      `${JSON.stringify({
+        presence: { 'agent-a1': { currentDoc: null, mode: 'idle', ts: 1 } },
+      })}`,
+    );
+
+    redactStagedBundle({ stagingDir, contentDir });
+
+    const after = JSON.parse(readStaged(stagingDir, 'state/agent-presence.json'));
+    expect(after.presence['agent-a1'].currentDoc).toBeNull();
+  });
+
+  test('hashes doc.name values in state/agent-effects.json via the walker pass', () => {
+    const stagingDir = makeStagingDir();
+    const contentDir = '/Users/test/notes';
+    writeStaged(
+      stagingDir,
+      'state/agent-effects.json',
+      `${JSON.stringify({
+        effects: [
+          {
+            'doc.name': 'meetings/standup',
+            entries: [{ sessionId: 'agent-a1', agentType: 'claude', ts: 1, insertedChars: 4 }],
+          },
+        ],
+      })}`,
+    );
+
+    const result = redactStagedBundle({ stagingDir, contentDir });
+
+    const after = JSON.parse(readStaged(stagingDir, 'state/agent-effects.json'));
+    expect(after.effects[0]['doc.name']).toMatch(/^doc:[a-f0-9]{8}$/);
+    expect(after.effects[0].entries[0].sessionId).toBe('agent-a1');
+    expect(Object.values(result.docNameMap)).toContain('meetings/standup');
+  });
+
   test('strings that do not include contentDir are passed through verbatim', () => {
     const stagingDir = makeStagingDir();
     const contentDir = '/Users/test/notes';

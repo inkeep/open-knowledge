@@ -33,10 +33,17 @@ export const ClientLogEntrySchema = z
   .loose() satisfies StandardSchemaV1;
 export type ClientLogEntry = z.infer<typeof ClientLogEntrySchema>;
 
-/** Request body for `POST /api/client-logs` — a bounded batch of entries. */
+/**
+ * Request body for `POST /api/client-logs` — a bounded batch of entries.
+ * `droppedSinceLastFlush` is the number of entries the client forwarder lost
+ * since its last delivered batch (buffer overflow or failed POSTs — reconnect
+ * storms are the typical cause); the server records it so the persisted log
+ * carries an explicit gap marker instead of silently missing entries.
+ */
 export const ClientLogsRequestSchema = z
   .object({
     entries: z.array(ClientLogEntrySchema).max(RENDERER_LOG_MAX_ENTRIES),
+    droppedSinceLastFlush: z.number().int().min(0).optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type ClientLogsRequest = z.infer<typeof ClientLogsRequestSchema>;

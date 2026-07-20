@@ -57,6 +57,23 @@ describe('POST /api/client-logs', () => {
     expect(body.accepted).toBe(2);
   });
 
+  test('accepts a batch carrying a droppedSinceLastFlush gap marker', async () => {
+    const res = await postLogs({
+      entries: [{ level: 'warn', message: 'after a reconnect storm' }],
+      droppedSinceLastFlush: 7,
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { accepted: number }).accepted).toBe(1);
+  });
+
+  test('rejects a negative droppedSinceLastFlush with 400', async () => {
+    const res = await postLogs({
+      entries: [{ level: 'warn', message: 'x' }],
+      droppedSinceLastFlush: -1,
+    });
+    expect(res.status).toBe(400);
+  });
+
   test('accepts an empty batch (accepted: 0)', async () => {
     const res = await postLogs({ entries: [] });
     expect(res.status).toBe(200);

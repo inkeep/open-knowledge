@@ -7,6 +7,7 @@ import {
   AgentBurstDiffSuccessSchema,
   AgentPresenceEntrySchema,
   InstalledAgentsSuccessSchema,
+  MetricsAgentEffectsSuccessSchema,
   MetricsAgentPresenceSuccessSchema,
   MetricsParseHealthSuccessSchema,
   MetricsReconciliationSuccessSchema,
@@ -323,6 +324,49 @@ describe('MetricsAgentPresenceSuccessSchema', () => {
   });
   test('rejects body missing presence field', () => {
     expect(MetricsAgentPresenceSuccessSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('MetricsAgentEffectsSuccessSchema', () => {
+  test('parses an empty effects list', () => {
+    expect(MetricsAgentEffectsSuccessSchema.safeParse({ effects: [] }).success).toBe(true);
+  });
+  test('parses a populated per-doc block with summarized entries', () => {
+    expect(
+      MetricsAgentEffectsSuccessSchema.safeParse({
+        effects: [
+          {
+            'doc.name': 'meetings/standup',
+            entries: [
+              {
+                sessionId: 'agent-a1',
+                agentType: 'claude',
+                ts: 1,
+                insertedChars: 12,
+                deletedChars: 0,
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+  test('rejects body missing effects field', () => {
+    expect(MetricsAgentEffectsSuccessSchema.safeParse({}).success).toBe(false);
+  });
+  test('rejects a negative character count', () => {
+    expect(
+      MetricsAgentEffectsSuccessSchema.safeParse({
+        effects: [
+          {
+            'doc.name': 'a',
+            entries: [
+              { sessionId: 's', agentType: 't', ts: 1, insertedChars: -1, deletedChars: 0 },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 });
 

@@ -38,6 +38,17 @@ describe('ClientLogsRequestSchema', () => {
     expect(ClientLogsRequestSchema.safeParse({ entries }).success).toBe(false);
   });
 
+  test('accepts an optional droppedSinceLastFlush count; rejects a negative one', () => {
+    const entries = [{ level: 'info' as const, message: 'x' }];
+    expect(ClientLogsRequestSchema.safeParse({ entries, droppedSinceLastFlush: 3 }).success).toBe(
+      true,
+    );
+    expect(ClientLogsRequestSchema.safeParse({ entries }).success).toBe(true);
+    expect(ClientLogsRequestSchema.safeParse({ entries, droppedSinceLastFlush: -1 }).success).toBe(
+      false,
+    );
+  });
+
   test('rejects an oversized message', () => {
     const result = ClientLogsRequestSchema.safeParse({
       entries: [{ level: 'error', message: 'a'.repeat(RENDERER_LOG_MAX_MESSAGE_BYTES + 1) }],

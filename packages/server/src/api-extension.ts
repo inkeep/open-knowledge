@@ -128,6 +128,8 @@ import {
   MANAGED_ARTIFACT_PREFIX_SKILL,
   MANAGED_ARTIFACT_PREFIX_TEMPLATE,
   MarkdownlintRuleWriteRequestSchema,
+  type MetricsAgentEffectsSuccess,
+  MetricsAgentEffectsSuccessSchema,
   MetricsAgentPresenceSuccessSchema,
   MetricsParseHealthSuccessSchema,
   MetricsReconciliationSuccessSchema,
@@ -251,7 +253,7 @@ import busboy from 'busboy';
 import { fileTypeFromBuffer } from 'file-type';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
-import { captureEffect } from './activity-log.ts';
+import { captureEffect, type EffectValue } from './activity-log.ts';
 import { listAgentActivity, synthesizeVersionDiff } from './agent-activity.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
 import { type AgentPresenceBroadcaster, BROADCASTER_EVICTION_MS } from './agent-presence.ts';
@@ -8779,6 +8781,92 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       log.error({ err: e }, '[metrics-agent-presence] handler failed');
       errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
         handler: 'metrics-agent-presence',
+        cause: e,
+      });
+    }
+  }
+
+  async function handleMetricsAgentEffects(
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<void> {
+    // Diagnostic view of the per-doc `agent-effects` ring buffers, which
+    // otherwise live only inside live Y.Docs and are invisible to bundles.
+    // Loopback + Host-header gated with auth-before-method-dispatch ordering
+    // — same pattern + rationale as `handleMetricsAgentPresence` (per-agent
+    // identity plus per-doc write timing are local-editing-only signals).
+    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+      errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
+        handler: 'metrics-agent-effects',
+      });
+      return;
+    }
+    if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
+      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
+        handler: 'metrics-agent-effects',
+      });
+      return;
+    }
+    if (req.method !== 'GET') {
+      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
+        handler: 'metrics-agent-effects',
+        extraHeaders: { Allow: 'GET' },
+      });
+      return;
+    }
+    // Tracks the doc being summarized so a throw in the per-doc reduction (e.g.
+    // a malformed `EffectValue` from an older schema) names its source in the
+    // catch log. Rides the `doc.name` key the bundle redactor hashes.
+    let failingDocName: string | undefined;
+    try {
+      // Currently-loaded docs only — iterating `hocuspocus.documents` never
+      // materializes an unloaded doc. The `share.has` probe avoids even
+      // creating the lazy Y.Map placeholder on docs no agent ever wrote to.
+      const effects: MetricsAgentEffectsSuccess['effects'] = [];
+      for (const [effectsDocName, document] of hocuspocus.documents) {
+        if (isSystemDoc(effectsDocName) || isConfigDoc(effectsDocName)) continue;
+        if (!document.share.has('agent-effects')) continue;
+        failingDocName = effectsDocName;
+        const effectsMap = document.getMap<EffectValue>('agent-effects');
+        if (effectsMap.size === 0) continue;
+        // Deltas reduce to character counts: the diagnostic signal is who
+        // wrote how much to which doc and when. Raw delta text is user
+        // content and stays in the live doc.
+        const entries = [...effectsMap.values()]
+          .map((effect) => {
+            let insertedChars = 0;
+            let deletedChars = 0;
+            for (const op of effect.delta) {
+              if (typeof op.insert === 'string') insertedChars += op.insert.length;
+              else if (op.insert !== undefined) insertedChars += 1;
+              if (typeof op.delete === 'number') deletedChars += op.delete;
+            }
+            return {
+              sessionId: effect.sessionId,
+              agentType: effect.agent_type,
+              ts: effect.timestamp,
+              insertedChars,
+              deletedChars,
+            };
+          })
+          .sort((a, b) => a.ts - b.ts);
+        // The doc name rides under the literal `doc.name` key — the key the
+        // diagnostics-bundle redactor hashes — so a staged copy of this
+        // response is anonymized by the existing pass.
+        effects.push({ 'doc.name': effectsDocName, entries });
+      }
+      effects.sort((a, b) => a['doc.name'].localeCompare(b['doc.name']));
+      successResponse(
+        res,
+        200,
+        MetricsAgentEffectsSuccessSchema,
+        { effects },
+        { handler: 'metrics-agent-effects' },
+      );
+    } catch (e) {
+      log.error({ err: e, 'doc.name': failingDocName }, '[metrics-agent-effects] handler failed');
+      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
+        handler: 'metrics-agent-effects',
         cause: e,
       });
     }
@@ -17707,6 +17795,21 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     async (_req, res, body) => {
       try {
         const logger = getLogger('renderer');
+        if (body.droppedSinceLastFlush !== undefined && body.droppedSinceLastFlush > 0) {
+          // Gap marker: the forwarder lost entries (buffer overflow / failed
+          // POSTs) between the previous delivered batch and this one. Persist
+          // it as its own line so a log reader knows the silence was loss,
+          // not inactivity.
+          logger.warn(
+            {
+              source: 'renderer-console',
+              transport: 'web',
+              event: 'client-log-entries-dropped',
+              droppedSinceLastFlush: body.droppedSinceLastFlush,
+            },
+            'client-log-entries-dropped',
+          );
+        }
         for (const entry of body.entries) {
           // Per-entry guard: one entry that trips a pino serialization fault
           // must not drop the rest of the batch (the response still reports the
@@ -18633,6 +18736,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/metrics/reconciliation': handleMetricsReconciliation,
     '/api/metrics/parse-health': handleMetricsParseHealth,
     '/api/metrics/agent-presence': handleMetricsAgentPresence,
+    '/api/metrics/agent-effects': handleMetricsAgentEffects,
     '/api/__embed-detect': handleEmbedDetect,
     '/api/server-info': handleServerInfo,
     '/api/share/construct-url': handleShareConstructUrl,

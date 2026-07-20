@@ -145,6 +145,12 @@ export function installClientLogForwarder(
   // Set while flushing so neither the flush path nor any transitive console
   // call it triggers gets re-captured (recursion guard).
   let inForward = false;
+  // Entries lost since the last delivered batch (ring overflow + failed
+  // POSTs). Carried as `droppedSinceLastFlush` on the next successful batch so
+  // the persisted log records that a gap exists — the drops cluster exactly
+  // when diagnostics matter most (reconnect storms), and a silent gap reads
+  // as "nothing happened".
+  let droppedSinceLastFlush = 0;
 
   const original: ConsoleLike = {
     log: con.log.bind(con),
@@ -161,19 +167,43 @@ export function installClientLogForwarder(
     if (queue.length === 0) return;
     const entries = queue.splice(0, RENDERER_LOG_MAX_ENTRIES);
     pendingBytes = 0;
+    // Snapshot the drop count at send time: on delivery only this snapshot is
+    // subtracted (not a reset to 0), so drops that accrue while the POST is in
+    // flight survive to the next batch.
+    const droppedAtSend = droppedSinceLastFlush;
     inForward = true;
     try {
       void doFetch('/api/client-logs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         keepalive: true,
-        body: JSON.stringify({ entries }),
-      }).catch(() => {
-        // Network failure — drop. Never surface; never console.* here (would
-        // re-capture). The entries are already removed from the queue.
-      });
+        body: JSON.stringify(
+          droppedAtSend > 0 ? { entries, droppedSinceLastFlush: droppedAtSend } : { entries },
+        ),
+      }).then(
+        (res) => {
+          if (res.ok) {
+            // Clamp at zero: `inForward` is released in the `finally` before this
+            // promise settles, so a second flush can fire and snapshot the same
+            // non-zero `droppedAtSend`. Two overlapping 2xx deliveries would then
+            // each subtract it and drive the counter negative, suppressing the
+            // next genuine gap marker. The clamp keeps double-reporting from
+            // going below zero.
+            droppedSinceLastFlush = Math.max(0, droppedSinceLastFlush - droppedAtSend);
+          } else {
+            // Non-2xx: the server rejected the batch; these entries are gone.
+            droppedSinceLastFlush += entries.length;
+          }
+        },
+        () => {
+          // Network failure — drop. Never surface; never console.* here (would
+          // re-capture). The entries are already removed from the queue.
+          droppedSinceLastFlush += entries.length;
+        },
+      );
     } catch {
       // Synchronous failure (e.g. serialization) — drop the batch.
+      droppedSinceLastFlush += entries.length;
     } finally {
       inForward = false;
     }
@@ -185,7 +215,10 @@ export function installClientLogForwarder(
     // Bounded ring — drop oldest under sustained backpressure.
     if (queue.length > RENDERER_LOG_MAX_ENTRIES) {
       const dropped = queue.shift();
-      if (dropped) pendingBytes -= estimateEntryBytes(dropped);
+      if (dropped) {
+        pendingBytes -= estimateEntryBytes(dropped);
+        droppedSinceLastFlush += 1;
+      }
     }
     // Flush on entry count OR byte budget — the byte cap keeps each POST under
     // the browser's ~64KB `keepalive` limit so unload-time flushes aren't

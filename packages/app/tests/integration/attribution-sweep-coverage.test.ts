@@ -188,6 +188,10 @@ const EXEMPT_HANDLERS = new Set([
   'handleMetricsReconciliation',
   'handleMetricsParseHealth',
   'handleMetricsAgentPresence',
+  // `/api/metrics/agent-effects` — GET-only loopback + host-gated diagnostic
+  // (per-doc agent-effects ring-buffer summaries). Read path, no writes,
+  // nothing to attribute — same posture as `handleMetricsAgentPresence`.
+  'handleMetricsAgentEffects',
   // `/api/client-logs` — web/browser renderer console-log ingest. Writes only
   // to the `renderer` pino log (diagnostics), no Y.Docs / agent content; gated
   // by `checkLocalOpSecurity` like the local-op handlers. No identity needed.

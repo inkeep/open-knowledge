@@ -228,6 +228,109 @@ describe('installClientLogForwarder', () => {
     expect((entry?.message as string).length).toBeLessThanOrEqual(8192);
   });
 
+  test('a failed POST is counted and carried as droppedSinceLastFlush on the next batch', async () => {
+    let failNext = true;
+    const fetchSpy = mock((_url: string, _init?: RequestInit) =>
+      failNext
+        ? Promise.reject(new Error('network down'))
+        : Promise.resolve(new Response(null, { status: 200 })),
+    );
+    const { con } = install(fetchSpy);
+
+    con.warn('lost-1');
+    con.warn('lost-2');
+    handle?.flushNow();
+    await new Promise((r) => setTimeout(r, 0)); // let the rejection handler run
+
+    failNext = false;
+    con.warn('delivered');
+    handle?.flushNow();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const body = bodyOf(fetchSpy) as { entries: unknown[]; droppedSinceLastFlush?: number };
+    expect(body.entries).toHaveLength(1);
+    expect(body.droppedSinceLastFlush).toBe(2);
+  });
+
+  test('a non-2xx response counts the batch as dropped', async () => {
+    let reject = true;
+    const fetchSpy = mock((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response(null, { status: reject ? 500 : 200 })),
+    );
+    const { con } = install(fetchSpy);
+
+    con.warn('rejected');
+    handle?.flushNow();
+    await new Promise((r) => setTimeout(r, 0));
+
+    reject = false;
+    con.warn('delivered');
+    handle?.flushNow();
+    const body = bodyOf(fetchSpy) as { droppedSinceLastFlush?: number };
+    expect(body.droppedSinceLastFlush).toBe(1);
+  });
+
+  test('a sustained failing burst past the entry cap preserves the accumulated drop count on recovery', async () => {
+    // The reconnect-storm scenario the feature targets: entries arrive faster
+    // than they can be delivered while the server is unreachable. Each auto-flush
+    // at the entry cap drains the queue and fails its POST — the failed-batch
+    // accounting must accumulate across cycles and ride the first delivered batch
+    // once the server recovers. (The ring-overflow `shift` in `enqueue` is not
+    // exercised here: the flush-at-cap drains the queue at exactly the cap, so it
+    // never grows past it — the failed-POST path is the real bound.)
+    let failNext = true;
+    const fetchSpy = mock((_url: string, _init?: RequestInit) =>
+      failNext
+        ? Promise.reject(new Error('network down'))
+        : Promise.resolve(new Response(null, { status: 200 })),
+    );
+    const { con } = install(fetchSpy);
+
+    // Two full cap-sized batches, all failing → two auto-flush cycles.
+    for (let i = 0; i < RENDERER_LOG_MAX_ENTRIES * 2; i++) con.warn(`storm-${i}`);
+    await new Promise((r) => setTimeout(r, 0)); // let both rejection handlers run
+
+    failNext = false;
+    con.warn('delivered');
+    handle?.flushNow();
+    const body = bodyOf(fetchSpy) as { entries: unknown[]; droppedSinceLastFlush?: number };
+    expect(body.entries).toHaveLength(1);
+    expect(body.droppedSinceLastFlush).toBe(RENDERER_LOG_MAX_ENTRIES * 2);
+  });
+
+  test('drop count resets after a delivered batch (field absent when zero)', async () => {
+    let failNext = true;
+    const fetchSpy = mock((_url: string, _init?: RequestInit) =>
+      failNext
+        ? Promise.reject(new Error('network down'))
+        : Promise.resolve(new Response(null, { status: 200 })),
+    );
+    const { con } = install(fetchSpy);
+
+    con.warn('lost');
+    handle?.flushNow();
+    await new Promise((r) => setTimeout(r, 0));
+
+    failNext = false;
+    con.warn('carries the count');
+    handle?.flushNow();
+    await new Promise((r) => setTimeout(r, 0)); // let the success handler subtract
+
+    con.warn('clean batch');
+    handle?.flushNow();
+    const body = bodyOf(fetchSpy) as { entries: unknown[]; droppedSinceLastFlush?: number };
+    expect(body.entries).toHaveLength(1);
+    expect(body.droppedSinceLastFlush).toBeUndefined();
+  });
+
+  test('no droppedSinceLastFlush field when nothing was dropped', () => {
+    const fetchSpy = makeFetchSpy();
+    const { con } = install(fetchSpy);
+    con.warn('all good');
+    handle?.flushNow();
+    const body = bodyOf(fetchSpy) as { droppedSinceLastFlush?: number };
+    expect(body.droppedSinceLastFlush).toBeUndefined();
+  });
+
   test('uninstall restores console and clears the marker (fresh install works)', () => {
     const fetchSpy = makeFetchSpy();
     const con = makeFakeConsole();

@@ -1,4 +1,3 @@
-
 export const LINT_PLUGIN_IDS = ['markdownlint'] as const;
 export type LintPluginId = (typeof LINT_PLUGIN_IDS)[number];
 
@@ -41,7 +40,6 @@ export interface MarkdownlintSlice {
   enabled: boolean;
   rules: Record<string, MarkdownlintRuleSetting>;
 }
-
 
 interface RuleOptionSpecBase {
   key: string;

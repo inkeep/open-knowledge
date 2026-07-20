@@ -125,6 +125,11 @@ const EXEMPT_HANDLERS = new Set([
   'handleMetricsReconciliation',
   'handleMetricsParseHealth',
   'handleMetricsAgentPresence',
+  // `/api/metrics/agent-effects` — GET-only loopback + host-gated diagnostic
+  // summarizing the per-doc `Y.Map('agent-effects')` ring buffers. Reads only;
+  // targets no Y.Doc write, so the per-doc conflict gate does not apply — same
+  // posture as its `handleMetricsAgentPresence` sibling.
+  'handleMetricsAgentEffects',
   // `/api/__embed-detect` — read-only loopback + host-gated diagnostic for the
   // embedded-viewer detection spikes; reads the in-process UA ring buffer and
   // returns boolean signals, targets no Y.Doc, so the per-doc conflict gate

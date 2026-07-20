@@ -44,7 +44,9 @@ afterEach(() => {
 function makeDeterministicDeps(over: Partial<CollectBundleDeps> = {}): CollectBundleDeps {
   return {
     fetchAgentPresence: async () => null,
+    fetchAgentEffects: async () => null,
     readShadowHead: () => null,
+    readCheckpointRefs: () => null,
     now: () => new Date('2026-05-28T14:22:01.000Z'),
     okVersion: () => '0.7.99',
     readDesktopEnv: () => null,
@@ -310,6 +312,48 @@ describe('collectBundle — server status', () => {
     collected.cleanup();
   });
 
+  test('lock present + agent-effects 2xx → agent-effects.json staged', async () => {
+    const contentDir = makeTmpDir();
+    writeAt(
+      contentDir,
+      '.ok/local/server.lock',
+      JSON.stringify({ pid: 1, port: 4711, hostname: 'h', startedAt: 't', worktreeRoot: '/' }),
+    );
+    let queriedPort = -1;
+    const deps = makeDeterministicDeps({
+      fetchAgentPresence: async () => JSON.stringify({ presence: {} }),
+      fetchAgentEffects: async (port) => {
+        queriedPort = port;
+        return JSON.stringify({ effects: [] });
+      },
+    });
+    const collected = await collectBundle({ contentDir, deps });
+
+    expect(queriedPort).toBe(4711);
+    const effectsPath = join(collected.stagingDir, 'state', 'agent-effects.json');
+    expect(existsSync(effectsPath)).toBe(true);
+    expect(JSON.parse(readFileSync(effectsPath, 'utf-8'))).toEqual({ effects: [] });
+    collected.cleanup();
+  });
+
+  test('agent-effects failure never affects serverStatus (presence is the probe)', async () => {
+    const contentDir = makeTmpDir();
+    writeAt(
+      contentDir,
+      '.ok/local/server.lock',
+      JSON.stringify({ pid: 1, port: 4711, hostname: 'h', startedAt: 't', worktreeRoot: '/' }),
+    );
+    const deps = makeDeterministicDeps({
+      fetchAgentPresence: async () => JSON.stringify({ presence: {} }),
+      fetchAgentEffects: async () => null,
+    });
+    const collected = await collectBundle({ contentDir, deps });
+
+    expect(collected.manifest.serverStatus).toBe('running');
+    expect(existsSync(join(collected.stagingDir, 'state', 'agent-effects.json'))).toBe(false);
+    collected.cleanup();
+  });
+
   test('corrupt lock → not-running, lock still staged for forensics', async () => {
     const contentDir = makeTmpDir();
     writeAt(contentDir, '.ok/local/server.lock', 'not json {');
@@ -342,6 +386,28 @@ describe('collectBundle — state files', () => {
     const contentDir = makeTmpDir();
     const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
     expect(existsSync(join(collected.stagingDir, 'state', 'shadow-head.txt'))).toBe(false);
+    collected.cleanup();
+  });
+
+  test('checkpoint-refs.txt is written when readCheckpointRefs returns content', async () => {
+    const contentDir = makeTmpDir();
+    const listing =
+      'refs/checkpoints/main/deadbee\t2026-05-28T14:00:00+00:00\tcheckpoint: Before concurrent merge @ 2026-05-28T14:00:00.000Z\n';
+    const deps = makeDeterministicDeps({
+      readCheckpointRefs: () => listing,
+    });
+    const collected = await collectBundle({ contentDir, deps });
+    expect(readFileSync(join(collected.stagingDir, 'state', 'checkpoint-refs.txt'), 'utf-8')).toBe(
+      listing,
+    );
+    expect(collected.manifest.files.map((f) => f.path)).toContain('state/checkpoint-refs.txt');
+    collected.cleanup();
+  });
+
+  test('checkpoint-refs.txt is omitted when readCheckpointRefs returns null', async () => {
+    const contentDir = makeTmpDir();
+    const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
+    expect(existsSync(join(collected.stagingDir, 'state', 'checkpoint-refs.txt'))).toBe(false);
     collected.cleanup();
   });
 
