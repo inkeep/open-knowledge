@@ -117,6 +117,7 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
+  powerMonitor,
   screen,
   session,
   shell,
@@ -145,6 +146,7 @@ import {
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
 import { resolveBootRestoreDecision } from './boot-restore-decision.ts';
+import { readBootSessionUuid } from './boot-session.ts';
 import { runBootstrap } from './bootstrap.ts';
 import {
   type BranchInfoProxyDeps,
@@ -174,6 +176,7 @@ import { requestUserConsent, walkExceedsCap } from './consent-dialog.ts';
 import {
   type CrashDetection,
   createCrashDetection,
+  SENTINEL_HEARTBEAT_INTERVAL_MS,
   startLocalCrashReporter,
 } from './crash-detection.ts';
 import {
@@ -938,6 +941,8 @@ let mcpWiringHandle: RunMcpWiringHandle | null = null;
  * boot paths, which never prompt.
  */
 let crashDetection: CrashDetection | null = null;
+/** Sentinel liveness heartbeat; cleared on `will-quit` with the other teardowns. */
+let crashSentinelHeartbeat: NodeJS.Timeout | null = null;
 
 /**
  * Records the server's last exit (code + Electron process-gone reason) to
@@ -5129,9 +5134,22 @@ function bootPrimaryInstance(): void {
       return false;
     },
     now: () => new Date(),
+    currentBootSessionUuid: readBootSessionUuid,
     logger: getLogger('crash-detection'),
   });
   crashDetection.detectBootCrash();
+  // Keep the sentinel's liveness fresh and mirror power transitions into it,
+  // so the next boot can tell "the machine went down under a running app"
+  // (suppress the report prompt) from "the app died on its own" (prompt).
+  // `bootPrimaryInstance` runs inside `whenReady`, so powerMonitor is usable.
+  crashSentinelHeartbeat = setInterval(
+    () => crashDetection?.noteAlive(),
+    SENTINEL_HEARTBEAT_INTERVAL_MS,
+  );
+  crashSentinelHeartbeat.unref();
+  powerMonitor.on('shutdown', () => crashDetection?.noteOsShutdown());
+  powerMonitor.on('suspend', () => crashDetection?.noteSuspend());
+  powerMonitor.on('resume', () => crashDetection?.noteResume());
   app.on('child-process-gone', (_event, details) => {
     // Feed the server-exit recorder every Utility death (not just the crash
     // reasons the invitation pipeline acts on) so the bundle can distinguish a
@@ -5938,7 +5956,13 @@ function bootPrimaryInstance(): void {
     getLogger('lifecycle').info({}, 'will-quit');
     // A quit that reaches here was orderly — clear the dirty-shutdown
     // sentinel so the next boot doesn't read this session as a crash.
+    // (`markCleanQuit` also freezes the sentinel writers, so a heartbeat
+    // tick racing this teardown can't resurrect the file.)
     crashDetection?.markCleanQuit();
+    if (crashSentinelHeartbeat !== null) {
+      clearInterval(crashSentinelHeartbeat);
+      crashSentinelHeartbeat = null;
+    }
     // Reap every window's PTY host first so no user shell / spawn-helper
     // outlives the app. Idempotent (clears the map; a second pass no-ops).
     terminalReaper?.killAll();

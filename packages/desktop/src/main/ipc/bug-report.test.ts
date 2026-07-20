@@ -1269,6 +1269,9 @@ describe('handleBugReportCrashAck', () => {
         clockMs += 10_000;
         return new Date(clockMs);
       },
+      // Constant identity: every simulated restart happens inside one kernel
+      // session, so reboot suppression never engages in this ack round-trip.
+      currentBootSessionUuid: () => 'boot-epoch-test',
       logger: { info: () => {}, warn: () => {} },
     };
     const seedMinidump = (relPath: string): void => {
