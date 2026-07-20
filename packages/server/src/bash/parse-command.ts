@@ -90,7 +90,7 @@ interface ExcludeStrategy {
   insertionIndex(args: string[]): number;
 }
 
-function isRecursiveGrepFlag(arg: string): boolean {
+export function isRecursiveGrepFlag(arg: string): boolean {
   if (arg === '--recursive' || arg === '--dereference-recursive') return true;
   if (arg.startsWith('--')) return false;
   if (!arg.startsWith('-')) return false;

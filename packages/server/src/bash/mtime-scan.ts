@@ -1,25 +1,43 @@
 /**
  * Post-exec security-invariant check.
  *
- * Before every `exec` call we snapshot `(relPath, mtimeMs)` for files in
- * `projectDir`; after the call we re-snapshot and diff. Any path whose
- * mtime changed (or that newly exists) on a read-only command indicates
- * a parser bug that let a writer through — we abort the response with
- * `security_invariant_violation`.
+ * Before every `exec` call we snapshot `(relPath, mtimeMs)` for the files
+ * the command could plausibly touch; after the call we re-snapshot and
+ * diff. Any path whose mtime changed (or that newly exists) on a
+ * read-only command indicates a parser bug that let a writer through —
+ * we abort the response with `security_invariant_violation`.
  *
  * This is the defense-in-depth backstop — a lean alternative to
- * subprocess isolation. Typical overhead for dirs ≤500 files is <10ms.
+ * subprocess isolation. The scan is scoped by `deriveScanRoots`: because
+ * `parseCommand` tokenizes the whole command line, any write target a
+ * parser bug could smuggle through must appear among the command's own
+ * tokens, so watching the token-derived path set (plus the whole tree
+ * when a command implicitly operates on the cwd) covers the threat
+ * surface without statting the full corpus on every call.
  *
  * Bounded at `SCAN_CAP` entries; traversal skips hidden OK directories
- * (`.git/`, `.ok/`, `node_modules/`).
+ * (`.git/`, `.ok/`, `node_modules/`). Callers MUST surface the
+ * `truncated` flag — a capped sweep covers only the first `SCAN_CAP`
+ * files and must not be presented as full coverage.
  */
 import type { Dirent } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
+import { argsOf, nonFlagArgs } from './extract-paths.ts';
+import { isRecursiveGrepFlag, type Stage } from './parse-command.ts';
 
-/** Upper bound on the number of files we scan. Typical content dirs are well under 500. */
-const SCAN_CAP = 1000;
+/**
+ * Upper bound on the number of files we scan. Typical content dirs are well
+ * under 500; the cap keeps worst-case overhead at ~2×1000 stats per call.
+ */
+export const SCAN_CAP = 1000;
+
+/**
+ * Scan-root sentinel meaning "the whole base directory". Subsumes every
+ * other root when present.
+ */
+export const SCAN_WHOLE_TREE = '';
 
 const SKIP_DIRS: ReadonlySet<string> = new Set([
   '.git',
@@ -34,20 +52,158 @@ const SKIP_DIRS: ReadonlySet<string> = new Set([
 
 type MtimeSnapshot = Map<string, number>;
 
+interface SnapshotResult {
+  snapshot: MtimeSnapshot;
+  /** True when the scan hit `cap` before covering every in-scope file. */
+  truncated: boolean;
+}
+
+/** Glob metacharacters just-bash may expand into file operands. */
+const GLOB_RE = /[*?[]/;
+
 /**
- * Snapshot `(relPath, mtimeMs)` for files in `projectDir`. Bounded; returns
- * early at SCAN_CAP with a `truncated` flag caller can act on.
+ * Longest literal directory prefix of a glob-bearing token:
+ * `articles/*.md` → `articles`; `*.md` → `` (whole tree).
  */
-export async function snapshotMtimes(
-  projectDir: string,
-): Promise<{ snapshot: MtimeSnapshot; truncated: boolean }> {
-  const root = resolve(projectDir);
+function literalDirPrefix(token: string): string {
+  const idx = token.search(GLOB_RE);
+  const head = token.slice(0, idx);
+  const slash = head.lastIndexOf('/');
+  return slash >= 0 ? head.slice(0, slash) : SCAN_WHOLE_TREE;
+}
+
+/**
+ * Derive the scan roots for a pipeline: the paths the command's own tokens
+ * could name as a write target, or `SCAN_WHOLE_TREE` when a command
+ * implicitly operates on the whole cwd.
+ *
+ * Per-command rules (over-inclusion is safe — a non-path token costs one
+ * failed stat; under-inclusion would blind the sweep):
+ *   - `grep`: the match pattern is not a path operand — the leading
+ *     positional in `grep PAT [path…]`, or the value of `-e`/`--regexp`.
+ *     Both are dropped, leaving only path operands. Recursive grep with no
+ *     path operand defaults to `.` → whole tree; non-recursive grep with no
+ *     operand reads stdin → touches nothing.
+ *   - `find`: leading non-flag args are the roots (none → `.` → whole
+ *     tree). Predicate values after the first `-flag` are kept as watch
+ *     paths only when glob-free (`-newer ref.md` yes, `-name '*.md'` no).
+ *   - `ls` with no operand lists the cwd → whole tree (the write target of
+ *     a hypothetical smuggled ls writer is unknowable, so stay wide).
+ *   - stdin consumers (`cat`, `head`, `tail`, `wc`, `sort`, `uniq`, `cut`)
+ *     with no operand touch no disk path → contribute nothing.
+ *   - `=`-attached flag values (`--flag=path`) are watched when glob-free:
+ *     an output-flag variant that slipped the denylist names its target
+ *     there. Glob-bearing attached values (`--include=*.md`) are match
+ *     patterns, not paths.
+ *   - Glob-bearing operands reduce to their literal directory prefix
+ *     (`articles/*.md` → `articles`; bare `*.md` → whole tree).
+ *
+ * Derive from the PRE-augmentation stages: the injected exclude filters
+ * (`--exclude-dir=node_modules`, `-not -path ...`) are generated by our own
+ * code, never attacker-controlled, and would otherwise pull excluded dirs
+ * into the scan.
+ */
+export function deriveScanRoots(stages: Stage[]): string[] {
+  const roots = new Set<string>();
+  for (const stage of stages) {
+    const args = argsOf(stage);
+    const positional = nonFlagArgs(args);
+    let candidates: string[];
+    switch (stage.command) {
+      case 'grep': {
+        // The regex pattern is not a path operand: in `grep PAT [path…]` it is
+        // the leading positional, and in `-e PAT` / `--regexp PAT` it is the
+        // flag's value. Drop both so a pattern neither seeds a dead root nor
+        // masks the empty-operand → whole-tree fallback below.
+        let patternViaFlag = false;
+        const patternValues = new Set<string>();
+        for (let i = 0; i < args.length; i++) {
+          const a = args[i];
+          if (a === '-e' || a === '--regexp') {
+            patternViaFlag = true;
+            const value = args[i + 1];
+            if (value !== undefined) patternValues.add(value);
+          } else if (a.startsWith('--regexp=')) {
+            patternViaFlag = true;
+          }
+        }
+        const operands = positional.filter((p) => !patternValues.has(p));
+        candidates = patternViaFlag ? operands : operands.slice(1);
+        if (candidates.length === 0 && args.some(isRecursiveGrepFlag)) {
+          roots.add(SCAN_WHOLE_TREE);
+        }
+        break;
+      }
+      case 'find': {
+        const firstFlag = args.findIndex((a) => a.startsWith('-'));
+        const pathRoots = firstFlag === -1 ? args : args.slice(0, firstFlag);
+        const predicateValues =
+          firstFlag === -1
+            ? []
+            : args.slice(firstFlag).filter((a) => !a.startsWith('-') && !GLOB_RE.test(a));
+        candidates = [...pathRoots, ...predicateValues];
+        if (pathRoots.length === 0) roots.add(SCAN_WHOLE_TREE);
+        break;
+      }
+      case 'ls': {
+        candidates = positional;
+        if (positional.length === 0) roots.add(SCAN_WHOLE_TREE);
+        break;
+      }
+      default:
+        candidates = positional;
+    }
+    const attached = args
+      .filter((a) => a.startsWith('-') && a.includes('='))
+      .map((a) => a.slice(a.indexOf('=') + 1))
+      .filter((v) => v.length > 0 && !GLOB_RE.test(v));
+    for (const c of [...candidates, ...attached]) {
+      roots.add(GLOB_RE.test(c) ? literalDirPrefix(c) : c);
+    }
+  }
+  return roots.has(SCAN_WHOLE_TREE) ? [SCAN_WHOLE_TREE] : [...roots];
+}
+
+/**
+ * A root any of whose path segments is a skipped dir lies outside the
+ * sweep's coverage domain (the full-tree walk never descends into those),
+ * so scanning it would claim coverage the full scan never had.
+ */
+function hasSkippedSegment(rel: string): boolean {
+  return rel.split('/').some((seg) => SKIP_DIRS.has(seg));
+}
+
+/**
+ * Snapshot `(relPath, mtimeMs)` for files under the given roots (relative
+ * to `baseDir`; `SCAN_WHOLE_TREE` covers everything). Directory roots are
+ * walked recursively, file roots are statted directly, and missing roots
+ * contribute nothing — a file created there during exec shows up in the
+ * post snapshot and is reported by `diffMtimes` as a new path.
+ *
+ * Bounded at `cap` total entries across all roots; returns `truncated`
+ * when coverage is partial.
+ */
+export async function snapshotMtimesForRoots(
+  baseDir: string,
+  roots: readonly string[],
+  cap: number = SCAN_CAP,
+): Promise<SnapshotResult> {
+  const base = resolve(baseDir);
   const snapshot: MtimeSnapshot = new Map();
-  let count = 0;
-  let truncated = false;
+  const state = { truncated: false };
+
+  function record(relPath: string, mtimeMs: number): void {
+    // Overlapping roots (a dir plus a file inside it) must not double-count.
+    if (snapshot.has(relPath)) return;
+    if (snapshot.size >= cap) {
+      state.truncated = true;
+      return;
+    }
+    snapshot.set(relPath, mtimeMs);
+  }
 
   async function walk(dir: string): Promise<void> {
-    if (truncated) return;
+    if (state.truncated) return;
     let entries: Dirent[];
     try {
       entries = (await readdir(dir, { withFileTypes: true })) as Dirent[];
@@ -55,7 +211,7 @@ export async function snapshotMtimes(
       return;
     }
     for (const entry of entries) {
-      if (truncated) return;
+      if (state.truncated) return;
       if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) continue;
       const full = resolve(dir, entry.name);
       if (entry.isDirectory()) {
@@ -63,22 +219,44 @@ export async function snapshotMtimes(
         continue;
       }
       if (!entry.isFile()) continue;
-      if (count >= SCAN_CAP) {
-        truncated = true;
-        return;
-      }
       try {
         const s = await stat(full);
-        snapshot.set(relative(root, full), s.mtimeMs);
-        count++;
+        record(relative(base, full), s.mtimeMs);
       } catch {
         // ignore unreadable files
       }
     }
   }
 
-  await walk(root);
-  return { snapshot, truncated };
+  const effectiveRoots = roots.includes(SCAN_WHOLE_TREE) ? [SCAN_WHOLE_TREE] : [...new Set(roots)];
+  for (const root of effectiveRoots) {
+    if (state.truncated) break;
+    if (root !== SCAN_WHOLE_TREE && hasSkippedSegment(root)) continue;
+    const abs = resolve(base, root);
+    let s: Awaited<ReturnType<typeof stat>>;
+    try {
+      s = await stat(abs);
+    } catch {
+      continue; // missing root: creation is caught by the post-exec snapshot
+    }
+    if (s.isDirectory()) {
+      await walk(abs);
+    } else if (s.isFile()) {
+      record(relative(base, abs), s.mtimeMs);
+    }
+  }
+  return { snapshot, truncated: state.truncated };
+}
+
+/**
+ * Snapshot the whole `projectDir` tree. Equivalent to
+ * `snapshotMtimesForRoots(projectDir, [SCAN_WHOLE_TREE])`.
+ */
+export async function snapshotMtimes(
+  projectDir: string,
+  cap: number = SCAN_CAP,
+): Promise<SnapshotResult> {
+  return snapshotMtimesForRoots(projectDir, [SCAN_WHOLE_TREE], cap);
 }
 
 interface MtimeDiff {

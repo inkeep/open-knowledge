@@ -1023,3 +1023,80 @@ describe('formatFileEntry rendering', () => {
     expect(line).toContain('forward links: 1 (https://example.com)');
   });
 });
+
+describe('exec — mutation-sweep scoping and honesty', () => {
+  const OVER_CAP = 1005;
+
+  function seedBulk(project: string): void {
+    const bulk = resolve(project, 'bulk');
+    mkdirSync(bulk, { recursive: true });
+    for (let i = 0; i < OVER_CAP; i++) {
+      writeFileSync(resolve(bulk, `f${i}.txt`), String(i));
+    }
+  }
+
+  function partialSweepWarnings(result: ExecResult): string[] {
+    return (structured(result).warnings ?? []).filter((w) => w.includes('sweep was partial'));
+  }
+
+  test('bare ls on an over-cap corpus discloses the partial sweep', async () => {
+    const project = await bootstrap();
+    seedBulk(project);
+
+    const result = (await buildExecResult(
+      { command: 'ls' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
+    )) as ExecResult;
+
+    expect(result.isError).toBeFalsy();
+    const warnings = partialSweepWarnings(result);
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain('1000');
+    expect(result.content[0].text).toContain('sweep was partial');
+  });
+
+  test('listing an over-cap subdirectory discloses the partial sweep', async () => {
+    const project = await bootstrap();
+    seedBulk(project);
+
+    const result = (await buildExecResult(
+      { command: 'ls bulk/' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
+    )) as ExecResult;
+
+    expect(result.isError).toBeFalsy();
+    expect(partialSweepWarnings(result).length).toBe(1);
+  });
+
+  test('path-scoped commands avoid the corpus-wide sweep entirely', async () => {
+    const project = await bootstrap();
+    seedBulk(project);
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'a.md'), '---\ntitle: A\n---\nBody\n');
+
+    const result = (await buildExecResult(
+      { command: 'cat content/a.md' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
+    )) as ExecResult;
+
+    expect(result.isError).toBeFalsy();
+    expect(partialSweepWarnings(result).length).toBe(0);
+  });
+
+  test('grep scoped to a small dir on an over-cap corpus stays fully swept', async () => {
+    const project = await bootstrap();
+    seedBulk(project);
+    const contentDir = resolve(project, 'articles');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'a.md'), '---\ntitle: A\n---\noauth flow\n');
+
+    const result = (await buildExecResult(
+      { command: 'grep -rn oauth articles/' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
+    )) as ExecResult;
+
+    expect(result.isError).toBeFalsy();
+    expect(partialSweepWarnings(result).length).toBe(0);
+  });
+});

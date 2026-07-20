@@ -3,9 +3,11 @@
  *
  * Orchestrates:
  *   1. parseCommand (shell-quote + allowlist) — primary security boundary
- *   2. snapshotMtimes (pre) — defense-in-depth baseline
+ *   2. snapshotMtimesForRoots (pre) — defense-in-depth baseline, scoped to
+ *      the paths the command's tokens could touch (deriveScanRoots)
  *   3. execBash via just-bash + ReadWriteFs (sandbox)
- *   4. snapshotMtimes (post) + diff — abort on any mutation
+ *   4. snapshotMtimesForRoots (post) + diff — abort on any mutation;
+ *      a capped (partial) sweep is disclosed via a warning banner
  *   5. extractReferencedPaths
  *   6. enrichPath per path (slim shape for multi-path; rich for single-cat)
  *   7. Format: raw stdout + markdown `### Referenced files` block +
@@ -22,7 +24,12 @@ import { relative, resolve } from 'node:path';
 import { z } from 'zod';
 import { argsOf, extractReferencedPaths, nonFlagArgs } from '../../bash/extract-paths.ts';
 import { createBashInstance, execBash, StdoutOverflowError } from '../../bash/index.ts';
-import { diffMtimes, snapshotMtimes } from '../../bash/mtime-scan.ts';
+import {
+  deriveScanRoots,
+  diffMtimes,
+  SCAN_CAP,
+  snapshotMtimesForRoots,
+} from '../../bash/mtime-scan.ts';
 import {
   augmentStagesWithExcludes,
   type ErrorCategory,
@@ -135,7 +142,8 @@ export interface ExecStructuredResult {
    */
   cwd?: string;
   /**
-   * Tool-level warnings — head/tail truncation, binary-file detection, stderr.
+   * Tool-level warnings — head/tail truncation, binary-file detection,
+   * stderr, partial mutation-sweep coverage.
    * Carried in `structuredContent` because Claude-class clients drop
    * `content[].text` when `structuredContent` is present (claude-code#55677),
    * so safety signals must live in structured content too or agents miss them.
@@ -528,11 +536,25 @@ export async function buildExecResult(
   const stages = augmentStagesWithExcludes(parsed.stages);
   const effectiveCommand = serializeStages(stages);
 
-  // 2. Pre-exec mtime snapshot (baseline). Scoped to `executionCwd` — the
-  // bash sandbox is rooted there (`ReadWriteFs` root), so a read-only command
-  // can only mutate files inside it; scanning the whole project root would be
-  // wasteful and would false-positive on concurrent writers elsewhere.
-  const pre = await snapshotMtimes(executionCwd);
+  // 2. Pre-exec mtime snapshot (baseline). Scoped two ways: (a) to
+  // `executionCwd` — the bash sandbox is rooted there (`ReadWriteFs` root),
+  // so a read-only command can only mutate files inside it; and (b) to the
+  // scan roots derived from the command's own tokens — parseCommand
+  // tokenizes the whole command line, so any write target a parser bug
+  // could smuggle through must appear among those tokens. Roots are derived
+  // from the PRE-augmentation stages (the injected exclude filters are our
+  // own tokens, not attacker input) and containment-filtered like the
+  // enrichment paths: a token that escapes `executionCwd` can't be written
+  // by the sandbox either.
+  const scanRoots = [
+    ...new Set(
+      deriveScanRoots(parsed.stages)
+        .map((r) => resolveWithinRoot(executionCwd, r))
+        .filter((r) => r.ok)
+        .map((r) => r.rel),
+    ),
+  ];
+  const pre = await snapshotMtimesForRoots(executionCwd, scanRoots);
 
   // 3. Execute via just-bash in the literal directory the caller passed.
   const bash = createBashInstance(executionCwd);
@@ -555,8 +577,8 @@ export async function buildExecResult(
     );
   }
 
-  // 4. Post-exec mtime check (backstop) — same scope as the pre snapshot.
-  const post = await snapshotMtimes(executionCwd);
+  // 4. Post-exec mtime check (backstop) — same roots as the pre snapshot.
+  const post = await snapshotMtimesForRoots(executionCwd, scanRoots);
   const mtimeDiff = diffMtimes(pre.snapshot, post.snapshot);
   if (mtimeDiff.changed.length > 0) {
     return errorCategoryResult(
@@ -564,6 +586,9 @@ export async function buildExecResult(
       `Security invariant violated: file(s) in the content directory were modified during a read-only exec call: ${mtimeDiff.changed.join(', ')}. This indicates a parser bug; the command has been logged.`,
     );
   }
+  // A capped sweep covered only the first SCAN_CAP files — it must not be
+  // presented as a full safety net.
+  const sweepPartial = pre.truncated || post.truncated;
 
   // 5. Apply soft cap to stdout
   const capped = applySoftCap(stdout);
@@ -677,6 +702,11 @@ export async function buildExecResult(
   if (stderr) {
     banners.push(`stderr: ${stderr.trim()}`);
   }
+  if (sweepPartial) {
+    banners.push(
+      `Read-only mutation sweep was partial: the files in scope exceed the ${SCAN_CAP}-file cap, so only the first ${SCAN_CAP} were checked for unexpected writes. Narrow the command to a subdirectory for full sweep coverage.`,
+    );
+  }
 
   const bannerText = banners.length > 0 ? `${banners.join('\n')}\n\n` : '';
   const provenance = buildStdoutProvenance(stages, dirByPath, fileByPath, rebaseToProject);
@@ -737,7 +767,9 @@ export function register(server: ServerInstance, deps: ExecDeps): void {
         warnings: z
           .array(z.string())
           .optional()
-          .describe('Tool-level warnings — head/tail truncation, binary detection, stderr.'),
+          .describe(
+            'Tool-level warnings — head/tail truncation, binary detection, stderr, partial mutation-sweep coverage.',
+          ),
         cwd: z.string().optional().describe('Absolute directory the command ran in.'),
         error: z
           .object({ category: z.string(), message: z.string() })
