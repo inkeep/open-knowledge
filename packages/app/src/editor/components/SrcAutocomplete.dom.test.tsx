@@ -4,9 +4,9 @@
  * the input. These tests lock the behavior contract that two
  * regressions would silently break:
  *
- *   1. Open-on-focus + render-on-empty-query — without this, the user
- *      has no way to discover the autocomplete exists. Click into the
- *      input should reveal the asset list immediately.
+ *   1. Click-to-open + render-on-empty-query — clicking into the input
+ *      reveals the asset list immediately, while autofocus alone must
+ *      not open the popover.
  *   2. Selection emits the server-absolute path (leading slash) so the
  *      committed prop matches `PropUploadButton`'s URL shape and round-
  *      trips through `validateMediaUrl`. Emitting a bare relative path
@@ -96,7 +96,7 @@ function getOptions(): HTMLButtonElement[] {
 }
 
 describe('SrcAutocomplete — open behavior', () => {
-  test('focus on an empty input with matching assets → popover opens with up to 8 source-order items', () => {
+  test('autofocus keeps the popover closed; clicking opens up to 8 source-order items', () => {
     // 10 assets — verify cap at 8.
     for (let i = 0; i < 10; i++) stubAssetPaths.add(`assets/photo-${i}.png`);
 
@@ -106,11 +106,15 @@ describe('SrcAutocomplete — open behavior', () => {
         value=""
         onChange={() => {}}
         accept={ALLOWED_IMAGE_MIME_TYPES}
+        autoFocus
       />,
     );
 
     const input = document.getElementById('prop-src') as HTMLInputElement;
-    fireEvent.focus(input);
+    expect(document.activeElement).toBe(input);
+    expect(getOptions()).toHaveLength(0);
+
+    fireEvent.click(input);
 
     const options = getOptions();
     expect(options).toHaveLength(8);
@@ -119,7 +123,7 @@ describe('SrcAutocomplete — open behavior', () => {
     expect(options[7]?.textContent).toContain('photo-7.png');
   });
 
-  test('focus with zero matching assets → popover stays closed (no chrome flash)', () => {
+  test('click with zero matching assets → popover stays closed (no chrome flash)', () => {
     // No image assets in stub — accept is image-only.
     stubAssetPaths.add('docs/handbook.pdf');
 
@@ -133,7 +137,7 @@ describe('SrcAutocomplete — open behavior', () => {
     );
 
     const input = document.getElementById('prop-src') as HTMLInputElement;
-    fireEvent.focus(input);
+    fireEvent.click(input);
 
     expect(getOptions()).toHaveLength(0);
   });
@@ -152,7 +156,7 @@ describe('SrcAutocomplete — open behavior', () => {
     );
 
     const input = document.getElementById('prop-src') as HTMLInputElement;
-    fireEvent.focus(input);
+    fireEvent.click(input);
 
     const labels = getOptions().map((b) => b.textContent ?? '');
     expect(labels.some((t) => t.includes('photo.png'))).toBe(true);
@@ -175,7 +179,7 @@ describe('SrcAutocomplete — selection contract', () => {
     );
 
     const input = document.getElementById('prop-src') as HTMLInputElement;
-    fireEvent.focus(input);
+    fireEvent.click(input);
 
     const option = getOptions()[0];
     if (!option) throw new Error('expected an option to render');
@@ -207,14 +211,14 @@ describe('SrcAutocomplete — selection contract', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
 
     expect(onChange).toHaveBeenCalledTimes(1);
-    // First fireEvent.focus shows two items in source order; ArrowDown
-    // moves highlight 0 → 1; Enter selects index 1 which is banner.png.
+    // ArrowDown opens the source-order list and moves highlight 0 → 1;
+    // Enter selects index 1 which is banner.png.
     expect(onChange).toHaveBeenCalledWith('/assets/banner.png');
   });
 });
 
 describe('SrcAutocomplete — keyboard handling', () => {
-  test('Escape closes the popover (subsequent focus reopens it)', () => {
+  test('Escape closes the popover (subsequent click reopens it)', () => {
     stubAssetPaths.add('assets/photo.png');
 
     render(
@@ -228,10 +232,14 @@ describe('SrcAutocomplete — keyboard handling', () => {
 
     const input = document.getElementById('prop-src') as HTMLInputElement;
     fireEvent.focus(input);
+    fireEvent.click(input);
     expect(getOptions().length).toBe(1);
 
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(getOptions().length).toBe(0);
+
+    fireEvent.click(input);
+    expect(getOptions().length).toBe(1);
   });
 
   test('Enter with no matching suggestions does NOT call onChange (no phantom selection)', () => {
@@ -270,7 +278,7 @@ describe('SrcAutocomplete — keyboard handling', () => {
       />,
     );
     const input = document.getElementById('prop-src') as HTMLInputElement;
-    fireEvent.focus(input);
+    fireEvent.click(input);
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
@@ -292,7 +300,7 @@ describe('SrcAutocomplete — keyboard handling', () => {
       />,
     );
     const input = document.getElementById('prop-src') as HTMLInputElement;
-    fireEvent.focus(input);
+    fireEvent.click(input);
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onChange).toHaveBeenCalledWith('/assets/photo.png');
     expect(onSubmit).not.toHaveBeenCalled();
@@ -326,7 +334,7 @@ describe('SrcAutocomplete — popover width tracks the trigger', () => {
       />,
     );
     const input = document.getElementById('prop-src') as HTMLInputElement;
-    fireEvent.focus(input);
+    fireEvent.click(input);
 
     // PopoverContent is the closest [data-slot="popover-content"] ancestor of
     // any rendered suggestion option. shadcn/Radix forwards className to

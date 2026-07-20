@@ -8,7 +8,7 @@
  * typed, uploaded, or autocompleted.
  *
  * Open behavior:
- *   - Focus or click: opens with up to 8 suggestions in source order.
+ *   - Click: opens with up to 8 suggestions in source order.
  *   - Typing: re-ranks via `searchWorkspaceCorpus` (BM25 + title boost +
  *     recency, intent `autocomplete`), matching the wiki-link suggestion
  *     menu's discovery contract.
@@ -240,9 +240,6 @@ export function SrcAutocomplete({
             // open=true → open=true transitions.
             setOpen(true);
             setHighlight(0);
-          }}
-          onFocus={() => {
-            setOpen(true);
           }}
           onClick={() => {
             // Click into an already-focused input should re-open the
