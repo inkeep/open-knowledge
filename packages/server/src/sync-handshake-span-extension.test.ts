@@ -14,15 +14,16 @@
  *
  * Skips system / config docs — those bypass the markdown bridge entirely.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { context, metrics, trace } from '@opentelemetry/api';
+import { context, metrics, propagation, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
+import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
   type ReadableSpan,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
 
@@ -36,6 +37,9 @@ function setupExporter(): void {
   });
   trace.setGlobalTracerProvider(provider);
   context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+  // Mirrors initTelemetry's production registration — the extraction tests
+  // exercise the same W3C propagator the server runs with.
+  propagation.setGlobalPropagator(new W3CTraceContextPropagator());
 }
 
 async function teardownExporter(): Promise<void> {
@@ -43,6 +47,7 @@ async function teardownExporter(): Promise<void> {
   trace.disable();
   metrics.disable();
   context.disable();
+  propagation.disable();
 }
 
 function spansByName(name: string): ReadableSpan[] {
@@ -59,9 +64,16 @@ function spansByName(name: string): ReadableSpan[] {
 // biome-ignore lint/suspicious/noExplicitAny: structural test payload
 type AfterLoadPayload = any;
 
-function makePayload(opts: { documentName: string; mountId?: string }): AfterLoadPayload {
+function makePayload(opts: {
+  documentName: string;
+  mountId?: string;
+  traceparent?: string;
+  tracestate?: string;
+}): AfterLoadPayload {
   const params = new URLSearchParams();
   if (opts.mountId !== undefined) params.set('mountId', opts.mountId);
+  if (opts.traceparent !== undefined) params.set('traceparent', opts.traceparent);
+  if (opts.tracestate !== undefined) params.set('tracestate', opts.tracestate);
   return {
     documentName: opts.documentName,
     document: new Y.Doc(),
@@ -174,6 +186,63 @@ describe('sync.handshake span — basic emission', () => {
     expect(spans.length).toBe(2);
     const mountIds = spans.map((s) => s.attributes['mount.id']).sort();
     expect(mountIds).toEqual([UUID_A, UUID_B].sort());
+  });
+});
+
+describe('sync.handshake span — WS traceparent extraction', () => {
+  // W3C trace-context values the browser's appendTraceContextToCollabUrl
+  // would inject into the collab URL. Hardcoded so tests are deterministic.
+  const TRACE_ID = '0af7651916cd43dd8448eb211c80319c';
+  const PARENT_SPAN_ID = 'b7ad6b7169203331';
+  const TRACEPARENT = `00-${TRACE_ID}-${PARENT_SPAN_ID}-01`;
+
+  test('parents the span to the browser trace when traceparent is present', async () => {
+    const extension = createSyncHandshakeSpanExtension();
+    await extension.afterLoadDocument?.(
+      makePayload({ documentName: 'README', mountId: UUID_A, traceparent: TRACEPARENT }),
+    );
+    const spans = spansByName('sync.handshake');
+    expect(spans.length).toBe(1);
+    const span = spans[0];
+    expect(span?.spanContext().traceId).toBe(TRACE_ID);
+    expect(span?.parentSpanContext?.spanId).toBe(PARENT_SPAN_ID);
+  });
+
+  test('carries tracestate through extraction alongside traceparent', async () => {
+    const extension = createSyncHandshakeSpanExtension();
+    await extension.afterLoadDocument?.(
+      makePayload({
+        documentName: 'README',
+        traceparent: TRACEPARENT,
+        tracestate: 'vendor=value',
+      }),
+    );
+    const spans = spansByName('sync.handshake');
+    expect(spans.length).toBe(1);
+    // Same trace lineage; tracestate presence must not break extraction.
+    expect(spans[0]?.spanContext().traceId).toBe(TRACE_ID);
+  });
+
+  test('starts a root span when no traceparent is supplied', async () => {
+    const extension = createSyncHandshakeSpanExtension();
+    await extension.afterLoadDocument?.(makePayload({ documentName: 'README' }));
+    const spans = spansByName('sync.handshake');
+    expect(spans.length).toBe(1);
+    expect(spans[0]?.parentSpanContext).toBeUndefined();
+    expect(spans[0]?.spanContext().traceId).not.toBe(TRACE_ID);
+  });
+
+  test('falls back to a root span on a malformed traceparent without throwing', async () => {
+    // The W3C propagator ignores values it cannot parse — extract returns
+    // the context unchanged, so the span becomes a root rather than failing
+    // the handshake.
+    const extension = createSyncHandshakeSpanExtension();
+    await extension.afterLoadDocument?.(
+      makePayload({ documentName: 'README', traceparent: 'garbage-not-a-traceparent' }),
+    );
+    const spans = spansByName('sync.handshake');
+    expect(spans.length).toBe(1);
+    expect(spans[0]?.parentSpanContext).toBeUndefined();
   });
 });
 

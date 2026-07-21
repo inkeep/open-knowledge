@@ -1,4 +1,3 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { metrics } from '@opentelemetry/api';
 import {
   AggregationTemporality,
@@ -7,10 +6,13 @@ import {
   MeterProvider,
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import {
   __resetServerWorkloadTelemetryForTests,
   installServerWorkloadGauges,
+  registerAgentSessionCountsProvider,
   registerBridgeDirtyProbe,
+  registerConnectionCountsProvider,
   registerLoadedDocsProvider,
   registerPersistenceQueueDepthProvider,
 } from './server-workload-telemetry.ts';
@@ -18,6 +20,9 @@ import {
 const DOCS_METRIC = 'ok.server.docs.loaded';
 const QUEUE_METRIC = 'ok.persistence.queue.depth';
 const BACKLOG_METRIC = 'ok.bridge.drain_backlog';
+const CONNECTIONS_METRIC = 'ok.ws.connections.active';
+const SESSIONS_ACTIVE_METRIC = 'ok.sessions.active';
+const SESSIONS_LIMIT_METRIC = 'ok.sessions.limit';
 
 describe('server workload telemetry — no-op meter (OTel disabled)', () => {
   test('install and register/unregister are safe with the default no-op meter', () => {
@@ -32,9 +37,13 @@ describe('server workload telemetry — no-op meter (OTel disabled)', () => {
         quiescenceDeferred: 0,
       }));
       const un3 = registerBridgeDirtyProbe(() => false);
+      const un4 = registerConnectionCountsProvider(() => ({ websocket: 1, direct: 2 }));
+      const un5 = registerAgentSessionCountsProvider(() => ({ active: 0, limit: 256 }));
       un1();
       un2();
       un3();
+      un4();
+      un5();
     }).not.toThrow();
     __resetServerWorkloadTelemetryForTests();
   });
@@ -125,5 +134,48 @@ describe('server workload telemetry — registered meter', () => {
     registerLoadedDocsProvider(() => 5);
     const points = await collect(DOCS_METRIC);
     expect(points[0].value).toBe(5);
+  });
+
+  test('ok.ws.connections.active reports both bounded kind labels and drops unregistered providers', async () => {
+    const un = registerConnectionCountsProvider(() => ({ websocket: 3, direct: 5 }));
+    registerConnectionCountsProvider(() => ({ websocket: 1, direct: 0 }));
+    let points = await collect(CONNECTIONS_METRIC);
+    let byKind = new Map(points.map((p) => [p.attributes.kind, p.value]));
+    expect([...byKind.keys()].sort()).toEqual(['direct', 'websocket']);
+    expect(byKind.get('websocket')).toBe(4);
+    expect(byKind.get('direct')).toBe(5);
+
+    un();
+    points = await collect(CONNECTIONS_METRIC);
+    byKind = new Map(points.map((p) => [p.attributes.kind, p.value]));
+    expect(byKind.get('websocket')).toBe(1);
+    expect(byKind.get('direct')).toBe(0);
+  });
+
+  test('ok.sessions.active and ok.sessions.limit track occupancy against the cap', async () => {
+    let active = 2;
+    registerAgentSessionCountsProvider(() => ({ active, limit: 256 }));
+    let activePoints = await collect(SESSIONS_ACTIVE_METRIC);
+    let limitPoints = await collect(SESSIONS_LIMIT_METRIC);
+    expect(activePoints[0].value).toBe(2);
+    expect(limitPoints[0].value).toBe(256);
+
+    // A cap stall surfaces as active pinned at limit.
+    active = 256;
+    activePoints = await collect(SESSIONS_ACTIVE_METRIC);
+    limitPoints = await collect(SESSIONS_LIMIT_METRIC);
+    expect(activePoints[0].value).toBe(256);
+    expect(activePoints[0].value).toBe(limitPoints[0].value);
+  });
+
+  test('a throwing session provider is skipped for both session gauges', async () => {
+    registerAgentSessionCountsProvider(() => {
+      throw new Error('torn down');
+    });
+    registerAgentSessionCountsProvider(() => ({ active: 7, limit: 256 }));
+    const activePoints = await collect(SESSIONS_ACTIVE_METRIC);
+    const limitPoints = await collect(SESSIONS_LIMIT_METRIC);
+    expect(activePoints[0].value).toBe(7);
+    expect(limitPoints[0].value).toBe(256);
   });
 });

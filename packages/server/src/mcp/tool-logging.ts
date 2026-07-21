@@ -1,5 +1,6 @@
 import type { AgentIdentity } from './agent-identity.ts';
 import { type McpLogger, runWithMcpLogger } from './logger.ts';
+import { wrapToolHandlerForTelemetry } from './tool-telemetry.ts';
 import type { ServerInstance } from './tools/shared.ts';
 
 interface LoggedToolServerOptions {
@@ -228,13 +229,19 @@ export function wrapToolHandlerForLogging(
 
 /**
  * Return a server instance whose `tool(...)` and `registerTool(...)`
- * registration wraps handlers with request-aware structured logging.
+ * registration wraps handlers with dispatch telemetry (span + duration/error
+ * metrics; see tool-telemetry.ts) and, when a logger is supplied,
+ * request-aware structured logging. Telemetry wrapping is unconditional —
+ * the HTTP MCP endpoint registers without a logger but runs in the same
+ * process as the OTel SDK, and skipping the wrap there would leave the one
+ * telemetry-live registration path uninstrumented.
  */
 export function createLoggedServer(
   server: ServerInstance,
   opts: LoggedToolServerOptions,
 ): ServerInstance {
-  if (!opts.logger) return server;
+  const instrument = (name: string, handler: AnyToolHandler): AnyToolHandler =>
+    wrapToolHandlerForTelemetry(name, wrapToolHandlerForLogging(name, handler, opts));
 
   const originalTool = (server as unknown as { tool: AnyToolHandler }).tool.bind(server);
   // registerTool is the modern MCP SDK registration API; older mocks/test stubs may not
@@ -252,11 +259,7 @@ export function createLoggedServer(
       return originalTool(...toolArgs);
     }
     const nextArgs = [...toolArgs];
-    nextArgs[nextArgs.length - 1] = wrapToolHandlerForLogging(
-      name,
-      handler as AnyToolHandler,
-      opts,
-    );
+    nextArgs[nextArgs.length - 1] = instrument(name, handler as AnyToolHandler);
     return originalTool(...nextArgs);
   }) as AnyToolHandler;
 
@@ -269,7 +272,7 @@ export function createLoggedServer(
       if (typeof cb !== 'function') {
         return originalRegisterTool(name, config, cb);
       }
-      const wrappedCb = wrapToolHandlerForLogging(name, cb, opts);
+      const wrappedCb = instrument(name, cb);
       return originalRegisterTool(name, config, wrappedCb);
     }) as unknown as typeof server.registerTool;
   }

@@ -1,6 +1,7 @@
 /**
  * Write-spine workload exposed as bounded OpenTelemetry observable gauges:
- * loaded Y.Doc count, persistence queue depths, and bridge drain backlog.
+ * loaded Y.Doc count, persistence queue depths, bridge drain backlog, live
+ * collab connections, and agent-session occupancy vs the hard cap.
  *
  * Pull-based by design: producers (server-factory, persistence, the server
  * observer bridge) register read-only provider closures here at construction
@@ -14,13 +15,34 @@ import type { ObservableGauge, ObservableResult } from '@opentelemetry/api';
 import type { PersistenceQueueDepths } from './persistence.ts';
 import { getMeter, onTelemetryShutdown } from './telemetry.ts';
 
+/** Live collab-connection counts by transport kind. */
+export interface ConnectionCounts {
+  /** Deduplicated client WebSocket sockets (one socket can attach many docs). */
+  websocket: number;
+  /** In-process DirectConnections (agent sessions + server-held system/config docs). */
+  direct: number;
+}
+
+/** Agent-session occupancy against the server's hard cap. */
+export interface AgentSessionCounts {
+  /** Live (docName, agentId) sessions currently retained. */
+  active: number;
+  /** The session cap (`MAX_AGENT_SESSIONS` unless overridden). */
+  limit: number;
+}
+
 const loadedDocsProviders = new Set<() => number>();
 const persistenceQueueProviders = new Set<() => PersistenceQueueDepths>();
 const bridgeDirtyProbes = new Set<() => boolean>();
+const connectionCountsProviders = new Set<() => ConnectionCounts>();
+const agentSessionCountsProviders = new Set<() => AgentSessionCounts>();
 
 let cachedLoadedDocsGauge: ObservableGauge | null = null;
 let cachedQueueDepthGauge: ObservableGauge | null = null;
 let cachedDrainBacklogGauge: ObservableGauge | null = null;
+let cachedConnectionsGauge: ObservableGauge | null = null;
+let cachedSessionsActiveGauge: ObservableGauge | null = null;
+let cachedSessionsLimitGauge: ObservableGauge | null = null;
 
 // Cached instruments drop on telemetry shutdown so the next install rebinds
 // against the fresh meter (same lifecycle contract as the server-memory
@@ -30,6 +52,9 @@ onTelemetryShutdown(() => {
   cachedLoadedDocsGauge = null;
   cachedQueueDepthGauge = null;
   cachedDrainBacklogGauge = null;
+  cachedConnectionsGauge = null;
+  cachedSessionsActiveGauge = null;
+  cachedSessionsLimitGauge = null;
 });
 
 /**
@@ -68,13 +93,48 @@ export function registerBridgeDirtyProbe(probe: () => boolean): () => void {
 }
 
 /**
+ * Register a provider for live collab-connection counts (WebSocket sockets
+ * + DirectConnections). Returns an unregister function; call it at server
+ * teardown so the registry doesn't retain the closure.
+ */
+export function registerConnectionCountsProvider(provider: () => ConnectionCounts): () => void {
+  connectionCountsProviders.add(provider);
+  return () => {
+    connectionCountsProviders.delete(provider);
+  };
+}
+
+/**
+ * Register a provider for agent-session occupancy (`AgentSessionManager`
+ * live-session count + its hard cap). Returns an unregister function; call
+ * it at server teardown. A session-cap stall (`getSession` throwing
+ * `AgentSessionCapacityError` → 503s at the HTTP boundary) is invisible
+ * without this — active pinned at the limit is the diagnostic signature.
+ */
+export function registerAgentSessionCountsProvider(provider: () => AgentSessionCounts): () => void {
+  agentSessionCountsProviders.add(provider);
+  return () => {
+    agentSessionCountsProviders.delete(provider);
+  };
+}
+
+/**
  * Register the workload gauges against the currently-registered global meter.
  * Idempotent — a second call is a no-op so a double boot can't
  * double-register the callbacks. A throwing provider is skipped rather than
  * propagated: instrumentation must never feed back into the write spine.
  */
 export function installServerWorkloadGauges(): void {
-  if (cachedLoadedDocsGauge && cachedQueueDepthGauge && cachedDrainBacklogGauge) return;
+  if (
+    cachedLoadedDocsGauge &&
+    cachedQueueDepthGauge &&
+    cachedDrainBacklogGauge &&
+    cachedConnectionsGauge &&
+    cachedSessionsActiveGauge &&
+    cachedSessionsLimitGauge
+  ) {
+    return;
+  }
 
   if (!cachedLoadedDocsGauge) {
     const gauge = getMeter().createObservableGauge('ok.server.docs.loaded', {
@@ -139,6 +199,67 @@ export function installServerWorkloadGauges(): void {
     });
     cachedDrainBacklogGauge = gauge;
   }
+
+  if (!cachedConnectionsGauge) {
+    const gauge = getMeter().createObservableGauge('ok.ws.connections.active', {
+      description:
+        'Live collab connections. Bounded labels: kind ∈ {websocket, direct}. websocket = deduplicated client sockets; direct = in-process DirectConnections (agent sessions + server-held system/config docs).',
+      unit: '{connections}',
+    });
+    gauge.addCallback((result: ObservableResult) => {
+      let websocket = 0;
+      let direct = 0;
+      for (const provider of connectionCountsProviders) {
+        try {
+          const counts = provider();
+          websocket += counts.websocket;
+          direct += counts.direct;
+        } catch {
+          // Skip a torn-down provider; the remaining sum stays meaningful.
+        }
+      }
+      result.observe(websocket, { kind: 'websocket' });
+      result.observe(direct, { kind: 'direct' });
+    });
+    cachedConnectionsGauge = gauge;
+  }
+
+  if (!cachedSessionsActiveGauge || !cachedSessionsLimitGauge) {
+    const activeGauge = getMeter().createObservableGauge('ok.sessions.active', {
+      description:
+        'Live (docName, agentId) agent sessions. Pinned at ok.sessions.limit means new sessions are being refused with 503s.',
+      unit: '{sessions}',
+    });
+    const limitGauge = getMeter().createObservableGauge('ok.sessions.limit', {
+      description:
+        'Hard cap on live agent sessions (summed across server instances in this process).',
+      unit: '{sessions}',
+    });
+    activeGauge.addCallback((result: ObservableResult) => {
+      let active = 0;
+      for (const provider of agentSessionCountsProviders) {
+        try {
+          active += provider().active;
+        } catch {
+          // Skip a torn-down provider; the remaining sum stays meaningful.
+        }
+      }
+      result.observe(active);
+    });
+    limitGauge.addCallback((result: ObservableResult) => {
+      let limit = 0;
+      for (const provider of agentSessionCountsProviders) {
+        try {
+          limit += provider().limit;
+        } catch {
+          // Skip a torn-down provider; the remaining sum stays meaningful.
+        }
+      }
+      result.observe(limit);
+    });
+    cachedSessionsActiveGauge = activeGauge;
+    cachedSessionsLimitGauge = limitGauge;
+  }
 }
 
 /** Drop cached instruments and clear registries. Test-only. */
@@ -146,7 +267,12 @@ export function __resetServerWorkloadTelemetryForTests(): void {
   cachedLoadedDocsGauge = null;
   cachedQueueDepthGauge = null;
   cachedDrainBacklogGauge = null;
+  cachedConnectionsGauge = null;
+  cachedSessionsActiveGauge = null;
+  cachedSessionsLimitGauge = null;
   loadedDocsProviders.clear();
   persistenceQueueProviders.clear();
   bridgeDirtyProbes.clear();
+  connectionCountsProviders.clear();
+  agentSessionCountsProviders.clear();
 }

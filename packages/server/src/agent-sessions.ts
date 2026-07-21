@@ -655,6 +655,16 @@ export class AgentSessionManager {
     this.maxSessions = options.maxSessions ?? MAX_AGENT_SESSIONS;
   }
 
+  /** Number of live sessions currently retained. Read-only occupancy probe. */
+  public get liveSessionCount(): number {
+    return this.sessions.size;
+  }
+
+  /** The hard cap `getSession` enforces (`MAX_AGENT_SESSIONS` unless overridden). */
+  public get sessionLimit(): number {
+    return this.maxSessions;
+  }
+
   private sessionKey(docName: string, agentId: string): string {
     return `${docName}\0${agentId}`;
   }

@@ -172,6 +172,8 @@ import { createServerObserverExtension } from './server-observer-extension.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
 import {
   installServerWorkloadGauges,
+  registerAgentSessionCountsProvider,
+  registerConnectionCountsProvider,
   registerLoadedDocsProvider,
   registerPersistenceQueueDepthProvider,
 } from './server-workload-telemetry.ts';
@@ -1270,6 +1272,16 @@ export function createServer(options: ServerOptions): ServerInstance {
     unregisterWorkloadProviders.push(
       registerLoadedDocsProvider(() => hp.documents.size),
       registerPersistenceQueueDepthProvider(() => persistence.getQueueDepths()),
+      registerConnectionCountsProvider(() => {
+        // Hocuspocus's own count is deduplicated sockets + DirectConnections;
+        // subtracting the per-doc direct totals splits the two transports so
+        // the gauge can label them (a socket attached to N docs counts once).
+        let direct = 0;
+        for (const doc of hp.documents.values()) {
+          direct += doc.directConnectionsCount;
+        }
+        return { websocket: hp.getConnectionsCount() - direct, direct };
+      }),
     );
     installServerWorkloadGauges();
 
@@ -1421,6 +1433,16 @@ export function createServer(options: ServerOptions): ServerInstance {
     agentPresenceBroadcaster = new AgentPresenceBroadcaster(hocuspocus);
 
     sessionManager = new AgentSessionManager(hocuspocus);
+    // Registered here (not with the connection provider above) because the
+    // session manager doesn't exist yet at that point; gauges only sample at
+    // metric-export time, so late registration is safe.
+    const sm = sessionManager;
+    unregisterWorkloadProviders.push(
+      registerAgentSessionCountsProvider(() => ({
+        active: sm.liveSessionCount,
+        limit: sm.sessionLimit,
+      })),
+    );
     const liveDerivedIndexExtension = createLiveDerivedIndexExtension({
       backlinkIndex,
       tagIndex,

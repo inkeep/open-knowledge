@@ -31,7 +31,7 @@
  * must not fail the sync handshake.
  */
 import type { Extension } from '@hocuspocus/server';
-import type { Attributes } from '@opentelemetry/api';
+import { type Attributes, context as otelContext, propagation } from '@opentelemetry/api';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { getLogger } from './logger.ts';
 import { withSpanSync } from './telemetry.ts';
@@ -64,8 +64,31 @@ export function createSyncHandshakeSpanExtension(): Extension {
       // `withSpanSync` (not `withSpan`) so afterLoadDocument doesn't pay an
       // awaited-Promise microtask hop per WebSocket connection even when
       // OTel is disabled and the span body is a no-op.
+      //
+      // The browser cannot set headers on a native WebSocket, so the
+      // frontend appends `traceparent` / `tracestate` to the collab URL
+      // (appendTraceContextToCollabUrl in the app's collab-otel.ts) and
+      // they arrive here as query params. Extracting them parents this
+      // span to the browser's trace instead of starting a disconnected
+      // root. A malformed traceparent is ignored by the W3C propagator
+      // (extract returns the context unchanged); with OTel disabled the
+      // no-op propagator does the same, so the extra work is one small
+      // object allocation on a once-per-doc-load path.
       try {
-        withSpanSync('sync.handshake', { attributes }, () => {});
+        const emitSpan = (): void => {
+          withSpanSync('sync.handshake', { attributes }, () => {});
+        };
+        const traceparent = requestParameters?.get('traceparent');
+        if (traceparent !== null && traceparent !== undefined) {
+          const carrier: Record<string, string> = { traceparent };
+          const tracestate = requestParameters?.get('tracestate');
+          if (tracestate !== null && tracestate !== undefined) {
+            carrier.tracestate = tracestate;
+          }
+          otelContext.with(propagation.extract(otelContext.active(), carrier), emitSpan);
+        } else {
+          emitSpan();
+        }
       } catch (err) {
         // Pass the Error through under `err` so the pino serializer keeps
         // its `.stack` — coercing to `.message` discards the call-frame
