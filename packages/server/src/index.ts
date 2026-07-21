@@ -197,7 +197,7 @@ export {
   INSTALLED_AGENTS_SCHEMES,
   type InstalledAgentScheme,
 } from './handoff-api.ts';
-export { readBranchFromHead } from './head-watcher.ts';
+export { type ProjectHeadState, readProjectHeadState } from './head-watcher.ts';
 export {
   createStreamingErrorWriter,
   errorResponse,

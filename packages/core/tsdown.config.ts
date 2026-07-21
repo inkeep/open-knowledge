@@ -3,6 +3,7 @@ import { defineConfig } from 'tsdown';
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
+    'git-repository': 'src/git-repository.ts',
     'shadow-repo-layout': 'src/shadow-repo-layout.ts',
     server: 'src/server.ts',
     keepalive: 'src/keepalive/keepalive.ts',

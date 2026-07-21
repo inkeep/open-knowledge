@@ -8,9 +8,10 @@
  * A timeout cap prevents indefinite batching (e.g., long rebase).
  */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { resolveGitDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import {
+  discoverGitRepository,
+  type GitRepository,
+} from '@inkeep/open-knowledge-core/git-repository';
 import { getLogger } from './logger.ts';
 
 const log = getLogger('head-watcher');
@@ -52,56 +53,29 @@ const WATCHED_FILES = new Set(['HEAD', 'MERGE_HEAD', 'ORIG_HEAD', 'index.lock'])
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Read current HEAD SHA, or null if unreadable. */
-function readHeadSha(gitDir: string): string | null {
-  try {
-    const headContent = readFileSync(resolve(gitDir, 'HEAD'), 'utf-8').trim();
-    // HEAD may be a ref (ref: refs/heads/main) or a detached SHA
-    if (headContent.startsWith('ref: ')) {
-      const refPath = resolve(gitDir, headContent.slice(5));
-      try {
-        return readFileSync(refPath, 'utf-8').trim();
-      } catch {
-        // Ref file may not exist (empty repo)
-        // Try packed-refs
-        try {
-          const packed = readFileSync(resolve(gitDir, 'packed-refs'), 'utf-8');
-          const refName = headContent.slice(5);
-          const line = packed.split('\n').find((l) => l.endsWith(` ${refName}`));
-          if (line) return line.split(' ')[0];
-        } catch {
-          // No packed-refs
-        }
-        return null;
-      }
-    }
-    // Detached HEAD — the content is the SHA
-    return headContent.length >= 40 ? headContent.slice(0, 40) : null;
-  } catch {
-    return null;
-  }
+export interface ProjectHeadState {
+  readonly branch: string | null;
+  readonly oid: string | null;
 }
 
-/**
- * Read the branch name from .git/HEAD.
- *
- * Returns the branch name (e.g. "main") for a symref,
- * "detached-<sha12>" for a raw SHA, or null if unreadable.
- */
-export function readBranchFromHead(gitDir: string): string | null {
-  try {
-    const headContent = readFileSync(resolve(gitDir, 'HEAD'), 'utf-8').trim();
-    if (headContent.startsWith('ref: refs/heads/')) {
-      return headContent.slice('ref: refs/heads/'.length);
-    }
-    // Detached HEAD — raw SHA
-    if (headContent.length >= 40) {
-      return `detached-${headContent.slice(0, 12)}`;
-    }
-    return null;
-  } catch {
-    return null;
+function readRepositoryHeadState(repository: GitRepository): ProjectHeadState {
+  const head = repository.readHead();
+  if (head.kind === 'detached') {
+    return { branch: `detached-${head.oid.slice(0, 12)}`, oid: head.oid };
   }
+  if (head.kind !== 'branch') return { branch: null, oid: null };
+
+  const ref = repository.readRef(head.ref);
+  const oid = ref.kind === 'present' && ref.value.kind === 'oid' ? ref.value.oid : null;
+  return { branch: head.branch, oid };
+}
+
+/** Read the current branch label and resolved HEAD oid without throwing. */
+export function readProjectHeadState(projectRoot: string): ProjectHeadState {
+  const inspected = discoverGitRepository(projectRoot);
+  return inspected.kind === 'repository'
+    ? readRepositoryHeadState(inspected.repository)
+    : { branch: null, oid: null };
 }
 
 // ─── Backends ────────────────────────────────────────────────────────────────
@@ -207,12 +181,13 @@ export async function startHeadWatcher(
   onBatchEnd: OnBatchEnd,
   opts: { forceBackend?: 'parcel' | 'chokidar' } = {},
 ): Promise<HeadWatcherHandle> {
-  const resolvedGitDir = resolveGitDir(projectRoot);
-  if (!resolvedGitDir) {
+  const inspected = discoverGitRepository(projectRoot);
+  if (inspected.kind !== 'repository') {
     // No .git/ to watch — skip attachment without erroring
     return { unsubscribe: async () => {}, getLastKnownBranch: () => null };
   }
-  const gitDir: string = resolvedGitDir;
+  const repository = inspected.repository;
+  const gitDir = repository.gitDir;
 
   let inBatch = false;
   let quietTimer: ReturnType<typeof setTimeout> | null = null;
@@ -234,9 +209,10 @@ export async function startHeadWatcher(
       timeoutTimer = null;
     }
 
-    const newHead = readHeadSha(gitDir);
+    const head = readRepositoryHeadState(repository);
+    const newHead = head.oid;
     const headMoved = oldHead !== newHead;
-    const newBranch = readBranchFromHead(gitDir);
+    const newBranch = head.branch;
 
     // Classify batch kind
     let batchKind: BatchKind;
@@ -291,7 +267,7 @@ export async function startHeadWatcher(
       // the post-move SHA and report `headMoved: false` for a genuine move —
       // silently defeating upstream-import detection + author attribution. Only
       // seed when we have no baseline yet (first event in an empty repo).
-      if (oldHead === null) oldHead = readHeadSha(gitDir);
+      if (oldHead === null) oldHead = readRepositoryHeadState(repository).oid;
       const beginPromise = (async () => {
         try {
           await onBatchBegin({ trigger });
@@ -339,8 +315,9 @@ export async function startHeadWatcher(
 
   // Read initial state AFTER the watcher is active to avoid missing events
   // that occur between the read and the subscription completing.
-  oldHead = readHeadSha(gitDir);
-  lastKnownBranch = readBranchFromHead(gitDir);
+  const initialHead = readRepositoryHeadState(repository);
+  oldHead = initialHead.oid;
+  lastKnownBranch = initialHead.branch;
 
   log.info({ gitDir, backend }, 'watching for HEAD changes');
 

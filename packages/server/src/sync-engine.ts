@@ -18,6 +18,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { inspectGitRepository } from '@inkeep/open-knowledge-core/git-repository';
 import { resolveGitDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import type { CC1Broadcaster } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
@@ -262,23 +263,11 @@ function jitteredMs(seconds: number): number {
  * repo whose refs happen to be packed.
  */
 function isUnbornHead(projectDir: string): boolean {
-  try {
-    const headPath = join(projectDir, '.git', 'HEAD');
-    if (!existsSync(headPath)) return false;
-    const headContent = readFileSync(headPath, 'utf-8').trim();
-    const match = /^ref:\s+(refs\/.+)$/.exec(headContent);
-    if (!match) return false;
-    const refName = match[1] as string;
-    if (existsSync(join(projectDir, '.git', refName))) return false;
-    const packedRefsPath = join(projectDir, '.git', 'packed-refs');
-    if (existsSync(packedRefsPath)) {
-      const packed = readFileSync(packedRefsPath, 'utf-8');
-      if (new RegExp(`^[0-9a-f]+\\s+${refName}$`, 'm').test(packed)) return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
+  const inspected = inspectGitRepository(projectDir);
+  if (inspected.kind !== 'repository') return false;
+  const head = inspected.repository.readHead();
+  if (head.kind !== 'branch') return false;
+  return inspected.repository.readRef(head.ref).kind === 'absent';
 }
 
 // ─── Backoff thresholds ──────────────────────────────────────────────────────

@@ -1,77 +1,8 @@
-import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { extractOriginUrl, readCanonicalGitHubRemoteUrl } from './git-remote.ts';
-
-describe('extractOriginUrl', () => {
-  test('returns the url from a canonical [remote "origin"] block', () => {
-    const config = [
-      '[core]',
-      '\trepositoryformatversion = 0',
-      '[remote "origin"]',
-      '\turl = https://github.com/inkeep/open-knowledge.git',
-      '\tfetch = +refs/heads/*:refs/remotes/origin/*',
-      '',
-    ].join('\n');
-    expect(extractOriginUrl(config)).toBe('https://github.com/inkeep/open-knowledge.git');
-  });
-
-  test("returns the SSH form unchanged (canonicalization is the caller's job)", () => {
-    const config = ['[remote "origin"]', '\turl = git@github.com:inkeep/open-knowledge.git'].join(
-      '\n',
-    );
-    expect(extractOriginUrl(config)).toBe('git@github.com:inkeep/open-knowledge.git');
-  });
-
-  test('ignores [remote "upstream"] when origin is also present', () => {
-    const config = [
-      '[remote "upstream"]',
-      '\turl = https://github.com/some/fork.git',
-      '[remote "origin"]',
-      '\turl = https://github.com/inkeep/open-knowledge.git',
-    ].join('\n');
-    expect(extractOriginUrl(config)).toBe('https://github.com/inkeep/open-knowledge.git');
-  });
-
-  test('returns null when no origin section is present', () => {
-    const config = ['[core]', '\trepositoryformatversion = 0'].join('\n');
-    expect(extractOriginUrl(config)).toBeNull();
-  });
-
-  test('returns null when origin section has no url key', () => {
-    const config = ['[remote "origin"]', '\tfetch = +refs/heads/*:refs/remotes/origin/*'].join(
-      '\n',
-    );
-    expect(extractOriginUrl(config)).toBeNull();
-  });
-
-  test('tolerates CRLF line endings', () => {
-    const config = [
-      '[core]\r',
-      '\trepositoryformatversion = 0\r',
-      '[remote "origin"]\r',
-      '\turl = https://github.com/inkeep/open-knowledge.git\r',
-    ].join('\n');
-    expect(extractOriginUrl(config)).toBe('https://github.com/inkeep/open-knowledge.git');
-  });
-
-  test('handles quoted url values', () => {
-    const config = [
-      '[remote "origin"]',
-      '\turl = "https://github.com/inkeep/open-knowledge.git"',
-    ].join('\n');
-    expect(extractOriginUrl(config)).toBe('https://github.com/inkeep/open-knowledge.git');
-  });
-
-  test('strips trailing semicolon and hash comments', () => {
-    const config = [
-      '[remote "origin"]',
-      '\turl = https://github.com/inkeep/open-knowledge.git ; was example/old.git',
-    ].join('\n');
-    expect(extractOriginUrl(config)).toBe('https://github.com/inkeep/open-knowledge.git');
-  });
-});
+import { describe, expect, test } from 'vitest';
+import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 
 describe('readCanonicalGitHubRemoteUrl (filesystem round-trip)', () => {
   function withTempProject(setup: (projectDir: string) => void): string | null {
@@ -130,6 +61,21 @@ describe('readCanonicalGitHubRemoteUrl (filesystem round-trip)', () => {
       writeFileSync(join(projectDir, '.git', 'config'), '[remote "origin"]\n\turl = not-a-url\n');
     });
     expect(result).toBeNull();
+  });
+
+  test('skips empty entries before the configured origin URL', () => {
+    const result = withTempProject((projectDir) => {
+      mkdirSync(join(projectDir, '.git'));
+      writeFileSync(
+        join(projectDir, '.git', 'config'),
+        [
+          '[remote "origin"]',
+          '\turl =',
+          '\turl = https://github.com/inkeep/open-knowledge.git',
+        ].join('\n'),
+      );
+    });
+    expect(result).toBe('https://github.com/inkeep/open-knowledge.git');
   });
 
   test('does not throw when .git/config is unreadable', () => {

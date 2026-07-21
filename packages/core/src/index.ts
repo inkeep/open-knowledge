@@ -1077,8 +1077,8 @@ export {
 
 // Shadow-repo layout helpers are NOT re-exported here — they import `node:fs`
 // and would contaminate core's browser-compatibility contract. Import via the
-// subpath: `import { parseWriterId } from '@inkeep/open-knowledge-core/shadow-repo-layout'`.
-// CLI read path and server write path are the only consumers.
+// Node-only Git helpers are exposed through `./git-repository` and
+// `./shadow-repo-layout` subpaths so the browser-safe barrel stays clean.
 
 // Bridge — observer/CRDT-bridge shared utilities (precedent #14)
 export {

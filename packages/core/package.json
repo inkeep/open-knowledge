@@ -15,6 +15,11 @@
       "types": "./src/shadow-repo-layout.ts",
       "default": "./dist/shadow-repo-layout.mjs"
     },
+    "./git-repository": {
+      "development": "./src/git-repository.ts",
+      "types": "./src/git-repository.ts",
+      "default": "./dist/git-repository.mjs"
+    },
     "./server": {
       "development": "./src/server.ts",
       "types": "./src/server.ts",

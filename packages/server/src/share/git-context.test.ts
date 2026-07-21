@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   branchExistsOnOrigin,
   originGitHubHost,
@@ -47,6 +47,8 @@ function seedRepo(
 }
 
 const CANONICAL_HEAD = 'ref: refs/heads/main\n';
+const OID_A = 'a'.repeat(40);
+const OID_B = 'b'.repeat(40);
 const CANONICAL_CONFIG_HTTPS =
   '[remote "origin"]\n\turl = https://github.com/inkeep/open-knowledge.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n';
 
@@ -340,34 +342,33 @@ describe('branchExistsOnOrigin', () => {
   });
 
   test('returns true when a loose ref exists', () => {
-    seedRepo(dir, { branchRefs: { main: 'abc123\n' } });
+    seedRepo(dir, { branchRefs: { main: `${OID_A}\n` } });
     expect(branchExistsOnOrigin(dir, 'main')).toBe(true);
   });
 
   test('returns false when no ref file exists', () => {
-    seedRepo(dir, { branchRefs: { main: 'abc123\n' } });
+    seedRepo(dir, { branchRefs: { main: `${OID_A}\n` } });
     expect(branchExistsOnOrigin(dir, 'feature-x')).toBe(false);
   });
 
   test('returns true for a packed-refs entry', () => {
     seedRepo(dir, {
-      packedRefs:
-        '# pack-refs with: peeled fully-peeled sorted\nabc123 refs/remotes/origin/main\ndef456 refs/remotes/origin/develop\n',
+      packedRefs: `# pack-refs with: peeled fully-peeled sorted\n${OID_A} refs/remotes/origin/main\n${OID_B} refs/remotes/origin/develop\n`,
     });
     expect(branchExistsOnOrigin(dir, 'develop')).toBe(true);
   });
 
   test('returns false for an absent packed-refs entry', () => {
     seedRepo(dir, {
-      packedRefs: '# pack-refs with: peeled fully-peeled sorted\nabc123 refs/remotes/origin/main\n',
+      packedRefs: `# pack-refs with: peeled fully-peeled sorted\n${OID_A} refs/remotes/origin/main\n`,
     });
     expect(branchExistsOnOrigin(dir, 'feature-x')).toBe(false);
   });
 
   test('returns true when the branch is loose AND packed (loose wins)', () => {
     seedRepo(dir, {
-      branchRefs: { main: 'abc123\n' },
-      packedRefs: '# pack-refs with: peeled fully-peeled sorted\ndef456 refs/remotes/origin/main\n',
+      branchRefs: { main: `${OID_A}\n` },
+      packedRefs: `# pack-refs with: peeled fully-peeled sorted\n${OID_B} refs/remotes/origin/main\n`,
     });
     expect(branchExistsOnOrigin(dir, 'main')).toBe(true);
   });
@@ -377,13 +378,13 @@ describe('branchExistsOnOrigin', () => {
   });
 
   test('handles branches with slashes in loose-ref form', () => {
-    seedRepo(dir, { branchRefs: { 'feat/sharing': 'abc\n' } });
+    seedRepo(dir, { branchRefs: { 'feat/sharing': `${OID_A}\n` } });
     expect(branchExistsOnOrigin(dir, 'feat/sharing')).toBe(true);
   });
 
   test('handles branches with slashes via packed-refs', () => {
     seedRepo(dir, {
-      packedRefs: 'abc123 refs/remotes/origin/feat/sharing-virality-flow\n',
+      packedRefs: `${OID_A} refs/remotes/origin/feat/sharing-virality-flow\n`,
     });
     expect(branchExistsOnOrigin(dir, 'feat/sharing-virality-flow')).toBe(true);
   });
@@ -474,7 +475,7 @@ describe('linked-worktree common-dir resolution', () => {
     writeFileSync(join(commonDir, 'config'), CANONICAL_CONFIG_HTTPS, 'utf-8');
     const refDir = join(commonDir, 'refs', 'remotes', 'origin');
     mkdirSync(refDir, { recursive: true });
-    writeFileSync(join(refDir, 'feat-bar'), 'abc123\n', 'utf-8');
+    writeFileSync(join(refDir, 'feat-bar'), `${OID_A}\n`, 'utf-8');
     // Linked-worktree git dir: per-worktree HEAD + a relative `commondir`
     // pointer, exactly as git writes it (`.git/worktrees/<name>/commondir`).
     const worktreeGitDir = join(commonDir, 'worktrees', 'wt');

@@ -100,7 +100,7 @@ import type {
   ProbeTokenStore,
   PushPermission,
 } from './github-permissions.ts';
-import { type HeadWatcherHandle, readBranchFromHead, startHeadWatcher } from './head-watcher.ts';
+import { type HeadWatcherHandle, readProjectHeadState, startHeadWatcher } from './head-watcher.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { getLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
@@ -3290,12 +3290,11 @@ export function createServer(options: ServerOptions): ServerInstance {
     // Reset branch-scoped state to match THIS project's current HEAD before
     // anything reads/writes it. `persistence.activeBranch` and the
     // `BacklinkIndex.activeBranch` are mutable state; in single-process test
-    // runners (bun test) these leak across test files, so a prior test that
+    // runners these leak across test files, so a prior test that
     // triggered `switchReconciledBaseScope` leaves state at the wrong branch
     // for the next server's reads. Detecting the actual HEAD here and
     // normalizing both scopes in lock-step closes the leak.
-    const gitDirForInit = resolveGitDir(projectDir);
-    const startupBranch = gitDirForInit ? (readBranchFromHead(gitDirForInit) ?? 'main') : 'main';
+    const startupBranch = readProjectHeadState(projectDir).branch ?? 'main';
     switchReconciledBaseScope(startupBranch);
     backlinkIndex.switchBranch(startupBranch);
 
@@ -3540,10 +3539,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             const currentBranch = getActiveBranch();
             // Read new branch from HEAD (already updated by git at onBatchBegin time)
             // so the park subject can carry both ends of the switch.
-            const gitDir = resolveGitDir(projectDir);
-            const newBranch = gitDir
-              ? (readBranchFromHead(gitDir) ?? currentBranch)
-              : currentBranch;
+            const newBranch = readProjectHeadState(projectDir).branch ?? currentBranch;
             const docs: ParkableDoc[] = [];
             for (const [docName, document] of hocuspocus.documents) {
               if (isReservedForUserTree(docName)) continue;

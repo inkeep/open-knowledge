@@ -36,10 +36,10 @@
  * This file uses only `node:fs` (no other server/runtime deps) so it is safe
  * to include from any workspace package.
  */
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { existsSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 import { fnv1aDigest } from './bridge/hash-util.ts';
+import { discoverGitRepository } from './git-repository.ts';
 
 /**
  * Writer-ID taxonomy (precedent #25). Classified system writers are non-attributable
@@ -112,10 +112,9 @@ const WRITER_ID_RE =
   /^(agent-[^/]+|principal-[^/]+|git-author-[^/]+|file-system|git-upstream|openknowledge-service)$/;
 
 /**
- * Classification of `<projectRoot>/.git`. Centralizes the single
- * `statSync` + pointer-parse so `resolveGitDir` (lossy: `string | null`),
- * `resolveShadowDir` (typed: throws on each unusable kind), and boot-time
- * worktree-attribute computation consume the same source of truth.
+ * Compatibility view of shared repository discovery for shadow-repo callers.
+ * `resolveGitDir` consumes it lossily, while `resolveShadowDir` preserves the
+ * distinct recovery paths below.
  *
  * Three failure modes — distinct because their recoveries differ:
  *   - `'absent'`             — `.git` is not on disk (`ENOENT`). Recovery: run
@@ -159,141 +158,29 @@ export type ResolvedGitDir =
   | { kind: 'malformed-pointer'; gitPath: string; target: string; cause?: unknown }
   | { kind: 'inaccessible'; gitPath: string; cause: unknown };
 
-/**
- * Classify a `.git` path (file or directory) without walking up the
- * filesystem. The caller supplies `workTreeRoot` — the directory CONTAINING
- * the `.git` entry — so we can resolve relative `gitdir:` pointers correctly
- * even when the `.git` lives at an ancestor of `projectRoot`.
- */
-function classifyGitEntry(
-  gitPath: string,
-  workTreeRoot: string,
-  projectRoot: string,
-): ResolvedGitDir {
-  let stat: ReturnType<typeof statSync>;
-  try {
-    stat = statSync(gitPath);
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT' || code === 'ENOTDIR') return { kind: 'absent' };
-    return { kind: 'inaccessible', gitPath, cause: err };
-  }
-  const projectSubPath = computeProjectSubPath(workTreeRoot, projectRoot);
-  if (stat.isDirectory()) return { kind: 'directory', path: gitPath, projectSubPath };
-  if (stat.isFile()) {
-    let content: string;
-    try {
-      content = readFileSync(gitPath, 'utf-8').trim();
-    } catch (err) {
-      return { kind: 'malformed-pointer', gitPath, target: '', cause: err };
-    }
-    const match = content.match(/^gitdir:\s*(.+)$/);
-    if (!match) return { kind: 'malformed-pointer', gitPath, target: '' };
-    // Relative pointers resolve against the directory that contains the
-    // `.git` file (the worktree root), not against `projectRoot` — these
-    // differ when `.git` lives at an ancestor of `projectRoot`.
+export function resolveGitDirDetailed(projectRoot: string): ResolvedGitDir {
+  const result = discoverGitRepository(projectRoot);
+  if (result.kind !== 'repository') return result;
+
+  const { repository } = result;
+  if (repository.kind === 'directory') {
     return {
-      kind: 'linked',
-      path: resolve(workTreeRoot, match[1]),
-      gitPath,
-      projectSubPath,
+      kind: 'directory',
+      path: repository.gitDir,
+      projectSubPath: repository.projectSubPath,
     };
   }
-  // socket / device / etc. — treat as absent for the consumers' purposes.
-  return { kind: 'absent' };
+  return {
+    kind: 'linked',
+    path: repository.gitDir,
+    gitPath: repository.gitPath,
+    projectSubPath: repository.projectSubPath,
+  };
 }
 
 /**
- * Return the path component from `workTreeRoot` down to `projectRoot`. Empty
- * string when they coincide. Non-empty result is guaranteed to NOT begin with
- * `..` (the walk-up only ever discovers `.git` at an ancestor, so projectRoot
- * is always a descendant). Defensive `..`-check guards against future callers
- * that pass arbitrary paths.
- */
-function computeProjectSubPath(workTreeRoot: string, projectRoot: string): string {
-  const rel = relative(workTreeRoot, projectRoot);
-  if (rel === '' || rel === '.') return '';
-  if (rel.startsWith('..') || isAbsolute(rel)) return '';
-  return rel;
-}
-
-/**
- * Walk up from `startDir` looking for a `.git` (directory or pointer file) at
- * any ancestor. Stops at `homedir()` (matching `folder-admission.ts`'s
- * "don't promote at-or-above home" policy — `~/.git` would be a hostile
- * carve-out we want to refuse) and at the filesystem root. Returns the path
- * to the discovered `.git` entry and the ancestor directory containing it,
- * or `null` if none found within the bound.
- */
-function findAncestorGitEntry(startDir: string): { gitPath: string; workTreeRoot: string } | null {
-  const home = homedir();
-  let cursor = resolve(startDir);
-  // Hard cap so a hostile or pathological tree (cyclic symlinks via realpath
-  // edge cases, very deep mount stacks) can't pin a server boot in a tight
-  // statSync loop. 64 is well beyond any realistic monorepo depth.
-  const MAX_DEPTH = 64;
-  for (let i = 0; i < MAX_DEPTH; i++) {
-    if (cursor === home) return null;
-    const parent = dirname(cursor);
-    if (parent === cursor) return null; // reached filesystem root
-    if (parent === home) return null; // refuse ~/.git (at-or-above-home policy)
-    const candidate = resolve(parent, '.git');
-    try {
-      const stat = statSync(candidate);
-      if (stat.isDirectory() || stat.isFile()) {
-        return { gitPath: candidate, workTreeRoot: parent };
-      }
-    } catch (err) {
-      // ENOENT / EACCES / etc. — keep walking; if a parent is unreadable we
-      // can't tell whether `.git` exists there, but surfacing that as an
-      // error would block boot for every container that mounts a parent of
-      // its project read-only without execute. Prefer the safe fallthrough
-      // — at worst the caller hits the legacy `<projectRoot>/.git/ok` path.
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code !== 'ENOENT' && code !== 'ENOTDIR') {
-        console.warn(
-          `[shadow-repo-layout] Cannot stat ${candidate} (${code ?? 'unknown'}); skipping ancestor`,
-        );
-      }
-    }
-    cursor = parent;
-  }
-  return null;
-}
-
-export function resolveGitDirDetailed(projectRoot: string): ResolvedGitDir {
-  const projectRootAbs = resolve(projectRoot);
-  const direct = classifyGitEntry(resolve(projectRootAbs, '.git'), projectRootAbs, projectRootAbs);
-  // Direct hit at projectRoot — return as-is. Covers main-worktree, linked-
-  // worktree, AND the pre-existing-shell-`.git/` case (where a prior subfolder
-  // boot under the bug left an empty `.git/` directory containing only `ok/`).
-  // The shell-`.git/` case continues to be repaired by `ensureProjectGit` and
-  // its shadow continues to live where it was created. We never walk up if
-  // `.git` is present at projectRoot.
-  if (direct.kind !== 'absent') return direct;
-
-  // No `.git` at projectRoot — projectRoot may be a subfolder of an existing
-  // work tree. Walk up. If we find an ancestor `.git`, host the shadow inside
-  // its gitdir (with a per-subfolder namespace; see `resolveShadowDir`) rather
-  // than creating a nested `<projectRoot>/.git/` shell. This eliminates the
-  // bug class where `initShadowRepo`'s mkdir materialised a shell `.git/`
-  // inside a subfolder of an existing repo, which on next boot tricked
-  // `ensureProjectGit`'s shell-repair path into running `git init` and
-  // fragmenting the user's history into a nested repo.
-  const ancestor = findAncestorGitEntry(projectRootAbs);
-  if (ancestor === null) {
-    // ENOENT / ENOTDIR were the original errors at projectRoot — fall
-    // through to the legacy `<projectRoot>/.git/ok` path. Callers handle the
-    // no-`.git` case via `ensureProjectGit` upstream.
-    return { kind: 'absent' };
-  }
-  return classifyGitEntry(ancestor.gitPath, ancestor.workTreeRoot, projectRootAbs);
-}
-
-/**
- * Resolve the actual `.git` directory for a project root — handles both the
- * standard `.git`-as-directory case and the linked-worktree case where
- * `<projectRoot>/.git` is a regular file containing `gitdir: <abs>`.
+ * Resolve the actual `.git` directory for the nearest enclosing repository,
+ * including linked worktrees whose `.git` is a `gitdir:` pointer file.
  *
  * Returns the resolved absolute path on success, or `null` when `.git` is
  * absent OR when the pointer file is unreadable / malformed. Callers that
@@ -344,7 +231,7 @@ export function resolveShadowDir(projectRoot: string): string {
       return resolve(result.path, shadowSubdirName(result.projectSubPath));
     case 'linked':
       if (!existsSync(result.path)) {
-        // Pointer parsed but target dir is gone (stale `git worktree` admin).
+        // Discovery verified the pointer target, but it can disappear before use.
         throw new MalformedGitPointerError(result.gitPath, result.path);
       }
       return resolve(result.path, shadowSubdirName(result.projectSubPath));

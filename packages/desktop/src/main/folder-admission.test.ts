@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { execFile } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   type DiscoverProjectOptions,
   type DiscoverProjectResult,
@@ -407,8 +407,10 @@ describe('discoverProject — linked-worktree carveout scoping', () => {
     // instead of promoting to the git root.
     const worktree = resolve(fakeHome, 'wt');
     const sub = resolve(worktree, 'public/open-knowledge');
+    const gitDir = resolve(fakeHome, 'main/.git/worktrees/wt');
     mkdirSync(sub, { recursive: true });
-    writeFileSync(resolve(worktree, '.git'), 'gitdir: /main/.git/worktrees/wt\n');
+    mkdirSync(gitDir, { recursive: true });
+    writeFileSync(resolve(worktree, '.git'), `gitdir: ${gitDir}\n`);
 
     const result = await discoverProject(sub, {
       homeDir: fakeHome,
@@ -428,9 +430,11 @@ describe('discoverProject — linked-worktree carveout scoping', () => {
     // subfolder fix must not weaken this.
     const parent = resolve(fakeHome, 'parent');
     const worktree = resolve(parent, 'wt');
+    const gitDir = resolve(fakeHome, 'main/.git/worktrees/wt');
     mkdirSync(worktree, { recursive: true });
+    mkdirSync(gitDir, { recursive: true });
     writeOkConfig(parent);
-    writeFileSync(resolve(worktree, '.git'), 'gitdir: /main/.git/worktrees/wt\n');
+    writeFileSync(resolve(worktree, '.git'), `gitdir: ${gitDir}\n`);
 
     const result = await discoverProject(worktree, {
       homeDir: fakeHome,

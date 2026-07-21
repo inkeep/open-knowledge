@@ -38,7 +38,7 @@ export async function dirtyFilesOverlapWith(
 ): Promise<DirtyOverlapResult> {
   const { git } = createGitInstance(cwd);
 
-  const [dirtyList, changed] = await Promise.all([
+  const [dirtyResult, changedResult] = await Promise.allSettled([
     listPorcelainPaths(git),
     // Two-dot diff — all files differing between HEAD and targetRef, in either
     // direction. Three-dot (`HEAD...targetRef`) resolves to merge-base..targetRef
@@ -46,6 +46,14 @@ export async function dirtyFilesOverlapWith(
     // still restore to the target's view.
     listNames(git, ['diff', '--name-only', `HEAD..${targetRef}`]),
   ]);
+
+  // A missing target ref rejects the diff. Wait for the status process too so
+  // callers can safely tear down or replace the repository after this returns.
+  if (changedResult.status === 'rejected') throw changedResult.reason;
+  if (dirtyResult.status === 'rejected') throw dirtyResult.reason;
+
+  const dirtyList = dirtyResult.value;
+  const changed = changedResult.value;
 
   const dirty = new Set(dirtyList);
   if (dirty.size === 0) return { conflicts: false, files: [] };

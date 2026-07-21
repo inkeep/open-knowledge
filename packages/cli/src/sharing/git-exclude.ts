@@ -6,11 +6,8 @@
  * `.git/info/exclude`. No parallel registry; `readSharingMode` derives the
  * mode by checking whether any OK artifact appears in the exclude file.
  *
- * Worktree-aware: every read/write resolves the gitdir via
- * `resolveGitDirDetailed` from `@inkeep/open-knowledge-core` so linked
- * worktrees (where `<projectRoot>/.git` is a pointer file) write to the
- * correct `<repo>/.git/worktrees/<name>/info/exclude`, not a non-existent
- * `<projectRoot>/.git/info/exclude`.
+ * Worktree-aware: every read/write resolves the repository common dir so
+ * linked worktrees and main worktrees share the clone-level `info/exclude`.
  *
  * Every transition to local-only (init `--local-only`, `ok config-sharing unshare`,
  * desktop create radio, desktop settings panel) flows through
@@ -23,7 +20,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import {
   EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
@@ -33,10 +30,7 @@ import {
   RESERVED_PROJECT_SKILL_NAME,
   SKILL_CONTENT_ROOT,
 } from '@inkeep/open-knowledge-core';
-// `resolveGitDirDetailed` is in the `node:fs`-importing subpath of core —
-// the barrel deliberately omits it to keep the main entry browser-safe
-// (see `packages/core/src/index.ts`).
-import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import { discoverGitRepository } from '@inkeep/open-knowledge-core/git-repository';
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import { ALL_EDITOR_IDS, EDITOR_TARGETS } from '../commands/editors.ts';
 
@@ -554,29 +548,23 @@ type ResolveExcludePathResult =
   | { kind: 'no-exclude'; result: Extract<ExcludeWriteResult, { kind: 'no-exclude' }> };
 
 /**
- * Resolve `<gitdir>/info/exclude` via the shared resolver. Maps each
- * non-directory / non-linked outcome to a typed `no-exclude` sub-reason so
- * callers don't need to handle `MalformedGitPointerError` /
- * `GitDirAccessError` themselves.
+ * Resolve `<common-dir>/info/exclude` via shared repository inspection. Maps
+ * each unusable outcome to a typed `no-exclude` sub-reason for callers.
  *
  * Order of precedence — gitdir resolution first, then `info/` existence.
  * Skipping the `info/` check when the gitdir is resolvable but lacks an
  * `info/` dir would silently no-op rather than telling callers why.
  */
 function resolveExcludePath(projectRoot: string): ResolveExcludePathResult {
-  const detail = resolveGitDirDetailed(projectRoot);
-  switch (detail.kind) {
-    case 'directory':
-    case 'linked': {
+  const inspected = discoverGitRepository(projectRoot);
+  switch (inspected.kind) {
+    case 'repository': {
       // `.git/info/exclude` is a per-clone artifact, not a per-worktree one.
-      // In a linked worktree, `<projectRoot>/.git` points at the per-worktree
-      // admin dir (`<repo>/.git/worktrees/<name>/`), but the exclude file
-      // lives in the COMMON dir (the shared `<repo>/.git/`). Git stores the
-      // path to the common dir in a `commondir` file inside the admin dir,
-      // relative to that admin dir. For main worktrees, no `commondir` file
-      // exists and the gitdir IS the common dir.
-      const commonDir = resolveCommonDir(detail.path);
-      const info = join(commonDir, 'info');
+      const commonDir = inspected.repository.readCommonDir();
+      if (commonDir.kind === 'unreadable') {
+        return { kind: 'no-exclude', result: { kind: 'no-exclude', reason: 'inaccessible' } };
+      }
+      const info = join(commonDir.path, 'info');
       if (!existsSync(info)) {
         return { kind: 'no-exclude', result: { kind: 'no-exclude', reason: 'no-info-dir' } };
       }
@@ -592,31 +580,6 @@ function resolveExcludePath(projectRoot: string): ResolveExcludePathResult {
     case 'inaccessible':
       return { kind: 'no-exclude', result: { kind: 'no-exclude', reason: 'inaccessible' } };
   }
-}
-
-/**
- * Resolve the common-dir of a gitdir. In a linked worktree, the per-worktree
- * admin dir contains a `commondir` text file whose body is a path
- * (typically relative) to the shared `.git` directory. In a main worktree,
- * no `commondir` file exists and the gitdir IS the common dir.
- *
- * The `commondir` body is git's documented mechanism for resolving shared
- * per-clone artifacts (refs/, objects/, info/, hooks/) from a linked
- * worktree's gitdir; we use the same mechanism rather than re-running
- * `git rev-parse --git-common-dir` so the resolution stays in-process and
- * doesn't depend on a working `git` binary at sharing-mode evaluation time.
- */
-function resolveCommonDir(gitDir: string): string {
-  const commondirFile = join(gitDir, 'commondir');
-  if (!existsSync(commondirFile)) return gitDir;
-  let body: string;
-  try {
-    body = readFileSync(commondirFile, 'utf-8').trim();
-  } catch {
-    return gitDir;
-  }
-  if (body.length === 0) return gitDir;
-  return isAbsolute(body) ? body : resolve(gitDir, body);
 }
 
 /**

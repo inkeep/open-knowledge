@@ -22,8 +22,9 @@
  */
 
 import { statSync } from 'node:fs';
-import { readFile, realpath } from 'node:fs/promises';
+import { realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { inspectGitRepository } from '@inkeep/open-knowledge-core/git-repository';
 import { parseGitUrl } from './url.ts';
 
 /** Outcome of `validateLocalFolderForShare`. Discriminated by `kind`. */
@@ -78,7 +79,6 @@ export async function validateLocalFolderForShare(
     return { kind: 'not-git' };
   }
 
-  let gitDir: string;
   if (dotGitStat.isDirectory()) {
     let realDotGit: string;
     try {
@@ -92,39 +92,22 @@ export async function validateLocalFolderForShare(
     if (!isDescendantOrEqual(realDotGit, realFolder)) {
       return { kind: 'symlink-escape' };
     }
-    gitDir = realDotGit;
-  } else if (dotGitStat.isFile()) {
-    let pointerContents: string;
-    try {
-      pointerContents = await readFile(dotGit, 'utf-8');
-    } catch {
-      return { kind: 'not-git' };
-    }
-    const match = /^gitdir:\s*(.+)$/m.exec(pointerContents.trim());
-    if (!match) return { kind: 'not-git' };
-    const target = match[1].trim();
-    const absoluteTarget = isAbsolute(target) ? target : resolve(realFolder, target);
-    try {
-      gitDir = await realpath(absoluteTarget);
-    } catch {
-      return { kind: 'not-git' };
-    }
-  } else {
+  } else if (!dotGitStat.isFile()) {
     return { kind: 'not-git' };
   }
 
-  // 3. Read git config + locate `[remote "origin"]` URL. For a linked worktree
-  //    `gitDir` has no `config` of its own — it lives in the shared common dir,
-  //    reached via the gitdir's `commondir` pointer.
-  const configPath = join(await resolveCommonDir(gitDir), 'config');
-  let configContents: string;
-  try {
-    configContents = await readFile(configPath, 'utf-8');
-  } catch {
+  // 3. Repository mechanics are shared; this adapter retains the folder-picker's
+  //    stricter realpath admission and user-facing failure vocabulary.
+  const inspected = inspectGitRepository(realFolder);
+  if (inspected.kind !== 'repository') {
     return { kind: 'not-git' };
   }
-  const originUrl = extractOriginUrl(configContents);
-  if (originUrl === null) return { kind: 'no-origin' };
+  const origin = inspected.repository.readRemoteUrl('origin');
+  if (origin.kind === 'unreadable') return { kind: 'not-git' };
+  if (origin.kind === 'absent') {
+    return origin.reason === 'config-missing' ? { kind: 'not-git' } : { kind: 'no-origin' };
+  }
+  const originUrl = origin.url;
 
   // 4. Parse origin via the shared `parseGitUrl`. Anything we can't parse
   //    OR that points off-github lands as `non-github` — same downstream
@@ -150,28 +133,6 @@ export async function validateLocalFolderForShare(
 }
 
 /**
- * Resolve the shared common git dir, where `config` lives. A linked worktree's
- * gitdir carries a `commondir` file pointing at the main `.git` (relative to
- * the gitdir, occasionally absolute); a primary checkout has no `commondir`
- * and is its own common dir. Returns `gitDir` unchanged on any read failure.
- */
-async function resolveCommonDir(gitDir: string): Promise<string> {
-  let contents: string;
-  try {
-    contents = (await readFile(join(gitDir, 'commondir'), 'utf-8')).trim();
-  } catch {
-    return gitDir;
-  }
-  if (contents.length === 0) return gitDir;
-  const resolved = isAbsolute(contents) ? contents : resolve(gitDir, contents);
-  try {
-    return await realpath(resolved);
-  } catch {
-    return resolved;
-  }
-}
-
-/**
  * `relative(parent, child)` returns `''` for equal paths, a `..`-prefixed
  * string when `child` sits outside `parent`, and a non-`..` relative path
  * when child is a descendant. The early `child === parent` short-circuit is
@@ -181,54 +142,4 @@ function isDescendantOrEqual(child: string, parent: string): boolean {
   if (child === parent) return true;
   const rel = relative(parent, child);
   return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
-}
-
-/**
- * Strip git-config inline comments (`;` or `#`) and surrounding whitespace.
- * Both characters are valid comment markers in git's `*.config` grammar; the
- * shape of `[remote "origin"]` URLs (no semicolons, no hashes) means the
- * naive split is safe here.
- */
-function stripCommentAndTrim(line: string): string {
-  const hashIdx = line.indexOf('#');
-  const semiIdx = line.indexOf(';');
-  let cutAt = -1;
-  if (hashIdx >= 0 && semiIdx >= 0) cutAt = Math.min(hashIdx, semiIdx);
-  else if (hashIdx >= 0) cutAt = hashIdx;
-  else if (semiIdx >= 0) cutAt = semiIdx;
-  return (cutAt === -1 ? line : line.slice(0, cutAt)).trim();
-}
-
-/**
- * Extract the first `url = ...` value from the `[remote "origin"]` section
- * of a git config file. Returns null when the section is absent or has no
- * `url` line. Tolerates indented values, comments, quoted values, and CRLF
- * line endings.
- */
-export function extractOriginUrl(configContents: string): string | null {
-  let inOriginSection = false;
-  for (const rawLine of configContents.split(/\r?\n/)) {
-    const line = stripCommentAndTrim(rawLine);
-    if (line.length === 0) continue;
-    if (line.startsWith('[')) {
-      inOriginSection = /^\[\s*remote\s+["']origin["']\s*\]$/.test(line);
-      continue;
-    }
-    if (!inOriginSection) continue;
-    const m = /^url\s*=\s*(.+)$/.exec(line);
-    if (!m) continue;
-    return unquote(m[1]);
-  }
-  return null;
-}
-
-function unquote(value: string): string {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
 }

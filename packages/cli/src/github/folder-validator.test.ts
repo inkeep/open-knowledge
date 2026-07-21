@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { validateLocalFolderForShare } from './folder-validator.ts';
 
 describe('validateLocalFolderForShare', () => {
@@ -108,6 +108,18 @@ describe('validateLocalFolderForShare', () => {
     const folder = resolve(tmpDir, 'repo');
     mkdirSync(folder);
     seedRepo(folder, null);
+
+    const result = await validateLocalFolderForShare(folder, {
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+    });
+    expect(result).toEqual({ kind: 'no-origin' });
+  });
+
+  test('returns no-origin when the origin URL is an empty quoted value', async () => {
+    const folder = resolve(tmpDir, 'repo');
+    mkdirSync(folder);
+    seedRepo(folder, '""');
 
     const result = await validateLocalFolderForShare(folder, {
       owner: 'inkeep',

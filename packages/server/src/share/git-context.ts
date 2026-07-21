@@ -24,9 +24,11 @@
  * toast.
  */
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
 import { KNOWN_NON_GITHUB_GIT_HOSTS } from '@inkeep/open-knowledge-core';
+import {
+  type GitRepository,
+  inspectGitRepository,
+} from '@inkeep/open-knowledge-core/git-repository';
 import { getLogger } from '../logger.ts';
 
 const log = getLogger('git-context');
@@ -37,65 +39,9 @@ export type OriginResult =
   | { kind: 'no-remote' }
   | { kind: 'non-github' };
 
-/**
- * Resolve the absolute git directory for a project. Handles both the common
- * `<project>/.git/` directory layout and worktrees where `<project>/.git`
- * is a file containing `gitdir: <absolute-or-relative-path>`.
- *
- * For a linked worktree the returned dir holds per-worktree state (`HEAD`)
- * but NOT `config` / `refs/remotes/` — those live in the shared common dir.
- * Reads of those must go through `resolveCommonDir`; otherwise a
- * worktree project reports `no-remote` even when origin is configured.
- */
-function resolveGitDir(projectDir: string): string | null {
-  const gitPath = resolve(projectDir, '.git');
-  if (!existsSync(gitPath)) return null;
-
-  let stat: ReturnType<typeof statSync>;
-  try {
-    stat = statSync(gitPath);
-  } catch {
-    return null;
-  }
-
-  if (stat.isDirectory()) return gitPath;
-
-  if (stat.isFile()) {
-    let contents: string;
-    try {
-      contents = readFileSync(gitPath, 'utf-8');
-    } catch {
-      return null;
-    }
-    const match = /^gitdir:\s*(.+)$/m.exec(contents.trim());
-    if (!match) return null;
-    const rawTarget = match[1].trim();
-    const target = isAbsolute(rawTarget) ? rawTarget : resolve(projectDir, rawTarget);
-    return existsSync(target) ? target : null;
-  }
-
-  return null;
-}
-
-/**
- * Resolve the shared common git dir for `config` + `refs/remotes/` reads. In a
- * linked worktree the git dir holds a `commondir` file pointing at the main
- * `.git` (path is relative to the worktree git dir, occasionally absolute);
- * the origin config and remote-tracking refs live there, not in the worktree
- * git dir. For a non-worktree git dir there is no `commondir` file and the git
- * dir itself is the common dir.
- */
-function resolveCommonDir(gitDir: string): string {
-  const pointer = join(gitDir, 'commondir');
-  if (!existsSync(pointer)) return gitDir;
-  let contents: string;
-  try {
-    contents = readFileSync(pointer, 'utf-8').trim();
-  } catch {
-    return gitDir;
-  }
-  if (contents.length === 0) return gitDir;
-  return isAbsolute(contents) ? contents : resolve(gitDir, contents);
+function readRepository(projectDir: string): GitRepository | null {
+  const result = inspectGitRepository(projectDir);
+  return result.kind === 'repository' ? result.repository : null;
 }
 
 /**
@@ -103,67 +49,8 @@ function resolveCommonDir(gitDir: string): string {
  * a detached HEAD (raw SHA), a missing HEAD file, or any read failure.
  */
 export function readGitHeadBranch(projectDir: string): string | null {
-  const gitDir = resolveGitDir(projectDir);
-  if (!gitDir) return null;
-  const headPath = join(gitDir, 'HEAD');
-  if (!existsSync(headPath)) return null;
-  let head: string;
-  try {
-    head = readFileSync(headPath, 'utf-8');
-  } catch {
-    return null;
-  }
-  const match = /^ref:\s*refs\/heads\/(.+)$/.exec(head.trim());
-  return match ? match[1] : null;
-}
-
-/**
- * Strip git-config inline comments (`;` or `#`) and surrounding whitespace.
- * `;` and `#` are both valid comment characters in git's `*.config` grammar.
- */
-function stripCommentAndTrim(line: string): string {
-  const hashIdx = line.indexOf('#');
-  const semiIdx = line.indexOf(';');
-  let cutAt = -1;
-  if (hashIdx >= 0 && semiIdx >= 0) cutAt = Math.min(hashIdx, semiIdx);
-  else if (hashIdx >= 0) cutAt = hashIdx;
-  else if (semiIdx >= 0) cutAt = semiIdx;
-  return (cutAt === -1 ? line : line.slice(0, cutAt)).trim();
-}
-
-/**
- * Extract the first `url = ...` value from the `[remote "origin"]` section
- * of a git config file. Returns null when the section is absent, has no
- * `url` line, or the config is malformed.
- */
-export function extractOriginUrl(configContents: string): string | null {
-  let inOriginRemote = false;
-  for (const rawLine of configContents.split(/\r?\n/)) {
-    const line = stripCommentAndTrim(rawLine);
-    if (line.length === 0) continue;
-    if (line.startsWith('[')) {
-      // Match `[remote "origin"]` with arbitrary internal whitespace and
-      // either single or double quotes (git accepts both). Kept in sync
-      // with the sibling parsers in
-      // `packages/desktop/src/main/git-remote.ts` and
-      // `packages/cli/src/github/folder-validator.ts` — see
-      // `packages/desktop/tests/main/git-config-parser-parity.test.ts`.
-      inOriginRemote = /^\[\s*remote\s+["']origin["']\s*\]$/.test(line);
-      continue;
-    }
-    if (!inOriginRemote) continue;
-    const match = /^url\s*=\s*(.+)$/.exec(line);
-    if (!match) continue;
-    let value = match[1].trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (value.length > 0) return value;
-  }
-  return null;
+  const head = readRepository(projectDir)?.readHead();
+  return head?.kind === 'branch' ? head.branch : null;
 }
 
 /** Parsed origin repo: normalized host + owner/repo path segments. */
@@ -223,31 +110,13 @@ function parseGitHubOriginUrl(originUrl: string): ParsedOriginRepo | null {
   return null;
 }
 
-/**
- * Shared `.git/config` → origin-URL pipeline for the two public origin
- * readers: resolve the git dir, read `config`, extract the origin URL,
- * and classify it as github (owner/repo) or not. Returns null when there is
- * no readable origin URL. Centralizing the read here keeps future
- * config-resolution changes (worktree config, `[includeIf]`, error handling)
- * in one place instead of drifting across two callers.
- */
+/** Read and classify the configured origin shared by the two public readers. */
 function readParsedOrigin(
   projectDir: string,
 ): { originUrl: string; github: ParsedOriginRepo | null } | null {
-  const gitDir = resolveGitDir(projectDir);
-  if (!gitDir) return null;
-  // Origin config lives in the common dir, which differs from `gitDir` for a
-  // linked worktree (where `gitDir` has no `config` of its own).
-  const configPath = join(resolveCommonDir(gitDir), 'config');
-  if (!existsSync(configPath)) return null;
-  let configContents: string;
-  try {
-    configContents = readFileSync(configPath, 'utf-8');
-  } catch {
-    return null;
-  }
-  const originUrl = extractOriginUrl(configContents);
-  if (!originUrl) return null;
+  const origin = readRepository(projectDir)?.readRemoteUrl('origin');
+  if (origin?.kind !== 'configured') return null;
+  const originUrl = origin.url;
   return { originUrl, github: parseGitHubOriginUrl(originUrl) };
 }
 
@@ -346,29 +215,5 @@ function labelFromNonGitHubUrl(url: string): string {
  * the retry succeeds. Acceptable by contract.
  */
 export function branchExistsOnOrigin(projectDir: string, branch: string): boolean {
-  const gitDir = resolveGitDir(projectDir);
-  if (!gitDir) return false;
-  // Remote-tracking refs + packed-refs live in the common dir, shared across
-  // worktrees — not in a linked worktree's own git dir.
-  const commonDir = resolveCommonDir(gitDir);
-
-  const loosePath = join(commonDir, 'refs', 'remotes', 'origin', branch);
-  if (existsSync(loosePath)) return true;
-
-  const packedPath = join(commonDir, 'packed-refs');
-  if (!existsSync(packedPath)) return false;
-  let packed: string;
-  try {
-    packed = readFileSync(packedPath, 'utf-8');
-  } catch {
-    return false;
-  }
-  const target = `refs/remotes/origin/${branch}`;
-  for (const rawLine of packed.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (line.length === 0 || line.startsWith('#') || line.startsWith('^')) continue;
-    const parts = line.split(/\s+/);
-    if (parts.length === 2 && parts[1] === target) return true;
-  }
-  return false;
+  return readRepository(projectDir)?.readRef(`refs/remotes/origin/${branch}`).kind === 'present';
 }

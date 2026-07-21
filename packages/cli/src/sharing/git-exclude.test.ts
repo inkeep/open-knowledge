@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   addOkPathsToGitExclude,
   formatTrackedRemediation,
@@ -345,10 +345,9 @@ describe('addOkPathsToGitExclude', () => {
     }
   });
 
-  it('writes to the linked-worktree admin dir, not <projectRoot>/.git/info/exclude', () => {
-    // Reproduce the worktree-blind bug: in a linked
-    // worktree, <projectRoot>/.git is a regular file containing
-    // `gitdir: <abs-path>`, and `info/exclude` lives under that admin dir.
+  it('writes to the linked worktree common dir, not <projectRoot>/.git/info/exclude', () => {
+    // In a linked worktree, <projectRoot>/.git points at a per-worktree admin
+    // dir, while the clone-level `info/exclude` lives in the shared common dir.
     const mainRepo = uniqueDir('main-repo');
     const linkedWorktree = uniqueDir('linked-worktree');
     initGitRepo(mainRepo);
@@ -450,6 +449,22 @@ build/
     const result = removeOkPathsFromGitExclude(dir, ['.ok/']);
     expect(result.kind).toBe('updated');
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'reports an unreadable linked-worktree common-dir pointer as inaccessible',
+    () => {
+      rmSync(join(dir, '.git'), { recursive: true });
+      const gitDir = join(dir, '.git-state');
+      mkdirSync(gitDir);
+      writeFileSync(join(dir, '.git'), `gitdir: ${gitDir}\n`);
+      symlinkSync('commondir', join(gitDir, 'commondir'));
+
+      expect(removeOkPathsFromGitExclude(dir, ['.ok/'])).toEqual({
+        kind: 'no-exclude',
+        reason: 'inaccessible',
+      });
+    },
+  );
 
   it('reports the actually-removed artifact paths in `removed` (not the full candidate list)', () => {
     writeExclude(dir, '# header\n.ok/\n.mcp.json\nbuild/\n');
