@@ -241,6 +241,7 @@ import {
   UploadAssetSuccessSchema,
   UploadRequestSchema,
   unwrapFrontmatterFences,
+  updateWorkspaceSearchCorpus,
   type WorkspaceSearchCorpus,
   type WorkspaceSearchDocument,
   type WorkspaceSearchIntent,
@@ -740,6 +741,21 @@ function searchCorpusTruncatedCounter(): ReturnType<ReturnType<typeof getMeter>[
       'Count of search-corpus rebuilds where the name-only file tier hit OK_SEARCH_MAX_ENTRIES and dropped deepest-tail paths. One increment per truncated build; non-truncated builds do not increment.',
   });
   return _searchCorpusTruncatedCounter;
+}
+
+// Counter for search-corpus builds by mode: `cold` (no prior corpus),
+// `incremental` (in-place index patch of only the changed documents), or
+// `rebuild` (incremental path fell back to a from-scratch build; the bounded
+// `reason` attribute says why). A steady stream of `rebuild` where
+// `incremental` is expected is the drift signal worth alerting on.
+let _searchCorpusUpdateCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
+  null;
+function searchCorpusUpdateCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
+  _searchCorpusUpdateCounter ||= getMeter().createCounter('ok.search.corpus_update_total', {
+    description:
+      'Count of workspace search corpus builds, by mode (cold | incremental | rebuild) and, for rebuilds, the bounded fallback reason.',
+  });
+  return _searchCorpusUpdateCounter;
 }
 
 /** Bounded handler label for the content-divergence counters. */
@@ -17235,10 +17251,48 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       return workspaceSearchCache.pending;
     }
 
-    const pending = buildWorkspaceSearchDocumentsFromIndex().then(({ documents, truncated }) => ({
-      corpus: createWorkspaceSearchCorpus(documents),
-      truncated,
-    }));
+    // Stale-but-live corpus (or the build about to produce one): the base for
+    // an incremental index patch, so one write re-indexes one document instead
+    // of re-tokenizing the whole workspace on the event loop.
+    const priorCorpus = workspaceSearchCache?.corpus;
+    const priorPending = workspaceSearchCache?.pending;
+    const pending = (async () => {
+      // Serialize behind any in-flight build: an incremental diff is only valid
+      // against the corpus it was computed from, and the in-flight build owns
+      // the shared index right now. Chaining keeps updates linear (each build
+      // bases on its predecessor's output) without coalescing away freshness —
+      // the document snapshot below is read AFTER this fingerprint was seen.
+      const base = priorPending
+        ? await priorPending.then(
+            (result) => result.corpus,
+            () => undefined,
+          )
+        : priorCorpus;
+      const { documents, truncated } = await buildWorkspaceSearchDocumentsFromIndex();
+      if (!base) {
+        searchCorpusUpdateCounter().add(1, { mode: 'cold' });
+        return { corpus: createWorkspaceSearchCorpus(documents), truncated };
+      }
+      const update = updateWorkspaceSearchCorpus(base, documents);
+      if (update.rebuilt) {
+        searchCorpusUpdateCounter().add(1, { mode: 'rebuild', reason: update.rebuildReason });
+        // `mutation-failed` means the patched index diverged from the document
+        // set (or a mutation threw) — recovered by the rebuild, but worth an
+        // operator-visible signal; the elective reasons are routine.
+        const logLevel = update.rebuildReason === 'mutation-failed' ? 'warn' : 'debug';
+        getLogger('search')[logLevel](
+          { reason: update.rebuildReason, documents: documents.length },
+          '[search] corpus update fell back to a full index rebuild',
+        );
+      } else {
+        searchCorpusUpdateCounter().add(1, { mode: 'incremental' });
+        getLogger('search').debug(
+          { inserted: update.inserted, updated: update.updated, removed: update.removed },
+          '[search] corpus updated incrementally',
+        );
+      }
+      return { corpus: update.corpus, truncated };
+    })();
     workspaceSearchCaches.set(cacheKey, { fingerprint, pending });
     try {
       const result = await pending;

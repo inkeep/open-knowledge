@@ -1,4 +1,4 @@
-import { type AnyOrama, create, insertMultiple, search } from '@orama/orama';
+import { type AnyOrama, count, create, insertMultiple, removeMultiple, search } from '@orama/orama';
 import { isHiddenDocName } from '../util/doc-name.ts';
 
 export type WorkspaceSearchKind = 'page' | 'folder' | 'file';
@@ -279,6 +279,154 @@ function getWorkspaceSearchIndex(corpus: WorkspaceSearchCorpus): WorkspaceSearch
   const index = createWorkspaceSearchIndex(corpus.documents);
   workspaceSearchIndexes.set(corpus, index);
   return index;
+}
+
+/**
+ * Corpora already consumed as the base of an incremental update. A diff is only
+ * valid against the exact document set the shared index currently reflects, and
+ * that is the corpus most recently RETURNED by `createWorkspaceSearchCorpus` /
+ * `updateWorkspaceSearchCorpus` — reusing an older base would apply a diff the
+ * index has already moved past, silently desynchronizing BM25 from
+ * `corpus.documents`. Membership here makes that misuse deterministic: a
+ * consumed base forces the from-scratch rebuild path instead.
+ */
+const consumedUpdateBases = new WeakSet<WorkspaceSearchCorpus>();
+
+/** Why an incremental corpus update fell back to a from-scratch index build. */
+export type WorkspaceSearchRebuildReason =
+  | 'no-index'
+  | 'stale-base'
+  | 'duplicate-id'
+  | 'bulk-change'
+  | 'mutation-failed';
+
+export interface WorkspaceSearchCorpusUpdate {
+  corpus: WorkspaceSearchCorpus;
+  /** Documents newly added to the index (includes the insert half of updates). */
+  inserted: number;
+  /** Documents whose content/metadata changed (counted once, not as insert+remove). */
+  updated: number;
+  /** Documents removed from the index (excludes the remove half of updates). */
+  removed: number;
+  /** True when the index was rebuilt from scratch instead of patched in place. */
+  rebuilt: boolean;
+  rebuildReason?: WorkspaceSearchRebuildReason;
+}
+
+/**
+ * Field-level equality for diffing. Object identity short-circuits the common
+ * case (callers reuse unchanged document objects across builds); the field
+ * compare covers metadata-only documents that are re-created each build with
+ * identical values. `id` is the diff key, so it is compared by the caller.
+ */
+function sameSearchDocument(a: WorkspaceSearchDocument, b: WorkspaceSearchDocument): boolean {
+  return (
+    a === b ||
+    (a.kind === b.kind &&
+      a.path === b.path &&
+      a.title === b.title &&
+      a.name === b.name &&
+      a.pathSegments === b.pathSegments &&
+      a.modifiedTs === b.modifiedTs &&
+      a.content === b.content)
+  );
+}
+
+/**
+ * Advance a corpus to a new document set by patching the existing Orama index
+ * in place — per-document remove/insert for only the changed entries — instead
+ * of re-tokenizing the entire workspace. On a large corpus the from-scratch
+ * build is the dominant cost of search-cache invalidation, and it runs on the
+ * event loop; this keeps steady-state maintenance proportional to the change.
+ *
+ * Falls back to a from-scratch build (`rebuilt: true`) whenever the
+ * incremental path cannot be proven safe: `previous` has no live index or was
+ * already consumed as an update base, the new set carries a duplicate id (the
+ * rebuild then throws exactly like `createWorkspaceSearchCorpus`), the diff
+ * touches more documents than a rebuild would insert, or an index mutation
+ * fails / leaves the index count inconsistent.
+ *
+ * The returned corpus shares the (now-patched) index with `previous`. A search
+ * still holding `previous` keeps a coherent `documents` snapshot for the
+ * lexical/recency tiers but reads the patched index for BM25 — a bounded,
+ * one-step freshness skew, accepted over the alternatives (an index copy per
+ * update, or re-building the old snapshot's index on demand).
+ */
+export function updateWorkspaceSearchCorpus(
+  previous: WorkspaceSearchCorpus,
+  documents: readonly WorkspaceSearchDocument[],
+): WorkspaceSearchCorpusUpdate {
+  const rebuild = (rebuildReason: WorkspaceSearchRebuildReason): WorkspaceSearchCorpusUpdate => ({
+    corpus: createWorkspaceSearchCorpus(documents),
+    inserted: 0,
+    updated: 0,
+    removed: 0,
+    rebuilt: true,
+    rebuildReason,
+  });
+
+  const index = workspaceSearchIndexes.get(previous);
+  if (!index) return rebuild('no-index');
+  if (consumedUpdateBases.has(previous)) return rebuild('stale-base');
+
+  const nextById = new Map(documents.map((document) => [document.id, document] as const));
+  if (nextById.size !== documents.length) return rebuild('duplicate-id');
+
+  const removedIds: string[] = [];
+  const insertedDocuments: WorkspaceSearchDocument[] = [];
+  let updated = 0;
+  for (const previousDocument of previous.documents) {
+    const nextDocument = nextById.get(previousDocument.id);
+    if (!nextDocument) {
+      removedIds.push(previousDocument.id);
+    } else if (!sameSearchDocument(previousDocument, nextDocument)) {
+      // Changed document: remove the stale tokens, insert the new ones. Orama's
+      // `update` is the same remove+insert internally; batching both halves
+      // keeps the mutation count observable for the bulk-change gate below.
+      removedIds.push(previousDocument.id);
+      insertedDocuments.push(nextDocument);
+      updated += 1;
+    }
+  }
+  const previousIds = new Set(previous.documents.map((document) => document.id));
+  for (const document of documents) {
+    if (!previousIds.has(document.id)) insertedDocuments.push(document);
+  }
+
+  // When the diff would mutate more index entries than a rebuild would insert
+  // (e.g. a branch switch replacing most of the workspace), the from-scratch
+  // build is the cheaper operation — take it electively.
+  if (removedIds.length + insertedDocuments.length > documents.length) {
+    return rebuild('bulk-change');
+  }
+
+  consumedUpdateBases.add(previous);
+  try {
+    if (removedIds.length > 0) removeMultiple(index, removedIds);
+    if (insertedDocuments.length > 0) {
+      insertMultiple(index, insertedDocuments as WorkspaceSearchDocument[]);
+    }
+    // A count mismatch means a removal targeted an id the index did not hold
+    // (or an insert landed twice) — the index no longer mirrors `documents`,
+    // so discard it rather than serve drifted BM25 results.
+    if (count(index) !== documents.length) {
+      throw new Error(
+        `Search index count ${count(index)} diverged from document count ${documents.length} after incremental update`,
+      );
+    }
+  } catch {
+    return rebuild('mutation-failed');
+  }
+
+  const corpus: WorkspaceSearchCorpus = { documents };
+  workspaceSearchIndexes.set(corpus, index);
+  return {
+    corpus,
+    inserted: insertedDocuments.length - updated,
+    updated,
+    removed: removedIds.length - updated,
+    rebuilt: false,
+  };
 }
 
 function defaultScopes(intent: WorkspaceSearchIntent): readonly WorkspaceSearchScope[] {
