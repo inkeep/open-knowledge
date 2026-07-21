@@ -2,6 +2,7 @@
   "title": "OpenKnowledge",
   "icon": "LuBookOpen",
   "pages": [
+    "[LuHistory][Changelog](/docs/changelog)",
     "---GET STARTED---",
     "...get-started",
     "---USE CASES---",

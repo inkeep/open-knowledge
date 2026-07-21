@@ -495,6 +495,13 @@ jobs:
             echo "Promoted ${RELEASE_TAG} to published (draft=false, latest=false; channel=${CHANNEL})."
           fi
 
+      # The on-site changelog (/docs/changelog) is rebuilt by
+      # public-open-knowledge-docs-changelog-deploy.yml (on agents-private), which
+      # fires the Vercel deploy hook when the `main-reset` commit rewrites
+      # packages/cli/CHANGELOG.md on main. Triggering here would be too early — the
+      # changelog reads that file, and it isn't updated until main-reset lands after
+      # this release completes.
+
       # Announce STABLE releases to Slack. Gated on channel=latest so betas
       # stay silent — every *-beta.N cut also flows through this job (on
       # channel=beta) and must not post (see Detect channel step above).

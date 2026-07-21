@@ -28,6 +28,21 @@ export const TWITTER_HANDLE = '@OpenKnowledge';
  */
 export const GITHUB_URL = 'https://github.com/inkeep/open-knowledge';
 export const DISCORD_URL = 'https://discord.gg/VRKk2EaGHN';
+/**
+ * On-site changelog route (stable release notes), rendered inside the docs shell.
+ * Its RSS feed lives at `${CHANGELOG_ROUTE}/rss.xml`.
+ */
+export const CHANGELOG_ROUTE = '/docs/changelog';
+/**
+ * How many of the newest stable releases the changelog TIMELINE (and the RSS
+ * feed) shows. A display cap only: the per-release `/docs/changelog/<tag>` pages
+ * and the sitemap still enumerate EVERY stable release, so no release ever loses
+ * its own indexable URL — older ones just drop off the timeline rather than
+ * making it unbounded. The build fetch stays complete (see `releases.ts`).
+ */
+export const CHANGELOG_TIMELINE_LIMIT = 30;
+/** Re-exported so changelog surfaces link the releases page from one import. */
+export { RELEASES_PAGE_URL } from './download-links';
 export const X_URL = `https://x.com/${TWITTER_HANDLE.slice(1)}`;
 export const SITE_DESCRIPTION =
   'Beautiful, AI-native markdown editor for humans and agents. Build knowledge bases, LLM wikis, and agent 2nd brains.';

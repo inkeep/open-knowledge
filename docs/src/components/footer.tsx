@@ -4,7 +4,7 @@ import { GitHubIcon } from '@/components/icons/github';
 import { XIcon } from '@/components/icons/x';
 import { InkeepLogo } from '@/components/inkeep-logo';
 import { BRAND_ROUTE } from '@/lib/brand-assets';
-import { DISCORD_URL, GITHUB_URL, X_URL } from '@/lib/site';
+import { CHANGELOG_ROUTE, DISCORD_URL, GITHUB_URL, X_URL } from '@/lib/site';
 import { DotTexture } from './dot-texture';
 
 const socialLinks = [
@@ -14,6 +14,7 @@ const socialLinks = [
 ];
 
 const legalLinks = [
+  { href: CHANGELOG_ROUTE, label: 'Changelog', external: false },
   { href: BRAND_ROUTE, label: 'Brand', external: false },
   {
     href: 'https://inkeep.com/policies/terms-of-service',
