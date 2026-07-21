@@ -284,19 +284,29 @@ function findCloseTag(
   return null;
 }
 
+interface HeadScan {
+  rawTitle: string;
+  metaContent: Map<string, string>;
+  faviconHref: string | undefined;
+  /**
+   * Index just past the head-end boundary (`</head>`'s closing `>`, or the
+   * terminator that ends a `<body` open tag's name, mid-tag for an attributed
+   * `<body class="a">`), or -1 when the head does not end within `html`.
+   */
+  headEndOffset: number;
+}
+
 /**
- * Extract the preview fields from a page's head. Title prefers `og:title` over
- * `<title>`; description prefers `og:description` over the `description` meta;
- * site name is `og:site_name`. Only content inside the head (before `</head>`
- * or `<body>`) counts, so a stray `<title>`/`<meta>` in the body cannot spoof
- * the card; a document with no explicit `<head>` (title before `<body>`) still
- * yields its head fields. Script/style content and HTML comments are skipped
- * wholesale, so markup-shaped strings inside them cannot contribute fields.
+ * One context-aware pass over a document head that both collects the metadata
+ * fields AND reports where the head ends. `extractHtmlMetadata` (fields) and
+ * `findHeadEndOffset` (boundary) are thin views over this single walk, so the
+ * streaming fetch and the parser can never disagree on where the head stops.
  */
-export function extractHtmlMetadata(html: string): RawHtmlMetadata {
+function scanHead(html: string): HeadScan {
   let rawTitle = '';
   const metaContent = new Map<string, string>();
   let faviconHref: string | undefined;
+  let headEndOffset = -1;
 
   try {
     const lower = asciiLowerCase(html);
@@ -334,7 +344,16 @@ export function extractHtmlMetadata(html: string): RawHtmlMetadata {
 
       if (next === 0x2f /* / */) {
         const { name, end } = readTagName(lower, lt + 2);
-        if (name === 'head') break;
+        if (name === 'head') {
+          // Record the boundary only once a `>` closes the tag in-buffer. A
+          // bare trailing `</head` (end-of-input) is left pending so a chunk
+          // boundary cannot mistake a still-growing `</header>` for head-end.
+          if (end < len) {
+            const gt = lower.indexOf('>', end);
+            if (gt !== -1) headEndOffset = gt + 1;
+          }
+          break;
+        }
         const gt = lower.indexOf('>', end);
         if (gt === -1) break;
         i = gt + 1;
@@ -349,7 +368,18 @@ export function extractHtmlMetadata(html: string): RawHtmlMetadata {
 
       const { name, end: nameEnd } = readTagName(lower, lt + 1);
 
-      if (name === 'body') break;
+      if (name === 'body') {
+        // Head-end at the opening body tag, but only once a real terminator
+        // (`>`, `/`, or whitespace) settles the name in-buffer; a bare trailing
+        // `<body` waits for the next bytes rather than matching at a boundary.
+        if (nameEnd < len) {
+          const term = lower.charCodeAt(nameEnd);
+          if (term === 0x3e /* > */ || term === 0x2f /* / */ || isWhitespaceCode(term)) {
+            headEndOffset = nameEnd + 1;
+          }
+        }
+        break;
+      }
 
       if (name === 'title') {
         const contentStart = scanAttributes(html, lower, nameEnd, null);
@@ -408,6 +438,21 @@ export function extractHtmlMetadata(html: string): RawHtmlMetadata {
     // request handler.
   }
 
+  return { rawTitle, metaContent, faviconHref, headEndOffset };
+}
+
+/**
+ * Extract the preview fields from a page's head. Title prefers `og:title` over
+ * `<title>`; description prefers `og:description` over the `description` meta;
+ * site name is `og:site_name`. Only content inside the head (before `</head>`
+ * or `<body>`) counts, so a stray `<title>`/`<meta>` in the body cannot spoof
+ * the card; a document with no explicit `<head>` (title before `<body>`) still
+ * yields its head fields. Script/style content and HTML comments are skipped
+ * wholesale, so markup-shaped strings inside them cannot contribute fields.
+ */
+export function extractHtmlMetadata(html: string): RawHtmlMetadata {
+  const { rawTitle, metaContent, faviconHref } = scanHead(html);
+
   const title = sanitizeText(metaContent.get('og:title') ?? rawTitle, MAX_TITLE);
   const description = sanitizeText(
     metaContent.get('og:description') ?? metaContent.get('description') ?? '',
@@ -421,6 +466,20 @@ export function extractHtmlMetadata(html: string): RawHtmlMetadata {
   if (siteName) result.siteName = siteName;
   if (faviconHref) result.faviconHref = faviconHref;
   return result;
+}
+
+/**
+ * Byte offset just past the end of a document head (`</head>`'s closing `>`, or
+ * the terminator that ends a `<body` open tag's name, mid-tag for an attributed
+ * `<body class="a">`), found by the SAME context-aware walk the metadata
+ * extractor uses, so markup-shaped bytes inside a head-level script, comment,
+ * quoted attribute value, or `<title>` never count as the boundary. Returns -1
+ * when the head has not ended within `html`, which lets a streaming caller keep
+ * reading; a bare trailing `</head`/`<body` (no terminator yet) stays -1 until
+ * the next bytes settle it, so a chunk boundary can never split a false match.
+ */
+export function findHeadEndOffset(html: string): number {
+  return scanHead(html).headEndOffset;
 }
 
 /**

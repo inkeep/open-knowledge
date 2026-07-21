@@ -30,7 +30,14 @@
  * re-run the full scheme+resolve+validate admission on each hop's target,
  * bounded to a small hop count. Response reads are bounded on both time
  * (AbortSignal) and DECOMPRESSED size, and admit only allowlisted content
- * types. Decompression contract: the request advertises
+ * types. HTML reads additionally stop at head-end (`</head>` close or `<body`
+ * open, scanned incrementally as decompressed bytes arrive): everything the
+ * metadata extractor reads lives in the head, so the buffered prefix is
+ * returned as the successful body and the rest of the page is never consumed.
+ * The byte cap therefore rejects a page only when it is reached BEFORE
+ * head-end — content-heavy pages whose head arrives early preview fine, while
+ * bounded work is preserved (never more than the cap buffered, no reads past
+ * head-end). Decompression contract: the request advertises
  * `Accept-Encoding: identity`; if a server compresses anyway, the body is
  * streamed through node:zlib (gzip/deflate/br) and the byte cap is applied to
  * the DECOMPRESSED output — the decompression-bomb guard — while unknown
@@ -51,13 +58,17 @@ import type { LookupFunction } from 'node:net';
 import type { Transform } from 'node:stream';
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import { getLogger } from '../logger.ts';
+import { findHeadEndOffset } from './html-metadata.ts';
 import { classifyHost, isPublicUnicastIp } from './ip-classifier.ts';
 
 const logger = getLogger('link-preview.guarded-fetch');
 
 const USER_AGENT = 'OpenKnowledge-LinkPreview/1.x';
 
-/** Decompressed-body ceiling; reads abort once a response exceeds it. */
+/**
+ * Decompressed-body ceiling; a read aborts as oversized when it is reached
+ * before head-end (for HTML) or before end-of-body (anything else).
+ */
 export const DEFAULT_MAX_BYTES = 512 * 1024;
 /** Total wall-clock budget across all redirect hops and the body read. */
 export const DEFAULT_TIMEOUT_MS = 5000;
@@ -81,7 +92,12 @@ export type GuardRejectReason =
 /** @lintignore Union member of the exported GuardedFetchResult; no direct importer. */
 export interface GuardedFetchSuccess {
   ok: true;
-  /** Decompressed response bytes, guaranteed within the byte cap. */
+  /**
+   * Decompressed response bytes, guaranteed within the byte cap. For an HTML
+   * response this is the prefix up to head-end when the page declares one —
+   * sufficient for the head-only metadata extractor, and the reason a page
+   * whose full body exceeds the cap can still succeed.
+   */
   body: Uint8Array;
   /** Lowercased mime type with parameters stripped (e.g. `text/html`). */
   contentType: string;
@@ -341,10 +357,42 @@ function makeDecompressor(encoding: string): Transform | 'identity' | null {
   return null;
 }
 
+/**
+ * Incremental head-end detector for a streaming HTML body. Feed decompressed
+ * chunks in order; each call returns the offset into the CURRENT chunk just
+ * past the head-end boundary (`</head>`'s closing `>`, or the terminator that
+ * ends a `<body` open tag's name, so an attributed `<body class="a">` reports
+ * the offset just past that terminator, mid-tag), or -1 while the head has not
+ * ended. Chunks are accumulated and re-scanned by `findHeadEndOffset` (the same
+ * context-aware walk the metadata extractor uses), so markup-shaped bytes inside
+ * a head-level script, comment, quoted attribute value, or `<title>` are skipped
+ * rather than mistaken for the end, and a boundary split across chunks is
+ * detected once its bytes arrive. The accumulated view is latin1 (1:1 with
+ * bytes; the markup tokens are ASCII), so the offset it yields is a true byte
+ * offset.
+ *
+ * Re-scanning the whole accumulation per chunk is O(n^2) in the accumulated
+ * size; the fetch layer's byte cap (`DEFAULT_MAX_BYTES`) bounds that
+ * accumulation, so raising the cap raises this scan's worst-case cost
+ * quadratically.
+ */
+export function createHeadEndScanner(): (chunk: Uint8Array) => number {
+  let html = '';
+  return (chunk) => {
+    const consumed = html.length;
+    html += Buffer.from(chunk).toString('latin1');
+    const end = findHeadEndOffset(html);
+    // The previous accumulation held no boundary, so a newly found one always
+    // lands within this chunk: its offset is in (consumed, html.length].
+    return end === -1 ? -1 : end - consumed;
+  };
+}
+
 function readCappedBody(
   message: IncomingMessage,
   maxBytes: number,
   signal: AbortSignal,
+  scanHeadEnd: boolean,
 ): Promise<{ ok: true; body: Uint8Array } | { ok: false; reason: GuardRejectReason }> {
   const encoding = (message.headers['content-encoding'] ?? '').trim().toLowerCase();
   const decompressor = makeDecompressor(encoding);
@@ -358,6 +406,7 @@ function readCappedBody(
 
   return new Promise((settle) => {
     const chunks: Buffer[] = [];
+    const findHeadEnd = scanHeadEnd ? createHeadEndScanner() : null;
     let received = 0;
     let settled = false;
 
@@ -384,6 +433,24 @@ function readCappedBody(
       );
     }
     source.on('data', (chunk: Buffer) => {
+      if (findHeadEnd) {
+        const endInChunk = findHeadEnd(chunk);
+        if (endInChunk !== -1) {
+          // Head-end seen: the head prefix is a complete successful body.
+          // Realize the head-first contract (only a cap reached BEFORE head-end
+          // is oversized) by cap-checking just the bytes up to the marker
+          // (`received + endInChunk`), then truncating there and stopping all
+          // further reads via teardown. The whole-chunk cap check below is
+          // bypassed, so bytes past head-end never count toward the cap.
+          if (received + endInChunk > maxBytes) {
+            resolveOnce({ ok: false, reason: 'oversized' });
+            return;
+          }
+          chunks.push(chunk.subarray(0, endInChunk));
+          resolveOnce({ ok: true, body: new Uint8Array(Buffer.concat(chunks)) });
+          return;
+        }
+      }
       received += chunk.byteLength;
       if (received > maxBytes) {
         resolveOnce({ ok: false, reason: 'oversized' });
@@ -404,9 +471,12 @@ function rejectWith(reason: GuardRejectReason): GuardedFetchFailure {
 }
 
 /**
- * Fetch a URL under the SSRF guard. Returns the bounded response body plus the
- * derived content-type and final URL on success, or a bounded reason code on
- * any violation — never a partial body.
+ * Fetch a URL under the SSRF guard. On success returns the bounded response
+ * body plus the derived content-type and final URL; on any violation, a bounded
+ * reason code. For an HTML response the body is the head prefix (everything up
+ * to `</head>`/`<body>`) — all the metadata extractor reads — while any other
+ * admitted content (the favicon path's images) is returned whole. A failure
+ * never yields a partial body.
  */
 export async function guardedFetch(
   rawUrl: string,
@@ -453,7 +523,15 @@ export async function guardedFetch(
       return rejectWith('non-html');
     }
 
-    const bodyResult = await readCappedBody(response, maxBytes, signal);
+    // Head-first streaming applies only to HTML pages; any other admitted
+    // content (the favicon path's images) may legitimately contain
+    // marker-shaped bytes and must be read in full.
+    const bodyResult = await readCappedBody(
+      response,
+      maxBytes,
+      signal,
+      contentType === 'text/html',
+    );
     if (!bodyResult.ok) return rejectWith(bodyResult.reason);
     return { ok: true, body: bodyResult.body, contentType, finalUrl: target.logicalUrl };
   }
