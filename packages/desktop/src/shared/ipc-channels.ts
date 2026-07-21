@@ -1576,14 +1576,26 @@ export interface RequestChannels {
     result: Record<TerminalCli, boolean>;
   };
   /**
-   * Per-window docked-terminal visibility, recorded from the renderer's
-   * view-menu push. A reloaded renderer reads it to restore an expanded dock —
-   * visibility recovers by the same mechanism and lifetime as the sessions it
-   * gates (windowId-keyed; gone after window-close / app-quit, so a fresh launch
-   * with no surviving sessions restores nothing).
+   * Per-window sessions-dock state, read once on reload to restore the dock.
+   * `visible` is recorded from the renderer's view-menu push; `order` (the unified
+   * cross-kind tab order — terminal ptyIds + thread threadIds) and `activeKey` are
+   * recorded from `ok:terminal:set-dock-state`. All windowId-keyed, gone after
+   * window-close / app-quit (so a fresh launch with no surviving sessions restores
+   * nothing). `order`/`activeKey` are optional so an older renderer that only reads
+   * `visible` keeps working.
    */
   'ok:terminal:dock-state': {
     args: [];
-    result: { visible: boolean };
+    result: { visible: boolean; order?: string[]; activeKey?: string | null };
+  };
+  /**
+   * Persist the unified sessions-dock order + active key in main (per window) so a
+   * renderer reload restores the interleaved cross-kind tab arrangement + active
+   * tab. `order` holds reload-stable keys (terminal ptyIds + thread threadIds) in
+   * tab order. Fire-and-forget, the sibling of `ok:pty:set-order` for the mixed dock.
+   */
+  'ok:terminal:set-dock-state': {
+    args: [req: { order: string[]; activeKey: string | null }];
+    result: undefined;
   };
 }

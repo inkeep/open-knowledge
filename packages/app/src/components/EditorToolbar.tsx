@@ -29,7 +29,7 @@ interface EditorToolbarProps {
   isPanelCollapsed: boolean;
   onTogglePanel: () => void;
   /** Reserve right-side room in the action cluster so it sits left of the
-   *  right-dock "Show terminal" reveal tab (which pins to the far-right corner
+   *  right-dock "Open session dock" reveal tab (which pins to the far-right corner
    *  the cluster reaches once the doc panel is collapsed) — keeping the two in
    *  one row instead of overlapping. */
   reserveRightGutter?: boolean;
@@ -119,7 +119,7 @@ export function EditorToolbar({
       <div
         className={cn(
           'pointer-events-auto absolute top-0 right-0 flex items-center justify-end gap-1 py-2 pr-2',
-          // Clear the far-right "Show terminal" reveal tab (icon-sm, flush to the
+          // Clear the far-right "Open session dock" reveal tab (icon-sm, flush to the
           // edge) so the action buttons sit to its left in the same row.
           reserveRightGutter && 'pr-9',
         )}

@@ -12,15 +12,21 @@
  * provider wrapping removed, this render throws; with it, the child mounts.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useConfigContext } from '@/lib/config-provider';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
+// The New split-button calls react-query's useQuery; stub it so this test needs
+// no QueryClientProvider.
+vi.doMock('@tanstack/react-query', () => ({
+  useQuery: () => ({ data: undefined, isLoading: false, isError: false }),
+}));
+
 // Stand in for the real TerminalGate: read the same context the terminal-consent
 // hooks read. Throws (and blanks the root) if no ConfigProvider is above it.
-mock.module('./TerminalGate', () => ({
+vi.doMock('./TerminalGate', () => ({
   TerminalGate: () => {
     const { projectLocalSynced } = useConfigContext();
     return (

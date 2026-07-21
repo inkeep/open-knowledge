@@ -9,9 +9,10 @@
  * `principalId` — server's `getPrincipal()` is the sole source (HTTP body
  * is unauthenticated; structurally enforcing the trust boundary).
  */
-import { describe, expect, test } from 'bun:test';
+
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extension.ts');
 const source = readFileSync(API_EXT_PATH, 'utf8');
@@ -81,6 +82,11 @@ const REQUIRED_HANDLERS = [
 const EXEMPT_HANDLERS = new Set([
   'handleDocumentRead',
   'handleDocumentList',
+  // GET /api/acp/catalog — read-only ACP agent-catalog listing (registry +
+  // custom entries); performs no writes, so there is nothing to attribute.
+  // Agent-thread writes flow through the /collab/thread WS and are attributed
+  // per-session there (agent-<id> writer taxonomy), not via this route.
+  'handleAcpCatalog',
   // `/api/__embed-detect` — read-only loopback + host-gated diagnostic
   // (embedded-viewer detection spike); reads the UA ring buffer and performs
   // no writes, so there is nothing to attribute.

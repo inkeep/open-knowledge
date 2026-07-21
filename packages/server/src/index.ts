@@ -3,6 +3,15 @@ export {
   GitDirAccessError,
   MalformedGitPointerError,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+export { AcpPermissionStore } from './acp/permissions.ts';
+export { AcpRegistry, FEATURED_AGENT_IDS, loadCustomAgents } from './acp/registry.ts';
+export {
+  AcpThreadManager,
+  buildOkMcpStdioCommand,
+  type HarnessManagedMcpEntryHit,
+  MAX_ACP_THREADS,
+} from './acp/thread-manager.ts';
+export { attachAcpThreadSocket } from './acp/thread-socket.ts';
 export { AgentFocusBroadcaster } from './agent-focus.ts';
 export { AGENT_ID_MAX_LEN, AGENT_ID_RE, toBroadcasterKey, validateAgentId } from './agent-id.ts';
 export { AgentPresenceBroadcaster } from './agent-presence.ts';

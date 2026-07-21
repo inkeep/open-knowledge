@@ -19,8 +19,8 @@
  * the body chunk is cached after the first open.
  *
  * Sidebar IA:
- *   USER         → Preferences, Hotkeys, Account, Plugins (user-scope manage),
- *                  AI tools & CLI (Electron host only)
+ *   USER         → Preferences, Configure agents, Hotkeys, Account, Plugins
+ *                  (user-scope manage), AI tools & CLI (Electron host only)
  *   THIS PROJECT → Sync, Search, Plugins (project-scope manage), Link previews
  *                  (hidden on the packaged file:// renderer), Templates, Ignore
  *                  patterns, Config sharing
@@ -68,19 +68,31 @@ function releaseNotesUrl(version: string): string {
 
 interface SettingsDialogShellProps {
   open: boolean;
+  /**
+   * Sidebar section to open on the `open` edge (from a `#settings/<id>` deep
+   * link). Null opens the default (Preferences). An unknown id also falls back
+   * to Preferences via the sidebar's no-match behavior.
+   */
+  initialSection?: string | null;
   onOpenChange: (open: boolean) => void;
 }
 
-export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellProps) {
+export function SettingsDialogShell({
+  open,
+  initialSection = null,
+  onOpenChange,
+}: SettingsDialogShellProps) {
   const { t } = useLingui();
   const { collabUrl } = useDocumentContext();
   const { userBinding, userSynced, okignoreBinding, okignoreSynced, projectConfig, merged } =
     useConfigContext();
   const { desktopPresent } = useClaudeDesktopIntegration();
 
-  // Always default to USER → Preferences on each fresh open. No
-  // in-session memory of last-viewed section.
-  const [activeId, setActiveId] = useState('preferences');
+  // On each fresh open, honor the deep-link section (`#settings/<id>`) if one
+  // was given, else default to USER → Preferences. No in-session memory of
+  // last-viewed section beyond the open edge; sidebar clicks update activeId
+  // locally without touching the hash.
+  const [activeId, setActiveId] = useState(initialSection ?? 'preferences');
   const [searchQuery, setSearchQuery] = useState('');
   // Navigation tokens set by a search-result click. fieldFlash re-fires its
   // consuming effect via object identity alone (each click sets a fresh
@@ -94,10 +106,10 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
 
   useEffect(() => {
     if (open) {
-      setActiveId('preferences');
+      setActiveId(initialSection ?? 'preferences');
       setSearchQuery('');
     }
-  }, [open]);
+  }, [open, initialSection]);
 
   // Imperative scroll-to-flash for a field the search navigated to. The target
   // renders inside the lazily-loaded body and, for schema sections, only once
@@ -185,6 +197,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
       enabled: true,
       items: [
         { id: 'preferences', label: t`Preferences` },
+        { id: 'configure-agents', label: t`Configure agents` },
         { id: 'hotkeys', label: t`Hotkeys` },
         { id: 'account', label: t`Account` },
         // User-scope plugin management (toggle personal plugins like Themes).

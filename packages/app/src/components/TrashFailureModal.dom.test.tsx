@@ -1,13 +1,13 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 import type { TrashFailedTarget } from './TrashFailureModal';
 
-mock.module('@lingui/core/macro', () => ({
+vi.doMock('@lingui/core/macro', () => ({
   ...actualLinguiMacro,
   plural: (
     count: number,
@@ -17,9 +17,10 @@ mock.module('@lingui/core/macro', () => ({
     },
   ) => (count === 1 ? (forms.one ?? forms.other) : forms.other).replace('#', String(count)),
   t: renderLinguiTemplate,
+  msg: renderLinguiTemplate,
 }));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
@@ -50,9 +51,9 @@ async function renderTrashFailureModal({
     import('@/components/ui/dialog'),
     import('./TrashFailureModal'),
   ]);
-  const onCancel = mock(() => {});
-  const onRetry = mock(() => {});
-  const onDeletePermanently = mock(() => {});
+  const onCancel = vi.fn(() => {});
+  const onRetry = vi.fn(() => {});
+  const onDeletePermanently = vi.fn(() => {});
 
   render(
     <Dialog open={true}>

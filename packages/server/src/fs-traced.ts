@@ -28,7 +28,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, sep } from 'node:path';
 import type { AtomicWriteFsAdapter } from '@inkeep/open-knowledge-core/server';
 import type { Attributes } from '@opentelemetry/api';
@@ -99,6 +99,26 @@ export async function tracedWriteFile(
       await writeFile(path, data, options);
     },
   );
+}
+
+export async function tracedAppendFile(
+  path: string,
+  data: string | Uint8Array,
+  options?: WriteFileOptions,
+): Promise<void> {
+  return withSpan(
+    'fs.appendFile',
+    { attributes: buildAttrs('appendFile', path, { 'fs.bytes': byteLength(data) }) },
+    async () => {
+      await appendFile(path, data, options);
+    },
+  );
+}
+
+export async function tracedRm(path: string, options?: RmOptions): Promise<void> {
+  return withSpan('fs.rm', { attributes: buildAttrs('rm', path) }, async () => {
+    await rm(path, options);
+  });
 }
 
 export async function tracedRename(from: string, to: string): Promise<void> {

@@ -1,10 +1,16 @@
 /**
  * Hash-based routing for the Settings dialog.
  *
- * One recognized hash form: `#settings` → dialog open.
+ * Two recognized hash forms: `#settings` → dialog open on its default section;
+ * `#settings/<section-id>` → dialog open with that sidebar section active (an
+ * entry-point deep link, e.g. the launcher dropdowns' "Settings" row opening
+ * `#settings/configure-agents`). The `<section-id>` matches a sidebar item id
+ * in `SettingsDialogShell`; an unknown id falls back to the default section.
+ *
  * The earlier per-scope sub-routes (`#settings/project`, `#settings/user`)
  * went away when the scope toggle was removed; sidebar group membership
- * communicates scope now, so there's nothing to encode in the hash.
+ * communicates scope now. The section sub-route below encodes the target
+ * sidebar item, not a scope.
  *
  * Closing the dialog navigates back via `history.back()` so the prior
  * doc hash is restored when settings was opened from a doc view. If the
@@ -33,9 +39,30 @@ import {
  */
 export const SETTINGS_OPEN_HASH = '#settings';
 
+/** Hash that opens Settings directly to a sidebar section (deep link). */
+function settingsSectionHash(sectionId: string): string {
+  return `#settings/${sectionId}`;
+}
+
+/** Sidebar item id for the User → Configure agents section. */
+const CONFIGURE_AGENTS_SECTION = 'configure-agents';
+
+/**
+ * Open Settings straight to Configure agents — the "Settings" row every agent
+ * launcher dropdown funnels through so the deep-link literal is single-sourced
+ * (mirrors `SETTINGS_OPEN_HASH` usage in `SettingsButton`).
+ */
+export function openAgentSettings(): void {
+  if (typeof window === 'undefined') return;
+  const target = settingsSectionHash(CONFIGURE_AGENTS_SECTION);
+  if (window.location.hash !== target) window.location.hash = target;
+}
+
 interface SettingsRouteState {
-  /** True when the dialog is open (hash is `#settings`). */
+  /** True when the dialog is open (hash is `#settings` or `#settings/<id>`). */
   open: boolean;
+  /** Target sidebar section id from `#settings/<id>`, or null for the default. */
+  section: string | null;
   /** Close the dialog via `history.back()`. No-op when already closed. */
   close: () => void;
 }
@@ -57,7 +84,18 @@ export function isSettingsShortcut(e: ShortcutEventLike): boolean {
 
 export function isSettingsHashOpen(hash: string): boolean {
   const cleaned = hash.replace(/^#/, '');
-  return cleaned === 'settings';
+  if (cleaned === 'settings') return true;
+  // `#settings/<section>` opens to that section; require a non-empty section so
+  // a bare `#settings/` does not count as open.
+  return cleaned.startsWith('settings/') && cleaned.length > 'settings/'.length;
+}
+
+/** The sidebar section id encoded in `#settings/<id>`, or null for `#settings`. */
+export function settingsHashSection(hash: string): string | null {
+  const cleaned = hash.replace(/^#/, '');
+  if (!cleaned.startsWith('settings/')) return null;
+  const section = cleaned.slice('settings/'.length);
+  return section.length > 0 ? section : null;
 }
 
 function readCurrentHash(): string {
@@ -67,6 +105,9 @@ function readCurrentHash(): string {
 
 export function useSettingsRoute(): SettingsRouteState {
   const [open, setOpen] = useState<boolean>(() => isSettingsHashOpen(readCurrentHash()));
+  const [section, setSection] = useState<string | null>(() =>
+    settingsHashSection(readCurrentHash()),
+  );
 
   useEffect(() => {
     const onHashChange = () => {
@@ -83,7 +124,9 @@ export function useSettingsRoute(): SettingsRouteState {
       // genuinely needs to fetch); the dialog shell paints synchronously
       // in either case because it lives in the main bundle.
       startTransition(() => {
-        setOpen(isSettingsHashOpen(readCurrentHash()));
+        const hash = readCurrentHash();
+        setOpen(isSettingsHashOpen(hash));
+        setSection(settingsHashSection(hash));
       });
     };
     window.addEventListener('hashchange', onHashChange);
@@ -96,5 +139,5 @@ export function useSettingsRoute(): SettingsRouteState {
     window.history.back();
   };
 
-  return { open, close };
+  return { open, section, close };
 }

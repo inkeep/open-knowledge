@@ -108,6 +108,19 @@ exit 127`;
 export const CHAIN_WIN_VERSION_SENTINEL = '# ok-mcp-win-v1';
 
 /**
+ * Version- and platform-agnostic prefix shared by every OK managed chain body
+ * (`# ok-mcp-v1`, `# ok-mcp-win-v1`, and any future `-v2`/`-win-v2`). The ACP
+ * injection-skip predicates key on THIS rather than a specific sentinel or the
+ * exact CHAIN bytes, so a chain version bump can't make already-installed
+ * harness entries look foreign — that would resurface the duplicate-injection
+ * name collision until every user re-ran `ok init`. A foreign `sh -c` script
+ * won't carry it. `@internal` — same non-re-export rule as the sentinels.
+ */
+/** @internal — used only within this module (no importer); keep unexported so
+ *  knip does not flag it, per the same non-re-export rule as the sentinels. */
+const OK_MCP_CHAIN_MARKER = '# ok-mcp';
+
+/**
  * Resilient chain (win v1) — the Windows member of the two-shape canonical
  * set. `powershell -NoProfile -NonInteractive -Command CHAIN_WIN_V1` resolves
  * a runtime at MCP-host spawn time: the npm-global `ok.cmd` shim first, then
@@ -489,8 +502,22 @@ function matchesCanonicalExactly(
 ): boolean {
   // Exactly the canonical key set — any extra field (e.g. an injected `env`
   // on the Unix shape) means it is not OK's own entry, so refuse. Key-count
-  // equality plus the per-key checks below pin the exact set.
+  // equality plus the command/args identity check pin the exact set.
   if (Object.keys(e).length !== Object.keys(canonical).length) return false;
+  return commandArgsMatchCanonical(e, canonical);
+}
+
+/**
+ * The `command` + `args` of `e` equal the canonical chain's — the pair that
+ * fully determines which process a chain-shape MCP entry spawns. Says nothing
+ * about OTHER keys the entry may carry; callers decide whether extras matter
+ * (`matchesCanonicalExactly` layers a key-count check on top for the exact
+ * security gate; `entryRunsOwnManagedServer` does not).
+ */
+function commandArgsMatchCanonical(
+  e: Record<string, unknown>,
+  canonical: Record<string, unknown>,
+): boolean {
   if (e.command !== canonical.command) return false;
   // `canonical` is OK's own output, but `buildManagedServerEntry` is typed
   // `Record<string, unknown>`; narrow with `Array.isArray` rather than an
@@ -500,6 +527,80 @@ function matchesCanonicalExactly(
   if (!Array.isArray(canonicalArgs) || !Array.isArray(e.args)) return false;
   if (e.args.length !== canonicalArgs.length) return false;
   return e.args.every((v, i) => v === canonicalArgs[i]);
+}
+
+/**
+ * True iff a chain argv (`['/bin/sh','-l','-c',body]` or the PowerShell
+ * equivalent) launches OK's managed server — the flag prefix is OK's shape and
+ * `body` carries the {@link OK_MCP_CHAIN_MARKER}. `offset` is where the argv
+ * begins in the array: `0` for a split `command`/`args` entry passed its
+ * `args`, but OpenCode inlines the interpreter as `command[0]`, so it passes
+ * the whole `command` argv with the flags one slot later.
+ */
+function chainArgvRunsOwnManagedServer(argv: unknown[], interpreter: string): boolean {
+  const bodyIsOk = (body: unknown): boolean =>
+    typeof body === 'string' && body.includes(OK_MCP_CHAIN_MARKER);
+  if (interpreter === '/bin/sh') {
+    return argv[0] === '-l' && argv[1] === '-c' && bodyIsOk(argv[2]);
+  }
+  if (interpreter === 'powershell') {
+    return (
+      argv[0] === '-NoProfile' &&
+      argv[1] === '-NonInteractive' &&
+      argv[2] === '-Command' &&
+      bodyIsOk(argv[3])
+    );
+  }
+  return false;
+}
+
+/**
+ * Injection-skip predicate for the ACP thread manager — a FUNCTIONAL sibling
+ * of {@link isOwnManagedEntry}, not a security one. True iff `entry` would
+ * launch OK's own managed server: it is a chain-shape entry (`/bin/sh -l -c`
+ * or `powershell …`) whose body carries the {@link OK_MCP_CHAIN_MARKER}. It
+ * keys on the stable marker, NOT the exact CHAIN bytes, so a chain version
+ * bump doesn't make installed entries look foreign. Every non-identity key is
+ * ignored — Codex's `tools.<name>.approval_mode` (which parses to a `tools`
+ * key and CHURNS as the user approves/denies tools mid-session), an `env`
+ * overlay, timeout knobs — those are harness metadata about how to TREAT the
+ * server, not what process it runs. An explicit `enabled: false` is the one
+ * sibling that means "the harness will NOT load it", so it does not cover us
+ * and we still inject.
+ *
+ * Deliberately distinct from `isOwnManagedEntry`, which stays EXACT because it
+ * gates the docked-terminal pre-approval — auto-running a server without the
+ * trust prompt is RCE-class, so any extra/tampered key there must fail. The
+ * risk here is inverted and mild: the probe only READS the config to decide
+ * whether to skip injecting a duplicate; the harness runs its own entry
+ * regardless, and it wins the `open-knowledge` name collision either way (a
+ * same-named injected server is shadowed). So a permissive match can only ever
+ * avoid a redundant duplicate — it can never hand the agent a foreign server,
+ * because a foreign body lacks the marker and injection proceeds.
+ */
+export function entryRunsOwnManagedServer(entry: unknown): boolean {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const e = entry as Record<string, unknown>;
+  if (e.enabled === false) return false;
+  if (typeof e.command !== 'string' || !Array.isArray(e.args)) return false;
+  return chainArgvRunsOwnManagedServer(e.args, e.command);
+}
+
+/**
+ * OpenCode sibling of {@link entryRunsOwnManagedServer}. OpenCode's envelope is
+ * `{type: 'local', enabled, command: [interpreter, ...argv]}` — the chain is
+ * ONE argv with the interpreter at `command[0]`, not a split `command`/`args`.
+ * True iff `type: 'local'`, not explicitly disabled, and that argv launches
+ * OK's managed server (marker in the body). Other keys (e.g. `environment`)
+ * are ignored — same functional-not-exact, version-proof rationale.
+ */
+export function openCodeEntryRunsOwnManagedServer(entry: unknown): boolean {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const e = entry as Record<string, unknown>;
+  if (e.type !== 'local' || e.enabled === false) return false;
+  if (!Array.isArray(e.command)) return false;
+  const [interpreter, ...argv] = e.command;
+  return typeof interpreter === 'string' && chainArgvRunsOwnManagedServer(argv, interpreter);
 }
 
 export interface AppSupportOptions {

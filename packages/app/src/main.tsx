@@ -26,12 +26,14 @@ import { ThemeProvider } from 'next-themes';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppErrorBoundary, CrashReportingBoundary } from '@/components/AppErrorBoundary';
+import { AcpHarnessAgentDetection } from '@/components/acp/AcpHarnessAgentDetection';
 import { selectDesktopRootApp } from '@/components/desktop-root-app';
 import { ReportBugCrashInviteTrigger } from '@/components/ReportBugCrashInviteTrigger';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 // Side-effect import to load the `Window.okDesktop?` global augmentation.
 import '@/lib/desktop-bridge-types';
+import { useHydrateRegisteredAgentMeta } from '@/lib/acp/catalog';
 import { installClientFetchWrapper } from '@/lib/client-fetch';
 import { installConsentListener } from '@/lib/consent-store';
 import { installCrashInviteListener } from '@/lib/crash-invite-store';
@@ -209,10 +211,19 @@ if (!root) throw new Error('Root element not found');
 // always the editor (`App`) path.
 const desktopBridge = typeof window === 'undefined' ? undefined : window.okDesktop;
 
+// Fetches the registry catalog on cold start and fills in the seeded agents'
+// brand icons + display names, so the launcher menus never strand on the neutral
+// glyph for users who don't open Configure agents. Renders nothing.
+function RegisteredAgentHydrator(): null {
+  useHydrateRegisteredAgentMeta();
+  return null;
+}
+
 createRoot(root).render(
   <StrictMode>
     <I18nProvider i18n={i18n}>
       <QueryClientProvider client={queryClient}>
+        <AcpHarnessAgentDetection />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -220,6 +231,7 @@ createRoot(root).render(
           disableTransitionOnChange
           storageKey="ok-theme-v1"
         >
+          <RegisteredAgentHydrator />
           {/*
            * Last-resort shell boundary: catches render crashes that escape
            * every inner boundary (per-Activity DocumentErrorBoundary, settings

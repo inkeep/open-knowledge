@@ -25,8 +25,9 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { HandoffDispatchInput } from './useHandoffDispatch';
 
 // Radix Popover mounts a Popper (react-use-size → ResizeObserver) and a focus
@@ -60,11 +61,15 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 // just the disabled "Checking for installed agents" hint, keeping the mount
 // surface minimal — the modal/non-modal behavior is
 // independent of the rows.
-mock.module('./useInstalledAgents', () => ({
+vi.doMock('./useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: {}, refresh: () => {} }),
 }));
-mock.module('./useHandoffDispatch', () => ({
+vi.doMock('./useHandoffDispatch', () => ({
   useHandoffDispatch: () => ({ dispatch: async () => {}, reinstallCoworkSkill: async () => {} }),
+  composeThreadLaunchPrompt: (input: HandoffDispatchInput) =>
+    `thread-prompt:${input.docContext?.relativePath ?? 'none'}`,
+  startAgentThreadForInput: () => {},
+  openInstallUrl: () => Promise.resolve(),
 }));
 
 const { OpenInAgentMenu } = await import('./OpenInAgentMenu');

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { isAllowedApiOrigin } from './api-origin.ts';
 
 describe('API origin guards', () => {
@@ -10,5 +10,15 @@ describe('API origin guards', () => {
 
     expect(isAllowedApiOrigin('https://example.com')).toBe(false);
     expect(isAllowedApiOrigin('not a url')).toBe(false);
+  });
+
+  test('allows the file: origin serialization Chromium WebSockets send from loadFile pages', () => {
+    // fetch/XHR from a file: page send `Origin: null`; the WS handshake from
+    // the same page sends `Origin: file://`. Both must pass or the packaged
+    // desktop renderer's `/collab/thread` upgrade is destroyed while all its
+    // HTTP calls succeed.
+    expect(isAllowedApiOrigin('file://')).toBe(true);
+    // Only the bare serialization — a file URL with a host is not a page origin.
+    expect(isAllowedApiOrigin('file://evil.example')).toBe(false);
   });
 });

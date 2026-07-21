@@ -22,7 +22,7 @@ interface EditorFooterProps {
    *  while the bottom composer is dismissed. Clicking it reopens the composer. */
   composerBadge?: { onReopen: () => void } | null;
   /** Reserve extra right padding so the right-aligned stats clear the
-   *  bottom-dock "Show terminal" reveal tab, which floats over the footer's
+   *  bottom-dock "Open session dock" reveal tab, which floats over the footer's
    *  bottom-right corner when the terminal is hidden. */
   reserveRightGutter?: boolean;
 }

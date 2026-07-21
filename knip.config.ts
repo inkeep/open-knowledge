@@ -20,6 +20,7 @@ export default {
     'lsof', // open-file listing — diagnose.ts, process-scan.ts
     'pgrep', // process lookup — process-scan.ts
     'where', // Windows binary lookup — git-preflight.ts
+    'taskkill', // Windows process-tree termination — acp/launch.ts
     'sw_vers', // macOS version query — bug-report.ts
     'mkfifo', // named-pipe creation — keepalive-orphan-reaping.test.ts
     'xcrun', // macOS notarization tool — desktop afterSign.mjs
@@ -105,6 +106,7 @@ export default {
         'tests/**/*.ts',
         'src/markdown/fixtures/perf/generate.ts',
         'scripts/*.ts',
+        'src/**/*.typelock.ts',
       ],
       project: 'src/**',
       ignoreDependencies: [

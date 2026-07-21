@@ -57,6 +57,67 @@ export function terminalCliId(cli: TerminalCli): string {
 }
 
 /**
+ * Picker sentinel for the in-app agent-thread mode ("Start an agent").
+ * Distinct from every `HandoffTarget` id and the CLI sentinels; persisted
+ * like a sticky agent choice. `parseStickyCliId` returns null for it and
+ * `resolveStickyAgent` (app targets only) never returns it, so callers gate
+ * thread mode explicitly (`id === IN_APP_THREAD_ID`) — the same shape the
+ * CLI sentinel uses. On terminal-only surfaces it degrades via
+ * `resolveDefaultCli` to the default CLI, harmlessly.
+ *
+ * Two forms coexist (additive parse, no key bump — see {@link parseStickyThreadAgent}):
+ *   - the bare `in-app-thread` sentinel — "in-app thread, whatever the default
+ *     registered agent is" (what the Ask-AI composers persist);
+ *   - the concrete `in-app-thread:<source>:<id>` form the unified sessions dock's
+ *     New split-button persists so its primary repeats the exact agent last
+ *     launched, alongside the CLI sentinel and the bare-terminal flag. A concrete
+ *     value still degrades to "the default agent" for any reader that only knows
+ *     the bare sentinel, so it is safe for the shared Ask-AI surfaces too.
+ */
+export const IN_APP_THREAD_ID = 'in-app-thread';
+
+/**
+ * Per-agent picker sentinel — `in-app-thread:<source>:<id>` (e.g.
+ * `in-app-thread:registry:acme-agent`). The concrete twin of {@link IN_APP_THREAD_ID},
+ * persisted so the sessions dock's New button primary relaunches the exact agent
+ * the user last chose. `parseStickyThreadAgent` reads it back; every other reader
+ * (`parseStickyCliId`, `resolveStickyAgent`) treats it as "not mine" and degrades
+ * harmlessly, so it never leaks a concrete agent into the CLI / app-target paths.
+ */
+export function threadAgentId(agent: { source: 'registry' | 'custom'; id: string }): string {
+  return `${IN_APP_THREAD_ID}:${agent.source}:${agent.id}`;
+}
+
+/** A persisted sticky pick that names the in-app agent-thread launcher. */
+export type StickyThreadAgent =
+  | { readonly kind: 'concrete'; readonly source: 'registry' | 'custom'; readonly id: string }
+  | { readonly kind: 'default' };
+
+/**
+ * Parse a persisted sticky id into the in-app-thread launcher it names, or `null`
+ * when it does not name one:
+ *   - `in-app-thread` → `{ kind: 'default' }` (use the default registered agent);
+ *   - `in-app-thread:<source>:<id>` → `{ kind: 'concrete', source, id }`;
+ *   - anything else (a CLI sentinel, a `HandoffTarget`, junk, or null) → `null`.
+ *
+ * Additive over the bare sentinel: a value written before the concrete form
+ * existed still parses as `{ kind: 'default' }`, so no storage migration is needed.
+ */
+export function parseStickyThreadAgent(id: string | null): StickyThreadAgent | null {
+  if (id === null) return null;
+  if (id === IN_APP_THREAD_ID) return { kind: 'default' };
+  const prefix = `${IN_APP_THREAD_ID}:`;
+  if (!id.startsWith(prefix)) return null;
+  const rest = id.slice(prefix.length);
+  const sep = rest.indexOf(':');
+  if (sep <= 0) return null;
+  const source = rest.slice(0, sep);
+  const agentId = rest.slice(sep + 1);
+  if ((source !== 'registry' && source !== 'custom') || agentId === '') return null;
+  return { kind: 'concrete', source, id: agentId };
+}
+
+/**
  * Parse a persisted sticky id back into a `TerminalCli`, or `null` when it does
  * not name a CLI launcher. The bare legacy `terminal-cli` sentinel maps to
  * `claude` (the only CLI when it was written), so a sticky terminal pick from a

@@ -1,13 +1,27 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import {
+  desktopEnabledKey,
+  reloadEnabledAgentsFromStorage,
+  setAgentEnabled,
+} from '@/lib/acp/enabled-agents';
+import { registerAgent, reloadRegisteredAgentsFromStorage } from '@/lib/acp/registered-agents';
 import { TerminalLaunchProvider } from './TerminalLaunchContext';
 import type { HandoffDispatchInput } from './useHandoffDispatch';
 
-mock.module('@lingui/react/macro', () => ({
+// Desktop is enablement-gated now (off by default); these tests express Desktop
+// visibility via `states` install flags, so translate installed → enabled.
+function enableInstalledDesktop(): void {
+  for (const [id, state] of Object.entries(states)) {
+    if (state?.installed === true) setAgentEnabled(desktopEnabledKey(id), true);
+  }
+}
+
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -21,7 +35,7 @@ const dispatchCalls: Array<{ target: string; input: HandoffDispatchInput }> = []
 const launchCalls: Array<{ input: HandoffDispatchInput; cli: string }> = [];
 let states: Record<string, { installed: boolean | null; lastChecked?: number }> = {};
 
-mock.module('./useInstalledAgents', () => ({
+vi.doMock('./useInstalledAgents', () => ({
   useInstalledAgents: () => ({
     states,
     refresh: () => {
@@ -31,29 +45,35 @@ mock.module('./useInstalledAgents', () => ({
   }),
 }));
 
-mock.module('./useHandoffDispatch', () => ({
+vi.doMock('./useHandoffDispatch', () => ({
   useHandoffDispatch: () => ({
     dispatch: (target: string, input: HandoffDispatchInput) => {
       dispatchCalls.push({ target, input });
       return Promise.resolve({ ok: true as const });
     },
   }),
+  composeThreadLaunchPrompt: (input: HandoffDispatchInput) =>
+    `thread-prompt:${input.docContext?.relativePath ?? 'none'}`,
+  startAgentThreadForInput: () => {},
+  // Present so the whole-module mock still exposes every named export the
+  // component imports (the install nudge), or the file fails to link.
+  openInstallUrl: () => Promise.resolve(),
 }));
 
-mock.module('@/lib/config-context', () => ({
+vi.doMock('@/lib/config-context', () => ({
   useConfigContext: () => ({
     merged: { appearance: { preview: { autoOpen: true } } },
   }),
 }));
 
-mock.module('@/hooks/use-is-embedded', () => ({
+vi.doMock('@/hooks/use-is-embedded', () => ({
   useIsEmbedded: () => false,
 }));
 
 // The popover renders its own agent rows now and only pulls `TargetIcon` from
 // this module (which transitively imports `next-themes`); stub it so the mount
 // stays provider-free.
-mock.module('./OpenInAgentMenuItem', () => ({
+vi.doMock('./OpenInAgentMenuItem', () => ({
   TargetIcon: () => null,
 }));
 
@@ -64,6 +84,7 @@ const input: HandoffDispatchInput = {
 };
 
 async function renderMenu(menuInput: HandoffDispatchInput | null = input) {
+  enableInstalledDesktop();
   const { OpenInAgentMenu } = await import('./OpenInAgentMenu');
   render(
     <TooltipProvider>
@@ -73,6 +94,7 @@ async function renderMenu(menuInput: HandoffDispatchInput | null = input) {
 }
 
 async function renderMenuWithTerminal(menuInput: HandoffDispatchInput | null = input) {
+  enableInstalledDesktop();
   const { OpenInAgentMenu } = await import('./OpenInAgentMenu');
   render(
     <TooltipProvider>
@@ -102,6 +124,9 @@ describe('OpenInAgentMenu runtime behavior', () => {
     dispatchCalls.length = 0;
     launchCalls.length = 0;
     states = {};
+    if (typeof localStorage !== 'undefined') localStorage.clear();
+    reloadRegisteredAgentsFromStorage();
+    reloadEnabledAgentsFromStorage();
   });
 
   test('exports the shell component', async () => {
@@ -214,7 +239,8 @@ describe('OpenInAgentMenu runtime behavior', () => {
     expect(dispatchCalls).toStrictEqual([{ target: 'codex', input }]);
   });
 
-  test('shows the empty hint (no claude.ai fallback) when nothing is installed', async () => {
+  test('shows an enabled in-app agent (no claude.ai fallback) when nothing is installed', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
     states = {
       'claude-cowork': { installed: false, lastChecked: 1 },
       'claude-code': { installed: false, lastChecked: 1 },
@@ -224,14 +250,16 @@ describe('OpenInAgentMenu runtime behavior', () => {
     await renderMenu();
     await openMenu();
 
-    // No terminal launcher in the test (no provider → web-host path), so the
-    // disabled empty hint renders. The removed claude.ai web fallback must not.
-    const empty = screen.getByTestId('open-in-agent-empty');
-    expect(empty.textContent).toContain('No installed agents found');
+    // The enabled in-app agent renders; no desktop apps (Desktop off) and no
+    // terminal provider (web-host path), and the removed claude.ai web fallback
+    // must not render.
+    expect(screen.getByTestId('open-in-agent-thread-start-claude-acp')).toBeTruthy();
+    expect(screen.queryByTestId('open-in-agent-desktop-label')).toBeNull();
+    expect(screen.queryByTestId('open-in-agent-terminal-label')).toBeNull();
     expect(screen.queryByTestId('open-in-agent-claude-web-fallback')).toBeNull();
   });
 
-  test('shows the checking hint while the install probe is pending', async () => {
+  test('hides the In-app section when no agent is enabled, keeping Configure agents', async () => {
     states = {
       'claude-cowork': { installed: null },
       'claude-code': { installed: null },
@@ -241,8 +269,8 @@ describe('OpenInAgentMenu runtime behavior', () => {
     await renderMenu();
     await openMenu();
 
-    const empty = screen.getByTestId('open-in-agent-empty');
-    expect(empty.textContent).toContain('Checking for installed agents');
+    expect(screen.queryByTestId('open-in-agent-thread-label')).toBeNull();
+    expect(screen.getByTestId('open-in-agent-settings')).toBeTruthy();
   });
 
   test('groups installed agents under Desktop and the CLI launch under Terminal', async () => {

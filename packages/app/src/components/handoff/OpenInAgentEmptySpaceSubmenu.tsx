@@ -11,8 +11,8 @@
  * because Radix submenus inherit roving focus from their parent root primitive.
  *
  * Installed app launchers sit under a "Desktop" section label; the docked
- * terminal launchers — one row per PATH-gated CLI (`visibleTerminalClis`: Claude
- * plus CLIs the probe hasn't ruled out) — sit under a "Terminal" section label.
+ * terminal launchers — one row per enabled CLI (`isTerminalCliEnabled`: CLIs the
+ * probe hasn't ruled out) — sit under a "Terminal" section label.
  *
  * When there is nothing to render (no installed targets and no terminal
  * launcher), the entire submenu is hidden so the user doesn't land on an empty
@@ -23,12 +23,15 @@ import {
   type HandoffOutcome,
   type HandoffTarget,
   type InstallState,
+  TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Sparkles } from 'lucide-react';
+import { SlidersHorizontal, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
+import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import {
   ContextMenuGroup,
   ContextMenuItem,
@@ -39,11 +42,23 @@ import {
   ContextMenuSubTrigger,
 } from '@/components/ui/context-menu';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
+import {
+  isDesktopTargetEnabled,
+  isInAppAgentEnabled,
+  isTerminalCliEnabled,
+} from '@/lib/acp/agent-visibility';
+import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
+import { useRegisteredAgents } from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
+import { openAgentSettings } from '@/lib/use-settings-route';
 import { TargetIcon } from './OpenInAgentMenuItem';
 import { useTerminalLaunch } from './TerminalLaunchContext';
-import { cliIconTargetId, visibleTerminalClis } from './terminal-cli-display';
-import type { HandoffDispatchInput } from './useHandoffDispatch';
+import { cliIconTargetId } from './terminal-cli-display';
+import {
+  type HandoffDispatchInput,
+  openInstallUrl,
+  startAgentThreadForInput,
+} from './useHandoffDispatch';
 
 /** Status hint shown alongside per-target rows when the input is not ready
  *  (workspace not resolved yet). Mirrors `contextRowHint` in the sibling
@@ -73,33 +88,33 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
   const { t } = useLingui();
   const isEmbedded = useIsEmbedded();
   const terminalLaunch = useTerminalLaunch();
+  const registeredAgents = useRegisteredAgents();
+  const overrides = useEnabledOverrides();
   if (isEmbedded) return null;
   const { input, installStates, dispatch } = props;
   const inputMissing = input === null;
   const hint = emptySpaceRowHint(inputMissing);
 
-  // Install-state filter: render only targets we know are installed. Web-host
-  // Cursor forces `installed: false` upstream in `useInstalledAgents`, so the
-  // filter subsumes that case.
-  const installedTargets = VISIBLE_TARGETS.filter(
-    (target) => installStates[target.id]?.installed === true,
+  // Rows are the agents the user ENABLED in Configure agents (source of truth),
+  // not just install-detected ones — an enabled-but-not-installed Desktop agent
+  // still shows and routes to its installer on select.
+  const installedTargets = VISIBLE_TARGETS.filter((target) =>
+    isDesktopTargetEnabled(overrides, target.id),
+  );
+  const enabledRegisteredAgents = registeredAgents.filter((agent) =>
+    isInAppAgentEnabled(overrides, agent.source, agent.id, true, agent.supported),
   );
 
+  const terminalClis = terminalLaunch
+    ? TERMINAL_CLI_IDS.filter((cli) =>
+        isTerminalCliEnabled(overrides, cli, terminalLaunch.installedClis),
+      )
+    : [];
+  // Each section renders only when it has rows, so an empty header never shows.
   const showDesktopSection = installedTargets.length > 0;
-  // Desktop-only: `useTerminalLaunch()` is null on the web host (no shell).
-  const showTerminalSection = terminalLaunch !== null;
-
-  // Discoverability gate: if there's nothing to render — no installed agents
-  // AND no terminal launcher row — hide the entire submenu so the user doesn't
-  // land on an empty flyout (a dead end). Common in web/remote-web mode where
-  // install probing returns all-false and there is no docked terminal. A stub
-  // item adds noise without a recovery affordance, so absence is the signal.
-  if (!showDesktopSection && !showTerminalSection) {
-    return null;
-  }
-  // Claude plus every CLI the probe hasn't ruled out (fail-open); launch-only
-  // submenu with no "current pick" to preserve, so no `keep`.
-  const terminalClis = terminalLaunch ? visibleTerminalClis(terminalLaunch.installedClis) : [];
+  // Keep the `terminalLaunch !== null` alias so TS narrows it inside the section.
+  const showTerminalSection = terminalLaunch !== null && terminalClis.length > 0;
+  const showThreadSection = enabledRegisteredAgents.length > 0;
 
   return (
     <ContextMenuSub>
@@ -107,7 +122,51 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
         <Sparkles aria-hidden="true" />
         <Trans>Open with AI</Trans>
       </ContextMenuSubTrigger>
-      <ContextMenuSubContent>
+      <ContextMenuSubContent className="max-h-80">
+        {/* In-app agents — shown only when any is enabled; an empty section is
+            hidden. Enablement is managed in Configure agents (footer). */}
+        {showThreadSection ? (
+          <ContextMenuGroup aria-label={t`In app (beta)`}>
+            <ContextMenuLabel className="flex items-center gap-1.5">
+              <Trans>In app</Trans>
+              <AgentBetaBadge />
+            </ContextMenuLabel>
+            {enabledRegisteredAgents.map((agent) => {
+              const agentName = agent.name;
+              return (
+                <ContextMenuItem
+                  key={`${agent.source}:${agent.id}`}
+                  onSelect={() => {
+                    if (input === null) return;
+                    startAgentThreadForInput(input, {
+                      agent: { source: agent.source, id: agent.id },
+                    });
+                  }}
+                  disabled={inputMissing}
+                  data-testid={`empty-space-open-in-thread-${agent.id}`}
+                  aria-label={hint ? t`Start ${agentName}, ${hint}` : undefined}
+                >
+                  <RegisteredAgentIcon
+                    agentId={agent.id}
+                    iconUrl={agent.iconUrl}
+                    className="size-4"
+                  />
+                  <span className="flex-1">
+                    <Trans>Start {agentName}</Trans>
+                  </span>
+                  {hint ? (
+                    <span aria-hidden="true" className="ml-2 text-muted-foreground text-xs">
+                      {hint}
+                    </span>
+                  ) : null}
+                </ContextMenuItem>
+              );
+            })}
+          </ContextMenuGroup>
+        ) : null}
+        {showThreadSection && (showTerminalSection || showDesktopSection) ? (
+          <ContextMenuSeparator />
+        ) : null}
         {showTerminalSection ? (
           // Terminal section leads (the in-app terminal is the first-class path).
           // Labeled `role="group"` so assistive tech announces the section the
@@ -168,6 +227,11 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
                     disabled={!enabled}
                     onSelect={() => {
                       if (!input) return;
+                      // Enabled-but-not-installed → open the installer.
+                      if (installStates[target.id]?.installed !== true) {
+                        void openInstallUrl(target);
+                        return;
+                      }
                       void dispatch(target.id, input);
                     }}
                     data-testid={`empty-space-open-in-${target.id}`}
@@ -186,6 +250,19 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
             </ContextMenuGroup>
           </>
         ) : null}
+        {/* Settings row — always last, always actionable. Opens Configure agents
+            so the user manages which agents appear here (replaces the former
+            "Choose another agent" catalog affordance). The separator only renders
+            when a section sits above it, so the all-disabled menu isn't a lone rule. */}
+        {showThreadSection || showTerminalSection || showDesktopSection ? (
+          <ContextMenuSeparator />
+        ) : null}
+        <ContextMenuItem onSelect={openAgentSettings} data-testid="empty-space-open-in-settings">
+          <SlidersHorizontal aria-hidden="true" />
+          <span className="flex-1">
+            <Trans>Configure agents</Trans>
+          </span>
+        </ContextMenuItem>
       </ContextMenuSubContent>
     </ContextMenuSub>
   );

@@ -7,10 +7,10 @@
  * affordance, and click-navigates to the offending doc by hash.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { LintAuditResponse, LintDiagnostic } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 // Both lingui macro specifiers alias to ONE shim module under the vitest dom
@@ -21,24 +21,25 @@ import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 // won).
 const linguiMacroMock = {
   t: renderLinguiTemplate,
+  msg: renderLinguiTemplate,
   Trans: ({ children }: { children: ReactNode }) => children,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{(value === 1 ? one : other).replace('#', String(value))}</>
   ),
   useLingui: () => ({ t: renderLinguiTemplate }),
 };
-mock.module('@lingui/core/macro', () => linguiMacroMock);
-mock.module('@lingui/react/macro', () => linguiMacroMock);
+vi.doMock('@lingui/core/macro', () => linguiMacroMock);
+vi.doMock('@lingui/react/macro', () => linguiMacroMock);
 
 let auditCalls = 0;
 let runLintAuditImpl: () => Promise<LintAuditResponse | null> = async () => null;
 let fixLintDocCalls: string[] = [];
 let fixLintDocImpl: (docName: string) => Promise<{ ok: boolean; errorDetail?: string | null }> =
   async () => ({ ok: true });
-const toastError = mock((_message: string) => {});
+const toastError = vi.fn((_message: string) => {});
 
-mock.module('sonner', () => ({ toast: { error: toastError } }));
-mock.module('@/editor/lint-config-client', () => ({
+vi.doMock('sonner', () => ({ toast: { error: toastError } }));
+vi.doMock('@/editor/lint-config-client', () => ({
   emitLintConfigChanged: () => {},
   subscribeToLintConfigChanged: () => () => {},
   runLintAudit: () => {
@@ -114,7 +115,7 @@ describe('ProblemsPanel', () => {
       ],
     });
     const unfixable = diag({ line: 5, code: 'MD025', message: 'Multiple H1' });
-    const onFix = mock(() => {});
+    const onFix = vi.fn(() => {});
     render(<ProblemsPanel docName="notes" diagnostics={[fixable, unfixable]} onFix={onFix} />);
     const fixButtons = screen.getAllByRole('button', { name: /Fix markdownlint\/MD010/ });
     expect(fixButtons).toHaveLength(1);
@@ -149,7 +150,7 @@ describe('ProblemsPanel', () => {
       ],
     });
     const unfixable = diag({ line: 5, code: 'MD025', message: 'Multiple H1' });
-    const onFixAll = mock(() => {});
+    const onFixAll = vi.fn(() => {});
     render(
       <ProblemsPanel docName="notes" diagnostics={[fixable, unfixable]} onFixAll={onFixAll} />,
     );
@@ -174,7 +175,7 @@ describe('ProblemsPanel', () => {
       ],
     });
     const unfixable = diag({ line: 5, code: 'MD025', message: 'Multiple H1' });
-    const onAskAi = mock(() => {});
+    const onAskAi = vi.fn(() => {});
     const { unmount } = render(
       <ProblemsPanel docName="notes" diagnostics={[fixable, unfixable]} onAskAi={onAskAi} />,
     );
@@ -192,7 +193,7 @@ describe('ProblemsPanel', () => {
   });
 
   test('doc-scope Fix all is disabled when no diagnostic is fixable', () => {
-    const onFixAll = mock(() => {});
+    const onFixAll = vi.fn(() => {});
     render(
       <ProblemsPanel
         docName="notes"
@@ -210,7 +211,7 @@ describe('ProblemsPanel', () => {
     expect(screen.queryByTestId('problems-fix-all')).toBeNull();
     unmount();
     // Empty state renders no action row at all.
-    render(<ProblemsPanel docName="notes" diagnostics={[]} onFixAll={mock(() => {})} />);
+    render(<ProblemsPanel docName="notes" diagnostics={[]} onFixAll={vi.fn(() => {})} />);
     expect(screen.queryByTestId('problems-fix-all')).toBeNull();
   });
 

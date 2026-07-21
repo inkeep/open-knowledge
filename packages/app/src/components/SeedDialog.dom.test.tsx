@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type {
   OkPackId,
@@ -12,20 +12,21 @@ import type {
 } from '@/lib/desktop-bridge-types';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('@lingui/core/macro', () => ({
+vi.doMock('@lingui/core/macro', () => ({
   ...actualLinguiMacro,
   t: renderLinguiTemplate,
+  msg: renderLinguiTemplate,
   plural: (value: number, options: { one: string; other: string }) =>
     (value === 1 ? options.one : options.other).replace('#', String(value)),
 }));
 
-mock.module('@/components/PackCardGrid', () => ({
+vi.doMock('@/components/PackCardGrid', () => ({
   PackCardGrid: ({
     packs,
     onPackSelect,
@@ -99,7 +100,7 @@ let planImpl: (options: { packId?: OkPackId; rootDir?: string }) => Promise<OkSe
     plan: options.packId === 'plain-notes' ? plainNotesPlan : knowledgeBasePlan,
   });
 
-mock.module('@/lib/seed-client', () => ({
+vi.doMock('@/lib/seed-client', () => ({
   seedClient: () => ({
     listPacks: async () => {
       listPacksCalls.push('list');
@@ -119,7 +120,7 @@ mock.module('@/lib/seed-client', () => ({
   }),
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     success: (message: string) => toastSuccesses.push(message),
     error: (message: string) => toastErrors.push(message),

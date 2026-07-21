@@ -1,20 +1,21 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/core/macro', () => ({
+vi.doMock('@lingui/core/macro', () => ({
   ...actualLinguiMacro,
   t: renderLinguiTemplate,
+  msg: renderLinguiTemplate,
   plural: (value: number, options: { one: string; other: string }) =>
     (value === 1 ? options.one : options.other).replace('#', String(value)),
 }));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
@@ -31,15 +32,15 @@ let projectLocalConfig: { autoSync?: { enabled?: boolean | null } } | null = {
 let projectLocalSynced = true;
 const patches: unknown[] = [];
 
-mock.module('@/hooks/use-git-sync-status', () => ({
+vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatusDetailed: () => ({ status, fetchError }),
 }));
 
-mock.module('@/hooks/use-conflicts', () => ({
+vi.doMock('@/hooks/use-conflicts', () => ({
   useConflicts: () => ({ conflicts: [{ file: 'docs/conflicted.md' }] }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     projectLocalConfig,
     projectLocalSynced,

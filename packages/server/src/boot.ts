@@ -37,6 +37,11 @@ import {
 import { context, propagation } from '@opentelemetry/api';
 import { simpleGit } from 'simple-git';
 import sirv from 'sirv';
+import {
+  AcpThreadManager,
+  type AcpThreadManagerOptions,
+  buildOkMcpStdioCommand,
+} from './acp/thread-manager.ts';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { bootElapsedMs, recordBootPhase, startBootTimings } from './boot-timings.ts';
 import type { Config } from './config/schema.ts';
@@ -222,6 +227,13 @@ export interface BootServerOptions
    */
   skipAutoInit?: boolean;
   /**
+   * Forwarded to the ACP thread manager — see
+   * `AcpThreadManagerOptions.probeHarnessManagedMcpEntry`. `ok start` and the
+   * Electron utility wire the CLI's `probeOwnManagedEditorMcpEntry`; unset
+   * keeps unconditional OK-MCP injection for ACP threads.
+   */
+  probeHarnessManagedMcpEntry?: AcpThreadManagerOptions['probeHarnessManagedMcpEntry'];
+  /**
    * If false, UI-sibling callbacks (`spawnUiSiblingFn` / `onSkipUiSpawn`) are
    * NOT invoked regardless of `spawnUiSiblingFn` presence. Default true —
    * preserves CLI back-compat when the flag is omitted.
@@ -356,6 +368,8 @@ export interface BootedServer {
   didAutoInit: boolean;
   /** Full ServerInstance from createServer — exposed for advanced consumers (e.g., desktop utility's drain sequencing). */
   serverInstance: ServerInstance;
+  /** ACP thread host, or null in ephemeral single-file mode. */
+  acpThreadManager: AcpThreadManager | null;
 }
 
 /**
@@ -809,6 +823,33 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       })
     : undefined;
 
+  // ACP thread host — server-hosted external-agent threads. Ephemeral
+  // single-file mode has no agent capabilities (mirrors the `/mcp` off-switch
+  // above), so the manager is simply never constructed there and the
+  // `/collab/thread` upgrade branch fail-closes on the missing handle.
+  const acpThreadManager = opts.ephemeral
+    ? null
+    : new AcpThreadManager({
+        contentDir: opts.contentDir,
+        localDir: lockDir,
+        registry: serverInstance.acpRegistry,
+        permissions: serverInstance.acpPermissions,
+        sessionManager,
+        agentPresenceBroadcaster,
+        resolveEmbed: serverInstance.resolveEmbed,
+        isExcludedPath: (rel) => serverInstance.contentFilter.isExcluded(rel),
+        isIgnoredPath: (rel) => serverInstance.contentFilter.isPathIgnored(rel),
+        getLoadedDocText: (docName) =>
+          hocuspocus.documents.get(docName)?.getText('source').toString() ?? null,
+        getServerUrl: () => `http://${mcpHost}:${boundPort}`,
+        getMcpStdioCommand: () => buildOkMcpStdioCommand(opts.localOpCliArgs, boundPort),
+        probeHarnessManagedMcpEntry: opts.probeHarnessManagedMcpEntry,
+        log,
+      });
+  // Rehydrate archived threads (metadata-only scan) before the WS surface
+  // mounts, so the first `list` already includes them.
+  if (acpThreadManager !== null) await acpThreadManager.init();
+
   const mount = mountMcpAndApi({
     httpServer,
     hocuspocus,
@@ -822,6 +863,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     contentAssetMiddleware,
     reactShellMiddleware,
     ephemeral: opts.ephemeral,
+    acpThreadManager,
   });
 
   // Forward-declare destroy so idle-shutdown's onShutdown can reach the full
@@ -985,6 +1027,12 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       log.warn({ err, step: 'idleHandle.detach' }, 'bootServer destroy step failed');
     }
 
+    // Kill agent subprocesses FIRST — their threads hold `/collab/thread`
+    // sockets open, and a live agent outliving the server would orphan a
+    // process no UI can reach anymore.
+    if (acpThreadManager !== null) {
+      await runStep('acpThreads.destroy', () => acpThreadManager.destroy());
+    }
     await runStep('mount.shutdown', () => mount.shutdown());
     if (mcpHttpHandler !== undefined) {
       await runStep('mcpHttpHandler.close', () => mcpHttpHandler.close());
@@ -1086,6 +1134,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     degraded,
     didAutoInit,
     serverInstance,
+    acpThreadManager,
   };
 }
 

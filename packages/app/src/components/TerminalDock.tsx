@@ -39,13 +39,18 @@ interface TerminalDockProps {
    */
   readonly onEditorRegion: (el: HTMLDivElement | null) => void;
   /**
-   * Reveal the terminal (spawning a default-CLI session if none is open). When
-   * provided and the terminal is bottom-docked-and-hidden, this shell renders an
-   * edge "Show terminal" tab at the bottom of the editor region — where the
-   * bottom dock actually lives. Absent on the web host (no terminal). The
+   * Reveal the sessions dock, launching the user's preferred New-session choice
+   * if none is open. Wired to the edge "Open session dock" tab this shell renders at
+   * the bottom of the editor region when {@link showRevealTab} is set. The
    * right-dock reveal tab is owned by EditorArea instead (different container).
    */
   readonly onReveal?: () => void;
+  /**
+   * Whether to render the bottom edge reveal tab. EditorArea owns the predicate
+   * (dock-hidden with a reason to reveal: a terminal surface, or latched tabs to
+   * return to on the web host), so this shell just renders it when told.
+   */
+  readonly showRevealTab?: boolean;
 }
 
 /**
@@ -65,6 +70,7 @@ export function TerminalDock({
   onBottomContainer,
   onEditorRegion,
   onReveal,
+  showRevealTab = false,
 }: TerminalDockProps) {
   const { resolvedTheme } = useTheme();
   const panelRef = usePanelRef();
@@ -74,10 +80,10 @@ export function TerminalDock({
   // and empty — the handle must gate on this, not `visible`, or the grabber
   // lingers and drags up an empty panel.
   const bottomOpen = visible && dockPosition === 'bottom';
-  // The edge "Show terminal" tab belongs to the bottom dock only — it hugs the
-  // bottom of the editor column, where a bottom-docked terminal slides up from.
-  // Right-docked reveal is owned by EditorArea (far-right column edge).
-  const showBottomRevealTab = !visible && dockPosition === 'bottom' && onReveal != null;
+  // The edge "Show sessions" tab belongs to the bottom dock only — it hugs the
+  // bottom of the editor column, where a bottom-docked dock slides up from.
+  // EditorArea owns the predicate (dock hidden + a reason to reveal).
+  const showBottomRevealTab = showRevealTab && dockPosition === 'bottom' && onReveal != null;
 
   // Snapshot the persisted height once at mount; the ref carries the running value
   // during user drag.

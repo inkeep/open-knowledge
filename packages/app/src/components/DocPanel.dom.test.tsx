@@ -11,9 +11,9 @@
  * diagnostics.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
@@ -36,8 +36,12 @@ if (g.ResizeObserver === undefined) {
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/core/macro', () => ({ ...actualLinguiMacro, t: renderLinguiTemplate }));
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/core/macro', () => ({
+  ...actualLinguiMacro,
+  t: renderLinguiTemplate,
+  msg: renderLinguiTemplate,
+}));
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => children,
   useLingui: () => ({ t: renderLinguiTemplate }),
@@ -45,39 +49,39 @@ mock.module('@lingui/react/macro', () => ({
 
 // Single-file signal — flipped per test.
 let singleFileValue = false;
-mock.module('@/lib/single-file-mode', () => ({ useSingleFileMode: () => singleFileValue }));
+vi.doMock('@/lib/single-file-mode', () => ({ useSingleFileMode: () => singleFileValue }));
 
 // Lint plumbing — DocPanel computes live diagnostics to drive the Problems
 // badge. Stub the source so the test controls the count without a provider/fetch.
 let diagnosticsValue: Array<{ severity: string }> = [];
 let activeProviderValue: unknown = null;
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ activeProvider: activeProviderValue, activeDocName: 'notes' }),
 }));
-mock.module('@/editor/lint-config-client', () => ({
+vi.doMock('@/editor/lint-config-client', () => ({
   useDocLintConfig: () => ({ data: null }),
 }));
-mock.module('@/editor/useDocDiagnostics', () => ({
+vi.doMock('@/editor/useDocDiagnostics', () => ({
   useDocDiagnostics: () => diagnosticsValue,
 }));
 // Terminal availability drives the Ask-AI gate — null mirrors the web host.
 let terminalLaunchValue: unknown = null;
-mock.module('@/components/handoff/TerminalLaunchContext', () => ({
+vi.doMock('@/components/handoff/TerminalLaunchContext', () => ({
   useTerminalLaunch: () => terminalLaunchValue,
 }));
 
 // Stub the heavy panel children so the test stays focused on tab visibility.
-mock.module('@/components/OutlinePanel', () => ({
+vi.doMock('@/components/OutlinePanel', () => ({
   OutlinePanel: () => <div data-testid="outline-panel" />,
 }));
-mock.module('@/components/LinksPanel', () => ({
+vi.doMock('@/components/LinksPanel', () => ({
   LinksPanel: () => <div data-testid="links-panel" />,
 }));
-mock.module('@/components/TimelinePanel', () => ({
+vi.doMock('@/components/TimelinePanel', () => ({
   TimelineContent: () => <div data-testid="timeline-panel" />,
 }));
 let lastProblemsProps: Record<string, unknown> | null = null;
-mock.module('@/components/ProblemsPanel', () => ({
+vi.doMock('@/components/ProblemsPanel', () => ({
   ProblemsPanel: (props: Record<string, unknown>) => {
     lastProblemsProps = props;
     return <div data-testid="problems-panel" />;

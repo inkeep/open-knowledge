@@ -146,12 +146,16 @@ interface EditorAreaProps {
    *  is its own column to the right of the doc/agent panel (MD | PANE | TERMINAL)
    *  instead of docking under the editor. */
   terminalDock?: TerminalDockPosition;
+  /** Whether the sessions dock currently holds any tab (terminal or thread),
+   *  reported up from the host. Placement predicates key off dock-visible-&-has-tabs
+   *  rather than the bridge, so the dock column renders on web (thread tabs only). */
+  terminalHasSessions?: boolean;
   /** Report the terminal's attach point up to EditorPane (which owns the session
    *  host). See {@link TerminalPlacement}. */
   onTerminalPlacement?: (placement: TerminalPlacement) => void;
-  /** Reveal the terminal (and spawn a default-CLI session if none is open) —
-   *  drives the edge "Show terminal" tab shown while the terminal is hidden.
-   *  Absent on the web host (no terminal). */
+  /** Reveal the sessions dock and seed the preferred New-session choice if none is
+   *  open — drives the edge "Open session dock" tab shown while the
+   *  dock is hidden. Provided on every host now (web reveals thread tabs). */
   onRevealTerminal?: () => void;
 }
 
@@ -196,6 +200,7 @@ function SettingsDialogPortal() {
   return (
     <SettingsDialogShell
       open={settingsRoute.open}
+      initialSection={settingsRoute.section}
       onOpenChange={(next) => {
         if (!next) settingsRoute.close();
       }}
@@ -212,6 +217,7 @@ function EditorAreaInner({
   terminalVisible = false,
   onTerminalVisibleChange,
   terminalDock = 'right',
+  terminalHasSessions = false,
   onTerminalPlacement,
   onRevealTerminal,
 }: EditorAreaProps) {
@@ -376,18 +382,28 @@ function EditorAreaInner({
   // across EVERY view kind (the column just has no doc panel beside it on
   // asset / large-file / empty views). This is why the dock stays on the right
   // even when there's nothing else to put there.
+  // Whether the desktop bridge can host TERMINAL-kind tabs (a session-only bridge
+  // has no `terminal` surface). The dock, its placement, and the reveal tab now
+  // key off dock visibility rather than `terminalBridge != null`, so the column
+  // renders on the web host (thread tabs only). `terminalAvailable` gates only the
+  // terminal-*kind* reveal reason (a cold reveal that can spawn a shell).
+  const terminalAvailable = terminalBridge?.terminal != null;
   const rightDocked = terminalDock === 'right';
   const terminalDockPosition: TerminalDockPosition = rightDocked ? 'right' : 'bottom';
-  // Whether the far-right terminal column participates in the panel group this
-  // render. Drives the panel-set-change layout assert below and the collapsed
-  // doc-panel neutralization — compute it up here so effects can depend on it.
-  const terminalColumnPresent = terminalBridge != null && rightDocked && terminalVisible;
-  // The edge "Show terminal" reveal tab is up while the terminal is hidden on the
-  // desktop host. It floats over a corner other UI also wants: bottom-dock over
-  // the editor footer's bottom-right (the footer reserves gutter), right-dock over
-  // the far-right top where the toolbar's action buttons sit when the doc panel is
-  // collapsed (the toolbar shifts its cluster left).
-  const revealTabHidden = terminalBridge != null && !terminalVisible && onRevealTerminal != null;
+  // Whether the far-right dock column participates in the panel group this render.
+  // Drives the panel-set-change layout assert below and the collapsed doc-panel
+  // neutralization — compute it up here so effects can depend on it. Un-gated from
+  // the bridge: on web the column hosts thread tabs. The host renders a starting /
+  // empty state while a session spins up, so keying off visibility (not has-tabs)
+  // keeps the dock's feedback immediate during the seconds-long agent spawn.
+  const terminalColumnPresent = rightDocked && terminalVisible;
+  // The edge "Show sessions" reveal tab is up while the dock is hidden. A terminal
+  // surface always shows it (revealing can seed a shell); a thread-only surface
+  // shows it only with latched tabs to return to (its cold entry is the handoff
+  // menu, not this tab). It floats over a corner other UI also wants: bottom-dock
+  // over the editor footer's bottom-right, right-dock over the far-right top.
+  const revealTabHidden =
+    !terminalVisible && onRevealTerminal != null && (terminalAvailable || terminalHasSessions);
   const bottomRevealTabPresent = revealTabHidden && !rightDocked;
   const rightRevealTabPresent = revealTabHidden && rightDocked;
   const rightTerminalShowing = rightDocked && terminalVisible && rightTerminalContainer != null;
@@ -1247,27 +1263,25 @@ function EditorAreaInner({
 
   // A single TerminalDock wraps the active view's left column. The skeleton
   // below is structurally identical for every view kind, so the dock keeps one
-  // React position and its PTY survives tab switches and view-kind changes.
-  // Desktop-only — the web host passes no bridge and renders the column bare.
-  // The live terminal session host lives in EditorPane (above this component) so a
-  // dock toggle — which remounts EditorArea's subtree — can't re-spawn it. Here we
-  // render only the bottom layout shell, which reports its mount + editor region up
-  // (the placement is reported to EditorPane via onTerminalPlacement above).
-  const leftColumn =
-    terminalBridge != null ? (
-      <TerminalDock
-        visible={terminalVisible}
-        onVisibleChange={onTerminalVisibleChange ?? (() => {})}
-        dockPosition={terminalDockPosition}
-        onBottomContainer={setBottomTerminalContainer}
-        onEditorRegion={setTerminalEditorRegion}
-        onReveal={onRevealTerminal}
-      >
-        {viewContent}
-      </TerminalDock>
-    ) : (
-      viewContent
-    );
+  // React position and its PTY survives tab switches and view-kind changes. It
+  // renders on EVERY host now (web too) — the sessions dock is host-agnostic — so
+  // a bottom-docked thread has a mount container. The live session host lives in
+  // EditorPane (above this component) so a dock toggle — which remounts
+  // EditorArea's subtree — can't re-spawn it. Here we render only the bottom layout
+  // shell, which reports its mount + editor region up (via onTerminalPlacement).
+  const leftColumn = (
+    <TerminalDock
+      visible={terminalVisible}
+      onVisibleChange={onTerminalVisibleChange ?? (() => {})}
+      dockPosition={terminalDockPosition}
+      onBottomContainer={setBottomTerminalContainer}
+      onEditorRegion={setTerminalEditorRegion}
+      onReveal={onRevealTerminal}
+      showRevealTab={bottomRevealTabPresent}
+    >
+      {viewContent}
+    </TerminalDock>
+  );
 
   // The terminal column sits to the RIGHT of the doc/agent panel
   // (MD | PANE | TERMINAL) when right-docked and visible — the far-right column,

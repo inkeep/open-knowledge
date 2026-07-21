@@ -15,8 +15,8 @@
  *   - Render only targets where `states[t.id]?.installed === true`, scoped to
  *     `VISIBLE_TARGETS`.
  *   - Installed app launchers sit under a "Desktop" section label; the docked
- *     terminal launchers — one row per PATH-gated CLI (`visibleTerminalClis`:
- *     Claude plus CLIs the probe hasn't ruled out), each with a "<Brand> CLI"
+ *     terminal launchers — one row per enabled CLI (`isTerminalCliEnabled`:
+ *     CLIs the probe hasn't ruled out), each with a "<Brand> CLI"
  *     accessible name — sit under a "Terminal" section label. The terminal
  *     section is absent on the web host (`useTerminalLaunch()` is null — no shell).
  *   - Empty state: when nothing is install-detected and there is no terminal
@@ -27,25 +27,39 @@
  */
 
 import {
-  type HandoffTarget,
-  type InstallState,
   type TargetData,
+  TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
   type TerminalCli,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Sparkles } from 'lucide-react';
+import { SlidersHorizontal, Sparkles } from 'lucide-react';
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from 'react';
+import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
+import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
+import {
+  isDesktopTargetEnabled,
+  isInAppAgentEnabled,
+  isTerminalCliEnabled,
+} from '@/lib/acp/agent-visibility';
+import { type EnabledOverrides, useEnabledOverrides } from '@/lib/acp/enabled-agents';
+import { type RegisteredAgent, useRegisteredAgents } from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
+import { openAgentSettings } from '@/lib/use-settings-route';
 import { TargetIcon } from './OpenInAgentMenuItem';
 import { type TerminalLaunchContextValue, useTerminalLaunch } from './TerminalLaunchContext';
-import { cliIconTargetId, visibleTerminalClis } from './terminal-cli-display';
-import { type HandoffDispatchInput, useHandoffDispatch } from './useHandoffDispatch';
+import { cliIconTargetId } from './terminal-cli-display';
+import {
+  type HandoffDispatchInput,
+  openInstallUrl,
+  startAgentThreadForInput,
+  useHandoffDispatch,
+} from './useHandoffDispatch';
 import { useInstalledAgents } from './useInstalledAgents';
 
 interface OpenInAgentMenuProps {
@@ -57,18 +71,29 @@ interface OpenInAgentMenuProps {
 }
 
 interface OpenWithAiPanelProps {
-  readonly installStates: Record<HandoffTarget, InstallState>;
+  /** User enable/disable overrides — filters the rows to enabled agents. */
+  readonly overrides: EnabledOverrides;
   /** Docked-terminal launcher when present (desktop); null on the web host. */
   readonly terminalLaunch: TerminalLaunchContextValue | null;
   /** Disable every dispatch row — set when there is nothing to dispatch
    *  (no active doc / workspace not loaded). The trigger is also disabled in
    *  that state, so this is a defensive guard for the controlled-open path. */
   readonly disabled: boolean;
+  /** Registered in-app agents — one launch row each. Empty before the first
+   *  catalog registration, where the single "Start an agent" row renders. */
+  readonly registeredAgents: readonly RegisteredAgent[];
   /** Fired when the user picks an agent; carries the typed instruction — the
    *  empty string when the user dispatched without typing one. */
   readonly onPick: (target: TargetData, instruction: string) => void;
   /** Fired when the user picks a CLI row; carries the chosen CLI + instruction. */
   readonly onLaunchTerminal: (cli: TerminalCli, instruction: string) => void;
+  /** Fired when the user picks a registered-agent row. */
+  readonly onStartThreadWith: (
+    agent: { source: 'registry' | 'custom'; id: string },
+    instruction: string,
+  ) => void;
+  /** Fired when the user picks the "Settings" row (opens Configure agents). */
+  readonly onOpenSettings: () => void;
 }
 
 /**
@@ -79,31 +104,44 @@ interface OpenWithAiPanelProps {
  * because the popover unmounts its content when closed.
  */
 function OpenWithAiPanel({
-  installStates,
+  overrides,
   terminalLaunch,
   disabled,
+  registeredAgents,
   onPick,
   onLaunchTerminal,
+  onStartThreadWith,
+  onOpenSettings,
 }: OpenWithAiPanelProps): ReactNode {
   const { t } = useLingui();
   const [instruction, setInstruction] = useState('');
 
-  const installedTargets = VISIBLE_TARGETS.filter(
-    (target) => installStates[target.id]?.installed === true,
+  // Desktop rows are the agents the user ENABLED in Configure agents (source of
+  // truth), not just install-detected ones — a not-installed one still shows
+  // and routes to its installer on launch.
+  const installedTargets = VISIBLE_TARGETS.filter((target) =>
+    isDesktopTargetEnabled(overrides, target.id),
   );
-  const probePending = VISIBLE_TARGETS.some(
-    (target) => installStates[target.id]?.installed == null,
+  // Only the in-app agents the user has enabled appear as rows.
+  const enabledRegisteredAgents = registeredAgents.filter((agent) =>
+    isInAppAgentEnabled(overrides, agent.source, agent.id, true, agent.supported),
   );
 
-  // Two labeled sections orient the user: "Desktop" over the installed app
-  // launchers, "Terminal" over the docked-terminal CLI rows. Both are
-  // hidden in the empty state (no installed agents and no terminal launcher).
+  // Three labeled sections orient the user: "In this app" over the server-
+  // hosted agent-thread launcher (always present — threads work on every
+  // host), "Desktop" over the installed app launchers, "Terminal" over the
+  // docked-terminal CLI rows. The Agents row always shows, so the empty state
+  // never appears while it is present.
+  // The Terminal CLIs the user ENABLED in Configure agents. Each section renders
+  // only when it has rows, so an empty section header never shows.
+  const terminalClis = terminalLaunch
+    ? TERMINAL_CLI_IDS.filter((cli) =>
+        isTerminalCliEnabled(overrides, cli, terminalLaunch.installedClis),
+      )
+    : [];
   const showDesktopSection = installedTargets.length > 0;
-  const showTerminalSection = terminalLaunch !== null;
-  const hasRows = showDesktopSection || showTerminalSection;
-  // Claude plus every CLI the probe hasn't ruled out (fail-open). No `keep`:
-  // this popover launches, it doesn't show a "current pick" to preserve.
-  const terminalClis = terminalLaunch ? visibleTerminalClis(terminalLaunch.installedClis) : [];
+  const showTerminalSection = terminalClis.length > 0;
+  const showThreadSection = enabledRegisteredAgents.length > 0;
 
   return (
     <div className="flex flex-col gap-1">
@@ -116,15 +154,56 @@ function OpenWithAiPanel({
           data-testid="open-in-agent-instruction"
         />
       </div>
-      {hasRows ? (
+      {/* The agent sections scroll; the instruction input above and the
+          Configure agents footer below stay put. */}
+      <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto subtle-scrollbar">
+        {/* In-app agents — shown only when any is enabled; an empty section is
+            hidden entirely. Enablement is managed in Configure agents (footer). */}
+        {showThreadSection ? (
+          <fieldset className="m-0 flex min-w-0 flex-col gap-0.5 border-0 p-0">
+            <legend
+              className="flex items-center gap-1.5 px-1.5 py-1 font-medium text-muted-foreground text-xs"
+              data-testid="open-in-agent-thread-label"
+            >
+              <Trans>In app</Trans>
+              <AgentBetaBadge />
+            </legend>
+            {enabledRegisteredAgents.map((agent) => {
+              const agentName = agent.name;
+              return (
+                <Button
+                  key={`${agent.source}:${agent.id}`}
+                  type="button"
+                  variant="ghost"
+                  className="h-auto w-full justify-start gap-1.5 rounded-md px-1.5 py-1 font-normal text-foreground"
+                  disabled={disabled}
+                  data-testid={`open-in-agent-thread-start-${agent.id}`}
+                  onClick={() =>
+                    onStartThreadWith({ source: agent.source, id: agent.id }, instruction)
+                  }
+                >
+                  <RegisteredAgentIcon
+                    agentId={agent.id}
+                    iconUrl={agent.iconUrl}
+                    className="size-4"
+                  />
+                  <span>{t`Start ${agentName}`}</span>
+                </Button>
+              );
+            })}
+          </fieldset>
+        ) : null}
+        {showThreadSection && (showTerminalSection || showDesktopSection) ? (
+          <Separator className="my-1" />
+        ) : null}
         <div className="flex flex-col gap-0.5">
           {showTerminalSection ? (
-            // Terminal section leads (the in-app terminal is the first-class path).
-            // CLI launchers run `claude` / `codex` / `cursor-agent` in the docked
-            // terminal with the same scope prompt (plus instruction) the deep-link
-            // puts in `q=`. Visible text is the brand name; the accessible name is
-            // "<Brand> CLI" so AT users can tell each apart from the matching
-            // Desktop row (WCAG 2.5.3 — the name contains the visible label).
+            // Terminal section (desktop only). CLI launchers run `claude` /
+            // `codex` / `cursor-agent` in the docked terminal with the same
+            // scope prompt (plus instruction) the deep-link puts in `q=`.
+            // Visible text is the brand name; the accessible name is "<Brand>
+            // CLI" so AT users can tell each apart from the matching Desktop
+            // row (WCAG 2.5.3 — the name contains the visible label).
             <fieldset className="m-0 flex min-w-0 flex-col gap-0.5 border-0 p-0">
               <legend
                 className="px-1.5 py-1 font-medium text-muted-foreground text-xs"
@@ -191,19 +270,24 @@ function OpenWithAiPanel({
             </>
           ) : null}
         </div>
-      ) : (
-        <p
-          className="text-muted-foreground text-sm"
-          data-testid="open-in-agent-empty"
-          aria-live="polite"
+        {/* Settings row — always last. Opens Configure agents so the user
+            manages which agents appear here (replaces the former "Choose
+            another agent" catalog affordance). The separator only renders when a
+            section sits above it, so the all-disabled menu isn't a lone rule. */}
+        {showThreadSection || showTerminalSection || showDesktopSection ? (
+          <Separator className="my-1" />
+        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-auto w-full justify-start gap-1.5 rounded-md px-1.5 py-1 font-normal text-foreground"
+          data-testid="open-in-agent-settings"
+          onClick={onOpenSettings}
         >
-          {probePending ? (
-            <Trans>Checking for installed agents</Trans>
-          ) : (
-            <Trans>No installed agents found</Trans>
-          )}
-        </p>
-      )}
+          <SlidersHorizontal className="size-4 text-muted-foreground" aria-hidden="true" />
+          <span>{t`Configure agents`}</span>
+        </Button>
+      </div>
     </div>
   );
 }
@@ -218,6 +302,8 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
   const { states, refresh } = useInstalledAgents();
   const { dispatch } = useHandoffDispatch();
   const terminalLaunch = useTerminalLaunch();
+  const registeredAgents = useRegisteredAgents();
+  const overrides = useEnabledOverrides();
   const [internalOpen, setInternalOpen] = useState(false);
   // Tracks whether a real `pointerdown` reached the trigger this interaction.
   // See the trigger's onPointerDown/onClick below for why this is load-bearing
@@ -266,6 +352,13 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
   const handlePick = (target: TargetData, instruction: string): void => {
     const next = inputWith(instruction);
     if (next === null) return;
+    // An enabled-but-not-installed Desktop agent routes to its installer
+    // rather than a failing deep-link dispatch.
+    if (states[target.id]?.installed !== true) {
+      void openInstallUrl(target);
+      handleOpenChange(false);
+      return;
+    }
     void dispatch(target.id, next);
     handleOpenChange(false);
   };
@@ -274,6 +367,19 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
     const next = inputWith(instruction);
     if (next === null || terminalLaunch === null) return;
     terminalLaunch.launchInTerminal(next, cli);
+    handleOpenChange(false);
+  };
+
+  // In-app agent thread: compose the scope prompt (same pipeline as the
+  // terminal/deep-link paths). Per-agent rows name their agent; enablement is
+  // managed in Settings → Configure agents (the "Configure agents" row).
+  const handleStartThreadWith = (
+    agent: { source: 'registry' | 'custom'; id: string },
+    instruction: string,
+  ): void => {
+    const next = inputWith(instruction);
+    if (next === null) return;
+    startAgentThreadForInput(next, { agent });
     handleOpenChange(false);
   };
 
@@ -333,11 +439,14 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
         data-testid="open-in-agent-menu"
       >
         <OpenWithAiPanel
-          installStates={states}
+          overrides={overrides}
           terminalLaunch={terminalLaunch}
           disabled={input === null}
+          registeredAgents={registeredAgents}
           onPick={handlePick}
           onLaunchTerminal={handleLaunchTerminal}
+          onStartThreadWith={handleStartThreadWith}
+          onOpenSettings={openAgentSettings}
         />
       </PopoverContent>
     </Popover>

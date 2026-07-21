@@ -20,11 +20,11 @@
  * names in RETIRED_TOOL_NAMES are.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OK_GATED_TOOL_NAMES } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { registerAllTools } from './index.ts';
 import type { ServerInstance } from './shared.ts';
@@ -60,6 +60,9 @@ const EXPECTED_TOOLS = [
 ] as const;
 
 const RETIRED_TOOL_NAMES = [
+  // View choreography → client-side derived views (the docked graph panel):
+  // no tool call to remember, and it works for every agent.
+  'graph_view',
   // Link-graph getters → links
   'get_backlinks',
   'get_forward_links',
@@ -137,7 +140,7 @@ describe('registerAllTools — full tool surface (SPEC.md §9.1 / AC8 + install 
     }
   });
 
-  test('none of the 17 pre-consolidation tool names are registered', () => {
+  test('none of the retired tool names are registered', () => {
     const names = new Set(captureRegistered());
     for (const retired of RETIRED_TOOL_NAMES) {
       expect(names.has(retired)).toBe(false);

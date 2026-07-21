@@ -1439,8 +1439,10 @@ export interface OkDesktopBridge {
      * survives a renderer reload. Fire-and-forget.
      */
     setOrder(orderedPtyIds: readonly string[]): void;
-    /** Per-window dock visibility. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
-    getDockState(): Promise<{ visible: boolean }>;
+    /** Per-window sessions-dock state (visibility + unified tab order + active key). Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+    getDockState(): Promise<{ visible: boolean; order?: string[]; activeKey?: string | null }>;
+    /** Persist the unified sessions-dock order + active key per window. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+    setDockState(state: { order: string[]; activeKey: string | null }): void;
     onData(cb: (msg: OkPtyData) => void): OkUnsubscribe;
     onExit(cb: (msg: OkPtyExit) => void): OkUnsubscribe;
     claudePreflight(): Promise<ClaudeReadiness>;

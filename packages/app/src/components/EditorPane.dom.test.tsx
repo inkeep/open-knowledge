@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { isMacOS } from '@tiptap/core';
 import { type ReactNode, useEffect } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { publishSelectionContext } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
 import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
@@ -51,7 +51,7 @@ function shiftJKeydownInit(): KeyboardEventInit {
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
@@ -69,14 +69,14 @@ let projectSynced = false;
 let projectLocalConfig: { autoSync?: { enabled?: boolean | null } } | null = null;
 let projectConfig: { autoSync?: { default?: boolean | null } } | null = null;
 
-mock.module('@/hooks/use-git-sync-status', () => ({
+vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatus: () => ({
     hasRemote,
     pushPermission: { checkStatus: 'allowed' },
   }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     projectConfig,
     projectLocalConfig,
@@ -85,19 +85,19 @@ mock.module('@/lib/config-provider', () => ({
   }),
 }));
 
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => ({ contentDir: '/tmp/project', pathSeparator: '/' }),
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ activeDocName: 'docs/notes', collabUrl: 'ws://test' }),
 }));
 
-mock.module('@/editor/use-editor-mode', () => ({
+vi.doMock('@/editor/use-editor-mode', () => ({
   useEditorMode: () => ['wysiwyg', () => {}],
 }));
 
-mock.module('./EditorHeader', () => ({
+vi.doMock('./EditorHeader', () => ({
   EditorHeader: () => <div data-testid="editor-header" />,
 }));
 
@@ -107,15 +107,26 @@ mock.module('./EditorHeader', () => ({
 // state. The EditorArea mock is a bare stand-in; the TerminalSessionsHost mock
 // (below) surfaces the threaded `visible` + `launch` props so these tests keep
 // asserting EditorPane's wiring across the prop boundary.
-mock.module('./EditorArea', () => ({
+vi.doMock('./EditorArea', () => ({
   EditorArea: () => <div data-testid="editor-area" />,
 }));
-mock.module('./TerminalSessionsHost', () => ({
+// The agent-thread client binder opens a WS + polls /api/config on mount; stub it
+// so these EditorPane tests exercise terminal/onboarding wiring in isolation.
+vi.doMock('./acp/AgentThreadClientBinder', () => ({
+  AgentThreadClientBinder: () => null,
+}));
+// The sessions host now mounts UNCONDITIONALLY (web too) — a shell and an agent
+// are just tabs of a different kind. It receives `bridge` (null on web) so these
+// tests assert EditorPane's wiring across the prop boundary, including which host
+// gets a live bridge.
+vi.doMock('./TerminalSessionsHost', () => ({
   TerminalSessionsHost: ({
+    bridge,
     visible,
     launch,
     onActiveSessionCliChange,
   }: {
+    bridge?: unknown;
     visible?: boolean;
     launch?: { nonce: number; stagePaste?: string } | null;
     onActiveSessionCliChange?: (isCli: boolean) => void;
@@ -128,6 +139,7 @@ mock.module('./TerminalSessionsHost', () => ({
     return (
       <div
         data-testid="terminal-dock"
+        data-has-bridge={String(bridge != null)}
         data-visible={String(visible)}
         data-launch-nonce={launch ? String(launch.nonce) : 'none'}
         data-launch-stage={launch?.stagePaste ?? 'none'}
@@ -137,20 +149,20 @@ mock.module('./TerminalSessionsHost', () => ({
 }));
 
 const terminalOpenedCalls: true[] = [];
-mock.module('@/lib/terminal-telemetry', () => ({
+vi.doMock('@/lib/terminal-telemetry', () => ({
   recordTerminalOpened: () => terminalOpenedCalls.push(true),
   recordShellConsentGranted: () => undefined,
 }));
 
-mock.module('./AuthModal', () => ({
+vi.doMock('./AuthModal', () => ({
   AuthModal: () => <div data-testid="auth-modal" />,
 }));
 
-mock.module('@/editor/components/TagDialog', () => ({
+vi.doMock('@/editor/components/TagDialog', () => ({
   TagDialog: () => <div data-testid="tag-dialog" />,
 }));
 
-mock.module('./AutoSyncOnboardingDialog', () => ({
+vi.doMock('./AutoSyncOnboardingDialog', () => ({
   AutoSyncOnboardingDialog: ({ open, onResolved }: { open: boolean; onResolved: () => void }) => (
     <button
       type="button"
@@ -348,24 +360,31 @@ describe('EditorPane terminal dock wiring', () => {
     mockActiveIsCli = false;
   });
 
-  test('web host renders the editor chrome without a terminal dock', async () => {
+  test('web host mounts the sessions host (host-agnostic) with no desktop bridge', async () => {
     await renderEditorPane();
 
-    expect(screen.queryByTestId('terminal-dock')).toBeNull();
+    // The unified sessions dock is host-agnostic now — it mounts on web too (thread
+    // tabs only), just without a desktop bridge (terminal-kind affordances gate on
+    // the bridge inside the host).
+    const dock = screen.getByTestId('terminal-dock');
+    expect(dock).toBeTruthy();
+    expect(dock.getAttribute('data-has-bridge')).toBe('false');
     expect(screen.getByTestId('editor-header')).toBeTruthy();
     expect(screen.getByTestId('editor-area')).toBeTruthy();
   });
 
-  test('desktop host renders the editor chrome with the terminal dock under the editor area', async () => {
+  test('desktop host mounts the sessions host with a live bridge under the editor area', async () => {
     (window as { okDesktop?: unknown }).okDesktop = makeOkDesktopStub().stub;
     await renderEditorPane();
 
-    // The header and the live terminal session host are both siblings of the
-    // editor area now (the host lives in EditorPane so a dock toggle can't remount
-    // it). The host renders only when the desktop bridge is present.
+    // The header and the live session host are both siblings of the editor area
+    // (the host lives in EditorPane so a dock toggle can't remount it). On desktop
+    // the host gets a live bridge.
     expect(screen.getByTestId('editor-header')).toBeTruthy();
     expect(screen.getByTestId('editor-area')).toBeTruthy();
-    expect(screen.queryByTestId('terminal-dock')).not.toBeNull();
+    const dock = screen.getByTestId('terminal-dock');
+    expect(dock).not.toBeNull();
+    expect(dock.getAttribute('data-has-bridge')).toBe('true');
   });
 
   test('desktop: toggle-terminal menu action flips dock visibility and pushes the view-menu state', async () => {
@@ -607,7 +626,9 @@ describe('EditorPane terminal dock wiring', () => {
     const event = new KeyboardEvent('keydown', shiftJKeydownInit());
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
-    expect(screen.queryByTestId('terminal-dock')).toBeNull();
+    // The sessions dock still mounts host-agnostic (thread tabs), but ⇧⌘J is a
+    // terminal-launch accelerator: with no desktop bridge it stages nothing.
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-launch-nonce')).toBe('none');
   });
 
   test('desktop: ⌘J with a selection injects into the ACTIVE running CLI (no toggle, no launch)', async () => {

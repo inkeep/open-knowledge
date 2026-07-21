@@ -15,11 +15,11 @@
  * covered in TerminalPanel.dom.test.tsx.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect, useRef, useState } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
 import {
@@ -27,6 +27,8 @@ import {
   emitLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
 import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
+import { writePreferBareTerminal } from '@/lib/terminal-new-tab-store';
+import { saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 
 const TERMINAL_PANEL_ID = 'terminal-dock-panel';
@@ -35,20 +37,27 @@ const TERMINAL_PANEL_ID = 'terminal-dock-panel';
 let terminalPanelProps: Record<string, any> | null = null;
 
 const panelHandle = {
-  collapse: mock(() => terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 })),
-  expand: mock(() => terminalPanelProps?.onResize?.({ asPercentage: 40, inPixels: 240 })),
-  resize: mock((s: string) => {
+  collapse: vi.fn(() => terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 })),
+  expand: vi.fn(() => terminalPanelProps?.onResize?.({ asPercentage: 40, inPixels: 240 })),
+  resize: vi.fn((s: string) => {
     const px = Number.parseInt(s, 10) || 0;
     terminalPanelProps?.onResize?.({ asPercentage: px > 0 ? 30 : 0, inPixels: px });
   }),
 };
 const sharedPanelRef: { current: unknown } = { current: panelHandle };
 
-mock.module('react-resizable-panels', () => ({
+// The sessions-dock New split-button (+ catalog dialog) call react-query's
+// useQuery; these terminal-focused tests don't exercise the catalog, so stub it
+// so they need no QueryClientProvider / network.
+vi.doMock('@tanstack/react-query', () => ({
+  useQuery: () => ({ data: undefined, isLoading: false, isError: false }),
+}));
+
+vi.doMock('react-resizable-panels', () => ({
   usePanelRef: () => sharedPanelRef,
 }));
 
-mock.module('@/components/ui/resizable', () => ({
+vi.doMock('@/components/ui/resizable', () => ({
   // biome-ignore lint/suspicious/noExplicitAny: test stub
   ResizablePanelGroup: ({ children, orientation }: any) => (
     <div data-testid="rrp-group" data-orientation={orientation}>
@@ -98,7 +107,7 @@ function emitTitle(ptyId: string, title: string): boolean {
   return true;
 }
 
-mock.module('./TerminalGate', () => ({
+vi.doMock('./TerminalGate', () => ({
   // biome-ignore lint/suspicious/noExplicitAny: test stub
   TerminalGate: ({ bridge, launch, onTitleChange, onPtyId }: any) => {
     const ptyIdRef = useRef<string | null>(null);
@@ -142,6 +151,7 @@ mock.module('./TerminalGate', () => ({
       <span
         data-testid="terminal-session"
         data-launch={launch?.nonce ?? 'none'}
+        data-cli={launch?.cli ?? 'none'}
         className="xterm-helper-textarea"
         tabIndex={-1}
       />
@@ -149,7 +159,7 @@ mock.module('./TerminalGate', () => ({
   },
 }));
 
-mock.module('@/lib/terminal-height-store', () => ({
+vi.doMock('@/lib/terminal-height-store', () => ({
   getInitialTerminalHeight: () => 240,
   writeTerminalHeight: () => {},
 }));
@@ -164,14 +174,14 @@ function makeBridge() {
   // Hand each session a distinct PTY id (pty-1, pty-2, …) so a close can assert
   // exactly which session's PTY was reaped — the demux the dock owns.
   let ptyCounter = 0;
-  const create = mock(async () => {
+  const create = vi.fn(async () => {
     ptyCounter += 1;
     return { ok: true as const, ptyId: `pty-${ptyCounter}` };
   });
-  const kill = mock(async (_id: string) => {});
+  const kill = vi.fn(async (_id: string) => {});
   // Observes PTY writes at the dock boundary — a launch must never write into an
   // existing PTY (it opens its own tab), so tests assert `input` stays unused.
-  const input = mock((_ptyId: string, _data: string) => {});
+  const input = vi.fn((_ptyId: string, _data: string) => {});
   const bridge = {
     onMenuAction: () => () => {},
     editor: {
@@ -233,6 +243,9 @@ function DockHarness({
         onBottomContainer={setBottomContainer}
         onEditorRegion={setEditorRegionEl}
         onReveal={onReveal}
+        // Mirrors EditorArea's predicate (a terminal surface shows the reveal tab
+        // whenever hidden). The dock's terminal bridge is always present here.
+        showRevealTab={!v && onReveal != null}
       >
         <div data-testid="editor-child" />
       </TerminalDock>
@@ -258,7 +271,7 @@ function renderDock(
   onReveal?: () => void,
   onActiveSessionCliChange?: (isCli: boolean) => void,
 ) {
-  const onVisibleChange = mock((_v: boolean) => {});
+  const onVisibleChange = vi.fn((_v: boolean) => {});
   const { bridge, create, kill, input, viewMenuPushes, dispatchMenuAction } = makeBridge();
   const ui = (v: boolean, l?: TestLaunch | null, dock?: TerminalDockPosition) => (
     <DockHarness
@@ -318,12 +331,13 @@ function editorRegion(): HTMLElement {
 // path that replaced the standalone "New terminal tab" button. Opens a bare shell
 // (no CLI launch), the same session the old button created.
 async function addTerminalTab(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Choose CLI for new chat' }));
+  await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
   await user.click(await screen.findByRole('menuitem', { name: 'Terminal' }));
 }
 
 describe('TerminalDock multi-session', () => {
   beforeEach(() => {
+    localStorage.clear();
     terminalPanelProps = null;
     panelHandle.collapse.mockClear();
     panelHandle.resize.mockClear();
@@ -341,8 +355,8 @@ describe('TerminalDock multi-session', () => {
     renderDock(true);
     // The dock-toggle button is the dock-move affordance now (dragging removed).
     // The harness is bottom-docked, so the toggle offers "move to the right".
-    expect(screen.getByRole('button', { name: 'Dock terminal to the right' })).not.toBeNull();
-    expect(screen.getByRole('button', { name: 'Collapse terminal' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Dock sessions on the right' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Collapse session dock' })).not.toBeNull();
     // The old drag grip is gone.
     expect(screen.queryByRole('button', { name: 'Drag to dock the terminal' })).toBeNull();
   });
@@ -367,6 +381,16 @@ describe('TerminalDock multi-session', () => {
 
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
     expect(view.create).toHaveBeenCalledTimes(1);
+  });
+
+  test('opening an empty dock launches the same preferred CLI as the New-session button', () => {
+    writePreferBareTerminal(false);
+    saveStickyAgent(terminalCliId('cursor'));
+    const view = renderDock(false);
+
+    act(() => view.rerender(true));
+
+    expect(screen.getByTestId('terminal-session').getAttribute('data-cli')).toBe('cursor');
   });
 
   test('the new-terminal control adds a session, activates it, and spawns its PTY', async () => {
@@ -1139,7 +1163,7 @@ describe('TerminalDock multi-session', () => {
     renderDock(true);
     await addTerminalTab(user);
 
-    const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
+    const tablist = screen.getByRole('tablist', { name: 'Sessions' });
     const tabs = within(tablist).getAllByRole('tab');
     expect(tabs).toHaveLength(2);
     // Each tab's aria-controls resolves to a rendered panel (no dangling ref).
@@ -1173,34 +1197,34 @@ describe('TerminalDock multi-session', () => {
     expect(document.activeElement).toBe(session);
   });
 
-  test('shows the bottom-edge "Show terminal" tab only while hidden, inside the editor column', () => {
-    const onReveal = mock(() => {});
+  test('shows the bottom-edge "Open session dock" tab only while hidden, inside the editor column', () => {
+    const onReveal = vi.fn(() => {});
     const view = renderDock(false, null, onReveal);
 
     // Hidden → the reveal tab is present, and lives inside the editor region (not
     // the doc panel), since a bottom-docked terminal slides up from there.
-    const reveal = screen.getByRole('button', { name: 'Show terminal' });
+    const reveal = screen.getByRole('button', { name: 'Open session dock' });
     expect(editorRegion().contains(reveal)).toBe(true);
 
     // Visible → the reveal tab is gone (the tab strip's collapse control is the
     // hide affordance while open).
     act(() => view.rerender(true));
-    expect(screen.queryByRole('button', { name: 'Show terminal' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open session dock' })).toBeNull();
   });
 
   test('clicking the reveal tab requests a reveal', async () => {
     const user = userEvent.setup();
-    const onReveal = mock(() => {});
+    const onReveal = vi.fn(() => {});
     renderDock(false, null, onReveal);
 
-    await user.click(screen.getByRole('button', { name: 'Show terminal' }));
+    await user.click(screen.getByRole('button', { name: 'Open session dock' }));
 
     expect(onReveal).toHaveBeenCalledTimes(1);
   });
 
   test('renders no reveal tab when no reveal handler is wired (web host)', () => {
     renderDock(false);
-    expect(screen.queryByRole('button', { name: 'Show terminal' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open session dock' })).toBeNull();
   });
 
   test('disables the resize handle while hidden so there is no drag-to-open', () => {
@@ -1273,7 +1297,7 @@ describe('TerminalSessionsHost focus-return gating across a dock move', () => {
   }
 
   test('a dock move keeps focus (visible stays true); a genuine hide returns focus to the editor', () => {
-    const onEditorFocus = mock(() => {});
+    const onEditorFocus = vi.fn(() => {});
     const { bridge } = makeBridge();
     const ui = (isShowing: boolean, visible: boolean) => (
       <FocusHarness

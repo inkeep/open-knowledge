@@ -44,6 +44,8 @@ import {
   resolveShadowDir,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
+import { AcpPermissionStore } from './acp/permissions.ts';
+import { AcpRegistry, loadCustomAgents } from './acp/registry.ts';
 import { AgentFocusBroadcaster } from './agent-focus.ts';
 import { AgentPresenceBroadcaster } from './agent-presence.ts';
 import { AgentSessionManager } from './agent-sessions.ts';
@@ -393,6 +395,16 @@ export interface ServerInstance {
   readonly lockDir: string;
   /** Active sync engine instance, or null if dormant / no remote detected. */
   readonly syncEngine: SyncEngine | null;
+  /**
+   * Wiki-embed resolver (basename → contentDir-relative path). Exposed so
+   * consumers that apply agent markdown writes outside the HTTP handlers
+   * (the ACP thread host) resolve `![[file.ext]]` refs identically.
+   */
+  readonly resolveEmbed: (basename: string, sourcePath: string) => string | null;
+  /** ACP agent catalog shared by the catalog route and the thread host. */
+  readonly acpRegistry: AcpRegistry;
+  /** ACP permission-policy store shared with the thread host. */
+  readonly acpPermissions: AcpPermissionStore;
 }
 
 /**
@@ -772,6 +784,13 @@ export function createServer(options: ServerOptions): ServerInstance {
   // different `content.dir` settings still collide on the same lock — desired,
   // because one server services one project.
   const lockDir = getLocalDir(projectDir);
+
+  // ACP catalog + permission store — cheap lazy objects (network/disk only on
+  // first use), constructed unconditionally so the catalog route and the boot
+  // paths (CLI, desktop utility, dev plugin) share one instance per server.
+  const acpRegistry = new AcpRegistry({ localDir: lockDir, log: getLogger('acp-registry') });
+  const acpPermissions = new AcpPermissionStore(lockDir, getLogger('acp-permissions'));
+
   acquireServerLock(lockDir, {
     port: options.port ?? 0,
     worktreeRoot: projectDir,
@@ -1723,6 +1742,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       projectDir,
       resolveEmbed,
       getPrincipal: () => loadedPrincipal,
+      acpRegistry,
+      loadAcpCustomAgents: () => loadCustomAgents(lockDir, getLogger('acp-registry')),
       // Reuse the single user-home override that also resolves `~/.ok/global.yml`
       // so global-scope skills (`<home>/.ok/skills`) resolve under the same
       // home (tests pass a tempdir; production leaves it undefined → homedir()).
@@ -4227,5 +4248,8 @@ export function createServer(options: ServerOptions): ServerInstance {
     get syncEngine() {
       return syncEngine;
     },
+    resolveEmbed,
+    acpRegistry,
+    acpPermissions,
   };
 }

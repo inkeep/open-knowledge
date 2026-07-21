@@ -1970,11 +1970,19 @@ export interface OkDesktopBridge {
      */
     setOrder(orderedPtyIds: readonly string[]): void;
     /**
-     * Per-window dock visibility retained in main, read once on reload so the
-     * dock re-expands when it was open before the reload (and stays hidden after
-     * a fresh launch where no sessions survived).
+     * Per-window sessions-dock state retained in main, read once on reload so the
+     * dock re-expands (`visible`) and restores its interleaved cross-kind tab order
+     * (`order` = terminal ptyIds + thread threadIds) + active tab (`activeKey`) when
+     * it was open before the reload. `order`/`activeKey` are optional for version
+     * skew (an older main returns just `visible`).
      */
-    getDockState(): Promise<{ visible: boolean }>;
+    getDockState(): Promise<{ visible: boolean; order?: string[]; activeKey?: string | null }>;
+    /**
+     * Persist the unified sessions-dock order + active key in main (per window) so a
+     * renderer reload restores the interleaved cross-kind arrangement. `order` holds
+     * reload-stable keys (ptyIds + threadIds) in tab order. Fire-and-forget.
+     */
+    setDockState(state: { order: string[]; activeKey: string | null }): void;
     onData(cb: (msg: OkPtyData) => void): OkUnsubscribe;
     onExit(cb: (msg: OkPtyExit) => void): OkUnsubscribe;
     /**

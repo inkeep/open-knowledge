@@ -1,7 +1,9 @@
 import type { HandoffTarget, TargetData, TerminalCli } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
+import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { cliIconTargetId } from '@/components/handoff/terminal-cli-display';
 import { Button } from '@/components/ui/button';
@@ -30,10 +32,10 @@ import {
  * caller decides whether to render this at all (e.g. the empty-state swaps in a
  * disabled standalone button until an agent resolves).
  *
- * Uses a DropdownMenu (not a Popover): the Electron pointerdown hazard only
- * bites Radix triggers inside `-webkit-app-region: drag` chrome, and both
- * consumers sit in the content area. See ProjectSwitcher for the drag-region
- * case that genuinely needs the workaround.
+ * Uses a non-modal DropdownMenu (not a Popover): these are menu actions, but
+ * "Choose another agent" hands directly to a modal dialog. A modal dropdown
+ * would leave Radix's body pointer lock active during that handoff and make the
+ * catalog appear frozen.
  */
 /**
  * One CLI row in the "Terminal" section — a docked-terminal launcher for a
@@ -47,6 +49,25 @@ export interface TerminalCliRow {
   readonly label: ReactNode;
   /** Accessible name, distinct from a same-named Desktop row (WCAG 2.5.3). */
   readonly ariaLabel: string;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+}
+
+/**
+ * One registered in-app agent in the "In this app" section — selecting it
+ * makes that agent the thread target (the parent owns registration/default
+ * bumping). When any of these exist, they replace the single generic
+ * "Start an agent" row so the first registration never locks the choice in.
+ */
+export interface ThreadAgentRow {
+  /** Stable row key (`<source>:<id>`). */
+  readonly key: string;
+  /** Registry/custom agent id used to select a known local brand icon. */
+  readonly id: string;
+  /** Agent display name ("Claude Agent"). */
+  readonly name: string;
+  /** Registry-manifest icon URL, when any. */
+  readonly iconUrl?: string;
   readonly selected: boolean;
   readonly onSelect: () => void;
 }
@@ -65,6 +86,10 @@ export interface AgentSplitButtonTestIds {
    * `terminal` slot; a function keys each row of the `terminals` array by CLI.
    */
   terminal: string | ((cli: TerminalCli) => string);
+  /** Per-registered-agent thread row testid, keyed by the row key. */
+  threadAgent?: (key: string) => string;
+  /** The "Settings" row testid — opens Configure agents. */
+  settings?: string;
 }
 
 export function AgentSplitButton({
@@ -74,6 +99,8 @@ export function AgentSplitButton({
   installedTargets,
   selectedTargetId,
   onSelectTarget,
+  threadAgents,
+  onOpenSettings,
   terminal,
   terminals,
   menuEmptyState,
@@ -103,6 +130,17 @@ export function AgentSplitButton({
    * renders these rows instead of the legacy single {@link terminal} slot.
    */
   terminals?: readonly TerminalCliRow[];
+  /**
+   * Enabled in-app agents, one selectable row each. When empty, the "In app"
+   * group is hidden entirely (no generic fallback row).
+   */
+  threadAgents?: readonly ThreadAgentRow[];
+  /**
+   * Opens Settings → Configure agents — rendered as the last row of the menu so
+   * the user manages which agents appear here. Replaces the former catalog
+   * "Choose another agent…" affordance.
+   */
+  onOpenSettings: () => void;
   /** Rendered inside the menu when there are no app agents and no terminal. */
   menuEmptyState?: ReactNode;
   onMenuOpenChange?: (open: boolean) => void;
@@ -115,6 +153,7 @@ export function AgentSplitButton({
   const cliRows = terminals && terminals.length > 0 ? terminals : null;
   const showTerminal = cliRows != null || terminal != null;
   const hasOptions = showDesktop || showTerminal;
+  const showThreadAgents = threadAgents !== undefined && threadAgents.length > 0;
   // The terminal-row testid is either a static string (legacy slot) or a
   // per-CLI function (N-row mode); normalize to a per-CLI resolver here.
   const terminalTestId = (cli: TerminalCli): string =>
@@ -135,7 +174,7 @@ export function AgentSplitButton({
       >
         {primary}
       </Button>
-      <DropdownMenu onOpenChange={onMenuOpenChange}>
+      <DropdownMenu modal={false} onOpenChange={onMenuOpenChange}>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
@@ -147,7 +186,41 @@ export function AgentSplitButton({
             <ChevronDown aria-hidden="true" className="size-3.5 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align={menuAlign} className="min-w-[200px]" data-testid={testIds.menu}>
+        <DropdownMenuContent
+          align={menuAlign}
+          className="max-h-80 min-w-[200px]"
+          data-testid={testIds.menu}
+        >
+          {showThreadAgents ? (
+            // In-app agent threads lead the menu when any is enabled; an empty
+            // section (all disabled) is hidden entirely.
+            <>
+              <DropdownMenuGroup aria-label={t`In app (beta)`}>
+                <DropdownMenuLabel className="flex items-center gap-1.5">
+                  <Trans>In app</Trans>
+                  <AgentBetaBadge />
+                </DropdownMenuLabel>
+                {threadAgents?.map((row) => (
+                  <DropdownMenuItem
+                    key={row.key}
+                    onSelect={row.onSelect}
+                    data-testid={testIds.threadAgent?.(row.key)}
+                  >
+                    <RegisteredAgentIcon
+                      agentId={row.id}
+                      iconUrl={row.iconUrl}
+                      className="size-4"
+                    />
+                    <span className="flex-1 truncate">{row.name}</span>
+                    {row.selected ? (
+                      <Check aria-hidden="true" className="size-4 text-muted-foreground" />
+                    ) : null}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+              {hasOptions ? <DropdownMenuSeparator /> : null}
+            </>
+          ) : null}
           {hasOptions ? (
             <>
               {showTerminal ? (
@@ -234,9 +307,22 @@ export function AgentSplitButton({
                 </>
               ) : null}
             </>
-          ) : (
-            menuEmptyState
-          )}
+          ) : null}
+          {/* Empty state only when nothing at all is enabled (no in-app agents,
+              no terminal, no desktop) — an empty section header never shows. */}
+          {!showThreadAgents && !hasOptions ? menuEmptyState : null}
+          {/* Settings row — always last. Opens Configure agents so the user
+              manages which agents appear in this menu (replaces the former
+              "Choose another agent" catalog affordance). The separator only
+              renders when a section sits above it — when nothing is enabled the
+              empty state reads with the footer as one unit, no lone rule. */}
+          {showThreadAgents || hasOptions ? <DropdownMenuSeparator /> : null}
+          <DropdownMenuItem onSelect={onOpenSettings} data-testid={testIds.settings}>
+            <SlidersHorizontal aria-hidden="true" className="size-4 text-muted-foreground" />
+            <span className="flex-1">
+              <Trans>Configure agents</Trans>
+            </span>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </ButtonGroup>

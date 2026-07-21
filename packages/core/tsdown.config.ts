@@ -8,6 +8,7 @@ export default defineConfig({
     server: 'src/server.ts',
     keepalive: 'src/keepalive/keepalive.ts',
     'helper-bundle': 'src/helper-bundle.ts',
+    'acp-thread-protocol': 'src/acp/thread-protocol.ts',
   },
   unbundle: false,
   format: 'esm',

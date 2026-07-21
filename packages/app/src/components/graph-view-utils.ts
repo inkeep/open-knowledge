@@ -9,6 +9,8 @@ interface DocGraphNode {
   cluster?: string | null;
   category?: string | null;
   tags?: string[] | null;
+  /** Wall-clock ms this node first entered the rendered graph (birth animation). */
+  bornAt?: number;
 }
 
 interface ExternalGraphNode {
@@ -16,6 +18,8 @@ interface ExternalGraphNode {
   id: string;
   label: string;
   url: string;
+  /** Wall-clock ms this node first entered the rendered graph (birth animation). */
+  bornAt?: number;
 }
 
 export type GraphNode = DocGraphNode | ExternalGraphNode;
@@ -23,6 +27,8 @@ export type GraphNode = DocGraphNode | ExternalGraphNode;
 export interface GraphLink {
   source: string;
   target: string;
+  /** Wall-clock ms this link first entered the rendered graph (fade-in). */
+  bornAt?: number;
 }
 
 export interface GraphData {
@@ -122,18 +128,67 @@ export function buildGraphLinkSignature(links: GraphLink[]): string {
     .join(',');
 }
 
-export function reconcileGraphData(previous: GraphData, next: GraphData): GraphData {
+/**
+ * Staged-entrance pacing for `reconcileGraphData`. Agents deliver a whole
+ * page batch in one CC1 push, so every new node would otherwise stamp the
+ * same `bornAt` and bloom simultaneously. With entrance options, the i-th
+ * new node of an apply is born `i * nodeStepMs` later (a sequential pop-in
+ * replay of the build), and each new link waits for BOTH endpoints plus
+ * `linkExtraMs`, so edges draw between nodes that are already visible.
+ */
+export interface ReconcileEntranceOptions {
+  nodeStepMs: number;
+  linkExtraMs: number;
+  /**
+   * Pre-build content (the showcase's build-start baseline): these nodes and
+   * links materialize INSTANTLY (`bornAt: 0`, no birth animation) even on a
+   * fresh mount — the staged replay is for what the agent ADDED, not for
+   * re-birthing everything that already existed.
+   */
+  instantNodeIds?: ReadonlySet<string>;
+  instantLinkKeys?: ReadonlySet<string>;
+}
+
+/**
+ * Merge a fresh API graph into the rendered one, preserving force-layout
+ * physics for surviving nodes and stamping `bornAt` on first appearance so the
+ * canvas can fade/scale new nodes and links in. `now` is injectable for tests.
+ * `entrance` (showcase mode) staggers same-apply arrivals — see
+ * {@link ReconcileEntranceOptions}.
+ */
+export function reconcileGraphData(
+  previous: GraphData,
+  next: GraphData,
+  now: number = Date.now(),
+  entrance?: ReconcileEntranceOptions,
+): GraphData {
   const previousNodesById = new Map(
     (previous.nodes as MutableGraphNode[]).map((node) => [node.id, node] as const),
   );
+  const newNodes: MutableGraphNode[] = [];
   const nextNodes = next.nodes.map((node) => {
     const mergedNode = { ...node } as MutableGraphNode;
     const previousNode = previousNodesById.get(node.id);
     if (previousNode) {
       copyGraphNodePhysics(mergedNode, previousNode);
+      mergedNode.bornAt = previousNode.bornAt ?? now;
+    } else if (entrance?.instantNodeIds?.has(node.id)) {
+      // Pre-build content on a fresh mount — present, not born.
+      mergedNode.bornAt = 0;
+    } else {
+      mergedNode.bornAt = now;
+      newNodes.push(mergedNode);
     }
     return mergedNode as GraphNode;
   });
+  // A lone arrival needs no pacing; a clump gets the sequential entrance.
+  // API order approximates creation order (the write batch is ordered).
+  if (entrance !== undefined && newNodes.length > 1) {
+    newNodes.forEach((node, index) => {
+      node.bornAt = now + index * entrance.nodeStepMs;
+    });
+  }
+  const nodeBornById = new Map(nextNodes.map((node) => [node.id, node.bornAt] as const));
 
   const previousLinksByKey = new Map(
     (previous.links as MutableGraphLink[]).map((link) => [
@@ -143,14 +198,26 @@ export function reconcileGraphData(previous: GraphData, next: GraphData): GraphD
   );
   const nextLinks = next.links.map((link) => {
     const mergedLink = { ...link } as MutableGraphLink;
-    const previousLink = previousLinksByKey.get(
-      `${getGraphLinkEndpointId(link.source)}>${getGraphLinkEndpointId(link.target)}`,
-    );
+    const sourceId = getGraphLinkEndpointId(link.source);
+    const targetId = getGraphLinkEndpointId(link.target);
+    const previousLink = previousLinksByKey.get(`${sourceId}>${targetId}`);
     // __indexColor is force-graph's internal canvas hit-test identifier.
     // The map is keyed by source>target, so this only copies the color when
     // the exact same endpoint pair reappears — never leaks across different links.
     if (previousLink?.__indexColor) {
       mergedLink.__indexColor = previousLink.__indexColor;
+    }
+    if (previousLink?.bornAt !== undefined) {
+      mergedLink.bornAt = previousLink.bornAt;
+    } else if (entrance?.instantLinkKeys?.has(`${sourceId}>${targetId}`)) {
+      // Pre-build link on a fresh mount — present, not born.
+      mergedLink.bornAt = 0;
+    } else if (entrance !== undefined) {
+      mergedLink.bornAt =
+        Math.max(now, nodeBornById.get(sourceId) ?? now, nodeBornById.get(targetId) ?? now) +
+        entrance.linkExtraMs;
+    } else {
+      mergedLink.bornAt = now;
     }
     return mergedLink as GraphLink;
   });

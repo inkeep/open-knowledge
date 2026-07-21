@@ -1,5 +1,6 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
+  type AgentFlashEntry,
   sharedExtensions as coreExtensions,
   deriveIconColor,
   evictStaleEntries,
@@ -26,6 +27,9 @@ import { getInteractionLayer } from './interaction-layer-host';
 // measurements. WeakMap auto-GCs when the Editor is destroyed.
 const editorCtorStartTimes = new WeakMap<object, number>();
 
+import type { Transaction as PMTransaction } from '@tiptap/pm/state';
+import type { EditorView as PMEditorView } from '@tiptap/pm/view';
+import { loadFollowFilePref } from '@/components/acp/follow-file';
 import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
 import { anchorFromHash } from '@/lib/doc-hash';
 import { mark } from '@/lib/perf';
@@ -53,6 +57,14 @@ import { uploadDecorationPlugin } from './image-upload/index.ts';
 import { getMountId } from './mount-id-registry';
 import { mountTiptapEditorPromise } from './mount-promise';
 import { markUserTyping } from './observers';
+import {
+  AGENT_INSERT_FLASH_ACTIVATION_MS,
+  AGENT_INSERT_FLASH_MS,
+  agentInsertFlashKey,
+  blockRangeToPositions,
+  computeChangedRange,
+  createAgentInsertFlashPlugin,
+} from './plugins/agent-insert-flash';
 import { publishSelectionContext, selectionSnapshotFromWysiwyg } from './selection-context';
 import {
   publishSelectionStats,
@@ -111,6 +123,26 @@ const INITIAL_FLASH_STATE: AgentFlashState = {
   position: 'append',
   lastAgentId: null,
 };
+
+/**
+ * The newest `agent-flash` entry with a timestamp after `since`, keyed by
+ * `agentId:timestamp` so the live flash and the activation replay can dedupe on
+ * the same write. Structural map param avoids a yjs type import.
+ */
+function freshestFlashEntry(
+  activityMap: { entries(): IterableIterator<[string, unknown]> },
+  since: number,
+): { key: string; entry: AgentFlashEntry } | null {
+  let best: { key: string; entry: AgentFlashEntry } | null = null;
+  for (const [id, value] of activityMap.entries()) {
+    const entry = value as AgentFlashEntry;
+    if (typeof entry?.timestamp !== 'number' || entry.timestamp <= since) continue;
+    if (best === null || entry.timestamp > best.entry.timestamp) {
+      best = { key: `${id}:${entry.timestamp}`, entry };
+    }
+  }
+  return best;
+}
 
 const ANCHOR_SCROLL_MAX_ATTEMPTS = 100;
 const ANCHOR_SCROLL_RETRY_MS = 100;
@@ -1160,6 +1192,161 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       if (flashSettledTimeout) clearTimeout(flashSettledTimeout);
     };
   }, [provider.document, flashStateRef, wrapperRef]);
+
+  // Position-accurate agent-insert flash + follow-the-write scroll. The block
+  // flash above is the ambient "an agent wrote here" signal; this decorates the
+  // ACTUAL changed range and, when following, brings it into view — the "watch
+  // the agent edit this document" moment.
+  //
+  // A single agent write is one atomic transaction, so there is one chance to
+  // catch it — and follow mode races navigation against that write. Two entry
+  // points cover both orderings:
+  //  - LIVE: the write lands as a remote y-sync transaction while this doc is
+  //    already the active, mounted editor. Diff before→after for the exact range.
+  //  - ACTIVATION REPLAY: follow mode navigates here AFTER the write already
+  //    applied (the editor mounts to already-final content, or was a hidden pool
+  //    editor when the write landed), so there is no before→after transaction.
+  //    The server stamped the changed block range on the `agent-flash` entry;
+  //    map it to a PM range against the settled doc.
+  //
+  // Shared gates: an agent write is signalled by a fresh `agent-flash` entry —
+  // human co-editing drops none, so it never flashes. Only the active editor
+  // flashes (hidden pool editors still receive updates but must not decorate).
+  // Scroll additionally requires the follow pref, a visible tab, and an
+  // unfocused editor (never yank the viewport out from under a cursor). The two
+  // paths dedupe on the entry key so a write caught live isn't replayed on a
+  // later re-activation.
+  const lastAgentFlashKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const plugin = createAgentInsertFlashPlugin();
+    const activityMap = provider.document.getMap('agent-flash');
+    let sweepTimeout: number | null = null;
+    let disposed = false;
+    // Defer registration out of React's synchronous commit phase. registerPlugin
+    // reconfigures the editor state, which re-mounts TipTap's React node views via
+    // ReactRenderer (which calls flushSync). When this passive effect runs during
+    // a React `<Activity>` reveal — reconnectPassiveEffects fires passive effects
+    // inside the commit — that flushSync lands "inside a lifecycle method" and
+    // React rejects it (console error + dropped flush). A microtask runs after the
+    // commit unwinds; the rAF-driven activation replay below fires a frame later,
+    // so it still observes the registered plugin.
+    queueMicrotask(() => {
+      if (disposed || editor.isDestroyed) return;
+      editor.registerPlugin(plugin);
+    });
+    const followUpTimers: number[] = [];
+    // `view` is a throwing proxy pre-mount; `editorView` is the non-throwing
+    // private ref (same cast as editor-cache.ts's getTiptapEditorView).
+    const liveView = (): PMEditorView | null =>
+      (editor as unknown as { editorView?: PMEditorView }).editorView ?? null;
+
+    // Flash the changed PM range and, when following, scroll it into view.
+    // Re-asserts the scroll a few times because an agent write settles over
+    // several frames — the scroll container keeps growing as appended blocks lay
+    // out (fonts, wraps, embeds), so a single scroll targets a pre-growth
+    // position and lands short. The midpoint centers the new section itself.
+    const flashAndScroll = (view: PMEditorView, from: number, to: number): void => {
+      view.dispatch(
+        view.state.tr.setMeta(agentInsertFlashKey, { add: { from, to }, now: Date.now() }),
+      );
+      if (sweepTimeout !== null) clearTimeout(sweepTimeout);
+      sweepTimeout = window.setTimeout(() => {
+        sweepTimeout = null;
+        const sweepView = liveView();
+        if (sweepView == null) return;
+        sweepView.dispatch(
+          sweepView.state.tr.setMeta(agentInsertFlashKey, { now: Date.now(), sweep: true }),
+        );
+      }, AGENT_INSERT_FLASH_MS + 50);
+
+      if (!loadFollowFilePref()) return;
+      if (document.visibilityState !== 'visible') return;
+      if (view.hasFocus()) return;
+      const scrollToChange = (): void => {
+        const sv = liveView();
+        if (sv == null || sv.hasFocus() || document.visibilityState !== 'visible') return;
+        try {
+          const docSize = sv.state.doc.content.size;
+          const pos = Math.max(0, Math.min(Math.floor((from + to) / 2), docSize - 1));
+          const domRef = sv.domAtPos(pos);
+          // domAtPos returns a text node (→ its block is the parent) or, at a
+          // block boundary, the container element with `offset` = the child
+          // index (→ that child is the block).
+          const node = domRef.node;
+          const raw =
+            node.nodeType === Node.TEXT_NODE
+              ? node.parentElement
+              : (node.childNodes[domRef.offset] ?? node);
+          const el = raw instanceof HTMLElement ? raw : (raw?.parentElement ?? null);
+          if (el == null) return;
+          const rect = el.getBoundingClientRect();
+          if (rect.top >= 0 && rect.bottom <= window.innerHeight) return;
+          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } catch {
+          // domAtPos on a just-replaced doc edge — skip, keep the flash.
+        }
+      };
+      requestAnimationFrame(scrollToChange);
+      followUpTimers.push(
+        window.setTimeout(scrollToChange, 250),
+        window.setTimeout(scrollToChange, 550),
+      );
+    };
+
+    const onTransaction = ({ transaction }: { transaction: PMTransaction }) => {
+      if (!transaction.docChanged) return;
+      const syncMeta = transaction.getMeta(ySyncPluginKey) as
+        | { isChangeOrigin?: boolean }
+        | undefined;
+      if (syncMeta?.isChangeOrigin !== true) return;
+      if (!hasNewEntries(activityMap, Date.now() - AGENT_INSERT_FLASH_MS)) return;
+      if (docName !== activeDocName) return;
+      const fresh = freshestFlashEntry(activityMap, Date.now() - AGENT_INSERT_FLASH_MS);
+      if (fresh !== null && fresh.key === lastAgentFlashKeyRef.current) return;
+      // Diff the doc before/after this transaction so a whole-body `replace`
+      // (every agent write) collapses to just the bytes that changed.
+      const range = computeChangedRange(transaction.before, transaction.doc);
+      if (range === null) return;
+      const view = liveView();
+      if (view == null) return;
+      if (fresh !== null) lastAgentFlashKeyRef.current = fresh.key;
+      flashAndScroll(view, range.from, range.to);
+    };
+    editor.on('transaction', onTransaction);
+
+    // Replay from the server-stamped block range when this doc is (or becomes)
+    // active after a write already applied. Runs a frame later so the PM doc +
+    // layout have settled; on `synced` too, for a fresh mount whose write
+    // predates the initial sync.
+    const replayFromEntry = (): void => {
+      if (disposed || docName !== activeDocName) return;
+      const view = liveView();
+      if (view == null) return;
+      const fresh = freshestFlashEntry(activityMap, Date.now() - AGENT_INSERT_FLASH_ACTIVATION_MS);
+      if (fresh === null || fresh.key === lastAgentFlashKeyRef.current) return;
+      const blocks = fresh.entry.changedBlocks;
+      if (blocks === undefined) return;
+      const range = blockRangeToPositions(view.state.doc, blocks.from, blocks.to);
+      if (range === null) return;
+      lastAgentFlashKeyRef.current = fresh.key;
+      flashAndScroll(view, range.from, range.to);
+    };
+    const activationRaf = requestAnimationFrame(replayFromEntry);
+    const onSynced = (): void => {
+      requestAnimationFrame(replayFromEntry);
+    };
+    provider.on('synced', onSynced);
+
+    return () => {
+      disposed = true;
+      editor.off('transaction', onTransaction);
+      provider.off('synced', onSynced);
+      cancelAnimationFrame(activationRaf);
+      if (sweepTimeout !== null) clearTimeout(sweepTimeout);
+      for (const timer of followUpTimers) clearTimeout(timer);
+      editor.unregisterPlugin(agentInsertFlashKey);
+    };
+  }, [editor, provider.document, docName, activeDocName, provider.on, provider.off]);
 
   // Scroll to an anchor target after navigating from a wiki link, Mirror
   // "Open source" chrome link, or other `#/<doc>#<slug>` deep-link.

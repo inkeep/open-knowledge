@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 type SettingsDialogShellProps = {
   open: boolean;
@@ -8,15 +8,15 @@ type SettingsDialogShellProps = {
 };
 
 let settingsRouteOpen = false;
-let closeSettingsRouteMock = mock(() => {});
+let closeSettingsRouteMock = vi.fn(() => {});
 let shellProps: SettingsDialogShellProps[] = [];
 
-mock.module('@/lib/perf', () => ({
+vi.doMock('@/lib/perf', () => ({
   mark: () => {},
   ProfilerBoundary: ({ children }: { children: ReactNode }) => children,
 }));
 
-mock.module('@/components/PropertyContext', () => ({
+vi.doMock('@/components/PropertyContext', () => ({
   PropertyProvider: ({ children }: { children: ReactNode }) => children,
   useProperties: () => ({ requestAddProperty: () => {} }),
 }));
@@ -24,7 +24,7 @@ mock.module('@/components/PropertyContext', () => ({
 // EditorArea reads the project config binding (for the desktop "toggle content
 // rules" menu action). These tests mount EditorArea outside a ConfigProvider,
 // so stub the hook with a null binding — the toggle handler is a no-op here.
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({ projectBinding: null }),
 }));
 
@@ -89,12 +89,12 @@ let docCtx:
   | typeof LARGE_FILE_DOC_CTX
   | typeof ASSET_DOC_CTX
   | typeof DOC_COLD_CTX = FOLDER_DOC_CTX;
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => docCtx,
   useDocumentTransition: () => ({ openDocumentTransition: null }),
 }));
 
-mock.module('@/components/EmptyEditorState', () => ({
+vi.doMock('@/components/EmptyEditorState', () => ({
   // Forward terminalDock so the EditorArea -> EmptyEditorState prop wiring is
   // observable (the empty state collapses to the header-only view whenever a
   // terminal is up, in either dock).
@@ -106,11 +106,11 @@ mock.module('@/components/EmptyEditorState', () => ({
 // Counts TerminalDock mounts so a remount-on-view-switch regression (which
 // would dispose xterm + kill the PTY) is observable in tests.
 let terminalDockMounts = 0;
-mock.module('@/components/EditorSkeleton', () => ({
+vi.doMock('@/components/EditorSkeleton', () => ({
   EditorSkeleton: () => <div data-testid="editor-skeleton" />,
 }));
 
-mock.module('./TerminalDock', () => ({
+vi.doMock('./TerminalDock', () => ({
   TerminalDock: ({ children, visible }: { children: ReactNode; visible?: boolean }) => {
     useEffect(() => {
       terminalDockMounts += 1;
@@ -132,7 +132,7 @@ mock.module('./TerminalDock', () => ({
 let groupLayout: Record<string, number> = {};
 let groupSetLayoutCalls: Array<Record<string, number>> = [];
 let panelIsCollapsed = false;
-mock.module('react-resizable-panels', () => ({
+vi.doMock('react-resizable-panels', () => ({
   usePanelRef: () => ({
     current: {
       collapse: () => {},
@@ -155,7 +155,7 @@ mock.module('react-resizable-panels', () => ({
 // panel + optional right panel), so the resizable primitives must resolve in
 // the DOM harness. Passthrough mocks render children without the real
 // react-resizable-panels engine (which is stubbed).
-mock.module('@/components/ui/resizable', () => ({
+vi.doMock('@/components/ui/resizable', () => ({
   ResizablePanelGroup: ({ children }: { children: ReactNode }) => (
     <div data-testid="resizable-group">{children}</div>
   ),
@@ -167,23 +167,23 @@ mock.module('@/components/ui/resizable', () => ({
   ),
 }));
 
-mock.module('@/hooks/use-doc-panel-layout', () => ({
+vi.doMock('@/hooks/use-doc-panel-layout', () => ({
   useDocPanelLayout: () => ({ layout: 'panel', autoCollapse: false }),
 }));
 
-mock.module('@/hooks/use-document-stats', () => ({
+vi.doMock('@/hooks/use-document-stats', () => ({
   useDocumentStats: () => null,
 }));
 
-mock.module('@/hooks/use-lifecycle-status', () => ({
+vi.doMock('@/hooks/use-lifecycle-status', () => ({
   useLifecycleStatus: () => 'ready',
 }));
 
-mock.module('@/presence/use-sync-status', () => ({
+vi.doMock('@/presence/use-sync-status', () => ({
   useSyncStatus: () => 'synced',
 }));
 
-mock.module('@/components/FolderOverview', () => ({
+vi.doMock('@/components/FolderOverview', () => ({
   FolderOverview: ({ folderPath }: { folderPath: string }) => (
     <div data-testid="folder-overview">{folderPath}</div>
   ),
@@ -194,32 +194,32 @@ mock.module('@/components/FolderOverview', () => ({
 // in its config / workspace / TipTap dependency tree — the gate is unit-tested
 // in bottom-composer-gate.test.ts and the composer itself in
 // BottomComposer.dom.test.tsx.
-mock.module('./BottomComposer', () => ({
+vi.doMock('./BottomComposer', () => ({
   BottomComposer: ({ docName, folderPath }: { docName?: string | null; folderPath?: string }) => (
     <div data-testid="bottom-composer" data-doc={docName ?? ''} data-folder={folderPath ?? ''} />
   ),
 }));
 
-mock.module('@/components/AssetPreview', () => ({
+vi.doMock('@/components/AssetPreview', () => ({
   AssetPreview: ({ assetPath }: { assetPath: string }) => (
     <div data-testid="asset-preview">{assetPath}</div>
   ),
 }));
 
-mock.module('@/components/LargeFileEditorState', () => ({
+vi.doMock('@/components/LargeFileEditorState', () => ({
   LargeFileEditorState: ({ docName }: { docName: string }) => (
     <div data-testid="large-file-state">{docName}</div>
   ),
 }));
 
-mock.module('@/components/settings/SettingsDialogShell', () => ({
+vi.doMock('@/components/settings/SettingsDialogShell', () => ({
   SettingsDialogShell: (props: SettingsDialogShellProps) => {
     shellProps.push(props);
     return <div data-testid="settings-shell" data-open={String(props.open)} />;
   },
 }));
 
-mock.module('@/lib/use-settings-route', () => ({
+vi.doMock('@/lib/use-settings-route', () => ({
   useSettingsRoute: () => ({
     open: settingsRouteOpen,
     close: closeSettingsRouteMock,
@@ -244,7 +244,7 @@ describe('EditorArea SettingsDialogPortal runtime wiring', () => {
     cleanup();
     docCtx = FOLDER_DOC_CTX;
     settingsRouteOpen = false;
-    closeSettingsRouteMock = mock(() => {});
+    closeSettingsRouteMock = vi.fn(() => {});
     shellProps = [];
   });
 
@@ -323,7 +323,7 @@ describe('EditorArea empty-state terminal host', () => {
     expect(emptyState?.getAttribute('data-terminal-dock')).toBe('right');
   });
 
-  test('renders the empty state with no terminal dock on the web host (no bridge)', () => {
+  test('renders the empty state; the dock shell is present but inactive on the web host', () => {
     render(
       <EditorArea
         editorMode="wysiwyg"
@@ -333,10 +333,11 @@ describe('EditorArea empty-state terminal host', () => {
       />,
     );
 
-    expect(screen.queryByTestId('terminal-dock')).toBeNull();
+    // The dock shell is host-agnostic now, but with nothing docked it stays inactive.
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
     // Pins the `terminalVisible ? position : null` forwarding: without an open
-    // terminal the empty state must receive null, or it would collapse to
-    // header-only on every new tab.
+    // dock the empty state must receive null, or it would collapse to header-only
+    // on every new tab.
     expect(screen.getByTestId('empty-editor-state').getAttribute('data-terminal-dock')).toBe(
       'null',
     );
@@ -498,10 +499,12 @@ describe('EditorArea folder-view terminal host', () => {
     expect(dock.querySelector('[data-testid="folder-overview"]')).not.toBeNull();
   });
 
-  test('renders the folder view with no terminal dock on the web host (no bridge)', () => {
+  test('renders the folder view; the dock shell is present but inactive on the web host', () => {
     renderEditorArea();
 
-    expect(screen.queryByTestId('terminal-dock')).toBeNull();
+    // The dock shell is host-agnostic now (it can host thread tabs on web), so it
+    // wraps the view, but with nothing docked it stays inactive.
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
     expect(screen.getByTestId('folder-overview').textContent).toBe('folder');
   });
 });
@@ -534,10 +537,10 @@ describe('EditorArea large-file-view terminal host', () => {
     expect(dock.querySelector('[data-testid="large-file-state"]')).not.toBeNull();
   });
 
-  test('renders the large-file view with no terminal dock on the web host (no bridge)', () => {
+  test('renders the large-file view; the dock shell is present but inactive on the web host', () => {
     renderEditorArea();
 
-    expect(screen.queryByTestId('terminal-dock')).toBeNull();
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
     expect(screen.getByTestId('large-file-state')).toBeTruthy();
   });
 });
@@ -566,10 +569,10 @@ describe('EditorArea asset-view terminal host', () => {
     expect(dock.querySelector('[data-testid="asset-preview"]')).not.toBeNull();
   });
 
-  test('renders the asset view with no terminal dock on the web host (no bridge)', () => {
+  test('renders the asset view; the dock shell is present but inactive on the web host', () => {
     renderEditorArea();
 
-    expect(screen.queryByTestId('terminal-dock')).toBeNull();
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
     expect(screen.getByTestId('asset-preview')).toBeTruthy();
   });
 });

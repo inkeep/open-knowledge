@@ -22,7 +22,11 @@
 
 import { rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
-import { detectGh, makeLazyProbeTokenStore } from '@inkeep/open-knowledge';
+import {
+  detectGh,
+  makeLazyProbeTokenStore,
+  probeOwnManagedEditorMcpEntry,
+} from '@inkeep/open-knowledge';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import {
   type BootedServer,
@@ -350,6 +354,11 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         detectGh,
         tokenStore,
         embeddingsKeyStore,
+        // ACP threads skip injecting the `open-knowledge` MCP server when the
+        // agent's own harness already loads OK's managed editor-config entry
+        // (same wiring as `ok start`).
+        probeHarnessManagedMcpEntry: (editorId, agentCwd) =>
+          probeOwnManagedEditorMcpEntry(editorId, agentCwd),
         // The renderer page origin (Vite dev URL / `file://`) has no asset
         // middleware — serve content assets from this utility server so the
         // renderer can resolve `/<contentDir-relative>` srcs against `apiOrigin`.

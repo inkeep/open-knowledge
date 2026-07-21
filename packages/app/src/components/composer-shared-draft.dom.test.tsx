@@ -18,15 +18,15 @@
  * `ComposerMentionInput.dom.test.tsx`).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { CreateScenario, InstallState } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { JSONContent } from '@tiptap/core';
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { __resetComposerDraftForTests } from './composer-draft-store';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -35,15 +35,15 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('@/lib/config-context', () => ({
+vi.doMock('@/lib/config-context', () => ({
   useConfigContext: () => ({ merged: { appearance: { preview: { autoOpen: true } } } }),
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({ pageMeta: new Map() }),
 }));
 
-mock.module('@/components/handoff/OpenInAgentMenuItem', () => ({
+vi.doMock('@/components/handoff/OpenInAgentMenuItem', () => ({
   TargetIcon: ({ id }: { id: string }) => <span data-testid={`target-icon-${id}`} />,
 }));
 
@@ -53,7 +53,7 @@ type MenuChild = {
   onSelect?: () => void;
   [key: string]: unknown;
 };
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: MenuChild) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: MenuChild) => <>{children}</>,
   DropdownMenuContent: ({ children, ...props }: MenuChild) => (
@@ -77,23 +77,24 @@ const installedAll: Record<string, InstallState> = {
   codex: { installed: true },
   cursor: { installed: true },
 };
-mock.module('@/components/handoff/useInstalledAgents', () => ({
+vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: installedAll, refresh: () => Promise.resolve() }),
 }));
 
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => ({ contentDir: '/tmp/project', pathSeparator: '/' }),
 }));
 
-mock.module('@/hooks/use-selection-context', () => ({
+vi.doMock('@/hooks/use-selection-context', () => ({
   useSelectionContext: () => null,
 }));
 
-mock.module('@/components/handoff/useHandoffDispatch', () => ({
+vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
   useHandoffDispatch: () => ({ dispatch: () => Promise.resolve({ ok: true }) }),
   buildComposerHandoffInput: (args: { instruction: string }) => ({
     compose: { instruction: args.instruction },
   }),
+  startAgentThreadForInput: () => {},
   buildCreateHandoffInput: (args: { description: string }) => ({
     createDescription: args.description,
   }),
@@ -101,7 +102,7 @@ mock.module('@/components/handoff/useHandoffDispatch', () => ({
   openInstallUrl: () => Promise.resolve(),
 }));
 
-mock.module('sonner', () => ({ toast: { error: () => {}, success: () => {} } }));
+vi.doMock('sonner', () => ({ toast: { error: () => {}, success: () => {} } }));
 
 // ---------------------------------------------------------------------------
 // Doc-faithful input double. It honors the SHARED-DRAFT contract additions:
@@ -144,7 +145,7 @@ function textToDoc(value: string): JSONContent {
   };
 }
 
-mock.module('@/editor/ComposerMentionInput', () => ({
+vi.doMock('@/editor/ComposerMentionInput', () => ({
   ComposerMentionInput: ({
     ref,
     ariaLabel,
@@ -250,6 +251,7 @@ mock.module('@/editor/ComposerMentionInput', () => ({
 
 const { BottomComposer } = await import('./BottomComposer');
 const { CreatePromptComposer } = await import('./empty-state/CreatePromptComposer');
+const { registerAgent } = await import('@/lib/acp/registered-agents');
 
 beforeEach(() => {
   try {
@@ -258,6 +260,10 @@ beforeEach(() => {
     /* guarded */
   }
   __resetComposerDraftForTests();
+  // Seed one enabled in-app agent — production hydrates this on boot; without it
+  // the create composer collapses to the "Turn on an agent" nudge (no input),
+  // which these draft tests aren't exercising.
+  registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude' }, { makeDefault: true });
 });
 
 afterEach(() => {

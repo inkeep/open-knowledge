@@ -5,19 +5,22 @@
  * prior pick (from either old surface) survives the consolidation.
  */
 
-import { describe, expect, test } from 'bun:test';
 import {
   type HandoffTarget,
   type InstallState,
   TERMINAL_CLI_IDS,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
+  IN_APP_THREAD_ID,
   loadStickyAgent,
   parseStickyCliId,
+  parseStickyThreadAgent,
   resolveStickyAgent,
   saveStickyAgent,
   TERMINAL_CLI_ID,
   terminalCliId,
+  threadAgentId,
   UNIFIED_AGENT_KEY,
 } from './unified-agent-store';
 
@@ -158,5 +161,45 @@ describe('terminalCliId / parseStickyCliId', () => {
     // so a CLI sentinel must NOT masquerade as an app target here.
     const resolved = resolveStickyAgent(states({ codex: true }), terminalCliId('cursor'));
     expect(resolved?.id).toBe('codex');
+  });
+});
+
+describe('threadAgentId / parseStickyThreadAgent', () => {
+  test('round-trips a concrete registered agent through the sentinel', () => {
+    const id = threadAgentId({ source: 'registry', id: 'acme-agent' });
+    expect(id).toBe('in-app-thread:registry:acme-agent');
+    expect(parseStickyThreadAgent(id)).toEqual({
+      kind: 'concrete',
+      source: 'registry',
+      id: 'acme-agent',
+    });
+  });
+
+  test('the bare legacy sentinel parses as the default in-app agent', () => {
+    expect(parseStickyThreadAgent(IN_APP_THREAD_ID)).toEqual({ kind: 'default' });
+  });
+
+  test('a custom-source agent id round-trips', () => {
+    expect(parseStickyThreadAgent(threadAgentId({ source: 'custom', id: 'my-agent' }))).toEqual({
+      kind: 'concrete',
+      source: 'custom',
+      id: 'my-agent',
+    });
+  });
+
+  test('a non-thread id (CLI sentinel / app target / junk / null) parses to null', () => {
+    expect(parseStickyThreadAgent(terminalCliId('codex'))).toBeNull();
+    expect(parseStickyThreadAgent('claude-code')).toBeNull();
+    expect(parseStickyThreadAgent('in-app-thread:bogus:x')).toBeNull(); // unknown source
+    expect(parseStickyThreadAgent('in-app-thread:registry:')).toBeNull(); // empty id
+    expect(parseStickyThreadAgent(null)).toBeNull();
+  });
+
+  test('a concrete thread-agent sticky id is invisible to the CLI + app-target readers', () => {
+    const id = threadAgentId({ source: 'registry', id: 'acme-agent' });
+    // The unified store is shared with the Ask-AI composers; a concrete agent
+    // pick must degrade to "not mine" for the CLI + app-target resolvers.
+    expect(parseStickyCliId(id)).toBeNull();
+    expect(resolveStickyAgent(states({ codex: true }), id)?.id).toBe('codex');
   });
 });

@@ -1,0 +1,5 @@
+---
+"@inkeep/open-knowledge": minor
+---
+
+Agents that need `npx` or `uvx` now work even when those tools aren't installed. When you start an agent whose launcher requires Node.js (most agents — Claude, Codex, Gemini, and the rest of the npm-distributed catalog) or uv, and it isn't on your PATH, OpenKnowledge offers to download a private, pinned, checksum-verified copy for you and launches the agent through it — the same "just works" experience Zed provides, but nothing downloads without your explicit consent. The prompt appears inline in the thread with a size and source disclosure ("~45 MB from nodejs.org"), a progress bar while it installs, and a "Remember" option so you're asked at most once per machine. The runtime installs into `~/.ok/runtimes/` with its own private package cache, so it never touches the rest of your system, and declining still leaves you the manual-install path. This closes the gap where the desktop app — which bundles its own Node runtime but not npm — couldn't launch npm-distributed agents on a machine without a separate Node install.

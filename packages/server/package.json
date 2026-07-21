@@ -16,6 +16,7 @@
     "src"
   ],
   "dependencies": {
+    "@agentclientprotocol/sdk": "^1.1.0",
     "@hocuspocus/server": "4.0.0-rc.1",
     "@inkeep/open-knowledge-core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.28.0",

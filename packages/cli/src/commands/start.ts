@@ -43,6 +43,7 @@ import { makeLazyEmbeddingsKeyStore } from '../auth/embeddings-key-store.ts';
 import { detectGh } from '../auth/gh-detect.ts';
 import { makeLazyProbeTokenStore } from '../auth/token-store.ts';
 import { OK_DIR, PACKAGE_VERSION } from '../constants.ts';
+import { probeOwnManagedEditorMcpEntry } from './acp-harness-probe.ts';
 import {
   createRealDetectDeps,
   detectDesktop,
@@ -389,6 +390,16 @@ export async function awaitUiSiblingPort(deps: AwaitUiSiblingPortInput): Promise
 
 interface BuildIdleShutdownHandlerInput {
   readUiLock: () => { pid: number; port: number } | null;
+  /**
+   * Pid of the `ok ui` child THIS process spawned, or null when it spawned
+   * none (sibling reused, auto-spawn skipped, or desktop single-origin mode).
+   * The idle handler only ever signals this pid — `ui.lock` is advertisement,
+   * not ownership: a desktop-spawned server serving the React shell holds it
+   * with its OWN pid, and a stale server blindly killing the lock holder was
+   * exactly how a live server (active ACP threads, MCP sessions, keepalive)
+   * got SIGTERMed mid-session.
+   */
+  spawnedUiPid: () => number | null;
   isAlive: (pid: number) => boolean;
   killPid: (pid: number, signal: NodeJS.Signals) => void;
   destroy: () => Promise<void>;
@@ -417,7 +428,10 @@ const DEFAULT_SIGTERM_POLL_MS = SHARED_DEFAULT_SIGTERM_POLL_MS;
 
 /**
  * Build the idle-shutdown `onShutdown` closure. On fire:
- *   (1) look up `ui.lock`; SIGTERM the sibling if it's still alive;
+ *   (1) look up `ui.lock`; SIGTERM the sibling if it's still alive AND it is
+ *       the pid this process spawned (`spawnedUiPid`) — a live holder we did
+ *       not spawn is left alone (see the field's docstring for the incident
+ *       class this prevents);
  *   (2) poll its liveness up to `sigtermGraceMs` (default 10s);
  *   (3) if still alive after the grace window, escalate to SIGKILL;
  *   (4) await `destroy()`, which releases `server.lock` as its final step.
@@ -551,7 +565,17 @@ export function buildIdleShutdownHandler(
   return async () => {
     try {
       const lock = input.readUiLock();
-      if (lock && input.isAlive(lock.pid)) {
+      const ownPid = input.spawnedUiPid();
+      if (lock && input.isAlive(lock.pid) && lock.pid !== ownPid) {
+        // The lock holder is alive but is NOT the sibling we spawned — a
+        // desktop-spawned server advertising its shell, or another session's
+        // UI. It is not ours to kill; it has its own lifecycle (idle-shutdown
+        // or the `ok ui` 12h safety net).
+        input.log?.info(
+          { pid: lock.pid, port: lock.port, spawnedUiPid: ownPid },
+          'idle-shutdown: ui.lock holder is not our spawned sibling — leaving it alone',
+        );
+      } else if (lock && input.isAlive(lock.pid)) {
         try {
           input.killPid(lock.pid, 'SIGTERM');
           input.log?.info({ pid: lock.pid, port: lock.port }, 'idle-shutdown: SIGTERM UI sibling');
@@ -903,6 +927,9 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
   // Capture uiSpawnDecision from inside the spawnUiSiblingFn callback so we
   // can return it on the BootedStartServer handle for tests + status output.
   let uiSpawnDecision: UiSpawnDecision | null = null;
+  // Pid of the `ok ui` child this boot actually spawned — the ONLY pid the
+  // idle-shutdown handler may signal. Stays null on reuse/skip paths.
+  let spawnedUiPid: number | null = null;
   const spawnUiSiblingFn = async ({
     lockDir: resolvedLockDir,
   }: {
@@ -922,7 +949,13 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
         // `ok start` keeps kernel-allocated sibling ports.
         const uiArgs =
           opts.uiPort !== undefined ? ['ui', '--port', String(opts.uiPort)] : undefined;
-        spawnOkUi({ lockDir: resolvedLockDir, cwd, spawn: opts.spawn, args: uiArgs });
+        const uiChild = spawnOkUi({
+          lockDir: resolvedLockDir,
+          cwd,
+          spawn: opts.spawn,
+          args: uiArgs,
+        });
+        spawnedUiPid = uiChild.pid ?? null;
         log.info(
           { reason: uiSpawnDecision.reason, uiPort: opts.uiPort },
           '[start] auto-spawned ok ui sibling',
@@ -1021,6 +1054,10 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     // Pass the exact runtime that started this server so /api/local-op/* can
     // spawn additional CLI processes without needing open-knowledge on PATH.
     localOpCliArgs: [process.execPath, process.argv[1]],
+    // ACP threads skip injecting the `open-knowledge` MCP server when the
+    // agent's own harness already loads OK's managed editor-config entry.
+    probeHarnessManagedMcpEntry: (editorId, agentCwd) =>
+      probeOwnManagedEditorMcpEntry(editorId, agentCwd),
     // CLI-specific opt-ins
     attachUiSibling,
     idleShutdownMs: idleThresholdMs,
@@ -1029,6 +1066,7 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     idleShutdownHandler: (destroyServer) => {
       const handler = buildIdleShutdownHandler({
         readUiLock: () => readUiLock(booted.lockDir),
+        spawnedUiPid: () => spawnedUiPid,
         isAlive: isProcessAlive,
         killPid: (pid, signal) => {
           process.kill(pid, signal);

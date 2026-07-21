@@ -16,6 +16,12 @@ export {
   makeLazyProbeTokenStore,
   type TokenStore,
 } from './auth/token-store.ts';
+// Desktop's utility process wires this into `bootServer()` as the ACP thread
+// manager's `probeHarnessManagedMcpEntry` seam (same wiring as `ok start`).
+export {
+  type OwnManagedMcpEntryHit,
+  probeOwnManagedEditorMcpEntry,
+} from './commands/acp-harness-probe.ts';
 export {
   type BundleExtraFile,
   type BundleLogger,

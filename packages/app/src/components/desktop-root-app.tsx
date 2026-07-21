@@ -1,8 +1,14 @@
-import type { ReactElement } from 'react';
+import { lazy, type ReactElement, Suspense } from 'react';
 import { App } from '@/App';
 import { NavigatorApp } from '@/components/NavigatorApp';
-import { TerminalWindowApp } from '@/components/TerminalWindowApp';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+
+// Lazy-loaded: the terminal window statically imports TerminalSessionsHost
+// (and through it the ACP thread-client chain), which must stay out of the
+// entry chunk — editor windows and the web distribution never render it.
+const TerminalWindowApp = lazy(() =>
+  import('@/components/TerminalWindowApp').then((mod) => ({ default: mod.TerminalWindowApp })),
+);
 
 /**
  * Pick the root surface for the current window from the desktop bridge's mode.
@@ -11,7 +17,13 @@ import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
  * undefined — renders the full editor shell.
  */
 export function selectDesktopRootApp(bridge: OkDesktopBridge | undefined): ReactElement {
-  if (bridge?.config.mode === 'terminal') return <TerminalWindowApp bridge={bridge} />;
+  if (bridge?.config.mode === 'terminal') {
+    return (
+      <Suspense fallback={null}>
+        <TerminalWindowApp bridge={bridge} />
+      </Suspense>
+    );
+  }
   if (bridge?.config.mode === 'navigator') return <NavigatorApp bridge={bridge} />;
   return <App />;
 }

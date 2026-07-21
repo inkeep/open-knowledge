@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
  * Starts empty (unknown, not "none installed") until the async probe resolves.
  * A partial/older bridge, the web host with no `terminal` surface, or a probe
  * failure leaves keys `undefined` (unknown). Consumers must NOT read unknown as
- * "absent": `resolveDefaultCli` treats it optimistically, and `visibleTerminalClis`
+ * "absent": `resolveDefaultCli` treats it optimistically, and `isTerminalCliEnabled`
  * fails open (an unknown CLI still renders), so a probe miss never silently drops
  * an installed CLI from the launch surfaces for the whole session.
  *

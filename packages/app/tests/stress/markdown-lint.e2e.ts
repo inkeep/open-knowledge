@@ -98,6 +98,18 @@ test.beforeEach(async ({ page, api, workerServer }) => {
     }
   });
 
+  // Follow-the-file (ACP) defaults ON, so an agent write — including the
+  // `seed()` used to set up these fixtures — scrolls the shared editor
+  // container to follow the write. That viewport side-effect is orthogonal to
+  // lint navigation and defeats the source-mode scroll assertion (the container
+  // arrives at the violation before the click can move it). Pin it OFF so these
+  // tests measure lint navigation from a stable top-of-doc baseline.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ok-acp-follow-file-v1', '0');
+    } catch {}
+  });
+
   testDocName = `mdlint-${randomUUID().slice(0, 8)}`;
   await api.createPage(`${testDocName}.md`);
   await page.goto(`/#/${testDocName}`);

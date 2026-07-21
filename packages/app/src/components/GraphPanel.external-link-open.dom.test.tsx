@@ -10,28 +10,32 @@
  * is driven through the captured `onSelectNode` handler instead.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/core/macro', () => ({ ...actualLinguiMacro, t: renderLinguiTemplate }));
+vi.doMock('@lingui/core/macro', () => ({
+  ...actualLinguiMacro,
+  t: renderLinguiTemplate,
+  msg: renderLinguiTemplate,
+}));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Plural: ({ one }: { one: string }) => <>{one}</>,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({
     assetPaths: new Set<string>(),
     error: null,
@@ -52,7 +56,7 @@ type ExternalSelection = { kind: 'external'; id: string; label: string; url: str
 // external node without rendering the real force-graph canvas.
 const graphHarness: { select?: (sel: ExternalSelection) => void } = {};
 
-mock.module('@/components/GraphView', () => ({
+vi.doMock('@/components/GraphView', () => ({
   GraphView: ({
     isExpanded,
     onSelectNode,
@@ -107,9 +111,9 @@ describe('GraphPanel — external "Open link" routes to the OS browser', () => {
   }
 
   test('Electron host: "Open link" calls okDesktop.shell.openExternal and never window.open', async () => {
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
     setDesktopBridge(openExternal);
-    const openSpy = mock(() => null);
+    const openSpy = vi.fn(() => null);
     window.open = openSpy as unknown as typeof window.open;
 
     await expandAndSelectExternal();
@@ -121,7 +125,7 @@ describe('GraphPanel — external "Open link" routes to the OS browser', () => {
   });
 
   test('Web host (no bridge): "Open link" falls back to window.open in a new tab', async () => {
-    const openSpy = mock(() => null);
+    const openSpy = vi.fn(() => null);
     window.open = openSpy as unknown as typeof window.open;
 
     await expandAndSelectExternal();

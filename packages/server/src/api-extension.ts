@@ -59,6 +59,7 @@ import {
   CreateFolderSuccessSchema,
   CreatePageRequestSchema,
   CreatePageSuccessSchema,
+  changedBlockRange,
   colorFromSeed,
   createCodeFenceTracker,
   createWorkspaceSearchCorpus,
@@ -254,6 +255,18 @@ import busboy from 'busboy';
 import { fileTypeFromBuffer } from 'file-type';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
+import {
+  ACP_AGENT_HARNESS_CLIS,
+  type AcpHarnessAvailability,
+  createAcpHarnessAvailabilityProbe,
+} from './acp/harness-availability.ts';
+import {
+  type AcpRegistry,
+  type CustomAgentEntry,
+  FEATURED_AGENT_IDS,
+  registryPlatformKey,
+} from './acp/registry.ts';
+import { MAX_ACP_THREADS } from './acp/thread-manager.ts';
 import { captureEffect, type EffectValue } from './activity-log.ts';
 import { listAgentActivity, synthesizeVersionDiff } from './agent-activity.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
@@ -265,6 +278,7 @@ import {
   applyAgentMarkdownWrite,
   applyAgentUndo,
   iconFromClientName,
+  snapshotBlocks,
 } from './agent-sessions.ts';
 import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.ts';
 import { isAllowedApiOrigin } from './api-origin.ts';
@@ -2746,6 +2760,17 @@ export interface ApiExtensionOptions {
    */
   homeDirOverride?: string;
   /**
+   * ACP agent catalog (registry-driven). When present, `GET /api/acp/catalog`
+   * serves the featured + full agent lists the thread-launch UI renders.
+   * Omitted in harnesses that don't exercise agent threads — the route then
+   * answers 404.
+   */
+  acpRegistry?: AcpRegistry;
+  /** Custom-agent source for the catalog (machine-local `.ok/local` file). */
+  loadAcpCustomAgents?: () => Promise<CustomAgentEntry[]>;
+  /** Test seam for server-host CLI detection surfaced in the ACP catalog. */
+  acpHarnessAvailability?: () => Promise<AcpHarnessAvailability>;
+  /**
    * Active ContentFilter (the same instance threaded into the file watcher).
    * When present, `POST /api/rename-path` rejects destinations excluded by
    * `.gitignore` / `.okignore` rules so renames cannot land outside the
@@ -2944,6 +2969,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     projectDir,
     getPrincipal,
     homeDirOverride,
+    acpRegistry,
+    loadAcpCustomAgents,
+    acpHarnessAvailability = createAcpHarnessAvailabilityProbe(),
     contentFilter,
     installedAgentsProbe,
     forceUnloadDocument,
@@ -5116,6 +5144,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           captureEffect(session.dc.document.getText('source'), agentId, colorSeed, clientName);
           // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
           session.dc.document.transact(() => {
+            const beforeBlocks = snapshotBlocks(session.dc.document);
             applyAgentMarkdownWrite(
               session.dc.document,
               `${content}\n`,
@@ -5125,12 +5154,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 : undefined,
             );
 
+            const changedBlocks =
+              changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
             const activityMap = session.dc.document.getMap('agent-flash');
             activityMap.set(agentId, {
               agentId,
               timestamp: Date.now(),
               type: 'insert',
               description: `Added (${agentName}): ${content.slice(0, 50)}`,
+              ...(changedBlocks !== undefined ? { changedBlocks } : {}),
             });
           }, session.origin);
           recordContributor(
@@ -5307,6 +5339,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           captureEffect(session.dc.document.getText('source'), agentId, colorSeed, clientName);
           // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
           session.dc.document.transact(() => {
+            const beforeBlocks = snapshotBlocks(session.dc.document);
             writeDivergence = applyAgentMarkdownWrite(
               session.dc.document,
               body.markdown,
@@ -5316,12 +5349,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 : undefined,
             );
 
+            const changedBlocks =
+              changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
             const activityMap = session.dc.document.getMap('agent-flash');
             activityMap.set(agentId, {
               agentId,
               timestamp: Date.now(),
               type: 'insert',
               description: `Added (${agentName}): ${body.markdown.trim().slice(0, 50)}`,
+              ...(changedBlocks !== undefined ? { changedBlocks } : {}),
             });
           }, session.origin);
           if (writeDivergence !== undefined) {
@@ -7092,6 +7128,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             const newFull =
               currentFull.slice(0, pos) + replace + currentFull.slice(pos + find.length);
             const { body: newBody } = stripFrontmatter(newFull);
+            const beforeBlocks = snapshotBlocks(session.dc.document);
             patchDivergence = applyAgentMarkdownWrite(
               session.dc.document,
               newBody,
@@ -7101,12 +7138,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 : undefined,
             );
 
+            const changedBlocks =
+              changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
             const activityMap = session.dc.document.getMap('agent-flash');
             activityMap.set(agentId, {
               agentId,
               timestamp: Date.now(),
               type: 'insert',
               description: `Patched (${agentName}): ${find.slice(0, 50)}`,
+              ...(changedBlocks !== undefined ? { changedBlocks } : {}),
             });
           }, session.origin);
           if (patchDivergence !== undefined) {
@@ -8735,6 +8775,105 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'server-info', method: 'GET', skipBodyParse: true },
+  );
+
+  const AcpCatalogAgentSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    version: z.string(),
+    description: z.string().optional(),
+    license: z.string().optional(),
+    iconUrl: z.string().optional(),
+    website: z.string().optional(),
+    source: z.enum(['registry', 'custom']),
+    /** A launchable distribution exists for this host platform. */
+    supported: z.boolean(),
+    featured: z.boolean(),
+    harness: z
+      .object({
+        cli: z.enum(['claude', 'codex', 'cursor', 'opencode', 'pi']),
+        availability: z.enum(['present', 'not-found', 'unknown']),
+      })
+      .optional(),
+  });
+  const AcpCatalogSuccessSchema = z.object({
+    agents: z.array(AcpCatalogAgentSchema),
+    /** True when served from the offline fallback cache. */
+    stale: z.boolean(),
+    maxThreads: z.number(),
+  });
+
+  const handleAcpCatalog = withValidation(
+    EmptyRequestSchema,
+    async (_req, res) => {
+      if (acpRegistry === undefined) {
+        errorResponse(res, 404, 'urn:ok:error:not-found', 'ACP catalog unavailable.', {
+          handler: 'acp-catalog',
+        });
+        return;
+      }
+      try {
+        const platform = registryPlatformKey();
+        const { agents, stale } = await acpRegistry.getCatalog();
+        const custom = (await loadAcpCustomAgents?.()) ?? [];
+        const harnessAvailability = await acpHarnessAvailability();
+        const rows = [
+          ...agents.map((a) => {
+            const harnessCli = ACP_AGENT_HARNESS_CLIS[a.id];
+            return {
+              id: a.id,
+              name: a.name,
+              version: a.version,
+              ...(a.description !== undefined ? { description: a.description } : {}),
+              ...(a.license !== undefined ? { license: a.license } : {}),
+              ...(a.icon !== undefined ? { iconUrl: a.icon } : {}),
+              ...(a.website !== undefined ? { website: a.website } : {}),
+              source: 'registry' as const,
+              supported:
+                a.distribution.npx !== undefined ||
+                a.distribution.uvx !== undefined ||
+                (platform !== null && a.distribution.binary?.[platform] !== undefined),
+              featured: FEATURED_AGENT_IDS.includes(a.id),
+              ...(harnessCli !== undefined
+                ? {
+                    harness: {
+                      cli: harnessCli,
+                      availability: harnessAvailability[harnessCli] ?? 'unknown',
+                    },
+                  }
+                : {}),
+            };
+          }),
+          ...custom.map((c: CustomAgentEntry) => ({
+            id: c.id,
+            name: c.name,
+            version: 'custom',
+            source: 'custom' as const,
+            supported: true,
+            featured: false,
+          })),
+        ];
+        successResponse(
+          res,
+          200,
+          AcpCatalogSuccessSchema,
+          { agents: rows, stale, maxThreads: MAX_ACP_THREADS },
+          { handler: 'acp-catalog', extraHeaders: { 'Cache-Control': 'no-store' } },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          502,
+          'urn:ok:error:registry-unreachable',
+          'Agent registry unreachable.',
+          {
+            handler: 'acp-catalog',
+            cause: e,
+          },
+        );
+      }
+    },
+    { handler: 'acp-catalog', method: 'GET', skipBodyParse: true },
   );
 
   async function handlePrincipal(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -18805,6 +18944,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/metrics/agent-effects': handleMetricsAgentEffects,
     '/api/__embed-detect': handleEmbedDetect,
     '/api/server-info': handleServerInfo,
+    '/api/acp/catalog': handleAcpCatalog,
     '/api/share/construct-url': handleShareConstructUrl,
     '/api/share/target-status': handleShareTargetStatus,
     '/api/git/branch-info': handleBranchInfo,

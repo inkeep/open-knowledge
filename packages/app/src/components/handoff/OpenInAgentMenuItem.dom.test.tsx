@@ -1,18 +1,20 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu';
 import { KNOWN_TARGETS } from '@/lib/handoff/targets';
 
-mock.module('@lingui/core/macro', () => ({
+const passthroughLingui = (strings: TemplateStringsArray, ...values: unknown[]) =>
+  strings.reduce((acc, part, index) => `${acc}${part}${values[index] ?? ''}`, '');
+vi.doMock('@lingui/core/macro', () => ({
   ...actualLinguiMacro,
-  t: (strings: TemplateStringsArray, ...values: unknown[]) =>
-    strings.reduce((acc, part, index) => `${acc}${part}${values[index] ?? ''}`, ''),
+  t: passthroughLingui,
+  msg: passthroughLingui,
 }));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -21,7 +23,7 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 

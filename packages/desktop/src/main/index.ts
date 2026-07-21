@@ -789,6 +789,14 @@ let terminalReaper: TerminalReaper | null = null;
  */
 const dockVisibleForWindow = new Map<number, boolean>();
 /**
+ * Per-window unified sessions-dock order + active key, recorded from the
+ * renderer's `ok:terminal:set-dock-state` push so a reloaded renderer restores the
+ * interleaved cross-kind tab arrangement (terminal ptyIds + thread threadIds) and
+ * the active tab. Same windowId-keyed lifetime as {@link dockVisibleForWindow} —
+ * cleared on window-close and app-quit.
+ */
+const dockOrderForWindow = new Map<number, { order: string[]; activeKey: string | null }>();
+/**
  * Singleton show-gate registry — coordinates window.show() against the
  * dual-signal contract (`ready-to-show` + `ok:theme:applied`). Module-level
  * so the IPC handler at registerIpcHandlers (registered before any window
@@ -1175,9 +1183,10 @@ function ensureWindowManager() {
       // onReap clears the window's retained dock-visibility so it can't restore
       // a stale "visible" for a future window that reuses the id.
       if (terminalReaper)
-        wireWindowTerminalReap(win, terminalReaper, (windowId) =>
-          dockVisibleForWindow.delete(windowId),
-        );
+        wireWindowTerminalReap(win, terminalReaper, (windowId) => {
+          dockVisibleForWindow.delete(windowId);
+          dockOrderForWindow.delete(windowId);
+        });
       return win as unknown as BrowserWindowLike;
     },
     // App-level foreground activation for the bring-to-front recipe. macOS
@@ -3473,7 +3482,19 @@ function registerIpcHandlers() {
 
   handle('ok:terminal:dock-state', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    return { visible: win ? (dockVisibleForWindow.get(win.id) ?? false) : false };
+    if (!win) return { visible: false, order: [], activeKey: null };
+    const dockOrder = dockOrderForWindow.get(win.id);
+    return {
+      visible: dockVisibleForWindow.get(win.id) ?? false,
+      order: dockOrder?.order ?? [],
+      activeKey: dockOrder?.activeKey ?? null,
+    };
+  });
+
+  handle('ok:terminal:set-dock-state', async (event, req) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) dockOrderForWindow.set(win.id, { order: req.order, activeKey: req.activeKey });
+    return undefined;
   });
 
   handle('ok:dialog:open-folder', async (_event, opts) => {
@@ -5115,6 +5136,19 @@ if (instanceLabel) {
   setWindowInstanceLabel(instanceLabel);
 }
 
+// Opt-in: force Chromium to build the renderer accessibility tree so the
+// web-view UI (composer, buttons, tabs — all already carry aria-labels / roles)
+// is exposed to the macOS accessibility API. Electron/Chromium otherwise builds
+// that tree lazily, only once it detects an assistive technology, so an AX
+// client (VoiceOver, or a GUI-automation driver like peekaboo) sees only the
+// native window chrome and none of the React controls. Gated behind an env var
+// because the always-on AX tree carries a small perpetual cost — set
+// `OK_FORCE_A11Y=1` when driving the app with an accessibility/automation tool.
+// Must run before `app` is ready (command-line switches are read at that point).
+if (process.env.OK_FORCE_A11Y === '1') {
+  app.commandLine.appendSwitch('force-renderer-accessibility');
+}
+
 if (isDriverBootSmokeMode(process.env)) {
   app.whenReady().then(() => {
     runDriverBootSmokeInProduction();
@@ -6014,6 +6048,7 @@ function bootPrimaryInstance(): void {
     // outlives the app. Idempotent (clears the map; a second pass no-ops).
     terminalReaper?.killAll();
     dockVisibleForWindow.clear();
+    dockOrderForWindow.clear();
     autoUpdaterHandle?.destroy();
     autoUpdaterHandle = null;
     bundleReplaceWatcherHandle?.stop();

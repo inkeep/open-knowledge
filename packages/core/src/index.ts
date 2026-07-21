@@ -167,6 +167,7 @@ export {
 // Constants
 export {
   ACTIVITY_TTL_MS,
+  changedBlockRange,
   evictStaleEntries,
   FLASH_DEBOUNCE_MS,
   FLASH_DURATION_MS,
@@ -402,6 +403,7 @@ export {
   composeSelectionPrompt,
   composeSkillPrompt,
   composeTerminalBareLaunchPrompt,
+  composeThreadBareLaunchPrompt,
   type DocContext,
   type HandoffFailureReason,
   type HandoffOutcome,
@@ -416,6 +418,7 @@ export {
   OK_GATED_TOOL_NAMES,
   OK_PROJECT_SKILL_POINTER,
   OK_TERMINAL_SURFACE_PREAMBLE,
+  OK_THREAD_SURFACE_PREAMBLE,
   type PromptTransport,
   shellSingleQuote,
   startupInjectionFor,
@@ -1324,6 +1327,11 @@ export type {
   AgentPresenceEntry,
   AwarenessState,
   AwarenessUser,
+} from './types/awareness.ts';
+export {
+  AGENT_THREAD_SENTINEL_DOC,
+  CONNECTED_SENTINEL_DOC,
+  isPresenceSentinelDocName,
 } from './types/awareness.ts';
 export type { Identity } from './types/identity.ts';
 export type { Principal } from './types/principal.ts';

@@ -26,7 +26,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type WheelEvent,
 } from 'react';
 import { toast } from 'sonner';
 import {
@@ -80,6 +79,7 @@ import {
   tabRunCollisionDetection,
 } from './editor-tabs-chrome';
 import { usePageList } from './PageListContext';
+import { scrollTabStripOnWheel } from './tab-strip-wheel';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 const TAB_RENAME_EXTENSIONS = ['.md', '.mdx'] as const;
@@ -103,13 +103,6 @@ function navigateToDoc(docName: string) {
   if (window.location.hash !== nextHash) {
     window.location.hash = nextHash;
   }
-}
-
-function scrollTabListOnWheel(event: WheelEvent<HTMLDivElement>) {
-  if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-  if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth) return;
-  event.preventDefault();
-  event.currentTarget.scrollLeft += event.deltaY;
 }
 
 function stripRenameExtensionSuffix(value: string, docExt: string): string {
@@ -877,7 +870,7 @@ export function EditorTabs() {
         'pl-2 flex h-12 min-w-0 touch-manipulation flex-1 items-end overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-fade-mask-x [scrollbar-width:none]',
         isElectronHost && '[-webkit-app-region:drag]',
       )}
-      onWheel={scrollTabListOnWheel}
+      onWheel={scrollTabStripOnWheel}
     >
       <div
         className={cn(

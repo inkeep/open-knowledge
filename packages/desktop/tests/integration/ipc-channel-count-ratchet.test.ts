@@ -20,9 +20,9 @@
  * run check` gating.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const SRC_PATH = join(__dirname, '..', '..', 'src', 'shared', 'ipc-channels.ts');
 const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
@@ -312,48 +312,46 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  *     single channel over two distinct operations against a namespace that
  *     deliberately keeps each PTY operation on its own channel.
  *
- * Bumped from 81 to 82 for the in-app "Report a bug" surface:
+ * Bumped from 81 to 84 across a main merge for three independent single-member
+ * additions:
  *
- *   - `ok:bug-report:dispatch` — builds the redacted diagnostic zip for the
- *     sender window's project (system-wide when the window has no project)
- *     via the CLI package's leveled `collectReportBundle`, in-process. Main
- *     owns it because the inputs are main-process state: the window-manager
- *     project context, `app.getVersion()`/`app.isPackaged`/the update
- *     channel (stamped as `OK_DESKTOP_*` metadata), and the `~/.ok/bug-reports/`
- *     write. A single discriminated channel per the `ok:sharing:dispatch`
- *     precedent: the report surface's upload (`send`) and crash-ack
- *     operations widen this channel's payload — the preferred
- *     payload-widening path — instead of adding channels, so the whole
- *     surface costs one slot. Could not fold into any existing channel: no
- *     diagnostics/reporting surface exists — `ok:shell:*` is scoped to
- *     asset reveal/open, `ok:update:*` to the updater lifecycle, and the
- *     `ok:project:*` reads carry unrelated schemas. New `ok:bug-report:*`
- *     namespace, single member. The typed-ipc migration remains the
- *     committed end state; scoped exception with the `ipc-channels.ts`
- *     header commitment updated in lock-step.
+ *   - `ok:shell:reveal-external` — the terminal clickable-links out-of-project
+ *     reveal: when a terminal link points at a file OUTSIDE the window's project,
+ *     main pops a "reveal in Finder?" confirmation and reveals on confirm. A
+ *     distinct trust boundary from `ok:shell:reveal-asset` — deliberately
+ *     UNCONTAINED (the whole feature) but dialog-gated — so folding it onto the
+ *     containment-checked asset reveal would wear one channel over two opposite
+ *     security contracts.
+ *   - `ok:terminal:set-dock-state` — the window's unified cross-kind tab order
+ *     (terminal ptyIds + thread threadIds) + active key, persisted in main so a
+ *     ⌘R renderer reload restores the interleaved arrangement. The `get`
+ *     counterpart (`ok:terminal:dock-state`) already exists and gained the extra
+ *     fields; the setter is its own channel (fire-and-forget write vs the read),
+ *     the sibling of `ok:pty:set-order` for the mixed dock.
+ *   - `ok:bug-report:dispatch` — the in-app "Report a bug" surface: builds the
+ *     redacted diagnostic zip for the sender window's project via the CLI
+ *     package's leveled `collectReportBundle`, in-process. Main owns it because
+ *     the inputs are main-process state (window-manager project context,
+ *     app version / packaged / update channel, the `~/.ok/bug-reports/` write);
+ *     its upload + crash-ack operations widen this channel's payload rather than
+ *     adding channels, so the whole surface costs one slot.
  *
- * Bumped from 82 to 83 for the terminal clickable-links out-of-project reveal
- * (`ok:shell:reveal-external`): when a terminal link points at an existing file
- * OUTSIDE the window's project, main pops a "reveal in Finder?" confirmation and
- * reveals on confirm. It is a distinct trust boundary from `ok:shell:reveal-asset`
- * — deliberately UNCONTAINED (the whole feature) but dialog-gated — so folding it
- * onto the containment-checked asset reveal would wear one channel over two
- * opposite security contracts. Single member; the typed-ipc migration remains the
- * committed end state, with the `ipc-channels.ts` header updated in lock-step.
+ * The typed-ipc migration remains the committed end state, with the
+ * `ipc-channels.ts` header updated in lock-step.
  *
- * Bumped from 83 to 85 for the two Cmd+K / native-menu command invokes:
+ * Bumped from 84 to 86 for the two Cmd+K / native-menu command invokes:
  * `ok:mcp-wiring:reconfigure` (File → "Set up OpenKnowledge integrations…")
  * and `ok:spellcheck:toggle` (Edit → "Check spelling while typing"). Each
  * delegates to an existing main-side function; the typed-ipc migration remains
  * the committed end state, with the `ipc-channels.ts` header in lock-step.
  *
- * Bumped from 85 to 86 for File → "Open file…" (`ok:project:open-file-picker`):
+ * Bumped from 86 to 87 for File → "Open file…" (`ok:project:open-file-picker`):
  * the palette / Navigator entry point to the temporary single-file session,
  * delegating to the existing main-side picker + `openEphemeralFile` (the
  * desktop side of `ok <file>`). Single member; the typed-ipc migration remains
  * the committed end state, with the `ipc-channels.ts` header in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 86;
+const REQUEST_CHANNEL_CAP = 87;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

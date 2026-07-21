@@ -52,14 +52,14 @@
     {
       "name": "all JS chunks combined (gzipped)",
       "path": "dist/assets/*.js",
-      "limit": "3.36 MB",
+      "limit": "3.5 MB",
       "gzip": true,
       "running": false
     },
     {
       "name": "main CSS (gzipped)",
       "path": "dist/assets/index-*.css",
-      "limit": "55 kB",
+      "limit": "57 kB",
       "gzip": true,
       "running": false
     }
@@ -159,6 +159,7 @@
     "scheduler-polyfill": "^1.3.0",
     "shadcn": "^4.2.0",
     "sonner": "^2.0.7",
+    "streamdown": "^2.5.0",
     "tailwind-merge": "^3.5.0",
     "tailwind-scrollbar": "^4.0.2",
     "tailwindcss": "^4.2.2",

@@ -1,43 +1,74 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu';
+import {
+  desktopEnabledKey,
+  reloadEnabledAgentsFromStorage,
+  setAgentEnabled,
+} from '@/lib/acp/enabled-agents';
+import { registerAgent, reloadRegisteredAgentsFromStorage } from '@/lib/acp/registered-agents';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import { TerminalLaunchProvider } from './TerminalLaunchContext';
 import type { HandoffDispatchInput } from './useHandoffDispatch';
 
-mock.module('@lingui/core/macro', () => ({ ...actualLinguiMacro, t: renderLinguiTemplate }));
+vi.doMock('@lingui/core/macro', () => ({
+  ...actualLinguiMacro,
+  t: renderLinguiTemplate,
+  // A transitively-imported module uses the `msg` macro; the whole-module mock
+  // must expose it too or the file fails to link.
+  msg: renderLinguiTemplate,
+}));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: { appearance: { preview: { autoOpen: true } } },
   }),
 }));
 
-mock.module('@/lib/config-context', () => ({
+vi.doMock('@/lib/config-context', () => ({
   useConfigContext: () => ({
     merged: { appearance: { preview: { autoOpen: true } } },
   }),
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
-    error: mock(() => {}),
-    success: mock(() => {}),
+    error: vi.fn(() => {}),
+    success: vi.fn(() => {}),
   },
+}));
+
+const threadLaunchCalls: HandoffDispatchInput[] = [];
+const threadLaunchOpts: Array<
+  { agent?: { source: string; id: string }; chooseAgent?: boolean } | undefined
+> = [];
+/** Ordered trace of menu-dismiss vs launch, in call order. See the
+ *  "dismisses the host menu before launching" test for why order matters. */
+const callOrder: string[] = [];
+vi.doMock('./useHandoffDispatch', () => ({
+  startAgentThreadForInput: (
+    input: HandoffDispatchInput,
+    opts?: { agent?: { source: string; id: string }; chooseAgent?: boolean },
+  ) => {
+    callOrder.push('launch');
+    threadLaunchCalls.push(input);
+    threadLaunchOpts.push(opts);
+  },
+  openInstallUrl: () => Promise.resolve(),
 }));
 
 const readyInput: HandoffDispatchInput = {
@@ -64,14 +95,22 @@ async function renderSubmenu({
   input = readyInput,
   states = installStates(),
   withTerminal = false,
+  onBeforeLaunch,
 }: {
   input?: HandoffDispatchInput | null;
   states?: Record<HandoffTarget, InstallState>;
   withTerminal?: boolean;
+  onBeforeLaunch?: () => void;
 } = {}) {
+  // Desktop is enablement-gated now (off by default); these tests express
+  // Desktop visibility via install state, so enable the installed targets to
+  // preserve that intent.
+  for (const [id, state] of Object.entries(states)) {
+    if (state?.installed === true) setAgentEnabled(desktopEnabledKey(id), true);
+  }
   const { OpenInAgentContextSubmenu } = await import('./OpenInAgentContextSubmenu');
   const dispatchCalls: Array<{ input: HandoffDispatchInput; target: HandoffTarget }> = [];
-  const dispatch = mock(async (target: HandoffTarget, nextInput: HandoffDispatchInput) => {
+  const dispatch = vi.fn(async (target: HandoffTarget, nextInput: HandoffDispatchInput) => {
     dispatchCalls.push({ input: nextInput, target });
     return { ok: true as const };
   });
@@ -84,6 +123,7 @@ async function renderSubmenu({
           input={input}
           installStates={states}
           isElectronHost={true}
+          onBeforeLaunch={onBeforeLaunch}
         />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -120,6 +160,15 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
   afterEach(() => {
     cleanup();
     launchCalls.length = 0;
+    threadLaunchCalls.length = 0;
+    threadLaunchOpts.length = 0;
+    callOrder.length = 0;
+    // jsdom preload exposes no global localStorage — the store falls back to
+    // in-memory state there, so the reload alone resets it; clear the real
+    // storage when an environment provides one.
+    if (typeof localStorage !== 'undefined') localStorage.clear();
+    reloadRegisteredAgentsFromStorage();
+    reloadEnabledAgentsFromStorage();
   });
 
   test('renders only installed visible targets and dispatches the selected row', async () => {
@@ -159,7 +208,7 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     expect(screen.queryByTestId('file-tree-open-in-claude-web-fallback') === null).toBe(true);
   });
 
-  test('shows the empty hint when no targets are installed', async () => {
+  test('hides the In-app section when nothing is enabled, keeping the Configure agents row', async () => {
     await renderSubmenu({
       states: installStates({
         'claude-code': { installed: false, lastChecked: 1 },
@@ -168,21 +217,62 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
         cursor: { installed: false, lastChecked: 1 },
       }),
     });
-    const empty = screen.getByTestId('file-tree-open-in-empty');
-    expect(empty.textContent).toContain('No installed agents found');
+    // No enabled agents (none registered, Desktop off by default) → empty
+    // sections are hidden; the Configure agents footer is still reachable.
+    expect(screen.queryByTestId('file-tree-open-in-thread')).toBeNull();
+    expect(screen.queryByText('No installed agents found')).toBeNull();
+    expect(screen.getByTestId('file-tree-open-in-settings')).toBeTruthy();
   });
 
-  test('shows the checking hint while the install probe is pending', async () => {
-    await renderSubmenu({
-      states: installStates({
-        'claude-code': { installed: null },
-        'claude-cowork': { installed: null },
-        codex: { installed: null },
-        cursor: { installed: null },
-      }),
-    });
-    const empty = screen.getByTestId('file-tree-open-in-empty');
-    expect(empty.textContent).toContain('Checking for installed agents');
+  test('a per-agent row is disabled with a No workspace hint while input is missing', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    await renderSubmenu({ input: null });
+    const row = screen.getByTestId('file-tree-open-in-thread-claude-acp');
+    expect(row.getAttribute('data-disabled')).toBe('');
+    expect(row.getAttribute('aria-label')).toBe('Start Claude Agent, No workspace');
+    await userEvent.click(row);
+    expect(threadLaunchCalls).toEqual([]);
+  });
+
+  test('registered agents render as one-click rows that launch that agent directly', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    registerAgent({ source: 'registry', id: 'codex-acp', name: 'Codex' });
+    await renderSubmenu();
+
+    // The generic picker row is replaced by per-agent rows (+ the Settings row).
+    expect(screen.queryByTestId('file-tree-open-in-thread')).toBeNull();
+    expect(screen.getByTestId('file-tree-open-in-thread-codex-acp').textContent).toContain(
+      'Start Codex',
+    );
+
+    await userEvent.click(screen.getByTestId('file-tree-open-in-thread-claude-acp'));
+    expect(threadLaunchCalls).toEqual([readyInput]);
+    expect(threadLaunchOpts).toEqual([{ agent: { source: 'registry', id: 'claude-acp' } }]);
+  });
+
+  test('the Settings row opens Configure agents', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    await renderSubmenu();
+
+    window.location.hash = '';
+    await userEvent.click(screen.getByTestId('file-tree-open-in-settings'));
+    expect(window.location.hash).toBe('#settings/configure-agents');
+    // No thread launch — the Settings row only navigates.
+    expect(threadLaunchCalls).toEqual([]);
+  });
+
+  // Regression: FileTree's menu is pinned `open` and is torn down only by
+  // Pierre's `context.close()`. Launching first leaves that layer alive while
+  // the modal catalog mounts, and the resulting focus-restore/dismiss cascade
+  // recurses until the renderer hangs (a hard freeze, reproduced in-app). Every
+  // launch row must dismiss first, so ORDER is the contract under test — not
+  // merely that the callback fired.
+  test('dismisses the host menu before launching a registered-agent row', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    await renderSubmenu({ onBeforeLaunch: () => callOrder.push('dismiss') });
+
+    await userEvent.click(screen.getByTestId('file-tree-open-in-thread-claude-acp'));
+    expect(callOrder).toEqual(['dismiss', 'launch']);
   });
 
   test('groups installed agents under Desktop and the CLI launch under Terminal', async () => {
@@ -242,7 +332,7 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     expect(screen.queryByTestId('file-tree-open-in-terminal-claude')).toBeNull();
   });
 
-  test('renders only the Terminal section (no Desktop label, no separator) when no agents are installed', async () => {
+  test('renders only the Terminal section (no In app, no Desktop) when nothing else is enabled', async () => {
     await renderSubmenu({
       withTerminal: true,
       states: installStates({
@@ -255,7 +345,10 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
 
     expect(screen.getByText('Terminal')).toBeTruthy();
     expect(screen.queryByText('Desktop')).toBeNull();
+    // No enabled in-app agents → the In app section is hidden.
+    expect(screen.queryByText('In app')).toBeNull();
     expect(screen.getByTestId('file-tree-open-in-terminal-claude')).toBeTruthy();
-    expect(document.querySelector('[data-slot="dropdown-menu-separator"]')).toBeNull();
+    // A single separator sits before the Configure agents footer.
+    expect(document.querySelectorAll('[data-slot="dropdown-menu-separator"]').length).toBe(1);
   });
 });

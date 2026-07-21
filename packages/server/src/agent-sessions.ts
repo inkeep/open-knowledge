@@ -190,6 +190,23 @@ export function applyAgentMarkdownWrite(
   );
 }
 
+/**
+ * Serialize the doc's top-level blocks — one string per XmlFragment child, in
+ * order. Follow mode diffs a before/after pair of these (via
+ * `changedBlockRange`) around an agent write to record which blocks changed, so
+ * an editor that becomes active only AFTER the write applied can still flash +
+ * scroll to the changed section instead of missing the moment. XmlFragment
+ * children map 1:1 to PM top-level nodes, so a block index is a PM node index.
+ * Call inside the write's transact (after `applyAgentMarkdownWrite` the
+ * fragment is already updated — the paired-write primitives run synchronously).
+ */
+export function snapshotBlocks(document: Document): string[] {
+  return document
+    .getXmlFragment('default')
+    .toArray()
+    .map((child) => child.toString());
+}
+
 function applyAgentMarkdownWriteInner(
   document: Document,
   markdown: string,

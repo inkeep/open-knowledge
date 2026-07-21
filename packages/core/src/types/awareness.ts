@@ -110,10 +110,52 @@ export interface AgentPresenceEntry {
   ts: number;
 }
 
+/**
+ * Placeholder `currentDoc` values the server publishes to keep an agent
+ * visible in presence when it is NOT writing a real document:
+ * `'(connected)'` from the MCP keepalive bootstrap (agent connected, no
+ * write yet) and `'(agent thread)'` from an in-app thread launched without a
+ * doc context. They are display sentinels, never navigable paths — see
+ * `isPresenceSentinelDocName`.
+ */
+export const CONNECTED_SENTINEL_DOC = '(connected)';
+export const AGENT_THREAD_SENTINEL_DOC = '(agent thread)';
+
+const PRESENCE_SENTINEL_DOC_NAMES: ReadonlySet<string> = new Set([
+  CONNECTED_SENTINEL_DOC,
+  AGENT_THREAD_SENTINEL_DOC,
+]);
+
+/**
+ * True when a presence `currentDoc` is a sentinel, not a real doc path.
+ * Consumers that treat `currentDoc` as a document — follow-the-file
+ * navigation, the presence bar's "editing X" label — MUST skip these, or they
+ * navigate to / render a doc that doesn't exist.
+ *
+ * Matched by exact string, deliberately: a real docName may start with `(`
+ * (e.g. `(WIP) draft`, `(2026-05-13) standup`), so a leading-`(` heuristic
+ * would over-suppress legitimate parenthesised filenames.
+ */
+export function isPresenceSentinelDocName(name: string | null | undefined): boolean {
+  return name != null && PRESENCE_SENTINEL_DOC_NAMES.has(name);
+}
+
 /** Entry in Y.Map('agent-flash') side-channel for agent write attribution. */
 export interface AgentFlashEntry {
   agentId: string;
   timestamp: number;
   type: 'insert' | 'replace' | 'delete';
   description?: string;
+  /**
+   * Top-level block index range `[from, to)` the write changed, in the
+   * POST-write document. Lets a follow-mode editor that becomes active AFTER
+   * the write already applied still scroll to + flash the changed section:
+   * the live-transaction flash can't fire then (the editor mounts to
+   * already-final content, so there is no before→after transaction to diff).
+   * Block indices map 1:1 to ProseMirror top-level nodes because y-prosemirror
+   * mirrors the XmlFragment's children onto the PM doc's children. Omitted when
+   * the write changed no top-level blocks (frontmatter-only / no-op) or when a
+   * writer can't compute it.
+   */
+  changedBlocks?: { from: number; to: number };
 }

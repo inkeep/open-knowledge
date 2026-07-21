@@ -14,7 +14,7 @@
  * `buildComposerHandoffInput` mirrors its workspace-null contract and carries the
  * instruction + mentions through so we can assert they survive to dispatch.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -26,7 +26,18 @@ import {
   useImperativeHandle,
   useRef,
 } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ComposerMentionInputHandle } from '@/editor/ComposerMentionInput';
+import {
+  desktopEnabledKey,
+  reloadEnabledAgentsFromStorage,
+  setAgentEnabled,
+} from '@/lib/acp/enabled-agents';
+import {
+  getDefaultRegisteredAgent,
+  registerAgent,
+  reloadRegisteredAgentsFromStorage,
+} from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import {
@@ -34,7 +45,7 @@ import {
   saveStickyAgent as saveStickyDefaultAgent,
 } from '@/lib/unified-agent-store';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -43,7 +54,7 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('@/components/handoff/OpenInAgentMenuItem', () => ({
+vi.doMock('@/components/handoff/OpenInAgentMenuItem', () => ({
   TargetIcon: ({ id }: { id: string }) => <span data-testid={`target-icon-${id}`} />,
 }));
 
@@ -56,7 +67,7 @@ type MenuChild = {
   onSelect?: () => void;
   [key: string]: unknown;
 };
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: MenuChild) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: MenuChild) => <>{children}</>,
   DropdownMenuContent: ({ children, ...props }: MenuChild) => (
@@ -87,7 +98,7 @@ let emitMentions: ((mentions: string[]) => void) | null = null;
 // returns the typed text as the instruction plus `mockInlineMentions` as the
 // inline `@`-mention set (the inline chips + their on-hover × are exercised
 // against the real editor in ComposerMentionInput.dom.test.tsx).
-mock.module('@/editor/ComposerMentionInput', () => ({
+vi.doMock('@/editor/ComposerMentionInput', () => ({
   ComposerMentionInput: ({
     ref,
     ariaLabel,
@@ -144,11 +155,11 @@ mock.module('@/editor/ComposerMentionInput', () => ({
 }));
 
 let installStates: Record<string, { installed: boolean | null }> = {};
-mock.module('@/components/handoff/useInstalledAgents', () => ({
+vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: installStates, refresh: () => Promise.resolve() }),
 }));
 
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => ({ contentDir: '/tmp/project', pathSeparator: '/' }),
 }));
 
@@ -159,20 +170,22 @@ mock.module('@/lib/use-workspace', () => ({
 let liveSelection: unknown = null;
 let liveFrontmatterSelection: unknown = null;
 let pageMeta: ReadonlyMap<string, { docExt?: string }> = new Map();
-mock.module('@/hooks/use-selection-context', () => ({
+vi.doMock('@/hooks/use-selection-context', () => ({
   useSelectionContext: (_docName: string | null, surface: string) =>
     surface === 'frontmatter' ? liveFrontmatterSelection : liveSelection,
   usePublishFrontmatterSelection: () => {},
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({ pageMeta }),
 }));
 
-const recordAskedAiSpy = mock(() => {});
-mock.module('@/lib/onboarding-signals', () => ({ recordOnboardingAskedAi: recordAskedAiSpy }));
+const recordAskedAiSpy = vi.fn(() => {});
+vi.doMock('@/lib/onboarding-signals', () => ({ recordOnboardingAskedAi: recordAskedAiSpy }));
 
 const dispatchCalls: Array<{ target: string; input: unknown }> = [];
+const startThreadCalls: unknown[] = [];
+const startThreadOpts: unknown[] = [];
 const buildArgs: Array<{
   docName: string | null;
   folderRelativePath?: string;
@@ -186,7 +199,7 @@ let dispatchImpl: () => Promise<{ ok: boolean }> = () => Promise.resolve({ ok: t
 let builderReturnsNull = false;
 const terminalLaunchCalls: Array<{ input: unknown; cli: string | undefined }> = [];
 
-mock.module('@/components/handoff/useHandoffDispatch', () => ({
+vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
   useHandoffDispatch: () => ({
     dispatch: (target: string, input: unknown) => {
       dispatchCalls.push({ target, input });
@@ -215,9 +228,17 @@ mock.module('@/components/handoff/useHandoffDispatch', () => ({
       },
     };
   },
+  startAgentThreadForInput: (input: unknown, opts?: unknown) => {
+    startThreadCalls.push(input);
+    startThreadOpts.push(opts);
+  },
+  // BottomComposer imports this for the enabled-but-not-installed install nudge;
+  // a mock.module replaces the whole module, so it must be present or the file
+  // fails to link.
+  openInstallUrl: () => Promise.resolve(),
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     error: (message: string) => {
       toastErrors.push(message);
@@ -236,10 +257,19 @@ const ALL_INSTALLED: Record<string, { installed: boolean | null }> = {
   cursor: { installed: true },
 };
 
+// Desktop is enablement-gated now (off by default); these tests express Desktop
+// visibility via `installStates`, so translate installed → enabled at render.
+function enableInstalledDesktopTargets() {
+  for (const [id, state] of Object.entries(installStates)) {
+    if (state.installed === true) setAgentEnabled(desktopEnabledKey(id), true);
+  }
+}
+
 async function renderComposer(
   docName = 'notes',
   extra: Partial<{ dismissed: boolean; onDismiss: () => void; onReopen: () => void }> = {},
 ) {
+  enableInstalledDesktopTargets();
   const { BottomComposer } = await import('./BottomComposer');
   return render(<BottomComposer docName={docName} surface="wysiwyg" {...extra} />);
 }
@@ -250,6 +280,7 @@ async function renderComposerWithTerminal(
   docName = 'notes',
   installedClis: Record<string, boolean> = {},
 ) {
+  enableInstalledDesktopTargets();
   const { BottomComposer } = await import('./BottomComposer');
   const { TerminalLaunchProvider } = await import('./handoff/TerminalLaunchContext');
   return render(
@@ -260,7 +291,7 @@ async function renderComposerWithTerminal(
         },
         // The composer reads the install map from here (not its own probe), so it
         // drives both the no-pick default (resolveDefaultCli) and row gating
-        // (visibleTerminalClis). Default {} ⇒ probe unresolved ⇒ fail-open (all
+        // (isTerminalCliEnabled). Default {} ⇒ probe unresolved ⇒ fail-open (all
         // CLIs), matching the ungated rows most tests were written against.
         installedClis,
       }}
@@ -273,6 +304,7 @@ async function renderComposerWithTerminal(
 // Variant whose launcher throws (no terminal session could be opened) — exercises
 // the try/catch guard around launchInTerminal.
 async function renderComposerWithThrowingTerminal(docName = 'notes') {
+  enableInstalledDesktopTargets();
   const { BottomComposer } = await import('./BottomComposer');
   const { TerminalLaunchProvider } = await import('./handoff/TerminalLaunchContext');
   return render(
@@ -302,6 +334,7 @@ async function renderComposerWithInstalledClis(installed: Record<string, boolean
 
 // Folder mode: the composer is scoped to a folder (no open doc, no surface).
 async function renderFolderComposer(folderPath = 'specs/foo') {
+  enableInstalledDesktopTargets();
   const { BottomComposer } = await import('./BottomComposer');
   return render(<BottomComposer folderPath={folderPath} />);
 }
@@ -349,7 +382,7 @@ function stubReducedMotion(matches: boolean): () => void {
 let consoleErrorSpy: ReturnType<typeof spyOn>;
 
 beforeEach(() => {
-  consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   installStates = { ...ALL_INSTALLED };
   dispatchImpl = () => Promise.resolve({ ok: true });
   builderReturnsNull = false;
@@ -359,6 +392,8 @@ beforeEach(() => {
   mockInlineMentions = [];
   emitMentions = null;
   dispatchCalls.length = 0;
+  startThreadCalls.length = 0;
+  startThreadOpts.length = 0;
   recordAskedAiSpy.mockClear();
   buildArgs.length = 0;
   terminalLaunchCalls.length = 0;
@@ -368,6 +403,10 @@ beforeEach(() => {
   } catch {
     // localStorage may be unavailable in some sandboxes — sticky tests guard.
   }
+  // The registered-agents store caches in module scope — re-read the (now
+  // cleared) storage so per-agent thread rows never leak between tests.
+  reloadRegisteredAgentsFromStorage();
+  reloadEnabledAgentsFromStorage();
 });
 
 afterEach(() => {
@@ -585,6 +624,83 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     expect(dispatchCalls[0]?.target).toBe('codex');
   });
 
+  test('picking an in-app agent launches a thread and persists the choice', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    const user = userEvent.setup();
+    await renderComposer();
+
+    await user.click(screen.getByTestId('ask-ai-agent-trigger'));
+    await user.click(await screen.findByTestId('ask-ai-agent-option-thread-registry:claude-acp'));
+
+    // Persisted as the in-app-thread sentinel; the primary reflects the choice.
+    expect(loadStickyDefaultAgent()).toBe('in-app-thread');
+    expect(screen.getByTestId('ask-ai-send').textContent).toContain('Start Claude Agent');
+
+    fireEvent.change(getInput(), { target: { value: 'summarize this doc' } });
+    fireEvent.keyDown(getInput(), { key: 'Enter' });
+
+    await waitFor(() => expect(startThreadCalls).toHaveLength(1));
+    expect(startThreadCalls[0]).toMatchObject({ compose: { instruction: 'summarize this doc' } });
+    // In-app thread mode never deep-link dispatches nor launches a terminal.
+    expect(dispatchCalls).toHaveLength(0);
+    // A successful thread launch records the Ask-AI onboarding step.
+    expect(recordAskedAiSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('with a registered agent and nothing picked, the primary defaults to in-app thread', async () => {
+    // A registered in-app agent exists; Desktop apps are installed AND enabled
+    // (renderComposer enables them). Nothing is picked. The footer must lead with
+    // the in-app agent, never an installed desktop app.
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    await renderComposer();
+
+    expect(loadStickyDefaultAgent()).toBeNull();
+    expect(screen.getByTestId('ask-ai-send').textContent).toContain('Start Claude Agent');
+
+    fireEvent.change(getInput(), { target: { value: 'summarize this doc' } });
+    fireEvent.keyDown(getInput(), { key: 'Enter' });
+
+    await waitFor(() => expect(startThreadCalls).toHaveLength(1));
+    // Launches the effective enabled agent explicitly, never a desktop target.
+    expect(startThreadOpts[0]).toMatchObject({ agent: { source: 'registry', id: 'claude-acp' } });
+    expect(dispatchCalls).toHaveLength(0);
+  });
+
+  test('registered agents get their own thread rows; picking one becomes the default', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    registerAgent({ source: 'registry', id: 'cursor-acp', name: 'Cursor Agent' });
+    const user = userEvent.setup();
+    await renderComposer();
+
+    await user.click(screen.getByTestId('ask-ai-agent-trigger'));
+    // Per-agent rows replace the generic "Start an agent" row.
+    expect(screen.queryByTestId('ask-ai-agent-option-thread')).toBeNull();
+    await user.click(await screen.findByTestId('ask-ai-agent-option-thread-registry:claude-acp'));
+
+    expect(loadStickyDefaultAgent()).toBe('in-app-thread');
+    expect(getDefaultRegisteredAgent()).toMatchObject({ id: 'claude-acp' });
+    expect(screen.getByTestId('ask-ai-send').textContent).toContain('Start Claude Agent');
+
+    fireEvent.change(getInput(), { target: { value: 'summarize this doc' } });
+    fireEvent.keyDown(getInput(), { key: 'Enter' });
+    await waitFor(() => expect(startThreadCalls).toHaveLength(1));
+  });
+
+  test('the Settings row opens Configure agents', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    const user = userEvent.setup();
+    await renderComposer();
+
+    window.location.hash = '';
+    await user.click(screen.getByTestId('ask-ai-agent-trigger'));
+    await user.click(await screen.findByTestId('ask-ai-agent-option-settings'));
+
+    // Deep-links to the Configure agents settings tab; no launch, no dispatch.
+    expect(window.location.hash).toBe('#settings/configure-agents');
+    expect(startThreadCalls).toHaveLength(0);
+    expect(dispatchCalls).toHaveLength(0);
+  });
+
   test('the Claude CLI option launches in the docked terminal, not a deep-link dispatch', async () => {
     const user = userEvent.setup();
     await renderComposerWithTerminal();
@@ -698,18 +814,18 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     );
   });
 
-  test('desktop with no sticky pick and no CLI installed defaults to the Claude CLI', async () => {
+  test('no CLI installed and no in-app agent shows a plain Ask — no forced Claude CLI', async () => {
     await renderComposerWithInstalledClis({
       claude: false,
       codex: false,
       opencode: false,
       cursor: false,
     });
-    // The install-nudge default: launching claude surfaces the "Get Claude" banner.
-    // The " CLI" suffix distinguishes it from the app-target "Claude" (claude-code).
-    await waitFor(() =>
-      expect(screen.getByTestId('ask-ai-send').textContent).toContain('Claude CLI'),
-    );
+    // With nothing enabled to launch — every CLI probed absent and no registered
+    // in-app agent — the primary no longer forces a Claude CLI fallback that
+    // ignored the toggles. It reads a plain "Ask".
+    await waitFor(() => expect(screen.getByTestId('ask-ai-send').textContent).toContain('Ask'));
+    expect(screen.getByTestId('ask-ai-send').textContent).not.toContain('Claude CLI');
   });
 
   test('the Ask X picker lists the Terminal section before the Desktop section (Terminal-first)', async () => {
@@ -1143,7 +1259,7 @@ describe('BottomComposer (compact selection chip + preview)', () => {
 
 describe('BottomComposer (dismiss / reopen)', () => {
   test('clicking the collapse handle calls onDismiss', async () => {
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     await renderComposer('notes', { onDismiss });
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse Ask AI' }));
@@ -1159,7 +1275,7 @@ describe('BottomComposer (dismiss / reopen)', () => {
   });
 
   test('⌘L while dismissed reopens (calls onReopen) instead of focusing', async () => {
-    const onReopen = mock(() => {});
+    const onReopen = vi.fn(() => {});
     await renderComposer('notes', { dismissed: true, onReopen });
 
     dispatchOpenAskAiShortcut();

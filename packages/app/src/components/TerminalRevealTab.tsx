@@ -10,7 +10,7 @@ interface TerminalRevealTabProps {
    *  tab is flush against, and the tooltip side so it sits right where the
    *  collapse control was. */
   readonly dockPosition: TerminalDockPosition;
-  /** Reveal the terminal (and spawn a default-CLI session if none is open). */
+  /** Reveal the sessions dock (and launch the preferred session if none is open). */
   readonly onReveal: () => void;
   /** Absolute-placement offsets from the call site (which edge/corner it pins to).
    *  The caller owns placement because the two dock positions attach to different
@@ -19,7 +19,7 @@ interface TerminalRevealTabProps {
 }
 
 /**
- * Persistent "Show terminal" affordance shown only while the terminal is hidden.
+ * Persistent "Open session dock" affordance shown only while the sessions dock is hidden.
  * The header chat toggle is one icon among many and reads ambiguously; this tab
  * hugs the same edge the terminal lives on so a user who collapsed or closed the
  * terminal has an obvious, in-place way to bring it back — right where the
@@ -36,7 +36,7 @@ interface TerminalRevealTabProps {
 export function TerminalRevealTab({ dockPosition, onReveal, className }: TerminalRevealTabProps) {
   const { t } = useLingui();
   const rightDocked = dockPosition === 'right';
-  const label = t`Show terminal`;
+  const label = t`Open session dock`;
   return (
     <Tooltip>
       <TooltipTrigger asChild>

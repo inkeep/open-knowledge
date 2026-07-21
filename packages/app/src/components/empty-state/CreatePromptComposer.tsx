@@ -1,7 +1,9 @@
 import { type HandoffTarget, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ArrowUpRight, Check, ChevronDown, Sparkles } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Check, ChevronDown, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { type ReactNode, useRef, useState } from 'react';
+import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
+import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import {
   clearComposerDraft,
   getComposerDraft,
@@ -14,11 +16,12 @@ import {
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
-import { cliIconTargetId, visibleTerminalClis } from '@/components/handoff/terminal-cli-display';
+import { cliIconTargetId } from '@/components/handoff/terminal-cli-display';
 import {
   buildCreateHandoffInput,
   getDisplayNameDefault,
   openInstallUrl,
+  startAgentThreadForInput,
   useHandoffDispatch,
 } from '@/components/handoff/useHandoffDispatch';
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
@@ -37,19 +40,45 @@ import {
   ComposerMentionInput,
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
+import { isDesktopTargetEnabled, isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
+import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
+import {
+  enabledDesktopTargets,
+  enabledTerminalClis,
+  resolveLauncherSelection,
+} from '@/lib/acp/launcher-selection';
+import {
+  pickEffectiveDefaultAgent,
+  type RegisteredAgent,
+  registerAgent,
+  useDefaultRegisteredAgent,
+  useRegisteredAgents,
+} from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { hasValidPromptInput } from '@/lib/has-valid-prompt-input';
+import { writePreferredAgent } from '@/lib/preferred-agent-store';
 import {
-  readPreferredAgent,
-  resolvePreferredAgent,
-  writePreferredAgent,
-} from '@/lib/preferred-agent-store';
+  IN_APP_THREAD_ID,
+  loadStickyAgent,
+  saveStickyAgent,
+  terminalCliId,
+} from '@/lib/unified-agent-store';
+import { openAgentSettings } from '@/lib/use-settings-route';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 
 interface CreatePromptComposerProps {
   readonly scenario: CreateScenario;
   readonly className?: string;
+}
+
+/**
+ * "Start {agentName}" with the named placeholder — keeps the catalog message
+ * shared with the launcher menus' t-macro form (`t\`Start ${agentName}\``);
+ * inlining a member expression would emit a positional `{0}` and fork it.
+ */
+function StartAgentNameLabel({ agentName }: { agentName: string }): ReactNode {
+  return <Trans>Start {agentName}</Trans>;
 }
 
 /**
@@ -80,28 +109,48 @@ interface CreatePromptComposerProps {
 export function CreatePromptComposer({ scenario, className }: CreatePromptComposerProps) {
   const { t } = useLingui();
   const { states, refresh } = useInstalledAgents();
+  const overrides = useEnabledOverrides();
   const { dispatch } = useHandoffDispatch();
   const workspace = useWorkspace();
   // Null on the web host (no docked terminal); non-null only on desktop. Gates
   // the chevron menu's "Terminal" launch section.
   const terminalLaunch = useTerminalLaunch();
 
-  // Optimistic sync init from device-local memory (no cold-start flash); the
-  // probe-reconcile effect below corrects it once install state resolves. `null`
-  // means "no agent chosen yet" (first run) or "no installed agent" (post-probe).
-  const [selectedAgentId, setSelectedAgentId] = useState<HandoffTarget | null>(() =>
-    readPreferredAgent(),
+  // The remembered pick as reactive session state — a unified-agent-store sticky
+  // id, seeded from device-local memory and updated by the picks below. The
+  // effective SELECTION is DERIVED from it every render (never snapshotted at
+  // mount), so enabling/disabling agents in Settings takes effect immediately.
+  const [selectedId, setSelectedId] = useState<string | null>(() => loadStickyAgent());
+
+  const defaultRegisteredAgent = useDefaultRegisteredAgent();
+  // Every registered agent gets a picker row; only the ENABLED ones show.
+  const registeredThreadAgents = useRegisteredAgents();
+  const enabledThreadAgents = registeredThreadAgents.filter((agent) =>
+    isInAppAgentEnabled(overrides, agent.source, agent.id, true, agent.supported),
   );
-  // Once the user explicitly picks an agent this session, stop auto-reconciling
-  // — their choice is authoritative even if the probe later disagrees.
-  const userPickedRef = useRef(false);
-  // Which docked-terminal CLI is the chosen create target (vs an installed app
-  // agent); null when an app agent is selected. Session-only — the
-  // preferred-agent store is app-only.
-  const [selectedCli, setSelectedCli] = useState<TerminalCli | null>(null);
-  // The CLI is the active create target only when one is selected AND the
-  // docked terminal is available (the web host has no shell).
-  const cliSelected = selectedCli !== null && terminalLaunch !== null;
+  // The in-app agent the primary launches + names: the registered default when
+  // still enabled, else the first enabled one.
+  const defaultThreadAgent = pickEffectiveDefaultAgent(enabledThreadAgents, defaultRegisteredAgent);
+
+  // One selection decision, enablement-aware for every category — the SAME
+  // `resolveLauncherSelection` the footer composer + sessions dock use, so a
+  // disabled agent / CLI / app is never the Create target on any surface.
+  const selection = resolveLauncherSelection({
+    sticky: selectedId,
+    effectiveThreadAgent: defaultThreadAgent,
+    enabledClis:
+      terminalLaunch !== null ? enabledTerminalClis(overrides, terminalLaunch.installedClis) : [],
+    enabledDesktopTargets: enabledDesktopTargets(overrides),
+    installedClis: terminalLaunch?.installedClis ?? {},
+    terminalAvailable: terminalLaunch !== null,
+    threadsAvailable: true,
+    desktopSelectable: true,
+  });
+  const threadSelected = selection.kind === 'thread';
+  const selectedCli: TerminalCli | null = selection.kind === 'cli' ? selection.cli : null;
+  const selectedAgentId: HandoffTarget | null =
+    selection.kind === 'desktop' ? selection.target : null;
+  const cliSelected = selectedCli !== null;
 
   const inputRef = useRef<ComposerMentionInputHandle>(null);
 
@@ -136,37 +185,75 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
   // Starter-brief chips, per surface — shared with the embedded CopyablePromptList.
   const suggestions = useCreateSuggestions(scenario);
 
-  // Installed agents only — there's no web fallback, so an agent that can't be
-  // launched is never offered (mirrors the "Open with AI" menu).
-  const selectableTargets = VISIBLE_TARGETS.filter(
-    (target) => states[target.id]?.installed === true,
+  // Desktop rows are the agents the user ENABLED in Configure agents (Desktop is
+  // off by default; enabling is opt-in). An enabled-but-not-installed agent
+  // still shows and routes to its installer on Create.
+  const selectableTargets = VISIBLE_TARGETS.filter((target) =>
+    isDesktopTargetEnabled(overrides, target.id),
   );
   const probeSettled = VISIBLE_TARGETS.every((target) => states[target.id]?.installed != null);
-  // Probe done with nothing installed → the composer has nothing to launch.
-  const noAgentsInstalled = probeSettled && selectableTargets.length === 0;
+  const hasEnabledTerminalCli =
+    terminalLaunch !== null &&
+    enabledTerminalClis(overrides, terminalLaunch.installedClis).length > 0;
+  // Collapse to the install nudge only when the user has nothing enabled at all
+  // (in-app agents are seeded on by default, so this is rare). Otherwise the
+  // composer defaults to in-app thread mode.
+  const noAgentsInstalled =
+    probeSettled &&
+    selectableTargets.length === 0 &&
+    enabledThreadAgents.length === 0 &&
+    !hasEnabledTerminalCli;
 
-  // Smart default: once the install probe settles, resolve last-used → first
-  // installed → null (see `resolvePreferredAgent`). Gated on `userPickedRef` so
-  // it never overrides a manual selection, and on the probe being fully resolved
-  // so a partial result doesn't bounce the button mid-probe.
-  useEffect(() => {
-    if (!probeSettled || userPickedRef.current) return;
-    const resolved = resolvePreferredAgent({ lastUsed: readPreferredAgent(), states });
-    setSelectedAgentId((current) => (resolved === current ? current : resolved));
-  }, [probeSettled, states]);
-
+  // Every pick just updates the one sticky id (persisted + reactive); the
+  // selection re-derives above. No probe-reconcile effect and no `userPickedRef`
+  // — an explicit pick simply wins because it IS the sticky value, and a stale
+  // pick (a disabled agent/CLI/app) degrades through `resolveLauncherSelection`.
   function chooseAgent(targetId: HandoffTarget) {
-    userPickedRef.current = true;
-    setSelectedCli(null);
-    setSelectedAgentId(targetId);
-    writePreferredAgent(targetId);
+    setSelectedId(targetId);
+    saveStickyAgent(targetId);
+    writePreferredAgent(targetId); // legacy key, kept for cross-surface back-compat
   }
 
-  // Select a docked-terminal CLI as the create target. Session-only; the Create
-  // button performs the launch, parallel to chooseAgent setting the app default.
   function chooseCli(cli: TerminalCli) {
-    userPickedRef.current = true;
-    setSelectedCli(cli);
+    setSelectedId(terminalCliId(cli));
+    saveStickyAgent(terminalCliId(cli));
+  }
+
+  // Picking a specific registered agent makes it the launch default and selects
+  // in-app thread mode.
+  function chooseThreadAgent(agent: RegisteredAgent) {
+    registerAgent(agent);
+    setSelectedId(IN_APP_THREAD_ID);
+    saveStickyAgent(IN_APP_THREAD_ID);
+  }
+
+  // Open a server-hosted in-app agent thread with the composed brief, mirroring
+  // handleCreate's validation + draft-clear. No deep-link dispatch.
+  function launchThread() {
+    const { instruction, mentions } = inputRef.current?.getContent() ?? {
+      instruction: '',
+      mentions: [],
+    };
+    if (!hasValidPromptInput(instruction, mentions, false)) {
+      setShowRequiredError(true);
+      return;
+    }
+    const input = buildCreateHandoffInput({
+      workspace,
+      description: instruction,
+      scenario,
+      mentions,
+    });
+    if (input === null) return;
+    // Launch the effective (enabled) agent explicitly, never a disabled default.
+    startAgentThreadForInput(
+      input,
+      defaultThreadAgent !== null
+        ? { agent: { source: defaultThreadAgent.source, id: defaultThreadAgent.id } }
+        : undefined,
+    );
+    inputRef.current?.clear();
+    clearComposerDraft();
   }
 
   function launchCli() {
@@ -210,6 +297,13 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
     }
     // Remember what was launched so the next visit defaults to it.
     writePreferredAgent(targetId);
+    // An enabled-but-not-installed Desktop agent routes to its installer
+    // rather than a failing deep-link dispatch.
+    if (states[targetId]?.installed !== true) {
+      const target = VISIBLE_TARGETS.find((candidate) => candidate.id === targetId);
+      if (target) void openInstallUrl(target);
+      return;
+    }
     const input = buildCreateHandoffInput({
       workspace,
       description: instruction,
@@ -224,11 +318,16 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
     clearComposerDraft();
   }
 
-  // Enter (handled inside ComposerMentionInput) creates with the resolved target
-  // — the docked-terminal CLI when selected, else the chosen app agent. A null
-  // agent (probe still settling) is a no-op, matching the disabled Create button.
+  // Enter (handled inside ComposerMentionInput) must perform the SAME action as
+  // the primary Create button so keyboard and pointer never diverge: launch the
+  // in-app agent thread when thread mode is selected, else the docked-terminal
+  // CLI, else the chosen app agent. The branch ORDER mirrors the button's onClick
+  // (thread → CLI → app agent). A null agent with none of those selected (probe
+  // still settling) is a no-op, matching the disabled Create button.
   function handleSubmit() {
-    if (cliSelected) {
+    if (threadSelected) {
+      launchThread();
+    } else if (cliSelected) {
       launchCli();
     } else if (selectedAgentId !== null) {
       handleCreate(selectedAgentId);
@@ -245,10 +344,10 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
     inputRef.current?.focus();
   }
 
-  // No agent to launch → the composer can't do anything, so collapse it to a
-  // compact "install an agent" nudge instead of a dead input. Keeps the AI
-  // capability discoverable + funnels to install, without the layout pop of
-  // hiding the surface entirely.
+  // Nothing enabled to launch → the composer can't do anything, so collapse it
+  // to a compact nudge that points at Configure agents instead of a dead input.
+  // We no longer pitch desktop-app installs here: Desktop is opt-in and the
+  // in-app agents are the first-class path, so "turn one on" is the honest CTA.
   if (noAgentsInstalled) {
     return (
       <div
@@ -261,40 +360,36 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
         <div className="flex min-w-0 items-center gap-2.5">
           <Sparkles aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
           <span className="text-1sm text-muted-foreground">
-            <Trans>Install an AI agent to create with AI</Trans>
+            <Trans>Turn on an agent to create with AI</Trans>
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {VISIBLE_TARGETS.map((target) => (
-            <Button
-              key={target.id}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void openInstallUrl(target)}
-              className="gap-1.5"
-              data-testid={`install-agent-${target.id}`}
-            >
-              <TargetIcon id={target.id} aria-hidden="true" className="size-3.5" />
-              {target.displayName}
-              <ArrowUpRight aria-hidden="true" className="size-3" />
-            </Button>
-          ))}
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={openAgentSettings}
+          className="gap-1.5"
+          data-testid="create-configure-agents"
+        >
+          <SlidersHorizontal aria-hidden="true" className="size-3.5" />
+          <Trans>Configure agents</Trans>
+        </Button>
       </div>
     );
   }
 
-  // Chevron-menu sections: installed app agents under "Desktop", the docked CLIs
-  // under "Terminal". The separator sits between them only when both render.
-  const showDesktopSection = selectableTargets.length > 0;
-  const showTerminalSection = terminalLaunch !== null;
-  // Claude plus every CLI the probe hasn't ruled out (fail-open), and always the
-  // current pick (`selectedCli`) so this composer's own Create target can't be
-  // gated out of its own dropdown.
+  // Chevron-menu sections. Each renders only when it has rows, so an empty
+  // section header never shows. The Terminal CLIs are the ones enabled in
+  // Configure agents.
   const terminalClis = terminalLaunch
-    ? visibleTerminalClis(terminalLaunch.installedClis, selectedCli)
+    ? enabledTerminalClis(overrides, terminalLaunch.installedClis)
     : [];
+  const showDesktopSection = selectableTargets.length > 0;
+  const showTerminalSection = terminalClis.length > 0;
+  const showThreadSection = enabledThreadAgents.length > 0;
+  // The Create button is actionable whenever the resolver found something enabled
+  // to launch (an in-app thread, a CLI, or a picked desktop app).
+  const canCreate = selection.kind !== 'none';
 
   return (
     <div className={cn('flex w-full flex-col gap-3', className)}>
@@ -338,8 +433,8 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
           ) : (
             <span />
           )}
-          {selectedAgentId === null ? (
-            // No agent resolved yet (probe still settling) — nothing to launch.
+          {!canCreate ? (
+            // Nothing enabled to launch yet — a disabled affordance.
             <Button
               type="button"
               variant="outline"
@@ -356,12 +451,29 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
             <ButtonGroup>
               <Button
                 type="button"
-                onClick={() => (cliSelected ? launchCli() : handleCreate(selectedAgentId))}
+                onClick={() =>
+                  threadSelected
+                    ? launchThread()
+                    : cliSelected
+                      ? launchCli()
+                      : selectedAgentId !== null
+                        ? handleCreate(selectedAgentId)
+                        : undefined
+                }
                 variant="outline"
                 className="gap-1.5"
                 data-testid="create-with-agent"
               >
-                {cliSelected && selectedCli !== null ? (
+                {threadSelected && defaultThreadAgent !== null ? (
+                  <>
+                    <RegisteredAgentIcon
+                      agentId={defaultThreadAgent.id}
+                      iconUrl={defaultThreadAgent.iconUrl}
+                      className="size-3.5"
+                    />
+                    <StartAgentNameLabel agentName={defaultThreadAgent.name} />
+                  </>
+                ) : cliSelected && selectedCli !== null ? (
                   <>
                     <TargetIcon
                       id={cliIconTargetId(selectedCli)}
@@ -370,12 +482,12 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                     />
                     <Trans>Create with {TERMINAL_CLIS[selectedCli].displayName} CLI</Trans>
                   </>
-                ) : (
+                ) : selectedAgentId !== null ? (
                   <>
                     <TargetIcon id={selectedAgentId} aria-hidden="true" className="size-3.5" />
                     <Trans>Create with {getDisplayNameDefault(selectedAgentId)}</Trans>
                   </>
-                )}
+                ) : null}
               </Button>
               <DropdownMenu
                 onOpenChange={(open) => {
@@ -393,7 +505,40 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                     <ChevronDown aria-hidden="true" className="size-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[200px]">
+                <DropdownMenuContent align="end" className="max-h-80 min-w-[200px]">
+                  {/* In-app agent threads lead the menu when any is enabled;
+                      an empty section (all disabled) is hidden entirely. */}
+                  {showThreadSection ? (
+                    <DropdownMenuGroup aria-label={t`In app (beta)`}>
+                      <DropdownMenuLabel className="flex items-center gap-1.5">
+                        <Trans>In app</Trans>
+                        <AgentBetaBadge />
+                      </DropdownMenuLabel>
+                      {enabledThreadAgents.map((agent) => (
+                        <DropdownMenuItem
+                          key={`${agent.source}:${agent.id}`}
+                          onSelect={() => chooseThreadAgent(agent)}
+                          data-testid={`create-agent-option-thread-${agent.source}:${agent.id}`}
+                        >
+                          <RegisteredAgentIcon
+                            agentId={agent.id}
+                            iconUrl={agent.iconUrl}
+                            className="size-4"
+                          />
+                          <span className="flex-1 truncate">{agent.name}</span>
+                          {threadSelected &&
+                          defaultThreadAgent !== null &&
+                          defaultThreadAgent.source === agent.source &&
+                          defaultThreadAgent.id === agent.id ? (
+                            <Check aria-hidden="true" className="size-4 text-muted-foreground" />
+                          ) : null}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  ) : null}
+                  {showThreadSection && (showTerminalSection || showDesktopSection) ? (
+                    <DropdownMenuSeparator />
+                  ) : null}
                   {showTerminalSection ? (
                     // Terminal section leads (the in-app terminal is the
                     // first-class path). Labeled `role="group"` so assistive tech
@@ -455,6 +600,22 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                       </DropdownMenuGroup>
                     </>
                   ) : null}
+                  {/* Settings row — always last. Opens Configure agents so the
+                      user manages which agents appear here (replaces the former
+                      "Choose another agent" catalog affordance). */}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={openAgentSettings}
+                    data-testid="create-agent-option-settings"
+                  >
+                    <SlidersHorizontal
+                      aria-hidden="true"
+                      className="size-4 text-muted-foreground"
+                    />
+                    <span className="flex-1">
+                      <Trans>Configure agents</Trans>
+                    </span>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </ButtonGroup>

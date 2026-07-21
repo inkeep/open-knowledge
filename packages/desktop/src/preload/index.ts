@@ -757,6 +757,12 @@ const bridge: OkDesktopBridge = {
       invoke('ok:pty:set-order', { orderedPtyIds: [...orderedPtyIds] }).catch(() => {});
     },
     getDockState: () => invoke('ok:terminal:dock-state'),
+    setDockState: (state) => {
+      invoke('ok:terminal:set-dock-state', {
+        order: [...state.order],
+        activeKey: state.activeKey,
+      }).catch(() => {});
+    },
     onData(cb) {
       const listener = (_event: IpcRendererEvent, msg: OkPtyData) => cb(msg);
       // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)

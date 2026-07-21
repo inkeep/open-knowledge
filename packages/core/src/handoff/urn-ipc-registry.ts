@@ -292,6 +292,10 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   'urn:ok:error:handoff-target-not-installed',
   'urn:ok:error:handoff-spawn-timeout',
   'urn:ok:error:handoff-spawn-failed',
+  // `GET /api/acp/catalog` — HTTP-only. The agent catalog is fetched over the
+  // embedded server's HTTP API by both web and Electron renderers; there is no
+  // IPC counterpart.
+  'urn:ok:error:registry-unreachable',
   // Lint config write (`POST /api/lint/markdownlint-config` → 409 when the
   // native `.markdownlint.*` file can't be written). HTTP-only — the lint
   // config surface is REST, with no IPC counterpart.

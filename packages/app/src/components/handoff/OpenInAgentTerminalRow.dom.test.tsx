@@ -8,11 +8,11 @@
  * chosen CLI to the launcher.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { HandoffDispatchInput } from './useHandoffDispatch';
 
 const input: HandoffDispatchInput = {
@@ -32,7 +32,7 @@ const installedStates = {
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -41,21 +41,25 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('./useInstalledAgents', () => ({
+vi.doMock('./useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: installedStates, refresh: () => Promise.resolve() }),
 }));
 
-mock.module('./useHandoffDispatch', () => ({
+vi.doMock('./useHandoffDispatch', () => ({
   useHandoffDispatch: () => ({ dispatch: () => Promise.resolve({ ok: true as const }) }),
+  composeThreadLaunchPrompt: (dispatchInput: HandoffDispatchInput) =>
+    `thread-prompt:${dispatchInput.docContext?.relativePath ?? 'none'}`,
+  startAgentThreadForInput: () => {},
+  openInstallUrl: () => Promise.resolve(),
 }));
 
-mock.module('@/lib/config-context', () => ({
+vi.doMock('@/lib/config-context', () => ({
   useConfigContext: () => ({ merged: { appearance: { preview: { autoOpen: true } } } }),
 }));
 
-mock.module('@/hooks/use-is-embedded', () => ({ useIsEmbedded: () => false }));
+vi.doMock('@/hooks/use-is-embedded', () => ({ useIsEmbedded: () => false }));
 
-mock.module('./OpenInAgentMenuItem', () => ({ TargetIcon: () => null }));
+vi.doMock('./OpenInAgentMenuItem', () => ({ TargetIcon: () => null }));
 
 const { OpenInAgentMenu } = await import('./OpenInAgentMenu');
 const { TerminalLaunchProvider } = await import('./TerminalLaunchContext');
@@ -66,7 +70,7 @@ async function renderMenu(opts: {
   launcher: ((input: HandoffDispatchInput, cli: TerminalCli) => void) | null;
   menuInput?: HandoffDispatchInput | null;
   // The raw PATH-detection map the production provider supplies. The component
-  // gates its own rows via `visibleTerminalClis`, so feeding the map here (not a
+  // gates its own rows via `isTerminalCliEnabled`, so feeding the map here (not a
   // pre-gated list) exercises that production wiring. Defaults to `{}` (probe
   // unresolved → fail-open, every CLI shown).
   installedClis?: Partial<Record<TerminalCli, boolean>>;
@@ -105,11 +109,11 @@ describe('Open-with-AI Terminal CLI rows', () => {
     expect(screen.getByTestId('open-in-agent-terminal-cursor')).toBeTruthy();
   });
 
-  test('gates rows through the real probe map: Claude always, detected shown, probed-absent hidden', async () => {
-    // A complete resolved map: only `codex` on PATH. The component runs
-    // `visibleTerminalClis` itself, so this exercises the production wiring —
-    // Claude (always-visible anchor) plus `codex`; Cursor and Antigravity are
-    // probed absent (`false`), so their rows are gone.
+  test('gates rows through the real probe map: probed-absent hidden (Claude included), detected shown', async () => {
+    // A complete resolved map: only `codex` on PATH. Rows gate via
+    // `isTerminalCliEnabled` — codex shows; Claude, Cursor, and Antigravity are
+    // probed absent (`false`), so their rows are gone. Claude is no longer a
+    // special always-visible anchor: an absent Claude CLI hides like any other.
     await renderMenu({
       launcher: () => {},
       installedClis: {
@@ -122,7 +126,7 @@ describe('Open-with-AI Terminal CLI rows', () => {
       },
     });
     await openMenu();
-    expect(screen.getByTestId('open-in-agent-terminal-claude')).toBeTruthy();
+    expect(screen.queryByTestId('open-in-agent-terminal-claude')).toBeNull();
     expect(screen.getByTestId('open-in-agent-terminal-codex')).toBeTruthy();
     expect(screen.queryByTestId('open-in-agent-terminal-antigravity')).toBeNull();
     expect(screen.queryByTestId('open-in-agent-terminal-cursor')).toBeNull();

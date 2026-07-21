@@ -14,7 +14,6 @@
  *   - Default deps wire production bindings without error
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import type { HandoffOutcome, HandoffPayload, HandoffTarget } from '@inkeep/open-knowledge-core';
 import {
@@ -22,6 +21,7 @@ import {
   OK_TERMINAL_SURFACE_PREAMBLE,
   withSkillPointer,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test, vi } from 'vitest';
 import type {
   HandoffDispatchDeps,
   HandoffDispatchInput,
@@ -68,8 +68,8 @@ function buildDeps(
 ): HandoffDispatchDeps & { toast: RecordingToast } {
   const toast = recordingToast();
   const defaults: HandoffDispatchDeps = {
-    dispatchHandoff: mock(async (_payload: HandoffPayload) => ({ ok: true }) as HandoffOutcome),
-    recordHandoff: mock(async (_line) => {}),
+    dispatchHandoff: vi.fn(async (_payload: HandoffPayload) => ({ ok: true }) as HandoffOutcome),
+    recordHandoff: vi.fn(async (_line) => {}),
     toast,
     now: () => new Date('2026-04-22T03:00:00.000Z'),
     isElectronHost: () => true,
@@ -83,7 +83,7 @@ function buildDeps(
             : 'Cursor',
     // Default to `already-installed` so existing tests exercise the URL
     // dispatch path; install-gate-specific tests override this.
-    ensureCoworkSkillInstalled: mock(async () => ({ kind: 'already-installed' }) as const),
+    ensureCoworkSkillInstalled: vi.fn(async () => ({ kind: 'already-installed' }) as const),
     // Default true to match `defaultHandoffDispatchDeps()` and the cold-start
     // fallback in the hook; tests covering the `false` branch override this.
     autoOpen: true,
@@ -208,7 +208,7 @@ describe('runHandoffDispatch — success path', () => {
     await runHandoffDispatch('codex', input, deps);
 
     expect(deps.dispatchHandoff).toHaveBeenCalledTimes(1);
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.target).toBe('codex');
@@ -260,7 +260,7 @@ describe('runHandoffDispatch — success path', () => {
     await runHandoffDispatch('codex', input, deps);
 
     expect(deps.dispatchHandoff).toHaveBeenCalledTimes(1);
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.target).toBe('codex');
@@ -294,7 +294,7 @@ describe('runHandoffDispatch — success path', () => {
 
     await runHandoffDispatch('codex', input, deps);
 
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.target).toBe('codex');
@@ -319,7 +319,7 @@ describe('runHandoffDispatch — autoOpen=false honors the user preference', () 
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({ autoOpen: false });
     await runHandoffDispatch('codex', sampleInput(), deps);
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.prompt).toBe(
@@ -338,7 +338,7 @@ describe('runHandoffDispatch — autoOpen=false honors the user preference', () 
       docPath: '',
     };
     await runHandoffDispatch('codex', input, deps);
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.prompt).toBe(
@@ -356,7 +356,7 @@ describe('runHandoffDispatch — autoOpen=false honors the user preference', () 
       docPath: '',
     };
     await runHandoffDispatch('codex', input, deps);
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.prompt).toBe(
@@ -370,7 +370,7 @@ describe('runHandoffDispatch — failure path', () => {
   test('renders error toast with Retry action and records error stats line', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({
-      dispatchHandoff: mock(
+      dispatchHandoff: vi.fn(
         async (_p: HandoffPayload) => ({ ok: false, reason: 'not-installed' }) as HandoffOutcome,
       ),
     });
@@ -399,7 +399,7 @@ describe('runHandoffDispatch — failure path', () => {
 
   test('retry action re-invokes dispatchHandoff with the same payload', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
-    const dispatch = mock(async (_p: HandoffPayload) => ({ ok: true }) as HandoffOutcome);
+    const dispatch = vi.fn(async (_p: HandoffPayload) => ({ ok: true }) as HandoffOutcome);
     // First call returns failure; subsequent retries return success.
     let firstCall = true;
     (
@@ -429,8 +429,9 @@ describe('runHandoffDispatch — failure path', () => {
     await wait(0);
 
     expect(dispatch).toHaveBeenCalledTimes(2);
-    const firstPayload = (dispatch as ReturnType<typeof mock>).mock.calls[0]?.[0] as HandoffPayload;
-    const secondPayload = (dispatch as ReturnType<typeof mock>).mock
+    const firstPayload = (dispatch as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as HandoffPayload;
+    const secondPayload = (dispatch as ReturnType<typeof vi.fn>).mock
       .calls[1]?.[0] as HandoffPayload;
     expect(secondPayload).toEqual(firstPayload);
 
@@ -446,7 +447,7 @@ describe('runHandoffDispatch — failure path', () => {
     // button + "Still couldn't reach" copy. Third failure: distinct
     // "please try again later" copy, NO button — user cannot loop further.
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
-    const dispatch = mock(
+    const dispatch = vi.fn(
       async (_p: HandoffPayload) => ({ ok: false, reason: 'dispatch-error' }) as HandoffOutcome,
     );
     const deps = buildDeps({ dispatchHandoff: dispatch });
@@ -490,7 +491,7 @@ describe('runHandoffDispatch — failure path', () => {
   test('web-host-cursor-unsupported reason flows through to telemetry + toast', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({
-      dispatchHandoff: mock(
+      dispatchHandoff: vi.fn(
         async (_p: HandoffPayload) =>
           ({
             ok: false,
@@ -536,7 +537,7 @@ describe('runHandoffDispatch — Cowork install gate', () => {
   test('first click + bridge ran: shows install toast and skips URL dispatch', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({
-      ensureCoworkSkillInstalled: mock(
+      ensureCoworkSkillInstalled: vi.fn(
         async () => ({ kind: 'installed-now', path: '/tmp/openknowledge.skill' }) as const,
       ),
     });
@@ -554,7 +555,7 @@ describe('runHandoffDispatch — Cowork install gate', () => {
   test('install-failed: surfaces error toast and returns dispatch-error outcome', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({
-      ensureCoworkSkillInstalled: mock(
+      ensureCoworkSkillInstalled: vi.fn(
         async () =>
           ({
             kind: 'install-failed',
@@ -591,7 +592,7 @@ describe('runHandoffDispatch — Cowork install gate', () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({
       isElectronHost: () => false,
-      ensureCoworkSkillInstalled: mock(async () => ({ kind: 'host-unsupported' }) as const),
+      ensureCoworkSkillInstalled: vi.fn(async () => ({ kind: 'host-unsupported' }) as const),
     });
 
     await runHandoffDispatch('claude-cowork', sampleInput(), deps);
@@ -602,7 +603,7 @@ describe('runHandoffDispatch — Cowork install gate', () => {
 
   test('non-Cowork target: install gate is never consulted', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
-    const ensureSpy = mock(async () => ({ kind: 'already-installed' }) as const);
+    const ensureSpy = vi.fn(async () => ({ kind: 'already-installed' }) as const);
     const deps = buildDeps({ ensureCoworkSkillInstalled: ensureSpy });
 
     await runHandoffDispatch('codex', sampleInput(), deps);
@@ -614,7 +615,7 @@ describe('runHandoffDispatch — Cowork install gate', () => {
 
   test('retry attempt skips the install gate (only first attempt invokes it)', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
-    const ensureSpy = mock(async () => ({ kind: 'already-installed' }) as const);
+    const ensureSpy = vi.fn(async () => ({ kind: 'already-installed' }) as const);
     const deps = buildDeps({ ensureCoworkSkillInstalled: ensureSpy });
 
     // attempt=2 simulates a retry — the install gate must not re-run.
@@ -627,7 +628,7 @@ describe('runHandoffDispatch — Cowork install gate', () => {
   test('install gate throws: surfaces error toast + dispatch-error outcome (no unhandled rejection)', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({
-      ensureCoworkSkillInstalled: mock(async () => {
+      ensureCoworkSkillInstalled: vi.fn(async () => {
         throw new Error('IPC channel closed');
       }),
     });
@@ -1561,7 +1562,7 @@ describe('runHandoffDispatch — selection scope', () => {
     await runHandoffDispatch('claude-code', selectionInput(), deps);
 
     expect(deps.dispatchHandoff).toHaveBeenCalledTimes(1);
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.target).toBe('claude-code');
@@ -2074,7 +2075,7 @@ describe('runHandoffDispatch — ask scope', () => {
     await runHandoffDispatch('claude-code', askInput(), deps);
 
     expect(deps.dispatchHandoff).toHaveBeenCalledTimes(1);
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.target).toBe('claude-code');
@@ -2096,7 +2097,7 @@ describe('runHandoffDispatch — ask scope', () => {
       deps,
     );
 
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.prompt).toContain('research the extinction of flightless birds');
@@ -2125,7 +2126,7 @@ describe('runHandoffDispatch — ask scope', () => {
 
     await runHandoffDispatch('codex', askInput(), deps);
 
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.prompt).toContain('> condense this doc');
@@ -2148,7 +2149,7 @@ describe('runHandoffDispatch — ask scope', () => {
 
     await runHandoffDispatch('cursor', input, deps);
 
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.prompt).toBe(
@@ -2458,7 +2459,7 @@ describe('runHandoffDispatch — compose scope (US-002)', () => {
 
     await runHandoffDispatch('codex', composeProjectInput(), deps);
 
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.docPath).toBe('');
@@ -2492,7 +2493,7 @@ describe('runHandoffDispatch — compose scope (US-002)', () => {
 
     await runHandoffDispatch('claude-code', input, deps);
 
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.prompt).toContain('@specs/foo/SPEC.md');
@@ -2518,7 +2519,7 @@ describe('runHandoffDispatch — compose scope (US-002)', () => {
 
     await runHandoffDispatch('codex', input, deps);
 
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.prompt).toContain('This sentence is wordy.');
@@ -2559,11 +2560,51 @@ describe('runHandoffDispatch — compose scope (US-002)', () => {
 
     await runHandoffDispatch('cursor', input, deps);
 
-    const [payload] = (deps.dispatchHandoff as ReturnType<typeof mock>).mock.calls[0] as [
+    const [payload] = (deps.dispatchHandoff as ReturnType<typeof vi.fn>).mock.calls[0] as [
       HandoffPayload,
     ];
     expect(payload.docPath).toBe('');
     expect(payload.prompt).toContain('set up CI');
     expect(payload.prompt).not.toContain('@');
+  });
+});
+
+describe('threadTitleHintFromInput — the thread-title source', () => {
+  const base = { docContext: null, projectDir: '/proj', docPath: '' };
+
+  test('returns the create brief so the title skips the handoff preamble', async () => {
+    const { threadTitleHintFromInput } = await import('./useHandoffDispatch');
+    expect(threadTitleHintFromInput({ ...base, createDescription: 'Fix the login bug' })).toBe(
+      'Fix the login bug',
+    );
+  });
+
+  test('prefers compose instruction over a later scope, in selectScopedPrompt order', async () => {
+    const { threadTitleHintFromInput } = await import('./useHandoffDispatch');
+    expect(
+      threadTitleHintFromInput({
+        ...base,
+        compose: { scope: 'project', instruction: 'summarize the specs', mentions: [] },
+        instruction: 'toolbar text that should lose',
+      }),
+    ).toBe('summarize the specs');
+  });
+
+  test('skips blank candidates and falls back to the toolbar instruction', async () => {
+    const { threadTitleHintFromInput } = await import('./useHandoffDispatch');
+    expect(
+      threadTitleHintFromInput({
+        ...base,
+        createDescription: '   ',
+        instruction: 'rename headings',
+      }),
+    ).toBe('rename headings');
+  });
+
+  test('returns null when no typed text is present (bare launch)', async () => {
+    const { threadTitleHintFromInput } = await import('./useHandoffDispatch');
+    expect(
+      threadTitleHintFromInput({ ...base, docContext: { relativePath: 'notes/today.md' } }),
+    ).toBeNull();
   });
 });

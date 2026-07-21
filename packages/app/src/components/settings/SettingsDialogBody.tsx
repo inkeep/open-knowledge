@@ -109,6 +109,7 @@ import { cn } from '@/lib/utils';
 import { AccountSection } from './AccountSection';
 import { AiToolsSection } from './AiToolsSection';
 import { ColorThemePicker } from './ColorThemePicker';
+import { ConfigureAgentsSection } from './ConfigureAgentsSection';
 import { CustomThemeEditor } from './CustomThemeEditor';
 import { EmbeddingsKeySection } from './EmbeddingsKeySection';
 import { LinkPreviewsSection } from './LinkPreviewsSection';
@@ -188,6 +189,11 @@ export function SettingsDialogBody({
         <AttachmentsSection />
       </div>
     );
+  }
+  if (activeId === 'configure-agents') {
+    // User-owned enable/disable for the launcher agent lists (In app / Terminal
+    // / Desktop). Its own localStorage store, not the config binding.
+    return <ConfigureAgentsSection />;
   }
   if (activeId === 'hotkeys') {
     return <HotkeysSection />;

@@ -113,6 +113,14 @@
 @source "./**/*.{tsx,ts,jsx,js}";
 
 /*
+ * Streamdown (ACP thread markdown) ships its utility classes inside its
+ * prebuilt dist chunks, which no auto-detected source root covers — without
+ * this line its blocks render unstyled. Glob (not index.js) because the
+ * class strings live in the hashed chunk files, not the entry.
+ */
+@source "../../../node_modules/streamdown/dist/*.js";
+
+/*
  * index.html is the only place the `antialiased` body class is used, and it
  * sits outside the src glob above. Under packages/app's own `bun run dev` /
  * `vite build` it's covered by the Vite HTML entry, but electron-vite dev
@@ -212,6 +220,25 @@
     }
   }
 
+  /* Agent insert flash — position-accurate highlight on the exact ranges an
+     agent write changed (.ok-agent-insert-flash inline decorations from the
+     agent-insert-flash PM plugin). Background/box-shadow only — no layout,
+     so it stays cheap on large writes. */
+  @keyframes agent-insert-flash {
+    0% {
+      background: rgba(217, 119, 87, 0.3);
+      box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.12);
+    }
+    55% {
+      background: rgba(217, 119, 87, 0.14);
+      box-shadow: 0 0 0 0 transparent;
+    }
+    100% {
+      background: transparent;
+      box-shadow: 0 0 0 0 transparent;
+    }
+  }
+
   /* Agent badge breathing — subtle pulse when agent is editing */
   @keyframes agent-breathing {
     0%,
@@ -240,6 +267,7 @@
   }
 
   --animate-agent-flash: agent-flash 2s var(--ease-out-strong) forwards;
+  --animate-agent-insert-flash: agent-insert-flash 1.4s var(--ease-out-strong) forwards;
   --animate-agent-breathing: agent-breathing 2.4s ease-in-out infinite;
   --animate-undo-ready: undo-ready 600ms var(--ease-out-strong) forwards;
 
@@ -365,6 +393,48 @@
   }
 }
 
+/* Text shimmer: a light band sweeps through the text via a clipped gradient,
+   used on the agent-thread "starting/installing/connecting" status line so the
+   wait reads as working. Text-only (relies on `background-clip: text`), so it
+   has no effect on non-text (SVG/icon) elements. Registered as a real Tailwind
+   utility (not a plain class) so state variants can also drive it. */
+@utility shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 25%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 75%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: shimmer 1.5s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Pin the shimmer static for reduced-motion users. Stopping the animation
+   alone leaves `background-clip: text` + transparent fill, which freezes a
+   gradient band across the text; reset both so it renders as plain
+   muted-foreground. */
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: var(--muted-foreground);
+    color: var(--muted-foreground);
+  }
+}
+
 /* Reduced-motion override — keep the opacity crossfade as a comprehension
    aid (the panel still appears/disappears) but pin the height so the
    layout-triggering animation doesn't fire. Matches the rest of this
@@ -421,6 +491,23 @@
    Uses :nth-last-child / :nth-child to scope the flash without touching PM-managed DOM.
 
    Staggered entry (30ms per block) via animation-delay for a cascading feel on multi-block writes. */
+
+/* Position-accurate agent-insert flash — inline decoration class applied by
+   the agent-insert-flash PM plugin to the exact ranges a remote agent write
+   changed. `box-decoration-break: clone` keeps wrapped lines individually
+   rounded; duration matches AGENT_INSERT_FLASH_MS in agent-insert-flash.ts. */
+.ok-agent-insert-flash {
+  animation: agent-insert-flash 1.4s var(--ease-out-strong) forwards;
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ok-agent-insert-flash {
+    animation-duration: 1ms;
+  }
+}
 
 [data-agent-flash-state="editing"][data-agent-flash-position="append"]
   .ProseMirror

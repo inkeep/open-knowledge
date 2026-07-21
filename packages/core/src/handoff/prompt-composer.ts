@@ -156,6 +156,28 @@ export const OK_TERMINAL_SURFACE_PREAMBLE =
   "You're running in the terminal of the OpenKnowledge desktop app.";
 
 /**
+ * Agent-thread surface preamble — the ACP twin of
+ * {@link OK_TERMINAL_SURFACE_PREAMBLE}. Emitted when a launch opens an
+ * in-app agent thread (server-hosted, browser or desktop) rather than a
+ * terminal CLI. States the surface so the composed handoff reads coherently.
+ */
+export const OK_THREAD_SURFACE_PREAMBLE =
+  "You're an agent working inside OpenKnowledge, with its MCP tools available to you.";
+
+/**
+ * In-app-thread *bare*-launch prompt — the ACP twin of
+ * {@link composeTerminalBareLaunchPrompt}. Same shape (surface + skill
+ * pointer + optional file pointer + stop), with the thread preamble.
+ */
+export function composeThreadBareLaunchPrompt(relativePath: string | null): string {
+  const tail =
+    relativePath === null
+      ? 'Then stop.'
+      : `Read \`${sanitizePathForPrompt(relativePath)}\` via the OpenKnowledge MCP server, then stop.`;
+  return `${OK_THREAD_SURFACE_PREAMBLE} ${OK_PROJECT_SKILL_POINTER} ${tail}`;
+}
+
+/**
  * Docked-terminal *bare*-launch prompt — what lands when the user opens a
  * terminal on a file / folder / project WITHOUT typing an instruction or a
  * create brief. Unlike the directive composers it does not invite open-ended

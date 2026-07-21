@@ -239,9 +239,13 @@ test.describe('non-embedded UA', () => {
     await page.goto('/#/qa-doc-handle-collapse');
     await waitForActiveProviderSynced(page);
 
-    // On the web host the doc-panel handle is the only resizable separator (no
-    // terminal column mounts), so it is unambiguous.
-    const docPanelHandle = page.locator('[data-slot="resizable-handle"]');
+    // The sessions dock's bottom shell renders on every host now, so its
+    // (disabled, horizontal) handle coexists with the doc-panel handle.
+    // The doc panel's is the only VERTICAL separator while the right dock
+    // column is hidden, so scope by orientation.
+    const docPanelHandle = page.locator(
+      '[data-slot="resizable-handle"][aria-orientation="vertical"]',
+    );
     await expect(docPanelHandle).toHaveCount(1);
 
     // Expanded (default at WIDE): interactive — focusable and not disabled.
@@ -476,8 +480,13 @@ test.describe('non-embedded UA', () => {
     await expect(page.locator('.ProseMirror:not(.composer-prosemirror)').first()).toBeVisible({
       timeout: 30_000,
     });
-    // Find the resize handle — our wrapper uses data-slot="resizable-handle"
-    const handle = page.locator('[data-slot="resizable-handle"]').first();
+    // Find the doc-panel resize handle — our wrapper uses
+    // data-slot="resizable-handle"; scope by orientation because the sessions
+    // dock's bottom shell contributes a second (horizontal, disabled) handle
+    // on every host.
+    const handle = page
+      .locator('[data-slot="resizable-handle"][aria-orientation="vertical"]')
+      .first();
     await expect(handle).toBeVisible({ timeout: 10_000 });
     const box = await handle.boundingBox();
     expect(box).not.toBeNull();
@@ -815,7 +824,11 @@ test.describe('non-embedded UA', () => {
       )
       .toBeLessThanOrEqual(360);
 
-    const handle = page.locator('[role="separator"][data-separator]').first();
+    // Scope by orientation: the sessions dock's bottom shell contributes a
+    // second (horizontal, disabled) separator on every host.
+    const handle = page
+      .locator('[role="separator"][data-separator][aria-orientation="vertical"]')
+      .first();
     const handleBox = await handle.boundingBox();
     if (handleBox == null) throw new Error('right handle not laid out');
     // Drag handle leftward by ~100px (panel grows by ~100px from ~340 → ~440)

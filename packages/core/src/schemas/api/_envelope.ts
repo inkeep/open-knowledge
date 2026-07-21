@@ -379,6 +379,9 @@ export const ProblemTypeSchema = z.enum([
   'urn:ok:error:handoff-target-not-installed',
   'urn:ok:error:handoff-spawn-timeout',
   'urn:ok:error:handoff-spawn-failed',
+  // ACP agent-catalog route: the registry CDN was unreachable and no cache
+  // exists yet — the client renders an offline state, not an error toast.
+  'urn:ok:error:registry-unreachable',
   // `POST /api/lint/markdownlint-config` refuses (409) to rewrite a native
   // markdownlint config that is an executable module (`.cjs`/`.mjs`). Distinct
   // from `invalid-request` (400 shape) so SDK consumers read it as a Conflict —

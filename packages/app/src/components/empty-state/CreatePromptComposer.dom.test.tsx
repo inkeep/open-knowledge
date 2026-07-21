@@ -9,15 +9,25 @@
  * accessible-name split.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { CreateScenario, InstallState } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode, type Ref, useImperativeHandle, useRef } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { HandoffDispatchInput } from '@/components/handoff/useHandoffDispatch';
+// Real namespace, captured before the mock below replaces the module — lets the
+// mock keep the real `buildCreateHandoffInput` (whose exact output shape the CLI
+// tests assert) while spying on the thread-launch + app-dispatch entry points.
+import * as handoffModule from '@/components/handoff/useHandoffDispatch';
+import {
+  desktopEnabledKey,
+  reloadEnabledAgentsFromStorage,
+  setAgentEnabled,
+} from '@/lib/acp/enabled-agents';
+import { registerAgent, reloadRegisteredAgentsFromStorage } from '@/lib/acp/registered-agents';
 import type { Workspace } from '@/lib/workspace-paths';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -26,23 +36,23 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('@/lib/config-context', () => ({
+vi.doMock('@/lib/config-context', () => ({
   useConfigContext: () => ({ merged: { appearance: { preview: { autoOpen: true } } } }),
 }));
 
 let states: Record<string, InstallState> = {};
-mock.module('@/components/handoff/useInstalledAgents', () => ({
+vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states, refresh: () => Promise.resolve() }),
 }));
 
 let workspaceValue: Workspace | null = null;
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => workspaceValue,
 }));
 
 // Stub the brand-icon helper so the test doesn't pull next-themes / SVG vendor
 // icons — the composer only needs *an* icon per row, not the themed artwork.
-mock.module('@/components/handoff/OpenInAgentMenuItem', () => ({
+vi.doMock('@/components/handoff/OpenInAgentMenuItem', () => ({
   TargetIcon: ({ id }: { id: string }) => (
     <svg data-testid={`target-icon-${id}`} aria-hidden="true" />
   ),
@@ -57,7 +67,7 @@ type MenuChild = {
   onSelect?: () => void;
   [key: string]: unknown;
 };
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: MenuChild) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: MenuChild) => <>{children}</>,
   DropdownMenuContent: ({ children, ...props }: MenuChild) => (
@@ -78,6 +88,27 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuSeparator: () => <hr data-testid="menu-separator" />,
 }));
 
+// Spy on the two handoff entry points the create composer can reach on submit,
+// keeping every other export (notably the real `buildCreateHandoffInput`) intact
+// so the CLI tests still assert its true output. `startAgentThreadForInput` =
+// the in-app thread path; `useHandoffDispatch().dispatch` = the app-agent
+// deep-link path. Which one fires on Enter is exactly what the thread-mode
+// keyboard test below pins.
+const threadLaunchCalls: unknown[] = [];
+const dispatchCalls: Array<{ id: string; input: unknown }> = [];
+vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
+  ...handoffModule,
+  startAgentThreadForInput: (input: unknown) => {
+    threadLaunchCalls.push(input);
+  },
+  useHandoffDispatch: () => ({
+    dispatch: (id: string, input: unknown) => {
+      dispatchCalls.push({ id, input });
+      return Promise.resolve({ ok: true });
+    },
+  }),
+}));
+
 // Mentions the mock input returns from getContent(); reset per test.
 let mockMentions: string[] = [];
 // Textarea double for the rich `@`-mention input: exposes the same imperative
@@ -92,7 +123,7 @@ type MentionHandle = {
   setText: (text: string) => void;
   getContent: () => { instruction: string; mentions: string[] };
 };
-mock.module('@/editor/ComposerMentionInput', () => ({
+vi.doMock('@/editor/ComposerMentionInput', () => ({
   ComposerMentionInput: ({
     ref,
     ariaLabel,
@@ -151,9 +182,18 @@ const launchCalls: HandoffDispatchInput[] = [];
 const { CreatePromptComposer } = await import('./CreatePromptComposer');
 const { TerminalLaunchProvider } = await import('@/components/handoff/TerminalLaunchContext');
 
+// Desktop is enablement-gated now (off by default); these tests express Desktop
+// visibility via `states`, so translate installed → enabled at render.
+function enableInstalledDesktopTargets() {
+  for (const [id, state] of Object.entries(states)) {
+    if (state?.installed === true) setAgentEnabled(desktopEnabledKey(id), true);
+  }
+}
+
 async function renderComposer(
   opts: { withTerminal: boolean; scenario?: CreateScenario } = { withTerminal: true },
 ) {
+  enableInstalledDesktopTargets();
   const value = opts.withTerminal
     ? { launchInTerminal: (i: HandoffDispatchInput) => launchCalls.push(i), installedClis: {} }
     : null;
@@ -173,9 +213,14 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
   afterEach(() => {
     cleanup();
     launchCalls.length = 0;
+    threadLaunchCalls.length = 0;
+    dispatchCalls.length = 0;
     states = {};
     workspaceValue = null;
     mockMentions = [];
+    if (typeof localStorage !== 'undefined') localStorage.clear();
+    reloadRegisteredAgentsFromStorage();
+    reloadEnabledAgentsFromStorage();
   });
 
   test('renders Desktop and Terminal sections with the CLI launch row when a launcher is present', async () => {
@@ -191,10 +236,13 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.getByTestId('create-with-cli-claude')).toBeTruthy();
-    expect(screen.queryByTestId('menu-separator')).not.toBeNull();
+    // Two separators: Terminal | Desktop, and the Configure agents footer. No
+    // In-app section here (no enabled in-app agents), so no generic thread row.
+    expect(screen.queryAllByTestId('menu-separator')).toHaveLength(2);
+    expect(screen.queryByTestId('create-agent-option-thread')).toBeNull();
   });
 
-  test('omits the Terminal section (label, row, separator) on the web host while keeping Desktop', async () => {
+  test('omits the Terminal section (label, row) on the web host while keeping Desktop', async () => {
     states = { ...installedAll };
     workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
     await renderComposer({ withTerminal: false });
@@ -202,7 +250,47 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     expect(screen.getByText('Desktop')).toBeTruthy();
     expect(screen.queryByText('Terminal')).toBeNull();
     expect(screen.queryByTestId('create-with-cli-claude')).toBeNull();
-    expect(screen.queryByTestId('menu-separator')).toBeNull();
+    // One separator remains: In-this-app | Desktop (Terminal absent on web).
+    expect(screen.queryAllByTestId('menu-separator')).toHaveLength(1);
+  });
+
+  test('picking an in-app agent row switches the Create button to that agent', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    states = { ...installedAll };
+    workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
+    await renderComposer({ withTerminal: true });
+
+    const row = screen.getByTestId('create-agent-option-thread-registry:claude-acp');
+    fireEvent.click(row);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Start Claude Agent');
+    });
+    // Selecting thread mode does not launch the terminal.
+    expect(launchCalls).toEqual([]);
+  });
+
+  test('Enter in thread mode starts the in-app agent — not an app-agent dispatch', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    states = { ...installedAll };
+    workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
+    await renderComposer({ withTerminal: true, scenario: 'new-project' });
+
+    const field = screen.getByLabelText('Describe the project you want to create');
+    fireEvent.change(field, { target: { value: 'Build a coffee wiki' } });
+    fireEvent.click(screen.getByTestId('create-agent-option-thread-registry:claude-acp')); // thread mode
+    await waitFor(() => {
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Start Claude Agent');
+    });
+
+    // Enter must perform the SAME action as the Create button — launch the in-app
+    // thread — instead of falling through to the app-agent deep-link dispatch (the
+    // regression when handleSubmit lacked the thread branch the button had).
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(threadLaunchCalls).toHaveLength(1);
+    expect(threadLaunchCalls[0]).toMatchObject({ createDescription: 'Build a coffee wiki' });
+    expect(dispatchCalls).toEqual([]);
+    expect(launchCalls).toEqual([]);
   });
 
   test('selecting the Terminal Claude row switches the button to CLI mode; Create launches with the typed brief', async () => {

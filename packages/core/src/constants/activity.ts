@@ -39,3 +39,33 @@ export function hasNewEntries(activityMap: Y.Map<unknown>, since: number): boole
   }
   return false;
 }
+
+/**
+ * The top-level block index range `[from, to)` that differs between two block
+ * snapshots, in AFTER coordinates, or null when `after` gained no blocks.
+ *
+ * A block snapshot is the serialized form of each top-level node (the server
+ * takes it from the XmlFragment's children, which map 1:1 to PM top-level
+ * nodes). A prefix/suffix scan collapses a whole-body `replace` that only
+ * appended a section down to just the appended blocks — so follow mode flashes
+ * and scrolls to where the agent actually wrote, not the whole doc. Pure
+ * deletion (no new/changed blocks in `after`) returns null: there is nothing
+ * to flash.
+ */
+export function changedBlockRange(
+  before: readonly string[],
+  after: readonly string[],
+): { from: number; to: number } | null {
+  const n = before.length;
+  const m = after.length;
+  let start = 0;
+  while (start < n && start < m && before[start] === after[start]) start++;
+  let endBefore = n;
+  let endAfter = m;
+  while (endBefore > start && endAfter > start && before[endBefore - 1] === after[endAfter - 1]) {
+    endBefore--;
+    endAfter--;
+  }
+  if (endAfter <= start) return null;
+  return { from: start, to: endAfter };
+}

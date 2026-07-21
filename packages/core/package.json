@@ -34,6 +34,11 @@
       "development": "./src/helper-bundle.ts",
       "types": "./src/helper-bundle.ts",
       "default": "./dist/helper-bundle.mjs"
+    },
+    "./acp/thread-protocol": {
+      "development": "./src/acp/thread-protocol.ts",
+      "types": "./src/acp/thread-protocol.ts",
+      "default": "./dist/acp-thread-protocol.mjs"
     }
   },
   "files": [
@@ -41,6 +46,7 @@
     "src"
   ],
   "dependencies": {
+    "@agentclientprotocol/sdk": "^1.1.0",
     "@handlewithcare/remark-prosemirror": "0.1.5",
     "@opentelemetry/api": "^1.9.0",
     "@orama/orama": "^3.1.18",

@@ -33,6 +33,8 @@ import type { Duplex } from 'node:stream';
 import type { Hocuspocus } from '@hocuspocus/server';
 import { AGENT_ICON_COLORS, colorFromSeed, iconFromClientName } from '@inkeep/open-knowledge-core';
 import { WebSocketServer } from 'ws';
+import type { AcpThreadManager } from './acp/thread-manager.ts';
+import { attachAcpThreadSocket } from './acp/thread-socket.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
 import { toBroadcasterKey, validateAgentId } from './agent-id.ts';
 import type { AgentPresenceBroadcaster } from './agent-presence.ts';
@@ -116,6 +118,12 @@ export interface MountMcpAndApiOptions {
    * the shell on its own port.
    */
   reactShellMiddleware?: (req: IncomingMessage, res: ServerResponse, next: () => void) => void;
+  /**
+   * ACP thread host answering the `/collab/thread` upgrade. When omitted or
+   * null (ephemeral mode, restartable test harness), the branch fail-closes
+   * by destroying the socket — no thread surface exists to reach.
+   */
+  acpThreadManager?: AcpThreadManager | null;
   /**
    * No-project ephemeral single-file mode (`ok <file>`). When `true`, the
    * content-asset surface is gated by the same loopback + workspace-host
@@ -391,6 +399,34 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
   };
 
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
+    if (req.url?.startsWith('/collab/thread')) {
+      // Same gate family as the mutating HTTP surface: loopback peer +
+      // workspace Host header, plus browser-Origin allowlist when an Origin
+      // is present (WS upgrades from pages always carry one; a DNS-rebound
+      // page fails the Host check, a foreign page fails the Origin check).
+      const acp = opts.acpThreadManager;
+      if (
+        acp === undefined ||
+        acp === null ||
+        !isLoopbackAddress(req.socket.remoteAddress) ||
+        !isAllowedWorkspaceHostHeader(req.headers.host) ||
+        (req.headers.origin !== undefined && !isAllowedApiOrigin(req.headers.origin))
+      ) {
+        socket.destroy();
+        return;
+      }
+      socket.on('error', (err: NodeJS.ErrnoException) => {
+        if (handleCollabSocketError(err)) return;
+        log.error({ err }, 'ACP thread socket error');
+      });
+      liveUpgradeSockets.add(socket);
+      socket.once('close', () => liveUpgradeSockets.delete(socket));
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        attachAcpThreadSocket(ws, acp, log);
+      });
+      return;
+    }
+
     if (req.url?.startsWith('/collab/keepalive')) {
       if (
         !isLoopbackAddress(req.socket.remoteAddress) ||

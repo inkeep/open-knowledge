@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
@@ -10,20 +10,24 @@ import {
   expectVisualClassTokensAbsent,
 } from '@/test-utils/visual-contract';
 
-mock.module('@lingui/core/macro', () => ({ ...actualLinguiMacro, t: renderLinguiTemplate }));
+vi.doMock('@lingui/core/macro', () => ({
+  ...actualLinguiMacro,
+  t: renderLinguiTemplate,
+  msg: renderLinguiTemplate,
+}));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Plural: ({ one }: { one: string }) => <>{one}</>,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({
     assetPaths: new Set<string>(),
     error: null,
@@ -38,7 +42,7 @@ mock.module('@/components/PageListContext', () => ({
   }),
 }));
 
-mock.module('@/components/GraphView', () => ({
+vi.doMock('@/components/GraphView', () => ({
   GraphView: ({ isExpanded }: { isExpanded: boolean }) => (
     <div data-testid="graph-view" data-expanded={String(isExpanded)} />
   ),

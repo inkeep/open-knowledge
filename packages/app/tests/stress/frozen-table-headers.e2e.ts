@@ -330,6 +330,14 @@ test('no freeze before the table reaches the toolbar', async ({
   api,
   workerServer,
 }, testInfo) => {
+  // The follow-the-file activation replay auto-scrolls to the seeded write's
+  // changed range (the seed IS an agent write, and it lands within the replay
+  // window) — which would legitimately freeze the header mid-table. This test
+  // measures the AT-REST transform, so pin the viewport to the top by
+  // disabling the follow pref before the app loads.
+  await page.addInitScript(() => {
+    localStorage.setItem('ok-acp-follow-file-v1', '0');
+  });
   await api.seedDocs([{ name: 'frozen-hdr-long-1', markdown: LONG_TABLE_MARKDOWN }]);
   await page.goto(`${workerServer.baseURL}/#/frozen-hdr-long-1`);
   await waitForActiveProviderSynced(page);

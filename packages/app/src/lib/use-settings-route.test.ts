@@ -3,8 +3,13 @@
  * of `useSettingsRoute` itself lives in `use-settings-route.dom.test.tsx`.
  */
 
-import { describe, expect, test } from 'bun:test';
-import { isSettingsHashOpen, isSettingsShortcut, SETTINGS_OPEN_HASH } from './use-settings-route';
+import { describe, expect, test } from 'vitest';
+import {
+  isSettingsHashOpen,
+  isSettingsShortcut,
+  SETTINGS_OPEN_HASH,
+  settingsHashSection,
+} from './use-settings-route';
 
 describe('isSettingsHashOpen', () => {
   test('empty hash → false', () => {
@@ -24,19 +29,24 @@ describe('isSettingsHashOpen', () => {
     expect(isSettingsHashOpen('settings')).toBe(true);
   });
 
-  test('legacy sub-routes are no longer recognized', () => {
-    // Pre-redesign hashes (`#settings/project`, `#settings/user`) carried
-    // the scope toggle state. Sub-routes were dropped when the toggle
-    // went away. Anyone still navigating to a sub-route gets `false`
-    // here — entry points (HelpPopover, CommandPalette, Cmd-,, Electron
-    // menu) all use `SETTINGS_OPEN_HASH` so they're unaffected.
-    expect(isSettingsHashOpen('#settings/project')).toBe(false);
-    expect(isSettingsHashOpen('#settings/user')).toBe(false);
+  test('section deep-links open (unknown sections fall back to the default)', () => {
+    // `#settings/<section>` opens Settings to that sidebar section — the
+    // launcher dropdowns' "Settings" row uses `#settings/configure-agents`.
+    // An unrecognized section (e.g. the pre-redesign `project`/`user` scope
+    // hashes) still opens; the shell falls back to Preferences for an id that
+    // matches no sidebar item.
+    expect(isSettingsHashOpen('#settings/configure-agents')).toBe(true);
+    expect(isSettingsHashOpen('#settings/project')).toBe(true);
+    expect(isSettingsHashOpen('#settings/user')).toBe(true);
+    expect(settingsHashSection('#settings/configure-agents')).toBe('configure-agents');
   });
 
   test('typo / unrecognized hash → false', () => {
     expect(isSettingsHashOpen('#settings-typo')).toBe(false);
+    // A bare `#settings/` (empty section) does not count as open.
     expect(isSettingsHashOpen('#settings/')).toBe(false);
+    expect(settingsHashSection('#settings/')).toBeNull();
+    expect(settingsHashSection('#settings')).toBeNull();
   });
 });
 

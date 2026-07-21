@@ -1,62 +1,140 @@
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import type { ThreadInfo, ThreadStatus } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { useLingui } from '@lingui/react/macro';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Loader2, SquareTerminalIcon } from 'lucide-react';
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
+import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
+import { ArchivedThreadChooser, ThreadHistoryMenu } from '@/components/acp/ThreadHistoryMenu';
 import { TabsContent } from '@/components/ui/tabs';
-import { resolveDefaultCli } from '@/lib/default-cli-resolver';
+import { isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
+import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
+import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
+import { enabledTerminalClis, resolveLauncherSelection } from '@/lib/acp/launcher-selection';
+import {
+  getDefaultRegisteredAgent,
+  pickEffectiveDefaultAgent,
+  type RegisteredAgent,
+  registerAgent,
+  useDefaultRegisteredAgent,
+  useRegisteredAgents,
+} from '@/lib/acp/registered-agents';
+import {
+  getAgentThreadClient,
+  useAgentThreadConnection,
+  useArchivedAgentThreads,
+  useOpenAgentThreadTabs,
+} from '@/lib/acp/thread-client';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import {
+  type DockSessionOrder,
+  readDockSessionOrder,
+  readWebDockSessionOrder,
+  writeDockSessionOrder,
+} from '@/lib/dock-session-persistence';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
+import type { NewSessionChoice } from '@/lib/new-session-choice';
 import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
 import {
   getInitialPreferBareTerminal,
   writePreferBareTerminal,
 } from '@/lib/terminal-new-tab-store';
-import { loadStickyAgent, saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
+import {
+  loadStickyAgent,
+  saveStickyAgent,
+  terminalCliId,
+  threadAgentId,
+} from '@/lib/unified-agent-store';
+import { openAgentSettings } from '@/lib/use-settings-route';
 import { cn } from '@/lib/utils';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
-import type { TerminalLaunchIntent } from './EditorPane';
-import { visibleTerminalClis } from './handoff/terminal-cli-display';
+import type { TerminalLaunchIntent, ThreadLaunchIntent } from './EditorPane';
+
+// Lazy-loaded: ThreadView pulls the heavy agent-transcript + editor-navigation
+// chain, which terminal-only sessions (and the standalone terminal window) never
+// need. Deferring it keeps the host lightweight and its import graph clean — the
+// same lazy-panel pattern the editor uses for ActivityModeContent + TerminalPanel.
+const ThreadView = lazy(() =>
+  import('@/components/acp/ThreadView').then((mod) => ({ default: mod.ThreadView })),
+);
+
 import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
 import { requestTerminalLaunch } from './handoff/terminal-launch-events';
 import { TerminalGate } from './TerminalGate';
-import type { TerminalNewTabChoice } from './TerminalNewChatButton';
-import { TerminalTabStrip } from './TerminalTabStrip';
+import { TerminalNewChatButton } from './TerminalNewChatButton';
+import { type TerminalTabDescriptor, TerminalTabStrip } from './TerminalTabStrip';
 
-/** A concurrent terminal session the host keeps as a tab. `id` is a stable
- *  client-side identity (not the async PTY id — the session resolves its own PTY
- *  on mount). `launch` is the one-shot intent the session writes once it is live;
- *  sessions opened from the tab strip carry none. `title` is the latest OSC 0/2
- *  title the running program set (null → the tab shows its positional default).
- *  `adoptPtyId` is the surviving ptyId after a renderer reload — the session
- *  adopts that live shell instead of spawning a fresh one; null for new tabs.
- *  `customLabel` is a user-set tab name that pins over `title`; null until the
- *  user renames the tab (an empty rename commit clears it back to null).
- *  `ordinal` is an immutable per-session number assigned at creation from the
- *  monotonic counter — the positional-fallback label ("Terminal N") uses it so a
- *  reorder does not renumber untitled tabs (the number sticks to the session, not
- *  the slot). Ordinals can have gaps (closing a tab leaves one) and reset to
- *  positional on a renderer reload. */
-interface TerminalSessionDescriptor {
+/** A session the host keeps as a tab. Two kinds share one ordered list + one
+ *  active id (the unified sessions dock). Terminal fields carry PTY state; the
+ *  thread variant carries only its server-owned `threadId` (its live title +
+ *  status come from the thread store). `ordinal` is a shared monotonic number the
+ *  panel render sorts by (so a tab reorder never moves a panel's DOM node); the
+ *  terminal positional label ("Terminal N") also reads it. `id` is a stable
+ *  client identity: `terminal-session-<n>` for a terminal, the threadId itself
+ *  for a thread. */
+interface BaseSessionDescriptor {
   readonly id: string;
-  readonly launch: TerminalLaunchIntent | null;
-  readonly title: string | null;
-  readonly customLabel: string | null;
   readonly ordinal: number;
+}
+interface TerminalSessionDescriptor extends BaseSessionDescriptor {
+  readonly kind: 'terminal';
+  /** One-shot launch intent the session writes once it is live; null for a bare tab. */
+  readonly launch: TerminalLaunchIntent | null;
+  /** Latest OSC 0/2 title the running program set (null → positional default). */
+  readonly title: string | null;
+  /** User-set tab name that pins over `title`; null until renamed. */
+  readonly customLabel: string | null;
+  /** Surviving ptyId adopted after a renderer reload (live shell + replay); null for new tabs. */
   readonly adoptPtyId: string | null;
 }
+interface ThreadSessionDescriptor extends BaseSessionDescriptor {
+  readonly kind: 'thread';
+  /** Server-owned thread id — the reload-stable key AND the store lookup key. */
+  readonly threadId: string;
+}
+type SessionDescriptor = TerminalSessionDescriptor | ThreadSessionDescriptor;
 
 function makeSessionId(counter: number): string {
   return `terminal-session-${counter}`;
 }
 
-/** Move focus into a session's terminal. xterm routes keystrokes through its
- *  helper textarea, so focusing it is equivalent to term.focus(). No-ops when
- *  the textarea has not mounted yet (xterm mounts asynchronously). */
+/** Attribute-escape a session id for a `querySelector` (jsdom's preload lacks `CSS.escape`). */
+function escapeSelector(id: string): string {
+  return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
+}
+
+/** Move focus into a terminal session's xterm (routes keystrokes through its
+ *  helper textarea). No-ops until the textarea has mounted (xterm mounts async). */
 function focusTerminalSession(id: string) {
   if (id === '') return;
   document
-    .querySelector<HTMLElement>(`[data-terminal-session="${id}"] .xterm-helper-textarea`)
+    .querySelector<HTMLElement>(
+      `[data-terminal-session="${escapeSelector(id)}"] .xterm-helper-textarea`,
+    )
     ?.focus();
+}
+
+/** Move focus into a thread session's composer so the user can type immediately. */
+function focusThreadSession(id: string) {
+  if (id === '') return;
+  document
+    .querySelector<HTMLElement>(
+      `[data-session-id="${escapeSelector(id)}"] [data-testid="agent-thread-composer"]`,
+    )
+    ?.focus();
+}
+
+function focusSession(session: SessionDescriptor) {
+  if (session.kind === 'terminal') focusTerminalSession(session.id);
+  else focusThreadSession(session.id);
 }
 
 /** True when keyboard focus currently sits inside the stable host div. */
@@ -64,63 +142,107 @@ function focusInsideHost(hostEl: HTMLElement | null): boolean {
   return hostEl?.contains(document.activeElement) ?? false;
 }
 
-/** Focus-gate shared by the terminal host's capture-phase keyboard chords (⌘1–9,
- *  ⌘⇧←/→): a chord is in scope always in the window variant (the whole window IS
- *  the terminal), and in the dock variant only while focus sits inside the host —
- *  so the chords stay free everywhere else in the editor window. */
+/** Focus-gate for the host's capture-phase chords (⌘1–9, ⌘⇧←/→): always in the
+ *  window variant (the whole window IS the terminal), in the dock only while
+ *  focus sits inside the host. */
 function chordTargetsHost(hostEl: HTMLElement | null, variant: 'dock' | 'window'): boolean {
   return variant === 'window' || focusInsideHost(hostEl);
 }
 
+/** Colour of a thread tab's status dot, by lifecycle. Transitional states pulse;
+ *  solid amber means "blocked on you" (sign-in or a permission prompt). */
+function threadStatusDotClass(status: ThreadStatus): string {
+  switch (status) {
+    case 'running':
+      return 'bg-amber-500 animate-pulse';
+    case 'installing':
+    case 'spawning':
+      return 'bg-sky-500 animate-pulse';
+    case 'auth_required':
+    case 'awaiting_permission':
+      return 'bg-amber-500';
+    case 'ready':
+      return 'bg-emerald-500';
+    case 'error':
+      return 'bg-red-500';
+    default:
+      return 'bg-muted-foreground';
+  }
+}
+
+/** The kind glyph the strip shows before a terminal tab's label. */
+function terminalTabIcon(): ReactNode {
+  return (
+    <SquareTerminalIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+  );
+}
+
+/** The agent avatar + live status dot the strip shows before a thread tab's label. */
+function threadTabIcon(info: ThreadInfo | undefined): ReactNode {
+  return (
+    <span className="relative inline-flex shrink-0">
+      <RegisteredAgentIcon
+        agentId={info?.agent.id ?? ''}
+        iconUrl={info?.agent.iconUrl}
+        className="size-3.5"
+      />
+      {info != null ? (
+        <span
+          className={cn(
+            '-right-0.5 -bottom-0.5 absolute size-1.5 rounded-full ring-1 ring-background',
+            threadStatusDotClass(info.status),
+          )}
+          aria-hidden="true"
+        />
+      ) : null}
+    </span>
+  );
+}
+
 interface TerminalSessionsHostProps {
-  /** Desktop bridge — the host renders only on the Electron surface. */
-  readonly bridge: OkDesktopBridge;
   /**
-   * Which surface hosts the sessions. `'dock'` (default) is the editor's
-   * docked terminal: visibility-driven seeding, dock-toggle + collapse controls,
-   * ⌘1–9 scoped to focus inside the host. `'window'` is the standalone terminal
-   * window: always visible, seeds its first tab on mount, the tab row doubles as
-   * the macOS title bar, no dock/collapse controls (window management is the
-   * OS's), and ⌘1–9 is scope-free (the whole window is the terminal). Everything
-   * else — the new-chat split button, OSC tab titles, menu actions, liveness,
-   * reload rehydration — is identical by construction: one session model, two
-   * placements.
+   * Desktop bridge, or `null` on the web host. The host mounts unconditionally
+   * now — a shell and an agent are just tabs of a different kind in one dock, and
+   * agents are server-hosted, so the dock is host-agnostic. Terminal-*kind*
+   * affordances (creation, PTY bodies, reload adopt) gate on the bridge exposing a
+   * `terminal` surface; thread tabs work with no bridge at all.
+   */
+  readonly bridge: OkDesktopBridge | null;
+  /**
+   * Which surface hosts the sessions. `'dock'` (default) is the editor's sessions
+   * dock: terminals AND agent threads, visibility-driven seeding, dock-toggle +
+   * collapse controls, ⌘1–9 scoped to focus inside the host. `'window'` is the
+   * standalone terminal window: terminals ONLY (no agent threads), always visible,
+   * seeds its first tab on mount, the tab row doubles as the macOS title bar, no
+   * dock/collapse controls, and ⌘1–9 is scope-free.
    */
   readonly variant?: 'dock' | 'window';
-  /** Controlled visibility. The host reflects this and reports close-last back
-   *  through {@link onVisibleChange}; it never owns it. The window variant pins
-   *  it `true` and maps the close-last report to `window.close()`. */
+  /** Controlled visibility. The host reflects it and reports close-last back
+   *  through {@link onVisibleChange}; it never owns it. */
   readonly visible: boolean;
   readonly onVisibleChange: (visible: boolean) => void;
-  /** "Open in terminal" launch intent — each new intent opens its own tab. */
+  /** "Open in terminal" launch intent — each new intent opens its own terminal tab. */
   readonly launch?: TerminalLaunchIntent | null;
-  /** Which CLIs are on PATH (desktop probe). The tab strip's "New chat" resolves
-   *  its default CLI from this + the sticky pick. */
+  /** "Start an agent" launch intent — each new intent opens its own thread tab (or
+   *  the agent catalog when no concrete agent is resolvable). Dock variant only. */
+  readonly threadLaunch?: ThreadLaunchIntent | null;
+  /** Which CLIs are on PATH (desktop probe). The New split-button resolves its
+   *  default CLI from this + the sticky pick. */
   readonly installedClis?: Partial<Record<TerminalCli, boolean>>;
-  /**
-   * The DOM container the live terminal portals into right now — the bottom dock's
-   * mount or the right region's terminal tenant. The single stable host div is
-   * physically appended here; relocating the DOM (rather than swapping the portal
-   * target, or remounting the host) is what keeps a dock move from re-spawning the
-   * PTY. This component is mounted ONCE, above the editor's resizable panel group,
-   * so it never remounts on a dock change. Null only transiently before a
-   * container attaches.
-   */
+  /** The DOM container the live session subtree portals into right now (bottom
+   *  dock mount or right region tenant). Null only transiently before a container
+   *  attaches. */
   readonly container: HTMLElement | null;
-  /** Whether the terminal is actually on screen — drives focus in/out. */
+  /** Whether the dock is actually on screen — drives focus in/out. */
   readonly isShowing: boolean;
-  /** Return focus to the editor when the terminal hides or the last tab closes. */
+  /** Return focus to the editor when the dock hides or the last tab closes. */
   readonly onRequestEditorFocus: () => void;
-  /** Current dock position — passed to the tab strip's dock-toggle + collapse
-   *  controls so their icons/labels reflect where the terminal lives. Dock
-   *  variant only. */
+  /** Current dock position — passed to the strip's dock-toggle + collapse controls. */
   readonly dockPosition?: TerminalDockPosition;
-  /** Flip the dock between bottom and right (the tab strip's dock-toggle button).
-   *  Dock variant only — the strip renders no toggle without it. */
+  /** Flip the dock between bottom and right. Dock variant only. */
   readonly onToggleDock?: () => void;
-  /** Reports whether any PTY session is currently open. The header's New chat
-   *  button reads this to decide between spawning a first chat and merely
-   *  revealing the existing dock. */
+  /** Reports whether ANY session (terminal or thread) is open, so the placement
+   *  owner (EditorArea via EditorPane) can render the dock column/shell. */
   readonly onHasSessionsChange?: (hasSessions: boolean) => void;
   /** Reports whether the ACTIVE tab is an AI-CLI session (was launched with a
    *  `cli`, e.g. a "New chat" / "Open with AI" tab) rather than a bare shell.
@@ -132,12 +254,17 @@ interface TerminalSessionsHostProps {
 }
 
 /**
- * Owns the terminal session collection and the single stable host div. Mounted
- * ONCE at a stable position ABOVE the editor's resizable panel group (in
- * EditorArea) so a dock change cannot remount it — the live shell, scrollback, and
- * tabs survive the move. The sessions render into the host div via a portal whose
- * target never changes; the host div is appended into whichever {@link container}
- * is active (bottom dock ↔ right region).
+ * Owns the unified session collection (terminals + agent threads) and the single
+ * stable host div. Mounted ONCE at a stable position ABOVE the editor's resizable
+ * panel group so a dock change cannot remount it — live shells, scrollback,
+ * transcripts, and tabs survive the move. The sessions render into the host div
+ * via a portal whose target never changes; the host div is appended into whichever
+ * {@link container} is active (bottom dock ↔ right region).
+ *
+ * The tab strip + panels dispatch by `kind`: reorder / activate / rename / close
+ * are strip-uniform, their behavior kind-specific. Terminals are host-owned (PTY
+ * lifecycle); threads mirror the server-authoritative thread store (the host owns
+ * only the dock/tab model — order, active, visibility — never thread lifecycle).
  */
 export function TerminalSessionsHost({
   bridge,
@@ -145,6 +272,7 @@ export function TerminalSessionsHost({
   visible,
   onVisibleChange,
   launch = null,
+  threadLaunch = null,
   installedClis,
   container,
   isShowing,
@@ -156,9 +284,15 @@ export function TerminalSessionsHost({
 }: TerminalSessionsHostProps) {
   const { t } = useLingui();
 
-  // The single stable host div for the terminal session subtree. Created once via
-  // a useState lazy initializer (never a render-time ref write — the React
-  // Compiler forbids touching refs during render) and never recreated.
+  // Terminal affordances need a bridge that actually exposes the `terminal`
+  // surface (a session-only bridge, some E2E hosts, has none). Thread hosting is
+  // the dock variant only (the standalone terminal window is shells-only).
+  const terminalAvailable = bridge?.terminal != null;
+  const hostThreads = variant === 'dock';
+
+  // The single stable host div for the session subtree. Created once via a
+  // useState lazy initializer (never a render-time ref write — React Compiler
+  // forbids touching refs during render) and never recreated.
   const [hostEl] = useState<HTMLDivElement | null>(() => {
     if (typeof document === 'undefined') return null;
     const el = document.createElement('div');
@@ -169,32 +303,44 @@ export function TerminalSessionsHost({
   // Append the stable host div into the active container. A constant portal target
   // plus DOM relocation means no remount on a dock move. useLayoutEffect runs
   // before the focus passive effects below, so the host is attached before a
-  // focus-on-reveal (focusing an element outside the document is a no-op).
+  // focus-on-reveal.
   useLayoutEffect(() => {
     if (hostEl == null || container == null) return;
     if (hostEl.parentElement !== container) container.appendChild(hostEl);
   }, [hostEl, container]);
 
   // A capable desktop bridge can report the PTY sessions that survived a renderer
-  // reload in the main process, so the host rehydrates them on mount instead of
-  // starting fresh. When it can, the synchronous seed below stands down and the
-  // async mount effect becomes the single source of truth for the initial sessions
-  // (adopt survivors, or settle to let the seed path run). A session-only bridge
-  // with no `terminal` surface keeps the synchronous cold-start.
-  const canRehydrate = typeof bridge.terminal?.list === 'function';
+  // reload, so the host rehydrates them on mount instead of starting fresh. When
+  // it can, the synchronous terminal seed below stands down. Web + session-only
+  // bridges keep the synchronous cold-start (no terminals to rehydrate).
+  const canRehydrate = typeof bridge?.terminal?.list === 'function';
 
-  // The session collection is the mount latch generalized to N tabs: a session
-  // stays in the list across hide/show (hide is not kill) so a long-running shell
-  // survives a collapse. Before the first open the list is empty — no PTY until
-  // the user opens the terminal. Opening with the terminal already visible seeds
-  // the first session (with any launch intent) so it never flashes empty. When the
-  // bridge can rehydrate, start empty and let the mount effect populate it so a
-  // survived reload never spawns a fresh shell only to replace it with the adopted
-  // set.
-  const [sessions, setSessions] = useState<readonly TerminalSessionDescriptor[]>(() =>
-    !canRehydrate && visible
+  // Seed the first terminal synchronously only on a terminal surface with no
+  // rehydrate capability — web + session-only bridges never seed a terminal.
+  const coldSeedTerminal = !canRehydrate && terminalAvailable && visible;
+
+  // Persisted reload order (unified keys: ptyIds + threadIds) + active key. Web
+  // reads it synchronously from localStorage here; desktop reads it async from
+  // main in the rehydration effect (which sets the refs before seeding). Restored
+  // sessions are placed by this order; sessions created after mount append. Skipped
+  // for a cold-seeded surface (a fresh terminal-only start with no rehydrate) — it
+  // has no reload to restore, and its terminal persist goes through the bridge, not
+  // localStorage — so a stale localStorage arrangement never yanks a fresh seed.
+  const [webReloadOrder] = useState<DockSessionOrder | null>(() => {
+    if (canRehydrate || !hostThreads || coldSeedTerminal) return null;
+    // Only the web dock persists to localStorage; skip for the window variant.
+    return typeof bridge?.terminal?.getDockState === 'function' ? null : readWebDockSessionOrder();
+  });
+  const reloadOrderRef = useRef<readonly string[]>(webReloadOrder?.order ?? []);
+  // Active key still awaiting a matching session (reload restore). Cleared once
+  // matched, when the user takes over the active tab, or when the reload settles —
+  // so it never blocks nor steals live activation.
+  const pendingActiveKeyRef = useRef<string | null>(webReloadOrder?.activeKey ?? null);
+  const [sessions, setSessions] = useState<readonly SessionDescriptor[]>(() =>
+    coldSeedTerminal
       ? [
           {
+            kind: 'terminal',
             id: makeSessionId(1),
             launch,
             title: null,
@@ -206,65 +352,101 @@ export function TerminalSessionsHost({
       : [],
   );
   const [activeSessionId, setActiveSessionId] = useState(() =>
-    !canRehydrate && visible ? makeSessionId(1) : '',
+    coldSeedTerminal ? makeSessionId(1) : '',
   );
-  // False until the async rehydrate settles (capable bridge only); gates the
-  // open/launch effect's seed so a transient visibility flip during the in-flight
-  // inventory query can't spawn a shell the adopted set would then replace.
   const [rehydrationSettled, setRehydrationSettled] = useState(!canRehydrate);
   const rehydratedRef = useRef(false);
-  // Mirror so the reveal-focus effect can target the active session without
-  // re-running on every tab switch (which would steal focus during arrow-key nav).
   const activeSessionIdRef = useRef(activeSessionId);
-  // Live tab order, mirrored so the ⌘-number key handler reads it without
-  // re-subscribing its window listener on every session change.
   const sessionsRef = useRef(sessions);
-  // Monotonic, never reused, so a closed tab's id can't collide with a later one.
-  const sessionCounterRef = useRef(!canRehydrate && visible ? 1 : 0);
-  // Highest launch nonce already turned into a tab — guards exactly-one-tab-per
-  // intent across re-renders.
-  const lastHandledLaunchNonceRef = useRef<number | null>(visible && launch ? launch.nonce : null);
-  // Tracks the prior `visible` so the open-from-hidden transition (false→true) is
-  // distinguishable from "still visible". The window variant mounts already
-  // visible, so its mount IS the open transition — starting the ref false routes
-  // the first-tab seed through the same open path the dock uses (after any
-  // rehydration settles, so adopted reload survivors still win over a fresh seed).
+  // Monotonic, never reused — shared by both kinds so a closed tab's id/ordinal
+  // can't collide with a later one.
+  const sessionCounterRef = useRef(coldSeedTerminal ? 1 : 0);
+  const lastHandledLaunchNonceRef = useRef<number | null>(
+    coldSeedTerminal && launch ? launch.nonce : null,
+  );
+  const lastHandledThreadNonceRef = useRef<number | null>(null);
   const prevVisibleRef = useRef(variant === 'window' ? false : visible);
-  // Live PTY id per session, reported up from each panel (null on teardown). Lets
-  // the selection-bubble "Ask AI" input (requestActiveTerminalInput) write into an
-  // already-open terminal's live shell (reuse) instead of the caret going to the
-  // composer. A session absent from the map has no live PTY yet (still starting,
-  // or torn down).
   const ptyIdBySessionRef = useRef(new Map<string, string>());
+  const stripLaunchNonceRef = useRef(0);
+
+  // Live agent-thread tabs (server-authoritative). Always subscribed (the hook is
+  // cheap + the store is empty until a URL is bound), reconciled into thread
+  // descriptors only in the dock variant.
+  const openThreadTabs = useOpenAgentThreadTabs();
+  const archivedThreads = useArchivedAgentThreads();
+  // WS status for the agent-thread channel — drives a "reconnecting" banner shown
+  // only above an active thread's transcript (never while a terminal is focused).
+  const threadConnection = useAgentThreadConnection();
+  const threadConnectionDown = threadConnection === 'connecting' || threadConnection === 'closed';
+  const registeredAgents = useRegisteredAgents();
+  const enabledOverrides = useEnabledOverrides();
+  // Only the in-app agents the user enabled in Configure agents appear in the
+  // New-chat picker (registered agents default to enabled).
+  const enabledRegisteredAgents = registeredAgents.filter((agent) =>
+    isInAppAgentEnabled(enabledOverrides, agent.source, agent.id, true, agent.supported),
+  );
+  const defaultRegisteredAgent = useDefaultRegisteredAgent();
+  // The primary "+" launch must honor Configure agents too: resolve it against
+  // the enabled agents only, and lead with the effective default (the registered
+  // default when still enabled, else the first enabled one). Otherwise disabling
+  // the sticky/default agent would hide it from the picker yet still launch it.
+  const effectiveDefaultAgent = pickEffectiveDefaultAgent(
+    enabledRegisteredAgents,
+    defaultRegisteredAgent,
+  );
+  const liveThreadCount = openThreadTabs.filter((info) => info.archived !== true).length;
+  const threadInfoById = new Map(openThreadTabs.map((info) => [info.threadId, info]));
+
+  // Reopen an archived conversation as a tab (history menu / empty-dock chooser).
+  // The store adds it to the open set; the reconcile + activation effects bring it
+  // in as the active tab.
+  function openArchivedThread(threadId: string) {
+    getAgentThreadClient().openArchivedThread(threadId);
+  }
+
+  /** Persist the current unified dock order + active key (reload-durable). Reads
+   *  the post-commit refs so it is correct when called from a ptyId callback. */
+  function persistDockOrderNow() {
+    if (!hostThreads) return; // the window variant IS the surface — nothing to restore into
+    const ptyMap = ptyIdBySessionRef.current;
+    const order = sessionsRef.current
+      .map((session) => computePersistKey(session, ptyMap))
+      .filter((key): key is string => key != null);
+    const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
+    writeDockSessionOrder(bridge, {
+      order,
+      activeKey: active != null ? computePersistKey(active, ptyMap) : null,
+    });
+  }
+
   function setSessionPtyId(id: string, ptyId: string | null) {
     if (ptyId === null) {
       ptyIdBySessionRef.current.delete(id);
       return;
     }
     ptyIdBySessionRef.current.set(id, ptyId);
-    // Seed main with this session's reload-survival metadata as soon as its PTY
-    // exists — the sticky ordinal (fixed at creation) plus any name set before the
-    // shell spawned. Main outlives a renderer reload, so `list` reads it back.
     const session = sessionsRef.current.find((s) => s.id === id);
-    if (session != null) {
-      bridge.terminal?.setMeta?.(ptyId, {
+    if (session != null && session.kind === 'terminal') {
+      bridge?.terminal?.setMeta?.(ptyId, {
         ordinal: session.ordinal,
         customLabel: session.customLabel,
       });
     }
+    // A terminal's persist key only exists once its PTY does — refresh the
+    // persisted order so a reload can restore this tab in place.
+    persistDockOrderNow();
   }
-  // Monotonic nonce for tab-strip "New chat" launches. TerminalLaunchIntent
-  // requires a nonce, but it is only load-bearing for the EditorPane→prop
-  // launch-channel dedup; a direct openSession writes its launch once on mount,
-  // so this just keeps each strip launch a distinct, never-reused intent.
-  const stripLaunchNonceRef = useRef(0);
 
   function openSession(launchForSession: TerminalLaunchIntent | null) {
+    // Opening a tab is the user taking over the active slot — a lingering reload
+    // restore must not later yank the active tab back.
+    pendingActiveKeyRef.current = null;
     sessionCounterRef.current += 1;
     const id = makeSessionId(sessionCounterRef.current);
     setSessions((prev) => [
       ...prev,
       {
+        kind: 'terminal',
         id,
         launch: launchForSession,
         title: null,
@@ -276,110 +458,169 @@ export function TerminalSessionsHost({
     setActiveSessionId(id);
   }
 
-  // Sticky CLI mirror, mount-read from the shared Ask-AI store, so the New-chat
-  // split button's default reflects the user's last pick and updates its primary
-  // icon reactively when they switch CLI from the dropdown. `resolveDefaultCli`
-  // also honors the live `installedClis` when there is no sticky pick.
-  const [stickyCliId, setStickyCliId] = useState<string | null>(() => loadStickyAgent());
-  // Terminal-only "last New-tab pick was a bare shell" flag. The shared store has
-  // no terminal concept, so a "Terminal" pick sticks here instead; when set it
-  // overrides the CLI default. Cleared on any CLI pick (CLI behavior is unchanged).
+  // Sticky pick mirror (raw id from the shared Ask-AI store) so the New split
+  // button's primary reflects the last pick across agents/CLIs/bare and updates
+  // reactively when the user switches it from the dropdown.
+  const [stickyAgentId, setStickyAgentId] = useState<string | null>(() => loadStickyAgent());
   const [preferBareTerminal, setPreferBareTerminal] = useState(() =>
     getInitialPreferBareTerminal(),
   );
-  const newChatDefaultCli = resolveDefaultCli(stickyCliId, installedClis ?? {});
-  const newChatSelected: TerminalNewTabChoice = preferBareTerminal ? 'terminal' : newChatDefaultCli;
-  // Gate the New-chat dropdown rows to Claude + CLIs the probe hasn't ruled out,
-  // keeping the resolved default (`newChatDefaultCli`) so the split button's
-  // current pick is always present in its own dropdown (with its checkmark).
-  const newChatVisibleClis = visibleTerminalClis(installedClis ?? {}, newChatDefaultCli);
 
-  // Tab-strip New-chat primary: open a promptless session running `cli`.
+  // The shared, enablement-aware selection — the SAME `resolveLauncherSelection`
+  // the Ask + Create composers use, so a disabled agent / CLI is never what the
+  // dock primary launches (the old `resolveNewSessionChoice` forced a Claude CLI
+  // fallback that ignored the toggles). The dock offers no Desktop rows and falls
+  // back to a bare terminal, so it only ever yields agent / cli / terminal.
+  const selection = resolveLauncherSelection({
+    sticky: stickyAgentId,
+    effectiveThreadAgent: effectiveDefaultAgent,
+    enabledClis: enabledTerminalClis(enabledOverrides, installedClis ?? {}),
+    enabledDesktopTargets: [],
+    installedClis: installedClis ?? {},
+    terminalAvailable,
+    threadsAvailable: hostThreads,
+    desktopSelectable: false,
+    preferBareTerminal,
+    bareTerminalFallback: true,
+  });
+  const newSessionChoice: NewSessionChoice =
+    selection.kind === 'thread'
+      ? { kind: 'agent', agent: selection.agent }
+      : selection.kind === 'cli'
+        ? { kind: 'cli', cli: selection.cli }
+        : selection.kind === 'terminal'
+          ? { kind: 'terminal' }
+          : // 'none' (thread-only surface, nothing enabled) → primary opens Settings.
+            { kind: 'agent', agent: null };
+
+  // Tab-strip New-chat primary: open a promptless terminal session running `cli`.
   function openNewChatSession(cli: TerminalCli) {
     stripLaunchNonceRef.current += 1;
     openSession({ prompt: null, cli, nonce: stripLaunchNonceRef.current });
   }
 
-  // Primary click: launch the current pick — a bare shell when Terminal is the
-  // default, else a promptless session in the default CLI.
+  // Primary click: launch the current sticky pick across all three families.
   function launchSelectedNewTab() {
-    if (preferBareTerminal) openSession(null);
-    else openNewChatSession(newChatDefaultCli);
+    if (newSessionChoice.kind === 'terminal') openSession(null);
+    else if (newSessionChoice.kind === 'cli') openNewChatSession(newSessionChoice.cli);
+    else if (newSessionChoice.kind === 'agent' && newSessionChoice.agent != null)
+      launchAgentThread(
+        { source: newSessionChoice.agent.source, id: newSessionChoice.agent.id },
+        null,
+        null,
+        null,
+      );
+    else openAgentSettings();
   }
 
-  // Dropdown CLI pick: clear the bare-terminal preference, persist `cli` to the
-  // shared Ask-AI store (so every entry point agrees), and open a session in it.
+  // Seed the dock when it opens empty (⌘J / edge reveal with nothing latched) by
+  // repeating the choice shown on the New-session primary button — EXCEPT the
+  // neutral `choose` (no default agent). A passive reveal must NOT auto-open the
+  // agent catalog: revealing an empty dock just shows it empty; starting an
+  // in-app agent stays an explicit New-button click.
+  function seedOnReveal() {
+    if (newSessionChoice.kind === 'terminal') openSession(null);
+    else if (newSessionChoice.kind === 'cli') openNewChatSession(newSessionChoice.cli);
+    else if (newSessionChoice.kind === 'agent' && newSessionChoice.agent != null)
+      launchAgentThread(
+        { source: newSessionChoice.agent.source, id: newSessionChoice.agent.id },
+        null,
+        null,
+        null,
+      );
+    // `choose` → reveal the empty dock without auto-opening the catalog.
+  }
+
+  // Dropdown CLI pick: clear the bare-terminal preference, persist `cli`, open it.
   function pickNewChatCli(cli: TerminalCli) {
     setPreferBareTerminal(false);
     writePreferBareTerminal(false);
     const id = terminalCliId(cli);
-    setStickyCliId(id);
+    setStickyAgentId(id);
     saveStickyAgent(id);
     openNewChatSession(cli);
   }
 
-  // Dropdown "Terminal" pick: persist the bare-shell preference (terminal-only)
-  // and open a bare shell. A subsequent primary click then opens a terminal too.
+  // Dropdown "Terminal" pick: persist the bare-shell preference, open a bare shell.
   function pickNewChatTerminal() {
     setPreferBareTerminal(true);
     writePreferBareTerminal(true);
     openSession(null);
   }
 
-  // Record the title the session's program set via OSC 0/2. A trimmed-empty title
-  // clears it so the tab reverts to its positional `Terminal N` default (some
-  // programs emit an empty title on exit). Shells re-emit the title on every
-  // prompt, so when nothing changed we return the SAME array reference — React's
-  // Object.is bailout then skips the re-render entirely (a per-element guard alone
-  // wouldn't: a fresh array always fails the bailout).
+  // Dropdown agent pick: register it (making it the default), persist it as the
+  // sticky pick so the primary repeats it, clear the bare-terminal flag, and start
+  // a thread. Mirrors the catalog pick's "the agent you chose last is your agent".
+  function pickNewChatAgent(agent: RegisteredAgent) {
+    registerAgent(agent);
+    setPreferBareTerminal(false);
+    writePreferBareTerminal(false);
+    const id = threadAgentId(agent);
+    setStickyAgentId(id);
+    saveStickyAgent(id);
+    launchAgentThread({ source: agent.source, id: agent.id }, null, null, null);
+  }
+
+  // Record a terminal session's OSC 0/2 title. Same same-reference bailout as the
+  // rename below so an unchanged value causes no re-render.
   function setSessionTitle(id: string, title: string) {
     const next = title.trim() === '' ? null : title.trim();
     setSessions((prev) => {
-      if (!prev.some((session) => session.id === id && session.title !== next)) return prev;
-      return prev.map((session) => (session.id === id ? { ...session, title: next } : session));
-    });
-  }
-
-  // Commit a manual tab rename. A trimmed-empty value clears the custom label
-  // (revert to OSC title / positional default). Same same-reference bailout as
-  // setSessionTitle so an unchanged value causes no re-render.
-  function setSessionCustomLabel(id: string, label: string) {
-    const next = label.trim() === '' ? null : label.trim();
-    setSessions((prev) => {
-      if (!prev.some((session) => session.id === id && session.customLabel !== next)) return prev;
+      if (
+        !prev.some(
+          (session) => session.id === id && session.kind === 'terminal' && session.title !== next,
+        )
+      )
+        return prev;
       return prev.map((session) =>
-        session.id === id ? { ...session, customLabel: next } : session,
+        session.id === id && session.kind === 'terminal' ? { ...session, title: next } : session,
       );
     });
-    // Persist the rename to main so it survives a renderer reload.
+  }
+
+  // Commit a manual tab rename — kind-dispatched. A terminal stores a custom label
+  // (empty clears it back to the OSC / positional default) that persists to main; a
+  // thread routes the rename to the server (blank is a no-op there).
+  function renameSession(id: string, label: string) {
+    const session = sessionsRef.current.find((s) => s.id === id);
+    if (session == null) return;
+    if (session.kind === 'thread') {
+      getAgentThreadClient().renameThread(session.threadId, label);
+      return;
+    }
+    const next = label.trim() === '' ? null : label.trim();
+    setSessions((prev) => {
+      if (!prev.some((s) => s.id === id && s.kind === 'terminal' && s.customLabel !== next))
+        return prev;
+      return prev.map((s) =>
+        s.id === id && s.kind === 'terminal' ? { ...s, customLabel: next } : s,
+      );
+    });
     const ptyId = ptyIdBySessionRef.current.get(id);
-    if (ptyId != null) bridge.terminal?.setMeta?.(ptyId, { customLabel: next });
+    if (ptyId != null) bridge?.terminal?.setMeta?.(ptyId, { customLabel: next });
   }
 
-  // Display label precedence, shared by the tab list and the reorder announcer:
-  // a manual name pins over the OSC title, which pins over the sticky ordinal.
-  function sessionLabel(session: TerminalSessionDescriptor): string {
-    return session.customLabel ?? session.title ?? t`Terminal ${session.ordinal}`;
+  // Display label precedence, shared by the tab list and the reorder announcer.
+  function sessionLabel(session: SessionDescriptor): string {
+    if (session.kind === 'terminal') {
+      return session.customLabel ?? session.title ?? t`Terminal ${session.ordinal}`;
+    }
+    return threadInfoById.get(session.threadId)?.title ?? t`Agent`;
   }
 
-  // True while a pointer drag is lifted (reported by the strip); the ⌘⇧←/→ chord
-  // is suppressed then so the two reorder inputs never mutate order concurrently.
   const dragActiveRef = useRef(false);
-  // sr-only polite live region for keyboard-reorder announcements. Imperative
-  // textContent + trailing debounce (React batching would swallow rapid updates —
-  // the app's announcer precedent); pointer drags keep dnd-kit's own announcements.
   const announcerRef = useRef<HTMLSpanElement>(null);
   const announceTimerRef = useRef<number | null>(null);
 
   // Apply a reorder from a desired visual order of session ids — the single spine
-  // for both the pointer drag (strip) and the keyboard path. A length or unknown-id
-  // mismatch refuses the whole reorder (no partial mutation); an unchanged order
-  // keeps the same array reference (render bailout).
+  // for both the pointer drag and the keyboard path. A length or unknown-id
+  // mismatch refuses the whole reorder; an unchanged order keeps the same array
+  // reference (render bailout).
   function reorderSessions(newOrderIds: readonly string[]) {
     setSessions((prev) => {
       if (newOrderIds.length !== prev.length) return prev;
       const byId = new Map(prev.map((session) => [session.id, session]));
-      const next: TerminalSessionDescriptor[] = [];
+      const next: SessionDescriptor[] = [];
       for (const id of newOrderIds) {
         const session = byId.get(id);
         if (session == null) return prev;
@@ -388,18 +629,15 @@ export function TerminalSessionsHost({
       if (next.every((session, index) => session === prev[index])) return prev;
       return next;
     });
-    // Persist the new display order to main (ptyIds in visual order) so a drag /
-    // keyboard reorder survives a renderer reload. Sessions without a live PTY yet
-    // are skipped; main slots them after the listed block via its own fallback.
+    // Persist the terminal-only display order to main (ptyIds in visual order) so a
+    // reorder survives a renderer reload — keeps `list()` self-consistent — and the
+    // unified cross-kind order for the mixed strip.
     const orderedPtyIds = newOrderIds
       .map((id) => ptyIdBySessionRef.current.get(id))
       .filter((ptyId): ptyId is string => ptyId != null);
-    if (orderedPtyIds.length > 0) bridge.terminal?.setOrder?.(orderedPtyIds);
+    if (orderedPtyIds.length > 0) bridge?.terminal?.setOrder?.(orderedPtyIds);
   }
 
-  // Move the active tab one slot (keyboard reorder). Reads the post-commit mirror
-  // (same source as ⌘1–9), no-ops at the edges, and returns the moved tab's label
-  // + new 1-based position for the SR announcement (null = nothing moved).
   function moveActiveSession(
     direction: -1 | 1,
   ): { label: string; position: number; total: number } | null {
@@ -414,36 +652,34 @@ export function TerminalSessionsHost({
     reorderSessions(ids);
     return { label: sessionLabel(current[from]), position: to + 1, total: current.length };
   }
-  // Latest-ref so the keyboard effect calls the current closure without
-  // re-subscribing (React Compiler forbids writing the ref during render).
   const moveActiveSessionRef = useRef(moveActiveSession);
-
-  // Latest-ref so deps-stable effects below call the current closure without
-  // re-subscribing (React Compiler forbids writing the ref during render).
   const openSessionRef = useRef(openSession);
+  const seedOnRevealRef = useRef(seedOnReveal);
 
+  // Close a tab — kind-dispatched. A terminal is removed from the list (its panel
+  // unmounts, killing the PTY); a thread is archived server-side (discarded if it
+  // never received a message), and the reconcile effect drops its descriptor when
+  // the store does. The active-neighbor activation + close-last hide are uniform.
   function closeSession(id: string) {
-    // Read the live list from the ref (kept in sync post-commit), not the render
-    // closure, so two close actions that coalesce into one batch can't act on a
-    // stale snapshot — the same source the ⌘-number handler reads.
     const current = sessionsRef.current;
     const index = current.findIndex((session) => session.id === id);
     if (index === -1) return;
-    const next = current.filter((session) => session.id !== id);
-    // Closing the active tab activates its left neighbor, else the right one.
-    if (id === activeSessionId) {
+    const session = current[index];
+    const isLast = current.length === 1;
+    // The user is driving the active tab — stop any lingering reload restore.
+    pendingActiveKeyRef.current = null;
+    if (id === activeSessionIdRef.current) {
       const neighbor = current[index - 1] ?? current[index + 1];
       const neighborId = neighbor?.id ?? '';
       setActiveSessionId(neighborId);
-      // Move focus into the surviving neighbor's terminal so a keyboard user who
-      // closed the focused tab is not stranded on the body. Deferred so the newly
-      // active panel has committed to shown before focusing.
-      if (neighborId !== '') queueMicrotask(() => focusTerminalSession(neighborId));
+      if (neighbor != null) queueMicrotask(() => focusSession(neighbor));
     }
-    setSessions(next);
-    // Closing the last tab hides the terminal and returns focus to the editor; the
-    // none-left state means the next open spawns a fresh session.
-    if (next.length === 0) {
+    if (session.kind === 'thread') {
+      getAgentThreadClient().closeThread(session.threadId);
+    } else {
+      setSessions(current.filter((s) => s.id !== id));
+    }
+    if (isLast) {
       onVisibleChange(false);
       onRequestEditorFocus();
     }
@@ -452,54 +688,209 @@ export function TerminalSessionsHost({
 
   useEffect(() => {
     openSessionRef.current = openSession;
+    seedOnRevealRef.current = seedOnReveal;
     moveActiveSessionRef.current = moveActiveSession;
     activeSessionIdRef.current = activeSessionId;
     sessionsRef.current = sessions;
+    // The Terminal menu's "Kill Terminal" acts on a terminal: close the active tab
+    // when it is a terminal, else the newest terminal (so it stays meaningful while
+    // an agent tab is focused).
     closeActiveRef.current = () => {
-      if (activeSessionId !== '') closeSession(activeSessionId);
+      const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
+      if (active?.kind === 'terminal') {
+        closeSession(active.id);
+        return;
+      }
+      const lastTerminal = [...sessionsRef.current].reverse().find((s) => s.kind === 'terminal');
+      if (lastTerminal != null) closeSession(lastTerminal.id);
     };
   });
 
-  // Open/launch lifecycle: a fresh launch intent opens its own tab; otherwise an
-  // open-from-hidden transition seeds the first session. Reacting to
-  // `sessions.length` lets the close-last settle without a re-create.
+  // Persist the unified dock order + active whenever the tab set or active tab
+  // changes (reorder, add, remove, activate). Reads the ptyId map by ref; the
+  // computation uses only listed deps + the module-pure `computePersistKey`.
   useEffect(() => {
-    // While the async rehydrate is in flight (capable bridge), it owns the initial
-    // session set — stand down entirely, including the prevVisible bookkeeping, so
-    // a false→true visibility restore that lands mid-flight is still seen as a
-    // fresh open transition once rehydration settles.
-    if (!rehydrationSettled) return;
+    if (!hostThreads) return;
+    const ptyMap = ptyIdBySessionRef.current;
+    const order = sessions
+      .map((session) => computePersistKey(session, ptyMap))
+      .filter((key): key is string => key != null);
+    const active = sessions.find((s) => s.id === activeSessionId);
+    writeDockSessionOrder(bridge, {
+      order,
+      activeKey: active != null ? computePersistKey(active, ptyMap) : null,
+    });
+  }, [sessions, activeSessionId, hostThreads, bridge]);
 
+  // ── Thread reconciliation (dock variant) ────────────────────────────────
+  // Mirror the server-authoritative open-thread list into thread descriptors: add
+  // one per newly-open thread, drop one when its thread leaves the open set. The
+  // host owns only order/active; the thread store owns thread lifecycle. Restored
+  // threads land in the persisted reload order; live-created ones append.
+  useEffect(() => {
+    if (!hostThreads) return;
+    const openIds = new Set(openThreadTabs.map((info) => info.threadId));
+    const current = sessionsRef.current;
+    const knownThreadIds = new Set(
+      current
+        .filter((s): s is ThreadSessionDescriptor => s.kind === 'thread')
+        .map((s) => s.threadId),
+    );
+    // Compute additions (with fresh ordinals) OUTSIDE setState — ref writes are
+    // forbidden inside a (possibly re-invoked) updater.
+    const additions: ThreadSessionDescriptor[] = [];
+    for (const info of openThreadTabs) {
+      if (knownThreadIds.has(info.threadId)) continue;
+      sessionCounterRef.current += 1;
+      additions.push({
+        kind: 'thread',
+        id: info.threadId,
+        threadId: info.threadId,
+        ordinal: sessionCounterRef.current,
+      });
+    }
+    const removedAny = current.some((s) => s.kind === 'thread' && !openIds.has(s.threadId));
+    if (additions.length === 0 && !removedAny) return;
+    setSessions((prev) => {
+      const kept = prev.filter((s) => s.kind !== 'thread' || openIds.has(s.threadId));
+      // Dedup additions against the committed list too, so a StrictMode double-run
+      // never inserts the same thread twice.
+      const keptThreadIds = new Set(
+        kept
+          .filter((s): s is ThreadSessionDescriptor => s.kind === 'thread')
+          .map((s) => s.threadId),
+      );
+      const fresh = additions.filter((a) => !keptThreadIds.has(a.threadId));
+      const ptyMap = ptyIdBySessionRef.current;
+      const next =
+        fresh.length > 0
+          ? placeSessionAdditions(kept, fresh, reloadOrderRef.current, (s) =>
+              computePersistKey(s, ptyMap),
+            )
+          : kept;
+      if (next.length === prev.length && next.every((s, i) => s === prev[i])) return prev;
+      return next;
+    });
+  }, [openThreadTabs, hostThreads]);
+
+  // Bring a newly-created thread to the front (createThread → active), and focus
+  // its composer. Skipped while a reload-active restore is still pending so the
+  // initial batch of restored threads does not steal the restored active tab.
+  const prevOpenThreadIdsRef = useRef<readonly string[]>([]);
+  useEffect(() => {
+    if (!hostThreads) return;
+    const ids = openThreadTabs.map((info) => info.threadId);
+    const previous = prevOpenThreadIdsRef.current;
+    prevOpenThreadIdsRef.current = ids;
+    if (pendingActiveKeyRef.current != null) return;
+    const added = ids.filter((id) => !previous.includes(id));
+    const newest = added[added.length - 1];
+    if (newest != null) {
+      setActiveSessionId(newest);
+      queueMicrotask(() => focusThreadSession(newest));
+    }
+  }, [openThreadTabs, hostThreads]);
+
+  // A newly created LIVE thread reveals the dock (auto-reveal). Gated on the live
+  // count INCREASING so hiding the dock is never instantly undone, and a boot-time
+  // backlog of archived history never pops it.
+  const prevLiveThreadCountRef = useRef(liveThreadCount);
+  useEffect(() => {
+    if (!hostThreads) return;
+    const previous = prevLiveThreadCountRef.current;
+    prevLiveThreadCountRef.current = liveThreadCount;
+    if (liveThreadCount > previous && !visible) onVisibleChange(true);
+  }, [liveThreadCount, visible, hostThreads, onVisibleChange]);
+
+  // Reload-active restore + active-validity guard. Restores the persisted active
+  // tab once its session exists, then keeps `activeSessionId` valid: when the
+  // active session leaves (a thread archived elsewhere, a terminal closed), fall
+  // back to the newest remaining tab.
+  useEffect(() => {
+    const pending = pendingActiveKeyRef.current;
+    if (pending != null) {
+      const ptyMap = ptyIdBySessionRef.current;
+      const match = sessions.find((s) => computePersistKey(s, ptyMap) === pending);
+      if (match != null) {
+        pendingActiveKeyRef.current = null;
+        setActiveSessionId(match.id);
+        return;
+      }
+      // Still waiting for the restored active session to arrive — don't override.
+      if (sessions.some((s) => s.id === activeSessionId)) return;
+    }
+    if (activeSessionId !== '' && sessions.some((s) => s.id === activeSessionId)) return;
+    if (sessions.length === 0) {
+      if (activeSessionId !== '') setActiveSessionId('');
+      return;
+    }
+    setActiveSessionId(sessions[sessions.length - 1].id);
+  }, [sessions, activeSessionId]);
+
+  // Open/launch lifecycle: a fresh terminal launch intent opens its own tab;
+  // otherwise an open-from-hidden transition seeds the dock — UNLESS a fresh thread
+  // launch is being handled this cycle (the thread launch effect owns the seed
+  // then, so we don't open a bare terminal alongside the agent). Defined before the
+  // thread launch effect so `threadLaunchPending` reads the not-yet-handled nonce.
+  useEffect(() => {
+    if (!rehydrationSettled) return;
     const wasVisible = prevVisibleRef.current;
     prevVisibleRef.current = visible;
 
     if (launch != null && launch.nonce !== lastHandledLaunchNonceRef.current) {
       lastHandledLaunchNonceRef.current = launch.nonce;
-      // A CLI launch (create composer, "Open in terminal" menus, bottom composer)
-      // always opens its own tab: "create" means a fresh terminal, never hijacking
-      // a shell the user already has running. Reuse of an open terminal is
-      // exclusively the selection-bubble path (requestActiveTerminalInput), which
-      // writes the highlighted text into the live PTY without a launch nonce.
       openSessionRef.current(launch);
       return;
     }
-    if (visible && !wasVisible && sessions.length === 0) {
-      openSessionRef.current(null);
+    const threadLaunchPending =
+      hostThreads &&
+      threadLaunch != null &&
+      threadLaunch.nonce !== lastHandledThreadNonceRef.current;
+    if (visible && !wasVisible && sessions.length === 0 && !threadLaunchPending) {
+      seedOnRevealRef.current();
     }
-  }, [visible, launch, sessions.length, rehydrationSettled]);
+  }, [visible, launch, threadLaunch, sessions.length, rehydrationSettled, hostThreads]);
 
-  // Reload rehydration (capable bridge only): on mount ask main which PTY sessions
-  // survived the reload and rebuild one tab per survivor, each carrying the
-  // surviving ptyId so its panel adopts the live shell rather than spawning a fresh
-  // one. Run-once (ref-guarded). With no survivors it simply settles and lets the
-  // open/launch effect own cold-start seeding. A throw resolves to "no survivors"
-  // so a bridge hiccup degrades to a normal cold start, never a crash.
+  // "Start an agent" launch intent (dock variant): resolve the agent (concrete /
+  // default-registered) and start a thread. Each new nonce opens its own thread
+  // tab; the store reconcile + auto-reveal bring it to front + reveal. When no
+  // agent resolves (nothing enabled yet), open Configure agents so the user can
+  // enable one — the retired agent catalog's replacement.
   useEffect(() => {
-    if (typeof bridge.terminal?.list !== 'function') return;
+    if (!hostThreads) return;
+    if (threadLaunch == null || threadLaunch.nonce === lastHandledThreadNonceRef.current) return;
+    lastHandledThreadNonceRef.current = threadLaunch.nonce;
+    let agent: { source: 'registry' | 'custom'; id: string } | null =
+      threadLaunch.agentId === ''
+        ? null
+        : { source: threadLaunch.agentSource, id: threadLaunch.agentId };
+    if (agent === null) {
+      const fallback = getDefaultRegisteredAgent();
+      if (fallback !== null) agent = { source: fallback.source, id: fallback.id };
+    }
+    if (agent === null) {
+      openAgentSettings();
+      return;
+    }
+    launchAgentThread(agent, threadLaunch.prompt, threadLaunch.docName, threadLaunch.titleHint);
+  }, [threadLaunch, hostThreads]);
+
+  // Reload rehydration (capable bridge only): rebuild one terminal tab per PTY
+  // survivor and read the persisted unified order + active key, so restored tabs
+  // land in place and the active tab is restored across kinds.
+  useEffect(() => {
+    if (typeof bridge?.terminal?.list !== 'function') return;
     if (rehydratedRef.current) return;
     rehydratedRef.current = true;
     let cancelled = false;
     void (async () => {
+      // Read the persisted unified order first so terminal survivors are placed by
+      // it (and threads, arriving async, land at their persisted slots too).
+      const persisted = await readDockSessionOrder(bridge).catch(() => null);
+      if (!cancelled && persisted != null) {
+        reloadOrderRef.current = persisted.order;
+        pendingActiveKeyRef.current = persisted.activeKey;
+      }
       let survivors: readonly {
         ptyId: string;
         customLabel: string | null;
@@ -508,90 +899,98 @@ export function TerminalSessionsHost({
       try {
         survivors = (await bridge.terminal.list()) ?? [];
       } catch (err) {
-        // Degrade to a normal cold start, but leave a breadcrumb: a transient
-        // list() failure is otherwise indistinguishable from "no survivors", so
-        // any surviving PTYs stay orphaned while the dock starts fresh.
         console.error('[terminal] reload session list() failed; cold-starting:', err);
         survivors = [];
       }
       if (cancelled) return;
       if (survivors.length > 0) {
-        const recovered = survivors.map((entry, index) => ({
-          id: makeSessionId(index + 1),
-          launch: null,
-          title: null,
-          // Restored from main so a rename + reorder survive a renderer reload;
-          // ordinal falls back to positional for a session main never received one
-          // for (created in the reload gap).
-          customLabel: entry.customLabel ?? null,
-          ordinal: entry.ordinal ?? index + 1,
-          adoptPtyId: entry.ptyId,
-        }));
-        // Continue numbering above the highest restored ordinal so a new tab can't
-        // collide with a survivor's sticky number.
+        const order = reloadOrderRef.current;
+        const rankOf = (ptyId: string) => {
+          const i = order.indexOf(ptyId);
+          return i === -1 ? Number.POSITIVE_INFINITY : i;
+        };
+        const recovered: TerminalSessionDescriptor[] = survivors
+          .map((entry, index) => ({
+            kind: 'terminal' as const,
+            id: makeSessionId(index + 1),
+            launch: null,
+            title: null,
+            customLabel: entry.customLabel ?? null,
+            ordinal: entry.ordinal ?? index + 1,
+            adoptPtyId: entry.ptyId,
+          }))
+          // Restore the persisted cross-kind order for terminals; survivors absent
+          // from it (created in the reload gap, or when no unified order was
+          // persisted) keep their `list()` order — which already reflects the
+          // terminal-only reorder — via the stable sort's 0 tie-break.
+          .sort((a, b) => {
+            const ra = rankOf(a.adoptPtyId);
+            const rb = rankOf(b.adoptPtyId);
+            return ra === rb ? 0 : ra - rb;
+          });
         sessionCounterRef.current = Math.max(recovered.length, ...recovered.map((r) => r.ordinal));
         setSessions(recovered);
-        setActiveSessionId(recovered[0]?.id ?? '');
       }
       setRehydrationSettled(true);
+      // Bound the reload-active wait: if the restored active tab never materializes
+      // (its session died), stop blocking live activation so the guard picks a
+      // fallback. Threads have had CHANNEL_WAIT to arrive by now.
+      window.setTimeout(() => {
+        if (!cancelled) pendingActiveKeyRef.current = null;
+      }, 9_000);
     })();
     return () => {
       cancelled = true;
       // Reset the run-once guard so React StrictMode's dev double-mount re-runs
-      // rehydration on the second mount; the first mount's in-flight list() is
-      // discarded via `cancelled`. The reset is load-bearing, NOT removable: the
-      // first StrictMode pass is cancelled before it settles `rehydrationSettled`,
-      // so without the reset the second pass would skip and the gate would never
-      // settle (the terminal would never seed). This depends on `bridge` being
-      // referentially stable in production — it is `window.okDesktop`, captured
-      // once in EditorPane — so the effect only re-runs under StrictMode, never on
-      // a live bridge churn that could re-seed over an active session set.
+      // rehydration on the second mount (see the original terminal host rationale).
       rehydratedRef.current = false;
     };
   }, [bridge]);
 
-  // The editor's "Ask AI" selection affordance routes here. Live PTY → write
-  // the composed prompt into the active shell (e.g. a running claude TUI); no
-  // trailing newline so the user reviews/sends. No PTY → launch a fresh Claude
-  // tab pre-loaded with the same prompt (mirrors the "Open in terminal" path
-  // used by menu surfaces). The host is mounted whenever the desktop bridge
-  // exists (even with zero sessions), so this subscription is always live.
+  // Web reload: no bridge to rehydrate, but a persisted active key may still be
+  // pending — bound its wait the same way so a stale key never blocks activation.
   useEffect(() => {
+    if (canRehydrate) return;
+    if (pendingActiveKeyRef.current == null) return;
+    const timer = window.setTimeout(() => {
+      pendingActiveKeyRef.current = null;
+    }, 9_000);
+    return () => window.clearTimeout(timer);
+  }, [canRehydrate]);
+
+  // The editor's "Ask AI" selection affordance routes here. Live PTY → write the
+  // composed prompt into the active shell (e.g. a running claude TUI); no trailing
+  // newline so the user reviews/sends. No live PTY → launch a fresh Claude tab
+  // pre-loaded with the same prompt (mirrors the "Open in terminal" path).
+  useEffect(() => {
+    if (!terminalAvailable || bridge?.terminal == null) return;
+    const terminal = bridge.terminal;
     return subscribeToActiveTerminalInput((text) => {
       const activeId = activeSessionIdRef.current;
-      const livePtyId = activeId === '' ? undefined : ptyIdBySessionRef.current.get(activeId);
+      const active = sessionsRef.current.find((s) => s.id === activeId);
+      const livePtyId =
+        active?.kind === 'terminal' ? ptyIdBySessionRef.current.get(active.id) : undefined;
       if (livePtyId != null) {
-        bridge.terminal.input(livePtyId, text);
+        terminal.input(livePtyId, text);
         queueMicrotask(() => focusTerminalSession(activeId));
       } else {
         requestTerminalLaunch(text, 'claude');
       }
     });
-  }, [bridge]);
+  }, [bridge, terminalAvailable]);
 
-  // The Terminal application menu's per-session items act on the tab collection:
-  // "New Terminal" opens a fresh tab, "Kill Terminal" closes the active one —
-  // reusing the strip's own open/close paths so menu and strip stay identical.
-  // ⌘W (`close-active-tab-or-window`) closes the active tab in the WINDOW
-  // variant only — every BrowserWindow type must subscribe to it (menu.ts
-  // contract), and in the terminal window this host is the only subscriber
-  // (close-last then closes the window via the close-last report). In the
-  // editor window the doc tree owns ⌘W (DocumentContext closes the active doc
-  // tab); handling it here too would double-close.
+  // Terminal application-menu actions act on the tab collection.
   useEffect(() => {
     return subscribeLocalMenuAction((action) => {
-      if (action === 'new-terminal') openSessionRef.current(null);
-      else if (action === 'kill-terminal') closeActiveRef.current();
+      if (action === 'new-terminal') {
+        if (terminalAvailable) openSessionRef.current(null);
+      } else if (action === 'kill-terminal') closeActiveRef.current();
       else if (action === 'close-active-tab-or-window' && variant === 'window')
         closeActiveRef.current();
     });
-  }, [variant]);
+  }, [variant, terminalAvailable]);
 
-  // ⌘1–⌘9 jump straight to the Nth tab. Capture phase so a focused xterm can't
-  // swallow the chord; scoped to focus inside the stable host div (which follows
-  // the terminal to whichever dock) so the digit chord stays free everywhere else.
-  // The window variant skips the scope gate — the whole window is the terminal,
-  // so there is nothing else the digit chord could mean there.
+  // ⌘1–⌘9 jump straight to the Nth tab (capture phase, focus-scoped in the dock).
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
@@ -602,20 +1001,13 @@ export function TerminalSessionsHost({
       event.preventDefault();
       event.stopPropagation();
       setActiveSessionId(target.id);
-      queueMicrotask(() => focusTerminalSession(target.id));
+      queueMicrotask(() => focusSession(target));
     }
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
   }, [hostEl, variant]);
 
-  // ⌘⇧← / ⌘⇧→ move the ACTIVE tab one slot. Same capture-phase + focus-gate shape
-  // as ⌘1–9 (so a focused xterm doesn't swallow it, and the chord stays free
-  // outside the terminal in the dock). Meta+Shift only — a focused xterm encodes
-  // ⌃/⌥-arrows into the PTY, but leaves meta-modified arrows to the app. Suppressed
-  // while the rename input is focused (event target is an <input> — xterm's focus
-  // sink is a <textarea>, so the chord still works while typing in the shell) and
-  // while a pointer drag is lifted. Keyboard reorders announce via the sr-only
-  // region; pointer drags keep dnd-kit's own announcements.
+  // ⌘⇧← / ⌘⇧→ move the ACTIVE tab one slot (capture phase + focus-gate).
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey) return;
@@ -626,12 +1018,12 @@ export function TerminalSessionsHost({
       const target = event.target as HTMLElement | null;
       if (target?.tagName === 'INPUT' || target?.isContentEditable) return;
       const moved = moveActiveSessionRef.current(direction);
-      if (moved == null) return; // no-op at the edges
+      if (moved == null) return;
       event.preventDefault();
       event.stopPropagation();
-      queueMicrotask(() => focusTerminalSession(activeSessionIdRef.current));
-      // Announce via the sr-only region (stable refs only; trailing debounce so
-      // rapid repeats don't flood — React batching would swallow direct updates).
+      const activeId = activeSessionIdRef.current;
+      const active = sessionsRef.current.find((s) => s.id === activeId);
+      if (active != null) queueMicrotask(() => focusSession(active));
       const message = t`Moved ${moved.label} to position ${moved.position} of ${moved.total}`;
       if (announceTimerRef.current != null) window.clearTimeout(announceTimerRef.current);
       announceTimerRef.current = window.setTimeout(() => {
@@ -642,9 +1034,6 @@ export function TerminalSessionsHost({
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => {
       window.removeEventListener('keydown', onKeyDown, { capture: true });
-      // Cancel any in-flight announce debounce: this effect re-runs on locale
-      // change and tears down on unmount, and a pending 60 ms timer would
-      // otherwise fire a stale-closure message against the old `t`/a dead node.
       if (announceTimerRef.current != null) {
         window.clearTimeout(announceTimerRef.current);
         announceTimerRef.current = null;
@@ -652,16 +1041,15 @@ export function TerminalSessionsHost({
     };
   }, [hostEl, variant, t]);
 
-  // Reflect PTY liveness to main so the Terminal menu's "Kill Terminal" item
-  // enables only while at least one session is live. A collapsed-but-alive
-  // terminal still counts: the session list tracks the latch, not visibility.
+  // Reflect terminal liveness to main so the Terminal menu's "Kill Terminal"
+  // enables only while at least one TERMINAL session is live.
   useEffect(() => {
-    const terminalLive = sessions.length > 0;
+    const terminalLive = sessions.some((s) => s.kind === 'terminal');
     // Mirror into the renderer store so the Cmd+K palette can gate "Kill
     // terminal" on a live session (the bridge push below is main-only).
     setViewMenuState({ terminalLive });
-    bridge.editor.notifyViewMenuStateChanged({ terminalLive });
-  }, [bridge, sessions.length]);
+    bridge?.editor.notifyViewMenuStateChanged({ terminalLive });
+  }, [bridge, sessions]);
 
   useEffect(() => {
     onHasSessionsChange?.(sessions.length > 0);
@@ -670,16 +1058,18 @@ export function TerminalSessionsHost({
   // Report whether the active tab is a CLI session (see the prop doc). Derived in
   // render so the effect fires only on actual transitions, not on every session-
   // list mutation. EditorPane's ⌘J read decides inject-vs-launch off this.
-  const activeSessionIsCli = sessions.find((s) => s.id === activeSessionId)?.launch?.cli != null;
+  const activeSession = sessions.find((s) => s.id === activeSessionId);
+  const activeSessionIsCli =
+    activeSession?.kind === 'terminal' && activeSession.launch?.cli != null;
   useEffect(() => {
     onActiveSessionCliChange?.(activeSessionIsCli);
   }, [onActiveSessionCliChange, activeSessionIsCli]);
 
-  // Return focus out of the hidden terminal so a keyboard user is never stranded.
-  // Only acts when focus is actually inside the terminal.
+  // Return focus out of the hidden dock so a keyboard user is never stranded.
+  // Only acts when focus is actually inside the dock.
   //
   // Gate on `visible`, not just `isShowing`: a dock move (bottom ↔ right) keeps the
-  // terminal `visible` but transiently drops `isShowing` to false for one commit
+  // dock `visible` but transiently drops `isShowing` to false for one commit
   // while the destination container's callback ref attaches (`activeTerminalContainer`
   // is null until then). Without the `visible` guard, clicking the dock-toggle —
   // which lives inside this portaled host, so focus is inside it — would satisfy the
@@ -691,124 +1081,270 @@ export function TerminalSessionsHost({
     onRequestEditorFocus();
   }, [isShowing, visible, hostEl, onRequestEditorFocus]);
 
-  // Focus the active session's terminal when the terminal is revealed so the user
-  // can type immediately. Keyed on the show transition only (active id read from a
-  // ref) so switching tabs does not re-fire this.
+  // Focus the active session when the dock is revealed (kind-aware).
   useEffect(() => {
     if (!isShowing) return;
-    focusTerminalSession(activeSessionIdRef.current);
+    const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
+    if (active != null) focusSession(active);
   }, [isShowing]);
 
-  const tabDescriptors = sessions.map((session) => ({
+  const tabDescriptors: TerminalTabDescriptor[] = sessions.map((session) => ({
     id: session.id,
-    // A user-set custom name pins over the program's OSC title, which pins over
-    // the sticky positional default. The default uses the session's immutable
-    // ordinal (not its render index) so a reorder never renumbers untitled tabs.
-    label: session.customLabel ?? session.title ?? t`Terminal ${session.ordinal}`,
+    label: sessionLabel(session),
+    icon:
+      session.kind === 'terminal'
+        ? terminalTabIcon()
+        : threadTabIcon(threadInfoById.get(session.threadId)),
   }));
 
-  // Panels render in a STABLE order (by immutable ordinal), deliberately
-  // decoupled from the tab order. A reorder must not move a panel's DOM node:
-  // moving an xterm container fires its ResizeObserver refit (SIGWINCH), which
-  // makes the running program (e.g. a Claude TUI) repaint and lose its screen —
-  // reordering tabs would otherwise reset the live shell. The tabs reorder; the
-  // panels stay put. Radix associates each panel with its trigger by `value`,
-  // not DOM order, so the active panel still shows regardless of position.
+  // Panels render in STABLE order (by immutable ordinal), decoupled from tab order:
+  // a reorder must not move a panel's DOM node (moving an xterm container fires
+  // SIGWINCH; a thread panel would lose its transcript scroll).
   const panelSessions = [...sessions].sort((a, b) => a.ordinal - b.ordinal);
 
-  const sessionViews =
-    sessions.length > 0 ? (
-      <TerminalTabStrip
-        sessions={tabDescriptors}
-        activeSessionId={activeSessionId}
-        onSelect={setActiveSessionId}
-        // Focus the terminal after the activation commits (so the now-shown
-        // container is focusable) when a tab is selected by pointer or Enter.
-        onTabActivate={(id) => queueMicrotask(() => focusTerminalSession(id))}
-        newChatSelected={newChatSelected}
-        onNewChatLaunch={launchSelectedNewTab}
-        onNewChatPickCli={pickNewChatCli}
-        onNewChatPickTerminal={pickNewChatTerminal}
-        newChatVisibleClis={newChatVisibleClis}
-        onClose={closeSession}
-        onRename={setSessionCustomLabel}
-        // Pointer-drag reorder: the strip computes the new visual order and the
-        // host applies it (keyboard reorder shares reorderSessions). onDragActive
-        // gates the ⌘⇧←/→ chord off while a drag is lifted.
-        onReorder={reorderSessions}
-        onDragActiveChange={(active) => {
-          dragActiveRef.current = active;
-        }}
-        dockPosition={dockPosition}
-        onToggleDock={onToggleDock}
-        // Collapse hides the terminal but keeps every session alive (hide is not
-        // kill), exactly like the ⌘J toggle — the next reveal restores the tabs.
-        // The window has no collapse (closing the window is the OS affordance).
-        onCollapse={variant === 'window' ? undefined : () => onVisibleChange(false)}
-        // Window mode: the tab row doubles as the frameless window's title bar.
-        draggable={variant === 'window'}
-        className="h-full"
-      >
-        {panelSessions.map((session) => (
-          // forceMount keeps every session mounted (active shown, inactive
-          // CSS-hidden) so each retains its xterm scrollback and keeps consuming
-          // output — switching tabs is show/hide, never unmount. Iterating
-          // `panelSessions` (stable ordinal order), NOT `sessions`, so a tab
-          // reorder never moves a panel's DOM node (see panelSessions above).
+  const newButton = (
+    <TerminalNewChatButton
+      selected={newSessionChoice}
+      onLaunchSelected={launchSelectedNewTab}
+      showAgents={hostThreads}
+      registeredAgents={enabledRegisteredAgents}
+      onPickAgent={pickNewChatAgent}
+      onOpenSettings={openAgentSettings}
+      liveThreadCount={liveThreadCount}
+      showClis={terminalAvailable}
+      onPickCli={pickNewChatCli}
+      onPickTerminal={pickNewChatTerminal}
+      // The CLI rows are the ENABLED CLIs (the same set the selection resolver
+      // reads); the selected CLI is always enabled, so no keep-guard is needed.
+      visibleClis={enabledTerminalClis(enabledOverrides, installedClis ?? {})}
+    />
+  );
+
+  // The conversation-history menu rides in the strip's trailing controls, just
+  // left of the dock-toggle/collapse buttons — shown only with archived history to
+  // return to.
+  const trailingControls =
+    hostThreads && archivedThreads.length > 0 ? (
+      <ThreadHistoryMenu archived={archivedThreads} onOpenThread={openArchivedThread} />
+    ) : null;
+
+  // Render the strip (with the ＋ split button + a starting/empty body) whenever
+  // there are sessions, or the dock is visible in the dock variant — so a visible
+  // dock always shows immediate feedback while a session spins up, and an entry
+  // point when idle-empty. The standalone terminal window seeds on mount, so it
+  // shows the strip only once it has a tab (no empty flash).
+  const showStrip = sessions.length > 0 || (visible && hostThreads);
+
+  const sessionViews = showStrip ? (
+    <TerminalTabStrip
+      sessions={tabDescriptors}
+      activeSessionId={activeSessionId}
+      onSelect={(id) => {
+        // A deliberate tab selection is the user taking over the active slot.
+        pendingActiveKeyRef.current = null;
+        setActiveSessionId(id);
+      }}
+      onTabActivate={(id) => {
+        const session = sessionsRef.current.find((s) => s.id === id);
+        if (session != null) queueMicrotask(() => focusSession(session));
+      }}
+      newButton={newButton}
+      trailingControls={trailingControls}
+      onClose={closeSession}
+      onRename={renameSession}
+      onReorder={reorderSessions}
+      onDragActiveChange={(active) => {
+        dragActiveRef.current = active;
+      }}
+      dockPosition={dockPosition}
+      onToggleDock={onToggleDock}
+      onCollapse={variant === 'window' ? undefined : () => onVisibleChange(false)}
+      draggable={variant === 'window'}
+      className="h-full"
+    >
+      {sessions.length === 0 ? (
+        // A terminal surface auto-seeds on reveal, so an empty dock is only ever a
+        // sub-frame transient there — render nothing (the ＋ button suffices) so no
+        // "no sessions" text flashes. On a thread-only surface an empty dock is a
+        // real resting state: offer the reopen-a-past-conversation chooser when
+        // there is history, else the entry-point guidance.
+        terminalAvailable ? null : hostThreads && archivedThreads.length > 0 ? (
+          <ArchivedThreadChooser archived={archivedThreads} onOpen={openArchivedThread} />
+        ) : (
+          <EmptySessionsState />
+        )
+      ) : (
+        panelSessions.map((session) => (
           <TabsContent
             key={session.id}
             value={session.id}
             forceMount
-            data-terminal-session={session.id}
-            // Window mode insets the terminal content by the traffic-light gutter
-            // (22px, = trafficLightPosition.x) so its left edge lines up with the
-            // bubbles and it isn't glued to the window's edges; the padding shows
-            // the window background, framing the xterm. The dock sits flush.
+            data-session-id={session.id}
+            {...(session.kind === 'terminal' ? { 'data-terminal-session': session.id } : {})}
             className={cn(
               'm-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden',
               variant === 'window' && 'px-[22px] pb-[22px]',
             )}
           >
-            <TerminalGate
-              bridge={bridge}
-              launch={session.launch}
-              // On a renderer reload the session adopts its surviving PTY (live
-              // shell + replay) instead of spawning a fresh one; null for new tabs.
-              adoptPtyId={session.adoptPtyId}
-              // Track this session's live PTY id so the selection-bubble "Ask AI"
-              // input can reuse the open terminal (write into the live shell)
-              // rather than fall back to the composer. Adopted sessions report
-              // their id too, so reuse works for reload survivors.
-              onPtyId={(ptyId) => setSessionPtyId(session.id, ptyId)}
-              // OSC 0/2 title from the running program → this session's tab label.
-              onTitleChange={(title) => setSessionTitle(session.id, title)}
-              // The session's "Close terminal" affordance (shown on a refusal/exit
-              // notice) closes that tab — hiding the terminal only when it is the
-              // last one. The keyboard exit stays ⌘J.
-              onClose={() => closeSession(session.id)}
-            />
+            {session.kind === 'terminal' ? (
+              bridge != null && terminalAvailable ? (
+                <TerminalGate
+                  bridge={bridge}
+                  launch={session.launch}
+                  adoptPtyId={session.adoptPtyId}
+                  onPtyId={(ptyId) => setSessionPtyId(session.id, ptyId)}
+                  onTitleChange={(title) => setSessionTitle(session.id, title)}
+                  onClose={() => closeSession(session.id)}
+                />
+              ) : null
+            ) : (
+              <ThreadPanel
+                threadId={session.threadId}
+                info={threadInfoById.get(session.threadId)}
+                // The reconnecting banner rides above the ACTIVE thread's
+                // transcript only — never while a terminal (or another thread) is
+                // focused, and never when the channel is healthy.
+                showConnectionBanner={threadConnectionDown && session.id === activeSessionId}
+              />
+            )}
           </TabsContent>
-        ))}
-      </TerminalTabStrip>
-    ) : null;
+        ))
+      )}
+    </TerminalTabStrip>
+  ) : null;
 
-  // Render the session subtree into the stable host div (which the relocate effect
-  // appends to the active container). A constant portal target = no remount on a
-  // dock move. The sr-only announcer rides alongside so keyboard reorders are
-  // announced (its textContent is set imperatively; see announceReorder).
-  return hostEl != null
-    ? createPortal(
-        <>
-          {sessionViews}
-          <span
-            ref={announcerRef}
-            aria-live="polite"
-            aria-atomic="true"
-            className="sr-only"
-            data-testid="terminal-reorder-announcer"
-          />
-        </>,
-        hostEl,
-      )
-    : null;
+  return (
+    <>
+      {hostEl != null
+        ? createPortal(
+            <>
+              {sessionViews}
+              <span
+                ref={announcerRef}
+                aria-live="polite"
+                aria-atomic="true"
+                className="sr-only"
+                data-testid="terminal-reorder-announcer"
+              />
+            </>,
+            hostEl,
+          )
+        : null}
+    </>
+  );
+}
+
+/** One thread session's body — the lazy {@link ThreadView}, kept mounted so its
+ *  transcript + scroll survive tab switches, with an optional reconnecting banner
+ *  above it. Renders nothing until the store first reports its info (a one-render
+ *  race on create). */
+function ThreadPanel({
+  threadId,
+  info,
+  showConnectionBanner,
+}: {
+  threadId: string;
+  info: ThreadInfo | undefined;
+  showConnectionBanner: boolean;
+}) {
+  if (info === undefined) return null;
+  return (
+    <>
+      {showConnectionBanner ? <ThreadConnectionBanner /> : null}
+      <Suspense
+        fallback={
+          <div
+            role="status"
+            aria-busy="true"
+            className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground"
+          >
+            <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+          </div>
+        }
+      >
+        <ThreadView key={threadId} info={info} />
+      </Suspense>
+    </>
+  );
+}
+
+/** Thin banner above an active thread's transcript while the agent-thread WS is
+ *  reconnecting — the channel recovers + replays automatically (the client owns
+ *  that), so this is feedback only. */
+function ThreadConnectionBanner() {
+  const { t } = useLingui();
+  return (
+    <div
+      className="shrink-0 border-amber-500/30 border-b bg-amber-500/5 px-3 py-1 text-amber-700 text-xs dark:text-amber-400"
+      data-testid="agent-thread-reconnecting"
+    >
+      {t`Reconnecting to the agent service…`}
+    </div>
+  );
+}
+
+/** Shown when the dock is open with no sessions — while a launched session spins
+ *  up, or when the dock is idle-empty. Phrased as an invitation (not a status) so
+ *  it reads fine in both cases; the ＋ split button in the strip is the way in. */
+function EmptySessionsState() {
+  const { t } = useLingui();
+  return (
+    <div
+      className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-muted-foreground text-sm"
+      data-testid="sessions-dock-empty"
+    >
+      {t`Start a session with the ＋ button, or launch an agent from a page.`}
+    </div>
+  );
+}
+
+/**
+ * The reload-stable key a session persists under (a terminal's ptyId, a thread's
+ * threadId), or null when a fresh terminal has no live PTY yet. Module-pure (takes
+ * the ptyId map explicitly) so effects that consult it keep clean, stable deps.
+ */
+function computePersistKey(
+  session: SessionDescriptor,
+  ptyMap: ReadonlyMap<string, string>,
+): string | null {
+  if (session.kind === 'thread') return session.threadId;
+  return session.adoptPtyId ?? ptyMap.get(session.id) ?? null;
+}
+
+/**
+ * Place freshly-added sessions into `kept`: a session whose reload-stable key is in
+ * the persisted `order` inserts at its ranked slot (restoring the cross-kind reload
+ * arrangement as threads trickle in async); one that is not (live-created after
+ * mount) appends. Existing sessions are never re-sorted, so a user reorder is never
+ * disturbed.
+ */
+function placeSessionAdditions<T extends { readonly id: string }>(
+  kept: readonly T[],
+  additions: readonly T[],
+  order: readonly string[],
+  keyOf: (session: T) => string | null,
+): T[] {
+  const rankOf = (session: T): number => {
+    const key = keyOf(session);
+    if (key == null) return Number.POSITIVE_INFINITY;
+    const i = order.indexOf(key);
+    return i === -1 ? Number.POSITIVE_INFINITY : i;
+  };
+  const result = [...kept];
+  for (const addition of additions) {
+    const addRank = rankOf(addition);
+    if (addRank === Number.POSITIVE_INFINITY) {
+      result.push(addition);
+      continue;
+    }
+    let insertAt = result.length;
+    for (let i = 0; i < result.length; i++) {
+      if (rankOf(result[i]) > addRank) {
+        insertAt = i;
+        break;
+      }
+    }
+    result.splice(insertAt, 0, addition);
+  }
+  return result;
 }

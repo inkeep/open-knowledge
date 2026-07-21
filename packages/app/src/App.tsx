@@ -3,6 +3,7 @@ import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from 'rea
 import { CommandPalette } from '@/components/CommandPalette';
 import { ConnectingBanner } from '@/components/ConnectingBanner';
 import { CreateProjectMenuTrigger } from '@/components/CreateProjectMenuTrigger';
+import { DesktopAgentMigration } from '@/components/DesktopAgentMigration';
 import { EditorPane } from '@/components/EditorPane';
 import { FileSidebar } from '@/components/FileSidebar';
 import { defaultInitialDir } from '@/components/file-tree-utils';
@@ -475,8 +476,8 @@ function AppBody() {
   // Null on the web host (no real OS shell) so the menu rows that consume it
   // render nothing.
   // Which launchable CLIs are on PATH — each launch surface gates its rows from
-  // this map via `visibleTerminalClis` so a CLI that isn't installed (e.g.
-  // Antigravity) doesn't clutter the menu once the probe confirms it absent.
+  // this map via `isTerminalCliEnabled` so a CLI that isn't installed (e.g.
+  // Antigravity, or Claude) doesn't clutter the menu once the probe confirms it absent.
   const installedClis = useInstalledClis();
   const terminalLaunch: TerminalLaunchContextValue | null = desktopBridge
     ? {
@@ -503,6 +504,9 @@ function AppBody() {
             Desktop-only — the `new-project` menu action never fires in
             the web host, so the dialog stays unmounted there. */}
         {desktopBridge ? <CreateProjectMenuTrigger bridge={desktopBridge} /> : null}
+        {/* One-time upgrade migration: carry an existing user's installed desktop
+            apps over into the new opt-in Desktop model. Desktop-only. */}
+        {desktopBridge ? <DesktopAgentMigration /> : null}
         {/* Help → Report a Bug… opens ReportBugDialog here — same
             desktop-only App-root trigger pattern as CreateProjectMenuTrigger. */}
         {desktopBridge ? <ReportBugMenuTrigger /> : null}

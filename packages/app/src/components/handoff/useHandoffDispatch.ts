@@ -27,12 +27,14 @@ import {
   composeSelectionPrompt,
   composeSkillPrompt,
   composeTerminalBareLaunchPrompt,
+  composeThreadBareLaunchPrompt,
   type DocContext,
   type HandoffOutcome,
   type HandoffPayload,
   type HandoffScope,
   type HandoffTarget,
   OK_TERMINAL_SURFACE_PREAMBLE,
+  OK_THREAD_SURFACE_PREAMBLE,
   type PromptTransport,
   type SkillScope,
   type TargetData,
@@ -60,6 +62,7 @@ import {
   type HandoffStatsLine,
 } from '@/lib/handoff/telemetry';
 import { docNameToRelativePath, joinWorkspacePath, type Workspace } from '@/lib/workspace-paths';
+import { requestAgentThreadLaunch } from './thread-launch-events';
 // Side-effect import only — loads the `Window.okDesktop?` global augmentation.
 import '@/lib/desktop-bridge-types';
 
@@ -910,6 +913,80 @@ export function composeTerminalLaunchPrompt(input: HandoffDispatchInput, cli: Te
     return `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, TERMINAL_CLIS[cli].handoffTarget, false, 'terminal')}`;
   }
   return composeTerminalBareLaunchPrompt(input.docContext?.relativePath ?? null);
+}
+
+/**
+ * Prompt for an in-app agent thread (server-hosted ACP). The thread twin of
+ * {@link composeTerminalLaunchPrompt}: same scope-directive threading, with
+ * the thread-surface preamble instead of the terminal one. Agent-neutral —
+ * threads are not CLI-specific, so scope composition uses the `claude-code`
+ * target purely to reach `selectScopedPrompt` (the composed text is
+ * target-agnostic for the directive scopes).
+ */
+function composeThreadLaunchPrompt(input: HandoffDispatchInput): string {
+  const hasInstruction = typeof input.instruction === 'string' && input.instruction.trim() !== '';
+  if (input.compose !== undefined || input.createDescription !== undefined || hasInstruction) {
+    // Threads deliver the composed prompt straight to the server-hosted agent —
+    // no URL round-trip and no shell quoting — so use the generous `terminal`
+    // byte budget rather than `url`, whose per-target URL budget would trim
+    // thread content that has no URL-length constraint.
+    return `${OK_THREAD_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'claude-code', false, 'terminal')}`;
+  }
+  return composeThreadBareLaunchPrompt(input.docContext?.relativePath ?? null);
+}
+
+/** Extension-less docName from a handoff input's file context, when any. */
+function docNameFromInput(input: HandoffDispatchInput): string | null {
+  const rel = input.docContext?.relativePath;
+  if (typeof rel !== 'string' || rel === '') return null;
+  return rel.replace(/\.(md|mdx)$/, '');
+}
+
+/**
+ * The user's raw typed text for a launch — the create brief or free-form
+ * instruction, taken in the same scope precedence `selectScopedPrompt` uses.
+ * Carried alongside (not inside) the composed prompt so the thread title
+ * derives from what the user actually typed, never from the handoff preamble
+ * the prompt opens with. Null when the scope carried no typed text (bare
+ * file/folder/project launches) — the server then falls back to the prompt.
+ */
+export function threadTitleHintFromInput(input: HandoffDispatchInput): string | null {
+  const candidates = [
+    input.compose?.instruction,
+    input.selection?.instruction,
+    input.ask?.instruction,
+    input.createDescription,
+    input.instruction,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim() !== '') return candidate;
+  }
+  return null;
+}
+
+/**
+ * Fire an "open an in-app agent thread" launch for a handoff input — the shared
+ * entry point behind every "Start an agent" affordance (the sparkles popover,
+ * the file-tree / empty-space right-click submenus, and the composers). Works
+ * on both hosts — threads are server-hosted.
+ *
+ * Without options, the region resolves the target: the default registered
+ * agent launches directly, or (before any registration) Configure agents opens
+ * so the user can enable one. `opts.agent` launches that specific agent.
+ */
+export function startAgentThreadForInput(
+  input: HandoffDispatchInput,
+  opts?: {
+    agent?: { source: 'registry' | 'custom'; id: string };
+  },
+): void {
+  requestAgentThreadLaunch({
+    agentSource: opts?.agent?.source ?? 'registry',
+    agentId: opts?.agent?.id ?? '',
+    prompt: composeThreadLaunchPrompt(input),
+    docName: docNameFromInput(input),
+    titleHint: threadTitleHintFromInput(input),
+  });
 }
 
 /**

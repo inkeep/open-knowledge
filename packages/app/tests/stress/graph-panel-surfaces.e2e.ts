@@ -132,10 +132,8 @@ async function openGraph(
   );
 
   if (fullscreen) {
-    await page.getByLabel('Full screen').click();
-    await page.waitForFunction(() => Boolean(document.fullscreenElement), null, {
-      timeout: 5_000,
-    });
+    await page.getByLabel('Expand graph').click();
+    await expect(getExpandedGraphIndicator(page)).toBeVisible();
   }
 }
 
@@ -155,6 +153,14 @@ async function waitForGraphNode(page: Page, docName: string) {
 
 function getGraphSurface(page: Page) {
   return page.getByRole('img', { name: 'Graph visualization of document links' });
+}
+
+// The expanded-graph signal. The control moved off the browser Fullscreen API
+// (document.fullscreenElement) to in-app panel expansion, so the Explore/
+// Orphans/Hubs mode toggle — which renders only while expanded — is the
+// authoritative "expanded" indicator. Visible ⇒ expanded; count 0 ⇒ collapsed.
+function getExpandedGraphIndicator(page: Page) {
+  return page.getByRole('group', { name: 'Expanded graph mode' });
 }
 
 async function clickGraphDoc(page: Page, docName: string) {
@@ -361,9 +367,7 @@ test('fullscreen graph selects a document before explicitly opening it', async (
   expect(await getGraphNodeVisualState(page, fixtures.beta)).toBe('selected');
 
   await selectedDoc.getByRole('button', { name: 'Open' }).click();
-  await page.waitForFunction(() => !document.fullscreenElement, null, {
-    timeout: 5_000,
-  });
+  await expect(getExpandedGraphIndicator(page)).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(`#/${escapeRegex(fixtures.beta)}#deep-link$`));
 });
 
@@ -385,9 +389,7 @@ test('fullscreen graph selecting the active document shows the already-open stat
   expect(await getGraphNodeVisualState(page, fixtures.alpha)).toBe('active-selected');
 
   await selectedDoc.getByRole('button', { name: 'Open' }).click();
-  await page.waitForFunction(() => !document.fullscreenElement, null, {
-    timeout: 5_000,
-  });
+  await expect(getExpandedGraphIndicator(page)).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(`#/${escapeRegex(fixtures.alpha)}$`));
 });
 
@@ -414,10 +416,8 @@ test('graph canvas fills the available height in docked and fullscreen modes', a
   await waitForGraphNode(page, fixtures.alpha);
   await expectGraphToFillAvailableHeight(page);
 
-  await page.getByLabel('Full screen').click();
-  await page.waitForFunction(() => Boolean(document.fullscreenElement), null, {
-    timeout: 5_000,
-  });
+  await page.getByLabel('Expand graph').click();
+  await expect(getExpandedGraphIndicator(page)).toBeVisible();
   await waitForGraphNode(page, fixtures.alpha);
   await expectGraphToFillAvailableHeight(page);
 });
@@ -552,15 +552,11 @@ test('fullscreen graph selection clears after exiting fullscreen', async ({
   const selectedDoc = page.getByRole('status', { name: 'Selected graph item' });
   await expect(selectedDoc).toBeVisible();
 
-  await page.getByLabel('Exit fullscreen').click();
-  await page.waitForFunction(() => !document.fullscreenElement, null, {
-    timeout: 5_000,
-  });
+  await page.getByLabel('Collapse graph').click();
+  await expect(getExpandedGraphIndicator(page)).toHaveCount(0);
 
-  await page.getByLabel('Full screen').click();
-  await page.waitForFunction(() => Boolean(document.fullscreenElement), null, {
-    timeout: 5_000,
-  });
+  await page.getByLabel('Expand graph').click();
+  await expect(getExpandedGraphIndicator(page)).toBeVisible();
   await expect(selectedDoc).toHaveCount(0);
 });
 

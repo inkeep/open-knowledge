@@ -106,6 +106,11 @@ const TARGET_SLUG = 'target-heading';
 async function seedDoc(api: ApiHelpers, page: Page): Promise<string> {
   const docName = `occlusion-${randomUUID().slice(0, 8)}`;
   await api.createPage(`${docName}.md`);
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ok-acp-follow-file-v1', '0');
+    } catch {}
+  });
   await page.goto(`/#/${docName}`);
   await page.waitForFunction(() => Boolean(window.__activeProvider?.isSynced), null, {
     timeout: 15_000,

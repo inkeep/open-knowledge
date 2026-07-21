@@ -19,9 +19,10 @@
  * `lifecycle.status === 'conflict'`. The meta-test forces a categorization
  * decision at every PR boundary.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extension.ts');
 const source = readFileSync(API_EXT_PATH, 'utf8');
@@ -83,6 +84,10 @@ const EXEMPT_HANDLERS = new Set([
   // Read paths.
   'handleDocumentRead',
   'handleDocumentList',
+  // GET /api/acp/catalog — read-only ACP agent-catalog listing (registry +
+  // custom entries); no Y.Doc mutation, so the conflict-refusal gate doesn't
+  // apply. Agent-thread writes ride the /collab/thread WS, not this route.
+  'handleAcpCatalog',
   'handleAsset',
   'handleAssetText',
   'handleBacklinks',

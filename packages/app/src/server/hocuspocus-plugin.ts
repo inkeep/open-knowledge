@@ -20,6 +20,9 @@ import {
   INLINE_RENDERABLE_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
 import {
+  AcpThreadManager,
+  attachAcpThreadSocket,
+  buildOkMcpStdioCommand,
   createAssetServeMiddleware,
   createServer,
   getLogger,
@@ -174,6 +177,42 @@ export function hocuspocusPlugin(): Plugin {
       const { hocuspocus, sessionManager, agentFocusBroadcaster, agentPresenceBroadcaster } =
         currentSrv;
 
+      // ACP thread host — the dev twin of boot.ts's construction (the
+      // documented dual-upgrade-handler drift hazard applies to this whole
+      // plugin; keep the two in step). Ephemeral test mode mirrors prod's
+      // off-switch: no manager, `/collab/thread` fail-closes.
+      const acpThreadManager = isEphemeralTest
+        ? null
+        : new AcpThreadManager({
+            contentDir: CONTENT_DIR,
+            localDir: currentSrv.lockDir,
+            registry: currentSrv.acpRegistry,
+            permissions: currentSrv.acpPermissions,
+            sessionManager,
+            agentPresenceBroadcaster,
+            resolveEmbed: currentSrv.resolveEmbed,
+            isExcludedPath: (rel) => currentSrv.contentFilter.isExcluded(rel),
+            isIgnoredPath: (rel) => currentSrv.contentFilter.isPathIgnored(rel),
+            getLoadedDocText: (docName) =>
+              hocuspocus.documents.get(docName)?.getText('source').toString() ?? null,
+            getServerUrl: () => {
+              const addr = server.httpServer?.address();
+              const port = typeof addr === 'object' && addr !== null ? addr.port : 5173;
+              return `http://localhost:${port}`;
+            },
+            // Non-HTTP agents (e.g. Claude's ACP adapter) get a stdio `ok mcp`
+            // shim pinned to this dev port. Relies on `open-knowledge` being on
+            // PATH here (no CLI entrypoint to resolve in the Vite dev server).
+            getMcpStdioCommand: () => {
+              const addr = server.httpServer?.address();
+              const port = typeof addr === 'object' && addr !== null ? addr.port : 5173;
+              return buildOkMcpStdioCommand(undefined, port);
+            },
+            log: getLogger('acp-threads'),
+          });
+      // Rehydrate archived threads before the first `list` can arrive.
+      await acpThreadManager?.init();
+
       const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_COLLAB_MESSAGE_BYTES });
       wss.on('error', (err) => {
         console.error('[collab] WebSocketServer error:', err);
@@ -199,6 +238,32 @@ export function hocuspocusPlugin(): Plugin {
         console.info(
           `[collab] upgrade received url=${req.url} protocol=${req.headers['sec-websocket-protocol'] ?? 'none'} host=${req.headers.host ?? 'none'} origin=${req.headers.origin ?? 'none'}`,
         );
+
+        // ACP agent-thread frames — bare WS, never Hocuspocus. Mirrors the
+        // `/collab/thread` branch in mcp-mount.ts (drift hazard: keep both).
+        if (req.url.startsWith('/collab/thread')) {
+          if (acpThreadManager === null) {
+            socket.destroy();
+            return;
+          }
+          socket.on('error', (err: NodeJS.ErrnoException) => {
+            if (handleCollabSocketError(err)) return;
+            console.error('[collab] ACP thread socket error:', err);
+          });
+          try {
+            wss.handleUpgrade(req, socket, head, (ws) => {
+              attachAcpThreadSocket(ws, acpThreadManager, getLogger('acp-threads'));
+            });
+          } catch (err) {
+            console.error(`[collab] thread handleUpgrade threw for ${req.url}:`, err);
+            try {
+              socket.destroy();
+            } catch {
+              // Already-destroyed — swallow.
+            }
+          }
+          return;
+        }
 
         // `ok mcp` holds a persistent WS to /collab/keepalive?connectionId=<id>
         // to register as an active client. Must route as a bare WS — MCP
@@ -497,6 +562,11 @@ export function hocuspocusPlugin(): Plugin {
         keepaliveGraceTimers.clear();
         if (keepaliveGraceInflight.size > 0) {
           await Promise.allSettled(keepaliveGraceInflight);
+        }
+        try {
+          await acpThreadManager?.destroy();
+        } catch (err) {
+          console.error('[hocuspocus] acpThreadManager.destroy() failed:', err);
         }
         try {
           await currentSrv.destroy();

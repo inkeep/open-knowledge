@@ -3,6 +3,7 @@ import {
   type AgentPresenceEntry,
   computeInitials,
   deriveIconColor,
+  isPresenceSentinelDocName,
 } from '@inkeep/open-knowledge-core';
 import { plural, t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -269,15 +270,17 @@ function AgentAvatar({
   // touch targets.
   const writing = !crossDoc && heldWriting;
 
-  // Sentinel currentDoc values (e.g. `(connected)` from the keepalive WS
-  // bootstrap in `mcp-mount.ts`) are non-null so the entry survives the
-  // client-side filter, but they don't represent a real document.
-  // Match the sentinel set exactly — `isSafeDocName` (api-extension.ts)
-  // permits `(` in real docNames (e.g. `(WIP) draft`, `(2026-05-13) standup`),
-  // so a leading-`(` heuristic would over-suppress the "editing X" copy
-  // for legitimate parenthesised filenames.
+  // Sentinel currentDoc values (`(connected)` from the keepalive WS bootstrap,
+  // `(agent thread)` from a doc-less in-app thread) are non-null so the entry
+  // survives the client-side filter, but they don't represent a real document.
+  // `isPresenceSentinelDocName` matches the sentinel set exactly — `isSafeDocName`
+  // (api-extension.ts) permits `(` in real docNames (e.g. `(WIP) draft`,
+  // `(2026-05-13) standup`), so a leading-`(` heuristic would over-suppress the
+  // "editing X" copy for legitimate parenthesised filenames.
   const realCurrentDoc =
-    presence.currentDoc && presence.currentDoc !== '(connected)' ? presence.currentDoc : null;
+    presence.currentDoc && !isPresenceSentinelDocName(presence.currentDoc)
+      ? presence.currentDoc
+      : null;
 
   // The click opens the Activity Panel in the current doc's panel, or — when
   // no doc is selected — navigates to the agent's doc first (the panel can't

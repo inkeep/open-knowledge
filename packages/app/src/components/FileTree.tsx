@@ -768,6 +768,7 @@ function FileTreeMenu({
               installStates={handoff.installStates}
               isElectronHost={handoff.isElectronHost}
               dispatch={handoff.dispatch}
+              onBeforeLaunch={close}
             />
             {shareMenuItem}
             <DropdownMenuSub>
@@ -904,6 +905,7 @@ function FileTreeMenu({
                 installStates={handoff.installStates}
                 isElectronHost={handoff.isElectronHost}
                 dispatch={handoff.dispatch}
+                onBeforeLaunch={close}
               />
             )}
             {shareMenuItem}

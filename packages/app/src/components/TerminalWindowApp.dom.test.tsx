@@ -13,10 +13,10 @@
  * trees.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect, useRef } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
 import {
@@ -24,7 +24,13 @@ import {
   emitLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
 
-mock.module('./TerminalGate', () => ({
+// The New split-button calls react-query's useQuery; stub it so the window tests
+// need no QueryClientProvider (the window variant hides agent rows anyway).
+vi.doMock('@tanstack/react-query', () => ({
+  useQuery: () => ({ data: undefined, isLoading: false, isError: false }),
+}));
+
+vi.doMock('./TerminalGate', () => ({
   // biome-ignore lint/suspicious/noExplicitAny: test stub
   TerminalGate: ({ bridge }: any) => {
     const ptyIdRef = useRef<string | null>(null);
@@ -47,8 +53,8 @@ mock.module('./TerminalGate', () => ({
   },
 }));
 
-mock.module('@/App', () => ({ App: () => <div data-testid="editor-app" /> }));
-mock.module('@/components/NavigatorApp', () => ({
+vi.doMock('@/App', () => ({ App: () => <div data-testid="editor-app" /> }));
+vi.doMock('@/components/NavigatorApp', () => ({
   NavigatorApp: () => <div data-testid="navigator-app" />,
 }));
 
@@ -58,11 +64,11 @@ const { selectDesktopRootApp } = await import('./desktop-root-app');
 function makeBridge() {
   const viewMenuPushes: Array<{ terminalLive?: boolean }> = [];
   let ptyCounter = 0;
-  const create = mock(async () => {
+  const create = vi.fn(async () => {
     ptyCounter += 1;
     return { ok: true as const, ptyId: `pty-${ptyCounter}` };
   });
-  const kill = mock(async (_id: string) => {});
+  const kill = vi.fn(async (_id: string) => {});
   const bridge = {
     config: { mode: 'terminal' },
     onMenuAction: () => () => {},
@@ -95,7 +101,7 @@ function bridgeWithMode(mode: string): OkDesktopBridge {
 // the same affordance the dock has (the window holds feature parity; only the
 // placement differs).
 async function addTerminalTab(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Choose CLI for new chat' }));
+  await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
   await user.click(await screen.findByRole('menuitem', { name: 'Terminal' }));
 }
 
@@ -202,7 +208,7 @@ describe('TerminalWindowApp', () => {
 
   test('closing the last tab closes the window instead of leaving an empty surface', async () => {
     const user = userEvent.setup();
-    const closeSpy = spyOn(window, 'close').mockImplementation(() => {});
+    const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => {});
     try {
       const { bridge } = makeBridge();
       render(
@@ -256,7 +262,7 @@ describe('TerminalWindowApp', () => {
 
   test('⌘W (close-active-tab-or-window) closes the active tab; the last tab closes the window', async () => {
     const user = userEvent.setup();
-    const closeSpy = spyOn(window, 'close').mockImplementation(() => {});
+    const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => {});
     try {
       const view = makeBridge();
       render(
@@ -303,14 +309,20 @@ describe('selectDesktopRootApp routing', () => {
     __resetLocalMenuActionBusForTests();
   });
 
-  test('mode=terminal selects the terminal window app', () => {
-    expect(selectDesktopRootApp(bridgeWithMode('terminal')).type).toBe(TerminalWindowApp);
-  });
-
-  test('mounting the terminal-mode selection renders the full-window terminal', () => {
+  test('mounting the terminal-mode selection renders the full-window terminal', async () => {
+    // The terminal window app is lazy-loaded (it drags the sessions-dock +
+    // thread-client chain, which must stay out of the entry chunk), so
+    // mode=terminal routing is asserted through the mounted result — the
+    // element type is a Suspense wrapper, and the lazy chunk needs awaiting.
+    // The `findByRole` timeout is raised past the 1000 ms default: this mount
+    // resolves the whole sessions-dock + thread-client chain, which can settle
+    // slowly on loaded CI runners (the default flaked the full test:dom suite
+    // while passing locally + in isolation).
     const { bridge } = makeBridge();
     render(<TooltipProvider>{selectDesktopRootApp(bridge)}</TooltipProvider>);
-    expect(screen.getByRole('tablist', { name: 'Terminal sessions' })).toBeTruthy();
+    expect(
+      await screen.findByRole('tablist', { name: 'Sessions' }, { timeout: 5000 }),
+    ).toBeTruthy();
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
   });
 

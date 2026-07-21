@@ -5,7 +5,6 @@ import {
   SortableContext,
   useSortable,
 } from '@dnd-kit/sortable';
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
   ChevronDownIcon,
@@ -29,7 +28,7 @@ import {
   type TabReorderBounds,
   tabRunCollisionDetection,
 } from './editor-tabs-chrome';
-import { TerminalNewChatButton, type TerminalNewTabChoice } from './TerminalNewChatButton';
+import { scrollTabStripOnWheel } from './tab-strip-wheel';
 
 /** Attribute marking a terminal tab's sortable node — the surface-neutral chrome
  *  module measures the reorder bounds against this (editor tabs use their own). */
@@ -84,14 +83,19 @@ function SortableTerminalTab({
   );
 }
 
-/** One terminal session as the tab strip sees it: a stable id and a display label. */
+/** One session as the tab strip sees it: a stable id, a display label, and an
+ *  optional leading icon. The strip is kind-agnostic — the host bakes the kind
+ *  glyph (a shell icon for a terminal, an agent avatar + status dot for a thread)
+ *  into {@link icon} so the strip never learns about session kinds. */
 export interface TerminalTabDescriptor {
   readonly id: string;
   readonly label: string;
+  /** Leading icon rendered before the label (host-provided, kind-specific). */
+  readonly icon?: ReactNode;
 }
 
 interface TerminalTabStripProps {
-  /** Open sessions, in tab order. */
+  /** Sessions in tab order. */
   readonly sessions: readonly TerminalTabDescriptor[];
   /** Currently active session id (controlled — the strip keeps no selection state). */
   readonly activeSessionId: string;
@@ -104,20 +108,13 @@ interface TerminalTabStripProps {
    * caret stays in the tablist while arrowing.
    */
   readonly onTabActivate?: (id: string) => void;
-  /** The New-chat split button's current pick — a CLI (resolved by the host from
-   *  the sticky pick + installed set) or `'terminal'` (a bare shell). Drives the
-   *  primary icon/label + the dropdown checkmark. */
-  readonly newChatSelected: TerminalNewTabChoice;
-  /** Primary New-chat click — open a new tab in the current pick, no persist. */
-  readonly onNewChatLaunch: () => void;
-  /** Dropdown CLI pick — persist it as the new default AND open a tab in it. */
-  readonly onNewChatPickCli: (cli: TerminalCli) => void;
-  /** Dropdown "Terminal" — persist a bare shell as the default AND open one. */
-  readonly onNewChatPickTerminal: () => void;
-  /** CLIs to list in the New-chat dropdown — Claude plus PATH-detected CLIs
-   *  (resolved by the host), so an uninstalled CLI doesn't appear unless
-   *  detected. Optional: the button falls back to the full list. */
-  readonly newChatVisibleClis?: readonly TerminalCli[];
+  /** The "new session" split button, built by the host (it owns the pick model +
+   *  the agent/CLI menus). Rendered hugging the last tab, outside the scroll
+   *  container so the fade mask never clips it. */
+  readonly newButton?: ReactNode;
+  /** Host-provided trailing control(s), rendered at the far right immediately
+   *  before the dock-toggle/collapse buttons (e.g. the conversation-history menu). */
+  readonly trailingControls?: ReactNode;
   /** Fires with the session id when the user closes a tab. */
   readonly onClose: (id: string) => void;
   /**
@@ -201,11 +198,8 @@ export function TerminalTabStrip({
   activeSessionId,
   onSelect,
   onTabActivate,
-  newChatSelected,
-  onNewChatLaunch,
-  onNewChatPickCli,
-  onNewChatPickTerminal,
-  newChatVisibleClis,
+  newButton,
+  trailingControls,
   onClose,
   onRename,
   onReorder,
@@ -285,10 +279,27 @@ export function TerminalTabStrip({
   // with editor tabs) supplies the horizontal clamp, edge-snap collision, and
   // width stabilization; bounds are measured against the row on drag start.
   const rowRef = useRef<HTMLDivElement>(null);
+  const tabListRef = useRef<HTMLDivElement>(null);
   const [tabReorderBounds, setTabReorderBounds] = useState<TabReorderBounds | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const reorderEnabled = onReorder != null;
   const reorderModifiers = [createTabReorderModifier(tabReorderBounds)];
+  const activeTabScrollKey =
+    activeSessionId === ''
+      ? null
+      : `${activeSessionId}\u0000${sessions.map((session) => session.id).join('\u0000')}`;
+
+  // Selection can change through click, arrow keys, shortcuts, close-neighbor
+  // fallback, reload restore, or a newly appended session. Keep the selected tab
+  // visible for every path without moving it in the user's chosen tab order.
+  useEffect(() => {
+    if (activeTabScrollKey === null) return;
+    const [activeId] = activeTabScrollKey.split('\u0000', 1);
+    const safeId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(activeId) : activeId;
+    tabListRef.current
+      ?.querySelector<HTMLElement>(`[data-tab-id="${safeId}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeTabScrollKey]);
 
   function handleDragStart() {
     setTabReorderBounds(measureTabReorderBounds(rowRef.current, TERMINAL_TAB_SORTABLE_SELECTOR));
@@ -343,16 +354,24 @@ export function TerminalTabStrip({
         )}
       >
         <TabsList
+          ref={tabListRef}
           variant="line"
-          aria-label={t`Terminal sessions`}
+          aria-label={t`Sessions`}
+          // Remap a vertical wheel to horizontal scroll so the main scroll wheel
+          // moves the tabs sideways, matching the editor tab strip (which native
+          // overflow-x alone doesn't do for a plain vertical wheel).
+          onWheel={scrollTabStripOnWheel}
           // No `flex-1`: the list sizes to its tabs so "New chat" can hug the
           // last one. `min-w-0` + `overflow-x-auto` keep the tabs scrolling
           // internally when they overflow the space the trailing controls leave.
+          // `overflow-y-hidden` is load-bearing: `overflow-x: auto` alone computes
+          // the y-axis from `visible` to `auto`, so the tab status-dot's 2px
+          // `-bottom-0.5` bleed becomes a stray couple-pixel vertical scroll.
           // Window mode: the whole tab run (incl. inter-tab gaps) is `no-drag` so
           // a pointer drag crossing a gap reorders instead of moving the window;
           // the row's empty space outside the run stays a drag region.
           className={cn(
-            'flex h-auto min-w-0 items-center justify-start gap-0.5 overflow-x-auto bg-transparent p-0 [scrollbar-width:none] scroll-fade-mask-x',
+            'flex h-auto min-w-0 items-center justify-start gap-0.5 overflow-x-auto overflow-y-hidden bg-transparent p-0 [scrollbar-width:none] scroll-fade-mask-x',
             draggable && '[-webkit-app-region:no-drag]',
           )}
         >
@@ -451,10 +470,11 @@ export function TerminalTabStrip({
                                 }
                               }}
                               className={cn(
-                                'h-7 flex-none rounded-md px-2 text-xs',
+                                'h-7 flex-none gap-1.5 rounded-md px-2 text-xs',
                                 draggable && '[-webkit-app-region:no-drag]',
                               )}
                             >
+                              {session.icon}
                               <span className="max-w-40 truncate">{session.label}</span>
                             </TabsTrigger>
                           </TooltipTrigger>
@@ -496,19 +516,23 @@ export function TerminalTabStrip({
             </SortableContext>
           </DndContext>
         </TabsList>
-        {/* New-chat split button hugs the last tab (outside the tablist's
-            scroll+fade so it is never clipped): the primary launches the default
-            CLI, the carat switches CLI or opens a bare terminal. */}
-        <TerminalNewChatButton
-          selected={newChatSelected}
-          onLaunchSelected={onNewChatLaunch}
-          onPickCli={onNewChatPickCli}
-          onPickTerminal={onNewChatPickTerminal}
-          visibleClis={newChatVisibleClis}
-          className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}
-        />
+        {/* The host's "new session" split button hugs the last tab (outside the
+            tablist's scroll+fade so it is never clipped). Wrapped so window mode
+            can opt it out of the title-bar drag region. */}
+        {newButton != null ? (
+          <div className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}>
+            {newButton}
+          </div>
+        ) : null}
         {/* Spacer pushes the trailing controls to the far right. */}
         <div className="flex-1" />
+        {/* Host-provided trailing controls (e.g. conversation history), just left
+            of the dock-toggle/collapse buttons. */}
+        {trailingControls != null ? (
+          <div className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}>
+            {trailingControls}
+          </div>
+        ) : null}
         {onToggleDock != null ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -519,7 +543,7 @@ export function TerminalTabStrip({
                 // Label names the resulting position, not the current one, so the
                 // action reads as "move it there" to a screen-reader user.
                 aria-label={
-                  rightDocked ? t`Dock terminal to the bottom` : t`Dock terminal to the right`
+                  rightDocked ? t`Dock sessions at the bottom` : t`Dock sessions on the right`
                 }
                 className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
                 onClick={onToggleDock}
@@ -533,9 +557,9 @@ export function TerminalTabStrip({
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={8}>
               {rightDocked ? (
-                <Trans>Dock terminal to the bottom</Trans>
+                <Trans>Dock sessions at the bottom</Trans>
               ) : (
-                <Trans>Dock terminal to the right</Trans>
+                <Trans>Dock sessions on the right</Trans>
               )}
             </TooltipContent>
           </Tooltip>
@@ -547,7 +571,7 @@ export function TerminalTabStrip({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label={t`Collapse terminal`}
+                aria-label={t`Collapse session dock`}
                 className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
                 onClick={onCollapse}
               >
@@ -561,7 +585,7 @@ export function TerminalTabStrip({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={8}>
-              <Trans>Collapse terminal</Trans>
+              <Trans>Collapse session dock</Trans>
             </TooltipContent>
           </Tooltip>
         ) : null}

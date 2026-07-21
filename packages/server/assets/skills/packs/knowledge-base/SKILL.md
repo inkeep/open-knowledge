@@ -14,6 +14,10 @@ This project uses the **source-grounded knowledge-base** layout. The whole point
 
 > This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/grounding rules) still governs every markdown operation — this layers the KB workflow on top.
 
+## Link at creation
+
+The user watches your build live — the editor follows the file you're writing, and the knowledge graph assembles on screen as pages get linked. No view management on your part; just author well: every page carries its links from the moment it's written (at minimum the hub/index page and its most related siblings — an unlinked page is invisible in the graph), and related pages share a `cluster:` frontmatter value (e.g. `cluster: architecture`) so the graph's cluster coloring makes the map read at a glance.
+
 ## The three layers
 
 ```

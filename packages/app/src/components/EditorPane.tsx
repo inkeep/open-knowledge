@@ -1,5 +1,5 @@
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
-import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { TagDialog } from '@/editor/components/TagDialog';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { RAW_MDX_NAV_EVENT, type RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
@@ -32,7 +32,25 @@ import { EditorHeader } from './EditorHeader';
 import { composeTerminalSelectionPaste } from './handoff/compose-terminal-selection';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
-import { TerminalSessionsHost } from './TerminalSessionsHost';
+import {
+  type AgentThreadLaunchDetail,
+  subscribeToAgentThreadLaunchRequests,
+} from './handoff/thread-launch-events';
+
+// Lazy-loaded: these two mounts are the only eager edges into the ACP
+// thread-client + thread-event-model chain (and the whole sessions-dock UI),
+// which the entry chunk must not carry — the same lazy-panel pattern as
+// ThreadView inside the host. Both mount unconditionally below, so the
+// dynamic import fires on first render; behavior is deferred by one chunk
+// fetch, not gated on user action.
+const AgentThreadClientBinder = lazy(() =>
+  import('./acp/AgentThreadClientBinder').then((mod) => ({
+    default: mod.AgentThreadClientBinder,
+  })),
+);
+const TerminalSessionsHost = lazy(() =>
+  import('./TerminalSessionsHost').then((mod) => ({ default: mod.TerminalSessionsHost })),
+);
 
 /**
  * Carries an "Open in terminal" launch from a UI click to the docked terminal
@@ -53,6 +71,22 @@ export interface TerminalLaunchIntent {
    *  preflight-suppressed launch (bare-shell fallback) drops it, because staged
    *  text in a raw shell would execute line by line. */
   readonly stagePaste?: string;
+}
+
+/**
+ * Carries a "Start an agent" launch from a UI click (handoff menus) to the
+ * sessions dock's thread-hosting host — the ACP twin of {@link TerminalLaunchIntent}.
+ * `agentId === ''` means "resolve the default registered agent, or open Configure
+ * agents when none is enabled". `nonce` makes each click a distinct one-shot the
+ * host acts on exactly once.
+ */
+export interface ThreadLaunchIntent {
+  readonly agentSource: 'registry' | 'custom';
+  readonly agentId: string;
+  readonly prompt: string | null;
+  readonly docName: string | null;
+  readonly titleHint: string | null;
+  readonly nonce: number;
 }
 
 export type EditorMode = EditorModeValue;
@@ -106,6 +140,10 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // entry point. Null until a UI click; bumping `nonce` makes each click a
   // distinct one-shot the session writes exactly once.
   const [terminalLaunch, setTerminalLaunch] = useState<TerminalLaunchIntent | null>(null);
+  // "Start an agent" launch intent threaded to the dock's thread host — the ACP
+  // twin of `terminalLaunch`. Both buses target the one host now.
+  const [threadLaunch, setThreadLaunch] = useState<ThreadLaunchIntent | null>(null);
+  const threadLaunchNonceRef = useRef(0);
   // Where the terminal docks (right default | bottom), persisted per machine.
   // Moving the terminal is also a request to see it, so the setter reveals the
   // dock — re-docking a hidden terminal that stays hidden would feel inert.
@@ -160,15 +198,16 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     });
   }
 
-  // Reveal the docked terminal and, if no session exists yet, seed a first one.
-  // Drives the edge "Show terminal" reveal tab; leaves the right doc-panel
-  // untouched (the two coexist). The seed honors the sticky new-tab pick: for a
-  // CLI, launch a chat under the default CLI; when the last pick was a bare
-  // "Terminal" (persisted terminal-only), skip the CLI launch and let the host's
-  // reveal-from-empty fallback seed a bare shell instead.
+  // Reveal the sessions dock and, if no session exists yet, seed a first one.
+  // Drives the edge "Show sessions" reveal tab; leaves the right doc-panel
+  // untouched (the two coexist). On a terminal surface the seed honors the sticky
+  // pick: for a CLI, launch a chat under the default CLI; when the last pick was a
+  // bare "Terminal", skip the CLI launch and let the host's reveal-from-empty
+  // fallback seed a bare shell. On the web host (no terminal) the host's
+  // reveal-from-empty seed handles the sticky agent instead.
   function revealTerminal() {
     setTerminalVisible(true);
-    if (!hasSessions && !readPreferBareTerminal()) launchNewChat();
+    if (terminalAvailable && !hasSessions && !readPreferBareTerminal()) launchNewChat();
   }
 
   const syncStatus = useGitSyncStatus();
@@ -310,6 +349,26 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     });
   }, []);
 
+  // "Start an agent" launch — a handoff-menu click fires a window event naming a
+  // catalog agent + the composed prompt. Reveal the dock AND carry the intent to
+  // the host as a fresh one-shot (the host resolves the agent / opens the catalog
+  // and creates the thread). Universal — agent threads are server-hosted, so
+  // unlike the terminal bus this one has no desktop gate.
+  useEffect(() => {
+    return subscribeToAgentThreadLaunchRequests((detail: AgentThreadLaunchDetail) => {
+      setTerminalVisible(true);
+      threadLaunchNonceRef.current += 1;
+      setThreadLaunch({
+        agentSource: detail.agentSource,
+        agentId: detail.agentId,
+        prompt: detail.prompt,
+        docName: detail.docName,
+        titleHint: detail.titleHint,
+        nonce: threadLaunchNonceRef.current,
+      });
+    });
+  }, []);
+
   // Clear the one-shot launch intent whenever the terminal hides. The
   // exactly-once-per-nonce guard lives inside the session, which is destroyed
   // when a kill drops the dock's mount latch — so without clearing here, the
@@ -420,6 +479,11 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
 
   return (
     <>
+      {/* Binds the agent-thread client's WS URL — mounted once so threads stay
+          connected + replayable whether or not the sessions dock is open. */}
+      <Suspense fallback={null}>
+        <AgentThreadClientBinder />
+      </Suspense>
       <EditorHeader
         onSignIn={() => {
           setAuthInitialStep('auth');
@@ -431,31 +495,39 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         }}
         onOpenSearch={onOpenSearch}
       />
-      {/* The terminal docks to the right of the doc panel (its own column) or
-          under the editor/file column. EditorArea owns the layout; the dock
-          position, visibility, and the dock-toggle/collapse controls' state stay
-          owned here and are threaded down — to EditorArea (placement) and to the
-          session host (which renders the tab strip's controls via its portal). */}
-      <EditorArea
-        editorMode={editorMode}
-        onModeChange={handleModeChange}
-        activeTab={activeTab}
-        onActiveTabChange={setActiveTab}
-        terminalBridge={desktopBridge}
-        terminalVisible={terminalVisible}
-        onTerminalVisibleChange={setTerminalVisible}
-        terminalDock={terminalDock}
-        onTerminalPlacement={setTerminalPlacement}
-        onRevealTerminal={terminalAvailable ? revealTerminal : undefined}
-      />
-      {/* The `desktopBridge != null` clause re-narrows the bridge to non-null for
-          the prop — the derived `terminalAvailable` boolean can't narrow it. */}
-      {terminalAvailable && desktopBridge != null ? (
+      {/* The editor takes the row's full width. The unified sessions dock
+          (terminals + agent threads) docks WITHIN EditorArea — bottom, or its own
+          right column past the doc panels; EditorArea owns that layout. The live
+          session host is mounted below (above EditorArea) so a dock move never
+          remounts it. */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <EditorArea
+            editorMode={editorMode}
+            onModeChange={handleModeChange}
+            activeTab={activeTab}
+            onActiveTabChange={setActiveTab}
+            terminalBridge={desktopBridge}
+            terminalVisible={terminalVisible}
+            onTerminalVisibleChange={setTerminalVisible}
+            terminalDock={terminalDock}
+            terminalHasSessions={hasSessions}
+            onTerminalPlacement={setTerminalPlacement}
+            onRevealTerminal={revealTerminal}
+          />
+        </div>
+      </div>
+      {/* The sessions dock host mounts UNCONDITIONALLY — a shell and an agent are
+          just tabs of a different kind, and agents are server-hosted, so the dock
+          is host-agnostic (web = thread tabs only). Terminal-kind affordances gate
+          on the bridge inside the host. */}
+      <Suspense fallback={null}>
         <TerminalSessionsHost
           bridge={desktopBridge}
           visible={terminalVisible}
           onVisibleChange={setTerminalVisible}
           launch={terminalLaunch}
+          threadLaunch={threadLaunch}
           installedClis={installedClis}
           container={terminalPlacement.container}
           isShowing={terminalPlacement.isShowing}
@@ -467,7 +539,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             activeSessionIsCliRef.current = isCli;
           }}
         />
-      ) : null}
+      </Suspense>
       <AuthModal
         open={authModalOpen}
         onOpenChange={setAuthModalOpen}

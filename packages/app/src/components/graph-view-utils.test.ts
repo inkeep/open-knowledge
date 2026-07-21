@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 import {
   buildGraphLinkSignature,
@@ -550,5 +550,116 @@ describe('buildGraphLinkSignature', () => {
         },
       ] as unknown as Parameters<typeof buildGraphLinkSignature>[0]),
     ).toBe('notes/alpha>notes/beta,notes/beta>notes/gamma');
+  });
+});
+
+describe('reconcileGraphData — staged entrance (showcase)', () => {
+  const doc = (id: string) => ({
+    kind: 'doc' as const,
+    id,
+    label: id,
+    docName: id,
+    anchor: null,
+  });
+  const NOW = 1_000_000;
+  const entrance = { nodeStepMs: 140, linkExtraMs: 260 };
+
+  test('a clump of new nodes staggers sequentially; links wait for both endpoints', () => {
+    const merged = reconcileGraphData(
+      { nodes: [doc('hub')], links: [] },
+      {
+        nodes: [doc('hub'), doc('a'), doc('b'), doc('c')],
+        links: [
+          { source: 'hub', target: 'a' },
+          { source: 'a', target: 'c' },
+        ],
+      },
+      NOW,
+      entrance,
+    );
+    const bornById = new Map(merged.nodes.map((node) => [node.id, node.bornAt]));
+    expect(bornById.get('a')).toBe(NOW);
+    expect(bornById.get('b')).toBe(NOW + 140);
+    expect(bornById.get('c')).toBe(NOW + 280);
+    // hub pre-existed with no bornAt → stamped now (no stagger for survivors).
+    expect(bornById.get('hub')).toBe(NOW);
+    // hub>a waits for a; a>c waits for c (the later endpoint).
+    expect(merged.links[0]?.bornAt).toBe(NOW + 260);
+    expect(merged.links[1]?.bornAt).toBe(NOW + 280 + 260);
+  });
+
+  test('a lone arrival gets no artificial delay', () => {
+    const merged = reconcileGraphData(
+      { nodes: [doc('hub')], links: [] },
+      { nodes: [doc('hub'), doc('solo')], links: [{ source: 'hub', target: 'solo' }] },
+      NOW,
+      entrance,
+    );
+    expect(merged.nodes.find((node) => node.id === 'solo')?.bornAt).toBe(NOW);
+    expect(merged.links[0]?.bornAt).toBe(NOW + 260);
+  });
+
+  test('surviving links keep their original bornAt across staggered applies', () => {
+    const first = reconcileGraphData(
+      { nodes: [], links: [] },
+      { nodes: [doc('a'), doc('b')], links: [{ source: 'a', target: 'b' }] },
+      NOW,
+      entrance,
+    );
+    const second = reconcileGraphData(
+      first,
+      { nodes: [doc('a'), doc('b'), doc('c'), doc('d')], links: [{ source: 'a', target: 'b' }] },
+      NOW + 5_000,
+      entrance,
+    );
+    expect(second.links[0]?.bornAt).toBe(first.links[0]?.bornAt);
+  });
+
+  test('without entrance options behavior is unchanged (everything born now)', () => {
+    const merged = reconcileGraphData(
+      { nodes: [], links: [] },
+      { nodes: [doc('a'), doc('b')], links: [{ source: 'a', target: 'b' }] },
+      NOW,
+    );
+    expect(merged.nodes.every((node) => node.bornAt === NOW)).toBe(true);
+    expect(merged.links[0]?.bornAt).toBe(NOW);
+  });
+});
+
+describe('reconcileGraphData — instant baseline (pre-build content)', () => {
+  const doc = (id: string) => ({
+    kind: 'doc' as const,
+    id,
+    label: id,
+    docName: id,
+    anchor: null,
+  });
+  const NOW = 2_000_000;
+
+  test('fresh mount: baseline nodes/links are instantly present; only additions stagger', () => {
+    const merged = reconcileGraphData(
+      { nodes: [], links: [] },
+      {
+        nodes: [doc('old-1'), doc('old-2'), doc('new-1'), doc('new-2')],
+        links: [
+          { source: 'old-1', target: 'old-2' },
+          { source: 'new-1', target: 'new-2' },
+        ],
+      },
+      NOW,
+      {
+        nodeStepMs: 140,
+        linkExtraMs: 260,
+        instantNodeIds: new Set(['old-1', 'old-2']),
+        instantLinkKeys: new Set(['old-1>old-2']),
+      },
+    );
+    const bornById = new Map(merged.nodes.map((node) => [node.id, node.bornAt]));
+    expect(bornById.get('old-1')).toBe(0);
+    expect(bornById.get('old-2')).toBe(0);
+    expect(bornById.get('new-1')).toBe(NOW);
+    expect(bornById.get('new-2')).toBe(NOW + 140);
+    expect(merged.links[0]?.bornAt).toBe(0);
+    expect(merged.links[1]?.bornAt).toBe(NOW + 140 + 260);
   });
 });

@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { spawn as NativeSpawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -8,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import { type Config, ConfigSchema } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   awaitUiSiblingPort,
   type BootedStartServer,
@@ -185,6 +185,7 @@ describe('buildIdleShutdownHandler', () => {
     let alive = true;
     const onShutdown = buildIdleShutdownHandler({
       readUiLock: () => ({ pid: 1234, port: 3000 }),
+      spawnedUiPid: () => 1234,
       isAlive: () => alive,
       killPid: (pid, sig) => {
         events.push(`kill:${pid}:${sig}`);
@@ -207,6 +208,7 @@ describe('buildIdleShutdownHandler', () => {
     const warned: object[] = [];
     const onShutdown = buildIdleShutdownHandler({
       readUiLock: () => ({ pid: 1234, port: 3000 }),
+      spawnedUiPid: () => 1234,
       isAlive: () => true,
       killPid: (pid, sig) => {
         events.push(`kill:${pid}:${sig}`);
@@ -232,6 +234,7 @@ describe('buildIdleShutdownHandler', () => {
     const events: string[] = [];
     const onShutdown = buildIdleShutdownHandler({
       readUiLock: () => null,
+      spawnedUiPid: () => 1234,
       isAlive: () => true,
       killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
       destroy: async () => {
@@ -246,6 +249,7 @@ describe('buildIdleShutdownHandler', () => {
     const events: string[] = [];
     const onShutdown = buildIdleShutdownHandler({
       readUiLock: () => ({ pid: 4242, port: 3000 }),
+      spawnedUiPid: () => 4242,
       isAlive: () => false,
       killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
       destroy: async () => {
@@ -261,6 +265,7 @@ describe('buildIdleShutdownHandler', () => {
     const warned: object[] = [];
     const onShutdown = buildIdleShutdownHandler({
       readUiLock: () => ({ pid: 4242, port: 3000 }),
+      spawnedUiPid: () => 4242,
       isAlive: () => true,
       killPid: () => {
         throw new Error('EPERM');
@@ -285,8 +290,52 @@ describe('buildIdleShutdownHandler', () => {
       readUiLock: () => {
         throw new Error('lock read failed');
       },
+      spawnedUiPid: () => null,
       isAlive: () => true,
       killPid: () => {},
+      destroy: async () => {
+        events.push('destroy');
+      },
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+    });
+    await onShutdown();
+    expect(events).toEqual(['destroy']);
+  });
+
+  test('leaves a live ui.lock holder alone when this process spawned no sibling', async () => {
+    // The incident shape: a stale server goes WS-idle while a desktop-spawned
+    // server (which advertises ITS OWN pid in ui.lock while serving the React
+    // shell) is live with active clients. The stale server must not kill it.
+    const events: string[] = [];
+    const infos: object[] = [];
+    const onShutdown = buildIdleShutdownHandler({
+      readUiLock: () => ({ pid: 52425, port: 64430 }),
+      spawnedUiPid: () => null,
+      isAlive: () => true,
+      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
+      destroy: async () => {
+        events.push('destroy');
+      },
+      log: {
+        info: (obj) => infos.push(obj),
+        warn: () => {},
+        error: () => {},
+      },
+    });
+    await onShutdown();
+    expect(events).toEqual(['destroy']);
+    expect(infos.find((entry) => (entry as { pid?: number }).pid === 52425)).toBeDefined();
+  });
+
+  test('leaves a live ui.lock holder alone when it is not the spawned sibling', async () => {
+    // Our spawned sibling died and another process now holds the lock (or the
+    // lock was rewritten by a newer session). Not ours — leave it alone.
+    const events: string[] = [];
+    const onShutdown = buildIdleShutdownHandler({
+      readUiLock: () => ({ pid: 9999, port: 3000 }),
+      spawnedUiPid: () => 1234,
+      isAlive: () => true,
+      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
       destroy: async () => {
         events.push('destroy');
       },

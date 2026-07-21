@@ -28,15 +28,18 @@
 import { type TargetData, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDown, Loader2, TextQuote, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
-import { cliIconTargetId, visibleTerminalClis } from '@/components/handoff/terminal-cli-display';
+import { cliIconTargetId } from '@/components/handoff/terminal-cli-display';
 import {
   buildComposerHandoffInput,
+  openInstallUrl,
+  startAgentThreadForInput,
   useHandoffDispatch,
 } from '@/components/handoff/useHandoffDispatch';
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
@@ -54,17 +57,30 @@ import {
 } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
 import { useSelectionContext } from '@/hooks/use-selection-context';
-import { resolveDefaultCli } from '@/lib/default-cli-resolver';
+import { isDesktopTargetEnabled, isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
+import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
+import {
+  enabledDesktopTargets,
+  enabledTerminalClis,
+  resolveLauncherSelection,
+} from '@/lib/acp/launcher-selection';
+import {
+  pickEffectiveDefaultAgent,
+  type RegisteredAgent,
+  registerAgent,
+  useDefaultRegisteredAgent,
+  useRegisteredAgents,
+} from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { recordOnboardingAskedAi } from '@/lib/onboarding-signals';
 import {
+  IN_APP_THREAD_ID,
   loadStickyAgent,
-  parseStickyCliId,
-  resolveStickyAgent,
   saveStickyAgent,
   terminalCliId,
 } from '@/lib/unified-agent-store';
+import { openAgentSettings } from '@/lib/use-settings-route';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { docNameToRelativePath } from '@/lib/workspace-paths';
@@ -158,6 +174,15 @@ function useRotatingSuggestion(
   return { text: phrases[safeIndex] ?? '', visible };
 }
 
+/**
+ * "Start {agentName}" with the named placeholder — keeps the catalog message
+ * shared with the launcher menus' t-macro form (`t\`Start ${agentName}\``);
+ * inlining a member expression would emit a positional `{0}` and fork it.
+ */
+function StartAgentNameLabel({ agentName }: { agentName: string }): ReactNode {
+  return <Trans>Start {agentName}</Trans>;
+}
+
 export function BottomComposer({
   docName,
   surface,
@@ -201,6 +226,7 @@ export function BottomComposer({
   const workspace = useWorkspace();
   const { pageMeta } = usePageList();
   const { states } = useInstalledAgents();
+  const overrides = useEnabledOverrides();
   const { dispatch } = useHandoffDispatch();
   // Desktop-only docked-terminal launcher (null on web). Its presence is what
   // lets the picker offer "Claude CLI" alongside the deep-link app targets,
@@ -465,33 +491,53 @@ export function BottomComposer({
   // sentinel (`terminal-cli:<cli>`) only resolves to terminal mode when the
   // launcher is available, so a sticky CLI pick degrades to the first app target
   // on the web host.
-  const effectiveId = selectedId ?? stickyId;
-  // An explicit CLI pick (sticky or this session) launches that CLI regardless of
-  // install state — a missing binary just prints "command not found".
-  const explicitCli: TerminalCli | null =
-    terminalLaunch !== null ? parseStickyCliId(effectiveId) : null;
-  // Desktop with nothing picked at all → lead with the first-installed CLI
-  // (resolveDefaultCli; Claude if none) instead of the first app target, matching
-  // what New chat launches. Derived, never saved, so a freshly-installed CLI can
-  // take over the default mid-session; web keeps the app-target default.
-  const defaultCli: TerminalCli | null =
-    terminalLaunch !== null && effectiveId === null
-      ? resolveDefaultCli(null, terminalLaunch.installedClis)
-      : null;
-  const selectedCli: TerminalCli | null = explicitCli ?? defaultCli;
+  const defaultRegisteredAgent = useDefaultRegisteredAgent();
+  // Every registered agent gets its own picker row — only the ENABLED ones show.
+  const registeredThreadAgents = useRegisteredAgents();
+  const enabledThreadAgents = registeredThreadAgents.filter((agent) =>
+    isInAppAgentEnabled(overrides, agent.source, agent.id, true, agent.supported),
+  );
+  // The in-app agent the primary launches + names: the registered default when
+  // it is still enabled, else the first enabled one.
+  const defaultThreadAgent = pickEffectiveDefaultAgent(enabledThreadAgents, defaultRegisteredAgent);
+
+  // One selection decision, enablement-aware for every category — shared with the
+  // create composer + sessions dock via `resolveLauncherSelection`, so a disabled
+  // agent / CLI / app is never what the primary launches on any surface.
+  const selection = resolveLauncherSelection({
+    sticky: selectedId ?? stickyId,
+    effectiveThreadAgent: defaultThreadAgent,
+    enabledClis:
+      terminalLaunch !== null ? enabledTerminalClis(overrides, terminalLaunch.installedClis) : [],
+    enabledDesktopTargets: enabledDesktopTargets(overrides),
+    installedClis: terminalLaunch?.installedClis ?? {},
+    terminalAvailable: terminalLaunch !== null,
+    threadsAvailable: true,
+    desktopSelectable: true,
+  });
+  const isThreadSelected = selection.kind === 'thread';
+  const selectedCli: TerminalCli | null = selection.kind === 'cli' ? selection.cli : null;
   const isTerminalSelected = selectedCli !== null;
-  const resolvedTarget = isTerminalSelected ? null : resolveStickyAgent(states, effectiveId);
+  const resolvedTarget: TargetData | null =
+    selection.kind === 'desktop'
+      ? (VISIBLE_TARGETS.find((target) => target.id === selection.target) ?? null)
+      : null;
 
   // Sendable with a typed instruction OR a pinned selection alone (the passage
   // is enough context to hand off).
   const canSend =
     !pending &&
     (!isEmpty || pinnedSelection !== null) &&
-    (isTerminalSelected || resolvedTarget !== null);
+    (isTerminalSelected || resolvedTarget !== null || isThreadSelected);
 
-  // Picker options for the split button's menu. `agentProbePending` distinguishes
-  // "still detecting" from "detected none" for the empty-menu hint.
-  const installedAgents = VISIBLE_TARGETS.filter((target) => states[target.id]?.installed === true);
+  // Picker options for the split button's menu. Desktop rows are the agents the
+  // user has ENABLED in Configure agents (source of truth), not just the
+  // install-detected ones — an enabled-but-not-installed agent still shows and
+  // routes to its installer on launch.
+  // `agentProbePending` distinguishes "still detecting" from "none" for the hint.
+  const desktopAgents = VISIBLE_TARGETS.filter((target) =>
+    isDesktopTargetEnabled(overrides, target.id),
+  );
   const agentProbePending = VISIBLE_TARGETS.some((target) => states[target.id]?.installed == null);
 
   // The docked-terminal CLI rows (desktop only) — one row per launchable CLI,
@@ -500,13 +546,13 @@ export function BottomComposer({
   // name carries "<name> CLI" (WCAG 2.5.3 — the accessible name contains the
   // visible label) so AT users can tell a Terminal row apart from a same-named
   // Desktop row. The "Terminal" section header plus the brand icon carry that
-  // same distinction for sighted users. Gated by `visibleTerminalClis` (Claude
-  // plus CLIs the probe hasn't ruled out) so an uninstalled CLI doesn't appear
-  // once probed absent; `selectedCli` is kept so the current pick can't be gated
-  // out of its own dropdown. Single install-map source: the launch context.
+  // same distinction for sighted users. Rows are the ENABLED CLIs
+  // (`enabledTerminalClis`, the same set the selection resolver reads), so an
+  // uninstalled or toggled-off CLI never appears — and since `selectedCli` is
+  // only ever an enabled CLI, no keep-guard is needed.
   const cliRows =
     terminalLaunch !== null
-      ? visibleTerminalClis(terminalLaunch.installedClis, selectedCli).map((cli) => {
+      ? enabledTerminalClis(overrides, terminalLaunch.installedClis).map((cli) => {
           const { displayName } = TERMINAL_CLIS[cli];
           return {
             cli,
@@ -542,6 +588,19 @@ export function BottomComposer({
     saveStickyAgent(id);
   };
 
+  const handleSelectThread = () => {
+    setSelectedId(IN_APP_THREAD_ID);
+    saveStickyAgent(IN_APP_THREAD_ID);
+  };
+
+  // Picking a specific registered agent re-registers it (making it the
+  // default the submit path launches — "the agent you chose last is your
+  // agent") and selects thread mode.
+  const handleSelectThreadAgent = (agent: RegisteredAgent) => {
+    registerAgent(agent);
+    handleSelectThread();
+  };
+
   const clearComposer = () => {
     inputRef.current?.clear();
     setPinnedSelection(null);
@@ -568,6 +627,21 @@ export function BottomComposer({
       toast.error(t`Couldn't send your prompt — please try again.`);
       return;
     }
+    // In-app agent thread: open a server-hosted thread with the composed prompt
+    // (like "Open with AI → Start an agent"), then clear. Works on every host.
+    // Launch the effective (enabled) agent explicitly so a disabled registered
+    // default is never launched.
+    if (isThreadSelected) {
+      startAgentThreadForInput(
+        input,
+        defaultThreadAgent !== null
+          ? { agent: { source: defaultThreadAgent.source, id: defaultThreadAgent.id } }
+          : undefined,
+      );
+      recordOnboardingAskedAi();
+      clearComposer();
+      return;
+    }
     // CLI mode: hand the composed prompt to the docked terminal for the selected
     // CLI (like Open with AI) and clear. No deep-link dispatch. Stickiness already
     // persisted on pick (handleSelectCli), so no save here. If the launch throws
@@ -585,6 +659,15 @@ export function BottomComposer({
       return;
     }
     if (resolvedTarget === null) return;
+    // An enabled-but-not-installed Desktop agent routes to its installer
+    // rather than a failing deep-link dispatch (the toggle can enable an agent
+    // the user hasn't installed yet).
+    if (states[resolvedTarget.id]?.installed !== true) {
+      void openInstallUrl(resolvedTarget);
+      toast.info(t`${resolvedTarget.displayName} isn't installed yet — opening its download page.`);
+      clearComposer();
+      return;
+    }
     setPending(true);
     // dispatchHandoff never throws and toasts success/error itself; on resolve
     // we clear regardless of outcome (the toast carries any retry). The onboarding
@@ -601,8 +684,10 @@ export function BottomComposer({
       });
   };
 
-  const submit = () => {
-    if (!canSend) return;
+  // Compose the current draft (instruction + chips + pinned selection) into a
+  // handoff input — shared by `submit` (which dispatches it) and the picker's
+  // "Choose another agent…" row (which carries it into the catalog).
+  const composeCurrentInput = () => {
     const { instruction, mentions } = inputRef.current?.getContent() ?? {
       instruction: '',
       mentions: [],
@@ -615,16 +700,13 @@ export function BottomComposer({
       const dispatchMentions = [...new Set([...fileChips, ...mentions])].filter(
         (path) => path !== folderPath,
       );
-      dispatchComposed(
-        buildComposerHandoffInput({
-          docName: null,
-          folderRelativePath: folderPath,
-          workspace,
-          instruction,
-          mentions: dispatchMentions,
-        }),
-      );
-      return;
+      return buildComposerHandoffInput({
+        docName: null,
+        folderRelativePath: folderPath,
+        workspace,
+        instruction,
+        mentions: dispatchMentions,
+      });
     }
 
     // The pinned doc selection rides as a passage: inline text for a short
@@ -654,16 +736,19 @@ export function BottomComposer({
     const dispatchMentions = [...new Set([...fileChips, ...mentions])].filter(
       (path) => path !== leadPath,
     );
-    dispatchComposed(
-      buildComposerHandoffInput({
-        docName: leadDocName,
-        ...(leadPath !== null ? { docRelativePath: leadPath } : {}),
-        workspace,
-        instruction,
-        mentions: dispatchMentions,
-        selection,
-      }),
-    );
+    return buildComposerHandoffInput({
+      docName: leadDocName,
+      ...(leadPath !== null ? { docRelativePath: leadPath } : {}),
+      workspace,
+      instruction,
+      mentions: dispatchMentions,
+      selection,
+    });
+  };
+
+  const submit = () => {
+    if (!canSend) return;
+    dispatchComposed(composeCurrentInput());
   };
 
   // Dismissed: render nothing (the host shows the footer reopen badge). The
@@ -846,13 +931,25 @@ export function BottomComposer({
         <AgentSplitButton
           primary={
             <>
-              {selectedCli !== null ? (
+              {isThreadSelected ? (
+                <RegisteredAgentIcon
+                  agentId={defaultThreadAgent?.id ?? ''}
+                  iconUrl={defaultThreadAgent?.iconUrl}
+                  className="size-4"
+                />
+              ) : selectedCli !== null ? (
                 <TargetIcon id={cliIconTargetId(selectedCli)} className="size-4" aria-hidden />
               ) : resolvedTarget ? (
                 <TargetIcon id={resolvedTarget.id} className="size-4" aria-hidden />
               ) : null}
               <span>
-                {selectedCli !== null ? (
+                {isThreadSelected ? (
+                  defaultThreadAgent !== null ? (
+                    <StartAgentNameLabel agentName={defaultThreadAgent.name} />
+                  ) : (
+                    <Trans>Start an agent</Trans>
+                  )
+                ) : selectedCli !== null ? (
                   <Trans>Ask {TERMINAL_CLIS[selectedCli].displayName} CLI</Trans>
                 ) : resolvedTarget ? (
                   <Trans>Ask {resolvedTarget.displayName}</Trans>
@@ -865,16 +962,29 @@ export function BottomComposer({
           }
           onPrimary={submit}
           primaryDisabled={!canSend}
-          installedTargets={installedAgents}
+          installedTargets={desktopAgents}
           selectedTargetId={isTerminalSelected ? null : (resolvedTarget?.id ?? null)}
           onSelectTarget={handleSelectAgent}
+          threadAgents={enabledThreadAgents.map((agent) => ({
+            key: `${agent.source}:${agent.id}`,
+            id: agent.id,
+            name: agent.name,
+            ...(agent.iconUrl !== undefined ? { iconUrl: agent.iconUrl } : {}),
+            selected:
+              isThreadSelected &&
+              defaultThreadAgent !== null &&
+              defaultThreadAgent.source === agent.source &&
+              defaultThreadAgent.id === agent.id,
+            onSelect: () => handleSelectThreadAgent(agent),
+          }))}
+          onOpenSettings={openAgentSettings}
           terminals={cliRows}
           menuEmptyState={
             <p className="px-2 py-1.5 text-sm text-muted-foreground" aria-live="polite">
               {agentProbePending ? (
-                <Trans>Checking for installed agents</Trans>
+                <Trans>Checking for agents</Trans>
               ) : (
-                <Trans>No installed agents found</Trans>
+                <Trans>No agents enabled</Trans>
               )}
             </p>
           }
@@ -884,6 +994,8 @@ export function BottomComposer({
             trigger: 'ask-ai-agent-trigger',
             menu: 'ask-ai-agent-menu',
             option: (id) => `ask-ai-agent-option-${id}`,
+            threadAgent: (key) => `ask-ai-agent-option-thread-${key}`,
+            settings: 'ask-ai-agent-option-settings',
             // Back-compat: the Claude row keeps the original singular id; the
             // new Codex / Cursor rows are namespaced under `terminal-` so they
             // never collide with the Desktop `ask-ai-agent-option-<id>` rows.
