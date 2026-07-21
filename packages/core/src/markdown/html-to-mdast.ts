@@ -1,5 +1,5 @@
 import type { Root as HastRoot } from 'hast';
-import type { Root as MdastRoot } from 'mdast';
+import type { List, Root as MdastRoot } from 'mdast';
 import rehypeParse from 'rehype-parse';
 import rehypeRemark from 'rehype-remark';
 import remarkGfm from 'remark-gfm';
@@ -69,6 +69,16 @@ function applyCanonicalSourceFormDefaults(tree: MdastRoot): void {
   });
 }
 
+function normalizeListSpread(tree: MdastRoot): void {
+  visit(tree, 'list', (list: List) => {
+    for (const item of list.children) {
+      const nonListBlocks = item.children.filter((child) => child.type !== 'list').length;
+      item.spread = item.spread === true && nonListBlocks > 1;
+    }
+    list.spread = list.children.some((item) => item.spread === true);
+  });
+}
+
 export function htmlToMdast(html: string, options?: HtmlToMdastOptions): MdastRoot {
   const maxBytes = options?.maxBytes ?? HTML_MAX_BYTES;
   if (html.length > maxBytes) {
@@ -88,11 +98,17 @@ export function htmlToMdast(html: string, options?: HtmlToMdastOptions): MdastRo
 
   const hastTree = processor.parse(html) as HastRoot;
   const mdast = processor.runSync(hastTree) as unknown as MdastRoot;
+  normalizeListSpread(mdast);
   applyCanonicalSourceFormDefaults(mdast);
   return mdast;
 }
 
 export function mdastToMarkdown(tree: MdastRoot): string {
   flattenTableCellsInTree(tree);
-  return String(unified().use(remarkGfm).use(remarkStringify).stringify(tree));
+  return String(
+    unified()
+      .use(remarkGfm)
+      .use(remarkStringify, { bullet: '-', rule: '-', fences: true })
+      .stringify(tree),
+  );
 }
