@@ -43,8 +43,9 @@ import { getDocExtension, stripDocExtension } from './doc-extensions.ts';
 import { FrontmatterMalformedError } from './frontmatter-malformed-error.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { getLogger } from './logger.ts';
+import { incrementAgentSessionEvictions } from './metrics.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
-import { setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
+import { getMeter, setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
 
 /**
  * The post-write content-divergence signal. Defined in (and produced by) the
@@ -556,6 +557,13 @@ interface SessionRecord {
   um: Y.UndoManager;
   agentId: string;
   docName: string;
+  /**
+   * Recency stamp (epoch ms), maintained exclusively by AgentSessionManager:
+   * refreshed on every `getSession` / `getLiveSession` hit. The manager's
+   * sessions map mirrors it in insertion order (a touch re-inserts the
+   * entry), so the map's first entry is always the LRU eviction candidate.
+   */
+  lastUsedAt: number;
 }
 
 /**
@@ -637,10 +645,34 @@ function createUndoOrigin(sessionId: string, agentType?: string): PairedWriteOri
  *
  * 256 leaves comfortable headroom for realistic local workflows (a handful
  * of MCP clients across dozens of docs) while keeping the worst-case
- * footprint bounded. Hitting the cap surfaces as a 503 at the HTTP boundary
- * rather than silently growing memory or crashing the process.
+ * footprint bounded. At capacity the manager first evicts the
+ * least-recently-used idle session (see `MIN_EVICTABLE_IDLE_MS`) so a burst
+ * of writes across many distinct docs streams through a bounded working set;
+ * only when no session is idle-eligible does the cap surface as a 503 at the
+ * HTTP boundary.
  */
 export const MAX_AGENT_SESSIONS = 256;
+
+/**
+ * Minimum idle age before a live session becomes eviction-eligible under
+ * capacity pressure.
+ *
+ * The floor guards in-flight handlers: every HTTP request re-resolves its
+ * session via `getSession` at entry (refreshing recency), so a session
+ * younger than the floor may still be inside a request whose transact has
+ * not run yet. Evicting it would null the DirectConnection under the
+ * handler (`dc.document` becomes null on disconnect) and destroy its
+ * UndoManager mid-flight. Past the floor a session is quiescent — agent
+ * write handlers flush the doc to disk before responding, so nothing is in
+ * flight and nothing is unpersisted.
+ *
+ * Small by design: a burst that fills the cap ages its LRU session by
+ * roughly (cap x per-write latency), and every write awaits its disk flush,
+ * so realistic bursts are well past the floor by the time eviction is
+ * needed. In-code constant, not user config; tests override via the
+ * constructor option.
+ */
+export const MIN_EVICTABLE_IDLE_MS = 5_000;
 
 /**
  * Thrown by `AgentSessionManager.getSession` when creating a new session
@@ -656,17 +688,41 @@ export class AgentSessionCapacityError extends Error {
   }
 }
 
+/** Lazy, process-wide eviction counter — instrument is created on first use so
+ *  module load stays side-effect-free when OTel is disabled (no-op meter). */
+let _evictionCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null = null;
+function evictionCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
+  _evictionCounter ||= getMeter().createCounter('ok.sessions.evictions_total', {
+    description:
+      'Agent sessions evicted (LRU-idle) under capacity pressure to admit a new session. Sustained growth alongside ok.sessions.active pinned at ok.sessions.limit means the working set exceeds the cap.',
+    unit: '{sessions}',
+  });
+  return _evictionCounter;
+}
+
 export class AgentSessionManager {
+  /**
+   * Live sessions in recency order: every touch re-inserts the entry, so
+   * iteration starts at the least-recently-used session. Eviction relies on
+   * this — do not add write paths that bypass `touchSession`.
+   */
   private sessions = new Map<string, SessionRecord>();
   /** In-flight promise dedup — concurrent first-calls share one pending openDirectConnection. */
   private pendingSessions = new Map<string, Promise<SessionRecord>>();
   private hocuspocus: Hocuspocus;
   /** Hard cap on simultaneous live sessions. Override is for tests only. */
   private readonly maxSessions: number;
+  /** Idle floor for eviction eligibility. Override is for tests only. */
+  private readonly minEvictableIdleMs: number;
+  private evictions = 0;
 
-  constructor(hocuspocus: Hocuspocus, options: { maxSessions?: number } = {}) {
+  constructor(
+    hocuspocus: Hocuspocus,
+    options: { maxSessions?: number; minEvictableIdleMs?: number } = {},
+  ) {
     this.hocuspocus = hocuspocus;
     this.maxSessions = options.maxSessions ?? MAX_AGENT_SESSIONS;
+    this.minEvictableIdleMs = options.minEvictableIdleMs ?? MIN_EVICTABLE_IDLE_MS;
   }
 
   /** Number of live sessions currently retained. Read-only occupancy probe. */
@@ -677,6 +733,21 @@ export class AgentSessionManager {
   /** The hard cap `getSession` enforces (`MAX_AGENT_SESSIONS` unless overridden). */
   public get sessionLimit(): number {
     return this.maxSessions;
+  }
+
+  /** Sessions evicted under capacity pressure since construction. */
+  public get evictionCount(): number {
+    return this.evictions;
+  }
+
+  /**
+   * Refresh a session's recency: stamp `lastUsedAt` and re-insert the entry
+   * so the map's iteration order stays LRU-first.
+   */
+  private touchSession(key: string, session: SessionRecord): void {
+    session.lastUsedAt = Date.now();
+    this.sessions.delete(key);
+    this.sessions.set(key, session);
   }
 
   private sessionKey(docName: string, agentId: string): string {
@@ -711,7 +782,13 @@ export class AgentSessionManager {
    * the existence check.
    */
   public getLiveSession(docName: string, agentId: string): SessionRecord | undefined {
-    return this.sessions.get(this.sessionKey(docName, agentId));
+    const key = this.sessionKey(docName, agentId);
+    const session = this.sessions.get(key);
+    // A read is a use: the burst-diff caller walks the session's UM stacks
+    // right after this returns, so refreshing recency keeps eviction from
+    // tearing the session down under the read.
+    if (session) this.touchSession(key, session);
+    return session;
   }
 
   /**
@@ -739,7 +816,10 @@ export class AgentSessionManager {
     const key = this.sessionKey(docName, agentId);
 
     const existing = this.sessions.get(key);
-    if (existing) return existing;
+    if (existing) {
+      this.touchSession(key, existing);
+      return existing;
+    }
 
     // Reuse in-flight promise if a concurrent first-call is already pending
     const inflight = this.pendingSessions.get(key);
@@ -752,12 +832,21 @@ export class AgentSessionManager {
     // entry. Existing-session lookups returned above. Counts both resolved
     // and pending so a concurrent burst of distinct ids cannot race past
     // the cap before any of them lands in `sessions`.
-    if (this.sessions.size + this.pendingSessions.size >= this.maxSessions) {
-      log.warn(
-        { docName, agentId, limit: this.maxSessions },
-        '[agent-session] session capacity reached, refusing new session',
-      );
-      throw new AgentSessionCapacityError(this.maxSessions);
+    //
+    // At capacity, evict LRU idle sessions until a slot frees so a burst of
+    // writes to many distinct docs streams through a bounded working set
+    // instead of stalling at the cap. When nothing is idle-eligible (every
+    // session touched within the idle floor), degrade to the capacity
+    // refusal — an in-flight handler is never torn down under itself.
+    while (this.sessions.size + this.pendingSessions.size >= this.maxSessions) {
+      const evictedKey = await this.evictLruIdleSession();
+      if (evictedKey === null) {
+        log.warn(
+          { docName, agentId, limit: this.maxSessions },
+          '[agent-session] session capacity reached, refusing new session',
+        );
+        throw new AgentSessionCapacityError(this.maxSessions);
+      }
     }
 
     const promise = this._createSession(docName, agentId, identity);
@@ -866,7 +955,57 @@ export class AgentSessionManager {
       `[agent-session] Created session for: ${docName} / ${agentId}`,
     );
 
-    return { dc, origin, undoOrigin, um, agentId, docName };
+    return { dc, origin, undoOrigin, um, agentId, docName, lastUsedAt: Date.now() };
+  }
+
+  /**
+   * Evict the least-recently-used idle session to relieve capacity pressure.
+   * Returns the evicted session key, or `null` when nothing is eligible.
+   *
+   * The sessions map is kept in recency order (every touch re-inserts), so
+   * the first entry IS the LRU candidate — and if it is younger than the
+   * idle floor, every other entry is younger still, so the scan is O(1).
+   *
+   * The entry is removed from the map synchronously BEFORE the async
+   * teardown so a concurrent create cannot select the same victim. Teardown
+   * IS the existing disconnect spine (`cleanupSession`: um.destroy +
+   * dc.disconnect); Hocuspocus's `DirectConnection.disconnect` stores the
+   * doc immediately (not debounced) before unloading it, so evicted state
+   * reaches disk exactly as it does on keepalive teardown. Because the map
+   * delete frees the slot before the teardown settles, concurrent creates
+   * can transiently hold more DirectConnections than the cap while
+   * evictions drain — bounded by the number of evictable sessions and
+   * decaying as each disconnect completes.
+   *
+   * Eviction destroys the session's UndoManager stack — identical to
+   * disconnect teardown, where the stack was only ever reachable while the
+   * session lived. A later undo for the evicted (docName, agentId) finds no
+   * session (`hasSession` false → the handler's no-active-session
+   * refusal); a later write mints a fresh session whose origin carries the
+   * same session_id, so the derived writer id (`agent-<id>`) and
+   * shadow-repo attribution stay continuous across eviction.
+   */
+  private async evictLruIdleSession(): Promise<string | null> {
+    const first = this.sessions.entries().next();
+    if (first.done) return null;
+    const [key, session] = first.value;
+    const idleMs = Date.now() - session.lastUsedAt;
+    if (idleMs < this.minEvictableIdleMs) return null;
+
+    this.sessions.delete(key);
+    await this.cleanupSession(key, session, {
+      docName: session.docName,
+      agentId: session.agentId,
+      evicted: true,
+    });
+    this.evictions++;
+    incrementAgentSessionEvictions();
+    evictionCounter().add(1);
+    log.info(
+      { docName: session.docName, agentId: session.agentId, idleMs },
+      '[agent-session] Evicted LRU idle session under capacity pressure',
+    );
+    return key;
   }
 
   /** Check if a session exists without creating one. */

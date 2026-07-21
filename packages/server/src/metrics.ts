@@ -181,6 +181,12 @@ export interface ReconciliationMetrics {
    *  agent-write handlers only AFTER a successful recordContributor;
    *  UI-driven rollback/rename without agentId does NOT increment. */
   agentWriteCalls: number;
+  /** Agent sessions evicted (LRU-idle) under capacity pressure so a new
+   *  (docName, agentId) session could be admitted under
+   *  `MAX_AGENT_SESSIONS`. Steady growth alongside 503s means the live
+   *  working set genuinely exceeds the cap; growth WITHOUT 503s means
+   *  eviction is absorbing bursts as designed. */
+  agentSessionEvictions: number;
   /** Agent-write calls that carried a non-empty summary through
    *  normalizeSummary — numerator for the summary-adoption metric.
    *  Adoption rate = summariesProvided / agentWriteCalls. */
@@ -461,6 +467,7 @@ const counters: ReconciliationMetrics = {
   effectDiffCaptureFailures: 0,
   agentPresenceMutationErrors: 0,
   agentWriteCalls: 0,
+  agentSessionEvictions: 0,
   summariesProvided: 0,
   summariesTruncated: 0,
   agentPatchFindMismatches: 0,
@@ -566,6 +573,10 @@ export function incrementBridgeMergeContentGrowth(): void {
 
 export function incrementAgentWriteCalls(): void {
   counters.agentWriteCalls++;
+}
+
+export function incrementAgentSessionEvictions(): void {
+  counters.agentSessionEvictions++;
 }
 
 export function incrementSummariesProvided(): void {
@@ -858,6 +869,7 @@ export function resetMetrics(): void {
   counters.effectDiffCaptureFailures = 0;
   counters.agentPresenceMutationErrors = 0;
   counters.agentWriteCalls = 0;
+  counters.agentSessionEvictions = 0;
   counters.summariesProvided = 0;
   counters.summariesTruncated = 0;
   counters.agentPatchFindMismatches = 0;

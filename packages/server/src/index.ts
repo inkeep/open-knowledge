@@ -25,6 +25,7 @@ export {
   colorFromSeed,
   iconFromClientName,
   MAX_AGENT_SESSIONS,
+  MIN_EVICTABLE_IDLE_MS,
 } from './agent-sessions.ts';
 export {
   __getShowAllWalkStatsForTesting,
