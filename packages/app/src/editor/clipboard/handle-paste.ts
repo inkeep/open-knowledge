@@ -21,10 +21,12 @@
  *           else verbatim plain-text insert.
  *
  * Placement: the markdown branches insert the re-parsed JSON as a closed
- * slice, EXCEPT when the caret is inside a list item and the pasted content
- * is entirely lists — then `buildListSiblingSpliceTr` splices the pasted
- * items as siblings at the caret's list level instead of letting the fitter
- * nest or orphan them (issue #609).
+ * slice, EXCEPT when the caret is inside a list item — then a list-aware
+ * splice runs instead of letting the fitter nest or orphan the content
+ * (issue #609). All-list payloads splice as item siblings at the caret's
+ * list level (`buildListSiblingSpliceTr`); mixed payloads split the list at
+ * the caret and place non-list blocks as siblings of the list itself
+ * (`buildMixedSiblingSpliceTr`).
  *
  * codeBlock short-circuit: cursor inside a codeBlock → skip all branches,
  * insert text/plain verbatim.
@@ -545,6 +547,201 @@ function buildListSiblingSpliceTr(
   return tr;
 }
 
+function listItemsOf(list: ProseMirrorNode): ProseMirrorNode[] {
+  const items: ProseMirrorNode[] = [];
+  list.forEach((item) => {
+    if (item.type.name === 'listItem') items.push(item);
+  });
+  return items;
+}
+
+/**
+ * Drop blank items minted at the trailing cut edge, recursing into a
+ * trailing nested list so a caret at the start of a nested item doesn't
+ * leave an empty nested bullet behind. Returns null when the node empties
+ * out entirely.
+ */
+function pruneTrailingCutBlanks(node: ProseMirrorNode): ProseMirrorNode | null {
+  if (node.type.name === 'list') {
+    const items = listItemsOf(node);
+    while (items.length > 0) {
+      const pruned = pruneTrailingCutBlanks(items[items.length - 1]);
+      if (pruned) {
+        items[items.length - 1] = pruned;
+        break;
+      }
+      items.pop();
+    }
+    return items.length > 0 ? node.copy(Fragment.fromArray(items)) : null;
+  }
+  if (node.type.name === 'listItem') {
+    const children: ProseMirrorNode[] = [];
+    node.forEach((child) => {
+      children.push(child);
+    });
+    if (children.length > 0 && children[children.length - 1].type.name === 'list') {
+      const pruned = pruneTrailingCutBlanks(children[children.length - 1]);
+      if (pruned) children[children.length - 1] = pruned;
+      else children.pop();
+    }
+    const rebuilt = node.copy(Fragment.fromArray(children));
+    return isBlankListItem(rebuilt) ? null : rebuilt;
+  }
+  return node;
+}
+
+/**
+ * A leading cut edge can mint a wrapper item whose own text sits entirely
+ * before the caret: empty paragraphs followed by a single nested list. Lift
+ * that nested list's items up a level (no empty parent bullet) and drop
+ * items the cut left fully blank.
+ */
+function normalizeLeadingCutItems(items: ProseMirrorNode[]): ProseMirrorNode[] {
+  let normalized = items;
+  while (normalized.length > 0) {
+    const first = normalized[0];
+    if (isBlankListItem(first)) {
+      normalized = normalized.slice(1);
+      continue;
+    }
+    const lifted = liftBlankWrapperItem(first);
+    if (lifted) {
+      normalized = [...lifted, ...normalized.slice(1)];
+      continue;
+    }
+    break;
+  }
+  return normalized;
+}
+
+function liftBlankWrapperItem(item: ProseMirrorNode): ProseMirrorNode[] | null {
+  if (item.childCount === 0) return null;
+  const last = item.child(item.childCount - 1);
+  if (last.type.name !== 'list') return null;
+  for (let i = 0; i < item.childCount - 1; i++) {
+    const child = item.child(i);
+    if (child.type.name !== 'paragraph' || child.content.size > 0) return null;
+  }
+  return listItemsOf(last);
+}
+
+/**
+ * List-aware placement for MIXED payloads — the issue #609 sibling-splice
+ * intent extended beyond all-list payloads.
+ *
+ * A pasted doc holding at least one non-list top-level block, at a caret
+ * inside a list item, must not be nested into that item (schema-legal for
+ * the closed-slice fallback because `listItem` is `paragraph block*`, but a
+ * structural demotion users read as the paste being swallowed). Instead the
+ * OUTERMOST ancestor list splits at the caret and the payload lands where
+ * typing it at top level would:
+ *
+ *   [before-half + leading payload list run] non-list blocks (and interior
+ *   lists) verbatim [trailing payload list run + after-half]
+ *
+ * Leading/trailing payload list runs continue the list (item siblings,
+ * keeping the original list node) exactly like the all-list splice; payload
+ * lists with no original items to merge with are kept verbatim. Blank cut
+ * halves are dropped per the all-list path's blank-item rule, and a nested
+ * caret's remainder lifts to the top list level rather than minting an
+ * empty parent bullet.
+ *
+ * Returns a built transaction, or null to fall back: ranged selection,
+ * all-list payload (the item-level splice owns it), caret not inside a
+ * plain list/listItem chain (tables etc. keep the closed-slice behavior).
+ */
+function buildMixedSiblingSpliceTr(
+  state: EditorState,
+  docNode: ProseMirrorNode,
+): Transaction | null {
+  const { selection } = state;
+  if (!selection.empty) return null;
+  if (docNode.content.childCount === 0) return null;
+
+  let hasNonList = false;
+  docNode.content.forEach((child) => {
+    if (child.type.name !== 'list') hasNonList = true;
+  });
+  if (!hasNonList) return null;
+
+  const { $from } = selection;
+  if (!$from.parent.isTextblock) return null;
+
+  // Outermost ancestor list: mixed payloads split the whole nesting stack so
+  // non-list blocks escape to the list's own sibling level.
+  let listDepth = -1;
+  for (let depth = 1; depth <= $from.depth; depth++) {
+    if ($from.node(depth).type.name === 'list') {
+      listDepth = depth;
+      break;
+    }
+  }
+  if (listDepth < 0) return null;
+  // Only split through plain list/listItem nesting; a caret inside another
+  // container (table cell, blockquote) within an item keeps current behavior.
+  for (let depth = listDepth; depth < $from.depth; depth++) {
+    const name = $from.node(depth).type.name;
+    if (name !== 'list' && name !== 'listItem') return null;
+  }
+  if ($from.node($from.depth - 1)?.type.name !== 'listItem') return null;
+
+  const listNode = $from.node(listDepth);
+  const listStart = $from.before(listDepth);
+  const listEnd = $from.after(listDepth);
+  const offset = $from.pos - $from.start(listDepth);
+  const beforeHalf = pruneTrailingCutBlanks(listNode.cut(0, offset));
+  const beforeItems = beforeHalf ? listItemsOf(beforeHalf) : [];
+  const afterItems = normalizeLeadingCutItems(listItemsOf(listNode.cut(offset)));
+
+  const children: ProseMirrorNode[] = [];
+  docNode.content.forEach((child) => {
+    children.push(child);
+  });
+  let lead = 0;
+  while (lead < children.length && children[lead].type.name === 'list') lead++;
+  let trail = children.length;
+  while (trail > lead && children[trail - 1].type.name === 'list') trail--;
+  const leadingLists = children.slice(0, lead);
+  const middle = children.slice(lead, trail);
+  const trailingLists = children.slice(trail);
+
+  const out: ProseMirrorNode[] = [];
+  if (beforeItems.length > 0) {
+    out.push(
+      listNode.copy(Fragment.fromArray([...beforeItems, ...leadingLists.flatMap(listItemsOf)])),
+    );
+  } else {
+    out.push(...leadingLists);
+  }
+  out.push(...middle);
+  if (afterItems.length > 0) {
+    out.push(
+      listNode.copy(Fragment.fromArray([...trailingLists.flatMap(listItemsOf), ...afterItems])),
+    );
+  } else {
+    out.push(...trailingLists);
+  }
+
+  const tr = state.tr.replaceWith(listStart, listEnd, Fragment.fromArray(out));
+
+  // Caret lands at the end of the pasted content, mirroring the all-list
+  // splice: after the last pasted item inside a merged trailing list, else
+  // at the end of the last payload-derived node.
+  let caretPos = listStart;
+  if (trailingLists.length > 0 && afterItems.length > 0) {
+    for (let i = 0; i < out.length - 1; i++) caretPos += out[i].nodeSize;
+    caretPos += 1;
+    for (const list of trailingLists) {
+      for (const item of listItemsOf(list)) caretPos += item.nodeSize;
+    }
+  } else {
+    const lastPayloadIndex = out.length - 1 - (afterItems.length > 0 ? 1 : 0);
+    for (let i = 0; i <= lastPayloadIndex; i++) caretPos += out[i].nodeSize;
+  }
+  tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(caretPos, tr.doc.content.size)), -1));
+  return tr;
+}
+
 function applyJsonSlice(
   view: EditorView,
   json: JSONContent,
@@ -560,7 +757,8 @@ function applyJsonSlice(
     // though the closed slice could have delivered it.
     let spliceTr: Transaction | null = null;
     try {
-      spliceTr = buildListSiblingSpliceTr(view.state, node);
+      spliceTr =
+        buildListSiblingSpliceTr(view.state, node) ?? buildMixedSiblingSpliceTr(view.state, node);
     } catch {
       spliceTr = null;
     }
