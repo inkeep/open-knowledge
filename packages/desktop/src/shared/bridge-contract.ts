@@ -683,6 +683,10 @@ export type OkLocalOpAuthReposResponse =
  * shares (`ShareTarget`); the bare path is recovered via `shareTargetPath`.
  */
 export interface OkSharePayloadFields {
+  /** GitHub host of the shared repo: `github.com` or a GHES hostname. Part
+   * of the receiver's repo identity, so a GHES `acme/kb` and a github.com
+   * `acme/kb` never resolve to the same local clone. */
+  readonly host: string;
   readonly owner: string;
   readonly repo: string;
   readonly branch: string;
@@ -767,6 +771,7 @@ export type ShareFolderValidationResult =
   | { readonly kind: 'not-git' }
   | { readonly kind: 'no-origin' }
   | { readonly kind: 'wrong-repo'; readonly actualOwner: string; readonly actualRepo: string }
+  | { readonly kind: 'wrong-host'; readonly actualHost: string }
   | { readonly kind: 'non-github' }
   | { readonly kind: 'symlink-escape' };
 
@@ -1861,6 +1866,7 @@ export interface OkDesktopBridge {
   share: {
     validateLocalFolder(args: {
       folderPath: string;
+      host: string;
       owner: string;
       repo: string;
     }): Promise<ShareFolderValidationResult>;

@@ -16,9 +16,9 @@
  * Failure mode: file:line + handler name + the offending pattern.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extension.ts');
 const source = readFileSync(API_EXT_PATH, 'utf8');
@@ -103,7 +103,16 @@ const INLINE_BARE_SUCCESS_RE = /\bjson\(\s*res\s*,\s*2[0-9]{2}\s*,/;
 const NON_JSON_LITERAL_CT_RE =
   /['"]Content-Type['"]\s*:\s*['"](?!application\/json['"])([^'"]+)['"]/;
 const NON_JSON_VARIABLE_CT_RE = /['"]Content-Type['"]\s*:\s*[A-Za-z_$][\w$.]*\s*[,}]/;
+//   (d) Delegation to the shared `streamAuthFlow(...)` emitter — the auth
+//       sign-in handlers (`handleLocalOpAuthLogin`, `handleLocalOpAuthGhLogin`)
+//       hand the response to a helper that owns the whole streaming lifecycle:
+//       the `application/x-ndjson` writeHead, the RFC 9457 streaming error
+//       envelope (`createStreamingErrorWriter`), and the 429
+//       concurrent-operation `errorResponse(...)`. The handler body therefore
+//       contains none of those emits itself; the helper is the emit surface.
+const STREAM_AUTH_DELEGATION_RE = /\bstreamAuthFlow\(\s*\{/;
 function isNonJsonEmit(body: string): boolean {
+  if (STREAM_AUTH_DELEGATION_RE.test(body)) return true;
   if (!/res\.writeHead\(/.test(body)) return false;
   if (NON_JSON_LITERAL_CT_RE.test(body)) return true;
   if (NON_JSON_VARIABLE_CT_RE.test(body) && /pipeline\(|res\.write\(/.test(body)) return true;
@@ -205,7 +214,10 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
           `${name}: contains inline json(res, 2xx, ...) — must use successResponse(...)`,
         );
       }
-      if (!body.includes('errorResponse(')) {
+      if (!body.includes('errorResponse(') && !STREAM_AUTH_DELEGATION_RE.test(body)) {
+        // `streamAuthFlow` delegators: every error emit (429 concurrency
+        // envelope, RFC 9457 streaming errors) lives inside the shared helper,
+        // so the handler body legitimately contains no `errorResponse(` call.
         failures.push(`${name}: missing errorResponse(...) usage`);
       }
     }

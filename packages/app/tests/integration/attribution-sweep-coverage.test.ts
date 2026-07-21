@@ -216,6 +216,13 @@ const EXEMPT_HANDLERS = new Set([
   'handleLocalOpAuthRepos',
   'handleLocalOpAuthSignout',
   'handleLocalOpAuthSetIdentity',
+  // POST /api/local-op/auth/pat + /api/local-op/auth/gh-login — GHES sign-in
+  // surfaces (validate + store a PAT; run `gh auth login --web` and stream its
+  // progress). Machine-local credential operations, not agent-authored content —
+  // same rationale as the sibling local-op auth handlers. No agent identity to
+  // thread.
+  'handleLocalOpAuthPat',
+  'handleLocalOpAuthGhLogin',
   // POST /api/local-op/embeddings/{set-key,clear-key} — loopback-gated writes of
   // the machine-global embeddings key to ~/.ok/secrets.yml. Operate on the local
   // user's credential file, not agent-authored content — same rationale as the

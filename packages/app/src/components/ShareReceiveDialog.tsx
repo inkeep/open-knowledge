@@ -78,7 +78,9 @@ export type ShareReceiveCloneResult =
   | { readonly kind: 'error'; readonly detail?: string };
 
 export interface ShareReceiveCloneController {
-  getAuthStatus(): Promise<OkLocalOpAuthStatusResponse>;
+  /** `host` scopes the identity probe to the share's GitHub host (github.com
+   * or GHES) so the dialog shows the account for that host, not github.com. */
+  getAuthStatus(host?: string): Promise<OkLocalOpAuthStatusResponse>;
   startSignIn(): Promise<OkLocalOpAuthStatusResponse | null>;
   runClone(args: { url: string; branch?: string | null }): Promise<ShareReceiveCloneResult>;
 }
@@ -232,8 +234,9 @@ function ShareReceiveDialogInner({
     if (authProbeStartedRef.current) return;
     authProbeStartedRef.current = true;
     setAuthChecking(true);
+    const shareHost = payload.share.host;
     void cloneController
-      .getAuthStatus()
+      .getAuthStatus(shareHost)
       .then((result) => {
         setAuthStatus(result);
       })
@@ -245,7 +248,7 @@ function ShareReceiveDialogInner({
           '[receive] auth pre-flight probe failed',
           err instanceof Error ? err.message : err,
         );
-        setAuthStatus({ authenticated: false, host: 'github.com' });
+        setAuthStatus({ authenticated: false, host: shareHost });
       })
       .finally(() => {
         setAuthChecking(false);
@@ -255,7 +258,7 @@ function ShareReceiveDialogInner({
   const launcherMiss = isLauncherMissPayload(payload) ? payload : null;
   const launcherConsent = isLauncherConsentPayload(payload) ? payload : null;
   const share = launcherMiss?.share ?? launcherConsent?.share ?? null;
-  const expected = share ? { owner: share.owner, repo: share.repo } : null;
+  const expected = share ? { host: share.host, owner: share.owner, repo: share.repo } : null;
   // Kind-aware noun so the dialog title reads correctly for folder shares as
   // well as single-doc shares; defaults to "document" when no share is active.
   const targetNoun = share?.target.kind === 'folder' ? t`folder` : t`document`;
@@ -357,6 +360,7 @@ function ShareReceiveDialogInner({
         if (!folderPath) break;
         const result = await bridge.share.validateLocalFolder({
           folderPath,
+          host: expected.host,
           owner: expected.owner,
           repo: expected.repo,
         });

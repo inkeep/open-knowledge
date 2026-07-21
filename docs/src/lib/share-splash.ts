@@ -98,7 +98,29 @@ function base64UrlToUint8Array(input: string): Uint8Array {
   return bytes;
 }
 
+/**
+ * Known non-GitHub forges — copy-local mirror of `KNOWN_NON_GITHUB_GIT_HOSTS`
+ * in `@inkeep/open-knowledge-core` (kept inline so the static docs build has
+ * no runtime dep on the package graph, per the file-header note). Any host not
+ * listed is presumed github.com or a GitHub Enterprise Server instance.
+ */
+const KNOWN_NON_GITHUB_GIT_HOSTS = new Set([
+  'gitlab.com',
+  'bitbucket.org',
+  'codeberg.org',
+  'gitea.com',
+  'sr.ht',
+  'sourcehut.org',
+]);
+
+function classifyGitHubShareHost(hostname: string): string | null {
+  const host = hostname.toLowerCase();
+  const folded = host === 'www.github.com' ? 'github.com' : host;
+  return KNOWN_NON_GITHUB_GIT_HOSTS.has(folded) ? null : folded;
+}
+
 export interface ParsedGitHubBlobUrl {
+  host: string;
   owner: string;
   repo: string;
   branch: string;
@@ -106,6 +128,7 @@ export interface ParsedGitHubBlobUrl {
 }
 
 export interface ParsedGitHubTreeUrl {
+  host: string;
   owner: string;
   repo: string;
   branch: string;
@@ -117,8 +140,8 @@ export interface ParsedGitHubTreeUrl {
  * URL is a `folder` (whose `path` MAY be empty for the repo/branch root).
  */
 export type ParsedGitHubShareTarget =
-  | { kind: 'doc'; owner: string; repo: string; branch: string; path: string }
-  | { kind: 'folder'; owner: string; repo: string; branch: string; path: string };
+  | { kind: 'doc'; host: string; owner: string; repo: string; branch: string; path: string }
+  | { kind: 'folder'; host: string; owner: string; repo: string; branch: string; path: string };
 
 /**
  * Decode-boundary validation for the owner/repo/branch pulled out of a
@@ -169,9 +192,14 @@ function parseGitHubBlobUrl(input: string): ParsedGitHubBlobUrl | null {
     return null;
   }
 
-  if (url.hostname !== 'github.com' && url.hostname !== 'www.github.com') {
-    return null;
-  }
+  // Share links are always https. Reject any other scheme: a crafted deep
+  // link could carry a non-https scheme (vscode:, ms-msdt:, …) with a valid
+  // host and otherwise parse — that URL renders into an <a href> on this
+  // public splash page.
+  if (url.protocol !== 'https:') return null;
+
+  const host = classifyGitHubShareHost(url.hostname);
+  if (host === null) return null;
 
   const rawSegments = url.pathname.split('/').filter((s) => s.length > 0);
 
@@ -195,7 +223,7 @@ function parseGitHubBlobUrl(input: string): ParsedGitHubBlobUrl | null {
   if (pathParts.some((p) => p.length === 0)) return null;
   if (!isShareSegmentSafe(owner, repo, branch)) return null;
 
-  return { owner, repo, branch, path: pathParts.join('/') };
+  return { host, owner, repo, branch, path: pathParts.join('/') };
 }
 
 /**
@@ -212,9 +240,14 @@ function parseGitHubTreeUrl(input: string): ParsedGitHubTreeUrl | null {
     return null;
   }
 
-  if (url.hostname !== 'github.com' && url.hostname !== 'www.github.com') {
-    return null;
-  }
+  // Share links are always https. Reject any other scheme: a crafted deep
+  // link could carry a non-https scheme (vscode:, ms-msdt:, …) with a valid
+  // host and otherwise parse — that URL renders into an <a href> on this
+  // public splash page.
+  if (url.protocol !== 'https:') return null;
+
+  const host = classifyGitHubShareHost(url.hostname);
+  if (host === null) return null;
 
   // Split WITHOUT filtering empties so empty intermediate path segments
   // (`a//b`) remain detectable. The pathname always starts with `/`, so
@@ -249,7 +282,7 @@ function parseGitHubTreeUrl(input: string): ParsedGitHubTreeUrl | null {
   if (pathParts.some((p) => p.length === 0)) return null;
   if (!isShareSegmentSafe(owner, repo, branch)) return null;
 
-  return { owner, repo, branch, path: pathParts.join('/') };
+  return { host, owner, repo, branch, path: pathParts.join('/') };
 }
 
 /**
@@ -449,6 +482,12 @@ export type SplashView =
        * or the repo name when the folder is the repo/branch root (empty path).
        */
       filename: string;
+      /** GitHub host: `github.com` or a GHES hostname. */
+      host: string;
+      /** True when the share targets a GitHub Enterprise host (not github.com).
+       * The splash renders the host prominently in this case so a share can
+       * never borrow openknowledge.ai's credibility for an unfamiliar server. */
+      isEnterpriseHost: boolean;
       owner: string;
       repo: string;
       repoPath: string;
@@ -493,7 +532,7 @@ export function buildSplashViewModel(encoded: string): SplashView {
     return { kind: 'invalid' };
   }
 
-  const { kind, owner, repo, branch, path } = parsed;
+  const { kind, host, owner, repo, branch, path } = parsed;
   const segments = path.split('/').filter((s) => s.length > 0);
   const basename = segments[segments.length - 1];
   // Doc shares always have a path basename. Folder shares fall back to the
@@ -504,6 +543,8 @@ export function buildSplashViewModel(encoded: string): SplashView {
     kind: 'ok',
     target: kind,
     filename,
+    host,
+    isEnterpriseHost: host !== 'github.com',
     owner,
     repo,
     repoPath: `${owner}/${repo}`,

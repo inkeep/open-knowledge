@@ -44,7 +44,11 @@ import {
 import { mark, ProfilerBoundary } from '@/lib/perf';
 import { SingleFileModeProvider, useSingleFileMode } from '@/lib/single-file-mode';
 import { useServerKeepalive } from '@/lib/use-server-keepalive';
-import { isSettingsShortcut, SETTINGS_OPEN_HASH } from '@/lib/use-settings-route';
+import {
+  isSettingsHashOpen,
+  isSettingsShortcut,
+  SETTINGS_OPEN_HASH,
+} from '@/lib/use-settings-route';
 
 // Cold-path receive surface: only mounts when main routes a
 // 'project-branch-switch' payload. Lazy so its branch-info / checkout / variant
@@ -78,7 +82,7 @@ const ShareReceiveMissDialog = lazy(() =>
 const INSTALL_DIALOG_HASH = '#install-claude-desktop';
 const MARKDOWN_EXTENSION_QUALIFIED_DOC_PATTERN = /\.(md|mdx)$/i;
 function isAuxiliaryDialogHash(hash: string): boolean {
-  return hash === SETTINGS_OPEN_HASH || hash === INSTALL_DIALOG_HASH;
+  return isSettingsHashOpen(hash) || hash === INSTALL_DIALOG_HASH;
 }
 
 function exactOpenMarkdownTabTarget(

@@ -1,6 +1,7 @@
 import { originGitHubHost } from '@inkeep/open-knowledge-server';
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
+import { describeAuthFailure } from '../../auth/describe-auth-error.ts';
 import { detectGh } from '../../auth/gh-detect.ts';
 import type { TokenStore } from '../../auth/token-store.ts';
 import { validateGitHubHost } from './validate-host.ts';
@@ -97,15 +98,16 @@ async function runStatus(opts: StatusOptions, tokenStore: TokenStore): Promise<v
     } else {
       process.stderr.write(`✓ Logged in as ${data.login} on ${host}\n`);
     }
-  } catch {
+  } catch (err) {
+    const failure = describeAuthFailure(err, host);
     if (json) {
       process.stdout.write(
         `${JSON.stringify(
-          buildStatusPayload(host, backend, { authenticated: false, error: 'token invalid' }),
+          buildStatusPayload(host, backend, { authenticated: false, error: failure.message }),
         )}\n`,
       );
     } else {
-      process.stderr.write(`✗ Token invalid for ${host}\n`);
+      process.stderr.write(`✗ ${failure.message}\n`);
     }
     process.exit(1);
   }

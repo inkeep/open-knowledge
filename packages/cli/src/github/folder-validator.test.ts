@@ -30,6 +30,7 @@ describe('validateLocalFolderForShare', () => {
     seedRepo(folder, 'https://github.com/inkeep/open-knowledge.git');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -45,6 +46,7 @@ describe('validateLocalFolderForShare', () => {
     seedRepo(folder, 'git@github.com:inkeep/open-knowledge.git');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -54,12 +56,57 @@ describe('validateLocalFolderForShare', () => {
     });
   });
 
+  test('accepts a GHES clone and re-emits a host-qualified canonical url', async () => {
+    const folder = resolve(tmpDir, 'repo');
+    mkdirSync(folder);
+    seedRepo(folder, 'https://ghes.acme.test/acme/kb.git');
+
+    const result = await validateLocalFolderForShare(folder, {
+      host: 'ghes.acme.test',
+      owner: 'acme',
+      repo: 'kb',
+    });
+    expect(result).toEqual({
+      kind: 'ok',
+      gitRemoteUrl: 'https://ghes.acme.test/acme/kb.git',
+    });
+  });
+
+  test('a github.com clone of the same owner/repo is a host mismatch, not wrong-repo', async () => {
+    const folder = resolve(tmpDir, 'repo');
+    mkdirSync(folder);
+    seedRepo(folder, 'https://github.com/acme/kb.git');
+
+    const result = await validateLocalFolderForShare(folder, {
+      host: 'ghes.acme.test',
+      owner: 'acme',
+      repo: 'kb',
+    });
+    // Right owner/repo, wrong server — surfaced as `wrong-host` so the UI can
+    // say "right repo, wrong server" instead of a confusing "wrong repo".
+    expect(result).toEqual({ kind: 'wrong-host', actualHost: 'github.com' });
+  });
+
+  test('a GHES clone offered for a github.com share is also a host mismatch', async () => {
+    const folder = resolve(tmpDir, 'repo');
+    mkdirSync(folder);
+    seedRepo(folder, 'https://ghes.acme.test/acme/kb.git');
+
+    const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
+      owner: 'acme',
+      repo: 'kb',
+    });
+    expect(result).toEqual({ kind: 'wrong-host', actualHost: 'ghes.acme.test' });
+  });
+
   test('owner / repo comparison is case-insensitive', async () => {
     const folder = resolve(tmpDir, 'repo');
     mkdirSync(folder);
     seedRepo(folder, 'https://github.com/Inkeep/Open-Knowledge.git');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -76,6 +123,7 @@ describe('validateLocalFolderForShare', () => {
     mkdirSync(folder);
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -86,6 +134,7 @@ describe('validateLocalFolderForShare', () => {
     const folder = resolve(tmpDir, 'does-not-exist');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -98,6 +147,7 @@ describe('validateLocalFolderForShare', () => {
     // No config file at all — the "shell-only" git state.
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -110,6 +160,7 @@ describe('validateLocalFolderForShare', () => {
     seedRepo(folder, null);
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -144,6 +195,7 @@ describe('validateLocalFolderForShare', () => {
     writeFileSync(resolve(worktreeFolder, '.git'), `gitdir: ${primaryGitDir}\n`, 'utf-8');
 
     const result = await validateLocalFolderForShare(worktreeFolder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -176,6 +228,7 @@ describe('validateLocalFolderForShare', () => {
     writeFileSync(resolve(worktreeFolder, '.git'), `gitdir: ${worktreeGitDir}\n`, 'utf-8');
 
     const result = await validateLocalFolderForShare(worktreeFolder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -191,6 +244,7 @@ describe('validateLocalFolderForShare', () => {
     writeFileSync(resolve(folder, '.git'), 'this is not a worktree pointer\n', 'utf-8');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -203,6 +257,7 @@ describe('validateLocalFolderForShare', () => {
     writeFileSync(resolve(folder, '.git'), `gitdir: ${resolve(tmpDir, 'no-such-dir')}\n`, 'utf-8');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -215,6 +270,7 @@ describe('validateLocalFolderForShare', () => {
     seedRepo(folder, 'git@gitlab.com:inkeep/open-knowledge.git');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -227,6 +283,7 @@ describe('validateLocalFolderForShare', () => {
     seedRepo(folder, 'this-is-not-a-url');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -239,6 +296,7 @@ describe('validateLocalFolderForShare', () => {
     seedRepo(folder, 'https://github.com/someone-else/open-knowledge.git');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -255,6 +313,7 @@ describe('validateLocalFolderForShare', () => {
     seedRepo(folder, 'https://github.com/inkeep/different-repo.git');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -278,6 +337,7 @@ describe('validateLocalFolderForShare', () => {
     symlinkSync(escapeTarget, picked);
 
     const result = await validateLocalFolderForShare(picked, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -301,6 +361,7 @@ describe('validateLocalFolderForShare', () => {
     symlinkSync(elsewhere, resolve(folder, '.git'));
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -318,6 +379,7 @@ describe('validateLocalFolderForShare', () => {
     symlinkSync(realFolder, linkFolder);
 
     const result = await validateLocalFolderForShare(linkFolder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });
@@ -339,6 +401,7 @@ describe('validateLocalFolderForShare', () => {
     writeFileSync(resolve(folder, '.git', 'config'), config, 'utf-8');
 
     const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
     });

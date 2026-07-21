@@ -54,8 +54,8 @@ function repoNameFromCloneUrl(url: string): string {
 
 export function createCloneController(deps: CloneControllerDeps): ShareReceiveCloneController {
   return {
-    async getAuthStatus() {
-      return deps.authQueryTransport.status();
+    async getAuthStatus(host?: string) {
+      return deps.authQueryTransport.status(host ? { host } : undefined);
     },
     async startSignIn() {
       return deps.openSignIn();

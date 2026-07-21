@@ -48,6 +48,8 @@ export function mapValidationToToast(
       return "This folder doesn't contain a git repository. Pick a different folder?";
     case 'wrong-repo':
       return `This folder is a clone of ${result.actualOwner}/${result.actualRepo}, not ${expected.owner}/${expected.repo}. Pick a different folder?`;
+    case 'wrong-host':
+      return `This folder is a clone of ${expected.owner}/${expected.repo} on ${result.actualHost}, not ${expected.host}. Pick a folder cloned from ${expected.host}?`;
     case 'no-origin':
     case 'non-github':
     case 'symlink-escape':

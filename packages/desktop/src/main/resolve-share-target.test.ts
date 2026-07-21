@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { execFile } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { RecentProjectEntry } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test } from 'vitest';
 import { filterShareEligibleRecents, resolveShareTarget } from './resolve-share-target.ts';
 import { annotateMissing, emptyState } from './state-store.ts';
 
@@ -71,7 +71,7 @@ function seedOkProject(projectPath: string): void {
   writeFileSync(join(projectPath, '.ok', 'config.yml'), 'content:\n  dir: .\n');
 }
 
-const PAYLOAD = { owner: 'acme', repo: 'widget', branch: 'feat-foo' } as const;
+const PAYLOAD = { host: 'github.com', owner: 'acme', repo: 'widget', branch: 'feat-foo' } as const;
 
 describe('resolveShareTarget — main-side adapter parity with the shared algorithm', () => {
   let handle: TempRepoHandle | null = null;

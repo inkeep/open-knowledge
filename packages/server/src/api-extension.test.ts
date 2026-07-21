@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { resumeSyncOnAuthEvent, safeSubdir, sanitizeFilename } from './api-extension.ts';
 import type { AuthEvent } from './local-ops/types.ts';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
@@ -663,13 +663,20 @@ describe('resumeSyncOnAuthEvent (reconnect → resume wiring)', () => {
   // the subprocess, the streaming response, and the concurrency guard.
   const makeEngineStub = (impl?: () => Promise<void>) => {
     const calls: number[] = [];
+    const refreshCalls: number[] = [];
     const engine = {
       notifyCredentialsChanged: () => {
         calls.push(Date.now());
         return impl ? impl() : Promise.resolve();
       },
+      // A reconnect must also re-probe push permission — a repo paused with
+      // 'no-push-permission' while signed out has to resume without a restart.
+      refreshPushPermission: () => {
+        refreshCalls.push(Date.now());
+        return Promise.resolve(null);
+      },
     } as unknown as SyncEngine;
-    return { engine, calls, getSyncEngine: () => engine };
+    return { engine, calls, refreshCalls, getSyncEngine: () => engine };
   };
 
   const completeEvent: AuthEvent = { type: 'complete', host: 'github.com', login: 'octocat' };
@@ -681,17 +688,21 @@ describe('resumeSyncOnAuthEvent (reconnect → resume wiring)', () => {
   };
   const errorEvent: AuthEvent = { type: 'error', message: 'denied' };
 
-  test('a complete event resumes sync via notifyCredentialsChanged', () => {
+  test('a complete event resumes sync AND re-probes push permission', () => {
     const stub = makeEngineStub();
     resumeSyncOnAuthEvent(completeEvent, stub.getSyncEngine);
     expect(stub.calls.length).toBe(1);
+    // The reconnect must re-probe push permission too, or a repo paused with
+    // 'no-push-permission' while signed out stays stuck until an app restart.
+    expect(stub.refreshCalls.length).toBe(1);
   });
 
-  test('non-complete events do not resume sync', () => {
+  test('non-complete events do not resume sync or re-probe', () => {
     const stub = makeEngineStub();
     resumeSyncOnAuthEvent(verificationEvent, stub.getSyncEngine);
     resumeSyncOnAuthEvent(errorEvent, stub.getSyncEngine);
     expect(stub.calls.length).toBe(0);
+    expect(stub.refreshCalls.length).toBe(0);
   });
 
   test('absent getSyncEngine is a no-op (engine dormant / not yet constructed)', () => {

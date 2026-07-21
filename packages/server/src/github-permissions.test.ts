@@ -6,7 +6,7 @@
  * logic is exercised for real. Telemetry assertions use the InMemoryMetric
  * harness from `frontmatter-telemetry.test.ts`.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { metrics } from '@opentelemetry/api';
 import {
   AggregationTemporality,
@@ -16,6 +16,7 @@ import {
   MeterProvider,
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   __resetGithubPermissionsTelemetryForTests,
   checkPushPermission,
@@ -274,7 +275,7 @@ describe('checkPushPermission — token resolution', () => {
     expect(hosts).toEqual(['github.com']);
   });
 
-  test('anonymous: no credential → denied/no-collaborator with NO HTTP call (short-circuit)', async () => {
+  test('anonymous: no credential → denied/not-authenticated with NO HTTP call (short-circuit)', async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(200, {}));
     const { store } = fakeStore(null);
     const result = await checkPushPermission({
@@ -284,7 +285,9 @@ describe('checkPushPermission — token resolution', () => {
       tokenStore: store,
       _fetchFn: fetch,
     });
-    expect(result).toEqual({ kind: 'denied', reason: 'no-collaborator' });
+    // Signed-out — distinct from a working-but-read-only credential so the UI
+    // can offer a reconnect affordance.
+    expect(result).toEqual({ kind: 'denied', reason: 'not-authenticated' });
     expect(calls).toHaveLength(0); // no credential ⇒ no push ⇒ no probe
   });
 
@@ -295,7 +298,7 @@ describe('checkPushPermission — token resolution', () => {
       repo: 'open-knowledge',
       _fetchFn: fetch,
     });
-    expect(result).toEqual({ kind: 'denied', reason: 'no-collaborator' });
+    expect(result).toEqual({ kind: 'denied', reason: 'not-authenticated' });
     expect(calls).toHaveLength(0);
   });
 

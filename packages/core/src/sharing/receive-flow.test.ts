@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 import {
   canonicalGitHubRemoteUrl,
@@ -10,20 +10,26 @@ import {
 
 describe('canonicalGitHubRemoteUrl', () => {
   test('emits https github.git form for plain owner/repo', () => {
-    expect(canonicalGitHubRemoteUrl({ owner: 'inkeep', repo: 'open-knowledge' })).toBe(
-      'https://github.com/inkeep/open-knowledge.git',
-    );
+    expect(
+      canonicalGitHubRemoteUrl({ host: 'github.com', owner: 'inkeep', repo: 'open-knowledge' }),
+    ).toBe('https://github.com/inkeep/open-knowledge.git');
   });
 
   test('preserves casing in the canonical form', () => {
-    expect(canonicalGitHubRemoteUrl({ owner: 'Inkeep', repo: 'Open-Knowledge' })).toBe(
-      'https://github.com/Inkeep/Open-Knowledge.git',
+    expect(
+      canonicalGitHubRemoteUrl({ host: 'github.com', owner: 'Inkeep', repo: 'Open-Knowledge' }),
+    ).toBe('https://github.com/Inkeep/Open-Knowledge.git');
+  });
+
+  test('carries an enterprise host into the canonical form', () => {
+    expect(canonicalGitHubRemoteUrl({ host: 'ghes.acme.test', owner: 'acme', repo: 'kb' })).toBe(
+      'https://ghes.acme.test/acme/kb.git',
     );
   });
 });
 
 describe('findRecentProjectsForRepo', () => {
-  const expected = { owner: 'inkeep', repo: 'open-knowledge' };
+  const expected = { host: 'github.com', owner: 'inkeep', repo: 'open-knowledge' };
 
   function recent(overrides: Partial<RecentProjectEntry> = {}): RecentProjectEntry {
     return {
@@ -87,6 +93,22 @@ describe('findRecentProjectsForRepo', () => {
   test('returns [] when no entry matches', () => {
     const r = recent({ path: '/x', gitRemoteUrl: 'https://github.com/other/thing.git' });
     expect(findRecentProjectsForRepo([r], expected)).toEqual([]);
+  });
+
+  test('a same-owner/repo clone on a different host does NOT match (no cross-host collision)', () => {
+    // A GHES acme/kb share must never resolve to a github.com acme/kb clone.
+    const githubClone = recent({
+      path: '/gh',
+      gitRemoteUrl: 'https://github.com/acme/kb.git',
+    });
+    const ghesExpected = { host: 'ghes.acme.test', owner: 'acme', repo: 'kb' };
+    expect(findRecentProjectsForRepo([githubClone], ghesExpected)).toEqual([]);
+    // ...and the GHES clone matches the GHES share.
+    const ghesClone = recent({
+      path: '/ghes',
+      gitRemoteUrl: 'https://ghes.acme.test/acme/kb.git',
+    });
+    expect(findRecentProjectsForRepo([ghesClone], ghesExpected)).toEqual([ghesClone]);
   });
 
   test('all matching entries marked missing yields [] (graceful degradation anchor)', () => {

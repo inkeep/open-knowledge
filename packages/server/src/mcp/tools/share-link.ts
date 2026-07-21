@@ -48,7 +48,7 @@ const DESCRIPTION = [
   "- `kind` (optional) — `'doc'` or `'folder'`. Omit to auto-probe disk (`.mdx` → `.md` → directory, first hit wins). REQUIRED when `path` is empty (`\"\"`), since auto-probe cannot disambiguate the root.",
   '- `cwd` (optional) — Project root (see `cwd` description below).',
   '',
-  '**Preconditions:** project on a named branch (not detached HEAD); origin set to a `github.com` remote; the branch already pushed to origin.',
+  '**Preconditions:** project on a named branch (not detached HEAD); origin set to a GitHub remote (`github.com` or a GitHub Enterprise Server host); the branch already pushed to origin.',
 ].join('\n');
 
 export interface ShareLinkDeps {
@@ -130,7 +130,7 @@ function messageForShareError(error: ShareConstructUrlErrorCode, branch?: string
         : `The current branch is not on origin yet. Ask the user to push it (\`git push -u origin <branch>\`), then retry.${fetchHint}`;
     }
     case 'non-github-remote':
-      return 'Origin is not a `github.com` remote. Share links are GitHub-only in v1.';
+      return 'Origin is a non-GitHub remote (GitLab, Bitbucket, etc.). Share links require a GitHub remote (`github.com` or GitHub Enterprise Server).';
     case 'invalid-path':
       return 'The resolved share path is not shareable (escapes the project root or names the `.git` subtree). Pass a normal target path under the content directory.';
     default: {

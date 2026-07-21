@@ -9,6 +9,7 @@
  */
 
 import { parseGitUrl } from '@inkeep/open-knowledge';
+import { classifyGitHubShareHost } from '@inkeep/open-knowledge-core';
 import { inspectGitRepository } from '@inkeep/open-knowledge-core/git-repository';
 
 /**
@@ -28,6 +29,11 @@ export function readCanonicalGitHubRemoteUrl(projectPath: string): string | null
 
   const parsed = parseGitUrl(origin.url);
   if (parsed === null) return null;
-  if (parsed.hostname !== 'github.com') return null;
-  return `https://github.com/${parsed.owner}/${parsed.name}.git`;
+  // Presume any host that isn't a known non-GitHub forge is github.com or a
+  // GHES instance, and re-emit the canonical HTTPS form host-qualified so
+  // GHES clones get a `gitRemoteUrl` (else they never match a share) and a
+  // GHES `acme/kb` stays distinct from a github.com `acme/kb`.
+  const foldedHost = classifyGitHubShareHost(parsed.hostname);
+  if (foldedHost === null) return null;
+  return `https://${foldedHost}/${parsed.owner}/${parsed.name}.git`;
 }

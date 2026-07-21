@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 import type {
   OkShareReceivedPayload,
@@ -68,14 +68,14 @@ describe('formatCloneErrorMessage', () => {
 
 describe('buildCloneUrl', () => {
   test('matches the canonical .git form (the clone wizard accepts both forms equally)', () => {
-    expect(buildCloneUrl({ owner: 'inkeep', repo: 'open-knowledge' })).toBe(
+    expect(buildCloneUrl({ host: 'github.com', owner: 'inkeep', repo: 'open-knowledge' })).toBe(
       'https://github.com/inkeep/open-knowledge.git',
     );
   });
 });
 
 describe('mapValidationToToast', () => {
-  const expected = { owner: 'inkeep', repo: 'open-knowledge' };
+  const expected = { host: 'github.com', owner: 'inkeep', repo: 'open-knowledge' };
 
   function withKind<K extends ShareFolderValidationResult['kind']>(
     kind: K,
@@ -89,6 +89,13 @@ describe('mapValidationToToast', () => {
         kind: 'wrong-repo',
         actualOwner: extras && 'actualOwner' in extras ? (extras.actualOwner ?? 'a') : 'a',
         actualRepo: extras && 'actualRepo' in extras ? (extras.actualRepo ?? 'b') : 'b',
+      };
+    }
+    if (kind === 'wrong-host') {
+      return {
+        kind: 'wrong-host',
+        actualHost:
+          extras && 'actualHost' in extras ? (extras.actualHost ?? 'other.host') : 'other.host',
       };
     }
     return { kind } as ShareFolderValidationResult;
@@ -108,6 +115,13 @@ describe('mapValidationToToast', () => {
     const result = withKind('wrong-repo', { actualOwner: 'forky', actualRepo: 'spoon' });
     expect(mapValidationToToast(result, expected)).toBe(
       'This folder is a clone of forky/spoon, not inkeep/open-knowledge. Pick a different folder?',
+    );
+  });
+
+  test('wrong-host names the server so the user sees "right repo, wrong host"', () => {
+    const result = withKind('wrong-host', { actualHost: 'ghes.acme.test' });
+    expect(mapValidationToToast(result, expected)).toBe(
+      'This folder is a clone of inkeep/open-knowledge on ghes.acme.test, not github.com. Pick a folder cloned from github.com?',
     );
   });
 

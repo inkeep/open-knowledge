@@ -1214,10 +1214,6 @@ msgid "Auto-save"
 msgstr "Auto-save"
 
 #: src/components/settings/SettingsDialogBody.tsx
-msgid "Auto-sync is off — you don't have permission to push to this repo"
-msgstr "Auto-sync is off — you don't have permission to push to this repo"
-
-#: src/components/settings/SettingsDialogBody.tsx
 msgid "Auto-sync is off — your edits stay local until you commit and push manually."
 msgstr "Auto-sync is off — your edits stay local until you commit and push manually."
 
@@ -1232,6 +1228,14 @@ msgstr "Auto-sync is on — your commits push and remote changes pull on interva
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Auto-sync is on for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "Auto-sync is on for this worktree, inherited from {project}. Change it in Settings → Sync."
+
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Auto-sync is paused — sign in to resume."
+msgstr "Auto-sync is paused — sign in to resume."
+
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Auto-sync is paused — you don't have permission to push to this repo."
+msgstr "Auto-sync is paused — you don't have permission to push to this repo."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
@@ -1916,6 +1920,7 @@ msgid "Conflict"
 msgstr "Conflict"
 
 #. Primary button that writes MCP config for the selected AI tools
+#: src/components/AuthModal.tsx
 #: src/components/McpConsentDialogBody.tsx
 msgid "Connect"
 msgstr "Connect"
@@ -1930,9 +1935,7 @@ msgstr "Connect an existing repository"
 
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
-#: src/components/settings/AccountSection.tsx
 #: src/components/ShareReceiveDialog.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Connect GitHub"
 msgstr "Connect GitHub"
 
@@ -1962,6 +1965,10 @@ msgstr "Connect to AI tools"
 msgid "Connect to GitHub"
 msgstr "Connect to GitHub"
 
+#: src/components/AuthModal.tsx
+msgid "Connect to GitHub Enterprise Server"
+msgstr "Connect to GitHub Enterprise Server"
+
 #: src/components/ClaudeReadinessBanner.tsx
 msgid "Connect tools"
 msgstr "Connect tools"
@@ -1983,6 +1990,11 @@ msgstr "Connected as <0>@{signedInLogin}</0>"
 msgid "Connected to"
 msgstr "Connected to"
 
+#: src/components/AuthModal.tsx
+msgid "Connected to GitHub"
+msgstr "Connected to GitHub"
+
+#: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
 msgstr "Connecting"
@@ -2035,6 +2047,10 @@ msgstr "Context window:"
 #: src/components/acp/ThreadView.tsx
 msgid "Context window: {percent}% used, {usedLabel} of {sizeLabel} tokens"
 msgstr "Context window: {percent}% used, {usedLabel} of {sizeLabel} tokens"
+
+#: src/components/AuthModal.tsx
+msgid "Continue in browser"
+msgstr "Continue in browser"
 
 #: src/components/FileTree.tsx
 msgid "Convert"
@@ -2594,6 +2610,10 @@ msgstr "Create a new OpenKnowledge project in the folder of your choice."
 #: src/components/BottomComposer.tsx
 msgid "Create a new spec file for my user story"
 msgstr "Create a new spec file for my user story"
+
+#: src/components/AuthModal.tsx
+msgid "Create a token on {host}"
+msgstr "Create a token on {host}"
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "Create a worktree from this branch"
@@ -3716,6 +3736,10 @@ msgstr "Failed to save content rules — {0}"
 msgid "Failed to save theme setting"
 msgstr "Failed to save theme setting"
 
+#: src/components/AuthModal.tsx
+msgid "Failed to store the token — try again"
+msgstr "Failed to store the token — try again"
+
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Failed to update attachment location — {detail}"
 msgstr "Failed to update attachment location — {detail}"
@@ -4545,6 +4569,10 @@ msgstr "Install on all"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Install skills into"
 msgstr "Install skills into"
+
+#: src/components/AuthModal.tsx
+msgid "Install the gh CLI"
+msgstr "Install the gh CLI"
 
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -6117,6 +6145,14 @@ msgstr "Opens in a new tab"
 msgid "or create a new file <0/>"
 msgstr "or create a new file <0/>"
 
+#: src/components/AuthModal.tsx
+msgid "or paste a token"
+msgstr "or paste a token"
+
+#: src/components/AuthModal.tsx
+msgid "Or to use browser sign-in instead:"
+msgstr "Or to use browser sign-in instead:"
+
 #: src/components/EmptyEditorState.tsx
 msgid "Or use a starter pack"
 msgstr "Or use a starter pack"
@@ -6240,6 +6276,10 @@ msgstr "Paragraph"
 msgid "Parse failed"
 msgstr "Parse failed"
 
+#: src/components/AuthModal.tsx
+msgid "Paste a personal access token for <0>{host}</0>."
+msgstr "Paste a personal access token for <0>{host}</0>."
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Paste duplicate"
 msgstr "Paste duplicate"
@@ -6319,6 +6359,10 @@ msgstr "Permanently deletes <0>{targetGitPath}</0> and all its git history. Work
 #: src/components/TrashFailureModal.tsx
 msgid "Permission denied"
 msgstr "Permission denied"
+
+#: src/components/AuthModal.tsx
+msgid "Personal access token"
+msgstr "Personal access token"
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Personal to this device — stored in your user config, not shared."
@@ -6602,6 +6646,10 @@ msgstr "Quote"
 msgid "Re-authenticate with GitHub"
 msgstr "Re-authenticate with GitHub"
 
+#: src/components/AuthModal.tsx
+msgid "Re-authenticate with GitHub Enterprise Server"
+msgstr "Re-authenticate with GitHub Enterprise Server"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
@@ -6852,6 +6900,10 @@ msgstr "Reopen closed tab"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen the most recently closed editor tab."
 msgstr "Reopen the most recently closed editor tab."
+
+#: src/components/AuthModal.tsx
+msgid "Reopen this window to sign in with your browser"
+msgstr "Reopen this window to sign in with your browser"
 
 #: src/components/EditorActivityPool.tsx
 msgid "Reopening \"{docName}\" with a fresh local collaboration cache."
@@ -7742,6 +7794,7 @@ msgstr "Showing top matches — keep typing to narrow"
 msgid "Shows above the code body. Round-trips as `title=\"...\"` in markdown."
 msgstr "Shows above the code body. Round-trips as `title=\"...\"` in markdown."
 
+#: src/components/settings/AccountSection.tsx
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sign in"
@@ -8448,6 +8501,10 @@ msgstr "The terminal session ended."
 msgid "The terminal stopped unexpectedly."
 msgstr "The terminal stopped unexpectedly."
 
+#: src/components/AuthModal.tsx
+msgid "The token needs the repo and read:user scopes."
+msgstr "The token needs the repo and read:user scopes."
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "Theme"
@@ -8695,6 +8752,10 @@ msgstr "This template lives in a parent folder — deleting it affects every fol
 #: src/components/ShareReceiveDialog.tsx
 msgid "This usually means one of:"
 msgstr "This usually means one of:"
+
+#: src/components/AuthModal.tsx
+msgid "This window can't store a token — open Settings from the main app window."
+msgstr "This window can't store a token — open Settings from the main app window."
 
 #: src/components/DocPanel.tsx
 #: src/components/TimelinePanel.tsx
@@ -9065,6 +9126,10 @@ msgstr "Use a folder you already have."
 #: src/components/EmptyEditorState.tsx
 msgid "Use a starter pack"
 msgstr "Use a starter pack"
+
+#: src/components/AuthModal.tsx
+msgid "Use a token instead"
+msgstr "Use a token instead"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."
@@ -9438,6 +9503,10 @@ msgstr "You picked your home directory. OpenKnowledge will index everything in y
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "You're all set up!"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "You're signed out — sign in to resume syncing."
+msgstr "You're signed out — sign in to resume syncing."
 
 #: src/components/SubscribeForm.tsx
 msgid "You're subscribed!"

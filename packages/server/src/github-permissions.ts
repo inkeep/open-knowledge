@@ -26,7 +26,15 @@ const PROBE_TIMEOUT_MS = 5000;
 
 export type FetchFn = typeof fetch;
 
-type PushPermissionDeniedReason = 'no-collaborator' | 'private-no-access' | 'repo-not-found';
+// 'not-authenticated' = no credential resolved at all (signed out), distinct
+// from 'no-collaborator' (a working credential that lacks push access). The UI
+// keys off it to offer a reconnect affordance — reconnecting fixes signed-out,
+// but not a genuine read-only collaborator.
+type PushPermissionDeniedReason =
+  | 'no-collaborator'
+  | 'private-no-access'
+  | 'repo-not-found'
+  | 'not-authenticated';
 
 type PushPermissionUnknownError =
   | 'network'
@@ -219,7 +227,9 @@ async function runProbe(opts: CheckPushPermissionOptions): Promise<PushPermissio
   // instead land directly in the suppressed-onboarding, no-push UX.
   if (tokenSource === 'anonymous') {
     log.info({ host }, '[permissions] no credential resolved — denying push (read-only)');
-    return { kind: 'denied', reason: 'no-collaborator' };
+    // 'not-authenticated' (not 'no-collaborator'): reconnecting resolves this,
+    // so the UI can offer a sign-in affordance rather than a dead-end.
+    return { kind: 'denied', reason: 'not-authenticated' };
   }
 
   const url = `${githubApiBase(host)}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
@@ -309,7 +319,7 @@ let _outcomeCounter: Counter | null = null;
 function outcomeCounter(): Counter {
   _outcomeCounter ||= getMeter().createCounter('ok.permissions.probe.outcome_total', {
     description:
-      'Push-permission probe outcomes. Bounded labels: outcome ∈ {allowed,denied,unknown}; denied_reason ∈ {no-collaborator,private-no-access,repo-not-found,none}; error_class ∈ {network,timeout,rate-limit,token-invalid,malformed-response,none}.',
+      'Push-permission probe outcomes. Bounded labels: outcome ∈ {allowed,denied,unknown}; denied_reason ∈ {no-collaborator,private-no-access,repo-not-found,not-authenticated,none}; error_class ∈ {network,timeout,rate-limit,token-invalid,malformed-response,none}.',
   });
   return _outcomeCounter;
 }

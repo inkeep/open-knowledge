@@ -15,10 +15,6 @@ import { spawn } from 'node:child_process';
 import { delimiter as PATH_DELIMITER } from 'node:path';
 import { withHiddenWindowsConsole } from '../child-process-windows-hide.ts';
 
-const SUBPROCESS_PIPE_STDIO_OPTIONS: { stdio: ['ignore', 'pipe', 'pipe'] } = {
-  stdio: ['ignore', 'pipe', 'pipe'],
-};
-
 /** A parsed JSON line plus the raw line (for HTTP NDJSON pass-through). */
 interface ParsedLine {
   /** Raw NDJSON line (no trailing newline). */
@@ -48,6 +44,13 @@ interface SubprocessRunOptions {
   onLine: (line: ParsedLine) => void;
   /** Optional stderr observer (receives raw chunks). */
   onStderr?: (chunk: Buffer) => void;
+  /**
+   * When set, the child is spawned with a piped stdin and this string is written
+   * to it (then closed) — the non-interactive channel for `auth pat
+   * --token-stdin`, so the token never appears in argv or the environment.
+   * Absent leaves stdin ignored (the default for every other flow).
+   */
+  stdinData?: string;
 }
 
 interface SubprocessRunResult {
@@ -101,15 +104,25 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
       .join(PATH_DELIMITER);
   }
 
+  const stdio: ['ignore' | 'pipe', 'pipe', 'pipe'] =
+    opts.stdinData !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'];
   const child = spawn(
     cmd,
     argv,
     withHiddenWindowsConsole({
-      ...SUBPROCESS_PIPE_STDIO_OPTIONS,
+      stdio,
       cwd: opts.cwd,
       env: childEnv,
     }),
   );
+
+  if (opts.stdinData !== undefined && child.stdin) {
+    // The child may exit before draining stdin (e.g. an unknown flag) — swallow
+    // the resulting EPIPE rather than crashing the parent.
+    child.stdin.on('error', () => {});
+    child.stdin.write(opts.stdinData);
+    child.stdin.end();
+  }
 
   const killTimer = setTimeout(() => {
     timedOut = true;
@@ -128,14 +141,16 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
     opts.onLine({ raw, parsed });
   };
 
-  child.stdout.on('data', (chunk: Buffer) => {
+  // stdout/stderr are always piped (stdio[1]/[2] are 'pipe'); the optional
+  // chaining only satisfies the type widened by the conditional stdin mode.
+  child.stdout?.on('data', (chunk: Buffer) => {
     stdoutBuffer += chunk.toString('utf-8');
     const lines = stdoutBuffer.split('\n');
     stdoutBuffer = lines.pop() ?? '';
     for (const line of lines) flushLine(line);
   });
 
-  child.stderr.on('data', (chunk: Buffer) => {
+  child.stderr?.on('data', (chunk: Buffer) => {
     stderrChunks.push(chunk);
     opts.onStderr?.(chunk);
   });

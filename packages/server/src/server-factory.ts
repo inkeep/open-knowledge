@@ -194,6 +194,7 @@ import { SyncEngine } from './sync-engine.ts';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
 import { TagIndex } from './tag-index.ts';
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
+import { trustSystemCertificates } from './trust-system-ca.ts';
 import { cleanupOrphanUploadTempfiles } from './upload-streaming.ts';
 
 export interface ServerOptions {
@@ -557,6 +558,11 @@ export function resolveUpstreamChanges(
 }
 
 export function createServer(options: ServerOptions): ServerInstance {
+  // Trust the OS certificate store before the sync engine's GitHub permission
+  // probe (or any Octokit call) reaches a GHES host on a self-signed/internal-CA
+  // cert. Idempotent — covers every server-launch path (utility fork, detached,
+  // in-process) from one place; the CLI and desktop-main processes call it too.
+  trustSystemCertificates();
   const {
     contentDir,
     projectDir = contentDir,

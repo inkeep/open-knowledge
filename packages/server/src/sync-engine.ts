@@ -92,7 +92,11 @@ export type PushPermissionStatus =
   | { checkStatus: 'allowed' }
   | {
       checkStatus: 'denied';
-      deniedReason: 'no-collaborator' | 'private-no-access' | 'repo-not-found';
+      deniedReason:
+        | 'no-collaborator'
+        | 'private-no-access'
+        | 'repo-not-found'
+        | 'not-authenticated';
     }
   | {
       checkStatus: 'unknown';

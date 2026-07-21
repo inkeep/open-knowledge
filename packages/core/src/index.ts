@@ -240,6 +240,7 @@ export {
 export { SHOW_INSTALL_SKILL } from './constants/feature-flags.ts';
 export type { OkFolderState } from './constants/folder-state.ts';
 export {
+  classifyGitHubShareHost,
   DEFAULT_GITHUB_OAUTH_CLIENT_ID,
   KNOWN_NON_GITHUB_GIT_HOSTS,
 } from './constants/github.ts';
@@ -728,6 +729,10 @@ export {
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
   LocalOpAuthHostRequestSchema,
+  type LocalOpAuthPatRequest,
+  LocalOpAuthPatRequestSchema,
+  type LocalOpAuthPatSuccess,
+  LocalOpAuthPatSuccessSchema,
   type LocalOpAuthSetIdentityRequest,
   LocalOpAuthSetIdentityRequestSchema,
   type LocalOpAuthStatusSuccess,

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { BridgeWorktreeEntry } from '../git/worktree-list-parser.ts';
 import {
   type Candidate,
@@ -81,6 +81,7 @@ function makeBridge(opts: StubOptions): CandidateBridgeDeps {
 }
 
 const PAYLOAD: CandidateSelectionPayload = {
+  host: 'github.com',
   owner: 'inkeep',
   repo: 'open-knowledge',
   branch: 'feat-bar',

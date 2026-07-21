@@ -24,6 +24,7 @@
 import { statSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { classifyGitHubShareHost } from '@inkeep/open-knowledge-core';
 import { inspectGitRepository } from '@inkeep/open-knowledge-core/git-repository';
 import { parseGitUrl } from './url.ts';
 
@@ -33,10 +34,14 @@ export type ShareFolderValidationResult =
   | { kind: 'not-git' }
   | { kind: 'no-origin' }
   | { kind: 'wrong-repo'; actualOwner: string; actualRepo: string }
+  | { kind: 'wrong-host'; actualHost: string }
   | { kind: 'non-github' }
   | { kind: 'symlink-escape' };
 
+/** Mirrors `ExpectedShareRepo` in `@inkeep/open-knowledge-core` — keep in sync. */
 export interface ExpectedShareRepo {
+  /** GitHub host the share targets: `github.com` or a GHES hostname. */
+  readonly host: string;
   readonly owner: string;
   readonly repo: string;
 }
@@ -110,16 +115,26 @@ export async function validateLocalFolderForShare(
   const originUrl = origin.url;
 
   // 4. Parse origin via the shared `parseGitUrl`. Anything we can't parse
-  //    OR that points off-github lands as `non-github` — same downstream
-  //    surface (the receive dialog renders the "switch your remote" toast).
+  //    OR that points at a known non-GitHub forge lands as `non-github` —
+  //    same downstream surface (the receive dialog renders the "switch your
+  //    remote" toast). Unknown hosts are presumed GitHub (GHES) and matched
+  //    against the share's host below.
   const parsed = parseGitUrl(originUrl);
   if (parsed === null) return { kind: 'non-github' };
-  if (parsed.hostname !== 'github.com') return { kind: 'non-github' };
+  const foldedHost = classifyGitHubShareHost(parsed.hostname);
+  if (foldedHost === null) return { kind: 'non-github' };
 
-  // 5. Compare owner/repo case-insensitively (GitHub URL semantics).
+  // 5. Compare host + owner/repo case-insensitively (GitHub URL semantics).
+  const hostMatch = foldedHost === expected.host.toLowerCase();
   const ownerMatch = parsed.owner.toLowerCase() === expected.owner.toLowerCase();
   const repoMatch = parsed.name.toLowerCase() === expected.repo.toLowerCase();
-  if (!ownerMatch || !repoMatch) {
+  //    Same owner/repo but a different host (a github.com clone offered for a
+  //    GHES share, or vice versa) is surfaced distinctly so the UI can say
+  //    "right repo, wrong server" rather than a misleading "wrong repo".
+  if (!hostMatch && ownerMatch && repoMatch) {
+    return { kind: 'wrong-host', actualHost: foldedHost };
+  }
+  if (!hostMatch || !ownerMatch || !repoMatch) {
     return { kind: 'wrong-repo', actualOwner: parsed.owner, actualRepo: parsed.name };
   }
 
@@ -128,7 +143,7 @@ export async function validateLocalFolderForShare(
   //    SSH and HTTPS clones converge on one lookup key.
   return {
     kind: 'ok',
-    gitRemoteUrl: `https://github.com/${parsed.owner}/${parsed.name}.git`,
+    gitRemoteUrl: `https://${foldedHost}/${parsed.owner}/${parsed.name}.git`,
   };
 }
 

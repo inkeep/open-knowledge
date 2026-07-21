@@ -99,6 +99,8 @@ import {
   recordSkillInstallEvent,
   resolveBundledSkillDir,
   resolveLockDir,
+  runAuthStatusSubprocess,
+  trustSystemCertificates,
   USER_GLOBAL_BUNDLE_IDS,
   untrackTrackedProjectSkillProjection,
   withSpan,
@@ -307,7 +309,7 @@ import {
 import { handleRevealExternal } from './reveal-external.ts';
 import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
-import { handleShellOpenExternal } from './shell-allowlist.ts';
+import { checkOutboundUrl, handleShellOpenExternal } from './shell-allowlist.ts';
 import { createShowGateRegistry, type ShowGateRegistry } from './show-gate.ts';
 import { reclaimProjectSkillsOnProjectOpen, reclaimUserSkillsOnLaunch } from './skill-reclaim.ts';
 import { attachSpellcheckContextMenu } from './spellcheck-context-menu.ts';
@@ -4257,6 +4259,7 @@ function registerIpcHandlers() {
 
   handle('ok:share:validate-folder', async (_event, request) => {
     return validateLocalFolderForShare(request.folderPath, {
+      host: request.host,
       owner: request.owner,
       repo: request.repo,
     });
@@ -5076,6 +5079,15 @@ installStdioBrokenPipeGuard(process, {
   },
 });
 
+// Trust the OS certificate store (macOS Keychain / enterprise CA) so a GHES on
+// a self-signed or internal-CA cert — already trusted by `git` — works for the
+// app's TLS. `appendSwitch` covers Chromium's network stack; the runtime call
+// covers Node's fetch/undici in THIS main process (the two are separate trust
+// stores). The server fork and the CLI subprocess each apply the same trust on
+// their own boot.
+app.commandLine.appendSwitch('use-system-ca');
+trustSystemCertificates();
+
 // Driver-mode exception: when the env triplet
 // `OK_DEBUG_KEYRING_SMOKE=1 + OK_DEBUG_KEYRING_SMOKE_EXIT=1` is set, the
 // packaged app is being launched by the `verify-keyring-in-packaged-dmg.mjs`
@@ -5337,6 +5349,76 @@ function bootPrimaryInstance(): void {
         // the same list).
         listRecent: () => annotateMissing(appState),
       }),
+    // Trust gate for GHES share hosts: an already-authenticated host proceeds
+    // silently; an unfamiliar one prompts, since deep links are untrusted.
+    gateForeignShareHost: async (host, sharedUrl) => {
+      let authenticated = false;
+      try {
+        const status = await runAuthStatusSubprocess({
+          cliArgs: resolveLocalOpCliArgs(),
+          host,
+        });
+        authenticated = status.authenticated;
+      } catch {
+        // Probe failure ⇒ treat as untrusted and fall through to the prompt.
+      }
+      if (authenticated) return 'proceed';
+
+      // Focus first: a deep-link launch may have no active window, so the
+      // prompt would otherwise render behind other apps or not show at all.
+      app.focus({ steal: true });
+      const parentWindow = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+      const messageBoxOptions = {
+        type: 'warning' as const,
+        buttons: [`Connect to ${host}…`, 'Open in browser', 'Cancel'],
+        // Cancel is the safe keyboard default for an unfamiliar, attacker-
+        // suppliable host — neither connecting nor opening happens on a stray
+        // Enter/Escape. The user must choose Connect or Open deliberately.
+        defaultId: 2,
+        cancelId: 2,
+        message: `This share points at ${host}`,
+        detail:
+          `You aren't connected to this GitHub Enterprise Server in OpenKnowledge. ` +
+          `After connecting, open the share link again to receive it.`,
+      };
+      const { response } = parentWindow
+        ? await dialog.showMessageBox(parentWindow, messageBoxOptions)
+        : await dialog.showMessageBox(messageBoxOptions);
+      if (response === 0) {
+        // Connect: land the user on Account settings to sign in to this host
+        // (the PAT panel, since GHES can't use the browser sign-in). The share
+        // isn't received now — they re-open the link once connected. Same drop
+        // as the browser/cancel branches on the receive side.
+        if (parentWindow) {
+          (parentWindow as BrowserWindowLike).webContents.executeJavaScript(
+            "window.location.hash = '#settings/account'; undefined",
+          );
+        } else {
+          // App running with every window closed: open one so Connect isn't a
+          // silent no-op. (Routing that fresh window straight to Account is a
+          // follow-up — it needs the editor renderer + a ready-gate.)
+          openNavigator();
+        }
+        return 'connect';
+      }
+      if (response === 1) {
+        // Route through the outbound-scheme allowlist rather than calling
+        // shell.openExternal directly: sharedUrl comes from an untrusted deep
+        // link, and a non-https scheme (vscode:, ms-msdt:, …) must never reach
+        // the OS protocol handler. Legitimate shares are always https.
+        const check = checkOutboundUrl(sharedUrl);
+        if (!check.ok) {
+          getLogger('share-receive').warn(
+            { host, reason: check.reason },
+            '[receive] refused to open share URL with disallowed scheme',
+          );
+          return 'cancel';
+        }
+        await shell.openExternal(sharedUrl);
+        return 'open-browser';
+      }
+      return 'cancel';
+    },
     // Kind-aware target-existence gate, run after `branch-match-ok` and before
     // dispatch (see `dispatchResolvedShare`). Native synchronous probe — no IPC.
     checkShareTargetExists: (projectPath, kind, path) =>

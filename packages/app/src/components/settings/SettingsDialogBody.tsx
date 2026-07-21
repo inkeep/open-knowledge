@@ -57,6 +57,7 @@ import { PublishToGitHubDialog } from '@/components/PublishToGitHubDialog';
 import {
   formatPausedReason,
   shouldDisableSyncSwitch,
+  shouldOfferReconnect,
   shouldOfferSignInAgain,
 } from '@/components/SyncStatusBadge';
 import { SharingSection } from '@/components/settings/SharingSection';
@@ -991,7 +992,16 @@ function SyncSection() {
                 // already on when probe denied). Replace the standard body copy
                 // with the permission-specific message — the redundant
                 // sectionMessage paragraph below is suppressed in this case.
-                <Trans>Auto-sync is off — you don't have permission to push to this repo</Trans>
+                // "Paused", not "off": the user's preference is still on (the
+                // toggle shows it), sync is just blocked. Signed-out vs genuine
+                // read-only get different remedies.
+                shouldOfferReconnect(status?.pushPermission) ? (
+                  <Trans>Auto-sync is paused — sign in to resume.</Trans>
+                ) : (
+                  <Trans>
+                    Auto-sync is paused — you don't have permission to push to this repo.
+                  </Trans>
+                )
               ) : enabled ? (
                 <Trans>
                   Auto-sync is on — your commits push and remote changes pull on intervals.
@@ -1069,6 +1079,18 @@ function SyncSection() {
             </Button>
           </div>
         )}
+        {shouldOfferReconnect(status?.pushPermission) && (
+          // Signed-out denial ('denied/not-authenticated') — reconnecting
+          // resumes sync (the body copy above reads "sign in to resume"), so
+          // surface the button. Mirrors the popover's reconnect affordance.
+          <div className="mt-2 flex justify-start" data-testid="settings-sync-reconnect">
+            {/* Default size (not xs) to match the None/On/Off toggle row above:
+                both resolve to h-8 / px-2.5 / text-sm. */}
+            <Button variant="outline" onClick={() => setAuthModalOpen(true)}>
+              <Trans>Sign in</Trans>
+            </Button>
+          </div>
+        )}
       </div>
       <div className="rounded-md border p-3 space-y-2" data-testid="settings-sync-default">
         <div className="space-y-0.5">
@@ -1124,6 +1146,10 @@ function SyncSection() {
         open={authModalOpen}
         onOpenChange={setAuthModalOpen}
         onSuccess={() => setAuthModalOpen(false)}
+        // Both affordances that open this modal are expired/signed-out
+        // recoveries (probe-401 "sign in again" and the signed-out reconnect),
+        // never a first connection — title accordingly.
+        reauth
       />
     </section>
   );

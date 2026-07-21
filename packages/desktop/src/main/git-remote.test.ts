@@ -37,6 +37,19 @@ describe('readCanonicalGitHubRemoteUrl (filesystem round-trip)', () => {
     expect(result).toBe('https://github.com/inkeep/open-knowledge.git');
   });
 
+  test('returns a host-qualified canonical url for a GHES origin', () => {
+    // A GHES clone MUST get a gitRemoteUrl (else it never matches a share),
+    // and the host must be preserved so it stays distinct from github.com.
+    const result = withTempProject((projectDir) => {
+      mkdirSync(join(projectDir, '.git'));
+      writeFileSync(
+        join(projectDir, '.git', 'config'),
+        '[remote "origin"]\n\turl = https://ghes.acme.test/acme/kb.git\n',
+      );
+    });
+    expect(result).toBe('https://ghes.acme.test/acme/kb.git');
+  });
+
   test('returns null when .git/config is absent (not a git repo)', () => {
     const result = withTempProject(() => {
       // No .git directory at all.

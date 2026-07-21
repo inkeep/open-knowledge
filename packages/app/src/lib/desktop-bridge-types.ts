@@ -343,6 +343,8 @@ interface OkUpdateStuckHintInfo {
 /** Local copy — see canonical `OkSharePayloadFields` in
  *  `packages/desktop/src/shared/bridge-contract.ts`. */
 export interface OkSharePayloadFields {
+  /** GitHub host of the shared repo: `github.com` or a GHES hostname. */
+  readonly host: string;
   readonly owner: string;
   readonly repo: string;
   readonly branch: string;
@@ -390,6 +392,7 @@ export type ShareFolderValidationResult =
   | { readonly kind: 'not-git' }
   | { readonly kind: 'no-origin' }
   | { readonly kind: 'wrong-repo'; readonly actualOwner: string; readonly actualRepo: string }
+  | { readonly kind: 'wrong-host'; readonly actualHost: string }
   | { readonly kind: 'non-github' }
   | { readonly kind: 'symlink-escape' };
 
@@ -672,8 +675,10 @@ export type OkLocalOpAuthStatusResponse =
       tier?: 'A' | 'B' | 'C';
       name?: string;
       email?: string;
+      /** Whether the gh CLI is installed (offer "Sign in with gh" for GHES). */
+      ghAvailable?: boolean;
     }
-  | { authenticated: false; host: string; error?: string };
+  | { authenticated: false; host: string; error?: string; ghAvailable?: boolean };
 
 interface OkLocalOpRepoEntry {
   full_name: string;
@@ -1373,6 +1378,7 @@ export interface OkDesktopBridge {
   share: {
     validateLocalFolder(args: {
       folderPath: string;
+      host: string;
       owner: string;
       repo: string;
     }): Promise<ShareFolderValidationResult>;

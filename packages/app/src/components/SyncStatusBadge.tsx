@@ -179,9 +179,16 @@ export function formatPausedReason(reason: string): string {
  * copy as a user whose engine paused after enabling sync.
  */
 export function formatPushPermissionDenied(
-  reason: 'no-collaborator' | 'private-no-access' | 'repo-not-found' | undefined,
+  reason:
+    | 'no-collaborator'
+    | 'private-no-access'
+    | 'repo-not-found'
+    | 'not-authenticated'
+    | undefined,
 ): string {
   switch (reason) {
+    case 'not-authenticated':
+      return t`You're signed out — sign in to resume syncing.`;
     case 'no-collaborator':
       return t`You don't have permission to push to this repo`;
     case 'private-no-access':
@@ -191,6 +198,18 @@ export function formatPushPermissionDenied(
     default:
       return t`You don't have permission to push to this repo`;
   }
+}
+
+/**
+ * Whether the push-permission denial is a *signed-out* one (no credential
+ * resolved), which a reconnect fixes — as opposed to a genuine read-only
+ * collaborator, where re-auth won't help. Drives the "Connect" affordance on
+ * the otherwise button-less denied surfaces.
+ */
+export function shouldOfferReconnect(pushPermission: PushPermissionWire | undefined): boolean {
+  return (
+    pushPermission?.checkStatus === 'denied' && pushPermission.deniedReason === 'not-authenticated'
+  );
 }
 
 /**
@@ -463,7 +482,23 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
           )}
         </p>
       ))}
-      {status.pausedReason ? (
+      {shouldOfferReconnect(status.pushPermission) ? (
+        // Signed-out denial (no credential resolved) — reconnecting resumes
+        // sync, so offer it here. Takes precedence over the button-less
+        // `pausedReason`/`denied` branches below, which is exactly the stuck
+        // state (sync was enabled, then the credential went away). The genuine
+        // read-only-collaborator denial keeps the button-less copy.
+        <div className="flex items-start gap-2">
+          <p className="text-xs text-muted-foreground flex-1 min-w-0">
+            <Trans>You're signed out — sign in to resume syncing.</Trans>
+          </p>
+          {onSignIn && (
+            <Button variant="outline" size="xs" className="self-start" onClick={onSignIn}>
+              <Trans>Sign in</Trans>
+            </Button>
+          )}
+        </div>
+      ) : status.pausedReason ? (
         <p className="text-xs text-muted-foreground">{formatPausedReason(status.pausedReason)}</p>
       ) : status.pushPermission?.checkStatus === 'denied' ? (
         <p className="text-xs text-muted-foreground">
@@ -574,7 +609,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
           )}
         {enabled && status.state === 'auth-error' && (
           <Button variant="outline" size="xs" onClick={onSignIn}>
-            <Trans>Connect GitHub</Trans>
+            <Trans>Sign in</Trans>
           </Button>
         )}
         {enabled && status.state === 'offline' && (
@@ -605,7 +640,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
 // ── public component ──────────────────────────────────────────────────────────
 
 interface SyncStatusBadgeProps {
-  /** Called when "Connect GitHub" is clicked in the auth-error popover or enable-sync prompt. */
+  /** Called when "Sign in" is clicked in the auth-error popover or enable-sync prompt. */
   onSignIn?: () => void;
   /** Called when "Set identity" is clicked in the identity-unresolved nudge. */
   onSetIdentity?: () => void;

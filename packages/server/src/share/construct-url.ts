@@ -65,6 +65,7 @@ export function isValidSharePath(path: string, kind: 'doc' | 'folder'): boolean 
  * remains a separator there.
  */
 export function buildGitHubBlobUrl(
+  host: string,
   owner: string,
   repo: string,
   branch: string,
@@ -72,7 +73,7 @@ export function buildGitHubBlobUrl(
 ): string {
   const encodedBranch = encodeURIComponent(branch);
   const encodedSegments = docPath.split('/').map(encodeURIComponent).join('/');
-  return `https://github.com/${owner}/${repo}/blob/${encodedBranch}/${encodedSegments}`;
+  return `https://${host}/${owner}/${repo}/blob/${encodedBranch}/${encodedSegments}`;
 }
 
 /**
@@ -87,13 +88,14 @@ export function buildGitHubBlobUrl(
  * accepts that root shape and yields `path: ''`.
  */
 export function buildGitHubTreeUrl(
+  host: string,
   owner: string,
   repo: string,
   branch: string,
   folderPath: string,
 ): string {
   const encodedBranch = encodeURIComponent(branch);
-  const base = `https://github.com/${owner}/${repo}/tree/${encodedBranch}`;
+  const base = `https://${host}/${owner}/${repo}/tree/${encodedBranch}`;
   if (folderPath === '') return base;
   const encodedSegments = folderPath.split('/').map(encodeURIComponent).join('/');
   return `${base}/${encodedSegments}`;

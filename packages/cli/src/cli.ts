@@ -14,9 +14,14 @@ if (process.argv.includes('--no-color')) {
   delete process.env.NO_COLOR;
 }
 
+// Trust the OS certificate store before any TLS work: a GitHub Enterprise Server
+// on a self-signed or internal-CA cert (already trusted by git) must work for
+// the CLI's Node/undici API calls rather than failing as "Token invalid".
+trustSystemCertificates();
+
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
-import { type Config, ConfigSchema } from '@inkeep/open-knowledge-server';
+import { type Config, ConfigSchema, trustSystemCertificates } from '@inkeep/open-knowledge-server';
 /**
  * CLI entry point for @inkeep/open-knowledge.
  *

@@ -19,3 +19,16 @@ export const KNOWN_NON_GITHUB_GIT_HOSTS: ReadonlySet<string> = new Set([
   'sr.ht',
   'sourcehut.org',
 ]);
+
+/**
+ * Classify a git host for share purposes: lowercase, fold `www.github.com` to
+ * `github.com`, and reject known non-GitHub forges. Returns the normalized
+ * host (github.com or a presumed-GHES hostname) or `null` for a forge we know
+ * isn't GitHub. Single source of truth for the share URL parsers, the folder
+ * validator, and the desktop git-remote canonicalizer.
+ */
+export function classifyGitHubShareHost(hostname: string): string | null {
+  const host = hostname.toLowerCase();
+  const folded = host === 'www.github.com' ? 'github.com' : host;
+  return KNOWN_NON_GITHUB_GIT_HOSTS.has(folded) ? null : folded;
+}

@@ -288,6 +288,8 @@ type ShareTarget =
 /** Local copy — see canonical `OkSharePayloadFields` in
  *  `packages/desktop/src/shared/bridge-contract.ts`. */
 interface OkSharePayloadFields {
+  /** GitHub host of the shared repo: `github.com` or a GHES hostname. */
+  readonly host: string;
   readonly owner: string;
   readonly repo: string;
   readonly branch: string;
@@ -335,6 +337,7 @@ type ShareFolderValidationResult =
   | { readonly kind: 'not-git' }
   | { readonly kind: 'no-origin' }
   | { readonly kind: 'wrong-repo'; readonly actualOwner: string; readonly actualRepo: string }
+  | { readonly kind: 'wrong-host'; readonly actualHost: string }
   | { readonly kind: 'non-github' }
   | { readonly kind: 'symlink-escape' };
 

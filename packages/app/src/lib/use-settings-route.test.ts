@@ -48,6 +48,20 @@ describe('isSettingsHashOpen', () => {
     expect(settingsHashSection('#settings/')).toBeNull();
     expect(settingsHashSection('#settings')).toBeNull();
   });
+
+  test('`#settings/account` (the trust-gate Connect target) → true', () => {
+    expect(isSettingsHashOpen('#settings/account')).toBe(true);
+  });
+});
+
+describe('settingsHashSection', () => {
+  test('`#settings/account` (the trust-gate Connect target) → "account"', () => {
+    expect(settingsHashSection('#settings/account')).toBe('account');
+  });
+
+  test('non-settings hash → null', () => {
+    expect(settingsHashSection('#/some-doc')).toBeNull();
+  });
 });
 
 describe('SETTINGS_OPEN_HASH', () => {

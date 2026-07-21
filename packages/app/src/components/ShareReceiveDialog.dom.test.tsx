@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkShareReceivedPayload } from '@/lib/desktop-bridge-types';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
@@ -10,7 +10,7 @@ function createTestStore(initial: SharePayload) {
   let current = initial;
   const listeners = new Set<() => void>();
   return {
-    dismiss: mock(() => {
+    dismiss: vi.fn(() => {
       current = null;
       for (const listener of listeners) listener();
     }),
@@ -33,6 +33,7 @@ function okPayload(
   return {
     kind: 'launcher-miss',
     share: {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
       branch: 'main',
@@ -44,24 +45,24 @@ function okPayload(
 }
 
 const toast = {
-  error: mock((_message: string, _opts?: unknown) => {}),
-  info: mock((_message: string, _opts?: unknown) => {}),
-  success: mock((_message: string, _opts?: unknown) => {}),
+  error: vi.fn((_message: string, _opts?: unknown) => {}),
+  info: vi.fn((_message: string, _opts?: unknown) => {}),
+  success: vi.fn((_message: string, _opts?: unknown) => {}),
 };
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast,
 }));
 
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button: ({
     children,
     className: _className,
@@ -79,7 +80,7 @@ mock.module('@/components/ui/button', () => ({
   ),
 }));
 
-mock.module('@/components/ui/dialog', () => ({
+vi.doMock('@/components/ui/dialog', () => ({
   Dialog: ({ children, open }: { children?: ReactNode; open?: boolean }) =>
     open ? <div data-testid="dialog-root">{children}</div> : null,
   DialogBody: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
@@ -109,15 +110,15 @@ function createBridge() {
     __folderPicks: folderPicks,
     __validationResults: validationResults,
     dialog: {
-      openFolder: mock(() => Promise.resolve(folderPicks.shift() ?? null)),
+      openFolder: vi.fn(() => Promise.resolve(folderPicks.shift() ?? null)),
     },
     navigator: {
-      open: mock(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
     },
     project: {
-      awaitBranchSwitched: mock(() => Promise.resolve({ ok: true as const })),
-      checkDocExists: mock(() => Promise.resolve('exists')),
-      fetchBranchInfo: mock(() =>
+      awaitBranchSwitched: vi.fn(() => Promise.resolve({ ok: true as const })),
+      checkDocExists: vi.fn(() => Promise.resolve('exists')),
+      fetchBranchInfo: vi.fn(() =>
         Promise.resolve({
           branchIsLocal: true,
           currentBranch: 'main',
@@ -127,15 +128,15 @@ function createBridge() {
           shareFileExists: true,
         }),
       ),
-      listRecent: mock(() => Promise.resolve([])),
-      open: mock(() => Promise.resolve()),
-      readHeadBranch: mock(() =>
+      listRecent: vi.fn(() => Promise.resolve([])),
+      open: vi.fn(() => Promise.resolve()),
+      readHeadBranch: vi.fn(() =>
         Promise.resolve({ currentBranch: 'main', detached: false, headSha: null }),
       ),
-      runCheckout: mock(() => Promise.resolve({ ok: true as const })),
+      runCheckout: vi.fn(() => Promise.resolve({ ok: true as const })),
     },
     share: {
-      validateLocalFolder: mock(() =>
+      validateLocalFolder: vi.fn(() =>
         Promise.resolve(validationResults.shift() ?? { kind: 'ok', gitRemoteUrl: '' }),
       ),
     },
@@ -167,13 +168,13 @@ async function renderDialog({
 }
 
 describe('ShareReceiveDialog runtime behavior', () => {
-  let consoleLogSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     for (const fn of [toast.error, toast.info, toast.success]) fn.mockClear();
-    consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {});
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -189,9 +190,9 @@ describe('ShareReceiveDialog runtime behavior', () => {
 
   test('clone failure leaves the dialog mounted and the sign-in affordance visible', async () => {
     const cloneController = {
-      getAuthStatus: mock(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
-      runClone: mock(() => Promise.resolve({ kind: 'error' })),
-      startSignIn: mock(() => Promise.resolve(null)),
+      getAuthStatus: vi.fn(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
+      runClone: vi.fn(() => Promise.resolve({ kind: 'error' })),
+      startSignIn: vi.fn(() => Promise.resolve(null)),
     };
 
     await renderDialog({ cloneController });
@@ -213,8 +214,8 @@ describe('ShareReceiveDialog runtime behavior', () => {
 
   test('clone failure surfaces a persistent in-dialog error view with the GitHub error, reasons, and recovery', async () => {
     const cloneController = {
-      getAuthStatus: mock(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
-      runClone: mock(() =>
+      getAuthStatus: vi.fn(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
+      runClone: vi.fn(() =>
         Promise.resolve({
           kind: 'error',
           detail: [
@@ -224,7 +225,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
           ].join('\n'),
         }),
       ),
-      startSignIn: mock(() => Promise.resolve(null)),
+      startSignIn: vi.fn(() => Promise.resolve(null)),
     };
 
     await renderDialog({ cloneController });
@@ -269,9 +270,9 @@ describe('ShareReceiveDialog runtime behavior', () => {
 
   test('clone error with no detail omits the error-message line but still shows the error view', async () => {
     const cloneController = {
-      getAuthStatus: mock(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
-      runClone: mock(() => Promise.resolve({ kind: 'error' })),
-      startSignIn: mock(() => Promise.resolve(null)),
+      getAuthStatus: vi.fn(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
+      runClone: vi.fn(() => Promise.resolve({ kind: 'error' })),
+      startSignIn: vi.fn(() => Promise.resolve(null)),
     };
 
     await renderDialog({ cloneController });
@@ -290,14 +291,14 @@ describe('ShareReceiveDialog runtime behavior', () => {
   test('"Try again" clears the error view and re-invokes the clone', async () => {
     let call = 0;
     const cloneController = {
-      getAuthStatus: mock(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
-      runClone: mock(() => {
+      getAuthStatus: vi.fn(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
+      runClone: vi.fn(() => {
         call += 1;
         return Promise.resolve(
           call === 1 ? { kind: 'error', detail: 'boom' } : { kind: 'cancelled' },
         );
       }),
-      startSignIn: mock(() => Promise.resolve(null)),
+      startSignIn: vi.fn(() => Promise.resolve(null)),
     };
 
     await renderDialog({ cloneController });
@@ -317,9 +318,9 @@ describe('ShareReceiveDialog runtime behavior', () => {
   test('error view "I already have it locally" clears the error and opens the folder picker', async () => {
     const bridge = createBridge(); // openFolder returns null by default (user cancels)
     const cloneController = {
-      getAuthStatus: mock(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
-      runClone: mock(() => Promise.resolve({ kind: 'error', detail: 'boom' })),
-      startSignIn: mock(() => Promise.resolve(null)),
+      getAuthStatus: vi.fn(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
+      runClone: vi.fn(() => Promise.resolve({ kind: 'error', detail: 'boom' })),
+      startSignIn: vi.fn(() => Promise.resolve(null)),
     };
 
     await renderDialog({ bridge, cloneController });
@@ -348,13 +349,50 @@ describe('ShareReceiveDialog runtime behavior', () => {
     expect(screen.queryByTestId('share-receive-dialog')).toBeNull();
   });
 
+  test('GHES miss: the auth banner shows the identity for the share host, not github.com', async () => {
+    const store = createTestStore(
+      okPayload({
+        host: 'ghes.acme.test',
+        owner: 'acme',
+        repo: 'kb',
+        sharedUrl: 'https://ghes.acme.test/acme/kb/blob/main/README.md',
+      }),
+    );
+    const seenHosts: Array<string | undefined> = [];
+    const cloneController = {
+      getAuthStatus: vi.fn((host?: string) => {
+        seenHosts.push(host);
+        // The enterprise host knows you as omar-acme; github.com would be a
+        // different account. The dialog must probe (and show) the share host.
+        return Promise.resolve(
+          host === 'ghes.acme.test'
+            ? { authenticated: true, host, login: 'omar-acme' }
+            : { authenticated: true, host: 'github.com', login: 'omar-inkeep' },
+        );
+      }),
+      runClone: vi.fn(() => Promise.resolve({ kind: 'ok', dir: '/cloned/kb' })),
+      startSignIn: vi.fn(() => Promise.resolve(null)),
+    };
+
+    await renderDialog({ cloneController, store });
+
+    expect(await screen.findByTestId('share-receive-dialog')).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByTestId('share-receive-auth-banner').textContent).toContain('omar-acme'),
+    );
+    expect(screen.getByTestId('share-receive-auth-banner').textContent).not.toContain(
+      'omar-inkeep',
+    );
+    expect(seenHosts).toEqual(['ghes.acme.test']);
+  });
+
   test('Q2 miss renders metadata, anonymous clone without sign-in, sign-in affordance, clone success, and local picker recovery', async () => {
     const bridge = createBridge();
     const store = createTestStore(okPayload({ branch: 'feat/share' }));
     const cloneController = {
-      getAuthStatus: mock(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
-      runClone: mock(() => Promise.resolve({ kind: 'ok', dir: '/cloned/open-knowledge' })),
-      startSignIn: mock(() =>
+      getAuthStatus: vi.fn(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
+      runClone: vi.fn(() => Promise.resolve({ kind: 'ok', dir: '/cloned/open-knowledge' })),
+      startSignIn: vi.fn(() =>
         Promise.resolve({ authenticated: true, host: 'github.com', login: 'alice' }),
       ),
     };
@@ -415,7 +453,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
     // surface rather than open the doc directly on the wrong branch.
     await waitFor(() => expect(bridge.project.readHeadBranch).toHaveBeenCalledWith('/right'));
     await waitFor(() => {
-      const openArg = (bridge.project.open as ReturnType<typeof mock>).mock.calls.at(-1)?.[0] as {
+      const openArg = (bridge.project.open as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as {
         path?: string;
         pendingDeepLinkTarget?: unknown;
         pendingShareBranchSwitch?: { projectPath?: string; currentBranch?: string | null };
@@ -453,7 +491,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
     // editor window mounts ShareBranchSwitchDialog), NOT a plain deep-link open
     // on the current branch.
     await waitFor(() => expect(bridge.project.open).toHaveBeenCalled());
-    const openArg = (bridge.project.open as ReturnType<typeof mock>).mock.calls.at(-1)?.[0] as {
+    const openArg = (bridge.project.open as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as {
       path?: string;
       pendingDeepLinkTarget?: unknown;
       pendingShareBranchSwitch?: {
@@ -497,7 +535,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
     fireEvent.click(screen.getByTestId('share-receive-local'));
 
     await waitFor(() => expect(bridge.project.open).toHaveBeenCalled());
-    const openArg = (bridge.project.open as ReturnType<typeof mock>).mock.calls.at(-1)?.[0] as {
+    const openArg = (bridge.project.open as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as {
       pendingDeepLinkTarget?: unknown;
       pendingShareBranchSwitch?: unknown;
     };
@@ -517,7 +555,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
       gitRemoteUrl: 'https://github.com/inkeep/open-knowledge.git',
     });
     // Detached HEAD is not on the share's branch -> route to the switch surface.
-    bridge.project.readHeadBranch = mock(() =>
+    bridge.project.readHeadBranch = vi.fn(() =>
       Promise.resolve({ currentBranch: null, detached: true, headSha: '1234567' }),
     );
 
@@ -527,7 +565,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
     fireEvent.click(screen.getByTestId('share-receive-local'));
 
     await waitFor(() => expect(bridge.project.open).toHaveBeenCalled());
-    const openArg = (bridge.project.open as ReturnType<typeof mock>).mock.calls.at(-1)?.[0] as {
+    const openArg = (bridge.project.open as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as {
       pendingDeepLinkTarget?: unknown;
       pendingShareBranchSwitch?: {
         currentBranch?: string | null;
@@ -554,7 +592,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
     // Graceful-fail sentinel (missing / unreadable .git/HEAD): classify as a
     // match so a single broken clone never forces a needless branch-switch
     // prompt — symmetric with the recents path's silent dispatch.
-    bridge.project.readHeadBranch = mock(() =>
+    bridge.project.readHeadBranch = vi.fn(() =>
       Promise.resolve({ currentBranch: null, detached: false, headSha: null }),
     );
 
@@ -564,7 +602,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
     fireEvent.click(screen.getByTestId('share-receive-local'));
 
     await waitFor(() => expect(bridge.project.open).toHaveBeenCalled());
-    const openArg = (bridge.project.open as ReturnType<typeof mock>).mock.calls.at(-1)?.[0] as {
+    const openArg = (bridge.project.open as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as {
       pendingDeepLinkTarget?: unknown;
       pendingShareBranchSwitch?: unknown;
     };
@@ -589,7 +627,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
     fireEvent.click(screen.getByTestId('share-receive-local'));
 
     await waitFor(() => expect(bridge.project.open).toHaveBeenCalled());
-    const openArg = (bridge.project.open as ReturnType<typeof mock>).mock.calls.at(-1)?.[0] as {
+    const openArg = (bridge.project.open as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as {
       pendingDeepLinkTarget?: unknown;
       pendingShareBranchSwitch?: unknown;
     };
@@ -609,7 +647,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
     // Distinct from the graceful-fail sentinel (a resolved all-null value):
     // an IPC-transport rejection hits the catch, which leaves the all-null
     // sentinel in place -> classifies as a match -> plain open, never a dead end.
-    bridge.project.readHeadBranch = mock(() => Promise.reject(new Error('ipc channel closed')));
+    bridge.project.readHeadBranch = vi.fn(() => Promise.reject(new Error('ipc channel closed')));
 
     await renderDialog({ bridge, store });
 
@@ -617,7 +655,7 @@ describe('ShareReceiveDialog runtime behavior', () => {
     fireEvent.click(screen.getByTestId('share-receive-local'));
 
     await waitFor(() => expect(bridge.project.open).toHaveBeenCalled());
-    const openArg = (bridge.project.open as ReturnType<typeof mock>).mock.calls.at(-1)?.[0] as {
+    const openArg = (bridge.project.open as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as {
       pendingDeepLinkTarget?: unknown;
       pendingShareBranchSwitch?: unknown;
     };

@@ -66,7 +66,12 @@ export const PushPermissionSchema = z.discriminatedUnion('checkStatus', [
   z
     .object({
       checkStatus: z.literal('denied'),
-      deniedReason: z.enum(['no-collaborator', 'private-no-access', 'repo-not-found']),
+      deniedReason: z.enum([
+        'no-collaborator',
+        'private-no-access',
+        'repo-not-found',
+        'not-authenticated',
+      ]),
     })
     .loose(),
   z

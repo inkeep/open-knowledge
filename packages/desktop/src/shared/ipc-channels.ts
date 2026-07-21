@@ -229,6 +229,8 @@ interface ProjectOpenRequest {
 /** Folder-validation request + result for IPC `ok:share:validate-folder`. */
 interface ShareValidateFolderRequest {
   readonly folderPath: string;
+  /** GitHub host the share targets: `github.com` or a GHES hostname. */
+  readonly host: string;
   readonly owner: string;
   readonly repo: string;
 }
@@ -238,6 +240,7 @@ type ShareValidateFolderResult =
   | { readonly kind: 'not-git' }
   | { readonly kind: 'no-origin' }
   | { readonly kind: 'wrong-repo'; readonly actualOwner: string; readonly actualRepo: string }
+  | { readonly kind: 'wrong-host'; readonly actualHost: string }
   | { readonly kind: 'non-github' }
   | { readonly kind: 'symlink-escape' };
 

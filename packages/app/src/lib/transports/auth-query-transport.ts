@@ -81,6 +81,10 @@ async function requestAuthStatus(request?: {
   }
   const data = (await res.json()) as Record<string, unknown>;
   const h = typeof data.host === 'string' ? data.host : host;
+  // Whether the server found a usable gh CLI. Carried on both the connected and
+  // disconnected responses — the disconnected case is exactly when the AuthModal
+  // needs it, to decide whether to offer "Sign in with gh" on an enterprise host.
+  const ghAvailable = data.ghAvailable === true;
   if (data.authenticated === true && typeof data.login === 'string') {
     // Mirror the whitelist in auth-query.ts so the HTTP and IPC paths
     // surface `tier` consistently — without this, only IPC carries it.
@@ -93,12 +97,14 @@ async function requestAuthStatus(request?: {
       tier,
       name: typeof data.name === 'string' ? data.name : undefined,
       email: typeof data.email === 'string' ? data.email : undefined,
+      ghAvailable,
     };
   }
   return {
     authenticated: false,
     host: h,
     error: typeof data.error === 'string' ? data.error : undefined,
+    ghAvailable,
   };
 }
 

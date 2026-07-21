@@ -55,7 +55,7 @@ export function SplashShareView({ encoded, view }: { encoded: string; view: OkSp
               </svg>
             </a>
           </h1>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mt-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mt-8">
             <a
               href={view.githubUrl}
               target="_blank"
@@ -77,6 +77,15 @@ export function SplashShareView({ encoded, view }: { encoded: string; view: OkSp
                 <span className="font-medium">{view.branch}</span>
               </p>
             )}
+
+            {view.isEnterpriseHost ? (
+              <p
+                className="inline-flex w-fit items-center gap-1.5 rounded bg-slide-muted/10 px-2 py-0.5 text-sm text-slide-muted"
+                data-testid="splash-enterprise-host"
+              >
+                GitHub Enterprise Server · <span className="font-medium">{view.host}</span>
+              </p>
+            ) : null}
           </div>
           <SplashCtaPanel
             downloadUrl={`/d/${encoded}/download`}

@@ -4,6 +4,16 @@
  * Device Flow: shows user_code, polls for completion, 2-minute timeout.
  * Calls POST /api/local-op/auth/login (streaming JSONL).
  *
+ * Entry patterns (what happens on open):
+ *   1. Caller-supplied `host` — no probe; the step resolves directly from the
+ *      host (enterprise → PAT / gh-device, github.com → device flow). Used by
+ *      known-host contexts, e.g. the share-receive trust gate.
+ *   2. `identityPrompt` — probes to decide whether sign-in can be skipped (see
+ *      below).
+ *   3. Neither — probes `/auth/status` for host discovery: a non-github.com
+ *      sync host resolves the step to 'pat' (GHES), github.com to the device
+ *      flow. The "Checking sign-in status" spinner is this probe.
+ *
  * Variant props:
  *   identityPrompt — when true, this is the "set git identity" entry point (the
  *                    sync popover's "Set identity" nudge). An already-signed-in
@@ -12,7 +22,8 @@
  *                    user is NOT authenticated (then it falls back to sign-in,
  *                    showing the identity fields after success). Setting git
  *                    identity does not require re-authenticating.
- *   reauth        — when true, shows "Re-authenticate" heading instead of "Connect".
+ *   reauth        — when true, shows "Re-authenticate" heading instead of "Connect"
+ *                    (host-accurate: the GHES steps get the Enterprise variant).
  *
  * On success: calls onSuccess({ login, name, avatarUrl }) and closes.
  *
@@ -32,7 +43,11 @@ import {
   type AuthQueryTransport,
   httpAuthQueryTransport,
 } from '@/lib/transports/auth-query-transport';
-import { type AuthTransport, httpAuthTransport } from '@/lib/transports/auth-transport';
+import {
+  type AuthTransport,
+  type AuthTransportHandle,
+  httpAuthTransport,
+} from '@/lib/transports/auth-transport';
 import { Button } from './ui/button';
 import {
   Dialog,
@@ -82,18 +97,37 @@ interface AuthModalProps {
    * path (POST /api/local-op/auth/status). Injectable for tests.
    */
   queryTransport?: AuthQueryTransport;
+  /**
+   * The GitHub host to connect. When it's a non-github.com host (a GitHub
+   * Enterprise Server), the modal shows the Personal Access Token panel instead
+   * of the OAuth device flow (which only works on github.com). Absent/github.com
+   * keeps the device flow.
+   */
+  host?: string;
+  /**
+   * Whether the gh CLI is installed (from the auth-status probe). When true and
+   * `host` is enterprise, the connect panel offers "Continue in browser" (gh
+   * flow) as the primary path, with the PAT field as the fallback.
+   */
+  ghAvailable?: boolean;
 }
 
 // ── Device Flow panel ─────────────────────────────────────────────────────────
 
 interface DeviceFlowPanelProps {
   onSuccess: (result: AuthSuccessResult) => void;
-  transport: AuthTransport;
+  /**
+   * Opens the streaming flow (verification → complete/error). Injected so the
+   * same panel drives both OK's own device flow (`transport.start`) and the
+   * gh-CLI browser flow (`transport.ghLogin`) — identical event shape, different
+   * endpoint.
+   */
+  startFlow: () => AuthTransportHandle;
 }
 
 const DEVICE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
-function DeviceFlowPanel({ onSuccess, transport }: DeviceFlowPanelProps) {
+function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
   const { t } = useLingui();
   const [userCode, setUserCode] = useState<string | null>(null);
   const [verificationUri, setVerificationUri] = useState('https://github.com/login/device');
@@ -106,7 +140,7 @@ function DeviceFlowPanel({ onSuccess, transport }: DeviceFlowPanelProps) {
   async function startDeviceFlow() {
     setError(null);
     try {
-      const handle = transport.start();
+      const handle = startFlow();
       cancelRef.current = handle.cancel;
       // Manual iterator drive — React Compiler (BuildHIR) does not yet
       // support `for await ... of` lowering, so we walk the iterator with
@@ -302,11 +336,115 @@ function IdentityBody({ login, name, onNameChange, email, onEmailChange }: Ident
   );
 }
 
+// ── PAT (enterprise) panel ────────────────────────────────────────────────────
+// Presentational token field for the GHES sign-in path. Token + submit state
+// live in the main modal so the footer "Connect" button can drive them.
+
+interface PatBodyProps {
+  host: string;
+  token: string;
+  onTokenChange: (value: string) => void;
+  error: string | null;
+  onSubmit: () => void;
+  /** Show "Continue in browser" as the primary path (gh is installed). */
+  showGhOption: boolean;
+  /** Start the gh browser sign-in (transition to the gh device step). */
+  onGhSignIn: () => void;
+}
+
+function PatBody({
+  host,
+  token,
+  onTokenChange,
+  error,
+  onSubmit,
+  showGhOption,
+  onGhSignIn,
+}: PatBodyProps) {
+  const { t } = useLingui();
+  const createUrl = `https://${host}/settings/tokens/new?scopes=repo,read:user&description=OpenKnowledge`;
+  return (
+    <div className="flex flex-col gap-3">
+      {showGhOption ? (
+        <>
+          {/* Primary path when gh is installed: browser sign-in, no token.
+              Labeled by outcome ("browser"), not the gh implementation detail. */}
+          <Button type="button" onClick={onGhSignIn}>
+            <Trans>Continue in browser</Trans>
+          </Button>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            <Trans>or paste a token</Trans>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          <Trans>
+            Paste a personal access token for{' '}
+            <span className="font-medium text-foreground">{host}</span>.
+          </Trans>
+        </p>
+      )}
+      <a
+        href={createUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => dispatchExternalLinkClick(e, createUrl)}
+        onAuxClick={(e) => dispatchExternalLinkClick(e, createUrl)}
+        className="inline-flex w-fit items-center gap-0.5 text-sm text-foreground hover:text-primary hover:underline"
+      >
+        <Trans>Create a token on {host}</Trans>
+        <ArrowUpRight className="inline size-3.5" aria-hidden />
+      </a>
+      {/* The create-link pre-selects these scopes, but a manually created or
+          pre-existing token won't have gone through it — name them so a
+          wrong-scope 403 isn't the first hint. */}
+      <p className="text-xs text-muted-foreground">
+        <Trans>The token needs the repo and read:user scopes.</Trans>
+      </p>
+      <Input
+        type="password"
+        aria-label={t`Personal access token`}
+        placeholder="ghp_"
+        value={token}
+        onChange={(e) => onTokenChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onSubmit();
+        }}
+      />
+      {error && <p className="text-1sm text-destructive">{error}</p>}
+      {/* gh-absent only: point the user at the browser path without pushing it.
+          The steps are honest because the server re-probes for gh on each
+          status check (see cachedGhBinaryPath) and AccountSection re-probes when
+          this dialog closes — so reopening it after installing gh shows the
+          "Continue in browser" button. */}
+      {!showGhOption && (
+        <div className="mt-1 rounded-md border border-border/60 bg-muted/40 p-3 text-sm text-muted-foreground">
+          <p>
+            <Trans>Or to use browser sign-in instead:</Trans>
+          </p>
+          <ol className="mt-1.5 list-decimal space-y-0.5 pl-5">
+            <li>
+              <Trans>Install the gh CLI</Trans>
+            </li>
+            <li>
+              <Trans>Reopen this window to sign in with your browser</Trans>
+            </li>
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main modal ────────────────────────────────────────────────────────────────
 
 // `checking` is the brief on-open auth-status probe for the identityPrompt
-// path (deciding skip-to-identity vs fall-back-to-device-flow).
-type AuthStep = 'checking' | 'auth' | 'identity' | 'done';
+// path (deciding skip-to-identity vs fall-back-to-device-flow). `pat` is the
+// enterprise (non-github.com) sign-in path — a token field instead of the
+// device flow, which GHES can't use.
+type AuthStep = 'checking' | 'auth' | 'pat' | 'gh-device' | 'identity' | 'done';
 
 // Upper bound on the on-open status probe. The relay is localhost and answers
 // near-instantly when healthy, but the HTTP transport's `fetch` has no timeout
@@ -323,6 +461,8 @@ export function AuthModal({
   reauth,
   transport,
   queryTransport,
+  host,
+  ghAvailable,
 }: AuthModalProps) {
   const { t } = useLingui();
   // Default to the HTTP path so existing editor / web callers don't need
@@ -336,6 +476,27 @@ export function AuthModal({
   const [idName, setIdName] = useState('');
   const [idEmail, setIdEmail] = useState('');
 
+  // Enterprise (PAT) sign-in state, lifted so the footer "Connect" can read it.
+  const [patToken, setPatToken] = useState('');
+  const [patError, setPatError] = useState<string | null>(null);
+  const [patSubmitting, setPatSubmitting] = useState(false);
+  // When a caller doesn't pass `host` (e.g. the editor's "Reconnect required"
+  // affordance), we probe auth-status on open to discover it — otherwise every
+  // host-less entry point would default to the github.com device flow, which
+  // FAILS on GHES (OK's OAuth app isn't registered there). The probed values
+  // back-fill the props; a passed prop always wins.
+  const [probedHost, setProbedHost] = useState<string | undefined>(undefined);
+  const [probedGhAvailable, setProbedGhAvailable] = useState<boolean | undefined>(undefined);
+  const effectiveHost = host ?? probedHost;
+  const effectiveGhAvailable = ghAvailable ?? probedGhAvailable;
+  const isEnterpriseHost = !!effectiveHost && effectiveHost !== 'github.com';
+  // gh's browser sign-in works on GHES (its OAuth app is preregistered) where
+  // OK's device flow can't. Offer it as the primary path when gh is installed.
+  const canUseGh =
+    isEnterpriseHost && !!effectiveGhAvailable && typeof resolvedTransport.ghLogin === 'function';
+  // Sign-in path with no caller-supplied host → probe first (shows 'checking').
+  const needsHostProbe = !identityPrompt && host === undefined;
+
   // Synchronous step decision in a layout effect so it commits BEFORE the
   // browser paints. In a passive effect the first painted frame would show the
   // stale `step` (often 'auth', since this modal stays mounted and `step`
@@ -346,10 +507,23 @@ export function AuthModal({
     setAuthResult(null);
     setIdName('');
     setIdEmail('');
-    // Sign-in path: device flow as before. Set-identity path: show the probe
-    // spinner; the async effect below resolves it to 'identity' or 'auth'.
-    setStep(identityPrompt ? 'checking' : 'auth');
-  }, [open, identityPrompt]);
+    setPatToken('');
+    setPatError(null);
+    setPatSubmitting(false);
+    setProbedHost(undefined);
+    setProbedGhAvailable(undefined);
+    // Set-identity path OR a host-less sign-in: show the probe spinner; the
+    // async effect below resolves it to 'identity' / 'pat' / 'auth'. Host known
+    // and enterprise → straight to the PAT panel (GHES can't use the device
+    // flow). Host known and github.com → the device flow.
+    //
+    // Decide from the PROP host, never `isEnterpriseHost` (which folds in the
+    // *probed* host): depending on the derived value would re-run this effect
+    // when the probe resolves, which resets `probedHost` and bounces the step
+    // back to 'checking' — an infinite "Checking sign-in status" loop.
+    const propEnterpriseHost = !!host && host !== 'github.com';
+    setStep(identityPrompt || needsHostProbe ? 'checking' : propEnterpriseHost ? 'pat' : 'auth');
+  }, [open, identityPrompt, host, needsHostProbe]);
 
   // Set-identity path only: probe auth status to decide skip-to-identity vs
   // fall-back-to-device-flow. The user reached this from the "git identity
@@ -399,6 +573,41 @@ export function AuthModal({
     };
   }, [open, identityPrompt]);
 
+  // Host-less sign-in path: probe auth-status to discover the origin host (and
+  // whether gh is available) so the modal routes to the enterprise PAT/gh panel
+  // on GHES instead of the github.com device flow. Without this, host-less
+  // entry points (the editor's "Reconnect required", clone/navigator sign-in)
+  // fire the device flow, which errors on a GHES host. Mirrors the identity
+  // probe's settle/timeout race discipline.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: probe runs on open; resolvedQueryTransport is a fresh object each render and excluded intentionally
+  useEffect(() => {
+    if (!open || !needsHostProbe) return;
+    let settled = false;
+    const settle = (next: AuthStep) => {
+      if (settled) return;
+      settled = true;
+      setStep(next);
+    };
+    const timer = setTimeout(() => settle('auth'), IDENTITY_PROBE_TIMEOUT_MS);
+    void resolvedQueryTransport
+      .status()
+      .then((status) => {
+        if (settled) return;
+        const enterprise = !!status.host && status.host !== 'github.com';
+        setProbedHost(status.host);
+        setProbedGhAvailable(status.ghAvailable);
+        settle(enterprise ? 'pat' : 'auth');
+      })
+      .catch(() => {
+        // Probe failed (offline, server hiccup) — fall back to the device flow.
+        settle('auth');
+      });
+    return () => {
+      settled = true;
+      clearTimeout(timer);
+    };
+  }, [open, needsHostProbe]);
+
   function handleAuthSuccess(result: AuthSuccessResult) {
     setAuthResult(result);
     // identityPrompt = the set-identity entry point. Reaching device-flow
@@ -415,7 +624,25 @@ export function AuthModal({
       onSuccess?.(result);
       onOpenChange(false);
       const login = result.login;
-      toast.success(t`Connected as @${login}`);
+      toast.success(login ? t`Connected as @${login}` : t`Connected to GitHub`);
+    }
+  }
+
+  async function handlePatConnect() {
+    const token = patToken.trim();
+    if (!token || !effectiveHost || patSubmitting) return;
+    if (!resolvedTransport.pat) {
+      setPatError(t`This window can't store a token — open Settings from the main app window.`);
+      return;
+    }
+    setPatSubmitting(true);
+    setPatError(null);
+    const result = await resolvedTransport.pat(effectiveHost, token);
+    setPatSubmitting(false);
+    if (result.ok) {
+      handleAuthSuccess({ login: result.login ?? '' });
+    } else {
+      setPatError(result.error ?? t`Failed to store the token — try again`);
     }
   }
 
@@ -438,7 +665,7 @@ export function AuthModal({
     onSuccess?.(result);
     onOpenChange(false);
     const login = result.login;
-    toast.success(t`Connected as @${login}`);
+    toast.success(login ? t`Connected as @${login}` : t`Connected to GitHub`);
   }
 
   function handleIdentitySkip() {
@@ -447,7 +674,7 @@ export function AuthModal({
     onSuccess?.(authResult);
     onOpenChange(false);
     const login = authResult.login;
-    toast.success(t`Connected as @${login}`);
+    toast.success(login ? t`Connected as @${login}` : t`Connected to GitHub`);
   }
 
   function handleCancel() {
@@ -459,8 +686,14 @@ export function AuthModal({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {reauth ? (
+            {reauth && (step === 'pat' || step === 'gh-device') ? (
+              // Enterprise re-auth: the PAT / gh steps mean the host resolved
+              // to a GHES, so keep the reauth framing host-accurate.
+              <Trans>Re-authenticate with GitHub Enterprise Server</Trans>
+            ) : reauth ? (
               <Trans>Re-authenticate with GitHub</Trans>
+            ) : step === 'pat' || step === 'gh-device' ? (
+              <Trans>Connect to GitHub Enterprise Server</Trans>
             ) : identityPrompt && step !== 'auth' ? (
               // identityPrompt + non-`auth` step = the set-identity path with a
               // signed-in user; `auth` means the probe fell back to sign-in.
@@ -482,10 +715,60 @@ export function AuthModal({
         {step === 'auth' && (
           <>
             <DialogBody>
-              <DeviceFlowPanel onSuccess={handleAuthSuccess} transport={resolvedTransport} />
+              <DeviceFlowPanel
+                onSuccess={handleAuthSuccess}
+                startFlow={() => resolvedTransport.start()}
+              />
             </DialogBody>
 
             <DialogFooter>
+              <Button variant="outline" className="font-mono uppercase" onClick={handleCancel}>
+                <Trans>Cancel</Trans>
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {step === 'pat' && (
+          <>
+            <DialogBody>
+              <PatBody
+                host={effectiveHost ?? ''}
+                token={patToken}
+                onTokenChange={setPatToken}
+                error={patError}
+                onSubmit={handlePatConnect}
+                showGhOption={canUseGh}
+                onGhSignIn={() => setStep('gh-device')}
+              />
+            </DialogBody>
+
+            <DialogFooter>
+              <Button variant="outline" className="font-mono uppercase" onClick={handleCancel}>
+                <Trans>Cancel</Trans>
+              </Button>
+              <Button onClick={handlePatConnect} disabled={!patToken.trim() || patSubmitting}>
+                {patSubmitting ? <Trans>Connecting</Trans> : <Trans>Connect</Trans>}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {step === 'gh-device' && (
+          <>
+            <DialogBody>
+              <DeviceFlowPanel
+                onSuccess={handleAuthSuccess}
+                startFlow={() =>
+                  resolvedTransport.ghLogin?.(effectiveHost ?? '') ?? resolvedTransport.start()
+                }
+              />
+            </DialogBody>
+
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setStep('pat')}>
+                <Trans>Use a token instead</Trans>
+              </Button>
               <Button variant="outline" className="font-mono uppercase" onClick={handleCancel}>
                 <Trans>Cancel</Trans>
               </Button>

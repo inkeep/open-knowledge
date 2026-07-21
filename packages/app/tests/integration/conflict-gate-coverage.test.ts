@@ -171,6 +171,11 @@ const EXEMPT_HANDLERS = new Set([
   'handleLocalOpAuthRepos',
   'handleLocalOpAuthSignout',
   'handleLocalOpAuthSetIdentity',
+  // GHES sign-in surfaces (PAT store; `gh auth login --web` stream) — credential
+  // operations on the user's machine, no Y.Doc target, so the per-doc conflict
+  // gate doesn't apply.
+  'handleLocalOpAuthPat',
+  'handleLocalOpAuthGhLogin',
   // Loopback-gated writes of the machine-global embeddings key to the user's
   // secrets file — no Y.Doc mutation, so the conflict-refusal gate doesn't apply.
   'handleLocalOpEmbeddingsSetKey',

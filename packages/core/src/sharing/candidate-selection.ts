@@ -80,10 +80,12 @@ export interface CandidateBridgeDeps {
 }
 
 /**
- * The minimum slice of the share payload needed for selection — owner,
- * repo, and branch.
+ * The minimum slice of the share payload needed for selection — host, owner,
+ * repo, and branch. `host` is part of the repo identity so a GHES share never
+ * matches a same-owner/repo github.com clone.
  */
 export interface CandidateSelectionPayload {
+  readonly host: string;
   readonly owner: string;
   readonly repo: string;
   readonly branch: string;
@@ -212,6 +214,7 @@ export async function selectCandidate(
   }
 
   const recentMatches = findRecentProjectsForRepo(recents, {
+    host: payload.host,
     owner: payload.owner,
     repo: payload.repo,
   });

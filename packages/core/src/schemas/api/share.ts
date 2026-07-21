@@ -67,8 +67,9 @@ export type ShareConstructUrlRequest = z.infer<typeof ShareConstructUrlRequestSc
  *   the branch before sharing (by local-ref contract, this is checked locally — no
  *   `git ls-remote` is issued, so a stale local fetch may mis-fire as a
  *   false negative; the user re-pushes, no harm done).
- * - `non-github-remote` — origin URL parses but the host is not `github.com`
- *   (gitlab, bitbucket, internal forge). Share is GitHub-only in v1.
+ * - `non-github-remote` — origin URL parses but the host is a known non-GitHub
+ *   forge (gitlab, bitbucket, codeberg, …). GitHub Enterprise Server hosts are
+ *   supported; only non-GitHub forges land here.
  * - `invalid-path` — the share target path (a doc's file path or a folder's
  *   directory path) traverses outside the project root or names the `.git/`
  *   subtree. An empty path is NOT invalid: it is a legitimate content-root

@@ -363,6 +363,7 @@
     "6g2jsp": ["Update skill"],
     "6gRgw8": ["Retry"],
     "6h4zVU": ["What would you like to create?"],
+    "6hYjww": ["Create a token on ", ["host"]],
     "6hfDJr": ["Server error: ", ["status"]],
     "6iDEWA": ["Show panel"],
     "6ibbCg": ["Create your first file"],
@@ -433,6 +434,7 @@
     "8Gzz2G": ["worktree of ", ["worktreeOf"]],
     "8IP5jY": ["Each selected tool gets an OpenKnowledge MCP entry."],
     "8Jm2EP": ["Toggle heading levels 1 through 6."],
+    "8L0EPw": ["or paste a token"],
     "8OGgNM": ["Open or close visual-editor find."],
     "8OxKZy": ["Move succeeded but the sidebar may be out of date — refresh to resync"],
     "8PifYj": ["Mermaid diagram"],
@@ -448,6 +450,7 @@
     "8eW0WQ": ["No matching repositories."],
     "8fRyLo": ["Invalid patch payload"],
     "8fc_3j": ["Protected branch — cannot push"],
+    "8k6INX": ["Paste a personal access token for <0>", ["host"], "</0>."],
     "8lwQlE": [["0"], " added, ", ["1"], " removed"],
     "8m8diM": ["No location selected. Use Browse to choose a folder."],
     "8nWu1k": ["Empty diagram"],
@@ -472,6 +475,7 @@
     "9V0W-R": [
       "Adds the OpenKnowledge skill to the <0>Claude Desktop App</0> so it's available in Chat and Cowork sessions."
     ],
+    "9Vh9Jf": ["Reopen this window to sign in with your browser"],
     "9XIEYq": ["Attach the file in an email to <0/>"],
     "9bCiQ8": ["No pages are missing incoming graph links."],
     "9clcD5": ["Open documents tagged #", ["chip"]],
@@ -647,6 +651,7 @@
       ["shareBranch"],
       "</0>. You have uncommitted changes that prevent switching here — open it in a worktree to leave your changes untouched."
     ],
+    "DUWgfT": ["Re-authenticate with GitHub Enterprise Server"],
     "DVh_Tb": ["Failed to clean up after trash"],
     "DXd9LM": ["New worktree"],
     "D_WKe_": ["Click an agent's avatar in the presence bar to view their session."],
@@ -1158,6 +1163,7 @@
     "NgZwB0": [["enabledCount"], "/", ["0"], " on"],
     "NjrIak": ["File: <0>", ["fixedName"], ".md</0>"],
     "NkXEFS": ["Restore failed — document unchanged"],
+    "Nm-3m-": ["Auto-sync is paused — you don't have permission to push to this repo."],
     "NmPNJJ": ["Copy code"],
     "Nn4GgW": ["Will be created as <0>", ["sanitizedName"], "</0>"],
     "NnQapF": ["Open with AI ", ["targetDisplayName"]],
@@ -1586,6 +1592,7 @@
     "Xet9MX": ["Failed to load backlinks"],
     "Xewl6B": ["Your local copy is behind. Pull the latest changes, then open the link again."],
     "XfzqjK": ["template \"", ["name"], "\""],
+    "Xg-Ntj": ["The token needs the repo and read:user scopes."],
     "Xisk4u": ["Edited ", ["editedAgo"]],
     "Xk0-VC": [
       "Previews of links to other documents in this project are always on and read from the local index — nothing leaves your computer for those."
@@ -1729,6 +1736,7 @@
     "_RcqUM": [
       "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
     ],
+    "_SDGzH": ["Continue in browser"],
     "_TDESN": ["Network error - ", ["kind"], " \"", ["createdPath"], "\" still exists on disk"],
     "_TF8ep": ["Failed to render PDF"],
     "_VRtd7": ["Couldn't send the selection — please try again."],
@@ -1852,6 +1860,7 @@
     "cd5EXh": ["Report a bug"],
     "cdm00A": ["No Incoming"],
     "cdmk8A": ["Uncommitted changes"],
+    "cgl-gn": ["Connected to GitHub"],
     "chL5IG": ["Community"],
     "cklVjM": ["Timeline"],
     "cn1sLi": ["Couldn't connect OpenKnowledge tools to Claude Code. Please try again."],
@@ -2053,6 +2062,7 @@
     "hGmuTc": ["Docs tagged #", ["tagDocsName"]],
     "hHMv6l": ["Delete block"],
     "hItdtk": ["Browse folder"],
+    "hLKfZe": ["Use a token instead"],
     "hLod4_": ["Convert to template"],
     "hLy8b1": ["Updated to Version ", ["version"]],
     "hQXiDc": ["Search branches..."],
@@ -2105,6 +2115,7 @@
     "iIaSUD": ["Whitespace"],
     "iKSP5j": ["Word wrap"],
     "iKZkk1": ["Property value"],
+    "iMYFJM": ["This window can't store a token — open Settings from the main app window."],
     "iMkWoF": ["Turn on"],
     "iO8V-7": ["Create worktree"],
     "iOHg1t": ["Open embedded URL in new tab"],
@@ -2177,6 +2188,7 @@
       ["trimmedSlug"],
       "</0> already exists here. Saving creates a local copy that overrides it for this folder."
     ],
+    "jxtXZI": ["Install the gh CLI"],
     "k0dL2I": ["Reconnecting to the agent service…"],
     "k0vc0N": ["New terminal tab"],
     "k2fEi7": [
@@ -2262,7 +2274,6 @@
       ["4"],
       ") that won't touch the rest of your system."
     ],
-    "l8G3S9": ["Auto-sync is off — you don't have permission to push to this repo"],
     "lAiyU_": ["Only the current document uses <0>#", ["tag"], "</0>."],
     "lCC_D5": ["Subscribing..."],
     "lGs_bQ": ["Page <0>*</0>"],
@@ -2473,6 +2484,7 @@
       "\" could not be cleared. Reload to retry."
     ],
     "p0Iq25": ["Insert link"],
+    "p2LEhJ": ["Personal access token"],
     "p8TjFD": ["Collapse session dock"],
     "p9sdCy": ["New ignore pattern"],
     "pAgkuZ": ["Reopening \"", ["docName"], "\" with a fresh local collaboration cache."],
@@ -2523,6 +2535,7 @@
     "qSKu2v": ["Source navigation and selection"],
     "qSxaOz": ["Accept their deletion"],
     "qUB_o_": ["Auto-sync is off — your edits stay local until you commit and push manually."],
+    "qX-ABr": ["Or to use browser sign-in instead:"],
     "qXN416": ["Couldn't share skills: internal error. Please restart the app."],
     "qXg5W9": ["File saves to <0>~/Downloads/openknowledge.skill</0>."],
     "qXsafh": ["Publish to GitHub"],
@@ -2607,6 +2620,7 @@
     "sIxSSP": ["Resolve conflict in your terminal"],
     "sJK6pq": ["Permission denied"],
     "sJWhgo": ["Unknown component: ", ["unregisteredComponentName"]],
+    "sNeKjP": ["Failed to store the token — try again"],
     "sOxZaS": ["Failed to load graph"],
     "sZ2IOu": [
       "This ",
@@ -2665,9 +2679,11 @@
     "ti6aF_": ["Ask ", ["0"], " CLI"],
     "tiWX6q": ["Source editor"],
     "tjXez2": ["blog-post"],
+    "tnG-m6": ["Auto-sync is paused — sign in to resume."],
     "toyw51": ["Mermaid diagram controls"],
     "tsiTqO": ["Paste your API key"],
     "tsyExA": ["Connect your AI tools to OpenKnowledge"],
+    "tzZ6ha": ["Connect to GitHub Enterprise Server"],
     "u-9fWA": ["See <0>Architecture</0> for the system overview."],
     "u3BOHd": [["fileCount", "plural", { "one": ["#", " file"], "other": ["#", " files"] }]],
     "u3YnKw": ["Could not construct share URL."],
@@ -2873,6 +2889,7 @@
     "y_5CE8": ["Item ", ["0"]],
     "y_K0Dz": ["What happened?"],
     "yaPGPa": ["Open a project to manage its AI tool connections."],
+    "ycIX5i": ["You're signed out — sign in to resume syncing."],
     "yf5auF": ["Search rules by id, alias, or name"],
     "yf5r22": [
       ["keyName"],

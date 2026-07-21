@@ -586,6 +586,7 @@ export {
   type ToleranceFireLine,
   teardownToleranceTelemetryWriter,
 } from './tolerance-telemetry-writer.ts';
+export { trustSystemCertificates } from './trust-system-ca.ts';
 export {
   acquireUiLock,
   readUiLock,

@@ -117,6 +117,8 @@ import {
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
   LocalOpAuthHostRequestSchema,
+  LocalOpAuthPatRequestSchema,
+  LocalOpAuthPatSuccessSchema,
   LocalOpAuthSetIdentityRequestSchema,
   LocalOpAuthStatusSuccessSchema,
   type LocalOpCloneRequest,
@@ -534,9 +536,12 @@ import {
 } from './local-op-security.ts';
 import {
   type AuthEvent,
+  cachedGhBinaryPath,
   classifyCloneError,
   runCloneSubprocess,
   runDeviceFlowSubprocess,
+  runGhDeviceLoginSubprocess,
+  runPatSubprocess,
 } from './local-ops/index.ts';
 import { getLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
@@ -770,16 +775,40 @@ export function __resetRenameTelemetryForTesting(): void {
  * Best-effort: a rejected promise is swallowed because sync status catches up on
  * the next cycle or restart. Non-`complete` events are ignored.
  */
+/**
+ * Server-authoritative "a GitHub credential just landed" hook. A fresh sign-in
+ * (OK device flow, gh browser flow, or PAT) can change TWO independent bits of
+ * sync state, and healing only one silently under-recovers:
+ *
+ *   - a SyncEngine parked in `auth-error` (invalid / missing token) →
+ *     `notifyCredentialsChanged()` un-parks it; and
+ *   - a push-permission verdict of `denied` that paused the engine with
+ *     `no-push-permission` while signed out → `refreshPushPermission()` re-probes
+ *     so an now-pushable repo clears the pause and sync resumes.
+ *
+ * The second was the gap: connect never re-probed permission, so a repo that
+ * probed `denied` while signed out stayed paused ("you don't have permission to
+ * push") until an app restart, even after a successful reconnect. Both calls are
+ * best-effort and idempotent — a lost signal just heals on the next cycle /
+ * restart. Shared by the streaming (device/gh) and PAT sign-in paths.
+ */
+function onAuthCredentialLanded(getSyncEngine?: () => SyncEngine | null): void {
+  const engine = getSyncEngine?.();
+  if (!engine) return;
+  void engine.notifyCredentialsChanged().catch(() => {
+    /* best-effort — sync status catches up next cycle / restart */
+  });
+  void engine.refreshPushPermission().catch(() => {
+    /* best-effort — the verdict refreshes on the next probe / restart */
+  });
+}
+
 export function resumeSyncOnAuthEvent(
   event: AuthEvent,
   getSyncEngine?: () => SyncEngine | null,
 ): void {
   if (event.type !== 'complete') return;
-  void getSyncEngine?.()
-    ?.notifyCredentialsChanged()
-    .catch(() => {
-      /* best-effort — sync status catches up next cycle / restart */
-    });
+  onAuthCredentialLanded(getSyncEngine);
 }
 
 /**
@@ -12032,6 +12061,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const LOCAL_OP_AUTH_STATUS_KEY = '/api/local-op/auth/status';
   const LOCAL_OP_AUTH_REPOS_KEY = '/api/local-op/auth/repos';
   const LOCAL_OP_AUTH_SIGNOUT_KEY = '/api/local-op/auth/signout';
+  const LOCAL_OP_AUTH_PAT_KEY = '/api/local-op/auth/pat';
+  const LOCAL_OP_AUTH_GH_LOGIN_KEY = '/api/local-op/auth/gh-login';
 
   /**
    * Default host for the auth relay endpoints when the request omits `host`.
@@ -12040,13 +12071,140 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    */
   const defaultAuthHost = (): string => originGitHubHost(projectDir ?? contentDir);
 
-  // In-flight device-flow controller for the login endpoint. Lets a disconnect
-  // or a fresh start free/displace the slot synchronously instead of waiting
-  // for the cancelled child to exit. Object identity is the ownership token:
-  // only the current owner releases the slot, so a displaced/disconnected flow
-  // can never free a successor's slot. Mirrors the IPC twin's `authInFlight`
-  // (desktop/src/main/ipc/local-op.ts).
-  let authLoginInFlight: ReturnType<typeof runDeviceFlowSubprocess> | null = null;
+  // In-flight controllers for the two streaming auth flows (device-flow login and
+  // gh-login). A disconnect or fresh start frees/displaces the slot synchronously
+  // instead of waiting for the cancelled child to exit. Object identity is the
+  // ownership token: only the current owner releases its slot, so a displaced/
+  // disconnected flow can never free a successor's. Held in `{ current }` refs so
+  // the shared `streamAuthFlow` helper below can mutate them by reference.
+  // Mirrors the IPC twin's `authInFlight` (desktop/src/main/ipc/local-op.ts).
+  type StreamingAuthController = { done: Promise<void>; cancel(): void };
+  const authLoginInFlight: { current: StreamingAuthController | null } = { current: null };
+  const authGhLoginInFlight: { current: StreamingAuthController | null } = { current: null };
+
+  /**
+   * Shared streaming envelope for the auth flows. The flows themselves differ —
+   * device-flow login runs OK's `auth login` (github.com-only OAuth app, token →
+   * OK's store) while gh-login runs `gh auth login --web` (gh's OAuth app, works
+   * on GHES, token → gh keyring → tier A) — so the caller supplies `makeFlow`.
+   * Everything else is identical and lives here once: the concurrency slot with
+   * displace-on-restart, NDJSON streaming, client-disconnect cancel, sync-resume,
+   * and the ownership-guarded slot release.
+   */
+  function streamAuthFlow(cfg: {
+    res: ServerResponse;
+    handler: string;
+    guardKey: string;
+    inFlight: { current: StreamingAuthController | null };
+    concurrentMessage: string;
+    streamErrorMessage: string;
+    makeFlow: (onEvent: (event: AuthEvent) => void) => StreamingAuthController;
+  }): void {
+    const { res, handler, guardKey, inFlight, concurrentMessage, streamErrorMessage, makeFlow } =
+      cfg;
+
+    if (!localOpGuard.tryAcquire(guardKey)) {
+      const stale = inFlight.current;
+      if (!stale) {
+        // Structurally unreachable: the slot key and `inFlight.current` are
+        // assigned with no `await` between them, so a held slot always has a
+        // controller. Log at `error` (a distinct event, not a normal-concurrency
+        // 429) so a refactor breaking that coupling is diagnosable, then 429 as
+        // the loud fallback rather than silently re-owning an unidentifiable slot.
+        console.error(
+          JSON.stringify({
+            event: 'ok-local-op:auth-flow-slot-no-controller',
+            channel: 'auth',
+            transport: 'http',
+            handler,
+          }),
+        );
+        errorResponse(res, 429, 'urn:ok:error:concurrent-operation', concurrentMessage, {
+          handler,
+          extraHeaders: { 'Retry-After': '5' },
+        });
+        return;
+      }
+      // A missed/late disconnect left a stale flow holding the slot. Displace it
+      // (SIGTERM the child so it can't keep polling and write an unconfirmed
+      // token), then re-own the slot below. Logged at `warn` so a missed
+      // disconnect is greppable before users hit a stuck slot.
+      stale.cancel();
+      inFlight.current = null;
+      console.warn(
+        JSON.stringify({
+          event: 'ok-local-op:idempotent-start-replaced-stale-slot',
+          channel: 'auth',
+          transport: 'http',
+          handler,
+        }),
+      );
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'application/x-ndjson',
+      'Transfer-Encoding': 'chunked',
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'no-cache',
+    });
+    // Wrap raw `error` events in the RFC 9457 streaming envelope.
+    const writeStreamError = createStreamingErrorWriter(res, handler);
+
+    const flow = makeFlow((event: AuthEvent) => {
+      if (event.type === 'error') {
+        writeStreamError(500, 'urn:ok:error:auth-failed', streamErrorMessage, {
+          cause: event.message ? new Error(event.message) : undefined,
+        });
+        return;
+      }
+      // On `complete`, resume a SyncEngine parked in `auth-error` so a reconnect
+      // restores sync without an app restart. Server-authoritative: works
+      // regardless of which UI surface ran the sign-in.
+      resumeSyncOnAuthEvent(event, getSyncEngine);
+      // Three-way guard + try-catch matches the writer's race-window defense; a
+      // lost progress event is not crashworthy.
+      if (!res.writableEnded && !res.destroyed) {
+        try {
+          res.write(`${JSON.stringify(event)}\n`);
+        } catch {
+          /* socket destroyed between guard and write — event lost */
+        }
+      }
+    });
+    inFlight.current = flow;
+
+    // Kill the child if the client disconnects so the flow doesn't keep polling
+    // and write a token the user never saw confirmed. Free the slot synchronously
+    // (ownership-guarded) rather than waiting for the SIGTERM'd child to exit —
+    // that window would otherwise 429 a reopen.
+    const onClientClose = () => {
+      flow.cancel();
+      if (inFlight.current === flow) {
+        inFlight.current = null;
+        localOpGuard.release(guardKey);
+      }
+    };
+    res.on('close', onClientClose);
+
+    // `flow.done` cannot reject (`proc.done` only resolves; the onEvent callback
+    // is throw-safe), so `.finally` needs no IIFE-level try/catch. The release is
+    // ownership-guarded: a displaced/disconnected flow that already freed or
+    // handed off the slot must not release a successor's when its child exits.
+    void flow.done.finally(() => {
+      res.off('close', onClientClose);
+      if (!res.writableEnded && !res.destroyed) {
+        try {
+          res.end();
+        } catch {
+          /* socket destroyed between guard and end — already closed */
+        }
+      }
+      if (inFlight.current === flow) {
+        inFlight.current = null;
+        localOpGuard.release(guardKey);
+      }
+    });
+  }
 
   /**
    * POST /api/local-op/auth/login
@@ -12079,134 +12237,70 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     body: LocalOpAuthHostRequest,
   ): Promise<void> {
     const host = body.host ?? defaultAuthHost();
+    streamAuthFlow({
+      res,
+      handler: HANDLE_LOCAL_OP_AUTH_LOGIN,
+      guardKey: LOCAL_OP_AUTH_LOGIN_KEY,
+      inFlight: authLoginInFlight,
+      concurrentMessage: 'An auth login operation is already in progress.',
+      streamErrorMessage: 'Auth subprocess reported an error.',
+      makeFlow: (onEvent) =>
+        runDeviceFlowSubprocess({
+          cliArgs: localOpCliArgs,
+          host,
+          timeoutMs: LOCAL_OP_TIMEOUT_MS,
+          onEvent,
+        }),
+    });
+  }
 
-    if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_LOGIN_KEY)) {
-      const stale = authLoginInFlight;
-      if (!stale) {
-        // Structurally unreachable: the Set key and `authLoginInFlight` are
-        // assigned with no `await` between them, so a held slot always has a
-        // controller. Log at `error` (a distinct event, not a 429 that looks
-        // like normal concurrency) so a refactor that breaks that coupling is
-        // diagnosable, then keep the 429 as the loud fallback rather than
-        // silently re-owning a slot whose owner we can't identify.
-        console.error(
-          JSON.stringify({
-            event: 'ok-local-op:auth-login-slot-no-controller',
-            channel: 'auth',
-            transport: 'http',
-          }),
-        );
+  /**
+   * POST /api/local-op/auth/gh-login
+   *
+   * Body: { host?: string }
+   * Runs `gh auth login --hostname <host> --web` and streams the same
+   * verification / complete / error NDJSON as the device flow. gh's OAuth app is
+   * preregistered on GHES (OpenKnowledge's isn't), so this gives enterprise hosts
+   * a browser sign-in; gh stores the token in its keyring and OK reads it via
+   * tier A. 400 if gh isn't installed (the UI falls back to the PAT panel).
+   */
+  const HANDLE_LOCAL_OP_AUTH_GH_LOGIN = 'local-op-auth-gh-login';
+  const handleLocalOpAuthGhLogin = withValidation(
+    LocalOpAuthHostRequestSchema,
+    async (_req, res, body) => {
+      const host = body.host ?? defaultAuthHost();
+      const ghPath = await cachedGhBinaryPath();
+      if (ghPath === null) {
+        // Precondition failure — the UI falls back to the PAT panel. Reuse the
+        // auth-failed URN (the detail names the specific cause).
         errorResponse(
           res,
-          429,
-          'urn:ok:error:concurrent-operation',
-          'An auth login operation is already in progress.',
-          { handler: HANDLE_LOCAL_OP_AUTH_LOGIN, extraHeaders: { 'Retry-After': '5' } },
+          400,
+          'urn:ok:error:auth-failed',
+          'The GitHub CLI (gh) is not installed.',
+          { handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN },
         );
         return;
       }
-      // A missed/late disconnect left a stale login holding the slot. Displace
-      // it so a fresh login is always admittable: SIGTERM the stale child so it
-      // can't keep polling and write an unconfirmed token, then re-own the slot
-      // (the Set key stays held — this request claims it below). The displacement
-      // is logged at `warn` because it signals the disconnect cleanup was missed,
-      // so ops can grep for it before users hit a stuck slot.
-      stale.cancel();
-      authLoginInFlight = null;
-      console.warn(
-        JSON.stringify({
-          event: 'ok-local-op:idempotent-start-replaced-stale-slot',
-          channel: 'auth',
-          transport: 'http',
-        }),
-      );
-    }
 
-    res.writeHead(200, {
-      'Content-Type': 'application/x-ndjson',
-      'Transfer-Encoding': 'chunked',
-      'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': 'no-cache',
-    });
-
-    // Wrap CLI raw `error` events in RFC 9457 streaming envelope.
-    const writeStreamError = createStreamingErrorWriter(res, HANDLE_LOCAL_OP_AUTH_LOGIN);
-
-    const flow = runDeviceFlowSubprocess({
-      cliArgs: localOpCliArgs,
-      host,
-      timeoutMs: LOCAL_OP_TIMEOUT_MS,
-      onEvent: (event: AuthEvent) => {
-        if (event.type === 'error') {
-          writeStreamError(500, 'urn:ok:error:auth-failed', 'Auth subprocess reported an error.', {
-            cause: event.message ? new Error(event.message) : undefined,
-          });
-          return;
-        }
-        // On `complete`, resume a SyncEngine parked in `auth-error` so a
-        // reconnect restores sync without an app restart. Server-authoritative:
-        // works regardless of which UI surface (sync badge or Settings →
-        // Account) ran the login.
-        resumeSyncOnAuthEvent(event, getSyncEngine);
-        // Three-way guard + try-catch matches `createStreamingErrorWriter`
-        // race-window defense. Lost progress event is not crashworthy.
-        if (!res.writableEnded && !res.destroyed) {
-          try {
-            res.write(`${JSON.stringify(event)}\n`);
-          } catch {
-            /* socket destroyed between guard and write — event lost */
-          }
-        }
-      },
-    });
-    authLoginInFlight = flow;
-
-    // Kill the child if the client disconnects so `auth login` doesn't keep
-    // polling in the background and write a token to the keychain that the
-    // user never saw confirmation for.
-    const onClientClose = () => {
-      flow.cancel();
-      // Free the slot synchronously rather than waiting for the cancelled
-      // child to exit — the SIGTERM-to-exit window would otherwise 429 a
-      // reopen. Ownership-guarded so we only release a slot we still own.
-      if (authLoginInFlight === flow) {
-        authLoginInFlight = null;
-        localOpGuard.release(LOCAL_OP_AUTH_LOGIN_KEY);
-      }
-    };
-    res.on('close', onClientClose);
-
-    // Sibling clone handler at handleLocalOpClone wraps an equivalent
-    // cleanup in a full `void (async () => { try {...} catch {...} finally {...} })()`
-    // IIFE because clone has post-flow work (`startServerAtDirAndGetPort`)
-    // that can genuinely throw. Auth-login has no post-flow work and
-    // `flow.done` cannot reject — `proc.done` (local-ops/subprocess.ts) only
-    // ever resolves, and the `.then` callback deriving `flow.done` only calls
-    // `opts.onEvent`, which is throw-safe here (both the writeStreamError and
-    // the res.write branches carry their own try/catch). So the simpler
-    // `.finally()` form needs no IIFE-level try/catch — the asymmetry is
-    // intentional, not a missing safeguard. The release is ownership-guarded:
-    // a displaced/disconnected flow that already freed or handed off the slot
-    // must not release a successor's slot when its child finally exits.
-    void flow.done.finally(() => {
-      res.off('close', onClientClose);
-      // Same guard + try-catch as the `onEvent` writer above: the socket can be
-      // destroyed between this check and `res.end()` (client gone), and an
-      // uncaught throw would skip the ownership-guarded release below — the
-      // exact orphaned-slot failure this handler exists to prevent.
-      if (!res.writableEnded && !res.destroyed) {
-        try {
-          res.end();
-        } catch {
-          /* socket destroyed between guard and end — response already closed */
-        }
-      }
-      if (authLoginInFlight === flow) {
-        authLoginInFlight = null;
-        localOpGuard.release(LOCAL_OP_AUTH_LOGIN_KEY);
-      }
-    });
-  }
+      streamAuthFlow({
+        res,
+        handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN,
+        guardKey: LOCAL_OP_AUTH_GH_LOGIN_KEY,
+        inFlight: authGhLoginInFlight,
+        concurrentMessage: 'A gh sign-in is already in progress.',
+        streamErrorMessage: 'gh sign-in reported an error.',
+        makeFlow: (onEvent) =>
+          runGhDeviceLoginSubprocess({ host, ghPath, timeoutMs: LOCAL_OP_TIMEOUT_MS, onEvent }),
+      });
+    },
+    {
+      handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN }),
+    },
+  );
 
   /**
    * POST /api/local-op/auth/status
@@ -12288,16 +12382,24 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             /* skip non-JSON line */
           }
         }
+        // `ghAvailable` tells the UI whether to offer "Sign in with gh" (the
+        // browser path that works on GHES where OK's device flow can't). Machine
+        // property, not per-host; cached so this frequent probe doesn't re-shell.
+        const ghAvailable = (await cachedGhBinaryPath()) !== null;
         if (parsed !== null) {
-          successResponse(res, 200, LocalOpAuthStatusSuccessSchema, parsed, {
-            handler: HANDLE_LOCAL_OP_AUTH_STATUS,
-          });
+          successResponse(
+            res,
+            200,
+            LocalOpAuthStatusSuccessSchema,
+            { ...(parsed as Record<string, unknown>), ghAvailable },
+            { handler: HANDLE_LOCAL_OP_AUTH_STATUS },
+          );
         } else {
           successResponse(
             res,
             200,
             LocalOpAuthStatusSuccessSchema,
-            { authenticated: false },
+            { authenticated: false, ghAvailable },
             { handler: HANDLE_LOCAL_OP_AUTH_STATUS },
           );
         }
@@ -12318,6 +12420,75 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       method: 'POST',
       preBodyGate: (req, res) =>
         checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_STATUS }),
+    },
+  );
+
+  /**
+   * POST /api/local-op/auth/pat
+   *
+   * Body: { host?: string, token: string }
+   * Spawns: auth pat --json --host <host> --token-stdin (token via stdin).
+   * Returns: { host, login } on success; 400 auth-failed with a bounded reason
+   * on a rejected token / TLS / network error.
+   *
+   * The enterprise sign-in path — a GHES host stores a PAT because the OAuth
+   * device flow only works on github.com. The token is written to the child's
+   * stdin, never argv/env.
+   */
+  const HANDLE_LOCAL_OP_AUTH_PAT = 'local-op-auth-pat';
+  const handleLocalOpAuthPat = withValidation(
+    LocalOpAuthPatRequestSchema,
+    async (_req, res, body) => {
+      const host = body.host ?? defaultAuthHost();
+
+      if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_PAT_KEY)) {
+        errorResponse(
+          res,
+          429,
+          'urn:ok:error:concurrent-operation',
+          'An auth operation is already in progress.',
+          { handler: HANDLE_LOCAL_OP_AUTH_PAT, extraHeaders: { 'Retry-After': '5' } },
+        );
+        return;
+      }
+
+      try {
+        const result = await runPatSubprocess({ cliArgs: localOpCliArgs, host, token: body.token });
+        if (result.ok) {
+          // A stored PAT is a credential change just like a device/gh sign-in —
+          // re-probe so a repo paused with 'no-push-permission' while signed out
+          // resumes without an app restart. The streaming paths get this via
+          // resumeSyncOnAuthEvent; PAT is a plain POST, so call it directly.
+          onAuthCredentialLanded(getSyncEngine);
+          successResponse(
+            res,
+            200,
+            LocalOpAuthPatSuccessSchema,
+            { host: result.host, login: result.login },
+            { handler: HANDLE_LOCAL_OP_AUTH_PAT },
+          );
+        } else {
+          // A rejected token / cert / network failure is client-actionable, not
+          // a server fault. `result.error` is bounded (the CLI's structured
+          // describeAuthFailure message), safe to surface.
+          errorResponse(res, 400, 'urn:ok:error:auth-failed', result.error, {
+            handler: HANDLE_LOCAL_OP_AUTH_PAT,
+          });
+        }
+      } catch (err) {
+        errorResponse(res, 500, 'urn:ok:error:auth-failed', 'Storing the token failed.', {
+          handler: HANDLE_LOCAL_OP_AUTH_PAT,
+          cause: err,
+        });
+      } finally {
+        localOpGuard.release(LOCAL_OP_AUTH_PAT_KEY);
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_AUTH_PAT,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_PAT }),
     },
   );
 
@@ -17382,9 +17553,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        // `construct-url.ts` builds github.com-only links, so GHES origins
-        // must keep failing this gate until the builders take a host.
-        if (origin.kind === 'non-github' || origin.host !== 'github.com') {
+        // Known non-GitHub forges (gitlab, bitbucket) can't produce a GitHub
+        // share URL. GitHub hosts — github.com AND GHES — are supported: the
+        // builders below take `origin.host` and the receive side accepts the
+        // enterprise host behind its trust gate.
+        if (origin.kind === 'non-github') {
           emitShareConstructUrlLog('non-github-remote', { kind: body.kind });
           successResponse(
             res,
@@ -17438,14 +17611,20 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         }
         let sharedUrl: string;
         if (body.kind === 'doc') {
-          sharedUrl = buildGitHubBlobUrl(origin.owner, origin.repo, branch, body.docPath);
+          sharedUrl = buildGitHubBlobUrl(
+            origin.host,
+            origin.owner,
+            origin.repo,
+            branch,
+            body.docPath,
+          );
         } else {
           // Folder ROOT (empty folderPath) maps to the content dir:
           // `tree/<branch>/<content.dir>`, degenerating to `tree/<branch>`
           // when `content.dir === '.'` (contentRel is '' then). Non-root folder
           // paths pass straight through.
           const treePath = body.folderPath === '' ? contentRel : body.folderPath;
-          sharedUrl = buildGitHubTreeUrl(origin.owner, origin.repo, branch, treePath);
+          sharedUrl = buildGitHubTreeUrl(origin.host, origin.owner, origin.repo, branch, treePath);
         }
         const shareUrl = `${SHARE_BASE_URL}${encodeShareUrl(sharedUrl)}`;
         // Freshness probes the repo-relative path of the shared target: it
@@ -18964,6 +19143,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/local-op/ok-init': handleLocalOpOkInit,
     '/api/local-op/auth/login': handleLocalOpAuthLogin,
     '/api/local-op/auth/status': handleLocalOpAuthStatus,
+    '/api/local-op/auth/pat': handleLocalOpAuthPat,
+    '/api/local-op/auth/gh-login': handleLocalOpAuthGhLogin,
     '/api/local-op/auth/repos': handleLocalOpAuthRepos,
     '/api/local-op/auth/signout': handleLocalOpAuthSignout,
     '/api/local-op/auth/set-identity': handleLocalOpAuthSetIdentity,

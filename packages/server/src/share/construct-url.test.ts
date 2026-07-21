@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { decodeShareUrl } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test } from 'vitest';
 import { loggerFactory, PinoLogger } from '../logger.ts';
 import {
   buildGitHubBlobUrl,
@@ -214,11 +214,11 @@ describe('POST /api/share/construct-url', () => {
     expect(json).toEqual({ ok: false, error: 'non-github-remote' });
   });
 
-  test('non-github-remote: GHES origins are refused while the URL builders are github.com-only', async () => {
-    // Origin classification recognizes GHES hosts, so this gate is the only
-    // thing preventing share from minting github.com links for a repo that
-    // lives on an enterprise host. Pins the `origin.host !== 'github.com'`
-    // arm of the gate.
+  test('GHES origins produce an enterprise-host share URL', async () => {
+    // Origin classification recognizes GHES hosts, the builders take the
+    // origin host, and the receive side accepts enterprise hosts behind its
+    // trust gate — so a GHES workspace mints a working share URL pointing at
+    // its own server, not github.com.
     rig = await bootRig((projectDir) => {
       seedRemoteAndHead(projectDir, {
         head: 'ref: refs/heads/main\n',
@@ -228,8 +228,9 @@ describe('POST /api/share/construct-url', () => {
     });
     const res = await postConstructUrl(rig.port, { kind: 'doc', docPath: 'a.md' });
     expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json).toEqual({ ok: false, error: 'non-github-remote' });
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json.ok).toBe(true);
+    expect(json.sharedUrl).toBe('https://ghes.acme.test/team/notes/blob/main/a.md');
   });
 
   test('invalid-path: rejects .. segment', async () => {
@@ -458,44 +459,50 @@ describe('buildGitHubBlobUrl branch encoding', () => {
   }
 
   test('simple single-segment branch is plain text', () => {
-    const url = buildGitHubBlobUrl('owner', 'repo', 'main', 'README.md');
+    const url = buildGitHubBlobUrl('github.com', 'owner', 'repo', 'main', 'README.md');
     expect(url).toBe('https://github.com/owner/repo/blob/main/README.md');
     expect(roundTripBranch(url)).toBe('main');
   });
 
   test('slashed branch encodes slash as %2F (single URL segment)', () => {
-    const url = buildGitHubBlobUrl('owner', 'repo', 'feat/foo', 'docs/page.md');
+    const url = buildGitHubBlobUrl('github.com', 'owner', 'repo', 'feat/foo', 'docs/page.md');
     expect(url).toBe('https://github.com/owner/repo/blob/feat%2Ffoo/docs/page.md');
     expect(extractBranchSegment(url)).toBe('feat%2Ffoo');
     expect(roundTripBranch(url)).toBe('feat/foo');
   });
 
   test('deeper-slash branch encodes every slash as %2F', () => {
-    const url = buildGitHubBlobUrl('owner', 'repo', 'release/2026-05/foo', 'a.md');
+    const url = buildGitHubBlobUrl('github.com', 'owner', 'repo', 'release/2026-05/foo', 'a.md');
     expect(url).toBe('https://github.com/owner/repo/blob/release%2F2026-05%2Ffoo/a.md');
     expect(roundTripBranch(url)).toBe('release/2026-05/foo');
   });
 
   test('branch with # encodes as %23 (would otherwise be parsed as fragment)', () => {
-    const url = buildGitHubBlobUrl('owner', 'repo', 'feat#nest', 'a.md');
+    const url = buildGitHubBlobUrl('github.com', 'owner', 'repo', 'feat#nest', 'a.md');
     expect(url).toBe('https://github.com/owner/repo/blob/feat%23nest/a.md');
     expect(new URL(url).hash).toBe('');
     expect(roundTripBranch(url)).toBe('feat#nest');
   });
 
   test('branch with space encodes as %20', () => {
-    const url = buildGitHubBlobUrl('owner', 'repo', 'feat space', 'a.md');
+    const url = buildGitHubBlobUrl('github.com', 'owner', 'repo', 'feat space', 'a.md');
     expect(url).toBe('https://github.com/owner/repo/blob/feat%20space/a.md');
     expect(roundTripBranch(url)).toBe('feat space');
   });
 
   test('path segments still split on / and encoded individually (separator preserved)', () => {
-    const url = buildGitHubBlobUrl('owner', 'repo', 'main', 'docs/sub/page name.md');
+    const url = buildGitHubBlobUrl('github.com', 'owner', 'repo', 'main', 'docs/sub/page name.md');
     expect(url).toBe('https://github.com/owner/repo/blob/main/docs/sub/page%20name.md');
   });
 
   test('docPath with unicode round-trips through per-segment encoding', () => {
-    const url = buildGitHubBlobUrl('owner', 'repo', 'main', 'docs/Q4 OKRs — Marketing.md');
+    const url = buildGitHubBlobUrl(
+      'github.com',
+      'owner',
+      'repo',
+      'main',
+      'docs/Q4 OKRs — Marketing.md',
+    );
     const pathSegments = new URL(url).pathname.split('/').slice(5);
     expect(pathSegments.map((s) => decodeURIComponent(s)).join('/')).toBe(
       'docs/Q4 OKRs — Marketing.md',
@@ -510,26 +517,26 @@ describe('buildGitHubTreeUrl', () => {
   }
 
   test('folder path: segments encoded individually, no trailing slash', () => {
-    const url = buildGitHubTreeUrl('owner', 'repo', 'main', 'docs/sub folder');
+    const url = buildGitHubTreeUrl('github.com', 'owner', 'repo', 'main', 'docs/sub folder');
     expect(url).toBe('https://github.com/owner/repo/tree/main/docs/sub%20folder');
     expect(url.endsWith('/')).toBe(false);
   });
 
   test('slashed branch encodes slash as %2F (single URL segment)', () => {
-    const url = buildGitHubTreeUrl('owner', 'repo', 'feat/foo', 'docs');
+    const url = buildGitHubTreeUrl('github.com', 'owner', 'repo', 'feat/foo', 'docs');
     expect(url).toBe('https://github.com/owner/repo/tree/feat%2Ffoo/docs');
     expect(extractBranchSegment(url)).toBe('feat%2Ffoo');
     expect(decodeURIComponent(extractBranchSegment(url))).toBe('feat/foo');
   });
 
   test('empty folderPath (root) -> tree/<branch> with no trailing slash', () => {
-    const url = buildGitHubTreeUrl('owner', 'repo', 'main', '');
+    const url = buildGitHubTreeUrl('github.com', 'owner', 'repo', 'main', '');
     expect(url).toBe('https://github.com/owner/repo/tree/main');
     expect(url.endsWith('/')).toBe(false);
   });
 
   test('empty folderPath with slashed branch encodes branch, no trailing slash', () => {
-    const url = buildGitHubTreeUrl('owner', 'repo', 'feat/foo', '');
+    const url = buildGitHubTreeUrl('github.com', 'owner', 'repo', 'feat/foo', '');
     expect(url).toBe('https://github.com/owner/repo/tree/feat%2Ffoo');
   });
 });

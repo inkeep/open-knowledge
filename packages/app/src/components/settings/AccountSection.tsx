@@ -170,8 +170,22 @@ export function AccountSection({ authQueryTransport, authTransport }: AccountSec
 
       <AuthModal
         open={authModalOpen}
-        onOpenChange={setAuthModalOpen}
+        onOpenChange={(open) => {
+          setAuthModalOpen(open);
+          // Re-probe on close so a gh installed while the dialog was open is
+          // reflected next time it opens — this is what makes the token panel's
+          // "reopen this window to sign in with your browser" hint come true
+          // (the server caches only a positive gh lookup, so a fresh status
+          // check re-detects it). Harmless on the success path, which already
+          // reloads via onSuccess.
+          if (!open) void loadStatus();
+        }}
         transport={authTransport}
+        // Drive the sign-in method by the probed origin host: a non-github.com
+        // (GHES) host shows the PAT panel, since the OAuth device flow can't work
+        // there. github.com / unknown keeps the device flow.
+        host={status.phase === 'loaded' ? status.result.host : undefined}
+        ghAvailable={status.phase === 'loaded' ? status.result.ghAvailable : undefined}
         onSuccess={() => {
           void loadStatus();
         }}
@@ -266,7 +280,7 @@ function DisconnectedRow({ onConnect }: { onConnect: () => void }) {
           </p>
         </div>
         <Button onClick={onConnect} data-testid="settings-account-connect">
-          <Trans>Connect GitHub</Trans>
+          <Trans>Sign in</Trans>
         </Button>
       </div>
     </div>

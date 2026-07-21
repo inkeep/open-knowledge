@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { parseGitHubBlobUrl, parseGitHubShareUrl, parseGitHubTreeUrl, parseGitUrl } from './url.ts';
 
 describe('parseGitUrl', () => {
@@ -295,6 +295,7 @@ describe('parseGitHubBlobUrl', () => {
       'https://github.com/inkeep/open-knowledge/blob/main/README.md',
     );
     expect(result).toEqual({
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
       branch: 'main',
@@ -307,6 +308,7 @@ describe('parseGitHubBlobUrl', () => {
       'https://github.com/inkeep/open-knowledge/blob/feat-x/docs/sub/page.md',
     );
     expect(result).toEqual({
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
       branch: 'feat-x',
@@ -319,6 +321,7 @@ describe('parseGitHubBlobUrl', () => {
       'https://github.com/inkeep/open-knowledge/blob/feat%2Ffoo/docs/page.md',
     );
     expect(result).toEqual({
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
       branch: 'feat/foo',
@@ -331,6 +334,7 @@ describe('parseGitHubBlobUrl', () => {
       'https://github.com/owner/repo/blob/main/docs/Q4%20OKRs%20%E2%80%94%20Marketing.md',
     );
     expect(result).toEqual({
+      host: 'github.com',
       owner: 'owner',
       repo: 'repo',
       branch: 'main',
@@ -343,6 +347,7 @@ describe('parseGitHubBlobUrl', () => {
       'https://github.com/owner/repo/blob/main/README.md?ref=campaign#L5',
     );
     expect(result).toEqual({
+      host: 'github.com',
       owner: 'owner',
       repo: 'repo',
       branch: 'main',
@@ -353,6 +358,7 @@ describe('parseGitHubBlobUrl', () => {
   test('accepts www.github.com host', () => {
     const result = parseGitHubBlobUrl('https://www.github.com/owner/repo/blob/main/README.md');
     expect(result).toEqual({
+      host: 'github.com',
       owner: 'owner',
       repo: 'repo',
       branch: 'main',
@@ -364,10 +370,26 @@ describe('parseGitHubBlobUrl', () => {
     expect(parseGitHubBlobUrl('https://gitlab.com/owner/repo/blob/main/README.md')).toBeNull();
   });
 
-  test('subdomain spoofing returns null', () => {
+  test('an unknown host (incl. a github.com lookalike) parses as an enterprise host', () => {
+    // GHES hostnames are arbitrary, so the parser cannot distinguish a
+    // lookalike like `github.com.evil.example` from a legitimate enterprise
+    // host by structure alone — both parse, carrying the host verbatim. The
+    // defense is the receive-side trust gate (`url-scheme.ts`), which prompts
+    // for any host the recipient is not authenticated to; it is NOT the
+    // parser's job to guess trust.
     expect(
       parseGitHubBlobUrl('https://github.com.evil.example/owner/repo/blob/main/README.md'),
-    ).toBeNull();
+    ).toEqual({
+      host: 'github.com.evil.example',
+      owner: 'owner',
+      repo: 'repo',
+      branch: 'main',
+      path: 'README.md',
+    });
+  });
+
+  test('a known non-GitHub forge host still returns null', () => {
+    expect(parseGitHubBlobUrl('https://gitlab.com/owner/repo/blob/main/README.md')).toBeNull();
   });
 
   // REGRESSION PIN: the blob-only parser treats a
@@ -424,6 +446,7 @@ describe('parseGitHubBlobUrl', () => {
         const url = `https://github.com/owner/repo/blob/${encodedBranch}/docs/page.md`;
         const result = parseGitHubBlobUrl(url);
         expect(result).toEqual({
+          host: 'github.com',
           owner: 'owner',
           repo: 'repo',
           branch,
@@ -434,12 +457,33 @@ describe('parseGitHubBlobUrl', () => {
   });
 });
 
+describe('parser scheme guard (https-only)', () => {
+  // A crafted deep link can pair a non-https scheme with a valid host + path
+  // and otherwise parse; the parser must reject it so the URL never reaches an
+  // <a href> or shell.openExternal. Legitimate share links are always https.
+  for (const url of [
+    'vscode://ghes.internal.example/owner/repo/blob/main/README.md',
+    'http://github.com/owner/repo/blob/main/README.md',
+  ]) {
+    test(`parseGitHubBlobUrl rejects non-https scheme: ${url}`, () => {
+      expect(parseGitHubBlobUrl(url)).toBeNull();
+    });
+  }
+
+  test('parseGitHubTreeUrl rejects a non-https scheme', () => {
+    expect(
+      parseGitHubTreeUrl('vscode://ghes.internal.example/owner/repo/tree/main/docs'),
+    ).toBeNull();
+  });
+});
+
 describe('parseGitHubTreeUrl', () => {
   test('happy path: tree URL with a folder path', () => {
     const result = parseGitHubTreeUrl(
       'https://github.com/inkeep/open-knowledge/tree/main/docs/sub',
     );
     expect(result).toEqual({
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
       branch: 'main',
@@ -449,12 +493,24 @@ describe('parseGitHubTreeUrl', () => {
 
   test('root folder: tree/<branch> (no path, no trailing slash) -> path ""', () => {
     const result = parseGitHubTreeUrl('https://github.com/owner/repo/tree/main');
-    expect(result).toEqual({ owner: 'owner', repo: 'repo', branch: 'main', path: '' });
+    expect(result).toEqual({
+      host: 'github.com',
+      owner: 'owner',
+      repo: 'repo',
+      branch: 'main',
+      path: '',
+    });
   });
 
   test('root folder: tree/<branch>/ (trailing slash) -> path ""', () => {
     const result = parseGitHubTreeUrl('https://github.com/owner/repo/tree/main/');
-    expect(result).toEqual({ owner: 'owner', repo: 'repo', branch: 'main', path: '' });
+    expect(result).toEqual({
+      host: 'github.com',
+      owner: 'owner',
+      repo: 'repo',
+      branch: 'main',
+      path: '',
+    });
   });
 
   test('branch containing slash (percent-encoded) round-trips', () => {
@@ -462,6 +518,7 @@ describe('parseGitHubTreeUrl', () => {
       'https://github.com/inkeep/open-knowledge/tree/feat%2Ffoo/docs',
     );
     expect(result).toEqual({
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
       branch: 'feat/foo',
@@ -471,7 +528,13 @@ describe('parseGitHubTreeUrl', () => {
 
   test('%2F-encoded slashed branch at root round-trips', () => {
     const result = parseGitHubTreeUrl('https://github.com/owner/repo/tree/feat%2Ffoo');
-    expect(result).toEqual({ owner: 'owner', repo: 'repo', branch: 'feat/foo', path: '' });
+    expect(result).toEqual({
+      host: 'github.com',
+      owner: 'owner',
+      repo: 'repo',
+      branch: 'feat/foo',
+      path: '',
+    });
   });
 
   test('percent-encoded path segments round-trip', () => {
@@ -479,6 +542,7 @@ describe('parseGitHubTreeUrl', () => {
       'https://github.com/owner/repo/tree/main/docs/Q4%20OKRs%20%E2%80%94%20Marketing',
     );
     expect(result).toEqual({
+      host: 'github.com',
       owner: 'owner',
       repo: 'repo',
       branch: 'main',
@@ -488,12 +552,24 @@ describe('parseGitHubTreeUrl', () => {
 
   test('accepts www.github.com host', () => {
     const result = parseGitHubTreeUrl('https://www.github.com/owner/repo/tree/main/docs');
-    expect(result).toEqual({ owner: 'owner', repo: 'repo', branch: 'main', path: 'docs' });
+    expect(result).toEqual({
+      host: 'github.com',
+      owner: 'owner',
+      repo: 'repo',
+      branch: 'main',
+      path: 'docs',
+    });
   });
 
   test('ignores query string and fragment', () => {
     const result = parseGitHubTreeUrl('https://github.com/owner/repo/tree/main/docs?ref=x#frag');
-    expect(result).toEqual({ owner: 'owner', repo: 'repo', branch: 'main', path: 'docs' });
+    expect(result).toEqual({
+      host: 'github.com',
+      owner: 'owner',
+      repo: 'repo',
+      branch: 'main',
+      path: 'docs',
+    });
   });
 
   test('blob URL returns null', () => {
@@ -504,10 +580,22 @@ describe('parseGitHubTreeUrl', () => {
     expect(parseGitHubTreeUrl('https://gitlab.com/owner/repo/tree/main/docs')).toBeNull();
   });
 
-  test('subdomain spoofing returns null', () => {
-    expect(
-      parseGitHubTreeUrl('https://github.com.evil.example/owner/repo/tree/main/docs'),
-    ).toBeNull();
+  test('an unknown host (incl. a github.com lookalike) parses as an enterprise host', () => {
+    // See the blob parser's companion test: structural parsing accepts any
+    // non-forge host; trust is enforced downstream by the receive-side gate.
+    expect(parseGitHubTreeUrl('https://github.com.evil.example/owner/repo/tree/main/docs')).toEqual(
+      {
+        host: 'github.com.evil.example',
+        owner: 'owner',
+        repo: 'repo',
+        branch: 'main',
+        path: 'docs',
+      },
+    );
+  });
+
+  test('a known non-GitHub forge host still returns null', () => {
+    expect(parseGitHubTreeUrl('https://gitlab.com/owner/repo/tree/main/docs')).toBeNull();
   });
 
   test('empty intermediate path segment returns null', () => {
@@ -534,6 +622,7 @@ describe('parseGitHubShareUrl (dispatcher)', () => {
     );
     expect(result).toEqual({
       kind: 'doc',
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
       branch: 'main',
@@ -545,6 +634,7 @@ describe('parseGitHubShareUrl (dispatcher)', () => {
     const result = parseGitHubShareUrl('https://github.com/owner/repo/tree/main/docs/sub');
     expect(result).toEqual({
       kind: 'folder',
+      host: 'github.com',
       owner: 'owner',
       repo: 'repo',
       branch: 'main',
@@ -556,6 +646,7 @@ describe('parseGitHubShareUrl (dispatcher)', () => {
     const result = parseGitHubShareUrl('https://github.com/owner/repo/tree/main');
     expect(result).toEqual({
       kind: 'folder',
+      host: 'github.com',
       owner: 'owner',
       repo: 'repo',
       branch: 'main',
@@ -567,6 +658,7 @@ describe('parseGitHubShareUrl (dispatcher)', () => {
     const result = parseGitHubShareUrl('https://github.com/owner/repo/tree/main/');
     expect(result).toEqual({
       kind: 'folder',
+      host: 'github.com',
       owner: 'owner',
       repo: 'repo',
       branch: 'main',
@@ -578,6 +670,7 @@ describe('parseGitHubShareUrl (dispatcher)', () => {
     const result = parseGitHubShareUrl('https://github.com/owner/repo/tree/feat%2Ffoo/docs');
     expect(result).toEqual({
       kind: 'folder',
+      host: 'github.com',
       owner: 'owner',
       repo: 'repo',
       branch: 'feat/foo',

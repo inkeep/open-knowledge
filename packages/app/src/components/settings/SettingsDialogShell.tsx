@@ -88,8 +88,9 @@ export function SettingsDialogShell({
     useConfigContext();
   const { desktopPresent } = useClaudeDesktopIntegration();
 
-  // On each fresh open, honor the deep-link section (`#settings/<id>`) if one
-  // was given, else default to USER → Preferences. No in-session memory of
+  // On each fresh open, honor the deep-link section (`#settings/<id>`, e.g.
+  // `#settings/account` from the GHES trust-gate "Connect" flow) if one was
+  // given, else default to USER → Preferences. No in-session memory of
   // last-viewed section beyond the open edge; sidebar clicks update activeId
   // locally without touching the hash.
   const [activeId, setActiveId] = useState(initialSection ?? 'preferences');

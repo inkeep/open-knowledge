@@ -5,7 +5,7 @@
  * handler in tests/integration/api-error-envelope.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { httpAuthQueryTransport } from './auth-query-transport';
 
 type FetchFn = typeof globalThis.fetch;
@@ -52,7 +52,12 @@ describe('httpAuthQueryTransport().status', () => {
     );
 
     const [resA, resB] = await Promise.all([a, b]);
-    expect(resA).toEqual({ authenticated: true, host: 'github.com', login: 'octocat' });
+    expect(resA).toEqual({
+      authenticated: true,
+      host: 'github.com',
+      login: 'octocat',
+      ghAvailable: false,
+    });
     expect(resB).toEqual(resA);
   });
 
@@ -91,10 +96,12 @@ describe('httpAuthQueryTransport().status', () => {
       authenticated: true,
       host: 'github.com',
       login: 'octocat',
+      ghAvailable: false,
     });
     await expect(gitlabStatus).resolves.toEqual({
       authenticated: false,
       host: 'gitlab.com',
+      ghAvailable: false,
     });
   });
 
@@ -121,6 +128,7 @@ describe('httpAuthQueryTransport().status', () => {
     await expect(transport.status()).resolves.toEqual({
       authenticated: false,
       host: 'github.com',
+      ghAvailable: false,
     });
 
     expect(fetchCalls).toHaveLength(2);

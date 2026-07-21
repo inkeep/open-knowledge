@@ -3,6 +3,7 @@ export {
   type RunDeviceFlowOptions,
   runDeviceFlowSubprocess,
 } from './auth-flow.ts';
+export { runPatSubprocess } from './auth-pat.ts';
 export {
   type AuthReposResponse,
   type AuthStatusResponse,
@@ -19,6 +20,7 @@ export {
   runCloneSubprocess,
   validateCloneInputs,
 } from './clone-flow.ts';
+export { cachedGhBinaryPath, runGhDeviceLoginSubprocess } from './gh-login.ts';
 export type {
   AuthEvent,
   CloneCompleteEvent,

@@ -70,6 +70,8 @@ export interface RecentProjectEntry {
 }
 
 export interface ExpectedShareRepo {
+  /** GitHub host the share's repo lives on: `github.com` or a GHES hostname. */
+  readonly host: string;
   readonly owner: string;
   readonly repo: string;
 }
@@ -78,10 +80,12 @@ export interface ExpectedShareRepo {
  * Canonical GitHub remote URL used as the share-receive lookup key. Matches
  * the form `readCanonicalGitHubRemoteUrl` writes during open-time backfill
  * and `validateLocalFolderForShare` returns, so SSH-cloned and HTTPS-cloned
- * receivers converge on a single key.
+ * receivers converge on a single key. The host is part of the key: a GHES
+ * `acme/kb` and a github.com `acme/kb` are different repositories and must
+ * never match the same local clone.
  */
 export function canonicalGitHubRemoteUrl(expected: ExpectedShareRepo): string {
-  return `https://github.com/${expected.owner}/${expected.repo}.git`;
+  return `https://${expected.host}/${expected.owner}/${expected.repo}.git`;
 }
 
 function normalizeForMatch(url: string): string {

@@ -90,6 +90,30 @@ export const LocalOpAuthHostRequestSchema = z
 export type LocalOpAuthHostRequest = z.infer<typeof LocalOpAuthHostRequestSchema>;
 
 /**
+ * Request body for `POST /api/local-op/auth/pat` — store a Personal Access
+ * Token for a host (the enterprise sign-in path, since the OAuth device flow
+ * only works on github.com). `host` optional (defaults to the workspace origin
+ * host server-side); `token` REQUIRED. The token travels renderer → loopback
+ * POST and is handed to the CLI over stdin, never argv/env.
+ */
+export const LocalOpAuthPatRequestSchema = z
+  .object({
+    host: z.string().min(1).optional(),
+    token: z.string().min(1),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAuthPatRequest = z.infer<typeof LocalOpAuthPatRequestSchema>;
+
+/** Success payload for `POST /api/local-op/auth/pat`: the stored identity. */
+export const LocalOpAuthPatSuccessSchema = z
+  .object({
+    host: z.string(),
+    login: z.string(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAuthPatSuccess = z.infer<typeof LocalOpAuthPatSuccessSchema>;
+
+/**
  * Request body for `POST /api/local-op/embeddings/set-key`. `key` REQUIRED
  * non-empty — the embeddings provider API key. Travels renderer → loopback POST
  * body → the 0600 `~/.ok/secrets.yml` file; NEVER logged, spanned, or echoed

@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { Candidate, CandidateSelection } from '@inkeep/open-knowledge-core';
 import { encodeShareUrl } from '@inkeep/open-knowledge-core';
+import type { Mock } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
+  ForeignHostDecision,
   ScreenTarget,
   ShareDeepLinkPayload,
   ShareNavigatorPayload,
@@ -17,6 +19,9 @@ import { parseOpenKnowledgeFileUrl, registerProtocolHandler } from '../../src/ma
  * real `electron` import — the pure `app` dep interface is tested against a
  * stub.
  */
+
+// biome-ignore lint/suspicious/noExplicitAny: bun's `mock()` default was any-callable; the fakes below are assigned to precisely-typed SUT deps, which is where the checking happens.
+type AnyMock = Mock<(...args: any[]) => any>;
 
 type AppEvent = 'open-url' | 'open-file' | 'second-instance' | 'before-quit' | 'continue-activity';
 type OpenUrlListener = (event: { preventDefault: () => void }, url: string) => void;
@@ -37,20 +42,20 @@ type AppListener =
   | ContinueActivityListener;
 
 interface FakeApp {
-  on: ReturnType<typeof mock>;
+  on: AnyMock;
   whenReady: () => Promise<void>;
   isPackaged: boolean;
-  setAsDefaultProtocolClient: ReturnType<typeof mock>;
-  removeAsDefaultProtocolClient: ReturnType<typeof mock>;
+  setAsDefaultProtocolClient: AnyMock;
+  removeAsDefaultProtocolClient: AnyMock;
   fireOpenUrl: (url: string) => void;
-  fireOpenFile: (path: string) => { preventDefault: ReturnType<typeof mock> };
+  fireOpenFile: (path: string) => { preventDefault: AnyMock };
   fireSecondInstance: (argv: readonly string[]) => void;
   fireBeforeQuit: () => void;
   fireContinueActivity: (
     type: string,
     userInfo: unknown,
     details?: { webpageURL?: string },
-  ) => { preventDefault: ReturnType<typeof mock> };
+  ) => { preventDefault: AnyMock };
   resolveReady: () => void;
 }
 
@@ -61,25 +66,25 @@ function makeFakeApp(opts?: { isPackaged?: boolean }): FakeApp {
     new Promise<void>((resolve) => {
       resolveReadyFn = resolve;
     });
-  const on = mock((event: AppEvent, cb: AppListener) => {
+  const on = vi.fn((event: AppEvent, cb: AppListener) => {
     listeners.set(event, cb);
   });
   return {
     on,
     whenReady,
     isPackaged: opts?.isPackaged ?? true,
-    setAsDefaultProtocolClient: mock(() => true),
-    removeAsDefaultProtocolClient: mock(() => true),
+    setAsDefaultProtocolClient: vi.fn(() => true),
+    removeAsDefaultProtocolClient: vi.fn(() => true),
     fireOpenUrl: (url) => {
       const cb = listeners.get('open-url') as OpenUrlListener | undefined;
       if (!cb) throw new Error('open-url listener not registered');
-      const event = { preventDefault: mock(() => {}) };
+      const event = { preventDefault: vi.fn(() => {}) };
       cb(event, url);
     },
     fireOpenFile: (path) => {
       const cb = listeners.get('open-file') as OpenFileListener | undefined;
       if (!cb) throw new Error('open-file listener not registered');
-      const event = { preventDefault: mock(() => {}) };
+      const event = { preventDefault: vi.fn(() => {}) };
       cb(event, path);
       return event;
     },
@@ -96,7 +101,7 @@ function makeFakeApp(opts?: { isPackaged?: boolean }): FakeApp {
     fireContinueActivity: (type, userInfo, details) => {
       const cb = listeners.get('continue-activity') as ContinueActivityListener | undefined;
       if (!cb) throw new Error('continue-activity listener not registered');
-      const event = { preventDefault: mock(() => {}) };
+      const event = { preventDefault: vi.fn(() => {}) };
       cb(event, type, userInfo, details);
       return event;
     },
@@ -113,11 +118,11 @@ interface FakeWindowHandle {
 
 interface TestEnv {
   app: FakeApp;
-  focusWindowForProject: ReturnType<typeof mock>;
-  openProject: ReturnType<typeof mock>;
-  openEphemeralFile: ReturnType<typeof mock>;
-  sendDeepLink: ReturnType<typeof mock>;
-  getAnyReadyWindow: ReturnType<typeof mock>;
+  focusWindowForProject: AnyMock;
+  openProject: AnyMock;
+  openEphemeralFile: AnyMock;
+  sendDeepLink: AnyMock;
+  getAnyReadyWindow: AnyMock;
   timers: Array<{ cb: () => void; ms: number }>;
   warnLog: Array<{ obj: object; msg: string }>;
   existingWindows: Map<string, FakeWindowHandle>;
@@ -131,8 +136,8 @@ function makeEnv(opts?: { isPackaged?: boolean }): TestEnv {
   const warnLog: Array<{ obj: object; msg: string }> = [];
   return {
     app: makeFakeApp(opts),
-    focusWindowForProject: mock((p: string) => existingWindows.get(p) ?? null),
-    openProject: mock(
+    focusWindowForProject: vi.fn((p: string) => existingWindows.get(p) ?? null),
+    openProject: vi.fn(
       async (
         p: string,
         _opts?: { pendingDeepLinkDoc?: string },
@@ -143,9 +148,9 @@ function makeEnv(opts?: { isPackaged?: boolean }): TestEnv {
         return win;
       },
     ),
-    openEphemeralFile: mock(async (_filePath: string): Promise<void> => {}),
-    sendDeepLink: mock(() => {}),
-    getAnyReadyWindow: mock(() => readyWindow),
+    openEphemeralFile: vi.fn(async (_filePath: string): Promise<void> => {}),
+    sendDeepLink: vi.fn(() => {}),
+    getAnyReadyWindow: vi.fn(() => readyWindow),
     timers,
     warnLog,
     existingWindows,
@@ -204,7 +209,7 @@ describe('registerProtocolHandler — setAsDefaultProtocolClient', () => {
     // refused the binding. Must surface as a warn so developers don't stare
     // at "dev deep-links not working" without a breadcrumb.
     const env = makeEnv({ isPackaged: false });
-    env.app.setAsDefaultProtocolClient = mock(() => false);
+    env.app.setAsDefaultProtocolClient = vi.fn(() => false);
     const warnLog: Array<{ obj: object; msg: string }> = [];
     registerProtocolHandler({
       app: env.app,
@@ -259,7 +264,7 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
     // NOT call `removeAsDefaultProtocolClient` on quit — it would remove a
     // binding that another app owns, breaking their deep-links.
     const env = makeEnv({ isPackaged: false });
-    env.app.setAsDefaultProtocolClient = mock(() => false);
+    env.app.setAsDefaultProtocolClient = vi.fn(() => false);
     registerProtocolHandler({
       app: env.app,
       focusWindowForProject: env.focusWindowForProject,
@@ -274,7 +279,7 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
 
   test('swallows removeAsDefaultProtocolClient throws with a warn log line', () => {
     const env = makeEnv({ isPackaged: false });
-    env.app.removeAsDefaultProtocolClient = mock(() => {
+    env.app.removeAsDefaultProtocolClient = vi.fn(() => {
       throw new Error('launch services refused');
     });
     const warnLog: Array<{ obj: object; msg: string }> = [];
@@ -302,8 +307,8 @@ describe('registerProtocolHandler — deferred-share routeUrl + dedup', () => {
 
   test('routeUrl feeds a redeemed /d/ universal link through the share spine; a near-simultaneous duplicate is deduped', async () => {
     env.readyWindow = { id: 'pre-existing' };
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
-    const routeShareToNavigator = mock(() => {});
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const routeShareToNavigator = vi.fn(() => {});
     let clock = 1_000_000;
 
     const control = registerProtocolHandler({
@@ -346,6 +351,66 @@ describe('registerProtocolHandler — deferred-share routeUrl + dedup', () => {
     await flushPromises();
     await flushPromises();
     expect(resolveShareTarget).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('registerProtocolHandler — foreign-host trust gate', () => {
+  let env: TestEnv;
+
+  beforeEach(() => {
+    env = makeEnv();
+  });
+
+  function ghesShareUrl(): string {
+    const token = encodeShareUrl('https://ghes.acme.test/acme/kb/blob/main/README.md');
+    return `https://openknowledge.ai/d/${token}`;
+  }
+
+  async function driveGhesShare(overrides: {
+    gateForeignShareHost?: (host: string, sharedUrl: string) => Promise<ForeignHostDecision>;
+  }): Promise<{ resolveShareTarget: AnyMock }> {
+    env.readyWindow = { id: 'pre-existing' };
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const control = registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      resolveShareTarget: resolveShareTarget as unknown as (
+        share: ShareUrlPayload,
+      ) => Promise<CandidateSelection>,
+      routeShareToNavigator: vi.fn(() => {}),
+      gateForeignShareHost: overrides.gateForeignShareHost,
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+      now: () => 1_000_000,
+    });
+    env.app.resolveReady();
+    await flushPromises();
+    control.routeUrl(ghesShareUrl());
+    await flushPromises();
+    await flushPromises();
+    return { resolveShareTarget };
+  }
+
+  test('a foreign-host share is dropped when no gate is wired (fail-closed)', async () => {
+    const { resolveShareTarget } = await driveGhesShare({ gateForeignShareHost: undefined });
+    expect(resolveShareTarget).not.toHaveBeenCalled();
+  });
+
+  test('a foreign-host share does NOT resolve when the gate declines', async () => {
+    const gate = vi.fn(async (): Promise<ForeignHostDecision> => 'cancel');
+    const { resolveShareTarget } = await driveGhesShare({ gateForeignShareHost: gate });
+    expect(gate).toHaveBeenCalledTimes(1);
+    expect(gate.mock.calls[0][0]).toBe('ghes.acme.test');
+    expect(resolveShareTarget).not.toHaveBeenCalled();
+  });
+
+  test('a foreign-host share resolves when the gate proceeds (trusted host)', async () => {
+    const gate = vi.fn(async (): Promise<ForeignHostDecision> => 'proceed');
+    const { resolveShareTarget } = await driveGhesShare({ gateForeignShareHost: gate });
+    expect(gate).toHaveBeenCalledTimes(1);
+    expect(resolveShareTarget).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -567,7 +632,7 @@ describe('registerProtocolHandler — queue-then-flush', () => {
     // inside window-manager via dom-ready), so the null return just means
     // "no window was created, nothing more to do." Regression assertion is
     // "no throw, no stray sendDeepLink," not "sendDeepLink skipped."
-    const openProjectStub = mock(
+    const openProjectStub = vi.fn(
       async (
         _p: string,
         _opts?: { pendingDeepLinkDoc?: string },
@@ -885,7 +950,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
 
     registerProtocolHandler({
       app: env.app,
@@ -907,6 +972,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     // The custom-scheme URL is parsed and reaches main-side resolution.
     expect(resolveShareTarget).toHaveBeenCalledTimes(1);
     expect(resolveShareTarget).toHaveBeenCalledWith({
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'playbooks',
       branch: 'main',
@@ -922,7 +988,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
     const warnLog: Array<{ obj: object; msg: string }> = [];
-    const sendShareDeepLink = mock((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -965,7 +1031,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
     const warnLog: Array<{ obj: object; msg: string }> = [];
-    const sendShareDeepLink = mock((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1000,7 +1066,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     // unwired the share drops with a debuggable warn rather than guessing.
     const env = makeEnv();
     env.readyWindow = { id: 'ready' };
-    const sendShareDeepLink = mock((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
     const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
@@ -1035,7 +1101,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.existingWindows.set('/tmp/p', focusedWin);
     env.readyWindow = focusedWin;
-    const sendShareDeepLink = mock((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1082,6 +1148,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
 
   function expectedSharePayload(): ShareUrlPayload {
     return {
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'playbooks',
       branch: 'main',
@@ -1118,14 +1185,14 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   test('branch-match-ok routes to openProject with pendingDeepLinkDoc + pendingMultiCandidate', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (_share: ShareUrlPayload): Promise<CandidateSelection> => ({
         kind: 'branch-match-ok',
         candidate: makeCandidate({ path: '/Users/me/playbooks', currentBranch: 'main' }),
         multiCandidate: true,
       }),
     );
-    const sendShareDeepLink = mock((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1160,7 +1227,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   test('branch-match-ok with multiCandidate=false omits the toast hint', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'branch-match-ok',
         candidate: makeCandidate({ path: '/Users/me/solo-clone', currentBranch: 'main' }),
@@ -1200,7 +1267,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     const editorWin: FakeWindowHandle = { id: 'editor' };
     env.existingWindows.set('/Users/me/playbooks', editorWin);
     env.readyWindow = editorWin;
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'branch-match-ok',
         candidate: makeCandidate({ path: '/Users/me/playbooks', currentBranch: 'main' }),
@@ -1241,7 +1308,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     const editorWin: FakeWindowHandle = { id: 'editor' };
     env.existingWindows.set('/Users/me/playbooks', editorWin);
     env.readyWindow = editorWin;
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'fallback',
         anchor: makeCandidate({
@@ -1252,7 +1319,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
         reason: 'main-checkout',
       }),
     );
-    const sendShareDeepLink = mock((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1289,7 +1356,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     const editorWin: FakeWindowHandle = { id: 'editor' };
     env.existingWindows.set('/Users/me/playbooks', editorWin);
     env.readyWindow = editorWin;
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'fallback',
         anchor: makeCandidate({
@@ -1334,7 +1401,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   test('fallback (cold) opens project with pendingShareBranchSwitch', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'some-other-editor' };
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'fallback',
         anchor: makeCandidate({
@@ -1345,7 +1412,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
         reason: 'main-checkout',
       }),
     );
-    const sendShareDeepLink = mock((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1388,7 +1455,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     const editorWin: FakeWindowHandle = { id: 'editor' };
     env.existingWindows.set('/Users/me/playbooks/worktrees/wt-1', editorWin);
     env.readyWindow = editorWin;
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'fallback',
         anchor: makeCandidate({
@@ -1399,7 +1466,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
         reason: 'only-worktrees',
       }),
     );
-    const sendShareDeepLink = mock((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1432,7 +1499,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   test('branch-match-non-ok routes to Navigator via launcher-consent payload', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'branch-match-non-ok',
         candidate: makeCandidate({
@@ -1443,7 +1510,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
         anchorRecent: null,
       }),
     );
-    const routeShareToNavigator = mock((_p: ShareNavigatorPayload) => {});
+    const routeShareToNavigator = vi.fn((_p: ShareNavigatorPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1476,7 +1543,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   test('branch-match-non-ok threads anchorRecent.name through as parentProjectName', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'branch-match-non-ok',
         candidate: makeCandidate({
@@ -1492,7 +1559,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
         },
       }),
     );
-    const routeShareToNavigator = mock((_p: ShareNavigatorPayload) => {});
+    const routeShareToNavigator = vi.fn((_p: ShareNavigatorPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1523,8 +1590,8 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   test('miss routes to Navigator via launcher-miss payload', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
-    const routeShareToNavigator = mock((_p: ShareNavigatorPayload) => {});
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const routeShareToNavigator = vi.fn((_p: ShareNavigatorPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1561,17 +1628,17 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     // `launcher-miss` so the share metadata + clone/locate cards appear.
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
-    const openProjectStub = mock(
+    const openProjectStub = vi.fn(
       async (_p: string, _opts?: object): Promise<FakeWindowHandle | null> => null,
     );
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'branch-match-ok',
         candidate: makeCandidate({ path: '/Users/me/missing-project', currentBranch: 'main' }),
         multiCandidate: true,
       }),
     );
-    const routeShareToNavigator = mock((_p: ShareNavigatorPayload) => {});
+    const routeShareToNavigator = vi.fn((_p: ShareNavigatorPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1604,10 +1671,10 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     // shared and get a forward path (clone elsewhere, locate manually).
     const env = makeEnv();
     env.readyWindow = { id: 'some-other-editor' };
-    const openProjectStub = mock(
+    const openProjectStub = vi.fn(
       async (_p: string, _opts?: object): Promise<FakeWindowHandle | null> => null,
     );
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'fallback',
         anchor: makeCandidate({
@@ -1618,7 +1685,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
         reason: 'main-checkout',
       }),
     );
-    const routeShareToNavigator = mock((_p: ShareNavigatorPayload) => {});
+    const routeShareToNavigator = vi.fn((_p: ShareNavigatorPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1648,11 +1715,11 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   test('resolveShareTarget rejection degrades to Navigator (miss), not a silent drop', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => {
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => {
       throw new Error('git fetch failed');
     });
-    const sendShareDeepLink = mock((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
-    const routeShareToNavigator = mock((_p: ShareNavigatorPayload) => {});
+    const sendShareDeepLink = vi.fn((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
+    const routeShareToNavigator = vi.fn((_p: ShareNavigatorPayload) => {});
     const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
@@ -1689,7 +1756,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
   test('branch-match-non-ok with no routeShareToNavigator dep surfaces warn + no dispatch', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       async (): Promise<CandidateSelection> => ({
         kind: 'branch-match-non-ok',
         candidate: makeCandidate({
@@ -1730,7 +1797,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     // via second-instance argv, not an Apple Event. Share resolution must run.
     const env = makeEnv();
     env.readyWindow = { id: 'primary' };
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
 
     registerProtocolHandler({
       app: env.app,
@@ -1760,7 +1827,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     // no second-instance). The queue-then-flush path must still resolve it.
     const env = makeEnv();
     env.readyWindow = { id: 'pre-existing' };
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
 
     registerProtocolHandler({
       app: env.app,
@@ -1792,7 +1859,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     env.readyWindow = { id: 'ready' };
     let resolveA: (s: CandidateSelection) => void = () => {};
     let resolveB: (s: CandidateSelection) => void = () => {};
-    const resolveShareTarget = mock(
+    const resolveShareTarget = vi.fn(
       (share: ShareUrlPayload): Promise<CandidateSelection> =>
         share.repo === 'repo-a'
           ? new Promise<CandidateSelection>((r) => {
@@ -1861,7 +1928,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const openScreen = mock((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
+    const openScreen = vi.fn((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1890,7 +1957,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const openScreen = mock((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
+    const openScreen = vi.fn((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1919,7 +1986,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     const env = makeEnv();
     const readyWin: FakeWindowHandle = { id: 'fallback' };
     env.readyWindow = readyWin;
-    const openScreen = mock((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
+    const openScreen = vi.fn((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -1971,7 +2038,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
   test('screen URL with no window available surfaces warn + no dispatch', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'ready' };
-    const openScreen = mock((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
+    const openScreen = vi.fn((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
     const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
@@ -1980,7 +2047,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
       openProject: env.openProject,
       sendDeepLink: env.sendDeepLink,
       // Both window-finders return null.
-      getAnyReadyWindow: mock(() => null),
+      getAnyReadyWindow: vi.fn(() => null),
       openScreen,
       getFocusedWindow: () => null,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
@@ -2018,7 +2085,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
 
     registerProtocolHandler({
       app: env.app,
@@ -2046,6 +2113,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     // The Handoff Universal Link is parsed and reaches main-side resolution.
     expect(resolveShareTarget).toHaveBeenCalledTimes(1);
     expect(resolveShareTarget).toHaveBeenCalledWith({
+      host: 'github.com',
       owner: 'inkeep',
       repo: 'playbooks',
       branch: 'main',
@@ -2058,7 +2126,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
 
     registerProtocolHandler({
       app: env.app,
@@ -2090,7 +2158,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
 
     registerProtocolHandler({
       app: env.app,
@@ -2120,7 +2188,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const sendShareDeepLink = mock((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
     const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
@@ -2156,7 +2224,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const sendShareDeepLink = mock((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
     const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
@@ -2187,7 +2255,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const sendShareDeepLink = mock((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -2213,7 +2281,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const sendShareDeepLink = mock((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -2241,7 +2309,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const sendShareDeepLink = mock((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
+    const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
     const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
@@ -2280,7 +2348,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
 
     registerProtocolHandler({
       app: env.app,
@@ -2316,7 +2384,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.existingWindows.set('/tmp/p', focusedWin);
     env.readyWindow = focusedWin;
-    const resolveShareTarget = mock(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
 
     registerProtocolHandler({
       app: env.app,

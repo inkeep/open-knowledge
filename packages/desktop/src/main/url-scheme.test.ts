@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { encodeShareUrl } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { parseOpenKnowledgeUrl, parseScreenUrl, parseShareUrl } from './url-scheme.ts';
 
 /**
@@ -271,6 +271,7 @@ describe('parseShareUrl — universal-link happy path', () => {
       kind: 'ok',
       source: 'universal-link',
       payload: {
+        host: 'github.com',
         owner: 'inkeep',
         repo: 'playbooks',
         branch: 'main',
@@ -380,6 +381,7 @@ describe('parseShareUrl — universal-link error states', () => {
       kind: 'ok',
       source: 'universal-link',
       payload: {
+        host: 'github.com',
         owner: 'inkeep',
         repo: 'playbooks',
         branch: 'main',
@@ -407,6 +409,7 @@ describe('parseShareUrl — custom-scheme happy path', () => {
       kind: 'ok',
       source: 'custom-scheme',
       payload: {
+        host: 'github.com',
         owner: 'inkeep',
         repo: 'playbooks',
         branch: 'main',

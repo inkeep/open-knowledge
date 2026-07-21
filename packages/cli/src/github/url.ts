@@ -1,3 +1,5 @@
+import { classifyGitHubShareHost } from '@inkeep/open-knowledge-core';
+
 /**
  * Parsed Git URL result.
  */
@@ -9,9 +11,11 @@ interface ParsedGitUrl {
 }
 
 /**
- * Parsed GitHub blob URL result.
+ * Parsed GitHub blob URL result. `host` is the normalized GitHub host
+ * (github.com or a GHES hostname).
  */
 export interface ParsedGitHubBlobUrl {
+  host: string;
   owner: string;
   repo: string;
   branch: string;
@@ -24,6 +28,7 @@ export interface ParsedGitHubBlobUrl {
  * (`tree/<branch>` or `tree/<branch>/`).
  */
 export interface ParsedGitHubTreeUrl {
+  host: string;
   owner: string;
   repo: string;
   branch: string;
@@ -36,8 +41,8 @@ export interface ParsedGitHubTreeUrl {
  * for the repo/branch root).
  */
 export type ParsedGitHubShareTarget =
-  | { kind: 'doc'; owner: string; repo: string; branch: string; path: string }
-  | { kind: 'folder'; owner: string; repo: string; branch: string; path: string };
+  | { kind: 'doc'; host: string; owner: string; repo: string; branch: string; path: string }
+  | { kind: 'folder'; host: string; owner: string; repo: string; branch: string; path: string };
 
 /**
  * Strip a trailing :port from a hostname string.
@@ -135,9 +140,14 @@ export function parseGitHubBlobUrl(input: string): ParsedGitHubBlobUrl | null {
     return null;
   }
 
-  if (url.hostname !== 'github.com' && url.hostname !== 'www.github.com') {
-    return null;
-  }
+  // Share links are always https. Reject any other scheme: a crafted deep
+  // link could carry a non-https scheme (vscode:, ms-msdt:, …) with a valid
+  // host and otherwise parse — that URL must never reach an <a href> or
+  // shell.openExternal.
+  if (url.protocol !== 'https:') return null;
+
+  const host = classifyGitHubShareHost(url.hostname);
+  if (host === null) return null;
 
   const rawSegments = url.pathname.split('/').filter((s) => s.length > 0);
 
@@ -161,7 +171,7 @@ export function parseGitHubBlobUrl(input: string): ParsedGitHubBlobUrl | null {
   if (!owner || !repo || !branch || pathParts.length === 0) return null;
   if (pathParts.some((p) => p.length === 0)) return null;
 
-  return { owner, repo, branch, path: pathParts.join('/') };
+  return { host, owner, repo, branch, path: pathParts.join('/') };
 }
 
 /**
@@ -188,9 +198,14 @@ export function parseGitHubTreeUrl(input: string): ParsedGitHubTreeUrl | null {
     return null;
   }
 
-  if (url.hostname !== 'github.com' && url.hostname !== 'www.github.com') {
-    return null;
-  }
+  // Share links are always https. Reject any other scheme: a crafted deep
+  // link could carry a non-https scheme (vscode:, ms-msdt:, …) with a valid
+  // host and otherwise parse — that URL must never reach an <a href> or
+  // shell.openExternal.
+  if (url.protocol !== 'https:') return null;
+
+  const host = classifyGitHubShareHost(url.hostname);
+  if (host === null) return null;
 
   // Split WITHOUT filtering empties so empty intermediate path segments
   // (`a//b`) remain detectable. The pathname always starts with `/`, so
@@ -226,7 +241,7 @@ export function parseGitHubTreeUrl(input: string): ParsedGitHubTreeUrl | null {
   // Empty intermediate segments (e.g. `a//b`) are malformed.
   if (pathParts.some((p) => p.length === 0)) return null;
 
-  return { owner, repo, branch, path: pathParts.join('/') };
+  return { host, owner, repo, branch, path: pathParts.join('/') };
 }
 
 /**

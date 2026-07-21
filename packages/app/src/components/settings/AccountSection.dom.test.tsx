@@ -7,9 +7,9 @@
  * results.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getLastKnownSignedIn, setLastKnownSignedIn } from '@/lib/auth-state-cache';
 import type { OkLocalOpAuthEvent, OkLocalOpAuthStatusResponse } from '@/lib/desktop-bridge-types';
@@ -112,20 +112,20 @@ describe('AccountSection', () => {
     expect(screen.queryByTestId('settings-account-connect')).toBeNull();
   });
 
-  test('shows "Not connected" and a Connect GitHub control when unauthenticated', async () => {
+  test('shows "Not connected" and a Sign in control when unauthenticated', async () => {
     renderSection(makeQueryTransport({ status: async () => NOT_CONNECTED }));
 
     expect(await screen.findByText('Not connected')).toBeDefined();
-    const connect = screen.getByRole('button', { name: 'Connect GitHub' });
+    const connect = screen.getByRole('button', { name: 'Sign in' });
     expect(connect).toBeDefined();
     expect(screen.queryByTestId('settings-account-disconnect')).toBeNull();
   });
 
-  test('clicking Connect GitHub opens the AuthModal in connect mode (not reauth)', async () => {
+  test('clicking Sign in opens the AuthModal in connect mode (not reauth)', async () => {
     const user = userEvent.setup();
     renderSection(makeQueryTransport({ status: async () => NOT_CONNECTED }));
 
-    await user.click(await screen.findByRole('button', { name: 'Connect GitHub' }));
+    await user.click(await screen.findByRole('button', { name: 'Sign in' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Connect GitHub')).toBeDefined();

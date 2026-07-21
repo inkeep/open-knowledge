@@ -300,6 +300,7 @@ function finalizeShareResult(sharedUrl: string, source: ShareUrlSource): SharePa
     kind: 'ok',
     source,
     payload: {
+      host: parsed.host,
       owner: parsed.owner,
       repo: parsed.repo,
       branch: parsed.branch,
@@ -489,6 +490,13 @@ export function parseScreenUrl(input: string): ParsedScreenUrl | null {
 }
 
 /**
+ * User's decision from the foreign-host trust gate (see `gateForeignShareHost`).
+ * `connect` = the user chose to sign in to the host; the gate navigates the app
+ * to Account settings and does not drive the clone (same drop as cancel/browser).
+ */
+export type ForeignHostDecision = 'proceed' | 'open-browser' | 'connect' | 'cancel';
+
+/**
  * Side-effect surface for `registerProtocolHandler`. Injected so the main-
  * process glue can pass real `openProject` / `focusWindowForProject` / `send`
  * functions while tests pass stubs.
@@ -618,6 +626,23 @@ interface ProtocolHandlerDeps {
    * Production main always wires it.
    */
   resolveShareTarget?(share: ShareUrlPayload): Promise<CandidateSelection>;
+  /**
+   * Trust gate for shares whose repo lives on a host other than github.com
+   * (issue #597 follow-up — GHES support). Deep links are attacker-suppliable,
+   * so an unfamiliar host must never silently drive the clone/receive flow.
+   * Called with the normalized host + the decoded `sharedUrl` BEFORE
+   * resolution; returns the user's decision:
+   *   - `'proceed'` — treat like github.com and continue to resolution
+   *     (main returns this without prompting for a host the recipient is
+   *     already authenticated to);
+   *   - `'open-browser'` — the URL was handed to the system browser; drop
+   *     the in-app flow;
+   *   - `'cancel'` — user declined; drop silently.
+   * Optional — when omitted, non-github.com shares are dropped (fail-closed),
+   * matching the pre-GHES "invalid host" behavior. github.com shares never
+   * reach this gate.
+   */
+  gateForeignShareHost?(host: string, sharedUrl: string): Promise<ForeignHostDecision>;
   /**
    * Kind-aware target-existence gate, run AFTER `resolveShareTarget` returns
    * `branch-match-ok` and BEFORE dispatch: probes `<projectPath>/<path>` for a
@@ -1135,6 +1160,41 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
       // Resolution is the decision authority for an `ok` share — without it
       // there is no target to route to. Production main always wires it.
       deps.log?.warn({ url }, '[receive] resolveShareTarget dep missing — share dropped');
+      return;
+    }
+    // Non-github.com shares must clear the foreign-host trust gate before
+    // driving resolution/clone; github.com shares skip it.
+    if (result.payload.host !== 'github.com') {
+      const gate = deps.gateForeignShareHost;
+      if (!gate) {
+        // Fail-closed: no gate wired ⇒ drop the foreign-host share.
+        deps.log?.warn(
+          { url, host: result.payload.host },
+          '[receive] foreign-host share with no gate — dropped',
+        );
+        return;
+      }
+      void gate(result.payload.host, result.payload.sharedUrl).then(
+        (decision) => {
+          if (decision === 'proceed') {
+            void resolver(result.payload).then(
+              (selection) => dispatchResolvedShare(url, result.payload, selection),
+              () => dispatchResolvedShare(url, result.payload, { kind: 'miss' }),
+            );
+          } else {
+            deps.log?.info?.(
+              { url, host: result.payload.host, decision },
+              '[receive] foreign-host share not proceeded',
+            );
+          }
+        },
+        (err) => {
+          deps.log?.warn(
+            { err: err instanceof Error ? err.message : String(err), url },
+            '[receive] foreign-host gate rejected — share dropped',
+          );
+        },
+      );
       return;
     }
     void resolver(result.payload).then(

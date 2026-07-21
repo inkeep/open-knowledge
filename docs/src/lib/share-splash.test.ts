@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
-import { encodeShareUrl } from '@inkeep/open-knowledge-core';
+import { encodeShareUrl, KNOWN_NON_GITHUB_GIT_HOSTS } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { STABLE_DMG_URL } from './download-links.ts';
 import {
   buildCloneCommand,
@@ -56,6 +56,8 @@ describe('buildSplashViewModel', () => {
       kind: 'ok',
       target: 'doc',
       filename: 'marketing-playbook.md',
+      host: 'github.com',
+      isEnterpriseHost: false,
       owner: 'inkeep',
       repo: 'playbooks',
       repoPath: 'inkeep/playbooks',
@@ -77,6 +79,8 @@ describe('buildSplashViewModel', () => {
       kind: 'ok',
       target: 'folder',
       filename: 'campaigns',
+      host: 'github.com',
+      isEnterpriseHost: false,
       owner: 'inkeep',
       repo: 'playbooks',
       repoPath: 'inkeep/playbooks',
@@ -248,9 +252,48 @@ describe('buildSplashViewModel', () => {
     expect(view).toEqual({ kind: 'invalid' });
   });
 
-  test('returns `invalid` for a github-spoofed hostname', () => {
+  test('renders an unknown host (incl. a github.com lookalike) as an enterprise share', () => {
+    // GHES hostnames are arbitrary — the splash cannot tell a lookalike from a
+    // real enterprise host by structure. It renders it as an enterprise share
+    // with `isEnterpriseHost: true` so the page shows the host prominently
+    // (the recipient sees which server before acting); the receive-side trust
+    // gate is what actually prevents an untrusted host from being cloned.
     const view = buildSplashViewModel(
       encodeV1('https://github.com.evil.example/owner/repo/blob/main/README.md'),
+    );
+    expect(view).toMatchObject({
+      kind: 'ok',
+      host: 'github.com.evil.example',
+      isEnterpriseHost: true,
+      repoPath: 'owner/repo',
+    });
+  });
+
+  test('returns `invalid` for a known non-GitHub forge host', () => {
+    const view = buildSplashViewModel(
+      encodeV1('https://gitlab.com/owner/repo/blob/main/README.md'),
+    );
+    expect(view).toEqual({ kind: 'invalid' });
+  });
+
+  // Drift guard: the splash keeps a copy-local `KNOWN_NON_GITHUB_GIT_HOSTS`
+  // (the docs build can't import the package graph). Iterate the CANONICAL set
+  // so a forge added to core but not the splash copy fails here rather than
+  // silently rendering as an enterprise share.
+  for (const forge of KNOWN_NON_GITHUB_GIT_HOSTS) {
+    test(`returns \`invalid\` for canonical forge host ${forge}`, () => {
+      const view = buildSplashViewModel(
+        encodeV1(`https://${forge}/owner/repo/blob/main/README.md`),
+      );
+      expect(view).toEqual({ kind: 'invalid' });
+    });
+  }
+
+  test('returns `invalid` for a non-https scheme with an otherwise-valid shape', () => {
+    // A crafted deep link can carry any scheme with a valid host + path. The
+    // parser must reject non-https so the URL never reaches an <a href>.
+    const view = buildSplashViewModel(
+      encodeV1('vscode://ghes.internal.example/owner/repo/blob/main/README.md'),
     );
     expect(view).toEqual({ kind: 'invalid' });
   });
