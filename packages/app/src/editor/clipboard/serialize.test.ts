@@ -15,15 +15,15 @@
  *     mechanically rather than relying on E2E to surface it.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { sharedExtensions } from '@inkeep/open-knowledge-core';
+import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
 import { getSchema } from '@tiptap/core';
 import type { Fragment } from '@tiptap/pm/model';
 import { Fragment as PmFragment, type Node as PmNode, Schema } from '@tiptap/pm/model';
-import { EditorState, type TextSelection } from '@tiptap/pm/state';
+import { EditorState, TextSelection } from '@tiptap/pm/state';
 import { CellSelection, TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   createClipboardHtmlSerializer,
@@ -58,11 +58,11 @@ function makeSlice(text: string) {
 // receives that JSON shape and reaches into `doc > paragraph > text`.
 function fakeMdManager() {
   return {
-    serialize: mock((doc: JSONContent) => {
+    serialize: vi.fn((doc: JSONContent) => {
       const p = doc.content?.[0]?.content?.[0]?.text ?? '';
       return `# ${p}`;
     }),
-    parse: mock(() => ({ type: 'doc', content: [] })),
+    parse: vi.fn(() => ({ type: 'doc', content: [] })),
   };
 }
 
@@ -93,7 +93,7 @@ describe('createClipboardTextSerializer', () => {
 
   test('falls through to PM textBetween on serialize throw', () => {
     const md = fakeMdManager();
-    md.serialize = mock(() => {
+    md.serialize = vi.fn(() => {
       throw new Error('boom');
     });
     // biome-ignore lint/suspicious/noExplicitAny: fake md manager shape
@@ -748,7 +748,7 @@ describe('createClipboardTextSerializer — CellSelection routing decision', () 
     // returns the sentinel. A passing test proves the CellSelection branch
     // fired instead.
     const md = fakeMdManager();
-    md.serialize = mock(() => 'MARKDOWN-PATH-FALLTHROUGH');
+    md.serialize = vi.fn(() => 'MARKDOWN-PATH-FALLTHROUGH');
     // biome-ignore lint/suspicious/noExplicitAny: fake md manager shape
     const serializer = createClipboardTextSerializer({ mdManager: md as any });
     // Real state carries the CellSelection; the slice arg is unused by
@@ -759,5 +759,142 @@ describe('createClipboardTextSerializer — CellSelection routing decision', () 
     } as unknown as Parameters<ReturnType<typeof createClipboardTextSerializer>>[1]);
     expect(text).toBe('a\tb\nc\td');
     expect(md.serialize).not.toHaveBeenCalled();
+  });
+});
+
+// Real MarkdownManager so the assertions reflect the actual clipboard bytes,
+// not a stubbed serializer. Reuses `tableSchema` (real table nodes) above.
+const realMd = new MarkdownManager({ extensions: sharedExtensions });
+const realTextSerializer = createClipboardTextSerializer({ mdManager: realMd });
+
+function viewFor(state: EditorState) {
+  return { state } as unknown as Parameters<typeof realTextSerializer>[1];
+}
+
+// Build `doc > table > tableRow > tableHeader > paragraph > <inline>` where the
+// header cell holds a single text node, optionally with an inline mark.
+function singleCellTableDoc(text: string, markName?: string): PmNode {
+  const marks = markName ? [tableSchema.marks[markName].create()] : undefined;
+  const textNode = tableSchema.text(text, marks);
+  const p = tableSchema.nodes.paragraph.create(null, [textNode]);
+  const th = tableSchema.nodes.tableHeader.createChecked(null, p);
+  const row = tableSchema.nodes.tableRow.createChecked(null, [th]);
+  const table = tableSchema.nodes.table.createChecked(null, [row]);
+  return tableSchema.nodes.doc.create(null, [table]);
+}
+
+// Set a TextSelection over the `[subFrom, subTo)` char offsets within the first
+// text node whose content includes `needle`, then run the production text
+// serializer.
+function copyTextIn(doc: PmNode, needle: string, subFrom = 0, subTo = needle.length): string {
+  const state = EditorState.create({ schema: tableSchema, doc });
+  let from = -1;
+  let to = -1;
+  doc.descendants((node, pos) => {
+    if (from === -1 && node.isText && node.text?.includes(needle)) {
+      const base = pos + node.text.indexOf(needle);
+      from = base + subFrom;
+      to = base + subTo;
+    }
+  });
+  const sel = TextSelection.create(doc, from, to);
+  const st = state.apply(state.tr.setSelection(sel));
+  return realTextSerializer(st.selection.content(), viewFor(st));
+}
+
+describe('createClipboardTextSerializer — text selection inside one table cell', () => {
+  // Drag-highlighting text inside a single cell yields a TextSelection (not a
+  // CellSelection). `selection.content()` returns the enclosing `table` with
+  // open depths, so the markdown path would emit the whole table's pipe syntax
+  // and delimiter row. The fix strips only the table/row/cell wrappers, so the
+  // cell's inner content serializes to Markdown with its inline formatting
+  // intact — exactly as the same content copies from a paragraph.
+
+  test('inline-code cell → `command`, formatting kept, no table markup', () => {
+    const out = copyTextIn(singleCellTableDoc('command', 'code'), 'command');
+    expect(out.trimEnd()).toBe('`command`');
+    expect(out).not.toContain('|');
+  });
+
+  test('sub-word selection inside an inline-code cell → the sub-word, still code', () => {
+    const out = copyTextIn(singleCellTableDoc('npm run build', 'code'), 'npm run build', 4, 7);
+    expect(out.trimEnd()).toBe('`run`');
+    expect(out).not.toContain('|');
+  });
+
+  test('mixed inline marks in a cell are preserved, table markup is not', () => {
+    const doc = tableSchema.nodes.doc.create(null, [
+      tableSchema.nodes.table.createChecked(null, [
+        tableSchema.nodes.tableRow.createChecked(null, [
+          tableSchema.nodes.tableHeader.createChecked(
+            null,
+            tableSchema.nodes.paragraph.create(null, [
+              tableSchema.text('run '),
+              tableSchema.text('now', [tableSchema.marks.strong.create()]),
+            ]),
+          ),
+        ]),
+      ]),
+    ]);
+    const out = copyTextIn(doc, 'run ', 0, 7); // "run now" across both text nodes
+    expect(out.trimEnd()).toBe('run **now**');
+    expect(out).not.toContain('|');
+  });
+
+  test('plain (unmarked) cell text → the text, no pipes', () => {
+    const out = copyTextIn(singleCellTableDoc('hello world'), 'hello world');
+    expect(out.trimEnd()).toBe('hello world');
+    expect(out).not.toContain('|');
+    expect(out).not.toContain('`');
+  });
+
+  test('selecting text in one body cell of a multi-row table → only that cell', () => {
+    // tableNode row 0 is the header; select text in a body cell.
+    const doc = tableSchema.nodes.doc.create(
+      null,
+      tableNode([
+        ['H1', 'H2'],
+        ['alpha', 'bravo'],
+        ['charlie', 'delta'],
+      ]),
+    );
+    const out = copyTextIn(doc, 'bravo');
+    expect(out.trimEnd()).toBe('bravo');
+    expect(out).not.toContain('|');
+    expect(out).not.toContain('alpha');
+    expect(out).not.toContain('delta');
+  });
+
+  test('control: a text selection in a plain paragraph is untouched (markdown path)', () => {
+    const doc = tableSchema.nodes.doc.create(null, [
+      tableSchema.nodes.paragraph.create(null, [tableSchema.text('some prose here')]),
+    ]);
+    const out = copyTextIn(doc, 'some prose here');
+    expect(out.trimEnd()).toBe('some prose here');
+  });
+
+  test('control: whole-doc selection spanning paragraph + table + paragraph keeps the table markup', () => {
+    // Non-firing case: a select-all-style TextSelection covers the table as a
+    // whole node, so `selection.content()` yields a multi-child fragment whose
+    // table child is closed on both ends. Both strip-loop break conditions
+    // (childCount !== 1; openStart/openEnd exhausted at the closed table) must
+    // hold, or a full-document copy would lose its table markup.
+    const doc = tableSchema.nodes.doc.create(null, [
+      tableSchema.nodes.paragraph.create(null, [tableSchema.text('before')]),
+      tableNode([
+        ['H1', 'H2'],
+        ['a', 'b'],
+      ]),
+      tableSchema.nodes.paragraph.create(null, [tableSchema.text('after')]),
+    ]);
+    const state = EditorState.create({ schema: tableSchema, doc });
+    const sel = TextSelection.create(doc, 1, doc.content.size - 1);
+    const st = state.apply(state.tr.setSelection(sel));
+    const out = realTextSerializer(st.selection.content(), viewFor(st));
+    expect(out).toContain('before');
+    expect(out).toContain('after');
+    expect(out).toContain('| H1 | H2 |');
+    expect(out).toContain('| a | b |');
+    expect(out).toMatch(/\|\s*-+\s*\|/); // delimiter row intact
   });
 });

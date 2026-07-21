@@ -32,8 +32,9 @@
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import { markdownToHtml } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
-import type { Node, Schema, Slice } from '@tiptap/pm/model';
+import type { Node, ResolvedPos, Schema, Slice } from '@tiptap/pm/model';
 import { DOMSerializer, Fragment, Slice as SliceCtor } from '@tiptap/pm/model';
+import { TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 import {
@@ -92,6 +93,36 @@ export function createClipboardTextSerializer(deps: WysiwygSerializerDeps) {
         // Fall through to the markdown path below.
       }
     }
+    // A text selection *inside* a single table cell (drag-highlighting text
+    // within one cell, not the cell-select gesture that yields a
+    // CellSelection). `selection.content()` returns the whole enclosing
+    // `table` node with open depths, and the markdown path below discards
+    // those depths, so it would emit the entire table's pipe syntax +
+    // delimiter row instead of the highlighted text. Peel off the
+    // table/row/cell wrappers and serialize just the cell's inner content:
+    // inline formatting (`code`, **strong**, …) is preserved exactly as it is
+    // when copying from a paragraph, only the table structure is dropped. So
+    // copying `` `cmd` `` out of a docs table yields `` `cmd` ``, not the
+    // whole table.
+    if (
+      view.state.selection instanceof TextSelection &&
+      isSelectionInsideSingleCell(view.state.selection)
+    ) {
+      try {
+        return sliceToMarkdown(
+          stripEnclosingTableWrapper(slice),
+          view.state.schema,
+          deps.mdManager,
+        );
+      } catch (err) {
+        logSerializeFail({
+          view: 'wysiwyg',
+          kind: 'text',
+          reason: `incell:${(err as Error)?.message ?? 'unknown'}`,
+        });
+        // Fall through to the markdown path below.
+      }
+    }
     try {
       return sliceToMarkdown(slice, view.state.schema, deps.mdManager);
     } catch (err) {
@@ -133,6 +164,58 @@ function cellText(cell: Node): string {
   return cell.textBetween(0, cell.content.size, '\n', (leaf) =>
     leaf.type.name === 'hardBreak' ? '\n' : '',
   );
+}
+
+const CELL_NODE_TYPES = new Set(['tableCell', 'tableHeader']);
+const TABLE_WRAPPER_TYPES = new Set(['table', 'tableRow', 'tableCell', 'tableHeader']);
+
+/**
+ * True when both ends of a text selection resolve into the same table cell.
+ * `$pos.before(depth)` at the cell depth is the position immediately before
+ * that cell node, unique per cell, so equal values on both ends prove a
+ * single-cell selection. A selection spanning two cells is normalized to a
+ * `CellSelection` by the tables plugin and never reaches here; the same-cell
+ * check also rejects the defensive edge where one somehow does.
+ */
+function isSelectionInsideSingleCell(selection: TextSelection): boolean {
+  const fromDepth = cellDepth(selection.$from);
+  const toDepth = cellDepth(selection.$to);
+  if (fromDepth === null || toDepth === null) return false;
+  return selection.$from.before(fromDepth) === selection.$to.before(toDepth);
+}
+
+/** Depth of the nearest table-cell ancestor of `$pos`, or `null` if none. */
+function cellDepth($pos: ResolvedPos): number | null {
+  for (let d = $pos.depth; d > 0; d--) {
+    if (CELL_NODE_TYPES.has($pos.node(d).type.name)) return d;
+  }
+  return null;
+}
+
+/**
+ * Peel `table` → `tableRow` → `tableCell`/`tableHeader` off the front of an
+ * open slice, returning a slice of the cell's inner content with the open
+ * depths adjusted. Only descends while the slice is a single wrapper that is
+ * open on both ends — the shape `selection.content()` produces for a selection
+ * *inside* one cell — so a fully-selected table (a closed slice) or a
+ * multi-cell fragment is returned unchanged and still serializes as a real
+ * table. The unwrapped slice serializes to the cell's inner Markdown, marks
+ * and all, exactly as the same content would from a paragraph.
+ */
+function stripEnclosingTableWrapper(slice: Slice): Slice {
+  let content = slice.content;
+  let openStart = slice.openStart;
+  let openEnd = slice.openEnd;
+  while (openStart > 0 && openEnd > 0) {
+    const only = content.firstChild;
+    if (content.childCount !== 1 || only === null || !TABLE_WRAPPER_TYPES.has(only.type.name)) {
+      break;
+    }
+    content = only.content;
+    openStart -= 1;
+    openEnd -= 1;
+  }
+  return new SliceCtor(content, openStart, openEnd);
 }
 
 /**
