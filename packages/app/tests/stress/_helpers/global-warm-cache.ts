@@ -97,6 +97,9 @@ async function buildSeedOnce(key: string): Promise<void> {
   const log = openServerLog('warm-cache');
   const proc = spawn('pnpm', ['run', 'dev', '--host', '127.0.0.1'], {
     cwd: APP_PACKAGE_ROOT,
+    // Own process group so killGracefully's group-kill reaches vite
+    // through the pnpm shim (see signalTree in server-process.ts).
+    detached: true,
     env: {
       ...process.env,
       VITE_PORT: String(port),

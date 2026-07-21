@@ -34,7 +34,7 @@ import { SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
 import * as Y from 'yjs';
 
 const HELPERS_DIR = dirname(fileURLToPath(import.meta.url));
-/** `packages/app/` — every e2e fixture spawns `bun run dev` from here. */
+/** `packages/app/` — every e2e fixture spawns `pnpm run dev` from here. */
 export const APP_PACKAGE_ROOT = resolve(HELPERS_DIR, '..', '..', '..');
 
 /**
@@ -189,25 +189,71 @@ export async function waitForHttpReady(baseURL: string, timeoutMs: number): Prom
   );
 }
 
+/**
+ * Group-kill half of the tree contract: `kill(-pid)` + ESRCH-swallow, the one
+ * place that discipline lives. While any member lives, POSIX reserves the
+ * pgid, so this cannot hit a recycled pid; with no members it reports ESRCH
+ * and does nothing. Returns false when the group no longer exists.
+ */
+function killGroup(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
+    return false;
+  }
+}
+
+/**
+ * Signal the spawned process TREE, not just the direct child. The dev-server
+ * spawns are `pnpm run dev` — a shim whose actual server (vite) is a
+ * descendant. SIGTERM to the shim is usually relayed, but SIGKILL never is
+ * (the OS reaps the shim instantly), so a shim-only kill orphans a live Vite
+ * that keeps the port bound and its file-watchers on the contentDir while
+ * teardown rmSyncs that directory under it. Spawning `detached: true` gives
+ * the child its own process group (pgid == pid), and `kill(-pid)` reaches
+ * every descendant. A non-group child falls back to the direct kill: its pid
+ * is not a pgid, so the group attempt reports ESRCH.
+ *
+ * Returns false when nothing was signalled (tree already gone).
+ */
+function signalTree(proc: ChildProcess, signal: NodeJS.Signals): boolean {
+  const pid = proc.pid;
+  if (pid === undefined) return false;
+  if (killGroup(pid, signal)) return true;
+  try {
+    proc.kill(signal);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
+    return false;
+  }
+}
+
 export async function killGracefully(proc: ChildProcess, timeoutMs = 5000): Promise<void> {
-  if (proc.exitCode !== null || proc.signalCode !== null) return;
+  if (proc.exitCode !== null || proc.signalCode !== null) {
+    // The direct child already exited, but its group can still hold live
+    // descendants (e.g. the pnpm shim crashed while Vite kept running).
+    if (proc.pid !== undefined) killGroup(proc.pid, 'SIGKILL');
+    return;
+  }
   const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
   // ESRCH races: the process can exit between the exitCode check above and
   // either kill() call. Swallow ESRCH so cleanup teardown does not replace
   // the real test result (and the post-use rmSync still runs).
-  try {
-    proc.kill('SIGTERM');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
-    return;
-  }
+  if (!signalTree(proc, 'SIGTERM')) return;
   await Promise.race([exited, wait(timeoutMs)]);
   if (proc.exitCode === null && proc.signalCode === null) {
-    try {
-      proc.kill('SIGKILL');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
-    }
+    // signalTree may report the tree already gone (the child exited during
+    // the timeout window); `exited` was armed before the first signal, so
+    // the await below cannot hang either way. The group-SIGKILL inside
+    // signalTree already reaped any descendants — no further sweep needed.
+    signalTree(proc, 'SIGKILL');
     await exited;
+  } else if (proc.pid !== undefined) {
+    // Graceful path: the shim exited on SIGTERM, but its relayed SIGTERM
+    // does not always reach grandchildren — sweep the group.
+    killGroup(proc.pid, 'SIGKILL');
   }
 }
