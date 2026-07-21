@@ -13,7 +13,7 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/HotkeysSection.tsx
 msgid " or "
 msgstr ""
 
@@ -1022,7 +1022,7 @@ msgstr ""
 msgid "Already at {assetContentPath} — reusing."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
 msgstr ""
 
@@ -1176,7 +1176,7 @@ msgstr ""
 msgid "Attach the file in an email to <0/>"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 msgid "Attachments"
 msgstr ""
 
@@ -1209,7 +1209,7 @@ msgstr ""
 msgid "Auto-save"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is off — your edits stay local until you commit and push manually."
 msgstr ""
 
@@ -1217,7 +1217,7 @@ msgstr ""
 msgid "Auto-sync is off for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is on — your commits push and remote changes pull on intervals."
 msgstr ""
 
@@ -1225,11 +1225,11 @@ msgstr ""
 msgid "Auto-sync is on for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — you don't have permission to push to this repo."
 msgstr ""
 
@@ -1237,7 +1237,7 @@ msgstr ""
 msgid "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync pushes/pulls commits to your git remote on intervals and on save. Toggling on requires confirmation."
 msgstr ""
 
@@ -1925,7 +1925,7 @@ msgstr ""
 msgid "Connect a GitHub account to browse and sync your repositories."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Connect an existing repository"
 msgstr ""
 
@@ -1939,7 +1939,7 @@ msgstr ""
 msgid "Connect GitHub to continue."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/IntegrationsSection.tsx
 msgid "Connect OpenKnowledge to other tools you use."
 msgstr ""
 
@@ -1957,7 +1957,7 @@ msgstr ""
 msgid "Connect to AI tools"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Connect to GitHub"
 msgstr ""
 
@@ -1982,7 +1982,7 @@ msgstr ""
 msgid "Connected as <0>@{signedInLogin}</0>"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Connected to"
 msgstr ""
 
@@ -2028,7 +2028,7 @@ msgstr ""
 msgid "Content directory must be inside the project"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 msgid "Content root"
 msgstr ""
 
@@ -2751,7 +2751,7 @@ msgstr ""
 msgid "default"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
 msgstr ""
 
@@ -2959,7 +2959,7 @@ msgstr ""
 msgid "Disable external link previews"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Disable git auto-sync"
 msgstr ""
 
@@ -3168,7 +3168,7 @@ msgstr ""
 msgid "Duplicated to \"{0}\""
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 msgid "e.g. assets/uploads"
 msgstr ""
 
@@ -3354,7 +3354,7 @@ msgstr ""
 msgid "Enable external link previews"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Enable git auto-sync"
 msgstr ""
 
@@ -3736,7 +3736,7 @@ msgstr ""
 msgid "Failed to store the token — try again"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 msgid "Failed to update attachment location — {detail}"
 msgstr ""
 
@@ -3757,7 +3757,7 @@ msgstr ""
 msgid "Failed to update the embeddings endpoint — {detail}"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Failed to update the project sync default — {detail}"
 msgstr ""
 
@@ -3899,7 +3899,7 @@ msgstr ""
 msgid "Fix all {count} fixable problems"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 msgid "Fixed folder in content root"
 msgstr ""
 
@@ -3934,7 +3934,7 @@ msgstr ""
 msgid "folder"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
@@ -4048,7 +4048,7 @@ msgstr ""
 msgid "Get set up"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Git auto-sync"
 msgstr ""
 
@@ -4315,7 +4315,7 @@ msgstr ""
 msgid "Horizontal rule that divides sections."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/HotkeysSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Hotkeys"
 msgstr ""
@@ -4527,7 +4527,7 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/IntegrationsSection.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillRow.tsx
 msgid "Install"
@@ -4550,7 +4550,7 @@ msgstr ""
 msgid "Install handoff failed: {msg}"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/IntegrationsSection.tsx
 msgid "Install in Claude Desktop"
 msgstr ""
 
@@ -4611,7 +4611,7 @@ msgstr ""
 msgid "Instruction for the AI"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Integrations"
 msgstr ""
@@ -4686,7 +4686,7 @@ msgstr ""
 msgid "Key ending in {keyHint}"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/HotkeysSection.tsx
 msgid "Keyboard shortcuts available in the editor and workspace."
 msgstr ""
 
@@ -4956,7 +4956,7 @@ msgstr ""
 msgid "Lost connection to \"{docName}\"."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/IntegrationsSection.tsx
 msgid "Make this knowledge base available as a Claude Skill."
 msgstr ""
 
@@ -5666,7 +5666,7 @@ msgstr ""
 msgid "No workspace"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "None"
 msgstr ""
 
@@ -5736,7 +5736,7 @@ msgstr ""
 msgid "of {totalPages}"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Off"
 msgstr ""
 
@@ -5760,7 +5760,7 @@ msgstr ""
 msgid "ok ui responded but server.lock has no port yet"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "On"
 msgstr ""
 
@@ -5812,7 +5812,7 @@ msgid "Open"
 msgstr ""
 
 #. placeholder {0}: status.remote.label
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Open {0} on GitHub (opens in a new tab)"
 msgstr ""
@@ -6372,7 +6372,7 @@ msgstr ""
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/ThemePluginSection.tsx
 msgid "Pick a built-in IDE color palette, or define your own."
 msgstr ""
 
@@ -6707,7 +6707,7 @@ msgid "Refresh audit"
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/IntegrationsSection.tsx
 msgid "Reinstall"
 msgstr ""
 
@@ -6988,12 +6988,12 @@ msgstr ""
 msgid "Reset {0} to default"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/field-controls.tsx
 msgid "Reset {labelText} to default"
 msgstr ""
 
+#: src/components/settings/field-controls.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
-#: src/components/settings/SettingsDialogBody.tsx
 msgid "Reset to default"
 msgstr ""
 
@@ -7202,7 +7202,7 @@ msgstr ""
 msgid "Running project audit"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr ""
 
@@ -7230,8 +7230,8 @@ msgstr ""
 msgid "Save resolution"
 msgstr ""
 
+#: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx
-#: src/components/settings/SettingsDialogBody.tsx
 msgid "Saved"
 msgstr ""
 
@@ -7257,7 +7257,7 @@ msgstr ""
 msgid "Scope"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/HotkeysSection.tsx
 msgid "Scope: "
 msgstr ""
 
@@ -7526,7 +7526,7 @@ msgstr ""
 msgid "Set identity"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Set the auto-sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr ""
 
@@ -7534,11 +7534,11 @@ msgstr ""
 msgid "Set up OpenKnowledge integrations"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Set up syncing"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 msgid "Set where pasted and dropped files are stored for this project."
 msgstr ""
 
@@ -7611,11 +7611,11 @@ msgstr ""
 msgid "Shared"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Shared auto-sync default"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Shared default"
 msgstr ""
 
@@ -7791,7 +7791,7 @@ msgid "Shows above the code body. Round-trips as `title=\"...\"` in markdown."
 msgstr ""
 
 #: src/components/settings/AccountSection.tsx
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sign in"
 msgstr ""
@@ -8059,7 +8059,7 @@ msgstr ""
 msgid "Subfolder name"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 msgid "Subfolder under current folder"
 msgstr ""
 
@@ -8130,8 +8130,8 @@ msgstr ""
 msgid "Symlink to {targetPath}"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "Sync"
 msgstr ""
 
@@ -8139,7 +8139,7 @@ msgstr ""
 msgid "Sync disabled"
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync disabled — you don't have permission to push"
 msgstr ""
@@ -8175,7 +8175,7 @@ msgid "Sync paused — you don't have permission to push to this repo"
 msgstr ""
 
 #: src/components/AutoSyncOnboardingDialog.tsx
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 #: src/hooks/use-enable-sync-with-confirm.ts
 msgid "Sync settings not yet loaded — try again in a moment"
 msgstr ""
@@ -8506,8 +8506,8 @@ msgid "Theme"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
-#: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/ThemePluginSection.tsx
 msgid "Themes"
 msgstr ""
 
@@ -8696,7 +8696,7 @@ msgstr ""
 msgid "This project isn't a git repository, so worktrees aren't available."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr ""
 
@@ -9251,7 +9251,7 @@ msgstr ""
 msgid "We'll build <0>openknowledge.skill</0>, save it to <1>~/Downloads</1>, and open the Claude Desktop App for you."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 msgid "We'll create a repository and start syncing — no terminal needed."
 msgstr ""
 
@@ -9337,7 +9337,7 @@ msgstr ""
 msgid "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/AttachmentsSection.tsx
 msgid "Where newly added attachments are placed."
 msgstr ""
 
@@ -9521,7 +9521,7 @@ msgstr ""
 msgid "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
 msgstr ""
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
 msgstr ""

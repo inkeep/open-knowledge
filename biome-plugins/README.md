@@ -225,7 +225,7 @@ Empirically verified (matches Biome 2.4 suppression-comment syntax):
 Current production suppressions:
 - `microcopy-ellipsis`: 2 sites (`AuthModal.tsx`, `Breadcrumb.tsx`)
 - `no-loosely-typed-webcontents-ipc`: 15 sites (`preload/index.ts` ×12, `shared/ipc-send.ts` ×1, `tests/smoke/theme-sync.e2e.ts` ×2)
-- `no-raw-html-interactive-element`: 20 file-level `biome-ignore-all` headers in `packages/app/src/{components,presence}/**` (pre-rule backlog awaiting shadcn migration; see the rule's section above for the ratchet contract)
+- `no-raw-html-interactive-element`: 19 file-level `biome-ignore-all` headers in `packages/app/src/{components,presence}/**` (pre-rule backlog awaiting shadcn migration; see the rule's section above for the ratchet contract)
 - `no-resolved-value-theme-source`: 0 sites
 - `no-roundtrip-identity-oracle`: 0 sites
 - `no-inline-tolerance-class`: 0 sites
