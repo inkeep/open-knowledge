@@ -1,3 +1,4 @@
+
 /** True when `needle` is a subsequence of `haystack` (two-pointer, O(n+m)):
  *  insertions in `haystack` are free; any dropped or substituted `needle` byte
  *  fails. */

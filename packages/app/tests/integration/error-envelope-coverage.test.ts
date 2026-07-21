@@ -24,12 +24,16 @@ const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extensio
 const source = readFileSync(API_EXT_PATH, 'utf8');
 
 function listAllHandlers(): string[] {
-  // Handlers in `api-extension.ts` come in two shapes:
+  // Handlers in `api-extension.ts` come in three shapes:
   //   (1) Legacy `async function handleX(...)` (read-only routes).
   //   (2) `const handleX = withValidation(Schema, handler, options)` —
   //       where `handler` may be an inline arrow function OR a named
   //       `handleXInner` function declared adjacent to the wrapper for
   //       streaming endpoints whose bodies are too long for inline form.
+  //   (3) `const handleX = methodRouter({ GET: ..., PUT: ... }, options)` —
+  //       verb dispatchers. The 405 fallback emits via `errorResponse(...)`
+  //       inside the helper (unit-tested in `http/method-router.test.ts`);
+  //       the per-verb handlers are scanned separately under their own names.
   // Inner functions co-located with a wrapper are excluded from the public
   // handler list — they are scanned as part of the parent's body slice via
   // `extractHandlerBody`.
@@ -37,20 +41,26 @@ function listAllHandlers(): string[] {
   const wrapperNames = [...source.matchAll(/const (handle\w+) = withValidation\(/g)].map(
     (m) => m[1],
   );
+  const routerNames = [...source.matchAll(/const (handle\w+) = methodRouter\(/g)].map((m) => m[1]);
   const innerNames = new Set(
     wrapperNames.map((wrapper) => `${wrapper}Inner`).filter((inner) => fnNames.includes(inner)),
   );
-  return Array.from(new Set([...fnNames, ...wrapperNames])).filter((n) => !innerNames.has(n));
+  return Array.from(new Set([...fnNames, ...wrapperNames, ...routerNames])).filter(
+    (n) => !innerNames.has(n),
+  );
 }
 
 function extractHandlerBody(name: string): string | null {
   const fnDecl = `async function ${name}(`;
   const constDecl = `const ${name} = withValidation(`;
+  const routerDecl = `const ${name} = methodRouter(`;
   const fnIdx = source.indexOf(fnDecl);
   const constIdx = source.indexOf(constDecl);
+  const routerIdx = source.indexOf(routerDecl);
   let start = -1;
   if (fnIdx !== -1) start = fnIdx;
   else if (constIdx !== -1) start = constIdx;
+  else if (routerIdx !== -1) start = routerIdx;
   if (start === -1) return null;
 
   // For wrappers that delegate to a named inner function (`const handleX =
@@ -153,6 +163,10 @@ type EmitClass = 'json' | 'non-json' | 'dispatcher';
  */
 function classifyHandlerEmit(body: string): EmitClass {
   if (isNonJsonEmit(body)) return 'non-json';
+  // `methodRouter({...})` declarations are dispatchers by construction —
+  // the per-verb handlers they reference emit the actual bodies and are
+  // scanned separately; the 405 fallback lives inside the helper.
+  if (body.includes('= methodRouter(')) return 'dispatcher';
   if (DISPATCHER_RE.test(body) && !body.includes('successResponse(')) {
     return 'dispatcher';
   }
@@ -214,10 +228,20 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
           `${name}: contains inline json(res, 2xx, ...) — must use successResponse(...)`,
         );
       }
-      if (!body.includes('errorResponse(') && !STREAM_AUTH_DELEGATION_RE.test(body)) {
-        // `streamAuthFlow` delegators: every error emit (429 concurrency
-        // envelope, RFC 9457 streaming errors) lives inside the shared helper,
-        // so the handler body legitimately contains no `errorResponse(` call.
+      // `catchErrors(...)` routes handler throws through `errorResponse(...)`
+      // internally, and `methodRouter(...)` emits its 405 fallback the same
+      // way — both wrappers satisfy the sanctioned-emitter requirement for
+      // handlers whose remaining body has no direct error emit of its own.
+      // `streamAuthFlow` delegators likewise: every error emit (429
+      // concurrency envelope, RFC 9457 streaming errors) lives inside the
+      // shared helper, so the handler body legitimately contains no
+      // `errorResponse(` call.
+      if (
+        !body.includes('errorResponse(') &&
+        !body.includes('catchErrors(') &&
+        !body.includes('= methodRouter(') &&
+        !STREAM_AUTH_DELEGATION_RE.test(body)
+      ) {
         failures.push(`${name}: missing errorResponse(...) usage`);
       }
     }

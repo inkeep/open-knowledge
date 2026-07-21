@@ -515,11 +515,15 @@ import {
 import { CHECKOUT_HANDLER_TAG, runCheckoutFlow } from './git-checkout.ts';
 import { withParentLock } from './git-handle.ts';
 import { writeGitIdentity } from './git-identity.ts';
+import { catchErrors } from './http/catch-errors.ts';
 import {
   createStreamingErrorWriter,
   errorResponse,
   type HttpErrorStatus,
 } from './http/error-response.ts';
+import { errnoCode, parseQuery } from './http/handler-utils.ts';
+import { methodRouter } from './http/method-router.ts';
+import { REQUEST_ID_HEADER, rememberRequestId, resolveRequestId } from './http/request-id.ts';
 import { validateBody, withValidation } from './http/request-validation.ts';
 import { successResponse } from './http/success-response.ts';
 import { initContent } from './init-project.ts';
@@ -1107,7 +1111,7 @@ async function findDuplicateAsset(
       // candidate otherwise spiked heap to 500 MB per scan.
       candidateSha = await streamingHashFile(fullPath);
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       // ENOENT is the legitimate concurrent-rename race — stay silent.
       if (code !== 'ENOENT') {
         log.warn(
@@ -2106,7 +2110,7 @@ function assertNoSymlinkEscape(fullPath: string, resolvedContentDir: string): vo
   try {
     contentRoot = realpathSync(resolvedContentDir);
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = errnoCode(err);
     // ENOENT means the content dir hasn't been created yet — no symlink
     // escape is possible against a non-existent directory, but we have
     // no safe baseline for the check either. Throw the same
@@ -2130,7 +2134,7 @@ function assertNoSymlinkEscape(fullPath: string, resolvedContentDir: string): vo
       }
       return;
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code === 'ELOOP') {
         throw new SymlinkEscapeError('symlink cycle in path');
       }
@@ -2193,7 +2197,7 @@ class DuplicateNameExhaustedError extends Error {
 }
 
 function isAlreadyExistsError(err: unknown): boolean {
-  const code = (err as NodeJS.ErrnoException).code;
+  const code = errnoCode(err);
   // Node's cpSync distinguishes the destination-occupied cases by the type
   // mismatch: a same-type collision surfaces as ERR_FS_CP_EEXIST, but copying a
   // directory onto an existing file (or a file onto an existing directory)
@@ -2216,7 +2220,7 @@ type DuplicatePathFilesystemProblem = {
 function classifyDuplicatePathFilesystemProblem(
   err: unknown,
 ): DuplicatePathFilesystemProblem | null {
-  const code = (err as NodeJS.ErrnoException).code;
+  const code = errnoCode(err);
   if (code === 'ENOSPC' || code === 'EDQUOT') {
     return {
       status: 507,
@@ -3929,7 +3933,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     try {
       entries = readdirSync(parentPath, { withFileTypes: true });
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code === 'ENOENT' || code === 'ENOTDIR') {
         return { path: assetPath, ambiguous: false };
       }
@@ -3975,7 +3979,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     try {
       if (!statSync(sourcePathRoot).isDirectory()) return docNames;
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code === 'ENOENT' || code === 'ENOTDIR') return docNames;
       throw err;
     }
@@ -9194,7 +9198,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     try {
       resolvedContentDir = realpathSync(resolvedRoot);
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      const code = errnoCode(err);
       if (code === 'ENOENT') {
         log.warn(
           { path: resolvedRoot },
@@ -10025,7 +10029,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               try {
                 tracedRmdirSync(destinationDir);
               } catch (cleanupErr) {
-                const cleanupCode = (cleanupErr as NodeJS.ErrnoException).code;
+                const cleanupCode = errnoCode(cleanupErr);
                 if (cleanupCode !== 'ENOENT' && cleanupCode !== 'ENOTEMPTY') {
                   log.warn(
                     { destinationDir, err: cleanupErr },
@@ -11294,7 +11298,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         return;
       }
     } catch (e) {
-      const code = (e as NodeJS.ErrnoException).code;
+      const code = errnoCode(e);
       if (code === 'ENOENT') {
         // Directory doesn't exist yet — will be created below; no symlink escape possible
       } else {
@@ -13672,19 +13676,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     return out;
   }
 
-  async function handleFolderConfig(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === 'GET') {
-      return handleFolderConfigGet(req, res);
-    }
-    if (req.method === 'PUT') {
-      return handleFolderConfigPut(req, res);
-    }
-    errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-      handler: 'folder-config',
-      extraHeaders: { Allow: 'GET, PUT' },
-    });
-  }
-
   const handleFolderConfigGet = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -13834,6 +13825,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'folder-config-put', method: 'PUT' },
   );
 
+  const handleFolderConfig = methodRouter(
+    { GET: handleFolderConfigGet, PUT: handleFolderConfigPut },
+    { handler: 'folder-config' },
+  );
+
   /**
    * Conflict-aware refusal helper for the template handlers. Templates
    * write to `<folder>/.ok/templates/<name>.md`, under `.ok/`, which the
@@ -13897,8 +13893,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    */
   const handleTemplatesList = withValidation(
     EmptyRequestSchema,
-    async (_req, res) => {
-      try {
+    catchErrors(
+      async (_req, res) => {
         const resolvedContentDir = resolve(contentDir);
         const result = resolveProjectTemplates(resolvedContentDir);
         // Drop `scope` from each entry — every flat-enumeration entry is
@@ -13916,34 +13912,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { templates, truncated: result.truncated },
           { handler: 'templates-list' },
         );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to list templates.', {
-          handler: 'templates-list',
-          cause: e,
-        });
-      }
-    },
+      },
+      { handler: 'templates-list', title: 'Failed to list templates.' },
+    ),
     { handler: 'templates-list', method: 'GET', skipBodyParse: true },
   );
-
-  async function handleTemplate(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === 'GET') {
-      return handleTemplateGet(req, res);
-    }
-    if (req.method === 'PUT') {
-      return handleTemplatePut(req, res);
-    }
-    if (req.method === 'POST') {
-      return handleTemplateMove(req, res);
-    }
-    if (req.method === 'DELETE') {
-      return handleTemplateDelete(req, res);
-    }
-    errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-      handler: 'template',
-      extraHeaders: { Allow: 'GET, PUT, POST, DELETE' },
-    });
-  }
 
   // Generic frontmatter splitter for managed `.md` files (SKILL.md, etc.):
   // returns the parsed YAML frontmatter object + the body. Distinct from core's
@@ -14429,6 +14402,16 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'template-move', method: 'POST' },
+  );
+
+  const handleTemplate = methodRouter(
+    {
+      GET: handleTemplateGet,
+      PUT: handleTemplatePut,
+      POST: handleTemplateMove,
+      DELETE: handleTemplateDelete,
+    },
+    { handler: 'template' },
   );
 
   const handleTemplateImport = withValidation(
@@ -14982,8 +14965,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
   const handleSkillsList = withValidation(
     EmptyRequestSchema,
-    async (_req, res) => {
-      try {
+    catchErrors(
+      async (_req, res) => {
         // Union both scopes: project skills (`<contentDir>/.ok/skills`, git-
         // shared) + global skills (`<home>/.ok/skills`, user-level). Each is
         // enriched from ITS OWN install marker — the project marker at
@@ -15022,26 +15005,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           truncated: project.truncated || globalSkills.truncated,
         };
         successResponse(res, 200, SkillsListSuccessSchema, enriched, { handler: 'skills-list' });
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to list skills.', {
-          handler: 'skills-list',
-          cause: e,
-        });
-      }
-    },
+      },
+      { handler: 'skills-list', title: 'Failed to list skills.' },
+    ),
     { handler: 'skills-list', method: 'GET', skipBodyParse: true },
   );
-
-  async function handleSkill(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === 'GET') return handleSkillGet(req, res);
-    if (req.method === 'PUT') return handleSkillPut(req, res);
-    if (req.method === 'POST') return handleSkillMove(req, res);
-    if (req.method === 'DELETE') return handleSkillDelete(req, res);
-    errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-      handler: 'skill',
-      extraHeaders: { Allow: 'GET, PUT, POST, DELETE' },
-    });
-  }
 
   // ─── `/api/skills/management` — project-managed opt-in (the import gate) ──────
   // GET → { managed: bool | null (undecided), importable: count of non-`.ok`
@@ -15107,14 +15075,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'skills-management-put', method: 'PUT' },
   );
 
-  async function handleSkillsManagement(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === 'GET') return handleSkillsManagementGet(req, res);
-    if (req.method === 'PUT') return handleSkillsManagementPut(req, res);
-    errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-      handler: 'skills-management',
-      extraHeaders: { Allow: 'GET, PUT' },
-    });
-  }
+  const handleSkillsManagement = methodRouter(
+    { GET: handleSkillsManagementGet, PUT: handleSkillsManagementPut },
+    { handler: 'skills-management' },
+  );
 
   const handleSkillGet = withValidation(
     EmptyRequestSchema,
@@ -15605,6 +15569,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'skill-move', method: 'POST' },
   );
 
+  const handleSkill = methodRouter(
+    { GET: handleSkillGet, PUT: handleSkillPut, POST: handleSkillMove, DELETE: handleSkillDelete },
+    { handler: 'skill' },
+  );
+
   // ─── `/api/skill-file` — ONE bundle file (references/** + scripts/**) ──────
   //
   // The whole-bundle read/write/delete surface beneath SKILL.md. Routing splits
@@ -16086,15 +16055,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'skill-file-delete', method: 'DELETE', skipBodyParse: true },
   );
 
-  async function handleSkillFile(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === 'GET') return handleSkillFileGet(req, res);
-    if (req.method === 'PUT') return handleSkillFilePut(req, res);
-    if (req.method === 'DELETE') return handleSkillFileDelete(req, res);
-    errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-      handler: 'skill-file',
-      extraHeaders: { Allow: 'GET, PUT, DELETE' },
-    });
-  }
+  const handleSkillFile = methodRouter(
+    { GET: handleSkillFileGet, PUT: handleSkillFilePut, DELETE: handleSkillFileDelete },
+    { handler: 'skill-file' },
+  );
 
   // `POST /api/skill/install` — project a skill's `.ok/skills/<name>/` source
   // into the project-configured editor host dirs. This is a local-op
@@ -16288,19 +16252,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // (from the marker) AND OK's shipped `open-knowledge` bundle — to the new
   // editors, reverse-projecting from dropped ones. A user/UI action (the set
   // is project-config with teammate-wide blast radius), not agent-attributed.
-  async function handleSkillTargets(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === 'GET') return handleSkillTargetsGet(req, res);
-    if (req.method === 'PUT') return handleSkillTargetsPut(req, res);
-    errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-      handler: 'skill-targets',
-      extraHeaders: { Allow: 'GET, PUT' },
-    });
-  }
-
   const handleSkillTargetsGet = withValidation(
     EmptyRequestSchema,
-    async (_req, res) => {
-      try {
+    catchErrors(
+      async (_req, res) => {
         const committed = projectDir ? readSkillTargets(projectDir) : null;
         const targets = resolveSkillTargets(projectDir ?? '', committed ?? undefined);
         successResponse(
@@ -16310,23 +16265,16 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { targets, configured: committed !== null },
           { handler: 'skill-targets-get' },
         );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read skill targets.',
-          { handler: 'skill-targets-get', cause: e },
-        );
-      }
-    },
+      },
+      { handler: 'skill-targets-get', title: 'Failed to read skill targets.' },
+    ),
     { handler: 'skill-targets-get', method: 'GET', skipBodyParse: true },
   );
 
   const handleSkillTargetsPut = withValidation(
     SkillTargetsPutRequestSchema,
-    async (_req, res, body) => {
-      try {
+    catchErrors(
+      async (_req, res, body) => {
         if (!projectDir) {
           errorResponse(
             res,
@@ -16367,17 +16315,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           },
           { handler: 'skill-targets-put' },
         );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to set skill targets.',
-          { handler: 'skill-targets-put', cause: e },
-        );
-      }
-    },
+      },
+      { handler: 'skill-targets-put', title: 'Failed to set skill targets.' },
+    ),
     { handler: 'skill-targets-put', method: 'PUT' },
+  );
+
+  const handleSkillTargets = methodRouter(
+    { GET: handleSkillTargetsGet, PUT: handleSkillTargetsPut },
+    { handler: 'skill-targets' },
   );
 
   // `POST /api/skill/restore` — restore a skill's source to a prior shadow-repo
@@ -17264,45 +17210,30 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
   prewarmWorkspaceSearchCache();
 
-  async function handleSearch(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === 'GET') {
-      return handleSearchGet(req, res);
-    }
-    if (req.method === 'POST') {
-      return handleSearchPost(req, res);
-    }
-    errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-      handler: 'search',
-      extraHeaders: { Allow: 'GET, POST' },
-    });
-  }
-
   const handleSearchGet = withValidation(
     EmptyRequestSchema,
-    async (req, res) => {
-      const url = new URL(req.url ?? '', 'http://localhost');
-      const limit = url.searchParams.get('limit');
-      const query = url.searchParams.get('query') ?? '';
-      const intent = parseSearchIntent(url.searchParams.get('intent'));
-      const ranking = parseSearchRanking(url.searchParams.get('ranking'));
-      const scopes = parseSearchScopes(
-        url.searchParams.get('scope') ?? url.searchParams.get('scopes'),
-      );
-      const semanticParam = parseSemanticParam(url.searchParams.get('semantic'));
-      const source = parseSearchSource(url.searchParams.get('source'));
-      const limitNum = limit === null ? undefined : Number(limit);
+    catchErrors(
+      async (req, res) => {
+        const params = parseQuery(req);
+        const limit = params.get('limit');
+        const query = params.get('query') ?? '';
+        const intent = parseSearchIntent(params.get('intent'));
+        const ranking = parseSearchRanking(params.get('ranking'));
+        const scopes = parseSearchScopes(params.get('scope') ?? params.get('scopes'));
+        const semanticParam = parseSemanticParam(params.get('semantic'));
+        const source = parseSearchSource(params.get('source'));
+        const limitNum = limit === null ? undefined : Number(limit);
 
-      if (query.length > 200) {
-        errorResponse(
-          res,
-          400,
-          'urn:ok:error:invalid-request',
-          'Query is too long (max 200 chars).',
-          { handler: 'search-get' },
-        );
-        return;
-      }
-      try {
+        if (query.length > 200) {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:invalid-request',
+            'Query is too long (max 200 chars).',
+            { handler: 'search-get' },
+          );
+          return;
+        }
         const body = await buildSearchResponse({
           query,
           intent,
@@ -17313,41 +17244,34 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           source,
         });
         successResponse(res, 200, SearchSuccessSchema, body, { handler: 'search-get' });
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to search workspace.',
-          { handler: 'search-get', cause: e },
-        );
-      }
-    },
+      },
+      { handler: 'search-get', title: 'Failed to search workspace.' },
+    ),
     { handler: 'search-get', method: 'GET', skipBodyParse: true },
   );
 
   const handleSearchPost = withValidation(
     SearchRequestSchema,
-    async (_req, res, body) => {
-      const query = typeof body.query === 'string' ? body.query : '';
-      const intent = parseSearchIntent(body.intent);
-      const ranking = parseSearchRanking(body.ranking);
-      const scopes = parseSearchScopes(body.scopes ?? body.scope);
-      const limit = typeof body.limit === 'number' ? body.limit : undefined;
-      const semanticParam = parseSemanticParam(body.semantic);
-      const source = parseSearchSource(body.source);
+    catchErrors(
+      async (_req, res, body) => {
+        const query = typeof body.query === 'string' ? body.query : '';
+        const intent = parseSearchIntent(body.intent);
+        const ranking = parseSearchRanking(body.ranking);
+        const scopes = parseSearchScopes(body.scopes ?? body.scope);
+        const limit = typeof body.limit === 'number' ? body.limit : undefined;
+        const semanticParam = parseSemanticParam(body.semantic);
+        const source = parseSearchSource(body.source);
 
-      if (query.length > 200) {
-        errorResponse(
-          res,
-          400,
-          'urn:ok:error:invalid-request',
-          'Query is too long (max 200 chars).',
-          { handler: 'search-post' },
-        );
-        return;
-      }
-      try {
+        if (query.length > 200) {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:invalid-request',
+            'Query is too long (max 200 chars).',
+            { handler: 'search-post' },
+          );
+          return;
+        }
         const responseBody = await buildSearchResponse({
           query,
           intent,
@@ -17358,23 +17282,21 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           source,
         });
         successResponse(res, 200, SearchSuccessSchema, responseBody, { handler: 'search-post' });
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to search workspace.',
-          { handler: 'search-post', cause: e },
-        );
-      }
-    },
+      },
+      { handler: 'search-post', title: 'Failed to search workspace.' },
+    ),
     { handler: 'search-post', method: 'POST' },
+  );
+
+  const handleSearch = methodRouter(
+    { GET: handleSearchGet, POST: handleSearchPost },
+    { handler: 'search' },
   );
 
   const handleSkillInstallState = withValidation(
     EmptyRequestSchema,
-    async (_req, res) => {
-      try {
+    catchErrors(
+      async (_req, res) => {
         const snapshot = await readSkillInstallStateSnapshot(homedir());
         successResponse(
           res,
@@ -17386,16 +17308,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             extraHeaders: { 'Cache-Control': 'no-store' },
           },
         );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read skill install state.',
-          { handler: 'skill-install-state', cause: e },
-        );
-      }
-    },
+      },
+      { handler: 'skill-install-state', title: 'Failed to read skill install state.' },
+    ),
     {
       handler: 'skill-install-state',
       method: 'GET',
@@ -19253,6 +19168,58 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         secFetchUser: headerString('sec-fetch-user'),
       });
 
+      const method = request.method ?? 'GET';
+      // Normalize route for low-cardinality labels (metric labels, span
+      // attributes, and the access log below). `:id` placeholders replace
+      // dynamic segments; anything else collapses to the URL prefix.
+      let routeTemplate = url;
+      if (url.startsWith('/api/history/')) routeTemplate = '/api/history/:sha';
+      else if (url.startsWith('/api/tags/')) routeTemplate = '/api/tags/:name';
+      else if (!routes[url]) routeTemplate = '/api/*';
+
+      // Request identity + access log for the /api/* surface. Slots BEFORE the
+      // origin/loopback/host gates (without touching their order) so even
+      // gate-rejected responses carry the `x-request-id` echo and produce an
+      // access-log line. The `typeof` guards mirror the CORS block below —
+      // unit-test doubles stub only `writeHead` + `end`.
+      const requestId = url.startsWith('/api/') ? resolveRequestId(request) : undefined;
+      if (requestId !== undefined) {
+        rememberRequestId(request, requestId);
+        if (typeof response.setHeader === 'function') {
+          response.setHeader(REQUEST_ID_HEADER, requestId);
+        }
+        if (typeof response.once === 'function') {
+          const accessStarted = Date.now();
+          let accessLogged = false;
+          // One line per request on whichever of finish/close fires first:
+          // 'finish' is the fully-flushed response (including long-lived
+          // NDJSON streams, logged at stream end); 'close' catches aborted
+          // sockets (client disconnect, timeout destroy) that never finish.
+          // Route TEMPLATE, never the raw path — cardinality discipline for
+          // log aggregators matches the metric-label STOP rule. Byte counts
+          // are omitted: Node exposes no cheap per-response counter under
+          // chunked encoding (socket.bytesWritten is per-connection).
+          const emitAccessLog = () => {
+            if (accessLogged) return;
+            accessLogged = true;
+            log.info(
+              {
+                event: 'api.access',
+                requestId,
+                method,
+                route: routeTemplate,
+                status: response.statusCode,
+                durationMs: Date.now() - accessStarted,
+                ...(response.writableFinished ? {} : { aborted: true }),
+              },
+              `${method} ${routeTemplate} ${response.statusCode}`,
+            );
+          };
+          response.once('finish', emitAccessLog);
+          response.once('close', emitAccessLog);
+        }
+      }
+
       // Origin-allowlist CORS for /api/*. Only loopback origins are accepted:
       // - No Origin header (same-origin browser tab, curl, CLI): passes through.
       // - Origin "null" (Electron packaged renderer, file:// per Fetch spec §4.3): allowed.
@@ -19295,8 +19262,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           // origin / file:// packaged) before the real request fires.
           response.setHeader(
             'Access-Control-Allow-Headers',
-            `Content-Type, Authorization, traceparent, tracestate, baggage, ${CLIENT_VERSION_HEADER.protocol}, ${CLIENT_VERSION_HEADER.runtime}, ${CLIENT_VERSION_HEADER.kind}`,
+            `Content-Type, Authorization, traceparent, tracestate, baggage, ${REQUEST_ID_HEADER}, ${CLIENT_VERSION_HEADER.protocol}, ${CLIENT_VERSION_HEADER.runtime}, ${CLIENT_VERSION_HEADER.kind}`,
           );
+          // Let cross-origin renderer JS read the correlation ID echo — CORS
+          // hides non-safelisted response headers by default.
+          response.setHeader('Access-Control-Expose-Headers', REQUEST_ID_HEADER);
         }
         // OPTIONS preflight — short-circuit with 204 + the headers above.
         if (request.method === 'OPTIONS') {
@@ -19387,13 +19357,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       // Extract incoming trace context (W3C traceparent header) so this server
       // span attaches as a child of the browser-initiated trace.
       const extractedCtx = propagation.extract(context.active(), request.headers);
-      const method = request.method ?? 'GET';
-      // Normalize route for low-cardinality metric labels. `:id` placeholders
-      // replace dynamic segments; anything else collapses to the URL prefix.
-      let routeTemplate = url;
-      if (url.startsWith('/api/history/')) routeTemplate = '/api/history/:sha';
-      else if (url.startsWith('/api/tags/')) routeTemplate = '/api/tags/:name';
-      else if (!routes[url]) routeTemplate = '/api/*';
 
       const tracer = getTracer();
       const started = Date.now();
@@ -19408,6 +19371,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               [ATTR_URL_PATH]: url,
               [ATTR_URL_SCHEME]: 'http',
               [ATTR_USER_AGENT_ORIGINAL]: request.headers['user-agent'] ?? '',
+              // Correlation ID (UUID or client-supplied bounded token) — a
+              // sanctioned span attribute like `ok.error.instance`; the
+              // cardinality STOP rule governs metric labels, which stay
+              // request-id-free.
+              'ok.request.id': requestId,
             },
           },
           async (span) => {

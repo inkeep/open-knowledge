@@ -247,14 +247,18 @@ const EXEMPT_HANDLERS = new Set([
 ]);
 
 function extractHandlerBody(handlerName: string): string | null {
-  // Same legacy vs migrated detection as the attribution-sweep meta-test.
+  // Same legacy vs migrated detection as the attribution-sweep meta-test,
+  // plus the `methodRouter({...})` dispatcher shape.
   const fnDecl = `async function ${handlerName}(`;
   const constDecl = `const ${handlerName} = withValidation(`;
+  const routerDecl = `const ${handlerName} = methodRouter(`;
   const fnIdx = source.indexOf(fnDecl);
   const constIdx = source.indexOf(constDecl);
+  const routerIdx = source.indexOf(routerDecl);
   let start = -1;
   if (fnIdx !== -1) start = fnIdx;
   else if (constIdx !== -1) start = constIdx;
+  else if (routerIdx !== -1) start = routerIdx;
   if (start === -1) return null;
   const nextFn = source.indexOf('\n  async function handle', start + 1);
   const nextConst = source.indexOf('\n  const handle', start + 1);
@@ -299,14 +303,14 @@ describe('conflict-gate coverage (FR9)', () => {
         body.includes('applyAgentMarkdownWrite(') || body.includes('applyAgentUndo(');
       // For dispatcher-style handlers (handleTemplate), accept routing
       // through a sibling sub-handler that itself gates. The structural
-      // check: the dispatcher calls one of the gated sub-handlers AND that
-      // sub-handler appears in REQUIRED_HANDLERS itself.
+      // check: the dispatcher references one of the gated sub-handlers —
+      // as a call (`handleTemplatePut(req, res)`) or as a `methodRouter`
+      // verb-map value (`PUT: handleTemplatePut`) — AND that sub-handler
+      // appears in REQUIRED_HANDLERS itself.
       const dispatcherRouting =
-        body.includes('handleTemplatePut(') ||
-        body.includes('handleTemplateDelete(') ||
-        body.includes('handleTemplateMove(') ||
-        body.includes('handleSkillPut(') ||
-        body.includes('handleSkillFilePut(');
+        /\b(?:handleTemplatePut|handleTemplateDelete|handleTemplateMove|handleSkillPut|handleSkillFilePut)\b/.test(
+          body,
+        );
       if (!directGate && !spineRouting && !dispatcherRouting) {
         failures.push(
           `${handler}: missing conflict gate — must call respondDocInConflict(...) directly, route through applyAgentMarkdownWrite/applyAgentUndo, or dispatch to a gated sub-handler`,
