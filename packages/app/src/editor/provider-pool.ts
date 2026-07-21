@@ -1,7 +1,14 @@
 import { HocuspocusProvider } from '@hocuspocus/provider';
-import { LINEAGE_EPOCH_KEY, MarkdownManager } from '@inkeep/open-knowledge-core';
+import {
+  LINEAGE_EPOCH_KEY,
+  MarkdownManager,
+  normalizeBridge,
+  prependFrontmatter,
+  stripFrontmatter,
+} from '@inkeep/open-knowledge-core';
 import type { HocuspocusAuthRejectionReason } from '@inkeep/open-knowledge-server';
 import { getSchema } from '@tiptap/core';
+import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
 import { buildAuthToken } from '../lib/auth-token';
 import { readNumericOverride } from '../lib/perf/env-override';
@@ -475,10 +482,27 @@ export class ProviderPool {
    * Unsynced-edit buffer captured per-doc during a `server-instance-mismatch`
    * recycle. Populated right before `clearData()` wipes IDB; drained at the
    * fresh provider's FIRST post-recycle `synced` event when the replay
-   * listener applies the bytes back to the Y.Doc. In-memory only — a tab
-   * crash inside the recycle window loses the buffer (accepted trade-off).
+   * listener restores the edit. In-memory only — a tab crash inside the
+   * recycle window loses the buffer (accepted trade-off).
+   *
+   * `delta` is the raw unsynced Yjs update relative to the last acked
+   * baseline. It CANNOT integrate into the post-restart doc on its own:
+   * the restarted server rebuilds every Y.Doc from markdown under a fresh
+   * clientID, so the delta's left/right origins reference item IDs that no
+   * longer exist and `Y.applyUpdate` parks the structs in `pendingStructs`
+   * forever. `fullState` (the complete pre-recycle doc) exists so the
+   * replay can reconstruct the edit at CONTENT level instead: rebuild the
+   * old doc in a throwaway replica, work out which CRDT surface holds the
+   * un-drained edit, and splice the recovered content into the fresh
+   * Y.Text as an ordinary client edit. `fullState` is null when the doc
+   * exceeded the buffer cap — the replay then falls back to the legacy
+   * delta apply (which at worst leaves the structs pending, today's
+   * behavior).
    */
-  private readonly bufferedUpdates = new Map<string, Uint8Array>();
+  private readonly bufferedUpdates = new Map<
+    string,
+    { delta: Uint8Array; fullState: Uint8Array | null }
+  >();
   /**
    * Per-docName `closeAndClearPersistence` in-flight tracking. Drives the
    * delete-then-recreate-same-docname coordination: while a clear is in
@@ -1762,6 +1786,21 @@ export class ProviderPool {
           if (entry.kind !== 'active') return;
           entry.pendingRecycleTimer = null;
           if (this.entries.get(docName) !== entry) return;
+          // Re-check for unsynced local edits at FIRE time, not just arm
+          // time. An edit typed inside the debounce window makes the doc
+          // dirty, and this plain-recycle path has no buffer-and-replay
+          // (that exists only for `server-instance-mismatch`) — recycling a
+          // dirty doc destroys the edit permanently whenever the server
+          // identity changes before resync (auto-update relaunch is a
+          // first-class trigger). Skip instead: the provider's backoff
+          // keeps reconnecting, a same-identity reconnect syncs the edit,
+          // an identity change routes through the mismatch path's
+          // buffer-and-replay, and a later clean disconnect re-arms the
+          // timer so resource reclamation still happens.
+          if (provider.unsyncedChanges > 0) {
+            mark('ok/pool/recycle-skipped-unsynced', { docName });
+            return;
+          }
           this.recycleDisconnectedEntry(docName);
         }, this.recycleDebounceMs);
       }
@@ -2024,13 +2063,24 @@ export class ProviderPool {
         // rejection and so the next sync can proceed.
         this.bufferedUpdates.delete(docName);
         try {
-          Y.applyUpdate(provider.document, current, TAB_REPLAY_ORIGIN);
+          if (
+            current.fullState !== null &&
+            this.replayBufferedContent(docName, provider, current.fullState)
+          ) {
+            return;
+          }
+          // Delta-only fallback (full state over cap, replica rebuild threw,
+          // or content divergence made the surface attribution ambiguous).
+          // The raw delta usually parks in `pendingStructs` on a rebuilt doc
+          // — kept as the terminal fallback so this path never REGRESSES
+          // relative to the pre-content-replay behavior.
+          Y.applyUpdate(provider.document, current.delta, TAB_REPLAY_ORIGIN);
         } catch (err: unknown) {
           const errorName = err instanceof Error ? err.name : 'non-error-throw';
           this.emitStructuredClientRecoveryEvent({
             event: 'ok-buffer-replay-failed',
             ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
-            replayByteLength: current.byteLength,
+            replayByteLength: current.delta.byteLength,
             errorName,
             errorMessage: err instanceof Error ? err.message : String(err),
           });
@@ -2217,7 +2267,14 @@ export class ProviderPool {
         continue;
       }
       if (unsynced.byteLength > 0) {
-        this.bufferedUpdates.set(docName, unsynced);
+        // Full pre-recycle state rides along so the replay can recover the
+        // edit at content level (see `bufferedUpdates` doc comment). Docs
+        // whose full state exceeds the cap keep the delta-only fallback.
+        const fullState = Y.encodeStateAsUpdate(poolEntry.provider.document);
+        this.bufferedUpdates.set(docName, {
+          delta: unsynced,
+          fullState: fullState.byteLength > MAX_BUFFER_BYTES ? null : fullState,
+        });
       }
     }
 
@@ -2321,6 +2378,101 @@ export class ProviderPool {
         }
       });
     this.mismatchInFlight = inflight;
+  }
+
+  /**
+   * Content-level buffer replay for the `server-instance-mismatch` recycle.
+   *
+   * The raw unsynced delta cannot integrate into the post-restart doc (the
+   * rebuilt doc has fresh item IDs — see the `bufferedUpdates` doc comment),
+   * so the edit is reconstructed as CONTENT: rebuild the pre-recycle doc in
+   * a throwaway replica, decide which CRDT surface holds the un-drained
+   * edit by comparing each surface against the fresh server content
+   * (whichever surface still matches the server IS the base), and splice
+   * the recovered document string into the fresh Y.Text as an ordinary
+   * client edit. Server Observer B derives the fragment from Y.Text, so a
+   * single-surface write is sufficient and cannot double-apply.
+   *
+   * Returns true when the replay is complete (including "nothing to
+   * restore"); false when the surface attribution is ambiguous (both
+   * surfaces diverge from the server — concurrent server-side change or
+   * mixed-mode edits) or the replica rebuild failed, in which case the
+   * caller falls back to the legacy delta apply.
+   */
+  private replayBufferedContent(
+    docName: string,
+    provider: HocuspocusProvider,
+    fullState: Uint8Array,
+  ): boolean {
+    const replica = new Y.Doc();
+    try {
+      Y.applyUpdate(replica, fullState);
+      const oursYtext = replica.getText('source').toString();
+      const fragJson = yXmlFragmentToProseMirrorRootNode(
+        replica.getXmlFragment('default'),
+        getEditorSchema(),
+      ).toJSON();
+      const mdMgr = new MarkdownManager({ extensions: sharedExtensions });
+      const oursFragBody = mdMgr.serialize(fragJson);
+      const { frontmatter: oursFm, body: oursYtextBody } = stripFrontmatter(oursYtext);
+      const theirs = provider.document.getText('source').toString();
+      const { body: theirsBody } = stripFrontmatter(theirs);
+      const theirsNorm = normalizeBridge(theirsBody);
+      const ytextClean = normalizeBridge(oursYtextBody) === theirsNorm;
+      const fragClean = normalizeBridge(oursFragBody) === theirsNorm;
+      if (ytextClean && fragClean) return true;
+      let ours: string;
+      if (ytextClean) {
+        // Un-drained WYSIWYG edit: the fragment moved while Y.Text stayed
+        // at the acked base the server rebuilt from disk.
+        ours = prependFrontmatter(oursFm, oursFragBody);
+      } else if (fragClean) {
+        // Unacked source-mode edit: Y.Text moved, fragment still at base.
+        ours = oursYtext;
+      } else {
+        this.emitStructuredClientRecoveryEvent({
+          event: 'ok-buffer-replay-diverged',
+          ...this.recoveryTelemetryBase(docName),
+        });
+        return false;
+      }
+      if (ours !== theirs) {
+        // Minimal splice (common prefix/suffix trim) keeps untouched bytes
+        // untouched — Y.Text is byte-sacred outside the recovered edit
+        // (precedent #57).
+        const maxScan = Math.min(ours.length, theirs.length);
+        let prefix = 0;
+        while (prefix < maxScan && ours[prefix] === theirs[prefix]) prefix += 1;
+        let suffix = 0;
+        while (
+          suffix < maxScan - prefix &&
+          ours[ours.length - 1 - suffix] === theirs[theirs.length - 1 - suffix]
+        ) {
+          suffix += 1;
+        }
+        const ytext = provider.document.getText('source');
+        provider.document.transact(() => {
+          ytext.delete(prefix, theirs.length - prefix - suffix);
+          ytext.insert(prefix, ours.slice(prefix, ours.length - suffix));
+        }, TAB_REPLAY_ORIGIN);
+      }
+      this.emitStructuredClientRecoveryEvent({
+        event: 'ok-buffer-replay-content-applied',
+        ...this.recoveryTelemetryBase(docName),
+        surface: ytextClean ? 'fragment' : 'ytext',
+      });
+      return true;
+    } catch (err: unknown) {
+      this.emitStructuredClientRecoveryEvent({
+        event: 'ok-buffer-replay-content-failed',
+        ...this.recoveryTelemetryBase(docName),
+        errorName: err instanceof Error ? err.name : 'non-error-throw',
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    } finally {
+      replica.destroy();
+    }
   }
 
   /**
@@ -2614,7 +2766,7 @@ export class ProviderPool {
    * keeps these out of production call sites by convention.
    */
   __test_seedBufferedUpdate(docName: string, update: Uint8Array): void {
-    this.bufferedUpdates.set(docName, update);
+    this.bufferedUpdates.set(docName, { delta: update, fullState: null });
   }
   __test_bufferedUpdatesSize(): number {
     return this.bufferedUpdates.size;
@@ -2623,7 +2775,7 @@ export class ProviderPool {
     return this.bufferedUpdates.has(docName);
   }
   __test_getBufferedUpdate(docName: string): Uint8Array | undefined {
-    return this.bufferedUpdates.get(docName);
+    return this.bufferedUpdates.get(docName)?.delta;
   }
 
   /** Set the active document. Must already be open. */
