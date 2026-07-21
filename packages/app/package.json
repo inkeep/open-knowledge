@@ -45,21 +45,21 @@
     {
       "name": "main app bundle (gzipped)",
       "path": "dist/assets/index-*.js",
-      "limit": "482 kB",
+      "limit": "485 kB",
       "gzip": true,
       "running": false
     },
     {
       "name": "all JS chunks combined (gzipped)",
       "path": "dist/assets/*.js",
-      "limit": "3.5 MB",
+      "limit": "3.55 MB",
       "gzip": true,
       "running": false
     },
     {
       "name": "main CSS (gzipped)",
       "path": "dist/assets/index-*.css",
-      "limit": "57 kB",
+      "limit": "59 kB",
       "gzip": true,
       "running": false
     }

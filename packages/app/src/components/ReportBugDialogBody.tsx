@@ -547,7 +547,7 @@ function ReportBugDialog({
                       disabled={phase.creating}
                       className="mt-0.5"
                     />
-                    <div className="flex min-w-0 flex-col gap-1.5">
+                    <div className="flex min-w-0 flex-col gap-0.5">
                       <label htmlFor={screenshotId} className="text-sm font-medium">
                         <Trans>Screenshot</Trans>
                       </label>
@@ -559,7 +559,7 @@ function ReportBugDialog({
                       </p>
                       {/* Preview dims when excluded so the checkbox state reads
                           at a glance; the label above already names it. */}
-                      <div className="mt-0.5 overflow-hidden rounded-md border bg-muted/40">
+                      <div className="mt-2 overflow-hidden rounded-md border bg-muted/40">
                         <img
                           src={screenshot.dataUrl}
                           alt={t`Preview of the screenshot`}

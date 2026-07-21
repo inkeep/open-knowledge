@@ -1172,12 +1172,20 @@ msgstr ""
 msgid "Asset: {title}"
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Attach images"
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Attach the file in an email to <0/>"
 msgstr ""
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Attachments"
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "Attachments must total under 3 MB."
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
@@ -3765,6 +3773,10 @@ msgstr ""
 msgid "Failed to upload file"
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Feedback isn't available right now. Please try again later."
+msgstr ""
+
 #: src/editor/slash-command/items.tsx
 msgid "Fenced code block with monospace text."
 msgstr ""
@@ -3787,10 +3799,6 @@ msgstr ""
 
 #: src/components/FileTree.tsx
 msgid "File already exists"
-msgstr ""
-
-#: src/components/HelpPopover.tsx
-msgid "File an issue"
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -3996,6 +4004,10 @@ msgstr ""
 msgid "Force stop"
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Formatting looked wrong"
+msgstr ""
+
 #: src/components/LinksPanel.tsx
 msgid "Forward-links response did not match expected shape."
 msgstr ""
@@ -4116,6 +4128,10 @@ msgstr ""
 msgid "Go to line {displayLine} in {0}"
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Good"
+msgstr ""
+
 #: src/components/DocPanel.tsx
 #: src/components/GraphPanel.tsx
 msgid "Graph"
@@ -4139,6 +4155,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Hard break"
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "Hard to use"
 msgstr ""
 
 #: src/components/NavigatorApp.tsx
@@ -4318,6 +4338,10 @@ msgstr ""
 #: src/components/settings/HotkeysSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Hotkeys"
+msgstr ""
+
+#: src/components/FeedbackFormDialog.tsx
+msgid "How do you like OpenKnowledge?"
 msgstr ""
 
 #: src/components/ShareButton.tsx
@@ -5013,6 +5037,10 @@ msgstr ""
 msgid "Match case"
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Maximum {MAX_ATTACHMENTS} attachments"
+msgstr ""
+
 #: src/components/TerminalNewChatButton.tsx
 msgid "Maximum agents already running"
 msgstr ""
@@ -5073,6 +5101,10 @@ msgstr ""
 
 #: src/components/NavigatorApp.tsx
 msgid "Missing"
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "Missing a feature"
 msgstr ""
 
 #: src/components/LinksPanel.tsx
@@ -5686,6 +5718,10 @@ msgstr ""
 msgid "Not connected to GitHub."
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Not great"
+msgstr ""
+
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Not in sidebar"
 msgstr ""
@@ -5801,6 +5837,10 @@ msgstr ""
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Only modified"
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "Only PNG, JPEG, or WebP images are allowed."
 msgstr ""
 
 #: src/editor/components/TagDialog.tsx
@@ -6181,6 +6221,10 @@ msgstr ""
 msgid "Orphans"
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Other"
+msgstr ""
+
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
 msgstr ""
@@ -6409,8 +6453,16 @@ msgstr ""
 msgid "Plan ({done}/{0})"
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Please choose Good or Not great."
+msgstr ""
+
 #: src/components/SubscribeForm.tsx
 msgid "Please enter a valid email address."
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "Please enter a valid email."
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -6580,6 +6632,10 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Protected branch — cannot push"
+msgstr ""
+
+#: src/components/HelpPopover.tsx
+msgid "Provide feedback"
 msgstr ""
 
 #: src/components/TemplateForm.tsx
@@ -6762,6 +6818,11 @@ msgstr ""
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Remove"
+msgstr ""
+
+#. placeholder {0}: file.name
+#: src/components/FeedbackForm.tsx
+msgid "Remove {0}"
 msgstr ""
 
 #: src/components/PropertyWidgets.tsx
@@ -7458,6 +7519,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr ""
 
@@ -7471,6 +7533,10 @@ msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send your report by email"
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "Sending"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -7604,6 +7670,10 @@ msgstr ""
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ShareButton.tsx
 msgid "Share URL"
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "Share your email for followups"
 msgstr ""
 
 #: src/components/settings/SharingSection.tsx
@@ -7872,6 +7942,10 @@ msgstr ""
 msgid "Small section heading."
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Something broke"
+msgstr ""
+
 #: src/components/AppErrorBoundary.tsx
 msgid "Something went wrong"
 msgstr ""
@@ -7886,6 +7960,10 @@ msgstr ""
 
 #: src/components/use-viewer-text.ts
 msgid "Something went wrong opening this file (HTTP {status})."
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "Something went wrong sending your feedback. Please try again."
 msgstr ""
 
 #: src/components/TerminalGate.tsx
@@ -8278,6 +8356,10 @@ msgstr ""
 msgid "Team Wiki"
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Tell us more (optional)"
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
 msgstr ""
@@ -8369,6 +8451,10 @@ msgstr ""
 
 #: src/components/SubscribeForm.tsx
 msgid "Thanks for subscribing. Watch your inbox for product updates."
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "Thanks for the feedback!"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -8843,6 +8929,10 @@ msgstr ""
 msgid "Toggle underline formatting."
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Too slow"
+msgstr ""
+
 #: src/components/GraphPanel.tsx
 msgid "Top linked pages"
 msgstr ""
@@ -9259,10 +9349,6 @@ msgstr ""
 msgid "We've filed it with the team and attached your logs."
 msgstr ""
 
-#: src/components/HelpPopover.tsx
-msgid "Website"
-msgstr ""
-
 #: src/components/NewSkillDialog.tsx
 msgid "What agents match on to decide when to use the skill."
 msgstr ""
@@ -9277,6 +9363,10 @@ msgstr ""
 
 #: src/components/CreatedItemsList.tsx
 msgid "What gets created"
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "What got in the way?"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -9440,6 +9530,10 @@ msgstr ""
 msgid "You can also manage this in Settings."
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "You can attach up to {MAX_ATTACHMENTS} images."
+msgstr ""
+
 #: src/components/AutoSyncOnboardingDialog.tsx
 msgid "You can turn this on later in <0>Settings → Sync</0>."
 msgstr ""
@@ -9506,6 +9600,10 @@ msgstr ""
 
 #: src/components/SubscribeForm.tsx
 msgid "You're subscribed!"
+msgstr ""
+
+#: src/components/FeedbackForm.tsx
+msgid "you@company.com"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx

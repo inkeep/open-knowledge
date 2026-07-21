@@ -1,20 +1,20 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/core/macro', () => ({ ...actualLinguiMacro, msg: renderLinguiTemplate }));
+vi.doMock('@lingui/core/macro', () => ({ ...actualLinguiMacro, msg: renderLinguiTemplate }));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('@/lib/external-link', () => ({
+vi.doMock('@/lib/external-link', () => ({
   dispatchExternalLinkClick: () => {},
 }));
 
@@ -48,7 +48,7 @@ describe('HelpPopover runtime behavior', () => {
   beforeEach(() => {
     // Stub the GitHub star-count fetch so the count is deterministic and no
     // real network call fires during the test.
-    globalThis.fetch = mock(
+    globalThis.fetch = vi.fn(
       async () =>
         new Response(JSON.stringify({ stargazers_count: 1234 }), {
           status: 200,
@@ -89,24 +89,12 @@ describe('HelpPopover runtime behavior', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Resources' });
     const links = within(nav).getAllByRole('link');
+    // Resources holds a single external link (Docs); the issue-reporting and
+    // feedback entries render as in-app action buttons, not links.
     expect(links.map(linkShape)).toEqual([
       {
         label: 'Docs',
         href: 'https://openknowledge.ai/docs',
-        target: '_blank',
-        rel: 'noopener noreferrer',
-        hasIcon: true,
-      },
-      {
-        label: 'File an issue',
-        href: 'https://github.com/inkeep/open-knowledge/issues/new',
-        target: '_blank',
-        rel: 'noopener noreferrer',
-        hasIcon: true,
-      },
-      {
-        label: 'Website',
-        href: 'https://openknowledge.ai/',
         target: '_blank',
         rel: 'noopener noreferrer',
         hasIcon: true,
@@ -181,15 +169,17 @@ describe('HelpPopover with the desktop bridge present', () => {
     (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
   });
 
-  test('adds a Report a bug action immediately after File an issue', async () => {
+  test('adds Report a bug and Provide feedback actions after the Docs link', async () => {
     await renderOpenHelpPopover();
 
     const nav = screen.getByRole('navigation', { name: 'Resources' });
-    const fileAnIssue = within(nav).getByRole('link', { name: 'File an issue' });
+    const docs = within(nav).getByRole('link', { name: 'Docs' });
     const reportBug = within(nav).getByRole('button', { name: 'Report a bug' });
+    const provideFeedback = within(nav).getByRole('button', { name: 'Provide feedback' });
 
-    // Positioned right after the File an issue row so the two issue-reporting
-    // actions sit together (DOCUMENT_POSITION_FOLLOWING === 4).
-    expect(fileAnIssue.compareDocumentPosition(reportBug)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // Both in-app actions follow the Docs link (DOCUMENT_POSITION_FOLLOWING === 4);
+    // report-bug is desktop-only, so it only appears with the bridge present.
+    expect(docs.compareDocumentPosition(reportBug)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(docs.compareDocumentPosition(provideFeedback)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });

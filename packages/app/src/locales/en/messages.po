@@ -1176,6 +1176,10 @@ msgstr "Asset reference"
 msgid "Asset: {title}"
 msgstr "Asset: {title}"
 
+#: src/components/FeedbackForm.tsx
+msgid "Attach images"
+msgstr "Attach images"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Attach the file in an email to <0/>"
 msgstr "Attach the file in an email to <0/>"
@@ -1183,6 +1187,10 @@ msgstr "Attach the file in an email to <0/>"
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Attachments"
 msgstr "Attachments"
+
+#: src/components/FeedbackForm.tsx
+msgid "Attachments must total under 3 MB."
+msgstr "Attachments must total under 3 MB."
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
@@ -3769,6 +3777,10 @@ msgstr "Failed to update the project sync default — {detail}"
 msgid "Failed to upload file"
 msgstr "Failed to upload file"
 
+#: src/components/FeedbackForm.tsx
+msgid "Feedback isn't available right now. Please try again later."
+msgstr "Feedback isn't available right now. Please try again later."
+
 #: src/editor/slash-command/items.tsx
 msgid "Fenced code block with monospace text."
 msgstr "Fenced code block with monospace text."
@@ -3792,10 +3804,6 @@ msgstr "File"
 #: src/components/FileTree.tsx
 msgid "File already exists"
 msgstr "File already exists"
-
-#: src/components/HelpPopover.tsx
-msgid "File an issue"
-msgstr "File an issue"
 
 #: src/components/FileTree.tsx
 msgid "File drop zone"
@@ -4000,6 +4008,10 @@ msgstr "Footnote"
 msgid "Force stop"
 msgstr "Force stop"
 
+#: src/components/FeedbackForm.tsx
+msgid "Formatting looked wrong"
+msgstr "Formatting looked wrong"
+
 #: src/components/LinksPanel.tsx
 msgid "Forward-links response did not match expected shape."
 msgstr "Forward-links response did not match expected shape."
@@ -4120,6 +4132,10 @@ msgstr "Go to line {displayLine}"
 msgid "Go to line {displayLine} in {0}"
 msgstr "Go to line {displayLine} in {0}"
 
+#: src/components/FeedbackForm.tsx
+msgid "Good"
+msgstr "Good"
+
 #: src/components/DocPanel.tsx
 #: src/components/GraphPanel.tsx
 msgid "Graph"
@@ -4144,6 +4160,10 @@ msgstr "guides/install or https://example.com"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Hard break"
 msgstr "Hard break"
+
+#: src/components/FeedbackForm.tsx
+msgid "Hard to use"
+msgstr "Hard to use"
 
 #: src/components/NavigatorApp.tsx
 msgid "Have something else in mind?"
@@ -4323,6 +4343,10 @@ msgstr "Horizontal rule that divides sections."
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Hotkeys"
 msgstr "Hotkeys"
+
+#: src/components/FeedbackFormDialog.tsx
+msgid "How do you like OpenKnowledge?"
+msgstr "How do you like OpenKnowledge?"
 
 #: src/components/ShareButton.tsx
 msgid "How does sharing work?"
@@ -5017,6 +5041,10 @@ msgstr "markdownlint rules"
 msgid "Match case"
 msgstr "Match case"
 
+#: src/components/FeedbackForm.tsx
+msgid "Maximum {MAX_ATTACHMENTS} attachments"
+msgstr "Maximum {MAX_ATTACHMENTS} attachments"
+
 #: src/components/TerminalNewChatButton.tsx
 msgid "Maximum agents already running"
 msgstr "Maximum agents already running"
@@ -5078,6 +5106,10 @@ msgstr "Mirror source <0>api-spec</0>"
 #: src/components/NavigatorApp.tsx
 msgid "Missing"
 msgstr "Missing"
+
+#: src/components/FeedbackForm.tsx
+msgid "Missing a feature"
+msgstr "Missing a feature"
 
 #: src/components/LinksPanel.tsx
 msgid "Missing page — click to create"
@@ -5690,6 +5722,10 @@ msgstr "Not connected"
 msgid "Not connected to GitHub."
 msgstr "Not connected to GitHub."
 
+#: src/components/FeedbackForm.tsx
+msgid "Not great"
+msgstr "Not great"
+
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Not in sidebar"
 msgstr "Not in sidebar"
@@ -5806,6 +5842,10 @@ msgstr "Only markdown files"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Only modified"
 msgstr "Only modified"
+
+#: src/components/FeedbackForm.tsx
+msgid "Only PNG, JPEG, or WebP images are allowed."
+msgstr "Only PNG, JPEG, or WebP images are allowed."
 
 #: src/editor/components/TagDialog.tsx
 msgid "Only the current document uses <0>#{tag}</0>."
@@ -6185,6 +6225,10 @@ msgstr "Orphan mode"
 msgid "Orphans"
 msgstr "Orphans"
 
+#: src/components/FeedbackForm.tsx
+msgid "Other"
+msgstr "Other"
+
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
 msgstr "Other OK paths are tracked upstream:"
@@ -6413,9 +6457,17 @@ msgstr "Plain"
 msgid "Plan ({done}/{0})"
 msgstr "Plan ({done}/{0})"
 
+#: src/components/FeedbackForm.tsx
+msgid "Please choose Good or Not great."
+msgstr "Please choose Good or Not great."
+
 #: src/components/SubscribeForm.tsx
 msgid "Please enter a valid email address."
 msgstr "Please enter a valid email address."
+
+#: src/components/FeedbackForm.tsx
+msgid "Please enter a valid email."
+msgstr "Please enter a valid email."
 
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -6585,6 +6637,10 @@ msgstr "Property value"
 #: src/components/SyncStatusBadge.tsx
 msgid "Protected branch — cannot push"
 msgstr "Protected branch — cannot push"
+
+#: src/components/HelpPopover.tsx
+msgid "Provide feedback"
+msgstr "Provide feedback"
 
 #: src/components/TemplateForm.tsx
 msgid "provisional"
@@ -6767,6 +6823,11 @@ msgstr "Remote branch <0>{remoteCheckoutRef}</0> will be checked out as a new lo
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Remove"
 msgstr "Remove"
+
+#. placeholder {0}: file.name
+#: src/components/FeedbackForm.tsx
+msgid "Remove {0}"
+msgstr "Remove {0}"
 
 #: src/components/PropertyWidgets.tsx
 msgid "Remove {chip}"
@@ -7462,6 +7523,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one in <0>Settings → Account</0> (it's stored once for your whole machine)."
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "Send"
 
@@ -7476,6 +7538,10 @@ msgstr "Send to"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send your report by email"
 msgstr "Send your report by email"
+
+#: src/components/FeedbackForm.tsx
+msgid "Sending"
+msgstr "Sending"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Sending report"
@@ -7609,6 +7675,10 @@ msgstr "Share this setup with your team?"
 #: src/components/ShareButton.tsx
 msgid "Share URL"
 msgstr "Share URL"
+
+#: src/components/FeedbackForm.tsx
+msgid "Share your email for followups"
+msgstr "Share your email for followups"
 
 #: src/components/settings/SharingSection.tsx
 #: src/components/SharingModeField.tsx
@@ -7876,6 +7946,10 @@ msgstr "Slash commands"
 msgid "Small section heading."
 msgstr "Small section heading."
 
+#: src/components/FeedbackForm.tsx
+msgid "Something broke"
+msgstr "Something broke"
+
 #: src/components/AppErrorBoundary.tsx
 msgid "Something went wrong"
 msgstr "Something went wrong"
@@ -7891,6 +7965,10 @@ msgstr "Something went wrong opening \"{docName}\"."
 #: src/components/use-viewer-text.ts
 msgid "Something went wrong opening this file (HTTP {status})."
 msgstr "Something went wrong opening this file (HTTP {status})."
+
+#: src/components/FeedbackForm.tsx
+msgid "Something went wrong sending your feedback. Please try again."
+msgstr "Something went wrong sending your feedback. Please try again."
 
 #: src/components/TerminalGate.tsx
 msgid "Something went wrong starting the terminal."
@@ -8282,6 +8360,10 @@ msgstr "Teaches coding agents in this project to read and write through OpenKnow
 msgid "Team Wiki"
 msgstr "Team Wiki"
 
+#: src/components/FeedbackForm.tsx
+msgid "Tell us more (optional)"
+msgstr "Tell us more (optional)"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
 msgstr "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
@@ -8374,6 +8456,10 @@ msgstr "Text"
 #: src/components/SubscribeForm.tsx
 msgid "Thanks for subscribing. Watch your inbox for product updates."
 msgstr "Thanks for subscribing. Watch your inbox for product updates."
+
+#: src/components/FeedbackForm.tsx
+msgid "Thanks for the feedback!"
+msgstr "Thanks for the feedback!"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Thanks for the report!"
@@ -8847,6 +8933,10 @@ msgstr "Toggle thumbnails"
 msgid "Toggle underline formatting."
 msgstr "Toggle underline formatting."
 
+#: src/components/FeedbackForm.tsx
+msgid "Too slow"
+msgstr "Too slow"
+
 #: src/components/GraphPanel.tsx
 msgid "Top linked pages"
 msgstr "Top linked pages"
@@ -9263,10 +9353,6 @@ msgstr "We'll create a repository and start syncing — no terminal needed."
 msgid "We've filed it with the team and attached your logs."
 msgstr "We've filed it with the team and attached your logs."
 
-#: src/components/HelpPopover.tsx
-msgid "Website"
-msgstr "Website"
-
 #: src/components/NewSkillDialog.tsx
 msgid "What agents match on to decide when to use the skill."
 msgstr "What agents match on to decide when to use the skill."
@@ -9282,6 +9368,10 @@ msgstr "What do you want to build?"
 #: src/components/CreatedItemsList.tsx
 msgid "What gets created"
 msgstr "What gets created"
+
+#: src/components/FeedbackForm.tsx
+msgid "What got in the way?"
+msgstr "What got in the way?"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "What happened?"
@@ -9444,6 +9534,10 @@ msgstr "You can also create one from a terminal with <0>ok bug-report</0>."
 msgid "You can also manage this in Settings."
 msgstr "You can also manage this in Settings."
 
+#: src/components/FeedbackForm.tsx
+msgid "You can attach up to {MAX_ATTACHMENTS} images."
+msgstr "You can attach up to {MAX_ATTACHMENTS} images."
+
 #: src/components/AutoSyncOnboardingDialog.tsx
 msgid "You can turn this on later in <0>Settings → Sync</0>."
 msgstr "You can turn this on later in <0>Settings → Sync</0>."
@@ -9511,6 +9605,10 @@ msgstr "You're signed out — sign in to resume syncing."
 #: src/components/SubscribeForm.tsx
 msgid "You're subscribed!"
 msgstr "You're subscribed!"
+
+#: src/components/FeedbackForm.tsx
+msgid "you@company.com"
+msgstr "you@company.com"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Your copy of branch <0>{shareBranch}</0> has changes that aren't on GitHub. The {targetNoun} will appear once the branch syncs."

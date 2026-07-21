@@ -2501,6 +2501,94 @@ button:active:not(:disabled) {
   );
 }
 
+/* shadcn Attachment component utilities (src/components/ui/attachment.tsx).
+   The registry item references these but ships none of them, and the repo's own
+   scroll-fade masks use different class names, so they're defined here.
+
+   `.scroll-fade-x` mirrors `.scroll-fade-mask-x`: this static rule is the
+   Firefox fallback (always-on edge fade); the @supports block below makes the
+   fade scroll-driven in Chromium/Electron, so an edge only fades when there's
+   content to scroll past it — without it the first card's left edge is always
+   masked and appears clipped. */
+.scroll-fade-x {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 1rem,
+    black calc(100% - 1rem),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 1rem,
+    black calc(100% - 1rem),
+    transparent 100%
+  );
+}
+
+@supports (animation-timeline: scroll(self)) {
+  .scroll-fade-x {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      rgba(0, 0, 0, var(--scroll-fade-left)) 0,
+      black 1rem,
+      black calc(100% - 1rem),
+      rgba(0, 0, 0, var(--scroll-fade-right)) 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      rgba(0, 0, 0, var(--scroll-fade-left)) 0,
+      black 1rem,
+      black calc(100% - 1rem),
+      rgba(0, 0, 0, var(--scroll-fade-right)) 100%
+    );
+    animation-name: scroll-fade-left-in, scroll-fade-right-out;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(self inline);
+    animation-range:
+      0 1rem,
+      calc(100% - 1rem) 100%;
+  }
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* `shimmer` is applied through a `group-data-[state=…]/attachment:shimmer`
+   variant, so it must be a real Tailwind utility (not a plain class) for the
+   variant to resolve. Only the uploading/processing attachment states trigger
+   it — the feedback picker's attachments are always `done`. */
+@utility shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 25%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 75%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: shimmer 1.5s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
 @supports (animation-timeline: scroll(self)) {
   .scroll-fade-mask {
     -webkit-mask-image: linear-gradient(

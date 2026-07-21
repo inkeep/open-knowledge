@@ -2,9 +2,9 @@ import { getGitHubStars } from '@inkeep/open-knowledge-core';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { BookOpen, Bug, CircleDot, CircleHelp, Globe, Mail, Megaphone, Star } from 'lucide-react';
+import { BookOpen, Bug, CircleHelp, Mail, Megaphone, MessageSquare, Star } from 'lucide-react';
 import type { ComponentProps, FC, ReactNode } from 'react';
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { SubscribeForm } from '@/components/SubscribeForm';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { DISCORD_INVITE_URL, GITHUB_REPO_URL, X_PROFILE_URL } from '@/lib/social-links';
 import { subscribeCardStore } from '@/lib/subscribe-card-store';
 import { cn } from '@/lib/utils';
+import { FeedbackFormDialog } from './FeedbackFormDialog';
 import { DiscordIcon } from './icons/discord';
 import { GithubIcon } from './icons/github';
 import { XTwitterIcon } from './icons/x-twitter';
@@ -33,19 +34,11 @@ interface ResourceSection {
   links: ResourceLink[];
 }
 
-// Anchor for the desktop-only "Report a bug" action row, which is interleaved
-// directly after this link in the Resources list.
-const FILE_AN_ISSUE_HREF = `${GITHUB_REPO_URL}/issues/new`;
-
 const sections: ResourceSection[] = [
   {
     key: 'resources',
     heading: msg`Resources`,
-    links: [
-      { label: msg`Docs`, href: 'https://openknowledge.ai/docs', icon: BookOpen },
-      { label: msg`File an issue`, href: FILE_AN_ISSUE_HREF, icon: CircleDot },
-      { label: msg`Website`, href: 'https://openknowledge.ai/', icon: Globe },
-    ],
+    links: [{ label: msg`Docs`, href: 'https://openknowledge.ai/docs', icon: BookOpen }],
   },
   {
     key: 'community',
@@ -107,17 +100,21 @@ const ResourceLinkRow: FC<{ link: ResourceLink; trailing?: ReactNode }> = ({ lin
   );
 };
 
-// Desktop-only action row: opens the in-app Report-a-bug dialog rather than
-// navigating out, so it renders as a button styled to match the link rows.
-const ReportBugRow: FC<{ onSelect: () => void }> = ({ onSelect }) => (
+// Action row: opens an in-app dialog rather than navigating out, so it renders
+// as a button styled to match the external-link rows.
+const ActionRow: FC<{
+  icon: FC<ComponentProps<'svg'>>;
+  onSelect: () => void;
+  children: ReactNode;
+}> = ({ icon: Icon, onSelect, children }) => (
   <li>
     <Button
       variant="ghost"
       className={cn(rowClassName, 'h-auto w-full justify-start font-normal')}
       onClick={onSelect}
     >
-      <Bug aria-hidden="true" className="size-4 shrink-0" />
-      <Trans>Report a bug</Trans>
+      <Icon aria-hidden="true" className="size-4 shrink-0" />
+      {children}
     </Button>
   </li>
 );
@@ -131,6 +128,7 @@ export const HelpPopover: FC = () => {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [subscribeOpen, setSubscribeOpen] = useState(false);
   const [reportBugOpen, setReportBugOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [starCount, setStarCount] = useState<number | null>(null);
 
   // The Report-a-bug flow (bundle create + upload) lives entirely behind the
@@ -188,27 +186,45 @@ export const HelpPopover: FC = () => {
               <nav aria-label={t(section.heading)}>
                 <ul className="space-y-0.5">
                   {section.links.map((link) => (
-                    <Fragment key={link.href}>
-                      <ResourceLinkRow
-                        link={link}
-                        trailing={
-                          link.href === GITHUB_REPO_URL && starCount !== null ? (
-                            <StarCount count={starCount} />
-                          ) : undefined
-                        }
-                      />
-                      {/* Interleaved right after "File an issue" so the two
-                          issue-reporting actions sit together; desktop-only. */}
-                      {hasDesktopBridge && link.href === FILE_AN_ISSUE_HREF && (
-                        <ReportBugRow
+                    <ResourceLinkRow
+                      key={link.href}
+                      link={link}
+                      trailing={
+                        link.href === GITHUB_REPO_URL && starCount !== null ? (
+                          <StarCount count={starCount} />
+                        ) : undefined
+                      }
+                    />
+                  ))}
+                  {/* In-app dialog actions: they open a dialog rather than
+                      navigating out, so they live outside the section's link
+                      data and render at the end of the Resources list. */}
+                  {section.key === 'resources' && (
+                    <>
+                      {/* Report-a-bug is desktop-only — its bundle create +
+                          upload flow lives behind the Electron bridge. */}
+                      {hasDesktopBridge && (
+                        <ActionRow
+                          icon={Bug}
                           onSelect={() => {
                             setPopoverOpen(false);
                             setReportBugOpen(true);
                           }}
-                        />
+                        >
+                          <Trans>Report a bug</Trans>
+                        </ActionRow>
                       )}
-                    </Fragment>
-                  ))}
+                      <ActionRow
+                        icon={MessageSquare}
+                        onSelect={() => {
+                          setPopoverOpen(false);
+                          setFeedbackOpen(true);
+                        }}
+                      >
+                        <Trans>Provide feedback</Trans>
+                      </ActionRow>
+                    </>
+                  )}
                 </ul>
               </nav>
             </div>
@@ -255,9 +271,11 @@ export const HelpPopover: FC = () => {
           </div>
         </PopoverContent>
       </Popover>
-      {/* Sibling to the Popover so the dialog survives the menu closing on
-          select. Desktop-only — gated on the same bridge as the trigger row. */}
+      {/* Siblings to the Popover so the dialogs survive the menu closing on
+          select. Report-a-bug is desktop-only — gated on the same bridge as
+          its trigger row. */}
       {hasDesktopBridge && <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />}
+      <FeedbackFormDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </>
   );
 };

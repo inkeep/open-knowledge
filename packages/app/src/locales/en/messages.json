@@ -120,6 +120,7 @@
     "1njn7W": ["Light"],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
     "1t_NnN": ["Reject"],
+    "1uyUjj": ["Provide feedback"],
     "2-CeZn": [
       "Your report is saved on this Mac, so nothing was lost. You can email it to us instead."
     ],
@@ -185,6 +186,7 @@
     "3Ijjy1": ["Couldn't load this skill's files."],
     "3J7d2N": ["Big section heading."],
     "3JYy1p": ["Branch ", ["0"], " no longer exists. Cloned to default branch."],
+    "3LbBJn": ["Attach images"],
     "3MnvrL": ["Showing top ", ["0"], " matches — keep typing to narrow"],
     "3Mwaly": ["Could not initialize ", ["0"], "."],
     "3SDfZl": [
@@ -478,6 +480,7 @@
     "9Vh9Jf": ["Reopen this window to sign in with your browser"],
     "9XIEYq": ["Attach the file in an email to <0/>"],
     "9bCiQ8": ["No pages are missing incoming graph links."],
+    "9bG48P": ["Sending"],
     "9clcD5": ["Open documents tagged #", ["chip"]],
     "9dw5bW": ["Create with ", ["0"]],
     "9euN0m": [
@@ -524,6 +527,7 @@
     "AQGtjK": [
       "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
     ],
+    "ASqqsQ": ["Maximum ", ["MAX_ATTACHMENTS"], " attachments"],
     "ATGYL1": ["Email address"],
     "AVW-K9": ["Failed to load orphan pages"],
     "AWOSPo": ["Zoom in"],
@@ -633,7 +637,9 @@
       ["1", "plural", { "one": ["#", " folder"], "other": ["#", " folders"] }],
       " and starter templates) in the folder of your choice."
     ],
+    "D2emTw": ["Something went wrong sending your feedback. Please try again."],
     "D4H2N6": ["Remove ", ["tag"]],
+    "D8JJwQ": ["Feedback isn't available right now. Please try again later."],
     "D8OV7J": ["Only collaborators"],
     "DDTdLl": ["Code block settings"],
     "DELNQk": ["Collaborators see your in-progress edits as soon as they sync."],
@@ -694,6 +700,7 @@
     ],
     "E7BhZn": ["Blank note"],
     "E9bKSA": ["Creating"],
+    "E9gh86": ["You can attach up to ", ["MAX_ATTACHMENTS"], " images."],
     "EARn6h": ["Couldn't share skills — ", ["detail"], "."],
     "EBVbtP": ["Could not duplicate item"],
     "EDl9kS": ["Subscribe"],
@@ -794,6 +801,7 @@
     "FqGWeR": ["Couldn't reach the agent registry."],
     "FqTpiN": ["Bird wiki"],
     "Fqr8BP": ["Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."],
+    "Fqx38P": ["What got in the way?"],
     "Fsx78O": ["Add the <0>ok</0> command to your terminal"],
     "FvMSms": ["Renaming changes the file on disk and the id agents use to pick this template."],
     "FvpFSZ": ["Reveal in Finder, ", ["hint"]],
@@ -858,6 +866,7 @@
     "GuqOb1": ["Failed to load headings"],
     "Gx0VS1": ["e.g. drafts/ or *.draft.md"],
     "GzPQ2f": ["Stay in the loop"],
+    "H-hzll": ["Please choose Good or Not great."],
     "H-vDm3": ["Relaunching to install the update…"],
     "H08D2X": ["Open a single markdown file in a temporary session, without project setup."],
     "H0WlWQ": ["Grid of rows and columns with a header row."],
@@ -925,6 +934,7 @@
     "IrC12v": ["Application"],
     "IreQBq": ["Repository"],
     "It9ARY": ["Toggle the right document panel."],
+    "ItxGi3": ["Attachments must total under 3 MB."],
     "Ix0K8o": ["Hide external URL nodes"],
     "IxyZXD": ["Screenshot"],
     "Izb10l": ["Fix all ", ["count"], " fixable problems"],
@@ -937,6 +947,7 @@
       "No disconnected pages. Pages appear here only when they have no incoming and no outgoing graph edges."
     ],
     "JE21eh": ["Symlink to ", ["targetPath"]],
+    "JHf6qZ": ["you@company.com"],
     "JJcBCm": [["0"], " total"],
     "JK-Ave": ["Hide thumbnails"],
     "JL3si7": ["Updating"],
@@ -1076,6 +1087,7 @@
         }
       ]
     ],
+    "LvdLef": ["Thanks for the feedback!"],
     "LwMxXg": ["Failed to open worktree."],
     "M-IF14": ["Report reference"],
     "M1OfV9": ["Next source diagnostic"],
@@ -1087,6 +1099,7 @@
     "M6mvVi": ["Copy relative path"],
     "M9597s": ["Preparing share URL..."],
     "MCjC9A": ["Delete ", ["deleteDescriptorLabel"]],
+    "MDBJwN": ["Hard to use"],
     "MDZSJe": ["When the agent runs its scheduled work."],
     "MGb89P": [
       "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
@@ -1187,6 +1200,7 @@
     "O9oQJS": ["Send report"],
     "OD0FCX": ["Hidden “", ["basename"], "”"],
     "ODGGlj": ["Folder name: ", ["detail"]],
+    "OEEQKT": ["Good"],
     "OETysD": ["No hub pages yet. Hubs appear once pages accumulate inbound graph links."],
     "OEu_0l": ["Failed to load skills: ", ["0"]],
     "OFBmkg": [
@@ -1221,7 +1235,6 @@
     "Okd2Xv": ["Toggle underline formatting."],
     "OlAl5i": ["Expand all"],
     "OmHTGj": ["Disable git auto-sync"],
-    "On0aF2": ["Website"],
     "Oo_WWc": ["No pages found"],
     "Oos8fo": ["Copy command"],
     "OplnBG": ["Managing AI tools is unavailable in this build."],
@@ -1241,7 +1254,6 @@
     "PB4upl": ["Find previous match"],
     "PBwmDJ": ["Searching by meaning"],
     "PBxg_E": ["Not now"],
-    "PCNIuJ": ["File an issue"],
     "PCSkw2": ["Skills"],
     "PIMM5l": ["You're subscribed!"],
     "PKLY-1": ["Opening..."],
@@ -1294,6 +1306,7 @@
     "QcpeeE": ["Navigate to ", ["docName"]],
     "QfFBdJ": ["The template's filename (without `.md`)."],
     "Qj4RL5": ["Completed:"],
+    "QlAG4m": ["Tell us more (optional)"],
     "QlxHAH": ["Showing results for \"", ["semanticResultsLabel"], "\""],
     "QnjpOq": ["What do you want to build?"],
     "QqBQu1": ["Label <0>(visible link text)</0>"],
@@ -1341,6 +1354,7 @@
     "RaPMZv": ["Keyboard shortcuts available in the editor and workspace."],
     "Rah7yq": ["What should the AI do? (optional)"],
     "Rb1zMa": ["No excerpt"],
+    "RcrskJ": ["Formatting looked wrong"],
     "RfHNf8": ["Open activity panel for ", ["tooltipName"]],
     "RfaEio": ["Toggle source comment"],
     "RfilGt": ["No rules match your filters."],
@@ -1369,7 +1383,9 @@
     "S9t1PI": ["Fixing ", ["0"], "/", ["1"]],
     "SCoBBH": ["Tag suggestions"],
     "SCzAbA": [["phase"], " — ", ["pct"], "%"],
+    "SF9qpO": ["Share your email for followups"],
     "SFN6dN": ["Heading 3"],
+    "SItQRc": ["How do you like OpenKnowledge?"],
     "SOPwPh": ["Restore to this edit"],
     "SQWJ-i": ["Restore sessions"],
     "STTOnz": [["keyName"], " type: complex value (nested; read-only)"],
@@ -1420,6 +1436,7 @@
     "Tz0i8g": ["Settings"],
     "Tz4dq-": ["This request is no longer active."],
     "Tz9pJB": ["Clone stream ended unexpectedly — check if the clone completed"],
+    "U0QBh4": ["Not great"],
     "U2Kx6T": ["Close all unpinned"],
     "U2pMtf": ["tag-name"],
     "U3IvM5": ["Full guide"],
@@ -1631,6 +1648,7 @@
     "YEP3X2": ["Delete a table when the active table cell selection covers the full table."],
     "YGIi_c": ["Reinstall"],
     "YJ1BTp": ["A skill with that name already exists."],
+    "YJPN3F": ["Too slow"],
     "YKLP_-": ["Template renamed"],
     "YLMBSd": ["e.g. The editor froze after I pasted a large table"],
     "YPFBfr": [["detail"], " - ", ["kind"], " \"", ["createdPath"], "\" still exists on disk"],
@@ -1728,6 +1746,7 @@
     ],
     "_FLBbi": [["sizeText"], " · secrets redacted · crash dump not redacted"],
     "_IGfXZ": ["OpenKnowledge quit unexpectedly last time."],
+    "_IX_7x": ["Other"],
     "_NX6gG": ["Managing project AI tools is unavailable in this build."],
     "_PACVa": ["Release notes"],
     "_PBJRl": ["Add at least one letter or number."],
@@ -1790,6 +1809,7 @@
     "adsMWO": ["Resolving deltas"],
     "aiArms": ["We couldn't clone this repository."],
     "ajz9F8": ["Couldn't load conflict content for ", ["filePath"], ". Try reloading the page."],
+    "anmUZq": ["Missing a feature"],
     "aoa6xA": ["network error (is `ok ui` running?)"],
     "arUUsK": ["Product updates"],
     "ax9kie": ["Link preview settings not yet loaded — try again in a moment"],
@@ -1907,6 +1927,7 @@
     ],
     "dURmlQ": ["\"frontmatter\" is a reserved property name"],
     "dVaXnv": ["Content rules not yet loaded — try again in a moment"],
+    "dXCi3J": ["Something broke"],
     "dXWMFn": ["Removes this skill from your editors."],
     "dYCvMf": ["Couldn't resume this conversation: ", ["0"]],
     "dbapvC": ["Follow us on social media"],
@@ -1990,6 +2011,7 @@
     "fru3T7": ["Could not fix ", ["0"], " of ", ["1"], " files."],
     "fuJZKk": ["Search branches"],
     "fwhX-N": ["Indent or outdent source"],
+    "fwrPh4": ["Please enter a valid email."],
     "fxJk_6": ["<0>Have more to add?</0> Write to <1/> and mention your reference."],
     "fxbCNQ": ["Synced. The link is up to date."],
     "g3UF2V": ["Accept"],
@@ -2607,6 +2629,7 @@
     "s0_GnA": ["Opening ", ["openingLabel"], "…"],
     "s1c0ja": ["Bullet List"],
     "s3caR3": ["Deleting"],
+    "s7us1p": ["Only PNG, JPEG, or WebP images are allowed."],
     "sE7R19": [
       "Could not load templates: ",
       ["templatesError"],
@@ -2773,6 +2796,7 @@
     "w4hMYl": [
       "Could not read branch state for this project. Close this dialog and open the share link again."
     ],
+    "w61W3L": ["Remove ", ["0"]],
     "w6sBjd": ["Terminal settings not yet loaded — try again in a moment"],
     "w6sT-y": ["Follow the agent's edits"],
     "w7SsvI": ["That folder isn't an OpenKnowledge project yet. Initialize it and open?"],
