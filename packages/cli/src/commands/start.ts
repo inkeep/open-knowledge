@@ -1202,7 +1202,8 @@ function parseUiPort(value: string): number {
  * should stay legible — banner + warnings, not a firehose of INFO diagnostics
  * — but those diagnostics must still reach the on-disk file sink for
  * bug-report bundles. Returning 'warn' raises ONLY the pretty stdout stream
- * (see `OK_CONSOLE_LEVEL` in `logger.ts`); the file sink keeps the base level.
+ * (see `OK_CONSOLE_LEVEL` in `logger.ts`); the file sink keeps capturing
+ * diagnostics independently (debug+ by default; `OK_FILE_LEVEL` overrides).
  *
  * Returns `null` (leave the env untouched) when the user has already pinned a
  * level explicitly via `OK_CONSOLE_LEVEL` or `LOG_LEVEL` — the discoverable

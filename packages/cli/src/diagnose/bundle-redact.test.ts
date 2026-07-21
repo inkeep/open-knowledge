@@ -12,10 +12,10 @@
  * and assert on the rewritten files + the returned map.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   _recordHashForTests,
   type RedactStagedBundleResult,
@@ -428,6 +428,42 @@ describe('redactStagedBundle — contentDir substitution', () => {
     expect(after.effects[0]['doc.name']).toMatch(/^doc:[a-f0-9]{8}$/);
     expect(after.effects[0].entries[0].sessionId).toBe('agent-a1');
     expect(Object.values(result.docNameMap)).toContain('meetings/standup');
+  });
+
+  test('hashes doc.name values in state/watcher-recent.jsonl via the line-wise walker', () => {
+    const stagingDir = makeStagingDir();
+    const contentDir = '/Users/test/notes';
+    const lines = [
+      JSON.stringify({
+        ts: 1,
+        decision: 'dispatched',
+        kind: 'create',
+        'doc.name': '.../meetings/standup.md',
+        pathRole: 'content-md',
+      }),
+      JSON.stringify({
+        ts: 2,
+        decision: 'drop-filter-excluded',
+        kind: 'update',
+        'doc.name': '.../dist/output.md',
+        pathRole: 'content-md',
+      }),
+    ];
+    writeStaged(stagingDir, 'state/watcher-recent.jsonl', `${lines.join('\n')}\n`);
+
+    const result = redactStagedBundle({ stagingDir, contentDir });
+
+    const after = readStaged(stagingDir, 'state/watcher-recent.jsonl');
+    expect(after).not.toContain('standup');
+    expect(after).not.toContain('output.md');
+    const parsed = after
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(parsed[0]['doc.name']).toMatch(/^doc:[a-f0-9]{8}$/);
+    expect(parsed[0].decision).toBe('dispatched');
+    expect(parsed[1]['doc.name']).toMatch(/^doc:[a-f0-9]{8}$/);
+    expect(Object.values(result.docNameMap)).toContain('.../meetings/standup.md');
   });
 
   test('strings that do not include contentDir are passed through verbatim', () => {

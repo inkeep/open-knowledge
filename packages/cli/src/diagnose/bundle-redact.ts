@@ -301,7 +301,12 @@ export function redactStagedBundle(opts: RedactStagedBundleOpts): RedactStagedBu
     // misses the STATE_JSON_FILES set and silently falls through to the
     // substring-only walker.
     const base = basename(filePath);
-    if (STATE_JSON_FILES.has(base)) {
+    if (filePath.endsWith('.jsonl')) {
+      // JSONL state artifacts (watcher-recent.jsonl) carry per-line
+      // `doc.name` keys; the line-wise walker hashes them like the
+      // telemetry/log JSONLs.
+      redactJsonlFile(filePath, ctx);
+    } else if (STATE_JSON_FILES.has(base)) {
       redactJsonFile(filePath, ctx);
     } else {
       redactPlainFile(filePath, ctx);

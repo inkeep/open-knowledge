@@ -324,6 +324,124 @@ export function contentHash(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
+// ─── Watcher decision ring ──────────────────────────────────────────────────
+
+/**
+ * Bounded-cardinality reasons a raw watcher event never reaches
+ * `onDiskEvent`. Every silent `continue`/`filter` in the pipeline maps to
+ * one of these so "my file didn't sync" is diagnosable from a bundle
+ * instead of requiring a live repro.
+ */
+type WatcherDropReason =
+  | 'symlink-escape'
+  | 'filter-excluded'
+  | 'read-failed'
+  | 'reserved-doc'
+  | 'stat-failed';
+
+type WatcherDecision = 'dispatched' | 'self-write-skip' | `drop-${WatcherDropReason}`;
+
+/**
+ * One entry in the recent-decisions ring. `path` is pre-normalized via
+ * `normalizeFsPath` (last two segments) at record time — the ring is
+ * diagnostic data that lands in bundles and API responses, never a raw
+ * absolute path (cardinality + privacy rule shared with span attributes).
+ */
+export interface WatcherDecisionRecord {
+  ts: number;
+  decision: WatcherDecision;
+  /** Raw watcher event type (`create`/`update`/`delete`) or classified DiskEvent kind. */
+  kind: string;
+  path: string;
+  pathRole: string;
+}
+
+const WATCHER_DECISION_RING_CAPACITY = 256;
+const watcherDecisionRing: WatcherDecisionRecord[] = [];
+
+/** Cumulative per-reason drop totals since watcher start (summary payload). */
+const watcherDropCounts = new Map<WatcherDropReason, number>();
+let watcherDispatchedCount = 0;
+let watcherSelfWriteSkipCount = 0;
+/** Drops accrued since the last summary line — the summary emits only when non-zero. */
+let watcherDropsSinceLastSummary = 0;
+
+function recordWatcherDecision(decision: WatcherDecision, kind: string, rawPath: string): void {
+  watcherDecisionRing.push({
+    ts: Date.now(),
+    decision,
+    kind,
+    path: normalizeFsPath(rawPath),
+    pathRole: classifyFsPath(rawPath),
+  });
+  if (watcherDecisionRing.length > WATCHER_DECISION_RING_CAPACITY) {
+    watcherDecisionRing.shift();
+  }
+  if (decision === 'dispatched') {
+    watcherDispatchedCount++;
+    return;
+  }
+  if (decision === 'self-write-skip') {
+    watcherSelfWriteSkipCount++;
+    return;
+  }
+  const reason = decision.slice('drop-'.length) as WatcherDropReason;
+  watcherDropCounts.set(reason, (watcherDropCounts.get(reason) ?? 0) + 1);
+  watcherDropsSinceLastSummary++;
+  _fileWatcherDropsCounter().add(1, { 'disk.drop_reason': reason });
+}
+
+/**
+ * Snapshot the recent-decisions ring, oldest first. Entries are copies —
+ * callers (the `/api/metrics/watcher-recent` handler, tests) cannot mutate
+ * ring state through the returned array.
+ */
+export function getWatcherDecisionRingSnapshot(): WatcherDecisionRecord[] {
+  return watcherDecisionRing.map((record) => ({ ...record }));
+}
+
+/** How often the periodic drop-count summary line is considered (and emitted when drops accrued). */
+const WATCHER_DROP_SUMMARY_INTERVAL_MS = 60_000;
+
+/**
+ * Emit the periodic drop-count summary. Silent when no event was dropped
+ * since the previous summary — steady-state healthy watchers add zero log
+ * volume. Cumulative per-reason totals (not per-window deltas) so a single
+ * line orients a bundle reader without diffing successive summaries.
+ */
+export function logWatcherDropSummary(): void {
+  if (watcherDropsSinceLastSummary === 0) return;
+  const droppedSinceLastSummary = watcherDropsSinceLastSummary;
+  watcherDropsSinceLastSummary = 0;
+  const dropTotals: Record<string, number> = {};
+  for (const [reason, count] of watcherDropCounts) {
+    dropTotals[reason] = count;
+  }
+  log.info(
+    {
+      droppedSinceLastSummary,
+      dropTotals,
+      dispatched: watcherDispatchedCount,
+      selfWriteSkips: watcherSelfWriteSkipCount,
+    },
+    `[file-watcher] drop summary: ${droppedSinceLastSummary} event(s) dropped since last summary`,
+  );
+}
+
+/**
+ * Reset ring + counters. Called from `unsubscribe()` alongside the
+ * `writeTracker`/`lastKnownHash` clears (same rationale: successive
+ * watchers in one test process must not observe prior instances' state)
+ * and directly by unit tests.
+ */
+export function resetWatcherDecisionDiagnostics(): void {
+  watcherDecisionRing.length = 0;
+  watcherDropCounts.clear();
+  watcherDispatchedCount = 0;
+  watcherSelfWriteSkipCount = 0;
+  watcherDropsSinceLastSummary = 0;
+}
+
 /**
  * Detect a symlink whose canonical target escapes contentDir.
  *
@@ -480,7 +598,10 @@ export async function classifyEvents(
     // Apply content filter if provided
     if (contentFilter) {
       const relPath = toPosix(relative(contentDir, event.path));
-      if (contentFilter.isExcluded(relPath)) continue;
+      if (contentFilter.isExcluded(relPath)) {
+        recordWatcherDecision('drop-filter-excluded', event.type, event.path);
+        continue;
+      }
     }
 
     switch (event.type) {
@@ -510,6 +631,10 @@ export async function classifyEvents(
     try {
       createContents.set(event.path, await readFile(event.path, 'utf-8'));
     } catch (e) {
+      // ENOENT included: the file vanished between the kernel event and the
+      // read (delete race) — the event is silently dropped downstream, so the
+      // ring is the only record it ever existed.
+      recordWatcherDecision('drop-read-failed', event.type, event.path);
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
         log.warn({ path: event.path, err: e }, `Failed to read ${event.path}`);
       }
@@ -519,6 +644,7 @@ export async function classifyEvents(
     try {
       updateContents.set(event.path, await readFile(event.path, 'utf-8'));
     } catch (e) {
+      recordWatcherDecision('drop-read-failed', event.type, event.path);
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
         log.warn({ path: event.path, err: e }, `Failed to read ${event.path}`);
       }
@@ -1255,6 +1381,10 @@ export async function handleRawEvents(
   // content as a contentDir-scoped DiskEvent.
   const safeEvents = rawEvents.filter((e) => {
     if (!eventEscapesContentDir(e.path, contentDir)) return true;
+    // The escape check fails closed on unexpected lstat errors too; both
+    // shapes record under `symlink-escape` (the log line above carries the
+    // errno when it was a stat failure).
+    recordWatcherDecision('drop-symlink-escape', e.type, e.path);
     log.warn({ path: e.path, type: e.type }, `Symlink escape: ${e.path}, dropping ${e.type} event`);
     return false;
   });
@@ -1285,7 +1415,11 @@ export async function handleRawEvents(
         (path) =>
           !batchPaths.has(path) && !lastKnownHash.has(path) && !knownCanonicalPaths.has(path),
       )
-      .filter((path) => !eventEscapesContentDir(path, contentDir))
+      .filter((path) => {
+        if (!eventEscapesContentDir(path, contentDir)) return true;
+        recordWatcherDecision('drop-symlink-escape', 'create', path);
+        return false;
+      })
       .map((path) => ({ type: 'create' as const, path }));
     if (rescuedCreates.length > 0) {
       log.debug(
@@ -1415,6 +1549,11 @@ export async function handleRawEvents(
         `[file-watcher] Skipped self-write: ${event.kind}`,
       );
       _fileWatcherEventsCounter().add(1, { 'disk.kind': event.kind, self: true });
+      recordWatcherDecision(
+        'self-write-skip',
+        event.kind,
+        event.kind === 'rename' ? event.newPath : event.path,
+      );
       continue;
     }
 
@@ -1429,6 +1568,7 @@ export async function handleRawEvents(
     // Normalize + classify the path to bound span-attribute cardinality
     // (AGENTS.md STOP rule — raw paths blow up the trace index).
     const rawPath = event.kind === 'rename' ? event.newPath : event.path;
+    recordWatcherDecision('dispatched', event.kind, rawPath);
     await withSpan(
       'file_watcher.process_event',
       {
@@ -1445,6 +1585,7 @@ export async function handleRawEvents(
   for (const event of folderEvents) {
     log.debug({ kind: event.kind, path: event.path }, `[file-watcher] Dispatching: ${event.kind}`);
     _fileWatcherEventsCounter().add(1, { 'disk.kind': event.kind, self: false });
+    recordWatcherDecision('dispatched', event.kind, event.path);
     await withSpan(
       'file_watcher.process_event',
       {
@@ -1467,13 +1608,17 @@ export async function handleRawEvents(
   for (const raw of assetEvents) {
     if (contentFilter) {
       const relPath = toPosix(relative(contentDir, raw.path));
-      if (contentFilter.isExcluded(relPath)) continue;
+      if (contentFilter.isExcluded(relPath)) {
+        recordWatcherDecision('drop-filter-excluded', raw.type, raw.path);
+        continue;
+      }
     }
     const relativePath = toPosix(relative(contentDir, raw.path));
     const event: DiskEvent =
       raw.type === 'delete'
         ? { kind: 'asset-delete', path: raw.path, relativePath }
         : { kind: 'asset-create', path: raw.path, relativePath };
+    recordWatcherDecision('dispatched', event.kind, raw.path);
     await onDiskEvent(event);
   }
 
@@ -1485,12 +1630,19 @@ export async function handleRawEvents(
   // Filter through `isPathIgnored` (NOT `isExcluded`): see seed-walk rationale.
   for (const raw of nonMdRawEvents) {
     const relativePath = toPosix(relative(contentDir, raw.path));
-    if (contentFilter?.isPathIgnored(relativePath)) continue;
-    if (isSystemDoc(relativePath) || isConfigDoc(relativePath)) continue;
+    if (contentFilter?.isPathIgnored(relativePath)) {
+      recordWatcherDecision('drop-filter-excluded', raw.type, raw.path);
+      continue;
+    }
+    if (isSystemDoc(relativePath) || isConfigDoc(relativePath)) {
+      recordWatcherDecision('drop-reserved-doc', raw.type, raw.path);
+      continue;
+    }
 
     if (raw.type === 'delete') {
       const event: DiskEvent = { kind: 'file-delete', path: raw.path, relativePath };
       updateFileIndex(event, fileIndex);
+      recordWatcherDecision('dispatched', event.kind, raw.path);
       await onDiskEvent(event);
       continue;
     }
@@ -1508,11 +1660,14 @@ export async function handleRawEvents(
       if (st.isSymbolicLink()) st = statSync(raw.path);
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
+      recordWatcherDecision('drop-stat-failed', raw.type, raw.path);
       if (code !== 'ENOENT') {
         log.warn({ path: raw.path, code }, `file-event lstat failed for ${raw.path} (${code})`);
       }
       continue;
     }
+    // Not a drop: directory raw events reach here (nonMdRawEvents is only
+    // extension-filtered) and are handled by the folder pipeline above.
     if (!st.isFile()) continue;
 
     const event: DiskEvent =
@@ -1534,6 +1689,7 @@ export async function handleRawEvents(
             inode: Number(st.ino),
           };
     updateFileIndex(event, fileIndex);
+    recordWatcherDecision('dispatched', event.kind, raw.path);
     await onDiskEvent(event);
   }
 }
@@ -1544,6 +1700,14 @@ function _fileWatcherEventsCounter() {
     description: 'Number of file-watcher events classified by kind',
   });
   return _fwEventsCounterCache;
+}
+
+let _fwDropsCounterCache: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null = null;
+function _fileWatcherDropsCounter() {
+  _fwDropsCounterCache ||= getMeter().createCounter('ok.file_watcher.drops', {
+    description: 'File-watcher events dropped before dispatch, by bounded reason',
+  });
+  return _fwDropsCounterCache;
 }
 
 // ─── Backend: @parcel/watcher ───────────────────────────────────────────────
@@ -1752,6 +1916,7 @@ export async function startWatcher(
   bumpFileIndexGeneration();
 
   const evictionInterval = setInterval(evictStaleTrackerEntries, WRITE_TRACKER_TTL_MS);
+  const dropSummaryInterval = setInterval(logWatcherDropSummary, WATCHER_DROP_SUMMARY_INTERVAL_MS);
 
   let subscription: AsyncSubscription;
   let backend: WatcherBackend;
@@ -1782,6 +1947,7 @@ export async function startWatcher(
     }
   } catch (e) {
     clearInterval(evictionInterval);
+    clearInterval(dropSummaryInterval);
     throw e;
   }
 
@@ -1792,6 +1958,7 @@ export async function startWatcher(
   return {
     async unsubscribe() {
       clearInterval(evictionInterval);
+      clearInterval(dropSummaryInterval);
       // Clear the module-level writeTracker on unsubscribe so test suites
       // that spin up successive watchers don't accumulate stale entries
       // across instances. Production: unsubscribe = shutdown, no consumers
@@ -1799,6 +1966,7 @@ export async function startWatcher(
       // the correct starting state for a fresh isolation boundary.
       writeTracker.clear();
       lastKnownHash.clear();
+      resetWatcherDecisionDiagnostics();
       return originalUnsubscribe();
     },
     getFileIndex() {

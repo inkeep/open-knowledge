@@ -136,6 +136,8 @@ import {
   MetricsAgentPresenceSuccessSchema,
   MetricsParseHealthSuccessSchema,
   MetricsReconciliationSuccessSchema,
+  type MetricsWatcherRecentSuccess,
+  MetricsWatcherRecentSuccessSchema,
   mediaKindForSidebarAssetExtension,
   normalizeAttachmentFolderPath,
   OK_DIR,
@@ -488,6 +490,7 @@ import {
   type DiskEvent,
   type FileIndexEntry,
   type FolderIndexEntry,
+  getWatcherDecisionRingSnapshot,
   registerWrite,
   removeFolderIndexEntries as removeFolderIndexEntriesFromIndex,
   updateFileIndex,
@@ -9095,6 +9098,64 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       log.error({ err: e, 'doc.name': failingDocName }, '[metrics-agent-effects] handler failed');
       errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
         handler: 'metrics-agent-effects',
+        cause: e,
+      });
+    }
+  }
+
+  async function handleMetricsWatcherRecent(
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<void> {
+    // Diagnostic view of the file-watcher's recent-decisions ring — the
+    // record of which disk events were dispatched, skipped as self-writes,
+    // or dropped (and why), which otherwise lives only in server memory.
+    // Loopback + Host-header gated with auth-before-method-dispatch ordering
+    // — same pattern + rationale as `handleMetricsAgentEffects` (which files
+    // changed on this machine, and when, is a local-editing-only signal).
+    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+      errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
+        handler: 'metrics-watcher-recent',
+      });
+      return;
+    }
+    if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
+      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
+        handler: 'metrics-watcher-recent',
+      });
+      return;
+    }
+    if (req.method !== 'GET') {
+      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
+        handler: 'metrics-watcher-recent',
+        extraHeaders: { Allow: 'GET' },
+      });
+      return;
+    }
+    try {
+      // Ring paths are already normalized (last two segments) at record
+      // time. The wire carries them under the literal `doc.name` key — the
+      // key the diagnostics-bundle redactor hashes — so a staged copy of
+      // this response is anonymized by the existing pass.
+      const decisions: MetricsWatcherRecentSuccess['decisions'] =
+        getWatcherDecisionRingSnapshot().map((record) => ({
+          ts: record.ts,
+          decision: record.decision,
+          kind: record.kind,
+          'doc.name': record.path,
+          pathRole: record.pathRole,
+        }));
+      successResponse(
+        res,
+        200,
+        MetricsWatcherRecentSuccessSchema,
+        { decisions },
+        { handler: 'metrics-watcher-recent' },
+      );
+    } catch (e) {
+      log.error({ err: e }, '[metrics-watcher-recent] handler failed');
+      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
+        handler: 'metrics-watcher-recent',
         cause: e,
       });
     }
@@ -19036,6 +19097,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/metrics/parse-health': handleMetricsParseHealth,
     '/api/metrics/agent-presence': handleMetricsAgentPresence,
     '/api/metrics/agent-effects': handleMetricsAgentEffects,
+    '/api/metrics/watcher-recent': handleMetricsWatcherRecent,
     '/api/__embed-detect': handleEmbedDetect,
     '/api/server-info': handleServerInfo,
     '/api/acp/catalog': handleAcpCatalog,

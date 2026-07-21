@@ -148,26 +148,37 @@ export class PinoLogger {
   }
 
   /**
-   * Resolve the effective per-stream levels. `fileLevel` is the configured
-   * base level (what callers set via `options.level` / `LOG_LEVEL`) and
-   * governs the on-disk sink. `consoleLevel` overrides the pretty stdout
-   * stream from `OK_CONSOLE_LEVEL` when set to a valid level, else mirrors the
-   * base. `instanceLevel` is the more-verbose of the two so the pino
+   * Resolve the effective per-stream levels. The base level (what callers set
+   * via `options.level` / `LOG_LEVEL`) governs the pretty stdout stream;
+   * `OK_CONSOLE_LEVEL` overrides it when set to a valid level. The on-disk
+   * sink (`fileLevel`) admits DEBUG by default — lifecycle breadcrumbs
+   * (agent sessions, bridge watchdog, watcher decisions) are emitted at
+   * debug so they reach bug-report bundles without spamming terminals; the
+   * sink's size-cap ring rotation bounds the disk cost. `OK_FILE_LEVEL`
+   * overrides the sink level, and a 'silent' base (tests) silences both
+   * streams. `instanceLevel` is the more-verbose of the two so the pino
    * logger-level gate (which runs before per-stream filtering) admits every
    * record either stream wants.
    *
    * This is what lets `ok start` keep the terminal legible (console raised to
-   * 'warn') WITHOUT dropping the INFO diagnostics that bug-report bundles
-   * depend on — those still land on the file sink at the base level.
+   * 'warn') WITHOUT dropping the DEBUG/INFO diagnostics that bug-report
+   * bundles depend on — those still land on the file sink.
    */
   private resolveStreamLevels(): {
     fileLevel: string;
     consoleLevel: string;
     instanceLevel: string;
   } {
-    const fileLevel = (this.options.level as string | undefined) ?? 'info';
+    const baseLevel = (this.options.level as string | undefined) ?? 'info';
+    const envFile = process.env.OK_FILE_LEVEL?.toLowerCase();
+    const fileLevel =
+      envFile && VALID_LOG_LEVELS.has(envFile)
+        ? envFile
+        : baseLevel === 'silent'
+          ? 'silent'
+          : mostVerboseLevel(baseLevel, 'debug');
     const envConsole = process.env.OK_CONSOLE_LEVEL?.toLowerCase();
-    const consoleLevel = envConsole && VALID_LOG_LEVELS.has(envConsole) ? envConsole : fileLevel;
+    const consoleLevel = envConsole && VALID_LOG_LEVELS.has(envConsole) ? envConsole : baseLevel;
     return { fileLevel, consoleLevel, instanceLevel: mostVerboseLevel(fileLevel, consoleLevel) };
   }
 

@@ -6,7 +6,6 @@
  * `CollectBundleDeps` so tests stay deterministic and hermetic.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
   existsSync,
@@ -19,6 +18,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { ZipFile } from 'yazl';
 import { type CollectBundleDeps, collectBundle, writeBundle } from './bundle.ts';
 
@@ -45,6 +45,7 @@ function makeDeterministicDeps(over: Partial<CollectBundleDeps> = {}): CollectBu
   return {
     fetchAgentPresence: async () => null,
     fetchAgentEffects: async () => null,
+    fetchWatcherRecent: async () => null,
     readShadowHead: () => null,
     readCheckpointRefs: () => null,
     now: () => new Date('2026-05-28T14:22:01.000Z'),
@@ -333,6 +334,98 @@ describe('collectBundle — server status', () => {
     const effectsPath = join(collected.stagingDir, 'state', 'agent-effects.json');
     expect(existsSync(effectsPath)).toBe(true);
     expect(JSON.parse(readFileSync(effectsPath, 'utf-8'))).toEqual({ effects: [] });
+    collected.cleanup();
+  });
+
+  test('lock present + watcher-recent 2xx → watcher-recent.jsonl staged as one line per decision', async () => {
+    const contentDir = makeTmpDir();
+    writeAt(
+      contentDir,
+      '.ok/local/server.lock',
+      JSON.stringify({ pid: 1, port: 4711, hostname: 'h', startedAt: 't', worktreeRoot: '/' }),
+    );
+    let queriedPort = -1;
+    const decisions = [
+      {
+        ts: 1,
+        decision: 'dispatched',
+        kind: 'create',
+        'doc.name': '.../notes/a.md',
+        pathRole: 'content-md',
+      },
+      {
+        ts: 2,
+        decision: 'drop-symlink-escape',
+        kind: 'update',
+        'doc.name': '.../x/b.md',
+        pathRole: 'content-md',
+      },
+    ];
+    const deps = makeDeterministicDeps({
+      fetchAgentPresence: async () => JSON.stringify({ presence: {} }),
+      fetchWatcherRecent: async (port) => {
+        queriedPort = port;
+        return JSON.stringify({ decisions });
+      },
+    });
+    const collected = await collectBundle({ contentDir, deps });
+
+    expect(queriedPort).toBe(4711);
+    const watcherPath = join(collected.stagingDir, 'state', 'watcher-recent.jsonl');
+    expect(existsSync(watcherPath)).toBe(true);
+    const lines = readFileSync(watcherPath, 'utf-8').trim().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0] ?? '')).toEqual(decisions[0]);
+    expect(JSON.parse(lines[1] ?? '')).toEqual(decisions[1]);
+    // JSONL files are line-counted in the manifest inventory.
+    const entry = collected.manifest.files.find((f) => f.path === 'state/watcher-recent.jsonl');
+    expect(entry?.lines).toBe(2);
+    collected.cleanup();
+  });
+
+  test('watcher-recent empty ring stages an empty file; malformed body is skipped', async () => {
+    const contentDir = makeTmpDir();
+    writeAt(
+      contentDir,
+      '.ok/local/server.lock',
+      JSON.stringify({ pid: 1, port: 4711, hostname: 'h', startedAt: 't', worktreeRoot: '/' }),
+    );
+    const emptyDeps = makeDeterministicDeps({
+      fetchAgentPresence: async () => JSON.stringify({ presence: {} }),
+      fetchWatcherRecent: async () => JSON.stringify({ decisions: [] }),
+    });
+    const emptyCollected = await collectBundle({ contentDir, deps: emptyDeps });
+    const watcherPath = join(emptyCollected.stagingDir, 'state', 'watcher-recent.jsonl');
+    expect(existsSync(watcherPath)).toBe(true);
+    expect(readFileSync(watcherPath, 'utf-8')).toBe('');
+    emptyCollected.cleanup();
+
+    const malformedDeps = makeDeterministicDeps({
+      fetchAgentPresence: async () => JSON.stringify({ presence: {} }),
+      fetchWatcherRecent: async () => 'not json {',
+    });
+    const malformedCollected = await collectBundle({ contentDir, deps: malformedDeps });
+    expect(existsSync(join(malformedCollected.stagingDir, 'state', 'watcher-recent.jsonl'))).toBe(
+      false,
+    );
+    malformedCollected.cleanup();
+  });
+
+  test('watcher-recent failure never affects serverStatus (presence is the probe)', async () => {
+    const contentDir = makeTmpDir();
+    writeAt(
+      contentDir,
+      '.ok/local/server.lock',
+      JSON.stringify({ pid: 1, port: 4711, hostname: 'h', startedAt: 't', worktreeRoot: '/' }),
+    );
+    const deps = makeDeterministicDeps({
+      fetchAgentPresence: async () => JSON.stringify({ presence: {} }),
+      fetchWatcherRecent: async () => null,
+    });
+    const collected = await collectBundle({ contentDir, deps });
+
+    expect(collected.manifest.serverStatus).toBe('running');
+    expect(existsSync(join(collected.stagingDir, 'state', 'watcher-recent.jsonl'))).toBe(false);
     collected.cleanup();
   });
 

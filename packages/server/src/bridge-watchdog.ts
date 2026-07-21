@@ -53,6 +53,7 @@ import {
   PARSE_EQUIVALENCE_TOLERANCE,
   toBridgeInvariantLog,
 } from '@inkeep/open-knowledge-core';
+import { getLogger } from './logger.ts';
 import {
   incrementBridgeInvariantViolations,
   incrementBridgeInvariantViolationsSuppressed,
@@ -60,6 +61,13 @@ import {
   incrementBridgeToleranceApplied,
   incrementObserverAPathBFiresSuppressed,
 } from './metrics.ts';
+
+// Pino lifecycle breadcrumbs ride alongside the structured console events:
+// the console channel is an observation contract for in-process test
+// harnesses (terminal-only), while the pino file sink is what bug-report
+// bundles collect — without these, the watchdog's firings are invisible in
+// a bundle.
+const log = getLogger('bridge-watchdog');
 
 // ─────────────────────────────────────────────────────────────
 // Rate-limiter
@@ -307,6 +315,16 @@ export function emitObserverAPathBFired(docName: string | undefined, nowMs?: num
   const shouldEmit = shouldEmitObserverAPathBFired(docName, nowMs);
   if (!shouldEmit) {
     incrementObserverAPathBFiresSuppressed();
+  } else {
+    // Behind the debounce gate on purpose: Path B can fire per keystroke
+    // under concurrent editing, and un-gated per-fire logging inside the
+    // drain measurably widens the witness-to-settle race window the canary
+    // e2e suite guards (raising its failure rate in CI). The suppressed
+    // counter accounts for the gap.
+    log.debug(
+      { docName },
+      '[bridge-watchdog] Observer A Path B fired (slow-path Y.Text divergence merge)',
+    );
   }
   return shouldEmit;
 }
@@ -358,6 +376,11 @@ export function emitBridgeSplitBrainRederive(
   const shouldEmit = shouldEmitBridgeSplitBrainRederive(site, docName, nowMs);
   if (!shouldEmit) {
     incrementBridgeSplitBrainRederivesSuppressed();
+  } else {
+    // Behind the debounce gate — same per-drain hot-path rationale as
+    // `emitObserverAPathBFired` (the split-brain check runs per Observer A
+    // drain on an irreducibly-divergent doc).
+    log.debug({ site, docName }, '[bridge-watchdog] split-brain re-derive detected');
   }
   return shouldEmit;
 }
@@ -461,6 +484,14 @@ export function createDocCanonicalizer(
 // Watchdog assertion
 // ─────────────────────────────────────────────────────────────
 
+/** Offset of the first differing character (== min length when one input is a prefix of the other). */
+function firstDivergenceIndex(a: string, b: string): number {
+  const max = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < max && a[i] === b[i]) i++;
+  return i;
+}
+
 interface AssertBridgeInvariantOpts {
   site: BridgeInvariantSite;
   /** Doc name for log attribution + rate-limiter scoping. */
@@ -556,6 +587,16 @@ export function assertBridgeInvariant(
     if (classes.length > 0) {
       emitToleranceFire(classes, ytextSnapshot, fragmentMdSnapshot, opts.docName);
     }
+    // Breadcrumb rides the SAME (site, class) debounce as the console event
+    // — the tolerance path runs on every drain of a canonicalizing doc
+    // (every WYSIWYG keystroke), and un-gated per-drain logging widens the
+    // witness-to-settle race window the canary e2e suite guards.
+    if (emittedClasses.length > 0) {
+      log.debug(
+        { site: opts.site, docName: opts.docName, classes: emittedClasses },
+        '[bridge-watchdog] tolerance classes applied',
+      );
+    }
     for (const cls of emittedClasses) {
       incrementBridgeToleranceApplied(cls);
       console.warn(
@@ -621,10 +662,31 @@ export function assertBridgeInvariant(
   // Production: rate-limited structured-log event.
   const shouldEmit = shouldEmitBridgeInvariantViolation(opts.site, opts.docName, opts.nowMs);
   if (!shouldEmit) {
+    // Counter-only on suppressed occurrences — a chronically-violating doc
+    // hits this per drain, so any per-occurrence logging or diff-summary
+    // computation here would add hot-path cost the debounce exists to
+    // avoid (see the tolerance-path breadcrumb rationale above).
     incrementBridgeInvariantViolationsSuppressed();
     return false;
   }
   incrementBridgeInvariantViolations();
+  // Content-free divergence summary — lengths + first-divergence offset
+  // only. Snapshot bytes are user content and must not reach the file sink
+  // (the redaction posture the hash-only console event already takes).
+  log.warn(
+    {
+      site: opts.site,
+      docName: opts.docName,
+      ytextBytes: ytextSnapshot.length,
+      fragmentBytes: fragmentMdSnapshot.length,
+      normalizedYtextBytes: ytextNorm.length,
+      normalizedFragmentBytes: fragNorm.length,
+      firstDivergenceIndex: firstDivergenceIndex(ytextNorm, fragNorm),
+    },
+    `[bridge-watchdog] bridge invariant violation at ${opts.site}${
+      opts.docName ? ` for '${opts.docName}'` : ''
+    }`,
+  );
   // Default-redacted: `ytextHash`/`fragmentHash` (FNV-1a) replace raw `diff`
   // bytes so log aggregators with weaker data-handling posture than the
   // application store don't accumulate verbatim user content. Operators

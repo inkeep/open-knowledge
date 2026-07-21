@@ -360,7 +360,17 @@ function applyAgentMarkdownWriteInner(
     // the warning's `currentState` so the agent recovers without a re-read.
     // Post-transact concurrent-peer residue is out of scope here.
     const actualYText = document.getText('source').toString();
-    return evaluateContentDivergence(actualYText, newContent, position);
+    const divergence = evaluateContentDivergence(actualYText, newContent, position);
+    log.debug(
+      {
+        docName: document.name,
+        position,
+        markdownBytes: markdown.length,
+        divergent: divergence !== undefined,
+      },
+      '[agent-write] applied agent markdown write',
+    );
+    return divergence;
   } catch (err) {
     // `FrontmatterMalformedError` is the designed-rejection path: it carries
     // a 400 envelope to the agent and `respondFrontmatterMalformed` already
@@ -512,6 +522,10 @@ function applyAgentUndoInner(
     if (undone) deriveFragmentFromYtext(document, embedResolver);
   }, undoOrigin);
 
+  log.debug(
+    { docName: session.docName, agentId: session.agentId, scope, framesToPop, undone },
+    '[agent-session] applied agent undo',
+  );
   return undone;
 }
 
@@ -729,13 +743,20 @@ export class AgentSessionManager {
 
     // Reuse in-flight promise if a concurrent first-call is already pending
     const inflight = this.pendingSessions.get(key);
-    if (inflight) return inflight;
+    if (inflight) {
+      log.debug({ docName, agentId }, '[agent-session] joining in-flight session creation');
+      return inflight;
+    }
 
     // Capacity gate — fires only when creating a NEW (docName, agentId)
     // entry. Existing-session lookups returned above. Counts both resolved
     // and pending so a concurrent burst of distinct ids cannot race past
     // the cap before any of them lands in `sessions`.
     if (this.sessions.size + this.pendingSessions.size >= this.maxSessions) {
+      log.warn(
+        { docName, agentId, limit: this.maxSessions },
+        '[agent-session] session capacity reached, refusing new session',
+      );
       throw new AgentSessionCapacityError(this.maxSessions);
     }
 
@@ -789,6 +810,10 @@ export class AgentSessionManager {
       docName,
       sessionContext,
     )) as AgentDirectConnection;
+    log.debug(
+      { docName, agentId, sessionId: rawSessionId, agentType },
+      '[agent-session] DirectConnection opened',
+    );
 
     // NO per-doc awareness writes here. Every Hocuspocus `Document` has a
     // single shared `Awareness` clientID borrowed from `doc.clientID`, so a per-
@@ -836,7 +861,10 @@ export class AgentSessionManager {
     um.on('stack-item-added', stampTime);
     um.on('stack-item-updated', stampTime);
 
-    log.info({ docName, agentId }, `[agent-session] Created session for: ${docName} / ${agentId}`);
+    log.info(
+      { docName, agentId, sessionId: rawSessionId },
+      `[agent-session] Created session for: ${docName} / ${agentId}`,
+    );
 
     return { dc, origin, undoOrigin, um, agentId, docName };
   }
@@ -867,6 +895,10 @@ export class AgentSessionManager {
     session: SessionRecord,
     context: Record<string, unknown>,
   ): Promise<void> {
+    log.debug(
+      { docName: session.docName, agentId: session.agentId, ...context },
+      '[agent-session] closing session',
+    );
     try {
       try {
         session.um.destroy();
@@ -923,6 +955,10 @@ export class AgentSessionManager {
     // Collect matching keys first — the async disconnect + delete below mutates
     // `this.sessions`, so iterating directly would hit concurrent-modification.
     const keys = [...this.sessions.keys()].filter((k) => k.endsWith(suffix));
+    log.debug(
+      { agentId, pendingSettled: pendingKeys.length, closing: keys.length },
+      '[agent-session] closing all sessions for agent',
+    );
     for (const key of keys) {
       const session = this.sessions.get(key);
       if (!session) continue;
@@ -936,6 +972,7 @@ export class AgentSessionManager {
     // Collect matching keys first — the async disconnect + delete below mutates
     // `this.sessions`, so iterating directly would hit concurrent-modification.
     const keys = [...this.sessions.keys()].filter((k) => k.startsWith(prefix));
+    log.debug({ docName, closing: keys.length }, '[agent-session] closing all sessions for doc');
     for (const key of keys) {
       const session = this.sessions.get(key);
       if (!session) continue;
@@ -950,6 +987,7 @@ export class AgentSessionManager {
       return;
     }
     const keys = [...this.sessions.keys()];
+    log.debug({ closing: keys.length }, '[agent-session] closing all sessions');
     for (const key of keys) {
       const session = this.sessions.get(key);
       if (!session) continue;

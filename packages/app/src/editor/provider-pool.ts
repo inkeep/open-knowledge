@@ -1244,6 +1244,17 @@ export class ProviderPool {
     console.warn(JSON.stringify(parts));
   }
 
+  /**
+   * Info-level lifecycle breadcrumb for the reconnect/recycle path. Same
+   * structured-console channel as the recovery events (the client log
+   * forwarder lifts `{event, ...fields}` JSON into the server log, so these
+   * reach diagnostics bundles), but at `console.info` — breadcrumbs are
+   * expected transitions, not warnings.
+   */
+  private emitStructuredClientBreadcrumb(parts: Record<string, string | number | boolean>): void {
+    console.info(JSON.stringify(parts));
+  }
+
   private clearRecoveryMismatchStaleClaimIfTerminal(): void {
     const kind = this.serverRestartRecoveryState.kind;
     if (kind === 'idle' || kind === 'failed') {
@@ -1252,6 +1263,11 @@ export class ProviderPool {
   }
 
   private beginServerRestartRecovery(docNames: readonly string[], startedAt: number): void {
+    this.emitStructuredClientBreadcrumb({
+      event: 'ok-pool-restart-recovery-begin',
+      phase: 'clearing-local-cache',
+      docCount: docNames.length,
+    });
     this.serverRestartRecoveryState = {
       kind: 'recovering',
       phase: 'clearing-local-cache',
@@ -1271,6 +1287,11 @@ export class ProviderPool {
     startedAt: number,
     failureReason: 'clear-data-failed' | 'clear-data-timeout',
   ): void {
+    this.emitStructuredClientBreadcrumb({
+      event: 'ok-pool-restart-recovery-reconnecting',
+      docCount: docNames.length,
+      failedCount: failedDocNames.length,
+    });
     if (docNames.length === 0) {
       this.serverRestartRecoveryState =
         failedDocNames.length === 0
@@ -1304,6 +1325,11 @@ export class ProviderPool {
     if (!state.docNames.includes(docName)) return;
 
     const remaining = state.docNames.filter((candidate) => candidate !== docName);
+    this.emitStructuredClientBreadcrumb({
+      event: 'ok-pool-restart-recovery-synced',
+      docName,
+      remaining: remaining.length,
+    });
     if (remaining.length > 0) {
       this.serverRestartRecoveryState = { ...state, docNames: remaining };
       return;
@@ -1778,6 +1804,11 @@ export class ProviderPool {
       // are no-ops — they shouldn't extend the window because each one just
       // means "still can't reach the server."
       if (entry.hasSynced && provider.unsyncedChanges === 0 && !entry.pendingRecycleTimer) {
+        this.emitStructuredClientBreadcrumb({
+          event: 'ok-pool-recycle-timer-armed',
+          docName,
+          debounceMs: this.recycleDebounceMs,
+        });
         entry.pendingRecycleTimer = setTimeout(() => {
           // Re-narrow inside the timer closure — `entry` was Active when the
           // timer was scheduled, but TS doesn't carry the narrowing across
@@ -1799,6 +1830,10 @@ export class ProviderPool {
           // timer so resource reclamation still happens.
           if (provider.unsyncedChanges > 0) {
             mark('ok/pool/recycle-skipped-unsynced', { docName });
+            this.emitStructuredClientBreadcrumb({
+              event: 'ok-pool-recycle-skipped-unsynced',
+              docName,
+            });
             return;
           }
           this.recycleDisconnectedEntry(docName);
@@ -2075,6 +2110,11 @@ export class ProviderPool {
           // — kept as the terminal fallback so this path never REGRESSES
           // relative to the pre-content-replay behavior.
           Y.applyUpdate(provider.document, current.delta, TAB_REPLAY_ORIGIN);
+          this.emitStructuredClientBreadcrumb({
+            event: 'ok-pool-buffer-replay-delta-applied',
+            docName,
+            deltaBytes: current.delta.byteLength,
+          });
         } catch (err: unknown) {
           const errorName = err instanceof Error ? err.name : 'non-error-throw';
           this.emitStructuredClientRecoveryEvent({
@@ -2202,6 +2242,11 @@ export class ProviderPool {
     // Snapshot entries BEFORE any async work — subsequent recycle mutates
     // the map via destroyEntry → delete → re-open.
     const snapshot = Array.from(this.entries.entries());
+    this.emitStructuredClientBreadcrumb({
+      event: 'ok-pool-mismatch-recycle-begin',
+      entryCount: snapshot.length,
+      branch: this.normalizedObservedBranch(),
+    });
     const startedAt = Date.now();
     const recoveryActiveDocName = this.activeDocName;
     // Recovery UI (spinner + failure panel) only tracks the foreground doc.
@@ -2275,6 +2320,12 @@ export class ProviderPool {
           delta: unsynced,
           fullState: fullState.byteLength > MAX_BUFFER_BYTES ? null : fullState,
         });
+        this.emitStructuredClientBreadcrumb({
+          event: 'ok-pool-mismatch-buffer-captured',
+          docName,
+          deltaBytes: unsynced.byteLength,
+          fullStateBytes: fullState.byteLength > MAX_BUFFER_BYTES ? 0 : fullState.byteLength,
+        });
       }
     }
 
@@ -2302,6 +2353,10 @@ export class ProviderPool {
         promise: this.withClearDataTimeout(docName, poolEntry.persistence.clearData()),
       });
     }
+    this.emitStructuredClientBreadcrumb({
+      event: 'ok-pool-mismatch-clears-begin',
+      count: clears.length,
+    });
 
     const inflight: Promise<void> = Promise.allSettled(clears.map((c) => c.promise))
       .then((results) => {
@@ -2499,6 +2554,10 @@ export class ProviderPool {
    */
   recycleAllEntries(): void {
     const docNames = Array.from(this.entries.keys());
+    this.emitStructuredClientBreadcrumb({
+      event: 'ok-pool-recycle-all',
+      count: docNames.length,
+    });
     for (const docName of docNames) {
       this.recycleDisconnectedEntry(docName);
     }
@@ -2993,6 +3052,11 @@ export class ProviderPool {
 
     const wasActive = this.activeDocName === docName;
     mark('ok/pool/recycle-disconnected', { docName, wasActive });
+    this.emitStructuredClientBreadcrumb({
+      event: 'ok-pool-recycle-entry',
+      docName,
+      wasActive,
+    });
 
     this.destroyEntry(entry);
     this._entries.delete(docName);

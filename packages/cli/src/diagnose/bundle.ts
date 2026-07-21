@@ -210,6 +210,13 @@ export interface CollectBundleDeps {
    */
   fetchAgentEffects?: (port: number) => Promise<string | null>;
   /**
+   * Fetch the running server's `GET /api/metrics/watcher-recent` response
+   * (the file-watcher's bounded recent-decisions ring), within the 1s
+   * budget. Returns the response body string on 2xx, or `null` on any
+   * failure. Best-effort like agent-effects; never affects `serverStatus`.
+   */
+  fetchWatcherRecent?: (port: number) => Promise<string | null>;
+  /**
    * Read the last 50 entries of the shadow repo log at
    * `<contentDir>/.git/ok/`. Returns the stdout string or `null` if the
    * shadow repo is missing or git fails.
@@ -366,6 +373,42 @@ async function defaultFetchAgentEffects(port: number): Promise<string | null> {
     // Same all-failures-collapse-to-null posture as agent-presence — a
     // server without the endpoint (older version) or not running must not
     // fail the bundle.
+    return null;
+  }
+}
+
+async function defaultFetchWatcherRecent(port: number): Promise<string | null> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/metrics/watcher-recent`, {
+      signal: AbortSignal.timeout(AGENT_PRESENCE_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    return await response.text();
+  } catch {
+    // Same all-failures-collapse-to-null posture as agent-effects.
+    return null;
+  }
+}
+
+/**
+ * Convert the watcher-recent JSON response (`{decisions: [...]}`) into JSONL
+ * (one decision per line) for staging as `state/watcher-recent.jsonl`. JSONL
+ * keeps the artifact greppable and routes it through the same line-wise
+ * redaction pass the telemetry/log JSONLs get. Returns `null` when the body
+ * doesn't parse to the expected shape (older server, torn response) — the
+ * artifact is then skipped, mirroring the other best-effort fetches. An
+ * empty ring stages an empty file so "endpoint reachable, ring empty" stays
+ * distinguishable from "not captured".
+ */
+function watcherRecentToJsonl(body: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const decisions = (parsed as { decisions?: unknown }).decisions;
+    if (!Array.isArray(decisions)) return null;
+    if (decisions.length === 0) return '';
+    return `${decisions.map((decision) => JSON.stringify(decision)).join('\n')}\n`;
+  } catch {
     return null;
   }
 }
@@ -627,6 +670,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
   const deps = opts.deps ?? {};
   const fetchAgentPresence = deps.fetchAgentPresence ?? defaultFetchAgentPresence;
   const fetchAgentEffects = deps.fetchAgentEffects ?? defaultFetchAgentEffects;
+  const fetchWatcherRecent = deps.fetchWatcherRecent ?? defaultFetchWatcherRecent;
   const readShadowHead = deps.readShadowHead ?? defaultReadShadowHead;
   const readCheckpointRefs = deps.readCheckpointRefs ?? defaultReadCheckpointRefs;
   const now = deps.now ?? (() => new Date());
@@ -686,6 +730,16 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       const agentEffects = await fetchAgentEffects(lockPort);
       if (agentEffects !== null) {
         writeFileSync(join(stagingDir, 'state', 'agent-effects.json'), agentEffects);
+      }
+      // File-watcher recent-decisions ring — the "my file didn't sync"
+      // triage artifact (which events were dispatched / skipped / dropped,
+      // and why). Best effort like agent-effects; staged as JSONL.
+      const watcherRecent = await fetchWatcherRecent(lockPort);
+      if (watcherRecent !== null) {
+        const jsonl = watcherRecentToJsonl(watcherRecent);
+        if (jsonl !== null) {
+          writeFileSync(join(stagingDir, 'state', 'watcher-recent.jsonl'), jsonl);
+        }
       }
     }
 

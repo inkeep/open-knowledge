@@ -213,6 +213,41 @@ export const MetricsAgentEffectsSuccessSchema = z
 export type MetricsAgentEffectsSuccess = z.infer<typeof MetricsAgentEffectsSuccessSchema>;
 
 /**
+ * One file-watcher decision entry on
+ * `MetricsWatcherRecentSuccessSchema.decisions`. The path is pre-normalized
+ * server-side (last two segments) and carried under the literal `doc.name`
+ * key — the key the diagnostics-bundle redactor hashes — so a staged copy of
+ * this response is anonymized by the existing pass without a redactor change.
+ *
+ * `decision` / `kind` are permissive strings (operator-read fields; pinning
+ * the enum here would force lockstep maintenance with the server's decision
+ * taxonomy without catching real regressions).
+ */
+export const WatcherDecisionEntrySchema = z
+  .object({
+    ts: z.number().int().min(0),
+    decision: z.string().min(1),
+    kind: z.string().min(1),
+    'doc.name': z.string().min(1),
+    pathRole: z.string().min(1),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type WatcherDecisionEntryWire = z.infer<typeof WatcherDecisionEntrySchema>;
+
+/**
+ * Success response for `GET /api/metrics/watcher-recent`. Returns the
+ * bounded ring of recent file-watcher decisions (dispatched / self-write
+ * skips / drops), oldest first. Loopback + Host-allowlist gated like
+ * `/api/metrics/agent-effects`.
+ */
+export const MetricsWatcherRecentSuccessSchema = z
+  .object({
+    decisions: z.array(WatcherDecisionEntrySchema),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type MetricsWatcherRecentSuccess = z.infer<typeof MetricsWatcherRecentSuccessSchema>;
+
+/**
  * Success response for `GET /api/installed-agents`. Returns a flat boolean
  * record keyed by agent scheme name (`claude` / `codex` / `cursor`). The
  * route is flat (no `ok: true` wrapper) because the consumer

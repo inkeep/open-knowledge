@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { context, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestLogger,
   getLogger,
@@ -270,9 +270,10 @@ describe('Logger', () => {
           options: { level: 'info' },
           fileSink: { projectDir: tmp, maxBytes: 1_000_000 },
         });
-        // Instance level must be the more-verbose of (file=info, console=warn)
-        // so the logger-level gate doesn't drop INFO before per-stream filtering.
-        expect(logger.getPinoInstance().level).toBe('info');
+        // Instance level must be the more-verbose of (file=debug, console=warn)
+        // so the logger-level gate doesn't drop DEBUG/INFO before per-stream
+        // filtering. The file sink defaults to debug (breadcrumb capture).
+        expect(logger.getPinoInstance().level).toBe('debug');
 
         logger.info({}, 'info-to-disk');
         logger.warn({}, 'warn-to-disk');
@@ -287,6 +288,56 @@ describe('Logger', () => {
         if (prev === undefined) delete process.env.OK_CONSOLE_LEVEL;
         else process.env.OK_CONSOLE_LEVEL = prev;
       }
+    });
+
+    it('DEBUG records reach the file sink by default without landing on stdout at the base level', async () => {
+      // Lifecycle breadcrumbs (agent sessions, bridge watchdog, watcher
+      // decisions) are emitted at debug — they must reach bug-report bundles
+      // (the file sink) while the terminal stays at the base level.
+      const logger = new PinoLogger('test', {
+        options: { level: 'info' },
+        fileSink: { projectDir: tmp, maxBytes: 1_000_000 },
+      });
+
+      logger.debug({ docName: 'x' }, 'debug-breadcrumb');
+      logger.info({}, 'info-line');
+      await logger.flushFileSink();
+
+      const records = await readLogLinesWhen(logsCurrentPath(tmp), 2);
+      expect(records.map((r) => r.msg)).toEqual(['debug-breadcrumb', 'info-line']);
+      expect(records[0]?.level).toBe(20); // pino debug level
+    });
+
+    it('OK_FILE_LEVEL overrides the file-sink level (opt-down from the debug default)', async () => {
+      const prev = process.env.OK_FILE_LEVEL;
+      process.env.OK_FILE_LEVEL = 'warn';
+      try {
+        const logger = new PinoLogger('test', {
+          options: { level: 'info' },
+          fileSink: { projectDir: tmp, maxBytes: 1_000_000 },
+        });
+        logger.debug({}, 'debug-filtered');
+        logger.info({}, 'info-filtered');
+        logger.warn({}, 'warn-to-disk');
+        await logger.flushFileSink();
+
+        const records = await readLogLinesWhen(logsCurrentPath(tmp), 1);
+        expect(records.map((r) => r.msg)).toEqual(['warn-to-disk']);
+      } finally {
+        if (prev === undefined) delete process.env.OK_FILE_LEVEL;
+        else process.env.OK_FILE_LEVEL = prev;
+      }
+    });
+
+    it('a silent base level keeps the file sink silent (test-logger contract)', async () => {
+      const logger = new PinoLogger('test', {
+        options: { level: 'silent' },
+        fileSink: { projectDir: tmp, maxBytes: 1_000_000 },
+      });
+      logger.debug({}, 'nope');
+      logger.error({}, 'also-nope');
+      await logger.flushFileSink();
+      expect(existsSync(logsCurrentPath(tmp))).toBe(false);
     });
 
     it('omits file destination when fileSink config is absent (no .ok/local/logs created)', async () => {
