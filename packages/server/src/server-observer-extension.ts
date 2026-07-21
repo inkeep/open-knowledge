@@ -13,9 +13,12 @@ import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import type { Schema } from '@tiptap/pm/model';
 import type * as Y from 'yjs';
 import { isConfigDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { getLogger } from './logger.ts';
 import { incrementServerObserverError } from './metrics.ts';
 import { setupServerObservers } from './server-observers.ts';
 import type { ShadowRef } from './shadow-repo.ts';
+
+const log = getLogger('server-observers');
 
 export interface ServerObserverExtensionOptions {
   mdManager: MarkdownManager;
@@ -97,9 +100,9 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
           // Do NOT re-throw: Hocuspocus afterLoadDocument is not try/catch guarded
           // (unlike onLoadDocument). Re-throwing would break the document setup
           // pipeline (beforeBroadcastStateless, awareness wiring) for ALL clients.
-          console.error(
-            `[ServerObserverExtension] Failed to attach observers for '${documentName}':`,
-            err,
+          log.error(
+            { docName: documentName, err },
+            `[ServerObserverExtension] Failed to attach observers for '${documentName}'`,
           );
           incrementServerObserverError('a');
           incrementServerObserverError('b');
@@ -117,7 +120,8 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
         const retryId = setTimeout(() => {
           pendingRetries.delete(documentName);
           if (cleanups.has(documentName)) return; // already attached (e.g., unload+reload)
-          console.warn(
+          log.warn(
+            { docName: documentName },
             `[ServerObserverExtension] Retrying observer attachment for '${documentName}'`,
           );
           attach();
@@ -148,7 +152,7 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
         try {
           cleanup();
         } catch (err) {
-          console.error(`[ServerObserverExtension] Cleanup failed for '${docName}':`, err);
+          log.error({ docName, err }, `[ServerObserverExtension] Cleanup failed for '${docName}'`);
         }
       }
       cleanups.clear();

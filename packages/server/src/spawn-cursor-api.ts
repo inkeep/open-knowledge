@@ -59,6 +59,7 @@ import {
   readBoundedJsonBody,
 } from './http/request-validation.ts';
 import { successResponse } from './http/success-response.ts';
+import { getLogger } from './logger.ts';
 import { spawnDetached as spawnDetachedReal } from './spawn-detached.ts';
 
 const SPAWN_CURSOR_WHICH_TIMEOUT_MS = 500;
@@ -318,10 +319,9 @@ export async function resolveCursorBinaryDefault(timeoutMs: number): Promise<str
       } catch (err) {
         const code = (err as NodeJS.ErrnoException | undefined)?.code;
         if (code !== 'ENOENT' && code !== 'EACCES' && code !== 'EPERM') {
-          console.warn(
-            '[spawn-cursor] unexpected fs.access error on bundle probe:',
-            code,
-            candidate,
+          getLogger('spawn-cursor').warn(
+            { code, candidate },
+            'unexpected fs.access error on bundle probe',
           );
         }
       }
@@ -438,7 +438,7 @@ export function isPathWithinDir(
     // the root cause instead of investigating a phantom path-escape. Same
     // narrow-and-log pattern as `resolveCursorBinaryDefault` and
     // `spawnDetachedReal` in this file.
-    console.warn('[spawn-cursor] unexpected path-resolution error:', err);
+    getLogger('spawn-cursor').warn({ err }, 'unexpected path-resolution error');
     return false;
   }
 }

@@ -18,7 +18,7 @@
  * `afterAllTransactions` settlement listener — tests assert post-transact
  * state directly with no scheduler flushing.
  */
-import { describe, expect, test } from 'bun:test';
+
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
 import {
   MarkdownManager,
@@ -30,12 +30,14 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN } from './agent-sessions.ts';
 import { MANAGED_RENAME_ORIGIN, ROLLBACK_ORIGIN } from './api-extension.ts';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { __resetBridgeWatchdogForTests } from './bridge-watchdog.ts';
 import { FILE_WATCHER_ORIGIN } from './external-change.ts';
+import { getLogger } from './logger.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 import {
   OBSERVER_SYNC_ORIGIN,
@@ -1037,14 +1039,10 @@ describe('Server Observer B — error recovery paths', () => {
 
     const errorsBefore = getMetrics().serverObserverErrorsB;
 
-    // Capture the originals — we'll restore after the throw fires so the
-    // post-sync serialize path exercises the fallback branch without
-    // breaking subsequent reads.
-    const originalWarn = console.warn;
-    const warnings: string[] = [];
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args.map(String).join(' '));
-    };
+    // Capture the warn through the subsystem logger — restored after the
+    // throw fires so the post-sync serialize path exercises the fallback
+    // branch without breaking subsequent reads.
+    const warnSpy = vi.spyOn(getLogger('server-observers'), 'warn');
 
     // Arm: serialize() will throw exactly once during the post-sync watchdog
     // setup inside runObserverBSync. Under contract, the post-sync
@@ -1074,7 +1072,8 @@ describe('Server Observer B — error recovery paths', () => {
 
     // Restore before any subsequent assertions that serialize.
     stub.mdManager.serialize = originalSerialize;
-    console.warn = originalWarn;
+    const warnings = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
+    warnSpy.mockRestore();
 
     // The warn-branch (post-sync re-serialization failed) fired.
     expect(warnings.some((w) => w.includes('Post-sync re-serialization failed'))).toBe(true);

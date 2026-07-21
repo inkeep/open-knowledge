@@ -1,4 +1,4 @@
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'bun:test';
+import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 // Skip-on-CI gate (oven-sh/bun#11892): subprocess or git child spawns; Bun fails to reap children on ubuntu-latest GHA runners (oven-sh/bun#11892).
 // Tests run normally locally; follow-up will narrow the leak surface.
@@ -22,6 +22,7 @@ import {
 import { bootServer } from './boot.ts';
 import { getBootTimings } from './boot-timings.ts';
 import { ConfigSchema } from './config/schema.ts';
+import { getLogger } from './logger.ts';
 import { parseKeepaliveConnectionId } from './mcp-mount.ts';
 import { shutdownTelemetry } from './telemetry.ts';
 
@@ -188,11 +189,7 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
     writeFileSync(resolve(okDir, 'config.yml'), '', 'utf-8');
     // Note: NO .gitignore.
 
-    const originalWarn = console.warn;
-    const warnings: string[] = [];
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args.map(String).join(' '));
-    };
+    const warnSpy = vi.spyOn(getLogger('boot'), 'warn');
     let booted: Awaited<ReturnType<typeof bootServer>> | null = null;
     try {
       booted = await bootServer({
@@ -205,12 +202,14 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
         idleShutdownMs: null,
         attachUiSibling: false,
       });
-      const bootWarnings = warnings.filter((w) => w.startsWith('[boot]'));
+      const bootWarnings = warnSpy.mock.calls
+        .map((call) => String(call[1] ?? ''))
+        .filter((w) => w.includes('.gitignore is missing'));
       expect(bootWarnings.length).toBe(1);
       expect(bootWarnings[0]).toContain('.ok/.gitignore');
       expect(bootWarnings[0]).toContain('ok init');
     } finally {
-      console.warn = originalWarn;
+      warnSpy.mockRestore();
       if (booted) await booted.destroy();
     }
   });

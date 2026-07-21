@@ -24,6 +24,7 @@ import {
   readContributors,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { getDocExtension } from './doc-extensions.ts';
+import { getLogger } from './logger.ts';
 import { managedArtifactTimelinePaths } from './managed-artifact-persistence.ts';
 import {
   type AncestorShaSetCache,
@@ -43,6 +44,8 @@ import type { ShadowHandle } from './shadow-repo.ts';
 import { shadowGit } from './shadow-repo.ts';
 import { getMeter, withSpan } from './telemetry.ts';
 import { recordTimelineQuery } from './timeline-telemetry.ts';
+
+const log = getLogger('timeline');
 
 /**
  * Depth bound for a history page. Sizing the git-level
@@ -811,9 +814,9 @@ export async function getDocumentHistory(
             if (predEntries.length >= walkCap) windowSaturated = true;
             wipEntries = [...wipEntries, ...predEntries];
           } catch (e) {
-            console.warn(
-              `[timeline] predecessor walk failed for step ${i} (${step.path}); skipping:`,
-              e,
+            log.warn(
+              { step: i, path: step.path, err: e },
+              `predecessor walk failed for step ${i} (${step.path}); skipping`,
             );
           }
         }
@@ -948,7 +951,7 @@ export async function getDocumentHistory(
       hasMore: (windowSaturated && page.length > 0) || offset + limit < total,
     };
   } catch (e) {
-    console.warn('[timeline] getDocumentHistory failed, returning empty result:', e);
+    log.warn({ err: e }, 'getDocumentHistory failed, returning empty result');
     // Record the failure with its real elapsed duration AND error=true so a
     // timeout storm is distinguishable in the metric
     // from a burst of legitimately-empty docs — both otherwise land in
@@ -1062,7 +1065,7 @@ export async function getFolderTimeline(
       hasMore: (windowSaturated && page.length > 0) || offset + limit < total,
     };
   } catch (e) {
-    console.warn('[timeline] getFolderTimeline failed, returning empty result:', e);
+    log.warn({ err: e }, 'getFolderTimeline failed, returning empty result');
     return EMPTY;
   }
 }

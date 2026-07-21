@@ -17,6 +17,7 @@
 import { dirname, join } from 'node:path';
 import type { BundleId } from './build-skill-zip.ts';
 import { tracedMkdir, tracedWriteFile } from './fs-traced.ts';
+import { getLogger } from './logger.ts';
 import type { SkillStateLogger, SkillStateTarget } from './skill-state.ts';
 
 /** File path relative to `$HOME` where install-state events are appended. */
@@ -88,7 +89,7 @@ export async function recordSkillInstallEvent(
   const warn =
     deps?.warn ??
     ((data: unknown, message: string) => {
-      console.warn(message, data);
+      getLogger('skills').warn(data, message);
     });
 
   const home = homedirFn();

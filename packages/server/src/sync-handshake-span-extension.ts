@@ -33,6 +33,7 @@
 import type { Extension } from '@hocuspocus/server';
 import type { Attributes } from '@opentelemetry/api';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { getLogger } from './logger.ts';
 import { withSpanSync } from './telemetry.ts';
 
 /**
@@ -66,20 +67,12 @@ export function createSyncHandshakeSpanExtension(): Extension {
       try {
         withSpanSync('sync.handshake', { attributes }, () => {});
       } catch (err) {
-        // Bracket-prefix `console.warn` is intentional here: this is an ad-hoc
-        // ops warning meant to
-        // surface a misbehaving SDK to a human reading the console, not
-        // an event counted in aggregate or asserted in tests. Promoting
-        // to `getLogger('sync-handshake-span').warn` would require a
-        // consumer that doesn't yet exist; revisit if telemetry analysis
-        // grows a need to alert on OTel SDK fault rates.
-        //
-        // Pass the Error through so Node renders its `.stack` — coercing to
-        // `.message` discards the call-frame info needed to triage a rare
-        // OTel SDK fault.
-        console.warn(
-          '[sync-handshake-span] emission failed:',
-          err instanceof Error ? err : String(err),
+        // Pass the Error through under `err` so the pino serializer keeps
+        // its `.stack` — coercing to `.message` discards the call-frame
+        // info needed to triage a rare OTel SDK fault.
+        getLogger('sync-handshake-span').warn(
+          { err: err instanceof Error ? err : new Error(String(err)) },
+          'emission failed',
         );
       }
     },

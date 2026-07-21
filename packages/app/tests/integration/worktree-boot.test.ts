@@ -5,18 +5,18 @@
  * against regression.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { bootServer, ConfigSchema } from '@inkeep/open-knowledge-server';
+import { bootServer, ConfigSchema, getLogger } from '@inkeep/open-knowledge-server';
 import { context, metrics, trace } from '@opentelemetry/api';
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createLinkedWorktree, type LinkedWorktreeHandle } from './worktree-test-harness.ts';
 
 const TEST_CONFIG = ConfigSchema.parse({});
@@ -124,11 +124,7 @@ describe('bootServer pre-listen check in a linked worktree (FR3)', () => {
     writeFileSync(resolve(okDir, 'config.yml'), '', 'utf-8');
     // No .gitignore.
 
-    const originalWarn = console.warn;
-    const warnings: string[] = [];
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args.map(String).join(' '));
-    };
+    const warnSpy = vi.spyOn(getLogger('boot'), 'warn');
 
     let booted: Awaited<ReturnType<typeof bootServer>> | null = null;
     try {
@@ -142,11 +138,13 @@ describe('bootServer pre-listen check in a linked worktree (FR3)', () => {
         idleShutdownMs: null,
         attachUiSibling: false,
       });
-      const bootWarnings = warnings.filter((w) => w.startsWith('[boot]'));
+      const bootWarnings = warnSpy.mock.calls
+        .map((call) => String(call[1] ?? ''))
+        .filter((w) => w.includes('.gitignore is missing'));
       expect(bootWarnings.length).toBe(1);
       expect(bootWarnings[0]).toContain('.ok/.gitignore');
     } finally {
-      console.warn = originalWarn;
+      warnSpy.mockRestore();
       if (booted) await booted.destroy();
     }
   });

@@ -41,7 +41,10 @@ import {
 import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
+import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
+
+const log = getLogger('tag-index');
 
 /**
  * Inline-tag pattern for server-side body scanning. Sourced from
@@ -210,7 +213,7 @@ export class TagIndex {
 
       this.applyDocSnapshot(docName, authoredTags, expanded);
     } catch (err) {
-      console.warn(`[tag-index] Failed to scan ${docName} for tag extraction:`, err);
+      log.warn({ docName, err }, `Failed to scan ${docName} for tag extraction`);
       this.deleteDocument(docName);
     }
   }
@@ -336,7 +339,7 @@ export class TagIndex {
     // doesn't poison every subsequent init() call. The breadcrumb keeps a
     // trace when a caller drops the returned promise without handling it.
     this.initChain = run.catch((err) => {
-      console.warn('[tag-index] init failed (chain cleared for next init):', err);
+      log.warn({ err }, 'init failed (chain cleared for next init)');
     });
     return run;
   }
@@ -355,7 +358,7 @@ export class TagIndex {
           try {
             return { docName, markdown: await readFile(filePath, 'utf-8') };
           } catch (err) {
-            console.warn(`[tag-index] Failed to read ${docName} during init:`, err);
+            log.warn({ docName, err }, `Failed to read ${docName} during init`);
             return null;
           }
         }),
@@ -365,7 +368,10 @@ export class TagIndex {
         try {
           this.updateDocumentFromMarkdown(result.docName, result.markdown);
         } catch (err) {
-          console.warn(`[tag-index] Failed to index ${result.docName} during init:`, err);
+          log.warn(
+            { docName: result.docName, err },
+            `Failed to index ${result.docName} during init`,
+          );
         }
       }
     }
@@ -433,7 +439,7 @@ export class TagIndex {
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch (err) {
-      console.warn(`[tag-index] Failed to read directory ${dir}:`, err);
+      log.warn({ dir, err }, `Failed to read directory ${dir}`);
       return;
     }
     for (const entry of entries) {

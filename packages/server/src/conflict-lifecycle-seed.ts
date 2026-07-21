@@ -40,6 +40,7 @@ import type { Extension } from '@hocuspocus/server';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import type { ConflictEntry } from './conflict-storage.ts';
 import { stripDocExtension } from './doc-extensions.ts';
+import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
 import type { SyncEngine } from './sync-engine.ts';
 
@@ -101,9 +102,9 @@ export function createConflictLifecycleSeedExtension(
           }),
         );
       } catch (err) {
-        console.warn(
-          `[conflict-lifecycle-seed] failed to seed lifecycle on load (doc=${documentName}):`,
-          err instanceof Error ? err : String(err),
+        getLogger('conflict-lifecycle-seed').warn(
+          { docName: documentName, err: err instanceof Error ? err : new Error(String(err)) },
+          `failed to seed lifecycle on load (doc=${documentName})`,
         );
       }
     },

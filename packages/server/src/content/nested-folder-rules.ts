@@ -15,6 +15,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { getLogger } from '../logger.ts';
 
 /**
  * Folder frontmatter — open shape. Any YAML-representable key is
@@ -98,9 +99,9 @@ function readFrontmatterYaml(absYamlPath: string): Record<string, unknown> | nul
     if (!warnedPaths.has(absYamlPath)) {
       warnedPaths.add(absYamlPath);
       const reason = err instanceof Error ? err.message : String(err);
-      // eslint-disable-next-line no-console -- ad-hoc operator-facing diagnostic
-      console.warn(
-        `[ok-folder-frontmatter] malformed YAML at ${absYamlPath} — folder metadata skipped. Fix the file or delete it. Reason: ${reason}`,
+      getLogger('folder-frontmatter').warn(
+        { path: absYamlPath, reason },
+        `malformed YAML at ${absYamlPath} — folder metadata skipped. Fix the file or delete it. Reason: ${reason}`,
       );
     }
     return null;

@@ -21,6 +21,7 @@
 
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
+import { getLogger } from './logger.ts';
 
 const DETACHED_IGNORED_STDIO_OPTIONS: Pick<SpawnOptions, 'detached' | 'stdio' | 'shell'> = {
   detached: true,
@@ -79,7 +80,7 @@ export function spawnDetached(
         settle({ ok: true });
       });
     } catch (err) {
-      console.warn('[spawn-detached] synchronous spawn throw:', err);
+      getLogger('spawn-detached').warn({ err }, 'synchronous spawn throw');
       clearTimeout(timer);
       settle(classifySpawnError(err));
     }

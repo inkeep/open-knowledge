@@ -23,6 +23,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { parseTemplateFile } from '@inkeep/open-knowledge-core';
+import { getLogger } from '../logger.ts';
 
 type TemplateScope = 'local' | 'inherited';
 
@@ -132,8 +133,9 @@ export function resolveProjectTemplates(projectDir: string): ProjectTemplatesRes
     const folderRel = queue.shift() ?? '';
     if (visited++ >= PROJECT_TEMPLATE_SCAN_CAP) {
       truncated = true;
-      console.warn(
-        `[ok-templates] project scan hit the ${PROJECT_TEMPLATE_SCAN_CAP}-directory cap at ${projectDir}; deeper templates were not enumerated. Queue depth at break: ${queue.length}.`,
+      getLogger('templates').warn(
+        { projectDir, cap: PROJECT_TEMPLATE_SCAN_CAP, queueDepth: queue.length },
+        `project scan hit the ${PROJECT_TEMPLATE_SCAN_CAP}-directory cap at ${projectDir}; deeper templates were not enumerated. Queue depth at break: ${queue.length}.`,
       );
       break;
     }
@@ -161,8 +163,9 @@ export function resolveProjectTemplates(projectDir: string): ProjectTemplatesRes
       if (code !== 'ENOENT' && !templateMetaWarnedPaths.has(absDir)) {
         templateMetaWarnedPaths.add(absDir);
         const reason = err instanceof Error ? err.message : String(err);
-        console.warn(
-          `[ok-templates] failed to read directory ${absDir} during project scan — skipped. Reason: ${reason}`,
+        getLogger('templates').warn(
+          { dir: absDir, reason },
+          `failed to read directory ${absDir} during project scan — skipped. Reason: ${reason}`,
         );
       }
       continue;
@@ -282,8 +285,9 @@ function readTemplateMeta(absPath: string): TemplateMeta {
     if (code !== 'ENOENT' && !templateMetaWarnedPaths.has(absPath)) {
       templateMetaWarnedPaths.add(absPath);
       const reason = err instanceof Error ? err.message : String(err);
-      console.warn(
-        `[ok-templates] failed to read template at ${absPath} — metadata skipped. Reason: ${reason}`,
+      getLogger('templates').warn(
+        { path: absPath, reason },
+        `failed to read template at ${absPath} — metadata skipped. Reason: ${reason}`,
       );
     }
     return {};
@@ -300,8 +304,9 @@ function readTemplateMeta(absPath: string): TemplateMeta {
   // operator-facing diagnostic the previous YAML-parse path emitted.
   if (typeof identity.title !== 'string' && !templateMetaWarnedPaths.has(absPath)) {
     templateMetaWarnedPaths.add(absPath);
-    console.warn(
-      `[ok-templates] template at ${absPath} has no title — YAML may be malformed or the title is missing.`,
+    getLogger('templates').warn(
+      { path: absPath },
+      `template at ${absPath} has no title — YAML may be malformed or the title is missing.`,
     );
   }
   const result: TemplateMeta = {};

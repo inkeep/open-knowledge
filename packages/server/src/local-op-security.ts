@@ -16,6 +16,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { errorResponse } from './http/error-response.ts';
+import { getLogger } from './logger.ts';
+
+const log = getLogger('local-op-security');
 
 // ─── Protocol checks ─────────────────────────────────────────────────────────
 
@@ -73,13 +76,14 @@ function ancestorChainHasSymlink(start: string, root: string): boolean {
       stats = lstatSync(cursor);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
-      console.warn(
-        `[local-op-security] ancestorChainHasSymlink: lstat failed on ${cursor} (${code ?? 'unknown'}); treating as symlink (fail-closed)`,
+      log.warn(
+        { path: cursor, code: code ?? 'unknown' },
+        `ancestorChainHasSymlink: lstat failed on ${cursor} (${code ?? 'unknown'}); treating as symlink (fail-closed)`,
       );
       return true;
     }
     if (stats.isSymbolicLink()) {
-      console.warn(`[local-op-security] ancestorChainHasSymlink: symlink detected at ${cursor}`);
+      log.warn({ path: cursor }, `ancestorChainHasSymlink: symlink detected at ${cursor}`);
       return true;
     }
     cursor = dirname(cursor);
@@ -100,8 +104,9 @@ export function isPathWithinHome(dirPath: string, home: string): boolean {
     realHome = realpathSync(home);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    console.warn(
-      `[local-op-security] realpath failed on home dir ${home} (${code ?? 'unknown'}); rejecting all paths`,
+    log.warn(
+      { path: home, code: code ?? 'unknown' },
+      `realpath failed on home dir ${home} (${code ?? 'unknown'}); rejecting all paths`,
     );
     return false;
   }
@@ -117,8 +122,9 @@ export function isPathWithinHome(dirPath: string, home: string): boolean {
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT') {
-        console.warn(
-          `[local-op-security] lstat error at ${current} (${code ?? 'unknown'}); rejecting`,
+        log.warn(
+          { path: current, code: code ?? 'unknown' },
+          `lstat error at ${current} (${code ?? 'unknown'}); rejecting`,
         );
         return false;
       }
@@ -141,25 +147,29 @@ export function isPathWithinHome(dirPath: string, home: string): boolean {
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
         if (stats.isSymbolicLink()) {
-          console.warn(
-            `[local-op-security] realpath failed on symlink leaf at ${current} (${code ?? 'unknown'}); rejecting`,
+          log.warn(
+            { path: current, code: code ?? 'unknown' },
+            `realpath failed on symlink leaf at ${current} (${code ?? 'unknown'}); rejecting`,
           );
           return false;
         }
         if (code === 'EPERM' || code === 'EACCES') {
           if (ancestorChainHasSymlink(current, home)) {
-            console.warn(
-              `[local-op-security] EPERM accept-branch refused at ${current}: symlinked ancestor in chain; rejecting`,
+            log.warn(
+              { path: current },
+              `EPERM accept-branch refused at ${current}: symlinked ancestor in chain; rejecting`,
             );
             return false;
           }
-          console.warn(
-            `[local-op-security] realpath denied on non-symlink leaf at ${current} (${code ?? 'unknown'}); trusting lexical path (TCC-class)`,
+          log.warn(
+            { path: current, code: code ?? 'unknown' },
+            `realpath denied on non-symlink leaf at ${current} (${code ?? 'unknown'}); trusting lexical path (TCC-class)`,
           );
           resolvedCurrent = current;
         } else {
-          console.warn(
-            `[local-op-security] realpath failed on non-symlink leaf at ${current} (${code ?? 'unknown'}); rejecting`,
+          log.warn(
+            { path: current, code: code ?? 'unknown' },
+            `realpath failed on non-symlink leaf at ${current} (${code ?? 'unknown'}); rejecting`,
           );
           return false;
         }

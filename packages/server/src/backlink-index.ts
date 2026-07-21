@@ -23,7 +23,10 @@ import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
+import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
+
+const log = getLogger('backlinks');
 
 // Line-oriented variant: excludes \n since lines are pre-split.
 // cf. packages/core/src/extensions/wiki-link.ts WIKI_LINK_PATTERN (no \n exclusion).
@@ -1198,7 +1201,7 @@ export class BacklinkIndex {
       ];
       this.updateDocument(docName, merged, mergedExternal, branch);
     } catch (err) {
-      console.warn(`[backlinks] Failed to scan ${docName} for link extraction:`, err);
+      log.warn({ docName, err }, `Failed to scan ${docName} for link extraction`);
       this.deleteDocument(docName, branch);
     }
   }
@@ -1621,7 +1624,7 @@ export class BacklinkIndex {
       }
       return true;
     } catch (err) {
-      console.warn(`[backlinks] Failed to load cache for ${branch}:`, err);
+      log.warn({ branch, err }, `Failed to load cache for ${branch}`);
       return false;
     }
   }
@@ -1672,7 +1675,7 @@ export class BacklinkIndex {
 
       for (const result of settled) {
         if (result.status === 'rejected') {
-          console.warn('[backlinks] Failed to rebuild entry:', result.reason);
+          log.warn({ err: result.reason }, 'Failed to rebuild entry');
           continue;
         }
         const { docName, mtimeMs, markdown } = result.value;
@@ -1743,7 +1746,7 @@ export class BacklinkIndex {
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch (err) {
-      console.warn(`[backlinks] Failed to read directory ${dir}:`, err);
+      log.warn({ dir, err }, `Failed to read directory ${dir}`);
       return;
     }
     for (const entry of entries) {
@@ -1840,7 +1843,7 @@ export class BacklinkIndex {
       );
       for (const result of settled) {
         if (result.status === 'rejected') {
-          console.warn('[backlinks] Failed to reconcile file:', result.reason);
+          log.warn({ err: result.reason }, 'Failed to reconcile file');
           continue;
         }
         const { docName, mtimeMs, isNew, markdown } = result.value;
@@ -1898,7 +1901,7 @@ export class BacklinkIndex {
       try {
         skillDirs = await readdir(root, { withFileTypes: true });
       } catch (err) {
-        console.warn(`[backlinks] Failed to read global skills root ${root}:`, err);
+        log.warn({ root, err }, `Failed to read global skills root ${root}`);
         continue;
       }
       for (const skillDir of skillDirs) {
@@ -1951,7 +1954,7 @@ export class BacklinkIndex {
       // A real IO failure (EACCES/EIO) silently drops a skill's references
       // from the graph, so surface it rather than swallowing indistinguishably.
       if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
-        console.warn(`[backlinks] Failed to read skill references dir ${dir}:`, err);
+        log.warn({ dir, err }, `Failed to read skill references dir ${dir}`);
       }
       return;
     }

@@ -16,6 +16,7 @@ import type { Dirent } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, relative, resolve } from 'node:path';
 import { OK_DIR, parseFrontmatterRecord } from '@inkeep/open-knowledge-core';
+import { getLogger } from '../logger.ts';
 import { resolveWithinRoot } from '../mcp/tools/path-safety.ts';
 import { httpGet } from '../mcp/tools/shared.ts';
 import { readFolderFrontmatter } from './nested-folder-rules.ts';
@@ -287,9 +288,9 @@ async function readFrontmatter(absPath: string): Promise<Record<string, unknown>
     if (code !== 'ENOENT' && !fmReadWarnedPaths.has(absPath)) {
       fmReadWarnedPaths.add(absPath);
       const reason = err instanceof Error ? err.message : String(err);
-      // eslint-disable-next-line no-console -- ad-hoc operator-facing diagnostic
-      console.warn(
-        `[ok-enrich] failed to read frontmatter at ${absPath} — enrichment degraded for this file. Reason: ${reason}`,
+      getLogger('enrichment').warn(
+        { path: absPath, reason },
+        `failed to read frontmatter at ${absPath} — enrichment degraded for this file. Reason: ${reason}`,
       );
     }
     return null;

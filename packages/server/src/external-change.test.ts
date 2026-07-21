@@ -9,15 +9,17 @@
  *
  * Plus the factory wrapper's error-swallowing contract.
  */
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import { Hocuspocus } from '@hocuspocus/server';
 import {
   BridgeInvariantViolationError,
   BridgeMergeContentLossError,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
 import { applyExternalChange, createExternalChangeHandler } from './external-change.ts';
+import { getLogger } from './logger.ts';
 import { getReconciledBase, setReconciledBase } from './persistence.ts';
 
 type Conn = Awaited<ReturnType<Hocuspocus['openDirectConnection']>>;
@@ -272,9 +274,7 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
   });
 
   test('factory wrapper catches and logs when applyExternalChange throws', async () => {
-    const errorSpy = mock(() => {});
-    const originalError = console.error;
-    console.error = errorSpy;
+    const errorSpy = vi.spyOn(getLogger('file-watcher'), 'error');
 
     try {
       const handler = createExternalChangeHandler(hp);
@@ -293,16 +293,16 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
       await expect(handler(docName, '# Content\n')).resolves.toBeUndefined();
 
       expect(errorSpy).toHaveBeenCalled();
-      const callArgs = errorSpy.mock.calls[0];
-      expect(callArgs[0]).toContain('Failed to apply external change');
-      expect(callArgs[0]).toContain(docName);
+      const callArgs = errorSpy.mock.calls[0] ?? [];
+      expect(String(callArgs[1])).toContain('Failed to apply external change');
+      expect(String(callArgs[1])).toContain(docName);
 
       expect(doc.getText('source').toString()).toBe(textBefore);
 
       doc.getXmlFragment = originalGetXmlFragment;
       await conn.disconnect();
     } finally {
-      console.error = originalError;
+      errorSpy.mockRestore();
     }
   });
 
@@ -311,9 +311,7 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
     // OK_BRIDGE_THROW_ON_VIOLATION=1). Swallowing them here would silently
     // subvert the test gate and let real bridge bugs land green. The wrapper
     // must let them propagate.
-    const errorSpy = mock(() => {});
-    const originalError = console.error;
-    console.error = errorSpy;
+    const errorSpy = vi.spyOn(getLogger('file-watcher'), 'error');
 
     try {
       const handler = createExternalChangeHandler(hp);
@@ -347,7 +345,7 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
       doc.getXmlFragment = originalGetXmlFragment;
       await conn.disconnect();
     } finally {
-      console.error = originalError;
+      errorSpy.mockRestore();
     }
   });
 
@@ -356,7 +354,7 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
     // signals from Path B must reach the test runner under
     // OK_RETHROW_BRIDGE_LOSS=1 / NODE_ENV=test, not get swallowed by the
     // dev-plugin file-watcher wrapper.
-    const errorSpy = mock(() => {});
+    const errorSpy = vi.fn(() => {});
     const originalError = console.error;
     console.error = errorSpy;
 

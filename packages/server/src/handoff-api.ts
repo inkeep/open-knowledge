@@ -26,6 +26,7 @@ import { InstalledAgentsSuccessSchema } from '@inkeep/open-knowledge-core';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { errorResponse } from './http/error-response.ts';
 import { successResponse } from './http/success-response.ts';
+import { getLogger } from './logger.ts';
 
 export const INSTALLED_AGENTS_SCHEMES = ['claude', 'codex', 'cursor'] as const;
 export type InstalledAgentScheme = (typeof INSTALLED_AGENTS_SCHEMES)[number];
@@ -226,7 +227,7 @@ export async function handleInstalledAgents(
       handler: 'installed-agents',
     });
   } catch (e) {
-    console.error('[installed-agents]', e);
+    getLogger('handoff').error({ err: e }, '[installed-agents] handler failed');
     errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
       handler: 'installed-agents',
       cause: e,

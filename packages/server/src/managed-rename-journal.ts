@@ -8,7 +8,10 @@ import {
   tracedRmSync,
   tracedWriteFileSync,
 } from './fs-traced.ts';
+import { getLogger } from './logger.ts';
 import { safeContentPath } from './persistence.ts';
+
+const log = getLogger('managed-rename');
 
 const MANAGED_RENAME_JOURNAL_FILENAME = 'managed-rename.json';
 
@@ -309,14 +312,14 @@ function pruneEmptyAncestors(filePath: string, contentDir: string): void {
     try {
       entries = readdirSync(cur);
     } catch (err) {
-      console.warn(`[managed-rename] pruneEmptyAncestors: cannot read ${cur}:`, err);
+      log.warn({ path: cur, err }, `pruneEmptyAncestors: cannot read ${cur}`);
       return;
     }
     if (entries.length > 0) return;
     try {
       tracedRmdirSync(cur);
     } catch (err) {
-      console.warn(`[managed-rename] pruneEmptyAncestors: cannot rmdir ${cur}:`, err);
+      log.warn({ path: cur, err }, `pruneEmptyAncestors: cannot rmdir ${cur}`);
       return;
     }
     cur = dirname(cur);
@@ -343,14 +346,15 @@ export function recoverPendingManagedRename(
       restoredDocNames.add(snapshot.docName);
     } catch (err) {
       restoreFailures.push({ docName: snapshot.docName, cause: err });
-      console.warn(`[managed-rename] Failed to restore ${snapshot.docName}:`, err);
+      log.warn({ docName: snapshot.docName, err }, `Failed to restore ${snapshot.docName}`);
     }
   }
 
   if (restoreFailures.length > 0) {
     const failedNames = restoreFailures.map((f) => f.docName).join(', ');
-    console.warn(
-      `[managed-rename] Recovery incomplete; keeping journal for retry (${failedNames})`,
+    log.warn(
+      { failed: failedNames },
+      `Recovery incomplete; keeping journal for retry (${failedNames})`,
     );
     const causes = restoreFailures.map((f) =>
       f.cause instanceof Error ? f.cause : new Error(String(f.cause)),
@@ -371,14 +375,15 @@ export function recoverPendingManagedRename(
         restoredPaths.add(snapshot.path);
       } catch (err) {
         pathRestoreFailures.push({ path: snapshot.path, cause: err });
-        console.warn(`[managed-rename] Failed to restore path ${snapshot.path}:`, err);
+        log.warn({ path: snapshot.path, err }, `Failed to restore path ${snapshot.path}`);
       }
     }
 
     if (pathRestoreFailures.length > 0) {
       const failedPaths = pathRestoreFailures.map((f) => f.path).join(', ');
-      console.warn(
-        `[managed-rename] Recovery incomplete; keeping journal for retry (${failedPaths})`,
+      log.warn(
+        { failed: failedPaths },
+        `Recovery incomplete; keeping journal for retry (${failedPaths})`,
       );
       const causes = pathRestoreFailures.map((f) =>
         f.cause instanceof Error ? f.cause : new Error(String(f.cause)),
@@ -401,13 +406,14 @@ export function recoverPendingManagedRename(
       pruneEmptyAncestors(destinationPath, contentDir);
     } catch (err) {
       if (existsSync(destinationPath)) {
-        console.warn(
-          `[managed-rename] Both source and destination files exist after partial recovery for ${destination}`,
+        log.warn(
+          { destination },
+          `Both source and destination files exist after partial recovery for ${destination}`,
         );
       }
-      console.warn(
-        `[managed-rename] Recovery incomplete; failed to clean destination ${destination}:`,
-        err,
+      log.warn(
+        { destination, err },
+        `Recovery incomplete; failed to clean destination ${destination}`,
       );
       cleanupFailures.push({ destination, cause: err });
     }
@@ -423,13 +429,14 @@ export function recoverPendingManagedRename(
         pruneEmptyAncestors(destinationPath, contentDir);
       } catch (err) {
         if (destinationPath && existsSync(destinationPath)) {
-          console.warn(
-            `[managed-rename] Both source and destination paths exist after partial recovery for ${destination}`,
+          log.warn(
+            { destination },
+            `Both source and destination paths exist after partial recovery for ${destination}`,
           );
         }
-        console.warn(
-          `[managed-rename] Recovery incomplete; failed to clean destination path ${destination}:`,
-          err,
+        log.warn(
+          { destination, err },
+          `Recovery incomplete; failed to clean destination path ${destination}`,
         );
         cleanupFailures.push({ destination, cause: err });
       }

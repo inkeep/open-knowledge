@@ -11,6 +11,7 @@ import { isValidBranchName } from '@inkeep/open-knowledge-core';
 import { truncateError } from './error-format.ts';
 import { type DirtyOverlapResult, dirtyFilesOverlapWith } from './git-dirty.ts';
 import { createGitInstance } from './git-handle.ts';
+import { getLogger } from './logger.ts';
 
 // Re-export from core so existing callers (`api-extension.ts`,
 // `git-branch-info.test.ts`) keep their import paths. Single source of
@@ -186,9 +187,9 @@ export async function computeBranchInfo(
       // conflict signal is preferable to crashing the whole branch-info
       // endpoint when only one of its four probes fails for an unrelated
       // reason (the other three may still be intact).
-      const truncated = truncateError(err);
-      console.warn(
-        `[git-branch-info] action=dirty-overlap-failed branch=${targetBranch} error=${truncated}`,
+      getLogger('git-branch-info').warn(
+        { branch: targetBranch, err },
+        `action=dirty-overlap-failed branch=${targetBranch} error=${truncateError(err)}`,
       );
       return { conflicts: false, files: [] };
     },

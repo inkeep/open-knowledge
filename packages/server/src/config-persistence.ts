@@ -50,6 +50,8 @@ import { tracedMkdir, tracedRename, tracedUnlinkSync, tracedWriteFile } from './
 import { getLogger } from './logger.ts';
 import { getMeter } from './telemetry.ts';
 
+const log = getLogger('config-persistence');
+
 /**
  * Map a documentName to the OTel `config.scope` enum attribute.
  * Returns `undefined` for non-config docs (caller should never invoke this
@@ -327,7 +329,10 @@ export function loadConfigDoc(
       raw = readFileSync(filePath, 'utf-8');
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
-      console.warn(`[config] Could not read ${filePath}: ${detail}. Seeding with empty content.`);
+      log.warn(
+        { path: filePath, err: e },
+        `[config-persistence] Could not read ${filePath}: ${detail}. Seeding with empty content.`,
+      );
       raw = '';
     }
   }
@@ -338,7 +343,7 @@ export function loadConfigDoc(
     // errors" at boot rather than discovering it only via the L3 hook
     // when the next mutation triggers a revert. The Y.Text is still
     // seeded with the raw content so a UI can display + repair it.
-    getLogger('config-persistence').warn(
+    log.warn(
       { docName: documentName, path: filePath },
       `[config-persistence] loadConfigDoc seeding invalid content for ${documentName} into Y.Text — first mutation will revert to LKG`,
     );
@@ -526,7 +531,7 @@ async function storeConfigDocInner(
     await tracedMkdir(dirname(filePath), { recursive: true });
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
-    getLogger('config-persistence').warn(
+    log.warn(
       { docName: documentName, path: filePath, err: e },
       `[config-persistence] could not create parent dir for ${filePath}: ${detail}`,
     );
@@ -572,7 +577,7 @@ async function storeConfigDocInner(
             // the cross-window clobber (we'd overwrite
             // disk we couldn't observe).
             const detail = e instanceof Error ? e.message : String(e);
-            getLogger('config-persistence').warn(
+            log.warn(
               { docName: documentName, path: filePath, err: e },
               `[config-persistence] could not read config for reconciliation: ${detail}`,
             );
@@ -593,7 +598,7 @@ async function storeConfigDocInner(
               ytext.insert(0, diskContent);
             }, CONFIG_FILE_WATCHER_ORIGIN);
             ctx.lkgCache.set(documentName, diskContent);
-            getLogger('config-persistence').info(
+            log.info(
               { docName: documentName, path: filePath },
               '[config-persistence] reconciled: external writer landed; imported disk into Y.Text',
             );
@@ -602,7 +607,7 @@ async function storeConfigDocInner(
           // Disk diverged but content is invalid — don't poison Y.Text or
           // LKG. Our content was already validated above the lock; writing
           // it here replaces the disk's broken state with valid bytes.
-          getLogger('config-persistence').warn(
+          log.warn(
             { docName: documentName, path: filePath },
             '[config-persistence] disk diverged from LKG but contains invalid content; proceeding with local write',
           );
@@ -617,7 +622,7 @@ async function storeConfigDocInner(
           // `onConfigRejected` callback. Disk-full / permissions /
           // parent-replaced-by-file are otherwise invisible — the L3 hook
           // returns silently and the next mutation re-attempts indefinitely.
-          getLogger('config-persistence').warn(
+          log.warn(
             { docName: documentName, path: filePath, err: e },
             `[config-persistence] write-failed at ${filePath}: ${detail}`,
           );
@@ -632,7 +637,7 @@ async function storeConfigDocInner(
       },
       {
         onWarn: (message, context) => {
-          getLogger('config-persistence').warn(context, `[config-persistence] ${message}`);
+          log.warn(context, `[config-persistence] ${message}`);
         },
       },
     );
@@ -645,7 +650,7 @@ async function storeConfigDocInner(
     // Y.Text and re-attempts on next store. Any other thrown error is
     // unexpected and should propagate so the operator sees it.
     if (e instanceof FileLockTimeoutError) {
-      getLogger('config-persistence').warn(
+      log.warn(
         { docName: documentName, path: filePath, err: e },
         `[config-persistence] lock timeout at ${filePath}: ${e.message}`,
       );

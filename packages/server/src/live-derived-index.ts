@@ -1,6 +1,7 @@
 import type { Document, Extension } from '@hocuspocus/server';
 import type { BacklinkIndex } from './backlink-index.ts';
 import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
+import { getLogger } from './logger.ts';
 import type { TagIndex } from './tag-index.ts';
 
 export const LIVE_DERIVED_INDEX_DEBOUNCE_MS = 100;
@@ -71,7 +72,10 @@ export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions
             signalChannel?.('tags');
           }
         } catch (err) {
-          console.error(`[live-derived-index] Failed to update derived views for ${docName}:`, err);
+          getLogger('live-derived-index').error(
+            { docName, err },
+            `Failed to update derived views for ${docName}`,
+          );
         }
       }, debounceMs),
     );

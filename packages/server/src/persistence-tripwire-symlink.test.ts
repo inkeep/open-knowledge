@@ -17,7 +17,7 @@
  * watcher) so the file-watcher's lifecycle/delete handling can't
  * short-circuit the tripwire path before it runs.
  */
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+
 import {
   mkdtempSync,
   readFileSync,
@@ -28,8 +28,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
+import { getLogger } from './logger.ts';
 import {
   createPersistenceExtension,
   setReconciledBase,
@@ -106,7 +108,7 @@ describe('tripwire reset symlink-escape', () => {
     composeAndWriteRawBody(document, doubledMarkdown, 'agent');
     setReconciledBase(docName, baseMarkdown);
 
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(getLogger('persistence'), 'warn');
     try {
       await storeDocument(persistence, document, docName);
 
@@ -120,7 +122,7 @@ describe('tripwire reset symlink-escape', () => {
       // A symlink-escape warning should have fired so operators can spot a
       // hostile-symlink-planting attempt in the logs.
       const escapeWarning = warnSpy.mock.calls
-        .map((call) => String(call[0] ?? ''))
+        .map((call) => String(call[1] ?? ''))
         .find((s) => s.includes('symlink-escape on tripwire reset'));
       expect(escapeWarning).toBeDefined();
     } finally {

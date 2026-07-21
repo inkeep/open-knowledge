@@ -6,7 +6,7 @@
  * abort-on-disconnect bails the generator, and partial consumption never
  * materializes the whole tree.
  */
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+
 import {
   chmodSync,
   mkdirSync,
@@ -18,6 +18,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ASSET_EXTENSIONS, type DocumentListEntry } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   __getShowAllWalkStatsForTesting,
   __resetShowAllWalkStatsForTesting,
@@ -26,6 +27,7 @@ import {
   walkContentDirForShowAll,
 } from './api-extension.ts';
 import { createContentFilter } from './content-filter.ts';
+import { getLogger } from './logger.ts';
 
 function makeFlatFixture(fileCount: number): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-stream-')));
@@ -384,7 +386,7 @@ describe('streamShowAllEntries — unreadable directory mid-queue', () => {
       writeFileSync(join(dir, 'open', 'visible.md'), '# visible\n');
       chmodSync(join(dir, 'locked'), 0o000);
 
-      const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(getLogger('api'), 'warn');
       try {
         const { entries, truncated } = await drain(
           streamShowAllEntries(streamOptsFor(dir, 50_000)),
@@ -408,9 +410,9 @@ describe('streamShowAllEntries — unreadable directory mid-queue', () => {
         // whichever guard (realpath/readdir) fired.
         const lockedWarn = warnSpy.mock.calls.find(
           (call) =>
-            typeof call[0] === 'string' &&
-            call[0].includes('failed for') &&
-            call[0].includes('locked'),
+            typeof call[1] === 'string' &&
+            call[1].includes('failed for') &&
+            call[1].includes('locked'),
         );
         expect(lockedWarn).toBeDefined();
       } finally {

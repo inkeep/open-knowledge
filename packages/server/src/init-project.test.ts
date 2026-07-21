@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
   existsSync,
   lstatSync,
@@ -15,6 +14,7 @@ import {
   PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
   RESERVED_PROJECT_SKILL_NAME,
 } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildConfigYmlContent,
   ensureProjectSkillGitignore,
@@ -304,10 +304,13 @@ describe.runIf(COMMITTED_OK_GITIGNORE !== null)(
   },
 );
 
-// Drift guard: the committed project-root `.okignore` in this repo MUST stay
-// in sync with `OK_OKIGNORE_TEMPLATE`.
+// Drift guard: the committed project-root `.okignore` in this repo MUST keep
+// `OK_OKIGNORE_TEMPLATE` as its opening block, byte-for-byte. The repo file
+// may append temporary repo-local exclusions BELOW the scaffold block (those
+// are dogfood-only and must never be folded into the template — the scaffold
+// ships to every new user project).
 describe.runIf(COMMITTED_OKIGNORE !== null)('committed .okignore matches scaffold output', () => {
-  it('matches OK_OKIGNORE_TEMPLATE byte-for-byte', () => {
+  it('starts with OK_OKIGNORE_TEMPLATE byte-for-byte', () => {
     const tmp = resolve(
       tmpdir(),
       `okignore-mirror-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -318,7 +321,11 @@ describe.runIf(COMMITTED_OKIGNORE !== null)('committed .okignore matches scaffol
       const scaffolded = readFileSync(join(tmp, '.okignore'), 'utf-8');
       expect(scaffolded).toBe(OK_OKIGNORE_TEMPLATE);
       const committed = readFileSync(COMMITTED_OKIGNORE as string, 'utf-8');
-      expect(committed).toBe(OK_OKIGNORE_TEMPLATE);
+      expect(
+        committed.startsWith(OK_OKIGNORE_TEMPLATE),
+        `committed .okignore (${COMMITTED_OKIGNORE}) must start with OK_OKIGNORE_TEMPLATE ` +
+          'byte-for-byte; repo-local exclusions may only be appended below the scaffold block',
+      ).toBe(true);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

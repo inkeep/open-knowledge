@@ -33,6 +33,8 @@ import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
 import { withSpan } from './telemetry.ts';
 
+const log = getLogger('content-filter');
+
 const execFileAsync = promisify(execFileCb);
 
 /**
@@ -504,7 +506,7 @@ function appendExcludeFileIfExists(
     bytesAcc.value += content.length;
     patterns.push(...parseIgnorePatterns(content));
   } catch (err) {
-    console.warn(`[content-filter] Failed to read ${label} at ${path}:`, err);
+    log.warn({ path, err }, `Failed to read ${label} at ${path}`);
   }
 }
 
@@ -520,7 +522,7 @@ async function appendExcludeFileIfExistsAsync(
     bytesAcc.value += content.length;
     patterns.push(...parseIgnorePatterns(content));
   } catch (err) {
-    console.warn(`[content-filter] Failed to read ${label} at ${path}:`, err);
+    log.warn({ path, err }, `Failed to read ${label} at ${path}`);
   }
 }
 
@@ -719,7 +721,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         newRootPatterns.push(...patterns);
         newIg.add(patterns);
       } catch (err) {
-        console.warn(`[content-filter] Failed to read ${name} at ${path}:`, err);
+        log.warn({ path, err }, `Failed to read ${name} at ${path}`);
       }
     }
 
@@ -736,7 +738,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
           const prefixed = patterns.map((p) => prefixPattern(p, contentRelPrefix));
           newIg.add(prefixed);
         } catch (err) {
-          console.warn(`[content-filter] Failed to read ${name} at ${path}:`, err);
+          log.warn({ path, err }, `Failed to read ${name} at ${path}`);
         }
       }
     }
@@ -1032,7 +1034,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         refreshDirCount();
       } catch (err) {
         for (const [k, v] of prev) dirCount.set(k, v);
-        getLogger('content-filter').warn(
+        log.warn(
           { err: err instanceof Error ? err : new Error(String(err)) },
           'content-filter rebuildDirCount walk failed — retaining previous counts',
         );
@@ -1040,8 +1042,6 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     },
 
     async rebuildIgnorePatterns(): Promise<RebuildResult> {
-      const log = getLogger('content-filter');
-
       // Snapshot for rollback. dirCount is too large to snapshot — we re-walk
       // it from the rolled-back ig instance if rebuild fails partway.
       const prevIg = ig;
@@ -1152,7 +1152,7 @@ function populateDirCount(
     // Mirror the diagnostic surface of `loadNestedIgnoreFiles` for the same
     // failure mode: silent skip would leave the sibling-asset refcount
     // under-counted with no operator trail.
-    console.warn(`[content-filter] Failed to read directory for dir-count: ${dir}`, err);
+    log.warn({ dir, err }, `Failed to read directory for dir-count: ${dir}`);
     return;
   }
   for (const entry of entries) {
@@ -1226,7 +1226,7 @@ function loadNestedIgnoreFiles(
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch (err) {
-    console.warn(`[content-filter] Failed to read directory ${dir}:`, err);
+    log.warn({ dir, err }, `Failed to read directory ${dir}`);
     return 0;
   }
 
@@ -1258,7 +1258,7 @@ function loadNestedIgnoreFiles(
         ig.add(prefixed);
         count++;
       } catch (err) {
-        console.warn(`[content-filter] Failed to read nested ${name} at ${filePath}:`, err);
+        log.warn({ path: filePath, err }, `Failed to read nested ${name} at ${filePath}`);
       }
     }
 
@@ -1292,7 +1292,7 @@ async function initContentDirStateAsync(
   try {
     entries = await readdir(dir, { withFileTypes: true });
   } catch (err) {
-    console.warn(`[content-filter] Failed to read directory ${dir}:`, err);
+    log.warn({ dir, err }, `Failed to read directory ${dir}`);
     return;
   }
 
@@ -1317,7 +1317,7 @@ async function initContentDirStateAsync(
             const patterns = parseIgnorePatterns(await readFileAsync(filePath, 'utf-8'));
             ig.add(patterns.map((p) => prefixPattern(p, relToProject)));
           } catch (err) {
-            console.warn(`[content-filter] Failed to read nested ${name} at ${filePath}:`, err);
+            log.warn({ path: filePath, err }, `Failed to read nested ${name} at ${filePath}`);
           }
         }
       }
@@ -1410,7 +1410,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         newRootPatterns.push(...patterns);
         newIg.add(patterns);
       } catch (err) {
-        console.warn(`[content-filter] Failed to read ${name} at ${path}:`, err);
+        log.warn({ path, err }, `Failed to read ${name} at ${path}`);
       }
     }
 
@@ -1422,7 +1422,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
           const patterns = parseIgnorePatterns(await readFileAsync(path, 'utf-8'));
           newIg.add(patterns.map((p) => prefixPattern(p, contentRelPrefix)));
         } catch (err) {
-          console.warn(`[content-filter] Failed to read ${name} at ${path}:`, err);
+          log.warn({ path, err }, `Failed to read ${name} at ${path}`);
         }
       }
     }
@@ -1581,7 +1581,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         refreshDirCount();
       } catch (err) {
         for (const [k, v] of prev) dirCount.set(k, v);
-        getLogger('content-filter').warn(
+        log.warn(
           { err: err instanceof Error ? err : new Error(String(err)) },
           'content-filter rebuildDirCount walk failed — retaining previous counts',
         );
@@ -1589,7 +1589,6 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     },
 
     async rebuildIgnorePatterns(): Promise<RebuildResult> {
-      const log = getLogger('content-filter');
       const prevIg = ig;
       const prevWatcherGlobs = watcherIgnoreGlobs;
       const prevDirCount = new Map(dirCount);

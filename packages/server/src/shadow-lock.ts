@@ -9,7 +9,10 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
+import { getLogger } from './logger.ts';
 import { isProcessAlive, isValidLockPid } from './process-alive.ts';
+
+const log = getLogger('shadow-lock');
 
 export interface LockMetadata {
   pid: number;
@@ -34,7 +37,7 @@ export function acquireLock(shadowDir: string, worktreeRoot: string): string {
       existing = JSON.parse(readFileSync(lockPath, 'utf-8')) as LockMetadata;
     } catch {
       // Corrupt lock file — treat as stale
-      console.warn(`[shadow-lock] Corrupt lock file at ${lockPath} — replacing`);
+      log.warn({ lockPath }, `Corrupt lock file at ${lockPath} — replacing`);
     }
 
     if (existing && !isValidLockPid(existing.pid)) {
@@ -42,8 +45,9 @@ export function acquireLock(shadowDir: string, worktreeRoot: string): string {
       // isProcessAlive. The shadow-lock dir lives under user-writable `.git/ok/`,
       // so the validator is the trust boundary between disk-supplied data and
       // signal-delivery / liveness probes. Treat as stale.
-      console.warn(
-        `[shadow-lock] Invalid lock pid (${String(existing.pid)}) at ${lockPath} — replacing`,
+      log.warn(
+        { lockPath, pid: String(existing.pid) },
+        `Invalid lock pid (${String(existing.pid)}) at ${lockPath} — replacing`,
       );
       existing = null;
     }
@@ -59,8 +63,9 @@ export function acquireLock(shadowDir: string, worktreeRoot: string): string {
             `Only one active writer instance may mutate a given shadow root at a time.`,
         );
       } else {
-        console.warn(
-          `[shadow-lock] Stale lock detected (pid=${existing.pid}, host=${existing.hostname}) — replacing`,
+        log.warn(
+          { pid: existing.pid, host: existing.hostname },
+          `Stale lock detected (pid=${existing.pid}, host=${existing.hostname}) — replacing`,
         );
       }
     }

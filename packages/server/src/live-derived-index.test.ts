@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { Hocuspocus } from '@hocuspocus/server';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
 import { applyExternalChange } from './external-change.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
+import { getLogger } from './logger.ts';
 
 type Conn = Awaited<ReturnType<Hocuspocus['openDirectConnection']>>;
 
@@ -42,8 +43,8 @@ describe('createLiveDerivedIndexExtension', () => {
   });
 
   test('skips file-watcher origin transactions', async () => {
-    const updateDocumentFromMarkdown = mock(() => {});
-    const signalChannel = mock(() => {});
+    const updateDocumentFromMarkdown = vi.fn(() => {});
+    const signalChannel = vi.fn(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
       debounceMs: 5,
@@ -67,8 +68,8 @@ describe('createLiveDerivedIndexExtension', () => {
   });
 
   test('debounces rapid changes to a single update and preserves frontmatter', async () => {
-    const updateDocumentFromMarkdown = mock(() => {});
-    const signalChannel = mock(() => {});
+    const updateDocumentFromMarkdown = vi.fn(() => {});
+    const signalChannel = vi.fn(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
       debounceMs: 5,
@@ -99,9 +100,9 @@ describe('createLiveDerivedIndexExtension', () => {
   });
 
   test('feeds tagIndex with the same markdown and signals the tags channel', async () => {
-    const updateBacklink = mock(() => {});
-    const updateTag = mock(() => {});
-    const signalChannel = mock(() => {});
+    const updateBacklink = vi.fn(() => {});
+    const updateTag = vi.fn(() => {});
+    const signalChannel = vi.fn(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown: updateBacklink } as unknown as never,
       tagIndex: { updateDocumentFromMarkdown: updateTag } as unknown as never,
@@ -128,7 +129,7 @@ describe('createLiveDerivedIndexExtension', () => {
   });
 
   test('beforeUnloadDocument cancels pending timers', async () => {
-    const updateDocumentFromMarkdown = mock(() => {});
+    const updateDocumentFromMarkdown = vi.fn(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
       debounceMs: 20,
@@ -155,7 +156,7 @@ describe('createLiveDerivedIndexExtension', () => {
   });
 
   test('onDestroy clears pending timers across documents', async () => {
-    const updateDocumentFromMarkdown = mock(() => {});
+    const updateDocumentFromMarkdown = vi.fn(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
       debounceMs: 20,
@@ -197,7 +198,7 @@ describe('createLiveDerivedIndexExtension', () => {
     // serializer never emits them back). Under contract, body source is
     // `Y.Text('source').toString()` — CRLF survives byte-equal. Discriminating
     // because CRLF is not preserved through parse → serialize (parser strips).
-    const updateDocumentFromMarkdown = mock(() => {});
+    const updateDocumentFromMarkdown = vi.fn(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
       debounceMs: 5,
@@ -233,7 +234,7 @@ describe('createLiveDerivedIndexExtension', () => {
     // doc starting with `---\n# H\n` would round-trip through
     // serialize(fragment) as `***\n\n# H\n`. Under contract, ytext keeps
     // the user's typed `---\n` byte-equal — discriminating.
-    const updateDocumentFromMarkdown = mock(() => {});
+    const updateDocumentFromMarkdown = vi.fn(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
       debounceMs: 5,
@@ -263,7 +264,7 @@ describe('createLiveDerivedIndexExtension', () => {
     // paths in steady state. It still validates the spec acceptance: the
     // SNIPPET CONTENT (what consumers see) reflects what the user typed.
     // '<https://x>' in snippet text, not '[https://x](https://x)'.
-    const updateDocumentFromMarkdown = mock(() => {});
+    const updateDocumentFromMarkdown = vi.fn(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
       debounceMs: 5,
@@ -288,10 +289,10 @@ describe('createLiveDerivedIndexExtension', () => {
   });
 
   test('logs and swallows callback errors', async () => {
-    const updateDocumentFromMarkdown = mock(() => {
+    const updateDocumentFromMarkdown = vi.fn(() => {
       throw new Error('boom');
     });
-    const signalChannel = mock(() => {});
+    const signalChannel = vi.fn(() => {});
     const extension = createLiveDerivedIndexExtension({
       backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
       debounceMs: 5,
@@ -299,9 +300,7 @@ describe('createLiveDerivedIndexExtension', () => {
     });
     const conn = await hp.openDirectConnection('error-doc');
     const doc = getDoc(conn);
-    const originalError = console.error;
-    const errorSpy = mock(() => {});
-    console.error = errorSpy;
+    const errorSpy = vi.spyOn(getLogger('live-derived-index'), 'error');
 
     try {
       applyExternalChange(hp, 'error-doc', '# Error\n');
@@ -316,11 +315,11 @@ describe('createLiveDerivedIndexExtension', () => {
       expect(updateDocumentFromMarkdown).toHaveBeenCalledTimes(1);
       expect(signalChannel).not.toHaveBeenCalled();
       expect(errorSpy).toHaveBeenCalled();
-      expect(errorSpy.mock.calls[0]?.[0]).toContain(
-        '[live-derived-index] Failed to update derived views for error-doc:',
+      expect(String(errorSpy.mock.calls[0]?.[1])).toContain(
+        'Failed to update derived views for error-doc',
       );
     } finally {
-      console.error = originalError;
+      errorSpy.mockRestore();
       await conn.disconnect();
     }
   });

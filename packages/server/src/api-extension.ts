@@ -1569,7 +1569,7 @@ export async function* streamShowAllEntries(
       // Log to match the sibling walk's readdir-failure convention — an
       // EACCES/EPERM here silently reporting hasChildren:false (folder renders
       // as a non-expandable leaf) is otherwise invisible to operators.
-      console.warn(`[document-list][showAll] probe readdir failed for ${absDir}:`, err);
+      log.warn({ dir: absDir, err }, `[document-list][showAll] probe readdir failed for ${absDir}`);
       return false;
     }
     for (const entry of entries) {
@@ -1587,9 +1587,9 @@ export async function* streamShowAllEntries(
           // silently-wrong hasChildren:false renders the folder permanently
           // childless with no operator trace (same convention as the readdir
           // and main-walk realpath catches).
-          console.warn(
-            `[document-list][showAll] probe realpath failed for ${absDir}/${entry.name}:`,
-            err,
+          log.warn(
+            { path: `${absDir}/${entry.name}`, err },
+            `[document-list][showAll] probe realpath failed for ${absDir}/${entry.name}`,
           );
           continue;
         }
@@ -1637,7 +1637,7 @@ export async function* streamShowAllEntries(
       try {
         entries = await readdir(absDir, { withFileTypes: true });
       } catch (err) {
-        console.warn(`[document-list][showAll] readdir failed for ${absDir}:`, err);
+        log.warn({ dir: absDir, err }, `[document-list][showAll] readdir failed for ${absDir}`);
         continue;
       }
       const variantCountsByDocName = await docVariantCounts(entries, absDir, relDir);
@@ -1678,11 +1678,15 @@ export async function* streamShowAllEntries(
           try {
             dirCanonical = await realpath(dirAbsRaw);
           } catch (err) {
-            console.warn(`[document-list][showAll] realpath failed for ${dirAbsRaw}:`, err);
+            log.warn(
+              { path: dirAbsRaw, err },
+              `[document-list][showAll] realpath failed for ${dirAbsRaw}`,
+            );
             continue;
           }
           if (!isInsideContentDir(dirCanonical)) {
-            console.warn(
+            log.warn(
+              { path: dirAbsRaw, canonical: dirCanonical },
               `[document-list][showAll] refusing symlink-escape ${dirAbsRaw} -> ${dirCanonical}`,
             );
             continue;
@@ -1699,7 +1703,10 @@ export async function* streamShowAllEntries(
               // sibling catch below, so EACCES/EPERM/ELOOP on a restricted
               // subdir is visible in operator logs instead of silently
               // returning empty-mtime folder entries.
-              console.warn(`[document-list][showAll] stat failed for ${dirAbsRaw}:`, err);
+              log.warn(
+                { path: dirAbsRaw, err },
+                `[document-list][showAll] stat failed for ${dirAbsRaw}`,
+              );
             }
             emitted += 1;
             // At leaf depth (the depth-1 lazy contract stops descending here),
@@ -1748,11 +1755,15 @@ export async function* streamShowAllEntries(
           try {
             canonical = await realpath(linkAbs);
           } catch (err) {
-            console.warn(`[document-list][showAll] symlink realpath failed for ${linkAbs}:`, err);
+            log.warn(
+              { path: linkAbs, err },
+              `[document-list][showAll] symlink realpath failed for ${linkAbs}`,
+            );
             continue;
           }
           if (!isInsideContentDir(canonical)) {
-            console.warn(
+            log.warn(
+              { path: linkAbs, canonical },
               `[document-list][showAll] refusing symlink-escape ${linkAbs} -> ${canonical}`,
             );
             continue;
@@ -1761,9 +1772,9 @@ export async function* streamShowAllEntries(
           try {
             canonStat = await stat(canonical);
           } catch (err) {
-            console.warn(
-              `[document-list][showAll] symlink target stat failed for ${linkAbs}:`,
-              err,
+            log.warn(
+              { path: linkAbs, err },
+              `[document-list][showAll] symlink target stat failed for ${linkAbs}`,
             );
             continue;
           }
@@ -1832,7 +1843,10 @@ export async function* streamShowAllEntries(
         try {
           fileStat = await stat(join(absDir, entry.name));
         } catch (err) {
-          console.warn(`[document-list][showAll] stat failed for ${absDir}/${entry.name}:`, err);
+          log.warn(
+            { path: `${absDir}/${entry.name}`, err },
+            `[document-list][showAll] stat failed for ${absDir}/${entry.name}`,
+          );
           continue;
         }
 
@@ -2437,15 +2451,15 @@ function renamePathOnDisk(sourcePath: string, destinationPath: string): void {
       if (tempExists && !sourceExists) {
         tracedRenameSync(tempPath, sourcePath);
       } else {
-        console.warn('[renamePathOnDisk] skipped case-only rollback due to unexpected state:', {
-          tempExists,
-          sourceExists,
-        });
+        log.warn(
+          { tempExists, sourceExists },
+          '[renamePathOnDisk] skipped case-only rollback due to unexpected state',
+        );
       }
     } catch (rollbackErr) {
-      console.warn(
-        '[renamePathOnDisk] failed to roll back temporary case-only rename:',
-        rollbackErr,
+      log.warn(
+        { err: rollbackErr },
+        '[renamePathOnDisk] failed to roll back temporary case-only rename',
       );
     }
     throw err;
@@ -2474,7 +2488,7 @@ async function renameTrackedPathInGit(
     try {
       tracked = (await pg.raw('ls-files', '--', sourceRel)).trim();
     } catch (err) {
-      console.warn('[renameTrackedPathInGit] git ls-files failed, falling back to fs rename:', err);
+      log.warn({ err }, '[renameTrackedPathInGit] git ls-files failed, falling back to fs rename');
       return false;
     }
     if (!tracked) return false;
@@ -2492,9 +2506,9 @@ async function renameTrackedPathInGit(
           try {
             await pg.raw('mv', '--', tempRel, sourceRel);
           } catch (rollbackErr) {
-            console.warn(
-              '[renameTrackedPathInGit] case-only git rename failed and rollback also failed; git index and disk may have diverged:',
-              rollbackErr,
+            log.warn(
+              { err: rollbackErr },
+              '[renameTrackedPathInGit] case-only git rename failed and rollback also failed; git index and disk may have diverged',
             );
             partialStateMutation = true;
           }
@@ -2506,7 +2520,7 @@ async function renameTrackedPathInGit(
       return true;
     } catch (err) {
       if (partialStateMutation) throw err;
-      console.warn('[renameTrackedPathInGit] git mv failed, falling back to fs rename:', err);
+      log.warn({ err }, '[renameTrackedPathInGit] git mv failed, falling back to fs rename');
       return false;
     }
   });
@@ -2977,7 +2991,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       const folderStat = statSync(fullPath);
       upsertFolderIndexEntryInIndex(index, contentDir, fullPath, folderStat, fullPath);
     } catch (err) {
-      console.warn(`[api-extension] folder index stat failed for ${fullPath}:`, err);
+      log.warn({ path: fullPath, err }, `folder index stat failed for ${fullPath}`);
     }
   }
 
@@ -3187,7 +3201,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         },
       ];
     } catch (err) {
-      console.warn('[orphan-hint] computeOrphanHints failed:', err);
+      log.warn({ err }, '[orphan-hint] computeOrphanHints failed');
       return undefined;
     }
   }
@@ -3618,7 +3632,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
     for (const docName of docNames) {
       await sessionManager.closeAllForDoc(docName).catch((err) => {
-        console.warn(`[file-ops] Failed to close agent session for ${docName}:`, err);
+        log.warn({ docName, err }, `[file-ops] Failed to close agent session for ${docName}`);
       });
     }
 
@@ -4042,9 +4056,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           const rewrittenDocs = applyPendingAssetReferenceRewrites(pendingRewrites, renamedAssets);
 
           void backlinkIndex.saveToDisk().catch((err) => {
-            console.warn(
-              `[backlinks] Failed to persist asset rename cache for ${fromPath} -> ${destinationAssetPath}:`,
-              err,
+            log.warn(
+              { fromPath, toPath: destinationAssetPath, err },
+              `[backlinks] Failed to persist asset rename cache for ${fromPath} -> ${destinationAssetPath}`,
             );
           });
           signalChannel?.('files');
@@ -4185,9 +4199,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             rewrittenDocs = applyPendingAssetReferenceRewrites(pendingRewrites, renamedAssets);
 
             void backlinkIndex.saveToDisk().catch((err) => {
-              console.warn(
-                `[backlinks] Failed to persist document-to-file rename cache for ${fromPath} -> ${toPath}:`,
-                err,
+              log.warn(
+                { fromPath, toPath, err },
+                `[backlinks] Failed to persist document-to-file rename cache for ${fromPath} -> ${toPath}`,
               );
             });
             signalChannel?.('files');
@@ -4330,9 +4344,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             );
             if (rewrittenDocs.length > 0) {
               void backlinkIndex.saveToDisk().catch((err) => {
-                console.warn(
-                  `[backlinks] Failed to persist managed rename cache for ${fromPath} -> ${toPath}:`,
-                  err,
+                log.warn(
+                  { fromPath, toPath, err },
+                  `[backlinks] Failed to persist managed rename cache for ${fromPath} -> ${toPath}`,
                 );
               });
               signalChannel?.('backlinks');
@@ -4733,9 +4747,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           });
 
           void backlinkIndex.saveToDisk().catch((err) => {
-            console.warn(
-              `[backlinks] Failed to persist managed rename cache for ${fromPath} -> ${toPath}:`,
-              err,
+            log.warn(
+              { fromPath, toPath, err },
+              `[backlinks] Failed to persist managed rename cache for ${fromPath} -> ${toPath}`,
             );
           });
           signalChannel?.('files');
@@ -5026,9 +5040,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       // failed flush leaves this write's attribution queued for the next
       // mutation's flush to retry. If no later mutation follows, it is lost —
       // best-effort by design, never fatal to the mutation that already landed.
-      console.warn(
-        `[${context}] flushContributors failed; attribution stays queued for the next flush:`,
-        flushErr,
+      log.warn(
+        { context, err: flushErr },
+        `[${context}] flushContributors failed; attribution stays queued for the next flush`,
       );
     }
   }
@@ -6265,7 +6279,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           assets = referencedAssetsCache?.assets ?? [];
         } catch (err) {
           referencedAssetsCache = null;
-          console.warn('[document-list] asset collection failed; returning documents only:', err);
+          log.warn({ err }, '[document-list] asset collection failed; returning documents only');
         }
 
         // Dedup set: every path emitted as a kind:'asset' entry is suppressed
@@ -7706,9 +7720,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         if (backlinkIndex) {
           backlinkIndex.deleteDocument(docName);
           void backlinkIndex.saveToDisk().catch((err) => {
-            console.warn(
-              `[backlinks] Failed to persist cache after test-reset for ${docName}:`,
-              err,
+            log.warn(
+              { docName, err },
+              `[backlinks] Failed to persist cache after test-reset for ${docName}`,
             );
           });
           signalChannel?.('backlinks');
@@ -7751,7 +7765,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               await contentFilter.rebuildIgnorePatterns();
             }
           } catch (err) {
-            console.warn('[test-reset] okignore reset partial failure:', err);
+            log.warn({ err }, '[test-reset] okignore reset partial failure');
           }
         }
         signalChannel?.('files');
@@ -7803,7 +7817,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // so a forced rescan keeps the global skill graph intact.
         await backlinkIndex.ingestGlobalSkillBundles([resolve(skillsHome, '.ok', 'skills')]);
         void backlinkIndex.saveToDisk().catch((err) => {
-          console.warn('[backlinks] Failed to persist cache after test-rescan-backlinks:', err);
+          log.warn({ err }, '[backlinks] Failed to persist cache after test-rescan-backlinks');
         });
         signalChannel?.('backlinks');
         signalChannel?.('graph');
@@ -8000,7 +8014,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         try {
           await gcRenameLog(shadow, getOrLoadRenameLogIndex(shadow.gitDir));
         } catch (err) {
-          console.warn('[rename-log] post-saveVersion GC failed:', err);
+          log.warn({ err }, '[rename-log] post-saveVersion GC failed');
         }
 
         successResponse(
@@ -9014,12 +9028,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     } catch (err) {
       const code = (err as NodeJS.ErrnoException | undefined)?.code;
       if (code === 'ENOENT') {
-        console.warn('[workspace] contentDir does not exist; returning unresolved path', {
-          path: resolvedRoot,
-        });
+        log.warn(
+          { path: resolvedRoot },
+          '[workspace] contentDir does not exist; returning unresolved path',
+        );
         symlinkResolved = false;
       } else {
-        console.warn('[workspace] realpath failed for contentDir', { path: resolvedRoot, err });
+        log.warn({ path: resolvedRoot, err }, '[workspace] realpath failed for contentDir');
         errorResponse(
           res,
           500,
@@ -9327,7 +9342,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 try {
                   unlinkSync(filePath);
                 } catch (e) {
-                  console.debug('[rescue] cleanup failed (non-critical):', e);
+                  log.debug({ err: e }, '[rescue] cleanup failed (non-critical)');
                 }
                 continue;
               }
@@ -9579,7 +9594,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         if (backlinkIndex) {
           backlinkIndex.updateDocumentFromMarkdown(docName, initialContent);
           void backlinkIndex.saveToDisk().catch((err) => {
-            console.warn(`[backlinks] Failed to persist create-page cache for ${docName}:`, err);
+            log.warn(
+              { docName, err },
+              `[backlinks] Failed to persist create-page cache for ${docName}`,
+            );
           });
           signalChannel?.('backlinks');
           signalChannel?.('graph');
@@ -9841,10 +9859,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               } catch (cleanupErr) {
                 const cleanupCode = (cleanupErr as NodeJS.ErrnoException).code;
                 if (cleanupCode !== 'ENOENT' && cleanupCode !== 'ENOTEMPTY') {
-                  console.warn('[duplicate-path] failed to clean duplicate parent directory:', {
-                    destinationDir,
-                    err: cleanupErr,
-                  });
+                  log.warn(
+                    { destinationDir, err: cleanupErr },
+                    '[duplicate-path] failed to clean duplicate parent directory',
+                  );
                 }
               }
             }
@@ -9871,10 +9889,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             try {
               tracedRmSync(destinationPath, { force: true });
             } catch (cleanupErr) {
-              console.warn('[duplicate-path] failed to clean partial file duplicate:', {
-                destinationPath,
-                err: cleanupErr,
-              });
+              log.warn(
+                { destinationPath, err: cleanupErr },
+                '[duplicate-path] failed to clean partial file duplicate',
+              );
             }
             forgetDocExtension(duplicatedPath);
             if (contentFilter && didIncrementMdDir) {
@@ -9946,10 +9964,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             try {
               tracedRmSync(destinationPath, { recursive: true, force: true });
             } catch (cleanupErr) {
-              console.warn('[duplicate-path] failed to clean partial folder duplicate:', {
-                destinationPath,
-                err: cleanupErr,
-              });
+              log.warn(
+                { destinationPath, err: cleanupErr },
+                '[duplicate-path] failed to clean partial folder duplicate',
+              );
             }
             throw err;
           }
@@ -9981,7 +9999,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
         if (backlinkIndex && duplicatedDocNames.length > 0) {
           void backlinkIndex.saveToDisk().catch((err) => {
-            console.warn('[backlinks] Failed to persist duplicate-path cache:', err);
+            log.warn({ err }, '[backlinks] Failed to persist duplicate-path cache');
           });
           signalChannel?.('backlinks');
           signalChannel?.('graph');
@@ -10212,9 +10230,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             try {
               await flushContributors();
             } catch (flushErr) {
-              console.warn(
-                `[rename-path] flushContributors failed after asset rename (commitSha backfill may be deferred):`,
-                flushErr,
+              log.warn(
+                { err: flushErr },
+                '[rename-path] flushContributors failed after asset rename (commitSha backfill may be deferred)',
               );
             }
           }
@@ -10397,9 +10415,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           try {
             await flushContributors();
           } catch (flushErr) {
-            console.warn(
-              `[rename-path] flushContributors failed (commitSha backfill may be deferred):`,
-              flushErr,
+            log.warn(
+              { err: flushErr },
+              '[rename-path] flushContributors failed (commitSha backfill may be deferred)',
             );
           }
         }
@@ -10826,7 +10844,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               title = extractPageTitle(content, docName);
               icon = extractPageIcon(content);
             } catch (err) {
-              console.warn(`[pages] Failed to read title for ${docName}:`, err);
+              log.warn({ docName, err }, `[pages] Failed to read title for ${docName}`);
             }
           }
           pages.push({ docName, title, docExt, size: entry.size, modified: entry.modified, icon });
@@ -11776,7 +11794,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
       const gitDirKind = resolveGitDirDetailed(canonicalPath).kind;
       if (gitDirKind !== 'directory' && gitDirKind !== 'linked') {
-        console.warn(
+        log.warn(
+          { project: basename(canonicalPath), result: 'not-a-git-worktree', kind: gitDirKind },
           `[ok-init] action=init project=${basename(canonicalPath)} result=not-a-git-worktree kind=${gitDirKind}`,
         );
         successResponse(
@@ -11798,7 +11817,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       // earlier so callers don't see two `[ok-init] action=init …` log lines
       // for a no-op call.
       if (isProjectRoot(canonicalPath)) {
-        console.warn(
+        log.warn(
+          { project: basename(canonicalPath), result: 'already-initialized' },
           `[ok-init] action=init project=${basename(canonicalPath)} result=already-initialized`,
         );
         successResponse(
@@ -11828,7 +11848,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         await withParentLock(async () => {
           initContent(canonicalPath);
         });
-        console.warn(`[ok-init] action=init project=${basename(canonicalPath)} result=success`);
+        log.warn(
+          { project: basename(canonicalPath), result: 'success' },
+          `[ok-init] action=init project=${basename(canonicalPath)} result=success`,
+        );
         successResponse(
           res,
           200,
@@ -11838,7 +11861,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(
+        log.warn(
+          { project: basename(canonicalPath), result: 'failed', reason: message },
           `[ok-init] action=init project=${basename(canonicalPath)} result=failed reason=${message}`,
         );
         successResponse(
@@ -12874,7 +12898,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             }
           }
         } else {
-          console.warn(`[conflict-content] doc ${docName} not loaded; lifecycleStatus unavailable`);
+          log.warn(
+            { docName },
+            `[conflict-content] doc ${docName} not loaded; lifecycleStatus unavailable`,
+          );
         }
       }
       successResponse(
@@ -13377,7 +13404,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             }
           } catch (err) {
             const reason = err instanceof Error ? err.message : String(err);
-            console.warn(`[folder-config:get] malformed YAML in ${localFmPath}: ${reason}`);
+            log.warn(
+              { path: localFmPath, reason },
+              `[folder-config:get] malformed YAML in ${localFmPath}: ${reason}`,
+            );
             frontmatterLocal = null;
           }
         }
@@ -14238,7 +14268,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         let starterContent = '';
         if (Object.keys(starterFmObj).length > 0) {
           const fmYaml = stringifyYaml(starterFmObj);
-          starterContent = fmYaml.trim() + '\n';
+          starterContent = `${fmYaml.trim()}\n`;
         }
         starterContent = starterContent ? `---\n${starterContent}---\n${sourceBody}` : sourceBody;
 
@@ -16724,7 +16754,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // mtime/size/inode shifts. Skip the cache write so the next rebuild
         // retries, preserving the pre-cache self-healing behavior.
         readFailed = true;
-        console.warn(`[search] Failed to read ${docName}:`, err);
+        log.warn({ docName, err }, `[search] Failed to read ${docName}`);
       }
       if (!readFailed) {
         try {
@@ -16735,7 +16765,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           // docName as title but still cache (the read succeeded) — caching it
           // avoids re-parsing the same failing content on every rebuild, the
           // opposite of the read-failure path's deliberate retry.
-          console.warn(`[search] Failed to extract title for ${docName}:`, err);
+          log.warn({ docName, err }, `[search] Failed to extract title for ${docName}`);
         }
       }
       const doc = createWorkspaceSearchDocument({
@@ -16916,7 +16946,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     for (const delayMs of [0, 1000, 3000]) {
       setTimeout(() => {
         void getWorkspaceSearchCorpus().catch((err) => {
-          console.warn('[search] Failed to prewarm workspace search cache:', err);
+          log.warn({ err }, '[search] Failed to prewarm workspace search cache');
         });
       }, delayMs);
     }
@@ -17532,7 +17562,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    * inline spawn so the route-shape meta-tests scan one consistent pattern.
    *
    * stderr is piped + collected; on non-zero exit, a redacted prefix is
-   * logged via `console.warn('[share] subprocess ...')` so production
+   * logged via the `api` logger (`[share] subprocess ...`) so production
    * failures (git binary missing, keychain denied, Octokit auth error)
    * leave a diagnostic trail. Credential URLs of the form
    * `x-access-token:<token>@github.com` get the token replaced with `***`
@@ -17574,7 +17604,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         if (code !== 0) {
           const stderr = Buffer.concat(stderrChunks).toString('utf-8');
           const redacted = redactShareSubprocessStderr(stderr).slice(0, 500);
-          console.warn(`[share] subprocess exited code=${code} stderr=${redacted}`);
+          log.warn(
+            { code, stderr: redacted },
+            `[share] subprocess exited code=${code} stderr=${redacted}`,
+          );
         }
         resolveSpawn({ stdout, code });
       });

@@ -10,6 +10,7 @@ import {
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { getLogger } from './logger.ts';
 import {
   buildWipTree,
   commitUpstreamImport,
@@ -145,7 +146,7 @@ describe('initShadowRepo', () => {
     writeFileSync(resolve(legacyDir, 'LEGACY_SENTINEL'), 'legacy');
     writeFileSync(resolve(newDir, 'NEW_SENTINEL'), 'new');
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(getLogger('shadow-repo'), 'warn');
     try {
       await initShadowRepo(projectRoot);
 
@@ -154,7 +155,7 @@ describe('initShadowRepo', () => {
       expect(existsSync(resolve(newDir, 'NEW_SENTINEL'))).toBe(true);
 
       // Warning was emitted
-      const warnings = warnSpy.mock.calls.map((call) => String(call[0] ?? ''));
+      const warnings = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
       expect(warnings.some((w) => w.includes('[shadow-repo] unexpected legacy + new shadow'))).toBe(
         true,
       );
@@ -236,11 +237,11 @@ describe('buildWipTree persistent fan-out index', () => {
     const tree1 = await buildWipTree(shadow, 'content');
 
     writeFileSync(resolve(shadow.gitDir, 'index-wip-fanout'), 'not a git index');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(getLogger('shadow-repo'), 'warn');
     try {
       const tree2 = await buildWipTree(shadow, 'content');
       expect(tree2).toBe(tree1);
-      const warnings = warnSpy.mock.calls.map((call) => String(call[0] ?? ''));
+      const warnings = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
       expect(warnings.some((w) => w.includes('persistent fan-out index failed'))).toBe(true);
     } finally {
       warnSpy.mockRestore();
@@ -254,11 +255,11 @@ describe('buildWipTree persistent fan-out index', () => {
     const tree1 = await buildWipTree(shadow, 'content');
 
     writeFileSync(resolve(shadow.gitDir, 'index-wip-fanout.lock'), '');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(getLogger('shadow-repo'), 'warn');
     try {
       const tree2 = await buildWipTree(shadow, 'content');
       expect(tree2).toBe(tree1);
-      const warnings = warnSpy.mock.calls.map((call) => String(call[0] ?? ''));
+      const warnings = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
       expect(warnings.some((w) => w.includes('persistent fan-out index failed'))).toBe(true);
     } finally {
       warnSpy.mockRestore();

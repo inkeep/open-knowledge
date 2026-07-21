@@ -15,7 +15,7 @@
  *     silent checkpoint of the pre-loss source, never a throw, never a
  *     corrective write.
  */
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+
 import { mkdirSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -24,7 +24,9 @@ import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { getLogger } from './logger.ts';
 import { getMetrics } from './metrics.ts';
 import {
   ProducerGuardViolationError,
@@ -182,7 +184,7 @@ describe('Producer guard (FR6) — dev/test posture throws (M2)', () => {
     // and no producer-guard-violation event.
     const { doc, xmlFragment, ytext } = createDoc();
     const shattering = makeContainerShatteringManager();
-    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const cleanup = setupServerObservers(
       baseOpts({ doc, xmlFragment, ytext, mdManager: shattering, docName: 'shatter.md' }),
     );
@@ -234,7 +236,7 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
   test('detects content-loss without throwing: structured log + silent checkpoint, no corrective write', async () => {
     const { doc, xmlFragment, ytext } = createDoc();
     const losing = makeContentLosingManager(LOSS_SENTINEL);
-    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const cleanup = setupServerObservers(
       baseOpts({
         doc,
@@ -286,12 +288,12 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
   test('two distinct losses in the cooldown: one log suppressed, BOTH checkpointed, next emit carries the suppressed count', async () => {
     const { doc, xmlFragment, ytext } = createDoc();
     const losing = makeContentLosingManager(LOSS_SENTINEL);
-    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     // Controllable clock so the cooldown window is deterministic (the throttle
     // reads Date.now); the checkpoint label uses `new Date()`, unaffected. The
     // checkpoint poll below is Date.now-independent, so the mock can stay live.
     let clock = 1_000_000;
-    const nowSpy = spyOn(Date, 'now').mockImplementation(() => clock);
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => clock);
     const cleanup = setupServerObservers(
       baseOpts({
         doc,
@@ -363,7 +365,7 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
     // fire regardless, or a shadow-less session loses the signal entirely.
     const { doc, xmlFragment, ytext } = createDoc();
     const losing = makeContentLosingManager(LOSS_SENTINEL);
-    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const cleanup = setupServerObservers(
       baseOpts({ doc, xmlFragment, ytext, mdManager: losing, docName: 'no-shadow.md' }),
     );
@@ -401,14 +403,14 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
   test('an identical pre-loss source is checkpointed once — the dedup map holds (one ref, one counter)', async () => {
     const { doc, xmlFragment, ytext } = createDoc();
     const losing = makeContentLosingManager(LOSS_SENTINEL);
-    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     // The external Y.Text restore below resets the freshness-quiescence clock,
     // which also defers the producer guard (a suppressed drain's emission is
     // knowingly historical). Advance a controlled clock past the window so the
     // post-restore drain is guard-adjudicated and the dedup map is what
     // decides — the semantics this test pins.
     let clock = 1_000_000;
-    const nowSpy = spyOn(Date, 'now').mockImplementation(() => clock);
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => clock);
     const cleanup = setupServerObservers(
       baseOpts({
         doc,
@@ -473,7 +475,8 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
     // permanently closes the recovery window for that pre-loss content.
     const { doc, xmlFragment, ytext } = createDoc();
     const losing = makeContentLosingManager(LOSS_SENTINEL);
-    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const logWarn = vi.spyOn(getLogger('server-observers'), 'warn');
     // A shadow whose backing directory is gone: every git op (and thus the
     // checkpoint write) rejects. Swapped for the good shadow after the failure.
     const brokenRoot = await mkdtemp(resolve(tmpdir(), 'ok-producer-guard-broken-'));
@@ -499,8 +502,8 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
     );
     const failureLogged = async (tries = 120): Promise<boolean> => {
       for (let i = 0; i < tries; i++) {
-        const hit = warn.mock.calls
-          .map((call) => String(call[0]))
+        const hit = logWarn.mock.calls
+          .map((call) => String(call[1]))
           .some((line) => line.includes('checkpoint write failed'));
         if (hit) return true;
         await new Promise((r) => setTimeout(r, 25));
@@ -521,7 +524,7 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
       // retry drain must be guard-adjudicated for the re-write to be
       // attempted at all.
       const retryClockBase = Date.now();
-      const retryNowSpy = spyOn(Date, 'now').mockImplementation(() => retryClockBase + 2_001);
+      const retryNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => retryClockBase + 2_001);
       try {
         seedFragment(doc, xmlFragment, cellBody('keepB'));
       } finally {
@@ -531,6 +534,7 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
       // window is permanently closed and the assertion fails.
       expect((await waitForCheckpointRefs(shadow)).length).toBeGreaterThanOrEqual(1);
     } finally {
+      logWarn.mockRestore();
       warn.mockRestore();
       cleanup();
     }

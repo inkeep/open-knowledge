@@ -13,6 +13,8 @@ import { resolve } from 'node:path';
 import { resolveGitDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { getLogger } from './logger.ts';
 
+const log = getLogger('head-watcher');
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type BatchKind = 'within-branch' | 'cross-branch' | 'detached-head';
@@ -131,7 +133,7 @@ async function tryStartParcelHeadWatcher(
   try {
     parcel = await import('@parcel/watcher');
   } catch (err) {
-    getLogger('head-watcher').debug(
+    log.debug(
       { err: err instanceof Error ? err.message : String(err) },
       '[head-watcher] @parcel/watcher unavailable; falling back to chokidar',
     );
@@ -140,14 +142,14 @@ async function tryStartParcelHeadWatcher(
   try {
     const subscription = await parcel.subscribe(gitDir, (err, events) => {
       if (err) {
-        getLogger('head-watcher').warn({ err }, '[head-watcher] parcel subscription error');
+        log.warn({ err }, '[head-watcher] parcel subscription error');
         return;
       }
       for (const event of events) dispatch(event.path);
     });
     return () => subscription.unsubscribe();
   } catch (err) {
-    getLogger('head-watcher').debug(
+    log.debug(
       { err: err instanceof Error ? err.message : String(err) },
       '[head-watcher] @parcel/watcher subscribe failed; falling back to chokidar',
     );
@@ -180,7 +182,7 @@ async function startChokidarHeadWatcher(
   // the server. Log + swallow: a HEAD-watch hiccup must not take the process
   // down; branch-switch detection simply pauses.
   watcher.on('error', (err) => {
-    getLogger('head-watcher').warn({ err }, '[head-watcher] chokidar watcher error');
+    log.warn({ err }, '[head-watcher] chokidar watcher error');
   });
   return () => watcher.close();
 }
@@ -259,7 +261,7 @@ export async function startHeadWatcher(
         newBranch,
       });
     } catch (e) {
-      console.error('[head-watcher] onBatchEnd callback failed:', e);
+      log.error({ err: e }, 'onBatchEnd callback failed');
     } finally {
       // Set inBatch = false AFTER the async callback completes
       // so new file events stay buffered during branch-switch orchestration
@@ -294,7 +296,7 @@ export async function startHeadWatcher(
         try {
           await onBatchBegin({ trigger });
         } catch (e) {
-          console.error('[head-watcher] onBatchBegin callback failed:', e);
+          log.error({ err: e }, 'onBatchBegin callback failed');
         }
       })();
       beginInFlight = beginPromise;
@@ -340,7 +342,7 @@ export async function startHeadWatcher(
   oldHead = readHeadSha(gitDir);
   lastKnownBranch = readBranchFromHead(gitDir);
 
-  getLogger('head-watcher').info({ gitDir, backend }, 'watching for HEAD changes');
+  log.info({ gitDir, backend }, 'watching for HEAD changes');
 
   return {
     unsubscribe: async () => {

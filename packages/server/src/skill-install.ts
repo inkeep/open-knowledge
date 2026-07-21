@@ -9,6 +9,7 @@ import {
 } from './build-skill-zip.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { tracedMkdir } from './fs-traced.ts';
+import { getLogger } from './logger.ts';
 import { BUNDLE_SKILL_NAME, type BundleId } from './skill-bundles.ts';
 import { recordSkillInstallEvent, type SkillInstallEventOutcome } from './skill-install-events.ts';
 import {
@@ -291,8 +292,8 @@ export async function installUserSkill(
 ): Promise<InstallUserSkillResult> {
   const home = opts.home ?? homedir();
   const logger: SkillInstallLogger = opts.logger ?? {
-    warn: (data, message) => console.warn(message, data),
-    info: (data, message) => console.info(message, data),
+    warn: (data, message) => getLogger('skills').warn(data, message),
+    info: (data, message) => getLogger('skills').info(data, message),
   };
   const spawnFn = opts.spawn ?? (spawn as SpawnLike);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;

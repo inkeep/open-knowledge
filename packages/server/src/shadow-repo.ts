@@ -44,10 +44,13 @@ import {
 import simpleGit from 'simple-git';
 import { tracedMkdirSync, tracedRenameSync, tracedWriteFileSync } from './fs-traced.ts';
 import { listTreeLongEntries } from './git-paths.ts';
+import { getLogger } from './logger.ts';
 import { incrementShadowMigrationLegacyRefsDeleted } from './metrics.ts';
 import { acquireLock, releaseLock } from './shadow-lock.ts';
 import { releaseShadowOpGate, shadowOpGateFor } from './shadow-op-gate.ts';
 import { withSpan } from './telemetry.ts';
+
+const log = getLogger('shadow-repo');
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -224,7 +227,10 @@ export async function initShadowRepo(projectRoot: string): Promise<ShadowHandle>
   if (legacyExists && !newExists) {
     tracedRenameSync(legacyDir, shadowDir);
   } else if (legacyExists && newExists) {
-    console.warn('[shadow-repo] unexpected legacy + new shadow both present — no rename performed');
+    log.warn(
+      { legacyDir, shadowDir },
+      '[shadow-repo] unexpected legacy + new shadow both present — no rename performed',
+    );
   }
 
   // Skip init if already valid
@@ -250,7 +256,7 @@ export async function initShadowRepo(projectRoot: string): Promise<ShadowHandle>
   try {
     await configureShadowGc(handle);
   } catch (e) {
-    console.warn('[shadow-repo] failed to write gc config (non-fatal):', e);
+    log.warn({ err: e }, 'failed to write gc config (non-fatal)');
   }
 
   // Allowlist-based sweep of legacy WIP refs on every start.
@@ -337,12 +343,13 @@ export async function sweepLegacyShadowRefs(shadow: ShadowHandle): Promise<numbe
         await sg.raw('update-ref', '-d', ref);
         deleted++;
       } catch (e) {
-        console.warn(`[shadow-migration] failed to delete legacy ref ${ref}:`, e);
+        log.warn({ ref, err: e }, `[shadow-migration] failed to delete legacy ref ${ref}`);
       }
     }
   });
   incrementShadowMigrationLegacyRefsDeleted(deleted);
-  console.warn(
+  log.warn(
+    { deleted, server: breakdown.server, human: breakdown['human-'], upstream: breakdown.upstream },
     `[shadow-migration] deleted ${deleted} legacy refs: server=${breakdown.server} human-=${breakdown['human-']} upstream=${breakdown.upstream}`,
   );
 
@@ -417,7 +424,7 @@ async function commitWipInner(
       if (msg.includes('unknown revision') || msg.includes('bad revision')) {
         // Expected: first commit on this ref — start fresh
       } else {
-        console.error(`[shadow-repo] Unexpected error seeding index for ${ref}:`, e);
+        log.error({ ref, err: e }, `Unexpected error seeding index for ${ref}`);
         throw e;
       }
     }
@@ -441,7 +448,7 @@ async function commitWipInner(
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (!msg.includes('unknown revision') && !msg.includes('bad revision')) {
-        console.error(`[shadow-repo] Unexpected error resolving ${ref}:`, e);
+        log.error({ ref, err: e }, `Unexpected error resolving ${ref}`);
         throw e;
       }
       // Expected: no parent — first commit on this ref
@@ -576,9 +583,9 @@ async function buildWipTreeInner(shadow: ShadowHandle, contentRoot: string): Pro
   try {
     return await buildWipTreeWithIndex(shadow, contentRoot, persistentIndex);
   } catch (e) {
-    console.warn(
-      '[shadow-repo] persistent fan-out index failed — rebuilding from a fresh index:',
-      e,
+    log.warn(
+      { err: e },
+      '[shadow-repo] persistent fan-out index failed — rebuilding from a fresh index',
     );
     for (const stale of [persistentIndex, `${persistentIndex}.lock`]) {
       try {
@@ -643,7 +650,7 @@ async function commitWipFromTreeInner(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!msg.includes('unknown revision') && !msg.includes('bad revision')) {
-      console.error(`[shadow-repo] Unexpected error resolving ${ref}:`, e);
+      log.error({ ref, err: e }, `Unexpected error resolving ${ref}`);
       throw e;
     }
   }
@@ -1337,7 +1344,7 @@ async function gcCheckpointRefsInner(
     try {
       await sg.raw('update-ref', '-d', ref);
     } catch (err) {
-      console.warn('[checkpoint-gc] failed to delete', ref, err);
+      log.warn({ ref, err }, `[checkpoint-gc] failed to delete ${ref}`);
     }
   }
 
@@ -1546,7 +1553,7 @@ export async function readParkedState(
     const diskSnapshot = (await sg.raw('show', `${refSha}:.park-base/${docName}`)).trim();
     return { markdown, diskSnapshot };
   } catch (e) {
-    console.error(`[shadow] Failed to read parked state for ${docName} from ${ref}:`, e);
+    log.error({ docName, ref, err: e }, `Failed to read parked state for ${docName} from ${ref}`);
     throw e;
   }
 }

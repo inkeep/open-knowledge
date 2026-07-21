@@ -250,7 +250,10 @@ export function createExternalChangeHandler(
       // overwrite the external edit with the unadvanced Y.Doc bytes, so the
       // failure mode is silent data-loss-on-disk-edit unless surfaced here.
       incrementExternalChangeHandlerErrors();
-      console.error(`[file-watcher] Failed to apply external change for ${docName}:`, err);
+      getLogger('file-watcher').error(
+        { docName, err },
+        `Failed to apply external change for ${docName}`,
+      );
     }
   };
 }

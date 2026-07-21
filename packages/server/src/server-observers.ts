@@ -83,11 +83,13 @@ import { registerBridgeDirtyProbe } from './server-workload-telemetry.ts';
 import { type ShadowHandle, saveInMemoryCheckpoint } from './shadow-repo.ts';
 import { setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
 
+const log = getLogger('server-observers');
+
 /**
- * Pino line for checkpoint-write failures, alongside the existing
- * console.warn: a failed checkpoint means the recovery snapshot for a
- * detected content-loss event was NOT persisted, and the pino sink is what
- * reaches the local log files (and, through them, diagnostics bundles).
+ * Structured record for checkpoint-write failures, alongside the
+ * human-readable observer warn: a failed checkpoint means the recovery
+ * snapshot for a detected content-loss event was NOT persisted, and the
+ * kind-tagged fields are what diagnostics bundles key on.
  */
 const checkpointLog = getLogger('server-observers');
 
@@ -289,9 +291,9 @@ export function __resetMapDrivenParseErrorWarnForTests(): void {
 function warnOnceMapDrivenParseError(docName: string | undefined, err: unknown): void {
   if (mapDrivenParseErrorWarned) return;
   mapDrivenParseErrorWarned = true;
-  console.warn(
-    `[Server Observer A] Map-driven splice parse/serialize threw (doc: ${docName ?? 'unknown'}); drains fall back to the incremental diff (warned once; further failures count in mapDrivenSpliceFallback only):`,
-    err instanceof Error ? err.message : String(err),
+  log.warn(
+    { docName: docName ?? 'unknown', err: err instanceof Error ? err : new Error(String(err)) },
+    `[Server Observer A] Map-driven splice parse/serialize threw (doc: ${docName ?? 'unknown'}); drains fall back to the incremental diff (warned once; further failures count in mapDrivenSpliceFallback only)`,
   );
 }
 
@@ -680,11 +682,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         .catch((checkpointErr: unknown) => {
           const err =
             checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
-          console.warn('[Server Observer A] Silent checkpoint write failed:', {
-            name: err.name,
-            message: err.message,
-            stack: err.stack?.split('\n').slice(0, 4).join('\n'),
-          });
+          log.warn({ err }, '[Server Observer A] Silent checkpoint write failed');
           checkpointLog.warn(
             { err, 'doc.name': opts.docName ?? null, branch, kind: 'bridge-merge-loss' },
             'checkpoint write failed',
@@ -726,7 +724,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         );
       }
     } catch (telErr) {
-      console.warn('[Server Observer A] Split-brain telemetry failed:', telErr);
+      log.warn({ err: telErr }, '[Server Observer A] Split-brain telemetry failed');
     }
   };
 
@@ -767,12 +765,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         .catch((checkpointErr: unknown) => {
           const e =
             checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
-          console.warn('[Server Observer A] Duplication checkpoint write failed:', {
-            docName,
-            name: e.name,
-            message: e.message,
-            stack: e.stack?.split('\n').slice(0, 4).join('\n'),
-          });
+          log.warn({ docName, err: e }, '[Server Observer A] Duplication checkpoint write failed');
           checkpointLog.warn(
             { err: e, 'doc.name': docName, branch, kind: 'observer-a-duplication' },
             'checkpoint write failed',
@@ -989,9 +982,9 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     }
   } catch (err) {
     incrementServerObserverError('a');
-    console.warn(
-      '[Server Observer A] Baseline init failed — starting from empty snapshot:',
-      err instanceof Error ? err.message : String(err),
+    log.warn(
+      { err: err instanceof Error ? err : new Error(String(err)) },
+      '[Server Observer A] Baseline init failed — starting from empty snapshot',
     );
     // Canonical '' fails gate 1 open (no short-circuit until a real
     // settlement); the raw witness still snapshots Y.Text so a Path B fire
@@ -1113,11 +1106,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           }
           const e =
             checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
-          console.warn('[Server Observer A] Producer-guard checkpoint write failed:', {
-            name: e.name,
-            message: e.message,
-            stack: e.stack?.split('\n').slice(0, 4).join('\n'),
-          });
+          log.warn({ err: e }, '[Server Observer A] Producer-guard checkpoint write failed');
           checkpointLog.warn(
             { err: e, 'doc.name': docName, branch, kind: 'producer-guard-loss' },
             'checkpoint write failed',
@@ -1596,7 +1585,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         throw err;
       }
       incrementServerObserverError('a');
-      console.error('[Server Observer A] Failed to sync tree→text:', err);
+      log.error({ err }, '[Server Observer A] Failed to sync tree→text');
       // Reset the witnesses so the next retry computes a fresh delta instead
       // of re-applying the stale diff that just failed. The naive reset
       // records the raw Y.Text as a settled witness, but if the throw
@@ -1635,13 +1624,13 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         // B's byte-protective merge instead of an unguarded rewrite. An
         // operator triaging the double failure needs the doc and the original
         // error correlated in one line, not two disconnected ones.
-        console.warn(
-          '[Server Observer A] Baseline recovery also failed',
-          JSON.stringify({
-            'doc.name': opts.docName ?? null,
+        log.warn(
+          {
+            docName: opts.docName ?? null,
             originalError: err instanceof Error ? err.message : String(err),
             recoveryError: innerErr instanceof Error ? innerErr.message : String(innerErr),
-          }),
+          },
+          '[Server Observer A] Baseline recovery also failed',
         );
         // Last-resort unknown-baseline sentinel: no canonical form is
         // computable (the recovery serialize threw too), so the divergence
@@ -1715,9 +1704,9 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         priorFmForTelemetry = frontmatter;
       } catch (err) {
         incrementServerObserverError('a');
-        console.warn(
-          '[Server Observer A] Paired-write baseline refresh failed — falling through to settlement:',
-          err instanceof Error ? err.message : String(err),
+        log.warn(
+          { err: err instanceof Error ? err : new Error(String(err)) },
+          '[Server Observer A] Paired-write baseline refresh failed — falling through to settlement',
         );
         // Fall through to the settlement path so the next afterAllTransactions
         // dispatch can recover. The runObserverASync catch block resets the
@@ -1745,7 +1734,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       recordSettledBaselines(md);
     } catch (err) {
       incrementServerObserverError('a');
-      console.error('[Server Observer A] Failed initial sync:', err);
+      log.error({ err }, '[Server Observer A] Failed initial sync');
       // Reset baselines to match Y.Text's actual state (still empty) so the
       // next Observer A firing treats the entire XmlFragment as new content
       // via Path A (incremental diff from empty → full doc). Without this,
@@ -1863,9 +1852,9 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         if (reserializeErr instanceof BridgeInvariantViolationError) {
           throw reserializeErr;
         }
-        console.warn(
-          '[Server Observer B] Post-sync re-serialization failed — using input body as baseline:',
-          reserializeErr,
+        log.warn(
+          { err: reserializeErr },
+          '[Server Observer B] Post-sync re-serialization failed — using input body as baseline',
         );
         recordSettledBaselines(prependFrontmatter(frontmatter, body));
       }
@@ -1877,7 +1866,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         throw err;
       }
       incrementServerObserverError('b');
-      console.error('[Server Observer B] Failed to sync text→tree:', err);
+      log.error({ err }, '[Server Observer B] Failed to sync text→tree');
       // Reset the canonical witness to current XmlFragment state so the next
       // retry computes a fresh delta instead of re-applying the stale diff
       // that just failed. The raw witness is deliberately NOT touched: this
@@ -1900,7 +1889,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         if (innerErr instanceof BridgeInvariantViolationError) {
           throw innerErr;
         }
-        console.warn('[Server Observer B] Baseline recovery also failed:', innerErr);
+        log.warn({ err: innerErr }, '[Server Observer B] Baseline recovery also failed');
       }
     }
   };
@@ -1947,9 +1936,9 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         priorFmForTelemetry = frontmatter;
       } catch (err) {
         incrementServerObserverError('b');
-        console.warn(
-          '[Server Observer B] Paired-write baseline refresh failed — falling through to settlement:',
-          err instanceof Error ? err.message : String(err),
+        log.warn(
+          { err: err instanceof Error ? err : new Error(String(err)) },
+          '[Server Observer B] Paired-write baseline refresh failed — falling through to settlement',
         );
         // Fall through so the next afterAllTransactions can reconcile via
         // runObserverBSync's own recovery branches.

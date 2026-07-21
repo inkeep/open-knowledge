@@ -571,8 +571,9 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   }
   const gitignorePath = resolve(okDir, '.gitignore');
   if (!existsSync(gitignorePath)) {
-    console.warn(
-      `[boot] Note: ${OK_DIR}/.gitignore is missing — per-machine state files in ${OK_DIR}/ may show up as untracked changes. Run \`ok init\` to add the recommended ignore entries.`,
+    getLogger('boot').warn(
+      { path: gitignorePath },
+      `Note: ${OK_DIR}/.gitignore is missing — per-machine state files in ${OK_DIR}/ may show up as untracked changes. Run \`ok init\` to add the recommended ignore entries.`,
     );
   }
 
@@ -635,8 +636,9 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // No action taken; boot proceeds.
   const legacyFound = findLegacyRuntimeFiles(okDir);
   if (legacyFound.length > 0) {
-    console.warn(
-      `[boot] Found legacy runtime files at ${OK_DIR}/${legacyFound.join(', ')}. Delete ${OK_DIR}/ and re-init — these files moved to ${OK_DIR}/${LOCAL_DIR}/.`,
+    getLogger('boot').warn(
+      { files: legacyFound },
+      `Found legacy runtime files at ${OK_DIR}/${legacyFound.join(', ')}. Delete ${OK_DIR}/ and re-init — these files moved to ${OK_DIR}/${LOCAL_DIR}/.`,
     );
   }
 

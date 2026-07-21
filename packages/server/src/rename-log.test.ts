@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, mock, test, vi } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { getLogger } from './logger.ts';
 import {
   appendRenameLogEntry,
   backfillRenameLogCommitSha,
@@ -281,14 +282,15 @@ describe('appendRenameLogEntry', () => {
 
     const index = createEmptyIndex();
     let warned = false;
-    const orig = console.warn;
-    console.warn = (msg: unknown) => {
-      if (typeof msg === 'string' && msg.includes('exceeds hard cap')) warned = true;
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('rename-log'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('exceeds hard cap')) warned = true;
+      });
     try {
       appendRenameLogEntry(shadowDir, entry(), index);
     } finally {
-      console.warn = orig;
+      warnSpy.mockRestore();
     }
     expect(warned).toBe(true);
   });
@@ -351,16 +353,17 @@ describe('expandPredecessors', () => {
       index,
     );
     let warned = false;
-    const orig = console.warn;
-    console.warn = (msg: unknown) => {
-      if (typeof msg === 'string' && msg.includes('cycle detected')) warned = true;
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('rename-log'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('cycle detected')) warned = true;
+      });
     try {
       const { chain } = expandPredecessors('a', 'main', index);
       // Cycle detection truncates: a → b → (cycle on a) breaks. Returns at least the current doc.
       expect(chain[chain.length - 1]).toEqual({ path: 'a', renameCommit: null });
     } finally {
-      console.warn = orig;
+      warnSpy.mockRestore();
     }
     expect(warned).toBe(true);
   });
@@ -429,17 +432,18 @@ describe('expandPredecessors', () => {
     }
 
     let warned = false;
-    const origWarn = console.warn;
-    console.warn = (msg: unknown) => {
-      if (typeof msg === 'string' && msg.includes('chain depth exceeded')) warned = true;
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('rename-log'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('chain depth exceeded')) warned = true;
+      });
     try {
       const { chain } = expandPredecessors(`step-${depth}`, 'main', index);
       // Walk produced MAX_PREDECESSOR_CHAIN_DEPTH predecessors + 1 trailing current doc.
       expect(chain.length).toBe(MAX_PREDECESSOR_CHAIN_DEPTH + 1);
       expect(chain[chain.length - 1]).toEqual({ path: `step-${depth}`, renameCommit: null });
     } finally {
-      console.warn = origWarn;
+      warnSpy.mockRestore();
     }
     expect(warned).toBe(true);
   });
@@ -589,7 +593,7 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     const { spawn: realSpawn, ...realCp } =
       await vi.importActual<typeof import('node:child_process')>('node:child_process');
     const spawnCalls: unknown[][] = [];
-    mock.module('node:child_process', () => ({
+    vi.doMock('node:child_process', () => ({
       ...realCp,
       spawn: (...args: Parameters<typeof realSpawn>) => {
         spawnCalls.push(args);
@@ -629,16 +633,17 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     // still have something to feed `buildAncestorShaSet` (which itself
     // returns empty on rev-list failure — graceful end-to-end degradation).
     const bogusSha = '0123456789abcdef0123456789abcdef01234567';
-    const orig = console.warn;
     let warned = false;
-    console.warn = (msg: unknown) => {
-      if (typeof msg === 'string' && msg.includes('buildSeeds: git show failed')) warned = true;
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('rename-log'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('buildSeeds: git show failed')) warned = true;
+      });
     try {
       const seeds = await buildSeeds(shadow, bogusSha, 'main');
       expect(seeds).toEqual([bogusSha]);
     } finally {
-      console.warn = orig;
+      warnSpy.mockRestore();
     }
     expect(warned).toBe(true);
   });
@@ -796,11 +801,12 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     expect(sizeBefore).toBeGreaterThan(RENAME_LOG_HARD_CAP_BYTES);
 
     const index = createEmptyIndex();
-    const orig = console.warn;
     let warned = false;
-    console.warn = (msg: unknown) => {
-      if (typeof msg === 'string' && msg.includes('exceeds hard cap')) warned = true;
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('rename-log'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('exceeds hard cap')) warned = true;
+      });
     try {
       // Pass `shadow` so scheduleHardCapGc fires. The entry has a fake-but-
       // syntactically-valid commitSha that is unreachable from any ref — gc
@@ -817,7 +823,7 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
         shadow,
       );
     } finally {
-      console.warn = orig;
+      warnSpy.mockRestore();
     }
     expect(warned).toBe(true);
     expect(index.byTo.size).toBe(1);
@@ -871,15 +877,16 @@ describe('batchCheckExistence timeout fallback (FR16 / D-T7)', () => {
     process.env.PATH = `${fakeBinDir}:${origPath}`;
     process.env.OK_GIT_TIMEOUT_MS = '200';
 
-    const orig = console.warn;
     let warnedTimeout = false;
     let warnMsg: string | null = null;
-    console.warn = (msg: unknown) => {
-      if (typeof msg === 'string' && msg.includes('timed out')) {
-        warnedTimeout = true;
-        warnMsg = msg;
-      }
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('rename-log'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('timed out')) {
+          warnedTimeout = true;
+          warnMsg = msg;
+        }
+      });
 
     try {
       const t0 = performance.now();
@@ -898,7 +905,7 @@ describe('batchCheckExistence timeout fallback (FR16 / D-T7)', () => {
       // Anything > 2s means the timeout branch didn't fire.
       expect(elapsed).toBeLessThan(2000);
     } finally {
-      console.warn = orig;
+      warnSpy.mockRestore();
       process.env.PATH = origPath;
       if (origTimeout !== undefined) process.env.OK_GIT_TIMEOUT_MS = origTimeout;
       else process.env.OK_GIT_TIMEOUT_MS = undefined;
@@ -1235,12 +1242,12 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
       workTree: shadow.workTree,
     };
 
-    const origWarn = console.warn;
     let warned = false;
-    console.warn = (...args: unknown[]) => {
-      const msg = args.map(String).join(' ');
-      if (msg.includes('aborted')) warned = true;
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('rename-log'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('aborted')) warned = true;
+      });
     try {
       const result = await gcRenameLog(brokenShadow, index);
       // Aborted: scanned/dropped/retained all 0 — function bailed before any work.
@@ -1248,7 +1255,7 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
       expect(result.dropped).toBe(0);
       expect(result.retained).toBe(0);
     } finally {
-      console.warn = origWarn;
+      warnSpy.mockRestore();
     }
     expect(warned).toBe(true);
     // Entry preserved in memory (not wiped by aborted GC).
@@ -1287,18 +1294,18 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
       `${'0123456789abcdef0123456789abcdef01234567'}\n`,
     );
 
-    const origWarn = console.warn;
     let warned = false;
-    console.warn = (...args: unknown[]) => {
-      const msg = args.map(String).join(' ');
-      if (msg.includes('aborted')) warned = true;
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('rename-log'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('aborted')) warned = true;
+      });
     try {
       const result = await gcRenameLog(shadow, index);
       // Aborted: must not drop the legitimate entry even though rev-list failed.
       expect(result.dropped).toBe(0);
     } finally {
-      console.warn = origWarn;
+      warnSpy.mockRestore();
     }
     expect(warned).toBe(true);
     expect(index.byTo.get('b')?.commitSha).toBe(realSha);
@@ -1558,17 +1565,18 @@ describe('validateEntry self-rename rejection', () => {
     const body = `${JSON.stringify(selfRename)}\n${JSON.stringify(valid)}\n`;
     writeFileSync(renameLogPath(shadowDir), body);
     let warned = false;
-    const orig = console.warn;
-    console.warn = (msg: unknown) => {
-      if (typeof msg === 'string' && msg.includes('corrupt entry at line 1')) warned = true;
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('rename-log'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('corrupt entry at line 1')) warned = true;
+      });
     try {
       const index = loadRenameLogIndex(shadowDir);
       // Self-rename was rejected; the legitimate rename loaded.
       expect(index.byTo.has('x')).toBe(false);
       expect(index.byTo.get('b')).toBeDefined();
     } finally {
-      console.warn = orig;
+      warnSpy.mockRestore();
     }
     expect(warned).toBe(true);
   });
@@ -1583,17 +1591,18 @@ describe('backfillRenameLogCommitSha SHA validation', () => {
       index,
     );
     let warned = false;
-    const orig = console.warn;
-    console.warn = (msg: unknown) => {
-      if (typeof msg === 'string' && msg.includes('rejected invalid commitSha')) warned = true;
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('rename-log'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('rejected invalid commitSha')) warned = true;
+      });
     try {
       const result = backfillRenameLogCommitSha(shadowDir, 'agent-x', '', index);
       expect(result.updated).toBe(0);
       // Entry stays in lazy-pop state — recoverable on a subsequent valid backfill.
       expect(index.byTo.get('essays/auth')?.commitSha).toBe('');
     } finally {
-      console.warn = orig;
+      warnSpy.mockRestore();
     }
     expect(warned).toBe(true);
   });
@@ -1605,13 +1614,12 @@ describe('backfillRenameLogCommitSha SHA validation', () => {
       entry({ commitSha: '', actor: { writerId: 'agent-x', displayName: 'X' } }),
       index,
     );
-    const orig = console.warn;
-    console.warn = () => {};
+    const warnSpy = vi.spyOn(getLogger('rename-log'), 'warn').mockImplementation(() => {});
     try {
       const result = backfillRenameLogCommitSha(shadowDir, 'agent-x', 'abc123', index);
       expect(result.updated).toBe(0);
     } finally {
-      console.warn = orig;
+      warnSpy.mockRestore();
     }
     expect(index.byTo.get('essays/auth')?.commitSha).toBe('');
   });
@@ -1623,14 +1631,13 @@ describe('backfillRenameLogCommitSha SHA validation', () => {
       entry({ commitSha: '', actor: { writerId: 'agent-x', displayName: 'X' } }),
       index,
     );
-    const orig = console.warn;
-    console.warn = () => {};
+    const warnSpy = vi.spyOn(getLogger('rename-log'), 'warn').mockImplementation(() => {});
     try {
       // 40 chars but contains a 'g' — not a valid hex SHA
       const result = backfillRenameLogCommitSha(shadowDir, 'agent-x', 'g'.repeat(40), index);
       expect(result.updated).toBe(0);
     } finally {
-      console.warn = orig;
+      warnSpy.mockRestore();
     }
   });
 });

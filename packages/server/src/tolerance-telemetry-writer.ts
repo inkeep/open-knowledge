@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { setToleranceTelemetryHook, type ToleranceFireRecord } from '@inkeep/open-knowledge-core';
 
 import { getLocalDir } from './config/paths.ts';
+import { getLogger } from './logger.ts';
 import { RotatingAppender } from './telemetry-file-sink.ts';
 
 const TELEMETRY_FILENAME = 'tolerance-telemetry.jsonl';
@@ -84,9 +85,9 @@ export function initToleranceTelemetryWriter(projectDir: string): void {
     void appender?.append(`${JSON.stringify(fireLine)}\n`).catch((err: unknown) => {
       if (!appendFailureWarned) {
         appendFailureWarned = true;
-        console.warn(
-          '[tolerance-telemetry] append failed; further failures are silent:',
-          err instanceof Error ? err.message : String(err),
+        getLogger('tolerance-telemetry').warn(
+          { err: err instanceof Error ? err : new Error(String(err)) },
+          'append failed; further failures are silent',
         );
       }
     });

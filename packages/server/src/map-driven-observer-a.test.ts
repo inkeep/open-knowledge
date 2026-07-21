@@ -9,13 +9,15 @@
  * Hocuspocus), populate XmlFragment via `updateYFragment`, observe the
  * Y.Text delta to assert splice shape directly.
  */
-import { describe, expect, spyOn, test } from 'bun:test';
+
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { updateYFragment } from '@tiptap/y-tiptap';
+import { describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN } from './agent-sessions.ts';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
+import { getLogger } from './logger.ts';
 import { computeMapDrivenBodySplice } from './map-driven-splice.ts';
 import { getMetrics } from './metrics.ts';
 import {
@@ -390,7 +392,7 @@ describe('map-driven Observer A — default Path A behavior', () => {
         },
       });
       __resetMapDrivenParseErrorWarnForTests();
-      const warnSpy = spyOn(console, 'warn');
+      const warnSpy = vi.spyOn(getLogger('server-observers'), 'warn');
       const cleanup = setupServerObservers({
         doc,
         xmlFragment,
@@ -415,10 +417,12 @@ describe('map-driven Observer A — default Path A behavior', () => {
       ).toBeGreaterThanOrEqual(2);
       // ...but the breadcrumb fired exactly once, carrying the message.
       const spliceWarns = warnSpy.mock.calls.filter((args) =>
-        String(args[0]).includes('Map-driven splice'),
+        String(args[1]).includes('Map-driven splice'),
       );
       expect(spliceWarns).toHaveLength(1);
-      expect(spliceWarns[0]?.[1]).toBe('synthetic parser regression');
+      expect((spliceWarns[0]?.[0] as { err?: Error }).err?.message).toBe(
+        'synthetic parser regression',
+      );
 
       warnSpy.mockRestore();
       cleanup();

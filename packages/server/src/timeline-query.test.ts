@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { formatOkActor, type OkActorEntry } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { getLogger } from './logger.ts';
 import {
   appendRenameLogEntry,
   createEmptyIndex,
@@ -915,12 +916,12 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     appendRenameLogEntry(shadow.gitDir, entry({ from: 'b', to: 'c', commitSha: renameBC }), index);
     setRenameLogIndex(shadow.gitDir, index);
 
-    const origWarn = console.warn;
     let warnedSkip = false;
-    console.warn = (...args: unknown[]) => {
-      const msg = args.map(String).join(' ');
-      if (msg.includes('predecessor walk failed for step')) warnedSkip = true;
-    };
+    const warnSpy = vi
+      .spyOn(getLogger('timeline'), 'warn')
+      .mockImplementation((_data: unknown, msg: string) => {
+        if (msg.includes('predecessor walk failed for step')) warnedSkip = true;
+      });
     try {
       const result = await getDocumentHistory(shadow, { docName: 'c' }, 'content/docs');
       const shas = result.entries.map((e) => e.sha);
@@ -934,7 +935,7 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
       // unbounded current-name walk and survive regardless of step 0's fate.
       expect(shas).toContain(renameBC);
     } finally {
-      console.warn = origWarn;
+      warnSpy.mockRestore();
     }
     expect(warnedSkip).toBe(true);
   }, 15_000);

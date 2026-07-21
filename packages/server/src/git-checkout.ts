@@ -19,6 +19,9 @@ import { type CheckoutFailureReason, isBranchNotFoundGitError } from '@inkeep/op
 import { truncateError } from './error-format.ts';
 import { dirtyFilesOverlapWith } from './git-dirty.ts';
 import { createGitInstance } from './git-handle.ts';
+import { getLogger } from './logger.ts';
+
+const log = getLogger('git-checkout');
 
 /**
  * Block timeout for the fast-forward fetches. These run inside `withParentLock`,
@@ -199,8 +202,9 @@ export async function runCheckoutFlow(
     // `checkout-failed` catch-all without functional regression.
     const heldElsewhere = isBranchInOtherWorktreeError(err);
     if (heldElsewhere.held) {
-      console.warn(
-        `[git-checkout] reason=branch-in-other-worktree branch=${branch} held_at=${heldElsewhere.path}`,
+      log.warn(
+        { branch, heldAt: heldElsewhere.path },
+        `reason=branch-in-other-worktree branch=${branch} held_at=${heldElsewhere.path}`,
       );
       return {
         ok: false,
@@ -212,8 +216,10 @@ export async function runCheckoutFlow(
     // gates (rev-parse, fetch, dirty-overlap) all passed, so the most likely
     // causes are lock contention, filesystem permissions, or partial merge
     // state — which are the hardest to reproduce without a stderr breadcrumb.
-    const truncated = truncateError(err);
-    console.warn(`[git-checkout] action=checkout-failed branch=${branch} error=${truncated}`);
+    log.warn(
+      { branch, err },
+      `action=checkout-failed branch=${branch} error=${truncateError(err)}`,
+    );
     return { ok: false, reason: 'checkout-failed' };
   }
 }
@@ -274,8 +280,10 @@ export async function fastForwardBranchToOrigin(
   try {
     await git.raw(['fetch', 'origin', branch]);
   } catch (err) {
-    const truncated = truncateError(err);
-    console.warn(`[git-checkout] action=ff-fetch-failed branch=${branch} error=${truncated}`);
+    log.warn(
+      { branch, err },
+      `action=ff-fetch-failed branch=${branch} error=${truncateError(err)}`,
+    );
     return 'unavailable';
   }
 
@@ -301,8 +309,10 @@ export async function fastForwardBranchToOrigin(
     try {
       await git.raw(['fetch', 'origin', `${branch}:${branch}`]);
     } catch (err) {
-      const truncated = truncateError(err);
-      console.warn(`[git-checkout] action=ff-advance-failed branch=${branch} error=${truncated}`);
+      log.warn(
+        { branch, err },
+        `action=ff-advance-failed branch=${branch} error=${truncateError(err)}`,
+      );
       return 'unavailable';
     }
     const after = await revParse(`refs/heads/${branch}`);

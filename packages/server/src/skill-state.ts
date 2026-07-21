@@ -45,6 +45,7 @@ import {
 import { atomicWriteFile, withFileLock } from '@inkeep/open-knowledge-core/server';
 import { type ParsedNode, parseDocument } from 'yaml';
 import { tracedAtomicFs, tracedMkdir } from './fs-traced.ts';
+import { getLogger } from './logger.ts';
 
 const readFileAsync = promisify(readFile);
 
@@ -96,13 +97,12 @@ export interface SkillStateLogger {
 }
 
 /**
- * Console-backed logger used as the default when callers don't pass one.
- * Emits structured payloads via `console.warn(message, data)` so the
- * `event` field stays observable in stdout/journald regardless of whether
- * a Pino logger is wired.
+ * Default sink when callers don't pass a logger. Routes through the shared
+ * pino factory so the `event` field lands on both the console stream and
+ * the file sink that bug-report bundles collect.
  */
 const DEFAULT_LOGGER: SkillStateLogger = {
-  warn: (data, message) => console.warn(message, data),
+  warn: (data, message) => getLogger('skills').warn(data, message),
 };
 
 /**

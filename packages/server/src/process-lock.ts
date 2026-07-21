@@ -21,9 +21,12 @@ import {
 } from 'node:fs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
+import { getLogger } from './logger.ts';
 import { getMachineId } from './machine-id.ts';
 import { isProcessAlive, isValidLockPid } from './process-alive.ts';
 import { PROTOCOL_VERSION, RUNTIME_VERSION } from './version-constants.ts';
+
+const log = getLogger('process-lock');
 
 export type LockName = 'server' | 'ui';
 
@@ -233,10 +236,10 @@ function parseLock(lockPath: string, logPrefix: string): ProcessLockMetadata | n
     if (parsed && typeof parsed === 'object' && isValidLockPid((parsed as { pid?: unknown }).pid)) {
       return parsed as ProcessLockMetadata;
     }
-    console.warn(`${logPrefix} Corrupt lock file at ${lockPath} — replacing`);
+    log.warn({ lockPath }, `${logPrefix} Corrupt lock file at ${lockPath} — replacing`);
     return null;
   } catch {
-    console.warn(`${logPrefix} Corrupt lock file at ${lockPath} — replacing`);
+    log.warn({ lockPath }, `${logPrefix} Corrupt lock file at ${lockPath} — replacing`);
     return null;
   }
 }
@@ -349,7 +352,8 @@ export function acquireProcessLock(opts: {
       if (isProcessAlive(existing.pid)) {
         throw new ProcessLockCollisionError(existing, lockPath, lockName);
       }
-      console.warn(
+      log.warn(
+        { pid: existing.pid, host: existing.hostname },
         `${logPrefix} Stale lock detected (pid=${existing.pid}, host=${existing.hostname}) — replacing`,
       );
     }
@@ -396,7 +400,10 @@ export function updateProcessLockPort(opts: {
   const lockPath = lockFilePath(lockDir, lockName);
 
   if (!existsSync(lockPath)) {
-    console.warn(`${logPrefix} Lock file missing at ${lockPath} during port update — skipping`);
+    log.warn(
+      { lockPath },
+      `${logPrefix} Lock file missing at ${lockPath} during port update — skipping`,
+    );
     return;
   }
 
@@ -408,12 +415,18 @@ export function updateProcessLockPort(opts: {
       typeof parsed !== 'object' ||
       !isValidLockPid((parsed as { pid?: unknown }).pid)
     ) {
-      console.warn(`${logPrefix} Corrupt lock at ${lockPath} during port update — skipping`);
+      log.warn(
+        { lockPath },
+        `${logPrefix} Corrupt lock at ${lockPath} during port update — skipping`,
+      );
       return;
     }
     existing = parsed as ProcessLockMetadata;
   } catch {
-    console.warn(`${logPrefix} Unreadable lock at ${lockPath} during port update — skipping`);
+    log.warn(
+      { lockPath },
+      `${logPrefix} Unreadable lock at ${lockPath} during port update — skipping`,
+    );
     return;
   }
   if (existing.pid !== process.pid) return;
@@ -430,7 +443,8 @@ export function updateProcessLockPort(opts: {
       mode: 0o600,
     });
   } catch (err) {
-    console.warn(
+    log.warn(
+      { lockPath, err },
       `${logPrefix} Failed to update port in ${lockPath}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -463,7 +477,10 @@ export function markProcessLockDraining(opts: { lockName: LockName; lockDir: str
       typeof parsed !== 'object' ||
       !isValidLockPid((parsed as { pid?: unknown }).pid)
     ) {
-      console.warn(`${logPrefix} Corrupt lock at ${lockPath} during draining mark — skipping`);
+      log.warn(
+        { lockPath },
+        `${logPrefix} Corrupt lock at ${lockPath} during draining mark — skipping`,
+      );
       return;
     }
     existing = parsed as ProcessLockMetadata;
@@ -473,7 +490,8 @@ export function markProcessLockDraining(opts: { lockName: LockName; lockDir: str
     // failed WRITE (server keeps looking live during teardown), so it must be
     // as attributable as the write-failure warn below.
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(
+      log.warn(
+        { lockPath, err },
         `${logPrefix} Unreadable lock at ${lockPath} during draining mark — skipping: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
@@ -490,7 +508,8 @@ export function markProcessLockDraining(opts: { lockName: LockName; lockDir: str
       mode: 0o600,
     });
   } catch (err) {
-    console.warn(
+    log.warn(
+      { lockPath, err },
       `${logPrefix} Failed to mark ${lockPath} draining: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -725,7 +744,8 @@ export function releaseProcessLock(opts: {
     unlinkSync(lockPath);
     exitUnlinkPaths.delete(lockPath);
   } catch (err) {
-    console.warn(
+    log.warn(
+      { lockPath, err },
       `${logPrefix} Failed to release ${lockPath}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }

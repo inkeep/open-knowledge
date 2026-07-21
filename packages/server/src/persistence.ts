@@ -1645,14 +1645,14 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                   }
                 } else {
                   if (canonical) {
-                    console.warn(
-                      `[persistence] symlink-escape on tripwire reset: ${requestedDiskPath} → ${canonical}, using currentBase`,
+                    log.warn(
                       {
                         docName: documentName,
                         originalPath: requestedDiskPath,
                         canonical,
                         contentDir,
                       },
+                      `[persistence] symlink-escape on tripwire reset: ${requestedDiskPath} → ${canonical}, using currentBase`,
                     );
                   }
                   diskContent = currentBase;
@@ -1717,14 +1717,14 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               }
             }
             if (isBrokenSymlink) {
-              console.warn(`[persistence] broken-symlink fallback`, {
-                docName: documentName,
-                reason: 'broken-symlink',
-              });
+              log.warn(
+                { docName: documentName, reason: 'broken-symlink' },
+                '[persistence] broken-symlink fallback',
+              );
             }
             canonicalPath = requestedPath;
           } else if (code === 'ELOOP') {
-            console.error(`[persistence] Symlink cycle at ${requestedPath}`);
+            log.error({ path: requestedPath }, `[persistence] Symlink cycle at ${requestedPath}`);
             throw new Error(`Symlink cycle detected at ${requestedPath}`);
           } else {
             throw e;
@@ -1733,12 +1733,15 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
         if (!isWithinContentDir(canonicalPath, contentDir)) {
           const msg = `symlink-escape: ${requestedPath} resolves to ${canonicalPath} outside ${contentDir}`;
-          console.error(`[persistence] ${msg}`, {
-            docName: documentName,
-            originalPath: requestedPath,
-            canonical: canonicalPath,
-            contentDir,
-          });
+          log.error(
+            {
+              docName: documentName,
+              originalPath: requestedPath,
+              canonical: canonicalPath,
+              contentDir,
+            },
+            `[persistence] ${msg}`,
+          );
           throw new Error(msg);
         }
 
@@ -2104,7 +2107,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           try {
             const resolvedCanonical = realpathSync(filePath);
             if (!isWithinContentDir(resolvedCanonical, contentDir)) {
-              console.warn(
+              log.warn(
+                { path: filePath, canonical: resolvedCanonical },
                 `[persistence] symlink-escape on load: ${filePath} → ${resolvedCanonical}, refusing`,
               );
               return;
@@ -2113,7 +2117,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           } catch (e) {
             const code = (e as NodeJS.ErrnoException).code;
             if (code === 'ELOOP') {
-              console.warn(`[persistence] Symlink cycle on load: ${filePath}, refusing`);
+              log.warn(
+                { path: filePath },
+                `[persistence] Symlink cycle on load: ${filePath}, refusing`,
+              );
               return;
             }
             // Preserve the historical fallback: stat/read the requested path when realpath fails.

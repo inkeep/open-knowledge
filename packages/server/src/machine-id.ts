@@ -30,6 +30,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { getLogger } from './logger.ts';
 
 /**
  * Accepts UUIDs and other short opaque tokens; rejects whitespace/control
@@ -72,8 +73,9 @@ export function getMachineId(homedirOverride?: string): string {
       // judgments fail closed on pid liveness, so this degrades safely — but
       // loudly: every collision error this process later hits will blame
       // "already running" while the real root cause is this write failure.
-      console.warn(
-        `[machine-id] Failed to persist ${filePath} — using an ephemeral per-process id; ` +
+      getLogger('machine-id').warn(
+        { path: filePath, err },
+        `Failed to persist ${filePath} — using an ephemeral per-process id; ` +
           `lock ownership checks will fail closed (collision) instead of recognizing this machine: ` +
           `${err instanceof Error ? err.message : String(err)}`,
       );

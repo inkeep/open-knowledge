@@ -8,7 +8,10 @@ import {
   resolveAssetProjectPath,
 } from '@inkeep/open-knowledge-core';
 import type { FileIndexEntry } from './file-watcher.ts';
+import { getLogger } from './logger.ts';
 import { isWithinContentDir } from './persistence.ts';
+
+const log = getLogger('asset-references');
 
 interface ReferencedAssetEntry {
   kind: 'asset';
@@ -156,7 +159,7 @@ function resolveReferencedAssetWithinContentDir(args: {
   } catch (err) {
     const code = errnoCode(err);
     if (code !== 'ENOENT' && code !== 'ENOTDIR') {
-      console.warn('[asset-references] unexpected error resolving asset:', args.href, err);
+      log.warn({ href: args.href, err }, 'unexpected error resolving asset');
     }
     return null;
   }
@@ -177,7 +180,7 @@ export function resolveReferencedAssetPath(args: {
   try {
     contentDir = normalize(realpathSync(args.contentDir));
   } catch (err) {
-    console.warn('[asset-references] could not resolve content directory:', err);
+    log.warn({ err }, 'could not resolve content directory');
     return null;
   }
   return resolveReferencedAssetWithinContentDir({ ...args, contentDir })?.absolutePath ?? null;
@@ -207,7 +210,7 @@ export function collectReferencedAssets(args: {
   try {
     contentDir = normalize(realpathSync(args.contentDir));
   } catch (err) {
-    console.warn('[asset-references] could not resolve content directory:', err);
+    log.warn({ err }, 'could not resolve content directory');
     return [];
   }
   const byPath = new Map<string, ReferencedAssetEntry>();

@@ -925,7 +925,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     backlinkSaveTimer = setTimeout(() => {
       backlinkSaveTimer = null;
       void backlinkIndex.saveToDisk().catch((err) => {
-        console.warn('[backlinks] Failed to persist debounced cache:', err);
+        getLogger('backlinks').warn({ err }, 'Failed to persist debounced cache');
       });
     }, BACKLINK_SAVE_DEBOUNCE_MS);
   }
@@ -3380,7 +3380,10 @@ export function createServer(options: ServerOptions): ServerInstance {
             log.warn({ err, branch }, '[backlinks] global skill bundle ingest failed');
           }
           void backlinkIndex.saveToDisk().catch((err) => {
-            console.warn(`[backlinks] Failed to persist startup cache for ${branch}:`, err);
+            getLogger('backlinks').warn(
+              { branch, err },
+              `Failed to persist startup cache for ${branch}`,
+            );
           });
         } catch (err) {
           log.error(
@@ -3816,7 +3819,10 @@ export function createServer(options: ServerOptions): ServerInstance {
                 );
               }
               void backlinkIndex.saveToDisk(newBranch).catch((err) => {
-                console.warn(`[backlinks] Failed to persist branch cache for ${newBranch}:`, err);
+                getLogger('backlinks').warn(
+                  { branch: newBranch, err },
+                  `Failed to persist branch cache for ${newBranch}`,
+                );
               });
             } catch (err) {
               log.error(

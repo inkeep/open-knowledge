@@ -25,9 +25,12 @@ import {
   tracedUnlinkSync,
   tracedWriteFileSync,
 } from './fs-traced.ts';
+import { getLogger } from './logger.ts';
 import type { ShadowHandle } from './shadow-repo.ts';
 import { shadowGit } from './shadow-repo.ts';
 import { getMeter, withSpan } from './telemetry.ts';
+
+const log = getLogger('rename-log');
 
 let _liveEntriesGauge: ReturnType<ReturnType<typeof getMeter>['createUpDownCounter']> | null = null;
 function liveEntriesGauge(): ReturnType<ReturnType<typeof getMeter>['createUpDownCounter']> {
@@ -200,7 +203,7 @@ export function loadRenameLogIndex(shadowDir: string): RenameLogIndex {
   try {
     raw = readFileSync(path, 'utf-8');
   } catch (err) {
-    console.warn(`[rename-log] WARN: failed to read ${path}, treating as empty:`, err);
+    log.warn({ path, err }, `[rename-log] WARN: failed to read ${path}, treating as empty`);
     return index;
   }
 
@@ -211,7 +214,8 @@ export function loadRenameLogIndex(shadowDir: string): RenameLogIndex {
   // Well-formed jsonl ends with a newline → trailing is ''. Anything else is
   // an incomplete final line (mid-write crash, disk full).
   if (trailing !== '') {
-    console.warn(
+    log.warn(
+      { bytes: trailing.length },
       `[rename-log] WARN: trailing line missing newline (${trailing.length} bytes); dropped`,
     );
   }
@@ -226,14 +230,15 @@ export function loadRenameLogIndex(shadowDir: string): RenameLogIndex {
     } catch (parseErr) {
       const sample = line.slice(0, 80);
       const errMsg = (parseErr as Error).message;
-      console.warn(
+      log.warn(
+        { line: i + 1, errMsg },
         `[rename-log] WARN: corrupt entry at line ${i + 1} skipped (${errMsg}): ${sample}${line.length > 80 ? '…' : ''}`,
       );
       continue;
     }
     const entry = validateEntry(parsed);
     if (!entry) {
-      console.warn(`[rename-log] WARN: corrupt entry at line ${i + 1} skipped`);
+      log.warn({ line: i + 1 }, `[rename-log] WARN: corrupt entry at line ${i + 1} skipped`);
       continue;
     }
     indexInsert(index, entry);
@@ -286,7 +291,8 @@ export function appendRenameLogEntry(
       const size = statSync(path).size;
       if (size > RENAME_LOG_HARD_CAP_BYTES) {
         overCap = true;
-        console.warn(
+        log.warn(
+          { size, cap: RENAME_LOG_HARD_CAP_BYTES },
           `[rename-log] WARN: file size ${size} exceeds hard cap ${RENAME_LOG_HARD_CAP_BYTES}; forcing GC sweep`,
         );
       }
@@ -321,7 +327,7 @@ function scheduleHardCapGc(shadow: ShadowHandle, index: RenameLogIndex): void {
   // gcRenameLog itself enforces the gitDir-scoped dedup invariant.
   queueMicrotask(() => {
     gcRenameLog(shadow, index).catch((err) => {
-      console.warn('[rename-log] WARN: hard-cap forced GC failed:', err);
+      log.warn({ err }, '[rename-log] WARN: hard-cap forced GC failed');
     });
   });
 }
@@ -442,13 +448,15 @@ export function expandPredecessors(
   // predecessor of `cursor`?" by looking up `index.byTo.get(cursor)`.
   while (true) {
     if (chain.length >= MAX_PREDECESSOR_CHAIN_DEPTH) {
-      console.warn(
+      log.warn(
+        { docName: currentDocName, maxDepth: MAX_PREDECESSOR_CHAIN_DEPTH },
         `[rename-log] WARN: predecessor chain depth exceeded ${MAX_PREDECESSOR_CHAIN_DEPTH} while expanding "${currentDocName}"; truncating`,
       );
       break;
     }
     if (visited.has(cursor)) {
-      console.warn(
+      log.warn(
+        { cursor, docName: currentDocName },
         `[rename-log] WARN: cycle detected at "${cursor}" while expanding predecessors of "${currentDocName}"; truncating`,
       );
       break;
@@ -530,9 +538,9 @@ export async function buildSeeds(
     try {
       renameAuthorDate = (await sg.raw('show', '-s', '--format=%aI', renameCommit)).trim();
     } catch (err) {
-      console.warn(
-        `[rename-log] WARN: buildSeeds: git show failed for rename commit ${renameCommit}; falling back to single-seed:`,
-        err,
+      log.warn(
+        { renameCommit, err },
+        `[rename-log] WARN: buildSeeds: git show failed for rename commit ${renameCommit}; falling back to single-seed`,
       );
       span.setAttribute('rename.seeds_count', 1);
       return [renameCommit];
@@ -551,9 +559,9 @@ export async function buildSeeds(
         `refs/checkpoints/${branch}/`,
       );
     } catch (err) {
-      console.warn(
-        `[rename-log] WARN: buildSeeds: for-each-ref failed for branch ${branch}; falling back to single-seed:`,
-        err,
+      log.warn(
+        { branch, err },
+        `[rename-log] WARN: buildSeeds: for-each-ref failed for branch ${branch}; falling back to single-seed`,
       );
       span.setAttribute('rename.seeds_count', 1);
       return [renameCommit];
@@ -774,9 +782,9 @@ export async function buildAncestorShaSet(
     try {
       raw = await revListReachable(shadow, seeds);
     } catch (err) {
-      console.warn(
-        `[rename-log] WARN: buildAncestorShaSet: rev-list failed (${seeds.length} seeds); falling back to empty set:`,
-        err,
+      log.warn(
+        { seeds: seeds.length, err },
+        `[rename-log] WARN: buildAncestorShaSet: rev-list failed (${seeds.length} seeds); falling back to empty set`,
       );
       span.setAttribute('rename.ancestor_shas_count', 0);
       return new Set();
@@ -840,7 +848,8 @@ export function batchCheckExistence(
     };
 
     const timer = setTimeout(() => {
-      console.warn(
+      log.warn(
+        { timeoutMs, probes: probes.length },
         `[rename-log] WARN: batchCheckExistence timed out after ${timeoutMs}ms (${probes.length} probes); returning all-false`,
       );
       try {
@@ -853,7 +862,7 @@ export function batchCheckExistence(
 
     child.on('error', (err) => {
       clearTimeout(timer);
-      console.warn(`[rename-log] WARN: batchCheckExistence spawn error: ${err.message}`);
+      log.warn({ err }, `[rename-log] WARN: batchCheckExistence spawn error: ${err.message}`);
       settle(allFalse());
     });
 
@@ -867,7 +876,8 @@ export function batchCheckExistence(
       // might be safe to drop (rare), while a false positive (treating a
       // crashed batch as "all missing") would silently drop live entries.
       if ((code !== null && code !== 0) || (signal && !settled)) {
-        console.warn(
+        log.warn(
+          { code, signal: signal ?? 'none' },
           `[rename-log] WARN: batchCheckExistence exited code=${code} signal=${signal ?? 'none'}; returning all-false`,
         );
         settle(allFalse());
@@ -892,7 +902,8 @@ export function batchCheckExistence(
       child.stdin.end(`${stdin}\n`);
     } catch (err) {
       clearTimeout(timer);
-      console.warn(
+      log.warn(
+        { err },
         `[rename-log] WARN: batchCheckExistence stdin write failed: ${(err as Error).message}`,
       );
       settle(allFalse());
@@ -944,7 +955,8 @@ export function batchResolveBlobOids(
     };
 
     const timer = setTimeout(() => {
-      console.warn(
+      log.warn(
+        { timeoutMs, probes: probes.length },
         `[rename-log] WARN: batchResolveBlobOids timed out after ${timeoutMs}ms (${probes.length} probes); returning all-null`,
       );
       try {
@@ -957,14 +969,15 @@ export function batchResolveBlobOids(
 
     child.on('error', (err) => {
       clearTimeout(timer);
-      console.warn(`[rename-log] WARN: batchResolveBlobOids spawn error: ${err.message}`);
+      log.warn({ err }, `[rename-log] WARN: batchResolveBlobOids spawn error: ${err.message}`);
       settle(allNull());
     });
 
     child.on('close', (code, signal) => {
       clearTimeout(timer);
       if ((code !== null && code !== 0) || (signal && !settled)) {
-        console.warn(
+        log.warn(
+          { code, signal: signal ?? 'none' },
           `[rename-log] WARN: batchResolveBlobOids exited code=${code} signal=${signal ?? 'none'}; returning all-null`,
         );
         settle(allNull());
@@ -988,7 +1001,8 @@ export function batchResolveBlobOids(
       child.stdin.end(`${stdin}\n`);
     } catch (err) {
       clearTimeout(timer);
-      console.warn(
+      log.warn(
+        { err },
         `[rename-log] WARN: batchResolveBlobOids stdin write failed: ${(err as Error).message}`,
       );
       settle(allNull());
@@ -1010,7 +1024,7 @@ function rewriteJsonlAtomically(shadowDir: string, index: RenameLogIndex): void 
       try {
         tracedWriteFileSync(path, '');
       } catch (err) {
-        console.warn('[rename-log] WARN: failed to truncate empty jsonl:', err);
+        log.warn({ err }, '[rename-log] WARN: failed to truncate empty jsonl');
       }
     }
     return;
@@ -1026,7 +1040,7 @@ function rewriteJsonlAtomically(shadowDir: string, index: RenameLogIndex): void 
     tracedWriteFileSync(tmp, serialized);
     tracedRenameSync(tmp, path);
   } catch (err) {
-    console.warn('[rename-log] WARN: atomic rewrite failed; index ahead of disk:', err);
+    log.warn({ err }, '[rename-log] WARN: atomic rewrite failed; index ahead of disk');
     // Best-effort cleanup of the orphaned tmp file. If this throws too, the
     // next rewrite will overwrite it.
     try {
@@ -1057,7 +1071,8 @@ export function backfillRenameLogCommitSha(
   // one: `sweepLazyPopOrphans` would no longer match (commitSha non-empty)
   // and reachability GC would silently drop them as unreachable.
   if (!/^[0-9a-f]{40}$/.test(commitSha)) {
-    console.warn(
+    log.warn(
+      { commitSha },
       `[rename-log] WARN: backfill rejected invalid commitSha: ${JSON.stringify(commitSha)}`,
     );
     return { updated: 0 };
@@ -1109,7 +1124,8 @@ export function sweepLazyPopOrphans(shadowDir: string, index: RenameLogIndex): {
   }
   rewriteJsonlAtomically(shadowDir, index);
   liveEntriesGauge().add(-orphans.length);
-  console.warn(
+  log.warn(
+    { orphans: orphans.length },
     `[rename-log] gc swept ${orphans.length} orphan entries (lazy-pop residue from mid-rename crash)`,
   );
   return { dropped: orphans.length };
@@ -1216,7 +1232,7 @@ async function gcRenameLogInner(
       .map((l) => l.trim())
       .filter(Boolean);
   } catch (err) {
-    console.warn('[rename-log] WARN: gcRenameLog aborted — failed to enumerate refs:', err);
+    log.warn({ err }, '[rename-log] WARN: gcRenameLog aborted — failed to enumerate refs');
     return result;
   }
 
@@ -1226,7 +1242,7 @@ async function gcRenameLogInner(
     try {
       raw = await revListReachable(shadow, refLines);
     } catch (err) {
-      console.warn('[rename-log] WARN: gcRenameLog aborted — rev-list failed:', err);
+      log.warn({ err }, '[rename-log] WARN: gcRenameLog aborted — rev-list failed');
       return result;
     }
     for (const line of raw.split('\n')) {
@@ -1273,9 +1289,9 @@ async function gcRenameLogInner(
       // jsonl, so an unobservable failure of the recovery itself is the
       // worst-case shape. Warn so the operator sees that rebuild was
       // attempted but git rejected it.
-      console.warn(
-        '[rename-log] WARN: gcRenameLog rebuild: git log --grep failed; skipping reconstruction:',
-        err,
+      log.warn(
+        { err },
+        '[rename-log] WARN: gcRenameLog rebuild: git log --grep failed; skipping reconstruction',
       );
       logRaw = '';
     }
@@ -1346,7 +1362,8 @@ async function gcRenameLogInner(
   }
 
   if (result.dropped > 0) {
-    console.warn(
+    log.warn(
+      { dropped: result.dropped, retained: result.retained },
       `[rename-log] gc swept ${result.dropped} dead entries (${result.retained} live remain)`,
     );
     gcDroppedCounter().add(result.dropped);
@@ -1395,9 +1412,9 @@ async function buildBranchReachabilityMap(
     try {
       raw = await revListReachable(shadow, refs);
     } catch (err) {
-      console.warn(
-        `[rename-log] WARN: gcRenameLog rebuild: rev-list failed for branch ${branch}; reconstructed entries on this branch will fall back to 'main':`,
-        err,
+      log.warn(
+        { branch, err },
+        `[rename-log] WARN: gcRenameLog rebuild: rev-list failed for branch ${branch}; reconstructed entries on this branch will fall back to 'main'`,
       );
       continue;
     }

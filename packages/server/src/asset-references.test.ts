@@ -1,7 +1,7 @@
-import { describe, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
 import {
   assetReferenceSignature,
   assetReferencesChanged,
@@ -13,6 +13,7 @@ import {
   stripHrefDecorations,
 } from './asset-references.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
+import { getLogger } from './logger.ts';
 
 function withFixture(fn: (dir: string) => void) {
   const dir = mkdtempSync(join(tmpdir(), 'ok-assets-'));
@@ -391,7 +392,7 @@ describe('asset reference extraction', () => {
     }));
 
   test('returns empty asset list when content directory cannot be resolved', () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(getLogger('asset-references'), 'warn');
     try {
       const assets = collectReferencedAssets({
         contentDir: join(tmpdir(), 'ok-missing-content-dir'),
@@ -407,7 +408,7 @@ describe('asset reference extraction', () => {
   });
 
   test('returns null when resolving from a missing content directory', () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(getLogger('asset-references'), 'warn');
     try {
       expect(
         resolveReferencedAssetPath({

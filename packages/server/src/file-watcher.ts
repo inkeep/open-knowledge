@@ -35,6 +35,8 @@ import { isWithinContentDir } from './persistence.ts';
 import { containsConflictMarkers } from './reconciliation.ts';
 import { getMeter, withSpan } from './telemetry.ts';
 
+const log = getLogger('file-watcher');
+
 /** Subscription handle compatible with both @parcel/watcher and chokidar backends. */
 export interface AsyncSubscription {
   unsubscribe(): Promise<void>;
@@ -345,8 +347,9 @@ function eventEscapesContentDir(rawPath: string, contentDir: string): boolean {
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') return false; // deleted between event and check
-    console.warn(
-      `[file-watcher] lstat failed for escape check on ${rawPath} (${code}), dropping event`,
+    log.warn(
+      { path: rawPath, code },
+      `lstat failed for escape check on ${rawPath} (${code}), dropping event`,
     );
     return true; // fail closed on unexpected errors
   }
@@ -357,8 +360,9 @@ function eventEscapesContentDir(rawPath: string, contentDir: string): boolean {
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code !== 'ENOENT' && code !== 'ELOOP') {
-      console.warn(
-        `[file-watcher] realpath failed for escape check on ${rawPath} (${code}), dropping event`,
+      log.warn(
+        { path: rawPath, code },
+        `realpath failed for escape check on ${rawPath} (${code}), dropping event`,
       );
     }
     return true;
@@ -507,7 +511,7 @@ export async function classifyEvents(
       createContents.set(event.path, await readFile(event.path, 'utf-8'));
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.warn(`[file-watcher] Failed to read ${event.path}:`, e);
+        log.warn({ path: event.path, err: e }, `Failed to read ${event.path}`);
       }
     }
   }
@@ -516,7 +520,7 @@ export async function classifyEvents(
       updateContents.set(event.path, await readFile(event.path, 'utf-8'));
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.warn(`[file-watcher] Failed to read ${event.path}:`, e);
+        log.warn({ path: event.path, err: e }, `Failed to read ${event.path}`);
       }
     }
   }
@@ -533,7 +537,7 @@ export async function classifyEvents(
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT') {
-        console.warn(`[file-watcher] resolveDocName lstat failed for ${rawPath}:`, e);
+        log.warn({ path: rawPath, err: e }, `resolveDocName lstat failed for ${rawPath}`);
       }
       if (aliasMap.has(raw)) {
         aliasMap.delete(raw);
@@ -555,7 +559,7 @@ export async function classifyEvents(
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT' && code !== 'ELOOP') {
-        console.warn(`[file-watcher] resolveDocName realpath failed for ${rawPath}:`, e);
+        log.warn({ path: rawPath, err: e }, `resolveDocName realpath failed for ${rawPath}`);
       }
       aliasMap.delete(raw);
       return raw;
@@ -717,7 +721,7 @@ async function seedLastKnownHashes(
       } catch (e) {
         const code = (e as NodeJS.ErrnoException).code;
         if (code !== 'ENOENT') {
-          console.warn(`[file-watcher] Failed to lstat ${fullPath}, skipping:`, e);
+          log.warn({ path: fullPath, err: e }, `Failed to lstat ${fullPath}, skipping`);
         }
         continue;
       }
@@ -729,15 +733,18 @@ async function seedLastKnownHashes(
         } catch (e) {
           const code = (e as NodeJS.ErrnoException).code;
           if (code === 'ENOENT' || code === 'ELOOP') {
-            console.warn(`[file-watcher] Broken/cyclic symlink at ${fullPath}, skipping`);
+            log.warn({ path: fullPath, code }, `Broken/cyclic symlink at ${fullPath}, skipping`);
           } else {
-            console.warn(`[file-watcher] Failed to resolve symlink ${fullPath}:`, e);
+            log.warn({ path: fullPath, err: e }, `Failed to resolve symlink ${fullPath}`);
           }
           continue;
         }
 
         if (!isWithinContentDir(canonical, contentDir)) {
-          console.warn(`[file-watcher] Symlink escape: ${fullPath} → ${canonical}, skipping`);
+          log.warn(
+            { path: fullPath, canonical },
+            `Symlink escape: ${fullPath} → ${canonical}, skipping`,
+          );
           continue;
         }
 
@@ -809,8 +816,9 @@ async function seedLastKnownHashes(
               if (ext) {
                 const reg = registerDocExtension(canonicalDocName, ext);
                 if (reg.shadowed) {
-                  console.warn(
-                    `[file-watcher] docName "${canonicalDocName}" has both "${reg.effective}" and "${reg.shadowed}" on disk; "${reg.effective}" wins (industry convention). Rename or delete one to disambiguate.`,
+                  log.warn(
+                    { docName: canonicalDocName, effective: reg.effective, shadowed: reg.shadowed },
+                    `docName "${canonicalDocName}" has both "${reg.effective}" and "${reg.shadowed}" on disk; "${reg.effective}" wins (industry convention). Rename or delete one to disambiguate.`,
                   );
                   if (!reg.changed) continue;
                 }
@@ -827,7 +835,7 @@ async function seedLastKnownHashes(
             } catch (err) {
               const code = (err as NodeJS.ErrnoException).code;
               if (code !== 'ENOENT') {
-                console.warn(`[file-watcher] Failed to seed hash for ${canonical}:`, err);
+                log.warn({ path: canonical, err }, `Failed to seed hash for ${canonical}`);
               }
             }
           } else if (canonStat.isFile()) {
@@ -857,7 +865,7 @@ async function seedLastKnownHashes(
             });
           }
         } catch (e) {
-          console.warn(`[file-watcher] Failed to stat symlink target ${canonical}:`, e);
+          log.warn({ path: canonical, err: e }, `Failed to stat symlink target ${canonical}`);
         }
       } else if (lst.isDirectory()) {
         const relPath = contentRelativePath(contentDir, fullPath);
@@ -892,8 +900,9 @@ async function seedLastKnownHashes(
           if (ext) {
             const reg = registerDocExtension(docName, ext);
             if (reg.shadowed) {
-              console.warn(
-                `[file-watcher] docName "${docName}" has both "${reg.effective}" and "${reg.shadowed}" on disk; "${reg.effective}" wins (industry convention). Rename or delete one to disambiguate.`,
+              log.warn(
+                { docName, effective: reg.effective, shadowed: reg.shadowed },
+                `docName "${docName}" has both "${reg.effective}" and "${reg.shadowed}" on disk; "${reg.effective}" wins (industry convention). Rename or delete one to disambiguate.`,
               );
               // When .md is shadowed by an already-registered .mdx (or vice-versa),
               // skip registering this file in the index — the winning entry remains.
@@ -912,11 +921,12 @@ async function seedLastKnownHashes(
         } catch (err) {
           const code = (err as NodeJS.ErrnoException).code;
           if (code === 'EACCES') {
-            console.warn(
-              `[file-watcher] Permission denied reading ${fullPath}, file excluded from index`,
+            log.warn(
+              { path: fullPath, code },
+              `Permission denied reading ${fullPath}, file excluded from index`,
             );
           } else if (code !== 'ENOENT') {
-            console.warn(`[file-watcher] Failed to seed hash for ${fullPath}:`, err);
+            log.warn({ path: fullPath, err }, `Failed to seed hash for ${fullPath}`);
           }
         }
       } else if (lst.isFile()) {
@@ -947,7 +957,7 @@ async function seedLastKnownHashes(
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code !== 'ENOENT') {
-      console.warn(`[file-watcher] Failed to read directory ${dir}:`, err);
+      log.warn({ dir, err }, `Failed to read directory ${dir}`);
     }
   }
 }
@@ -1091,7 +1101,7 @@ function updateFolderIndexFromRawEvents(
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT') {
-        console.warn(`[file-watcher] folder lstat failed for ${raw.path} (${code})`);
+        log.warn({ path: raw.path, code }, `folder lstat failed for ${raw.path} (${code})`);
       }
       continue;
     }
@@ -1109,7 +1119,10 @@ function updateFolderIndexFromRawEvents(
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
         if (code !== 'ENOENT') {
-          console.warn(`[file-watcher] folder symlink resolve failed for ${raw.path} (${code})`);
+          log.warn(
+            { path: raw.path, code },
+            `folder symlink resolve failed for ${raw.path} (${code})`,
+          );
         }
         folderStat = null;
       }
@@ -1166,7 +1179,7 @@ function scanForUntrackedSubfolders(
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT') {
-        console.warn(`[file-watcher] folder rescan readdir failed for ${dir} (${code})`);
+        log.warn({ dir, code }, `folder rescan readdir failed for ${dir} (${code})`);
       }
       continue;
     }
@@ -1197,7 +1210,10 @@ function scanForUntrackedSubfolders(
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
         if (code !== 'ENOENT') {
-          console.warn(`[file-watcher] folder rescan lstat failed for ${fullPath} (${code})`);
+          log.warn(
+            { path: fullPath, code },
+            `folder rescan lstat failed for ${fullPath} (${code})`,
+          );
         }
         continue;
       }
@@ -1239,7 +1255,7 @@ export async function handleRawEvents(
   // content as a contentDir-scoped DiskEvent.
   const safeEvents = rawEvents.filter((e) => {
     if (!eventEscapesContentDir(e.path, contentDir)) return true;
-    console.warn(`[file-watcher] Symlink escape: ${e.path}, dropping ${e.type} event`);
+    log.warn({ path: e.path, type: e.type }, `Symlink escape: ${e.path}, dropping ${e.type} event`);
     return false;
   });
 
@@ -1272,7 +1288,7 @@ export async function handleRawEvents(
       .filter((path) => !eventEscapesContentDir(path, contentDir))
       .map((path) => ({ type: 'create' as const, path }));
     if (rescuedCreates.length > 0) {
-      getLogger('file-watcher').debug(
+      log.debug(
         {
           count: rescuedCreates.length,
           paths: rescuedCreates.map((e) => toPosix(relative(contentDir, e.path))),
@@ -1331,8 +1347,9 @@ export async function handleRawEvents(
       } catch (e) {
         const code = (e as NodeJS.ErrnoException).code;
         if (code !== 'ENOENT') {
-          console.warn(
-            `[file-watcher] realpathSync failed for self-write check on ${event.path} (${code})`,
+          log.warn(
+            { path: event.path, code },
+            `realpathSync failed for self-write check on ${event.path} (${code})`,
           );
         }
       }
@@ -1345,8 +1362,9 @@ export async function handleRawEvents(
       } catch (e) {
         const code = (e as NodeJS.ErrnoException).code;
         if (code !== 'ENOENT') {
-          console.warn(
-            `[file-watcher] realpathSync failed for self-write check on ${event.newPath} (${code})`,
+          log.warn(
+            { path: event.newPath, code },
+            `realpathSync failed for self-write check on ${event.newPath} (${code})`,
           );
         }
       }
@@ -1388,7 +1406,7 @@ export async function handleRawEvents(
     }
 
     if (isSelf) {
-      getLogger('file-watcher').debug(
+      log.debug(
         {
           kind: event.kind,
           path: event.kind === 'rename' ? event.newPath : event.path,
@@ -1400,7 +1418,7 @@ export async function handleRawEvents(
       continue;
     }
 
-    getLogger('file-watcher').debug(
+    log.debug(
       {
         kind: event.kind,
         path: event.kind === 'rename' ? event.newPath : event.path,
@@ -1425,10 +1443,7 @@ export async function handleRawEvents(
   }
 
   for (const event of folderEvents) {
-    getLogger('file-watcher').debug(
-      { kind: event.kind, path: event.path },
-      `[file-watcher] Dispatching: ${event.kind}`,
-    );
+    log.debug({ kind: event.kind, path: event.path }, `[file-watcher] Dispatching: ${event.kind}`);
     _fileWatcherEventsCounter().add(1, { 'disk.kind': event.kind, self: false });
     await withSpan(
       'file_watcher.process_event',
@@ -1494,7 +1509,7 @@ export async function handleRawEvents(
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT') {
-        console.warn(`[file-watcher] file-event lstat failed for ${raw.path} (${code})`);
+        log.warn({ path: raw.path, code }, `file-event lstat failed for ${raw.path} (${code})`);
       }
       continue;
     }
@@ -1550,7 +1565,7 @@ async function startParcelWatcher(
     // isn't bundled, so we fall back to chokidar. The `watching … backend:
     // chokidar` info line records the outcome — this is debug-only so the
     // terminal stays clean (it's a routine fallback, not an error).
-    getLogger('file-watcher').debug(
+    log.debug(
       { err: err instanceof Error ? err.message : String(err) },
       '[file-watcher] @parcel/watcher import failed; falling back to chokidar',
     );
@@ -1566,7 +1581,7 @@ async function startParcelWatcher(
       contentDir,
       async (err, events) => {
         if (err) {
-          console.error('[file-watcher]', err);
+          log.error({ err }, 'parcel watcher callback error');
           return;
         }
         try {
@@ -1584,7 +1599,7 @@ async function startParcelWatcher(
           // `getFileIndex()` call rebuilds the cached snapshot.
           onAfterMutation();
         } catch (handleErr) {
-          console.error('[file-watcher] parcel batch error:', handleErr);
+          log.error({ err: handleErr }, 'parcel batch error');
         }
       },
       subscribeOpts,
@@ -1592,7 +1607,7 @@ async function startParcelWatcher(
 
     return subscription;
   } catch (err) {
-    console.warn('[file-watcher] @parcel/watcher subscribe failed, falling back to chokidar:', err);
+    log.warn({ err }, '@parcel/watcher subscribe failed, falling back to chokidar');
     return null;
   }
 }
@@ -1629,7 +1644,7 @@ async function startChokidarWatcher(
       : undefined,
   });
 
-  watcher.on('error', (err) => console.error('[file-watcher] chokidar error:', err));
+  watcher.on('error', (err) => log.error({ err }, 'chokidar error'));
 
   // Batch chokidar events to match @parcel/watcher's coalescing behavior.
   // Without batching, a file rename (mv old.md new.md) produces separate
@@ -1655,7 +1670,7 @@ async function startChokidarWatcher(
         aliasMap,
       )
         .then(onAfterMutation)
-        .catch((err) => console.error('[file-watcher] chokidar batch error:', err));
+        .catch((err) => log.error({ err }, 'chokidar batch error'));
     }, BATCH_WINDOW_MS);
   }
 
@@ -1772,7 +1787,7 @@ export async function startWatcher(
 
   const originalUnsubscribe = subscription.unsubscribe.bind(subscription);
 
-  getLogger('file-watcher').info({ contentDir, backend }, 'watching for external .md changes');
+  log.info({ contentDir, backend }, 'watching for external .md changes');
 
   return {
     async unsubscribe() {
