@@ -31,6 +31,7 @@
 
 import type { ServerResponse } from 'node:http';
 import type { Document } from '@hocuspocus/server';
+import type * as Y from 'yjs';
 import type { ResolveStrategy } from './conflict-storage.ts';
 import { stripDocExtension } from './doc-extensions.ts';
 import { errorResponse } from './http/error-response.ts';
@@ -71,12 +72,41 @@ const _exhaustiveResolveStrategy: _ExhaustiveResolveStrategy = true;
  * `Y.Map('lifecycle').get('status') === 'conflict'`. Every mutating write
  * surface reads this via the helper rather than re-deriving the literal.
  *
- * Centralized so the lifecycle Y.Map contract has exactly one named accessor
- * — adding new lifecycle discriminators (`deleted-upstream`, `renamed`,
- * future block-conflict shadows) goes through this one site.
+ * Delegates to `frozenDocLifecycleStatus` — the single `lifecycle.status`
+ * read site — so adding new lifecycle discriminators (`deleted-upstream`,
+ * `renamed`, future block-conflict shadows) goes through the
+ * `FROZEN_LIFECYCLE_STATUSES` registry below, never a scattered compare.
  */
 export function isDocInConflict(document: Document): boolean {
-  return document.getMap('lifecycle').get('status') === 'conflict';
+  return frozenDocLifecycleStatus(document) === 'conflict';
+}
+
+/**
+ * Lifecycle statuses under which the persistence spine intentionally holds
+ * memory != disk and skips stores: externally deleted / renamed docs must
+ * not be rewritten at their old path, and conflict docs keep merge markers
+ * on disk for the resolver UI. Registry-first (mirroring
+ * `RESOLUTION_OPTIONS` above) so a new frozen status is added in exactly
+ * one place and every reader — `storeDocumentNow`'s guard, the staleness
+ * watchdog, `isDocInConflict` — picks it up together.
+ */
+export const FROZEN_LIFECYCLE_STATUSES = ['deleted-upstream', 'renamed', 'conflict'] as const;
+export type FrozenLifecycleStatus = (typeof FROZEN_LIFECYCLE_STATUSES)[number];
+
+function isFrozenLifecycleStatus(value: unknown): value is FrozenLifecycleStatus {
+  return (FROZEN_LIFECYCLE_STATUSES as readonly unknown[]).includes(value);
+}
+
+/**
+ * The frozen lifecycle status a doc currently carries, or null when the
+ * doc is writable. Together with `isDocInConflict` (which delegates here)
+ * this is the single read site for `lifecycle.status` discriminators —
+ * adding a new lifecycle status goes through `FROZEN_LIFECYCLE_STATUSES`
+ * above, never a scattered string compare.
+ */
+export function frozenDocLifecycleStatus(document: Y.Doc): FrozenLifecycleStatus | null {
+  const status = document.getMap('lifecycle').get('status');
+  return isFrozenLifecycleStatus(status) ? status : null;
 }
 
 /**

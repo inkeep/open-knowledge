@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BridgeInvariantViolationError } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { __setQuiescentOverrideForTests } from './bridge-quiescence.ts';
@@ -564,7 +564,7 @@ describe('Y.Text-is-truth wiring (FR-33 / FR-35)', () => {
  */
 describe('FR-9 — deferred-store-failed event + counter', () => {
   let tmpDir: string;
-  let warnSpy: ReturnType<typeof spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
   let warnings: string[];
 
   function findEventLines(eventName: string): Array<Record<string, unknown>> {
@@ -588,7 +588,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     switchReconciledBaseScope('main');
     resetMetrics();
     warnings = [];
-    warnSpy = spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
       warnings.push(args.map(String).join(' '));
     });
   });
@@ -709,7 +709,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     // must absorb the throw and emit `deferred-store-classifier-failed`
     // alongside the outer `deferred-store-failed` event with
     // errorClass='unknown'.
-    const renameSpy = spyOn(fsTraced, 'tracedRename').mockImplementation(async () => {
+    const renameSpy = vi.spyOn(fsTraced, 'tracedRename').mockImplementation(async () => {
       const malformed = Object.create(Error.prototype) as Error & { name: string };
       Object.defineProperty(malformed, 'message', { value: 'malformed-error', enumerable: true });
       Object.defineProperty(malformed, 'name', { value: 'MalformedError', enumerable: true });
@@ -784,7 +784,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     await storeDocument(persistence, document, docName);
     setBatchInProgress(false);
 
-    const renameSpy = spyOn(fsTraced, 'tracedRename').mockImplementation(async () => {
+    const renameSpy = vi.spyOn(fsTraced, 'tracedRename').mockImplementation(async () => {
       const malformed = Object.create(Error.prototype) as Error & { name: string };
       Object.defineProperty(malformed, 'name', { value: 'MalformedError', enumerable: true });
       Object.defineProperty(malformed, 'message', {
@@ -835,7 +835,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     await storeDocument(persistence, document, docName);
     setBatchInProgress(false);
 
-    const renameSpy = spyOn(fsTraced, 'tracedRename').mockImplementation(async () => {
+    const renameSpy = vi.spyOn(fsTraced, 'tracedRename').mockImplementation(async () => {
       const malformed = Object.create(Error.prototype) as Error & { name: string };
       Object.defineProperty(malformed, 'message', {
         value: 'malformed-error-verbose',
@@ -941,5 +941,96 @@ describe('FR-9 — classifyDeferredStoreError behavior', () => {
     expect(classifyDeferredStoreError(null)).toBe('unknown');
     expect(classifyDeferredStoreError('string-throw')).toBe('unknown');
     expect(classifyDeferredStoreError(42)).toBe('unknown');
+  });
+});
+
+describe('forceStore dispatch (staleness watchdog entry point)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'ok-force-store-'));
+    mkdirSync(tmpDir, { recursive: true });
+    setBatchInProgress(false);
+    switchReconciledBaseScope('main');
+  });
+
+  afterEach(() => {
+    setBatchInProgress(false);
+    switchReconciledBaseScope('main');
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('flushes a doc whose debounced store never landed', async () => {
+    const docName = 'wedged-doc';
+    const docPath = join(tmpDir, `${docName}.md`);
+    writeFileSync(docPath, 'initial\n', 'utf-8');
+    const persistence = createPersistenceExtension({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      gitEnabled: false,
+    });
+    const document = new Y.Doc();
+
+    await loadDocument(persistence, document, docName);
+    document.transact(() => replaceDocParagraph(document, 'rescued edit'), BROWSER_ORIGIN);
+    // No storeDocument call — the wedge shape: an edit with no store cycle left.
+
+    await persistence.forceStore(document, docName);
+
+    expect(readFileSync(docPath, 'utf-8')).toBe('rescued edit\n');
+    expect(getReconciledBase(docName)).toBe('rescued edit\n');
+
+    document.destroy();
+  });
+
+  test('defers during a coordinated batch and replays on drain', async () => {
+    const docName = 'batched-force';
+    const docPath = join(tmpDir, `${docName}.md`);
+    writeFileSync(docPath, 'initial\n', 'utf-8');
+    const persistence = createPersistenceExtension({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      gitEnabled: false,
+    });
+    const document = new Y.Doc();
+
+    await loadDocument(persistence, document, docName);
+    document.transact(() => replaceDocParagraph(document, 'parked edit'), BROWSER_ORIGIN);
+
+    setBatchInProgress(true);
+    await persistence.forceStore(document, docName);
+    expect(readFileSync(docPath, 'utf-8')).toBe('initial\n');
+    expect(persistence.getQueueDepths().branchDeferred).toBe(1);
+
+    setBatchInProgress(false);
+    await persistence.flushDeferredStores('within-branch');
+    expect(readFileSync(docPath, 'utf-8')).toBe('parked edit\n');
+
+    document.destroy();
+  });
+
+  test('short-circuits synthetic docs without touching queues', async () => {
+    const persistence = createPersistenceExtension({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      gitEnabled: false,
+    });
+    const document = new Y.Doc();
+    document.getText('source').insert(0, 'anything\n');
+
+    setBatchInProgress(true);
+    for (const name of [
+      '__system__',
+      '__config__/project',
+      '__skill__/project/foo',
+      'diagram.mmd',
+      'assets/flow.mermaid',
+    ]) {
+      await persistence.forceStore(document, name);
+    }
+
+    expect(persistence.getQueueDepths().branchDeferred).toBe(0);
+
+    document.destroy();
   });
 });

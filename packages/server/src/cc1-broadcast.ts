@@ -123,6 +123,26 @@ export function isLinkIndexExcludedDoc(documentName: string): boolean {
   return isSystemDoc(documentName) || isConfigDoc(documentName);
 }
 
+/**
+ * True when a doc name is excluded from the markdown L1 store spine
+ * (`storeDocumentNow`) because its persistence flows through a dedicated
+ * store/load path: system docs (never persisted), config docs (config
+ * persistence + validation hook), managed artifacts (skill/template
+ * persistence), and Mermaid docs (Y.Text-only persistence). Shared by
+ * `PersistenceHandle.forceStore` and the staleness watchdog so the two
+ * gates cannot drift. The debounced `onStoreDocument` hook dispatches each
+ * class to its dedicated path individually, so it cannot collapse onto
+ * this predicate.
+ */
+export function isPersistenceExcludedDoc(documentName: string): boolean {
+  return (
+    isSystemDoc(documentName) ||
+    isConfigDoc(documentName) ||
+    isManagedArtifactDoc(documentName) ||
+    isMermaidDoc(documentName)
+  );
+}
+
 export class CC1Broadcaster {
   private readonly hocuspocus: Hocuspocus;
   private readonly seqs = new Map<string, number>();

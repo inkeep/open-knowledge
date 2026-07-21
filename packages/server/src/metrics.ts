@@ -119,6 +119,33 @@ export interface ReconciliationMetrics {
    *  work undurable. The matching fragment-reconciliation queues
    *  unconditionally on the next settlement after the force-flush. */
   persistenceForceFlushDuringBurst: number;
+  /** Staleness watchdog — count of loaded docs first observed with
+   *  unpersisted in-memory edits older than the grace window and no pending
+   *  store (memory diverged from the persistence reconciled base). Counted
+   *  once per distinct stale content per doc, whether or not the watchdog
+   *  then forced a store or stood down for disk safety. A healthy server
+   *  stays at 0; any growth means a store cycle was lost after a session's
+   *  last edit. */
+  persistenceStalenessDetected: number;
+  /** Staleness watchdog — count of forced store dispatch attempts through
+   *  the normal persistence spine (retries after a failed attempt included,
+   *  so this can exceed `persistenceStalenessDetected`, which counts once
+   *  per distinct stale content). Stand-down detections don't dispatch and
+   *  never increment this. A healthy server stays at 0; growth means lost
+   *  store cycles are being rescued — investigate the underlying store
+   *  failures even though durability recovered. */
+  persistenceStalenessForcedStores: number;
+  /** Staleness watchdog — count of stand-down events: a stale doc was
+   *  detected but NOT re-flushed because disk holds state the reconciled
+   *  base does not account for (unreconciled external edit or delete,
+   *  never-loaded file) or the disk read failed. Verified-external-state
+   *  stand-downs AND structural read refusals (symlink-escape, symlink
+   *  cycle, oversized file — additionally logged at error) count once per
+   *  distinct stale content, then suppress until the doc's content
+   *  changes; only transient disk-read failures recount on each retry
+   *  (one per grace window). Any sustained non-zero rate is alertable —
+   *  unflushed edits are pinned in memory and lost on restart. */
+  persistenceStalenessStoodDown: number;
   /** Collab WebSocket upgrade sockets emitting EPIPE from `ws.send()` AFTER
    *  the call returned control — kernel-level TCP race against a peer that
    *  has sent FIN. Filtered at the socket-boundary listener per precedent
@@ -424,6 +451,9 @@ const counters: ReconciliationMetrics = {
   bridgeInvariantViolationsSuppressed: 0,
   persistenceSkipNonQuiescent: 0,
   persistenceForceFlushDuringBurst: 0,
+  persistenceStalenessDetected: 0,
+  persistenceStalenessForcedStores: 0,
+  persistenceStalenessStoodDown: 0,
   collabSocketEpipeCount: 0,
   collabSocketEconnresetCount: 0,
   collabMessageTooLargeCount: 0,
@@ -576,6 +606,18 @@ export function incrementPersistenceSkipNonQuiescent(): void {
 
 export function incrementPersistenceForceFlushDuringBurst(): void {
   counters.persistenceForceFlushDuringBurst++;
+}
+
+export function incrementPersistenceStalenessDetected(): void {
+  counters.persistenceStalenessDetected++;
+}
+
+export function incrementPersistenceStalenessForcedStores(): void {
+  counters.persistenceStalenessForcedStores++;
+}
+
+export function incrementPersistenceStalenessStoodDown(): void {
+  counters.persistenceStalenessStoodDown++;
 }
 
 export function incrementAgentPatchFindMismatches(): void {
@@ -806,6 +848,9 @@ export function resetMetrics(): void {
   counters.bridgeInvariantViolationsSuppressed = 0;
   counters.persistenceSkipNonQuiescent = 0;
   counters.persistenceForceFlushDuringBurst = 0;
+  counters.persistenceStalenessDetected = 0;
+  counters.persistenceStalenessForcedStores = 0;
+  counters.persistenceStalenessStoodDown = 0;
   counters.collabSocketEpipeCount = 0;
   counters.collabSocketEconnresetCount = 0;
   counters.collabMessageTooLargeCount = 0;

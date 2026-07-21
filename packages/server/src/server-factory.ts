@@ -1,6 +1,13 @@
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { Document, Extension } from '@hocuspocus/server';
 import { Hocuspocus, IncomingMessage, MessageType } from '@hocuspocus/server';
@@ -15,6 +22,7 @@ import {
   createBasenameIndex,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_LINTER_CONFIG,
+  DOCUMENT_OPEN_BYTE_LIMIT,
   humanFormat,
   isKnownConfigError,
   type LinterConfig,
@@ -141,6 +149,11 @@ import {
   setReconciledBase,
   switchReconciledBaseScope,
 } from './persistence.ts';
+import {
+  createPersistenceStalenessWatchdog,
+  type StalenessWatchdogHandle,
+  StructuralDiskReadError,
+} from './persistence-staleness-watchdog.ts';
 import { loadPrincipal } from './principal.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import { reconcile } from './reconciliation.ts';
@@ -189,6 +202,14 @@ export interface ServerOptions {
   quiet?: boolean;
   debounce?: number;
   maxDebounce?: number;
+  /**
+   * Persistence staleness watchdog tuning. Production defaults (5 min
+   * grace, 60 s sweep) live in `persistence-staleness-watchdog.ts`; tests
+   * pass small values to exercise the forced-store rescue path without
+   * wall-clock waits.
+   */
+  stalenessGraceMs?: number;
+  stalenessSweepIntervalMs?: number;
   gitEnabled?: boolean;
   commitDebounceMs?: number;
   wipRef?: string;
@@ -862,6 +883,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   let agentFocusBroadcaster: AgentFocusBroadcaster | null = null;
   let agentPresenceBroadcaster: AgentPresenceBroadcaster | null = null;
   let invalidateReferencedAssetsCache: (() => void) | null = null;
+  let stalenessWatchdog: StalenessWatchdogHandle | null = null;
 
   // Semantic-search service. Always constructed (cheap, inert until enabled +
   // keyed; the loader makes no network call). The api-extension drives the lazy
@@ -1225,6 +1247,74 @@ export function createServer(options: ServerOptions): ServerInstance {
       registerPersistenceQueueDepthProvider(() => persistence.getQueueDepths()),
     );
     installServerWorkloadGauges();
+
+    // Durability backstop: Hocuspocus re-arms the store debounce only on a
+    // new Y.Doc update and user docs stay resident for the server lifetime,
+    // so a store cycle lost after a session's last edit (transient disk
+    // error, dropped deferral) would otherwise leave disk stale until the
+    // next edit. The watchdog re-flushes through `persistence.forceStore`
+    // (the normal store spine) and never overwrites disk state the
+    // reconciled base doesn't account for.
+    //
+    // Ephemeral single-file mode opts out: the watchdog's divergence
+    // classifier deliberately lacks the store's ephemeral-canonical no-op
+    // branch, so a round-trip-unstable file at rest would read as stale
+    // and pollute the staleness counters on a healthy session. Those
+    // sessions are short-lived and user-attended, not the days-wedged
+    // resident-doc class this backstop exists for.
+    if (!ephemeral) {
+      stalenessWatchdog = createPersistenceStalenessWatchdog({
+        getLoadedDocuments: () => hp.documents,
+        forceStore: (document, documentName) => persistence.forceStore(document, documentName),
+        // Realpath symlink-escape gate + open-byte-limit cap, matching the
+        // load-path read discipline. Not atomic — three syscalls — but
+        // ENOENT from any of them maps to `null` (out-of-band delete)
+        // rather than a transient read fault, so a delete landing between
+        // syscalls classifies the same as one landing before the first.
+        // The two refusals are structurally permanent (they won't clear
+        // without an on-disk change), so they throw the typed error that
+        // makes the watchdog decline instead of retrying every window.
+        readDiskBytes: (documentName) => {
+          const requestedPath = safeContentPath(documentName, contentDir);
+          // The structural throws live OUTSIDE the errno-filtering try
+          // blocks so a future widening of the errno filter can never
+          // swallow a security-relevant refusal.
+          let canonical: string;
+          let size: number;
+          try {
+            canonical = realpathSync(requestedPath);
+            size = statSync(canonical).size;
+          } catch (err) {
+            const code = (err as NodeJS.ErrnoException).code;
+            if (code === 'ENOENT') return null;
+            if (code === 'ELOOP') {
+              // A symlink cycle is structurally permanent, matching the
+              // load path's explicit ELOOP refusal.
+              throw new StructuralDiskReadError(`symlink cycle at content path: ${documentName}`);
+            }
+            throw err;
+          }
+          if (!isWithinContentDir(canonical, contentDir)) {
+            throw new StructuralDiskReadError(
+              `symlink-escape: ${requestedPath} resolves outside the content dir`,
+            );
+          }
+          if (size > DOCUMENT_OPEN_BYTE_LIMIT) {
+            throw new StructuralDiskReadError(
+              `document exceeds the open byte limit: ${documentName}`,
+            );
+          }
+          try {
+            return readFileSync(canonical, 'utf-8');
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+            throw err;
+          }
+        },
+        graceMs: options.stalenessGraceMs,
+        sweepIntervalMs: options.stalenessSweepIntervalMs,
+      });
+    }
 
     // Hocuspocus unloads documents as soon as the last WebSocket disconnects.
     // That is unsafe with client-side y-indexeddb: a browser refresh leaves a
@@ -1693,10 +1783,15 @@ export function createServer(options: ServerOptions): ServerInstance {
     // here too — otherwise their closures (capturing `hocuspocus`/`persistence`)
     // leak into the process-global registries and keep summing off a
     // half-torn-down object. Idempotent via splice(0), so destroy()'s later
-    // drain stays a no-op.
+    // drain stays a no-op. The staleness watchdog's interval holds the same
+    // closures, so it gets the same treatment.
     for (const unregister of unregisterWorkloadProviders.splice(0)) {
       unregister();
     }
+    // Sync context — can't await the drain; the disposed flag makes any
+    // in-flight sweep short-circuit at its next between-docs checkpoint.
+    void stalenessWatchdog?.dispose();
+    stalenessWatchdog = null;
     releaseServerLock(lockDir);
     throw err;
   }
@@ -2431,10 +2526,19 @@ export function createServer(options: ServerOptions): ServerInstance {
 
       // Stop contributing to the process-wide workload gauges before any
       // teardown phase runs — a mid-destroy sample would otherwise read
-      // half-dismantled structures.
+      // half-dismantled structures. Same for the staleness watchdog: a sweep
+      // firing mid-destroy could force a store against a draining spine.
       for (const unregister of unregisterWorkloadProviders.splice(0)) {
         unregister();
       }
+      // Awaited drain: dispose resolves only after any in-flight sweep has
+      // finished, so no forced store can land once teardown proceeds.
+      try {
+        await stalenessWatchdog?.dispose();
+      } catch (err) {
+        log.warn({ err }, '[server] staleness watchdog drain failed during destroy');
+      }
+      stalenessWatchdog = null;
 
       // Advertise teardown FIRST — before any flush work. Readers (MCP
       // discovery, desktop attach, spawners) see `draining: true` and stop

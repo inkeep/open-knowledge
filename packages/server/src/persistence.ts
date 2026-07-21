@@ -45,8 +45,15 @@ import { LINEAGE_EPOCH_KEY } from './auth-token-schema.ts';
 import type { BacklinkIndex } from './backlink-index.ts';
 import { getMsSinceLastUserTx, isDocQuiescent } from './bridge-quiescence.ts';
 import { assertBridgeInvariant, createDocCanonicalizer } from './bridge-watchdog.ts';
-import { isConfigDoc, isManagedArtifactDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
+import {
+  isConfigDoc,
+  isManagedArtifactDoc,
+  isMermaidDoc,
+  isPersistenceExcludedDoc,
+  isSystemDoc,
+} from './cc1-broadcast.ts';
 import { type ConfigPersistenceCtx, loadConfigDoc, storeConfigDoc } from './config-persistence.ts';
+import { frozenDocLifecycleStatus } from './conflict-errors.ts';
 import type { ContributorEntry } from './contributor-tracker.ts';
 import {
   contributorCount,
@@ -430,6 +437,22 @@ export function captureDocSnapshotForPersistence(document: Y.Doc): {
   };
 }
 
+/**
+ * The store spine's canonical "what would land on disk" form of raw
+ * Y.Text bytes: frontmatter re-composed onto the body, then
+ * `normalizeBridge`d. This is the LEFT side of `storeDocumentNow`'s
+ * no-op skip (`markdownSemanticallyUnchanged`) AND the staleness
+ * watchdog's divergence predicate — both compare it against
+ * `normalizeBridge(reconciledBase)`. Single derivation site so the two
+ * classifiers cannot drift: a doc the store would no-op must never read
+ * as stale to the watchdog, and a doc the watchdog reads as converged
+ * must never be one the store would rewrite.
+ */
+export function normalizedSourceForm(rawYText: string): string {
+  const { frontmatter, body } = stripFrontmatter(rawYText);
+  return normalizeBridge(prependFrontmatter(frontmatter, body));
+}
+
 export function safeContentPath(documentName: string, contentDir: string): string {
   if (documentName.includes('\x00')) {
     throw new Error(`Invalid document name: ${documentName}`);
@@ -636,6 +659,19 @@ export interface PersistenceHandle {
    * mutates state.
    */
   getQueueDepths: () => PersistenceQueueDepths;
+  /**
+   * Force one immediate L1 store cycle for a loaded doc through the exact
+   * dispatch the debounced `onStoreDocument` hook uses: synthetic docs
+   * (system / config / managed-artifact / mermaid) short-circuit, a
+   * coordinated batch defers, and everything else runs `storeDocumentNow`
+   * with all of its guards (lifecycle, quiescence, no-op skip, tripwire,
+   * writeTracker registration). Exists for the staleness watchdog —
+   * Hocuspocus only re-arms its store debounce on a new Y.Doc update, so a
+   * store cycle that failed or was skipped after a session's last edit has
+   * no natural retry. Rejections mirror `storeDocumentNow`'s (the failure
+   * is also recorded for `takeStoreFailure`).
+   */
+  forceStore: (document: Y.Doc, documentName: string) => Promise<void>;
   /**
    * Config-doc persistence context. Exposed so the file-watcher
    * orchestration in `server-factory.ts` can call `applyExternalConfigChange`
@@ -1296,12 +1332,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         //     the conflict window stay in Y.Text; on resolution the
         //     case 'update' reconcile in server-factory.ts runs against
         //     them as `ours`.
-        const lifecycleStatus = document.getMap('lifecycle').get('status');
-        if (
-          lifecycleStatus === 'deleted-upstream' ||
-          lifecycleStatus === 'renamed' ||
-          lifecycleStatus === 'conflict'
-        ) {
+        const lifecycleStatus = frozenDocLifecycleStatus(document);
+        if (lifecycleStatus !== null) {
           log.info(
             { documentName, lifecycleStatus },
             `[persistence] Skipped store for ${documentName}: lifecycle=${lifecycleStatus}`,
@@ -1491,7 +1523,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         // safety-net below, preventing phantom commits attributed to the
         // browser's principal when a later agent write triggers the L2 fan-out.
         const currentBase = getReconciledBase(documentName);
-        const normalizedMarkdown = normalizeBridge(markdown);
+        // Routed through the shared helper so this compare and the
+        // staleness watchdog's divergence predicate stay one derivation.
+        const normalizedMarkdown = normalizedSourceForm(ytextSnapshot);
         let markdownSemanticallyUnchanged =
           currentBase !== undefined && normalizedMarkdown === normalizeBridge(currentBase);
         // G8 (ephemeral single-file mode only): also treat the candidate as a
@@ -2388,6 +2422,22 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     };
   }
 
+  async function forceStore(document: Y.Doc, documentName: string): Promise<void> {
+    if (isPersistenceExcludedDoc(documentName)) {
+      return;
+    }
+    if (isBatchInProgress()) {
+      // Same parking the debounced hook applies; the batch's own
+      // `flushDeferredStores` replays it when the coordinated operation ends.
+      deferStore({ document, documentName, lastTransactionOrigin: null });
+      return;
+    }
+    // Origin null: the triggering write's contributor entry (if any) was
+    // recorded when the edit happened; a forced re-flush must not invent a
+    // new writer identity.
+    return storeDocumentNow({ document, documentName, lastTransactionOrigin: null });
+  }
+
   return {
     extension,
     flushDeferredStores,
@@ -2398,6 +2448,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     takeStoreDivergence,
     markAgentWriteStore,
     getQueueDepths,
+    forceStore,
     configPersistenceCtx,
     managedArtifactCtx,
   };

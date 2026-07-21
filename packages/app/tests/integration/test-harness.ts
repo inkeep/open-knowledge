@@ -102,6 +102,14 @@ export interface TestServer {
 export interface CreateTestServerOptions {
   debounce?: ServerOptions['debounce'];
   maxDebounce?: ServerOptions['maxDebounce'];
+  /**
+   * Persistence staleness watchdog tuning. Production defaults (5 min grace,
+   * 60 s sweep) never fire inside a test run; pass small values (e.g.
+   * `{ stalenessGraceMs: 250, stalenessSweepIntervalMs: 100 }`) to exercise
+   * the forced-store rescue path.
+   */
+  stalenessGraceMs?: ServerOptions['stalenessGraceMs'];
+  stalenessSweepIntervalMs?: ServerOptions['stalenessSweepIntervalMs'];
   /** Reuse an existing content directory (for server-restart tests that need
    *  persistence to load canonical state written by a prior test-server instance).
    *  When provided, the caller owns directory lifecycle — cleanup() will not
@@ -248,6 +256,8 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
     quiet: true,
     debounce: options.debounce ?? 200,
     maxDebounce: options.maxDebounce ?? 1000,
+    stalenessGraceMs: options.stalenessGraceMs,
+    stalenessSweepIntervalMs: options.stalenessSweepIntervalMs,
     gitEnabled: ephemeral ? false : (options.gitEnabled ?? false),
     commitDebounceMs: options.commitDebounceMs ?? 200,
     // When gitEnabled: true, the test-harness contentDir IS the tmpdir root (no
