@@ -17,9 +17,9 @@
  *
  *
  * Baseline management:
- *   - packages/app/tests/visual/__snapshots__/ stores approved baselines
+ *   - packages/app/tests/visual/component-parity.e2e.ts-snapshots/ stores approved baselines
  *   - First run creates baselines; subsequent runs diff
- *   - Golden-file updates require explicit: bun run test:visual:update
+ *   - Golden-file updates require explicit: pnpm --dir packages/app run test:visual:update
  *   - Cannot silently regenerate in CI
  *
  * Isolation: per-worker fixture + per-test UUID docName — no hardcoded
@@ -60,29 +60,42 @@ async function setTheme(page: Page, theme: 'dark' | 'light') {
   );
 }
 
-/** Click to select a jsxComponent block by its data-component-name */
+/** NodeSelect the first jsxComponent with the given componentName,
+ *  programmatically. This suite pins the RENDER of the selected state; the
+ *  interaction paths that produce NodeSelection are pinned elsewhere —
+ *  grip click by grip-click-nodeselect.e2e.ts and jsx-halo-semantics.e2e.ts,
+ *  keyboard L2 navigation by selection-indicator.e2e.ts. A plain body click
+ *  no longer NodeSelects a wrapper (it places a TextSelection inside the
+ *  content hole), so clicking is not a substitute here. */
 async function selectComponent(page: Page, componentName: string) {
-  const component = page.locator(`[data-jsx-component][data-component-name="${componentName}"]`);
-  await component.first().click();
-  await component
-    .first()
-    .waitFor({ state: 'attached' })
-    .catch(() => {});
-  await page.waitForFunction(
-    (name) => {
-      const el = document.querySelector(
-        `[data-jsx-component][data-component-name="${name}"][data-selected="true"]`,
-      );
-      return Boolean(el);
-    },
-    componentName,
-    { timeout: 5_000 },
-  );
+  await page.evaluate((name) => {
+    const editor = window.__activeEditor;
+    if (!editor) throw new Error('no __activeEditor');
+    let pos = -1;
+    editor.state.doc.descendants(
+      (node: { type: { name: string }; attrs: Record<string, unknown> }, p: number) => {
+        if (pos === -1 && node.type.name === 'jsxComponent' && node.attrs.componentName === name) {
+          pos = p;
+          return false;
+        }
+        return pos === -1;
+      },
+    );
+    if (pos === -1) throw new Error(`no jsxComponent named ${name}`);
+    editor.chain().focus().setNodeSelection(pos).run();
+  }, componentName);
+  await expect(
+    page
+      .locator(`[data-jsx-component][data-component-name="${componentName}"][data-selected="true"]`)
+      .first(),
+  ).toBeVisible({ timeout: 5_000 });
 }
 
 /** Deselect by clicking on the editor background */
 async function deselectAll(page: Page) {
-  await page.locator('.ProseMirror').click({ position: { x: 10, y: 10 } });
+  await page
+    .locator('.ProseMirror:not(.composer-prosemirror)')
+    .click({ position: { x: 10, y: 10 } });
   await page.waitForFunction(
     () => !document.querySelector('[data-jsx-component][data-selected="true"]'),
     null,
@@ -104,7 +117,7 @@ async function seedAndNavigate(
   await api.seedDocs([{ name: docName, markdown }]);
   await page.goto(`/#/${docName}`);
   await waitForProvider(page);
-  await page.waitForSelector('.ProseMirror');
+  await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
   return docName;
 }
 
@@ -282,7 +295,7 @@ for (const theme of ['light', 'dark'] as const) {
     await waitForDocSeeded(page, 2);
     await setTheme(page, theme);
     await deselectAll(page);
-    await expect(page.locator('.ProseMirror')).toHaveScreenshot(
+    await expect(page.locator('.ProseMirror:not(.composer-prosemirror)')).toHaveScreenshot(
       `accordion-exclusive-grouping-${theme}.png`,
       { maxDiffPixelRatio: 0.02 },
     );
@@ -326,9 +339,12 @@ for (const theme of ['light', 'dark'] as const) {
     await waitForDocSeeded(page, 6);
     await setTheme(page, theme);
 
-    await expect(page.locator('.ProseMirror')).toHaveScreenshot(`mixed-document-${theme}.png`, {
-      maxDiffPixelRatio: 0.02,
-    });
+    await expect(page.locator('.ProseMirror:not(.composer-prosemirror)')).toHaveScreenshot(
+      `mixed-document-${theme}.png`,
+      {
+        maxDiffPixelRatio: 0.02,
+      },
+    );
   });
 }
 
