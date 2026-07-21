@@ -22,7 +22,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, ChevronRight, Info, RotateCcw } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,18 +50,33 @@ interface MarkdownlintRuleBrowserProps {
    * there. The Settings dialog (no file context) leaves it on.
    */
   hideConfigSourceNote?: boolean;
+  /** When the settings search jumps to a rule, seed (and re-seed) this browser's search. */
+  initialRuleQuery?: { query: string; nonce: number } | null;
 }
 
 export function MarkdownlintRuleBrowser({
   hideConfigSourceNote = false,
+  initialRuleQuery,
 }: MarkdownlintRuleBrowserProps = {}) {
   const { t } = useLingui();
   const { data } = useProjectLintConfig();
   const ready = data !== null;
   const rules: RuleValues = data?.effective.plugins.markdownlint.rules ?? {};
   const configFile = data?.configFile ?? null;
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialRuleQuery?.query ?? '');
   const [onlyModified, setOnlyModified] = useState(false);
+
+  // Re-seed the search on a later navigation to a rule — the panel does not
+  // remount between rule jumps (its `key` is the constant section id), so the
+  // initial `useState` seed only covers the first mount. `nonce` re-fires even
+  // when the same rule is chosen twice. The value stays fully user-editable
+  // afterwards via `setSearch` (the same handler the input uses).
+  const seedNonce = initialRuleQuery?.nonce;
+  const seedQuery = initialRuleQuery?.query;
+  useEffect(() => {
+    if (seedNonce === undefined || seedQuery === undefined) return;
+    setSearch(seedQuery);
+  }, [seedNonce, seedQuery]);
   const [collapsed, setCollapsed] = useState<readonly RuleDisplayCategory[]>([]);
 
   function setRule(ruleId: string, value: MarkdownlintRuleWriteValue | null) {

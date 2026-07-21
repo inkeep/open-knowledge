@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import {
   CONFIG_DOC_NAME_PROJECT,
   CONFIG_DOC_NAME_USER,
@@ -11,6 +10,7 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider, useTheme } from 'next-themes';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { emitConfigValidationRejected } from '@/lib/config-validation-events';
@@ -364,6 +364,13 @@ function renderThemePluginWithTheme(binding: ConfigBinding) {
 describe('SettingsDialogBody color-palette picker — optimistic mode flip', () => {
   afterEach(() => {
     cleanup();
+  });
+
+  test('the Themes plugin header shows a User scope badge (user-scope plugin)', () => {
+    const { binding } = makeBinding();
+    renderThemePluginWithTheme(binding);
+    expect(screen.getByTestId('settings-scope-badge-user')).toBeDefined();
+    expect(screen.queryByTestId('settings-scope-badge-project')).toBeNull();
   });
 
   test('selecting a light palette (Catppuccin Latte) flips next-themes to light', async () => {

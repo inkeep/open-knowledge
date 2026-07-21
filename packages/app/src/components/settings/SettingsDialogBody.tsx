@@ -44,8 +44,6 @@ import {
   type OkignoreBinding,
   SHOW_INSTALL_SKILL,
 } from '@inkeep/open-knowledge-core';
-import type { MessageDescriptor } from '@lingui/core';
-import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Check, ChevronRight, RotateCcw } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -114,11 +112,16 @@ import { ColorThemePicker } from './ColorThemePicker';
 import { CustomThemeEditor } from './CustomThemeEditor';
 import { EmbeddingsKeySection } from './EmbeddingsKeySection';
 import { LinkPreviewsSection } from './LinkPreviewsSection';
-import { ProjectPluginsManageSection, UserPluginsManageSection } from './LintingSection';
+import {
+  MarkdownlintPluginSection,
+  ProjectPluginsManageSection,
+  UserPluginsManageSection,
+} from './LintingSection';
 import { LINT_PLUGIN_UI } from './lint-plugins';
 import { OkignoreSection } from './OkignoreSection';
 import { ProjectAiToolsSection } from './ProjectAiToolsSection';
 import { ProjectTemplatesSection } from './ProjectTemplatesSection';
+import { ScopeBadge } from './ScopeBadge';
 import { SearchSection } from './SearchSection';
 import { SkillsManagerSection } from './SkillsManagerSection';
 import {
@@ -127,6 +130,7 @@ import {
   getLeafTypeTag,
   resolveLeafSchema,
 } from './schema-walker';
+import { FIELDS_THEME_PLUGIN, FIELDS_USER_PREFERENCES, type FieldDef } from './settings-fields';
 import type { SlotForwardedProps } from './slot-forwarded-props';
 import { TerminalSection } from './TerminalSection';
 import { pickFirstIssueForPath, useConfigForm } from './use-config-form';
@@ -138,49 +142,6 @@ import { pickFirstIssueForPath, useConfigForm } from './use-config-form';
  * THIS PROJECT use the project binding.
  */
 type Scope = 'user' | 'project';
-
-interface FieldDef {
-  path: string[];
-  label: MessageDescriptor;
-  description?: MessageDescriptor;
-  /**
-   * Optional override: 'enum-toggle' renders enum as a ToggleGroup;
-   * 'theme-tiles' renders the IDE color-palette tile picker; default is a
-   * select-style toggle.
-   */
-  control?: 'enum-toggle' | 'theme-tiles';
-}
-
-const FIELDS_USER_PREFERENCES: FieldDef[] = [
-  {
-    path: ['appearance', 'theme'],
-    label: msg`Theme`,
-    description: msg`Light, dark, or follow the OS.`,
-    control: 'enum-toggle',
-  },
-  {
-    path: ['editor', 'wordWrap'],
-    label: msg`Word wrap`,
-    description: msg`Wrap long lines in the markdown source editor.`,
-  },
-  {
-    path: ['appearance', 'preview', 'autoOpen'],
-    label: msg`Open preview when agent edits`,
-    description: msg`When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.).`,
-  },
-];
-
-// The color-theme picker is a theme "plugin": it lives in the Plugins menu
-// (Settings → Plugins → Themes) as a peer of the lint plugins, not in
-// Preferences. `appearance.theme` (light/dark/system) stays in Preferences.
-const FIELDS_THEME_PLUGIN: FieldDef[] = [
-  {
-    path: ['appearance', 'colorTheme'],
-    label: msg`Color theme`,
-    description: msg`Pick a built-in IDE palette. The dark IDE themes override the light/dark setting in Preferences.`,
-    control: 'theme-tiles',
-  },
-];
 
 // The selected committed-default option uses the app's primary blue (the same
 // token as the Button default variant), not the muted ToggleGroup default, so
@@ -194,6 +155,12 @@ interface SettingsDialogBodyProps {
   userBinding: ConfigBinding | null;
   okignoreBinding: OkignoreBinding | null;
   okignoreSynced: boolean;
+  /**
+   * Set when the settings search navigated to a markdownlint rule — seeds the
+   * rule browser's own search so the panel opens filtered to that rule. The
+   * nonce lets a repeat navigation to the same rule re-seed.
+   */
+  markdownlintRuleQuery?: { query: string; nonce: number } | null;
 }
 
 export function SettingsDialogBody({
@@ -201,6 +168,7 @@ export function SettingsDialogBody({
   userBinding,
   okignoreBinding,
   okignoreSynced,
+  markdownlintRuleQuery,
 }: SettingsDialogBodyProps) {
   const { t } = useLingui();
   if (activeId === 'preferences') {
@@ -263,6 +231,11 @@ export function SettingsDialogBody({
     // The theme "plugin" — a peer of the lint plugins in the Plugins menu, not a
     // lint plugin (it owns no `contentRules` slice). Its config is user-scope.
     return userBinding ? <ThemePluginSection userBinding={userBinding} /> : <SectionSkeleton />;
+  }
+  if (activeId === 'plugin:markdownlint') {
+    // Dedicated branch (above the generic plugin fallthrough) so the settings
+    // search can seed the panel's own rule search when it navigates to a rule.
+    return <MarkdownlintPluginSection initialRuleQuery={markdownlintRuleQuery ?? null} />;
   }
   if (activeId.startsWith('plugin:')) {
     // One enabled lint plugin's settings panel.
@@ -457,6 +430,12 @@ interface BoundSchemaSectionProps {
   scope: Scope;
   binding: ConfigBinding;
   fields: FieldDef[];
+  /**
+   * When set, renders a User/Project scope badge beside the title. Opt-in
+   * (distinct from `scope`, which routes config binding) so only the plugin
+   * panels show a badge — Preferences uses `scope="user"` too but must not.
+   */
+  scopeBadge?: Scope;
 }
 
 /**
@@ -478,6 +457,7 @@ function BoundSchemaSection({
   scope,
   binding,
   fields,
+  scopeBadge,
 }: BoundSchemaSectionProps) {
   const { form, commitField } = useConfigForm(binding);
   const [flashedPath, setFlashedPath] = useState<string | null>(null);
@@ -527,6 +507,7 @@ function BoundSchemaSection({
         title={title}
         description={description}
         scope={scope}
+        scopeBadge={scopeBadge}
         fields={fields}
         commitField={commitField}
         flashedPath={flashedPath}
@@ -549,6 +530,7 @@ function ThemePluginSection({ userBinding }: { userBinding: ConfigBinding }) {
         title={t`Themes`}
         description={t`Pick a built-in IDE color palette, or define your own.`}
         scope="user"
+        scopeBadge="user"
         binding={userBinding}
         fields={FIELDS_THEME_PLUGIN}
       />
@@ -561,6 +543,8 @@ interface SchemaSectionProps {
   title: string;
   description: string;
   scope: Scope;
+  /** When set, renders a User/Project scope badge beside the title (plugin panels only). */
+  scopeBadge?: Scope;
   fields: FieldDef[];
   commitField: (name: FieldPath<Config>) => boolean;
   flashedPath: string | null;
@@ -570,6 +554,7 @@ function SchemaSection({
   title,
   description,
   scope,
+  scopeBadge,
   fields,
   commitField,
   flashedPath,
@@ -578,9 +563,12 @@ function SchemaSection({
   return (
     <section aria-labelledby={titleId} className="space-y-3">
       <div className="space-y-1">
-        <h3 id={titleId} className="text-base font-semibold">
-          {title}
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 id={titleId} className="text-base font-semibold">
+            {title}
+          </h3>
+          {scopeBadge ? <ScopeBadge scope={scopeBadge} /> : null}
+        </div>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
       <div className="space-y-10">

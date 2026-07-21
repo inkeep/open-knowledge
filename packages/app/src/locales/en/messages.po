@@ -156,6 +156,11 @@ msgstr "{0, plural, one {# option set} other {# options set}}"
 msgid "{0, plural, one {# request blocked by the preview's security policy} other {# requests blocked by the preview's security policy}}"
 msgstr "{0, plural, one {# request blocked by the preview's security policy} other {# requests blocked by the preview's security policy}}"
 
+#. placeholder {0}: results.length
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "{0, plural, one {# result} other {# results}}"
+msgstr "{0, plural, one {# result} other {# results}}"
+
 #. placeholder {0}: folder.templateCount
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {# template} other {# templates}}"
@@ -1717,7 +1722,7 @@ msgstr "Collapse terminal"
 msgid "Collapsible section with a clickable summary."
 msgstr "Collapsible section with a clickable summary."
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/settings-fields.ts
 msgid "Color theme"
 msgstr "Color theme"
 
@@ -4481,7 +4486,7 @@ msgstr "Level"
 msgid "Light"
 msgstr "Light"
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/settings-fields.ts
 msgid "Light, dark, or follow the OS."
 msgstr "Light, dark, or follow the OS."
 
@@ -4743,6 +4748,10 @@ msgstr "Markdown"
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Markdown source"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "markdownlint rules"
+msgstr "markdownlint rules"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Match case"
@@ -5322,6 +5331,10 @@ msgstr "No results"
 msgid "No rules match your filters."
 msgstr "No rules match your filters."
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "No settings found"
+msgstr "No settings found"
+
 #: src/components/SkillsSidebarSection.tsx
 msgid "No skills yet."
 msgstr "No skills yet."
@@ -5680,7 +5693,7 @@ msgstr "Open Navigator"
 msgid "Open or close visual-editor find."
 msgstr "Open or close visual-editor find."
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/settings-fields.ts
 msgid "Open preview when agent edits"
 msgstr "Open preview when agent edits"
 
@@ -6029,6 +6042,10 @@ msgstr "Permanently deletes <0>{targetGitPath}</0> and all its git history. Work
 msgid "Permission denied"
 msgstr "Permission denied"
 
+#: src/components/settings/ScopeBadge.tsx
+msgid "Personal to this device — stored in your user config, not shared."
+msgstr "Personal to this device — stored in your user config, not shared."
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Pick “Custom” above to use this palette."
 msgstr "Pick “Custom” above to use this palette."
@@ -6041,7 +6058,7 @@ msgstr "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It en
 msgid "Pick a built-in IDE color palette, or define your own."
 msgstr "Pick a built-in IDE color palette, or define your own."
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/settings-fields.ts
 msgid "Pick a built-in IDE palette. The dark IDE themes override the light/dark setting in Preferences."
 msgstr "Pick a built-in IDE palette. The dark IDE themes override the light/dark setting in Preferences."
 
@@ -6155,6 +6172,7 @@ msgstr "project"
 
 #: src/components/CommandPalette.tsx
 #: src/components/PanelScopeHeader.tsx
+#: src/components/settings/ScopeBadge.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "Project"
@@ -6958,6 +6976,10 @@ msgstr "Search rules"
 msgid "Search rules by id, alias, or name"
 msgstr "Search rules by id, alias, or name"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Search settings"
+msgstr "Search settings"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Search settings not yet loaded — try again in a moment"
 msgstr "Search settings not yet loaded — try again in a moment"
@@ -6998,6 +7020,10 @@ msgstr "Secrets like API keys and tokens are redacted automatically."
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Section <0>(optional heading anchor)</0>"
 msgstr "Section <0>(optional heading anchor)</0>"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Sections"
+msgstr "Sections"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "See <0>#design-docs</0> for the latest specs."
@@ -7231,6 +7257,10 @@ msgstr "Shared repositories"
 #: src/components/settings/SkillsManagerSection.tsx
 msgid "Shared via git with everyone working on this project."
 msgstr "Shared via git with everyone working on this project."
+
+#: src/components/settings/ScopeBadge.tsx
+msgid "Shared with everyone on this project — committed to config.yml via git."
+msgstr "Shared with everyone on this project — committed to config.yml via git."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
@@ -8043,7 +8073,7 @@ msgstr "The terminal session ended."
 msgid "The terminal stopped unexpectedly."
 msgstr "The terminal stopped unexpectedly."
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "Theme"
 
@@ -8669,6 +8699,7 @@ msgstr "Use lowercase letters, digits, and hyphens only."
 msgid "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
 msgstr "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
 
+#: src/components/settings/ScopeBadge.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
 msgstr "User"
@@ -8833,7 +8864,7 @@ msgstr "What would you like to create?"
 msgid "What's new"
 msgstr "What's new"
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/settings-fields.ts
 msgid "When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.)."
 msgstr "When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.)."
 
@@ -8890,7 +8921,7 @@ msgstr "Will be saved as <0>{sanitized}</0>."
 msgid "Will replace existing OpenKnowledge entry"
 msgstr "Will replace existing OpenKnowledge entry"
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/settings-fields.ts
 msgid "Word wrap"
 msgstr "Word wrap"
 
@@ -8920,7 +8951,7 @@ msgstr "worktree of {worktreeOf}"
 msgid "Worktrees"
 msgstr "Worktrees"
 
-#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/settings-fields.ts
 msgid "Wrap long lines in the markdown source editor."
 msgstr "Wrap long lines in the markdown source editor."
 

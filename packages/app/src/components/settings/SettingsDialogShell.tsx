@@ -29,11 +29,20 @@
  */
 
 import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight } from 'lucide-react';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { matchesCommandQuery, splitTextByQueryMatches } from '@/components/command-palette-search';
 import { SettingsDialogBodyLazy } from '@/components/settings/SettingsDialogBodyLazy';
 import { SettingsDialogErrorBoundary } from '@/components/settings/SettingsDialogErrorBoundary';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDocumentContext } from '@/editor/DocumentContext';
@@ -42,6 +51,8 @@ import { isFileProtocolPage } from '@/lib/file-protocol-page';
 import { useClaudeDesktopIntegration } from '@/lib/handoff/use-claude-desktop-integration';
 import { cn } from '@/lib/utils';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
+import { buildSettingsSearchIndex, type SettingsSearchEntry } from './settings-search-index';
+import type { SidebarGroup, SidebarItem } from './settings-sidebar-types';
 
 /**
  * GitHub Releases tag URL — mirrors `releaseUrlFor` in the desktop main
@@ -53,23 +64,6 @@ import { LINT_PLUGIN_META } from './lint-plugin-meta';
  */
 function releaseNotesUrl(version: string): string {
   return `https://github.com/inkeep/open-knowledge/releases/tag/v${encodeURIComponent(version)}`;
-}
-
-interface SidebarItem {
-  id: string;
-  label: string;
-}
-
-interface SidebarGroup {
-  id: 'user' | 'project' | 'plugins' | 'integrations';
-  label: string;
-  /**
-   * `false` renders the group disabled (no-project state for THIS
-   * PROJECT). Items are visible but not focusable; group label gets
-   * an explanatory caption announced via aria-describedby.
-   */
-  enabled: boolean;
-  items: SidebarItem[];
 }
 
 interface SettingsDialogShellProps {
@@ -87,9 +81,67 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   // Always default to USER → Preferences on each fresh open. No
   // in-session memory of last-viewed section.
   const [activeId, setActiveId] = useState('preferences');
+  const [searchQuery, setSearchQuery] = useState('');
+  // Navigation tokens set by a search-result click. fieldFlash re-fires its
+  // consuming effect via object identity alone (each click sets a fresh
+  // object, same path or not). ruleQuery carries a nonce because its consumer
+  // (the markdownlint browser) keys its re-seed effect on primitive values
+  // threaded through props — identical query strings need the nonce to re-fire.
+  const [fieldFlash, setFieldFlash] = useState<{ path: string } | null>(null);
+  const [ruleQuery, setRuleQuery] = useState<{ query: string; nonce: number } | null>(null);
+  const navNonceRef = useRef(0);
+  const contentRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
-    if (open) setActiveId('preferences');
+    if (open) {
+      setActiveId('preferences');
+      setSearchQuery('');
+    }
   }, [open]);
+
+  // Imperative scroll-to-flash for a field the search navigated to. The target
+  // renders inside the lazily-loaded body and, for schema sections, only once
+  // its config binding has synced — so it can appear well after this effect
+  // fires. Rather than a fixed-frame retry (which can expire before the field
+  // mounts), watch the content subtree with a capped MutationObserver and flash
+  // the moment the `[data-field]` node appears. Uses a dedicated one-shot class
+  // no field's React `className` owns, so a re-render can't strip it mid-flash.
+  useEffect(() => {
+    if (!fieldFlash) return;
+    const container = contentRef.current;
+    if (!container) return;
+    const FLASH_CLASS = 'animate-settings-nav-flash';
+    let flashed: HTMLElement | null = null;
+    let removeTimer: ReturnType<typeof setTimeout> | null = null;
+    let giveUpTimer: ReturnType<typeof setTimeout> | null = null;
+    let observer: MutationObserver | null = null;
+
+    const tryFlash = (): boolean => {
+      const el = container.querySelector<HTMLElement>(`[data-field="${fieldFlash.path}"]`);
+      if (!el) return false;
+      el.scrollIntoView({ block: 'center' });
+      el.classList.add(FLASH_CLASS);
+      flashed = el;
+      removeTimer = setTimeout(() => el.classList.remove(FLASH_CLASS), 750);
+      return true;
+    };
+
+    if (!tryFlash()) {
+      // Field not mounted yet — watch for it, capped so we never observe forever.
+      observer = new MutationObserver(() => {
+        if (tryFlash()) observer?.disconnect();
+      });
+      observer.observe(container, { childList: true, subtree: true });
+      giveUpTimer = setTimeout(() => observer?.disconnect(), 4000);
+    }
+
+    return () => {
+      observer?.disconnect();
+      if (removeTimer) clearTimeout(removeTimer);
+      if (giveUpTimer) clearTimeout(giveUpTimer);
+      flashed?.classList.remove(FLASH_CLASS);
+    };
+  }, [fieldFlash]);
 
   // hasProject signals whether the project-scope binding is a valid
   // editing target. In current OK the editor UI always has a project
@@ -186,6 +238,26 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
     },
   ];
 
+  // Deep search corpus, derived from `groups` so every enablement gate
+  // (disabled THIS-PROJECT, absent/disabled plugins, desktop-only items) is
+  // inherited — disabled-plugin rules never surface. `t` resolves the FieldDef
+  // `MessageDescriptor` labels, the same call the body renders them with.
+  const searchEntries = buildSettingsSearchIndex({ groups, translate: t });
+
+  function handleNavigate(entry: SettingsSearchEntry) {
+    navNonceRef.current += 1;
+    const nonce = navNonceRef.current;
+    setActiveId(entry.sectionId);
+    if (entry.kind === 'field' && entry.targetField) {
+      setFieldFlash({ path: entry.targetField });
+    } else if (entry.kind === 'rule' && entry.ruleId) {
+      setRuleQuery({ query: entry.ruleId, nonce });
+    }
+    // Clearing the query collapses the results and restores the plain group nav
+    // on the now-active section.
+    setSearchQuery('');
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -198,8 +270,17 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
         <DialogDescription className="sr-only">
           <Trans>Configure user, project, and integration settings.</Trans>
         </DialogDescription>
-        <SettingsSidebar groups={groups} activeId={activeId} onSelect={setActiveId} />
+        <SettingsSidebar
+          groups={groups}
+          activeId={activeId}
+          onSelect={setActiveId}
+          entries={searchEntries}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onNavigate={handleNavigate}
+        />
         <section
+          ref={contentRef}
           aria-label={t`Settings content`}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain subtle-scrollbar p-6"
           // biome-ignore lint/a11y/noNoninteractiveTabindex: this scrollable content section must be focusable so keyboard users can scroll long settings pages.
@@ -212,6 +293,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
                 userBinding={userSynced ? userBinding : null}
                 okignoreBinding={okignoreBinding}
                 okignoreSynced={okignoreSynced}
+                markdownlintRuleQuery={ruleQuery}
               />
             </Suspense>
           </SettingsDialogErrorBoundary>
@@ -225,10 +307,31 @@ interface SettingsSidebarProps {
   groups: SidebarGroup[];
   activeId: string;
   onSelect: (id: string) => void;
+  entries: SettingsSearchEntry[];
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  onNavigate: (entry: SettingsSearchEntry) => void;
 }
 
-function SettingsSidebar({ groups, activeId, onSelect }: SettingsSidebarProps) {
+function SettingsSidebar({
+  groups,
+  activeId,
+  onSelect,
+  entries,
+  searchQuery,
+  onSearchChange,
+  onNavigate,
+}: SettingsSidebarProps) {
   const { t } = useLingui();
+  const query = searchQuery.trim();
+  const results =
+    query === ''
+      ? []
+      : entries.filter((entry) => matchesCommandQuery(entry.label, query, entry.keywords));
+  const sectionResults = results.filter((entry) => entry.kind === 'section');
+  const fieldResults = results.filter((entry) => entry.kind === 'field');
+  const ruleResults = results.filter((entry) => entry.kind === 'rule');
+
   // Single navigation landmark with an explicit label. A complementary
   // landmark wrapping an unlabeled navigation produced two nested
   // landmarks for one sidebar — landmark navigation surfaced both
@@ -239,18 +342,126 @@ function SettingsSidebar({ groups, activeId, onSelect }: SettingsSidebarProps) {
   return (
     <nav
       aria-label={t`Settings sections`}
-      className="flex shrink-0 gap-x-3 overflow-x-auto overscroll-contain subtle-scrollbar scroll-fade-mask-x-max-sm border-b bg-muted/30 px-3 py-2 max-sm:pt-10 sm:h-full sm:flex-col sm:gap-0 sm:overflow-x-visible sm:overflow-y-auto sm:border-r sm:border-b-0 sm:py-4"
+      className="flex shrink-0 gap-x-3 overflow-x-auto overscroll-contain subtle-scrollbar scroll-fade-mask-x-max-sm border-b bg-muted/30 px-3 py-2 max-sm:pt-10 sm:h-full sm:min-h-0 sm:flex-col sm:gap-0 sm:overflow-x-visible sm:border-r sm:border-b-0 sm:py-4"
     >
-      {groups.map((group) => (
-        <SettingsSidebarGroup
-          key={group.id}
-          group={group}
-          activeId={activeId}
-          onSelect={onSelect}
+      {/* cmdk surface wraps ONLY the search input + results — its roving focus
+          never touches the plain-button group nav below (which keeps its
+          aria-current + disabled-group semantics). The popover-styled base
+          classes are reset so it sits flush as a plain sidebar search box. */}
+      <Command
+        shouldFilter={false}
+        className="h-auto w-full shrink-0 rounded-md border bg-transparent sm:mb-3"
+        data-testid="settings-search"
+      >
+        <CommandInput
+          value={searchQuery}
+          onValueChange={onSearchChange}
+          placeholder={t`Search settings`}
+          data-testid="settings-search-input"
         />
-      ))}
-      <SettingsSidebarVersion />
+        {/* Polite result-count announcement — cmdk's listbox semantics don't
+            tell SR users how many results a keystroke produced. Always mounted
+            (empty when idle) so the live region exists before it updates. */}
+        <span aria-live="polite" className="sr-only" data-testid="settings-search-result-count">
+          {query !== '' ? <Plural value={results.length} one="# result" other="# results" /> : null}
+        </span>
+        {query !== '' ? (
+          <CommandList data-testid="settings-search-results">
+            <CommandEmpty data-testid="settings-search-empty">
+              <Trans>No settings found</Trans>
+            </CommandEmpty>
+            {sectionResults.length > 0 ? (
+              <CommandGroup heading={t`Sections`}>
+                {sectionResults.map((entry) => (
+                  <SettingsSearchResultItem
+                    key={entry.id}
+                    entry={entry}
+                    query={query}
+                    onNavigate={onNavigate}
+                  />
+                ))}
+              </CommandGroup>
+            ) : null}
+            {fieldResults.length > 0 ? (
+              <CommandGroup heading={t`Settings`}>
+                {fieldResults.map((entry) => (
+                  <SettingsSearchResultItem
+                    key={entry.id}
+                    entry={entry}
+                    query={query}
+                    onNavigate={onNavigate}
+                  />
+                ))}
+              </CommandGroup>
+            ) : null}
+            {ruleResults.length > 0 ? (
+              <CommandGroup heading={t`markdownlint rules`}>
+                {ruleResults.map((entry) => (
+                  <SettingsSearchResultItem
+                    key={entry.id}
+                    entry={entry}
+                    query={query}
+                    onNavigate={onNavigate}
+                  />
+                ))}
+              </CommandGroup>
+            ) : null}
+          </CommandList>
+        ) : null}
+      </Command>
+
+      {/* Scroll region — keeps the search box above pinned in view while the
+          group list scrolls. `contents` on mobile leaves the group chips in the
+          nav's horizontal row unchanged; sm+ it becomes the vertical scroller. */}
+      <div className="contents subtle-scrollbar sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:overflow-y-auto sm:overscroll-contain">
+        {/* Plain group nav — the sole content when not searching. */}
+        {query === ''
+          ? groups.map((group) => (
+              <SettingsSidebarGroup
+                key={group.id}
+                group={group}
+                activeId={activeId}
+                onSelect={onSelect}
+              />
+            ))
+          : null}
+        <SettingsSidebarVersion />
+      </div>
     </nav>
+  );
+}
+
+/**
+ * One search result row. The label's matched substrings are emphasized via the
+ * command-palette's `splitTextByQueryMatches` helper (reused, not reinvented).
+ */
+function SettingsSearchResultItem({
+  entry,
+  query,
+  onNavigate,
+}: {
+  entry: SettingsSearchEntry;
+  query: string;
+  onNavigate: (entry: SettingsSearchEntry) => void;
+}) {
+  return (
+    <CommandItem
+      value={entry.id}
+      onSelect={() => onNavigate(entry)}
+      data-testid={`settings-search-result-${entry.id}`}
+    >
+      <span className="truncate">
+        {splitTextByQueryMatches(entry.label, query).map((segment) =>
+          segment.match ? (
+            <span key={segment.start} className="font-semibold text-foreground">
+              {segment.text}
+            </span>
+          ) : (
+            <span key={segment.start}>{segment.text}</span>
+          ),
+        )}
+      </span>
+    </CommandItem>
   );
 }
 

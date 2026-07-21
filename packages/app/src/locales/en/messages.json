@@ -94,6 +94,7 @@
     "170Js2": ["Hide panel"],
     "1AumWo": ["Push failed — check the server logs for details."],
     "1CalO6": ["Style"],
+    "1DahsC": ["Search settings"],
     "1EcCom": [["keyName"], " value"],
     "1FLarN": ["Describe what you want to create to continue"],
     "1GhYxC": ["of ", ["totalPages"]],
@@ -221,6 +222,7 @@
     ],
     "484LKL": ["Remove link"],
     "48uGTI": ["Failed to load docs. Press Escape and re-open to retry."],
+    "494br3": ["Shared with everyone on this project — committed to config.yml via git."],
     "4A3Yzu": ["Code block"],
     "4BITzH": ["Error:"],
     "4CfgPM": ["Project folder created, but git init failed. Try again."],
@@ -1256,6 +1258,7 @@
     ],
     "R0jJzV": ["Paste URL, owner/repo, or search your repos"],
     "R3y75Z": ["Edit source"],
+    "R4OWFD": ["Sections"],
     "R65q-K": [
       "A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account."
     ],
@@ -1339,6 +1342,7 @@
     "TJnkyf": ["ok ui responded but server.lock has no port yet"],
     "TKQ7K-": ["Install"],
     "TLIO3j": ["Toggle italic formatting."],
+    "TQJCR6": [["0", "plural", { "one": ["#", " result"], "other": ["#", " results"] }]],
     "TUzThQ": ["Share skills"],
     "T_R-Qz": ["Primary"],
     "T_wG4n": ["We couldn't check your GitHub connection."],
@@ -1689,6 +1693,7 @@
       ["folderName"],
       "/ and all files inside? This action cannot be undone."
     ],
+    "a7P3nH": ["Personal to this device — stored in your user config, not shared."],
     "a9OzSn": ["No pages found for \"", ["trimmedQuery"], "\""],
     "aBgwis": ["Scope"],
     "aByJ8j": ["How does sharing work?"],
@@ -2181,6 +2186,7 @@
     "lb_UU4": ["Sync now"],
     "lbkOif": ["Undo or redo visual-editor changes through TipTap collaboration history."],
     "lhjq3G": ["Reset ", ["labelText"], " to default"],
+    "ljFWEt": ["No settings found"],
     "ljHjfg": ["That branch is already open in another worktree."],
     "lkYioO": ["Show or hide document panel"],
     "ll2yNl": ["Content directory"],
@@ -2606,6 +2612,7 @@
     "uynXup": [["tokens", "plural", { "one": ["token"], "other": ["tokens"] }]],
     "v-h2hx": ["Delete ", ["targetGitPath"]],
     "v2ZW0K": ["Enable terminal"],
+    "v2a04T": ["markdownlint rules"],
     "v41fCm": ["File not found"],
     "v75Em9": [
       [

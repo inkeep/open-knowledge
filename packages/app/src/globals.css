@@ -276,6 +276,28 @@
   }
 
   --animate-settings-flash: settings-flash 600ms ease-out;
+
+  /* Navigation highlight — played once when the settings search jumps to a
+     field. Neutral primary outline (not the destructive red of settings-flash,
+     which signals a validation error). A dedicated one-shot class so the
+     imperative classList toggle can't collide with a field's own React
+     className. */
+  @keyframes settings-nav-flash {
+    0% {
+      outline: 2px solid hsl(var(--primary) / 0);
+      outline-offset: 2px;
+    }
+    25% {
+      outline: 2px solid hsl(var(--primary) / 0.7);
+      outline-offset: 2px;
+    }
+    100% {
+      outline: 2px solid hsl(var(--primary) / 0);
+      outline-offset: 2px;
+    }
+  }
+
+  --animate-settings-nav-flash: settings-nav-flash 700ms ease-out;
 }
 
 /* Push-mode pulse hint — plays once when an in-sidebar action (file pick,
@@ -290,6 +312,9 @@
     animation: none;
   }
   .animate-settings-flash {
+    animation: none;
+  }
+  .animate-settings-nav-flash {
     animation: none;
   }
 }

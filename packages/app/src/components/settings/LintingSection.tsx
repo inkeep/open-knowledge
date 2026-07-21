@@ -24,6 +24,7 @@ import { useConfigContext } from '@/lib/config-provider';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import { MarkdownlintRuleBrowser } from './markdownlint-rule-browser';
+import { ScopeBadge } from './ScopeBadge';
 
 /** Project-scope content-rules config + a `contentRules`-patch writer. Shared by the sections. */
 function useLinterConfig() {
@@ -194,31 +195,46 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
 function PluginSectionHeader({
   titleId,
   title,
+  scope,
   children,
 }: {
   titleId: string;
   title: string;
+  /** When set, renders a User/Project scope badge beside the title. */
+  scope?: 'user' | 'project';
   children: ReactNode;
 }) {
   return (
     <div className="space-y-1">
-      <h3 id={titleId} className="text-base font-semibold">
-        {title}
-      </h3>
+      <div className="flex items-center gap-2">
+        <h3 id={titleId} className="text-base font-semibold">
+          {title}
+        </h3>
+        {scope ? <ScopeBadge scope={scope} /> : null}
+      </div>
       <p className="text-sm text-muted-foreground">{children}</p>
     </div>
   );
 }
 
 /** markdownlint plugin: the full-catalog rule browser. */
-export function MarkdownlintPluginSection() {
+export function MarkdownlintPluginSection({
+  initialRuleQuery,
+}: {
+  /** Seeds the rule browser's search when the settings search jumps to a rule. */
+  initialRuleQuery?: { query: string; nonce: number } | null;
+} = {}) {
   return (
     <section
       aria-labelledby="settings-plugin-markdownlint-title"
       className="space-y-4"
       data-testid="settings-plugin-markdownlint"
     >
-      <PluginSectionHeader titleId="settings-plugin-markdownlint-title" title="markdownlint">
+      <PluginSectionHeader
+        titleId="settings-plugin-markdownlint-title"
+        title="markdownlint"
+        scope="project"
+      >
         <Trans>
           Flag common markdown issues in the editor. Powered by{' '}
           <a
@@ -239,7 +255,7 @@ export function MarkdownlintPluginSection() {
           .
         </Trans>
       </PluginSectionHeader>
-      <MarkdownlintRuleBrowser />
+      <MarkdownlintRuleBrowser initialRuleQuery={initialRuleQuery} />
     </section>
   );
 }

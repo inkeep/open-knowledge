@@ -5,10 +5,10 @@
  * editor's write calls + gated visibility of controls.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { Config, ConfigBinding } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 // Radix primitives reach for DOM globals the jsdom preload doesn't expose;
@@ -36,7 +36,7 @@ let mockProjectConfig: Config | null = null;
 let mockProjectSynced = true;
 let mockProjectBinding: ConfigBinding | null = null;
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     userBinding: null,
     userSynced: false,
@@ -73,7 +73,7 @@ function projectDataWithMarkdownlintRules(
     },
   };
 }
-mock.module('@/editor/lint-config-client', () => ({
+vi.doMock('@/editor/lint-config-client', () => ({
   emitLintConfigChanged: () => {},
   subscribeToLintConfigChanged: () => () => {},
   runLintAudit: async () => null,
@@ -198,6 +198,9 @@ describe('MarkdownlintPluginSection', () => {
     expect(screen.getByTestId('settings-linting-markdownlint-rules')).toBeDefined();
     expect(screen.getByTestId('markdownlint-rule-search')).toBeDefined();
     expect(screen.getByTestId('markdownlint-rule-row-MD001')).toBeDefined();
+    // markdownlint is a project-scope plugin — the header carries a Project badge.
+    expect(screen.getByTestId('settings-scope-badge-project')).toBeDefined();
+    expect(screen.queryByTestId('settings-scope-badge-user')).toBeNull();
   });
 
   test('names the project config file in the description when one is present', () => {

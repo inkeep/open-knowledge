@@ -20,10 +20,10 @@
  * when `userSynced` is false and the real binding when true.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Radix UI primitives (used by shadcn `Dialog`) reach for DOM globals at
 // mount time that `tests/dom/jsdom-preload.ts` does not expose. Hoist the
@@ -91,13 +91,17 @@ let mockShowInstallSkill = true;
 // project that has enabled it, so the Plugins group lists its panel.
 let mockProjectConfig: unknown = { contentRules: { markdownlint: { enabled: true } } };
 
-mock.module('@inkeep/open-knowledge-core', () => ({
+vi.doMock('@inkeep/open-knowledge-core', () => ({
   get SHOW_INSTALL_SKILL() {
     return mockShowInstallSkill;
   },
+  // The shell builds its search index from the rule catalog when markdownlint
+  // is an enabled plugin; an empty catalog keeps these nav/gating cases (which
+  // don't exercise rule search) from tripping the mock's missing-export guard.
+  MARKDOWNLINT_RULE_CATALOG: [],
 }));
 
-mock.module('@/components/settings/SettingsDialogBodyLazy', () => ({
+vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
   SettingsDialogBodyLazy: (props: BodyProps) => {
     if (mockBodyMode === 'suspend') throw pendingBodyChunk;
     if (mockBodyMode === 'throw') throw new Error('settings chunk failed');
@@ -106,12 +110,12 @@ mock.module('@/components/settings/SettingsDialogBodyLazy', () => ({
   },
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ collabUrl: mockCollabUrl }),
   DocumentProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     userBinding: mockUserBinding,
     userSynced: mockUserSynced,
@@ -127,7 +131,7 @@ mock.module('@/lib/config-provider', () => ({
   }),
 }));
 
-mock.module('@/lib/handoff/use-claude-desktop-integration', () => ({
+vi.doMock('@/lib/handoff/use-claude-desktop-integration', () => ({
   useClaudeDesktopIntegration: () => ({
     desktopPresent: mockDesktopPresent,
     skillInstalled: false,
@@ -150,7 +154,7 @@ const SENTINEL_USER_BINDING = {
 } as unknown as ConfigBinding;
 
 describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     resetProbe();
@@ -163,7 +167,7 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
     mockBodyMode = 'probe';
     mockShowInstallSkill = true;
     mockProjectConfig = { contentRules: { markdownlint: { enabled: true } } };
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {

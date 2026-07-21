@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createContext, type ReactNode, use, useState } from 'react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 type SyncStatus = {
@@ -49,12 +49,12 @@ const actualCore = await import('@inkeep/open-knowledge-core');
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@inkeep/open-knowledge-core', () => ({
+vi.doMock('@inkeep/open-knowledge-core', () => ({
   ...actualCore,
   SHOW_INSTALL_SKILL: true,
 }));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{(value === 1 ? one : other).replace('#', String(value))}</>
@@ -63,7 +63,7 @@ mock.module('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('@lingui/core/macro', () => ({
+vi.doMock('@lingui/core/macro', () => ({
   ...actualLinguiMacro,
   msg: renderLinguiTemplate,
   plural: (value: number, options: { one: string; other: string }) =>
@@ -71,7 +71,7 @@ mock.module('@lingui/core/macro', () => ({
   t: renderLinguiTemplate,
 }));
 
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <button type="button" {...props}>
       {children}
@@ -79,13 +79,13 @@ mock.module('@/components/ui/button', () => ({
   ),
 }));
 
-mock.module('@/components/ui/collapsible', () => ({
+vi.doMock('@/components/ui/collapsible', () => ({
   Collapsible: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   CollapsibleContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   CollapsibleTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 
-mock.module('@/components/ui/switch', () => ({
+vi.doMock('@/components/ui/switch', () => ({
   Switch: ({
     checked,
     disabled,
@@ -108,11 +108,11 @@ mock.module('@/components/ui/switch', () => ({
   ),
 }));
 
-mock.module('@/components/ui/skeleton', () => ({
+vi.doMock('@/components/ui/skeleton', () => ({
   Skeleton: ({ className }: { className?: string }) => <div className={className} />,
 }));
 
-mock.module('@/components/ui/form', () => ({
+vi.doMock('@/components/ui/form', () => ({
   Form: ({ children }: { children?: ReactNode }) => <form>{children}</form>,
   FormControl: ({ children }: { children?: ReactNode }) => <>{children}</>,
   FormDescription: ({ children }: { children?: ReactNode }) => <p>{children}</p>,
@@ -122,12 +122,12 @@ mock.module('@/components/ui/form', () => ({
   FormMessage: () => null,
 }));
 
-mock.module('@/components/ui/input', () => ({
+vi.doMock('@/components/ui/input', () => ({
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
 }));
 
 const SelectHandlerCtx = createContext<((value: string) => void) | undefined>(undefined);
-mock.module('@/components/ui/select', () => ({
+vi.doMock('@/components/ui/select', () => ({
   Select: ({
     children,
     value,
@@ -169,7 +169,7 @@ mock.module('@/components/ui/select', () => ({
 }));
 
 const ToggleGroupHandlerCtx = createContext<((value: string) => void) | undefined>(undefined);
-mock.module('@/components/ui/toggle-group', () => ({
+vi.doMock('@/components/ui/toggle-group', () => ({
   ToggleGroup: ({
     children,
     value,
@@ -207,21 +207,21 @@ mock.module('@/components/ui/toggle-group', () => ({
   },
 }));
 
-mock.module('@/components/ui/tooltip', () => ({
+vi.doMock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   Tooltip: ({ children }: { children?: ReactNode }) => <>{children}</>,
   TooltipContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   TooltipTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 
-mock.module('@/components/PublishToGitHubDialog', () => ({
+vi.doMock('@/components/PublishToGitHubDialog', () => ({
   PublishToGitHubDialog: (props: { open: boolean }) => {
     publishDialogProps.push(props);
     return <div data-open={String(props.open)} data-testid="publish-dialog" />;
   },
 }));
 
-mock.module('@/components/InstallInClaudeDesktopDialog', () => ({
+vi.doMock('@/components/InstallInClaudeDesktopDialog', () => ({
   InstallInClaudeDesktopDialog: (props: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -238,23 +238,23 @@ mock.module('@/components/InstallInClaudeDesktopDialog', () => ({
   },
 }));
 
-mock.module('./OkignoreSection', () => ({
+vi.doMock('./OkignoreSection', () => ({
   OkignoreSection: (props: { binding: unknown; synced: boolean }) => {
     okignoreProps.push(props);
     return <div data-testid="okignore-section">okignore synced: {String(props.synced)}</div>;
   },
 }));
 
-mock.module('./ProjectTemplatesSection', () => ({
+vi.doMock('./ProjectTemplatesSection', () => ({
   ProjectTemplatesSection: () => <div data-testid="project-templates-section" />,
 }));
 
-mock.module('@/hooks/use-git-sync-status', () => ({
+vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatus: () => syncStatus,
   useGitSyncStatusDetailed: () => ({ status: syncStatus, fetchError: null }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     projectBinding,
     projectConfig,
@@ -264,7 +264,7 @@ mock.module('@/lib/config-provider', () => ({
   }),
 }));
 
-mock.module('@/hooks/use-enable-sync-with-confirm', () => ({
+vi.doMock('@/hooks/use-enable-sync-with-confirm', () => ({
   useSyncEnabledWriter: () => ({
     write: (enabled: boolean) => {
       syncWriterCalls.push(enabled);
@@ -296,7 +296,7 @@ mock.module('@/hooks/use-enable-sync-with-confirm', () => ({
   EnableSyncConfirmDialog: () => null,
 }));
 
-mock.module('@/components/EnableSyncConfirmDialog', () => ({
+vi.doMock('@/components/EnableSyncConfirmDialog', () => ({
   EnableSyncConfirmDialog: ({ open, onConfirm }: { open: boolean; onConfirm: () => void }) => (
     <div data-open={String(open)} data-testid="sync-confirm-dialog">
       <button type="button" onClick={onConfirm}>
@@ -306,7 +306,7 @@ mock.module('@/components/EnableSyncConfirmDialog', () => ({
   ),
 }));
 
-mock.module('@/lib/handoff/use-claude-desktop-integration', () => ({
+vi.doMock('@/lib/handoff/use-claude-desktop-integration', () => ({
   useClaudeDesktopIntegration: () => ({
     desktopPresent: true,
     skillInstalled: claudeSkillInstalled,
@@ -385,6 +385,12 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.getByTestId('settings-hotkeys')).not.toBeNull();
     expect(screen.getByTestId('settings-hotkeys-list').textContent).toContain('Editor');
     expect(screen.getAllByText('Workspace').length).toBeGreaterThan(0);
+  });
+
+  test('preferences shows no user/project scope badge (badges are plugin-panel-only)', async () => {
+    await renderBody({ activeId: 'preferences' });
+    expect(screen.queryByTestId('settings-scope-badge-user')).toBeNull();
+    expect(screen.queryByTestId('settings-scope-badge-project')).toBeNull();
   });
 
   test('preferences includes attachments controls mapped to content.attachmentFolderPath', async () => {

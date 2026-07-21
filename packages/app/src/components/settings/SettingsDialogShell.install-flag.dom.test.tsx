@@ -1,13 +1,14 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
-mock.module('@inkeep/open-knowledge-core', () => ({
+vi.doMock('@inkeep/open-knowledge-core', () => ({
   SHOW_INSTALL_SKILL: false,
+  MARKDOWNLINT_RULE_CATALOG: [],
 }));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -22,11 +23,11 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('@/components/settings/SettingsDialogBodyLazy', () => ({
+vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
   SettingsDialogBodyLazy: () => <div data-testid="settings-body-probe" />,
 }));
 
-mock.module('@/components/ui/dialog', () => ({
+vi.doMock('@/components/ui/dialog', () => ({
   Dialog: ({ children, open }: { children?: ReactNode; open?: boolean }) =>
     open ? <div role="dialog">{children}</div> : null,
   DialogContent: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
@@ -38,15 +39,15 @@ mock.module('@/components/ui/dialog', () => ({
   ),
 }));
 
-mock.module('@/components/ui/skeleton', () => ({
+vi.doMock('@/components/ui/skeleton', () => ({
   Skeleton: ({ className }: { className?: string }) => <div className={className} />,
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ collabUrl: 'ws://test.invalid' }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     userBinding: null,
     userSynced: false,
@@ -55,7 +56,7 @@ mock.module('@/lib/config-provider', () => ({
   }),
 }));
 
-mock.module('@/lib/handoff/use-claude-desktop-integration', () => ({
+vi.doMock('@/lib/handoff/use-claude-desktop-integration', () => ({
   useClaudeDesktopIntegration: () => ({
     desktopPresent: true,
   }),

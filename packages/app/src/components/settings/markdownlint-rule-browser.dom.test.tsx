@@ -422,3 +422,40 @@ describe('MarkdownlintRuleBrowser — severity strings and disclosure', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 });
+
+describe('MarkdownlintRuleBrowser — initialRuleQuery seeding (settings-search jump)', () => {
+  test('opens pre-filtered to the seeded rule, re-seeds on a new nonce, stays editable', async () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <MarkdownlintRuleBrowser initialRuleQuery={{ query: 'MD013', nonce: 1 }} />
+      </TooltipProvider>,
+    );
+    // The panel opens filtered to the seeded rule.
+    expect((screen.getByTestId('markdownlint-rule-search') as HTMLInputElement).value).toBe(
+      'MD013',
+    );
+    expect(ruleRows().map((row) => row.getAttribute('data-testid'))).toEqual([
+      'markdownlint-rule-row-MD013',
+    ]);
+
+    // A later navigation (new nonce) re-seeds even though the panel didn't remount.
+    rerender(
+      <TooltipProvider>
+        <MarkdownlintRuleBrowser initialRuleQuery={{ query: 'MD025', nonce: 2 }} />
+      </TooltipProvider>,
+    );
+    expect((screen.getByTestId('markdownlint-rule-search') as HTMLInputElement).value).toBe(
+      'MD025',
+    );
+    expect(ruleRows().map((row) => row.getAttribute('data-testid'))).toEqual([
+      'markdownlint-rule-row-MD025',
+    ]);
+
+    // The seeded value stays fully user-editable.
+    const search = screen.getByTestId('markdownlint-rule-search');
+    await userEvent.clear(search);
+    await userEvent.type(search, 'MD013');
+    expect(screen.getByTestId('markdownlint-rule-row-MD013')).toBeDefined();
+    expect(screen.queryByTestId('markdownlint-rule-row-MD025')).toBeNull();
+  });
+});
