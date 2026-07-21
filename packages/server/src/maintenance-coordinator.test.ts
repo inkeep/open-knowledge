@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   createMaintenanceCoordinator,
   FLUSH_GC_INTERVAL,
@@ -77,13 +77,45 @@ async function seedReachableLooseObjects(n: number): Promise<void> {
   rmSync(idx, { force: true });
 }
 
+// `git gc --auto` does not count every loose object. It estimates the total by
+// sampling ONE fanout directory (objects/17) and only packs when that single
+// directory holds more than gc.auto/256 entries (3+ at gc.auto=512).
+// Content-addressed seed objects spread uniformly over all 256 fanout dirs, so
+// the sampled dir can land under that bar and gc legitimately declines to pack
+// even with 1500 loose objects in the repo. These payloads are precomputed to
+// hash into objects/17 (blob sha1 prefix "17"), so writing them pins the
+// sampled dir over the threshold and gc packs every run. They are deliberately
+// unreachable: the estimate counts them, while the packing assertions only
+// need the reachable seed blobs to move into a packfile.
+const GC_AUTO_SAMPLE_PAYLOADS = [
+  'gc auto fanout sample object 188\n',
+  'gc auto fanout sample object 460\n',
+  'gc auto fanout sample object 486\n',
+];
+
+async function seedGcAutoSampleObjects(): Promise<void> {
+  const sg = shadowGit(shadow);
+  for (const payload of GC_AUTO_SAMPLE_PAYLOADS) {
+    const file = resolve(tmpDir, `gc-auto-sample-${randomUUID()}`);
+    writeFileSync(file, payload);
+    const sha = (await sg.raw('hash-object', '-w', '--', file)).trim();
+    rmSync(file, { force: true });
+    if (!sha.startsWith('17')) {
+      throw new Error(
+        `precomputed gc sample payload no longer hashes into objects/17 (got ${sha}); ` +
+          'recompute GC_AUTO_SAMPLE_PAYLOADS to repin the gc --auto fanout sample',
+      );
+    }
+  }
+}
+
 // Spy on the private compound-maintenance entry point that every trigger
 // (noteFlushCommit / onSessionClose / boot) invokes. Trigger-wiring tests assert
 // "the trigger fired maintenance" at this seam — the gc/consolidate/reap legs run
 // under it without re-acquiring the gate, so spying a single leg would miss it.
 type WithScheduledMaintenance = { runScheduledMaintenance(trigger: string): Promise<void> };
 function spyScheduledMaintenance(coord: MaintenanceCoordinator) {
-  return spyOn(coord as unknown as WithScheduledMaintenance, 'runScheduledMaintenance');
+  return vi.spyOn(coord as unknown as WithScheduledMaintenance, 'runScheduledMaintenance');
 }
 
 describe('configureShadowGc (PRD-6972 D8)', () => {
@@ -100,6 +132,7 @@ describe('configureShadowGc (PRD-6972 D8)', () => {
 describe('MaintenanceCoordinator.runGc (PRD-6972 FR4)', () => {
   test('packs a >512-loose-object repo: loose drops, packfile appears', async () => {
     await seedReachableLooseObjects(1500); // well over the gc.auto=512 estimate
+    await seedGcAutoSampleObjects(); // pin gc --auto's fanout sample over threshold
     const before = await countShadowObjects(shadow);
     expect(before.looseObjects).toBeGreaterThan(512);
     expect(before.packfiles).toBe(0);
@@ -118,6 +151,7 @@ describe('MaintenanceCoordinator.runGc (PRD-6972 FR4)', () => {
   // (core.bare unset, core.worktree set) WITH concurrent commits.
   test('A1: gc is safe against the shadow layout with a concurrent commit', async () => {
     await seedReachableLooseObjects(1500);
+    await seedGcAutoSampleObjects(); // force gc to actually pack, else the gc-vs-commit race isn't exercised
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
 
     // gc and a fresh WIP commit race.
@@ -146,6 +180,7 @@ describe('MaintenanceCoordinator.runGc (PRD-6972 FR4)', () => {
   // shadow op gate serializes the stream against the exclusive gc leg.
   test('A2: gc is safe against a sustained stream of concurrent commits', async () => {
     await seedReachableLooseObjects(1500);
+    await seedGcAutoSampleObjects(); // force gc to actually pack, else the gc-vs-commit race isn't exercised
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
 
     const shas: string[] = [];
