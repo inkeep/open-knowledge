@@ -34,6 +34,7 @@ import { markdownToHtml } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
 import type { Node, ResolvedPos, Schema, Slice } from '@tiptap/pm/model';
 import { DOMSerializer, Fragment, Slice as SliceCtor } from '@tiptap/pm/model';
+import type { EditorState } from '@tiptap/pm/state';
 import { TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
@@ -93,32 +94,28 @@ export function createClipboardTextSerializer(deps: WysiwygSerializerDeps) {
         // Fall through to the markdown path below.
       }
     }
-    // A text selection *inside* a single table cell (drag-highlighting text
-    // within one cell, not the cell-select gesture that yields a
-    // CellSelection). `selection.content()` returns the whole enclosing
-    // `table` node with open depths, and the markdown path below discards
-    // those depths, so it would emit the entire table's pipe syntax +
-    // delimiter row instead of the highlighted text. Peel off the
-    // table/row/cell wrappers and serialize just the cell's inner content:
-    // inline formatting (`code`, **strong**, …) is preserved exactly as it is
-    // when copying from a paragraph, only the table structure is dropped. So
-    // copying `` `cmd` `` out of a docs table yields `` `cmd` ``, not the
-    // whole table.
-    if (
-      view.state.selection instanceof TextSelection &&
-      isSelectionInsideSingleCell(view.state.selection)
-    ) {
+    // A text selection *inside* a syntax-bearing block (drag-highlighting
+    // text within a table cell, blockquote, heading, list item, code block,
+    // footnote definition, …). `selection.content()` returns the enclosing
+    // ancestor chain with open depths — PM's encoding of "these ancestors are
+    // only partially covered" — and the markdown path below discards those
+    // depths, so it would emit the ancestors' block syntax (pipes + delimiter
+    // row, `> `, `# `, `- `, code fences) instead of just the highlighted
+    // text. Peel the partially-covered wrappers and serialize the interior
+    // content: inline formatting (`code`, **strong**, …) is preserved exactly
+    // as it is when copying from a paragraph, only the block structure the
+    // selection never fully covered is dropped.
+    if (view.state.selection instanceof TextSelection && !view.state.selection.empty) {
       try {
-        return sliceToMarkdown(
-          stripEnclosingTableWrapper(slice),
-          view.state.schema,
-          deps.mdManager,
-        );
+        const stripped = stripEnclosingMarkerWrappers(slice, view.state);
+        if (stripped !== slice) {
+          return sliceToMarkdown(stripped, view.state.schema, deps.mdManager);
+        }
       } catch (err) {
         logSerializeFail({
           view: 'wysiwyg',
           kind: 'text',
-          reason: `incell:${(err as Error)?.message ?? 'unknown'}`,
+          reason: `interior:${(err as Error)?.message ?? 'unknown'}`,
         });
         // Fall through to the markdown path below.
       }
@@ -166,55 +163,99 @@ function cellText(cell: Node): string {
   );
 }
 
-const CELL_NODE_TYPES = new Set(['tableCell', 'tableHeader']);
 const TABLE_WRAPPER_TYPES = new Set(['table', 'tableRow', 'tableCell', 'tableHeader']);
 
 /**
- * True when both ends of a text selection resolve into the same table cell.
- * `$pos.before(depth)` at the cell depth is the position immediately before
- * that cell node, unique per cell, so equal values on both ends prove a
- * single-cell selection. A selection spanning two cells is normalized to a
- * `CellSelection` by the tables plugin and never reaches here; the same-cell
- * check also rejects the defensive edge where one somehow does.
+ * Marker-bearing wrapper nodes whose syntax must not leak from a partial
+ * interior selection, but which the user CAN mean as a whole (selecting a
+ * list's entire text should still copy list markers). Peeled only when the
+ * selection covers a strict subset of the wrapper's text. Table wrappers are
+ * handled separately (unconditional peel): a lone `tableCell` fragment is not
+ * independently serializable markdown, so stopping mid-chain would corrupt
+ * the output.
  */
-function isSelectionInsideSingleCell(selection: TextSelection): boolean {
-  const fromDepth = cellDepth(selection.$from);
-  const toDepth = cellDepth(selection.$to);
-  if (fromDepth === null || toDepth === null) return false;
-  return selection.$from.before(fromDepth) === selection.$to.before(toDepth);
-}
+const STRIPPABLE_WRAPPER_TYPES = new Set(['blockquote', 'list', 'listItem', 'footnoteDefinition']);
 
-/** Depth of the nearest table-cell ancestor of `$pos`, or `null` if none. */
-function cellDepth($pos: ResolvedPos): number | null {
-  for (let d = $pos.depth; d > 0; d--) {
-    if (CELL_NODE_TYPES.has($pos.node(d).type.name)) return d;
-  }
-  return null;
+/**
+ * True when the selection spans every text character of the node at `depth`
+ * (an ancestor of both endpoints): no text of that node lies outside
+ * [from, to]. Leaf atoms count via the leaf-text placeholder so an image-only
+ * remainder still reads as uncovered content.
+ */
+function selectionCoversAllTextOf($from: ResolvedPos, $to: ResolvedPos, depth: number): boolean {
+  const doc = $from.doc;
+  return (
+    doc.textBetween($from.start(depth), $from.pos, '\n', '￼') === '' &&
+    doc.textBetween($to.pos, $to.end(depth), '\n', '￼') === ''
+  );
 }
 
 /**
- * Peel `table` → `tableRow` → `tableCell`/`tableHeader` off the front of an
- * open slice, returning a slice of the cell's inner content with the open
- * depths adjusted. Only descends while the slice is a single wrapper that is
- * open on both ends — the shape `selection.content()` produces for a selection
- * *inside* one cell — so a fully-selected table (a closed slice) or a
- * multi-cell fragment is returned unchanged and still serializes as a real
- * table. The unwrapped slice serializes to the cell's inner Markdown, marks
- * and all, exactly as the same content would from a paragraph.
+ * Peel partially-covered marker-bearing ancestors off the front of an open
+ * slice, returning a slice of the interior content with the open depths
+ * adjusted. Generalizes the original table-only strip: the loop only descends
+ * while the slice is a single wrapper open on both ends — the shape
+ * `selection.content()` produces for a selection inside one block — so a
+ * fully-selected structure (closed slice) or a multi-block fragment is
+ * returned unchanged and still serializes with its own syntax.
+ *
+ * Peel policy per level, anchored to the live selection (slice shape alone
+ * cannot distinguish "interior cut" from "whole structure selected" — both
+ * yield a single-child open-both-ends chain):
+ *   - table wrapper chain → peel unconditionally (a bare cell/row fragment
+ *     is not serializable markdown on its own);
+ *   - textblock (heading, codeBlock, paragraph) → peel (its syntax never
+ *     survives a text-level cut);
+ *   - other marker-bearing wrappers → peel only while the selection covers a
+ *     strict subset of the wrapper's text. First-char-to-last-char
+ *     whole-list/whole-quote selections keep their markers, and a selection
+ *     spanning exactly one list item's text keeps that item (the list-sibling
+ *     paste splice consumes the `- [ ] item` payload of a full-item copy —
+ *     see handle-paste.list-placement tests).
+ * A fully-covered `listItem` cannot stand alone as doc content, so stopping
+ * there restores the enclosing list peeled the iteration before (the slice's
+ * list carries only the covered items). A depth-mapping mismatch stops the
+ * loop (fail-safe: under-peel falls back to the pre-existing full-structure
+ * output).
  */
-function stripEnclosingTableWrapper(slice: Slice): Slice {
+function stripEnclosingMarkerWrappers(slice: Slice, state: EditorState): Slice {
+  const selection = state.selection;
+  if (!(selection instanceof TextSelection) || selection.empty) return slice;
+  const { $from, $to } = selection;
   let content = slice.content;
   let openStart = slice.openStart;
   let openEnd = slice.openEnd;
+  let prev: { content: Fragment; openStart: number; openEnd: number } | null = null;
+  // Doc depth of the outermost open wrapper in the slice ($from-side chain).
+  let depth = $from.depth - slice.openStart + 1;
   while (openStart > 0 && openEnd > 0) {
     const only = content.firstChild;
-    if (content.childCount !== 1 || only === null || !TABLE_WRAPPER_TYPES.has(only.type.name)) {
+    if (content.childCount !== 1 || only === null) break;
+    if (depth < 1 || depth > $from.depth || $from.node(depth).type !== only.type) break;
+    let peel: boolean;
+    if (TABLE_WRAPPER_TYPES.has(only.type.name) || only.isTextblock) {
+      peel = true;
+    } else if (STRIPPABLE_WRAPPER_TYPES.has(only.type.name)) {
+      if (selectionCoversAllTextOf($from, $to, depth)) {
+        // Whole structure meant. A bare listItem is not valid top-level doc
+        // content — restore the list wrapper peeled one step earlier.
+        if (only.type.name === 'listItem' && prev !== null) {
+          ({ content, openStart, openEnd } = prev);
+        }
+        break;
+      }
+      peel = true;
+    } else {
       break;
     }
+    if (!peel) break;
+    prev = { content, openStart, openEnd };
     content = only.content;
     openStart -= 1;
     openEnd -= 1;
+    depth += 1;
   }
+  if (content === slice.content) return slice;
   return new SliceCtor(content, openStart, openEnd);
 }
 
@@ -341,7 +382,30 @@ class MdastClipboardSerializer extends DOMSerializer {
     try {
       const schema = fragment.firstChild?.type.schema;
       if (!schema) return target ?? document.createDocumentFragment();
-      const html = renderFragmentToHtml(fragment, schema, this.mdManager);
+      // The `fragment` PM hands us has already been context-unwrapped: the
+      // slice's open depths are gone, so a partially-covered ancestor that
+      // survived PM's own unwrap loop (single-level textblocks like heading /
+      // codeBlock, or multi-child interiors like a two-paragraph blockquote
+      // span) would serialize its full block element into the rich payload.
+      // Re-derive the ORIGINAL slice from the live selection — where the open
+      // depths still exist — and peel partially-covered wrappers before
+      // serializing. `data-pm-slice` is unaffected: PM stamps it from the
+      // original slice AFTER this method returns, so the OK→OK paste path
+      // (text/html + data-pm-slice) keeps its metadata.
+      let slice = new SliceCtor(fragment, 0, 0);
+      if (view && view.state.selection instanceof TextSelection && !view.state.selection.empty) {
+        try {
+          slice = stripEnclosingMarkerWrappers(view.state.selection.content(), view.state);
+        } catch (err) {
+          logSerializeFail({
+            view: 'wysiwyg',
+            kind: 'html',
+            reason: `interior:${(err as Error)?.message ?? 'unknown'}`,
+          });
+          slice = new SliceCtor(fragment, 0, 0);
+        }
+      }
+      const html = markdownToHtml(sliceToMarkdown(slice, schema, this.mdManager));
       const frag = parseHtmlToDocumentFragment(html);
       if (target) {
         for (const child of Array.from(frag.childNodes)) target.appendChild(child);
@@ -504,31 +568,25 @@ function buildWalkerEnv(view: EditorView, mdManager: MarkdownManager): WalkerEnv
   };
 }
 
-function renderFragmentToHtml(
-  fragment: Fragment,
-  schema: Schema,
-  mdManager: MarkdownManager,
-): string {
-  const slice = new SliceCtor(fragment, 0, 0);
-  const markdown = sliceToMarkdown(slice, schema, mdManager);
-  // No wrapper element: PM's `serializeForClipboard` attaches
-  // `data-pm-slice` to our first returned element with the correctly
-  // computed `openStart openEnd context` value. Wrapping in a `<div>`
-  // with a placeholder attribute adds noise to the stored HTML in
-  // destinations that preserve attributes verbatim (e.g. GitHub's
-  // comment textarea) without providing any functional benefit — PM's
-  // paste-side detection uses `querySelector("[data-pm-slice]")` which
-  // finds the attribute on any element.
-  return markdownToHtml(markdown);
-}
+// Note on the markdown tier's html shape: no wrapper element is added. PM's
+// `serializeForClipboard` attaches `data-pm-slice` to our first returned
+// element with the correctly computed `openStart openEnd context` value;
+// wrapping in a `<div>` would only add noise in destinations that preserve
+// attributes verbatim (e.g. GitHub's comment textarea) — PM's paste-side
+// detection uses `querySelector("[data-pm-slice]")`, which finds the
+// attribute on any element.
 
 /**
  * Wrap a slice's content in a synthetic `doc` node. MarkdownManager.serialize
  * expects a PM doc JSON; this synthesizes one from an arbitrary slice.
  *
- * Slice open-depth info (openStart/openEnd) is intentionally discarded —
- * markdown serialization has no concept of it. The paste-side round-trip
- * relies on text content, not on depth preservation.
+ * Slice open-depth info (openStart/openEnd) is discarded here — markdown
+ * serialization has no concept of it, and discarding promotes every
+ * partially-covered ancestor into a complete block. That is only safe because
+ * the clipboard call sites peel partially-covered marker-bearing wrappers via
+ * `stripEnclosingMarkerWrappers` BEFORE reaching this function; closed slices
+ * and whole-node doc slices (the walker's source-fallback) are unaffected by
+ * the discard.
  *
  * Exported only for unit-test reach; the production caller is
  * `sliceToMarkdown` above.
@@ -549,13 +607,50 @@ export function sliceToDocJson(slice: Slice, schema: Schema): JSONContent {
       if (wrapped) content = Fragment.from(wrapped);
     }
   }
-  const docNode = schema.topNodeType.createAndFill(null, content);
+  let docNode = schema.topNodeType.createAndFill(null, content);
+  if (!docNode) {
+    // Some stripped slices reduce to a fragment whose children cannot sit
+    // directly under the document — most commonly bare `listItem`s left when
+    // `stripEnclosingMarkerWrappers` peels a `list` off a selection that spans
+    // the interior of two or more items. Filling fails, and the caller would
+    // otherwise ship an empty clipboard string, silently dropping the copied
+    // text. Lift those children to their own block content (item → paragraph)
+    // and retry, so the interior text survives without the list markers —
+    // matching the two-paragraph blockquote-span result.
+    const lifted = liftUnfittableChildren(content, schema);
+    if (lifted !== content) docNode = schema.topNodeType.createAndFill(null, lifted);
+  }
   if (!docNode) {
     const empty = schema.topNodeType.createAndFill();
     if (!empty) throw new Error('[clipboard] schema cannot fill topNodeType');
     return empty.toJSON() as JSONContent;
   }
   return docNode.toJSON() as JSONContent;
+}
+
+/**
+ * Replace any child the document's top node cannot hold directly with its own
+ * block content. A bare `listItem` (schema `content: paragraph+ block*`) is not
+ * valid top-level doc content, so a fragment of them fails `createAndFill`; this
+ * lifts each to the paragraphs/blocks it wraps. One pass is enough for the
+ * clipboard shapes that reach here (list interiors); the caller retries the fill
+ * and still falls back to an empty doc if the lift did not help.
+ */
+function liftUnfittableChildren(content: Fragment, schema: Schema): Fragment {
+  const match = schema.topNodeType.contentMatch;
+  const out: Node[] = [];
+  let changed = false;
+  content.forEach((child) => {
+    if (!match.matchType(child.type) && child.childCount > 0) {
+      child.content.forEach((grandchild) => {
+        out.push(grandchild);
+      });
+      changed = true;
+    } else {
+      out.push(child);
+    }
+  });
+  return changed ? Fragment.fromArray(out) : content;
 }
 
 /**
