@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
 import { resolveAssetProjectPath, resolveInternalHref } from '@inkeep/open-knowledge-core';
+import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
 
 interface FenceState {
   char: '`' | '~';
@@ -60,21 +61,13 @@ function readWikiLink(
   line: string,
   start: number,
 ): { target: string; alias: string | null; anchor: string | null; nextIndex: number } | null {
-  const match = /^\[\[([^\n#[\]|]+)(?:#([^\n[\]|]+))?(?:\|([^\n[\]]+))?\]\]/.exec(
-    line.slice(start),
-  );
+  const match = readWikiLinkAt(line, start);
   if (!match) return null;
-
-  const target = match[1]?.trim();
-  const anchor = match[2]?.trim() || null;
-  const alias = match[3]?.trim() || null;
-  if (!target) return null;
-
   return {
-    target,
-    alias,
-    anchor,
-    nextIndex: start + match[0].length,
+    target: match.target,
+    alias: match.alias,
+    anchor: match.anchor,
+    nextIndex: match.end,
   };
 }
 
@@ -87,15 +80,15 @@ interface WikiLinkOrEmbed {
 }
 
 function readWikiLinkOrEmbed(line: string, start: number): WikiLinkOrEmbed | null {
-  if (line[start] === '!' && line[start + 1] === '[' && line[start + 2] === '[') {
-    const link = readWikiLink(line, start + 1);
-    return link ? { ...link, embed: true } : null;
-  }
-  if (line[start] === '[' && line[start + 1] === '[') {
-    const link = readWikiLink(line, start);
-    return link ? { ...link, embed: false } : null;
-  }
-  return null;
+  const match = readWikiLinkAt(line, start);
+  if (!match) return null;
+  return {
+    target: match.target,
+    alias: match.alias,
+    anchor: match.anchor,
+    nextIndex: match.end,
+    embed: match.embed,
+  };
 }
 
 function readMarkdownLink(
@@ -108,25 +101,20 @@ function readMarkdownLink(
   titleSuffix: string;
   nextIndex: number;
 } | null {
-  const match =
-    /^\[([^\]\n]*)\]\((<[^>\n]+>|[^)\s\n]+)((?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?)\)/.exec(
-      line.slice(start),
-    );
-  if (!match) return null;
-
-  const hrefRaw = match[2] ?? '';
+  const match = readMarkdownLinkAt(line, start);
+  if (!match || match.image) return null;
   return {
-    text: match[1] ?? '',
-    hrefRaw,
-    href: hrefRaw.startsWith('<') && hrefRaw.endsWith('>') ? hrefRaw.slice(1, -1) : hrefRaw,
-    titleSuffix: match[3] ?? '',
-    nextIndex: start + match[0].length,
+    text: match.label,
+    hrefRaw: match.hrefRaw,
+    href: match.href,
+    titleSuffix: match.titleSuffix,
+    nextIndex: match.end,
   };
 }
 
 // Matches `![alt](src "optional title")`. Wiki-embeds (`![[file.ext]]`)
-// fail this pattern because the second char after `!` is `[` not
-// `]`-then-`(`, so they flow through untouched.
+// fail the shared grammar's label because the char after `![` is `[`,
+// so they flow through untouched.
 function readImageRef(
   line: string,
   start: number,
@@ -137,19 +125,14 @@ function readImageRef(
   titleSuffix: string;
   nextIndex: number;
 } | null {
-  const match =
-    /^!\[([^\]\n]*)\]\((<[^>\n]+>|[^)\s\n]+)((?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?)\)/.exec(
-      line.slice(start),
-    );
-  if (!match) return null;
-
-  const hrefRaw = match[2] ?? '';
+  const match = readMarkdownLinkAt(line, start);
+  if (!match?.image) return null;
   return {
-    alt: match[1] ?? '',
-    hrefRaw,
-    href: hrefRaw.startsWith('<') && hrefRaw.endsWith('>') ? hrefRaw.slice(1, -1) : hrefRaw,
-    titleSuffix: match[3] ?? '',
-    nextIndex: start + match[0].length,
+    alt: match.label,
+    hrefRaw: match.hrefRaw,
+    href: match.href,
+    titleSuffix: match.titleSuffix,
+    nextIndex: match.end,
   };
 }
 

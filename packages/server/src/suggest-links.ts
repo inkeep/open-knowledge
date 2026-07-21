@@ -2,19 +2,13 @@ import { readFile } from 'node:fs/promises';
 import type { Document, Hocuspocus } from '@hocuspocus/server';
 import { resolveInternalHref, stripFrontmatter, toWikiLinkSlug } from '@inkeep/open-knowledge-core';
 import type { FileIndexEntry } from './file-watcher.ts';
+import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
 import { getLogger } from './logger.ts';
 import { extractPageIdentity, type PageIdentity } from './page-identity.ts';
 
 const log = getLogger('suggest-links');
 
 const WORD_CHAR_RE = /[\p{L}\p{N}]/u;
-
-// Line-oriented variants: excludes \n since lines are pre-split.
-const WIKI_LINK_RE = /\[\[([^\n#[\]|]+)(?:#([^\n[\]|]+))?(?:\|([^\n[\]]+))?\]\]/y;
-const MD_LINK_RE =
-  /\[([^\]\n]*)\]\((<[^>\n]+>|[^)\s\n]+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\)/y;
-const MD_IMAGE_RE =
-  /!\[([^\]\n]*)\]\((<[^>\n]+>|[^)\s\n]+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\)/y;
 
 interface FenceState {
   char: '`' | '~';
@@ -173,58 +167,47 @@ function readWikiLink(
   labelStart: number;
   nextIndex: number;
 } | null {
-  WIKI_LINK_RE.lastIndex = start;
-  const match = WIKI_LINK_RE.exec(line);
+  const match = readWikiLinkAt(line, start);
   if (!match) return null;
 
-  const targetRaw = match[1] ?? '';
-  const target = targetRaw.trim();
-  const anchor = match[2]?.trim() || null;
-  const aliasRaw = match[3] ?? null;
-  const alias = aliasRaw?.trim() || null;
-  if (!target) return null;
-
-  const label = alias ?? target;
-  const rawLabel = alias ? aliasRaw : targetRaw;
-  const labelIndexInMatch = alias ? match[0].lastIndexOf(aliasRaw ?? '') : 2;
+  const label = match.alias ?? match.target;
+  const rawLabel = match.alias ? match.aliasRaw : match.targetRaw;
+  // Alias raw capture ends right before the closing `]]`; target raw
+  // capture starts right after the opening `[[`.
+  const labelIndexInMatch =
+    match.alias && match.aliasRaw ? match.end - match.start - 2 - match.aliasRaw.length : 2;
   const labelTrimOffset = rawLabel?.indexOf(label) ?? 0;
 
   return {
-    target,
-    alias,
-    anchor,
+    target: match.target,
+    alias: match.alias,
+    anchor: match.anchor,
     label,
     labelStart: start + labelIndexInMatch + Math.max(labelTrimOffset, 0),
-    nextIndex: start + match[0].length,
+    nextIndex: match.end,
   };
-}
-
-function normalizeMarkdownHref(rawHref: string): string {
-  return rawHref.startsWith('<') && rawHref.endsWith('>') ? rawHref.slice(1, -1) : rawHref;
 }
 
 function readMarkdownLink(
   line: string,
   start: number,
 ): { text: string; href: string; nextIndex: number } | null {
-  MD_LINK_RE.lastIndex = start;
-  const match = MD_LINK_RE.exec(line);
-  if (!match) return null;
+  const match = readMarkdownLinkAt(line, start);
+  if (!match || match.image) return null;
 
   return {
-    text: match[1] ?? '',
-    href: normalizeMarkdownHref(match[2] ?? ''),
-    nextIndex: start + match[0].length,
+    text: match.label,
+    href: match.href,
+    nextIndex: match.end,
   };
 }
 
 function readMarkdownImage(line: string, start: number): { alt: string; nextIndex: number } | null {
-  MD_IMAGE_RE.lastIndex = start;
-  const match = MD_IMAGE_RE.exec(line);
-  if (!match) return null;
+  const match = readMarkdownLinkAt(line, start);
+  if (!match?.image) return null;
   return {
-    alt: match[1] ?? '',
-    nextIndex: start + match[0].length,
+    alt: match.label,
+    nextIndex: match.end,
   };
 }
 

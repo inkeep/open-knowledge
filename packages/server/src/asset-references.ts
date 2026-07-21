@@ -8,6 +8,7 @@ import {
   resolveAssetProjectPath,
 } from '@inkeep/open-knowledge-core';
 import type { FileIndexEntry } from './file-watcher.ts';
+import { matchMarkdownLinks, matchWikiLinks } from './link-syntax.ts';
 import { getLogger } from './logger.ts';
 import { isWithinContentDir } from './persistence.ts';
 
@@ -23,9 +24,9 @@ interface ReferencedAssetEntry {
   referencedBy: string[];
 }
 
-const MARKDOWN_LINK_OR_IMAGE_RE =
-  /!?\[[^\]\n]*(?:\][^[\]\n]*)?\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+['"][^'"]*['"])?\)/g;
-const WIKI_LINK_OR_EMBED_RE = /!?\[\[([^[\]|#]+?)(?:#[^\]|]+?)?(?:\|[^\]]+?)?\]\]/g;
+// HTML `href`/`src` attributes are a different syntax family from the
+// markdown/wiki link grammar in link-syntax.ts, so this recognizer stays
+// local.
 const HTML_LINK_ATTR_RE =
   /<[\w:-]+\b[^>]*?\s+(?:href|src)\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|“([^”\n]*)”|([^\s"'=<>`]+))/gi;
 
@@ -85,13 +86,14 @@ function errnoCode(err: unknown): string | null {
 }
 
 function collectHrefsFromLine(line: string, hrefs: Set<string>): void {
-  for (const match of line.matchAll(MARKDOWN_LINK_OR_IMAGE_RE)) {
-    const href = match[1] ?? match[2];
-    if (href) hrefs.add(href);
+  // nestedBracketLabels keeps the pre-consolidation preference for the
+  // OUTER destination of badge-style `[![alt](img)](file.pdf)` links —
+  // the linked file counts as the referenced asset, not the inner image.
+  for (const match of matchMarkdownLinks(line, { nestedBracketLabels: true })) {
+    if (match.href) hrefs.add(match.href);
   }
-  for (const match of line.matchAll(WIKI_LINK_OR_EMBED_RE)) {
-    const target = match[1];
-    if (target) hrefs.add(target);
+  for (const match of matchWikiLinks(line)) {
+    hrefs.add(match.target);
   }
   for (const match of line.matchAll(HTML_LINK_ATTR_RE)) {
     const href = match[1] ?? match[2] ?? match[3] ?? match[4];

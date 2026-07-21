@@ -23,20 +23,11 @@ import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
+import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
 import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
 
 const log = getLogger('backlinks');
-
-// Line-oriented variant: excludes \n since lines are pre-split.
-// cf. packages/core/src/extensions/wiki-link.ts WIKI_LINK_PATTERN (no \n exclusion).
-// Sticky flag ('y') enables position-based matching via lastIndex.
-const WIKI_LINK_RE = /\[\[([^\n#[\]|]+)(?:#([^\n[\]|]+))?(?:\|([^\n[\]]+))?\]\]/y;
-
-// Inline link form: [text](href) with an optional CommonMark title.
-// Sticky flag for position-based matching. Does NOT match reference-style [text][ref].
-const MD_LINK_RE =
-  /\[([^\]\n]*)\]\((<[^>\n]+>|[^)\s\n]+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\)/y;
 
 interface InlineWikiLinkOccurrence {
   target: string;
@@ -298,23 +289,15 @@ function readWikiLink(
   line: string,
   start: number,
 ): { target: string; alias: string | null; anchor: string | null; nextIndex: number } | null {
-  // Uses sticky flag for position-based matching via lastIndex.
   // core's parseWikiLink expects the string to start with '[[' (^ anchor) and
   // cannot be used here where start may be mid-line.
-  WIKI_LINK_RE.lastIndex = start;
-  const match = WIKI_LINK_RE.exec(line);
+  const match = readWikiLinkAt(line, start);
   if (!match) return null;
-
-  const target = match[1]?.trim();
-  const anchor = match[2]?.trim() || null;
-  const alias = match[3]?.trim() || null;
-  if (!target) return null;
-
   return {
-    target,
-    alias,
-    anchor,
-    nextIndex: start + match[0].length,
+    target: match.target,
+    alias: match.alias,
+    anchor: match.anchor,
+    nextIndex: match.end,
   };
 }
 
@@ -439,21 +422,16 @@ export function resolveMarkdownHref(href: string, sourceDocName: string): string
   return resolveInternalHref(href, sourceDocName)?.docName ?? null;
 }
 
-function normalizeMarkdownHref(rawHref: string): string {
-  return rawHref.startsWith('<') && rawHref.endsWith('>') ? rawHref.slice(1, -1) : rawHref;
-}
-
 function readMarkdownLink(
   line: string,
   start: number,
 ): { text: string; href: string; nextIndex: number } | null {
-  MD_LINK_RE.lastIndex = start;
-  const match = MD_LINK_RE.exec(line);
+  const match = readMarkdownLinkAt(line, start);
   if (!match) return null;
   return {
-    text: match[1] ?? '',
-    href: normalizeMarkdownHref(match[2] ?? ''),
-    nextIndex: start + match[0].length,
+    text: match.label,
+    href: match.href,
+    nextIndex: match.end,
   };
 }
 
