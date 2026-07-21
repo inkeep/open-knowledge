@@ -186,7 +186,11 @@ function computeWorktreeAttributes(projectDir: string): {
 
 /** 30 minutes — default idle threshold. */
 const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
-const DESTROY_STEP_TIMEOUT_MS = 5000;
+// Per-teardown-step cap. 5s is ample on real hardware; the env override exists
+// only to give slower/noisier CI runners (macOS GitHub runners under load)
+// headroom so a scheduling stall in a destroy step isn't misread as a hang. The
+// default is unchanged, so production shutdown latency is untouched.
+const DESTROY_STEP_TIMEOUT_MS = Number(process.env.OK_DESTROY_STEP_TIMEOUT_MS) || 5000;
 
 export interface BootServerOptions
   extends Pick<
