@@ -1,5 +1,0 @@
----
-"@inkeep/open-knowledge": patch
----
-
-Diagnostics bundles now capture more of what matters for content-loss triage. The full bundle stages the shadow repo's recovery-checkpoint refs (`state/checkpoint-refs.txt` — ref name, date, and content-free subject per checkpoint) and a new `state/agent-effects.json` snapshot of the per-document agent activity ring buffers, served by a new loopback-only `GET /api/metrics/agent-effects` endpoint that summarizes agent writes as character counts (never raw text). Doc names in the new artifacts are anonymized by the existing `--redact` pass, which now also hashes the agent-presence bundle's `currentDoc` path so a redacted `state/agent-presence.json` no longer leaks the document a person was editing. The web client's log forwarder also stops losing entries silently: drops from buffer overflow or failed uploads are counted and recorded as an explicit `droppedSinceLastFlush` gap marker in the server log on the next delivered batch, and a failed recovery-checkpoint write now also emits a structured server-log line with doc and branch context.
